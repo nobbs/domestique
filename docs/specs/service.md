@@ -210,6 +210,10 @@ contain no route names, tokens, credentials, or raw upstream errors.
 
 ## Go design
 
+The concrete package boundaries, interface rules, manual composition root, and
+delivery sequence are defined in the
+[implementation architecture specification](implementation-architecture.md).
+
 The implementation is package-oriented with manual wiring in the server
 entrypoint. Packages own their own data types and expose narrow interfaces only
 at consumer boundaries. There is no dependency-injection framework, shared
