@@ -77,6 +77,8 @@ The read-only JSON surface is deliberately small:
 
 Exact response schemas are an implementation follow-up. They must never expose
 secrets, tokens, raw upstream response bodies, or full route geometry.
+The concrete OAuth, sync, persistence, and JSON contracts are defined in the
+[sync lifecycle specification](sync-lifecycle.md).
 
 ## Configuration and secrets
 
@@ -176,6 +178,9 @@ source-stage deletion removes the corresponding owned Wahoo route from both
 targets. It never deletes manually created Wahoo routes.
 
 ## Sync lifecycle and safety
+
+The detailed state transitions and safety gates are defined in the
+[sync lifecycle specification](sync-lifecycle.md).
 
 The service attempts one sync shortly after a healthy startup and then hourly.
 At most one sync may run at a time. It fetches the source inventory once, then
