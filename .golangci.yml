@@ -1,0 +1,50 @@
+version: "2"
+
+run:
+  tests: true
+
+linters:
+  default: standard
+  enable:
+    - bodyclose
+    - errorlint
+    - gochecknoinits
+    - gochecknoglobals
+    - gocritic
+    - gosec
+    - iface
+    - interfacebloat
+    - misspell
+    - modernize
+    - musttag
+    - nilerr
+    - nilnil
+    - noctx
+    - nolintlint
+    - revive
+    - rowserrcheck
+    - sqlclosecheck
+    - tagliatelle
+    - unconvert
+    - wrapcheck
+  settings:
+    errcheck:
+      check-blank: true
+      check-type-assertions: true
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - experimental
+        - opinionated
+        - performance
+        - style
+    govet:
+      enable-all: true
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+
+formatters:
+  enable:
+    - gofmt
+    - goimports

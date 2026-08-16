@@ -1,0 +1,50 @@
+[[repos]]
+repo = "builtin"
+
+[[repos.hooks]]
+id = "trailing-whitespace"
+
+[[repos.hooks]]
+id = "end-of-file-fixer"
+
+[[repos.hooks]]
+id = "check-added-large-files"
+args = ["--maxkb=512"]
+
+[[repos.hooks]]
+id = "check-case-conflict"
+
+[[repos.hooks]]
+id = "check-illegal-windows-names"
+
+[[repos.hooks]]
+id = "check-merge-conflict"
+
+[[repos.hooks]]
+id = "check-toml"
+
+[[repos.hooks]]
+id = "check-yaml"
+
+[[repos.hooks]]
+id = "detect-private-key"
+
+[[repos]]
+repo = "local"
+
+[[repos.hooks]]
+id = "golangci-format"
+name = "golangci-lint format"
+entry = "mise exec -- golangci-lint fmt --diff"
+language = "system"
+files = "\\.go$"
+pass_filenames = false
+
+[[repos.hooks]]
+id = "markdownlint"
+name = "Markdown lint"
+entry = "mise exec -- markdownlint-cli2"
+language = "system"
+args = ["**/*.md"]
+files = "\\.md$"
+pass_filenames = false

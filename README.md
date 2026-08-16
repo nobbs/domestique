@@ -5,4 +5,19 @@ accounts. It is a single-tenant service intended to run as a Docker container
 on a Raspberry Pi in a Tailnet.
 
 The accepted v1 contract is in [the service specification](docs/specs/service.md).
-Implementation begins only after that specification is reviewed.
+The supporting specifications define configuration, sync safety, architecture,
+and delivery before implementation begins.
+
+## Development
+
+Install the pinned local toolchain and run the complete quality gate:
+
+~~~sh
+mise install
+mise exec -- make check
+~~~
+
+Install the optional Git hook with `mise exec -- prek install`. See
+[CONTRIBUTING.md](CONTRIBUTING.md) for the contributor workflow. The initial
+binary is only a buildable bootstrap; service behavior starts with the next
+implementation layer.

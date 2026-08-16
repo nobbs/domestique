@@ -10,10 +10,11 @@ repository.
 ## Development toolchain and commands
 
 The repository tracks a `.mise.toml` that pins the Go toolchain,
-`golangci-lint`, and `prek`. Mise is the source of truth for the versions used
-by a developer and GitHub Actions. Bootstrap selects supported, mutually
-compatible versions and records them there; no developer-global tool
-configuration is required.
+`golangci-lint`, `prek`, Actionlint, Gitleaks, Markdownlint, and
+`govulncheck`. Mise is the source of truth for the versions used by a
+developer and GitHub Actions. Bootstrap selects supported, mutually compatible
+versions and records them there; no developer-global tool configuration is
+required.
 
 The repository provides these stable Make targets:
 
@@ -23,12 +24,14 @@ The repository provides these stable Make targets:
 | `make lint` | Runs the configured `golangci-lint` checks. |
 | `make test` | Runs the normal deterministic test suite with `CGO_ENABLED=0`. |
 | `make build` | Compiles the Linux ARM64 service binary with `CGO_ENABLED=0`. |
-| `make check` | Runs every non-mutating repository check required before review or merge. |
+| `make check` | Runs every repository check required before review or merge. |
 
 `make check` is the canonical local and CI entry point. It includes
 `prek run --all-files`, linting, tests, Go module verification, vulnerability
-analysis, and the release-target binary compilation. A failing format check
-reports files without rewriting them. `make fmt` is the deliberate local fix.
+analysis, a GitHub Actions workflow check, a worktree secret scan, and the
+release-target binary compilation. `make fmt` applies Go formatting. A fixing
+`prek` hook exits non-zero after a safe mechanical repair so the resulting
+change can be reviewed and staged deliberately.
 
 `prek` owns fast repository hygiene: whitespace and end-of-file checks,
 private-key and accidental-large-file checks, YAML, TOML, and Markdown

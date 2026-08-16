@@ -26,6 +26,20 @@ go.work.sum
 
 # env file
 .env
+.env.*
+!.env.example
+
+# Local Domestique state and configuration
+/build/
+/.cache/
+/tmp/
+*.db
+*.db-shm
+*.db-wal
+config.toml
+config.local.toml
+/secrets/
+.mise.local.toml
 
 # Editor/IDE
 # .idea/

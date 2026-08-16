@@ -1,0 +1,15 @@
+.git
+.github
+build
+coverage.*
+*.coverprofile
+*.db
+*.db-shm
+*.db-wal
+.env
+.env.*
+config.toml
+config.local.toml
+secrets
+testdata
+tmp
