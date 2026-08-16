@@ -80,6 +80,9 @@ secrets, tokens, raw upstream response bodies, or full route geometry.
 
 ## Configuration and secrets
 
+The concrete file schema and validation rules are defined in the
+[configuration specification](configuration.md).
+
 The service has a provider-neutral configuration contract:
 
 - One read-only static configuration file holds non-secret values: VeloPlanner
