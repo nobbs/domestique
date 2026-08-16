@@ -242,6 +242,10 @@ and performs graceful shutdown.
 
 ## Quality and delivery requirements
 
+The concrete local quality gate, GitHub Actions, container hardening, and
+release artifact contract is defined in the
+[delivery specification](delivery.md).
+
 Implementation must include a project-local Go toolchain declaration, focused
 `golangci-lint` configuration, `prek` local checks, and GitHub Actions that run
 the same essential validation. Normal tests use deterministic fakes for every
