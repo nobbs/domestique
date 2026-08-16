@@ -3,24 +3,31 @@
 **Status:** accepted v1 design
 
 This is a subordinate specification to [the service contract](service.md).
-It defines the static configuration and secret-file contract. It does not define
-a secret manager, environment-variable override system, or a configuration API.
+It defines the static configuration and secret-input contract. It does not
+define a secret provider or a configuration API.
 
 ## Loading
 
-The server reads one TOML file from `DOMESTIQUE_CONFIG_FILE`; the default
-container path is `/etc/domestique/config.toml`. This environment variable
-selects a file only. It never supplies a setting or a secret value.
+The server uses Koanf to layer configuration in this order:
+
+1. built-in defaults;
+2. one TOML file; and
+3. `DOMESTIQUE_`-prefixed environment variables.
+
+The default TOML path is `/etc/domestique/config.toml`.
+`DOMESTIQUE_CONFIG_FILE` selects another file path only; it does not override a
+setting and is removed before Koanf loads the remaining environment. Nested
+environment keys use a double underscore, so
+`DOMESTIQUE_WAHOO__CLIENT_ID` maps to `wahoo.client_id`.
 
 Configuration is read once during startup. A configuration or static-secret
 change takes effect only after a container restart. The server fails closed
-before opening an HTTP listener when the file is missing, malformed, contains an
-unknown key, or fails validation.
+before opening an HTTP listener when configuration is missing, malformed,
+contains an unknown key, or fails validation.
 
-## Example
+## Non-secret configuration
 
-The following is a safe-to-commit example. Every value ending in `_file` is a
-path inside the container, not a secret value or a provider-specific reference.
+The following is safe to commit:
 
 ```toml
 [http]
@@ -65,108 +72,85 @@ user_key_file = "/run/secrets/pushover_user_key"
 The endpoint examples are illustrative. The deployed values must match the
 chosen Wahoo environment and the redirect URI registered for the application.
 
-## Fields
+## Secret input
 
-### HTTP and access
+Every static secret has exactly one active input. It may use a TOML file path,
+an overriding `*_FILE` environment value, or a direct environment value. File
+inputs are preferred for Docker deployments; direct environment values support
+a simple local setup.
 
-- `http.listen_address` is required. In Docker, the runtime maps this
-  container port to the Pi's `127.0.0.1` only. The application must not rely on
-  the address itself for Tailnet identity.
-- `access.tailnet_user_login` is required. It is the sole authenticated
-  Tailnet login permitted to reach normal and OAuth endpoints.
-- Tailscale Serve is deployment configuration, not an application setting. It
-  must be the only remote ingress and must remove untrusted forwarded identity
-  headers before forwarding the authenticated identity.
+| Canonical secret | TOML file-path field | Direct environment value | Environment file path |
+| --- | --- | --- | --- |
+| state encryption key | `state.encryption_key_file` | `DOMESTIQUE_STATE__ENCRYPTION_KEY` | `DOMESTIQUE_STATE__ENCRYPTION_KEY_FILE` |
+| VeloPlanner email | `veloplanner.email_file` | `DOMESTIQUE_VELOPLANNER__EMAIL` | `DOMESTIQUE_VELOPLANNER__EMAIL_FILE` |
+| VeloPlanner password | `veloplanner.password_file` | `DOMESTIQUE_VELOPLANNER__PASSWORD` | `DOMESTIQUE_VELOPLANNER__PASSWORD_FILE` |
+| Wahoo client secret | `wahoo.client_secret_file` | `DOMESTIQUE_WAHOO__CLIENT_SECRET` | `DOMESTIQUE_WAHOO__CLIENT_SECRET_FILE` |
+| Pushover application token | `notifications.pushover.application_token_file` | `DOMESTIQUE_NOTIFICATIONS__PUSHOVER__APPLICATION_TOKEN` | `DOMESTIQUE_NOTIFICATIONS__PUSHOVER__APPLICATION_TOKEN_FILE` |
+| Pushover user key | `notifications.pushover.user_key_file` | `DOMESTIQUE_NOTIFICATIONS__PUSHOVER__USER_KEY` | `DOMESTIQUE_NOTIFICATIONS__PUSHOVER__USER_KEY_FILE` |
 
-### State
+Literal secret fields are invalid in the TOML file. They are accepted only from
+the documented direct environment variables. A `*_FILE` environment variable
+overrides the corresponding TOML file path, but it must not accompany a direct
+secret environment value.
 
+A file secret must be an absolute path to a regular readable file. Text secrets
+must be non-empty after one terminal line break is trimmed. The state key is a
+base64url encoding of exactly 32 random bytes. The service reads every secret
+once at startup, does not log a value or path, and clears direct secret
+environment values from its own process environment after loading.
+
+The application does not know which system created a file. Docker Secrets,
+read-only bind mounts, and manually managed local files are equally valid.
+A deployment tool such as `fnox` may provision files, but is not a runtime or
+application dependency.
+
+## Static fields
+
+- `http.listen_address` is required. Docker maps the container port to the
+  Pi's `127.0.0.1` only; the application must not use the address itself as
+  evidence of Tailnet identity.
+- `access.tailnet_user_login` is required. It is the sole Tailnet login allowed
+  to use normal or OAuth endpoints.
 - `state.database_path` is required and must reside on the persistent Docker
   volume.
-- `state.encryption_key_file` is required. Its file content is a base64url
-  encoding of exactly 32 random bytes; surrounding ASCII whitespace is ignored.
-- The database is not a backup. Changing the encryption key makes existing
-  OAuth state and refresh tokens unreadable. Key rotation is not a v1 feature.
-
-### VeloPlanner
-
-- `veloplanner.base_url` is required and must be an absolute HTTPS URL.
-- `veloplanner.email_file` and `veloplanner.password_file` are required.
-  They provide the one private source account's login values.
-- The authenticated VeloPlanner user ID is discovered by the source adapter. It
-  is not configured manually.
-
-### Wahoo
-
+- `veloplanner.base_url` is a required absolute HTTPS URL. The authenticated
+  VeloPlanner user ID is discovered, not configured.
 - `wahoo.api_base_url` and `wahoo.oauth_base_url` are required absolute HTTPS
-  URLs. They support the approved sandbox now and a later Wahoo environment
-  without baking either host into the service contract.
-- `wahoo.client_id` is required and non-secret.
-- `wahoo.client_secret_file` is required.
-- `wahoo.redirect_url` is required, must be HTTPS, and must exactly match the
-  registered Wahoo callback URI. It must end in `/oauth/wahoo/callback`.
-- `wahoo.targets` contains exactly two entries. Each `id` is required, unique,
-  and stable across deployments. It is a configuration slot, not a Wahoo user
-  identifier. OAuth associates each slot with a distinct Wahoo account.
+  URLs. `wahoo.client_id` is non-secret.
+- `wahoo.redirect_url` is required HTTPS and must exactly match Wahoo's
+  registered callback URI, ending in `/oauth/wahoo/callback`.
+- `wahoo.targets` contains exactly two entries. Each `id` is unique and stable
+  across deployments; it is a configured slot, not a Wahoo user identifier.
+- `sync.initial_delay` is positive. `sync.interval` equals one hour in v1.
+  `sync.max_deletions_per_target` equals `5` in v1.
+- `sync.empty_source_deletion` is `deny` or `allow`, defaulting to `deny`.
+  The operator sets `allow` only for a deliberate final-library deletion and
+  returns it to `deny` immediately afterward.
 
-### Sync
+The decoder rejects unknown fields, invalid URLs or durations, duplicate target
+IDs, the wrong target count, invalid callback paths, unreadable secret files,
+and ambiguous secret inputs before it opens an HTTP listener.
 
-- `sync.initial_delay` is required and must be positive. It is the delay before
-  the first healthy-start sync.
-- `sync.interval` is required and must equal one hour in v1.
-- `sync.max_deletions_per_target` is required and must equal `5` in v1.
-  The limit applies independently to each Wahoo target.
-- `sync.empty_source_deletion` must be either `deny` or `allow`; its default
-  is `deny`. `deny` blocks deletion when a previously populated source
-  inventory becomes empty. The operator sets `allow` in a static config
-  deployment only when deliberately removing the final source routes, then
-  returns it to `deny`.
+## Runtime state
 
-### Pushover
+Dynamic Wahoo refresh tokens are not configuration. They are encrypted in
+SQLite using the supplied state key; access tokens remain in memory only. The
+state database is intentionally not backed up. Changing the state key makes the
+existing encrypted state unreadable, and key rotation is not a v1 feature.
 
-- `notifications.pushover.application_token_file` and
-  `notifications.pushover.user_key_file` are required.
-- Their files authorise delivery only; message content is governed by the
-  notification privacy rules in the service specification.
-
-## Secret-file rules
-
-Secret-file fields are the only way static secrets enter the process. A
-secret-file value:
-
-- must be an absolute path to a regular, readable file;
-- is read once at startup and is never logged;
-- must be non-empty after trimming a single terminal line break; and
-- must not be an `op://`, `env:`, URL, command, template expression, or
-  reference to another secret.
-
-Docker Secrets are the preferred delivery mechanism. Bind-mounted read-only
-files are equally valid. A deployment tool such as `fnox` may create either;
-the service does not include, invoke, or configure it.
-
-The state encryption key is the only binary secret and follows its own encoding
-rule above. Other secret files are UTF-8 text. A secret that cannot be decoded
-or validated causes startup to fail without identifying its value.
-
-## Validation and diagnostics
-
-The configuration decoder must reject unknown fields rather than silently
-ignoring typos. It validates all paths, URL schemes, durations, target count,
-target uniqueness, secret-file presence, and the redirect callback suffix before
-the service starts.
+## Diagnostics and exclusions
 
 Startup and `GET /v1/status` may report non-sensitive configuration facts:
 the selected Wahoo endpoint, target slot labels, database readiness, configured
-sync interval, and whether a target still needs OAuth authorisation. They must
-not report secret paths, secret values, client secret material, tokens, or
+sync interval, and whether a target needs OAuth authorisation. They must not
+report secret paths, secret values, client-secret material, tokens, or
 VeloPlanner account identifiers.
 
-## Explicit exclusions
+Outside the v1 contract:
 
-The following are outside the v1 configuration contract:
-
-- loading values from 1Password, Vault, cloud secret stores, or `fnox`;
-- field-level environment variables;
-- command-line flags;
-- secret rotation without a controlled migration;
-- a third or dynamically created Wahoo target; and
-- automatic approval of a destructive empty-source inventory.
+- a secret-manager SDK, provider URI, provider credential, or secret reference
+  syntax in Go or TOML;
+- a native secret-resolution SDK or cgo;
+- field-level environment overrides for non-secret configuration;
+- secret rotation without a controlled migration; and
+- a third or dynamically created Wahoo target.

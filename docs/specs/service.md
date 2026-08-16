@@ -89,17 +89,20 @@ The service has a provider-neutral configuration contract:
   account identity and endpoint, Wahoo client ID and API endpoints, target slot
   labels, Tailnet identity, sync cadence, deletion limit, data path, and public
   callback URL.
-- Sensitive static values are read from configured files, normally Docker
-  secrets: VeloPlanner credentials, Wahoo client secret, Pushover application
-  token and user key, and a 32-byte state-encryption key.
+- Sensitive static values are loaded by Koanf from Docker-style files or the
+  documented direct environment variables: VeloPlanner credentials, Wahoo
+  client secret, Pushover application token and user key, and a 32-byte
+  state-encryption key.
 - Dynamic Wahoo refresh tokens are not static configuration. They are encrypted
   at rest in the local state database with an authenticated cipher and the
   state-encryption key. Access tokens are held only in memory.
-- Configuration must not understand `op://`, `env:`, 1Password, fnox, or any
-  other provider-specific reference syntax.
+- Configuration must not understand `op://`, `env:`, provider URIs, provider
+  credentials, fnox, or another provider-specific reference syntax. The service
+  stays CGO-free.
 
-`fnox` may, if desired, render static Docker secret files during Pi deployment.
-That is outside the container and is replaceable by manually managed files.
+Docker Secrets, read-only bind mounts, and direct environment values are valid
+secret sources. A deployment tool such as `fnox` may provision files, but does
+not become an application dependency.
 
 The static configuration defines two named Wahoo target slots. The target's
 actual Wahoo user identity is learned and persisted during OAuth onboarding.
