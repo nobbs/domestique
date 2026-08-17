@@ -342,6 +342,108 @@ func (s *Store) StageGeometry(
 	return summary, json.RawMessage(coordinates), true, nil
 }
 
+// StageSurface returns one stage's cached surface classification, but only where
+// it was measured against the geometry named by contentHash.
+//
+// The ranges are positions in that geometry's coordinate array, so serving them
+// beside a different revision of the stage would put bands of gravel over
+// whatever now happens to sit at those indices. Matching on the hash makes a
+// stale row absent rather than wrong: the caller sees a stage whose surface is
+// not known yet, which is the truth until the next enrichment pass runs.
+//
+// The ranges are returned as stored, ready to serve without re-encoding.
+func (s *Store) StageSurface(
+	ctx context.Context,
+	routeID int64,
+	stageOrder int,
+	contentHash string,
+) (ranges json.RawMessage, matchedMetres float64, found bool, err error) {
+	var stored []byte
+	err = s.database.QueryRowContext(ctx, `
+		SELECT ranges, matched_metres
+		FROM stage_surface
+		WHERE route_id = ? AND stage_order = ? AND content_hash = ?
+	`, routeID, stageOrder, contentHash).Scan(&stored, &matchedMetres)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, 0, false, nil
+	}
+	if err != nil {
+		return nil, 0, false, fmt.Errorf("reading stage surface: %w", err)
+	}
+
+	return json.RawMessage(stored), matchedMetres, true, nil
+}
+
+// StageSurfaceHash returns the content hash the stored classification was
+// measured against, so a caller can tell what still needs fetching without
+// reading the ranges themselves.
+func (s *Store) StageSurfaceHash(
+	ctx context.Context,
+	routeID int64,
+	stageOrder int,
+) (contentHash string, found bool, err error) {
+	err = s.database.QueryRowContext(ctx, `
+		SELECT content_hash FROM stage_surface WHERE route_id = ? AND stage_order = ?
+	`, routeID, stageOrder).Scan(&contentHash)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, fmt.Errorf("reading stage surface hash: %w", err)
+	}
+
+	return contentHash, true, nil
+}
+
+// StoreStageSurface caches one stage's classification. The ranges are stored as
+// given, which is exactly the JSON the geometry endpoint serves.
+func (s *Store) StoreStageSurface(
+	ctx context.Context,
+	routeID int64,
+	stageOrder int,
+	contentHash string,
+	ranges []byte,
+	matchedMetres float64,
+) error {
+	if _, err := s.database.ExecContext(ctx, `
+		INSERT INTO stage_surface (
+			route_id, stage_order, content_hash, ranges, matched_metres, updated_at_unix
+		) VALUES (?, ?, ?, ?, ?, ?)
+		ON CONFLICT (route_id, stage_order) DO UPDATE SET
+			content_hash = excluded.content_hash,
+			ranges = excluded.ranges,
+			matched_metres = excluded.matched_metres,
+			updated_at_unix = excluded.updated_at_unix
+	`, routeID, stageOrder, contentHash, ranges, matchedMetres, time.Now().UTC().Unix()); err != nil {
+		return fmt.Errorf("storing stage surface: %w", err)
+	}
+
+	return nil
+}
+
+// pruneStageSurface drops classifications that no longer describe anything, in
+// the caller's transaction.
+//
+// A row goes when its stage has left the inventory, and equally when the stage
+// has been re-planned: the cached ranges address the coordinates of the geometry
+// they were measured against, and once that geometry is replaced they are not
+// stale data to be corrected but positions in an array that no longer exists.
+func pruneStageSurface(ctx context.Context, transaction *sql.Tx) error {
+	if _, err := transaction.ExecContext(ctx, `
+		DELETE FROM stage_surface
+		WHERE NOT EXISTS (
+			SELECT 1 FROM stage_geometry
+			WHERE stage_geometry.route_id = stage_surface.route_id
+			  AND stage_geometry.stage_order = stage_surface.stage_order
+			  AND stage_geometry.content_hash = stage_surface.content_hash
+		)
+	`); err != nil {
+		return fmt.Errorf("pruning stage surface: %w", err)
+	}
+
+	return nil
+}
+
 // LastSyncRun returns the most recently recorded terminal run, if any.
 //
 //nolint:gocritic // The primitive callback boundary keeps httpapi independent of SQLite record types.
@@ -543,6 +645,9 @@ func (s *Store) StoreTrustedInventory(ctx context.Context, stages []route.Stage)
 		}
 	}
 	if err := storeStageGeometry(ctx, transaction, stages); err != nil {
+		return err
+	}
+	if err := pruneStageSurface(ctx, transaction); err != nil {
 		return err
 	}
 	if err := transaction.Commit(); err != nil {
@@ -1160,6 +1265,29 @@ func schemaMigrations() [][]string {
 			// The rows stay readable meanwhile, showing a route without its
 			// climbing figures rather than disappearing.
 			`UPDATE stage_geometry SET content_hash = ''`,
+		},
+		{
+			// The surface classification of each stage, derived from OpenStreetMap.
+			// It is a third table rather than more columns on stage_geometry
+			// because it is filled by a later pass that talks to a remote service:
+			// the geometry cache is written inside the inventory transaction and
+			// must not wait on the network, and a stage whose surface could not be
+			// fetched has to be able to sit here missing while everything else
+			// about it is current.
+			//
+			// content_hash records the geometry the ranges were measured against.
+			// The ranges are positions in that geometry's coordinate array, so they
+			// mean nothing beside a different revision of the stage, and every read
+			// matches on the hash rather than trusting the row to be current.
+			`CREATE TABLE stage_surface (
+				route_id        INTEGER NOT NULL,
+				stage_order     INTEGER NOT NULL,
+				content_hash    TEXT    NOT NULL,
+				ranges          BLOB    NOT NULL,
+				matched_metres  REAL    NOT NULL,
+				updated_at_unix INTEGER NOT NULL,
+				PRIMARY KEY (route_id, stage_order)
+			)`,
 		},
 	}
 }

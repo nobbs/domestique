@@ -588,6 +588,169 @@ func TestStoreListsStageSummaries(t *testing.T) {
 	}
 }
 
+func TestStoreCachesStageSurfaceAgainstTheGeometryItDescribes(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	stage := storeTestStage(t, 7, 2, "revision", "content-hash")
+	if err := store.StoreTrustedInventory(t.Context(), []route.Stage{stage}); err != nil {
+		t.Fatalf("StoreTrustedInventory() error = %v", err)
+	}
+
+	if _, found, err := store.StageSurfaceHash(t.Context(), 7, 2); err != nil || found {
+		t.Errorf("StageSurfaceHash() before enrichment = found %v, error %v; want not found", found, err)
+	}
+
+	if err := store.StoreStageSurface(
+		t.Context(), 7, 2, "content-hash", []byte(testSurfaceRanges), 1234.5,
+	); err != nil {
+		t.Fatalf("StoreStageSurface() error = %v", err)
+	}
+
+	ranges, matchedMetres, found, err := store.StageSurface(t.Context(), 7, 2, "content-hash")
+	if err != nil {
+		t.Fatalf("StageSurface() error = %v", err)
+	}
+	if !found {
+		t.Fatal("StageSurface() found = false, want true")
+	}
+	// Byte-identical, because the endpoint serves the stored ranges as they are.
+	if got, want := string(ranges), testSurfaceRanges; got != want {
+		t.Errorf("ranges = %s, want %s", got, want)
+	}
+	if got, want := matchedMetres, 1234.5; got != want {
+		t.Errorf("matchedMetres = %v, want %v", got, want)
+	}
+	if hash, found, err := store.StageSurfaceHash(t.Context(), 7, 2); err != nil || !found ||
+		hash != "content-hash" {
+		t.Errorf("StageSurfaceHash() = %q, found %v, error %v; want %q", hash, found, err, "content-hash")
+	}
+}
+
+func TestStoreHidesASurfaceMeasuredAgainstOtherGeometry(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	stage := storeTestStage(t, 1, 1, "revision", "current-hash")
+	if err := store.StoreTrustedInventory(t.Context(), []route.Stage{stage}); err != nil {
+		t.Fatalf("StoreTrustedInventory() error = %v", err)
+	}
+	if err := store.StoreStageSurface(
+		t.Context(), 1, 1, "earlier-hash", []byte(testSurfaceRanges), 10,
+	); err != nil {
+		t.Fatalf("StoreStageSurface() error = %v", err)
+	}
+
+	// The ranges index the coordinates of the geometry they were measured
+	// against, so beside a re-planned stage they are absent, never approximate.
+	if _, _, found, err := store.StageSurface(t.Context(), 1, 1, "current-hash"); err != nil || found {
+		t.Errorf("StageSurface() for other geometry = found %v, error %v; want not found", found, err)
+	}
+	// The hash is still readable, which is how the enrichment pass knows the
+	// stage needs asking about again.
+	if hash, found, err := store.StageSurfaceHash(t.Context(), 1, 1); err != nil || !found ||
+		hash != "earlier-hash" {
+		t.Errorf("StageSurfaceHash() = %q, found %v, error %v; want %q", hash, found, err, "earlier-hash")
+	}
+}
+
+func TestStoreReplacesAStageSurfaceRatherThanAccumulatingOne(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	stage := storeTestStage(t, 1, 1, "revision", "second-hash")
+	if err := store.StoreTrustedInventory(t.Context(), []route.Stage{stage}); err != nil {
+		t.Fatalf("StoreTrustedInventory() error = %v", err)
+	}
+	if err := store.StoreStageSurface(t.Context(), 1, 1, "first-hash", []byte(`[]`), 1); err != nil {
+		t.Fatalf("first StoreStageSurface() error = %v", err)
+	}
+	if err := store.StoreStageSurface(
+		t.Context(), 1, 1, "second-hash", []byte(testSurfaceRanges), 2,
+	); err != nil {
+		t.Fatalf("second StoreStageSurface() error = %v", err)
+	}
+
+	ranges, matchedMetres, found, err := store.StageSurface(t.Context(), 1, 1, "second-hash")
+	if err != nil || !found {
+		t.Fatalf("StageSurface() found = %v, error = %v", found, err)
+	}
+	if got, want := string(ranges), testSurfaceRanges; got != want {
+		t.Errorf("ranges = %s, want %s", got, want)
+	}
+	if got, want := matchedMetres, 2.0; got != want {
+		t.Errorf("matchedMetres = %v, want %v", got, want)
+	}
+	if got := countStageSurfaceRows(t, store); got != 1 {
+		t.Errorf("stage_surface holds %d rows for one stage, want 1", got)
+	}
+}
+
+func TestStorePrunesSurfaceForStagesLeavingTheInventory(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	first := storeTestStage(t, 1, 1, "revision", "hash-one")
+	second := storeTestStage(t, 2, 1, "revision", "hash-two")
+	if err := store.StoreTrustedInventory(t.Context(), []route.Stage{first, second}); err != nil {
+		t.Fatalf("StoreTrustedInventory() error = %v", err)
+	}
+	if err := store.StoreStageSurface(
+		t.Context(), 1, 1, "hash-one", []byte(testSurfaceRanges), 10,
+	); err != nil {
+		t.Fatalf("StoreStageSurface() error = %v", err)
+	}
+	if err := store.StoreStageSurface(
+		t.Context(), 2, 1, "hash-two", []byte(testSurfaceRanges), 10,
+	); err != nil {
+		t.Fatalf("StoreStageSurface() error = %v", err)
+	}
+
+	if err := store.StoreTrustedInventory(t.Context(), []route.Stage{first}); err != nil {
+		t.Fatalf("second StoreTrustedInventory() error = %v", err)
+	}
+
+	if _, found, err := store.StageSurfaceHash(t.Context(), 2, 1); err != nil || found {
+		t.Errorf("StageSurfaceHash() for a removed stage = found %v, error %v; want not found", found, err)
+	}
+	if _, _, found, err := store.StageSurface(t.Context(), 1, 1, "hash-one"); err != nil || !found {
+		t.Errorf("StageSurface() for a retained stage = found %v, error %v; want found", found, err)
+	}
+}
+
+func TestStorePrunesSurfaceMeasuredAgainstReplacedGeometry(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	stage := storeTestStage(t, 1, 1, "revision", "hash-one")
+	if err := store.StoreTrustedInventory(t.Context(), []route.Stage{stage}); err != nil {
+		t.Fatalf("StoreTrustedInventory() error = %v", err)
+	}
+	if err := store.StoreStageSurface(
+		t.Context(), 1, 1, "hash-one", []byte(testSurfaceRanges), 10,
+	); err != nil {
+		t.Fatalf("StoreStageSurface() error = %v", err)
+	}
+
+	replanned := storeTestStage(t, 1, 1, "revision", "hash-two")
+	if err := store.StoreTrustedInventory(t.Context(), []route.Stage{replanned}); err != nil {
+		t.Fatalf("second StoreTrustedInventory() error = %v", err)
+	}
+
+	// The row goes rather than lingering as something to be matched around: the
+	// coordinate array its ranges address has been replaced.
+	if got := countStageSurfaceRows(t, store); got != 0 {
+		t.Errorf("stage_surface holds %d rows after re-planning, want 0", got)
+	}
+}
+
+// testSurfaceRanges is one stored classification, in the shape the annotator
+// writes and the geometry endpoint serves.
+const testSurfaceRanges = `[{"kind":"asphalt","start_index":0,"end_index":1}]`
+
+func countStageSurfaceRows(t *testing.T, store *Store) int {
+	t.Helper()
+
+	var rows int
+	if err := store.database.QueryRowContext(t.Context(),
+		`SELECT COUNT(*) FROM stage_surface`,
+	).Scan(&rows); err != nil {
+		t.Fatalf("counting stage_surface rows error = %v", err)
+	}
+
+	return rows
+}
+
 func stageGeometryUpdatedAt(t *testing.T, store *Store, routeID int64, stageOrder int) int64 {
 	t.Helper()
 
