@@ -44,11 +44,17 @@ private to this service.
 │   ├── fit/                        FIT encoding adapter
 │   ├── wahoo/                      Wahoo OAuth and route HTTP adapter
 │   ├── sqlite/                     encrypted durable-state adapter
-│   └── pushover/                   notification adapter
+│   ├── pushover/                   notification adapter
+│   └── webui/                      embedded browser UI
+│       └── app/                    TypeScript source and its build output
 ├── docs/
 │   └── specs/
 └── testdata/                       non-personal, sanitised fixtures only
 ~~~
+
+The browser UI is compiled into the binary with `go:embed`, so the service ships
+as one signed artefact and the API and UI cannot drift apart in a deployment.
+`internal/webui/app/dist` is build output; only its placeholder is tracked.
 
 There is no public pkg directory, internal/common package, interfaces package,
 models package, or generic repository package. A package is added only when it
@@ -63,7 +69,8 @@ owns a distinct responsibility in this tree.
 | sync | inventory reconciliation, deletion gates, target progress, aggregate run result | HTTP handlers, SQL queries, Wahoo URLs |
 | oauth | one-time callback state, target onboarding, duplicate-account rejection | HTTP routing, SQL queries, Wahoo URL formatting |
 | schedule | startup delay, hourly cadence, no-overlap guard, cancellation | sync decisions or notification content |
-| httpapi | Tailnet identity gate, request parsing, JSON status and error mapping | OAuth exchange or sync logic |
+| httpapi | Tailnet identity gate, routing, request parsing, JSON status and error mapping, response security and cache headers | OAuth exchange, sync logic, or how the UI is built |
+| webui | the embedded browser bundle and serving it; the TypeScript application | HTTP routing, identity, or any knowledge of persistence |
 | veloplanner | login, listing, detail decoding, route conversion | SQLite and Wahoo concerns |
 | fit | deterministic FIT bytes for one valid route stage | VeloPlanner requests, OAuth, HTTP |
 | wahoo | authorisation URL, exchange, refresh, user lookup, FIT route operations, rate headers | route-source parsing, SQLite queries, Pushover |
@@ -112,6 +119,30 @@ and Wahoo implement both sets of behaviour.
 The schedule package owns a one-method Runner interface so its tests can observe
 triggering without starting a sync. The HTTP package depends on concrete sync
 and OAuth application services unless a test requires a smaller local interface.
+It also declares a two-method `Assets` interface for serving the browser bundle,
+so it stays independent of how that bundle is built or embedded.
+
+Read models that cross the persistence boundary — the stage summary served by
+the routes endpoints — are declared in `route`, not exported from `sqlite`. That
+keeps the arrow one-way: `httpapi` and `sqlite` share a value vocabulary without
+`httpapi` importing an adapter.
+
+## Browser UI composition
+
+The TypeScript application is component-driven so later features extend it
+rather than rewrite it:
+
+| Directory | Owns |
+| --- | --- |
+| `src/api` | the typed client, query definitions, and response validation |
+| `src/components` | reusable presentational pieces with no feature knowledge |
+| `src/features` | feature-scoped composition, one directory per area |
+| `src/lib` | formatting and other shared helpers |
+
+`components` must not import from `features`. Each feature owns its own data
+fetching. `src/api` is the single place that knows URL shapes, and it validates
+every response so a drift from the Go DTOs fails at the boundary with a clear
+error rather than surfacing as `undefined` inside a component.
 
 Concrete adapters do not export speculative interfaces. In particular, wahoo
 exports concrete clients, sqlite exports a concrete Store, and pushover exports
@@ -132,6 +163,8 @@ flowchart LR
     HTTP["httpapi"] --> Sync["sync"]
     HTTP --> OAuth["oauth"]
     Schedule["schedule"] --> Sync
+
+    Main --> WebUI["webui"]
 
     Sync --> Route["route"]
 
@@ -193,7 +226,9 @@ Tests live with the package under test:
 | sync and oauth | in-memory fakes for their local consumer interfaces |
 | veloplanner and wahoo | httptest servers with malformed, rate-limit, and retry cases |
 | sqlite | temporary database and migration/recovery tests |
-| httpapi | handler tests for identity, JSON shape, and safe errors |
+| httpapi | handler tests for identity on every route, JSON shape, safe errors, and the security and cache headers |
+| webui | serving the embedded bundle, and reporting an unbuilt one |
+| webui/app | Vitest and Testing Library over reusable components and the API client's parsing and error paths |
 | schedule | deterministic clock or trigger seam, no wall-clock sleeping |
 | pushover | HTTP request shape and redaction tests |
 

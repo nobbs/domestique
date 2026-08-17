@@ -26,6 +26,7 @@ jobs:
     outputs:
       lint: ${{ steps.filter.outputs.lint }}
       go: ${{ steps.filter.outputs.go }}
+      ui: ${{ steps.filter.outputs.ui }}
       image: ${{ steps.filter.outputs.image }}
 
     steps:
@@ -121,6 +122,32 @@ jobs:
       - name: Audit modules and dependencies
         run: mise exec -- make ci-security
 
+  ui:
+    name: UI
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    needs: changes
+    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.ui == 'true'
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out repository
+        # v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Install pinned toolchain
+        # v4.2.5
+        uses: jdx/mise-action@3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518
+        with:
+          version: 2026.8.6
+          install: true
+          cache: true
+      - name: Typecheck, lint and test the UI
+        run: mise exec -- make ci-ui
+
   image:
     name: Image
     runs-on: ubuntu-24.04
@@ -152,6 +179,10 @@ jobs:
           version: 2026.8.6
           install: true
           cache: true
+      # build-check bundles the UI before it compiles, because the binary
+      # embeds dist, so the JavaScript tree has to be installed first.
+      - name: Install UI dependencies
+        run: mise exec -- make ui-install
       # Compiling first fails in seconds on a broken build, rather than after
       # the image layers have been assembled.
       - name: Verify the binary compiles
@@ -171,6 +202,7 @@ jobs:
       - lint
       - test
       - security
+      - ui
       - image
     if: always()
 
@@ -186,12 +218,13 @@ jobs:
           LINT_RESULT: ${{ needs.lint.result }}
           TEST_RESULT: ${{ needs.test.result }}
           SECURITY_RESULT: ${{ needs.security.result }}
+          UI_RESULT: ${{ needs.ui.result }}
           IMAGE_RESULT: ${{ needs.image.result }}
         run: |
           set -eu
 
           for result in "$CHANGES_RESULT" "$LINT_RESULT" "$TEST_RESULT" \
-            "$SECURITY_RESULT" "$IMAGE_RESULT"; do
+            "$SECURITY_RESULT" "$UI_RESULT" "$IMAGE_RESULT"; do
             case "$result" in
               success|skipped) ;;
               *)

@@ -9,7 +9,7 @@ repository.
 
 ## Development toolchain and commands
 
-The repository tracks a `.mise.toml` that pins the Go toolchain,
+The repository tracks a `.mise.toml` that pins the Go toolchain, Node.js,
 `golangci-lint`, `prek`, Actionlint, Gitleaks, Markdownlint, and
 `govulncheck`. Mise is the source of truth for the versions used by a
 developer and GitHub Actions. Bootstrap selects supported, mutually compatible
@@ -23,13 +23,16 @@ The repository provides these stable Make targets:
 | `make fmt` | Applies Go formatting to owned Go source. |
 | `make lint` | Runs the configured `golangci-lint` checks. |
 | `make test` | Runs the normal deterministic test suite with `CGO_ENABLED=0`. |
-| `make build` | Compiles the Linux ARM64 service binary with `CGO_ENABLED=0`. |
+| `make build` | Compiles the Linux ARM64 service binary with `CGO_ENABLED=0`, after building the browser UI. |
+| `make ui-build` | Builds the browser UI bundle that the binary embeds. |
+| `make ui-dev` | Runs the UI dev server, proxying the API to the local service. |
 | `make check` | Runs every repository check required before review or merge. |
 
 `make check` is the canonical local and CI entry point. It includes
-`prek run --all-files`, linting, tests, Go module verification, vulnerability
-analysis, a GitHub Actions workflow check, a worktree secret scan, and the
-release-target binary compilation. `make fmt` applies Go formatting. A fixing
+`prek run --all-files`, linting, tests, TypeScript type checking, the browser UI
+lint and test suites, Go module verification, vulnerability analysis for both Go
+and npm dependencies, a GitHub Actions workflow check, a worktree secret scan,
+and the release-target binary compilation. `make fmt` applies Go formatting. A fixing
 `prek` hook exits non-zero after a safe mechanical repair so the resulting
 change can be reviewed and staged deliberately.
 
@@ -98,7 +101,11 @@ provisioned non-production credentials, and its output must be redacted.
 ## Container contract
 
 The production image is a multi-stage build that produces a statically linked
-Linux ARM64 binary with `CGO_ENABLED=0`. The runtime image:
+Linux ARM64 binary with `CGO_ENABLED=0`. A first stage builds the browser UI
+bundle with Node.js, which the Go stage then embeds; Node reaches no further
+than that stage and is absent from the runtime image.
+
+The runtime image:
 
 - contains the binary and only the certificate roots and runtime files it
   genuinely needs;

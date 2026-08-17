@@ -1,5 +1,6 @@
 [tools]
 go = "1.26.6"
+node = "24.19.0"
 golangci-lint = "2.12.2"
 prek = "0.4.13"
 actionlint = "1.7.12"
