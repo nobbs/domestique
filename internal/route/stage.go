@@ -12,6 +12,11 @@ import (
 // resampler so route lengths agree wherever they are computed.
 const earthRadiusMetres = 6_371_000.0
 
+// gradientWindowMetres is the shortest span a gradient is measured over. It
+// matches the elevation normalizer's median window, so a gradient reported here
+// describes the same scale of terrain the exported profile preserves.
+const gradientWindowMetres = 100.0
+
 // Key is the stable identity of one VeloPlanner route stage.
 type Key struct {
 	routeID    int64
@@ -53,15 +58,17 @@ type Bounds struct {
 // neither has to know the other's types, and it deliberately carries no
 // geometry.
 type Summary struct {
-	RouteName      string
-	StageName      string
-	SourceRevision string
-	ContentHash    string
-	Bounds         Bounds
-	DistanceMetres float64
-	RouteID        int64
-	PointCount     int
-	StageOrder     int
+	RouteName          string
+	StageName          string
+	SourceRevision     string
+	ContentHash        string
+	Bounds             Bounds
+	DistanceMetres     float64
+	AscentMetres       float64
+	MaxGradientPercent float64
+	RouteID            int64
+	PointCount         int
+	StageOrder         int
 }
 
 // Title returns the device-facing title for the summarised stage.
@@ -215,6 +222,85 @@ func (s *Stage) Bounds() Bounds {
 	}
 
 	return bounds
+}
+
+// ElevationGainMetres returns the total climbing in the stage profile.
+//
+// It sums the positive steps of the profile as stored. That is only meaningful
+// on a smoothed profile: raw satellite altitude wanders by a metre or two per
+// sample, and summing that noise over thousands of points inflates the total
+// badly. Callers are expected to store the device-export profile, which has
+// already had its spikes removed.
+//
+// A stage whose points do not all carry elevation has no profile to measure and
+// reports zero.
+func (s *Stage) ElevationGainMetres() float64 {
+	if !s.hasCompleteElevation() {
+		return 0
+	}
+
+	gain := 0.0
+	for index := 1; index < len(s.geometry); index++ {
+		step := *s.geometry[index].Elevation - *s.geometry[index-1].Elevation
+		if step > 0 {
+			gain += step
+		}
+	}
+
+	return gain
+}
+
+// MaxGradientPercent returns the steepest sustained gradient in the profile.
+//
+// Gradient is measured across a window of at least gradientWindowMetres rather
+// than between adjacent points, because the gradient between two points a few
+// metres apart is dominated by altitude error rather than by terrain. The
+// window is what makes the number correspond to something a rider would
+// recognise as a climb.
+//
+// A stage without a complete profile, or shorter than one window, reports zero.
+func (s *Stage) MaxGradientPercent() float64 {
+	if !s.hasCompleteElevation() {
+		return 0
+	}
+
+	// Cumulative distance along the route, so a window can be found by
+	// scanning forward rather than re-measuring.
+	distances := make([]float64, len(s.geometry))
+	for index := 1; index < len(s.geometry); index++ {
+		distances[index] = distances[index-1] + haversineMetres(s.geometry[index-1], s.geometry[index])
+	}
+
+	steepest := 0.0
+	trailing := 0
+	for leading := 1; leading < len(s.geometry); leading++ {
+		// Advance the trailing edge while the window stays wide enough.
+		for distances[leading]-distances[trailing+1] >= gradientWindowMetres {
+			trailing++
+		}
+		span := distances[leading] - distances[trailing]
+		if span < gradientWindowMetres {
+			continue
+		}
+		rise := *s.geometry[leading].Elevation - *s.geometry[trailing].Elevation
+		gradient := math.Abs(rise) / span * 100
+		steepest = max(steepest, gradient)
+	}
+
+	return steepest
+}
+
+func (s *Stage) hasCompleteElevation() bool {
+	if len(s.geometry) < 2 {
+		return false
+	}
+	for _, point := range s.geometry {
+		if point.Elevation == nil {
+			return false
+		}
+	}
+
+	return true
 }
 
 // haversineMetres returns the great-circle distance between two points. It

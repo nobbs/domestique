@@ -83,28 +83,32 @@ func (h *Handler) stageGeometry(writer http.ResponseWriter, request *http.Reques
 			summary.Bounds.MaxLongitude, summary.Bounds.MaxLatitude,
 		},
 		Properties: geometryPropertyView{
-			RouteID:        summary.RouteID,
-			StageOrder:     summary.StageOrder,
-			Title:          summary.Title(),
-			RouteName:      summary.RouteName,
-			StageName:      summary.StageName,
-			DistanceMetres: summary.DistanceMetres,
-			PointCount:     summary.PointCount,
+			RouteID:            summary.RouteID,
+			StageOrder:         summary.StageOrder,
+			Title:              summary.Title(),
+			RouteName:          summary.RouteName,
+			StageName:          summary.StageName,
+			DistanceMetres:     summary.DistanceMetres,
+			AscentMetres:       summary.AscentMetres,
+			MaxGradientPercent: summary.MaxGradientPercent,
+			PointCount:         summary.PointCount,
 		},
 	})
 }
 
 func newStageView(summary *route.Summary) stageView {
 	return stageView{
-		RouteID:        summary.RouteID,
-		StageOrder:     summary.StageOrder,
-		Title:          summary.Title(),
-		RouteName:      summary.RouteName,
-		StageName:      summary.StageName,
-		SourceRevision: summary.SourceRevision,
-		ContentHash:    summary.ContentHash,
-		DistanceMetres: summary.DistanceMetres,
-		PointCount:     summary.PointCount,
+		RouteID:            summary.RouteID,
+		StageOrder:         summary.StageOrder,
+		Title:              summary.Title(),
+		RouteName:          summary.RouteName,
+		StageName:          summary.StageName,
+		SourceRevision:     summary.SourceRevision,
+		ContentHash:        summary.ContentHash,
+		DistanceMetres:     summary.DistanceMetres,
+		AscentMetres:       summary.AscentMetres,
+		MaxGradientPercent: summary.MaxGradientPercent,
+		PointCount:         summary.PointCount,
 	}
 }
 

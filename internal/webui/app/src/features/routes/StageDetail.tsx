@@ -12,7 +12,7 @@ import { ApiError } from "../../api/client";
 import { stageGeometryQuery, webUIConfigQuery } from "../../api/queries";
 import { Layout } from "../../components/Layout";
 import { ErrorMessage, LoadingMessage, StatusMessage } from "../../components/StatusMessage";
-import { formatCount, formatDistance } from "../../lib/format";
+import { formatAscent, formatDistance, formatGradient } from "../../lib/format";
 
 // MapLibre is by far the heaviest dependency and only this view needs it, so it
 // is fetched when a route is opened rather than on first paint of the library.
@@ -98,8 +98,12 @@ export function StageDetail() {
               <dd>{formatDistance(stage.distanceMetres)}</dd>
             </div>
             <div>
-              <dt>Points</dt>
-              <dd>{formatCount(stage.pointCount, "point")}</dd>
+              <dt>Ascent</dt>
+              <dd>{formatAscent(stage.ascentMetres)}</dd>
+            </div>
+            <div>
+              <dt>Max gradient</dt>
+              <dd>{formatGradient(stage.maxGradientPercent)}</dd>
             </div>
             <div>
               <dt>Stage</dt>

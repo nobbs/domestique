@@ -15,6 +15,28 @@ export function formatCount(value: number, singular: string, plural = `${singula
   return `${value.toLocaleString()} ${value === 1 ? singular : plural}`;
 }
 
+/** Total climbing. Zero means the source had no usable elevation profile. */
+export function formatAscent(metres: number): string {
+  if (!Number.isFinite(metres) || metres <= 0) {
+    return "—";
+  }
+
+  return `${Math.round(metres).toLocaleString()} m`;
+}
+
+/**
+ * The steepest sustained gradient. It is measured over a window rather than
+ * between neighbouring points, so it reads as a climb rather than as satellite
+ * noise; anything under a percent is not worth claiming as a gradient.
+ */
+export function formatGradient(percent: number): string {
+  if (!Number.isFinite(percent) || percent < 1) {
+    return "—";
+  }
+
+  return `${percent.toFixed(percent < 10 ? 1 : 0)}%`;
+}
+
 export function formatTimestamp(value: string | undefined): string {
   if (!value) {
     return "never";
