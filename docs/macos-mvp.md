@@ -3,8 +3,9 @@
 Use this target to run Domestique on an Apple-silicon Mac before moving the
 same Docker image definition and runtime-state model to a Raspberry Pi. It is
 an MVP host:
-the Mac must stay awake, Docker Desktop and Tailscale must remain running, and
-the Mac's Tailnet device name becomes the Wahoo OAuth callback host.
+the Mac must stay awake, Docker Desktop and Tailscale must remain running. The
+Mac advertises the managed Tailnet Service `svc:domestique`, whose stable Wahoo
+OAuth callback host is `domestique.fluffy-sargas.ts.net`.
 
 The setup keeps the same trust boundary as the Pi deployment: Docker publishes
 only 127.0.0.1:8080, and Tailscale Serve on the macOS host terminates HTTPS and
@@ -55,12 +56,19 @@ domestique-state volume.
 
 ## Expose it privately through Tailscale
 
-After the loopback probe succeeds, configure Tailscale Serve on this Mac:
+After the loopback probe succeeds, configure this Mac as the host for the
+managed Tailnet Service:
 
 ~~~sh
-tailscale serve --bg 8080
+tailscale serve --service=svc:domestique --https=443 127.0.0.1:8080
+tailscale serve --service=svc:domestique --http=8080 127.0.0.1:8080
+tailscale serve advertise svc:domestique
 tailscale serve status
 ~~~
+
+The Tailnet policy and `svc:domestique` service definition are managed in the
+infrastructure repository. The host must have the `tag:domestique` tag before
+it can advertise the service. Do not configure Funnel.
 
 For this MVP, the copied configuration sets wahoo.redirect_url to the URI
 below. Set the callback URL in the Wahoo developer application to the identical
@@ -70,10 +78,25 @@ value:
 https://domestique.fluffy-sargas.ts.net/oauth/wahoo/callback
 ~~~
 
-Open that URL from the configured Tailnet identity. Authorize both Wahoo slots
-at /oauth/wahoo/start/{target-id}, then inspect /v1/status. Tailscale Serve
-removes client-supplied identity headers and adds Tailscale-User-Login only for
-Tailnet traffic, so the host's loopback-only publication remains essential.
+From an untagged Tailnet member device logged in as the configured identity,
+first open:
+
+~~~text
+https://domestique.fluffy-sargas.ts.net/healthz
+~~~
+
+Then authorize both Wahoo slots, one at a time, at:
+
+~~~text
+https://domestique.fluffy-sargas.ts.net/oauth/wahoo/start/{target-id}
+~~~
+
+After each Wahoo redirect returns to the callback, inspect
+`https://domestique.fluffy-sargas.ts.net/v1/status`. A tagged device is not a
+member identity and cannot complete the protected OAuth flow. Tailscale Serve
+removes client-supplied identity headers and adds `Tailscale-User-Login` only
+for authenticated member traffic, so the host's loopback-only publication
+remains essential.
 
 ## Operate and stop
 
