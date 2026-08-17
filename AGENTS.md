@@ -55,7 +55,8 @@ under shuffling.
 MapLibre) and is compiled into the binary with `go:embed`, so `make build`
 depends on `make ui-build`. Use `make ui-dev` for hot reload — it proxies the API
 to a locally running service and injects the Tailnet identity header, so the
-identity gate behaves as it does in production.
+identity gate behaves as it does in production. Building images requires
+`docker login dhi.io`, because the base images are Docker Hardened Images.
 
 ## Architecture rules
 

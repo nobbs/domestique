@@ -190,6 +190,15 @@ jobs:
       - name: Set up Docker Buildx
         # v4.2.0
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c
+      # Docker Hardened Images require authentication even on the free
+      # Community tier, so the image cannot build without these secrets.
+      - name: Authenticate to Docker Hardened Images
+        # v3.7.0
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f
+        with:
+          registry: dhi.io
+          username: ${{ secrets.DHI_USERNAME }}
+          password: ${{ secrets.DHI_TOKEN }}
       - name: Build production image
         run: docker buildx build --platform linux/arm64 --load --tag domestique:ci .
 

@@ -1,8 +1,13 @@
 # syntax=docker/dockerfile:1
 
-# node:24.19.0-alpine
-FROM --platform=$BUILDPLATFORM node@sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43 AS webui
+# Base images are Docker Hardened Images from dhi.io, pinned by digest. Pulling
+# them requires `docker login dhi.io` with a Docker Hub account and personal
+# access token, including on the free Community tier.
 
+# dhi.io/node:24-dev — the -dev variant carries npm and a shell.
+FROM --platform=$BUILDPLATFORM dhi.io/node@sha256:1949e745d8b5365e45dbd7ba20a495178aa55fda7248c5c5af3928d84467d047 AS webui
+
+USER root
 WORKDIR /app
 
 # The lockfile is copied first so a source-only change reuses the install layer.
@@ -12,12 +17,13 @@ RUN npm ci
 COPY internal/webui/app/ ./
 RUN npm run build
 
-# golang:1.26.6-alpine
-FROM --platform=$BUILDPLATFORM golang@sha256:3889b425f035be855a72fb4755265311293b6d414521f0a519d819df32222d83 AS build
+# dhi.io/golang:1.26-dev — the -dev variant carries the toolchain and coreutils.
+FROM --platform=$BUILDPLATFORM dhi.io/golang@sha256:b511696c1fb6929510c24d8ce66b90e7f9fc763082e5a8f73f778d7a177df93c AS build
 
 ARG TARGETARCH
 ARG TARGETOS
 
+USER root
 WORKDIR /src
 
 COPY go.mod go.sum ./
@@ -38,8 +44,9 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
     && touch /out/etc/domestique/.keep /out/var/lib/domestique/.keep \
     && chown -R 65532:65532 /out/etc /out/var
 
-# gcr.io/distroless/static-debian12:nonroot
-FROM gcr.io/distroless/static-debian12@sha256:1b7b9f0f0e0a1d2155f531db587cc48ec26aaf97ab64364225f5bf18a054e66a
+# dhi.io/static:20260611-alpine — minimal runtime for a static binary. Its
+# nonroot user is UID 65532, matching the ownership set above.
+FROM dhi.io/static@sha256:93568eb7c673afb3ad79b15cca341469d3e02cf859caae1049aa22fe7fbce90a
 
 LABEL org.opencontainers.image.source="https://github.com/nobbs/domestique"
 
