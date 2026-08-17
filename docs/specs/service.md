@@ -109,7 +109,7 @@ not become an application dependency.
 
 The static configuration defines two named Wahoo target slots. The target's
 actual Wahoo user identity is learned and persisted during OAuth onboarding.
-Sync remains disabled until both configured targets are authorised.
+Sync remains disabled until every configured target is authorised.
 
 ## Persistent state and recovery
 
@@ -125,7 +125,7 @@ A SQLite database on a Docker volume stores:
 The database holds no plaintext credential or token. It is intentionally not
 backed up.
 
-If the database or volume is lost, the operator must re-authorise both Wahoo
+If the database or volume is lost, the operator must re-authorise every Wahoo
 targets. The service must reconcile using the Domestique-owned `external_id`
 before it creates or removes routes. It must not treat lost local state as
 authority to delete routes from a Wahoo account.
@@ -171,7 +171,7 @@ than using an upload-and-delete replacement.
 OAuth refresh is serialised per Wahoo account. A refresh token returned by a
 successful refresh replaces the prior stored token atomically before any later
 request can use stale credentials. The Wahoo application is rate-limited across
-both targets: API calls are serial, obey advertised limits, and resume only
+all configured targets: API calls are serial, obey advertised limits, and resume only
 when safe to do so.
 
 Domestique deletes only Wahoo routes it owns through its `external_id`. A
@@ -185,7 +185,7 @@ The detailed state transitions and safety gates are defined in the
 
 The service attempts one sync shortly after a healthy startup and then hourly.
 At most one sync may run at a time. It fetches the source inventory once, then
-processes the two Wahoo targets serially so one account's failure does not stop
+processes configured Wahoo targets serially so one account's failure does not stop
 an attempted update of the other. The overall run is failed if either target
 fails.
 
@@ -260,7 +260,7 @@ the checkout; its configuration and Docker secret files remain outside Git.
 ## Acceptance criteria
 
 - Two Wahoo accounts can be authorised through the Tailnet-only OAuth flow.
-- An hourly run mirrors every valid VeloPlanner stage to both targets as FIT.
+- An hourly run mirrors every valid VeloPlanner stage to every configured target as FIT.
 - Edits preserve the stage's `external_id`; source deletions remove only owned
   destination routes and respect the deletion guard.
 - A failed source inventory cannot cause a destructive Wahoo deletion.

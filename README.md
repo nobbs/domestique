@@ -1,6 +1,6 @@
 # domestique
 
-`domestique` mirrors one private VeloPlanner route library to two Wahoo
+`domestique` mirrors one private VeloPlanner route library to one or two Wahoo
 accounts. It is a single-tenant service intended to run as an arm64 Docker
 container on a Tailnet host.
 

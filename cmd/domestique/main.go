@@ -57,7 +57,7 @@ func run(ctx context.Context) error {
 			slog.Error("closing state store", "error", closeErr)
 		}
 	}()
-	targetIDs := make([]string, 0, 2)
+	targetIDs := make([]string, 0, len(settings.Wahoo.Targets()))
 	for _, target := range settings.Wahoo.Targets() {
 		targetIDs = append(targetIDs, target.ID)
 	}
@@ -93,7 +93,7 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("creating scheduler: %w", err)
 	}
-	handler, err := httpapi.New(settings.Access.TailnetUserLogin, oauthService, store)
+	handler, err := httpapi.New(settings.Access.TailnetUserLogin, targetIDs, oauthService, store)
 	if err != nil {
 		return fmt.Errorf("creating HTTP handler: %w", err)
 	}

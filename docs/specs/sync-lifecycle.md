@@ -44,8 +44,9 @@ upstream bodies, and FIT bytes are never persisted.
 
 ## OAuth lifecycle
 
-The configuration has exactly two target slots. Each begins in
-"not_authorised"; automatic sync does not start until both are "authorised".
+The configuration has one or two target slots. Each begins in
+"not_authorised"; automatic sync does not start until every configured slot is
+"authorised".
 
 ~~~mermaid
 stateDiagram-v2
@@ -86,7 +87,10 @@ Wahoo access and refresh tokens are handled per target:
 4. A rejected refresh token sets only that target to
    "needs_reauthorisation"; the other target is still attempted.
 
-All Wahoo calls are serial across both targets. The client observes advertised
+limits and request-response boundaries before the next target call begins.
+All Wahoo calls are serial across configured targets. The client observes
+advertised limits and request-response boundaries before the next target call
+begins.
 rate limits and waits or ends the run safely; it never issues parallel retries.
 
 ## Sync lifecycle
@@ -103,7 +107,7 @@ flowchart TD
     Guard -- no --> Block["record blocked run and notify"]
     Guard -- yes --> A["reconcile target A"]
     A --> B["reconcile target B"]
-    B --> Result{"both targets succeeded?"}
+    B --> Result{"all targets succeeded?"}
     Result -- yes --> Success["record success and notify"]
     Result -- no --> Failure["record failure and notify"]
 ~~~

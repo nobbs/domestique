@@ -234,6 +234,24 @@ func TestServiceSkipsOverlappingRun(t *testing.T) {
 	}
 }
 
+func TestServiceSupportsOneTarget(t *testing.T) {
+	desired := testStage(t, 1, 1, "current", "current-hash")
+	state := newFakeState("a")
+	target := newFakeTarget()
+	service, err := New(&Options{TargetIDs: []string{"a"}, MaxDeletionsPerTarget: 5}, state, &fakeSource{stages: []route.Stage{desired}}, &fakeEncoder{}, target)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	result := service.Run(t.Context())
+	if got, want := result.Outcome, OutcomeSucceeded; got != want {
+		t.Errorf("Run() outcome = %q, want %q", got, want)
+	}
+	if got, want := result.Created, 1; got != want {
+		t.Errorf("Run() created = %d, want %d", got, want)
+	}
+}
+
 func newService(t *testing.T, state *fakeState, source *fakeSource, encoder *fakeEncoder, target *fakeTarget, allowEmpty bool) *Service {
 	t.Helper()
 	service, err := New(&Options{

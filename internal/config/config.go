@@ -84,13 +84,13 @@ type Wahoo struct {
 	OAuthBaseURL string
 	ClientID     string
 	RedirectURL  string
-	targets      [2]Target
+	targets      []Target
 	clientSecret Secret
 }
 
-// Targets returns a copy of the two configured Wahoo target slots.
+// Targets returns a copy of the configured Wahoo target slots.
 func (w *Wahoo) Targets() []Target {
-	return []Target{w.targets[0], w.targets[1]}
+	return append([]Target(nil), w.targets...)
 }
 
 // ClientSecret returns the OAuth client secret as a dedicated secret value.
@@ -512,20 +512,20 @@ func validateRedirectURL(value string) error {
 	return nil
 }
 
-func validateTargets(raw []rawTarget) ([2]Target, error) {
-	var targets [2]Target
-	if len(raw) != len(targets) {
-		return targets, errors.New("wahoo.targets must contain exactly two entries")
+func validateTargets(raw []rawTarget) ([]Target, error) {
+	if len(raw) < 1 || len(raw) > 2 {
+		return nil, errors.New("wahoo.targets must contain between one and two entries")
 	}
 
+	targets := make([]Target, len(raw))
 	seen := make(map[string]struct{}, len(raw))
 	for index, target := range raw {
 		id := strings.TrimSpace(target.ID)
 		if id == "" {
-			return targets, fmt.Errorf("wahoo.targets[%d].id is required", index)
+			return nil, fmt.Errorf("wahoo.targets[%d].id is required", index)
 		}
 		if _, duplicate := seen[id]; duplicate {
-			return targets, fmt.Errorf("wahoo.targets[%d].id is duplicated", index)
+			return nil, fmt.Errorf("wahoo.targets[%d].id is duplicated", index)
 		}
 		seen[id] = struct{}{}
 		targets[index] = Target{ID: id}

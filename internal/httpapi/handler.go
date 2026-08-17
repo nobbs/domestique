@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -32,16 +33,28 @@ type Handler struct {
 	oauth        OAuth
 	state        State
 	allowedLogin string
+	targetIDs    []string
 }
 
 // New creates a handler. Health checks are intentionally unauthenticated;
 // deployment must keep the listener private to the local Tailscale proxy.
-func New(allowedLogin string, oauthService OAuth, state State) (*Handler, error) {
+func New(allowedLogin string, targetIDs []string, oauthService OAuth, state State) (*Handler, error) {
 	if strings.TrimSpace(allowedLogin) == "" || oauthService == nil || state == nil {
 		return nil, errors.New("tailnet login, oauth service, and state are required")
 	}
+	if len(targetIDs) < 1 || len(targetIDs) > 2 {
+		return nil, errors.New("between one and two target IDs are required")
+	}
+	for index, targetID := range targetIDs {
+		if strings.TrimSpace(targetID) == "" {
+			return nil, errors.New("target IDs must not be empty")
+		}
+		if slices.Contains(targetIDs[:index], targetID) {
+			return nil, errors.New("target IDs must be unique")
+		}
+	}
 
-	return &Handler{allowedLogin: allowedLogin, oauth: oauthService, state: state}, nil
+	return &Handler{allowedLogin: allowedLogin, oauth: oauthService, state: state, targetIDs: append([]string(nil), targetIDs...)}, nil
 }
 
 // ServeHTTP handles the fixed v1 API without echoing sensitive query values.
@@ -104,6 +117,10 @@ func (h *Handler) start(writer http.ResponseWriter, request *http.Request, login
 		h.error(writer, http.StatusNotFound, "not_found", "resource was not found")
 		return
 	}
+	if !slices.Contains(h.targetIDs, targetID) {
+		h.error(writer, http.StatusNotFound, "not_found", "resource was not found")
+		return
+	}
 	location, err := h.oauth.Start(request.Context(), login, targetID)
 	if err != nil {
 		h.error(writer, http.StatusBadRequest, "authorization_failed", "wahoo authorization could not be started")
@@ -127,15 +144,26 @@ func (h *Handler) callback(writer http.ResponseWriter, request *http.Request, lo
 }
 
 func (h *Handler) status(writer http.ResponseWriter, request *http.Request) {
-	targets := make([]targetView, 0, 2)
-	ready := true
+	authorizations := make(map[string]string, len(h.targetIDs))
 	if err := h.state.ForEachTarget(request.Context(), func(id, authorization string) error {
-		targets = append(targets, targetView{ID: id, Authorization: authorization})
-		ready = ready && authorization == "authorized"
+		if slices.Contains(h.targetIDs, id) {
+			authorizations[id] = authorization
+		}
 		return nil
 	}); err != nil {
 		h.error(writer, http.StatusInternalServerError, "unavailable", "service state is unavailable")
 		return
+	}
+	targets := make([]targetView, 0, len(h.targetIDs))
+	ready := true
+	for _, targetID := range h.targetIDs {
+		authorization, found := authorizations[targetID]
+		if !found {
+			h.error(writer, http.StatusInternalServerError, "unavailable", "service state is unavailable")
+			return
+		}
+		targets = append(targets, targetView{ID: targetID, Authorization: authorization})
+		ready = ready && authorization == "authorized"
 	}
 	view := statusView{Ready: ready, Targets: targets, Sync: syncView{State: "not_ready"}}
 	if ready {

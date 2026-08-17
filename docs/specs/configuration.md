@@ -119,7 +119,7 @@ application dependency.
   URLs. `wahoo.client_id` is non-secret.
 - `wahoo.redirect_url` is required HTTPS and must exactly match Wahoo's
   registered callback URI, ending in `/oauth/wahoo/callback`.
-- `wahoo.targets` contains exactly two entries. Each `id` is unique and stable
+- `wahoo.targets` contains one or two entries. Each `id` is unique and stable
   across deployments; it is a configured slot, not a Wahoo user identifier.
 - `sync.initial_delay` is positive. `sync.interval` equals one hour in v1.
   `sync.max_deletions_per_target` equals `5` in v1.
@@ -128,7 +128,7 @@ application dependency.
   returns it to `deny` immediately afterward.
 
 The decoder rejects unknown fields, invalid URLs or durations, duplicate target
-IDs, the wrong target count, invalid callback paths, unreadable secret files,
+IDs, a target count outside one through two, invalid callback paths, unreadable secret files,
 and ambiguous secret inputs before it opens an HTTP listener.
 
 ## Runtime state

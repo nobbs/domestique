@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -93,9 +94,10 @@ func TestLoadRejectsInvalidConfiguration(t *testing.T) {
 			name: "wrong target count",
 			mutate: func(t *testing.T, path string) {
 				t.Helper()
+				replaceInFile(t, path, "\n[[wahoo.targets]]\nid = \"rider-a\"\n", "\n")
 				replaceInFile(t, path, "\n[[wahoo.targets]]\nid = \"rider-b\"\n", "\n")
 			},
-			want: "exactly two",
+			want: "between one and two",
 		},
 		{
 			name: "non canonical schedule",
@@ -118,6 +120,20 @@ func TestLoadRejectsInvalidConfiguration(t *testing.T) {
 				t.Fatalf("Load() error = %v, want substring %q", err, test.want)
 			}
 		})
+	}
+}
+
+func TestLoadAllowsOneWahooTarget(t *testing.T) {
+	configPath, _ := writeValidConfiguration(t, t.TempDir())
+	replaceInFile(t, configPath, "\n[[wahoo.targets]]\nid = \"rider-b\"\n", "\n")
+	t.Setenv(configFileEnv, configPath)
+
+	settings, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if got, want := settings.Wahoo.Targets(), []Target{{ID: "rider-a"}}; !sameTargets(got, want) {
+		t.Errorf("Wahoo.Targets() = %#v, want %#v", got, want)
 	}
 }
 
@@ -297,14 +313,5 @@ func removeConfigurationLine(t *testing.T, path, prefix string) {
 }
 
 func sameTargets(left, right []Target) bool {
-	if len(left) != len(right) {
-		return false
-	}
-	for index := range left {
-		if left[index] != right[index] {
-			return false
-		}
-	}
-
-	return true
+	return slices.Equal(left, right)
 }

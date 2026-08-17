@@ -39,8 +39,8 @@ is ignored by Git:
 - pushover_user_key.
 
 The state key is not recoverable. Keep it with the Docker volume for the
-lifetime of this MVP instance; losing either requires both Wahoo accounts to be
-authorized again.
+lifetime of this MVP instance; losing either requires every configured Wahoo
+account to be authorized again.
 
 ## Start locally
 
@@ -85,7 +85,7 @@ first open:
 https://domestique.fluffy-sargas.ts.net/healthz
 ~~~
 
-Then authorize both Wahoo slots, one at a time, at:
+Then authorize each configured Wahoo slot, one at a time, at:
 
 ~~~text
 https://domestique.fluffy-sargas.ts.net/oauth/wahoo/start/{target-id}

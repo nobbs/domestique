@@ -125,8 +125,8 @@ func New(options *Options, state State, source Source, encoder Encoder, target T
 	if options == nil || state == nil || source == nil || encoder == nil || target == nil {
 		return nil, errors.New("sync options and dependencies are required")
 	}
-	if len(options.TargetIDs) != 2 || options.MaxDeletionsPerTarget <= 0 || options.MaxDeletionsPerTarget > 5 {
-		return nil, errors.New("sync requires two targets and a deletion limit from one through five")
+	if len(options.TargetIDs) < 1 || len(options.TargetIDs) > 2 || options.MaxDeletionsPerTarget <= 0 || options.MaxDeletionsPerTarget > 5 {
+		return nil, errors.New("sync requires between one and two targets and a deletion limit from one through five")
 	}
 
 	targetIDs := append([]string(nil), options.TargetIDs...)

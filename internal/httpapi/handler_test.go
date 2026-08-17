@@ -61,6 +61,19 @@ func TestHandlerRunsCallerBoundOAuthFlow(t *testing.T) {
 	}
 }
 
+func TestHandlerRejectsInactiveTarget(t *testing.T) {
+	oauthService := &fakeOAuth{location: "https://wahoo.example.test/oauth/authorize"}
+	handler := newHandler(t, oauthService, &fakeState{})
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/oauth/wahoo/start/rider-b"))
+	if got, want := response.Code, http.StatusNotFound; got != want {
+		t.Errorf("start status = %d, want %d", got, want)
+	}
+	if got := oauthService.targetID; got != "" {
+		t.Errorf("OAuth start target = %q, want no OAuth request", got)
+	}
+}
+
 func TestHandlerHidesOAuthFailure(t *testing.T) {
 	handler := newHandler(t, &fakeOAuth{completeErr: errors.New("private-token")}, &fakeState{})
 	response := httptest.NewRecorder()
@@ -76,7 +89,7 @@ func TestHandlerHidesOAuthFailure(t *testing.T) {
 func newTestHandler(t *testing.T) *Handler { return newHandler(t, &fakeOAuth{}, &fakeState{}) }
 func newHandler(t *testing.T, oauthService OAuth, state State) *Handler {
 	t.Helper()
-	handler, err := New("rider@example.ts.net", oauthService, state)
+	handler, err := New("rider@example.ts.net", []string{"rider-a"}, oauthService, state)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
