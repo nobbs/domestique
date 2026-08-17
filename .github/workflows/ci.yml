@@ -5,18 +5,59 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
 
-permissions:
-  contents: read
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions: {}
 
 jobs:
-  check:
+  changes:
+    name: Changes
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 5
+
+    permissions:
+      contents: read
+      pull-requests: read
+
+    outputs:
+      lint: ${{ steps.filter.outputs.lint }}
+      go: ${{ steps.filter.outputs.go }}
+      image: ${{ steps.filter.outputs.image }}
+
     steps:
       - name: Check out repository
         # v7.0.1
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Detect changed paths
+        id: filter
+        # v4.0.2
+        uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706
+        with:
+          filters: .github/paths-filter.yml
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    needs: changes
+    if: needs.changes.outputs.lint == 'true'
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out repository
+        # v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
       - name: Install pinned toolchain
         # v4.2.5
         uses: jdx/mise-action@3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518
@@ -24,10 +65,137 @@ jobs:
           version: 2026.8.6
           install: true
           cache: true
-      - name: Run quality gate
-        run: mise exec -- make check
+      - name: Run linters
+        run: mise exec -- make ci-lint
+
+  test:
+    name: Test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out repository
+        # v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Install pinned toolchain
+        # v4.2.5
+        uses: jdx/mise-action@3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518
+        with:
+          version: 2026.8.6
+          install: true
+          cache: true
+      - name: Run tests
+        run: mise exec -- make ci-test
+
+  security:
+    name: Security
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out repository
+        # v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Install pinned toolchain
+        # v4.2.5
+        uses: jdx/mise-action@3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518
+        with:
+          version: 2026.8.6
+          install: true
+          cache: true
+      - name: Audit modules and dependencies
+        run: mise exec -- make ci-security
+
+  image:
+    name: Image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    needs:
+      - changes
+      - lint
+      - test
+    if: >-
+      always() &&
+      needs.changes.result == 'success' &&
+      (needs.lint.result == 'success' || needs.lint.result == 'skipped') &&
+      (needs.test.result == 'success' || needs.test.result == 'skipped') &&
+      (github.event_name == 'workflow_dispatch' || needs.changes.outputs.image == 'true')
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out repository
+        # v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Install pinned toolchain
+        # v4.2.5
+        uses: jdx/mise-action@3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518
+        with:
+          version: 2026.8.6
+          install: true
+          cache: true
+      # Compiling first fails in seconds on a broken build, rather than after
+      # the image layers have been assembled.
+      - name: Verify the binary compiles
+        run: mise exec -- make build-check
       - name: Set up Docker Buildx
         # v4.2.0
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c
       - name: Build production image
         run: docker buildx build --platform linux/arm64 --load --tag domestique:ci .
+
+  required:
+    name: Required
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    needs:
+      - changes
+      - lint
+      - test
+      - security
+      - image
+    if: always()
+
+    permissions: {}
+
+    steps:
+      # Branch protection requires this single job. It fails unless every
+      # dependency either succeeded or was skipped by a path filter, so a
+      # cancelled or failed job upstream cannot be mistaken for a green run.
+      - name: Validate CI results
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          LINT_RESULT: ${{ needs.lint.result }}
+          TEST_RESULT: ${{ needs.test.result }}
+          SECURITY_RESULT: ${{ needs.security.result }}
+          IMAGE_RESULT: ${{ needs.image.result }}
+        run: |
+          set -eu
+
+          for result in "$CHANGES_RESULT" "$LINT_RESULT" "$TEST_RESULT" \
+            "$SECURITY_RESULT" "$IMAGE_RESULT"; do
+            case "$result" in
+              success|skipped) ;;
+              *)
+                echo "CI validation failed: dependency result was '$result'"
+                exit 1
+                ;;
+            esac
+          done

@@ -11,7 +11,7 @@ BUILD_FLAGS := -trimpath -buildvcs=true
 BUILD_TARGET := ./cmd/domestique
 BUILD_OUTPUT := build/domestique
 
-.PHONY: fmt lint markdownlint workflow-lint test vet mod-check vulncheck secret-scan build build-check check
+.PHONY: fmt lint markdownlint workflow-lint test vet mod-check vulncheck secret-scan build build-check ci-lint ci-test ci-security check
 
 export GOCACHE
 
@@ -50,14 +50,26 @@ build:
 build-check:
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 $(GO) build $(BUILD_FLAGS) -o /dev/null $(BUILD_TARGET)
 
-check:
+# CI runs the ci-* groups below as separate jobs so that a failure names the
+# area it came from. Keep them as the only decomposition of the quality gate:
+# check exists to run the same work locally, in one command.
+ci-lint:
 	$(PREK) run --all-files
 	$(MAKE) lint
 	$(MAKE) markdownlint
 	$(MAKE) workflow-lint
+
+ci-test:
 	$(MAKE) vet
 	$(MAKE) test
+
+ci-security:
 	$(MAKE) mod-check
 	$(MAKE) vulncheck
 	$(MAKE) secret-scan
+
+check:
+	$(MAKE) ci-lint
+	$(MAKE) ci-test
+	$(MAKE) ci-security
 	$(MAKE) build-check
