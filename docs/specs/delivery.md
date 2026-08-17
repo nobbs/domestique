@@ -26,6 +26,8 @@ The repository provides these stable Make targets:
 | `make build` | Compiles the Linux ARM64 service binary with `CGO_ENABLED=0`, after building the browser UI. |
 | `make ui-build` | Builds the browser UI bundle that the binary embeds. |
 | `make ui-dev` | Runs the UI dev server, proxying the API to the local service. |
+| `make dev-setup` | Snapshots the deployed state into an isolated development environment. |
+| `make dev-api` | Serves the API against that snapshot on `:8081`. |
 | `make check` | Runs every repository check required before review or merge. |
 
 `make check` is the canonical local and CI entry point. It includes
@@ -41,6 +43,24 @@ private-key and accidental-large-file checks, YAML, TOML, and Markdown
 validation where applicable, and Go formatting. Developers may install the
 `prek` hook, but the hook is a convenience rather than a substitute for
 `make check`. The project uses `prek`, never `pre-commit`.
+
+## Development environment
+
+`make dev-setup` prepares an environment that shows real route data without
+risking the deployment. It copies the deployed SQLite state into `.local/dev`
+and writes a configuration beside it, so the development service and the
+deployed container never share a database file.
+
+That environment may read VeloPlanner, so a manual `POST /v1/sync` refreshes
+real routes and geometry. It must never reach Wahoo, which is enforced in depth:
+the state encryption key is a placeholder, so the stored refresh tokens cannot
+be decrypted and a run therefore fails at the state step, which precedes any
+Wahoo request; the Wahoo endpoints additionally point at an unroutable address;
+and scheduled synchronisation is pushed a year out so a run only happens on
+request. Pushover credentials are placeholders, so no notification is delivered.
+
+This applies to the development environment only. It is not a substitute for the
+sandbox acceptance check, and it never runs in CI.
 
 Normal Go tests run without network access to VeloPlanner, Wahoo, Pushover,
 Tailscale, or a secret system. The normal test command enables deterministic

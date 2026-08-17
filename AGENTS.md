@@ -58,6 +58,13 @@ to a locally running service and injects the Tailnet identity header, so the
 identity gate behaves as it does in production. Building images requires
 `docker login dhi.io`, because the base images are Docker Hardened Images.
 
+**To develop against real data**, run `make dev-setup` once (snapshots the
+deployed SQLite state into `.local/dev`), then `make dev-api` and `make ui-dev`.
+The dev service reads VeloPlanner but **cannot reach Wahoo** — its encryption
+key is a placeholder, so a run fails at the state step before any Wahoo request,
+and its Wahoo endpoints are unroutable. Never weaken those guards to "make sync
+work" in development; use the sandbox acceptance check instead.
+
 ## Architecture rules
 
 `cmd/domestique/main.go` is the only composition root and holds no business
