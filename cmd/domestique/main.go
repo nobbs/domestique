@@ -23,6 +23,7 @@ import (
 	syncservice "github.com/nobbs/domestique/internal/sync"
 	"github.com/nobbs/domestique/internal/veloplanner"
 	"github.com/nobbs/domestique/internal/wahoo"
+	"github.com/nobbs/domestique/internal/webui"
 )
 
 const (
@@ -94,11 +95,23 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("creating scheduler: %w", err)
 	}
+	assets, err := webui.New()
+	if err != nil {
+		return fmt.Errorf("loading browser UI: %w", err)
+	}
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	handler, err := httpapi.New(settings.Access.TailnetUserLogin, targetIDs, oauthService, store, httpapi.SyncTriggerFunc(func() bool {
-		return reporter.Trigger(runCtx)
-	}))
+	handler, err := httpapi.New(
+		&httpapi.Options{
+			TailnetUserLogin: settings.Access.TailnetUserLogin,
+			TargetIDs:        targetIDs,
+			TileStyleURL:     settings.WebUI.TileStyleURL,
+		},
+		oauthService,
+		store,
+		httpapi.SyncTriggerFunc(func() bool { return reporter.Trigger(runCtx) }),
+		assets,
+	)
 	if err != nil {
 		return fmt.Errorf("creating HTTP handler: %w", err)
 	}

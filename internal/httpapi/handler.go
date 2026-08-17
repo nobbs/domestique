@@ -1,4 +1,4 @@
-// Package httpapi owns Tailnet-gated JSON and OAuth HTTP handling.
+// Package httpapi owns Tailnet-gated JSON, OAuth, and browser UI HTTP handling.
 package httpapi
 
 import (
@@ -8,12 +8,19 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
+
+	"github.com/nobbs/domestique/internal/route"
 )
 
 const identityHeader = "Tailscale-User-Login"
+
+const (
+	cacheAPI       = "no-store"
+	cacheDocument  = "no-cache"
+	cacheImmutable = "public, max-age=31536000, immutable"
+)
 
 // OAuth performs the protected Wahoo onboarding flow.
 type OAuth interface {
@@ -35,200 +42,179 @@ func (f SyncTriggerFunc) Trigger() bool {
 	return f()
 }
 
-// State provides only non-secret metadata for the JSON read model.
+// Assets serves the embedded browser UI. It is declared here so this package
+// stays independent of how the UI is built or embedded.
+type Assets interface {
+	// Index writes the application entry document.
+	Index(writer http.ResponseWriter, request *http.Request)
+	// Static serves one hashed, immutable build artefact.
+	Static(writer http.ResponseWriter, request *http.Request)
+}
+
+// State provides only non-secret metadata and stored geometry for the read
+// model. It never exposes tokens or upstream response bodies.
 type State interface {
 	ForEachTarget(ctx context.Context, visit func(id, authorization string) error) error
-	ForEachSourceStage(ctx context.Context, visit func(routeID int64, stageOrder int, sourceRevision, contentHash string) error) error
+	ForEachStageSummary(ctx context.Context, visit func(summary route.Summary) error) error
+	StageGeometry(ctx context.Context, routeID int64, stageOrder int) (route.Summary, json.RawMessage, bool, error)
 	LastSyncRun(ctx context.Context) (completedAt time.Time, outcome, detail string, sourceStages, created, updated, deleted int, found bool, err error)
 }
 
-// Handler enforces Tailnet identity and exposes the small v1 HTTP surface.
+// Options carries the non-secret settings the HTTP surface needs.
+type Options struct {
+	TailnetUserLogin string
+	TileStyleURL     string
+	TargetIDs        []string
+}
+
+// Handler enforces Tailnet identity and exposes the v1 HTTP surface.
 type Handler struct {
+	mux          *http.ServeMux
 	oauth        OAuth
 	syncTrigger  SyncTrigger
 	state        State
+	assets       Assets
 	allowedLogin string
+	tileStyleURL string
+	tileOrigin   string
 	targetIDs    []string
 }
 
 // New creates a handler. Health checks are intentionally unauthenticated;
 // deployment must keep the listener private to the local Tailscale proxy.
-func New(allowedLogin string, targetIDs []string, oauthService OAuth, state State, syncTrigger SyncTrigger) (*Handler, error) {
-	if strings.TrimSpace(allowedLogin) == "" || oauthService == nil || state == nil || syncTrigger == nil {
-		return nil, errors.New("tailnet login, oauth service, state, and sync trigger are required")
+func New(
+	options *Options,
+	oauthService OAuth,
+	state State,
+	syncTrigger SyncTrigger,
+	assets Assets,
+) (*Handler, error) {
+	if options == nil || oauthService == nil || state == nil || syncTrigger == nil || assets == nil {
+		return nil, errors.New("http options, oauth service, state, sync trigger, and assets are required")
 	}
-	if len(targetIDs) < 1 || len(targetIDs) > 2 {
+	if strings.TrimSpace(options.TailnetUserLogin) == "" {
+		return nil, errors.New("tailnet login is required")
+	}
+	if len(options.TargetIDs) < 1 || len(options.TargetIDs) > 2 {
 		return nil, errors.New("between one and two target IDs are required")
 	}
-	for index, targetID := range targetIDs {
+	for index, targetID := range options.TargetIDs {
 		if strings.TrimSpace(targetID) == "" {
 			return nil, errors.New("target IDs must not be empty")
 		}
-		if slices.Contains(targetIDs[:index], targetID) {
+		if slices.Contains(options.TargetIDs[:index], targetID) {
 			return nil, errors.New("target IDs must be unique")
 		}
 	}
+	tileOrigin, err := originOf(options.TileStyleURL)
+	if err != nil {
+		return nil, err
+	}
 
-	return &Handler{allowedLogin: allowedLogin, oauth: oauthService, state: state, syncTrigger: syncTrigger, targetIDs: append([]string(nil), targetIDs...)}, nil
+	handler := &Handler{
+		mux:          http.NewServeMux(),
+		oauth:        oauthService,
+		state:        state,
+		syncTrigger:  syncTrigger,
+		assets:       assets,
+		allowedLogin: options.TailnetUserLogin,
+		tileStyleURL: options.TileStyleURL,
+		tileOrigin:   tileOrigin,
+		targetIDs:    append([]string(nil), options.TargetIDs...),
+	}
+	handler.routes()
+
+	return handler, nil
 }
 
-// ServeHTTP handles the fixed v1 API without echoing sensitive query values.
+// routes registers the fixed v1 surface. Every pattern except the liveness
+// probe is wrapped by the Tailnet identity gate.
+func (h *Handler) routes() {
+	h.mux.HandleFunc("GET /healthz", h.health)
+
+	h.mux.Handle("GET /v1/status", h.gated(h.status))
+	h.mux.Handle("POST /v1/sync", h.gated(h.sync))
+	h.mux.Handle("GET /v1/routes", h.gated(h.stages))
+	h.mux.Handle("GET /v1/routes/{routeID}/stages/{stage}", h.gated(h.stage))
+	h.mux.Handle("GET /v1/routes/{routeID}/stages/{stage}/geometry", h.gated(h.stageGeometry))
+	h.mux.Handle("GET /v1/webui/config", h.gated(h.webUIConfig))
+
+	h.mux.Handle("GET /oauth/wahoo/start/{target}", h.gated(h.start))
+	h.mux.Handle("GET /oauth/wahoo/callback", h.gated(h.callback))
+
+	h.mux.Handle("GET /assets/", h.gated(h.staticAsset))
+	h.mux.Handle("GET /favicon.svg", h.gated(h.staticAsset))
+	h.mux.Handle("GET /{$}", h.gated(h.index))
+	h.mux.Handle("GET /routes/{routeID}/{stage}", h.gated(h.index))
+
+	// Unknown paths still answer as JSON, and still require the identity, so an
+	// unauthenticated caller cannot probe which paths exist.
+	h.mux.Handle("/", h.gated(func(writer http.ResponseWriter, _ *http.Request, _ string) {
+		h.error(writer, http.StatusNotFound, "not_found", "resource was not found")
+	}))
+}
+
+// ServeHTTP applies the shared response headers and dispatches.
 func (h *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
-	writer.Header().Set("Cache-Control", "no-store")
-	if request.URL.Path == "/healthz" {
-		h.health(writer, request)
-		return
-	}
-	login, ok := h.authorize(writer, request)
-	if !ok {
-		return
-	}
-	switch {
-	case request.Method == http.MethodGet && request.URL.Path == "/v1/status":
-		h.status(writer, request)
-	case request.Method == http.MethodPost && request.URL.Path == "/v1/sync":
-		h.sync(writer)
-	case request.Method == http.MethodGet && request.URL.Path == "/v1/routes":
-		h.routes(writer, request, 0, 0, false)
-	case request.Method == http.MethodGet && strings.HasPrefix(request.URL.Path, "/v1/routes/"):
-		routeID, stageOrder, parsed := stagePath(request.URL.Path)
-		if !parsed {
-			h.error(writer, http.StatusNotFound, "not_found", "resource was not found")
+	header := writer.Header()
+	header.Set("Content-Security-Policy", h.contentSecurityPolicy())
+	header.Set("Referrer-Policy", "no-referrer")
+	header.Set("X-Content-Type-Options", "nosniff")
+	header.Set("Cache-Control", cacheAPI)
+	h.mux.ServeHTTP(writer, request)
+}
+
+// gatedFunc is a handler that has already proven the caller's identity.
+type gatedFunc func(writer http.ResponseWriter, request *http.Request, login string)
+
+// gated rejects any caller that is not the single configured Tailnet identity.
+func (h *Handler) gated(next gatedFunc) http.Handler {
+	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		login := request.Header.Get(identityHeader)
+		if login == "" {
+			h.error(writer, http.StatusUnauthorized, "unauthorized", "tailnet identity is required")
+
 			return
 		}
-		h.routes(writer, request, routeID, stageOrder, true)
-	case request.Method == http.MethodGet && strings.HasPrefix(request.URL.Path, "/oauth/wahoo/start/"):
-		h.start(writer, request, login)
-	case request.Method == http.MethodGet && request.URL.Path == "/oauth/wahoo/callback":
-		h.callback(writer, request, login)
-	default:
-		h.error(writer, http.StatusNotFound, "not_found", "resource was not found")
-	}
-}
+		if login != h.allowedLogin {
+			h.error(writer, http.StatusForbidden, "forbidden", "tailnet identity is not permitted")
 
-func (h *Handler) sync(writer http.ResponseWriter) {
-	if !h.syncTrigger.Trigger() {
-		h.error(writer, http.StatusConflict, "sync_in_progress", "a synchronization is already running")
-		return
-	}
-	h.writeJSON(writer, http.StatusAccepted, map[string]string{"status": "accepted"})
-}
-
-func (h *Handler) health(writer http.ResponseWriter, request *http.Request) {
-	if request.Method != http.MethodGet {
-		h.error(writer, http.StatusMethodNotAllowed, "method_not_allowed", "method is not allowed")
-		return
-	}
-	h.writeJSON(writer, http.StatusOK, map[string]string{"status": "ok"})
-}
-
-func (h *Handler) authorize(writer http.ResponseWriter, request *http.Request) (string, bool) {
-	login := request.Header.Get(identityHeader)
-	if login == "" {
-		h.error(writer, http.StatusUnauthorized, "unauthorized", "tailnet identity is required")
-		return "", false
-	}
-	if login != h.allowedLogin {
-		h.error(writer, http.StatusForbidden, "forbidden", "tailnet identity is not permitted")
-		return "", false
-	}
-
-	return login, true
-}
-
-func (h *Handler) start(writer http.ResponseWriter, request *http.Request, login string) {
-	targetID := strings.TrimPrefix(request.URL.Path, "/oauth/wahoo/start/")
-	if targetID == "" || strings.Contains(targetID, "/") {
-		h.error(writer, http.StatusNotFound, "not_found", "resource was not found")
-		return
-	}
-	if !slices.Contains(h.targetIDs, targetID) {
-		h.error(writer, http.StatusNotFound, "not_found", "resource was not found")
-		return
-	}
-	location, err := h.oauth.Start(request.Context(), login, targetID)
-	if err != nil {
-		h.error(writer, http.StatusBadRequest, "authorization_failed", "wahoo authorization could not be started")
-		return
-	}
-	parsedLocation, parseErr := url.Parse(location)
-	if parseErr != nil || parsedLocation.Scheme != "https" || parsedLocation.Host == "" {
-		h.error(writer, http.StatusInternalServerError, "unavailable", "service state is unavailable")
-		return
-	}
-	//nolint:gosec // The OAuth service returned a validated HTTPS Wahoo authorization URL.
-	http.Redirect(writer, request, location, http.StatusFound)
-}
-
-func (h *Handler) callback(writer http.ResponseWriter, request *http.Request, login string) {
-	if err := h.oauth.Complete(request.Context(), login, request.URL.Query().Get("state"), request.URL.Query().Get("code")); err != nil {
-		h.error(writer, http.StatusBadRequest, "authorization_failed", "wahoo authorization could not be completed")
-		return
-	}
-	http.Redirect(writer, request, "/v1/status", http.StatusSeeOther)
-}
-
-func (h *Handler) status(writer http.ResponseWriter, request *http.Request) {
-	authorizations := make(map[string]string, len(h.targetIDs))
-	if err := h.state.ForEachTarget(request.Context(), func(id, authorization string) error {
-		if slices.Contains(h.targetIDs, id) {
-			authorizations[id] = authorization
-		}
-		return nil
-	}); err != nil {
-		h.error(writer, http.StatusInternalServerError, "unavailable", "service state is unavailable")
-		return
-	}
-	targets := make([]targetView, 0, len(h.targetIDs))
-	ready := true
-	for _, targetID := range h.targetIDs {
-		authorization, found := authorizations[targetID]
-		if !found {
-			h.error(writer, http.StatusInternalServerError, "unavailable", "service state is unavailable")
 			return
 		}
-		targets = append(targets, targetView{ID: targetID, Authorization: authorization})
-		ready = ready && authorization == "authorized"
-	}
-	view := statusView{Ready: ready, Targets: targets, Sync: syncView{State: "not_ready"}}
-	if ready {
-		view.Sync.State = "idle"
-	}
-	completedAt, outcome, _, sourceStages, created, updated, deleted, found, err := h.state.LastSyncRun(request.Context())
-	if err != nil {
-		h.error(writer, http.StatusInternalServerError, "unavailable", "service state is unavailable")
-		return
-	}
-	if found {
-		view.Sync.State, view.Sync.LastResult = outcome, outcome
-		view.Sync.LastCompletedAt = completedAt.Format(time.RFC3339)
-		view.Sync.SourceStages, view.Sync.Created, view.Sync.Updated, view.Sync.Deleted = sourceStages, created, updated, deleted
-	}
-	h.writeJSON(writer, http.StatusOK, view)
-}
-
-func (h *Handler) routes(writer http.ResponseWriter, request *http.Request, routeID int64, stageOrder int, single bool) {
-	stages := make([]stageView, 0)
-	err := h.state.ForEachSourceStage(request.Context(), func(id int64, order int, revision, contentHash string) error {
-		if single && (id != routeID || order != stageOrder) {
-			return nil
-		}
-		stages = append(stages, stageView{RouteID: id, StageOrder: order, SourceRevision: revision, ContentHash: contentHash})
-		return nil
+		next(writer, request, login)
 	})
-	if err != nil {
-		h.error(writer, http.StatusInternalServerError, "unavailable", "service state is unavailable")
-		return
-	}
-	if single {
-		if len(stages) == 0 {
-			h.error(writer, http.StatusNotFound, "not_found", "route stage was not found")
-			return
-		}
-		h.writeJSON(writer, http.StatusOK, stages[0])
-		return
-	}
-	h.writeJSON(writer, http.StatusOK, map[string][]stageView{"stages": stages})
+}
+
+// contentSecurityPolicy confines the page to this service's own origin plus the
+// single configured tile origin.
+//
+// Three allowances are deliberate, and each was confirmed against a real
+// MapLibre render rather than assumed:
+//   - worker-src needs 'self' because MapLibre loads its worker from a bundled
+//     same-origin module, and blob: because it also spawns blob workers;
+//   - style-src needs 'unsafe-inline' because MapLibre styles its own controls
+//     inline;
+//   - img-src and connect-src need the tile origin for sprites, glyphs, and
+//     tiles.
+func (h *Handler) contentSecurityPolicy() string {
+	return strings.Join([]string{
+		"default-src 'self'",
+		"base-uri 'none'",
+		"object-src 'none'",
+		"frame-ancestors 'none'",
+		"form-action 'none'",
+		"script-src 'self'",
+		"style-src 'self' 'unsafe-inline'",
+		"font-src 'self'",
+		"worker-src 'self' blob:",
+		"child-src 'self' blob:",
+		"img-src 'self' data: blob: " + h.tileOrigin,
+		"connect-src 'self' " + h.tileOrigin,
+	}, "; ")
+}
+
+func (h *Handler) health(writer http.ResponseWriter, _ *http.Request) {
+	h.writeJSON(writer, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 func (h *Handler) error(writer http.ResponseWriter, status int, code, message string) {
@@ -243,43 +229,12 @@ func (h *Handler) writeJSON(writer http.ResponseWriter, status int, value any) {
 	}
 }
 
-func stagePath(path string) (routeID int64, stageOrder int, ok bool) {
-	parts := strings.Split(strings.TrimPrefix(path, "/v1/routes/"), "/")
-	if len(parts) != 3 || parts[1] != "stages" {
-		return 0, 0, false
+// originOf reduces a URL to its scheme and host for use in a CSP source list.
+func originOf(value string) (string, error) {
+	parsed, err := url.Parse(strings.TrimSpace(value))
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" {
+		return "", errors.New("tile style URL must be an absolute HTTPS URL")
 	}
-	routeID, routeErr := strconv.ParseInt(parts[0], 10, 64)
-	stageOrder, stageErr := strconv.Atoi(parts[2])
-	return routeID, stageOrder, routeErr == nil && stageErr == nil && routeID > 0 && stageOrder > 0
-}
 
-type targetView struct {
-	ID            string `json:"id"`
-	Authorization string `json:"authorisation"`
-}
-type stageView struct {
-	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	SourceRevision string `json:"source_revision"`
-	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	ContentHash string `json:"content_hash"`
-	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	RouteID    int64 `json:"route_id"`
-	StageOrder int   `json:"stage"`
-}
-type syncView struct {
-	State string `json:"state"`
-	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	LastCompletedAt string `json:"last_completed_at,omitempty"`
-	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	LastResult string `json:"last_result,omitempty"`
-	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	SourceStages int `json:"source_stages"`
-	Created      int `json:"created"`
-	Updated      int `json:"updated"`
-	Deleted      int `json:"deleted"`
-}
-type statusView struct {
-	Targets []targetView `json:"targets"`
-	Sync    syncView     `json:"sync"`
-	Ready   bool         `json:"ready"`
+	return parsed.Scheme + "://" + parsed.Host, nil
 }

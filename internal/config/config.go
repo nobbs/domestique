@@ -26,6 +26,11 @@ const (
 	defaultConfigFile = "/etc/domestique/config.toml"
 	envPrefix         = "DOMESTIQUE_"
 	configFileEnv     = envPrefix + "CONFIG_FILE"
+
+	// defaultTileStyleURL is a keyless MapLibre style, so the default deployment
+	// exposes no credential to the browser and sends no account identity to the
+	// tile origin.
+	defaultTileStyleURL = "https://tiles.openfreemap.org/styles/dark"
 )
 
 // Settings is the validated, startup-only configuration for one service
@@ -36,6 +41,7 @@ type Settings struct {
 	Notifications Notifications
 	HTTP          HTTP
 	Access        Access
+	WebUI         WebUI
 	Sync          Sync
 	State         State
 }
@@ -48,6 +54,16 @@ type HTTP struct {
 // Access identifies the sole Tailnet user allowed to access the service.
 type Access struct {
 	TailnetUserLogin string
+}
+
+// WebUI configures the read-only browser route map view.
+type WebUI struct {
+	// TileStyleURL is the MapLibre style document the operator's browser loads.
+	// It is deliberately not a secret: it is served to the page and is visible
+	// to anyone who can reach the UI. The default is a keyless provider, so no
+	// credential is exposed. A provider that requires an API key would place it
+	// in this URL's query and thereby publish it to the browser.
+	TileStyleURL string
 }
 
 // State configures durable service state.
@@ -162,12 +178,17 @@ type rawSettings struct {
 	Notifications rawNotifications `koanf:"notifications"`
 	HTTP          rawHTTP          `koanf:"http"`
 	Access        rawAccess        `koanf:"access"`
+	WebUI         rawWebUI         `koanf:"webui"`
 	State         rawState         `koanf:"state"`
 	Sync          rawSync          `koanf:"sync"`
 }
 
 type rawHTTP struct {
 	ListenAddress string `koanf:"listen_address"`
+}
+
+type rawWebUI struct {
+	TileStyleURL string `koanf:"tile_style_url"`
 }
 
 type rawAccess struct {
@@ -365,6 +386,9 @@ func build(raw *rawSettings) (*Settings, error) {
 	if err := validateRedirectURL(raw.Wahoo.RedirectURL); err != nil {
 		return nil, err
 	}
+	if err := validateTileStyleURL(raw.WebUI.TileStyleURL); err != nil {
+		return nil, err
+	}
 
 	targets, err := validateTargets(raw.Wahoo.Targets)
 	if err != nil {
@@ -442,6 +466,9 @@ func build(raw *rawSettings) (*Settings, error) {
 		Access: Access{
 			TailnetUserLogin: strings.TrimSpace(raw.Access.TailnetUserLogin),
 		},
+		WebUI: WebUI{
+			TileStyleURL: strings.TrimSpace(raw.WebUI.TileStyleURL),
+		},
 		State: State{
 			DatabasePath:  raw.State.DatabasePath,
 			encryptionKey: key,
@@ -482,6 +509,20 @@ func validateListenAddress(address string) error {
 	portNumber, err := strconv.ParseUint(port, 10, 16)
 	if err != nil || portNumber == 0 {
 		return errors.New("http.listen_address must contain a valid port")
+	}
+
+	return nil
+}
+
+// validateTileStyleURL accepts an absolute HTTPS style document URL. Unlike the
+// service's own endpoints it permits a query string, because providers that
+// require an API key carry it there; such a key is published to the browser and
+// is the operator's deliberate choice, not a managed secret.
+func validateTileStyleURL(value string) error {
+	parsed, err := url.ParseRequestURI(strings.TrimSpace(value))
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" ||
+		parsed.User != nil || parsed.Fragment != "" {
+		return errors.New("webui.tile_style_url must be an absolute HTTPS URL without credentials or fragment")
 	}
 
 	return nil
@@ -625,6 +666,9 @@ func configurationDefaults() map[string]any {
 	return map[string]any{
 		"sync": map[string]any{
 			"empty_source_deletion": string(EmptySourceDeletionDeny),
+		},
+		"webui": map[string]any{
+			"tile_style_url": defaultTileStyleURL,
 		},
 	}
 }

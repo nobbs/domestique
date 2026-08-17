@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"
+     width="128" height="128" role="img" aria-label="domestique">
+  <title>domestique</title>
+  <defs>
+    <mask id="ring-f" maskUnits="userSpaceOnUse" x="0" y="0" width="128" height="128">
+      <rect x="0" y="0" width="128" height="128" fill="#fff"/>
+      <circle cx="64" cy="64" r="29" fill="#000"/>
+    </mask>
+  </defs>
+  <g fill="#C8502E">
+    <g mask="url(#ring-f)">
+      <circle cx="64" cy="64" r="44"/>
+      <path d="M59.6,23 L61.1,15.4 Q64,14 66.9,15.4 L68.4,23 Z" transform="rotate(0 64 64)"/>
+      <path d="M59.6,23 L61.1,15.4 Q64,14 66.9,15.4 L68.4,23 Z" transform="rotate(22.5 64 64)"/>
+      <path d="M59.6,23 L61.1,15.4 Q64,14 66.9,15.4 L68.4,23 Z" transform="rotate(45 64 64)"/>
+      <path d="M59.6,23 L61.1,15.4 Q64,14 66.9,15.4 L68.4,23 Z" transform="rotate(67.5 64 64)"/>
+      <path d="M59.6,23 L61.1,15.4 Q64,14 66.9,15.4 L68.4,23 Z" transform="rotate(90 64 64)"/>
+      <path d="M59.6,23 L61.1,15.4 Q64,14 66.9,15.4 L68.4,23 Z" transform="rotate(112.5 64 64)"/>
+      <path d="M59.6,23 L61.1,15.4 Q64,14 66.9,15.4 L68.4,23 Z" transform="rotate(135 64 64)"/>
+      <path d="M59.6,23 L61.1,15.4 Q64,14 66.9,15.4 L68.4,23 Z" transform="rotate(157.5 64 64)"/>
+      <path d="M59.6,23 L61.1,15.4 Q64,14 66.9,15.4 L68.4,23 Z" transform="rotate(180 64 64)"/>
+      <path d="M59.6,23 L61.1,15.4 Q64,14 66.9,15.4 L68.4,23 Z" transform="rotate(202.5 64 64)"/>
+      <path d="M59.6,23 L61.1,15.4 Q64,14 66.9,15.4 L68.4,23 Z" transform="rotate(225 64 64)"/>
+      <path d="M59.6,23 L61.1,15.4 Q64,14 66.9,15.4 L68.4,23 Z" transform="rotate(247.5 64 64)"/>
+      <path d="M59.6,23 L61.1,15.4 Q64,14 66.9,15.4 L68.4,23 Z" transform="rotate(270 64 64)"/>
+      <path d="M59.6,23 L61.1,15.4 Q64,14 66.9,15.4 L68.4,23 Z" transform="rotate(292.5 64 64)"/>
+      <path d="M59.6,23 L61.1,15.4 Q64,14 66.9,15.4 L68.4,23 Z" transform="rotate(315 64 64)"/>
+      <path d="M59.6,23 L61.1,15.4 Q64,14 66.9,15.4 L68.4,23 Z" transform="rotate(337.5 64 64)"/>
+    </g>
+    <circle cx="64" cy="64" r="9"/>
+    <rect x="59.25" y="30" width="9.5" height="34" transform="rotate(0 64 64)"/>
+    <rect x="59.25" y="30" width="9.5" height="34" transform="rotate(72 64 64)"/>
+    <rect x="59.25" y="30" width="9.5" height="34" transform="rotate(144 64 64)"/>
+    <rect x="59.25" y="30" width="9.5" height="34" transform="rotate(216 64 64)"/>
+    <rect x="59.25" y="30" width="9.5" height="34" transform="rotate(288 64 64)"/>
+  </g>
+</svg>

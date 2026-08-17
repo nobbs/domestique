@@ -19,6 +19,13 @@ go:
   - "cmd/**"
   - "internal/**"
 
+ui:
+  - ".github/paths-filter.yml"
+  - ".github/workflows/ci.yml"
+  - ".mise.toml"
+  - "Makefile"
+  - "internal/webui/app/**"
+
 image:
   - ".dockerignore"
   - ".github/paths-filter.yml"

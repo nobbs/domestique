@@ -1,0 +1,113 @@
+import { describe, expect, it } from "vitest";
+import { ContractError, parseStageGeometry, parseStages, parseStatus } from "./parse";
+
+const stagePayload = {
+  route_id: 12,
+  stage: 1,
+  title: "Alpine loop — Descent",
+  route_name: "Alpine loop",
+  stage_name: "Descent",
+  source_revision: "2026-08-17",
+  content_hash: "hash",
+  distance_metres: 1234.5,
+  point_count: 2,
+};
+
+describe("parseStages", () => {
+  it("maps the wire contract onto domain values", () => {
+    const stages = parseStages({ stages: [stagePayload] });
+
+    expect(stages).toHaveLength(1);
+    expect(stages[0]).toMatchObject({
+      routeId: 12,
+      stageOrder: 1,
+      routeName: "Alpine loop",
+      distanceMetres: 1234.5,
+      pointCount: 2,
+    });
+  });
+
+  it("accepts an empty library", () => {
+    expect(parseStages({ stages: [] })).toEqual([]);
+  });
+
+  it("rejects a payload that drifts from the contract", () => {
+    expect(() => parseStages({ stages: [{ ...stagePayload, route_id: "12" }] })).toThrow(
+      ContractError,
+    );
+    expect(() => parseStages({})).toThrow(ContractError);
+    expect(() => parseStages(null)).toThrow(ContractError);
+  });
+});
+
+describe("parseStageGeometry", () => {
+  const payload = {
+    type: "Feature",
+    bbox: [8.4, 49, 8.5, 49.2],
+    geometry: {
+      type: "LineString",
+      coordinates: [
+        [8.4, 49, 128.5],
+        [8.5, 49.2],
+      ],
+    },
+    properties: stagePayload,
+  };
+
+  it("reads coordinates with and without elevation", () => {
+    const geometry = parseStageGeometry(payload);
+
+    expect(geometry.bbox).toEqual([8.4, 49, 8.5, 49.2]);
+    expect(geometry.coordinates).toEqual([
+      [8.4, 49, 128.5],
+      [8.5, 49.2],
+    ]);
+    expect(geometry.stage.title).toBe("Alpine loop — Descent");
+  });
+
+  it("rejects a bounding box that is not four numbers", () => {
+    expect(() => parseStageGeometry({ ...payload, bbox: [8.4, 49] })).toThrow(ContractError);
+  });
+
+  it("rejects a position without a latitude", () => {
+    expect(() =>
+      parseStageGeometry({
+        ...payload,
+        geometry: { type: "LineString", coordinates: [[8.4]] },
+      }),
+    ).toThrow(ContractError);
+  });
+});
+
+describe("parseStatus", () => {
+  it("reads readiness and the last run", () => {
+    const status = parseStatus({
+      ready: true,
+      targets: [{ id: "rider-a", authorisation: "authorized" }],
+      sync: {
+        state: "succeeded",
+        last_result: "succeeded",
+        last_completed_at: "2026-08-17T08:00:00Z",
+        source_stages: 4,
+        created: 1,
+        updated: 2,
+        deleted: 0,
+      },
+    });
+
+    expect(status.ready).toBe(true);
+    expect(status.targets[0]?.id).toBe("rider-a");
+    expect(status.sync.sourceStages).toBe(4);
+    expect(status.sync.lastCompletedAt).toBe("2026-08-17T08:00:00Z");
+  });
+
+  it("tolerates a run that has never completed", () => {
+    const status = parseStatus({
+      ready: false,
+      targets: [],
+      sync: { state: "not_ready", source_stages: 0, created: 0, updated: 0, deleted: 0 },
+    });
+
+    expect(status.sync.lastCompletedAt).toBeUndefined();
+  });
+});

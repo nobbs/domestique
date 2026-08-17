@@ -67,10 +67,30 @@ empty_source_deletion = "deny"
 [notifications.pushover]
 application_token_file = "/run/secrets/pushover_application_token"
 user_key_file = "/run/secrets/pushover_user_key"
+
+[webui]
+tile_style_url = "https://tiles.openfreemap.org/styles/dark"
 ```
 
 The endpoint examples are illustrative. The deployed values must match the
 chosen Wahoo environment and the redirect URI registered for the application.
+
+`webui.tile_style_url` is the MapLibre style the route map view loads. It must
+be an absolute HTTPS URL. Unlike the service's own endpoints it may carry a
+query string, because providers that require an API key put it there.
+
+It is deliberately **not** a secret and is never handled as one: the browser must
+know it, so it is served to the page and is visible to anyone who can reach the
+UI. The default is a keyless provider, so a default deployment publishes no
+credential and sends no account identity to the tile origin. An operator who
+chooses a keyed provider is accepting that the key becomes visible to the UI's
+single authorised user; self-hosted tiles avoid both that and the fact that the
+browser reveals the area of a viewed route to the tile origin.
+
+Changing this value changes the Content-Security-Policy the service sends, which
+permits exactly the service's own origin and this one tile origin. A provider
+that serves its style, tiles, sprites, and glyphs from more than one host is not
+supported without widening that policy.
 
 ## Secret input
 

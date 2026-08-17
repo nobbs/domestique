@@ -34,6 +34,44 @@ func TestLoadUsesFileSecretsAndDefaults(t *testing.T) {
 	}
 }
 
+func TestLoadDefaultsToAKeylessTileStyle(t *testing.T) {
+	configPath, _ := writeValidConfiguration(t, t.TempDir())
+	t.Setenv(configFileEnv, configPath)
+
+	settings, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if got, want := settings.WebUI.TileStyleURL, defaultTileStyleURL; got != want {
+		t.Errorf("WebUI.TileStyleURL = %q, want %q", got, want)
+	}
+}
+
+func TestValidateTileStyleURL(t *testing.T) {
+	tests := []struct {
+		name    string
+		value   string
+		wantErr bool
+	}{
+		{name: "keyless default", value: defaultTileStyleURL},
+		{name: "keyed provider query is permitted", value: "https://tiles.example.test/style.json?key=abc"},
+		{name: "plaintext is rejected", value: "http://tiles.example.test/style.json", wantErr: true},
+		//nolint:gosec // A rejection fixture for URL userinfo, not a real credential.
+		{name: "credentials are rejected", value: "https://user:pass@tiles.example.test/s.json", wantErr: true},
+		{name: "relative is rejected", value: "/styles/liberty", wantErr: true},
+		{name: "empty is rejected", value: "", wantErr: true},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := validateTileStyleURL(test.value)
+			if (err != nil) != test.wantErr {
+				t.Errorf("validateTileStyleURL(%q) error = %v, wantErr %v", test.value, err, test.wantErr)
+			}
+		})
+	}
+}
+
 func TestLoadDirectSecretWinsAndIsCleared(t *testing.T) {
 	configPath, _ := writeValidConfiguration(t, t.TempDir())
 	removeConfigurationLine(t, configPath, "email_file =")

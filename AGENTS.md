@@ -8,7 +8,8 @@ ground with the details an agent needs to act without additional context.
 
 `domestique` mirrors one private VeloPlanner route library to one or two Wahoo
 accounts as device-ready FIT courses. It is a single-tenant, CGO-free
-`linux/arm64` Docker workload for a Tailnet host, with no CLI and no frontend.
+`linux/arm64` Docker workload for a Tailnet host, with no CLI. It also serves a
+**read-only browser UI** that renders one stored route stage at a time on a map.
 Its only state-changing HTTP surface is the Wahoo OAuth onboarding flow and the
 manual `POST /v1/sync` trigger.
 
@@ -41,13 +42,20 @@ mise exec -- make check
 ~~~
 
 `make check` is the complete gate and is exactly what CI runs: `prek`, lint,
-markdownlint, actionlint, `go vet`, tests, `go mod tidy -diff`, `go mod verify`,
-`govulncheck`, `gitleaks`, and an arm64 cross-compile check. Individual targets
-(`make test`, `make lint`, `make fmt`, `make build-check`) are available while
-iterating, but run the full gate before reporting work as complete.
+markdownlint, actionlint, `go vet`, tests, TypeScript type checking, the UI lint
+and test suites, `go mod tidy -diff`, `go mod verify`, `govulncheck`,
+`npm audit`, `gitleaks`, and an arm64 cross-compile check. Individual targets
+(`make test`, `make lint`, `make fmt`, `make ui-test`, `make build-check`) are
+available while iterating, but run the full gate before reporting work complete.
 
 Tests run with `CGO_ENABLED=0` and `-shuffle=on`. They must stay deterministic
 under shuffling.
+
+**The browser UI** lives in `internal/webui/app` (TypeScript, React, Vite,
+MapLibre) and is compiled into the binary with `go:embed`, so `make build`
+depends on `make ui-build`. Use `make ui-dev` for hot reload — it proxies the API
+to a locally running service and injects the Tailnet identity header, so the
+identity gate behaves as it does in production.
 
 ## Architecture rules
 
@@ -90,11 +98,14 @@ of them needs an explicit specification revision, not a quiet edit.
   blocked unless the operator set the explicit empty-source acknowledgement.
 - **A failed source inventory is never destructive.** Authentication failure,
   malformed data, or a suspicious shrink stops deletion and raises an alert.
-- **Secrets stay out of everything observable.** Logs, notifications, HTTP
-  responses, and error messages carry aggregate counts and a stable failure
-  category only — never tokens, credentials, route names, geometry, or raw
-  upstream response bodies. Sensitive config values use dedicated types with
-  unexported fields and no JSON tags.
+- **Secrets stay out of everything observable.** Logs, notifications, and error
+  messages carry aggregate counts and a stable failure category only — never
+  tokens, credentials, route names, geometry, or raw upstream response bodies.
+  Sensitive config values use dedicated types with unexported fields and no JSON
+  tags.
+- **Geometry is served only by its own endpoint**, only to the gated identity,
+  and only from local stored state. It must not appear in the inventory listing,
+  the status endpoint, logs, or notifications.
 - **Refresh tokens are encrypted at rest** in SQLite with the state-encryption
   key; access tokens live only in memory.
 - **All non-OAuth HTTP is read-only and Tailnet-identity-gated.** The handler
@@ -113,12 +124,18 @@ Add a regression test for every behavior change, especially for safety gates.
 Use the `schedule` package's trigger seam rather than sleeping on the wall
 clock. Fixtures must contain no personal route data.
 
+Browser UI tests are Vitest plus Testing Library over the reusable components in
+`src/components` and the API client's parsing and error paths. The map component
+itself is not unit-tested — it needs WebGL — so changes to it must be checked by
+running the app.
+
 ## Files an agent must not touch or read out
 
-`config.toml`, `.local/`, `secrets/`, `*.db*`, and `.cache/` are gitignored local
-deployment artifacts that may hold real credentials and private route data. Do
-not read them for context, copy their values into the repository, or commit
-them. [`config.example.toml`](config.example.toml) is the tracked reference and
+`config.toml`, `.local/`, `secrets/`, `*.db*`, `.cache/`, `node_modules/`, and
+`internal/webui/app/dist/` are gitignored local artifacts; the first four may
+hold real credentials and private route data. Do not read them for context, copy
+their values into the repository, or commit them.
+[`config.example.toml`](config.example.toml) is the tracked reference and
 references secret **files** — it never embeds secret values.
 
 Never commit credentials, OAuth tokens, the Wahoo client secret, personal route

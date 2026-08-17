@@ -1,10 +1,16 @@
 # Domestique service specification
 
-**Status:** accepted v1 design
+**Status:** accepted v2 design
 
-This document is the normative contract for the first Domestique service.
-Where implementation details differ from this document, this document wins
-until it is deliberately revised.
+This document is the normative contract for the Domestique service. Where
+implementation details differ from this document, this document wins until it is
+deliberately revised.
+
+v2 adds a read-only route map view. It revises three v1 decisions: the service
+now has a browser UI, it caches source route geometry locally, and it serves
+that geometry to the single authorised Tailnet identity. Everything else in the
+v1 contract — the sync safety gates, the secret handling, and the deletion
+rules — is unchanged.
 
 ## Purpose and scope
 
@@ -19,16 +25,24 @@ individually identifiable on a device.
 
 The service is a single-tenant Docker workload for an arm64 Tailnet host. The
 initial MVP host is macOS with Docker Desktop; the long-running target is a
-Raspberry Pi. It has no CLI and no frontend. Its HTTP surface is read-only JSON
-for status and route data, except for the protected Wahoo OAuth onboarding
-flow. Route preview and editing are explicitly out of scope for v1.
+Raspberry Pi. It has no CLI.
+
+The service serves a read-only browser UI for route preview. Its HTTP surface is
+read-only JSON for status, route data, and route geometry, except for the
+protected Wahoo OAuth onboarding flow and the manual sync trigger. The UI is a
+view onto stored state: it renders one source route stage at a time on a map.
+
+Route editing remains explicitly out of scope. The UI presents no editing
+affordance, and the service writes nothing back to VeloPlanner. Any future
+change to that boundary requires revising this document first.
 
 ## Constraints and non-goals
 
 - Sync every route in the configured VeloPlanner library; v1 has no selection
   by tag, prefix, or allow-list.
 - Preserve no integration with Ride with GPS.
-- Do not provide route editing, a browser UI, or a command-line interface.
+- Do not provide route editing or a command-line interface. The browser UI is
+  read-only.
 - Do not run a secret manager or reference a specific secret provider from Go.
 - Do not back up the persistent service data. Recovery must be safe despite
   that intentional constraint.
@@ -43,6 +57,16 @@ container has no public host port. The Tailnet host exposes it privately through
 endpoints require the configured sole Tailnet identity, apart from a
 loopback-only liveness probe if one is needed by Docker. The HTTP server trusts
 Tailnet identity headers only from that local proxy.
+
+The map view introduces one deliberate, documented exception to the otherwise
+Tailnet-only posture: the operator's **browser** fetches basemap tiles from a
+configured third-party tile origin, which reveals the viewport of a viewed route
+to that origin. The service itself never contacts the tile origin, and no route
+data is sent to it. The default is a keyless provider, so no credential is
+exposed to the browser and the requests carry no account identity. The tile
+style URL is static configuration so the origin can be changed, or pointed at a
+self-hosted tile source, without a code change. A Content-Security-Policy
+restricts the browser to the service's own origin plus that single tile origin.
 
 The Wahoo OAuth redirect URI is the service's HTTPS Tailnet URL:
 
@@ -71,15 +95,26 @@ The read-only JSON surface is deliberately small:
 - `GET /healthz` reports local process health.
 - `GET /v1/status` reports current configuration readiness, last sync outcome,
   aggregate counts, and target authorisation state.
-- `GET /v1/routes` lists known source routes and stages.
+- `GET /v1/routes` lists known source routes and stages with their titles and
+  aggregate geometry facts.
 - `GET /v1/routes/{source-route-id}/stages/{stage}` returns stored route
   metadata, not edit controls.
+- `GET /v1/routes/{source-route-id}/stages/{stage}/geometry` returns the stored
+  geometry of one stage for map rendering.
 - `POST /v1/sync` queues one immediate synchronization through the same
   reporting path as the schedule. It returns `202 Accepted`, or `409 Conflict`
   when a scheduled or manual synchronization is already running.
 
+The browser UI is served from the same origin and the same authenticated
+listener: an application entry document and immutable hashed static assets.
+
 Exact response schemas are an implementation follow-up. They must never expose
-secrets, tokens, raw upstream response bodies, or full route geometry.
+secrets, tokens, or raw upstream response bodies.
+
+Route geometry is served **only** on the dedicated geometry endpoint, only to
+the configured Tailnet identity, and only from local stored state. It must never
+appear in logs, notifications, error messages, the status endpoint, or the
+inventory listing.
 The concrete OAuth, sync, persistence, and JSON contracts are defined in the
 [sync lifecycle specification](sync-lifecycle.md).
 
@@ -120,12 +155,20 @@ A SQLite database on a Docker volume stores:
 - Wahoo target identities and encrypted refresh tokens;
 - source route/stage identity, source revision, content hash, and Wahoo
   `external_id`;
+- a cache of source stage titles and geometry for the route map view, written
+  only when a stage's content hash changes and kept in its own table so it can
+  be dropped without touching deletion-safety state;
 - the corresponding remote Wahoo route identity where available;
 - last successful source inventory and last sync outcome; and
 - expiring OAuth states.
 
 The database holds no plaintext credential or token. It is intentionally not
 backed up.
+
+It does hold the operator's route geometry in plaintext as a rendering cache.
+That is personal data rather than a credential, and losing it is harmless — the
+next sync refills it from the source — but it raises the sensitivity of the
+volume and should inform where the host keeps it.
 
 If the database or volume is lost, the operator must re-authorise every Wahoo
 targets. The service must reconcile using the Domestique-owned `external_id`
@@ -233,6 +276,7 @@ The intended dependency direction is:
 ```mermaid
 flowchart LR
     HTTP["HTTP API"] --> App["application / sync orchestration"]
+    HTTP --> WebUI["embedded browser UI assets"]
     Scheduler["scheduler"] --> App
     App --> Source["VeloPlanner source adapter"]
     App --> Course["course and FIT encoder"]
@@ -275,5 +319,11 @@ the checkout; its configuration and Docker secret files remain outside Git.
 - Lost state cannot cause deletion of unknown Wahoo routes.
 - The service logs and notifications do not reveal secrets or route details.
 - All non-OAuth HTTP interactions are read-only and Tailnet-identity-gated.
+- The browser UI renders a stored source stage on a map, is reachable only by
+  the configured Tailnet identity, and offers no editing affordance.
+- Stage geometry is cached locally and rewritten only when a stage's content
+  hash changes, so an unchanged library does not rewrite the cache on every run.
+- Losing the geometry cache degrades only the map view; it cannot affect sync
+  safety or cause a destructive Wahoo operation.
 - The codebase has reproducible local and GitHub validation before a release is
   published.
