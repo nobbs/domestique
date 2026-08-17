@@ -40,7 +40,9 @@ function DrawnSignal({ onDrawn }: { onDrawn: () => void }) {
 
       return;
     }
-    map.on("idle", onDrawn);
+    // idle fires on every settled render, but the card only cares about the
+    // first one, so once() keeps a grid of minimaps from re-notifying forever.
+    map.once("idle", onDrawn);
 
     return () => {
       map.off("idle", onDrawn);

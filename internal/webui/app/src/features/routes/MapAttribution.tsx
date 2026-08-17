@@ -33,6 +33,24 @@ async function readJSON(url: string): Promise<unknown> {
   return response.ok ? response.json() : null;
 }
 
+/**
+ * Resolves a URL found inside a style document against that document.
+ *
+ * A style may reference its TileJSON relatively, and such a reference is
+ * relative to the style, not to this page. Resolving it against the app origin
+ * would request the wrong host whenever the operator points
+ * `webui.tile_style_url` at a third-party provider. A value that will not parse
+ * is passed through unchanged, so a malformed style degrades to no attribution
+ * rather than an exception.
+ */
+function resolveAgainstStyle(styleUrl: string, url: string): string {
+  try {
+    return new URL(url, new URL(styleUrl, window.location.href)).toString();
+  } catch {
+    return url;
+  }
+}
+
 function attributionOf(value: unknown): string {
   const attribution = (value as { attribution?: unknown } | null)?.attribution;
 
@@ -55,7 +73,7 @@ async function fetchAttribution(styleUrl: string): Promise<string> {
     // attribution inline, which is how the default provider publishes it.
     const tileJSONURL = (source as { url?: unknown } | null)?.url;
     if (typeof tileJSONURL === "string") {
-      const indirect = attributionOf(await readJSON(tileJSONURL));
+      const indirect = attributionOf(await readJSON(resolveAgainstStyle(styleUrl, tileJSONURL)));
       if (indirect !== "") {
         credits.add(indirect);
       }

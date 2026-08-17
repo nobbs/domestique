@@ -28,6 +28,9 @@ export function useInView<T extends HTMLElement>(rootMargin = "200px") {
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries.some((entry) => entry.isIntersecting)) {
+          // inView latches, so stop observing here rather than waiting for the
+          // effect cleanup: scrolling would otherwise keep firing the callback.
+          observer.disconnect();
           setInView(true);
         }
       },
