@@ -12,8 +12,10 @@ BUILD_FLAGS := -trimpath -buildvcs=true
 BUILD_TARGET := ./cmd/domestique
 BUILD_OUTPUT := build/domestique
 # The release image is published for both architectures, so the compile check
-# covers both. BUILD_ARCH selects the one that `make build` writes to disk.
-BUILD_ARCH ?= amd64
+# covers both. BUILD_ARCH selects the one that `make build` writes to disk, and
+# defaults to the machine's own so a local build runs where it was built. Set it
+# explicitly to cross-compile for the other host.
+BUILD_ARCH ?= $(shell $(GO) env GOARCH)
 RELEASE_ARCHES := amd64 arm64
 UI_DIR := internal/webui/app
 UI_DIST := $(UI_DIR)/dist

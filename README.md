@@ -32,9 +32,11 @@ secret values.
 ## Deployment
 
 The service image is CGO-free `linux/amd64` and `linux/arm64`, and embeds the
-browser UI, so the API and the UI ship as one signed artefact. Its base images
-are Docker Hardened Images, so building it requires `docker login dhi.io`;
-deploying it does not.
+browser UI, so the API and the UI ship as one artefact. A release published to
+GHCR is signed and carries provenance, which a deploying host verifies before it
+accepts a digest; an image built from a checkout is a local build and carries
+neither. Its base images are Docker Hardened Images, so building it requires
+`docker login dhi.io`; deploying it does not.
 The host owns the private boundary: Docker publishes only `127.0.0.1:8080`,
 while host-level Tailscale Serve provides HTTPS and the authenticated identity
 header to the container. Tailscale does not run in the image.

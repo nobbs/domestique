@@ -23,7 +23,7 @@ The repository provides these stable Make targets:
 | `make fmt` | Applies Go formatting to owned Go source. |
 | `make lint` | Runs the configured `golangci-lint` checks. |
 | `make test` | Runs the normal deterministic test suite with `CGO_ENABLED=0`. |
-| `make build` | Compiles the Linux service binary for `BUILD_ARCH` with `CGO_ENABLED=0`, after building the browser UI. |
+| `make build` | Compiles the Linux service binary for `BUILD_ARCH`, the machine's own architecture unless overridden, with `CGO_ENABLED=0`, after building the browser UI. |
 | `make ui-build` | Builds the browser UI bundle that the binary embeds. |
 | `make ui-dev` | Runs the UI dev server, proxying the API to the local service. |
 | `make dev-setup` | Snapshots the deployed state into an isolated development environment. |
