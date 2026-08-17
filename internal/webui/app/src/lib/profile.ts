@@ -70,7 +70,13 @@ export interface Profile {
   maxElevationMetres: number;
 }
 
-function haversineMetres(from: Position, to: Position): number {
+/**
+ * Great-circle distance between two positions, on the same spherical model the
+ * service uses. Exported because anything else measuring along a stage has to
+ * agree with the profile's axis to the metre, and a second implementation would
+ * eventually not.
+ */
+export function haversineMetres(from: Position, to: Position): number {
   const [fromLongitude, fromLatitude] = from;
   const [toLongitude, toLatitude] = to;
   const latitudeDelta = ((toLatitude - fromLatitude) * Math.PI) / 180;
