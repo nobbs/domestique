@@ -138,10 +138,46 @@ body {
 
 .route-card__preview {
   display: block;
+  position: relative;
   aspect-ratio: 4 / 3;
   background: var(--surface-sunken);
   color: var(--accent);
+  overflow: hidden;
+}
+
+/* The bare shape is inset; a basemap bleeds to the card edges. */
+.route-card__preview > .route-thumbnail {
   padding: 0.5rem;
+}
+
+.route-minimap {
+  display: block;
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+/*
+ * The shape sits above the basemap and fades out once it has drawn, so a card
+ * shows its route immediately instead of a grey box waiting on the network.
+ */
+.route-minimap__shape {
+  position: absolute;
+  inset: 0;
+  display: block;
+  padding: 0.5rem;
+  background: var(--surface-sunken);
+  transition: opacity 260ms ease;
+}
+
+.route-minimap[data-loaded="true"] .route-minimap__shape {
+  opacity: 0;
+}
+
+.grid-attribution {
+  padding: 0 1.15rem 1.15rem;
+  color: var(--text-muted);
+  font-size: 0.75rem;
 }
 
 .route-card__body {
@@ -197,7 +233,8 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .route-card,
-  .route-thumbnail--empty {
+  .route-thumbnail--empty,
+  .route-minimap__shape {
     transition: none;
     animation: none;
   }
