@@ -1,0 +1,32 @@
+# Path filters consumed by the CI workflow's "Changes" job. Each key becomes an
+# output that gates one downstream job, so a docs-only pull request skips the
+# Go and image work instead of paying for it.
+#
+# Every filter includes this file and the workflow itself: a change to how CI
+# decides what to run must always run everything it gates.
+
+lint:
+  - "**"
+
+go:
+  - ".github/paths-filter.yml"
+  - ".github/workflows/ci.yml"
+  - ".golangci.yml"
+  - ".mise.toml"
+  - "Makefile"
+  - "go.mod"
+  - "go.sum"
+  - "cmd/**"
+  - "internal/**"
+
+image:
+  - ".dockerignore"
+  - ".github/paths-filter.yml"
+  - ".github/workflows/ci.yml"
+  - ".mise.toml"
+  - "Dockerfile"
+  - "Makefile"
+  - "go.mod"
+  - "go.sum"
+  - "cmd/**"
+  - "internal/**"
