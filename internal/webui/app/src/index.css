@@ -14,8 +14,7 @@
   --text: #1b1a19;
   --text-muted: #6b6864;
 
-  --radius: 8px;
-  --sidebar-width: 19rem;
+  --radius: 10px;
   --header-height: 3.25rem;
 
   color-scheme: light dark;
@@ -70,7 +69,7 @@ body {
   justify-content: space-between;
   gap: 1rem;
   height: var(--header-height);
-  padding: 0 1rem;
+  padding: 0 1.15rem;
   border-bottom: 1px solid var(--border);
   background: var(--surface-raised);
   flex: 0 0 auto;
@@ -91,92 +90,136 @@ body {
   color: var(--text);
 }
 
-.layout__body {
-  display: flex;
-  flex: 1 1 auto;
-  min-height: 0;
-}
-
-.layout__sidebar {
-  width: var(--sidebar-width);
-  flex: 0 0 auto;
-  border-right: 1px solid var(--border);
-  overflow-y: auto;
-  background: var(--surface-raised);
-}
-
 .layout__main {
   flex: 1 1 auto;
-  min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
+  overflow-y: auto;
 }
 
-@media (max-width: 48rem) {
-  .layout__body {
-    flex-direction: column;
-  }
+/* Route library grid ------------------------------------------------------ */
 
-  .layout__sidebar {
-    width: 100%;
-    max-height: 40vh;
-    border-right: none;
-    border-bottom: 1px solid var(--border);
-  }
-}
-
-/* Stage list -------------------------------------------------------------- */
-
-.stage-list {
+.route-grid {
   list-style: none;
   margin: 0;
-  padding: 0.5rem;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+  padding: 1.15rem;
+  display: grid;
+  gap: 1.15rem;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  align-content: start;
 }
 
-.stage-list__item {
+.route-card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  color: inherit;
+  text-decoration: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+  overflow: hidden;
+  transition:
+    border-color 120ms ease,
+    transform 120ms ease;
+}
+
+.route-card:hover,
+.route-card:focus-visible {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+}
+
+.route-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.route-card__preview {
+  display: block;
+  aspect-ratio: 4 / 3;
+  background: var(--surface-sunken);
+  color: var(--accent);
+  padding: 0.5rem;
+}
+
+.route-card__body {
   display: flex;
   flex-direction: column;
   gap: 0.15rem;
-  padding: 0.55rem 0.7rem;
-  border-radius: var(--radius);
-  color: inherit;
-  text-decoration: none;
-  border-left: 3px solid transparent;
+  padding: 0.7rem 0.85rem 0.85rem;
 }
 
-.stage-list__item:hover {
-  background: var(--surface-sunken);
-}
-
-.stage-list__item--active {
-  background: var(--accent-soft);
-  border-left-color: var(--accent);
-}
-
-.stage-list__title {
+.route-card__title {
   font-weight: 500;
+  /* Long route names must not push the card out of its grid column. */
+  overflow-wrap: anywhere;
 }
 
-.stage-list__meta,
-.stage-list__empty {
+.route-card__meta {
   color: var(--text-muted);
   font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
 }
 
-.stage-list__empty {
-  padding: 1rem;
+.route-thumbnail {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
-/* Stage detail ------------------------------------------------------------ */
+.route-thumbnail--empty {
+  border-radius: calc(var(--radius) - 4px);
+  background: linear-gradient(
+    100deg,
+    transparent 30%,
+    rgb(128 128 128 / 12%) 50%,
+    transparent 70%
+  );
+  background-size: 300% 100%;
+  animation: route-thumbnail-shimmer 1.4s ease-in-out infinite;
+}
+
+.route-thumbnail--empty[data-state="error"] {
+  animation: none;
+  background: none;
+}
+
+@keyframes route-thumbnail-shimmer {
+  from {
+    background-position: 150% 0;
+  }
+  to {
+    background-position: -150% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .route-card,
+  .route-thumbnail--empty {
+    transition: none;
+    animation: none;
+  }
+}
+
+/* Route preview ----------------------------------------------------------- */
 
 .stage-detail {
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
   min-height: 0;
+}
+
+.stage-detail__back {
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: 0.9rem;
+}
+
+.stage-detail__back:hover {
+  color: var(--accent);
 }
 
 .stage-detail__header {

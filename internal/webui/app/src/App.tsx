@@ -9,9 +9,8 @@ import { StagesPage } from "./features/routes/StagesPage";
 export function App() {
   return (
     <Routes>
-      <Route path="/" element={<StagesPage />}>
-        <Route path="routes/:routeId/:stage" element={<StageDetail />} />
-      </Route>
+      <Route path="/" element={<StagesPage />} />
+      <Route path="routes/:routeId/:stage" element={<StageDetail />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
