@@ -269,6 +269,58 @@ func TestStorePersistsTrustedInventoryAndTargetStages(t *testing.T) {
 	}
 }
 
+func TestStoreRecordsRunsAndFailureNotificationState(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	startedAt := time.Date(2026, time.August, 17, 8, 0, 0, 0, time.UTC)
+	finishedAt := startedAt.Add(time.Minute)
+	if err := store.RecordSyncRun(
+		t.Context(),
+		startedAt,
+		finishedAt,
+		"succeeded",
+		"",
+		3,
+		2,
+		1,
+		0,
+	); err != nil {
+		t.Fatalf("RecordSyncRun() error = %v", err)
+	}
+
+	var (
+		outcome      string
+		detail       string
+		sourceStages int
+		created      int
+		updated      int
+		deleted      int
+	)
+	if err := store.database.QueryRowContext(t.Context(), `
+		SELECT outcome, detail, source_stages, created, updated, deleted FROM sync_runs
+	`).Scan(&outcome, &detail, &sourceStages, &created, &updated, &deleted); err != nil {
+		t.Fatalf("querying sync run: %v", err)
+	}
+	if got, want := fmt.Sprintf("%s/%s/%d/%d/%d/%d", outcome, detail, sourceStages, created, updated, deleted), "succeeded//3/2/1/0"; got != want {
+		t.Errorf("stored sync run = %q, want %q", got, want)
+	}
+	if _, found, err := store.LastFailureNotification(t.Context(), "destination"); err != nil || found {
+		t.Errorf("LastFailureNotification() = found %t, error %v, want no state", found, err)
+	}
+	if err := store.RecordFailureNotification(t.Context(), "destination", finishedAt); err != nil {
+		t.Fatalf("RecordFailureNotification() error = %v", err)
+	}
+	sentAt, found, err := store.LastFailureNotification(t.Context(), "destination")
+	if err != nil {
+		t.Fatalf("LastFailureNotification() error = %v", err)
+	}
+	if !found {
+		t.Fatal("LastFailureNotification() found = false, want true")
+	}
+	if got, want := sentAt, finishedAt; !got.Equal(want) {
+		t.Errorf("LastFailureNotification() = %s, want %s", got, want)
+	}
+}
+
 func TestStoreMigrationsAreIdempotent(t *testing.T) {
 	databasePath := filepath.Join(t.TempDir(), "state.db")
 	first, firstOpenErr := Open(t.Context(), databasePath, testKey(1))

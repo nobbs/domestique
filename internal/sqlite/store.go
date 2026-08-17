@@ -463,6 +463,66 @@ func (s *Store) DeleteTargetStage(ctx context.Context, targetID string, routeID 
 	return nil
 }
 
+// RecordSyncRun stores one terminal synchronization result. Its detail is a
+// stable failure category, never provider text or a route name.
+func (s *Store) RecordSyncRun(
+	ctx context.Context,
+	startedAt, finishedAt time.Time,
+	outcome, detail string,
+	sourceStages, created, updated, deleted int,
+) error {
+	if startedAt.IsZero() || finishedAt.IsZero() || finishedAt.Before(startedAt) || outcome == "" ||
+		sourceStages < 0 || created < 0 || updated < 0 || deleted < 0 {
+		return errors.New("complete non-negative sync run metadata is required")
+	}
+	if _, err := s.database.ExecContext(ctx, `
+		INSERT INTO sync_runs (
+			started_at_unix, finished_at_unix, outcome, detail, source_stages, created, updated, deleted
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`, startedAt.Unix(), finishedAt.Unix(), outcome, detail, sourceStages, created, updated, deleted); err != nil {
+		return fmt.Errorf("recording sync run: %w", err)
+	}
+
+	return nil
+}
+
+// LastFailureNotification returns the previous delivery time for one safe
+// failure category. The caller decides whether the configured suppression
+// interval has elapsed.
+func (s *Store) LastFailureNotification(ctx context.Context, category string) (time.Time, bool, error) {
+	if category == "" {
+		return time.Time{}, false, errors.New("failure category is required")
+	}
+	var sentAt int64
+	err := s.database.QueryRowContext(ctx, `
+		SELECT last_sent_at_unix FROM notification_state WHERE kind = ?
+	`, "failure:"+category).Scan(&sentAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return time.Time{}, false, nil
+	}
+	if err != nil {
+		return time.Time{}, false, fmt.Errorf("reading failure notification state: %w", err)
+	}
+
+	return time.Unix(sentAt, 0).UTC(), true, nil
+}
+
+// RecordFailureNotification records a delivered notification after Pushover
+// accepted it, so failed delivery attempts are retried on the next run.
+func (s *Store) RecordFailureNotification(ctx context.Context, category string, sentAt time.Time) error {
+	if category == "" || sentAt.IsZero() {
+		return errors.New("failure category and notification time are required")
+	}
+	if _, err := s.database.ExecContext(ctx, `
+		INSERT INTO notification_state (kind, last_sent_at_unix) VALUES (?, ?)
+		ON CONFLICT(kind) DO UPDATE SET last_sent_at_unix = excluded.last_sent_at_unix
+	`, "failure:"+category, sentAt.Unix()); err != nil {
+		return fmt.Errorf("recording failure notification: %w", err)
+	}
+
+	return nil
+}
+
 // MarkNeedsReauthorization clears a target's refresh token after a permanent
 // OAuth failure and leaves it ready for a fresh interactive authorization.
 func (s *Store) MarkNeedsReauthorization(ctx context.Context, targetID string) error {
@@ -774,6 +834,12 @@ func schemaMigrations() [][]string {
 		},
 		{
 			`ALTER TABLE target_stages ADD COLUMN source_revision TEXT NOT NULL DEFAULT ''`,
+		},
+		{
+			`ALTER TABLE sync_runs ADD COLUMN source_stages INTEGER NOT NULL DEFAULT 0`,
+			`ALTER TABLE sync_runs ADD COLUMN created INTEGER NOT NULL DEFAULT 0`,
+			`ALTER TABLE sync_runs ADD COLUMN updated INTEGER NOT NULL DEFAULT 0`,
+			`ALTER TABLE sync_runs ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0`,
 		},
 	}
 }
