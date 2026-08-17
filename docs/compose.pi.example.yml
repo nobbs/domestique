@@ -1,0 +1,41 @@
+services:
+  domestique:
+    image: "${DOMESTIQUE_IMAGE:?set an immutable, verified GHCR digest in .env}"
+    restart: unless-stopped
+    user: "65532:65532"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "127.0.0.1:8080:8080"
+    tmpfs:
+      - /tmp:mode=1777,nosuid,nodev,noexec
+    volumes:
+      - domestique-state:/var/lib/domestique
+      - ./config.toml:/etc/domestique/config.toml:ro
+    secrets:
+      - state_encryption_key
+      - veloplanner_email
+      - veloplanner_password
+      - wahoo_client_secret
+      - pushover_application_token
+      - pushover_user_key
+
+secrets:
+  state_encryption_key:
+    file: ./secrets/state_encryption_key
+  veloplanner_email:
+    file: ./secrets/veloplanner_email
+  veloplanner_password:
+    file: ./secrets/veloplanner_password
+  wahoo_client_secret:
+    file: ./secrets/wahoo_client_secret
+  pushover_application_token:
+    file: ./secrets/pushover_application_token
+  pushover_user_key:
+    file: ./secrets/pushover_user_key
+
+volumes:
+  domestique-state:

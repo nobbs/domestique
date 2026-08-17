@@ -1,8 +1,8 @@
 # Contributing
 
-Domestique is a private single-tenant service developed in the open. The
-accepted contracts in [`docs/specs`](docs/specs) define v1 behavior; a change
-must not silently weaken their access, deletion, or secret-handling rules.
+Domestique is a private single-tenant service. The accepted contracts in
+[`docs/specs`](docs/specs) define v1 behavior; a change must not silently
+weaken their access, deletion, or secret-handling rules.
 
 ## Local checks
 

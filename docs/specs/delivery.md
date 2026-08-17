@@ -145,7 +145,7 @@ Release automation receives only the permissions required to publish GHCR,
 attest, sign, and create the release. It receives no application secrets and
 does not contact live provider accounts.
 
-## Public repository hygiene
+## Repository hygiene
 
 Before the first implementation release, the repository includes:
 
