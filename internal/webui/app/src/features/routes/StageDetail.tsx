@@ -123,7 +123,11 @@ export function StageDetail() {
             />
           </Suspense>
         </div>
-        <ElevationOverview coordinates={coordinates} title={stage.title} />
+        <ElevationOverview
+          coordinates={coordinates}
+          title={stage.title}
+          hint={`${formatAscent(stage.ascentMetres)} climbing · ${formatGradient(stage.maxGradientPercent)} max`}
+        />
       </section>
     </Layout>
   );
@@ -138,7 +142,15 @@ const OVERVIEW_PREFERENCE = "domestique.elevation-overview-open";
  * page is read rather than something to re-make on every route. The chart is
  * only mounted while open, so a collapsed overview costs no layout work.
  */
-function ElevationOverview({ coordinates, title }: { coordinates: Position[]; title: string }) {
+function ElevationOverview({
+  coordinates,
+  title,
+  hint,
+}: {
+  coordinates: Position[];
+  title: string;
+  hint: string;
+}) {
   const [open, setOpen] = useState(() => {
     try {
       return localStorage.getItem(OVERVIEW_PREFERENCE) !== "closed";
@@ -160,7 +172,21 @@ function ElevationOverview({ coordinates, title }: { coordinates: Position[]; ti
 
   return (
     <details className="elevation-overview" open={open} onToggle={onToggle}>
-      <summary className="elevation-overview__summary">Elevation overview</summary>
+      <summary className="elevation-overview__summary">
+        <svg className="elevation-overview__caret" viewBox="0 0 12 12" aria-hidden="true">
+          <path
+            d="M4.5 2.5 L8 6 L4.5 9.5"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+        <span>Elevation</span>
+        {/* Kept meaningful when closed, so collapsing does not hide the numbers. */}
+        <span className="elevation-overview__hint">{hint}</span>
+      </summary>
       {open ? <ElevationProfile coordinates={coordinates} title={title} /> : null}
     </details>
   );

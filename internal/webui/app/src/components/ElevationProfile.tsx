@@ -1,12 +1,12 @@
 /**
- * The route's elevation profile: elevation against distance travelled, with the
- * line coloured by how steep the ground is.
+ * The route's elevation profile: elevation against distance travelled, drawn as
+ * a cross-section whose ground is banded by how steep it is.
  *
  * Steepness is an ordered measure, so it wears an ordinal ramp — one hue, light
- * to dark — with a scale legend, and the band is carried by the **line**. The
- * area stays a wash: a full-width area filled at encoding strength would be the
- * large saturated block that thin marks exist to avoid, and it would drown the
- * map beneath it.
+ * to dark — with a scale legend. The bands fill the ground rather than tinting
+ * the outline, which is what makes a steep kilometre read as a block of terrain
+ * at a glance. The ramp is deliberately muted so a chart of solid columns still
+ * sits quietly under the map.
  */
 
 import { useCallback, useMemo, useState } from "react";
@@ -26,7 +26,7 @@ export interface ElevationProfileProps {
 
 interface Run {
   band: number;
-  line: string;
+  column: string;
 }
 
 /** A run shorter than this is absorbed into its neighbour. */
@@ -61,15 +61,20 @@ function steadyBands(samples: ProfileSample[]): number[] {
 }
 
 /**
- * Splits the profile into contiguous runs of one gradient band.
+ * Splits the ground under the profile into columns of one gradient band each.
  *
- * Each run repeats its predecessor's last point so the coloured segments meet
- * rather than leaving a hairline of surface between them.
+ * A column follows the terrain along its top and drops to the baseline, so the
+ * chart reads as a cross-section of the ride: the steep parts are visibly
+ * darker blocks of ground rather than a recoloured hairline.
+ *
+ * Runs share their boundary sample, so neighbouring columns meet exactly —
+ * neither overlapping into a darker seam nor leaving a sliver of surface.
  */
 function runsOf(
   samples: ProfileSample[],
   x: (metres: number) => number,
   y: (metres: number) => number,
+  plotHeight: number,
 ): Run[] {
   const bands = steadyBands(samples);
   const runs: Run[] = [];
@@ -80,16 +85,19 @@ function runsOf(
       continue;
     }
     const slice = samples.slice(start, Math.min(index + 1, samples.length));
-    if (slice.length >= 2) {
+    const first = slice[0];
+    const last = slice[slice.length - 1];
+    if (slice.length >= 2 && first && last) {
+      const ridge = slice
+        .map(
+          (sample, offset) =>
+            `${offset === 0 ? "M" : "L"}${x(sample.distanceMetres).toFixed(1)},${y(sample.elevationMetres).toFixed(1)}`,
+        )
+        .join(" ");
+
       runs.push({
         band: bands[start] ?? 0,
-        line: slice
-          .map((sample, offset) => {
-            const command = offset === 0 ? "M" : "L";
-
-            return `${command}${x(sample.distanceMetres).toFixed(1)},${y(sample.elevationMetres).toFixed(1)}`;
-          })
-          .join(" "),
+        column: `${ridge} L${x(last.distanceMetres).toFixed(1)},${plotHeight.toFixed(1)} L${x(first.distanceMetres).toFixed(1)},${plotHeight.toFixed(1)} Z`,
       });
     }
     start = index;
@@ -118,7 +126,7 @@ export function ElevationProfile({ coordinates, title }: ElevationProfileProps) 
     const x = (metres: number) => (metres / profile.totalDistanceMetres) * plotWidth;
     const y = (metres: number) => plotHeight - ((metres - low) / span) * plotHeight;
 
-    const outline = profile.samples
+    const ridge = profile.samples
       .map(
         (sample, index) =>
           `${index === 0 ? "M" : "L"}${x(sample.distanceMetres).toFixed(1)},${y(sample.elevationMetres).toFixed(1)}`,
@@ -128,8 +136,8 @@ export function ElevationProfile({ coordinates, title }: ElevationProfileProps) 
     return {
       x,
       y,
-      area: `${outline} L${plotWidth.toFixed(1)},${plotHeight} L0,${plotHeight} Z`,
-      runs: runsOf(profile.samples, x, y),
+      ridge,
+      runs: runsOf(profile.samples, x, y, plotHeight),
       elevationTicks: ticksFor(low, low + span, 3),
       distanceTicks: ticksFor(0, profile.totalDistanceMetres / 1000, 5),
     };
@@ -214,17 +222,18 @@ export function ElevationProfile({ coordinates, title }: ElevationProfileProps) 
             </g>
           ))}
 
-          <path className="elevation-profile__area" d={geometry.area} />
           {geometry.runs.map((run, index) => (
             <path
               // Runs are positional slices of one profile; there is no id to key on.
               // biome-ignore lint/suspicious/noArrayIndexKey: positional by nature
-              key={`line-${index}`}
-              className="elevation-profile__line"
+              key={`column-${index}`}
+              className="elevation-profile__column"
               data-band={run.band}
-              d={run.line}
+              d={run.column}
             />
           ))}
+          {/* One ridge over the columns, so the silhouette stays crisp. */}
+          <path className="elevation-profile__ridge" d={geometry.ridge} />
 
           {geometry.distanceTicks.map((kilometres) => (
             <text
