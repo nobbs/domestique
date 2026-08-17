@@ -7,8 +7,6 @@
  * never sent anywhere.
  */
 
-import { setWorkerUrl } from "maplibre-gl";
-import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import { useCallback, useEffect, useMemo } from "react";
 import {
   Layer,
@@ -20,16 +18,8 @@ import {
 } from "react-map-gl/maplibre";
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { BoundingBox, Position } from "../api/types";
-
-// MapLibre builds its worker filename at runtime, which the bundler's static
-// analysis cannot see, so the worker chunk is never emitted and tile parsing
-// silently never starts. `?worker&url` makes it an explicit build input and
-// yields a same-origin URL the Content-Security-Policy allows.
-//
-// It must be `?worker&url` rather than plain `?url`: the latter copies the file
-// verbatim, leaving its `./maplibre-gl-shared.mjs` import unresolved, so the
-// worker 404s on load and the map renders no tiles without reporting an error.
-setWorkerUrl(workerUrl);
+// Configures the shared worker pool; without it this map renders no tiles.
+import "../lib/maplibre";
 
 /** The brand accent, chosen to stay legible over both light and dark basemaps. */
 const ROUTE_ACCENT = "#C8502E";

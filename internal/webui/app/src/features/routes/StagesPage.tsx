@@ -9,6 +9,7 @@ import { stageKey } from "../../api/types";
 import { Layout } from "../../components/Layout";
 import { RouteGrid } from "../../components/RouteCard";
 import { ErrorMessage, LoadingMessage, StatusMessage } from "../../components/StatusMessage";
+import { MapAttribution } from "./MapAttribution";
 import { StageCard } from "./StageCard";
 import { SyncStatusBadge } from "./SyncStatusBadge";
 
@@ -26,11 +27,14 @@ export function StagesPage() {
         />
       ) : null}
       {data && data.length > 0 ? (
-        <RouteGrid>
-          {data.map((stage) => (
-            <StageCard key={stageKey(stage)} stage={stage} />
-          ))}
-        </RouteGrid>
+        <>
+          <RouteGrid>
+            {data.map((stage) => (
+              <StageCard key={stageKey(stage)} stage={stage} />
+            ))}
+          </RouteGrid>
+          <MapAttribution />
+        </>
       ) : null}
     </Layout>
   );

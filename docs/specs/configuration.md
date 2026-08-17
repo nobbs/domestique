@@ -69,7 +69,7 @@ application_token_file = "/run/secrets/pushover_application_token"
 user_key_file = "/run/secrets/pushover_user_key"
 
 [webui]
-tile_style_url = "https://tiles.openfreemap.org/styles/dark"
+tile_style_url = "https://tiles.openfreemap.org/styles/bright"
 ```
 
 The endpoint examples are illustrative. The deployed values must match the
