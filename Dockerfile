@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1
 
-FROM --platform=$BUILDPLATFORM golang:1.26.6-alpine AS build
+# golang:1.26.6-alpine
+FROM --platform=$BUILDPLATFORM golang@sha256:3889b425f035be855a72fb4755265311293b6d414521f0a519d819df32222d83 AS build
 
 ARG TARGETARCH
 ARG TARGETOS
@@ -19,7 +20,8 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
     && touch /out/etc/domestique/.keep /out/var/lib/domestique/.keep \
     && chown -R 65532:65532 /out/etc /out/var
 
-FROM gcr.io/distroless/static-debian12:nonroot
+# gcr.io/distroless/static-debian12:nonroot
+FROM gcr.io/distroless/static-debian12@sha256:1b7b9f0f0e0a1d2155f531db587cc48ec26aaf97ab64364225f5bf18a054e66a
 
 LABEL org.opencontainers.image.source="https://github.com/nobbs/domestique"
 
