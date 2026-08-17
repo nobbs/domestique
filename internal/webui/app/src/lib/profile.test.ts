@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Position } from "../api/types";
-import { buildProfile, niceStep, ticksFor } from "./profile";
+import { buildProfile, nearestSample, niceStep, ticksFor } from "./profile";
 
 /** Points spaced by latitude, so distance grows predictably along the route. */
 function route(elevations: Array<number | undefined>, latitudeStep = 0.001): Position[] {
@@ -101,5 +101,49 @@ describe("ticksFor", () => {
       expect(tick).toBeLessThanOrEqual(312);
       expect(Number.isInteger(tick)).toBe(true);
     }
+  });
+});
+
+describe("nearestSample", () => {
+  it("finds the sample under a point on the route", () => {
+    const profile = buildProfile(route([100, 150, 200]), 21);
+    if (!profile) {
+      throw new Error("expected a profile");
+    }
+    const target = profile.samples[10];
+    if (!target) {
+      throw new Error("expected a sample");
+    }
+
+    const found = nearestSample(profile, target.longitude, target.latitude);
+
+    expect(found).toBe(10);
+  });
+
+  it("carries coordinates on every sample so the map can mark one", () => {
+    const profile = buildProfile(route([100, 200]), 5);
+
+    for (const sample of profile?.samples ?? []) {
+      expect(Number.isFinite(sample.longitude)).toBe(true);
+      expect(Number.isFinite(sample.latitude)).toBe(true);
+    }
+  });
+
+  it("weights longitude by latitude, so north-south distance is not understated", () => {
+    // Two candidates equidistant in raw degrees: one along the route's own
+    // north-south line, one displaced east. Near 49° a degree east is about
+    // two-thirds of a degree north, so the eastern point is genuinely closer.
+    const profile = buildProfile(route([100, 100, 100]), 3);
+    if (!profile) {
+      throw new Error("expected a profile");
+    }
+    const middle = profile.samples[1];
+    if (!middle) {
+      throw new Error("expected a sample");
+    }
+
+    const eastward = nearestSample(profile, middle.longitude + 0.0005, middle.latitude);
+
+    expect(eastward).toBe(1);
   });
 });

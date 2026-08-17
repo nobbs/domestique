@@ -9,10 +9,9 @@
  * sits quietly under the map.
  */
 
-import { useCallback, useMemo, useState } from "react";
-import type { Position } from "../api/types";
-import type { ProfileSample } from "../lib/profile";
-import { buildProfile, GRADIENT_BANDS, ticksFor } from "../lib/profile";
+import { useCallback, useMemo } from "react";
+import type { Profile, ProfileSample } from "../lib/profile";
+import { GRADIENT_BANDS, ticksFor } from "../lib/profile";
 import { useElementWidth } from "../lib/useElementWidth";
 
 const HEIGHT = 148;
@@ -20,8 +19,11 @@ const PADDING = { top: 12, right: 12, bottom: 22, left: 46 };
 const MIN_WIDTH = 240;
 
 export interface ElevationProfileProps {
-  coordinates: Position[];
+  profile: Profile | null;
   title: string;
+  /** The position shared with the map, as an index into the profile samples. */
+  activeIndex: number | null;
+  onActiveChange: (index: number | null) => void;
 }
 
 interface Run {
@@ -106,11 +108,13 @@ function runsOf(
   return runs;
 }
 
-export function ElevationProfile({ coordinates, title }: ElevationProfileProps) {
+export function ElevationProfile({
+  profile,
+  title,
+  activeIndex,
+  onActiveChange,
+}: ElevationProfileProps) {
   const { ref, width } = useElementWidth<HTMLDivElement>();
-  const [hovered, setHovered] = useState<number | null>(null);
-
-  const profile = useMemo(() => buildProfile(coordinates), [coordinates]);
 
   const plotWidth = Math.max(width, MIN_WIDTH) - PADDING.left - PADDING.right;
   const plotHeight = HEIGHT - PADDING.top - PADDING.bottom;
@@ -151,9 +155,9 @@ export function ElevationProfile({ coordinates, title }: ElevationProfileProps) 
       const bounds = event.currentTarget.getBoundingClientRect();
       const ratio = (event.clientX - bounds.left) / bounds.width;
       const index = Math.round(ratio * (profile.samples.length - 1));
-      setHovered(Math.min(Math.max(index, 0), profile.samples.length - 1));
+      onActiveChange(Math.min(Math.max(index, 0), profile.samples.length - 1));
     },
-    [profile],
+    [profile, onActiveChange],
   );
 
   const onKeyDown = useCallback(
@@ -166,13 +170,10 @@ export function ElevationProfile({ coordinates, title }: ElevationProfileProps) 
         return;
       }
       event.preventDefault();
-      setHovered((current) => {
-        const next = (current ?? 0) + step * 4;
-
-        return Math.min(Math.max(next, 0), profile.samples.length - 1);
-      });
+      const next = (activeIndex ?? 0) + step * 4;
+      onActiveChange(Math.min(Math.max(next, 0), profile.samples.length - 1));
     },
-    [profile],
+    [profile, activeIndex, onActiveChange],
   );
 
   if (!profile || !geometry) {
@@ -183,7 +184,7 @@ export function ElevationProfile({ coordinates, title }: ElevationProfileProps) 
     );
   }
 
-  const active = hovered === null ? null : profile.samples[hovered];
+  const active = activeIndex === null ? null : profile.samples[activeIndex];
   const summary =
     `Elevation profile of ${title}: ` +
     `${(profile.totalDistanceMetres / 1000).toFixed(1)} kilometres, ` +
@@ -288,8 +289,8 @@ export function ElevationProfile({ coordinates, title }: ElevationProfileProps) 
         }
         onKeyDown={onKeyDown}
         onPointerMove={onPointerMove}
-        onPointerLeave={() => setHovered(null)}
-        onBlur={() => setHovered(null)}
+        onPointerLeave={() => onActiveChange(null)}
+        onBlur={() => onActiveChange(null)}
       />
 
       <div className="elevation-profile__footer">

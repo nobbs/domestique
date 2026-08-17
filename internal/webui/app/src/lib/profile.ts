@@ -46,6 +46,13 @@ export function gradientBand(percent: number): number {
 export interface ProfileSample {
   distanceMetres: number;
   elevationMetres: number;
+  /**
+   * Where this sample sits on the ground. The map and the chart address a
+   * position by the same sample index, so carrying the coordinate here is what
+   * lets a hover on one show up on the other.
+   */
+  longitude: number;
+  latitude: number;
   gradientPercent: number;
   band: number;
 }
@@ -100,7 +107,12 @@ export function buildProfile(coordinates: Position[], sampleCount = 320): Profil
     return null;
   }
 
-  const sampled: Array<{ distanceMetres: number; elevationMetres: number }> = [];
+  const sampled: Array<{
+    distanceMetres: number;
+    elevationMetres: number;
+    longitude: number;
+    latitude: number;
+  }> = [];
   let cursor = 0;
   for (let step = 0; step < sampleCount; step++) {
     const target = (total * step) / (sampleCount - 1);
@@ -109,14 +121,18 @@ export function buildProfile(coordinates: Position[], sampleCount = 320): Profil
     }
     const spanStart = distances[cursor] ?? 0;
     const spanEnd = distances[cursor + 1] ?? spanStart;
-    const startElevation = elevationOf(coordinates[cursor] as Position) ?? 0;
-    const endElevation = elevationOf(coordinates[cursor + 1] as Position) ?? startElevation;
+    const from = coordinates[cursor] as Position;
+    const to = (coordinates[cursor + 1] ?? from) as Position;
+    const startElevation = elevationOf(from) ?? 0;
+    const endElevation = elevationOf(to) ?? startElevation;
     const span = spanEnd - spanStart;
     const ratio = span > 0 ? (target - spanStart) / span : 0;
 
     sampled.push({
       distanceMetres: target,
       elevationMetres: startElevation + ratio * (endElevation - startElevation),
+      longitude: from[0] + ratio * (to[0] - from[0]),
+      latitude: from[1] + ratio * (to[1] - from[1]),
     });
   }
 
@@ -179,4 +195,34 @@ export function ticksFor(min: number, max: number, target: number): number[] {
   }
 
   return ticks;
+}
+
+/**
+ * The sample nearest a point on the ground, or null when the point is nowhere
+ * near the route.
+ *
+ * Longitude is scaled by the cosine of the latitude so a degree east counts for
+ * what it is worth on the ground; without it, a point well north or south of the
+ * route would match a sample that is nowhere near it.
+ */
+export function nearestSample(
+  profile: Profile,
+  longitude: number,
+  latitude: number,
+): number | null {
+  const longitudeScale = Math.cos((latitude * Math.PI) / 180);
+  let best: number | null = null;
+  let bestDistance = Number.POSITIVE_INFINITY;
+
+  profile.samples.forEach((sample, index) => {
+    const east = (sample.longitude - longitude) * longitudeScale;
+    const north = sample.latitude - latitude;
+    const squared = east * east + north * north;
+    if (squared < bestDistance) {
+      bestDistance = squared;
+      best = index;
+    }
+  });
+
+  return best;
 }
