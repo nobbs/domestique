@@ -68,6 +68,19 @@ style URL is static configuration so the origin can be changed, or pointed at a
 self-hosted tile source, without a code change. A Content-Security-Policy
 restricts the browser to the service's own origin plus that single tile origin.
 
+Surface classification introduces a second, larger exception, and it is the
+**service** that makes it: to learn whether a stage runs on asphalt, paving,
+gravel, or a forest track, it asks an OpenStreetMap Overpass endpoint which ways
+lie along that stage, sending a simplified form of the stage's own shape. The
+endpoint therefore learns where the operator's routes go — more than the tile
+origin learns from a viewport. It is accepted deliberately, because the
+alternative is hosting a routing engine beside the service. Only coordinates are
+sent: no title, no identity, no account reference. The endpoint is static
+configuration, so it can be pointed at a self-hosted Overpass instance, or
+cleared to switch the lookup off entirely and leave stages unclassified. Each
+stage is asked about once per geometry: the answer is cached and re-fetched only
+when the stage's content hash changes.
+
 The Wahoo OAuth redirect URI is the service's HTTPS Tailnet URL:
 
 ```text
@@ -100,7 +113,8 @@ The read-only JSON surface is deliberately small:
 - `GET /v1/routes/{source-route-id}/stages/{stage}` returns stored route
   metadata, not edit controls.
 - `GET /v1/routes/{source-route-id}/stages/{stage}/geometry` returns the stored
-  geometry of one stage for map rendering.
+  geometry of one stage for map rendering, together with the surface
+  classification of that geometry when one has been cached.
 - `POST /v1/sync` queues one immediate synchronization through the same
   reporting path as the schedule. It returns `202 Accepted`, or `409 Conflict`
   when a scheduled or manual synchronization is already running.
@@ -158,6 +172,9 @@ A SQLite database on a Docker volume stores:
 - a cache of source stage titles and geometry for the route map view, written
   only when a stage's content hash changes and kept in its own table so it can
   be dropped without touching deletion-safety state;
+- a cache of the surface classification of that geometry, in its own table for
+  the same reason, recorded against the content hash it was measured for so a
+  re-planned stage is never described by an earlier plan's answer;
 - the corresponding remote Wahoo route identity where available;
 - last successful source inventory and last sync outcome; and
 - expiring OAuth states.

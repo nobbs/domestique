@@ -72,8 +72,21 @@ type lineStringView struct {
 	Coordinates json.RawMessage `json:"coordinates"`
 }
 
+// geometrySurfaceView reports what is known about the ground a stage covers. It
+// is one nullable group rather than loose fields so a client can tell "not
+// classified" from "classified and nothing matched": the group is absent in the
+// first case, and present with an empty range list in the second.
+type geometrySurfaceView struct {
+	// Ranges are index spans into this feature's coordinates, passed through as
+	// stored so serving them costs no decode and re-encode.
+	Ranges json.RawMessage `json:"ranges"`
+	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
+	MatchedMetres float64 `json:"matched_metres"`
+}
+
 type geometryPropertyView struct {
-	Title string `json:"title"`
+	Surface *geometrySurfaceView `json:"surface,omitempty"`
+	Title   string               `json:"title"`
 	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
 	RouteName string `json:"route_name"`
 	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
