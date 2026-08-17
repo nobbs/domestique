@@ -18,14 +18,15 @@
   --header-height: 3.25rem;
 
   /*
-   * Gradient bands: one hue, light to dark, so steeper always reads as "more".
-   * Both sets pass the ordinal checks against their own surface — monotone
-   * lightness, visible step gaps, and the step nearest the surface clearing 2:1.
+   * Gradient bands: a warm heat ramp, gold to deep red, running light to dark so
+   * steeper always reads as "more". Validated against this surface for monotone
+   * lightness, step gaps, and adjacent separation under normal and colour-blind
+   * vision. The gold sits below 3:1 against the surface, which is why the scale
+   * legend labels every band rather than relying on colour alone.
    */
-  --band-0: #dfa184;
-  --band-1: #ce7550;
-  --band-2: #b84a28;
-  --band-3: #7e2d13;
+  --band-0: #e0ac2c;
+  --band-1: #c2542a;
+  --band-2: #63202b;
 
   color-scheme: light dark;
 }
@@ -40,11 +41,13 @@
     --text-muted: #a09b95;
     --accent-soft: rgb(200 80 46 / 20%);
 
-    /* Reversed for a dark surface: severity is what stands out from it. */
-    --band-0: #8e3316;
-    --band-1: #b7502c;
-    --band-2: #d4794f;
-    --band-3: #efaf8e;
+    /*
+     * Stepped separately for the dark surface rather than flipped: the same
+     * gold-to-red order, lifted so every band clears 3:1 against it.
+     */
+    --band-0: #f3cb60;
+    --band-1: #df7126;
+    --band-2: #b8354a;
   }
 }
 
@@ -456,15 +459,6 @@ body {
 
 .elevation-profile__swatch[data-band="2"] {
   background: var(--band-2);
-}
-
-.elevation-profile__column[data-band="3"],
-.elevation-profile__cursor circle[data-band="3"] {
-  fill: var(--band-3);
-}
-
-.elevation-profile__swatch[data-band="3"] {
-  background: var(--band-3);
 }
 
 

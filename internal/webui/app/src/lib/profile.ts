@@ -18,20 +18,26 @@ const EARTH_RADIUS_METRES = 6_371_000;
 /**
  * Gradient classes, gentlest first.
  *
- * Steepness is an ordered measure, so it gets an ordinal ramp — one hue running
- * light to dark — rather than the green-amber-red heat scale cycling apps
- * usually reach for. That scale fails as a chart ramp: its lightness is not
- * monotone (the amber is lighter than the green, so severity stops reading as
- * "more"), and the amber drops to 1.79:1 against a light surface.
+ * Three, not four. Steepness gets a warm heat ramp — gold through orange to
+ * deep red — which is the multi-hue exception a sequential scale is allowed
+ * when it means severity and carries a scale legend. Four steps could not be
+ * made to separate: the top two were both red, differing only in lightness, and
+ * sat around ΔE 9 where 15 is the floor for ordinary colour vision. Cutting a
+ * class is the honest fix for a pair that will not separate; fudging the colours
+ * would have left two bands nobody could tell apart.
+ *
+ * The green-amber-red scale cycling apps use was measured and rejected outright.
+ * Making the amber yellow enough to read against the green collapses the pair to
+ * ΔE 1.4–4.5 under protanopia: red-green colour blindness, which is common, makes
+ * that scale unreadable exactly where it matters.
  *
  * The bands use absolute steepness, so a fast descent is marked as clearly as
  * the climb it mirrors.
  */
 export const GRADIENT_BANDS = [
-  { limit: 3, label: "< 3%" },
-  { limit: 6, label: "3–6%" },
-  { limit: 9, label: "6–9%" },
-  { limit: Number.POSITIVE_INFINITY, label: "≥ 9%" },
+  { limit: 4, label: "< 4%" },
+  { limit: 8, label: "4–8%" },
+  { limit: Number.POSITIVE_INFINITY, label: "≥ 8%" },
 ] as const;
 
 /** The shortest span a gradient is measured over, matching the service. */
