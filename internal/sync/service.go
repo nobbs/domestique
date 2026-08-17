@@ -201,7 +201,7 @@ func (s *Service) Run(ctx context.Context) Result {
 
 		return result
 	}
-	if err := s.state.StoreTrustedInventory(ctx, ordered); err != nil {
+	if err := s.state.StoreTrustedInventory(ctx, s.exportProfiles(ordered)); err != nil {
 		result.Outcome = OutcomeFailed
 		result.Failure = FailureState
 
@@ -230,6 +230,31 @@ func (s *Service) Run(ctx context.Context) Result {
 	}
 
 	return result
+}
+
+// exportProfiles returns the inventory carrying the elevation profile that is
+// exported to devices, leaving identity, revision, and content hash untouched.
+//
+// Storing that profile rather than the raw one means any statistic derived from
+// stored state describes the same climb a rider will actually see, instead of
+// the satellite noise the normalizer exists to remove.
+//
+// A stage the processor rejects is stored as it arrived rather than failing the
+// run here: reconciliation still reports that failure per target, so this
+// changes no safety outcome.
+func (s *Service) exportProfiles(ordered []route.Stage) []route.Stage {
+	stages := make([]route.Stage, 0, len(ordered))
+	for index := range ordered {
+		processed, err := s.processor.Process(&ordered[index])
+		if err != nil {
+			stages = append(stages, ordered[index])
+
+			continue
+		}
+		stages = append(stages, processed)
+	}
+
+	return stages
 }
 
 type stageKey struct {

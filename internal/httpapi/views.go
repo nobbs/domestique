@@ -24,6 +24,10 @@ type stageView struct {
 	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
 	DistanceMetres float64 `json:"distance_metres"`
 	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
+	AscentMetres float64 `json:"ascent_metres"`
+	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
+	MaxGradientPercent float64 `json:"max_gradient_percent"`
+	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
 	RouteID int64 `json:"route_id"`
 	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
 	PointCount int `json:"point_count"`
@@ -76,6 +80,10 @@ type geometryPropertyView struct {
 	StageName string `json:"stage_name"`
 	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
 	DistanceMetres float64 `json:"distance_metres"`
+	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
+	AscentMetres float64 `json:"ascent_metres"`
+	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
+	MaxGradientPercent float64 `json:"max_gradient_percent"`
 	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
 	RouteID int64 `json:"route_id"`
 	//nolint:tagliatelle // This v1 JSON contract uses snake_case.

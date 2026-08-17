@@ -64,6 +64,8 @@ function stageFrom(source: Record<string, unknown>, at: string): Stage {
     sourceRevision: text(source.source_revision ?? "", `${at}.source_revision`),
     contentHash: text(source.content_hash ?? "", `${at}.content_hash`),
     distanceMetres: count(source.distance_metres, `${at}.distance_metres`),
+    ascentMetres: count(source.ascent_metres ?? 0, `${at}.ascent_metres`),
+    maxGradientPercent: count(source.max_gradient_percent ?? 0, `${at}.max_gradient_percent`),
     pointCount: count(source.point_count, `${at}.point_count`),
   };
 }

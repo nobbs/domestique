@@ -5,7 +5,7 @@
 
 import { Link } from "react-router";
 import type { Stage } from "../api/types";
-import { formatCount, formatDistance } from "../lib/format";
+import { formatAscent, formatDistance, formatGradient } from "../lib/format";
 
 export interface RouteCardProps {
   stage: Stage;
@@ -20,9 +20,11 @@ export function RouteCard({ stage, href, preview }: RouteCardProps) {
       <span className="route-card__body">
         <span className="route-card__title">{stage.title}</span>
         <span className="route-card__meta">
-          {formatDistance(stage.distanceMetres)}
-          {" · "}
-          {formatCount(stage.pointCount, "point")}
+          <span>{formatDistance(stage.distanceMetres)}</span>
+          <span title="Total climbing">↑ {formatAscent(stage.ascentMetres)}</span>
+          <span title="Steepest sustained gradient">
+            ⌃ {formatGradient(stage.maxGradientPercent)}
+          </span>
         </span>
       </span>
     </Link>

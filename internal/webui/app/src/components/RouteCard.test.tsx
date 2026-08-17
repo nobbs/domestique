@@ -14,6 +14,8 @@ function stage(overrides: Partial<Stage> = {}): Stage {
     sourceRevision: "2026-08-17",
     contentHash: "hash",
     distanceMetres: 42_500,
+    ascentMetres: 620,
+    maxGradientPercent: 11.4,
     pointCount: 1200,
     ...overrides,
   };
@@ -45,11 +47,19 @@ describe("RouteCard", () => {
     );
   });
 
-  it("shows the stored distance and point count", () => {
+  it("shows distance, climbing, and the steepest gradient", () => {
     renderCard();
 
     expect(screen.getByText(/42\.5 km/)).toBeInTheDocument();
-    expect(screen.getByText(/1,200 points/)).toBeInTheDocument();
+    expect(screen.getByText(/620 m/)).toBeInTheDocument();
+    expect(screen.getByText(/11%/)).toBeInTheDocument();
+  });
+
+  it("does not claim statistics a route has no profile for", () => {
+    renderCard(stage({ ascentMetres: 0, maxGradientPercent: 0 }));
+
+    expect(screen.getByTitle("Total climbing")).toHaveTextContent("—");
+    expect(screen.getByTitle("Steepest sustained gradient")).toHaveTextContent("—");
   });
 
   it("renders whatever preview it is given", () => {
@@ -59,9 +69,17 @@ describe("RouteCard", () => {
   });
 
   it("still renders a stage whose geometry has not been cached yet", () => {
-    renderCard(stage({ distanceMetres: 0, pointCount: 0, title: "Not yet synced" }));
+    renderCard(
+      stage({
+        distanceMetres: 0,
+        ascentMetres: 0,
+        maxGradientPercent: 0,
+        pointCount: 0,
+        title: "Not yet synced",
+      }),
+    );
 
     expect(screen.getByRole("link", { name: /Not yet synced/ })).toBeInTheDocument();
-    expect(screen.getByText(/—/)).toBeInTheDocument();
+    expect(screen.getByTitle("Total climbing")).toHaveTextContent("—");
   });
 });

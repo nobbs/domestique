@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math"
 	"path/filepath"
 	"slices"
 	"testing"
@@ -439,6 +440,69 @@ func TestStoreCachesStageGeometryForTheMapView(t *testing.T) {
 	}
 	if got, want := string(coordinates), `[[8.4,49,128.5],[8.5,49.2]]`; got != want {
 		t.Errorf("coordinates = %s, want %s", got, want)
+	}
+}
+
+func TestStoreCachesElevationStatistics(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	// A climb of 40 m spread over roughly 400 m of northing.
+	geometry := make([]route.Point, 0, 5)
+	for index := range 5 {
+		elevation := 100 + float64(index)*10
+		geometry = append(geometry, route.Point{
+			Longitude: 8.4,
+			Latitude:  49.0 + float64(index)*0.0009,
+			Elevation: &elevation,
+		})
+	}
+	stage := storeTestStageWithGeometry(t, 5, 1, "revision", "hash", "Climb", "", geometry)
+	if err := store.StoreTrustedInventory(t.Context(), []route.Stage{stage}); err != nil {
+		t.Fatalf("StoreTrustedInventory() error = %v", err)
+	}
+
+	summary, _, found, err := store.StageGeometry(t.Context(), 5, 1)
+	if err != nil || !found {
+		t.Fatalf("StageGeometry() found = %v, error = %v", found, err)
+	}
+	if got, want := summary.AscentMetres, 40.0; math.Abs(got-want) > 0.001 {
+		t.Errorf("AscentMetres = %v, want %v", got, want)
+	}
+	if summary.MaxGradientPercent <= 0 {
+		t.Errorf("MaxGradientPercent = %v, want a positive gradient", summary.MaxGradientPercent)
+	}
+
+	var listed route.Summary
+	if err := store.ForEachStageSummary(t.Context(), func(summary route.Summary) error {
+		listed = summary
+
+		return nil
+	}); err != nil {
+		t.Fatalf("ForEachStageSummary() error = %v", err)
+	}
+	if got, want := listed.AscentMetres, summary.AscentMetres; got != want {
+		t.Errorf("listed AscentMetres = %v, want %v", got, want)
+	}
+}
+
+// A stage cached before the statistics existed must still be readable; the
+// columns default to zero until a content change refills them.
+func TestStoreReadsGeometryCachedBeforeElevationStatistics(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	stage := storeTestStage(t, 1, 1, "revision", "hash")
+	if err := store.StoreTrustedInventory(t.Context(), []route.Stage{stage}); err != nil {
+		t.Fatalf("StoreTrustedInventory() error = %v", err)
+	}
+	if _, err := store.database.ExecContext(t.Context(),
+		`UPDATE stage_geometry SET ascent_metres = 0, max_gradient_percent = 0`); err != nil {
+		t.Fatalf("clearing statistics error = %v", err)
+	}
+
+	summary, _, found, err := store.StageGeometry(t.Context(), 1, 1)
+	if err != nil || !found {
+		t.Fatalf("StageGeometry() found = %v, error = %v", found, err)
+	}
+	if summary.AscentMetres != 0 || summary.MaxGradientPercent != 0 {
+		t.Errorf("expected zeroed statistics, got %+v", summary)
 	}
 }
 

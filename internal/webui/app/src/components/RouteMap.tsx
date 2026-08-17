@@ -18,6 +18,8 @@ import {
 } from "react-map-gl/maplibre";
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { BoundingBox, Position } from "../api/types";
+import type { Profile } from "../lib/profile";
+import { nearestSample } from "../lib/profile";
 // Configures the shared worker pool; without it this map renders no tiles.
 import "../lib/maplibre";
 
@@ -69,14 +71,86 @@ function MapViewport({ bbox }: { bbox: BoundingBox }) {
   return null;
 }
 
+/**
+ * How near the route the pointer must be, in pixels, to mark a position.
+ *
+ * The painted line is a few pixels wide, which is a pinpoint to aim at. Testing
+ * against the projected position instead gives a hit area comfortably larger
+ * than the mark, so following the route with the pointer actually works.
+ */
+const HOVER_RADIUS_PIXELS = 22;
+
+/**
+ * Reports the position under the pointer, so the elevation chart can mark it.
+ *
+ * This is a child of the map because `useMap` is what resolves the instance,
+ * and projecting the candidate sample back to the screen is the only way to
+ * judge nearness in the units the pointer actually moves in.
+ */
+function HoverLink({
+  profile,
+  onActiveChange,
+}: {
+  profile: Profile | null;
+  onActiveChange: ((index: number | null) => void) | undefined;
+}) {
+  const { current: map } = useMap();
+
+  useEffect(() => {
+    if (!map || !profile || !onActiveChange) {
+      return;
+    }
+
+    const onMove = (event: {
+      lngLat: { lng: number; lat: number };
+      point: { x: number; y: number };
+    }) => {
+      const index = nearestSample(profile, event.lngLat.lng, event.lngLat.lat);
+      const sample = index === null ? undefined : profile.samples[index];
+      if (!sample) {
+        onActiveChange(null);
+
+        return;
+      }
+      const projected = map.project([sample.longitude, sample.latitude]);
+      const near =
+        Math.hypot(projected.x - event.point.x, projected.y - event.point.y) <= HOVER_RADIUS_PIXELS;
+      onActiveChange(near ? index : null);
+    };
+    const onLeave = () => onActiveChange(null);
+
+    map.on("mousemove", onMove);
+    map.on("mouseout", onLeave);
+
+    return () => {
+      map.off("mousemove", onMove);
+      map.off("mouseout", onLeave);
+    };
+  }, [map, profile, onActiveChange]);
+
+  return null;
+}
+
 export interface RouteMapProps {
   styleUrl: string;
   coordinates: Position[];
   bbox: BoundingBox;
   title: string;
+  /** Shared with the elevation chart, as an index into the profile samples. */
+  profile?: Profile | null;
+  activeIndex?: number | null;
+  onActiveChange?: (index: number | null) => void;
 }
 
-export function RouteMap({ styleUrl, coordinates, bbox, title }: RouteMapProps) {
+export function RouteMap({
+  styleUrl,
+  coordinates,
+  bbox,
+  title,
+  profile = null,
+  activeIndex = null,
+  onActiveChange,
+}: RouteMapProps) {
   const feature = useMemo(
     () => ({
       type: "Feature" as const,
@@ -85,6 +159,28 @@ export function RouteMap({ styleUrl, coordinates, bbox, title }: RouteMapProps) 
     }),
     [coordinates],
   );
+
+  // The position shared with the elevation chart. An empty collection keeps the
+  // source mounted, so the marker appears without rebuilding the layer.
+  const marker = useMemo(() => {
+    const sample = profile && activeIndex !== null ? profile.samples[activeIndex] : undefined;
+
+    return {
+      type: "FeatureCollection" as const,
+      features: sample
+        ? [
+            {
+              type: "Feature" as const,
+              geometry: {
+                type: "Point" as const,
+                coordinates: [sample.longitude, sample.latitude],
+              },
+              properties: {},
+            },
+          ]
+        : [],
+    };
+  }, [profile, activeIndex]);
 
   // A basemap that fails to load must not fail silently: the route itself is
   // still drawn, but the operator should be able to see why the background is
@@ -104,6 +200,7 @@ export function RouteMap({ styleUrl, coordinates, bbox, title }: RouteMapProps) 
         cooperativeGestures
       >
         <MapViewport bbox={bbox} />
+        <HoverLink profile={profile} onActiveChange={onActiveChange} />
         <NavigationControl position="top-right" showCompass={false} />
         <ScaleControl position="bottom-left" unit="metric" />
         <Source id={SOURCE_ID} type="geojson" data={feature}>
@@ -118,6 +215,18 @@ export function RouteMap({ styleUrl, coordinates, bbox, title }: RouteMapProps) 
             type="line"
             layout={{ "line-cap": "round", "line-join": "round" }}
             paint={{ "line-color": ROUTE_ACCENT, "line-width": 4 }}
+          />
+        </Source>
+        <Source id="stage-position" type="geojson" data={marker}>
+          <Layer
+            id="stage-position-halo"
+            type="circle"
+            paint={{ "circle-radius": 8, "circle-color": "#ffffff", "circle-opacity": 0.9 }}
+          />
+          <Layer
+            id="stage-position-dot"
+            type="circle"
+            paint={{ "circle-radius": 5, "circle-color": ROUTE_ACCENT }}
           />
         </Source>
       </MapLibre>

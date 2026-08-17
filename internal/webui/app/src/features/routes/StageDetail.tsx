@@ -6,13 +6,17 @@
  */
 
 import { useQuery } from "@tanstack/react-query";
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useMemo, useState } from "react";
 import { Link, useParams } from "react-router";
 import { ApiError } from "../../api/client";
 import { stageGeometryQuery, webUIConfigQuery } from "../../api/queries";
+import type { Position } from "../../api/types";
+import { ElevationProfile } from "../../components/ElevationProfile";
 import { Layout } from "../../components/Layout";
 import { ErrorMessage, LoadingMessage, StatusMessage } from "../../components/StatusMessage";
-import { formatCount, formatDistance } from "../../lib/format";
+import { formatAscent, formatDistance, formatGradient } from "../../lib/format";
+import type { Profile } from "../../lib/profile";
+import { buildProfile } from "../../lib/profile";
 
 // MapLibre is by far the heaviest dependency and only this view needs it, so it
 // is fetched when a route is opened rather than on first paint of the library.
@@ -88,6 +92,47 @@ export function StageDetail() {
   const { stage, coordinates, bbox } = geometry.data;
 
   return (
+    <StageView
+      stage={stage}
+      coordinates={coordinates}
+      bbox={bbox}
+      styleUrl={config.data.tileStyleUrl}
+      back={back}
+    />
+  );
+}
+
+/**
+ * The map and the profile over one shared position.
+ *
+ * The hovered position lives here rather than in either view, because the two
+ * are one instrument: pointing at the route marks the chart, and scrubbing the
+ * chart marks the route. It is an index into the profile samples, so both sides
+ * mean the same place by it.
+ */
+function StageView({
+  stage,
+  coordinates,
+  bbox,
+  styleUrl,
+  back,
+}: {
+  stage: {
+    title: string;
+    stageOrder: number;
+    distanceMetres: number;
+    ascentMetres: number;
+    maxGradientPercent: number;
+  };
+  coordinates: Position[];
+  bbox: [number, number, number, number];
+  styleUrl: string;
+  back: React.ReactNode;
+}) {
+  const profile = useMemo(() => buildProfile(coordinates), [coordinates]);
+  const [activeIndex, setActiveIndex] = useState<number | null>(null);
+
+  return (
     <Layout status={back}>
       <section className="stage-detail">
         <header className="stage-detail__header">
@@ -98,8 +143,12 @@ export function StageDetail() {
               <dd>{formatDistance(stage.distanceMetres)}</dd>
             </div>
             <div>
-              <dt>Points</dt>
-              <dd>{formatCount(stage.pointCount, "point")}</dd>
+              <dt>Ascent</dt>
+              <dd>{formatAscent(stage.ascentMetres)}</dd>
+            </div>
+            <div>
+              <dt>Max gradient</dt>
+              <dd>{formatGradient(stage.maxGradientPercent)}</dd>
             </div>
             <div>
               <dt>Stage</dt>
@@ -110,14 +159,94 @@ export function StageDetail() {
         <div className="stage-detail__map">
           <Suspense fallback={<LoadingMessage what="the map" />}>
             <RouteMap
-              styleUrl={config.data.tileStyleUrl}
+              styleUrl={styleUrl}
               coordinates={coordinates}
               bbox={bbox}
               title={stage.title}
+              profile={profile}
+              activeIndex={activeIndex}
+              onActiveChange={setActiveIndex}
             />
           </Suspense>
         </div>
+        <ElevationOverview
+          profile={profile}
+          title={stage.title}
+          activeIndex={activeIndex}
+          onActiveChange={setActiveIndex}
+          hint={`${formatAscent(stage.ascentMetres)} climbing · ${formatGradient(stage.maxGradientPercent)} max`}
+        />
       </section>
     </Layout>
+  );
+}
+
+const OVERVIEW_PREFERENCE = "domestique.elevation-overview-open";
+
+/**
+ * The profile beneath the map, collapsible so the map can have the whole pane.
+ *
+ * The choice is remembered, because it is a standing preference about how the
+ * page is read rather than something to re-make on every route. The chart is
+ * only mounted while open, so a collapsed overview costs no layout work.
+ */
+function ElevationOverview({
+  profile,
+  title,
+  hint,
+  activeIndex,
+  onActiveChange,
+}: {
+  profile: Profile | null;
+  title: string;
+  hint: string;
+  activeIndex: number | null;
+  onActiveChange: (index: number | null) => void;
+}) {
+  const [open, setOpen] = useState(() => {
+    try {
+      return localStorage.getItem(OVERVIEW_PREFERENCE) !== "closed";
+    } catch {
+      // Storage can be unavailable; the overview simply opens by default.
+      return true;
+    }
+  });
+
+  const onToggle = (event: React.SyntheticEvent<HTMLDetailsElement>) => {
+    const next = event.currentTarget.open;
+    setOpen(next);
+    try {
+      localStorage.setItem(OVERVIEW_PREFERENCE, next ? "open" : "closed");
+    } catch {
+      // A preference that cannot be stored is not worth failing the page over.
+    }
+  };
+
+  return (
+    <details className="elevation-overview" open={open} onToggle={onToggle}>
+      <summary className="elevation-overview__summary">
+        <svg className="elevation-overview__caret" viewBox="0 0 12 12" aria-hidden="true">
+          <path
+            d="M4.5 2.5 L8 6 L4.5 9.5"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+        <span>Elevation</span>
+        {/* Kept meaningful when closed, so collapsing does not hide the numbers. */}
+        <span className="elevation-overview__hint">{hint}</span>
+      </summary>
+      {open ? (
+        <ElevationProfile
+          profile={profile}
+          title={title}
+          activeIndex={activeIndex}
+          onActiveChange={onActiveChange}
+        />
+      ) : null}
+    </details>
   );
 }

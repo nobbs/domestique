@@ -16,6 +16,8 @@ export interface Stage {
   sourceRevision: string;
   contentHash: string;
   distanceMetres: number;
+  ascentMetres: number;
+  maxGradientPercent: number;
   pointCount: number;
 }
 

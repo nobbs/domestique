@@ -254,6 +254,8 @@ func (s *Store) ForEachStageSummary(ctx context.Context, visit func(summary rout
 			COALESCE(stage_geometry.stage_name, ''),
 			COALESCE(stage_geometry.point_count, 0),
 			COALESCE(stage_geometry.distance_metres, 0),
+			COALESCE(stage_geometry.ascent_metres, 0),
+			COALESCE(stage_geometry.max_gradient_percent, 0),
 			COALESCE(stage_geometry.min_longitude, 0),
 			COALESCE(stage_geometry.min_latitude, 0),
 			COALESCE(stage_geometry.max_longitude, 0),
@@ -273,6 +275,7 @@ func (s *Store) ForEachStageSummary(ctx context.Context, visit func(summary rout
 		if err := rows.Scan(
 			&summary.RouteID, &summary.StageOrder, &summary.SourceRevision, &summary.ContentHash,
 			&summary.RouteName, &summary.StageName, &summary.PointCount, &summary.DistanceMetres,
+			&summary.AscentMetres, &summary.MaxGradientPercent,
 			&summary.Bounds.MinLongitude, &summary.Bounds.MinLatitude,
 			&summary.Bounds.MaxLongitude, &summary.Bounds.MaxLatitude,
 		); err != nil {
@@ -309,6 +312,8 @@ func (s *Store) StageGeometry(
 			stage_geometry.stage_name,
 			stage_geometry.point_count,
 			stage_geometry.distance_metres,
+			stage_geometry.ascent_metres,
+			stage_geometry.max_gradient_percent,
 			stage_geometry.min_longitude,
 			stage_geometry.min_latitude,
 			stage_geometry.max_longitude,
@@ -322,6 +327,7 @@ func (s *Store) StageGeometry(
 	`, routeID, stageOrder).Scan(
 		&summary.RouteID, &summary.StageOrder, &summary.SourceRevision, &summary.ContentHash,
 		&summary.RouteName, &summary.StageName, &summary.PointCount, &summary.DistanceMetres,
+		&summary.AscentMetres, &summary.MaxGradientPercent,
 		&summary.Bounds.MinLongitude, &summary.Bounds.MinLatitude,
 		&summary.Bounds.MaxLongitude, &summary.Bounds.MaxLatitude,
 		&coordinates,
@@ -577,16 +583,18 @@ func storeStageGeometry(ctx context.Context, transaction *sql.Tx, stages []route
 		if _, err := transaction.ExecContext(ctx, `
 			INSERT INTO stage_geometry (
 				route_id, stage_order, content_hash, route_name, stage_name,
-				point_count, distance_metres,
+				point_count, distance_metres, ascent_metres, max_gradient_percent,
 				min_longitude, min_latitude, max_longitude, max_latitude,
 				coordinates, updated_at_unix
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			ON CONFLICT (route_id, stage_order) DO UPDATE SET
 				content_hash = excluded.content_hash,
 				route_name = excluded.route_name,
 				stage_name = excluded.stage_name,
 				point_count = excluded.point_count,
 				distance_metres = excluded.distance_metres,
+				ascent_metres = excluded.ascent_metres,
+				max_gradient_percent = excluded.max_gradient_percent,
 				min_longitude = excluded.min_longitude,
 				min_latitude = excluded.min_latitude,
 				max_longitude = excluded.max_longitude,
@@ -595,7 +603,7 @@ func storeStageGeometry(ctx context.Context, transaction *sql.Tx, stages []route
 				updated_at_unix = excluded.updated_at_unix
 		`,
 			key.RouteID(), key.StageOrder(), stage.ContentHash(), stage.RouteName(), stage.StageName(),
-			len(geometry), stage.DistanceMetres(),
+			len(geometry), stage.DistanceMetres(), stage.ElevationGainMetres(), stage.MaxGradientPercent(),
 			bounds.MinLongitude, bounds.MinLatitude, bounds.MaxLongitude, bounds.MaxLatitude,
 			coordinates, updatedAt,
 		); err != nil {
@@ -1138,6 +1146,20 @@ func schemaMigrations() [][]string {
 				updated_at_unix INTEGER NOT NULL,
 				PRIMARY KEY (route_id, stage_order)
 			)`,
+		},
+		{
+			// Climbing and steepest gradient, derived from the stored profile.
+			// Existing rows default to zero and are refilled by the next sync
+			// that changes their content hash; the cache is presentation only,
+			// so a stale zero degrades a card rather than anything else.
+			`ALTER TABLE stage_geometry ADD COLUMN ascent_metres REAL NOT NULL DEFAULT 0`,
+			`ALTER TABLE stage_geometry ADD COLUMN max_gradient_percent REAL NOT NULL DEFAULT 0`,
+			// Geometry is only rewritten when a stage's content hash changes, so
+			// rows cached before this migration would keep zeroed statistics
+			// indefinitely. Clearing the hash makes the next run refill them once.
+			// The rows stay readable meanwhile, showing a route without its
+			// climbing figures rather than disappearing.
+			`UPDATE stage_geometry SET content_hash = ''`,
 		},
 	}
 }
