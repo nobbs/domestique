@@ -62,8 +62,9 @@ tailscale serve --bg 8080
 tailscale serve status
 ~~~
 
-For this MVP, set both wahoo.redirect_url and the callback URL in the Wahoo
-developer application to:
+For this MVP, the copied configuration sets wahoo.redirect_url to the URI
+below. Set the callback URL in the Wahoo developer application to the identical
+value:
 
 ~~~text
 https://domestique.fluffy-sargas.ts.net/oauth/wahoo/callback

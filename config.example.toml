@@ -21,7 +21,7 @@ api_base_url = "https://api.sandbox.wahooligan.com"
 oauth_base_url = "https://api.sandbox.wahooligan.com"
 client_id = "replace-with-client-id"
 client_secret_file = "/run/secrets/wahoo_client_secret"
-redirect_url = "https://pi.example.ts.net/oauth/wahoo/callback"
+redirect_url = "https://domestique.fluffy-sargas.ts.net/oauth/wahoo/callback"
 
 [[wahoo.targets]]
 id = "rider-a"
