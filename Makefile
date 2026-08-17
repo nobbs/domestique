@@ -11,6 +11,12 @@ GOCACHE ?= $(CURDIR)/.cache/go-build
 BUILD_FLAGS := -trimpath -buildvcs=true
 BUILD_TARGET := ./cmd/domestique
 BUILD_OUTPUT := build/domestique
+# The release image is published for both architectures, so the compile check
+# covers both. BUILD_ARCH selects the one that `make build` writes to disk, and
+# defaults to the machine's own so a local build runs where it was built. Set it
+# explicitly to cross-compile for the other host.
+BUILD_ARCH ?= $(shell $(GO) env GOARCH)
+RELEASE_ARCHES := amd64 arm64
 UI_DIR := internal/webui/app
 UI_DIST := $(UI_DIR)/dist
 
@@ -90,10 +96,13 @@ ui-build:
 
 build: ui-build
 	mkdir -p build
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 $(GO) build $(BUILD_FLAGS) -o $(BUILD_OUTPUT) $(BUILD_TARGET)
+	CGO_ENABLED=0 GOOS=linux GOARCH=$(BUILD_ARCH) $(GO) build $(BUILD_FLAGS) -o $(BUILD_OUTPUT) $(BUILD_TARGET)
 
 build-check: ui-build
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 $(GO) build $(BUILD_FLAGS) -o /dev/null $(BUILD_TARGET)
+	for arch in $(RELEASE_ARCHES); do \
+		echo "==> linux/$$arch"; \
+		CGO_ENABLED=0 GOOS=linux GOARCH=$$arch $(GO) build $(BUILD_FLAGS) -o /dev/null $(BUILD_TARGET) || exit 1; \
+	done
 
 # CI runs the ci-* groups below as separate jobs so that a failure names the
 # area it came from. Keep them as the only decomposition of the quality gate:

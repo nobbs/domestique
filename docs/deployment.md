@@ -76,7 +76,7 @@ release when investigating supply-chain changes.
 
 ## Run the container
 
-Copy [`compose.pi.example.yml`](compose.pi.example.yml) to
+Copy [`compose.example.yml`](compose.example.yml) to
 `/srv/domestique/compose.yml`, then start it from that directory:
 
 ```sh

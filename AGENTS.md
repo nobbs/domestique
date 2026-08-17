@@ -7,11 +7,12 @@ ground with the details an agent needs to act without additional context.
 ## What this service is
 
 `domestique` mirrors one private VeloPlanner route library to one or two Wahoo
-accounts as device-ready FIT courses. It is a single-tenant, CGO-free
-`linux/arm64` Docker workload for a Tailnet host, with no CLI. It also serves a
-**read-only browser UI** that renders one stored route stage at a time on a map.
-Its only state-changing HTTP surface is the Wahoo OAuth onboarding flow and the
-manual `POST /v1/sync` trigger.
+accounts as device-ready FIT courses. It is a single-tenant, CGO-free Linux
+Docker workload for a Tailnet host, published for `linux/amd64` and
+`linux/arm64`, with no CLI. It also serves a **read-only browser UI** that
+renders one stored route stage at a time on a map. Its only state-changing HTTP
+surface is the Wahoo OAuth onboarding flow and the manual `POST /v1/sync`
+trigger.
 
 ## Specifications are normative
 
@@ -44,9 +45,10 @@ mise exec -- make check
 `make check` is the complete gate and is exactly what CI runs: `prek`, lint,
 markdownlint, actionlint, `go vet`, tests, TypeScript type checking, the UI lint
 and test suites, `go mod tidy -diff`, `go mod verify`, `govulncheck`,
-`npm audit`, `gitleaks`, and an arm64 cross-compile check. Individual targets
-(`make test`, `make lint`, `make fmt`, `make ui-test`, `make build-check`) are
-available while iterating, but run the full gate before reporting work complete.
+`npm audit`, `gitleaks`, and a cross-compile check for each published
+architecture. Individual targets (`make test`, `make lint`, `make fmt`,
+`make ui-test`, `make build-check`) are available while iterating, but run the
+full gate before reporting work complete.
 
 Tests run with `CGO_ENABLED=0` and `-shuffle=on`. They must stay deterministic
 under shuffling.
@@ -153,7 +155,8 @@ fixtures, generated FIT files, SQLite state, or Raspberry Pi deployment files.
 
 Use [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) with
 the scopes already established in the history (`sync`, `elevation`, `fit`,
-`wahoo`, `http`, `config`, `runtime`, `container`, `macos`, `release`). Keep
-changes focused. A pull request should explain any change to the normative
+`wahoo`, `http`, `config`, `runtime`, `container`, `macos`, `hetzner`,
+`release`). Keep changes focused. A pull request should explain any change to
+the normative
 specifications, to a safety gate, or to the operator action required for
 deployment.

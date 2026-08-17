@@ -199,8 +199,13 @@ jobs:
           registry: dhi.io
           username: ${{ secrets.DHI_USERNAME }}
           password: ${{ secrets.DHI_TOKEN }}
+      # A multi-platform result cannot be --load-ed into the local image store,
+      # so the build is proved and discarded; the release workflow is what
+      # publishes it.
       - name: Build production image
-        run: docker buildx build --platform linux/arm64 --load --tag domestique:ci .
+        run: >-
+          docker buildx build --platform linux/amd64,linux/arm64
+          --output type=cacheonly --tag domestique:ci .
 
   required:
     name: Required
