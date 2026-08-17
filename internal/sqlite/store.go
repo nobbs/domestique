@@ -7,6 +7,7 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -29,6 +30,14 @@ var (
 	ErrWahooUserAlreadyAuthorized = errors.New("wahoo user is already authorized for another target slot")
 	// ErrStateUnreadable reports encrypted state that cannot be authenticated.
 	ErrStateUnreadable = errors.New("encrypted state is unreadable")
+	// ErrOAuthTransactionNotFound reports an unknown OAuth callback state.
+	ErrOAuthTransactionNotFound = errors.New("oauth transaction was not found")
+	// ErrOAuthTransactionExpired reports a callback state that exceeded its deadline.
+	ErrOAuthTransactionExpired = errors.New("oauth transaction has expired")
+	// ErrOAuthTransactionUsed reports a callback state that was already consumed.
+	ErrOAuthTransactionUsed = errors.New("oauth transaction was already used")
+	// ErrOAuthTransactionIdentityMismatch reports a callback from another Tailnet user.
+	ErrOAuthTransactionIdentityMismatch = errors.New("oauth transaction identity did not match")
 )
 
 // AuthorizationState identifies a target slot's durable OAuth state.
@@ -261,6 +270,38 @@ func (s *Store) RefreshToken(ctx context.Context, targetID string) (string, erro
 	return string(decryptedToken), nil
 }
 
+// ReplaceRefreshToken atomically stores the refresh token returned by a
+// successful Wahoo refresh. The replacement happens before another API request
+// can use the prior token.
+func (s *Store) ReplaceRefreshToken(ctx context.Context, targetID, refreshToken string) error {
+	if strings.TrimSpace(targetID) == "" || refreshToken == "" {
+		return errors.New("target ID and refresh token are required")
+	}
+
+	encryptedToken, err := s.encrypt(targetID, []byte(refreshToken))
+	if err != nil {
+		return fmt.Errorf("encrypting refresh token: %w", err)
+	}
+
+	result, err := s.database.ExecContext(ctx, `
+		UPDATE targets
+		SET refresh_token = ?, authorization_state = ?, updated_at_unix = ?
+		WHERE slot = ?
+	`, encryptedToken, AuthorizationAuthorized, time.Now().Unix(), targetID)
+	if err != nil {
+		return fmt.Errorf("replacing refresh token: %w", err)
+	}
+	updated, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("checking refreshed target: %w", err)
+	}
+	if updated == 0 {
+		return ErrTargetNotFound
+	}
+
+	return nil
+}
+
 // MarkNeedsReauthorization clears a target's refresh token after a permanent
 // OAuth failure and leaves it ready for a fresh interactive authorization.
 func (s *Store) MarkNeedsReauthorization(ctx context.Context, targetID string) error {
@@ -281,6 +322,116 @@ func (s *Store) MarkNeedsReauthorization(ctx context.Context, targetID string) e
 	}
 
 	return nil
+}
+
+// BeginAuthorization saves a hashed, expiring OAuth state bound to one target
+// slot and one Tailnet identity. The raw state value is never persisted.
+func (s *Store) BeginAuthorization(
+	ctx context.Context,
+	targetID, tailnetUserLogin string,
+	stateDigest []byte,
+	expiresAt time.Time,
+) error {
+	if strings.TrimSpace(targetID) == "" || strings.TrimSpace(tailnetUserLogin) == "" ||
+		len(stateDigest) != 32 || !expiresAt.After(time.Now()) {
+		return errors.New("target ID, Tailnet identity, state digest, and future expiry are required")
+	}
+
+	transaction, err := s.database.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("starting oauth transaction: %w", err)
+	}
+	defer rollback(transaction)
+
+	var targetExists bool
+	if err := transaction.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM targets WHERE slot = ?)`, targetID).Scan(&targetExists); err != nil {
+		return fmt.Errorf("checking oauth target: %w", err)
+	}
+	if !targetExists {
+		return ErrTargetNotFound
+	}
+
+	now := time.Now().Unix()
+	if _, err := transaction.ExecContext(ctx, `
+		DELETE FROM oauth_transactions
+		WHERE expires_at_unix <= ? OR (target_slot = ? AND caller_login = ? AND used_at_unix IS NULL)
+	`, now, targetID, tailnetUserLogin); err != nil {
+		return fmt.Errorf("clearing prior oauth transactions: %w", err)
+	}
+	if _, err := transaction.ExecContext(ctx, `
+		INSERT INTO oauth_transactions (
+			id, target_slot, state_digest, code_verifier, expires_at_unix, caller_login
+		) VALUES (?, ?, ?, ?, ?, ?)
+	`, hex.EncodeToString(stateDigest), targetID, stateDigest, []byte{}, expiresAt.Unix(), tailnetUserLogin); err != nil {
+		return fmt.Errorf("storing oauth transaction: %w", err)
+	}
+	if err := transaction.Commit(); err != nil {
+		return fmt.Errorf("committing oauth transaction: %w", err)
+	}
+
+	return nil
+}
+
+// ConsumeAuthorization verifies and marks a pending OAuth state used. It
+// returns the bound target slot, never the raw state or caller identity.
+func (s *Store) ConsumeAuthorization(ctx context.Context, tailnetUserLogin string, stateDigest []byte) (string, error) {
+	if strings.TrimSpace(tailnetUserLogin) == "" || len(stateDigest) != 32 {
+		return "", errors.New("tailnet identity and state digest are required")
+	}
+
+	transaction, err := s.database.BeginTx(ctx, nil)
+	if err != nil {
+		return "", fmt.Errorf("starting oauth callback transaction: %w", err)
+	}
+	defer rollback(transaction)
+
+	var (
+		targetID string
+		caller   string
+		expires  int64
+		usedAt   sql.NullInt64
+	)
+	err = transaction.QueryRowContext(ctx, `
+		SELECT target_slot, caller_login, expires_at_unix, used_at_unix
+		FROM oauth_transactions
+		WHERE state_digest = ?
+	`, stateDigest).Scan(&targetID, &caller, &expires, &usedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrOAuthTransactionNotFound
+	}
+	if err != nil {
+		return "", fmt.Errorf("reading oauth transaction: %w", err)
+	}
+	if caller != tailnetUserLogin {
+		return "", ErrOAuthTransactionIdentityMismatch
+	}
+	if usedAt.Valid {
+		return "", ErrOAuthTransactionUsed
+	}
+	if expires <= time.Now().Unix() {
+		return "", ErrOAuthTransactionExpired
+	}
+
+	result, err := transaction.ExecContext(ctx, `
+		UPDATE oauth_transactions
+		SET used_at_unix = ?
+		WHERE state_digest = ? AND used_at_unix IS NULL
+	`, time.Now().Unix(), stateDigest)
+	if err != nil {
+		return "", fmt.Errorf("consuming oauth transaction: %w", err)
+	}
+	updated, err := result.RowsAffected()
+	if err != nil {
+		return "", fmt.Errorf("checking oauth transaction consumption: %w", err)
+	}
+	if updated == 0 {
+		return "", ErrOAuthTransactionUsed
+	}
+	if err := transaction.Commit(); err != nil {
+		return "", fmt.Errorf("committing oauth callback transaction: %w", err)
+	}
+
+	return targetID, nil
 }
 
 func (s *Store) configure(ctx context.Context) error {
@@ -455,6 +606,10 @@ func schemaMigrations() [][]string {
 			kind TEXT PRIMARY KEY,
 			last_sent_at_unix INTEGER NOT NULL
 		)`,
+		},
+		{
+			`ALTER TABLE oauth_transactions ADD COLUMN caller_login TEXT NOT NULL DEFAULT ''`,
+			`CREATE UNIQUE INDEX oauth_transactions_state_digest_index ON oauth_transactions(state_digest)`,
 		},
 	}
 }
