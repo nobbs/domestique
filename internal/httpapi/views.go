@@ -75,10 +75,16 @@ type lineStringView struct {
 // geometrySurfaceView reports what is known about the ground a stage covers. It
 // is one nullable group rather than loose fields so a client can tell "not
 // classified" from "classified and nothing matched": the group is absent in the
-// first case, and present with an empty range list in the second.
+// first case, and present with a matched length of zero in the second.
 type geometrySurfaceView struct {
 	// Ranges are index spans into this feature's coordinates, passed through as
 	// stored so serving them costs no decode and re-encode.
+	//
+	// They tile the whole geometry rather than only its surveyed parts: an
+	// unsurveyed stretch is a fact about the ground worth drawing, so it travels
+	// as an `unknown` range in its own place along the line. What was surveyed
+	// is MatchedMetres, and it alone answers how much of the stage the classes
+	// actually describe.
 	Ranges json.RawMessage `json:"ranges"`
 	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
 	MatchedMetres float64 `json:"matched_metres"`

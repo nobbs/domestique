@@ -143,6 +143,37 @@ func TestHandlerServesTheStoredSurfaceWithGeometry(t *testing.T) {
 	}
 }
 
+// A stage nobody has surveyed is still a stage that was asked about. It is
+// served as a present surface whose ranges cover the line as unsurveyed and
+// whose matched length is zero, because that is what tells a client the question
+// was answered — an absent surface would say it never was.
+func TestHandlerServesAnUnsurveyedSurfaceAsClassified(t *testing.T) {
+	state := surfaceState()
+	state.surfaceRanges = json.RawMessage(`[{"kind":"unknown","start_index":0,"end_index":1}]`)
+	state.surfaceMetres = 0
+	handler := newHandler(t, &fakeOAuth{}, state)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/routes/12/stages/1/geometry"))
+	if got, want := response.Code, http.StatusOK; got != want {
+		t.Fatalf("geometry status = %d, want %d", got, want)
+	}
+
+	var view geometryView
+	if err := json.Unmarshal(response.Body.Bytes(), &view); err != nil {
+		t.Fatalf("decoding geometry = %v", err)
+	}
+	if view.Properties.Surface == nil {
+		t.Fatalf("geometry omitted a classification that matched nothing")
+	}
+	if got, want := string(view.Properties.Surface.Ranges), string(state.surfaceRanges); got != want {
+		t.Errorf("surface ranges = %s, want %s", got, want)
+	}
+	if got := view.Properties.Surface.MatchedMetres; got != 0 {
+		t.Errorf("matched metres = %v, want 0", got)
+	}
+}
+
 // A classification is a set of positions in one stored coordinate array, so one
 // measured against an earlier plan of the same stage must not be served against
 // the current line.
