@@ -12,6 +12,8 @@
 import { useCallback, useMemo } from "react";
 import type { Profile, ProfileSample } from "../lib/profile";
 import { GRADIENT_BANDS, ticksFor } from "../lib/profile";
+import type { SurfaceSummary } from "../lib/surface";
+import { SURFACE_STYLES, surfaceKindAt } from "../lib/surface";
 import { useElementWidth } from "../lib/useElementWidth";
 
 /**
@@ -34,6 +36,14 @@ const MIN_WIDTH = 240;
 export interface ElevationProfileProps {
   profile: Profile | null;
   title: string;
+  /**
+   * The ground under the route, reported for the hovered position.
+   *
+   * The chart's paint is not touched by it: the bands mean gradient, and a second
+   * measure fighting for the same ground would make both unreadable. The surface
+   * belongs on the map, and here only as a word beside the position.
+   */
+  surface?: SurfaceSummary | null;
   /** The position shared with the map, as an index into the profile samples. */
   activeIndex: number | null;
   onActiveChange: (index: number | null) => void;
@@ -129,6 +139,7 @@ function runsOf(
 export function ElevationProfile({
   profile,
   title,
+  surface = null,
   activeIndex,
   onActiveChange,
 }: ElevationProfileProps) {
@@ -203,6 +214,8 @@ export function ElevationProfile({
   }
 
   const active = activeIndex === null ? null : profile.samples[activeIndex];
+  const activeKind = active && surface ? surfaceKindAt(surface, active.distanceMetres) : null;
+  const activeSurface = activeKind ? SURFACE_STYLES[activeKind].label : null;
   const summary =
     `Elevation profile of ${title}: ` +
     `${(profile.totalDistanceMetres / 1000).toFixed(1)} kilometres, ` +
@@ -333,7 +346,8 @@ export function ElevationProfile({
         aria-valuenow={active ? Number((active.distanceMetres / 1000).toFixed(1)) : 0}
         aria-valuetext={
           active
-            ? `${Math.round(active.elevationMetres)} metres at ${(active.distanceMetres / 1000).toFixed(1)} kilometres, ${active.gradientPercent.toFixed(1)} percent`
+            ? `${Math.round(active.elevationMetres)} metres at ${(active.distanceMetres / 1000).toFixed(1)} kilometres, ${active.gradientPercent.toFixed(1)} percent` +
+              (activeSurface ? `, ${activeSurface.toLowerCase()}` : "")
             : "No position selected"
         }
         onKeyDown={onKeyDown}
@@ -349,6 +363,7 @@ export function ElevationProfile({
               <strong>{Math.round(active.elevationMetres)} m</strong>
               <span> at {(active.distanceMetres / 1000).toFixed(1)} km</span>
               <span> · {active.gradientPercent.toFixed(1)}%</span>
+              {activeSurface ? <span> · {activeSurface}</span> : null}
             </>
           ) : (
             <span>

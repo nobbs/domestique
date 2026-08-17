@@ -32,6 +32,13 @@ read-only JSON for status, route data, and route geometry, except for the
 protected Wahoo OAuth onboarding flow and the manual sync trigger. The UI is a
 view onto stored state: it renders one source route stage at a time on a map.
 
+Where a stage's surface classification has been cached, that view draws it: the
+route is banded by ground class on the map, and the stage's split is summarised
+beside its stored facts. A stage with no cached classification is drawn plainly
+and said to be unclassified, never presented as unsurveyed ground. Because the
+classification is a derived OpenStreetMap database, the map view carries the
+ODbL attribution its share-alike terms require.
+
 Route editing remains explicitly out of scope. The UI presents no editing
 affordance, and the service writes nothing back to VeloPlanner. Any future
 change to that boundary requires revising this document first.

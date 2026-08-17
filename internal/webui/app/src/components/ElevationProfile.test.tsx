@@ -5,6 +5,8 @@ import { describe, expect, it } from "vitest";
 import type { Position } from "../api/types";
 import type { ProfileSample } from "../lib/profile";
 import { buildProfile } from "../lib/profile";
+import type { SurfaceSummary } from "../lib/surface";
+import { summariseSurface } from "../lib/surface";
 import { ElevationProfile, steadyBands } from "./ElevationProfile";
 
 /** Only the band matters to steadyBands; the rest is filler. */
@@ -27,13 +29,20 @@ function climb(): Position[] {
 }
 
 /** The chart is controlled, so exercising it needs something to hold the value. */
-function Harness({ title = "Eich Rundkurs 90" }: { title?: string }) {
+function Harness({
+  title = "Eich Rundkurs 90",
+  surface = null,
+}: {
+  title?: string;
+  surface?: SurfaceSummary | null;
+}) {
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
 
   return (
     <ElevationProfile
       profile={buildProfile(climb())}
       title={title}
+      surface={surface}
       activeIndex={activeIndex}
       onActiveChange={setActiveIndex}
     />
@@ -99,6 +108,33 @@ describe("ElevationProfile", () => {
     await user.keyboard("{ArrowRight}");
 
     expect(positions.at(-1)).toBeTypeOf("number");
+  });
+
+  it("names the ground under the position when the stage has been classified", async () => {
+    const user = userEvent.setup();
+    const coordinates = climb();
+    const surface = summariseSurface(coordinates, [
+      { kind: "gravel", startIndex: 0, endIndex: coordinates.length - 1 },
+    ]);
+    render(<Harness surface={surface} />);
+
+    await user.tab();
+    await user.keyboard("{ArrowRight}");
+
+    expect(screen.getByText(/Gravel/)).toBeInTheDocument();
+    expect(
+      screen.getByRole("slider", { name: /Position along Eich/ }).getAttribute("aria-valuetext"),
+    ).toMatch(/gravel$/);
+  });
+
+  it("leaves the readout as it was on a stage nothing has classified", async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+
+    await user.tab();
+    await user.keyboard("{ArrowRight}");
+
+    expect(screen.queryByText(/Gravel|Asphalt|Unsurveyed/)).not.toBeInTheDocument();
   });
 
   it("says so plainly when a route has no elevation", () => {

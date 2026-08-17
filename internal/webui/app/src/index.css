@@ -324,6 +324,64 @@ body {
   background: var(--surface-sunken);
 }
 
+.stage-detail__surface-absent {
+  margin: 0.6rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+}
+
+/* Surface split ----------------------------------------------------------- */
+
+.surface-bar {
+  margin-top: 0.6rem;
+}
+
+/*
+ * The proportions. The slices are painted with the same colours and dash
+ * patterns as the map, so the bar reads as the key to it; the figures live in
+ * the legend below, which is why this is hidden from assistive technology.
+ */
+.surface-bar__track {
+  display: flex;
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: var(--surface-sunken);
+}
+
+/* A stretch too narrow to see is still worth a mark, so it keeps a minimum. */
+.surface-bar__slice {
+  min-width: 2px;
+}
+
+.surface-bar__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.75rem;
+  list-style: none;
+  margin: 0.3rem 0 0;
+  padding: 0;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.surface-bar__legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.surface-bar__swatch {
+  width: 14px;
+  height: 6px;
+  border-radius: 2px;
+}
+
+.surface-bar__share {
+  color: var(--text);
+}
+
 /* Elevation overview ------------------------------------------------------ */
 
 .elevation-overview {
