@@ -146,7 +146,9 @@ baseline behaviour for route geometry:
 - use the source route ID and stage order as stable identity, never the route
   title.
 
-The service generates valid FIT courses. The initial FIT adapter may use
+The service generates valid FIT courses. Each record carries cumulative route
+distance in metres as well as coordinates and elevation, so Wahoo can derive
+an elevation profile and gradients. The initial FIT adapter may use
 [`github.com/muktihari/fit`](https://github.com/muktihari/fit), isolated behind
 the course encoder boundary and without vendoring Garmin SDK files or test data.
 The source code remains MIT-licensed; third-party notices remain with their

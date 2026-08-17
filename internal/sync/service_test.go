@@ -252,6 +252,33 @@ func TestServiceSupportsOneTarget(t *testing.T) {
 	}
 }
 
+func TestServiceUpdatesLegacyEncoderOutput(t *testing.T) {
+	desired := testStage(t, 1, 1, "current", "current-hash")
+	state := newFakeState("a")
+	target := newFakeTarget()
+	target.seedRoute("a", &desired, 101)
+	state.mappings["a"][keyFor(&desired)] = targetStage{
+		sourceRevision: desired.Revision(),
+		contentHash:    desired.ContentHash(),
+		wahooRouteID:   101,
+	}
+	service, err := New(&Options{TargetIDs: []string{"a"}, MaxDeletionsPerTarget: 5}, state, &fakeSource{stages: []route.Stage{desired}}, &fakeEncoder{}, target)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	result := service.Run(t.Context())
+	if got, want := result.Outcome, OutcomeSucceeded; got != want {
+		t.Errorf("Run() outcome = %q, want %q", got, want)
+	}
+	if got, want := result.Updated, 1; got != want {
+		t.Errorf("Run() updated = %d, want %d", got, want)
+	}
+	if got, want := state.mappings["a"][keyFor(&desired)].contentHash, encodedContentHash(&desired); got != want {
+		t.Errorf("stored content hash = %q, want %q", got, want)
+	}
+}
+
 func newService(t *testing.T, state *fakeState, source *fakeSource, encoder *fakeEncoder, target *fakeTarget, allowEmpty bool) *Service {
 	t.Helper()
 	service, err := New(&Options{
@@ -477,7 +504,7 @@ func (t *fakeTarget) ensureAccess(accessToken string) map[string]int64 {
 func seedMapping(state *fakeState, targetID string, stage *route.Stage, wahooRouteID int64) {
 	state.mappings[targetID][keyFor(stage)] = targetStage{
 		sourceRevision: stage.Revision(),
-		contentHash:    stage.ContentHash(),
+		contentHash:    encodedContentHash(stage),
 		wahooRouteID:   wahooRouteID,
 	}
 }

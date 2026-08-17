@@ -3,6 +3,8 @@ package sync
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"sort"
@@ -13,6 +15,8 @@ import (
 )
 
 const authorizedState = "authorized"
+
+const encoderContentVersion = "fit-v2-distance"
 
 // Outcome is the terminal result of one attempted synchronization run.
 type Outcome string
@@ -322,7 +326,7 @@ func (s *Service) reconcileTarget(
 
 			continue
 		}
-		if recorded.sourceRevision == stage.Revision() && recorded.contentHash == stage.ContentHash() {
+		if recorded.sourceRevision == stage.Revision() && recorded.contentHash == encodedContentHash(stage) {
 			if recorded.wahooRouteID != wahooRouteID {
 				if storeErr := s.storeTargetStage(ctx, targetID, stage, wahooRouteID); storeErr != nil {
 					return result, FailureState
@@ -431,13 +435,19 @@ func (s *Service) storeTargetStage(ctx context.Context, targetID string, stage *
 		key.RouteID(),
 		key.StageOrder(),
 		stage.Revision(),
-		stage.ContentHash(),
+		encodedContentHash(stage),
 		wahooRouteID,
 	); err != nil {
 		return fmt.Errorf("storing target stage mapping: %w", err)
 	}
 
 	return nil
+}
+
+func encodedContentHash(stage *route.Stage) string {
+	sum := sha256.Sum256([]byte(encoderContentVersion + "\x00" + stage.ContentHash()))
+
+	return hex.EncodeToString(sum[:])
 }
 
 func externalID(key stageKey) string {

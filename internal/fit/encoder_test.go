@@ -52,6 +52,12 @@ func TestEncoderEncodeCreatesDecodableCourse(t *testing.T) {
 	if got, want := first.AltitudeScaled(), 321.4; math.Abs(got-want) > 0.001 {
 		t.Errorf("first altitude = %v, want %v", got, want)
 	}
+	if got := first.DistanceScaled(); math.Abs(got) > 0.001 {
+		t.Errorf("first distance = %v, want 0", got)
+	}
+	if got := course.Records[1].DistanceScaled(); got <= 0 {
+		t.Errorf("second distance = %v, want positive cumulative metres", got)
+	}
 	if got, want := course.Records[1].Timestamp.Sub(first.Timestamp).Seconds(), 1.0; got != want {
 		t.Errorf("record timestamp interval = %v, want %v", got, want)
 	}
