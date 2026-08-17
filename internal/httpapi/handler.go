@@ -57,6 +57,7 @@ type State interface {
 	ForEachTarget(ctx context.Context, visit func(id, authorization string) error) error
 	ForEachStageSummary(ctx context.Context, visit func(summary route.Summary) error) error
 	StageGeometry(ctx context.Context, routeID int64, stageOrder int) (route.Summary, json.RawMessage, bool, error)
+	StageSurface(ctx context.Context, routeID int64, stageOrder int, contentHash string) (json.RawMessage, float64, bool, error)
 	LastSyncRun(ctx context.Context) (completedAt time.Time, outcome, detail string, sourceStages, created, updated, deleted int, found bool, err error)
 }
 

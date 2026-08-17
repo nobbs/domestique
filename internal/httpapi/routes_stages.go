@@ -74,6 +74,12 @@ func (h *Handler) stageGeometry(writer http.ResponseWriter, request *http.Reques
 
 		return
 	}
+	surface, readable := h.stageSurface(request, &summary)
+	if !readable {
+		h.unavailable(writer)
+
+		return
+	}
 
 	h.writeJSON(writer, http.StatusOK, geometryView{
 		Type:     "Feature",
@@ -92,8 +98,34 @@ func (h *Handler) stageGeometry(writer http.ResponseWriter, request *http.Reques
 			AscentMetres:       summary.AscentMetres,
 			MaxGradientPercent: summary.MaxGradientPercent,
 			PointCount:         summary.PointCount,
+			Surface:            surface,
 		},
 	})
+}
+
+// stageSurface reads the classification stored for this exact geometry. It
+// returns a nil view when none has been recorded yet, and reports the state as
+// unreadable when the store itself failed.
+//
+// The content hash is part of the lookup because the ranges index the stored
+// coordinates: a classification measured against an earlier plan of the same
+// stage describes positions that no longer exist, so it is treated as absent
+// rather than served against the wrong line.
+func (h *Handler) stageSurface(request *http.Request, summary *route.Summary) (view *geometrySurfaceView, readable bool) {
+	ranges, matchedMetres, found, err := h.state.StageSurface(
+		request.Context(),
+		summary.RouteID,
+		summary.StageOrder,
+		summary.ContentHash,
+	)
+	if err != nil {
+		return nil, false
+	}
+	if !found {
+		return nil, true
+	}
+
+	return &geometrySurfaceView{Ranges: ranges, MatchedMetres: matchedMetres}, true
 }
 
 func newStageView(summary *route.Summary) stageView {

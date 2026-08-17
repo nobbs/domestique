@@ -48,3 +48,16 @@ user_key_file = "/run/secrets/pushover_user_key"
 # A provider requiring an API key would carry it in this URL's query, where it is
 # visible to anyone who can load the UI. Self-hosted tiles avoid both concerns.
 tile_style_url = "https://tiles.openfreemap.org/styles/bright"
+
+[surface]
+# The Overpass endpoint the service asks which OpenStreetMap ways lie along a
+# stage, so it can tell asphalt from paving, gravel, or a forest track. The
+# default public instance needs no account and no key.
+#
+# This one is the service talking, not your browser: it sends a simplified form
+# of each stage's shape, so the endpoint learns where your routes go. Nothing
+# else is sent, and each stage is asked about once — the answer is cached until
+# you re-plan that stage. Point this at your own Overpass instance to keep the
+# shapes on your infrastructure, or set it to "" to switch the lookup off and
+# leave stages unclassified.
+overpass_url = "https://overpass-api.de/api/interpreter"

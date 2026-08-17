@@ -103,6 +103,13 @@ type Target interface {
 	IsUnauthorized(err error) bool
 }
 
+// Annotator enriches the stored inventory with the surface classification of the
+// ground each stage covers. It is optional, and deliberately narrow: whatever it
+// learns it records itself, so synchronization never has to carry it.
+type Annotator interface {
+	Annotate(ctx context.Context, stages []route.Stage) error
+}
+
 // State owns the minimum durable state operations required by synchronization.
 // Callback iteration avoids sharing persistence record types with adapters.
 type State interface {
@@ -125,14 +132,25 @@ type Service struct {
 	processor                Processor
 	encoder                  Encoder
 	target                   Target
+	annotator                Annotator
 	targetIDs                []string
 	maxDeletionsPerTarget    int
 	allowEmptySourceDeletion bool
 	running                  atomic.Bool
 }
 
-// New creates a synchronizer with explicit consumer-owned dependencies.
-func New(options *Options, state State, source Source, processor Processor, encoder Encoder, target Target) (*Service, error) {
+// New creates a synchronizer with explicit consumer-owned dependencies. Every
+// dependency is required except the annotator: a nil annotator leaves stored
+// stages unclassified and changes nothing else about a run.
+func New(
+	options *Options,
+	state State,
+	source Source,
+	processor Processor,
+	encoder Encoder,
+	target Target,
+	annotator Annotator,
+) (*Service, error) {
 	if options == nil || state == nil || source == nil || processor == nil || encoder == nil || target == nil {
 		return nil, errors.New("sync options and dependencies are required")
 	}
@@ -158,6 +176,7 @@ func New(options *Options, state State, source Source, processor Processor, enco
 		processor:                processor,
 		encoder:                  encoder,
 		target:                   target,
+		annotator:                annotator,
 		targetIDs:                targetIDs,
 		maxDeletionsPerTarget:    options.MaxDeletionsPerTarget,
 		allowEmptySourceDeletion: options.AllowEmptySourceDeletion,
@@ -201,7 +220,8 @@ func (s *Service) Run(ctx context.Context) Result {
 
 		return result
 	}
-	if err := s.state.StoreTrustedInventory(ctx, s.exportProfiles(ordered)); err != nil {
+	exported := s.exportProfiles(ordered)
+	if err := s.state.StoreTrustedInventory(ctx, exported); err != nil {
 		result.Outcome = OutcomeFailed
 		result.Failure = FailureState
 
@@ -228,8 +248,28 @@ func (s *Service) Run(ctx context.Context) Result {
 	if result.Outcome == "" {
 		result.Outcome = OutcomeSucceeded
 	}
+	s.annotateSurface(ctx, exported)
 
 	return result
+}
+
+// annotateSurface classifies the ground under the stages that were just stored.
+//
+// It runs last, and cannot change the result. Getting routes onto a device is
+// what a synchronization is for, so a slow or unavailable tagging endpoint must
+// neither delay that nor be reported as a failed sync. The annotator caches what
+// it learns and is bounded per pass, so a failure here costs only the stages this
+// run would have filled in; the next run asks again, and until then those stages
+// simply carry no surface.
+//
+// It is given the same exported inventory that was stored, because a
+// classification is a set of positions in one stored geometry's coordinates.
+func (s *Service) annotateSurface(ctx context.Context, stages []route.Stage) {
+	if s.annotator == nil {
+		return
+	}
+	//nolint:errcheck // Enrichment deliberately cannot fail a run; see above.
+	_ = s.annotator.Annotate(ctx, stages)
 }
 
 // exportProfiles returns the inventory carrying the elevation profile that is

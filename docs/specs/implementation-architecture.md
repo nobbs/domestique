@@ -40,6 +40,8 @@ private to this service.
 │   ├── oauth/                      Wahoo OAuth use case and its interfaces
 │   ├── schedule/                   delayed-start and hourly execution
 │   ├── httpapi/                    Tailnet-gated handlers and JSON mapping
+│   ├── elevation/                  device-export elevation normalization
+│   ├── surface/                    OSM surface classification and snapping
 │   ├── veloplanner/                VeloPlanner HTTP source adapter
 │   ├── fit/                        FIT encoding adapter
 │   ├── wahoo/                      Wahoo OAuth and route HTTP adapter
@@ -71,6 +73,8 @@ owns a distinct responsibility in this tree.
 | schedule | startup delay, hourly cadence, no-overlap guard, cancellation | sync decisions or notification content |
 | httpapi | Tailnet identity gate, routing, request parsing, JSON status and error mapping, response security and cache headers | OAuth exchange, sync logic, or how the UI is built |
 | webui | the embedded browser bundle and serving it; the TypeScript application | HTTP routing, identity, or any knowledge of persistence |
+| elevation | sampling and median-filtering the exported elevation profile | source fetching, storage, FIT bytes |
+| surface | OSM surface and tracktype classification, Overpass querying, snapping a stage to the ways under it, caching policy | SQL, HTTP routing, what the UI draws |
 | veloplanner | login, listing, detail decoding, route conversion | SQLite and Wahoo concerns |
 | fit | deterministic FIT bytes for one valid route stage | VeloPlanner requests, OAuth, HTTP |
 | wahoo | authorisation URL, exchange, refresh, user lookup, FIT route operations, rate headers | route-source parsing, SQLite queries, Pushover |

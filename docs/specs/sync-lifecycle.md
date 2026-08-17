@@ -36,6 +36,7 @@ implementation detail.
 | target stage | source-stage key, target, external ID, Wahoo route ID, last applied revision | none |
 | trusted inventory | complete validated source-stage set and observed time | none |
 | stage geometry | cached titles, geometry, length, and extent for the map view | none |
+| stage surface | cached surface classification of one stored geometry, as index ranges plus matched length, against the content hash it was measured for | none |
 | sync run | start, end, terminal state, aggregate counts, safe failure category | none |
 | notification state | last delivered failure category and suppression deadline | none |
 
@@ -53,6 +54,15 @@ It is deliberately a separate record from the source stage. The source-stage set
 backs the deletion guard and is replaced wholesale each run, whereas this cache
 serves only the map view and may be dropped at any time. Losing it degrades the
 map until the next run and can never affect sync safety or authorise a deletion.
+
+The stage surface cache is filled by a separate pass at the very end of a run,
+because unlike the geometry it needs data the run does not hold: a request per
+stage to the configured Overpass endpoint. That pass cannot change the run's
+outcome, is bounded to a few stages per run so a first sync of a large library
+neither stalls nor leans on a volunteer-run server, and skips any stage already
+classified against its current content hash. A stage whose geometry has been
+re-planned is reclassified, because the cached ranges are positions in the
+coordinate array that was replaced.
 
 ## OAuth lifecycle
 

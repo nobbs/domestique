@@ -72,6 +72,60 @@ func TestValidateTileStyleURL(t *testing.T) {
 	}
 }
 
+func TestLoadDefaultsToThePublicOverpassEndpoint(t *testing.T) {
+	configPath, _ := writeValidConfiguration(t, t.TempDir())
+	t.Setenv(configFileEnv, configPath)
+
+	settings, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if got, want := settings.Surface.OverpassURL, defaultOverpassURL; got != want {
+		t.Errorf("Surface.OverpassURL = %q, want %q", got, want)
+	}
+}
+
+// An empty endpoint is how an operator declines to send stage shapes anywhere,
+// so it must load rather than fail as a missing setting.
+func TestLoadTreatsAnEmptyOverpassEndpointAsDisabled(t *testing.T) {
+	configPath, _ := writeValidConfiguration(t, t.TempDir())
+	appendToFile(t, configPath, "\n[surface]\noverpass_url = \"\"\n")
+	t.Setenv(configFileEnv, configPath)
+
+	settings, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if got := settings.Surface.OverpassURL; got != "" {
+		t.Errorf("Surface.OverpassURL = %q, want an empty endpoint", got)
+	}
+}
+
+func TestValidateOverpassURL(t *testing.T) {
+	tests := []struct {
+		name    string
+		value   string
+		wantErr bool
+	}{
+		{name: "public default", value: defaultOverpassURL},
+		{name: "self-hosted instance", value: "https://overpass.example.test/api/interpreter"},
+		{name: "empty disables the lookup", value: ""},
+		{name: "plaintext is rejected", value: "http://overpass.example.test/api/interpreter", wantErr: true},
+		//nolint:gosec // A rejection fixture for URL userinfo, not a real credential.
+		{name: "credentials are rejected", value: "https://user:pass@overpass.example.test/api", wantErr: true},
+		{name: "relative is rejected", value: "/api/interpreter", wantErr: true},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := validateOverpassURL(test.value)
+			if (err != nil) != test.wantErr {
+				t.Errorf("validateOverpassURL(%q) error = %v, wantErr %v", test.value, err, test.wantErr)
+			}
+		})
+	}
+}
+
 func TestLoadDirectSecretWinsAndIsCleared(t *testing.T) {
 	configPath, _ := writeValidConfiguration(t, t.TempDir())
 	removeConfigurationLine(t, configPath, "email_file =")
@@ -136,6 +190,14 @@ func TestLoadRejectsInvalidConfiguration(t *testing.T) {
 				replaceInFile(t, path, "\n[[wahoo.targets]]\nid = \"rider-b\"\n", "\n")
 			},
 			want: "between one and two",
+		},
+		{
+			name: "plaintext surface endpoint",
+			mutate: func(t *testing.T, path string) {
+				t.Helper()
+				appendToFile(t, path, "\n[surface]\noverpass_url = \"http://overpass.example.test/api\"\n")
+			},
+			want: "surface.overpass_url",
 		},
 		{
 			name: "non canonical schedule",

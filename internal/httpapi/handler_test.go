@@ -118,6 +118,108 @@ func TestHandlerServesStageGeometryAsGeoJSON(t *testing.T) {
 	}
 }
 
+func TestHandlerServesTheStoredSurfaceWithGeometry(t *testing.T) {
+	state := surfaceState()
+	handler := newHandler(t, &fakeOAuth{}, state)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/routes/12/stages/1/geometry"))
+	if got, want := response.Code, http.StatusOK; got != want {
+		t.Fatalf("geometry status = %d, want %d", got, want)
+	}
+
+	var view geometryView
+	if err := json.Unmarshal(response.Body.Bytes(), &view); err != nil {
+		t.Fatalf("decoding geometry = %v", err)
+	}
+	if view.Properties.Surface == nil {
+		t.Fatalf("geometry omitted the stored surface")
+	}
+	if got, want := string(view.Properties.Surface.Ranges), string(state.surfaceRanges); got != want {
+		t.Errorf("surface ranges = %s, want %s", got, want)
+	}
+	if got, want := view.Properties.Surface.MatchedMetres, 1234.5; got != want {
+		t.Errorf("matched metres = %v, want %v", got, want)
+	}
+}
+
+// A stage nobody has surveyed is still a stage that was asked about. It is
+// served as a present surface whose ranges cover the line as unsurveyed and
+// whose matched length is zero, because that is what tells a client the question
+// was answered — an absent surface would say it never was.
+func TestHandlerServesAnUnsurveyedSurfaceAsClassified(t *testing.T) {
+	state := surfaceState()
+	state.surfaceRanges = json.RawMessage(`[{"kind":"unknown","start_index":0,"end_index":1}]`)
+	state.surfaceMetres = 0
+	handler := newHandler(t, &fakeOAuth{}, state)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/routes/12/stages/1/geometry"))
+	if got, want := response.Code, http.StatusOK; got != want {
+		t.Fatalf("geometry status = %d, want %d", got, want)
+	}
+
+	var view geometryView
+	if err := json.Unmarshal(response.Body.Bytes(), &view); err != nil {
+		t.Fatalf("decoding geometry = %v", err)
+	}
+	if view.Properties.Surface == nil {
+		t.Fatalf("geometry omitted a classification that matched nothing")
+	}
+	if got, want := string(view.Properties.Surface.Ranges), string(state.surfaceRanges); got != want {
+		t.Errorf("surface ranges = %s, want %s", got, want)
+	}
+	if got := view.Properties.Surface.MatchedMetres; got != 0 {
+		t.Errorf("matched metres = %v, want 0", got)
+	}
+}
+
+// A classification is a set of positions in one stored coordinate array, so one
+// measured against an earlier plan of the same stage must not be served against
+// the current line.
+func TestHandlerOmitsASurfaceMeasuredAgainstOtherGeometry(t *testing.T) {
+	state := surfaceState()
+	state.surfaceHash = "earlier-hash"
+	handler := newHandler(t, &fakeOAuth{}, state)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/routes/12/stages/1/geometry"))
+	if got, want := response.Code, http.StatusOK; got != want {
+		t.Fatalf("geometry status = %d, want %d", got, want)
+	}
+	if body := response.Body.String(); strings.Contains(body, "surface") {
+		t.Errorf("geometry carried a stale surface: %q", body)
+	}
+}
+
+func TestHandlerReportsUnreadableSurfaceStateAsUnavailable(t *testing.T) {
+	state := surfaceState()
+	state.surfaceErr = errors.New("state unavailable")
+	handler := newHandler(t, &fakeOAuth{}, state)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/routes/12/stages/1/geometry"))
+	if got, want := response.Code, http.StatusInternalServerError; got != want {
+		t.Errorf("geometry status = %d, want %d", got, want)
+	}
+}
+
+// surfaceState holds one stage whose surface has been classified against the
+// geometry that is stored for it.
+func surfaceState() *fakeState {
+	return &fakeState{
+		summaries: []route.Summary{{
+			RouteID: 12, StageOrder: 1, RouteName: "Alpine loop", StageName: "Descent",
+			SourceRevision: "revision", ContentHash: "hash", PointCount: 2,
+			Bounds: route.Bounds{MinLongitude: 8.4, MinLatitude: 49.0, MaxLongitude: 8.5, MaxLatitude: 49.2},
+		}},
+		coordinates:   json.RawMessage(`[[8.4,49],[8.5,49.2]]`),
+		surfaceRanges: json.RawMessage(`[{"kind":"asphalt","start_index":0,"end_index":1}]`),
+		surfaceHash:   "hash",
+		surfaceMetres: 1234.5,
+	}
+}
+
 func TestHandlerReportsMissingGeometryAsNotFound(t *testing.T) {
 	handler := newHandler(t, &fakeOAuth{}, &fakeState{})
 	response := httptest.NewRecorder()
@@ -397,8 +499,12 @@ func (*fakeAssets) Static(writer http.ResponseWriter, _ *http.Request) {
 }
 
 type fakeState struct {
-	coordinates json.RawMessage
-	summaries   []route.Summary
+	coordinates   json.RawMessage
+	surfaceRanges json.RawMessage
+	surfaceHash   string
+	surfaceErr    error
+	summaries     []route.Summary
+	surfaceMetres float64
 }
 
 func (*fakeState) ForEachTarget(_ context.Context, visit func(string, string) error) error {
@@ -428,6 +534,32 @@ func (s *fakeState) StageGeometry(
 	}
 
 	return route.Summary{}, nil, false, nil
+}
+
+// StageSurface answers only for the geometry a classification was measured
+// against, exactly as the store does.
+func (s *fakeState) StageSurface(
+	_ context.Context,
+	routeID int64,
+	stageOrder int,
+	contentHash string,
+) (ranges json.RawMessage, matchedMetres float64, found bool, err error) {
+	if s.surfaceErr != nil {
+		return nil, 0, false, s.surfaceErr
+	}
+	for index := range s.summaries {
+		summary := s.summaries[index]
+		if summary.RouteID != routeID || summary.StageOrder != stageOrder {
+			continue
+		}
+		if s.surfaceRanges == nil || contentHash != s.surfaceHash {
+			break
+		}
+
+		return s.surfaceRanges, s.surfaceMetres, true, nil
+	}
+
+	return nil, 0, false, nil
 }
 
 //nolint:gocritic // This fake conforms to the persistence-free state boundary.
