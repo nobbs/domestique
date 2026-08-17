@@ -39,6 +39,77 @@ func TestNewStageCreatesImmutableStage(t *testing.T) {
 	}
 }
 
+func TestStageDistanceMetres(t *testing.T) {
+	tests := []struct {
+		name      string
+		geometry  []Point
+		want      float64
+		tolerance float64
+	}{
+		{
+			name:      "one degree of latitude",
+			geometry:  []Point{{Longitude: 8, Latitude: 49}, {Longitude: 8, Latitude: 50}},
+			want:      111_195,
+			tolerance: 50,
+		},
+		{
+			name: "accumulates across segments",
+			geometry: []Point{
+				{Longitude: 8, Latitude: 49},
+				{Longitude: 8, Latitude: 49.5},
+				{Longitude: 8, Latitude: 50},
+			},
+			want:      111_195,
+			tolerance: 50,
+		},
+		{
+			name:      "repeated point contributes nothing",
+			geometry:  []Point{{Longitude: 8, Latitude: 49}, {Longitude: 8, Latitude: 49}},
+			want:      0,
+			tolerance: 0.001,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			stage, err := NewStage(1, 1, "revision", "route", "", test.geometry, "hash")
+			if err != nil {
+				t.Fatalf("NewStage() error = %v", err)
+			}
+			if got := stage.DistanceMetres(); math.Abs(got-test.want) > test.tolerance {
+				t.Errorf("DistanceMetres() = %v, want %v within %v", got, test.want, test.tolerance)
+			}
+		})
+	}
+}
+
+func TestStageBounds(t *testing.T) {
+	stage, err := NewStage(1, 1, "revision", "route", "", []Point{
+		{Longitude: 8.5, Latitude: 49.2},
+		{Longitude: 8.1, Latitude: 49.9},
+		{Longitude: 8.9, Latitude: 49.0},
+	}, "hash")
+	if err != nil {
+		t.Fatalf("NewStage() error = %v", err)
+	}
+
+	want := Bounds{MinLongitude: 8.1, MinLatitude: 49.0, MaxLongitude: 8.9, MaxLatitude: 49.9}
+	if got := stage.Bounds(); got != want {
+		t.Errorf("Bounds() = %+v, want %+v", got, want)
+	}
+}
+
+func TestZeroStageGeometryAccessorsAreSafe(t *testing.T) {
+	var stage Stage
+
+	if got := stage.DistanceMetres(); got != 0 {
+		t.Errorf("DistanceMetres() = %v, want 0", got)
+	}
+	if got := (stage.Bounds()); got != (Bounds{}) {
+		t.Errorf("Bounds() = %+v, want zero value", got)
+	}
+}
+
 func TestNewStageRejectsInvalidIdentityAndGeometry(t *testing.T) {
 	validGeometry := []Point{{Longitude: 8.4, Latitude: 49.0}, {Longitude: 8.5, Latitude: 49.1}}
 	tests := []struct {

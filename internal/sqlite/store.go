@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -235,6 +236,106 @@ func (s *Store) ForEachSourceStage(ctx context.Context, visit func(routeID int64
 	return nil
 }
 
+// ForEachStageSummary visits trusted source stages with their display metadata
+// in stable order. A stage whose geometry has not yet been cached is still
+// visited, with zeroed geometry facts, so the inventory listing never hides a
+// synced stage.
+func (s *Store) ForEachStageSummary(ctx context.Context, visit func(summary route.Summary) error) error {
+	if visit == nil {
+		return errors.New("stage summary visitor is required")
+	}
+	rows, err := s.database.QueryContext(ctx, `
+		SELECT
+			source_stages.route_id,
+			source_stages.stage_order,
+			source_stages.source_revision,
+			source_stages.content_hash,
+			COALESCE(stage_geometry.route_name, ''),
+			COALESCE(stage_geometry.stage_name, ''),
+			COALESCE(stage_geometry.point_count, 0),
+			COALESCE(stage_geometry.distance_metres, 0),
+			COALESCE(stage_geometry.min_longitude, 0),
+			COALESCE(stage_geometry.min_latitude, 0),
+			COALESCE(stage_geometry.max_longitude, 0),
+			COALESCE(stage_geometry.max_latitude, 0)
+		FROM source_stages
+		LEFT JOIN stage_geometry
+			ON stage_geometry.route_id = source_stages.route_id
+			AND stage_geometry.stage_order = source_stages.stage_order
+		ORDER BY source_stages.route_id, source_stages.stage_order
+	`)
+	if err != nil {
+		return fmt.Errorf("listing stage summaries: %w", err)
+	}
+	defer closeRows(rows)
+	for rows.Next() {
+		var summary route.Summary
+		if err := rows.Scan(
+			&summary.RouteID, &summary.StageOrder, &summary.SourceRevision, &summary.ContentHash,
+			&summary.RouteName, &summary.StageName, &summary.PointCount, &summary.DistanceMetres,
+			&summary.Bounds.MinLongitude, &summary.Bounds.MinLatitude,
+			&summary.Bounds.MaxLongitude, &summary.Bounds.MaxLatitude,
+		); err != nil {
+			return fmt.Errorf("reading stage summary: %w", err)
+		}
+		if err := visit(summary); err != nil {
+			return fmt.Errorf("visiting stage summary: %w", err)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterating stage summaries: %w", err)
+	}
+
+	return nil
+}
+
+// StageGeometry returns one stage's cached geometry with its display metadata.
+// The coordinates are a JSON array of [longitude, latitude, elevation?]
+// positions, ready to serve as a GeoJSON coordinate list without re-encoding.
+func (s *Store) StageGeometry(
+	ctx context.Context,
+	routeID int64,
+	stageOrder int,
+) (route.Summary, json.RawMessage, bool, error) {
+	var summary route.Summary
+	var coordinates []byte
+	err := s.database.QueryRowContext(ctx, `
+		SELECT
+			stage_geometry.route_id,
+			stage_geometry.stage_order,
+			COALESCE(source_stages.source_revision, ''),
+			stage_geometry.content_hash,
+			stage_geometry.route_name,
+			stage_geometry.stage_name,
+			stage_geometry.point_count,
+			stage_geometry.distance_metres,
+			stage_geometry.min_longitude,
+			stage_geometry.min_latitude,
+			stage_geometry.max_longitude,
+			stage_geometry.max_latitude,
+			stage_geometry.coordinates
+		FROM stage_geometry
+		LEFT JOIN source_stages
+			ON source_stages.route_id = stage_geometry.route_id
+			AND source_stages.stage_order = stage_geometry.stage_order
+		WHERE stage_geometry.route_id = ? AND stage_geometry.stage_order = ?
+	`, routeID, stageOrder).Scan(
+		&summary.RouteID, &summary.StageOrder, &summary.SourceRevision, &summary.ContentHash,
+		&summary.RouteName, &summary.StageName, &summary.PointCount, &summary.DistanceMetres,
+		&summary.Bounds.MinLongitude, &summary.Bounds.MinLatitude,
+		&summary.Bounds.MaxLongitude, &summary.Bounds.MaxLatitude,
+		&coordinates,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return route.Summary{}, nil, false, nil
+	}
+	if err != nil {
+		return route.Summary{}, nil, false, fmt.Errorf("reading stage geometry: %w", err)
+	}
+
+	return summary, json.RawMessage(coordinates), true, nil
+}
+
 // LastSyncRun returns the most recently recorded terminal run, if any.
 //
 //nolint:gocritic // The primitive callback boundary keeps httpapi independent of SQLite record types.
@@ -435,11 +536,106 @@ func (s *Store) StoreTrustedInventory(ctx context.Context, stages []route.Stage)
 			return fmt.Errorf("storing trusted source stage: %w", err)
 		}
 	}
+	if err := storeStageGeometry(ctx, transaction, stages); err != nil {
+		return err
+	}
 	if err := transaction.Commit(); err != nil {
 		return fmt.Errorf("committing trusted inventory update: %w", err)
 	}
 
 	return nil
+}
+
+// storeStageGeometry refreshes the map-view rendering cache inside the caller's
+// transaction. A stage whose content hash is unchanged is left untouched, so an
+// unchanged library does not rewrite the whole cache on every scheduled run.
+// Rows whose stage has left the inventory are pruned.
+func storeStageGeometry(ctx context.Context, transaction *sql.Tx, stages []route.Stage) error {
+	updatedAt := time.Now().UTC().Unix()
+	for index := range stages {
+		stage := &stages[index]
+		key := stage.Key()
+
+		var storedHash string
+		err := transaction.QueryRowContext(ctx, `
+			SELECT content_hash FROM stage_geometry WHERE route_id = ? AND stage_order = ?
+		`, key.RouteID(), key.StageOrder()).Scan(&storedHash)
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+		case err != nil:
+			return fmt.Errorf("reading cached stage geometry: %w", err)
+		case storedHash == stage.ContentHash():
+			continue
+		}
+
+		geometry := stage.Geometry()
+		coordinates, err := encodeCoordinates(geometry)
+		if err != nil {
+			return err
+		}
+		bounds := stage.Bounds()
+		if _, err := transaction.ExecContext(ctx, `
+			INSERT INTO stage_geometry (
+				route_id, stage_order, content_hash, route_name, stage_name,
+				point_count, distance_metres,
+				min_longitude, min_latitude, max_longitude, max_latitude,
+				coordinates, updated_at_unix
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT (route_id, stage_order) DO UPDATE SET
+				content_hash = excluded.content_hash,
+				route_name = excluded.route_name,
+				stage_name = excluded.stage_name,
+				point_count = excluded.point_count,
+				distance_metres = excluded.distance_metres,
+				min_longitude = excluded.min_longitude,
+				min_latitude = excluded.min_latitude,
+				max_longitude = excluded.max_longitude,
+				max_latitude = excluded.max_latitude,
+				coordinates = excluded.coordinates,
+				updated_at_unix = excluded.updated_at_unix
+		`,
+			key.RouteID(), key.StageOrder(), stage.ContentHash(), stage.RouteName(), stage.StageName(),
+			len(geometry), stage.DistanceMetres(),
+			bounds.MinLongitude, bounds.MinLatitude, bounds.MaxLongitude, bounds.MaxLatitude,
+			coordinates, updatedAt,
+		); err != nil {
+			return fmt.Errorf("storing stage geometry: %w", err)
+		}
+	}
+
+	if _, err := transaction.ExecContext(ctx, `
+		DELETE FROM stage_geometry
+		WHERE NOT EXISTS (
+			SELECT 1 FROM source_stages
+			WHERE source_stages.route_id = stage_geometry.route_id
+			  AND source_stages.stage_order = stage_geometry.stage_order
+		)
+	`); err != nil {
+		return fmt.Errorf("pruning stage geometry: %w", err)
+	}
+
+	return nil
+}
+
+// encodeCoordinates renders geometry as a JSON position array. The stored bytes
+// are exactly a GeoJSON LineString's coordinate list, so serving them needs no
+// decode and re-encode. Elevation is emitted only where the source supplied it.
+func encodeCoordinates(points []route.Point) ([]byte, error) {
+	positions := make([][]float64, 0, len(points))
+	for _, point := range points {
+		if point.Elevation == nil {
+			positions = append(positions, []float64{point.Longitude, point.Latitude})
+
+			continue
+		}
+		positions = append(positions, []float64{point.Longitude, point.Latitude, *point.Elevation})
+	}
+	encoded, err := json.Marshal(positions)
+	if err != nil {
+		return nil, fmt.Errorf("encoding stage coordinates: %w", err)
+	}
+
+	return encoded, nil
 }
 
 // ForEachTargetStage visits one target's tracked Wahoo routes in stable source
@@ -919,6 +1115,29 @@ func schemaMigrations() [][]string {
 			`ALTER TABLE sync_runs ADD COLUMN created INTEGER NOT NULL DEFAULT 0`,
 			`ALTER TABLE sync_runs ADD COLUMN updated INTEGER NOT NULL DEFAULT 0`,
 			`ALTER TABLE sync_runs ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0`,
+		},
+		{
+			// The route map view's rendering cache. It is deliberately separate from
+			// source_stages: that table backs the deletion-safety guard and is
+			// replaced wholesale every sync, whereas this one is written only when a
+			// stage's content hash changes and may be dropped at any time without
+			// affecting sync safety.
+			`CREATE TABLE stage_geometry (
+				route_id        INTEGER NOT NULL,
+				stage_order     INTEGER NOT NULL,
+				content_hash    TEXT    NOT NULL,
+				route_name      TEXT    NOT NULL,
+				stage_name      TEXT    NOT NULL,
+				point_count     INTEGER NOT NULL,
+				distance_metres REAL    NOT NULL,
+				min_longitude   REAL    NOT NULL,
+				min_latitude    REAL    NOT NULL,
+				max_longitude   REAL    NOT NULL,
+				max_latitude    REAL    NOT NULL,
+				coordinates     BLOB    NOT NULL,
+				updated_at_unix INTEGER NOT NULL,
+				PRIMARY KEY (route_id, stage_order)
+			)`,
 		},
 	}
 }

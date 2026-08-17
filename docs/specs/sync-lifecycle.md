@@ -35,12 +35,24 @@ implementation detail.
 | source stage | stable identity, source revision, metadata, content hash | none |
 | target stage | source-stage key, target, external ID, Wahoo route ID, last applied revision | none |
 | trusted inventory | complete validated source-stage set and observed time | none |
+| stage geometry | cached titles, geometry, length, and extent for the map view | none |
 | sync run | start, end, terminal state, aggregate counts, safe failure category | none |
 | notification state | last delivered failure category and suppression deadline | none |
 
 OAuth state is stored as a digest. Refresh tokens are encrypted before being
 written. Access tokens, OAuth authorisation codes, CSRF state values, raw
 upstream bodies, and FIT bytes are never persisted.
+
+The stage geometry cache is written during the same transaction that stores the
+trusted inventory, from data the run already holds, so it needs no extra source
+request. A stage whose content hash is unchanged is **not rewritten**, which
+keeps an unchanged library from rewriting the whole cache every hour; rows whose
+stage has left the inventory are pruned.
+
+It is deliberately a separate record from the source stage. The source-stage set
+backs the deletion guard and is replaced wholesale each run, whereas this cache
+serves only the map view and may be dropped at any time. Losing it degrades the
+map until the next run and can never affect sync safety or authorise a deletion.
 
 ## OAuth lifecycle
 
