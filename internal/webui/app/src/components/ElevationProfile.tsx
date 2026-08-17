@@ -14,6 +14,19 @@ import type { Profile, ProfileSample } from "../lib/profile";
 import { GRADIENT_BANDS, ticksFor } from "../lib/profile";
 import { useElementWidth } from "../lib/useElementWidth";
 
+/**
+ * Hatch patterns for the steeper bands.
+ *
+ * Texture is the backup channel for identity: it survives colour blindness,
+ * greyscale print, and forced-colours mode, where hue alone does not. It also
+ * lets the ground sit at low opacity — the terrain is a backdrop for the
+ * silhouette, not a block of paint — while the steep sections still read.
+ */
+const HATCH_ANGLES: Record<number, number> = { 1: 45, 2: 135 };
+// Fine enough that a short pitch still shows several strokes; a coarse hatch
+// in a twelve-pixel band is indistinguishable from a solid block.
+const HATCH_SIZE = 5;
+
 const HEIGHT = 148;
 const PADDING = { top: 12, right: 12, bottom: 22, left: 46 };
 const MIN_WIDTH = 240;
@@ -201,6 +214,33 @@ export function ElevationProfile({
         aria-label={summary}
       >
         <title>{summary}</title>
+        <defs>
+          {Object.entries(HATCH_ANGLES).map(([band, angle]) => (
+            <pattern
+              key={band}
+              id={`elevation-hatch-${band}`}
+              width={HATCH_SIZE}
+              height={HATCH_SIZE}
+              patternUnits="userSpaceOnUse"
+              patternTransform={`rotate(${angle})`}
+            >
+              <rect
+                className="elevation-profile__hatch-ground"
+                data-band={band}
+                width={HATCH_SIZE}
+                height={HATCH_SIZE}
+              />
+              <line
+                className="elevation-profile__hatch-line"
+                data-band={band}
+                x1={0}
+                y1={0}
+                x2={0}
+                y2={HATCH_SIZE}
+              />
+            </pattern>
+          ))}
+        </defs>
         <g transform={`translate(${PADDING.left} ${PADDING.top})`}>
           {geometry.elevationTicks.map((metres) => (
             <g key={metres}>
@@ -230,6 +270,11 @@ export function ElevationProfile({
               key={`column-${index}`}
               className="elevation-profile__column"
               data-band={run.band}
+              fill={
+                HATCH_ANGLES[run.band] === undefined
+                  ? undefined
+                  : `url(#elevation-hatch-${run.band})`
+              }
               d={run.column}
             />
           ))}
@@ -312,7 +357,12 @@ export function ElevationProfile({
         <ul className="elevation-profile__scale">
           {GRADIENT_BANDS.map((band, index) => (
             <li key={band.label}>
-              <span className="elevation-profile__swatch" data-band={index} aria-hidden="true" />
+              <span
+                className="elevation-profile__swatch"
+                data-band={index}
+                data-hatched={HATCH_ANGLES[index] !== undefined}
+                aria-hidden="true"
+              />
               {band.label}
             </li>
           ))}

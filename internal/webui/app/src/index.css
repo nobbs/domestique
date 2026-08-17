@@ -416,9 +416,47 @@ body {
 }
 
 /* The wash, not a saturated block. */
-/* The ground, banded by steepness. */
+/*
+ * The ground, banded by steepness. It is a backdrop for the silhouette rather
+ * than a block of paint, so it sits at low opacity; the steeper bands carry a
+ * hatch as well, which reads without relying on colour.
+ */
 .elevation-profile__column {
   stroke: none;
+  fill-opacity: 0.32;
+}
+
+/*
+ * Tuned so a hatched band carries about the same ink as the plain one: the
+ * texture should distinguish the steep sections, not shout over the terrain.
+ */
+.elevation-profile__hatch-line {
+  stroke-width: 1.6;
+  stroke-opacity: 0.8;
+}
+
+.elevation-profile__hatch-ground[data-band="1"] {
+  fill: var(--band-1);
+  fill-opacity: 0.15;
+}
+
+.elevation-profile__hatch-line[data-band="1"] {
+  stroke: var(--band-1);
+}
+
+.elevation-profile__hatch-ground[data-band="2"] {
+  fill: var(--band-2);
+  fill-opacity: 0.15;
+}
+
+.elevation-profile__hatch-line[data-band="2"] {
+  stroke: var(--band-2);
+}
+
+/* A hatched band is drawn through its pattern, so it needs full opacity here. */
+.elevation-profile__column[data-band="1"],
+.elevation-profile__column[data-band="2"] {
+  fill-opacity: 1;
 }
 
 /*
@@ -428,7 +466,7 @@ body {
 .elevation-profile__ridge {
   fill: none;
   stroke: var(--text);
-  stroke-opacity: 0.55;
+  stroke-opacity: 0.7;
   stroke-width: 1.5;
   stroke-linejoin: round;
   stroke-linecap: round;
@@ -506,6 +544,16 @@ body {
   width: 14px;
   height: 8px;
   border-radius: 2px;
+  opacity: 0.75;
+}
+
+.elevation-profile__swatch[data-hatched="true"] {
+  opacity: 1;
+  background-image: repeating-linear-gradient(
+    45deg,
+    transparent 0 2px,
+    var(--surface) 2px 3.5px
+  );
 }
 
 .elevation-profile__readout {
