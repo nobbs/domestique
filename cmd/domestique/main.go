@@ -24,7 +24,14 @@ import (
 	"github.com/nobbs/domestique/internal/wahoo"
 )
 
-const shutdownTimeout = 15 * time.Second
+const (
+	shutdownTimeout        = 15 * time.Second
+	httpIdleTimeout        = 60 * time.Second
+	httpReadHeaderTimeout  = 10 * time.Second
+	httpReadTimeout        = 15 * time.Second
+	httpWriteTimeout       = 75 * time.Second
+	httpMaximumHeaderBytes = 8 << 10
+)
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -91,7 +98,15 @@ func run(ctx context.Context) error {
 		return fmt.Errorf("creating HTTP handler: %w", err)
 	}
 
-	server := &http.Server{Addr: settings.HTTP.ListenAddress, Handler: handler, ReadHeaderTimeout: 10 * time.Second}
+	server := &http.Server{
+		Addr:              settings.HTTP.ListenAddress,
+		Handler:           handler,
+		IdleTimeout:       httpIdleTimeout,
+		MaxHeaderBytes:    httpMaximumHeaderBytes,
+		ReadHeaderTimeout: httpReadHeaderTimeout,
+		ReadTimeout:       httpReadTimeout,
+		WriteTimeout:      httpWriteTimeout,
+	}
 	return serve(ctx, server, scheduler)
 }
 
