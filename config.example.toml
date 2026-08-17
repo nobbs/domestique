@@ -1,0 +1,40 @@
+# Copy this file outside the repository, then replace every placeholder and
+# provide each referenced secret file. The file itself contains no secret value.
+
+[http]
+listen_address = ":8080"
+
+[access]
+tailnet_user_login = "you@example.ts.net"
+
+[state]
+database_path = "/var/lib/domestique/state.db"
+encryption_key_file = "/run/secrets/state_encryption_key"
+
+[veloplanner]
+base_url = "https://veloplanner.com"
+email_file = "/run/secrets/veloplanner_email"
+password_file = "/run/secrets/veloplanner_password"
+
+[wahoo]
+api_base_url = "https://api.sandbox.wahooligan.com"
+oauth_base_url = "https://api.sandbox.wahooligan.com"
+client_id = "replace-with-client-id"
+client_secret_file = "/run/secrets/wahoo_client_secret"
+redirect_url = "https://pi.example.ts.net/oauth/wahoo/callback"
+
+[[wahoo.targets]]
+id = "rider-a"
+
+[[wahoo.targets]]
+id = "rider-b"
+
+[sync]
+initial_delay = "1m"
+interval = "1h"
+max_deletions_per_target = 5
+empty_source_deletion = "deny"
+
+[notifications.pushover]
+application_token_file = "/run/secrets/pushover_application_token"
+user_key_file = "/run/secrets/pushover_user_key"

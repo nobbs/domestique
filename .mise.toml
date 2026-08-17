@@ -9,3 +9,4 @@ markdownlint-cli2 = "0.23.2"
 
 [env]
 GOCACHE = "{{config_root}}/.cache/go-build"
+GOLANGCI_LINT_CACHE = "{{config_root}}/.cache/golangci-lint"

@@ -18,6 +18,8 @@ mise exec -- make check
 ~~~
 
 Install the optional Git hook with `mise exec -- prek install`. See
-[CONTRIBUTING.md](CONTRIBUTING.md) for the contributor workflow. The initial
-binary is only a buildable bootstrap; service behavior starts with the next
-implementation layer.
+[CONTRIBUTING.md](CONTRIBUTING.md) for the contributor workflow. Copy
+[`config.example.toml`](config.example.toml) outside the repository when
+preparing a local deployment; it references secret files and never embeds
+secret values. The current implementation validates static configuration and
+persists encrypted state, but does not start the HTTP, OAuth, or sync flows yet.
