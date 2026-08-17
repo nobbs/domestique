@@ -23,7 +23,7 @@ func TestServeWaitsForCancelledSchedulerBeforeReturning(t *testing.T) {
 		ReadHeaderTimeout: time.Second,
 	}
 	result := make(chan error, 1)
-	go func() { result <- serve(ctx, server, scheduler) }()
+	go func() { result <- serve(ctx, cancel, server, scheduler, &blockingManualSync{}) }()
 
 	<-scheduler.started
 	cancel()
@@ -46,6 +46,10 @@ type blockingScheduler struct {
 	cancelled chan struct{}
 	release   chan struct{}
 }
+
+type blockingManualSync struct{}
+
+func (*blockingManualSync) Wait() {}
 
 func (s *blockingScheduler) Run(ctx context.Context) {
 	close(s.started)

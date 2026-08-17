@@ -21,6 +21,20 @@ type OAuth interface {
 	Complete(ctx context.Context, tailnetUserLogin, state, code string) error
 }
 
+// SyncTrigger starts one manual synchronization and reports whether it was
+// accepted. An accepted run continues independently of the HTTP request.
+type SyncTrigger interface {
+	Trigger() bool
+}
+
+// SyncTriggerFunc adapts a function to SyncTrigger for manual wiring.
+type SyncTriggerFunc func() bool
+
+// Trigger starts the adapted manual synchronization.
+func (f SyncTriggerFunc) Trigger() bool {
+	return f()
+}
+
 // State provides only non-secret metadata for the JSON read model.
 type State interface {
 	ForEachTarget(ctx context.Context, visit func(id, authorization string) error) error
@@ -31,6 +45,7 @@ type State interface {
 // Handler enforces Tailnet identity and exposes the small v1 HTTP surface.
 type Handler struct {
 	oauth        OAuth
+	syncTrigger  SyncTrigger
 	state        State
 	allowedLogin string
 	targetIDs    []string
@@ -38,9 +53,9 @@ type Handler struct {
 
 // New creates a handler. Health checks are intentionally unauthenticated;
 // deployment must keep the listener private to the local Tailscale proxy.
-func New(allowedLogin string, targetIDs []string, oauthService OAuth, state State) (*Handler, error) {
-	if strings.TrimSpace(allowedLogin) == "" || oauthService == nil || state == nil {
-		return nil, errors.New("tailnet login, oauth service, and state are required")
+func New(allowedLogin string, targetIDs []string, oauthService OAuth, state State, syncTrigger SyncTrigger) (*Handler, error) {
+	if strings.TrimSpace(allowedLogin) == "" || oauthService == nil || state == nil || syncTrigger == nil {
+		return nil, errors.New("tailnet login, oauth service, state, and sync trigger are required")
 	}
 	if len(targetIDs) < 1 || len(targetIDs) > 2 {
 		return nil, errors.New("between one and two target IDs are required")
@@ -54,7 +69,7 @@ func New(allowedLogin string, targetIDs []string, oauthService OAuth, state Stat
 		}
 	}
 
-	return &Handler{allowedLogin: allowedLogin, oauth: oauthService, state: state, targetIDs: append([]string(nil), targetIDs...)}, nil
+	return &Handler{allowedLogin: allowedLogin, oauth: oauthService, state: state, syncTrigger: syncTrigger, targetIDs: append([]string(nil), targetIDs...)}, nil
 }
 
 // ServeHTTP handles the fixed v1 API without echoing sensitive query values.
@@ -71,6 +86,8 @@ func (h *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	switch {
 	case request.Method == http.MethodGet && request.URL.Path == "/v1/status":
 		h.status(writer, request)
+	case request.Method == http.MethodPost && request.URL.Path == "/v1/sync":
+		h.sync(writer)
 	case request.Method == http.MethodGet && request.URL.Path == "/v1/routes":
 		h.routes(writer, request, 0, 0, false)
 	case request.Method == http.MethodGet && strings.HasPrefix(request.URL.Path, "/v1/routes/"):
@@ -87,6 +104,14 @@ func (h *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	default:
 		h.error(writer, http.StatusNotFound, "not_found", "resource was not found")
 	}
+}
+
+func (h *Handler) sync(writer http.ResponseWriter) {
+	if !h.syncTrigger.Trigger() {
+		h.error(writer, http.StatusConflict, "sync_in_progress", "a synchronization is already running")
+		return
+	}
+	h.writeJSON(writer, http.StatusAccepted, map[string]string{"status": "accepted"})
 }
 
 func (h *Handler) health(writer http.ResponseWriter, request *http.Request) {

@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	stdsync "sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -24,10 +26,12 @@ type Notifier interface {
 // Reporter adds durable run recording and notification policy around a
 // synchronization service. It does not expose provider errors or route names.
 type Reporter struct {
-	runner   Runner
-	state    RunState
-	notifier Notifier
-	now      func() time.Time
+	runner    Runner
+	state     RunState
+	notifier  Notifier
+	now       func() time.Time
+	running   atomic.Bool
+	triggered stdsync.WaitGroup
 }
 
 // Runner is the application service seam consumed by the reporter and
@@ -48,6 +52,34 @@ func NewReporter(runner Runner, state RunState, notifier Notifier) (*Reporter, e
 // Run records a terminal run and sends the configured safe notifications.
 // Notification or state-delivery failures never rewrite the sync outcome.
 func (r *Reporter) Run(ctx context.Context) Result {
+	if !r.running.CompareAndSwap(false, true) {
+		return Result{Outcome: OutcomeSkipped}
+	}
+	defer r.running.Store(false)
+
+	return r.run(ctx)
+}
+
+// Trigger starts a manual synchronization in the background. It returns false
+// when a scheduled or another manual synchronization is already running.
+func (r *Reporter) Trigger(ctx context.Context) bool {
+	if !r.running.CompareAndSwap(false, true) {
+		return false
+	}
+	r.triggered.Go(func() {
+		defer r.running.Store(false)
+		_ = r.run(ctx)
+	})
+
+	return true
+}
+
+// Wait waits for any manual synchronization accepted by Trigger to finish.
+func (r *Reporter) Wait() {
+	r.triggered.Wait()
+}
+
+func (r *Reporter) run(ctx context.Context) Result {
 	startedAt := r.now().UTC()
 	result := r.runner.Run(ctx)
 	if result.Outcome == OutcomeSkipped {

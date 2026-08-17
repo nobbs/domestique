@@ -61,6 +61,28 @@ func TestHandlerRunsCallerBoundOAuthFlow(t *testing.T) {
 	}
 }
 
+func TestHandlerAcceptsManualSync(t *testing.T) {
+	trigger := &fakeSyncTrigger{accepted: true}
+	handler := newHandlerWithTrigger(t, &fakeOAuth{}, &fakeState{}, trigger)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/sync"))
+	if got, want := response.Code, http.StatusAccepted; got != want {
+		t.Errorf("sync status = %d, want %d", got, want)
+	}
+	if got, want := trigger.calls, 1; got != want {
+		t.Errorf("trigger calls = %d, want %d", got, want)
+	}
+}
+
+func TestHandlerRejectsOverlappingManualSync(t *testing.T) {
+	handler := newHandlerWithTrigger(t, &fakeOAuth{}, &fakeState{}, &fakeSyncTrigger{})
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/sync"))
+	if got, want := response.Code, http.StatusConflict; got != want {
+		t.Errorf("sync status = %d, want %d", got, want)
+	}
+}
+
 func TestHandlerRejectsInactiveTarget(t *testing.T) {
 	oauthService := &fakeOAuth{location: "https://wahoo.example.test/oauth/authorize"}
 	handler := newHandler(t, oauthService, &fakeState{})
@@ -88,8 +110,12 @@ func TestHandlerHidesOAuthFailure(t *testing.T) {
 
 func newTestHandler(t *testing.T) *Handler { return newHandler(t, &fakeOAuth{}, &fakeState{}) }
 func newHandler(t *testing.T, oauthService OAuth, state State) *Handler {
+	return newHandlerWithTrigger(t, oauthService, state, &fakeSyncTrigger{accepted: true})
+}
+
+func newHandlerWithTrigger(t *testing.T, oauthService OAuth, state State, syncTrigger SyncTrigger) *Handler {
 	t.Helper()
-	handler, err := New("rider@example.ts.net", []string{"rider-a"}, oauthService, state)
+	handler, err := New("rider@example.ts.net", []string{"rider-a"}, oauthService, state, syncTrigger)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -104,6 +130,17 @@ func authenticatedRequest(method, target string) *http.Request {
 type fakeOAuth struct {
 	completeErr        error
 	location, targetID string
+}
+
+type fakeSyncTrigger struct {
+	accepted bool
+	calls    int
+}
+
+func (t *fakeSyncTrigger) Trigger() bool {
+	t.calls++
+
+	return t.accepted
 }
 
 func (o *fakeOAuth) Start(_ context.Context, _, targetID string) (string, error) {

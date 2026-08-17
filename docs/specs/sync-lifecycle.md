@@ -75,6 +75,14 @@ stateDiagram-v2
 A callback failure returns a generic error response. It never echoes the code,
 state, token, Wahoo account identity, or upstream response.
 
+## Manual trigger
+
+The configured Tailnet user can request `POST /v1/sync` to start an immediate
+synchronization. It uses the same reconciliation, durable run record, and
+Pushover notification path as scheduled work. The service returns `202` only
+when no scheduled or manual run is active; otherwise it returns `409` without
+starting duplicate provider work.
+
 ## Wahoo token use
 
 Wahoo access and refresh tokens are handled per target:

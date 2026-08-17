@@ -98,6 +98,15 @@ removes client-supplied identity headers and adds `Tailscale-User-Login` only
 for authenticated member traffic, so the host's loopback-only publication
 remains essential.
 
+To request an immediate synchronization from a Tailnet member device, use:
+
+~~~sh
+curl --request POST https://domestique.fluffy-sargas.ts.net/v1/sync
+~~~
+
+The request returns `202 Accepted` when queued. Inspect `/v1/status` for the
+terminal outcome; concurrent manual or scheduled runs return `409 Conflict`.
+
 ## Operate and stop
 
 Follow logs with docker compose -f compose.macos.yml logs --follow. A

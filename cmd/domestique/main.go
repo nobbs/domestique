@@ -93,7 +93,11 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("creating scheduler: %w", err)
 	}
-	handler, err := httpapi.New(settings.Access.TailnetUserLogin, targetIDs, oauthService, store)
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	handler, err := httpapi.New(settings.Access.TailnetUserLogin, targetIDs, oauthService, store, httpapi.SyncTriggerFunc(func() bool {
+		return reporter.Trigger(runCtx)
+	}))
 	if err != nil {
 		return fmt.Errorf("creating HTTP handler: %w", err)
 	}
@@ -107,25 +111,28 @@ func run(ctx context.Context) error {
 		ReadTimeout:       httpReadTimeout,
 		WriteTimeout:      httpWriteTimeout,
 	}
-	return serve(ctx, server, scheduler)
+	return serve(runCtx, cancel, server, scheduler, reporter)
 }
 
 type schedulerRunner interface {
 	Run(context.Context)
 }
 
+type manualSyncWaiter interface {
+	Wait()
+}
+
 // serve runs HTTP and scheduled synchronization under one cancellation scope.
 // It waits for a cancelled synchronization run before its caller can close the
 // durable state that the run may still be using.
-func serve(ctx context.Context, server *http.Server, scheduler schedulerRunner) error {
-	runCtx, cancel := context.WithCancel(ctx)
+func serve(ctx context.Context, cancel context.CancelFunc, server *http.Server, scheduler schedulerRunner, manualSync manualSyncWaiter) error {
 	defer cancel()
 	serverErrors := make(chan error, 1)
 	go func() { serverErrors <- server.ListenAndServe() }()
 	schedulerDone := make(chan struct{})
 	go func() {
 		defer close(schedulerDone)
-		scheduler.Run(runCtx)
+		scheduler.Run(ctx)
 	}()
 
 	var servingErr error
@@ -141,6 +148,7 @@ func serve(ctx context.Context, server *http.Server, scheduler schedulerRunner) 
 	defer shutdownCancel()
 	shutdownErr := server.Shutdown(shutdownCtx)
 	<-schedulerDone
+	manualSync.Wait()
 	if shutdownErr != nil {
 		shutdownErr = fmt.Errorf("shutting down HTTP: %w", shutdownErr)
 	}

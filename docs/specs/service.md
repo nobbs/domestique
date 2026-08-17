@@ -28,8 +28,7 @@ flow. Route preview and editing are explicitly out of scope for v1.
 - Sync every route in the configured VeloPlanner library; v1 has no selection
   by tag, prefix, or allow-list.
 - Preserve no integration with Ride with GPS.
-- Do not provide a manual sync trigger, route editing, a browser UI, or a
-  command-line interface.
+- Do not provide route editing, a browser UI, or a command-line interface.
 - Do not run a secret manager or reference a specific secret provider from Go.
 - Do not back up the persistent service data. Recovery must be safe despite
   that intentional constraint.
@@ -75,6 +74,9 @@ The read-only JSON surface is deliberately small:
 - `GET /v1/routes` lists known source routes and stages.
 - `GET /v1/routes/{source-route-id}/stages/{stage}` returns stored route
   metadata, not edit controls.
+- `POST /v1/sync` queues one immediate synchronization through the same
+  reporting path as the schedule. It returns `202 Accepted`, or `409 Conflict`
+  when a scheduled or manual synchronization is already running.
 
 Exact response schemas are an implementation follow-up. They must never expose
 secrets, tokens, raw upstream response bodies, or full route geometry.

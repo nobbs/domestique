@@ -63,12 +63,42 @@ func TestReporterDoesNotRecordOrNotifySkippedRun(t *testing.T) {
 	}
 }
 
+func TestReporterTriggerRejectsOverlappingRun(t *testing.T) {
+	runner := &blockingReportingRunner{started: make(chan struct{}), release: make(chan struct{})}
+	state := &fakeRunState{}
+	reporter := newReporter(t, runner, state, &fakeNotifier{})
+	if !reporter.Trigger(t.Context()) {
+		t.Fatal("Trigger() = false, want accepted run")
+	}
+	<-runner.started
+	if reporter.Trigger(t.Context()) {
+		t.Error("Trigger() = true, want rejection while run is active")
+	}
+	close(runner.release)
+	reporter.Wait()
+	if got, want := state.runs, 1; got != want {
+		t.Errorf("recorded runs = %d, want %d", got, want)
+	}
+}
+
 type reportingRunner struct {
 	result Result
 }
 
 func (r *reportingRunner) Run(context.Context) Result {
 	return r.result
+}
+
+type blockingReportingRunner struct {
+	started chan struct{}
+	release chan struct{}
+}
+
+func (r *blockingReportingRunner) Run(context.Context) Result {
+	close(r.started)
+	<-r.release
+
+	return Result{Outcome: OutcomeSucceeded}
 }
 
 type fakeRunState struct {
