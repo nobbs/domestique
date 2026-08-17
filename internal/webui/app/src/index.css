@@ -526,7 +526,6 @@ body {
   stroke-width: 1;
 }
 
-/* The marker carries a surface ring so it stays legible over the line. */
 /* The marker keeps a surface ring so it stays legible over its own line. */
 .elevation-profile__cursor circle {
   stroke: var(--surface);

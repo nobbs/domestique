@@ -55,7 +55,7 @@ const MIN_RUN_SAMPLES = 3;
  * says nothing about the terrain — the bands are meant to show *sustained*
  * steepness, so a run too short to be sustained takes its neighbour's band.
  */
-function steadyBands(samples: ProfileSample[]): number[] {
+export function steadyBands(samples: ProfileSample[]): number[] {
   const bands = samples.map((sample) => sample.band);
 
   let start = 0;
@@ -63,10 +63,15 @@ function steadyBands(samples: ProfileSample[]): number[] {
     if (index < bands.length && bands[index] === bands[start]) {
       continue;
     }
-    if (index - start < MIN_RUN_SAMPLES && start > 0) {
-      const previous = bands[start - 1] ?? 0;
-      for (let fill = start; fill < index; fill++) {
-        bands[fill] = previous;
+    if (index - start < MIN_RUN_SAMPLES) {
+      // A short run takes the preceding band where there is one, and otherwise
+      // the following one, so a brief opening run is smoothed like any other.
+      // A profile that is a single run has no neighbour and stands as it is.
+      const neighbour = start > 0 ? bands[start - 1] : bands[index];
+      if (neighbour !== undefined) {
+        for (let fill = start; fill < index; fill++) {
+          bands[fill] = neighbour;
+        }
       }
     }
     start = index;

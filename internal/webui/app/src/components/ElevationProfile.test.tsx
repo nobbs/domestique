@@ -3,8 +3,21 @@ import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { describe, expect, it } from "vitest";
 import type { Position } from "../api/types";
+import type { ProfileSample } from "../lib/profile";
 import { buildProfile } from "../lib/profile";
-import { ElevationProfile } from "./ElevationProfile";
+import { ElevationProfile, steadyBands } from "./ElevationProfile";
+
+/** Only the band matters to steadyBands; the rest is filler. */
+function samplesOf(bands: number[]): ProfileSample[] {
+  return bands.map((band) => ({
+    distanceMetres: 0,
+    elevationMetres: 0,
+    longitude: 8,
+    latitude: 49,
+    gradientPercent: 0,
+    band,
+  }));
+}
 
 function climb(): Position[] {
   return Array.from(
@@ -118,5 +131,23 @@ describe("ElevationProfile", () => {
 
     // 100 m to 295 m over the generated climb.
     expect(screen.getByText(/100–295 m/)).toBeInTheDocument();
+  });
+});
+
+describe("steadyBands", () => {
+  it("absorbs a short opening run into the run that follows it", () => {
+    expect(steadyBands(samplesOf([2, 0, 0, 0, 0]))).toEqual([0, 0, 0, 0, 0]);
+  });
+
+  it("absorbs a short run into the run before it", () => {
+    expect(steadyBands(samplesOf([0, 0, 0, 2, 0, 0, 0]))).toEqual([0, 0, 0, 0, 0, 0, 0]);
+  });
+
+  it("leaves a sustained opening run alone", () => {
+    expect(steadyBands(samplesOf([2, 2, 2, 0, 0, 0]))).toEqual([2, 2, 2, 0, 0, 0]);
+  });
+
+  it("leaves a profile of one run alone, short or not", () => {
+    expect(steadyBands(samplesOf([2, 2]))).toEqual([2, 2]);
   });
 });

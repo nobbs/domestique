@@ -69,6 +69,12 @@ describe("buildProfile", () => {
       ]),
     ).toBeNull();
   });
+
+  it("refuses fewer than two samples rather than dividing by zero", () => {
+    for (const sampleCount of [-1, 0, 1]) {
+      expect(buildProfile(route([100, 200, 300]), sampleCount)).toBeNull();
+    }
+  });
 });
 
 describe("niceStep", () => {

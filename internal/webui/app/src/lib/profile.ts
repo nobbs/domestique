@@ -92,8 +92,14 @@ function elevationOf(position: Position): number | undefined {
  * Builds an evenly spaced profile, or null when the route carries no complete
  * elevation — a partial profile would imply flat ground where data is simply
  * absent.
+ *
+ * Fewer than two samples is also null: the spacing divides by sampleCount - 1,
+ * and one sample describes no span to plot.
  */
 export function buildProfile(coordinates: Position[], sampleCount = 320): Profile | null {
+  if (sampleCount < 2) {
+    return null;
+  }
   if (coordinates.length < 2 || coordinates.some((point) => elevationOf(point) === undefined)) {
     return null;
   }
@@ -191,7 +197,7 @@ export function niceStep(range: number, target: number): number {
   return step * magnitude;
 }
 
-/** Round tick values spanning [min, max] inclusive of the first step at or below min. */
+/** Round tick values spanning [min, max], starting at the first step at or above min. */
 export function ticksFor(min: number, max: number, target: number): number[] {
   const step = niceStep(max - min, target);
   const first = Math.ceil(min / step) * step;
