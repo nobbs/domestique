@@ -23,7 +23,7 @@ The repository provides these stable Make targets:
 | `make fmt` | Applies Go formatting to owned Go source. |
 | `make lint` | Runs the configured `golangci-lint` checks. |
 | `make test` | Runs the normal deterministic test suite with `CGO_ENABLED=0`. |
-| `make build` | Compiles the Linux ARM64 service binary with `CGO_ENABLED=0`, after building the browser UI. |
+| `make build` | Compiles the Linux service binary for `BUILD_ARCH` with `CGO_ENABLED=0`, after building the browser UI. |
 | `make ui-build` | Builds the browser UI bundle that the binary embeds. |
 | `make ui-dev` | Runs the UI dev server, proxying the API to the local service. |
 | `make dev-setup` | Snapshots the deployed state into an isolated development environment. |
@@ -34,9 +34,10 @@ The repository provides these stable Make targets:
 `prek run --all-files`, linting, tests, TypeScript type checking, the browser UI
 lint and test suites, Go module verification, vulnerability analysis for both Go
 and npm dependencies, a GitHub Actions workflow check, a worktree secret scan,
-and the release-target binary compilation. `make fmt` applies Go formatting. A fixing
-`prek` hook exits non-zero after a safe mechanical repair so the resulting
-change can be reviewed and staged deliberately.
+and the release-target binary compilation for every published architecture.
+`make fmt` applies Go formatting. A fixing `prek` hook exits non-zero after a
+safe mechanical repair so the resulting change can be reviewed and staged
+deliberately.
 
 `prek` owns fast repository hygiene: whitespace and end-of-file checks,
 private-key and accidental-large-file checks, YAML, TOML, and Markdown
@@ -104,7 +105,8 @@ The validation workflow must:
 - run without production credentials, Wahoo refresh tokens, or Docker secret
   files;
 - fail when formatting, local hook hygiene, linting, tests, module checks,
-  vulnerability analysis, or the CGO-free Linux ARM64 build fail; and
+  vulnerability analysis, or the CGO-free Linux builds for either published
+  architecture fail; and
 - build the production Dockerfile without pushing once that Dockerfile exists.
 
 A separate code-scanning workflow analyses Go and GitHub Actions changes.
@@ -121,7 +123,9 @@ provisioned non-production credentials, and its output must be redacted.
 ## Container contract
 
 The production image is a multi-stage build that produces a statically linked
-Linux ARM64 binary with `CGO_ENABLED=0`. A first stage builds the browser UI
+Linux binary with `CGO_ENABLED=0`, published for `linux/amd64` and
+`linux/arm64`. The build stages cross-compile from the build platform, so
+neither architecture requires emulation. A first stage builds the browser UI
 bundle with Node.js, which the Go stage then embeds; Node reaches no further
 than that stage and is absent from the runtime image.
 
@@ -134,8 +138,9 @@ chain described below.
 `dhi.io` requires `docker login dhi.io` with a Docker Hub account and personal
 access token **even on the free Community tier**. It is therefore a build-time
 credential dependency: both CI and release workflows authenticate to it, and a
-machine that builds images locally must be logged in. Deployment is unaffected,
-because the Pi pulls the project's own signed GHCR image by digest.
+machine that builds images locally must be logged in. Deployment is unaffected
+for a host that pulls the project's own signed GHCR image by digest; a host that
+builds the image from a checkout needs that login itself.
 
 The runtime image:
 
@@ -164,8 +169,9 @@ file content.
 
 ## Release artifacts
 
-A version tag creates a GHCR image for `linux/arm64`. It is an immutable
-release artifact, not a mutable deployment instruction. The release workflow:
+A version tag creates a GHCR image index covering `linux/amd64` and
+`linux/arm64`. It is an immutable release artifact, not a mutable deployment
+instruction. The release workflow:
 
 1. builds the same CGO-free target verified in CI;
 2. publishes the image and records its digest;
@@ -173,12 +179,13 @@ release artifact, not a mutable deployment instruction. The release workflow:
 4. signs the image with GitHub OIDC-backed keyless signing; and
 5. attaches the digest and verification instructions to the release.
 
-The Pi deploys only a verified immutable digest, never a mutable tag such as
-`latest`. It verifies the signature and provenance before a new digest is
-accepted. The macOS MVP builds the pinned Dockerfile from the local checkout;
-it is not a release artifact. Rollback means selecting an earlier verified
-digest and restarting the container; it does not restore SQLite state or
-bypass the reauthorisation and safe-adoption rules.
+A host deploying a release consumes only a verified immutable digest, never a
+mutable tag such as `latest`, and verifies the signature and provenance before
+a new digest is accepted. A host may instead build the pinned Dockerfile from a
+checkout, as the macOS MVP and the Linux VM host do; such an image is a local
+build, not a release artifact, and carries no signature or provenance. Rollback
+means selecting an earlier verified digest and restarting the container; it does
+not restore SQLite state or bypass the reauthorisation and safe-adoption rules.
 
 Release automation receives only the permissions required to publish GHCR,
 attest, sign, and create the release. It receives no application secrets and
