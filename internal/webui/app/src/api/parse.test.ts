@@ -124,6 +124,20 @@ describe("parseStageGeometry", () => {
     expect(geometry.surface?.ranges[0]?.kind).toBe("unknown");
   });
 
+  it("rejects a range index that addresses no point", () => {
+    const withRange = (range: unknown) => ({
+      ...payload,
+      properties: { ...stagePayload, surface: { ranges: [range], matched_metres: 10 } },
+    });
+
+    expect(() =>
+      parseStageGeometry(withRange({ kind: "asphalt", start_index: -1, end_index: 1 })),
+    ).toThrow(ContractError);
+    expect(() =>
+      parseStageGeometry(withRange({ kind: "asphalt", start_index: 0, end_index: 1.5 })),
+    ).toThrow(ContractError);
+  });
+
   it("rejects a surface group that drifts from the contract", () => {
     const withSurface = (surface: unknown) => ({
       ...payload,

@@ -58,6 +58,22 @@ function count(value: unknown, at: string): number {
   return value;
 }
 
+/**
+ * Reads a position in an array.
+ *
+ * An index is not a measurement: a fractional one addresses nothing, and a
+ * negative one is read by `Array.prototype.slice` as a count back from the far
+ * end, which would place a stretch of route somewhere it was never measured.
+ * Both are rejected here so no consumer has to guess what was meant.
+ */
+function index(value: unknown, at: string): number {
+  const position = count(value, at);
+  if (!Number.isInteger(position) || position < 0) {
+    throw new ContractError(`${at} is not a non-negative integer`);
+  }
+  return position;
+}
+
 function flag(value: unknown, at: string): boolean {
   if (typeof value !== "boolean") {
     throw new ContractError(`${at} is not a boolean`);
@@ -117,8 +133,8 @@ function surfaceKind(value: unknown, at: string): SurfaceKind {
 
 function surfaceRangeFrom(value: unknown, at: string): SurfaceRange {
   const range = record(value, at);
-  const startIndex = count(range.start_index, `${at}.start_index`);
-  const endIndex = count(range.end_index, `${at}.end_index`);
+  const startIndex = index(range.start_index, `${at}.start_index`);
+  const endIndex = index(range.end_index, `${at}.end_index`);
   if (endIndex < startIndex) {
     throw new ContractError(`${at} ends before it starts`);
   }
@@ -128,8 +144,8 @@ function surfaceRangeFrom(value: unknown, at: string): SurfaceRange {
 
 /**
  * Reads the surface group, which is absent until this exact geometry has been
- * classified. Absent is not the same as classified-and-empty, so it stays
- * `undefined` rather than becoming an empty range list.
+ * classified. Absent is not the same as classified while nothing matched, so it
+ * stays `undefined` rather than becoming a surface with no matched length.
  */
 function surfaceFrom(value: unknown, at: string): StageSurface | undefined {
   if (value === undefined || value === null) {
