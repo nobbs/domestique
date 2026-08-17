@@ -121,6 +121,22 @@ export interface SurfaceSummary {
   totalMetres: number;
 }
 
+/**
+ * The part of a range that exists in this coordinate array.
+ *
+ * Ranges are positions in the geometry they were measured against, and a
+ * position outside it is not a small error: `Array.prototype.slice` reads a
+ * negative index as a count back from the far end, so an unclamped range would
+ * draw or measure a stretch of route the service never classified. Parsing
+ * rejects such a range at the API boundary — clamping here keeps a range that
+ * got through from placing a class anywhere it does not belong.
+ */
+function clampRange(range: SurfaceRange, lastIndex: number): { start: number; end: number } {
+  const start = Math.min(Math.max(range.startIndex, 0), lastIndex);
+
+  return { start, end: Math.min(Math.max(range.endIndex, start), lastIndex) };
+}
+
 /** Distance from the start of the stage to each point. */
 function cumulativeMetres(coordinates: Position[]): number[] {
   const distances = [0];
@@ -166,8 +182,7 @@ export function summariseSurface(
   const bands: SurfaceBand[] = [];
   const metresByKind = new Map<SurfaceKind, number>();
   for (const range of ranges) {
-    const start = Math.min(Math.max(range.startIndex, 0), lastIndex);
-    const end = Math.min(Math.max(range.endIndex, start), lastIndex);
+    const { start, end } = clampRange(range, lastIndex);
     const startMetres = distances[start] ?? 0;
     // One point past the range, because the final point of a range is the first
     // point of the stretch it hands over. The last range has nothing past it.
@@ -219,8 +234,13 @@ export interface SurfaceLines {
  */
 export function surfaceLines(coordinates: Position[], ranges: SurfaceRange[]): SurfaceLines[] {
   const linesByKind = new Map<SurfaceKind, Position[][]>();
+  const lastIndex = coordinates.length - 1;
+  if (lastIndex < 1) {
+    return [];
+  }
   for (const range of ranges) {
-    const line = coordinates.slice(range.startIndex, range.endIndex + 2);
+    const { start, end } = clampRange(range, lastIndex);
+    const line = coordinates.slice(start, end + 2);
     if (line.length < 2) {
       continue;
     }

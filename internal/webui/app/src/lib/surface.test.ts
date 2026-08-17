@@ -145,6 +145,23 @@ describe("surfaceLines", () => {
 
     expect(lines.map((entry) => entry.kind)).toEqual(["asphalt"]);
   });
+
+  // slice() reads a negative index from the far end of the array, so an
+  // unclamped range would paint a class over ground it never described.
+  it("holds a range that leaves the geometry inside it", () => {
+    const coordinates = route(4);
+    const lines = surfaceLines(coordinates, [range("gravel", -2, 1), range("asphalt", 2, 99)]);
+    const gravel = lines.find((entry) => entry.kind === "gravel")?.lines[0] ?? [];
+    const asphalt = lines.find((entry) => entry.kind === "asphalt")?.lines[0] ?? [];
+
+    expect(gravel[0]).toEqual(coordinates[0]);
+    expect(gravel[gravel.length - 1]).toEqual(coordinates[2]);
+    expect(asphalt[asphalt.length - 1]).toEqual(coordinates[3]);
+  });
+
+  it("draws nothing through a stage of fewer than two points", () => {
+    expect(surfaceLines(route(1), [range("asphalt", 0, 0)])).toEqual([]);
+  });
 });
 
 describe("SURFACE_STYLES", () => {
