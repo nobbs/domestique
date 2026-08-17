@@ -6,10 +6,11 @@
  */
 
 import { useQuery } from "@tanstack/react-query";
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useState } from "react";
 import { Link, useParams } from "react-router";
 import { ApiError } from "../../api/client";
 import { stageGeometryQuery, webUIConfigQuery } from "../../api/queries";
+import type { Position } from "../../api/types";
 import { ElevationProfile } from "../../components/ElevationProfile";
 import { Layout } from "../../components/Layout";
 import { ErrorMessage, LoadingMessage, StatusMessage } from "../../components/StatusMessage";
@@ -112,7 +113,6 @@ export function StageDetail() {
             </div>
           </dl>
         </header>
-        <ElevationProfile coordinates={coordinates} title={stage.title} />
         <div className="stage-detail__map">
           <Suspense fallback={<LoadingMessage what="the map" />}>
             <RouteMap
@@ -123,7 +123,45 @@ export function StageDetail() {
             />
           </Suspense>
         </div>
+        <ElevationOverview coordinates={coordinates} title={stage.title} />
       </section>
     </Layout>
+  );
+}
+
+const OVERVIEW_PREFERENCE = "domestique.elevation-overview-open";
+
+/**
+ * The profile beneath the map, collapsible so the map can have the whole pane.
+ *
+ * The choice is remembered, because it is a standing preference about how the
+ * page is read rather than something to re-make on every route. The chart is
+ * only mounted while open, so a collapsed overview costs no layout work.
+ */
+function ElevationOverview({ coordinates, title }: { coordinates: Position[]; title: string }) {
+  const [open, setOpen] = useState(() => {
+    try {
+      return localStorage.getItem(OVERVIEW_PREFERENCE) !== "closed";
+    } catch {
+      // Storage can be unavailable; the overview simply opens by default.
+      return true;
+    }
+  });
+
+  const onToggle = (event: React.SyntheticEvent<HTMLDetailsElement>) => {
+    const next = event.currentTarget.open;
+    setOpen(next);
+    try {
+      localStorage.setItem(OVERVIEW_PREFERENCE, next ? "open" : "closed");
+    } catch {
+      // A preference that cannot be stored is not worth failing the page over.
+    }
+  };
+
+  return (
+    <details className="elevation-overview" open={open} onToggle={onToggle}>
+      <summary className="elevation-overview__summary">Elevation overview</summary>
+      {open ? <ElevationProfile coordinates={coordinates} title={title} /> : null}
+    </details>
   );
 }

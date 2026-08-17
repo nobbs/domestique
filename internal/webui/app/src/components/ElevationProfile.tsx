@@ -1,15 +1,18 @@
 /**
- * The route's elevation profile: elevation against distance travelled.
+ * The route's elevation profile: elevation against distance travelled, with the
+ * line coloured by how steep the ground is.
  *
- * One series, so there is no legend — the heading names what is plotted. The
- * line carries the only colour on the chart; ticks, labels, and the readout use
- * text tokens, and the grid is a hairline a step off the surface so the terrain
- * is the loudest thing in the frame.
+ * Steepness is an ordered measure, so it wears an ordinal ramp — one hue, light
+ * to dark — with a scale legend, and the band is carried by the **line**. The
+ * area stays a wash: a full-width area filled at encoding strength would be the
+ * large saturated block that thin marks exist to avoid, and it would drown the
+ * map beneath it.
  */
 
 import { useCallback, useMemo, useState } from "react";
 import type { Position } from "../api/types";
-import { buildProfile, ticksFor } from "../lib/profile";
+import type { ProfileSample } from "../lib/profile";
+import { buildProfile, GRADIENT_BANDS, ticksFor } from "../lib/profile";
 import { useElementWidth } from "../lib/useElementWidth";
 
 const HEIGHT = 148;
@@ -19,6 +22,80 @@ const MIN_WIDTH = 240;
 export interface ElevationProfileProps {
   coordinates: Position[];
   title: string;
+}
+
+interface Run {
+  band: number;
+  line: string;
+}
+
+/** A run shorter than this is absorbed into its neighbour. */
+const MIN_RUN_SAMPLES = 3;
+
+/**
+ * The band of each sample, with momentary flicker removed.
+ *
+ * Where a gradient hovers on a threshold it crosses back and forth every few
+ * metres. Drawn literally that produces a barcode of alternating colour that
+ * says nothing about the terrain — the bands are meant to show *sustained*
+ * steepness, so a run too short to be sustained takes its neighbour's band.
+ */
+function steadyBands(samples: ProfileSample[]): number[] {
+  const bands = samples.map((sample) => sample.band);
+
+  let start = 0;
+  for (let index = 1; index <= bands.length; index++) {
+    if (index < bands.length && bands[index] === bands[start]) {
+      continue;
+    }
+    if (index - start < MIN_RUN_SAMPLES && start > 0) {
+      const previous = bands[start - 1] ?? 0;
+      for (let fill = start; fill < index; fill++) {
+        bands[fill] = previous;
+      }
+    }
+    start = index;
+  }
+
+  return bands;
+}
+
+/**
+ * Splits the profile into contiguous runs of one gradient band.
+ *
+ * Each run repeats its predecessor's last point so the coloured segments meet
+ * rather than leaving a hairline of surface between them.
+ */
+function runsOf(
+  samples: ProfileSample[],
+  x: (metres: number) => number,
+  y: (metres: number) => number,
+): Run[] {
+  const bands = steadyBands(samples);
+  const runs: Run[] = [];
+  let start = 0;
+
+  for (let index = 1; index <= samples.length; index++) {
+    if (index < samples.length && bands[index] === bands[start]) {
+      continue;
+    }
+    const slice = samples.slice(start, Math.min(index + 1, samples.length));
+    if (slice.length >= 2) {
+      runs.push({
+        band: bands[start] ?? 0,
+        line: slice
+          .map((sample, offset) => {
+            const command = offset === 0 ? "M" : "L";
+
+            return `${command}${x(sample.distanceMetres).toFixed(1)},${y(sample.elevationMetres).toFixed(1)}`;
+          })
+          .join(" "),
+      });
+    }
+    start = index;
+  }
+
+  return runs;
 }
 
 export function ElevationProfile({ coordinates, title }: ElevationProfileProps) {
@@ -41,22 +118,18 @@ export function ElevationProfile({ coordinates, title }: ElevationProfileProps) 
     const x = (metres: number) => (metres / profile.totalDistanceMetres) * plotWidth;
     const y = (metres: number) => plotHeight - ((metres - low) / span) * plotHeight;
 
-    const points = profile.samples.map((sample) => ({
-      x: x(sample.distanceMetres),
-      y: y(sample.elevationMetres),
-    }));
-    const line = points
+    const outline = profile.samples
       .map(
-        (point, index) => `${index === 0 ? "M" : "L"}${point.x.toFixed(1)},${point.y.toFixed(1)}`,
+        (sample, index) =>
+          `${index === 0 ? "M" : "L"}${x(sample.distanceMetres).toFixed(1)},${y(sample.elevationMetres).toFixed(1)}`,
       )
       .join(" ");
 
     return {
       x,
       y,
-      points,
-      line,
-      area: `${line} L${plotWidth.toFixed(1)},${plotHeight} L0,${plotHeight} Z`,
+      area: `${outline} L${plotWidth.toFixed(1)},${plotHeight} L0,${plotHeight} Z`,
+      runs: runsOf(profile.samples, x, y),
       elevationTicks: ticksFor(low, low + span, 3),
       distanceTicks: ticksFor(0, profile.totalDistanceMetres / 1000, 5),
     };
@@ -142,7 +215,16 @@ export function ElevationProfile({ coordinates, title }: ElevationProfileProps) 
           ))}
 
           <path className="elevation-profile__area" d={geometry.area} />
-          <path className="elevation-profile__line" d={geometry.line} />
+          {geometry.runs.map((run, index) => (
+            <path
+              // Runs are positional slices of one profile; there is no id to key on.
+              // biome-ignore lint/suspicious/noArrayIndexKey: positional by nature
+              key={`line-${index}`}
+              className="elevation-profile__line"
+              data-band={run.band}
+              d={run.line}
+            />
+          ))}
 
           {geometry.distanceTicks.map((kilometres) => (
             <text
@@ -168,6 +250,7 @@ export function ElevationProfile({ coordinates, title }: ElevationProfileProps) 
                 cx={geometry.x(active.distanceMetres)}
                 cy={geometry.y(active.elevationMetres)}
                 r={4}
+                data-band={active.band}
               />
             </g>
           ) : null}
@@ -182,12 +265,7 @@ export function ElevationProfile({ coordinates, title }: ElevationProfileProps) 
        */}
       <div
         className="elevation-profile__scrub"
-        style={{
-          left: PADDING.left,
-          top: PADDING.top,
-          width: plotWidth,
-          height: plotHeight,
-        }}
+        style={{ left: PADDING.left, top: PADDING.top, width: plotWidth, height: plotHeight }}
         role="slider"
         tabIndex={0}
         aria-label={`Position along ${title}`}
@@ -196,7 +274,7 @@ export function ElevationProfile({ coordinates, title }: ElevationProfileProps) 
         aria-valuenow={active ? Number((active.distanceMetres / 1000).toFixed(1)) : 0}
         aria-valuetext={
           active
-            ? `${Math.round(active.elevationMetres)} metres at ${(active.distanceMetres / 1000).toFixed(1)} kilometres`
+            ? `${Math.round(active.elevationMetres)} metres at ${(active.distanceMetres / 1000).toFixed(1)} kilometres, ${active.gradientPercent.toFixed(1)} percent`
             : "No position selected"
         }
         onKeyDown={onKeyDown}
@@ -205,19 +283,31 @@ export function ElevationProfile({ coordinates, title }: ElevationProfileProps) 
         onBlur={() => setHovered(null)}
       />
 
-      <p className="elevation-profile__readout" aria-live="polite">
-        {active ? (
-          <>
-            <strong>{Math.round(active.elevationMetres)} m</strong>
-            <span> at {(active.distanceMetres / 1000).toFixed(1)} km</span>
-          </>
-        ) : (
-          <span>
-            {Math.round(profile.minElevationMetres)}–{Math.round(profile.maxElevationMetres)} m ·
-            metres above sea level against kilometres ridden
-          </span>
-        )}
-      </p>
+      <div className="elevation-profile__footer">
+        <p className="elevation-profile__readout" aria-live="polite">
+          {active ? (
+            <>
+              <strong>{Math.round(active.elevationMetres)} m</strong>
+              <span> at {(active.distanceMetres / 1000).toFixed(1)} km</span>
+              <span> · {active.gradientPercent.toFixed(1)}%</span>
+            </>
+          ) : (
+            <span>
+              {Math.round(profile.minElevationMetres)}–{Math.round(profile.maxElevationMetres)} m
+              above sea level
+            </span>
+          )}
+        </p>
+
+        <ul className="elevation-profile__scale">
+          {GRADIENT_BANDS.map((band, index) => (
+            <li key={band.label}>
+              <span className="elevation-profile__swatch" data-band={index} aria-hidden="true" />
+              {band.label}
+            </li>
+          ))}
+        </ul>
+      </div>
     </div>
   );
 }

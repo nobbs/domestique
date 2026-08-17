@@ -17,6 +17,16 @@
   --radius: 10px;
   --header-height: 3.25rem;
 
+  /*
+   * Gradient bands: one hue, light to dark, so steeper always reads as "more".
+   * Both sets pass the ordinal checks against their own surface — monotone
+   * lightness, visible step gaps, and the step nearest the surface clearing 2:1.
+   */
+  --band-0: #dfa184;
+  --band-1: #ce7550;
+  --band-2: #b84a28;
+  --band-3: #7e2d13;
+
   color-scheme: light dark;
 }
 
@@ -29,6 +39,12 @@
     --text: #f2f0ee;
     --text-muted: #a09b95;
     --accent-soft: rgb(200 80 46 / 20%);
+
+    /* Reversed for a dark surface: severity is what stands out from it. */
+    --band-0: #8e3316;
+    --band-1: #b7502c;
+    --band-2: #d4794f;
+    --band-3: #efaf8e;
   }
 }
 
@@ -237,7 +253,8 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .route-card,
   .route-thumbnail--empty,
-  .route-minimap__shape {
+  .route-minimap__shape,
+  .elevation-overview__summary::before {
     transition: none;
     animation: none;
   }
@@ -303,19 +320,56 @@ body {
   background: var(--surface-sunken);
 }
 
+/* Elevation overview ------------------------------------------------------ */
+
+.elevation-overview {
+  flex: 0 0 auto;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.elevation-overview__summary {
+  padding: 0.5rem 1.15rem;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  list-style: none;
+}
+
+.elevation-overview__summary::-webkit-details-marker {
+  display: none;
+}
+
+/* A caret that turns, so the control reads as expandable without an icon set. */
+.elevation-overview__summary::before {
+  content: "▸";
+  display: inline-block;
+  width: 1em;
+  transition: transform 140ms ease;
+}
+
+.elevation-overview[open] .elevation-overview__summary::before {
+  transform: rotate(90deg);
+}
+
+.elevation-overview__summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
 /* Elevation profile ------------------------------------------------------- */
 
 .elevation-profile {
   position: relative;
-  flex: 0 0 auto;
-  padding: 0.6rem 1.15rem 0.75rem;
-  border-bottom: 1px solid var(--border);
+  padding: 0 1.15rem 0.75rem;
 }
 
 /* Sits over the plot area and carries the pointer and keyboard interaction. */
 .elevation-profile__scrub {
   position: absolute;
-  margin: 0.6rem 0 0 1.15rem;
+  margin-left: 1.15rem;
   touch-action: none;
 }
 
@@ -343,18 +397,48 @@ body {
 }
 
 /* The wash, not a saturated block. */
+/* One wash for the whole profile: the line alone carries the band. */
 .elevation-profile__area {
   fill: var(--accent);
   fill-opacity: 0.1;
+  stroke: none;
 }
 
 .elevation-profile__line {
   fill: none;
-  stroke: var(--accent);
   stroke-width: 2;
   stroke-linejoin: round;
   stroke-linecap: round;
 }
+
+.elevation-profile__line[data-band="0"],
+.elevation-profile__swatch[data-band="0"],
+.elevation-profile__cursor circle[data-band="0"] {
+  fill: var(--band-0);
+  stroke: var(--band-0);
+}
+
+.elevation-profile__line[data-band="1"],
+.elevation-profile__swatch[data-band="1"],
+.elevation-profile__cursor circle[data-band="1"] {
+  fill: var(--band-1);
+  stroke: var(--band-1);
+}
+
+.elevation-profile__line[data-band="2"],
+.elevation-profile__swatch[data-band="2"],
+.elevation-profile__cursor circle[data-band="2"] {
+  fill: var(--band-2);
+  stroke: var(--band-2);
+}
+
+.elevation-profile__line[data-band="3"],
+.elevation-profile__swatch[data-band="3"],
+.elevation-profile__cursor circle[data-band="3"] {
+  fill: var(--band-3);
+  stroke: var(--band-3);
+}
+
 
 .elevation-profile__cursor line {
   stroke: var(--text-muted);
@@ -362,14 +446,49 @@ body {
 }
 
 /* The marker carries a surface ring so it stays legible over the line. */
+/* The marker keeps a surface ring so it stays legible over its own line. */
 .elevation-profile__cursor circle {
-  fill: var(--accent);
   stroke: var(--surface);
   stroke-width: 2;
+  paint-order: stroke;
+}
+
+.elevation-profile__footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.35rem 1rem;
+  margin-top: 0.3rem;
+}
+
+.elevation-profile__scale {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.75rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.elevation-profile__scale li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.elevation-profile__swatch {
+  width: 14px;
+  height: 3px;
+  border-radius: 2px;
+  background: currentcolor;
 }
 
 .elevation-profile__readout {
-  margin: 0.3rem 0 0;
+  margin: 0;
   color: var(--text-muted);
   font-size: 0.78rem;
   font-variant-numeric: tabular-nums;
@@ -381,10 +500,8 @@ body {
 }
 
 .elevation-profile__absent {
-  flex: 0 0 auto;
   margin: 0;
-  padding: 0.7rem 1.15rem;
-  border-bottom: 1px solid var(--border);
+  padding: 0 1.15rem 0.75rem;
   color: var(--text-muted);
   font-size: 0.85rem;
 }

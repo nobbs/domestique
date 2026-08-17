@@ -15,9 +15,39 @@ import type { Position } from "../api/types";
 
 const EARTH_RADIUS_METRES = 6_371_000;
 
+/**
+ * Gradient classes, gentlest first.
+ *
+ * Steepness is an ordered measure, so it gets an ordinal ramp — one hue running
+ * light to dark — rather than the green-amber-red heat scale cycling apps
+ * usually reach for. That scale fails as a chart ramp: its lightness is not
+ * monotone (the amber is lighter than the green, so severity stops reading as
+ * "more"), and the amber drops to 1.79:1 against a light surface.
+ *
+ * The bands use absolute steepness, so a fast descent is marked as clearly as
+ * the climb it mirrors.
+ */
+export const GRADIENT_BANDS = [
+  { limit: 3, label: "< 3%" },
+  { limit: 6, label: "3–6%" },
+  { limit: 9, label: "6–9%" },
+  { limit: Number.POSITIVE_INFINITY, label: "≥ 9%" },
+] as const;
+
+/** The shortest span a gradient is measured over, matching the service. */
+const GRADIENT_WINDOW_METRES = 100;
+
+export function gradientBand(percent: number): number {
+  const magnitude = Math.abs(percent);
+
+  return GRADIENT_BANDS.findIndex((band) => magnitude < band.limit);
+}
+
 export interface ProfileSample {
   distanceMetres: number;
   elevationMetres: number;
+  gradientPercent: number;
+  band: number;
 }
 
 export interface Profile {
@@ -70,7 +100,7 @@ export function buildProfile(coordinates: Position[], sampleCount = 320): Profil
     return null;
   }
 
-  const samples: ProfileSample[] = [];
+  const sampled: Array<{ distanceMetres: number; elevationMetres: number }> = [];
   let cursor = 0;
   for (let step = 0; step < sampleCount; step++) {
     const target = (total * step) / (sampleCount - 1);
@@ -84,11 +114,30 @@ export function buildProfile(coordinates: Position[], sampleCount = 320): Profil
     const span = spanEnd - spanStart;
     const ratio = span > 0 ? (target - spanStart) / span : 0;
 
-    samples.push({
+    sampled.push({
       distanceMetres: target,
       elevationMetres: startElevation + ratio * (endElevation - startElevation),
     });
   }
+
+  // Gradient is measured back over at least the window, never between adjacent
+  // samples: on a short route the samples sit metres apart, where the figure
+  // would describe altitude error rather than terrain.
+  const samples: ProfileSample[] = sampled.map((sample, index) => {
+    let behind = index;
+    while (
+      behind > 0 &&
+      sample.distanceMetres - (sampled[behind]?.distanceMetres ?? 0) < GRADIENT_WINDOW_METRES
+    ) {
+      behind--;
+    }
+    const reference = sampled[behind];
+    const run = reference ? sample.distanceMetres - reference.distanceMetres : 0;
+    const rise = reference ? sample.elevationMetres - reference.elevationMetres : 0;
+    const gradientPercent = run > 0 ? (rise / run) * 100 : 0;
+
+    return { ...sample, gradientPercent, band: gradientBand(gradientPercent) };
+  });
 
   const elevations = samples.map((sample) => sample.elevationMetres);
 
