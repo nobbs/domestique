@@ -17,15 +17,28 @@ import {
   useMap,
 } from "react-map-gl/maplibre";
 import "maplibre-gl/dist/maplibre-gl.css";
-import type { BoundingBox, Position } from "../api/types";
+import type { BoundingBox, Position, SurfaceRange } from "../api/types";
 import type { Profile } from "../lib/profile";
 import { nearestSample } from "../lib/profile";
+import { SURFACE_LINE_WIDTH, SURFACE_STYLES, surfaceLines } from "../lib/surface";
 // Configures the shared worker pool; without it this map renders no tiles.
 import "../lib/maplibre";
 
 /** The brand accent, chosen to stay legible over both light and dark basemaps. */
 const ROUTE_ACCENT = "#C8502E";
 const SOURCE_ID = "stage-geometry";
+
+/**
+ * Credit for the surface classification, which is derived from OpenStreetMap.
+ *
+ * The basemap's own credit arrives from the style document and covers the tiles
+ * only. The classification is a separate derived database under the ODbL, whose
+ * share-alike terms oblige this attribution wherever it is shown. It is stated
+ * unconditionally: MapLibre fixes a control's options when the map is built, so
+ * a credit made conditional on the open stage having been classified would be
+ * the stale one by the time it mattered.
+ */
+const SURFACE_ATTRIBUTION = "Surface data © OpenStreetMap contributors (ODbL)";
 
 /**
  * Keeps the camera framed on the selected stage and the canvas sized to its
@@ -136,6 +149,11 @@ export interface RouteMapProps {
   coordinates: Position[];
   bbox: BoundingBox;
   title: string;
+  /**
+   * The ground under the route, addressing `coordinates` by index. Absent leaves
+   * the route drawn in the accent, which is what an unclassified stage gets.
+   */
+  surface?: SurfaceRange[] | undefined;
   /** Shared with the elevation chart, as an index into the profile samples. */
   profile?: Profile | null;
   activeIndex?: number | null;
@@ -147,6 +165,7 @@ export function RouteMap({
   coordinates,
   bbox,
   title,
+  surface,
   profile = null,
   activeIndex = null,
   onActiveChange,
@@ -158,6 +177,22 @@ export function RouteMap({
       properties: {},
     }),
     [coordinates],
+  );
+
+  // One feature per class rather than one with a data-driven colour, because
+  // `line-dasharray` cannot be driven by a property: the pattern belongs to the
+  // layer, so each class needs its own.
+  const surfaceFeatures = useMemo(
+    () =>
+      surfaceLines(coordinates, surface ?? []).map(({ kind, lines }) => ({
+        kind,
+        data: {
+          type: "Feature" as const,
+          geometry: { type: "MultiLineString" as const, coordinates: lines },
+          properties: {},
+        },
+      })),
+    [coordinates, surface],
   );
 
   // The position shared with the elevation chart. An empty collection keeps the
@@ -197,6 +232,7 @@ export function RouteMap({
         initialViewState={{ bounds: bbox, fitBoundsOptions: { padding: 56 } }}
         style={{ width: "100%", height: "100%" }}
         aria-label={`Map of ${title}`}
+        attributionControl={{ customAttribution: SURFACE_ATTRIBUTION }}
         cooperativeGestures
       >
         <MapViewport bbox={bbox} />
@@ -204,19 +240,43 @@ export function RouteMap({
         <NavigationControl position="top-right" showCompass={false} />
         <ScaleControl position="bottom-left" unit="metric" />
         <Source id={SOURCE_ID} type="geojson" data={feature}>
+          {/*
+           * The casing is drawn from the whole route and stays solid under the
+           * classes, so the line the rider follows is continuous even where the
+           * class above it is a row of dots.
+           */}
           <Layer
             id="stage-casing"
             type="line"
             layout={{ "line-cap": "round", "line-join": "round" }}
             paint={{ "line-color": "#ffffff", "line-opacity": 0.85, "line-width": 7 }}
           />
-          <Layer
-            id="stage-line"
-            type="line"
-            layout={{ "line-cap": "round", "line-join": "round" }}
-            paint={{ "line-color": ROUTE_ACCENT, "line-width": 4 }}
-          />
+          {surfaceFeatures.length === 0 ? (
+            <Layer
+              id="stage-line"
+              type="line"
+              layout={{ "line-cap": "round", "line-join": "round" }}
+              paint={{ "line-color": ROUTE_ACCENT, "line-width": SURFACE_LINE_WIDTH }}
+            />
+          ) : null}
         </Source>
+        {surfaceFeatures.map(({ kind, data }) => (
+          <Source key={kind} id={`stage-surface-${kind}`} type="geojson" data={data}>
+            <Layer
+              id={`stage-surface-${kind}-line`}
+              type="line"
+              // Butt caps, so a dash is the length the palette says it is.
+              layout={{ "line-cap": "butt", "line-join": "round" }}
+              paint={{
+                "line-color": SURFACE_STYLES[kind].colour,
+                "line-width": SURFACE_LINE_WIDTH,
+                ...(SURFACE_STYLES[kind].dashes.length > 0
+                  ? { "line-dasharray": SURFACE_STYLES[kind].dashes }
+                  : {}),
+              }}
+            />
+          </Source>
+        ))}
         <Source id="stage-position" type="geojson" data={marker}>
           <Layer
             id="stage-position-halo"
