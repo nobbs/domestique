@@ -39,6 +39,7 @@ go.work.sum
 config.toml
 config.local.toml
 /secrets/
+/.local/
 .mise.local.toml
 
 # Editor/IDE

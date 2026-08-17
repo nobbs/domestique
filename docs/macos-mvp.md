@@ -17,7 +17,7 @@ From the repository root, copy the non-secret configuration template:
 
 ~~~sh
 cp config.example.toml config.toml
-mkdir -m 700 secrets
+mkdir -p -m 700 .local/run/secrets
 ~~~
 
 Update config.toml before starting the container:
@@ -28,8 +28,8 @@ Update config.toml before starting the container:
 - use two stable target-slot IDs; and
 - leave secret paths under /run/secrets unchanged.
 
-Create the six files below in secrets/. Each contains one value and is ignored
-by Git:
+Create the six files below in .local/run/secrets/. Each contains one value and
+is ignored by Git:
 
 - state_encryption_key — base64url encoding of exactly 32 random bytes;
 - veloplanner_email and veloplanner_password;
