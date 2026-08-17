@@ -105,6 +105,18 @@ Linux ARM64 binary with `CGO_ENABLED=0`. A first stage builds the browser UI
 bundle with Node.js, which the Go stage then embeds; Node reaches no further
 than that stage and is absent from the runtime image.
 
+Every base image is a **Docker Hardened Image** from `dhi.io`, pinned by digest:
+the `-dev` variants for the Node and Go build stages, which need a shell and a
+toolchain, and the minimal `static` image for the runtime. They carry SBOMs,
+SLSA Build Level 3 provenance, and signatures, which strengthens the release
+chain described below.
+
+`dhi.io` requires `docker login dhi.io` with a Docker Hub account and personal
+access token **even on the free Community tier**. It is therefore a build-time
+credential dependency: both CI and release workflows authenticate to it, and a
+machine that builds images locally must be logged in. Deployment is unaffected,
+because the Pi pulls the project's own signed GHCR image by digest.
+
 The runtime image:
 
 - contains the binary and only the certificate roots and runtime files it

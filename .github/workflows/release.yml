@@ -32,6 +32,15 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      # Docker Hardened Images require authentication even on the free
+      # Community tier, so the image cannot build without these secrets.
+      - name: Authenticate to Docker Hardened Images
+        # v4.6.0
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f
+        with:
+          registry: dhi.io
+          username: ${{ secrets.DHI_USERNAME }}
+          password: ${{ secrets.DHI_TOKEN }}
       - name: Build and publish image
         id: build
         # v7.3.0
