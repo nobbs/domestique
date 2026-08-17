@@ -43,6 +43,9 @@ func TestOverpassWaysClassifiesTheWaysItIsGiven(t *testing.T) {
 		t.Fatalf("Ways() error = %v", err)
 	}
 
+	// The node and the single-coordinate way are absent from want on purpose:
+	// neither can be snapped to, so both must be dropped rather than carried
+	// through as candidates that match nothing.
 	want := []Way{{ID: 10, Kind: KindPaving}, {ID: 11, Kind: KindGravel}, {ID: 12, Kind: KindUnknown}}
 	if len(ways) != len(want) {
 		t.Fatalf("way count = %d, want %d", len(ways), len(want))
@@ -54,12 +57,6 @@ func TestOverpassWaysClassifiesTheWaysItIsGiven(t *testing.T) {
 		if len(way.Line) < 2 {
 			t.Errorf("way[%d] carries %d coordinates, want at least 2", index, len(way.Line))
 		}
-	}
-
-	// A way with only one coordinate cannot be snapped to and must be dropped
-	// rather than carried through as a zero-length candidate.
-	if strings.Contains(query, "") && len(ways) == 0 {
-		t.Fatal("no ways decoded")
 	}
 	for _, want := range []string{
 		"[out:json][timeout:150];",
