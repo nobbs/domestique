@@ -30,7 +30,7 @@ const (
 	// defaultTileStyleURL is a keyless MapLibre style, so the default deployment
 	// exposes no credential to the browser and sends no account identity to the
 	// tile origin.
-	defaultTileStyleURL = "https://tiles.openfreemap.org/styles/dark"
+	defaultTileStyleURL = "https://tiles.openfreemap.org/styles/bright"
 )
 
 // Settings is the validated, startup-only configuration for one service
