@@ -420,10 +420,17 @@ body {
  * The ground, banded by steepness. It is a backdrop for the silhouette rather
  * than a block of paint, so it sits at low opacity; the steeper bands carry a
  * hatch as well, which reads without relying on colour.
+ *
+ * Each column is outlined in its own band colour. The top edge is hidden under
+ * the ridge drawn over it, so what shows is the vertical seam where one band
+ * meets the next, and the ground line beneath — enough to bound a segment
+ * without adding a second silhouette.
  */
 .elevation-profile__column {
-  stroke: none;
   fill-opacity: 0.32;
+  stroke-width: 1;
+  stroke-opacity: 0.8;
+  stroke-linejoin: round;
 }
 
 /*
@@ -461,16 +468,19 @@ body {
  */
 .elevation-profile__column[data-band="0"] {
   fill: var(--band-0);
+  stroke: var(--band-0);
 }
 
 .elevation-profile__column[data-band="1"] {
   fill: url("#elevation-hatch-1");
   fill-opacity: 1;
+  stroke: var(--band-1);
 }
 
 .elevation-profile__column[data-band="2"] {
   fill: url("#elevation-hatch-2");
   fill-opacity: 1;
+  stroke: var(--band-2);
 }
 
 /*
