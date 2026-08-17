@@ -250,9 +250,9 @@ identifiers, route names, provider response text, file paths, tokens, or
 credentials. Authentication failures use 401; an authenticated but unpermitted
 identity uses 403; malformed client input uses 400.
 
-The OAuth start and callback are the only state-changing endpoints. There is no
-HTTP or CLI endpoint for manual sync, route deletion, configuration mutation, or
-Wahoo target removal.
+The OAuth start, callback, and protected `POST /v1/sync` trigger are the only
+state-changing endpoints. There is no HTTP or CLI endpoint for route deletion,
+configuration mutation, or Wahoo target removal.
 
 ## Notifications
 
