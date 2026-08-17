@@ -275,6 +275,11 @@ func (s *Stage) MaxGradientPercent() float64 {
 	trailing := 0
 	for leading := 1; leading < len(s.geometry); leading++ {
 		// Advance the trailing edge while the window stays wide enough.
+		//
+		// trailing+1 stays in range without a bound check: distances is
+		// non-decreasing, so once trailing+1 reaches leading the difference is
+		// zero, which is below the window, and the loop stops. The trailing
+		// edge therefore never catches the leading one.
 		for distances[leading]-distances[trailing+1] >= gradientWindowMetres {
 			trailing++
 		}
