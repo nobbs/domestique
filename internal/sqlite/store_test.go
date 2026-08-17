@@ -406,6 +406,138 @@ func TestStoreMigratesExistingOAuthTransactions(t *testing.T) {
 	}
 }
 
+func TestStoreCachesStageGeometryForTheMapView(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	elevation := 128.5
+	stage := storeTestStageWithGeometry(t, 7, 2, "revision", "content-hash", "Alpine loop", "Descent", []route.Point{
+		{Longitude: 8.4, Latitude: 49.0, Elevation: &elevation},
+		{Longitude: 8.5, Latitude: 49.2},
+	})
+	if err := store.StoreTrustedInventory(t.Context(), []route.Stage{stage}); err != nil {
+		t.Fatalf("StoreTrustedInventory() error = %v", err)
+	}
+
+	summary, coordinates, found, err := store.StageGeometry(t.Context(), 7, 2)
+	if err != nil {
+		t.Fatalf("StageGeometry() error = %v", err)
+	}
+	if !found {
+		t.Fatal("StageGeometry() found = false, want true")
+	}
+	if got, want := summary.Title(), "Alpine loop — Descent"; got != want {
+		t.Errorf("Title() = %q, want %q", got, want)
+	}
+	if got, want := summary.PointCount, 2; got != want {
+		t.Errorf("PointCount = %d, want %d", got, want)
+	}
+	if summary.DistanceMetres <= 0 {
+		t.Errorf("DistanceMetres = %v, want a positive length", summary.DistanceMetres)
+	}
+	wantBounds := route.Bounds{MinLongitude: 8.4, MinLatitude: 49.0, MaxLongitude: 8.5, MaxLatitude: 49.2}
+	if summary.Bounds != wantBounds {
+		t.Errorf("Bounds = %+v, want %+v", summary.Bounds, wantBounds)
+	}
+	if got, want := string(coordinates), `[[8.4,49,128.5],[8.5,49.2]]`; got != want {
+		t.Errorf("coordinates = %s, want %s", got, want)
+	}
+}
+
+func TestStoreDoesNotRewriteUnchangedStageGeometry(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	stage := storeTestStage(t, 1, 1, "revision", "content-hash")
+	if err := store.StoreTrustedInventory(t.Context(), []route.Stage{stage}); err != nil {
+		t.Fatalf("StoreTrustedInventory() error = %v", err)
+	}
+	// A sentinel that a rewrite would necessarily overwrite. This is the
+	// write-amplification guarantee: an unchanged library must not rewrite the
+	// geometry cache on every scheduled run.
+	const sentinel = 1
+	if _, err := store.database.ExecContext(t.Context(),
+		`UPDATE stage_geometry SET updated_at_unix = ?`, sentinel); err != nil {
+		t.Fatalf("seeding sentinel error = %v", err)
+	}
+
+	if err := store.StoreTrustedInventory(t.Context(), []route.Stage{stage}); err != nil {
+		t.Fatalf("second StoreTrustedInventory() error = %v", err)
+	}
+	if got := stageGeometryUpdatedAt(t, store, 1, 1); got != sentinel {
+		t.Errorf("updated_at_unix = %d after an unchanged sync, want the sentinel %d", got, sentinel)
+	}
+
+	changed := storeTestStage(t, 1, 1, "revision", "different-content-hash")
+	if err := store.StoreTrustedInventory(t.Context(), []route.Stage{changed}); err != nil {
+		t.Fatalf("changed StoreTrustedInventory() error = %v", err)
+	}
+	if got := stageGeometryUpdatedAt(t, store, 1, 1); got == sentinel {
+		t.Error("updated_at_unix was not refreshed after the content hash changed")
+	}
+}
+
+func TestStorePrunesGeometryForStagesLeavingTheInventory(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	first := storeTestStage(t, 1, 1, "revision", "hash-one")
+	second := storeTestStage(t, 2, 1, "revision", "hash-two")
+	if err := store.StoreTrustedInventory(t.Context(), []route.Stage{first, second}); err != nil {
+		t.Fatalf("StoreTrustedInventory() error = %v", err)
+	}
+	if err := store.StoreTrustedInventory(t.Context(), []route.Stage{first}); err != nil {
+		t.Fatalf("second StoreTrustedInventory() error = %v", err)
+	}
+
+	if _, _, found, err := store.StageGeometry(t.Context(), 2, 1); err != nil || found {
+		t.Errorf("StageGeometry() for a removed stage = found %v, error %v; want not found", found, err)
+	}
+	if _, _, found, err := store.StageGeometry(t.Context(), 1, 1); err != nil || !found {
+		t.Errorf("StageGeometry() for a retained stage = found %v, error %v; want found", found, err)
+	}
+}
+
+func TestStoreListsStageSummaries(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	stage := storeTestStageWithGeometry(t, 3, 1, "revision", "hash", "Sunday", "", []route.Point{
+		{Longitude: 8.4, Latitude: 49.0},
+		{Longitude: 8.5, Latitude: 49.1},
+	})
+	if err := store.StoreTrustedInventory(t.Context(), []route.Stage{stage}); err != nil {
+		t.Fatalf("StoreTrustedInventory() error = %v", err)
+	}
+
+	var summaries []route.Summary
+	if err := store.ForEachStageSummary(t.Context(), func(summary route.Summary) error {
+		summaries = append(summaries, summary)
+
+		return nil
+	}); err != nil {
+		t.Fatalf("ForEachStageSummary() error = %v", err)
+	}
+	if len(summaries) != 1 {
+		t.Fatalf("ForEachStageSummary() returned %d summaries, want 1", len(summaries))
+	}
+	if got, want := summaries[0].Title(), "Sunday"; got != want {
+		t.Errorf("Title() = %q, want %q", got, want)
+	}
+	if got, want := summaries[0].SourceRevision, "revision"; got != want {
+		t.Errorf("SourceRevision = %q, want %q", got, want)
+	}
+	if got, want := summaries[0].PointCount, 2; got != want {
+		t.Errorf("PointCount = %d, want %d", got, want)
+	}
+}
+
+func stageGeometryUpdatedAt(t *testing.T, store *Store, routeID int64, stageOrder int) int64 {
+	t.Helper()
+
+	var updatedAt int64
+	if err := store.database.QueryRowContext(t.Context(),
+		`SELECT updated_at_unix FROM stage_geometry WHERE route_id = ? AND stage_order = ?`,
+		routeID, stageOrder,
+	).Scan(&updatedAt); err != nil {
+		t.Fatalf("reading updated_at_unix error = %v", err)
+	}
+
+	return updatedAt
+}
+
 func openTestStore(t *testing.T, key [32]byte) *Store {
 	t.Helper()
 
@@ -442,6 +574,22 @@ func storeTestStage(t *testing.T, routeID int64, stageOrder int, revision, conte
 		[]route.Point{{Longitude: 8.4, Latitude: 49.0}, {Longitude: 8.401, Latitude: 49.001}},
 		contentHash,
 	)
+	if err != nil {
+		t.Fatalf("NewStage() error = %v", err)
+	}
+
+	return stage
+}
+
+func storeTestStageWithGeometry(
+	t *testing.T,
+	routeID int64,
+	stageOrder int,
+	revision, contentHash, routeName, stageName string,
+	geometry []route.Point,
+) route.Stage {
+	t.Helper()
+	stage, err := route.NewStage(routeID, stageOrder, revision, routeName, stageName, geometry, contentHash)
 	if err != nil {
 		t.Fatalf("NewStage() error = %v", err)
 	}
