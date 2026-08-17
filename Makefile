@@ -16,6 +16,7 @@ UI_DIST := $(UI_DIR)/dist
 
 .PHONY: fmt lint markdownlint workflow-lint test vet mod-check vulncheck secret-scan build build-check ci-lint ci-test ci-security ci-ui check
 .PHONY: ui-install ui-dev ui-typecheck ui-lint ui-format ui-test ui-audit ui-build
+.PHONY: dev-setup dev-api
 
 export GOCACHE
 
@@ -46,6 +47,17 @@ vulncheck:
 
 secret-scan:
 	$(GITLEAKS) dir . --redact --no-banner
+
+# Snapshots the deployed SQLite state and writes a development configuration
+# that reads real VeloPlanner data but cannot reach Wahoo. See dev/setup.sh.
+dev-setup:
+	./dev/setup.sh
+
+# Serves the API on :8081 against the snapshot, so it never contends with the
+# deployed container for a SQLite file.
+dev-api:
+	DOMESTIQUE_CONFIG_FILE=$(CURDIR)/.local/dev/config.toml \
+		CGO_ENABLED=0 $(GO) run $(BUILD_TARGET)
 
 ui-install:
 	$(NPM) --prefix $(UI_DIR) ci
