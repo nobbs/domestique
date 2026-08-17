@@ -146,10 +146,11 @@ baseline behaviour for route geometry:
 - use the source route ID and stage order as stable identity, never the route
   title.
 
-The service normalizes fully-elevated source stages before device export: it
-resamples at 25-metre intervals and applies a centred 100-metre moving median
-to remove isolated altitude spikes. The resulting profile is the single source
-for FIT elevations and Wahoo ascent/descent metadata. Each FIT record carries
+The service normalizes fully-elevated source-stage elevations before device
+export: it samples the elevation profile at 25-metre intervals and applies a
+centred 100-metre moving median to remove isolated altitude spikes. It retains
+the original route geometry. The resulting profile is the single source for
+FIT elevations and Wahoo ascent/descent metadata. Each FIT record carries
 cumulative route distance in metres as well as coordinates and elevation, so
 Wahoo can derive an elevation profile and gradients. The initial FIT adapter may use
 [`github.com/muktihari/fit`](https://github.com/muktihari/fit), isolated behind

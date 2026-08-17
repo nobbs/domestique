@@ -36,8 +36,9 @@ func (n *Normalizer) Process(stage *route.Stage) (route.Stage, error) {
 		return *stage, nil
 	}
 
-	resampled := resample(geometry)
-	applyMovingMedian(resampled)
+	profile := resampleElevations(geometry)
+	applyMovingMedian(profile)
+	applyElevations(geometry, profile)
 
 	processed, err := route.NewStage(
 		stage.Key().RouteID(),
@@ -45,7 +46,7 @@ func (n *Normalizer) Process(stage *route.Stage) (route.Stage, error) {
 		stage.Revision(),
 		stage.RouteName(),
 		stage.StageName(),
-		resampled,
+		geometry,
 		stage.ContentHash(),
 	)
 	if err != nil {
@@ -65,8 +66,13 @@ func hasCompleteElevation(points []route.Point) bool {
 	return true
 }
 
-func resample(points []route.Point) []route.Point {
-	result := []route.Point{copyPoint(points[0])}
+type sample struct {
+	distance  float64
+	elevation float64
+}
+
+func resampleElevations(points []route.Point) []sample {
+	result := []sample{{elevation: *points[0].Elevation}}
 	nextSample := sampleIntervalMetres
 	distanceSoFar := 0.0
 	for index := 1; index < len(points); index++ {
@@ -74,46 +80,57 @@ func resample(points []route.Point) []route.Point {
 		segmentDistance := haversine(previous, current)
 		for segmentDistance > 0 && distanceSoFar+segmentDistance >= nextSample {
 			ratio := (nextSample - distanceSoFar) / segmentDistance
-			result = append(result, interpolate(previous, current, ratio))
+			result = append(result, sample{
+				distance:  nextSample,
+				elevation: *previous.Elevation + ratio*(*current.Elevation-*previous.Elevation),
+			})
 			nextSample += sampleIntervalMetres
 		}
 		distanceSoFar += segmentDistance
 	}
 
-	last := points[len(points)-1]
-	if resultLast := result[len(result)-1]; resultLast.Latitude != last.Latitude || resultLast.Longitude != last.Longitude {
-		result = append(result, copyPoint(last))
+	if resultLast := result[len(result)-1]; resultLast.distance != distanceSoFar {
+		result = append(result, sample{distance: distanceSoFar, elevation: *points[len(points)-1].Elevation})
 	}
 
 	return result
 }
 
-func applyMovingMedian(points []route.Point) {
+func applyMovingMedian(samples []sample) {
 	radius := int(medianWindowMetres / sampleIntervalMetres / 2)
-	elevations := make([]float64, len(points))
-	for index, point := range points {
-		elevations[index] = *point.Elevation
+	elevations := make([]float64, len(samples))
+	for index, sample := range samples {
+		elevations[index] = sample.elevation
 	}
-	for index := range points {
+	for index := range samples {
 		start, end := max(0, index-radius), min(len(elevations), index+radius+1)
 		window := append([]float64(nil), elevations[start:end]...)
 		sort.Float64s(window)
 		elevation := window[len(window)/2]
-		points[index].Elevation = &elevation
+		samples[index].elevation = elevation
 	}
 }
 
-func copyPoint(point route.Point) route.Point {
-	elevation := *point.Elevation
-	return route.Point{Longitude: point.Longitude, Latitude: point.Latitude, Elevation: &elevation}
-}
-
-func interpolate(left, right route.Point, ratio float64) route.Point {
-	elevation := *left.Elevation + ratio*(*right.Elevation-*left.Elevation)
-	return route.Point{
-		Longitude: left.Longitude + ratio*(right.Longitude-left.Longitude),
-		Latitude:  left.Latitude + ratio*(right.Latitude-left.Latitude),
-		Elevation: &elevation,
+func applyElevations(points []route.Point, samples []sample) {
+	distanceSoFar := 0.0
+	sampleIndex := 0
+	for index := range points {
+		if index > 0 {
+			distanceSoFar += haversine(points[index-1], points[index])
+		}
+		for sampleIndex+1 < len(samples) && samples[sampleIndex+1].distance <= distanceSoFar {
+			sampleIndex++
+		}
+		left := samples[sampleIndex]
+		if sampleIndex == len(samples)-1 {
+			elevation := left.elevation
+			points[index].Elevation = &elevation
+			continue
+		}
+		right := samples[sampleIndex+1]
+		ratio := (distanceSoFar - left.distance) / (right.distance - left.distance)
+		elevation := left.elevation + ratio*(right.elevation-left.elevation)
+		points[index].Elevation = &elevation
 	}
 }
 

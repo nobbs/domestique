@@ -16,7 +16,7 @@ import (
 
 const authorizedState = "authorized"
 
-const encoderContentVersion = "fit-v3-elevation-profile"
+const encoderContentVersion = "fit-v4-elevation-profile"
 
 // Outcome is the terminal result of one attempted synchronization run.
 type Outcome string

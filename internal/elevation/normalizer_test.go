@@ -19,6 +19,10 @@ func TestNormalizerProcessResamplesAndRemovesIsolatedSpike(t *testing.T) {
 		t.Fatalf("normalized point count = %d, want %d", got, want)
 	}
 	for index, point := range geometry {
+		original := stage.Geometry()[index]
+		if point.Latitude != original.Latitude || point.Longitude != original.Longitude {
+			t.Errorf("normalized point[%d] coordinates = (%v, %v), want (%v, %v)", index, point.Latitude, point.Longitude, original.Latitude, original.Longitude)
+		}
 		if point.Elevation == nil {
 			t.Fatalf("normalized point %d has no elevation", index)
 		}
