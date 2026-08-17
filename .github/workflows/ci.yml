@@ -47,7 +47,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     needs: changes
-    if: needs.changes.outputs.lint == 'true'
+    # A manual run has no diff to filter on, so it always runs everything.
+    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.lint == 'true'
 
     permissions:
       contents: read
@@ -73,7 +74,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     needs: changes
-    if: needs.changes.outputs.go == 'true'
+    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.go == 'true'
 
     permissions:
       contents: read
@@ -99,7 +100,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     needs: changes
-    if: needs.changes.outputs.go == 'true'
+    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.go == 'true'
 
     permissions:
       contents: read
