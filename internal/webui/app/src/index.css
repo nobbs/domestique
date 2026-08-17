@@ -431,8 +431,8 @@ body {
  * texture should distinguish the steep sections, not shout over the terrain.
  */
 .elevation-profile__hatch-line {
-  stroke-width: 1.6;
-  stroke-opacity: 0.8;
+  stroke-width: 2;
+  stroke-opacity: 0.85;
 }
 
 .elevation-profile__hatch-ground[data-band="1"] {
@@ -453,9 +453,23 @@ body {
   stroke: var(--band-2);
 }
 
-/* A hatched band is drawn through its pattern, so it needs full opacity here. */
-.elevation-profile__column[data-band="1"],
+/*
+ * The pattern is selected here rather than with a fill attribute on the path:
+ * a presentation attribute loses to any CSS rule, so a flat colour set in CSS
+ * silently replaced the hatch. The pattern carries its own opacity, so these
+ * bands paint at full strength.
+ */
+.elevation-profile__column[data-band="0"] {
+  fill: var(--band-0);
+}
+
+.elevation-profile__column[data-band="1"] {
+  fill: url("#elevation-hatch-1");
+  fill-opacity: 1;
+}
+
 .elevation-profile__column[data-band="2"] {
+  fill: url("#elevation-hatch-2");
   fill-opacity: 1;
 }
 
@@ -472,7 +486,6 @@ body {
   stroke-linecap: round;
 }
 
-.elevation-profile__column[data-band="0"],
 .elevation-profile__cursor circle[data-band="0"] {
   fill: var(--band-0);
 }
@@ -481,7 +494,6 @@ body {
   background: var(--band-0);
 }
 
-.elevation-profile__column[data-band="1"],
 .elevation-profile__cursor circle[data-band="1"] {
   fill: var(--band-1);
 }
@@ -490,7 +502,6 @@ body {
   background: var(--band-1);
 }
 
-.elevation-profile__column[data-band="2"],
 .elevation-profile__cursor circle[data-band="2"] {
   fill: var(--band-2);
 }

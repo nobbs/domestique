@@ -25,7 +25,7 @@ import { useElementWidth } from "../lib/useElementWidth";
 const HATCH_ANGLES: Record<number, number> = { 1: 45, 2: 135 };
 // Fine enough that a short pitch still shows several strokes; a coarse hatch
 // in a twelve-pixel band is indistinguishable from a solid block.
-const HATCH_SIZE = 5;
+const HATCH_SIZE = 6;
 
 const HEIGHT = 148;
 const PADDING = { top: 12, right: 12, bottom: 22, left: 46 };
@@ -230,12 +230,16 @@ export function ElevationProfile({
                 width={HATCH_SIZE}
                 height={HATCH_SIZE}
               />
+              {/*
+               * Centred in the tile, not on its edge: a stroke on the edge is
+               * clipped in half, so half the intended width simply vanishes.
+               */}
               <line
                 className="elevation-profile__hatch-line"
                 data-band={band}
-                x1={0}
+                x1={HATCH_SIZE / 2}
                 y1={0}
-                x2={0}
+                x2={HATCH_SIZE / 2}
                 y2={HATCH_SIZE}
               />
             </pattern>
@@ -270,11 +274,6 @@ export function ElevationProfile({
               key={`column-${index}`}
               className="elevation-profile__column"
               data-band={run.band}
-              fill={
-                HATCH_ANGLES[run.band] === undefined
-                  ? undefined
-                  : `url(#elevation-hatch-${run.band})`
-              }
               d={run.column}
             />
           ))}
