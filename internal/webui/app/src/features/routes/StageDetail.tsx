@@ -10,13 +10,16 @@ import { lazy, Suspense, useMemo, useState } from "react";
 import { Link, useParams } from "react-router";
 import { ApiError } from "../../api/client";
 import { stageGeometryQuery, webUIConfigQuery } from "../../api/queries";
-import type { Position } from "../../api/types";
+import type { Position, StageSurface } from "../../api/types";
 import { ElevationProfile } from "../../components/ElevationProfile";
 import { Layout } from "../../components/Layout";
 import { ErrorMessage, LoadingMessage, StatusMessage } from "../../components/StatusMessage";
+import { SurfaceBar } from "../../components/SurfaceBar";
 import { formatAscent, formatDistance, formatGradient } from "../../lib/format";
 import type { Profile } from "../../lib/profile";
 import { buildProfile } from "../../lib/profile";
+import type { SurfaceSummary } from "../../lib/surface";
+import { summariseSurface } from "../../lib/surface";
 
 // MapLibre is by far the heaviest dependency and only this view needs it, so it
 // is fetched when a route is opened rather than on first paint of the library.
@@ -89,13 +92,14 @@ export function StageDetail() {
     );
   }
 
-  const { stage, coordinates, bbox } = geometry.data;
+  const { stage, coordinates, bbox, surface } = geometry.data;
 
   return (
     <StageView
       stage={stage}
       coordinates={coordinates}
       bbox={bbox}
+      surface={surface}
       styleUrl={config.data.tileStyleUrl}
       back={back}
     />
@@ -114,6 +118,7 @@ function StageView({
   stage,
   coordinates,
   bbox,
+  surface,
   styleUrl,
   back,
 }: {
@@ -126,11 +131,21 @@ function StageView({
   };
   coordinates: Position[];
   bbox: [number, number, number, number];
+  surface: StageSurface | undefined;
   styleUrl: string;
   back: React.ReactNode;
 }) {
   const profile = useMemo(() => buildProfile(coordinates), [coordinates]);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
+
+  // A classification that snapped to nothing is left unpainted rather than drawn
+  // as unsurveyed from end to end: greying out the whole route to say nothing is
+  // known says it less clearly than one sentence does.
+  const surfaceSummary = useMemo(
+    () =>
+      surface && surface.matchedMetres > 0 ? summariseSurface(coordinates, surface.ranges) : null,
+    [coordinates, surface],
+  );
 
   return (
     <Layout status={back}>
@@ -155,6 +170,15 @@ function StageView({
               <dd>{stage.stageOrder}</dd>
             </div>
           </dl>
+          {surfaceSummary ? (
+            <SurfaceBar summary={surfaceSummary} />
+          ) : (
+            <p className="stage-detail__surface-absent">
+              {surface
+                ? "No OpenStreetMap surface data along this stage."
+                : "Surface not classified yet."}
+            </p>
+          )}
         </header>
         <div className="stage-detail__map">
           <Suspense fallback={<LoadingMessage what="the map" />}>
@@ -163,6 +187,7 @@ function StageView({
               coordinates={coordinates}
               bbox={bbox}
               title={stage.title}
+              surface={surfaceSummary ? surface?.ranges : undefined}
               profile={profile}
               activeIndex={activeIndex}
               onActiveChange={setActiveIndex}
@@ -172,6 +197,7 @@ function StageView({
         <ElevationOverview
           profile={profile}
           title={stage.title}
+          surface={surfaceSummary}
           activeIndex={activeIndex}
           onActiveChange={setActiveIndex}
           hint={`${formatAscent(stage.ascentMetres)} climbing · ${formatGradient(stage.maxGradientPercent)} max`}
@@ -193,12 +219,14 @@ const OVERVIEW_PREFERENCE = "domestique.elevation-overview-open";
 function ElevationOverview({
   profile,
   title,
+  surface,
   hint,
   activeIndex,
   onActiveChange,
 }: {
   profile: Profile | null;
   title: string;
+  surface: SurfaceSummary | null;
   hint: string;
   activeIndex: number | null;
   onActiveChange: (index: number | null) => void;
@@ -243,6 +271,7 @@ function ElevationOverview({
         <ElevationProfile
           profile={profile}
           title={title}
+          surface={surface}
           activeIndex={activeIndex}
           onActiveChange={onActiveChange}
         />
