@@ -77,6 +77,75 @@ describe("parseStageGeometry", () => {
       }),
     ).toThrow(ContractError);
   });
+
+  it("reads a surface classification beside the geometry it describes", () => {
+    const geometry = parseStageGeometry({
+      ...payload,
+      properties: {
+        ...stagePayload,
+        surface: {
+          ranges: [{ kind: "gravel", start_index: 0, end_index: 1 }],
+          matched_metres: 1200,
+        },
+      },
+    });
+
+    expect(geometry.surface).toEqual({
+      ranges: [{ kind: "gravel", startIndex: 0, endIndex: 1 }],
+      matchedMetres: 1200,
+    });
+  });
+
+  it("leaves the surface absent on a stage nothing has classified yet", () => {
+    expect(parseStageGeometry(payload).surface).toBeUndefined();
+  });
+
+  it("keeps a classification that matched nothing distinct from an absent one", () => {
+    const geometry = parseStageGeometry({
+      ...payload,
+      properties: { ...stagePayload, surface: { ranges: [], matched_metres: 0 } },
+    });
+
+    expect(geometry.surface).toEqual({ ranges: [], matchedMetres: 0 });
+  });
+
+  it("degrades a class this build has never heard of to unknown", () => {
+    const geometry = parseStageGeometry({
+      ...payload,
+      properties: {
+        ...stagePayload,
+        surface: {
+          ranges: [{ kind: "quicksand", start_index: 0, end_index: 1 }],
+          matched_metres: 10,
+        },
+      },
+    });
+
+    expect(geometry.surface?.ranges[0]?.kind).toBe("unknown");
+  });
+
+  it("rejects a surface group that drifts from the contract", () => {
+    const withSurface = (surface: unknown) => ({
+      ...payload,
+      properties: { ...stagePayload, surface },
+    });
+
+    expect(() => parseStageGeometry(withSurface({ matched_metres: 10 }))).toThrow(ContractError);
+    expect(() => parseStageGeometry(withSurface({ ranges: [] }))).toThrow(ContractError);
+    expect(() =>
+      parseStageGeometry(
+        withSurface({ ranges: [{ kind: 3, start_index: 0, end_index: 1 }], matched_metres: 10 }),
+      ),
+    ).toThrow(ContractError);
+    expect(() =>
+      parseStageGeometry(
+        withSurface({
+          ranges: [{ kind: "asphalt", start_index: 4, end_index: 1 }],
+          matched_metres: 10,
+        }),
+      ),
+    ).toThrow(ContractError);
+  });
 });
 
 describe("parseStatus", () => {

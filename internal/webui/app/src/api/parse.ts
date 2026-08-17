@@ -6,7 +6,18 @@
  * producing `undefined` somewhere far away.
  */
 
-import type { BoundingBox, Position, Stage, StageGeometry, Status, WebUIConfig } from "./types";
+import type {
+  BoundingBox,
+  Position,
+  Stage,
+  StageGeometry,
+  StageSurface,
+  Status,
+  SurfaceKind,
+  SurfaceRange,
+  WebUIConfig,
+} from "./types";
+import { SURFACE_KINDS } from "./types";
 
 export class ContractError extends Error {
   constructor(message: string) {
@@ -90,9 +101,54 @@ function positionFrom(value: unknown, at: string): Position {
   return elevation === undefined ? [longitude, latitude] : [longitude, latitude, elevation];
 }
 
+/**
+ * Reads one class name, degrading an unfamiliar one to `unknown`.
+ *
+ * This is the one place the client is deliberately forgiving rather than loud.
+ * The service may grow a class this build has never heard of, and the honest
+ * rendering of a stretch whose class means nothing here is the same as one
+ * nobody surveyed — an unfamiliar name must not take the page down with it.
+ */
+function surfaceKind(value: unknown, at: string): SurfaceKind {
+  const name = text(value, at);
+
+  return (SURFACE_KINDS as readonly string[]).includes(name) ? (name as SurfaceKind) : "unknown";
+}
+
+function surfaceRangeFrom(value: unknown, at: string): SurfaceRange {
+  const range = record(value, at);
+  const startIndex = count(range.start_index, `${at}.start_index`);
+  const endIndex = count(range.end_index, `${at}.end_index`);
+  if (endIndex < startIndex) {
+    throw new ContractError(`${at} ends before it starts`);
+  }
+
+  return { kind: surfaceKind(range.kind, `${at}.kind`), startIndex, endIndex };
+}
+
+/**
+ * Reads the surface group, which is absent until this exact geometry has been
+ * classified. Absent is not the same as classified-and-empty, so it stays
+ * `undefined` rather than becoming an empty range list.
+ */
+function surfaceFrom(value: unknown, at: string): StageSurface | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  const surface = record(value, at);
+
+  return {
+    ranges: array(surface.ranges, `${at}.ranges`).map((entry, index) =>
+      surfaceRangeFrom(entry, `${at}.ranges[${index}]`),
+    ),
+    matchedMetres: count(surface.matched_metres, `${at}.matched_metres`),
+  };
+}
+
 export function parseStageGeometry(payload: unknown): StageGeometry {
   const body = record(payload, "body");
   const geometry = record(body.geometry, "body.geometry");
+  const properties = record(body.properties, "body.properties");
   const bboxValues = array(body.bbox, "body.bbox").map((entry, index) =>
     count(entry, `body.bbox[${index}]`),
   );
@@ -101,11 +157,12 @@ export function parseStageGeometry(payload: unknown): StageGeometry {
   }
 
   return {
-    stage: stageFrom(record(body.properties, "body.properties"), "body.properties"),
+    stage: stageFrom(properties, "body.properties"),
     bbox: bboxValues as BoundingBox,
     coordinates: array(geometry.coordinates, "body.geometry.coordinates").map((entry, index) =>
       positionFrom(entry, `body.geometry.coordinates[${index}]`),
     ),
+    surface: surfaceFrom(properties.surface, "body.properties.surface"),
   };
 }
 
