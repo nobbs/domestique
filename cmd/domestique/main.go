@@ -91,25 +91,44 @@ func run(ctx context.Context) error {
 		return fmt.Errorf("creating HTTP handler: %w", err)
 	}
 
+	server := &http.Server{Addr: settings.HTTP.ListenAddress, Handler: handler, ReadHeaderTimeout: 10 * time.Second}
+	return serve(ctx, server, scheduler)
+}
+
+type schedulerRunner interface {
+	Run(context.Context)
+}
+
+// serve runs HTTP and scheduled synchronization under one cancellation scope.
+// It waits for a cancelled synchronization run before its caller can close the
+// durable state that the run may still be using.
+func serve(ctx context.Context, server *http.Server, scheduler schedulerRunner) error {
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	server := &http.Server{Addr: settings.HTTP.ListenAddress, Handler: handler, ReadHeaderTimeout: 10 * time.Second}
 	serverErrors := make(chan error, 1)
 	go func() { serverErrors <- server.ListenAndServe() }()
-	go scheduler.Run(runCtx)
+	schedulerDone := make(chan struct{})
+	go func() {
+		defer close(schedulerDone)
+		scheduler.Run(runCtx)
+	}()
+
+	var servingErr error
 	select {
 	case err := <-serverErrors:
 		if !errors.Is(err, http.ErrServerClosed) {
-			return fmt.Errorf("serving HTTP: %w", err)
+			servingErr = fmt.Errorf("serving HTTP: %w", err)
 		}
 	case <-ctx.Done():
 	}
 	cancel()
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer shutdownCancel()
-	if err := server.Shutdown(shutdownCtx); err != nil {
-		return fmt.Errorf("shutting down HTTP: %w", err)
+	shutdownErr := server.Shutdown(shutdownCtx)
+	<-schedulerDone
+	if shutdownErr != nil {
+		shutdownErr = fmt.Errorf("shutting down HTTP: %w", shutdownErr)
 	}
 
-	return nil
+	return errors.Join(servingErr, shutdownErr)
 }
