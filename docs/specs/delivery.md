@@ -4,7 +4,7 @@
 
 This is a subordinate specification to [the service contract](service.md). It
 defines the local quality gate, GitHub Actions, container hardening, and release
-artifacts. It does not place Raspberry Pi configuration or secrets in this
+artifacts. It does not place Tailnet-host configuration or secrets in this
 repository.
 
 ## Development toolchain and commands
@@ -112,12 +112,11 @@ Linux ARM64 binary with `CGO_ENABLED=0`. The runtime image:
 - is usable with a read-only root filesystem plus a temporary writable mount if
   the selected runtime needs one.
 
-The Raspberry Pi runs the container with a loopback-only publication such as
+The host runs the container with a loopback-only publication such as
 `127.0.0.1:8080:8080`. The host's Tailscale process owns `tailscale serve`
 and the identity header boundary; Tailscale is not embedded in the application
-container. The Pi's compose file, static configuration, Docker secret files,
-and pinned image digest are operator-managed deployment state outside this
-public repository.
+container. The compose file, static configuration, Docker secret files, and
+pinned image digest are operator-managed deployment state outside Git.
 
 The repository may provide a non-secret, clearly placeholder deployment example
 later. It must not make a direct Internet port publication easy to copy, and it
@@ -137,9 +136,10 @@ release artifact, not a mutable deployment instruction. The release workflow:
 
 The Pi deploys only a verified immutable digest, never a mutable tag such as
 `latest`. It verifies the signature and provenance before a new digest is
-accepted. Rollback means selecting an earlier verified digest and restarting
-the container; it does not restore SQLite state or bypass the reauthorisation
-and safe-adoption rules.
+accepted. The macOS MVP builds the pinned Dockerfile from the local checkout;
+it is not a release artifact. Rollback means selecting an earlier verified
+digest and restarting the container; it does not restore SQLite state or
+bypass the reauthorisation and safe-adoption rules.
 
 Release automation receives only the permissions required to publish GHCR,
 attest, sign, and create the release. It receives no application secrets and
@@ -157,7 +157,7 @@ Before the first implementation release, the repository includes:
 - an explicit `.dockerignore` that excludes Git metadata, local state,
   configuration, secret files, and test artefacts from image contexts; and
 - documentation for the normal local check, manual sandbox acceptance, image
-  verification, and Pi deployment boundary.
+  verification, and Tailnet-host deployment boundary.
 
 A release is eligible only when the default-branch CI is green, its image is
 signed and attested, no untriaged vulnerability finding blocks it, and the

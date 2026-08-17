@@ -107,7 +107,7 @@ application dependency.
 ## Static fields
 
 - `http.listen_address` is required. Docker maps the container port to the
-  Pi's `127.0.0.1` only; the application must not use the address itself as
+  Tailnet host's `127.0.0.1` only; the application must not use the address itself as
   evidence of Tailnet identity.
 - `access.tailnet_user_login` is required. It is the sole Tailnet login allowed
   to use normal or OAuth endpoints.

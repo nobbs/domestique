@@ -215,8 +215,8 @@ Implementation proceeds in these reviewable layers:
    rate-limit handling.
 5. Implement sync, scheduler, Pushover, Tailnet-gated read-only HTTP API, and
    full safety regression tests.
-6. Add Docker, Pi deployment configuration, signed GHCR release delivery, and
-   end-to-end sandbox verification.
+6. Add Docker, macOS MVP and Pi deployment configuration, signed GHCR release
+   delivery, and end-to-end sandbox verification.
 
 A later layer may depend on earlier code, but it may not weaken a safety rule
 already specified. Route preview remains a future addition after this sequence.

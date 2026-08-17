@@ -17,10 +17,11 @@ Each VeloPlanner route stage is a separate Wahoo route. A single-stage route
 keeps its route name. A multi-stage route uses `Route — Stage` so its stages are
 individually identifiable on a device.
 
-The service is a single-tenant Docker workload for a Raspberry Pi on the
-Tailnet. It has no CLI and no frontend. Its HTTP surface is read-only JSON for
-status and route data, except for the protected Wahoo OAuth onboarding flow.
-Route preview and editing are explicitly out of scope for v1.
+The service is a single-tenant Docker workload for an arm64 Tailnet host. The
+initial MVP host is macOS with Docker Desktop; the long-running target is a
+Raspberry Pi. It has no CLI and no frontend. Its HTTP surface is read-only JSON
+for status and route data, except for the protected Wahoo OAuth onboarding
+flow. Route preview and editing are explicitly out of scope for v1.
 
 ## Constraints and non-goals
 
@@ -37,8 +38,8 @@ Route preview and editing are explicitly out of scope for v1.
 
 ## Deployment and access model
 
-Docker publishes the service port only to the Raspberry Pi's `127.0.0.1`; the
-container has no public host port. The Raspberry Pi exposes it privately through
+Docker publishes the service port only to the host's `127.0.0.1`; the
+container has no public host port. The Tailnet host exposes it privately through
 `tailscale serve`; it is never directly published to the Internet. All service
 endpoints require the configured sole Tailnet identity, apart from a
 loopback-only liveness probe if one is needed by Docker. The HTTP server trusts
@@ -52,7 +53,7 @@ https://<device>.<tailnet>.ts.net/oauth/wahoo/callback
 
 It must exactly match the URI registered with Wahoo and configured in the
 service. The authorisation redirect is followed by the user's browser; Wahoo
-does not need a public connection to the Pi.
+does not need a public connection to the host.
 
 The only state-changing HTTP interaction is the OAuth flow:
 
@@ -253,8 +254,8 @@ external service. A separately invoked sandbox acceptance check validates the
 FIT/Wahoo contract and never receives production secrets through CI.
 
 Released Docker images are published to GHCR from version tags, signed, and
-deployed to the Pi by immutable digest. The Pi configuration and Docker secret
-files remain outside this repository.
+deployed to the Pi by immutable digest. The macOS MVP may build locally from
+the checkout; its configuration and Docker secret files remain outside Git.
 
 ## Acceptance criteria
 
