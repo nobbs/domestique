@@ -117,24 +117,27 @@ func TestClientWritesAndFindsOwnedRoute(t *testing.T) {
 	defer server.Close()
 
 	client := newTestClient(t, server)
-	created, err := client.CreateRoute(t.Context(), "access-token", &stage, []byte("fit-data"))
+	createdRouteID, err := client.CreateRoute(t.Context(), "access-token", &stage, []byte("fit-data"))
 	if err != nil {
 		t.Fatalf("CreateRoute() error = %v", err)
 	}
-	if got, want := created.ID, int64(51); got != want {
+	if got, want := createdRouteID, int64(51); got != want {
 		t.Errorf("created route id = %d, want %d", got, want)
 	}
-	if _, updateErr := client.UpdateRoute(t.Context(), created.ID, "access-token", &stage, []byte("new-fit-data")); updateErr != nil {
+	if _, updateErr := client.UpdateRoute(t.Context(), createdRouteID, "access-token", &stage, []byte("new-fit-data")); updateErr != nil {
 		t.Fatalf("UpdateRoute() error = %v", updateErr)
 	}
-	found, err := client.RouteByExternalID(t.Context(), "access-token", externalID)
+	foundRouteID, found, err := client.RouteByExternalID(t.Context(), "access-token", externalID)
 	if err != nil {
 		t.Fatalf("RouteByExternalID() error = %v", err)
 	}
-	if got, want := found.ID, int64(51); got != want {
+	if !found {
+		t.Fatal("RouteByExternalID() found = false, want true")
+	}
+	if got, want := foundRouteID, int64(51); got != want {
 		t.Errorf("found route id = %d, want %d", got, want)
 	}
-	if err := client.DeleteRoute(t.Context(), created.ID, "access-token"); err != nil {
+	if err := client.DeleteRoute(t.Context(), createdRouteID, "access-token"); err != nil {
 		t.Fatalf("DeleteRoute() error = %v", err)
 	}
 }

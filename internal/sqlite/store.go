@@ -16,6 +16,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/nobbs/domestique/internal/route"
+
 	_ "modernc.org/sqlite" // Pure Go SQLite driver registration.
 )
 
@@ -191,6 +193,17 @@ func (s *Store) Target(ctx context.Context, targetID string) (Target, error) {
 	return target, nil
 }
 
+// TargetAuthorization returns the durable authorization state for one target
+// without exposing its Wahoo identity or refresh token.
+func (s *Store) TargetAuthorization(ctx context.Context, targetID string) (string, error) {
+	target, err := s.Target(ctx, targetID)
+	if err != nil {
+		return "", err
+	}
+
+	return string(target.AuthorizationState), nil
+}
+
 // AuthorizeTarget atomically binds a Wahoo user and encrypted refresh token to
 // a configured target. One Wahoo user cannot authorize more than one slot.
 func (s *Store) AuthorizeTarget(ctx context.Context, targetID, wahooUserID, refreshToken string) error {
@@ -297,6 +310,154 @@ func (s *Store) ReplaceRefreshToken(ctx context.Context, targetID, refreshToken 
 	}
 	if updated == 0 {
 		return ErrTargetNotFound
+	}
+
+	return nil
+}
+
+// TrustedInventoryCount returns the number of stages in the last fully
+// validated source inventory. Zero means there is no prior trusted stage.
+func (s *Store) TrustedInventoryCount(ctx context.Context) (int, error) {
+	var count int
+	if err := s.database.QueryRowContext(ctx, "SELECT COUNT(*) FROM source_stages").Scan(&count); err != nil {
+		return 0, fmt.Errorf("counting trusted source inventory: %w", err)
+	}
+
+	return count, nil
+}
+
+// StoreTrustedInventory atomically replaces the last fully validated source
+// inventory. It stores metadata only, never geometry or FIT bytes.
+func (s *Store) StoreTrustedInventory(ctx context.Context, stages []route.Stage) error {
+	seen := make(map[route.Key]struct{}, len(stages))
+	for _, stage := range stages {
+		key := stage.Key()
+		if _, exists := seen[key]; exists {
+			return errors.New("trusted source inventory contains a duplicate stage")
+		}
+		seen[key] = struct{}{}
+	}
+
+	transaction, err := s.database.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("starting trusted inventory update: %w", err)
+	}
+	defer rollback(transaction)
+
+	if _, err := transaction.ExecContext(ctx, "DELETE FROM source_stages"); err != nil {
+		return fmt.Errorf("clearing trusted source inventory: %w", err)
+	}
+	for _, stage := range stages {
+		key := stage.Key()
+		if _, err := transaction.ExecContext(ctx, `
+			INSERT INTO source_stages (route_id, stage_order, source_revision, content_hash)
+			VALUES (?, ?, ?, ?)
+		`, key.RouteID(), key.StageOrder(), stage.Revision(), stage.ContentHash()); err != nil {
+			return fmt.Errorf("storing trusted source stage: %w", err)
+		}
+	}
+	if err := transaction.Commit(); err != nil {
+		return fmt.Errorf("committing trusted inventory update: %w", err)
+	}
+
+	return nil
+}
+
+// ForEachTargetStage visits one target's tracked Wahoo routes in stable source
+// order. The visitor receives metadata only and must not retain secrets.
+func (s *Store) ForEachTargetStage(
+	ctx context.Context,
+	targetID string,
+	visit func(routeID int64, stageOrder int, sourceRevision, contentHash string, wahooRouteID int64) error,
+) error {
+	if strings.TrimSpace(targetID) == "" || visit == nil {
+		return errors.New("target ID and target stage visitor are required")
+	}
+
+	rows, err := s.database.QueryContext(ctx, `
+		SELECT route_id, stage_order, source_revision, content_hash, wahoo_route_id
+		FROM target_stages
+		WHERE target_slot = ?
+		ORDER BY route_id, stage_order
+	`, targetID)
+	if err != nil {
+		return fmt.Errorf("listing target stages: %w", err)
+	}
+	defer closeRows(rows)
+
+	for rows.Next() {
+		var (
+			routeID        int64
+			stageOrder     int
+			sourceRevision string
+			contentHash    string
+			wahooRouteID   int64
+		)
+		if err := rows.Scan(&routeID, &stageOrder, &sourceRevision, &contentHash, &wahooRouteID); err != nil {
+			return fmt.Errorf("reading target stage: %w", err)
+		}
+		if err := visit(routeID, stageOrder, sourceRevision, contentHash, wahooRouteID); err != nil {
+			return fmt.Errorf("visiting target stage: %w", err)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterating target stages: %w", err)
+	}
+
+	return nil
+}
+
+// UpsertTargetStage records the successfully applied Wahoo route for one
+// source stage. It must be called only after the corresponding remote operation
+// has succeeded.
+func (s *Store) UpsertTargetStage(
+	ctx context.Context,
+	targetID string,
+	routeID int64,
+	stageOrder int,
+	sourceRevision, contentHash string,
+	wahooRouteID int64,
+) error {
+	if strings.TrimSpace(targetID) == "" || routeID <= 0 || stageOrder <= 0 ||
+		sourceRevision == "" || contentHash == "" || wahooRouteID <= 0 {
+		return errors.New("complete target stage metadata is required")
+	}
+
+	if _, err := s.database.ExecContext(ctx, `
+		INSERT INTO target_stages (
+			target_slot, route_id, stage_order, wahoo_route_id, content_hash, source_revision
+		) VALUES (?, ?, ?, ?, ?, ?)
+		ON CONFLICT(target_slot, route_id, stage_order) DO UPDATE SET
+			wahoo_route_id = excluded.wahoo_route_id,
+			content_hash = excluded.content_hash,
+			source_revision = excluded.source_revision
+	`, targetID, routeID, stageOrder, wahooRouteID, contentHash, sourceRevision); err != nil {
+		return fmt.Errorf("storing target stage: %w", err)
+	}
+
+	return nil
+}
+
+// DeleteTargetStage removes the durable mapping after the owned remote Wahoo
+// route was deleted successfully.
+func (s *Store) DeleteTargetStage(ctx context.Context, targetID string, routeID int64, stageOrder int) error {
+	if strings.TrimSpace(targetID) == "" || routeID <= 0 || stageOrder <= 0 {
+		return errors.New("target ID and source stage key are required")
+	}
+
+	result, err := s.database.ExecContext(ctx, `
+		DELETE FROM target_stages
+		WHERE target_slot = ? AND route_id = ? AND stage_order = ?
+	`, targetID, routeID, stageOrder)
+	if err != nil {
+		return fmt.Errorf("deleting target stage: %w", err)
+	}
+	deleted, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("checking target stage deletion: %w", err)
+	}
+	if deleted == 0 {
+		return errors.New("target stage was not found")
 	}
 
 	return nil
@@ -610,6 +771,9 @@ func schemaMigrations() [][]string {
 		{
 			`ALTER TABLE oauth_transactions ADD COLUMN caller_login TEXT NOT NULL DEFAULT ''`,
 			`CREATE UNIQUE INDEX oauth_transactions_state_digest_index ON oauth_transactions(state_digest)`,
+		},
+		{
+			`ALTER TABLE target_stages ADD COLUMN source_revision TEXT NOT NULL DEFAULT ''`,
 		},
 	}
 }

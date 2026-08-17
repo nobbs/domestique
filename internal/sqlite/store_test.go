@@ -5,9 +5,13 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
+
+	"github.com/nobbs/domestique/internal/route"
 )
 
 func TestStoreAuthorizesAndEncryptsRefreshToken(t *testing.T) {
@@ -218,6 +222,53 @@ func TestStoreRejectsExpiredOAuthAuthorization(t *testing.T) {
 	}
 }
 
+func TestStorePersistsTrustedInventoryAndTargetStages(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	if err := store.EnsureTargets(t.Context(), []string{"rider-a"}); err != nil {
+		t.Fatalf("EnsureTargets() error = %v", err)
+	}
+	stage := storeTestStage(t, 1, 1, "revision", "content-hash")
+	if err := store.StoreTrustedInventory(t.Context(), []route.Stage{stage}); err != nil {
+		t.Fatalf("StoreTrustedInventory() error = %v", err)
+	}
+	count, err := store.TrustedInventoryCount(t.Context())
+	if err != nil {
+		t.Fatalf("TrustedInventoryCount() error = %v", err)
+	}
+	if got, want := count, 1; got != want {
+		t.Errorf("TrustedInventoryCount() = %d, want %d", got, want)
+	}
+	if err := store.UpsertTargetStage(t.Context(), "rider-a", 1, 1, "revision", "content-hash", 42); err != nil {
+		t.Fatalf("UpsertTargetStage() error = %v", err)
+	}
+
+	var got []string
+	if err := store.ForEachTargetStage(
+		t.Context(),
+		"rider-a",
+		func(routeID int64, stageOrder int, sourceRevision, contentHash string, wahooRouteID int64) error {
+			got = append(got, fmt.Sprintf("%d/%d/%s/%s/%d", routeID, stageOrder, sourceRevision, contentHash, wahooRouteID))
+
+			return nil
+		},
+	); err != nil {
+		t.Fatalf("ForEachTargetStage() error = %v", err)
+	}
+	if want := []string{"1/1/revision/content-hash/42"}; !equalStrings(got, want) {
+		t.Errorf("target mappings = %v, want %v", got, want)
+	}
+	if err := store.DeleteTargetStage(t.Context(), "rider-a", 1, 1); err != nil {
+		t.Fatalf("DeleteTargetStage() error = %v", err)
+	}
+	if err := store.ForEachTargetStage(t.Context(), "rider-a", func(int64, int, string, string, int64) error {
+		t.Error("ForEachTargetStage() invoked visitor after deletion")
+
+		return nil
+	}); err != nil {
+		t.Fatalf("ForEachTargetStage() after deletion error = %v", err)
+	}
+}
+
 func TestStoreMigrationsAreIdempotent(t *testing.T) {
 	databasePath := filepath.Join(t.TempDir(), "state.db")
 	first, firstOpenErr := Open(t.Context(), databasePath, testKey(1))
@@ -298,6 +349,9 @@ func TestStoreMigratesExistingOAuthTransactions(t *testing.T) {
 	); err != nil {
 		t.Fatalf("BeginAuthorization() after migration error = %v", err)
 	}
+	if err := store.UpsertTargetStage(t.Context(), "rider-a", 1, 1, "revision", "content-hash", 42); err != nil {
+		t.Fatalf("UpsertTargetStage() after migration error = %v", err)
+	}
 }
 
 func openTestStore(t *testing.T, key [32]byte) *Store {
@@ -323,4 +377,26 @@ func testKey(value byte) [32]byte {
 	}
 
 	return key
+}
+
+func storeTestStage(t *testing.T, routeID int64, stageOrder int, revision, contentHash string) route.Stage {
+	t.Helper()
+	stage, err := route.NewStage(
+		routeID,
+		stageOrder,
+		revision,
+		"Route",
+		"",
+		[]route.Point{{Longitude: 8.4, Latitude: 49.0}, {Longitude: 8.401, Latitude: 49.001}},
+		contentHash,
+	)
+	if err != nil {
+		t.Fatalf("NewStage() error = %v", err)
+	}
+
+	return stage
+}
+
+func equalStrings(left, right []string) bool {
+	return slices.Equal(left, right)
 }

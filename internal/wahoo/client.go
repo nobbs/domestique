@@ -30,8 +30,6 @@ var (
 	ErrUnauthorized = errors.New("wahoo authorization was rejected")
 	// ErrRateLimited reports a request rejected by Wahoo's advertised rate limit.
 	ErrRateLimited = errors.New("wahoo rate limit was reached")
-	// ErrRouteNotFound reports an absent Wahoo route owned by Domestique.
-	ErrRouteNotFound = errors.New("wahoo route was not found")
 )
 
 // Options configures a Wahoo API client with resolved OAuth credentials.
@@ -57,13 +55,6 @@ type Client struct {
 	redirectURL  string
 	clientSecret []byte
 	mutex        sync.Mutex
-}
-
-// Route is the non-secret portion of a Wahoo route response used for adoption
-// and durable mapping.
-type Route struct {
-	ExternalID string
-	ID         int64
 }
 
 // New creates a Wahoo client without contacting the API.
@@ -186,23 +177,24 @@ func (c *Client) AuthenticatedUser(ctx context.Context, accessToken string) (str
 }
 
 // CreateRoute uploads a FIT course as a Wahoo route owned by Domestique.
-func (c *Client) CreateRoute(ctx context.Context, accessToken string, stage *route.Stage, fitData []byte) (Route, error) {
+func (c *Client) CreateRoute(ctx context.Context, accessToken string, stage *route.Stage, fitData []byte) (routeID int64, err error) {
 	return c.writeRoute(ctx, http.MethodPost, 0, accessToken, stage, fitData)
 }
 
 // UpdateRoute replaces the FIT course and mutable metadata of an owned route.
-func (c *Client) UpdateRoute(ctx context.Context, routeID int64, accessToken string, stage *route.Stage, fitData []byte) (Route, error) {
+func (c *Client) UpdateRoute(ctx context.Context, routeID int64, accessToken string, stage *route.Stage, fitData []byte) (updatedRouteID int64, err error) {
 	if routeID <= 0 {
-		return Route{}, errors.New("wahoo: route id must be positive")
+		return 0, errors.New("wahoo: route id must be positive")
 	}
 
 	return c.writeRoute(ctx, http.MethodPut, routeID, accessToken, stage, fitData)
 }
 
 // RouteByExternalID looks up an owned route by its deterministic external ID.
-func (c *Client) RouteByExternalID(ctx context.Context, accessToken, externalID string) (Route, error) {
+// A missing route returns found=false without treating the lookup as an error.
+func (c *Client) RouteByExternalID(ctx context.Context, accessToken, externalID string) (routeID int64, found bool, err error) {
 	if accessToken == "" || externalID == "" {
-		return Route{}, errors.New("wahoo: access token and external id are required")
+		return 0, false, errors.New("wahoo: access token and external id are required")
 	}
 
 	endpoint := c.endpoint(c.apiBaseURL, "/v1/routes")
@@ -211,20 +203,26 @@ func (c *Client) RouteByExternalID(ctx context.Context, accessToken, externalID 
 	endpoint.RawQuery = query.Encode()
 	request, err := c.newRequest(ctx, http.MethodGet, endpoint, http.NoBody, accessToken)
 	if err != nil {
-		return Route{}, err
+		return 0, false, err
 	}
 	var response []routeResponse
 	if err := c.doJSON(request, &response); err != nil {
-		return Route{}, err
+		return 0, false, err
 	}
 	if len(response) == 0 {
-		return Route{}, ErrRouteNotFound
+		return 0, false, nil
 	}
 	if len(response) > 1 || response[0].ID <= 0 || response[0].ExternalID != externalID {
-		return Route{}, errors.New("wahoo: route lookup returned an invalid result")
+		return 0, false, errors.New("wahoo: route lookup returned an invalid result")
 	}
 
-	return Route{ID: response[0].ID, ExternalID: response[0].ExternalID}, nil
+	return response[0].ID, true, nil
+}
+
+// IsUnauthorized reports whether err is a permanent Wahoo authorization
+// rejection. Consumers use it to request an interactive reauthorization.
+func (c *Client) IsUnauthorized(err error) bool {
+	return errors.Is(err, ErrUnauthorized)
 }
 
 // DeleteRoute removes one route previously identified as Domestique-owned.
@@ -280,13 +278,13 @@ func (c *Client) requestToken(ctx context.Context, values url.Values) (accessTok
 func (c *Client) writeRoute(
 	ctx context.Context,
 	method string,
-	routeID int64,
+	existingRouteID int64,
 	accessToken string,
 	stage *route.Stage,
 	fitData []byte,
-) (Route, error) {
+) (routeID int64, err error) {
 	if accessToken == "" || stage == nil || len(fitData) == 0 {
-		return Route{}, errors.New("wahoo: access token, route stage, and fit data are required")
+		return 0, errors.New("wahoo: access token, route stage, and fit data are required")
 	}
 
 	geometry := stage.Geometry()
@@ -308,24 +306,24 @@ func (c *Client) writeRoute(
 	}
 
 	path := "/v1/routes"
-	if routeID > 0 {
-		path = fmt.Sprintf("/v1/routes/%d", routeID)
+	if existingRouteID > 0 {
+		path = fmt.Sprintf("/v1/routes/%d", existingRouteID)
 	}
 	request, err := c.newRequest(ctx, method, c.endpoint(c.apiBaseURL, path), strings.NewReader(values.Encode()), accessToken)
 	if err != nil {
-		return Route{}, err
+		return 0, err
 	}
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	var response routeResponse
 	if err := c.doJSON(request, &response); err != nil {
-		return Route{}, err
+		return 0, err
 	}
-	if response.ID <= 0 {
-		return Route{}, errors.New("wahoo: route response did not contain an id")
+	if response.ID <= 0 || (method == http.MethodPost && response.ExternalID != stage.Key().ExternalID()) {
+		return 0, errors.New("wahoo: route response did not contain the expected route")
 	}
 
-	return Route(response), nil
+	return response.ID, nil
 }
 
 func (c *Client) newRequest(ctx context.Context, method string, endpoint *url.URL, body io.Reader, accessToken string) (*http.Request, error) {
