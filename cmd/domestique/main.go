@@ -20,6 +20,7 @@ import (
 	"github.com/nobbs/domestique/internal/pushover"
 	"github.com/nobbs/domestique/internal/schedule"
 	"github.com/nobbs/domestique/internal/sqlite"
+	"github.com/nobbs/domestique/internal/surface"
 	syncservice "github.com/nobbs/domestique/internal/sync"
 	"github.com/nobbs/domestique/internal/veloplanner"
 	"github.com/nobbs/domestique/internal/wahoo"
@@ -79,7 +80,18 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("creating oauth service: %w", err)
 	}
-	reconciler, err := syncservice.New(&syncservice.Options{TargetIDs: targetIDs, MaxDeletionsPerTarget: settings.Sync.MaxDeletionsPerTarget, AllowEmptySourceDeletion: settings.Sync.EmptySourceDeletion == config.EmptySourceDeletionAllow}, store, source, elevation.New(), fit.New(), destination)
+	// Surface enrichment is optional. An operator who clears the endpoint keeps
+	// stage shapes off a third-party server, and the annotator stays nil, which
+	// synchronization supports as a normal state.
+	var annotator syncservice.Annotator
+	if settings.Surface.OverpassURL != "" {
+		overpass, overpassErr := surface.NewOverpass(&surface.Options{Endpoint: settings.Surface.OverpassURL})
+		if overpassErr != nil {
+			return fmt.Errorf("creating Overpass client: %w", overpassErr)
+		}
+		annotator = surface.NewAnnotator(overpass, store)
+	}
+	reconciler, err := syncservice.New(&syncservice.Options{TargetIDs: targetIDs, MaxDeletionsPerTarget: settings.Sync.MaxDeletionsPerTarget, AllowEmptySourceDeletion: settings.Sync.EmptySourceDeletion == config.EmptySourceDeletionAllow}, store, source, elevation.New(), fit.New(), destination, annotator)
 	if err != nil {
 		return fmt.Errorf("creating sync service: %w", err)
 	}

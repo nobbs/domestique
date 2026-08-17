@@ -3,6 +3,7 @@ package sync
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"sort"
 	"testing"
@@ -238,7 +239,7 @@ func TestServiceSupportsOneTarget(t *testing.T) {
 	desired := testStage(t, 1, 1, "current", "current-hash")
 	state := newFakeState("a")
 	target := newFakeTarget()
-	service, err := New(&Options{TargetIDs: []string{"a"}, MaxDeletionsPerTarget: 5}, state, &fakeSource{stages: []route.Stage{desired}}, identityProcessor{}, &fakeEncoder{}, target)
+	service, err := New(&Options{TargetIDs: []string{"a"}, MaxDeletionsPerTarget: 5}, state, &fakeSource{stages: []route.Stage{desired}}, identityProcessor{}, &fakeEncoder{}, target, nil)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -262,7 +263,7 @@ func TestServiceUpdatesLegacyEncoderOutput(t *testing.T) {
 		contentHash:    desired.ContentHash(),
 		wahooRouteID:   101,
 	}
-	service, err := New(&Options{TargetIDs: []string{"a"}, MaxDeletionsPerTarget: 5}, state, &fakeSource{stages: []route.Stage{desired}}, identityProcessor{}, &fakeEncoder{}, target)
+	service, err := New(&Options{TargetIDs: []string{"a"}, MaxDeletionsPerTarget: 5}, state, &fakeSource{stages: []route.Stage{desired}}, identityProcessor{}, &fakeEncoder{}, target, nil)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -279,13 +280,168 @@ func TestServiceUpdatesLegacyEncoderOutput(t *testing.T) {
 	}
 }
 
+// The annotator classifies stored geometry, so it must see the same inventory
+// that was stored, and only after the routes are on the targets.
+func TestServiceAnnotatesTheStoredInventoryAfterReconciling(t *testing.T) {
+	desired := testStage(t, 1, 1, "current", "current-hash")
+	state := newFakeState("a")
+	target := newFakeTarget()
+	annotator := &fakeAnnotator{}
+	annotator.observe = func() { annotator.createdOnEntry = len(target.routes[accessFor("a")]) }
+	service := newAnnotatedService(t, state, &fakeSource{stages: []route.Stage{desired}}, target, annotator)
+
+	result := service.Run(t.Context())
+	if got, want := result.Outcome, OutcomeSucceeded; got != want {
+		t.Fatalf("Run() outcome = %q, want %q", got, want)
+	}
+	if got, want := annotator.calls, 1; got != want {
+		t.Fatalf("annotate calls = %d, want %d", got, want)
+	}
+	if got, want := len(annotator.stages), 1; got != want {
+		t.Fatalf("annotated stages = %d, want %d", got, want)
+	}
+	if got, want := annotator.createdOnEntry, 1; got != want {
+		t.Errorf("routes on the target when annotation began = %d, want %d", got, want)
+	}
+	if got, want := elevationOf(t, &annotator.stages[0]), exportedElevation; got != want {
+		t.Errorf("annotated elevation = %v, want the exported profile %v", got, want)
+	}
+	if got, want := elevationOf(t, &state.trusted[0]), exportedElevation; got != want {
+		t.Errorf("stored elevation = %v, want the exported profile %v", got, want)
+	}
+}
+
+// Enrichment is not what a synchronization is for: a tagging endpoint that is
+// slow, rate limited, or simply gone must not turn a completed sync into a
+// failure the operator is notified about.
+func TestServiceSucceedsWhenAnnotationFails(t *testing.T) {
+	desired := testStage(t, 1, 1, "current", "current-hash")
+	state := newFakeState("a")
+	target := newFakeTarget()
+	annotator := &fakeAnnotator{err: errors.New("endpoint unavailable")}
+	service := newAnnotatedService(t, state, &fakeSource{stages: []route.Stage{desired}}, target, annotator)
+
+	result := service.Run(t.Context())
+	if got, want := result.Outcome, OutcomeSucceeded; got != want {
+		t.Errorf("Run() outcome = %q, want %q", got, want)
+	}
+	if got, want := result.Failure, FailureNone; got != want {
+		t.Errorf("Run() failure = %q, want %q", got, want)
+	}
+	if got, want := result.Created, 1; got != want {
+		t.Errorf("created routes = %d, want %d", got, want)
+	}
+}
+
+func TestServiceSkipsAnnotationWhenNothingWasStored(t *testing.T) {
+	previous := testStage(t, 1, 1, "old", "old-hash")
+	state := newFakeState("a")
+	state.trusted = []route.Stage{previous}
+	target := newFakeTarget()
+	seedMapping(state, "a", &previous, remoteID("a", 1))
+	target.seedRoute("a", &previous, remoteID("a", 1))
+	annotator := &fakeAnnotator{}
+	service := newAnnotatedService(t, state, &fakeSource{}, target, annotator)
+
+	result := service.Run(t.Context())
+	if got, want := result.Outcome, OutcomeBlocked; got != want {
+		t.Fatalf("Run() outcome = %q, want %q", got, want)
+	}
+	if got := annotator.calls; got != 0 {
+		t.Errorf("annotate calls = %d, want 0", got)
+	}
+}
+
+func newAnnotatedService(
+	t *testing.T,
+	state *fakeState,
+	source *fakeSource,
+	target *fakeTarget,
+	annotator Annotator,
+) *Service {
+	t.Helper()
+	service, err := New(
+		&Options{TargetIDs: []string{"a"}, MaxDeletionsPerTarget: 5},
+		state,
+		source,
+		exportProcessor{},
+		&fakeEncoder{},
+		target,
+		annotator,
+	)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	return service
+}
+
+type fakeAnnotator struct {
+	err            error
+	observe        func()
+	stages         []route.Stage
+	calls          int
+	createdOnEntry int
+}
+
+func (a *fakeAnnotator) Annotate(_ context.Context, stages []route.Stage) error {
+	if a.observe != nil {
+		a.observe()
+	}
+	a.calls++
+	a.stages = append([]route.Stage(nil), stages...)
+
+	return a.err
+}
+
+// exportedElevation is the elevation exportProcessor writes, standing in for the
+// device profile the real processor derives.
+const exportedElevation = 111.0
+
+// exportProcessor derives a stage that differs observably from its source, so a
+// test can tell the exported inventory from the raw one.
+type exportProcessor struct{}
+
+func (exportProcessor) Process(stage *route.Stage) (route.Stage, error) {
+	points := stage.Geometry()
+	for index := range points {
+		elevation := exportedElevation
+		points[index].Elevation = &elevation
+	}
+	key := stage.Key()
+	exported, err := route.NewStage(
+		key.RouteID(),
+		key.StageOrder(),
+		stage.Revision(),
+		stage.RouteName(),
+		stage.StageName(),
+		points,
+		stage.ContentHash(),
+	)
+	if err != nil {
+		return route.Stage{}, fmt.Errorf("deriving the exported stage: %w", err)
+	}
+
+	return exported, nil
+}
+
+func elevationOf(t *testing.T, stage *route.Stage) float64 {
+	t.Helper()
+	points := stage.Geometry()
+	if len(points) == 0 || points[0].Elevation == nil {
+		t.Fatalf("stage carries no elevation")
+	}
+
+	return *points[0].Elevation
+}
+
 func newService(t *testing.T, state *fakeState, source *fakeSource, encoder *fakeEncoder, target *fakeTarget, allowEmpty bool) *Service {
 	t.Helper()
 	service, err := New(&Options{
 		TargetIDs:                []string{"a", "b"},
 		MaxDeletionsPerTarget:    5,
 		AllowEmptySourceDeletion: allowEmpty,
-	}, state, source, identityProcessor{}, encoder, target)
+	}, state, source, identityProcessor{}, encoder, target, nil)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}

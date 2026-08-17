@@ -70,6 +70,9 @@ user_key_file = "/run/secrets/pushover_user_key"
 
 [webui]
 tile_style_url = "https://tiles.openfreemap.org/styles/bright"
+
+[surface]
+overpass_url = "https://overpass-api.de/api/interpreter"
 ```
 
 The endpoint examples are illustrative. The deployed values must match the
@@ -91,6 +94,22 @@ Changing this value changes the Content-Security-Policy the service sends, which
 permits exactly the service's own origin and this one tile origin. A provider
 that serves its style, tiles, sprites, and glyphs from more than one host is not
 supported without widening that policy.
+
+`surface.overpass_url` is the OpenStreetMap Overpass endpoint the **service**
+asks which ways lie along a stage, in order to classify its ground as asphalt,
+paving, compacted, gravel, or unsurfaced. It must be an absolute HTTPS URL
+without credentials, query, or fragment, and the default is the public instance,
+which needs no account and no key.
+
+Unlike the tile style this is not a browser concern: the service itself sends a
+simplified form of each stage's shape to that endpoint, so the endpoint learns
+where the operator's routes go. Nothing else is sent — no title, no identity, no
+account reference — and each stage's geometry is asked about once, because the
+answer is cached until the stage's content hash changes.
+
+Setting it to an empty string disables the lookup, and stages then carry no
+surface. Pointing it at a self-hosted Overpass instance keeps the shapes inside
+the operator's own infrastructure.
 
 ## Secret input
 

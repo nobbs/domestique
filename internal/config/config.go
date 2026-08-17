@@ -31,6 +31,13 @@ const (
 	// exposes no credential to the browser and sends no account identity to the
 	// tile origin.
 	defaultTileStyleURL = "https://tiles.openfreemap.org/styles/bright"
+
+	// defaultOverpassURL is the public Overpass instance, which needs no account
+	// and no key. It is spelled out here rather than taken from the surface
+	// package so this package keeps depending on nothing inside the service.
+	//
+	//nolint:gosec // G101 matches "pass" inside "Overpass"; this is a public endpoint.
+	defaultOverpassURL = "https://overpass-api.de/api/interpreter"
 )
 
 // Settings is the validated, startup-only configuration for one service
@@ -42,6 +49,7 @@ type Settings struct {
 	HTTP          HTTP
 	Access        Access
 	WebUI         WebUI
+	Surface       Surface
 	Sync          Sync
 	State         State
 }
@@ -64,6 +72,17 @@ type WebUI struct {
 	// credential is exposed. A provider that requires an API key would place it
 	// in this URL's query and thereby publish it to the browser.
 	TileStyleURL string
+}
+
+// Surface configures where the road surface of a stage is looked up.
+type Surface struct {
+	// OverpassURL is the Overpass endpoint asked which OpenStreetMap ways lie
+	// along a stage. The service sends it the shape of every stage it syncs, so
+	// the endpoint learns where the operator's routes go — the same exposure the
+	// browser already accepts for tiles, and the reason this is a setting rather
+	// than a constant. An empty value disables the lookup entirely, and stages
+	// then simply carry no surface.
+	OverpassURL string
 }
 
 // State configures durable service state.
@@ -179,6 +198,7 @@ type rawSettings struct {
 	HTTP          rawHTTP          `koanf:"http"`
 	Access        rawAccess        `koanf:"access"`
 	WebUI         rawWebUI         `koanf:"webui"`
+	Surface       rawSurface       `koanf:"surface"`
 	State         rawState         `koanf:"state"`
 	Sync          rawSync          `koanf:"sync"`
 }
@@ -189,6 +209,10 @@ type rawHTTP struct {
 
 type rawWebUI struct {
 	TileStyleURL string `koanf:"tile_style_url"`
+}
+
+type rawSurface struct {
+	OverpassURL string `koanf:"overpass_url"`
 }
 
 type rawAccess struct {
@@ -389,6 +413,9 @@ func build(raw *rawSettings) (*Settings, error) {
 	if err := validateTileStyleURL(raw.WebUI.TileStyleURL); err != nil {
 		return nil, err
 	}
+	if err := validateOverpassURL(raw.Surface.OverpassURL); err != nil {
+		return nil, err
+	}
 
 	targets, err := validateTargets(raw.Wahoo.Targets)
 	if err != nil {
@@ -469,6 +496,9 @@ func build(raw *rawSettings) (*Settings, error) {
 		WebUI: WebUI{
 			TileStyleURL: strings.TrimSpace(raw.WebUI.TileStyleURL),
 		},
+		Surface: Surface{
+			OverpassURL: strings.TrimSpace(raw.Surface.OverpassURL),
+		},
 		State: State{
 			DatabasePath:  raw.State.DatabasePath,
 			encryptionKey: key,
@@ -526,6 +556,17 @@ func validateTileStyleURL(value string) error {
 	}
 
 	return nil
+}
+
+// validateOverpassURL accepts an absolute HTTPS endpoint, or nothing at all. An
+// empty value is the operator's switch for keeping stage shapes off a third-party
+// server, so it is a valid setting rather than a missing one.
+func validateOverpassURL(value string) error {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+
+	return validateHTTPSURL("surface.overpass_url", strings.TrimSpace(value))
 }
 
 func validateHTTPSURL(name, value string) error {
@@ -669,6 +710,9 @@ func configurationDefaults() map[string]any {
 		},
 		"webui": map[string]any{
 			"tile_style_url": defaultTileStyleURL,
+		},
+		"surface": map[string]any{
+			"overpass_url": defaultOverpassURL,
 		},
 	}
 }
