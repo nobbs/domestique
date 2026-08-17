@@ -10,6 +10,7 @@ import { lazy, Suspense } from "react";
 import { Link, useParams } from "react-router";
 import { ApiError } from "../../api/client";
 import { stageGeometryQuery, webUIConfigQuery } from "../../api/queries";
+import { ElevationProfile } from "../../components/ElevationProfile";
 import { Layout } from "../../components/Layout";
 import { ErrorMessage, LoadingMessage, StatusMessage } from "../../components/StatusMessage";
 import { formatAscent, formatDistance, formatGradient } from "../../lib/format";
@@ -111,6 +112,7 @@ export function StageDetail() {
             </div>
           </dl>
         </header>
+        <ElevationProfile coordinates={coordinates} title={stage.title} />
         <div className="stage-detail__map">
           <Suspense fallback={<LoadingMessage what="the map" />}>
             <RouteMap

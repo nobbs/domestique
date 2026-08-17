@@ -303,6 +303,92 @@ body {
   background: var(--surface-sunken);
 }
 
+/* Elevation profile ------------------------------------------------------- */
+
+.elevation-profile {
+  position: relative;
+  flex: 0 0 auto;
+  padding: 0.6rem 1.15rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+/* Sits over the plot area and carries the pointer and keyboard interaction. */
+.elevation-profile__scrub {
+  position: absolute;
+  margin: 0.6rem 0 0 1.15rem;
+  touch-action: none;
+}
+
+.elevation-profile__scrub:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+.elevation-profile svg {
+  display: block;
+  overflow: visible;
+}
+
+/* Recessive chrome: a hairline one step off the surface, never dashed. */
+.elevation-profile__grid {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.elevation-profile__tick {
+  fill: var(--text-muted);
+  font-size: 0.68rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The wash, not a saturated block. */
+.elevation-profile__area {
+  fill: var(--accent);
+  fill-opacity: 0.1;
+}
+
+.elevation-profile__line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.elevation-profile__cursor line {
+  stroke: var(--text-muted);
+  stroke-width: 1;
+}
+
+/* The marker carries a surface ring so it stays legible over the line. */
+.elevation-profile__cursor circle {
+  fill: var(--accent);
+  stroke: var(--surface);
+  stroke-width: 2;
+}
+
+.elevation-profile__readout {
+  margin: 0.3rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.elevation-profile__readout strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.elevation-profile__absent {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0.7rem 1.15rem;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
 /* Status ------------------------------------------------------------------ */
 
 .status-message {
