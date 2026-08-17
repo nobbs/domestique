@@ -238,7 +238,7 @@ func TestServiceSupportsOneTarget(t *testing.T) {
 	desired := testStage(t, 1, 1, "current", "current-hash")
 	state := newFakeState("a")
 	target := newFakeTarget()
-	service, err := New(&Options{TargetIDs: []string{"a"}, MaxDeletionsPerTarget: 5}, state, &fakeSource{stages: []route.Stage{desired}}, &fakeEncoder{}, target)
+	service, err := New(&Options{TargetIDs: []string{"a"}, MaxDeletionsPerTarget: 5}, state, &fakeSource{stages: []route.Stage{desired}}, identityProcessor{}, &fakeEncoder{}, target)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -262,7 +262,7 @@ func TestServiceUpdatesLegacyEncoderOutput(t *testing.T) {
 		contentHash:    desired.ContentHash(),
 		wahooRouteID:   101,
 	}
-	service, err := New(&Options{TargetIDs: []string{"a"}, MaxDeletionsPerTarget: 5}, state, &fakeSource{stages: []route.Stage{desired}}, &fakeEncoder{}, target)
+	service, err := New(&Options{TargetIDs: []string{"a"}, MaxDeletionsPerTarget: 5}, state, &fakeSource{stages: []route.Stage{desired}}, identityProcessor{}, &fakeEncoder{}, target)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -285,7 +285,7 @@ func newService(t *testing.T, state *fakeState, source *fakeSource, encoder *fak
 		TargetIDs:                []string{"a", "b"},
 		MaxDeletionsPerTarget:    5,
 		AllowEmptySourceDeletion: allowEmpty,
-	}, state, source, encoder, target)
+	}, state, source, identityProcessor{}, encoder, target)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -308,6 +308,12 @@ func (s *fakeSource) Inventory(_ context.Context) ([]route.Stage, error) {
 
 type fakeEncoder struct {
 	err error
+}
+
+type identityProcessor struct{}
+
+func (identityProcessor) Process(stage *route.Stage) (route.Stage, error) {
+	return *stage, nil
 }
 
 //nolint:gocritic // This test double conforms to the production encoder contract.

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/nobbs/domestique/internal/config"
+	"github.com/nobbs/domestique/internal/elevation"
 	"github.com/nobbs/domestique/internal/fit"
 	"github.com/nobbs/domestique/internal/httpapi"
 	"github.com/nobbs/domestique/internal/oauth"
@@ -77,7 +78,7 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("creating oauth service: %w", err)
 	}
-	reconciler, err := syncservice.New(&syncservice.Options{TargetIDs: targetIDs, MaxDeletionsPerTarget: settings.Sync.MaxDeletionsPerTarget, AllowEmptySourceDeletion: settings.Sync.EmptySourceDeletion == config.EmptySourceDeletionAllow}, store, source, fit.New(), destination)
+	reconciler, err := syncservice.New(&syncservice.Options{TargetIDs: targetIDs, MaxDeletionsPerTarget: settings.Sync.MaxDeletionsPerTarget, AllowEmptySourceDeletion: settings.Sync.EmptySourceDeletion == config.EmptySourceDeletionAllow}, store, source, elevation.New(), fit.New(), destination)
 	if err != nil {
 		return fmt.Errorf("creating sync service: %w", err)
 	}

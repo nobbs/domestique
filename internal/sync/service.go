@@ -16,7 +16,7 @@ import (
 
 const authorizedState = "authorized"
 
-const encoderContentVersion = "fit-v2-distance"
+const encoderContentVersion = "fit-v3-elevation-profile"
 
 // Outcome is the terminal result of one attempted synchronization run.
 type Outcome string
@@ -87,6 +87,12 @@ type Encoder interface {
 	Encode(ctx context.Context, stage route.Stage) ([]byte, error)
 }
 
+// Processor derives a device-export stage without changing source identity or
+// source-content state.
+type Processor interface {
+	Process(stage *route.Stage) (route.Stage, error)
+}
+
 // Target performs serial Wahoo OAuth refresh and route operations.
 type Target interface {
 	RefreshAccessToken(ctx context.Context, refreshToken string) (accessToken, replacementRefreshToken string, err error)
@@ -116,6 +122,7 @@ type State interface {
 type Service struct {
 	state                    State
 	source                   Source
+	processor                Processor
 	encoder                  Encoder
 	target                   Target
 	targetIDs                []string
@@ -125,8 +132,8 @@ type Service struct {
 }
 
 // New creates a synchronizer with explicit consumer-owned dependencies.
-func New(options *Options, state State, source Source, encoder Encoder, target Target) (*Service, error) {
-	if options == nil || state == nil || source == nil || encoder == nil || target == nil {
+func New(options *Options, state State, source Source, processor Processor, encoder Encoder, target Target) (*Service, error) {
+	if options == nil || state == nil || source == nil || processor == nil || encoder == nil || target == nil {
 		return nil, errors.New("sync options and dependencies are required")
 	}
 	if len(options.TargetIDs) < 1 || len(options.TargetIDs) > 2 || options.MaxDeletionsPerTarget <= 0 || options.MaxDeletionsPerTarget > 5 {
@@ -148,6 +155,7 @@ func New(options *Options, state State, source Source, encoder Encoder, target T
 	return &Service{
 		state:                    state,
 		source:                   source,
+		processor:                processor,
 		encoder:                  encoder,
 		target:                   target,
 		targetIDs:                targetIDs,
@@ -304,11 +312,15 @@ func (s *Service) reconcileTarget(
 			return result, s.handleTargetError(ctx, targetID, lookupErr)
 		}
 		if !found {
-			fitData, encodeErr := s.encoder.Encode(ctx, *stage)
+			processed, processErr := s.processor.Process(stage)
+			if processErr != nil {
+				return result, FailureCourse
+			}
+			fitData, encodeErr := s.encoder.Encode(ctx, processed)
 			if encodeErr != nil {
 				return result, FailureCourse
 			}
-			createdRouteID, createErr := s.target.CreateRoute(ctx, accessToken, stage, fitData)
+			createdRouteID, createErr := s.target.CreateRoute(ctx, accessToken, &processed, fitData)
 			if createErr != nil {
 				return result, s.handleTargetError(ctx, targetID, createErr)
 			}
@@ -336,11 +348,15 @@ func (s *Service) reconcileTarget(
 			continue
 		}
 
-		fitData, encodeErr := s.encoder.Encode(ctx, *stage)
+		processed, processErr := s.processor.Process(stage)
+		if processErr != nil {
+			return result, FailureCourse
+		}
+		fitData, encodeErr := s.encoder.Encode(ctx, processed)
 		if encodeErr != nil {
 			return result, FailureCourse
 		}
-		updatedRouteID, updateErr := s.target.UpdateRoute(ctx, wahooRouteID, accessToken, stage, fitData)
+		updatedRouteID, updateErr := s.target.UpdateRoute(ctx, wahooRouteID, accessToken, &processed, fitData)
 		if updateErr != nil {
 			return result, s.handleTargetError(ctx, targetID, updateErr)
 		}
