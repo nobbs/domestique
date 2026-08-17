@@ -175,6 +175,85 @@ func (s *Store) Targets(ctx context.Context) ([]Target, error) {
 	return targets, nil
 }
 
+// ForEachTarget visits each configured target without exposing its Wahoo
+// identity or refresh token.
+func (s *Store) ForEachTarget(ctx context.Context, visit func(id, authorization string) error) error {
+	if visit == nil {
+		return errors.New("target visitor is required")
+	}
+	rows, err := s.database.QueryContext(ctx, `
+		SELECT slot, authorization_state FROM targets ORDER BY slot
+	`)
+	if err != nil {
+		return fmt.Errorf("listing targets: %w", err)
+	}
+	defer closeRows(rows)
+	for rows.Next() {
+		var id, authorization string
+		if err := rows.Scan(&id, &authorization); err != nil {
+			return fmt.Errorf("reading target: %w", err)
+		}
+		if err := visit(id, authorization); err != nil {
+			return fmt.Errorf("visiting target: %w", err)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterating targets: %w", err)
+	}
+
+	return nil
+}
+
+// ForEachSourceStage visits trusted source-stage metadata in stable order.
+func (s *Store) ForEachSourceStage(ctx context.Context, visit func(routeID int64, stageOrder int, sourceRevision, contentHash string) error) error {
+	if visit == nil {
+		return errors.New("source stage visitor is required")
+	}
+	rows, err := s.database.QueryContext(ctx, `
+		SELECT route_id, stage_order, source_revision, content_hash
+		FROM source_stages ORDER BY route_id, stage_order
+	`)
+	if err != nil {
+		return fmt.Errorf("listing source stages: %w", err)
+	}
+	defer closeRows(rows)
+	for rows.Next() {
+		var routeID int64
+		var stageOrder int
+		var sourceRevision, contentHash string
+		if err := rows.Scan(&routeID, &stageOrder, &sourceRevision, &contentHash); err != nil {
+			return fmt.Errorf("reading source stage: %w", err)
+		}
+		if err := visit(routeID, stageOrder, sourceRevision, contentHash); err != nil {
+			return fmt.Errorf("visiting source stage: %w", err)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterating source stages: %w", err)
+	}
+
+	return nil
+}
+
+// LastSyncRun returns the most recently recorded terminal run, if any.
+//
+//nolint:gocritic // The primitive callback boundary keeps httpapi independent of SQLite record types.
+func (s *Store) LastSyncRun(ctx context.Context) (completedAt time.Time, outcome, detail string, sourceStages, created, updated, deleted int, found bool, err error) {
+	var completedUnix int64
+	err = s.database.QueryRowContext(ctx, `
+		SELECT finished_at_unix, outcome, COALESCE(detail, ''), source_stages, created, updated, deleted
+		FROM sync_runs ORDER BY id DESC LIMIT 1
+	`).Scan(&completedUnix, &outcome, &detail, &sourceStages, &created, &updated, &deleted)
+	if errors.Is(err, sql.ErrNoRows) {
+		return time.Time{}, "", "", 0, 0, 0, 0, false, nil
+	}
+	if err != nil {
+		return time.Time{}, "", "", 0, 0, 0, 0, false, fmt.Errorf("reading last sync run: %w", err)
+	}
+
+	return time.Unix(completedUnix, 0).UTC(), outcome, detail, sourceStages, created, updated, deleted, true, nil
+}
+
 // Target returns one target slot without exposing its refresh token.
 func (s *Store) Target(ctx context.Context, targetID string) (Target, error) {
 	var target Target
