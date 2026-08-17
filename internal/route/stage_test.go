@@ -21,6 +21,9 @@ func TestNewStageCreatesImmutableStage(t *testing.T) {
 	if got, want := stage.Key().ExternalID(), "domestique:veloplanner:17:stage:2"; got != want {
 		t.Errorf("Key().ExternalID() = %q, want %q", got, want)
 	}
+	if got, want := stage.Title(), "Morning ride — Climb"; got != want {
+		t.Errorf("Title() = %q, want %q", got, want)
+	}
 	geometry[0].Longitude = 0
 	*geometry[0].Elevation = 0
 	returned := stage.Geometry()

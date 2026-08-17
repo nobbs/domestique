@@ -113,6 +113,15 @@ func (s *Stage) StageName() string {
 	return s.stageName
 }
 
+// Title returns the device-facing title for the source stage.
+func (s *Stage) Title() string {
+	if s.stageName == "" {
+		return s.routeName
+	}
+
+	return s.routeName + " — " + s.stageName
+}
+
 // ContentHash returns the deterministic stage-content hash.
 func (s *Stage) ContentHash() string {
 	return s.contentHash
