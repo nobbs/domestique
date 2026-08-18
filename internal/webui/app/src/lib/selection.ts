@@ -49,6 +49,17 @@ export const MIN_WINDOW_METRES = 200;
  */
 export const NEAR_ROUTE_PIXELS = 22;
 
+/**
+ * The same, for a fingertip.
+ *
+ * A finger covers a good deal more of the screen than it can aim with, and the
+ * reader cannot see the line under it while it is down. Asking a hand for the
+ * same accuracy a cursor gives would make the gesture something to attempt
+ * rather than something to use — and the cost of the wider band is only that
+ * the page is scrolled from beside the route rather than from on top of it.
+ */
+export const NEAR_ROUTE_TOUCH_PIXELS = 32;
+
 /** A stretch between two positions on the route, in the order it is ridden. */
 export function spanBetween(anchorMetres: number, metres: number): DistanceWindow {
   return {

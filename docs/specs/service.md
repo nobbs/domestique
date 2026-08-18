@@ -49,9 +49,11 @@ A stretch of the ride is asked for the same way on either instrument: a drag
 across the elevation chart, or a drag along the painted route, selects the
 distance range it covers, and both views then show that stretch until the whole
 route is asked for again. A drag that begins away from the route still moves the
-map, and moving the map selects nothing. The elevation chart remains the control
-that works by keyboard. Like the class selection, this changes what is shown,
-never what is stored.
+map, and moving the map selects nothing; on a touch screen the same division
+holds against the page itself, so a finger that begins on the route draws along
+it and a finger that begins anywhere else still scrolls the page. The elevation
+chart remains the control that works by keyboard. Like the class selection, this
+changes what is shown, never what is stored.
 
 The UI carries one outbound link, to this service's public source repository. It
 is the only navigation that leaves the authenticated origin, it opens in a new
