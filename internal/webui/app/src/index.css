@@ -369,27 +369,6 @@ body {
   margin-bottom: 0.4rem;
 }
 
-.stage-detail__reprocess-button {
-  padding: 0.25rem 0.7rem;
-  border: 1px solid var(--border);
-  border-radius: calc(var(--radius) - 4px);
-  background: var(--surface);
-  color: var(--text-muted);
-  font: inherit;
-  font-size: 0.8rem;
-  cursor: pointer;
-}
-
-.stage-detail__reprocess-button:hover:not(:disabled) {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
-.stage-detail__reprocess-button:disabled {
-  opacity: 0.55;
-  cursor: default;
-}
-
 .stage-detail__reprocess-note {
   font-size: 0.8rem;
   color: var(--text-muted);
@@ -423,98 +402,6 @@ body {
   flex: 1 1 auto;
   min-height: 0;
   background: var(--surface-sunken);
-}
-
-/* Stage key --------------------------------------------------------------- */
-
-/*
- * The key to both encodings drawn along a stage. It sits directly beneath the
- * chart, indented to its plot area so the swatches line up under the marks they
- * name, and holds both halves on one line wherever there is room for them.
- *
- * The gap between the halves is wider than the gap inside one, which is what
- * keeps them two keys rather than one long row of chips when they do share a
- * line.
- */
-.stage-key {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0.15rem 1.6rem;
-  margin: 0.1rem 0.75rem 0.55rem 2.9rem;
-}
-
-.stage-key__list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.15rem 0.4rem;
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  color: var(--text-muted);
-  font-size: 0.72rem;
-  font-variant-numeric: tabular-nums;
-}
-
-/*
- * Each entry is a control. The border is transparent until it is wanted, so a
- * key nobody has touched still reads as a legend rather than as a row of
- * buttons — the hit area is there the whole time, only the invitation is not.
- *
- * The negative margin pulls the padding back out of the layout, which is what
- * keeps the first swatch on the chart's left edge where it belongs.
- */
-.stage-key__chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  margin: 0 -0.35rem;
-  padding: 0.1rem 0.35rem;
-  border: 1px solid transparent;
-  border-radius: calc(var(--radius) - 4px);
-  background: none;
-  color: inherit;
-  font: inherit;
-  font-variant-numeric: tabular-nums;
-  cursor: pointer;
-}
-
-.stage-key__chip:hover {
-  border-color: var(--border);
-  color: var(--text);
-}
-
-.stage-key__chip[aria-pressed="true"] {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-  color: var(--text);
-}
-
-/*
- * With something picked, the classes that were not step back — the key says the
- * same thing the map and the chart are saying, rather than leaving the reader
- * to work out which of ten chips is the pressed one.
- */
-.stage-key[data-picked="true"] .stage-key__chip[aria-pressed="false"] {
-  opacity: 0.55;
-}
-
-.stage-key__swatch {
-  width: 14px;
-  height: 8px;
-  flex: none;
-  border-radius: 2px;
-}
-
-.stage-key__share {
-  color: var(--text);
-}
-
-/* Where the surface key would be, saying why there is none. */
-.stage-key__absent {
-  margin: 0;
-  color: var(--text-muted);
-  font-size: 0.72rem;
 }
 
 /* Elevation overview ------------------------------------------------------ */
@@ -736,63 +623,28 @@ body {
 }
 
 /*
- * The cursor dot takes the band it is standing on, and the key's swatches
- * repeat both channels the chart draws with: the band colour, and — from the
- * first steep band up — the texture over it. Approximated in CSS rather than
- * shared with the SVG patterns, which cannot be referenced from a stylesheet;
- * what has to match is the *sense* of the texture, coarse to fine and plain to
- * crossed, so a reader can find the band a swatch names on the chart.
+ * The cursor dot takes the band it is standing on. The key's swatches repeat the
+ * same colours, from the same tokens, in components/StageKey.module.css.
  */
 .elevation-profile__cursor circle[data-band="0"] {
   fill: var(--band-0);
-}
-
-.stage-key__swatch[data-band="0"] {
-  background: var(--band-0);
 }
 
 .elevation-profile__cursor circle[data-band="1"] {
   fill: var(--band-1);
 }
 
-.stage-key__swatch[data-band="1"] {
-  background:
-    repeating-linear-gradient(45deg, transparent 0 2px, var(--surface) 2px 3.5px),
-    var(--band-1);
-}
-
 .elevation-profile__cursor circle[data-band="2"] {
   fill: var(--band-2);
-}
-
-.stage-key__swatch[data-band="2"] {
-  background:
-    repeating-linear-gradient(135deg, transparent 0 2px, var(--surface) 2px 3.5px),
-    var(--band-2);
 }
 
 .elevation-profile__cursor circle[data-band="3"] {
   fill: var(--band-3);
 }
 
-.stage-key__swatch[data-band="3"] {
-  background:
-    repeating-linear-gradient(45deg, transparent 0 2px, var(--surface) 2px 3.5px),
-    repeating-linear-gradient(135deg, transparent 0 2px, var(--surface) 2px 3.5px),
-    var(--band-3);
-}
-
 .elevation-profile__cursor circle[data-band="4"] {
   fill: var(--band-4);
 }
-
-.stage-key__swatch[data-band="4"] {
-  background:
-    repeating-linear-gradient(0deg, transparent 0 1.5px, var(--surface) 1.5px 3px),
-    repeating-linear-gradient(90deg, transparent 0 1.5px, var(--surface) 1.5px 3px),
-    var(--band-4);
-}
-
 
 .elevation-profile__cursor line {
   stroke: var(--text-muted);
@@ -817,26 +669,6 @@ body {
   align-items: baseline;
   gap: 0.35rem 0.6rem;
   margin-top: 0.3rem;
-}
-
-/*
- * Quiet, like the reprocess control: this is a way back, not a call to action,
- * and it is only on the page while there is somewhere to go back from.
- */
-.elevation-profile__reset {
-  padding: 0.15rem 0.55rem;
-  border: 1px solid var(--border);
-  border-radius: calc(var(--radius) - 4px);
-  background: var(--surface);
-  color: var(--text-muted);
-  font: inherit;
-  font-size: 0.75rem;
-  cursor: pointer;
-}
-
-.elevation-profile__reset:hover {
-  border-color: var(--accent);
-  color: var(--accent);
 }
 
 .elevation-profile__reset-span {
@@ -1030,23 +862,6 @@ body {
   cursor: pointer;
 }
 
-.sync-controls__button {
-  padding: 0.35rem 0.8rem;
-  border: 1px solid var(--border);
-  border-radius: calc(var(--radius) - 4px);
-  background: var(--surface);
-  color: var(--text);
-  font: inherit;
-  font-size: 0.85rem;
-  cursor: pointer;
-}
-
-.sync-controls__button:hover:not(:disabled) {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
-.sync-controls__button:disabled,
 .sync-controls__switch input:disabled {
   opacity: 0.55;
   cursor: default;

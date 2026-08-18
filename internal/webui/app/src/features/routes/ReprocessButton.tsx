@@ -14,6 +14,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { reprocessStage } from "../../api/client";
 import { stageGeometryQuery, statusQuery } from "../../api/queries";
+import { Button } from "../../components/Button";
 
 export function ReprocessButton({ routeId, stageOrder }: { routeId: number; stageOrder: number }) {
   const queryClient = useQueryClient();
@@ -40,14 +41,9 @@ export function ReprocessButton({ routeId, stageOrder }: { routeId: number; stag
 
   return (
     <div className="stage-detail__reprocess">
-      <button
-        type="button"
-        className="stage-detail__reprocess-button"
-        disabled={reprocess.isPending}
-        onClick={() => reprocess.mutate()}
-      >
+      <Button variant="quiet" disabled={reprocess.isPending} onClick={() => reprocess.mutate()}>
         {reprocess.isPending ? "Requesting…" : "Reprocess"}
-      </button>
+      </Button>
       {reprocess.isSuccess ? (
         <span className="stage-detail__reprocess-note" role="status">
           Queued. This stage is read, derived, and pushed again on the next pass.

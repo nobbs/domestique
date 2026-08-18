@@ -1,0 +1,64 @@
+/*
+ * The one ordinary action control.
+ *
+ * Three places ask the service to do something in a single press — reprocess a
+ * stage, leave a zoomed stretch, run one half of a synchronisation — and each
+ * had written out the same border, radius, surface, and inherited font for
+ * itself. They are the same control; only their weight differs, which is what
+ * the two variants below say and all they say.
+ *
+ * Native `<button>` throughout. The platform already gives this control its
+ * role, its keyboard handling, and its disabled semantics, so there is nothing
+ * here for a component library to supply.
+ */
+
+/*
+ * The element's own inline layout is kept: a label here is a run of text, and
+ * one of them puts an aside in a span it wants read as part of the same
+ * sentence. A flex box would make that span a box of its own and eat the space
+ * in front of it.
+ */
+.button {
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) - 4px);
+  background: var(--surface);
+  font: inherit;
+  cursor: pointer;
+}
+
+.button:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/*
+ * Disabled only ever means "this request is already in flight" here. It says so
+ * by going quiet and dropping the pointer, not by graying out into something
+ * that reads as permanently unavailable.
+ */
+.button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/*
+ * The weight an action carries in its own row. `standard` is a control someone
+ * came to the page to press; `quiet` is one that is merely available while they
+ * are there — a way back, or a repair for the rare case the page is wrong.
+ */
+.standard {
+  padding: 0.35rem 0.8rem;
+  color: var(--text);
+  font-size: 0.85rem;
+}
+
+.quiet {
+  padding: 0.25rem 0.7rem;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}

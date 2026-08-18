@@ -18,6 +18,7 @@ import { setSyncSchedule, triggerSync } from "../../api/client";
 import { statusQuery } from "../../api/queries";
 import type { SyncPhase, SyncPhaseRun, SyncSchedule } from "../../api/types";
 import { SYNC_PHASES } from "../../api/types";
+import { Button } from "../../components/Button";
 import { ErrorMessage } from "../../components/StatusMessage";
 import { formatTimestamp } from "../../lib/format";
 
@@ -124,15 +125,13 @@ export function SyncControls() {
                   />
                   <span>{enabled ? "Scheduled" : "Paused"}</span>
                 </label>
-                <button
-                  type="button"
-                  className="sync-controls__button"
+                <Button
                   disabled={run.isPending}
                   onClick={() => run.mutate(phase)}
                   aria-label={`Run now: ${PHASE_LABELS[phase].title}`}
                 >
                   Run now
-                </button>
+                </Button>
               </div>
             </li>
           );
