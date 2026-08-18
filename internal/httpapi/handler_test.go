@@ -408,7 +408,16 @@ func TestHandlerSwitchesEitherHalfOfTheSchedule(t *testing.T) {
 // Half a schedule is not a schedule: a body naming one switch would leave the
 // other at whatever the caller happened to assume.
 func TestHandlerRejectsAnIncompleteScheduleChange(t *testing.T) {
-	for _, body := range []string{`{"source":true}`, `{}`, `{"source":true,"targets":true,"other":1}`, "not json"} {
+	bodies := []string{
+		`{"source":true}`,
+		`{}`,
+		`{"source":true,"targets":true,"other":1}`,
+		"not json",
+		// A second object after the first: a caller who believes they sent
+		// something this service never read.
+		`{"source":true,"targets":false}{"source":false,"targets":true}`,
+	}
+	for _, body := range bodies {
 		state := &fakeState{}
 		handler := newHandler(t, &fakeOAuth{}, state)
 		response := httptest.NewRecorder()

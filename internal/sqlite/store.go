@@ -875,9 +875,6 @@ func storeStageGeometry(ctx context.Context, transaction *sql.Tx, stages []route
 	return nil
 }
 
-// encodeCoordinates renders geometry as a JSON position array. The stored bytes
-// are exactly a GeoJSON LineString's coordinate list, so serving them needs no
-// decode and re-encode. Elevation is emitted only where the source supplied it.
 // decodeCoordinates reads back what encodeCoordinates wrote. A position carries
 // an elevation or it does not, and the difference is preserved: a stage missing
 // elevation must stay missing rather than gain a confident zero.
@@ -902,6 +899,9 @@ func decodeCoordinates(encoded []byte) ([]route.Point, error) {
 	return points, nil
 }
 
+// encodeCoordinates renders geometry as a JSON position array. The stored bytes
+// are exactly a GeoJSON LineString's coordinate list, so serving them needs no
+// decode and re-encode. Elevation is emitted only where the source supplied it.
 func encodeCoordinates(points []route.Point) ([]byte, error) {
 	positions := make([][]float64, 0, len(points))
 	for _, point := range points {

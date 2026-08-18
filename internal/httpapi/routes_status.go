@@ -103,6 +103,15 @@ func (h *Handler) setSyncSchedule(writer http.ResponseWriter, request *http.Requ
 
 		return
 	}
+	// One object, and nothing after it. A body carrying a second value is a
+	// caller who thinks they sent something this service never read, and
+	// silently acting on the first half of that is how a switch ends up in a
+	// state nobody asked for.
+	if decoder.More() {
+		h.error(writer, http.StatusBadRequest, "invalid_request", "the request body must be one object")
+
+		return
+	}
 	if err := h.state.SetSyncSchedule(request.Context(), *body.Source, *body.Targets); err != nil {
 		h.unavailable(writer)
 
