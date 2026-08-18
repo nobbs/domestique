@@ -111,7 +111,8 @@ The service rejects an attempt to authorise the same Wahoo account for two
 target slots.
 
 Alongside it are the operator controls over synchronization: the manual
-triggers, and the two switches that decide what the timer is allowed to start.
+triggers, the two switches that decide what the timer is allowed to start, and
+the per-stage reprocess request.
 They change what the service does next; they change nothing it has stored about
 routes, and they cannot make a run less safe than a scheduled one, because a
 triggered run is the same run through the same gates. Every one of them is
@@ -154,6 +155,10 @@ The read-only JSON surface is deliberately small:
 - `PUT /v1/sync/schedule` sets both switches, and answers with the state it
   stored. A body that names only one switch is refused: the other would be left
   at whatever the caller assumed it was.
+- `POST /v1/routes/{source-route-id}/stages/{stage}/reprocess` asks for one
+  stage to be worked out again from scratch and starts the synchronization that
+  will do it. It returns `202 Accepted`, or `404` for a stage that is not in the
+  stored inventory.
 
 The browser UI is served from the same origin and the same authenticated
 listener: an application entry document and immutable hashed static assets.
@@ -372,8 +377,10 @@ the checkout; its configuration and Docker secret files remain outside Git.
 - Lost state cannot cause deletion of unknown Wahoo routes.
 - The service logs and notifications do not reveal secrets or route details.
 - Every HTTP interaction is Tailnet-identity-gated. Beyond OAuth, the only ones
-  that change anything are the synchronization triggers and the two schedule
-  switches; nothing on the surface edits stored route data.
+  that change anything are the synchronization triggers, the two schedule
+  switches, and the reprocess request, which discards derived answers so they are
+  worked out again. Nothing on the surface edits route data, in this service or
+  at the source.
 - The browser UI renders a stored source stage on a map, is reachable only by
   the configured Tailnet identity, and offers no editing affordance.
 - Stage geometry is cached locally and rewritten only when a stage's content

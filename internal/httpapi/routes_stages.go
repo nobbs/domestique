@@ -103,6 +103,39 @@ func (h *Handler) stageGeometry(writer http.ResponseWriter, request *http.Reques
 	})
 }
 
+// reprocessStage asks for one stage to be worked out again from scratch, and
+// starts the synchronization that will do it.
+//
+// The request is recorded before the run is asked for, and deliberately survives
+// a refused start: a run already in flight may be past this stage, or may not
+// include it at all, so the mark waits for a pass that will honour it rather
+// than being dropped on the floor. That is why a busy service still answers
+// `202` here — the operator's request has been taken either way.
+func (h *Handler) reprocessStage(writer http.ResponseWriter, request *http.Request, _ string) {
+	routeID, stageOrder, ok := stageKey(request)
+	if !ok {
+		h.notFound(writer)
+
+		return
+	}
+
+	found, err := h.state.RequestStageReprocess(request.Context(), routeID, stageOrder)
+	if err != nil {
+		h.unavailable(writer)
+
+		return
+	}
+	if !found {
+		h.notFound(writer)
+
+		return
+	}
+	// Both halves, in order: the stage is read and derived again, then written
+	// to every target. Asking for only one would leave the request half met.
+	h.syncTrigger.Trigger(SyncPhaseAll)
+	h.writeJSON(writer, http.StatusAccepted, map[string]string{"status": "accepted"})
+}
+
 // stageSurface reads the classification stored for this exact geometry. It
 // returns a nil view when none has been recorded yet, and reports the state as
 // unreadable when the store itself failed.

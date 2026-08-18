@@ -535,6 +535,64 @@ func (s *Store) TrustedInventory(ctx context.Context) ([]route.Stage, error) {
 	return stages, nil
 }
 
+// RequestStageReprocess asks for one stage to be redone from scratch.
+//
+// It changes no route data. It removes the three answers the service would
+// otherwise reuse for that stage, so the next passes have to work them out
+// again: the geometry cache is marked for rewriting even though the source
+// content has not changed, the target mappings forget which revision they last
+// pushed so every target is written again, and the surface classification is
+// dropped so it is asked for afresh.
+//
+// The Wahoo route identity is deliberately kept. A reprocess re-writes the route
+// the service already owns; it never deletes one and never creates a second.
+//
+// Reports whether the stage is in the stored inventory. A stage that is not
+// cannot be redone, and saying so is better than leaving a mark that nothing
+// will ever consume.
+func (s *Store) RequestStageReprocess(ctx context.Context, routeID int64, stageOrder int) (bool, error) {
+	transaction, err := s.database.BeginTx(ctx, nil)
+	if err != nil {
+		return false, fmt.Errorf("starting reprocess request: %w", err)
+	}
+	defer rollback(transaction)
+
+	var exists int
+	err = transaction.QueryRowContext(ctx, `
+		SELECT 1 FROM source_stages WHERE route_id = ? AND stage_order = ?
+	`, routeID, stageOrder).Scan(&exists)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("reading the stage to reprocess: %w", err)
+	}
+
+	if _, err := transaction.ExecContext(ctx, `
+		INSERT INTO stage_reprocess (route_id, stage_order, requested_at_unix)
+		VALUES (?, ?, ?)
+		ON CONFLICT (route_id, stage_order) DO UPDATE SET requested_at_unix = excluded.requested_at_unix
+	`, routeID, stageOrder, time.Now().UTC().Unix()); err != nil {
+		return false, fmt.Errorf("recording the reprocess request: %w", err)
+	}
+	if _, err := transaction.ExecContext(ctx, `
+		UPDATE target_stages SET source_revision = '', content_hash = ''
+		WHERE route_id = ? AND stage_order = ?
+	`, routeID, stageOrder); err != nil {
+		return false, fmt.Errorf("forgetting the pushed revision: %w", err)
+	}
+	if _, err := transaction.ExecContext(ctx, `
+		DELETE FROM stage_surface WHERE route_id = ? AND stage_order = ?
+	`, routeID, stageOrder); err != nil {
+		return false, fmt.Errorf("dropping the stage surface: %w", err)
+	}
+	if err := transaction.Commit(); err != nil {
+		return false, fmt.Errorf("committing the reprocess request: %w", err)
+	}
+
+	return true, nil
+}
+
 // ForEachPhaseRun visits the most recent recorded run of each phase.
 //
 // The phases run and fail independently, so the single most recent run answers
@@ -808,9 +866,14 @@ func (s *Store) StoreTrustedInventory(ctx context.Context, stages []route.Stage)
 // Rows whose stage has left the inventory are pruned.
 func storeStageGeometry(ctx context.Context, transaction *sql.Tx, stages []route.Stage) error {
 	updatedAt := time.Now().UTC().Unix()
+	requested, err := requestedReprocessing(ctx, transaction)
+	if err != nil {
+		return err
+	}
 	for index := range stages {
 		stage := &stages[index]
 		key := stage.Key()
+		_, reprocess := requested[stageIdentity{routeID: key.RouteID(), stageOrder: key.StageOrder()}]
 
 		var storedHash string
 		err := transaction.QueryRowContext(ctx, `
@@ -820,7 +883,7 @@ func storeStageGeometry(ctx context.Context, transaction *sql.Tx, stages []route
 		case errors.Is(err, sql.ErrNoRows):
 		case err != nil:
 			return fmt.Errorf("reading cached stage geometry: %w", err)
-		case storedHash == stage.ContentHash():
+		case storedHash == stage.ContentHash() && !reprocess:
 			continue
 		}
 
@@ -871,8 +934,42 @@ func storeStageGeometry(ctx context.Context, transaction *sql.Tx, stages []route
 	`); err != nil {
 		return fmt.Errorf("pruning stage geometry: %w", err)
 	}
+	// The marks are consumed here, in the transaction that acted on them, so a
+	// request is honoured exactly once and never outlives the pass that met it.
+	if _, err := transaction.ExecContext(ctx, "DELETE FROM stage_reprocess"); err != nil {
+		return fmt.Errorf("clearing reprocess requests: %w", err)
+	}
 
 	return nil
+}
+
+// stageIdentity is one stage, for lookups that carry nothing else about it.
+type stageIdentity struct {
+	routeID    int64
+	stageOrder int
+}
+
+// requestedReprocessing reads the stages an operator has asked to have redone.
+func requestedReprocessing(ctx context.Context, transaction *sql.Tx) (map[stageIdentity]struct{}, error) {
+	rows, err := transaction.QueryContext(ctx, "SELECT route_id, stage_order FROM stage_reprocess")
+	if err != nil {
+		return nil, fmt.Errorf("reading reprocess requests: %w", err)
+	}
+	defer closeRows(rows)
+
+	requested := make(map[stageIdentity]struct{})
+	for rows.Next() {
+		var identity stageIdentity
+		if err := rows.Scan(&identity.routeID, &identity.stageOrder); err != nil {
+			return nil, fmt.Errorf("reading a reprocess request: %w", err)
+		}
+		requested[identity] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("reading reprocess requests: %w", err)
+	}
+
+	return requested, nil
 }
 
 // decodeCoordinates reads back what encodeCoordinates wrote. A position carries
@@ -1481,6 +1578,23 @@ func schemaMigrations() [][]string {
 			// covered both halves at once; they keep an empty phase rather than
 			// claiming to be one of them.
 			`ALTER TABLE sync_runs ADD COLUMN phase TEXT NOT NULL DEFAULT ''`,
+		},
+		{
+			// One stage an operator has asked to be redone from scratch.
+			//
+			// It is its own table rather than a column on source_stages, because
+			// storing an inventory replaces every source_stages row: a mark kept
+			// there would be deleted by the very run that is meant to honour it.
+			//
+			// A mark outlives nothing else. It is cleared by the pass that
+			// consumes it, so a request that arrives while a run is in flight is
+			// honoured by the next one rather than lost.
+			`CREATE TABLE stage_reprocess (
+				route_id          INTEGER NOT NULL,
+				stage_order       INTEGER NOT NULL,
+				requested_at_unix INTEGER NOT NULL,
+				PRIMARY KEY (route_id, stage_order)
+			)`,
 		},
 	}
 }
