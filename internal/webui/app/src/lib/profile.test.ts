@@ -1,15 +1,31 @@
 import { describe, expect, it } from "vitest";
 import type { Position } from "../api/types";
+import type { ProfileSample } from "./profile";
 import {
   buildProfile,
   buildWindowedProfile,
   coordinateRange,
+  gradientBand,
   nearestSample,
   niceStep,
+  presentBands,
   rangeBounds,
   sampleAt,
+  steadyBands,
   ticksFor,
 } from "./profile";
+
+/** Only the band matters to steadyBands; the rest is filler. */
+function samplesOf(bands: number[]): ProfileSample[] {
+  return bands.map((band) => ({
+    distanceMetres: 0,
+    elevationMetres: 0,
+    longitude: 8,
+    latitude: 49,
+    gradientPercent: 0,
+    band,
+  }));
+}
 
 /** Points spaced by latitude, so distance grows predictably along the route. */
 function route(elevations: Array<number | undefined>, latitudeStep = 0.001): Position[] {
@@ -383,5 +399,59 @@ describe("nearestSample", () => {
     const eastward = nearestSample(profile, middle.longitude + 0.0005, middle.latitude);
 
     expect(eastward).toBe(1);
+  });
+});
+
+describe("gradientBand", () => {
+  it("bands by magnitude, so a descent is as steep as the climb back up", () => {
+    expect(gradientBand(-14)).toBe(gradientBand(14));
+  });
+
+  it("puts a gradient in the band its own upper limit names", () => {
+    expect([0, 4, 8, 12, 16, 30].map(gradientBand)).toEqual([0, 1, 2, 3, 4, 4]);
+  });
+});
+
+describe("steadyBands", () => {
+  it("absorbs a short opening run into the run that follows it", () => {
+    expect(steadyBands(samplesOf([2, 0, 0, 0, 0]))).toEqual([0, 0, 0, 0, 0]);
+  });
+
+  it("absorbs a short run into the run before it", () => {
+    expect(steadyBands(samplesOf([0, 0, 0, 2, 0, 0, 0]))).toEqual([0, 0, 0, 0, 0, 0, 0]);
+  });
+
+  it("leaves a sustained opening run alone", () => {
+    expect(steadyBands(samplesOf([2, 2, 2, 0, 0, 0]))).toEqual([2, 2, 2, 0, 0, 0]);
+  });
+
+  it("leaves a profile of one run alone, short or not", () => {
+    expect(steadyBands(samplesOf([2, 2]))).toEqual([2, 2]);
+  });
+});
+
+describe("presentBands", () => {
+  // Flat ground, a stretch of the transition the smoothing measures at a few
+  // percent, then the climb itself — and nothing steeper, which is the half of
+  // the answer that keeps unusable classes out of the key.
+  it("offers only the bands the stage actually has, gentlest first", () => {
+    const profile = buildProfile(flatThenSteep());
+    if (!profile) {
+      throw new Error("expected a profile");
+    }
+
+    expect(presentBands(profile)).toEqual([0, 1, 2]);
+  });
+
+  // The chart draws the bands it smoothed, so a wobble the columns absorbed
+  // must not appear in the key as a class with nothing to light.
+  it("offers nothing the chart has smoothed away", () => {
+    const profile = buildProfile(flatThenSteep());
+    if (!profile) {
+      throw new Error("expected a profile");
+    }
+    const bands = new Set(steadyBands(profile.samples));
+
+    expect(presentBands(profile).every((band) => bands.has(band))).toBe(true);
   });
 });

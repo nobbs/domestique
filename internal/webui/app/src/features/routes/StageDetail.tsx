@@ -13,12 +13,14 @@ import { stageGeometryQuery, webUIConfigQuery } from "../../api/queries";
 import type { Position, StageSurface } from "../../api/types";
 import { ElevationProfile } from "../../components/ElevationProfile";
 import { Layout } from "../../components/Layout";
+import { StageKey } from "../../components/StageKey";
 import { ErrorMessage, LoadingMessage, StatusMessage } from "../../components/StatusMessage";
-import { SurfaceBar } from "../../components/SurfaceBar";
 import { type Basemap, basemapFor, usePrefersDarkScheme } from "../../lib/basemap";
 import { formatAscent, formatDistance, formatGradient } from "../../lib/format";
+import type { Highlight } from "../../lib/highlight";
+import { highlightLabel } from "../../lib/highlight";
 import type { DistanceWindow, Profile } from "../../lib/profile";
-import { buildProfile, buildWindowedProfile } from "../../lib/profile";
+import { buildProfile, buildWindowedProfile, presentBands } from "../../lib/profile";
 import type { SurfaceSummary } from "../../lib/surface";
 import { summariseSurface } from "../../lib/surface";
 import { ReprocessButton } from "./ReprocessButton";
@@ -150,6 +152,17 @@ function StageView({
   const routeProfile = useMemo(() => buildProfile(coordinates), [coordinates]);
   const [activeMetres, setActiveMetres] = useState<number | null>(null);
   const [zoomWindow, setZoomWindow] = useState<DistanceWindow | null>(null);
+  /**
+   * The class picked out of the key, lit on both views at once.
+   *
+   * Here for the same reason the hovered position is: the map and the chart are
+   * one instrument, and "where is the gravel" is a question asked of the ride
+   * rather than of either view. It survives a zoom — a reader who follows a
+   * highlighted stretch in for a closer look is still asking about it — and it
+   * survives the overview being collapsed, which is how the whole map is given
+   * over to the answer.
+   */
+  const [highlight, setHighlight] = useState<Highlight | null>(null);
 
   // Rebuilt from the original geometry rather than from the last window, so
   // zooming inside a zoom compounds no rounding error and needs no stack.
@@ -218,6 +231,7 @@ function StageView({
               activeMetres={activeMetres}
               onActiveChange={setActiveMetres}
               zoomWindow={shownWindow}
+              highlight={highlight}
             />
           </Suspense>
         </div>
@@ -230,15 +244,24 @@ function StageView({
               ? "No OpenStreetMap surface data along this stage."
               : "Surface not classified yet."
           }
+          bands={routeProfile ? presentBands(routeProfile) : []}
           activeMetres={activeMetres}
           onActiveChange={setActiveMetres}
           zoomWindow={shownWindow}
           onZoomChange={onZoomChange}
-          hint={
+          highlight={highlight}
+          onHighlightChange={setHighlight}
+          hint={[
             shownWindow
               ? `${(shownWindow.startMetres / 1000).toFixed(1)}–${(shownWindow.endMetres / 1000).toFixed(1)} km shown`
-              : `${formatAscent(stage.ascentMetres)} climbing · ${formatGradient(stage.maxGradientPercent)} max`
-          }
+              : `${formatAscent(stage.ascentMetres)} climbing · ${formatGradient(stage.maxGradientPercent)} max`,
+            // Collapsed, the key that set the highlight is not on the page —
+            // so the summary says what is still lit on the map, rather than
+            // leaving it as state with nothing to point at.
+            highlight ? `${highlightLabel(highlight)} only` : "",
+          ]
+            .filter(Boolean)
+            .join(" · ")}
         />
       </section>
     </Layout>
@@ -259,21 +282,27 @@ function ElevationOverview({
   title,
   surface,
   surfaceAbsence,
+  bands,
   hint,
   activeMetres,
   onActiveChange,
   zoomWindow,
   onZoomChange,
+  highlight,
+  onHighlightChange,
 }: {
   profile: Profile | null;
   title: string;
   surface: SurfaceSummary | null;
   surfaceAbsence: string;
+  bands: number[];
   hint: string;
   activeMetres: number | null;
   onActiveChange: (metres: number | null) => void;
   zoomWindow: DistanceWindow | null;
   onZoomChange: (window: DistanceWindow | null) => void;
+  highlight: Highlight | null;
+  onHighlightChange: (highlight: Highlight | null) => void;
 }) {
   const [open, setOpen] = useState(() => {
     try {
@@ -325,17 +354,21 @@ function ElevationOverview({
             onActiveChange={onActiveChange}
             zoomWindow={zoomWindow}
             onZoomChange={onZoomChange}
+            highlight={highlight}
           />
           {/*
-           * The key sits under the strip it explains, not up beside the title:
+           * The key sits under the marks it explains, not up beside the title:
            * a legend away from its marks is a lookup, and this one is meant to
-           * be read in the same glance as the ground it names.
+           * be read in the same glance as the ground it names — and clicked in
+           * the same glance, which a lookup would make a journey.
            */}
-          {surface ? (
-            <SurfaceBar summary={surface} />
-          ) : (
-            <p className="stage-detail__surface-absent">{surfaceAbsence}</p>
-          )}
+          <StageKey
+            surface={surface}
+            surfaceAbsence={surfaceAbsence}
+            bands={bands}
+            highlight={highlight}
+            onHighlightChange={onHighlightChange}
+          />
         </>
       ) : null}
     </details>

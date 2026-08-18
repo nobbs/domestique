@@ -34,14 +34,25 @@ function ramp(percents: number[]): Position[] {
 describe("routeLinesWithin", () => {
   it("splits the whole route the way it splits one class", () => {
     const coordinates = route(5);
-    const slices = routeLinesWithin(coordinates, { startIndex: 1, endIndex: 3 });
+    const slices = routeLinesWithin(coordinates, [{ startIndex: 1, endIndex: 3 }]);
 
     expect(slices.inside[0]).toEqual(coordinates.slice(1, 4));
     expect(slices.outside).toHaveLength(2);
   });
 
-  it("holds the whole route inside when there is no window", () => {
+  it("holds the whole route inside when nothing has been asked of it", () => {
     expect(routeLinesWithin(route(5), null).inside[0]).toHaveLength(5);
+  });
+
+  it("lights several scattered stretches at once, as a picked class is", () => {
+    const coordinates = route(7);
+    const slices = routeLinesWithin(coordinates, [
+      { startIndex: 0, endIndex: 2 },
+      { startIndex: 4, endIndex: 6 },
+    ]);
+
+    expect(slices.inside).toEqual([coordinates.slice(0, 3), coordinates.slice(4, 7)]);
+    expect(slices.outside).toEqual([coordinates.slice(2, 5)]);
   });
 });
 
@@ -93,10 +104,10 @@ describe("gradientRanges", () => {
 });
 
 describe("gradientSlices", () => {
-  const steps = ramp([...Array(40).fill(0), ...Array(40).fill(6), ...Array(40).fill(12)]);
+  const steps = ramp([...Array(40).fill(0), ...Array(40).fill(6), ...Array(40).fill(14)]);
 
   it("groups the route by band, gentlest first", () => {
-    expect(gradientSlices(steps, null).map((slices) => slices.band)).toEqual([0, 1, 2]);
+    expect(gradientSlices(steps, null).map((slices) => slices.band)).toEqual([0, 1, 3]);
   });
 
   it("runs each band one point on, so neighbours meet on the shared point", () => {
@@ -108,9 +119,9 @@ describe("gradientSlices", () => {
   });
 
   it("separates what a window is showing from what it is not", () => {
-    const slices = gradientSlices(steps, { startIndex: 0, endIndex: 20 });
+    const slices = gradientSlices(steps, [{ startIndex: 0, endIndex: 20 }]);
     const gentle = slices.find((entry) => entry.band === 0);
-    const steep = slices.find((entry) => entry.band === 2);
+    const steep = slices.find((entry) => entry.band === 3);
 
     expect(gentle?.inside).not.toHaveLength(0);
     expect(gentle?.outside).not.toHaveLength(0);
