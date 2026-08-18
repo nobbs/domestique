@@ -80,8 +80,14 @@ interface Drag {
  * Nearness is judged in pixels against the projected sample rather than in
  * metres on the ground, because the hit area a hand aims at is the drawn line,
  * whose width on screen has nothing to do with the scale the map is at.
+ *
+ * Exported because it is also the question the page asks of a touch before this
+ * module hears about it: a finger landing on the line is drawing along it and
+ * belongs here, and a finger landing anywhere else belongs to whatever the map
+ * is sitting in. Both answers come from the same measurement, and two of them
+ * would be two hit areas for one line.
  */
-function nearestMetres(
+export function routeMetresAt(
   map: SelectableMap,
   profile: Profile,
   clientX: number,
@@ -163,15 +169,15 @@ export function routeSelection(map: SelectableMap, options: RouteSelectionOption
   };
 
   const onPointerDown = (event: PointerEvent) => {
-    // A right-click opens a menu and a second finger is exploration; neither is
-    // a selection, and both must hand the map back rather than leave a range
-    // half-drawn behind them.
+    // A right-click opens a menu and a second finger is a gesture for the map;
+    // neither is a selection, and both must hand the map back rather than leave
+    // a range half-drawn behind them.
     if (!event.isPrimary || event.button !== 0) {
       release();
 
       return;
     }
-    const metres = nearestMetres(
+    const metres = routeMetresAt(
       map,
       options.profile,
       event.clientX,
@@ -207,7 +213,7 @@ export function routeSelection(map: SelectableMap, options: RouteSelectionOption
     if (!started || event.pointerId !== started.pointerId) {
       return;
     }
-    const metres = nearestMetres(
+    const metres = routeMetresAt(
       map,
       options.profile,
       event.clientX,
@@ -265,16 +271,20 @@ export function routeSelection(map: SelectableMap, options: RouteSelectionOption
    * Claims a finger that lands on the route, before the page can read it as a
    * scroll.
    *
-   * MapLibre's cooperative gestures leave the canvas at `touch-action: pan-x
+   * While the page is being read the canvas is left at `touch-action: pan-x
    * pan-y`, which is what keeps a phone able to scroll past a map that fills
-   * most of its screen. The browser decides which of them a touch is at the
-   * moment it starts, though, so a finger drawn along the route was being taken
-   * for a scroll and the selection cancelled out from under it — the only way
-   * through was a double tap, which on iOS is a request to select the text of
-   * the page and did exactly that. Saying here, and only for a finger that has
-   * landed on the line, that the gesture is ours settles that question the one
-   * time it can be settled: the page still scrolls from anywhere else on the
-   * map, which is nearly all of it.
+   * most of its screen — see `mapExploration`. The browser decides which of them
+   * a touch is at the moment it starts, though, so a finger drawn along the
+   * route was being taken for a scroll and the selection cancelled out from
+   * under it — the only way through was a double tap, which on iOS is a request
+   * to select the text of the page and did exactly that. Saying here, and only
+   * for a finger that has landed on the line, that the gesture is ours settles
+   * that question the one time it can be settled: the page still scrolls from
+   * anywhere else on the map, which is nearly all of it.
+   *
+   * It is said in both modes. Exploring the map hands the fingers to MapLibre
+   * for panning and pinching, and a drag along the route is not one of those
+   * things: the line is asked about the ride, whichever mode the view is in.
    *
    * This is registered without `passive`, unlike MapLibre's own touch listener,
    * because a passive listener is one that has given up the right to say this.
@@ -284,7 +294,7 @@ export function routeSelection(map: SelectableMap, options: RouteSelectionOption
     if (!touch) {
       return;
     }
-    const metres = nearestMetres(
+    const metres = routeMetresAt(
       map,
       options.profile,
       touch.clientX,

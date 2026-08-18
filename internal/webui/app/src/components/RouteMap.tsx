@@ -5,9 +5,14 @@
  * one thing this otherwise Tailnet-private service fetches from outside. The
  * route itself is drawn from geometry the service already holds locally and is
  * never sent anywhere.
+ *
+ * It reads as part of the page until it is asked to be a map: the wheel scrolls
+ * past it, a finger scrolls past it, and only a drag along the painted route is
+ * taken as a question about the ride. The control in its corner is what hands it
+ * the gestures, and Escape is what gives them back — see `mapExploration`.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Layer,
   Map as MapLibre,
@@ -21,13 +26,15 @@ import type { DataDrivenPropertyValueSpecification } from "maplibre-gl";
 import type { BoundingBox, Position, SurfaceRange } from "../api/types";
 import type { Highlight } from "../lib/highlight";
 import { highlightRanges, litRanges } from "../lib/highlight";
-import { routeSelection } from "../lib/mapSelection";
+import { mapExploration } from "../lib/mapExploration";
+import { routeMetresAt, routeSelection } from "../lib/mapSelection";
 import type { DistanceWindow, Profile } from "../lib/profile";
 import { coordinateRange, nearestSample, rangeBounds, sampleAt } from "../lib/profile";
 import { gradientSlices, routeLinesWithin } from "../lib/routeLines";
-import { NEAR_ROUTE_PIXELS } from "../lib/selection";
+import { NEAR_ROUTE_PIXELS, NEAR_ROUTE_TOUCH_PIXELS } from "../lib/selection";
 import { SURFACE_LINE_WIDTH, SURFACE_STYLES, surfaceLinesWithin } from "../lib/surface";
 import { useEscapeKey } from "../lib/useEscapeKey";
+import { ExploreToggle } from "./ExploreToggle";
 // Configures the shared worker pool; without it this map renders no tiles.
 import "../lib/maplibre";
 
@@ -293,6 +300,69 @@ function SelectionLink({
   return null;
 }
 
+/**
+ * Gives the map the wheel, the fingers, and the arrow keys, or leaves them to
+ * the page.
+ *
+ * A child of the map for the same reason its neighbours are: `useMap` is what
+ * resolves the instance, and the mode is a handful of MapLibre handlers rather
+ * than anything React can render.
+ *
+ * The one touch reading mode still hands over is a finger drawing along the
+ * route, which is why the whole profile comes down here: the same measurement
+ * that tells a selection from a pan tells a gesture for the route from a scroll
+ * of the page.
+ */
+function ExplorationLink({
+  exploring,
+  profile,
+  selectable,
+}: {
+  exploring: boolean;
+  profile: Profile | null;
+  selectable: boolean;
+}) {
+  const { current: map } = useMap();
+
+  const claimsTouch = useCallback(
+    (point: { clientX: number; clientY: number }) => {
+      if (!map || !profile || !selectable) {
+        return false;
+      }
+
+      return (
+        routeMetresAt(
+          map.getMap(),
+          profile,
+          point.clientX,
+          point.clientY,
+          NEAR_ROUTE_TOUCH_PIXELS,
+        ) !== null
+      );
+    },
+    [map, profile, selectable],
+  );
+  // Held in a ref so that a fresh profile — a different stage, say — does not
+  // re-apply the mode underneath a reader who is in the middle of using it.
+  const latest = useRef(claimsTouch);
+  useEffect(() => {
+    latest.current = claimsTouch;
+  }, [claimsTouch]);
+
+  useEffect(() => {
+    if (!map) {
+      return;
+    }
+
+    return mapExploration(map.getMap(), {
+      exploring,
+      claimsTouch: (point) => latest.current(point),
+    });
+  }, [map, exploring]);
+
+  return null;
+}
+
 export interface RouteMapProps {
   styleUrl: string;
   /**
@@ -375,6 +445,14 @@ export function RouteMap({
    * answer to a question half asked is to light the ground it covers so far.
    */
   const [pending, setPending] = useState<DistanceWindow | null>(null);
+  /**
+   * Whether the map has been handed the gestures the page otherwise keeps.
+   *
+   * Held here rather than by the page, because it is a property of this view of
+   * this map: a reader who went looking around one stage's roads has not said
+   * anything about how they want to read the rest of the page.
+   */
+  const [exploring, setExploring] = useState(false);
   // Rounded outwards, so the lit stretch covers every metre the chart draws.
   const windowRange = useMemo(
     () =>
@@ -481,14 +559,30 @@ export function RouteMap({
   }, []);
 
   /**
-   * Escape returns to the whole route.
+   * Escape leaves whatever the map is currently holding.
    *
-   * Carried here as well as on the chart because a window can now be drawn on
-   * the map, and the chart — which is where the visible way back lives — is
-   * unmounted whenever the overview is collapsed. Without this, a stretch
-   * chosen with the overview closed would be a view with no way out of it.
+   * Two things can be left, so they are answered by one listener in a stated
+   * order rather than by two racing to claim the key. Exploration goes first: it
+   * is the one that has taken something away from the page, and a reader
+   * pressing Escape over a map that has stopped scrolling is asking for the
+   * scrolling back. The stretch goes second, which is the same way back the
+   * chart's own control offers — carried here as well because the chart is
+   * unmounted whenever the overview is collapsed, and a stretch chosen with the
+   * overview closed would otherwise be a view with no way out of it.
+   *
+   * A stretch still being drawn is neither: `mapSelection` takes Escape in the
+   * capture phase and marks it handled, so abandoning a half-drawn window never
+   * also throws away the view it was being drawn on.
    */
-  useEscapeKey(zoomWindow !== null && onZoomChange !== undefined, () => onZoomChange?.(null));
+  const zoomable = zoomWindow !== null && onZoomChange !== undefined;
+  useEscapeKey(exploring || zoomable, () => {
+    if (exploring) {
+      setExploring(false);
+
+      return;
+    }
+    onZoomChange?.(null);
+  });
 
   return (
     <div className="route-map">
@@ -499,7 +593,6 @@ export function RouteMap({
         style={{ width: "100%", height: "100%" }}
         aria-label={`Map of ${title}`}
         attributionControl={{ customAttribution: SURFACE_ATTRIBUTION }}
-        cooperativeGestures
       >
         <MapViewport
           bounds={windowBounds ?? bbox}
@@ -507,6 +600,11 @@ export function RouteMap({
         />
         <HoverLink profile={profile} onActiveChange={onActiveChange} />
         <SelectionLink profile={profile} onPending={setPending} onZoomChange={onZoomChange} />
+        <ExplorationLink
+          exploring={exploring}
+          profile={profile}
+          selectable={onZoomChange !== undefined}
+        />
         <NavigationControl position="top-right" showCompass={false} />
         <ScaleControl position="bottom-left" unit="metric" />
         <Source id={SOURCE_ID} type="geojson" data={route}>
@@ -622,6 +720,7 @@ export function RouteMap({
           />
         </Source>
       </MapLibre>
+      <ExploreToggle exploring={exploring} onExploringChange={setExploring} />
     </div>
   );
 }
