@@ -56,8 +56,10 @@ under shuffling.
 **The browser UI** lives in `internal/webui/app` (TypeScript, React, Vite,
 MapLibre) and is compiled into the binary with `go:embed`, so `make build`
 depends on `make ui-build`. Use `make ui-dev` for hot reload — it proxies the API
-to a locally running service and injects the Tailnet identity header, so the
-identity gate behaves as it does in production. Building images requires
+to a locally running service and forwards the Cloudflare Access assertion in
+`DOMESTIQUE_DEV_ASSERTION`, so the identity gate behaves as it does in
+production. Without that variable every proxied request answers 401; there is
+deliberately no way to switch the gate off. Building images requires
 `docker login dhi.io`, because the base images are Docker Hardened Images.
 
 **To develop against real data**, run `make dev-setup` once (snapshots the
@@ -119,15 +121,16 @@ of them needs an explicit specification revision, not a quiet edit.
 - **Refresh tokens are encrypted at rest** in SQLite with the state-encryption
   key; access tokens live only in memory.
 - **All non-OAuth HTTP is read-only and identity-gated to one principal.** The
-  handler trusts `Tailscale-User-Login` only because deployment keeps the
-  listener private to the local Tailscale proxy, which strips any
-  client-supplied copy. Do not add a public listener or loosen the gate. The
-  optional Cloudflare path in [docs/cloudflare-access.md](docs/cloudflare-access.md)
-  adds no listener — the tunnel dials outward — and adds no principal; it proves
-  the same one by verifying a signed Access assertion, because a tagged tunnel
-  node carries no Tailnet identity at all. Its origin must stay the Tailscale
-  Service name: pointed at loopback, it would bypass the header stripping and
-  hand over the API.
+  only identity the handler accepts is a signed `Cf-Access-Jwt-Assertion` it
+  verifies itself, as set out in
+  [docs/cloudflare-access.md](docs/cloudflare-access.md). Do not add a public
+  listener or loosen the gate. In particular, do not reintroduce trust in
+  `Tailscale-User-Login`: Serve still fronts the listener and Tailnet members can
+  still reach it, so honouring that header would be a second front door, and a
+  tunnel forwards client headers verbatim, so it would be a forgeable one. The
+  tunnel adds no listener — it dials outward — and no principal. Its origin must
+  stay the Tailscale Service name, which is what keeps the tunnel node from
+  addressing the host directly.
 
 ## Testing
 

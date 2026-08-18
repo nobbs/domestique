@@ -1,13 +1,15 @@
 # Public access through Cloudflare Access
 
-This guide adds an optional public path to a deployment that otherwise follows
-[the Linux VM guide](hetzner.md). It lets the configured operator reach the
-service from a browser that is not on the Tailnet, authenticated by an external
-identity provider, without publishing a listener.
+This guide describes how the service is reached, on a deployment that otherwise
+follows [the Linux VM guide](hetzner.md). Cloudflare Access is the **only** way
+in: the operator authenticates to an external identity provider from any
+browser, and the service publishes no listener.
 
-Nothing here changes the Tailnet path. With `[access.cloudflare]` absent from
-`config.toml`, the service behaves exactly as it did before, and the rest of
-this document does not apply.
+This applies to Tailnet browsers too. Tailscale Serve still fronts the
+listener, because `cloudflared` reaches it by Service name, and Tailnet members
+can still reach that URL — but the service reads no Tailnet identity, so such a
+request answers 401 like any other without an assertion. There is one front
+door.
 
 ## What it looks like
 
@@ -46,45 +48,49 @@ verified identity, that is an acceptable price for having authentication at all.
 
 ## The trust model
 
-Two request paths reach the handler, and each carries different evidence.
+One kind of evidence reaches the handler, and it is checked on every request.
 
-| Path | Evidence | Why it can be trusted |
-| --- | --- | --- |
-| Tailnet browser | `Tailscale-User-Login` | Tailscale Serve strips any client-supplied copy and injects its own |
-| Public browser | `Cf-Access-Jwt-Assertion` | RS256 signature over Cloudflare's published keys, bound to this application's audience tag |
+| Evidence | Why it can be trusted |
+| --- | --- |
+| `Cf-Access-Jwt-Assertion` | RS256 signature over Cloudflare's published keys, bound to this application's audience tag |
 
-Both resolve to the same single configured principal. The service stays
-single-tenant: `access.tailnet_user_login` names the Tailnet identity and
-`access.cloudflare.allowed_email` names the same person's IdP address.
+It resolves to the single configured principal,
+`access.cloudflare.allowed_email`, and the service stays single-tenant.
 
-Two consequences are worth holding on to.
+Three consequences are worth holding on to.
 
 **cloudflared has no identity of its own.** It runs on a tagged node, and
 Tailscale Serve never populates identity headers for a tagged device. A request
-arriving through the tunnel therefore has no `Tailscale-User-Login` at all. The
-signed assertion is the only identity it carries, which is precisely why
-verifying that assertion is not optional.
+arriving through the tunnel carries no `Tailscale-User-Login` at all. The signed
+assertion is the only identity it carries.
 
-**The application verifies the assertion itself.** `cloudflared` only dials
-outward and nothing listens publicly, so this is defence in depth rather than
-the primary control. It means a tunnel or policy misconfiguration produces a
-broken deployment rather than an authentication bypass. Verification checks the
-signature, the issuer, the expiry, and — critically — that `aud` matches this
-application's audience tag. Without the audience check, a token minted for any
-other Access application in the same Cloudflare team would verify against the
-same signing key. `Cf-Access-Authenticated-User-Email` is never consulted: it is
-unsigned.
+**The application verifies the assertion itself**, rather than trusting that
+something upstream did. Verification checks the signature, the issuer, the
+expiry, and — critically — that `aud` matches this application's audience tag.
+Without the audience check, a token minted for any other Access application in
+the same Cloudflare team would verify against the same signing key.
+`Cf-Access-Authenticated-User-Email` is never consulted: it is unsigned.
+
+**`Tailscale-User-Login` is not read.** This is deliberate and must stay that
+way. Serve is still listening and Tailnet members can still reach it, so
+honouring that header would mean a second front door with a second identity
+source behind it. Worse, a tunnel forwards client headers verbatim: the moment
+anything other than Serve reaches the listener, the header becomes forgeable and
+the gate becomes a formality. One identity, verified by signature, on every
+request.
 
 ### Why the Service name is load-bearing
 
-`cloudflared` forwards the client's headers to its origin. If its origin were
-`http://127.0.0.1:8080`, it would bypass Tailscale Serve, and a header the
-application trusts would arrive straight from the internet — any caller could
-name themselves the operator by setting `Tailscale-User-Login`.
+The ingress rule names `svc:domestique`, not a node and not loopback. Two
+reasons:
 
-Dialling `https://domestique.fluffy-sargas.ts.net` keeps Serve in the path, and
-Serve strips that header before the application sees it. Preserving the Service
-name is therefore both the architectural requirement and the security control.
+- The Service name outlives the host. Moving the service to another machine is
+  a Serve change on the new host, not a tunnel change.
+- The tunnel node's grant is written against that Service, so `tag:cloudflared`
+  can reach exactly one Service on exactly one port and cannot address the host
+  it happens to run beside. Pointing the ingress rule at `127.0.0.1:8080` would
+  discard that containment for nothing.
+
 Do not "simplify" the ingress rule to loopback.
 
 ## Tailnet policy
@@ -197,25 +203,24 @@ allowed_email = "<the IdP address of the operator>"
 ```
 
 None of these is a secret, so they live in `config.toml` rather than in
-`secrets/`. The section is all-or-nothing: a partly filled one is rejected at
-startup, because the alternative failure is a public endpoint that verifies
-nothing.
+`secrets/`. The section is required in full: it is the only gate the service
+has, so a missing or partly filled one is refused at startup rather than left
+answering every request with a 401.
 
 ### The Wahoo redirect moves
 
-The OAuth callback lands in an ordinary browser, which may not be on the
-Tailnet. With the public path deployed, set both `wahoo.redirect_url` and the
-callback registered with Wahoo to:
+The OAuth callback lands in an ordinary browser. Set both `wahoo.redirect_url`
+and the callback registered with Wahoo to:
 
 ```text
 https://domestique.nobbs.dev/oauth/wahoo/callback
 ```
 
-The OAuth state is bound to the calling identity, and a flow now begins on
-whichever path the operator started from and always returns through Cloudflare.
-That works because the gate resolves both paths to the same principal before
-handing it to the OAuth service. It is the reason that canonicalisation exists;
-do not replace it with the raw header value.
+The OAuth state is bound to the calling identity, so the flow's two requests
+must agree on who the caller is. The gate hands downstream the configured
+address rather than the spelling the assertion happened to use, which keeps that
+true if Access varies the case between assertions. Do not replace that with the
+raw claim value.
 
 ## Verify the result
 
@@ -228,6 +233,13 @@ ss -tlnp | grep 8080
 # The public hostname redirects an anonymous browser to the IdP, and never
 # returns service content.
 curl -sS -o /dev/null -w '%{http_code} %{redirect_url}\n' https://domestique.nobbs.dev/v1/status
+
+# Serve is reachable from the Tailnet but is not a way in: 401, not content,
+# and a forged identity header changes nothing.
+curl -sS -o /dev/null -w '%{http_code}\n' https://domestique.fluffy-sargas.ts.net/v1/status
+curl -sS -o /dev/null -w '%{http_code}\n' \
+  -H 'Tailscale-User-Login: you@example.com' \
+  https://domestique.fluffy-sargas.ts.net/v1/status
 
 # The tunnel node cannot reach anything else in the tailnet.
 docker compose exec tunnel-tailscale tailscale ping homelab

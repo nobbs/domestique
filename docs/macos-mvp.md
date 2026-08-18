@@ -23,7 +23,8 @@ mkdir -p -m 700 .local/run/secrets
 
 Update config.toml before starting the container:
 
-- set access.tailnet_user_login to the exact Tailnet login;
+- set the access.cloudflare team domain, application audience tag, and allowed
+  address;
 - set wahoo.client_id and use the Wahoo sandbox or production endpoints that
   match the approved app;
 - use two stable target-slot IDs; and
@@ -91,12 +92,11 @@ Then authorize each configured Wahoo slot, one at a time, at:
 https://domestique.fluffy-sargas.ts.net/oauth/wahoo/start/{target-id}
 ~~~
 
-After each Wahoo redirect returns to the callback, inspect
-`https://domestique.fluffy-sargas.ts.net/v1/status`. A tagged device is not a
-member identity and cannot complete the protected OAuth flow. Tailscale Serve
-removes client-supplied identity headers and adds `Tailscale-User-Login` only
-for authenticated member traffic, so the host's loopback-only publication
-remains essential.
+After each Wahoo redirect returns to the callback, inspect `/v1/status`
+through the public hostname. Every request needs a Cloudflare Access assertion,
+including one made from inside the Tailnet: reaching the Serve URL directly
+answers 401. The host's loopback-only publication remains essential, because it
+is what keeps the listener reachable only through Serve.
 
 To request an immediate synchronization from a Tailnet member device, use:
 

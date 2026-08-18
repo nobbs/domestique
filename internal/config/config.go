@@ -59,13 +59,9 @@ type HTTP struct {
 	ListenAddress string
 }
 
-// Access identifies the sole user allowed to reach the service, on either
-// request path.
+// Access identifies the sole user allowed to reach the service.
 type Access struct {
-	TailnetUserLogin string
-
-	// Cloudflare configures the optional public path. It is zero when the
-	// service is reachable only through Tailscale Serve.
+	// Cloudflare configures the only gate the service has, and is required.
 	Cloudflare CloudflareAccess
 }
 
@@ -84,11 +80,6 @@ type CloudflareAccess struct {
 
 	// AllowedEmail is the single address an assertion may name.
 	AllowedEmail string
-}
-
-// Enabled reports whether the public Cloudflare path is configured.
-func (c CloudflareAccess) Enabled() bool {
-	return c.TeamDomain != "" && c.ApplicationAUD != "" && c.AllowedEmail != ""
 }
 
 // WebUI configures the read-only browser route map view.
@@ -243,8 +234,7 @@ type rawSurface struct {
 }
 
 type rawAccess struct {
-	TailnetUserLogin string              `koanf:"tailnet_user_login"`
-	Cloudflare       rawCloudflareAccess `koanf:"cloudflare"`
+	Cloudflare rawCloudflareAccess `koanf:"cloudflare"`
 }
 
 type rawCloudflareAccess struct {
@@ -430,32 +420,22 @@ func validateCloudflareAccess(raw *rawCloudflareAccess) error {
 		"access.cloudflare.allowed_email":   strings.TrimSpace(raw.AllowedEmail),
 	}
 
-	set := 0
-	for _, value := range values {
-		if value != "" {
-			set++
-		}
-	}
-	if set == 0 || set == len(values) {
-		return nil
-	}
-
 	missing := make([]string, 0, len(values))
 	for key, value := range values {
 		if value == "" {
 			missing = append(missing, key)
 		}
 	}
+	if len(missing) == 0 {
+		return nil
+	}
 	slices.Sort(missing)
 
-	return fmt.Errorf("access.cloudflare is partly configured; missing %s", strings.Join(missing, ", "))
+	return fmt.Errorf("access.cloudflare is required; missing %s", strings.Join(missing, ", "))
 }
 
 func build(raw *rawSettings) (*Settings, error) {
 	if err := validateListenAddress(raw.HTTP.ListenAddress); err != nil {
-		return nil, err
-	}
-	if err := requireValue("access.tailnet_user_login", raw.Access.TailnetUserLogin); err != nil {
 		return nil, err
 	}
 	if err := validateCloudflareAccess(&raw.Access.Cloudflare); err != nil {
@@ -560,7 +540,6 @@ func build(raw *rawSettings) (*Settings, error) {
 			ListenAddress: raw.HTTP.ListenAddress,
 		},
 		Access: Access{
-			TailnetUserLogin: strings.TrimSpace(raw.Access.TailnetUserLogin),
 			Cloudflare: CloudflareAccess{
 				TeamDomain:     strings.TrimSpace(raw.Access.Cloudflare.TeamDomain),
 				ApplicationAUD: strings.TrimSpace(raw.Access.Cloudflare.ApplicationAUD),

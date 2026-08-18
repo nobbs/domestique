@@ -1,4 +1,4 @@
-// Package httpapi owns Tailnet-gated JSON, OAuth, and browser UI HTTP handling.
+// Package httpapi owns identity-gated JSON, OAuth, and browser UI HTTP handling.
 package httpapi
 
 import (
@@ -14,13 +14,14 @@ import (
 	"github.com/nobbs/domestique/internal/route"
 )
 
-// identityHeader is injected by Tailscale Serve for traffic from a user node.
-// Serve strips any client-supplied copy before proxying, and never populates it
-// for a tagged device, so its presence is itself evidence of the request path.
-const identityHeader = "Tailscale-User-Login"
-
-// assertionHeader carries the signed Cloudflare Access token on the public
-// request path, where no Tailnet identity exists.
+// assertionHeader carries the signed Cloudflare Access token. It is the only
+// identity this service accepts.
+//
+// Tailscale Serve still fronts the listener, because cloudflared reaches it by
+// Service name, but it authenticates as a tagged device and so carries no
+// Tailnet identity. Deliberately absent is any handling of Tailscale-User-Login:
+// Serve remains reachable by Tailnet members directly, and honouring that header
+// would leave a second front door with a second identity source behind it.
 const assertionHeader = "Cf-Access-Jwt-Assertion"
 
 // maximumRequestBytes bounds the only request bodies this service reads. They
@@ -35,8 +36,8 @@ const (
 
 // OAuth performs the protected Wahoo onboarding flow.
 type OAuth interface {
-	Start(ctx context.Context, tailnetUserLogin, targetID string) (string, error)
-	Complete(ctx context.Context, tailnetUserLogin, state, code string) error
+	Start(ctx context.Context, callerLogin, targetID string) (string, error)
+	Complete(ctx context.Context, callerLogin, state, code string) error
 }
 
 // SyncPhase names the half of a synchronization a manual trigger asks for, or
@@ -108,21 +109,20 @@ func (f AccessVerifierFunc) Verify(ctx context.Context, assertion string) (strin
 
 // Options carries the non-secret settings the HTTP surface needs.
 type Options struct {
-	// AccessVerifier enables the public Cloudflare path when set. Leaving it
-	// nil keeps the service reachable only through Tailscale Serve.
+	// AccessVerifier checks the Cloudflare Access assertion on every request.
+	// It is required: without it the service has no gate at all.
 	AccessVerifier AccessVerifier
 
-	TailnetUserLogin string
-	TileStyleURL     string
+	TileStyleURL string
 
-	// AccessEmail is the one address an Access assertion may name. It is
-	// required when AccessVerifier is set and ignored otherwise.
+	// AccessEmail is the one address an Access assertion may name, and the
+	// principal every authenticated request resolves to.
 	AccessEmail string
 
 	TargetIDs []string
 }
 
-// Handler enforces Tailnet identity and exposes the v1 HTTP surface.
+// Handler enforces Cloudflare Access identity and exposes the v1 HTTP surface.
 type Handler struct {
 	mux            *http.ServeMux
 	oauth          OAuth
@@ -130,7 +130,6 @@ type Handler struct {
 	state          State
 	assets         Assets
 	accessVerifier AccessVerifier
-	allowedLogin   string
 	tileStyleURL   string
 	tileOrigin     string
 	allowedEmail   string
@@ -149,9 +148,6 @@ func New(
 	if options == nil || oauthService == nil || state == nil || syncTrigger == nil || assets == nil {
 		return nil, errors.New("http options, oauth service, state, sync trigger, and assets are required")
 	}
-	if strings.TrimSpace(options.TailnetUserLogin) == "" {
-		return nil, errors.New("tailnet login is required")
-	}
 	if len(options.TargetIDs) < 1 || len(options.TargetIDs) > 2 {
 		return nil, errors.New("between one and two target IDs are required")
 	}
@@ -163,11 +159,11 @@ func New(
 			return nil, errors.New("target IDs must be unique")
 		}
 	}
-	if options.AccessVerifier != nil && strings.TrimSpace(options.AccessEmail) == "" {
-		return nil, errors.New("an access email is required when the Cloudflare path is enabled")
+	if options.AccessVerifier == nil {
+		return nil, errors.New("an access verifier is required")
 	}
-	if options.AccessVerifier == nil && strings.TrimSpace(options.AccessEmail) != "" {
-		return nil, errors.New("an access verifier is required when an access email is configured")
+	if strings.TrimSpace(options.AccessEmail) == "" {
+		return nil, errors.New("an access email is required")
 	}
 	tileOrigin, err := originOf(options.TileStyleURL)
 	if err != nil {
@@ -180,7 +176,6 @@ func New(
 		state:        state,
 		syncTrigger:  syncTrigger,
 		assets:       assets,
-		allowedLogin: options.TailnetUserLogin,
 		tileStyleURL: options.TileStyleURL,
 		tileOrigin:   tileOrigin,
 		targetIDs:    append([]string(nil), options.TargetIDs...),
@@ -194,7 +189,7 @@ func New(
 }
 
 // routes registers the fixed v1 surface. Every pattern except the liveness
-// probe is wrapped by the Tailnet identity gate.
+// probe is wrapped by the Access identity gate.
 func (h *Handler) routes() {
 	h.mux.HandleFunc("GET /healthz", h.health)
 
@@ -234,45 +229,23 @@ func (h *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	h.mux.ServeHTTP(writer, request)
 }
 
-// gatedFunc is a handler that has already proven the caller's identity.
-type gatedFunc func(writer http.ResponseWriter, request *http.Request, login string)
+// gatedFunc is a handler that has already proven the caller's identity. The
+// principal is the single configured address every request resolves to.
+type gatedFunc func(writer http.ResponseWriter, request *http.Request, principal string)
 
 // gated rejects any caller that is not the single configured identity.
 //
-// Two request paths reach this service, and each carries different evidence:
+// Requests arrive through Cloudflare Access and cloudflared, which runs on a
+// tagged node, so Serve injects no identity header and the signed Access
+// assertion is the only identity a request carries. It is verified here on
+// every request rather than assumed to have been checked upstream.
 //
-//   - A Tailnet browser arrives through Tailscale Serve, which strips any
-//     client-supplied Tailscale-* headers and injects its own. The header is
-//     trustworthy precisely because of that, and is absent for tagged devices.
-//   - A public request arrives through Cloudflare Access and cloudflared. That
-//     node is tagged, so Serve injects no identity at all, and the signed Access
-//     assertion is the only identity the request carries.
-//
-// Because Serve strips the header, a public caller cannot present one: reaching
-// the origin by the Tailscale Service name, rather than by loopback or a node
-// address, is what keeps that stripping boundary in the path.
-//
-// Both paths resolve to the same configured principal, so a flow whose state is
-// bound to the caller — Wahoo OAuth — can begin on one path and finish on the
-// other.
+// Tailscale Serve still fronts this listener and Tailnet members can still
+// reach it, so there is deliberately no Tailscale-User-Login branch: it would
+// be a second front door, and a forgeable one, since a tunnel forwards client
+// headers verbatim.
 func (h *Handler) gated(next gatedFunc) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		if login := request.Header.Get(identityHeader); login != "" {
-			if login != h.allowedLogin {
-				h.error(writer, http.StatusForbidden, "forbidden", "identity is not permitted")
-
-				return
-			}
-			next(writer, request, h.allowedLogin)
-
-			return
-		}
-		if h.accessVerifier == nil {
-			h.error(writer, http.StatusUnauthorized, "unauthorized", "an authenticated identity is required")
-
-			return
-		}
-
 		assertion := request.Header.Get(assertionHeader)
 		if assertion == "" {
 			h.error(writer, http.StatusUnauthorized, "unauthorized", "an authenticated identity is required")
@@ -293,7 +266,12 @@ func (h *Handler) gated(next gatedFunc) http.Handler {
 
 			return
 		}
-		next(writer, request, h.allowedLogin)
+
+		// The configured address, not the asserted one, is what goes downstream.
+		// They differ only in case, and OAuth state is bound to this string, so
+		// resolving to one spelling keeps a flow started in one request
+		// consumable by the next.
+		next(writer, request, h.allowedEmail)
 	})
 }
 

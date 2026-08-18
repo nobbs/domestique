@@ -31,7 +31,7 @@ func TestHandlerGatesStateAndKeepsHealthLocal(t *testing.T) {
 		t.Errorf("unauthenticated status = %d, want %d", got, want)
 	}
 
-	status.Header.Set(identityHeader, "rider@example.ts.net")
+	status.Header.Set(assertionHeader, testAssertion)
 	statusResponse = httptest.NewRecorder()
 	handler.ServeHTTP(statusResponse, status)
 	if got, want := statusResponse.Code, http.StatusOK; got != want {
@@ -45,6 +45,7 @@ func TestHandlerGatesStateAndKeepsHealthLocal(t *testing.T) {
 // Every route added for the browser UI must sit behind the same identity gate.
 func TestHandlerGatesEveryNonHealthRoute(t *testing.T) {
 	handler := newTestHandler(t)
+	foreign := newHandlerWithVerifier(t, &recordingVerifier{email: "someone-else@example.com"})
 	paths := []string{
 		"/v1/status",
 		"/v1/routes",
@@ -69,10 +70,8 @@ func TestHandlerGatesEveryNonHealthRoute(t *testing.T) {
 				t.Errorf("unauthenticated %s = %d, want %d", path, got, want)
 			}
 
-			forbidden := httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, http.NoBody)
-			forbidden.Header.Set(identityHeader, "someone-else@example.ts.net")
 			forbiddenResponse := httptest.NewRecorder()
-			handler.ServeHTTP(forbiddenResponse, forbidden)
+			foreign.ServeHTTP(forbiddenResponse, authenticatedRequest(http.MethodGet, path))
 			if got, want := forbiddenResponse.Code, http.StatusForbidden; got != want {
 				t.Errorf("wrong identity %s = %d, want %d", path, got, want)
 			}
@@ -594,17 +593,22 @@ func TestNewRejectsIncompleteOptions(t *testing.T) {
 		name    string
 	}{
 		{name: "nil options"},
-		{name: "no login", options: &Options{TargetIDs: []string{"rider-a"}, TileStyleURL: testTileStyleURL}},
-		{name: "no targets", options: &Options{TailnetUserLogin: "rider@example.ts.net", TileStyleURL: testTileStyleURL}},
+		{name: "no targets", options: &Options{
+			TileStyleURL:   testTileStyleURL,
+			AccessVerifier: &recordingVerifier{email: testAccessEmail},
+			AccessEmail:    testAccessEmail,
+		}},
 		{name: "duplicate targets", options: &Options{
-			TailnetUserLogin: "rider@example.ts.net",
-			TargetIDs:        []string{"rider-a", "rider-a"},
-			TileStyleURL:     testTileStyleURL,
+			TargetIDs:      []string{"rider-a", "rider-a"},
+			TileStyleURL:   testTileStyleURL,
+			AccessVerifier: &recordingVerifier{email: testAccessEmail},
+			AccessEmail:    testAccessEmail,
 		}},
 		{name: "plaintext tile style", options: &Options{
-			TailnetUserLogin: "rider@example.ts.net",
-			TargetIDs:        []string{"rider-a"},
-			TileStyleURL:     "http://tiles.example.test/style.json",
+			TargetIDs:      []string{"rider-a"},
+			TileStyleURL:   "http://tiles.example.test/style.json",
+			AccessVerifier: &recordingVerifier{email: testAccessEmail},
+			AccessEmail:    testAccessEmail,
 		}},
 	}
 
@@ -619,6 +623,26 @@ func TestNewRejectsIncompleteOptions(t *testing.T) {
 
 func newTestHandler(t *testing.T) *Handler { return newHandler(t, &fakeOAuth{}, &fakeState{}) }
 
+// newHandlerWithVerifier builds a handler whose assertions resolve to whatever
+// the given verifier reports, for exercising a refused identity.
+func newHandlerWithVerifier(t *testing.T, verifier AccessVerifier) *Handler {
+	t.Helper()
+	handler, err := New(
+		&Options{
+			TargetIDs:      []string{"rider-a"},
+			TileStyleURL:   testTileStyleURL,
+			AccessVerifier: verifier,
+			AccessEmail:    testAccessEmail,
+		},
+		&fakeOAuth{}, &fakeState{}, &fakeSyncTrigger{accepted: true}, &fakeAssets{},
+	)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	return handler
+}
+
 func newHandler(t *testing.T, oauthService OAuth, state State) *Handler {
 	return newHandlerWithTrigger(t, oauthService, state, &fakeSyncTrigger{accepted: true})
 }
@@ -627,9 +651,10 @@ func newHandlerWithTrigger(t *testing.T, oauthService OAuth, state State, syncTr
 	t.Helper()
 	handler, err := New(
 		&Options{
-			TailnetUserLogin: "rider@example.ts.net",
-			TargetIDs:        []string{"rider-a"},
-			TileStyleURL:     testTileStyleURL,
+			TargetIDs:      []string{"rider-a"},
+			TileStyleURL:   testTileStyleURL,
+			AccessVerifier: &recordingVerifier{email: testAccessEmail},
+			AccessEmail:    testAccessEmail,
 		},
 		oauthService, state, syncTrigger, &fakeAssets{},
 	)
@@ -642,14 +667,14 @@ func newHandlerWithTrigger(t *testing.T, oauthService OAuth, state State, syncTr
 
 func authenticatedRequest(method, target string) *http.Request {
 	request := httptest.NewRequestWithContext(context.Background(), method, target, http.NoBody)
-	request.Header.Set(identityHeader, "rider@example.ts.net")
+	request.Header.Set(assertionHeader, testAssertion)
 
 	return request
 }
 
 func authenticatedRequestWithBody(method, target, body string) *http.Request {
 	request := httptest.NewRequestWithContext(context.Background(), method, target, strings.NewReader(body))
-	request.Header.Set(identityHeader, "rider@example.ts.net")
+	request.Header.Set(assertionHeader, testAssertion)
 
 	return request
 }

@@ -39,7 +39,7 @@ var (
 	ErrOAuthTransactionExpired = errors.New("oauth transaction has expired")
 	// ErrOAuthTransactionUsed reports a callback state that was already consumed.
 	ErrOAuthTransactionUsed = errors.New("oauth transaction was already used")
-	// ErrOAuthTransactionIdentityMismatch reports a callback from another Tailnet user.
+	// ErrOAuthTransactionIdentityMismatch reports a callback from another identity.
 	ErrOAuthTransactionIdentityMismatch = errors.New("oauth transaction identity did not match")
 )
 
@@ -1242,16 +1242,16 @@ func (s *Store) MarkNeedsReauthorization(ctx context.Context, targetID string) e
 }
 
 // BeginAuthorization saves a hashed, expiring OAuth state bound to one target
-// slot and one Tailnet identity. The raw state value is never persisted.
+// slot and one caller identity. The raw state value is never persisted.
 func (s *Store) BeginAuthorization(
 	ctx context.Context,
-	targetID, tailnetUserLogin string,
+	targetID, callerLogin string,
 	stateDigest []byte,
 	expiresAt time.Time,
 ) error {
-	if strings.TrimSpace(targetID) == "" || strings.TrimSpace(tailnetUserLogin) == "" ||
+	if strings.TrimSpace(targetID) == "" || strings.TrimSpace(callerLogin) == "" ||
 		len(stateDigest) != 32 || !expiresAt.After(time.Now()) {
-		return errors.New("target ID, Tailnet identity, state digest, and future expiry are required")
+		return errors.New("target ID, caller identity, state digest, and future expiry are required")
 	}
 
 	transaction, err := s.database.BeginTx(ctx, nil)
@@ -1272,14 +1272,14 @@ func (s *Store) BeginAuthorization(
 	if _, err := transaction.ExecContext(ctx, `
 		DELETE FROM oauth_transactions
 		WHERE expires_at_unix <= ? OR (target_slot = ? AND caller_login = ? AND used_at_unix IS NULL)
-	`, now, targetID, tailnetUserLogin); err != nil {
+	`, now, targetID, callerLogin); err != nil {
 		return fmt.Errorf("clearing prior oauth transactions: %w", err)
 	}
 	if _, err := transaction.ExecContext(ctx, `
 		INSERT INTO oauth_transactions (
 			id, target_slot, state_digest, code_verifier, expires_at_unix, caller_login
 		) VALUES (?, ?, ?, ?, ?, ?)
-	`, hex.EncodeToString(stateDigest), targetID, stateDigest, []byte{}, expiresAt.Unix(), tailnetUserLogin); err != nil {
+	`, hex.EncodeToString(stateDigest), targetID, stateDigest, []byte{}, expiresAt.Unix(), callerLogin); err != nil {
 		return fmt.Errorf("storing oauth transaction: %w", err)
 	}
 	if err := transaction.Commit(); err != nil {
@@ -1291,9 +1291,9 @@ func (s *Store) BeginAuthorization(
 
 // ConsumeAuthorization verifies and marks a pending OAuth state used. It
 // returns the bound target slot, never the raw state or caller identity.
-func (s *Store) ConsumeAuthorization(ctx context.Context, tailnetUserLogin string, stateDigest []byte) (string, error) {
-	if strings.TrimSpace(tailnetUserLogin) == "" || len(stateDigest) != 32 {
-		return "", errors.New("tailnet identity and state digest are required")
+func (s *Store) ConsumeAuthorization(ctx context.Context, callerLogin string, stateDigest []byte) (string, error) {
+	if strings.TrimSpace(callerLogin) == "" || len(stateDigest) != 32 {
+		return "", errors.New("caller identity and state digest are required")
 	}
 
 	transaction, err := s.database.BeginTx(ctx, nil)
@@ -1319,7 +1319,7 @@ func (s *Store) ConsumeAuthorization(ctx context.Context, tailnetUserLogin strin
 	if err != nil {
 		return "", fmt.Errorf("reading oauth transaction: %w", err)
 	}
-	if caller != tailnetUserLogin {
+	if caller != callerLogin {
 		return "", ErrOAuthTransactionIdentityMismatch
 	}
 	if usedAt.Valid {

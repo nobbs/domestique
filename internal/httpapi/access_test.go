@@ -50,17 +50,16 @@ func (o *loginRecordingOAuth) Complete(_ context.Context, login, _, _ string) er
 	return nil
 }
 
-// newAccessHandler builds a handler with the public Cloudflare path enabled.
+// newAccessHandler builds a handler gated by the given verifier.
 func newAccessHandler(t *testing.T, verifier AccessVerifier, oauthService OAuth) *Handler {
 	t.Helper()
 
 	handler, err := New(
 		&Options{
-			TailnetUserLogin: "rider@example.ts.net",
-			TargetIDs:        []string{"rider-a"},
-			TileStyleURL:     testTileStyleURL,
-			AccessVerifier:   verifier,
-			AccessEmail:      testAccessEmail,
+			TargetIDs:      []string{"rider-a"},
+			TileStyleURL:   testTileStyleURL,
+			AccessVerifier: verifier,
+			AccessEmail:    testAccessEmail,
 		},
 		oauthService, &fakeState{}, &fakeSyncTrigger{accepted: true}, &fakeAssets{},
 	)
@@ -71,9 +70,9 @@ func newAccessHandler(t *testing.T, verifier AccessVerifier, oauthService OAuth)
 	return handler
 }
 
-// assertionRequest is a request arriving on the public Cloudflare path: it
-// carries a signed assertion and no Tailnet identity, because Tailscale Serve
-// injects none for the tagged node cloudflared runs on.
+// assertionRequest is a request as it arrives from cloudflared: a signed
+// assertion and no Tailnet identity, because Serve injects none for the tagged
+// node cloudflared runs on.
 func assertionRequest(t *testing.T, method, target string) *http.Request {
 	t.Helper()
 
@@ -151,95 +150,108 @@ func TestGateRejectsMissingAssertionOnPublicPath(t *testing.T) {
 	}
 }
 
-// An assertion must not substitute for the Tailnet gate when the deployment has
-// no public path configured at all.
-func TestGateIgnoresAssertionWhenPublicPathDisabled(t *testing.T) {
-	handler := newTestHandler(t)
+// Tailscale-User-Login is not an identity here. Serve still fronts the
+// listener and Tailnet members can still reach it directly, so honouring that
+// header would be a second way in — and Cloudflare Tunnel forwards client
+// headers verbatim, so it would be a forgeable one. Sending it must change
+// nothing at all.
+func TestGateIgnoresTailscaleIdentityHeader(t *testing.T) {
+	tests := []struct {
+		verifier *recordingVerifier
+		name     string
+		want     int
+		wantCall int
+		assert   bool
+	}{
+		{
+			name:     "header alone is not identity",
+			verifier: &recordingVerifier{email: testAccessEmail},
+			assert:   false,
+			want:     http.StatusUnauthorized,
+			wantCall: 0,
+		},
+		{
+			name:     "header does not skip verification",
+			verifier: &recordingVerifier{email: testAccessEmail},
+			assert:   true,
+			want:     http.StatusOK,
+			wantCall: 1,
+		},
+		{
+			name:     "header does not rescue a bad assertion",
+			verifier: &recordingVerifier{err: errors.New("bad signature")},
+			assert:   true,
+			want:     http.StatusUnauthorized,
+			wantCall: 1,
+		},
+		{
+			name:     "header does not override the asserted identity",
+			verifier: &recordingVerifier{email: "someone-else@example.com"},
+			assert:   true,
+			want:     http.StatusForbidden,
+			wantCall: 1,
+		},
+	}
 
-	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, assertionRequest(t, http.MethodGet, "/v1/status"))
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			handler := newAccessHandler(t, test.verifier, &fakeOAuth{})
 
-	if got, want := response.Code, http.StatusUnauthorized; got != want {
-		t.Errorf("status = %d, want %d", got, want)
+			request := httptest.NewRequestWithContext(
+				t.Context(), http.MethodGet, "/v1/status", http.NoBody)
+			request.Header.Set("Tailscale-User-Login", testAccessEmail)
+			if test.assert {
+				request.Header.Set(assertionHeader, testAssertion)
+			}
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+
+			if got := response.Code; got != test.want {
+				t.Errorf("status = %d, want %d", got, test.want)
+			}
+			if got := test.verifier.calls; got != test.wantCall {
+				t.Errorf("verifier calls = %d, want %d", got, test.wantCall)
+			}
+		})
 	}
 }
 
-// Tailscale Serve strips client-supplied identity headers, so a present one is
-// authoritative and settles the request without consulting Cloudflare. A
-// forged assertion alongside it changes nothing.
-func TestGatePrefersTailnetIdentityOverAssertion(t *testing.T) {
-	verifier := &recordingVerifier{email: "someone-else@example.com"}
-	handler := newAccessHandler(t, verifier, &fakeOAuth{})
-
-	request := assertionRequest(t, http.MethodGet, "/v1/status")
-	request.Header.Set(identityHeader, "rider@example.ts.net")
-	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, request)
-
-	if got, want := response.Code, http.StatusOK; got != want {
-		t.Errorf("status = %d, want %d", got, want)
-	}
-	if verifier.calls != 0 {
-		t.Errorf("verifier calls = %d, want 0", verifier.calls)
-	}
-}
-
-// A wrong Tailnet identity is refused outright rather than falling through to
-// the assertion, so the two paths cannot be combined into a way in.
-func TestGateDoesNotFallBackToAssertionForWrongTailnetIdentity(t *testing.T) {
-	verifier := &recordingVerifier{email: testAccessEmail}
-	handler := newAccessHandler(t, verifier, &fakeOAuth{})
-
-	request := assertionRequest(t, http.MethodGet, "/v1/status")
-	request.Header.Set(identityHeader, "intruder@example.ts.net")
-	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, request)
-
-	if got, want := response.Code, http.StatusForbidden; got != want {
-		t.Errorf("status = %d, want %d", got, want)
-	}
-	if verifier.calls != 0 {
-		t.Errorf("verifier calls = %d, want 0", verifier.calls)
-	}
-}
-
-// The Wahoo OAuth redirect returns through Cloudflare, so a flow begun on the
-// Tailnet finishes on the public path. Both paths must therefore hand the same
-// principal to the OAuth service, or the caller-bound state never consumes.
-func TestGateCanonicalisesIdentityAcrossBothPaths(t *testing.T) {
+// The Wahoo OAuth flow binds its state to the caller identity, so a flow begun
+// by one request must be consumable by the next. The gate hands downstream the
+// configured address rather than the asserted spelling, which is what keeps
+// that true when Access varies the case between assertions.
+func TestGateResolvesEveryRequestToTheConfiguredPrincipal(t *testing.T) {
 	oauthService := &loginRecordingOAuth{}
-	handler := newAccessHandler(t, &recordingVerifier{email: testAccessEmail}, oauthService)
+	verifier := &recordingVerifier{email: strings.ToUpper(testAccessEmail)}
+	handler := newAccessHandler(t, verifier, oauthService)
 
-	tailnet := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/oauth/wahoo/start/rider-a", http.NoBody)
-	tailnet.Header.Set(identityHeader, "rider@example.ts.net")
-	handler.ServeHTTP(httptest.NewRecorder(), tailnet)
+	handler.ServeHTTP(httptest.NewRecorder(),
+		assertionRequest(t, http.MethodGet, "/oauth/wahoo/start/rider-a"))
+	handler.ServeHTTP(httptest.NewRecorder(),
+		assertionRequest(t, http.MethodGet, "/oauth/wahoo/callback?state=s&code=c"))
 
-	public := assertionRequest(t, http.MethodGet, "/oauth/wahoo/callback?state=s&code=c")
-	handler.ServeHTTP(httptest.NewRecorder(), public)
-
-	if oauthService.startLogin != "rider@example.ts.net" {
-		t.Errorf("start login = %q, want the configured principal", oauthService.startLogin)
+	if oauthService.startLogin != testAccessEmail {
+		t.Errorf("start login = %q, want %q", oauthService.startLogin, testAccessEmail)
 	}
 	if oauthService.completeLogin != oauthService.startLogin {
 		t.Errorf("complete login = %q, want %q", oauthService.completeLogin, oauthService.startLogin)
 	}
 }
 
-// A half-configured public path is a service that answers publicly without
-// checking anything, so the constructor refuses it.
-func TestNewRejectsHalfConfiguredAccess(t *testing.T) {
+// Without a verifier the service has no gate at all, and without an allowed
+// address it would admit anyone the team's IdP authenticates. Neither is a
+// service worth starting.
+func TestNewRequiresAccessConfiguration(t *testing.T) {
 	cases := map[string]*Options{
-		"verifier without email": {
-			TailnetUserLogin: "rider@example.ts.net",
-			TargetIDs:        []string{"rider-a"},
-			TileStyleURL:     testTileStyleURL,
-			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
+		"no verifier": {
+			TargetIDs:    []string{"rider-a"},
+			TileStyleURL: testTileStyleURL,
+			AccessEmail:  testAccessEmail,
 		},
-		"email without verifier": {
-			TailnetUserLogin: "rider@example.ts.net",
-			TargetIDs:        []string{"rider-a"},
-			TileStyleURL:     testTileStyleURL,
-			AccessEmail:      testAccessEmail,
+		"no email": {
+			TargetIDs:      []string{"rider-a"},
+			TileStyleURL:   testTileStyleURL,
+			AccessVerifier: &recordingVerifier{email: testAccessEmail},
 		},
 	}
 
@@ -252,9 +264,9 @@ func TestNewRejectsHalfConfiguredAccess(t *testing.T) {
 	}
 }
 
-// Health stays reachable without any identity on either path, because Docker
-// probes it over loopback.
-func TestHealthRemainsUngatedWithPublicPathEnabled(t *testing.T) {
+// Health stays reachable without any identity, because Docker probes it over
+// loopback.
+func TestHealthRemainsUngated(t *testing.T) {
 	handler := newAccessHandler(t, &recordingVerifier{email: testAccessEmail}, &fakeOAuth{})
 
 	request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/healthz", http.NoBody)
