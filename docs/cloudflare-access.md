@@ -200,7 +200,7 @@ Then:
 
 ### What the Terraform sets, and why
 
-The resources are small enough to read, but three of the choices in them are
+The resources are small enough to read, but four of the choices in them are
 decisions rather than defaults:
 
 - **A group, not a list of addresses on the policy.** The allowed people are
@@ -211,6 +211,13 @@ decisions rather than defaults:
   operator.
 - **The app launcher left visible**, so the service appears on a single page
   listing what the account can reach.
+- **`allowed_idps` left unset**, so the application accepts every login method
+  the organization offers. Today that is one — the Cloudflare identity provider,
+  which admits only members of the Cloudflare account — so pinning the list
+  would name the same single method. Pin it when a second provider is added: two
+  providers can assert two different addresses for one person, and only one of
+  those matches `access.cloudflare.allowed_email`, so an unpinned application
+  quietly gains a login path that authenticates and is then refused.
 
 Access is the outer of two gates in any case. Widening the group does not widen
 who the application will serve: Domestique still verifies each request's signed
