@@ -62,7 +62,6 @@ managed Tailnet Service:
 
 ~~~sh
 tailscale serve --service=svc:domestique --https=443 127.0.0.1:8080
-tailscale serve --service=svc:domestique --http=8080 127.0.0.1:8080
 tailscale serve advertise svc:domestique
 tailscale serve status
 ~~~

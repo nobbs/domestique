@@ -127,7 +127,7 @@ Configure the host as the proxy for the managed Tailnet Service:
 
 ```sh
 tailscale serve --service=svc:<service> --https=443 127.0.0.1:8080
-tailscale serve --service=svc:<service> --http=8080 127.0.0.1:8080
+tailscale serve advertise svc:<service>
 tailscale serve status
 ```
 
