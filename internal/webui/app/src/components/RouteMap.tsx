@@ -17,10 +17,16 @@ import {
   useMap,
 } from "react-map-gl/maplibre";
 import "maplibre-gl/dist/maplibre-gl.css";
+import type { DataDrivenPropertyValueSpecification } from "maplibre-gl";
 import type { BoundingBox, Position, SurfaceRange } from "../api/types";
-import type { Profile } from "../lib/profile";
-import { nearestSample, sampleAt } from "../lib/profile";
-import { SURFACE_LINE_WIDTH, SURFACE_STYLES, surfaceLines } from "../lib/surface";
+import type { DistanceWindow, Profile } from "../lib/profile";
+import { coordinateRange, nearestSample, sampleAt } from "../lib/profile";
+import {
+  routeLinesWithin,
+  SURFACE_LINE_WIDTH,
+  SURFACE_STYLES,
+  surfaceLinesWithin,
+} from "../lib/surface";
 // Configures the shared worker pool; without it this map renders no tiles.
 import "../lib/maplibre";
 
@@ -39,6 +45,57 @@ const SOURCE_ID = "stage-geometry";
  * the stale one by the time it mattered.
  */
 const SURFACE_ATTRIBUTION = "Surface data © OpenStreetMap contributors (ODbL)";
+
+/** The casing's normal opacity, kept in one place so the dimmed one follows it. */
+const CASING_OPACITY = 0.85;
+
+/**
+ * How much of the route survives outside the stretch the chart is showing.
+ *
+ * Dimmed rather than hidden: the ride does not stop at the edges of the window,
+ * and a route drawn only in the middle would read as a shorter route rather than
+ * as a closer look at a longer one. A quarter is faint enough that the eye lands
+ * on the stretch first and still dark enough to follow the road it came in on.
+ */
+const OUTSIDE_OPACITY = 0.25;
+
+/**
+ * An opacity that drops away outside the stretch on show.
+ *
+ * One expression over one tagged source rather than a second stack of layers:
+ * `line-opacity` is a layer property, and one layer per class is exactly what
+ * keeps a class's dash pattern identical on both sides of the window's edge.
+ * Written as a function because a bare array in a `const` widens to `unknown[]`
+ * and stops matching the tuple union the paint property is typed as.
+ */
+function dimmedOutside(
+  full: number,
+  windowed: boolean,
+): DataDrivenPropertyValueSpecification<number> {
+  return windowed ? ["case", ["get", "shown"], full, full * OUTSIDE_OPACITY] : full;
+}
+
+/**
+ * The route's geometry as at most two features, tagged by whether the chart is
+ * showing them, so one paint expression can tell the two apart.
+ */
+function taggedCollection(slices: { inside: Position[][]; outside: Position[][] }) {
+  const features = ([lines, shown]: [Position[][], boolean]) =>
+    lines.length === 0
+      ? []
+      : [
+          {
+            type: "Feature" as const,
+            geometry: { type: "MultiLineString" as const, coordinates: lines },
+            properties: { shown },
+          },
+        ];
+
+  return {
+    type: "FeatureCollection" as const,
+    features: [...features([slices.inside, true]), ...features([slices.outside, false])],
+  };
+}
 
 /**
  * Keeps the camera framed on the selected stage and the canvas sized to its
@@ -129,7 +186,7 @@ function HoverLink({
       const near =
         Math.hypot(projected.x - event.point.x, projected.y - event.point.y) <= HOVER_RADIUS_PIXELS;
       // Reported as a distance along the route, which is the one unit that means
-      // the same ground to this map and to a chart drawn from its own samples.
+      // the same ground to this map and to a chart showing any stretch of it.
       onActiveChange(near ? sample.distanceMetres : null);
     };
     const onLeave = () => onActiveChange(null);
@@ -156,11 +213,24 @@ export interface RouteMapProps {
    * the route drawn in the accent, which is what an unclassified stage gets.
    */
   surface?: SurfaceRange[] | undefined;
-  /** What turns a point on this map into a distance along the route. */
+  /**
+   * The whole route's profile, never a zoomed one: it is what turns a point on
+   * this map into a distance, and it has to answer for the whole route however
+   * little of it the chart is showing.
+   */
   profile?: Profile | null;
   /** Shared with the elevation chart, in metres from the start of the route. */
   activeMetres?: number | null;
   onActiveChange?: (metres: number | null) => void;
+  /**
+   * The stretch the chart is showing, lit while the rest of the route dims.
+   *
+   * Named for what it is rather than `window`, which would shadow the global of
+   * that name inside this module. The camera does not follow it: re-framing on
+   * every drag would take away the one view that still says where the stretch
+   * sits in the ride, which is the whole reason the map is beside the chart.
+   */
+  zoomWindow?: DistanceWindow | null;
 }
 
 export function RouteMap({
@@ -172,14 +242,26 @@ export function RouteMap({
   profile = null,
   activeMetres = null,
   onActiveChange,
+  zoomWindow = null,
 }: RouteMapProps) {
-  const feature = useMemo(
-    () => ({
-      type: "Feature" as const,
-      geometry: { type: "LineString" as const, coordinates },
-      properties: {},
-    }),
-    [coordinates],
+  // Rounded outwards, so the lit stretch covers every metre the chart draws.
+  const windowRange = useMemo(
+    () =>
+      zoomWindow
+        ? coordinateRange(coordinates, zoomWindow.startMetres, zoomWindow.endMetres)
+        : null,
+    [coordinates, zoomWindow],
+  );
+  const windowed = windowRange !== null;
+
+  const routeSlices = useMemo(
+    () => routeLinesWithin(coordinates, windowRange),
+    [coordinates, windowRange],
+  );
+  const route = useMemo(() => taggedCollection(routeSlices), [routeSlices]);
+  const shownRoute = useMemo(
+    () => taggedCollection({ inside: routeSlices.inside, outside: [] }),
+    [routeSlices],
   );
 
   // One feature per class rather than one with a data-driven colour, because
@@ -187,15 +269,11 @@ export function RouteMap({
   // layer, so each class needs its own.
   const surfaceFeatures = useMemo(
     () =>
-      surfaceLines(coordinates, surface ?? []).map(({ kind, lines }) => ({
+      surfaceLinesWithin(coordinates, surface ?? [], windowRange).map(({ kind, ...slices }) => ({
         kind,
-        data: {
-          type: "Feature" as const,
-          geometry: { type: "MultiLineString" as const, coordinates: lines },
-          properties: {},
-        },
+        data: taggedCollection(slices),
       })),
-    [coordinates, surface],
+    [coordinates, surface, windowRange],
   );
 
   // The position shared with the elevation chart. An empty collection keeps the
@@ -242,7 +320,28 @@ export function RouteMap({
         <HoverLink profile={profile} onActiveChange={onActiveChange} />
         <NavigationControl position="top-right" showCompass={false} />
         <ScaleControl position="bottom-left" unit="metric" />
-        <Source id={SOURCE_ID} type="geojson" data={feature}>
+        {/*
+         * A soft halo under the stretch on show, beneath the casing so it points
+         * at the classification rather than washing over it — react-map-gl adds
+         * layers in mount order, and this one is added last.
+         */}
+        {windowed ? (
+          <Source id="stage-window" type="geojson" data={shownRoute}>
+            <Layer
+              id="stage-window-halo"
+              type="line"
+              beforeId="stage-casing"
+              layout={{ "line-cap": "round", "line-join": "round" }}
+              paint={{
+                "line-color": ROUTE_ACCENT,
+                "line-width": 13,
+                "line-opacity": 0.22,
+                "line-blur": 3,
+              }}
+            />
+          </Source>
+        ) : null}
+        <Source id={SOURCE_ID} type="geojson" data={route}>
           {/*
            * The casing is drawn from the whole route and stays solid under the
            * classes, so the line the rider follows is continuous even where the
@@ -252,14 +351,22 @@ export function RouteMap({
             id="stage-casing"
             type="line"
             layout={{ "line-cap": "round", "line-join": "round" }}
-            paint={{ "line-color": "#ffffff", "line-opacity": 0.85, "line-width": 7 }}
+            paint={{
+              "line-color": "#ffffff",
+              "line-opacity": dimmedOutside(CASING_OPACITY, windowed),
+              "line-width": 7,
+            }}
           />
           {surfaceFeatures.length === 0 ? (
             <Layer
               id="stage-line"
               type="line"
               layout={{ "line-cap": "round", "line-join": "round" }}
-              paint={{ "line-color": ROUTE_ACCENT, "line-width": SURFACE_LINE_WIDTH }}
+              paint={{
+                "line-color": ROUTE_ACCENT,
+                "line-width": SURFACE_LINE_WIDTH,
+                "line-opacity": dimmedOutside(1, windowed),
+              }}
             />
           ) : null}
         </Source>
@@ -273,6 +380,7 @@ export function RouteMap({
               paint={{
                 "line-color": SURFACE_STYLES[kind].colour,
                 "line-width": SURFACE_LINE_WIDTH,
+                "line-opacity": dimmedOutside(1, windowed),
                 ...(SURFACE_STYLES[kind].dashes.length > 0
                   ? { "line-dasharray": SURFACE_STYLES[kind].dashes }
                   : {}),

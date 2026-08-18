@@ -214,6 +214,7 @@ function StageView({
               profile={routeProfile}
               activeMetres={activeMetres}
               onActiveChange={setActiveMetres}
+              zoomWindow={shownWindow}
             />
           </Suspense>
         </div>
