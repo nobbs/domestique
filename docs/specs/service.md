@@ -39,6 +39,17 @@ and said to be unclassified, never presented as unsurveyed ground. Because the
 classification is a derived OpenStreetMap database, the map view carries the
 ODbL attribution its share-alike terms require.
 
+The key to what the view draws is also how it is questioned: a surface class or
+a gradient band can be selected, and the stretches of route it covers stay lit on
+the map and in the elevation chart while the rest of the ride is dimmed. One
+class at a time, and selecting it again restores the whole route. This changes
+what is emphasised, never what is stored.
+
+The UI carries one outbound link, to this service's public source repository. It
+is the only navigation that leaves the authenticated origin, it opens in a new
+context without a referrer, and it sends nothing: no route, stage, geometry, or
+origin address accompanies it.
+
 Route editing remains explicitly out of scope. The UI presents no editing
 affordance, and the service writes nothing back to VeloPlanner. Any future
 change to that boundary requires revising this document first.
@@ -432,7 +443,12 @@ secret files remain outside Git.
   worked out again. Nothing on the surface edits route data, in this service or
   at the source.
 - The browser UI renders a stored source stage on a map, is reachable only by
-  the configured identity, and offers no editing affordance.
+  the configured identity, and offers no editing affordance. Selecting a surface
+  class or gradient band in its key only changes what the map and the chart
+  emphasise.
+- The only outbound link the UI offers is to the public source repository, and
+  following it discloses neither the origin nor anything about the route on
+  screen.
 - Stage geometry is cached locally and rewritten only when a stage's content
   hash changes, so an unchanged library does not rewrite the cache on every run.
 - Losing the geometry cache degrades only the map view; it cannot affect sync

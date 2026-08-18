@@ -19,6 +19,8 @@ import {
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { DataDrivenPropertyValueSpecification } from "maplibre-gl";
 import type { BoundingBox, Position, SurfaceRange } from "../api/types";
+import type { Highlight } from "../lib/highlight";
+import { highlightRanges, litRanges } from "../lib/highlight";
 import type { DistanceWindow, Profile } from "../lib/profile";
 import { coordinateRange, nearestSample, rangeBounds, sampleAt } from "../lib/profile";
 import { gradientSlices, routeLinesWithin } from "../lib/routeLines";
@@ -58,11 +60,11 @@ const CASING_OPACITY = 0.85;
  * Keyed on which basemap is loaded rather than on the system scheme, because
  * these sit on the cartography rather than on the page — see `Basemap.dark`.
  *
- * Only the steeper two are ever drawn — see `GRADIENT_BANDS_DRAWN`.
+ * Only the steeper four are ever drawn — see `GRADIENT_BANDS_DRAWN`.
  */
 const BAND_COLOURS = {
-  light: ["#e0ac2c", "#c2542a", "#63202b"],
-  dark: ["#f3cb60", "#df7126", "#b8354a"],
+  light: ["#e0ac2c", "#c87f41", "#b15635", "#952e2c", "#63202b"],
+  dark: ["#f3cb60", "#ef9a55", "#e07550", "#cd554d", "#b8354a"],
 } as const;
 
 /**
@@ -71,10 +73,10 @@ const BAND_COLOURS = {
  * Gentle ground is most of most routes, and painting it would edge the whole
  * line in gold to say the unremarkable thing. Left unpainted, the white casing
  * stands for it, and colour appears only where the road starts to bite. The
- * chart still shows all three, which is where a reader goes to compare one
+ * chart still shows every band, which is where a reader goes to compare one
  * stretch against another; the map is answering "where does it get steep?".
  */
-const GRADIENT_BANDS_DRAWN = [1, 2] as const;
+const GRADIENT_BANDS_DRAWN = [1, 2, 3, 4] as const;
 
 /** The band whose layer sits lowest, and so the one the halo goes under. */
 const LOWEST_BAND_DRAWN = GRADIENT_BANDS_DRAWN[0];
@@ -89,29 +91,31 @@ const LOWEST_BAND_DRAWN = GRADIENT_BANDS_DRAWN[0];
 const BAND_EDGE_WIDTH = 11;
 
 /**
- * How much of the route survives outside the stretch the chart is showing.
+ * How much of the route survives outside the ground on show.
  *
- * Dimmed rather than hidden: the ride does not stop at the edges of the window,
+ * Dimmed rather than hidden: the ride does not stop at the edges of a window,
  * and a route drawn only in the middle would read as a shorter route rather than
- * as a closer look at a longer one. A quarter is faint enough that the eye lands
- * on the stretch first and still dark enough to follow the road it came in on.
+ * as a closer look at a longer one. The same holds for a class picked out of the
+ * key — the gravel is somewhere on this ride, and hiding the tarmac either side
+ * of it would lose where. A quarter is faint enough that the eye lands on the
+ * lit ground first and still dark enough to follow the road between.
  */
 const OUTSIDE_OPACITY = 0.25;
 
 /**
- * An opacity that drops away outside the stretch on show.
+ * An opacity that drops away outside the ground on show.
  *
  * One expression over one tagged source rather than a second stack of layers:
  * `line-opacity` is a layer property, and one layer per class is exactly what
- * keeps a class's dash pattern identical on both sides of the window's edge.
+ * keeps a class's dash pattern identical on both sides of a lit stretch's edge.
  * Written as a function because a bare array in a `const` widens to `unknown[]`
  * and stops matching the tuple union the paint property is typed as.
  */
 function dimmedOutside(
   full: number,
-  windowed: boolean,
+  dimmed: boolean,
 ): DataDrivenPropertyValueSpecification<number> {
-  return windowed ? ["case", ["get", "shown"], full, full * OUTSIDE_OPACITY] : full;
+  return dimmed ? ["case", ["get", "shown"], full, full * OUTSIDE_OPACITY] : full;
 }
 
 /**
@@ -303,6 +307,15 @@ export interface RouteMapProps {
    * window, which is what keeps a look around at the surrounding roads free.
    */
   zoomWindow?: DistanceWindow | null;
+  /**
+   * The class picked out of the key, lit while the rest of the route dims.
+   *
+   * Scattered along the whole ride rather than one stretch of it, which is the
+   * question it answers: where on this route is the gravel, where does it get
+   * steep. It narrows a window rather than replacing one — a reader who zooms
+   * in on a climb and then asks for the gravel means the gravel on that climb.
+   */
+  highlight?: Highlight | null;
 }
 
 export function RouteMap({
@@ -316,6 +329,7 @@ export function RouteMap({
   activeMetres = null,
   onActiveChange,
   zoomWindow = null,
+  highlight = null,
 }: RouteMapProps) {
   // Rounded outwards, so the lit stretch covers every metre the chart draws.
   const windowRange = useMemo(
@@ -325,19 +339,29 @@ export function RouteMap({
         : null,
     [coordinates, zoomWindow],
   );
-  const windowed = windowRange !== null;
-
   // Memoised so the camera effect fires when the stretch changes rather than on
-  // every render: a fresh box each time would re-fly the map on a hover.
+  // every render: a fresh box each time would re-fly the map on a hover. The
+  // camera follows the window alone: a highlight is scattered along the ride,
+  // and framing every stretch of it is the whole route with extra travel.
   const windowBounds = useMemo(
     () => (windowRange ? rangeBounds(coordinates, windowRange) : null),
     [coordinates, windowRange],
   );
 
-  const routeSlices = useMemo(
-    () => routeLinesWithin(coordinates, windowRange),
-    [coordinates, windowRange],
+  // Both questions come out as the same answer — the stretches of route left
+  // lit — so one mask serves every layer, and asking both at once narrows
+  // rather than fights.
+  const lit = useMemo(
+    () =>
+      litRanges(
+        windowRange,
+        highlight ? highlightRanges(coordinates, surface ?? [], highlight) : null,
+      ),
+    [coordinates, highlight, surface, windowRange],
   );
+  const dimmed = lit !== null;
+
+  const routeSlices = useMemo(() => routeLinesWithin(coordinates, lit), [coordinates, lit]);
   const route = useMemo(() => taggedCollection(routeSlices), [routeSlices]);
 
   // One feature per class rather than one with a data-driven colour, because
@@ -345,11 +369,11 @@ export function RouteMap({
   // layer, so each class needs its own.
   const surfaceFeatures = useMemo(
     () =>
-      surfaceLinesWithin(coordinates, surface ?? [], windowRange).map(({ kind, ...slices }) => ({
+      surfaceLinesWithin(coordinates, surface ?? [], lit).map(({ kind, ...slices }) => ({
         kind,
         data: taggedCollection(slices),
       })),
-    [coordinates, surface, windowRange],
+    [coordinates, surface, lit],
   );
 
   // One feature collection per band, for the same reason the classes get one
@@ -357,7 +381,7 @@ export function RouteMap({
   // drawn band, empty where the route has no such ground, so the layers stay
   // mounted and the stack keeps the order it was built in.
   const gradientFeatures = useMemo(() => {
-    const slices = gradientSlices(coordinates, windowRange);
+    const slices = gradientSlices(coordinates, lit);
 
     return GRADIENT_BANDS_DRAWN.map((band) => ({
       band,
@@ -365,13 +389,13 @@ export function RouteMap({
         slices.find((entry) => entry.band === band) ?? { inside: [], outside: [] },
       ),
     }));
-  }, [coordinates, windowRange]);
+  }, [coordinates, lit]);
 
-  // The halo marks the stretch on show, so it has nothing to draw until there
-  // is one: unzoomed, every metre of the route counts as inside.
+  // The halo marks the ground on show, so it has nothing to draw until
+  // something is asked: unqualified, every metre of the route counts as inside.
   const haloRoute = useMemo(
-    () => taggedCollection({ inside: windowed ? routeSlices.inside : [], outside: [] }),
-    [routeSlices, windowed],
+    () => taggedCollection({ inside: dimmed ? routeSlices.inside : [], outside: [] }),
+    [routeSlices, dimmed],
   );
 
   // The position shared with the elevation chart. An empty collection keeps the
@@ -433,7 +457,7 @@ export function RouteMap({
             layout={{ "line-cap": "round", "line-join": "round" }}
             paint={{
               "line-color": "#ffffff",
-              "line-opacity": dimmedOutside(CASING_OPACITY, windowed),
+              "line-opacity": dimmedOutside(CASING_OPACITY, dimmed),
               "line-width": 7,
             }}
           />
@@ -445,7 +469,7 @@ export function RouteMap({
               paint={{
                 "line-color": ROUTE_ACCENT,
                 "line-width": SURFACE_LINE_WIDTH,
-                "line-opacity": dimmedOutside(1, windowed),
+                "line-opacity": dimmedOutside(1, dimmed),
               }}
             />
           ) : null}
@@ -475,7 +499,7 @@ export function RouteMap({
               paint={{
                 "line-color": BAND_COLOURS[darkBasemap ? "dark" : "light"][band] ?? ROUTE_ACCENT,
                 "line-width": BAND_EDGE_WIDTH,
-                "line-opacity": dimmedOutside(1, windowed),
+                "line-opacity": dimmedOutside(1, dimmed),
               }}
             />
           </Source>
@@ -513,7 +537,7 @@ export function RouteMap({
               paint={{
                 "line-color": SURFACE_STYLES[kind].colour,
                 "line-width": SURFACE_LINE_WIDTH,
-                "line-opacity": dimmedOutside(1, windowed),
+                "line-opacity": dimmedOutside(1, dimmed),
                 ...(SURFACE_STYLES[kind].dashes.length > 0
                   ? { "line-dasharray": SURFACE_STYLES[kind].dashes }
                   : {}),

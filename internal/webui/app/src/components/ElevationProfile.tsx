@@ -14,8 +14,10 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { Highlight } from "../lib/highlight";
+import { gapsOutside, highlightLabel } from "../lib/highlight";
 import type { DistanceWindow, Profile, ProfileSample } from "../lib/profile";
-import { GRADIENT_BANDS, niceStep, sampleAt, ticksFor } from "../lib/profile";
+import { niceStep, sampleAt, steadyBands, ticksFor } from "../lib/profile";
 import type { SurfaceSummary } from "../lib/surface";
 import { SURFACE_STYLES, surfaceBandsWithin, surfaceKindAt } from "../lib/surface";
 import { useElementWidth } from "../lib/useElementWidth";
@@ -23,15 +25,26 @@ import { useElementWidth } from "../lib/useElementWidth";
 /**
  * Hatch patterns for the steeper bands.
  *
- * Texture is the backup channel for identity: it survives colour blindness,
- * greyscale print, and forced-colours mode, where hue alone does not. It also
- * lets the ground sit at low opacity — the terrain is a backdrop for the
- * silhouette, not a block of paint — while the steep sections still read.
+ * With five classes, texture stops being the backup channel for identity and
+ * becomes one that carries: the ramp cannot separate five steps by hue alone, so
+ * every band above the gentlest wears a pattern of its own — one diagonal, then
+ * the other, then the two crossed, then a tighter grid. Angle is what separates
+ * the neighbours a colour-blind reader finds closest, and density is what is
+ * left when the angles run out.
+ *
+ * It also survives greyscale print and forced-colours mode, where hue alone does
+ * not, and it lets the ground sit at low opacity — the terrain is a backdrop for
+ * the silhouette, not a block of paint — while the steep sections still read.
+ *
+ * The tiles are fine enough that a short pitch still shows several strokes; a
+ * coarse hatch in a twelve-pixel column is indistinguishable from a solid block.
  */
-const HATCH_ANGLES: Record<number, number> = { 1: 45, 2: 135 };
-// Fine enough that a short pitch still shows several strokes; a coarse hatch
-// in a twelve-pixel band is indistinguishable from a solid block.
-const HATCH_SIZE = 6;
+const HATCHES: Record<number, { angle: number; crossed: boolean; size: number }> = {
+  1: { angle: 45, crossed: false, size: 6 },
+  2: { angle: 135, crossed: false, size: 6 },
+  3: { angle: 45, crossed: true, size: 6 },
+  4: { angle: 0, crossed: true, size: 4 },
+};
 
 const HEIGHT = 159;
 const PADDING = { top: 12, right: 12, bottom: 33, left: 46 };
@@ -102,47 +115,26 @@ export interface ElevationProfileProps {
   zoomWindow?: DistanceWindow | null;
   /** Absent leaves the chart scrubbing by pointer and keyboard, and no zoom. */
   onZoomChange?: ((window: DistanceWindow | null) => void) | undefined;
+  /**
+   * The one class picked out of the key, or null for a chart with nothing
+   * singled out.
+   *
+   * The chart does not own this either: the same selection lights the same
+   * ground on the map, and the key that sets it sits outside the chart so both
+   * legends can share a line.
+   */
+  highlight?: Highlight | null;
 }
 
+/**
+ * One stretch of ground of a single band: the shape to fill, and where along the
+ * route it sits, which is what lets the same run be lit or veiled by name.
+ */
 interface Run {
   band: number;
   column: string;
-}
-
-/** A run shorter than this is absorbed into its neighbour. */
-const MIN_RUN_SAMPLES = 3;
-
-/**
- * The band of each sample, with momentary flicker removed.
- *
- * Where a gradient hovers on a threshold it crosses back and forth every few
- * metres. Drawn literally that produces a barcode of alternating colour that
- * says nothing about the terrain — the bands are meant to show *sustained*
- * steepness, so a run too short to be sustained takes its neighbour's band.
- */
-export function steadyBands(samples: ProfileSample[]): number[] {
-  const bands = samples.map((sample) => sample.band);
-
-  let start = 0;
-  for (let index = 1; index <= bands.length; index++) {
-    if (index < bands.length && bands[index] === bands[start]) {
-      continue;
-    }
-    if (index - start < MIN_RUN_SAMPLES) {
-      // A short run takes the preceding band where there is one, and otherwise
-      // the following one, so a brief opening run is smoothed like any other.
-      // A profile that is a single run has no neighbour and stands as it is.
-      const neighbour = start > 0 ? bands[start - 1] : bands[index];
-      if (neighbour !== undefined) {
-        for (let fill = start; fill < index; fill++) {
-          bands[fill] = neighbour;
-        }
-      }
-    }
-    start = index;
-  }
-
-  return bands;
+  startMetres: number;
+  endMetres: number;
 }
 
 /**
@@ -183,6 +175,8 @@ function runsOf(
       runs.push({
         band: bands[start] ?? 0,
         column: `${ridge} L${x(last.distanceMetres).toFixed(1)},${plotHeight.toFixed(1)} L${x(first.distanceMetres).toFixed(1)},${plotHeight.toFixed(1)} Z`,
+        startMetres: first.distanceMetres,
+        endMetres: last.distanceMetres,
       });
     }
     start = index;
@@ -243,6 +237,7 @@ export function ElevationProfile({
   onActiveChange,
   zoomWindow = null,
   onZoomChange,
+  highlight = null,
 }: ElevationProfileProps) {
   const { ref, width } = useElementWidth<HTMLDivElement>();
 
@@ -289,6 +284,26 @@ export function ElevationProfile({
         : [],
     };
   }, [profile, surface, plotWidth, plotHeight]);
+
+  /**
+   * The ground the picked class does not cover, which is what gets veiled.
+   *
+   * Kept apart from `geometry` so that picking a class redraws no terrain: the
+   * columns and the strip are the same marks either way, and only the light on
+   * them changes. Whichever kind of class was picked, the answer is a list of
+   * stretches, so both are veiled by one rule.
+   */
+  const veiled = useMemo(() => {
+    if (!highlight || !geometry || !profile) {
+      return [];
+    }
+    const lit =
+      highlight.type === "band"
+        ? geometry.runs.filter((run) => run.band === highlight.band)
+        : geometry.surfaceBands.filter((band) => band.kind === highlight.kind);
+
+    return gapsOutside(lit, profile.startMetres, profile.endMetres);
+  }, [geometry, highlight, profile]);
 
   /**
    * Where along the route the pointer is, in metres.
@@ -432,12 +447,16 @@ export function ElevationProfile({
   const shownLabel =
     `${kilometreLabel(profile.startMetres, geometry.distanceStep)}–` +
     `${kilometreLabel(profile.endMetres, geometry.distanceStep)} km`;
+  // The picked class is said in words as well as in light: a chart that is
+  // mostly veiled has to explain itself to a reader who cannot see the veil.
+  const picked = highlight ? highlightLabel(highlight) : "";
   const summary =
     `Elevation profile of ${title}` +
     (zoomed ? `, ${shownLabel}` : "") +
     `: ${((profile.endMetres - profile.startMetres) / 1000).toFixed(1)} kilometres, ` +
     `between ${Math.round(profile.minElevationMetres)} and ` +
-    `${Math.round(profile.maxElevationMetres)} metres above sea level.`;
+    `${Math.round(profile.maxElevationMetres)} metres above sea level.` +
+    (picked ? ` Only the ${picked} stretches are lit.` : "");
 
   return (
     <div className="elevation-profile" ref={ref} data-zoomed={zoomed ? "true" : undefined}>
@@ -450,20 +469,20 @@ export function ElevationProfile({
       >
         <title>{summary}</title>
         <defs>
-          {Object.entries(HATCH_ANGLES).map(([band, angle]) => (
+          {Object.entries(HATCHES).map(([band, hatch]) => (
             <pattern
               key={band}
               id={`elevation-hatch-${band}`}
-              width={HATCH_SIZE}
-              height={HATCH_SIZE}
+              width={hatch.size}
+              height={hatch.size}
               patternUnits="userSpaceOnUse"
-              patternTransform={`rotate(${angle})`}
+              patternTransform={`rotate(${hatch.angle})`}
             >
               <rect
                 className="elevation-profile__hatch-ground"
                 data-band={band}
-                width={HATCH_SIZE}
-                height={HATCH_SIZE}
+                width={hatch.size}
+                height={hatch.size}
               />
               {/*
                * Centred in the tile, not on its edge: a stroke on the edge is
@@ -472,11 +491,21 @@ export function ElevationProfile({
               <line
                 className="elevation-profile__hatch-line"
                 data-band={band}
-                x1={HATCH_SIZE / 2}
+                x1={hatch.size / 2}
                 y1={0}
-                x2={HATCH_SIZE / 2}
-                y2={HATCH_SIZE}
+                x2={hatch.size / 2}
+                y2={hatch.size}
               />
+              {hatch.crossed ? (
+                <line
+                  className="elevation-profile__hatch-line"
+                  data-band={band}
+                  x1={0}
+                  y1={hatch.size / 2}
+                  x2={hatch.size}
+                  y2={hatch.size / 2}
+                />
+              ) : null}
             </pattern>
           ))}
         </defs>
@@ -556,6 +585,26 @@ export function ElevationProfile({
             >
               {kilometreLabel(kilometres * 1000, geometry.distanceStep)}
             </text>
+          ))}
+
+          {/*
+           * Everything the picked class does not cover, veiled. The marks keep
+           * the colour and the pattern that give them their meaning — brightening
+           * a band's column would change the very thing being asked about — so
+           * what the selection changes is the light on the rest.
+           */}
+          {veiled.map((gap) => (
+            <rect
+              key={gap.startMetres}
+              className="elevation-profile__veil"
+              x={Math.max(geometry.x(gap.startMetres), 0)}
+              y={0}
+              width={Math.max(
+                geometry.x(gap.endMetres) - Math.max(geometry.x(gap.startMetres), 0),
+                0,
+              )}
+              height={laneHeight}
+            />
           ))}
 
           {/*
@@ -682,55 +731,39 @@ export function ElevationProfile({
         onBlur={() => onActiveChange(null)}
       />
 
-      <div className="elevation-profile__footer">
-        <div className="elevation-profile__status">
-          {/*
-           * Only while zoomed. A permanently present, permanently disabled way
-           * back is a control that spends most of its life lying about what it
-           * does. The span sits inside the button, so the name says what is
-           * being left as well as where it goes.
-           */}
-          {zoomed && onZoomChange ? (
-            <button
-              type="button"
-              className="elevation-profile__reset"
-              aria-keyshortcuts="Escape"
-              onClick={() => onZoomChange(null)}
-            >
-              Whole route
-              <span className="elevation-profile__reset-span"> · showing {shownLabel}</span>
-            </button>
-          ) : null}
-          <p className="elevation-profile__readout" aria-live="polite">
-            {active ? (
-              <>
-                <strong>{Math.round(active.elevationMetres)} m</strong>
-                <span> at {(active.distanceMetres / 1000).toFixed(1)} km</span>
-                <span> · {active.gradientPercent.toFixed(1)}%</span>
-                {activeSurface ? <span> · {activeSurface}</span> : null}
-              </>
-            ) : (
-              <span>
-                {Math.round(profile.minElevationMetres)}–{Math.round(profile.maxElevationMetres)} m
-                above sea level
-              </span>
-            )}
-          </p>
-        </div>
-
-        <ul className="elevation-profile__scale">
-          {GRADIENT_BANDS.map((band, index) => (
-            <li key={band.label}>
-              <span
-                className="elevation-profile__swatch"
-                data-band={index}
-                data-hatched={HATCH_ANGLES[index] !== undefined}
-                aria-hidden="true"
-              />
-              {band.label}
-            </li>
-          ))}
-        </ul>
+      <div className="elevation-profile__status">
+        {/*
+         * Only while zoomed. A permanently present, permanently disabled way
+         * back is a control that spends most of its life lying about what it
+         * does. The span sits inside the button, so the name says what is
+         * being left as well as where it goes.
+         */}
+        {zoomed && onZoomChange ? (
+          <button
+            type="button"
+            className="elevation-profile__reset"
+            aria-keyshortcuts="Escape"
+            onClick={() => onZoomChange(null)}
+          >
+            Whole route
+            <span className="elevation-profile__reset-span"> · showing {shownLabel}</span>
+          </button>
+        ) : null}
+        <p className="elevation-profile__readout" aria-live="polite">
+          {active ? (
+            <>
+              <strong>{Math.round(active.elevationMetres)} m</strong>
+              <span> at {(active.distanceMetres / 1000).toFixed(1)} km</span>
+              <span> · {active.gradientPercent.toFixed(1)}%</span>
+              {activeSurface ? <span> · {activeSurface}</span> : null}
+            </>
+          ) : (
+            <span>
+              {Math.round(profile.minElevationMetres)}–{Math.round(profile.maxElevationMetres)} m
+              above sea level
+            </span>
+          )}
+        </p>
       </div>
     </div>
   );

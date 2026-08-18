@@ -4,23 +4,12 @@ import userEvent from "@testing-library/user-event";
 import { useMemo, useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import type { Position } from "../api/types";
-import type { DistanceWindow, ProfileSample } from "../lib/profile";
+import type { Highlight } from "../lib/highlight";
+import type { DistanceWindow } from "../lib/profile";
 import { buildProfile, buildWindowedProfile } from "../lib/profile";
 import type { SurfaceSummary } from "../lib/surface";
 import { SURFACE_STYLES, summariseSurface } from "../lib/surface";
-import { ElevationProfile, steadyBands } from "./ElevationProfile";
-
-/** Only the band matters to steadyBands; the rest is filler. */
-function samplesOf(bands: number[]): ProfileSample[] {
-  return bands.map((band) => ({
-    distanceMetres: 0,
-    elevationMetres: 0,
-    longitude: 8,
-    latitude: 49,
-    gradientPercent: 0,
-    band,
-  }));
-}
+import { ElevationProfile } from "./ElevationProfile";
 
 function climb(): Position[] {
   return Array.from(
@@ -78,9 +67,11 @@ async function dragAcross(user: UserEvent, target: Element, from: number, to: nu
 function Harness({
   title = "Eich Rundkurs 90",
   surface = null,
+  highlight = null,
 }: {
   title?: string;
   surface?: SurfaceSummary | null;
+  highlight?: Highlight | null;
 }) {
   const [activeMetres, setActiveMetres] = useState<number | null>(null);
 
@@ -91,6 +82,7 @@ function Harness({
       surface={surface}
       activeMetres={activeMetres}
       onActiveChange={setActiveMetres}
+      highlight={highlight}
     />
   );
 }
@@ -601,20 +593,47 @@ describe("ElevationProfile zooming", () => {
   });
 });
 
-describe("steadyBands", () => {
-  it("absorbs a short opening run into the run that follows it", () => {
-    expect(steadyBands(samplesOf([2, 0, 0, 0, 0]))).toEqual([0, 0, 0, 0, 0]);
+/*
+ * The test climb runs at a steady four and a half percent, so it is band 1 from
+ * end to end — which makes it both a stage that is entirely the picked class and
+ * a stage with none of any other.
+ */
+describe("a picked class", () => {
+  it("leaves the chart unveiled when nothing is picked", () => {
+    const { container } = render(<Harness />);
+
+    expect(container.querySelectorAll(".elevation-profile__veil")).toHaveLength(0);
   });
 
-  it("absorbs a short run into the run before it", () => {
-    expect(steadyBands(samplesOf([0, 0, 0, 2, 0, 0, 0]))).toEqual([0, 0, 0, 0, 0, 0, 0]);
+  it("veils nothing when the whole stage is the picked band", () => {
+    const { container } = render(<Harness highlight={{ type: "band", band: 1 }} />);
+
+    expect(container.querySelectorAll(".elevation-profile__veil")).toHaveLength(0);
   });
 
-  it("leaves a sustained opening run alone", () => {
-    expect(steadyBands(samplesOf([2, 2, 2, 0, 0, 0]))).toEqual([2, 2, 2, 0, 0, 0]);
+  it("veils the whole chart when the stage has none of the picked band", () => {
+    const { container } = render(<Harness highlight={{ type: "band", band: 4 }} />);
+
+    expect(container.querySelectorAll(".elevation-profile__veil")).toHaveLength(1);
   });
 
-  it("leaves a profile of one run alone, short or not", () => {
-    expect(steadyBands(samplesOf([2, 2]))).toEqual([2, 2]);
+  it("lights only the picked class, and leaves the rest of the ride veiled", () => {
+    const summary = summariseSurface(climb(), [
+      { kind: "asphalt", startIndex: 0, endIndex: 18 },
+      { kind: "gravel", startIndex: 19, endIndex: 38 },
+    ]);
+    const { container } = render(
+      <Harness surface={summary} highlight={{ type: "surface", kind: "gravel" }} />,
+    );
+
+    expect(container.querySelectorAll(".elevation-profile__veil")).toHaveLength(1);
+  });
+
+  // A chart that is mostly veiled has to explain itself to a reader who cannot
+  // see the veil at all.
+  it("names the picked class in the spoken summary", () => {
+    render(<Harness highlight={{ type: "band", band: 1 }} />);
+
+    expect(screen.getByRole("img")).toHaveAccessibleName(/Only the 4–8% stretches are lit\./);
   });
 });

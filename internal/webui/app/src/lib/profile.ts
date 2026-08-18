@@ -21,15 +21,27 @@ import type { BoundingBox, Position } from "../api/types";
 const EARTH_RADIUS_METRES = 6_371_000;
 
 /**
- * Gradient classes, gentlest first.
+ * Gradient classes, gentlest first, in steps of four percent.
  *
- * Three, not four. Steepness gets a warm heat ramp — gold through orange to
- * deep red — which is the multi-hue exception a sequential scale is allowed
- * when it means severity and carries a scale legend. Four steps could not be
- * made to separate: the top two were both red, differing only in lightness, and
- * sat around ΔE 9 where 15 is the floor for ordinary colour vision. Cutting a
- * class is the honest fix for a pair that will not separate; fudging the colours
- * would have left two bands nobody could tell apart.
+ * Five, where there were three. Under four percent is ground a rider simply
+ * rides over; above it the question is how hard, and one class for everything
+ * from a steady eight percent to a sixteen percent wall refused to answer it.
+ * The steep end is where the resolution is worth spending, which is why the
+ * steps stay even rather than widening as they climb.
+ *
+ * Steepness gets a warm heat ramp — gold through terracotta to deep red — the
+ * multi-hue exception a sequential scale is allowed when it means severity and
+ * carries a scale legend. Lightness falls with every step, so steeper reads as
+ * "more" in greyscale as well as in colour.
+ *
+ * Five steps cannot be told apart by colour alone, and pretending otherwise is
+ * what the three-band ramp was avoiding. The ramp was fitted for the widest
+ * adjacent separation this surface allows and lands at ΔE00 13–18 for ordinary
+ * vision and 8–12 under simulated protanopia and deuteranopia, where three
+ * steps had room for 28 and 16. So texture stops being the backup channel and
+ * becomes a carrying one: every band above the gentlest wears its own hatch —
+ * angle, then crossing, then density — and the key spells out every band the
+ * stage actually has.
  *
  * The green-amber-red scale cycling apps use was measured and rejected outright.
  * Making the amber yellow enough to read against the green collapses the pair to
@@ -42,7 +54,9 @@ const EARTH_RADIUS_METRES = 6_371_000;
 export const GRADIENT_BANDS = [
   { limit: 4, label: "< 4%" },
   { limit: 8, label: "4–8%" },
-  { limit: Number.POSITIVE_INFINITY, label: "≥ 8%" },
+  { limit: 12, label: "8–12%" },
+  { limit: 16, label: "12–16%" },
+  { limit: Number.POSITIVE_INFINITY, label: "≥ 16%" },
 ] as const;
 
 /** The shortest span a gradient is measured over, matching the service. */
@@ -372,6 +386,60 @@ export function sampleAt(profile: Profile, metres: number): ProfileSample | null
     gradientPercent: nearer.gradientPercent,
     band: nearer.band,
   };
+}
+
+/** A run of one band shorter than this is absorbed into its neighbour. */
+const MIN_RUN_SAMPLES = 3;
+
+/**
+ * The band of each sample, with momentary flicker removed.
+ *
+ * Where a gradient hovers on a threshold it crosses back and forth every few
+ * metres. Drawn literally that produces a barcode of alternating colour that
+ * says nothing about the terrain — the bands are meant to show *sustained*
+ * steepness, so a run too short to be sustained takes its neighbour's band.
+ *
+ * It lives beside the bands rather than in the chart that draws them, because
+ * the key listing a stage's bands and the chart colouring them have to agree on
+ * which bands the stage has: a band smoothed away in one and kept in the other
+ * would be a legend entry with nothing to point at.
+ */
+export function steadyBands(samples: ProfileSample[]): number[] {
+  const bands = samples.map((sample) => sample.band);
+
+  let start = 0;
+  for (let index = 1; index <= bands.length; index++) {
+    if (index < bands.length && bands[index] === bands[start]) {
+      continue;
+    }
+    if (index - start < MIN_RUN_SAMPLES) {
+      // A short run takes the preceding band where there is one, and otherwise
+      // the following one, so a brief opening run is smoothed like any other.
+      // A profile that is a single run has no neighbour and stands as it is.
+      const neighbour = start > 0 ? bands[start - 1] : bands[index];
+      if (neighbour !== undefined) {
+        for (let fill = start; fill < index; fill++) {
+          bands[fill] = neighbour;
+        }
+      }
+    }
+    start = index;
+  }
+
+  return bands;
+}
+
+/**
+ * The bands a profile actually has, gentlest first.
+ *
+ * What the key offers to pick out, so it never offers a class this stage has
+ * none of. Taken after smoothing, so it lists what is drawn rather than what a
+ * wobble in the terrain model touched for twenty metres.
+ */
+export function presentBands(profile: Profile): number[] {
+  const present = new Set(steadyBands(profile.samples));
+
+  return GRADIENT_BANDS.map((_, index) => index).filter((band) => present.has(band));
 }
 
 /**

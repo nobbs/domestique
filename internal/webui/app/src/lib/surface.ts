@@ -16,7 +16,7 @@ import type { Position, SurfaceKind, SurfaceRange } from "../api/types";
 import { SURFACE_KINDS } from "../api/types";
 import type { CoordinateRange } from "./profile";
 import { cumulativeMetres } from "./profile";
-import { splitAtWindow } from "./routeLines";
+import { splitAtRanges } from "./routeLines";
 
 interface SurfaceStyle {
   label: string;
@@ -245,24 +245,25 @@ export interface SurfaceSlices {
 }
 
 /**
- * Splits the route into one set of lines per class, separating what falls
- * inside a stretch from what falls outside it.
+ * Splits the route into one set of lines per class, separating what is drawn at
+ * full strength from what is left dim.
  *
  * Each stretch runs one point past its range so neighbouring stretches meet on
  * the shared point, leaving neither a gap in the drawn route nor an overlap that
  * would paint one class over another.
  *
- * The map dims the route outside the stretch the chart is showing, and
- * `line-opacity` belongs to a layer rather than to a segment — so the two sides
- * have to arrive as different features of the same source, tagged, for one paint
- * expression to tell them apart. Splitting the ranges before they become lines
- * rather than cutting the lines afterwards keeps the clamping and the shared
- * boundary point exactly as they already were.
+ * The map dims the route outside the stretch the chart is showing, and outside
+ * the class a reader has picked out of the key, and `line-opacity` belongs to a
+ * layer rather than to a segment — so the two sides have to arrive as different
+ * features of the same source, tagged, for one paint expression to tell them
+ * apart. Splitting the ranges before they become lines rather than cutting the
+ * lines afterwards keeps the clamping and the shared boundary point exactly as
+ * they already were.
  */
 export function surfaceLinesWithin(
   coordinates: Position[],
   ranges: SurfaceRange[],
-  window: CoordinateRange | null,
+  lit: readonly CoordinateRange[] | null,
 ): SurfaceSlices[] {
   const slicesByKind = new Map<SurfaceKind, { inside: Position[][]; outside: Position[][] }>();
   const lastIndex = coordinates.length - 1;
@@ -273,7 +274,7 @@ export function surfaceLinesWithin(
     const { start, end } = clampRange(range, lastIndex);
     // One point past the range, because the final point of a range is the first
     // point of the stretch it hands over. The last range has nothing past it.
-    const split = splitAtWindow(coordinates, start, Math.min(end + 1, lastIndex), window);
+    const split = splitAtRanges(coordinates, start, Math.min(end + 1, lastIndex), lit);
     if (split.inside.length === 0 && split.outside.length === 0) {
       continue;
     }

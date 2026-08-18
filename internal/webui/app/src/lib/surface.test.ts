@@ -153,10 +153,11 @@ describe("surfaceLinesWithin", () => {
   // it twice at two different opacities.
   it("separates what a window shows from what it does not, with no gap between", () => {
     const coordinates = route(5);
-    const [gravel] = surfaceLinesWithin(coordinates, [range("gravel", 0, 4)], {
-      startIndex: 1,
-      endIndex: 3,
-    });
+    const [gravel] = surfaceLinesWithin(
+      coordinates,
+      [range("gravel", 0, 4)],
+      [{ startIndex: 1, endIndex: 3 }],
+    );
     const inside = gravel?.inside[0] ?? [];
     const before = gravel?.outside[0] ?? [];
     const after = gravel?.outside[1] ?? [];
@@ -176,10 +177,11 @@ describe("surfaceLinesWithin", () => {
 
   it("drops a piece of a single point, which spans no ground", () => {
     // The window opens on the very last point, so there is nothing inside it.
-    const [gravel] = surfaceLinesWithin(route(5), [range("gravel", 0, 4)], {
-      startIndex: 4,
-      endIndex: 4,
-    });
+    const [gravel] = surfaceLinesWithin(
+      route(5),
+      [range("gravel", 0, 4)],
+      [{ startIndex: 4, endIndex: 4 }],
+    );
 
     expect(gravel?.inside).toEqual([]);
     expect(gravel?.outside).toHaveLength(1);
