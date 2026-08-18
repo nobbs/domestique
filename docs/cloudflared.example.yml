@@ -4,7 +4,12 @@
 tunnel: <TUNNEL_ID>
 credentials-file: /etc/cloudflared/<TUNNEL_ID>.json
 
-# No metrics or management surface is published; cloudflared only dials out.
+# cloudflared always starts a metrics listener. Left to itself it binds every
+# interface in this namespace, and one of those is the tunnel node's tailnet
+# address — so the compose file's claim that no management surface is published
+# is only true with this line. The tailnet ACLs leave member-owned devices
+# unrestricted, so without it the endpoint is reachable from any of them.
+metrics: 127.0.0.1:20241
 no-autoupdate: true
 
 ingress:
