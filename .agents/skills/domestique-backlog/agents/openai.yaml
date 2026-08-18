@@ -1,0 +1,4 @@
+interface:
+  display_name: "Domestique Backlog"
+  short_description: "Maintain the Domestique issue backlog"
+  default_prompt: "Use $domestique-backlog to triage the Domestique issue backlog."
