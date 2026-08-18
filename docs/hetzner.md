@@ -250,15 +250,22 @@ and the boundary the previous paragraph describes would not exist. Reinstall it
 with the same `install` command whenever the repository copy changes; nothing
 updates it automatically.
 
-The tailnet policy must let `tag:github` reach `tag:domestique` on port 22 and
-permit Tailscale SSH to the `domestique-deploy` user. Both rules live in the
-`nobbs/infrastructure` repository, in `stacks/tailscale/policy.hujson`.
+The tailnet side lives in the `nobbs/infrastructure` repository, in
+`stacks/tailscale`: policy rules letting `tag:github` reach `tag:domestique` on
+port 22 and log in over Tailscale SSH as `domestique-deploy`, and the federated
+identity the workflow authenticates as, declared as `domestique_deploy` in
+`terraform.tfvars`. That identity may do one thing, mint an ephemeral
+`tag:github` node, and the stack's `federated_identities` output carries the
+client ID and audience to set here.
 
 GitHub needs a `production` environment and four repository variables, none of
-them secret: `TS_DEPLOY_CLIENT_ID` and `TS_DEPLOY_AUDIENCE` for the federated
-identity created in the Tailscale admin console (scope `auth_keys`, tagged
-`tag:github`, bound to this repository), `DOMESTIQUE_HOST` for this host's
-fully-qualified MagicDNS name, and `DOMESTIQUE_DEPLOY_USER`.
+them secret: `TS_DEPLOY_CLIENT_ID` and `TS_DEPLOY_AUDIENCE` from that output,
+`DOMESTIQUE_HOST` for this host's fully-qualified MagicDNS name, and
+`DOMESTIQUE_DEPLOY_USER`. The environment is not only a deployment log: because
+the `deploy` job names it, the job's OIDC subject becomes
+`repo:nobbs/domestique:environment:production`, which is exactly what the
+federated identity matches on. Renaming or removing it stops the deploy from
+authenticating at all.
 
 ## Update and rollback
 
