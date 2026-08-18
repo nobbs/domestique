@@ -1,5 +1,15 @@
 # macOS Docker MVP
 
+> **Historical.** This records the Apple-silicon Mac that first ran Domestique.
+> It is not a current deployment procedure. `svc:domestique` has since been
+> taken over by the Hetzner Cloud VM described in
+> [`hetzner.md`](hetzner.md), and the way in is now the one in
+> [`cloudflare-access.md`](cloudflare-access.md). Two things below were true
+> when written and are false now: the Wahoo callback is no longer the Tailnet
+> hostname, and the browser steps against that hostname answer `401`, because
+> Cloudflare Access is the only way in. The Service also no longer publishes
+> `tcp:8080`. Read it for how the MVP was put together, not for what to run.
+
 Use this target to run Domestique on an Apple-silicon Mac before moving the
 same Docker image definition and runtime-state model to a Raspberry Pi. It is
 an MVP host:
@@ -62,6 +72,7 @@ managed Tailnet Service:
 
 ~~~sh
 tailscale serve --service=svc:domestique --https=443 127.0.0.1:8080
+tailscale serve --service=svc:domestique --http=8080 127.0.0.1:8080
 tailscale serve advertise svc:domestique
 tailscale serve status
 ~~~
