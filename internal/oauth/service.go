@@ -22,8 +22,8 @@ var (
 
 // StateStore persists the one-time state and the completed target authorization.
 type StateStore interface {
-	BeginAuthorization(ctx context.Context, targetID, tailnetUserLogin string, stateDigest []byte, expiresAt time.Time) error
-	ConsumeAuthorization(ctx context.Context, tailnetUserLogin string, stateDigest []byte) (string, error)
+	BeginAuthorization(ctx context.Context, targetID, callerLogin string, stateDigest []byte, expiresAt time.Time) error
+	ConsumeAuthorization(ctx context.Context, callerLogin string, stateDigest []byte) (string, error)
 	AuthorizeTarget(ctx context.Context, targetID, wahooUserID, refreshToken string) error
 }
 
@@ -50,7 +50,7 @@ func New(stateStore StateStore, wahoo Wahoo) (*Service, error) {
 }
 
 // Start creates a caller-bound, expiring state and returns Wahoo's authorization URL.
-func (s *Service) Start(ctx context.Context, tailnetUserLogin, targetID string) (string, error) {
+func (s *Service) Start(ctx context.Context, callerLogin, targetID string) (string, error) {
 	state, digest, stateErr := newState()
 	if stateErr != nil {
 		return "", ErrAuthorizationFailed
@@ -58,7 +58,7 @@ func (s *Service) Start(ctx context.Context, tailnetUserLogin, targetID string) 
 	if beginErr := s.stateStore.BeginAuthorization(
 		ctx,
 		targetID,
-		tailnetUserLogin,
+		callerLogin,
 		digest,
 		time.Now().UTC().Add(stateLifetime),
 	); beginErr != nil {
@@ -74,12 +74,12 @@ func (s *Service) Start(ctx context.Context, tailnetUserLogin, targetID string) 
 
 // Complete validates and consumes state, exchanges the code, learns the Wahoo
 // user identity, and durably binds the account to the target slot.
-func (s *Service) Complete(ctx context.Context, tailnetUserLogin, state, code string) error {
+func (s *Service) Complete(ctx context.Context, callerLogin, state, code string) error {
 	digest, err := stateDigest(state)
 	if err != nil || code == "" {
 		return ErrInvalidAuthorization
 	}
-	targetID, err := s.stateStore.ConsumeAuthorization(ctx, tailnetUserLogin, digest)
+	targetID, err := s.stateStore.ConsumeAuthorization(ctx, callerLogin, digest)
 	if err != nil {
 		return ErrInvalidAuthorization
 	}

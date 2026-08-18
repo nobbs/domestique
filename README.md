@@ -38,11 +38,13 @@ accepts a digest; an image built from a checkout is a local build and carries
 neither. Its base images are Docker Hardened Images, so building it requires
 `docker login dhi.io`; deploying it does not.
 The host owns the private boundary: Docker publishes only `127.0.0.1:8080`,
-while host-level Tailscale Serve provides HTTPS and the authenticated identity
-header to the container. Tailscale does not run in the image.
+while host-level Tailscale Serve provides HTTPS and is the origin a Cloudflare
+Tunnel dials by Tailscale Service name. Tailscale does not run in the image.
 
 The [Linux VM guide](docs/hetzner.md) covers the long-running host, which builds
-the image from a checkout. The [Pi deployment guide](docs/deployment.md) uses the
+the image from a checkout. The
+[Cloudflare Access guide](docs/cloudflare-access.md) covers how the single
+operator reaches it — the only way in, and without publishing a listener. The [Pi deployment guide](docs/deployment.md) uses the
 same runtime contract with a verified immutable image digest, and the
 [macOS Docker guide](docs/macos-mvp.md) covers the Apple-silicon MVP host. The
 optional sandbox encoder check is documented in

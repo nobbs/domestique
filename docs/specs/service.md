@@ -8,7 +8,7 @@ deliberately revised.
 
 v2 adds a read-only route map view. It revises three v1 decisions: the service
 now has a browser UI, it caches source route geometry locally, and it serves
-that geometry to the single authorised Tailnet identity. Everything else in the
+that geometry to the single authorised identity. Everything else in the
 v1 contract — the sync safety gates, the secret handling, and the deletion
 rules — is unchanged.
 
@@ -61,9 +61,43 @@ change to that boundary requires revising this document first.
 Docker publishes the service port only to the host's `127.0.0.1`; the
 container has no public host port. The Tailnet host exposes it privately through
 `tailscale serve`; it is never directly published to the Internet. All service
-endpoints require the configured sole Tailnet identity, apart from a
-loopback-only liveness probe if one is needed by Docker. The HTTP server trusts
-Tailnet identity headers only from that local proxy.
+endpoints require the configured sole identity, apart from a loopback-only
+liveness probe if one is needed by Docker. The HTTP server trusts Tailnet
+identity headers only from that local proxy.
+
+The service is single-tenant, and remains so. One person is authorised, and
+there is exactly one way to prove it.
+
+Every request must carry a `Cf-Access-Jwt-Assertion` the service verifies
+itself: RS256 signature against the team's published keys, matching issuer,
+unexpired, and an `aud` equal to the configured application's audience tag. The
+`email` claim must equal `access.cloudflare.allowed_email`. The unsigned
+`Cf-Access-Authenticated-User-Email` header is never consulted, and neither is
+`Tailscale-User-Login`.
+
+Requests reach the service through Cloudflare Access and a Cloudflare Tunnel
+whose origin is this service's **Tailscale Service name**. `cloudflared` runs on
+a tagged node, and Serve never populates identity headers for a tagged device,
+so such a request carries no Tailnet identity to consult in the first place.
+
+Tailscale Serve still fronts the listener, and Tailnet members can still reach
+it directly. Such a request is refused like any other without an assertion.
+Honouring `Tailscale-User-Login` would mean a second front door with a second
+identity source behind it, and — because a tunnel forwards client headers
+verbatim — a forgeable one the moment anything but Serve reached the listener.
+The header is therefore not read at all. This is a security requirement, not an
+implementation detail.
+
+This adds no public listener: the container still publishes to loopback only,
+and the tunnel is an outbound connection. It does not widen the gate either —
+one principal before, one principal now.
+
+The tunnel's origin must be the Tailscale Service name rather than a node
+address or loopback. That is a security requirement, not a convenience: it keeps
+Tailscale Serve in the path, and Serve's stripping of client-supplied
+`Tailscale-*` headers is what prevents a public caller from asserting a Tailnet
+identity. The `[access.cloudflare]` section is all-or-nothing; a partly
+configured one is rejected at startup.
 
 The map view introduces one deliberate, documented exception to the otherwise
 Tailnet-only posture: the operator's **browser** fetches basemap tiles from a
@@ -88,10 +122,18 @@ cleared to switch the lookup off entirely and leave stages unclassified. Each
 stage is asked about once per geometry: the answer is cached and re-fetched only
 when the stage's content hash changes.
 
-The Wahoo OAuth redirect URI is the service's HTTPS Tailnet URL:
+The Wahoo OAuth redirect URI is the HTTPS URL a browser returns to. Without the
+public path that is the service's Tailnet URL:
 
 ```text
-https://<device>.<tailnet>.ts.net/oauth/wahoo/callback
+https://<service>.<tailnet>.ts.net/oauth/wahoo/callback
+```
+
+With the public path deployed it is the public hostname instead, because the
+redirect lands in an ordinary browser that need not be on the tailnet:
+
+```text
+https://<hostname>/oauth/wahoo/callback
 ```
 
 It must exactly match the URI registered with Wahoo and configured in the
@@ -105,7 +147,7 @@ The state-changing HTTP surface is the OAuth flow:
 - `GET /oauth/wahoo/callback` validates a one-time, expiring OAuth state and
   stores the resulting refresh token.
 
-Both are limited to the configured Tailnet identity. The state binds the
+Both are limited to the configured principal. The state binds the
 calling identity and target slot and prevents cross-account or CSRF callbacks.
 The service rejects an attempt to authorise the same Wahoo account for two
 target slots.
@@ -116,7 +158,7 @@ the per-stage reprocess request.
 They change what the service does next; they change nothing it has stored about
 routes, and they cannot make a run less safe than a scheduled one, because a
 triggered run is the same run through the same gates. Every one of them is
-limited to the same Tailnet identity as the rest of the surface.
+limited to the same principal as the rest of the surface.
 
 A synchronization has two halves, and each is separately switched, triggered,
 and reported:
@@ -168,7 +210,7 @@ Exact response schemas are an implementation follow-up. They must never expose
 secrets, tokens, or raw upstream response bodies.
 
 Route geometry is served **only** on the dedicated geometry endpoint, only to
-the configured Tailnet identity, and only from local stored state. It must never
+the configured principal, and only from local stored state. It must never
 appear in logs, notifications, error messages, the status endpoint, or the
 inventory listing.
 The concrete OAuth, sync, persistence, and JSON contracts are defined in the
@@ -183,8 +225,8 @@ The service has a provider-neutral configuration contract:
 
 - One read-only static configuration file holds non-secret values: VeloPlanner
   account identity and endpoint, Wahoo client ID and API endpoints, target slot
-  labels, Tailnet identity, sync cadence, deletion limit, data path, and public
-  callback URL.
+  labels, Access team domain, application audience tag and allowed address, sync
+  cadence, deletion limit, data path, and public callback URL.
 - Sensitive static values are loaded by Koanf from Docker-style files or the
   documented direct environment variables: VeloPlanner credentials, Wahoo
   client secret, Pushover application token and user key, and a 32-byte
@@ -377,13 +419,14 @@ the checkout; its configuration and Docker secret files remain outside Git.
 - A failed source inventory cannot cause a destructive Wahoo deletion.
 - Lost state cannot cause deletion of unknown Wahoo routes.
 - The service logs and notifications do not reveal secrets or route details.
-- Every HTTP interaction is Tailnet-identity-gated. Beyond OAuth, the only ones
+- Every HTTP interaction is identity-gated, to one principal, by a signature the
+  service verifies itself. Beyond OAuth, the only ones
   that change anything are the synchronization triggers, the two schedule
   switches, and the reprocess request, which discards derived answers so they are
   worked out again. Nothing on the surface edits route data, in this service or
   at the source.
 - The browser UI renders a stored source stage on a map, is reachable only by
-  the configured Tailnet identity, and offers no editing affordance.
+  the configured identity, and offers no editing affordance.
 - Stage geometry is cached locally and rewritten only when a stage's content
   hash changes, so an unchanged library does not rewrite the cache on every run.
 - Losing the geometry cache degrades only the map view; it cannot affect sync

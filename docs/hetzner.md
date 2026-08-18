@@ -23,12 +23,20 @@ flowchart LR
 ```
 
 This is the same boundary the other host guides describe, and it is the reason
-the application trusts its identity header at all. On a VM with a public IP it
-deserves extra care: the container must publish to `127.0.0.1` only, never to
-`0.0.0.0`. Confirm it after every start with `ss -tlnp`. Do not use Tailscale
-Funnel, and do not put a general-purpose reverse proxy in front of the service —
-anything that forwards a client-supplied `Tailscale-User-Login` hands over the
-entire API.
+the listener stays private at all. On a VM with a public IP it deserves extra
+care: the container must publish to `127.0.0.1` only, never to `0.0.0.0`.
+Confirm it after every start with `ss -tlnp`. Do not use Tailscale Funnel, and
+do not put a general-purpose reverse proxy in front of the service. The
+application authenticates every request by verifying a Cloudflare Access
+assertion, so a proxy cannot hand over the API by forwarding a header — but it
+can still expose an unauthenticated listener to the Internet.
+
+Reaching the service from outside the Tailnet has one supported form, described
+in [the Cloudflare Access guide](cloudflare-access.md). It satisfies the rule
+above rather than bending it: the proxy's origin is the Tailscale Service name,
+so Tailscale Serve stays in the path and strips the client-supplied header, and
+the application independently verifies a signed Cloudflare Access assertion. Any
+other proxy, or that same proxy pointed at `127.0.0.1`, hands over the API.
 
 ## Prepare the host
 

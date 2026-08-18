@@ -17,10 +17,11 @@ flowchart LR
 ```
 
 The container never exposes a LAN or Internet port. Tailscale Serve terminates
-HTTPS, removes any incoming identity headers, then supplies
-`Tailscale-User-Login` for private Tailnet traffic. The application accepts
-only the configured login. Keep Docker's host publication loopback-only: it is
-the precondition that makes the identity header trustworthy.
+HTTPS and forwards to the container over loopback; `cloudflared` reaches Serve
+by Tailscale Service name. The application accepts one identity, a Cloudflare
+Access assertion it verifies itself, and reads no identity header. Keep Docker's
+host publication loopback-only: it is what keeps the listener reachable only
+through Serve.
 
 Do not use Tailscale Funnel for this service. Wahoo does not connect to the Pi:
 the browser follows Wahoo's authorization redirect back to the Tailnet URL

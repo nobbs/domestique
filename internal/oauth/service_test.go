@@ -100,23 +100,23 @@ type fakeStateStore struct {
 
 func (s *fakeStateStore) BeginAuthorization(
 	_ context.Context,
-	targetID, tailnetUserLogin string,
+	targetID, callerLogin string,
 	stateDigest []byte,
 	expiresAt time.Time,
 ) error {
 	s.digest = append([]byte(nil), stateDigest...)
 	s.targetID = targetID
-	s.caller = tailnetUserLogin
+	s.caller = callerLogin
 	s.expiresAt = expiresAt
 
 	return nil
 }
 
-func (s *fakeStateStore) ConsumeAuthorization(_ context.Context, tailnetUserLogin string, stateDigest []byte) (string, error) {
+func (s *fakeStateStore) ConsumeAuthorization(_ context.Context, callerLogin string, stateDigest []byte) (string, error) {
 	if s.used || !s.expiresAt.After(time.Now()) {
 		return "", errors.New("state was unavailable")
 	}
-	if tailnetUserLogin != s.caller || !bytes.Equal(stateDigest, s.digest) {
+	if callerLogin != s.caller || !bytes.Equal(stateDigest, s.digest) {
 		return "", errors.New("state did not match")
 	}
 	s.used = true

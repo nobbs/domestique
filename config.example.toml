@@ -4,8 +4,20 @@
 [http]
 listen_address = ":8080"
 
-[access]
-tailnet_user_login = "you@example.ts.net"
+# Cloudflare Access is the only way in. Every request must carry an assertion
+# this service can verify, including requests that reach Tailscale Serve from
+# inside the Tailnet. The section is required in full: a service that cannot
+# verify an assertion cannot authenticate anyone, so an incomplete section is
+# refused at startup rather than left answering every request with a 401.
+#
+# None of these is a secret. The team domain and the audience tag are public
+# identifiers, and verification uses Cloudflare's published signing keys. The
+# audience tag is what confines an assertion to this one application: without
+# it, a token minted for any other application of the same team would verify.
+[access.cloudflare]
+team_domain = "yourteam.cloudflareaccess.com"
+application_aud = "the AUD tag of the Access application"
+allowed_email = "you@example.com"
 
 [state]
 database_path = "/var/lib/domestique/state.db"
@@ -21,7 +33,11 @@ api_base_url = "https://api.sandbox.wahooligan.com"
 oauth_base_url = "https://api.sandbox.wahooligan.com"
 client_id = "replace-with-client-id"
 client_secret_file = "/run/secrets/wahoo_client_secret"
-redirect_url = "https://domestique.fluffy-sargas.ts.net/oauth/wahoo/callback"
+# Must be the URL a browser returns to after authorising Wahoo, and must match
+# the callback registered with Wahoo. Use the public hostname when the
+# Cloudflare path is deployed, because the redirect lands in an ordinary browser
+# that may not be on the Tailnet; use the Tailnet URL otherwise.
+redirect_url = "https://domestique.example.com/oauth/wahoo/callback"
 
 [[wahoo.targets]]
 id = "rider-a"

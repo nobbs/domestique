@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/nobbs/domestique/internal/cfaccess"
 	"github.com/nobbs/domestique/internal/config"
 	"github.com/nobbs/domestique/internal/elevation"
 	"github.com/nobbs/domestique/internal/fit"
@@ -113,11 +114,32 @@ func run(ctx context.Context) error {
 	}
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	// Cloudflare Access is the only gate, so this is not conditional: a service
+	// that cannot verify an assertion has no way to authenticate anyone.
+	verifier, err := cfaccess.New(&cfaccess.Options{
+		TeamDomain: settings.Access.Cloudflare.TeamDomain,
+		Audience:   settings.Access.Cloudflare.ApplicationAUD,
+	})
+	if err != nil {
+		return fmt.Errorf("configuring Cloudflare Access verification: %w", err)
+	}
+	accessVerifier := httpapi.AccessVerifierFunc(
+		func(ctx context.Context, assertion string) (string, error) {
+			identity, identityErr := verifier.Verify(ctx, assertion)
+			if identityErr != nil {
+				return "", identityErr //nolint:wrapcheck // the gate discards the detail rather than reflecting it
+			}
+
+			return identity.Email, nil
+		},
+	)
+
 	handler, err := httpapi.New(
 		&httpapi.Options{
-			TailnetUserLogin: settings.Access.TailnetUserLogin,
-			TargetIDs:        targetIDs,
-			TileStyleURL:     settings.WebUI.TileStyleURL,
+			TargetIDs:      targetIDs,
+			TileStyleURL:   settings.WebUI.TileStyleURL,
+			AccessVerifier: accessVerifier,
+			AccessEmail:    settings.Access.Cloudflare.AllowedEmail,
 		},
 		oauthService,
 		store,

@@ -299,8 +299,10 @@ func writeValidConfiguration(t *testing.T, directory string) (configPath string,
 [http]
 listen_address = ":8080"
 
-[access]
-tailnet_user_login = "rider@example.ts.net"
+[access.cloudflare]
+team_domain = "example.cloudflareaccess.com"
+application_aud = "aud-tag"
+allowed_email = "rider@example.test"
 
 [state]
 database_path = %q
@@ -414,4 +416,65 @@ func removeConfigurationLine(t *testing.T, path, prefix string) {
 
 func sameTargets(left, right []Target) bool {
 	return slices.Equal(left, right)
+}
+
+// Cloudflare Access is the only gate this service has. A configuration that
+// cannot verify an assertion cannot authenticate anyone, so it is refused at
+// startup rather than left to answer every request with a 401.
+func TestLoadRequiresCloudflareAccess(t *testing.T) {
+	configPath, _ := writeValidConfiguration(t, t.TempDir())
+	replaceInFile(t, configPath, `[access.cloudflare]
+team_domain = "example.cloudflareaccess.com"
+application_aud = "aud-tag"
+allowed_email = "rider@example.test"
+`, "")
+	t.Setenv(configFileEnv, configPath)
+
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "access.cloudflare is required") {
+		t.Fatalf("Load() error = %v, want the section to be required", err)
+	}
+}
+
+func TestLoadReadsCloudflareAccess(t *testing.T) {
+	configPath, _ := writeValidConfiguration(t, t.TempDir())
+	t.Setenv(configFileEnv, configPath)
+
+	settings, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if got, want := settings.Access.Cloudflare.TeamDomain, "example.cloudflareaccess.com"; got != want {
+		t.Errorf("TeamDomain = %q, want %q", got, want)
+	}
+	if got, want := settings.Access.Cloudflare.ApplicationAUD, "aud-tag"; got != want {
+		t.Errorf("ApplicationAUD = %q, want %q", got, want)
+	}
+	if got, want := settings.Access.Cloudflare.AllowedEmail, "rider@example.test"; got != want {
+		t.Errorf("AllowedEmail = %q, want %q", got, want)
+	}
+}
+
+// Each value carries its own weight: without the audience tag an assertion
+// minted for any other application of the same team would verify, and without
+// the allowed address any member of the team would be let in.
+func TestLoadRejectsPartialCloudflareAccess(t *testing.T) {
+	cases := map[string]string{
+		"missing team domain": "team_domain = \"example.cloudflareaccess.com\"\n",
+		"missing audience":    "application_aud = \"aud-tag\"\n",
+		"missing email":       "allowed_email = \"rider@example.test\"\n",
+	}
+
+	for name, line := range cases {
+		t.Run(name, func(t *testing.T) {
+			configPath, _ := writeValidConfiguration(t, t.TempDir())
+			replaceInFile(t, configPath, line, "")
+			t.Setenv(configFileEnv, configPath)
+
+			_, err := Load()
+			if err == nil || !strings.Contains(err.Error(), "access.cloudflare is required") {
+				t.Fatalf("Load() error = %v, want rejection of the partial section", err)
+			}
+		})
+	}
 }

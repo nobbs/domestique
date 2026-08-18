@@ -33,8 +33,10 @@ The following is safe to commit:
 [http]
 listen_address = ":8080"
 
-[access]
-tailnet_user_login = "you@example.ts.net"
+[access.cloudflare]
+team_domain = "yourteam.cloudflareaccess.com"
+application_aud = "the AUD tag of the Access application"
+allowed_email = "you@example.com"
 
 [state]
 database_path = "/var/lib/domestique/state.db"
@@ -148,8 +150,21 @@ application dependency.
 - `http.listen_address` is required. Docker maps the container port to the
   Tailnet host's `127.0.0.1` only; the application must not use the address itself as
   evidence of Tailnet identity.
-- `access.tailnet_user_login` is required. It is the sole Tailnet login allowed
-  to use normal or OAuth endpoints.
+- `access.cloudflare` is required in full: `team_domain`, `application_aud`, and
+  `allowed_email` must all be present. It is the only gate the service has, so a
+  missing or partly filled section is a startup error rather than a service that
+  answers every request with a 401. None of the three is a secret — the team
+  domain and the audience tag are public identifiers, and verification uses
+  Cloudflare's published signing keys — so they are ordinary configuration
+  values rather than secret files.
+- `access.cloudflare.allowed_email` is the sole identity allowed to use normal or
+  OAuth endpoints, and is the principal every authenticated request resolves to.
+  The configured spelling is what reaches the OAuth service, so a flow begun by
+  one request stays consumable by the next even if Access varies the case of the
+  asserted address.
+  `application_aud` is what confines an assertion to this one application:
+  without it, a token minted for any other application of the same Cloudflare
+  team would verify against the same key.
 - `state.database_path` is required and must reside on the persistent Docker
   volume.
 - `veloplanner.base_url` is a required absolute HTTPS URL. The authenticated
