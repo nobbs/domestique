@@ -180,8 +180,20 @@ Then:
      not transcribed by hand either.
 3. **Fetch the connector credentials.** `tunnel_secret` is intentionally left
    unset in Terraform, so Cloudflare generates it and it never enters the state
-   file. Download the credentials JSON once from Zero Trust → Networks →
-   Tunnels.
+   file. The dashboard offers no download for it either — a locally configured
+   tunnel has no *Configure* tab, only a *Migrate* one — so ask `cloudflared`
+   for it, which is the one path that writes the credentials file directly:
+
+   ```sh
+   # Once per host, if there is no ~/.cloudflared/cert.pem yet.
+   cloudflared tunnel login
+   cloudflared tunnel token --cred-file /etc/cloudflared/<TUNNEL_ID>.json <TUNNEL_ID>
+   ```
+
+   That page's **Start migration** button is not the way in, and must not be
+   pressed: it is irreversible, and it moves the ingress rules to dashboard
+   management. The ingress is what names `svc:domestique`, so migrating it
+   would take the load-bearing line out of this repository.
 4. **Deploy the connector.** Copy
    [`cloudflared.example.yml`](cloudflared.example.yml) to
    `./cloudflared/config.yml`, fill in the tunnel ID, and place the credentials
