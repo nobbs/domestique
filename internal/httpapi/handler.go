@@ -78,6 +78,7 @@ type State interface {
 	StageSurface(ctx context.Context, routeID int64, stageOrder int, contentHash string) (json.RawMessage, float64, bool, error)
 	LastSyncRun(ctx context.Context) (completedAt time.Time, outcome, detail string, sourceStages, created, updated, deleted int, found bool, err error)
 	ForEachPhaseRun(ctx context.Context, visit func(phase string, completedAt time.Time, outcome, detail string, sourceStages, created, updated, deleted int) error) error
+	SurfaceCoverage(ctx context.Context) (classified, total int, err error)
 	SyncSchedule(ctx context.Context) (source, targets bool, err error)
 	SetSyncSchedule(ctx context.Context, source, targets bool) error
 	RequestStageReprocess(ctx context.Context, routeID int64, stageOrder int) (found bool, err error)

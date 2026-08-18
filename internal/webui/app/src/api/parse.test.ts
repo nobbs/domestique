@@ -177,6 +177,7 @@ describe("parseStatus", () => {
         deleted: 0,
         schedule: { source: true, targets: true },
         phases: {},
+        surface: { classified: 0, total: 0 },
       },
     });
 
@@ -198,6 +199,7 @@ describe("parseStatus", () => {
         deleted: 0,
         schedule: { source: true, targets: true },
         phases: {},
+        surface: { classified: 0, total: 0 },
       },
     });
 
@@ -214,6 +216,7 @@ describe("parseStatus", () => {
         created: 0,
         updated: 0,
         deleted: 0,
+        surface: { classified: 1, total: 3 },
         schedule: { source: true, targets: false },
         phases: {
           source: {
@@ -254,6 +257,7 @@ describe("parseStatus", () => {
         created: 0,
         updated: 0,
         deleted: 0,
+        surface: { classified: 3, total: 3 },
         schedule: { source: true, targets: true },
         phases: {
           source: {
@@ -286,6 +290,7 @@ describe("parseStatus", () => {
         deleted: 0,
         schedule,
         phases: {},
+        surface: { classified: 0, total: 0 },
       },
     });
 

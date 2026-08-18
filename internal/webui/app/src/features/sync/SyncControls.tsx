@@ -82,6 +82,18 @@ export function SyncControls() {
       <h2 className="sync-controls__heading" id="sync-controls-heading">
         Synchronisation
       </h2>
+      {/*
+       * Classification is enrichment: it never fails a run, so a stage the
+       * endpoint keeps refusing is otherwise indistinguishable from one that has
+       * not come up yet. The count is the only place that difference shows.
+       */}
+      {data.sync.surface.total > 0 && data.sync.surface.classified < data.sync.surface.total ? (
+        <p className="sync-controls__coverage">
+          Surface classified for {data.sync.surface.classified} of {data.sync.surface.total}{" "}
+          {data.sync.surface.total === 1 ? "stage" : "stages"}. Each unclassified stage is tried
+          again after every read.
+        </p>
+      ) : null}
       <ul className="sync-controls__phases">
         {SYNC_PHASES.map((phase) => {
           const enabled = data.sync.schedule[phase];

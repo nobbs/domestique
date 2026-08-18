@@ -489,14 +489,19 @@ type fakeAnnotator struct {
 	createdOnEntry int
 }
 
-func (a *fakeAnnotator) Annotate(_ context.Context, stages []route.Stage) error {
+func (a *fakeAnnotator) Annotate(
+	_ context.Context, stages []route.Stage,
+) (classified, failed int, err error) {
 	if a.observe != nil {
 		a.observe()
 	}
 	a.calls++
 	a.stages = append([]route.Stage(nil), stages...)
+	if a.err != nil {
+		return 0, len(stages), a.err
+	}
 
-	return a.err
+	return len(stages), 0, nil
 }
 
 // exportedElevation is the elevation exportProcessor writes, standing in for the

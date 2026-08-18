@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sort"
 	"strconv"
 	"sync/atomic"
@@ -121,8 +122,12 @@ type Target interface {
 // Annotator enriches the stored inventory with the surface classification of the
 // ground each stage covers. It is optional, and deliberately narrow: whatever it
 // learns it records itself, so synchronization never has to carry it.
+//
+// It reports counts rather than nothing, because a pass that classified nothing
+// and a pass that had nothing to classify look identical from the outside, and
+// an operator wondering why a route has no surface deserves the difference.
 type Annotator interface {
-	Annotate(ctx context.Context, stages []route.Stage) error
+	Annotate(ctx context.Context, stages []route.Stage) (classified, failed int, err error)
 }
 
 // State owns the minimum durable state operations required by synchronization.
@@ -329,10 +334,29 @@ func (s *Service) AnnotateStored(ctx context.Context) {
 	}
 	stages, err := s.state.TrustedInventory(ctx)
 	if err != nil {
+		slog.Warn("surface classification skipped", "reason", "state")
+
 		return
 	}
-	//nolint:errcheck // Enrichment deliberately cannot fail a run; see above.
-	_ = s.annotator.Annotate(ctx, stages)
+	classified, failed, err := s.annotator.Annotate(ctx, stages)
+	if failed == 0 && err == nil {
+		return
+	}
+	// The one place this pass is allowed to be heard. It cannot fail a run and it
+	// is not worth an alert, but a stage that fails every pass is invisible
+	// otherwise: it looks exactly like a stage nobody has asked about. Counts and
+	// whether the pass ran to the end — no stage names, no geometry, and nothing
+	// the endpoint said.
+	reason := "stage"
+	if err != nil {
+		reason = "stopped_early"
+	}
+	slog.Warn(
+		"surface classification incomplete",
+		"classified", classified,
+		"failed", failed,
+		"reason", reason,
+	)
 }
 
 // exportProfiles returns the inventory carrying the elevation profile that is

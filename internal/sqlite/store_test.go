@@ -600,6 +600,45 @@ func TestStoreRefusesToReprocessAnUnknownStage(t *testing.T) {
 	}
 }
 
+// A classification measured against a shape the stage no longer has describes a
+// line the map cannot draw, so it does not count as classified.
+func TestStoreCountsOnlyClassificationsOfTheCurrentGeometry(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	geometry := []route.Point{{Longitude: 8.4, Latitude: 49.0}, {Longitude: 8.5, Latitude: 49.2}}
+	first := storeTestStageWithGeometry(t, 7, 1, "revision", "hash-a", "Alpine loop", "Descent", geometry)
+	second := storeTestStageWithGeometry(t, 8, 1, "revision", "hash-b", "Coast road", "Return", geometry)
+	if err := store.StoreTrustedInventory(t.Context(), []route.Stage{first, second}); err != nil {
+		t.Fatalf("StoreTrustedInventory() error = %v", err)
+	}
+
+	classified, total, err := store.SurfaceCoverage(t.Context())
+	if err != nil {
+		t.Fatalf("SurfaceCoverage() error = %v", err)
+	}
+	if classified != 0 || total != 2 {
+		t.Fatalf("coverage = %d/%d, want 0/2 before anything is classified", classified, total)
+	}
+
+	if currentErr := store.StoreStageSurface(
+		t.Context(), 7, 1, "hash-a", []byte(`[{"kind":"asphalt","start_index":0,"end_index":1}]`), 100,
+	); currentErr != nil {
+		t.Fatalf("StoreStageSurface() error = %v", currentErr)
+	}
+	if staleErr := store.StoreStageSurface(
+		t.Context(), 8, 1, "an-earlier-shape", []byte(`[{"kind":"gravel","start_index":0,"end_index":1}]`), 100,
+	); staleErr != nil {
+		t.Fatalf("StoreStageSurface() error = %v", staleErr)
+	}
+
+	classified, total, err = store.SurfaceCoverage(t.Context())
+	if err != nil {
+		t.Fatalf("SurfaceCoverage() error = %v", err)
+	}
+	if classified != 1 || total != 2 {
+		t.Errorf("coverage = %d/%d, want 1/2 — the stale classification does not count", classified, total)
+	}
+}
+
 // Both halves are on until an operator says otherwise, which is what every
 // deployment did before the switches existed.
 func TestStoreSchedulesBothPhasesUntilChanged(t *testing.T) {

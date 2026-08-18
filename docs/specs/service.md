@@ -138,8 +138,9 @@ The read-only JSON surface is deliberately small:
 
 - `GET /healthz` reports local process health.
 - `GET /v1/status` reports current configuration readiness, last sync outcome,
-  aggregate counts, target authorisation state, the two schedule switches, and
-  the last run of each half.
+  aggregate counts, target authorisation state, the two schedule switches, the
+  last run of each half, and how much of the library carries a current surface
+  classification.
 - `GET /v1/routes` lists known source routes and stages with their titles and
   aggregate geometry facts.
 - `GET /v1/routes/{source-route-id}/stages/{stage}` returns stored route

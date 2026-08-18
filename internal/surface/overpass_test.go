@@ -200,8 +200,104 @@ func TestOverpassWaysReportsPersistentRateLimiting(t *testing.T) {
 	if !errors.Is(err, ErrRateLimited) {
 		t.Fatalf("Ways() error = %v, want ErrRateLimited", err)
 	}
-	if requests != 2 {
-		t.Errorf("request count = %d, want the endpoint left alone after the retry", requests)
+	if requests != busyAttempts {
+		t.Errorf("request count = %d, want %d before giving up", requests, busyAttempts)
+	}
+}
+
+// A refusal is usually a moment's contention on a shared server, and the query
+// that was refused is answerable a minute later. Giving up on the first retry
+// left a long stage — which is only classified once every one of its chunks
+// lands — failing indefinitely.
+func TestOverpassWaysRetriesARefusedQueryUntilItLands(t *testing.T) {
+	var requests int
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		requests++
+		if requests < busyAttempts {
+			writer.WriteHeader(http.StatusGatewayTimeout)
+
+			return
+		}
+		writeOverpass(t, writer, `{"elements":[
+			{"type":"way","id":10,"tags":{"highway":"residential","surface":"asphalt"},
+			 "geometry":[{"lat":49.0,"lon":8.0},{"lat":49.001,"lon":8.0}]}
+		]}`)
+	}))
+	defer server.Close()
+
+	client := newTestOverpass(t, server)
+	var pauses []time.Duration
+	client.wait = func(_ context.Context, pause time.Duration) error {
+		pauses = append(pauses, pause)
+
+		return nil
+	}
+
+	ways, err := client.Ways(t.Context(), metreRoute(0, 200, 50))
+	if err != nil {
+		t.Fatalf("Ways() error = %v", err)
+	}
+	if got, want := len(ways), 1; got != want {
+		t.Errorf("ways = %d, want %d", got, want)
+	}
+	// Each refusal waits longer than the last, so a saturated endpoint is asked
+	// less often rather than more.
+	if len(pauses) < 2 || pauses[1] <= pauses[0] {
+		t.Errorf("pauses = %v, want each one longer than the last", pauses)
+	}
+}
+
+// A wait the endpoint asked for is taken as given, including when it happens to
+// name the same interval this client would have chosen on its own.
+func TestOverpassHonoursTheWaitTheEndpointAsksFor(t *testing.T) {
+	for _, seconds := range []int{5, int(rateLimitPause / time.Second)} {
+		var requests int
+		server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+			requests++
+			writer.Header().Set("Retry-After", strconv.Itoa(seconds))
+			writer.WriteHeader(http.StatusTooManyRequests)
+		}))
+
+		client := newTestOverpass(t, server)
+		var pauses []time.Duration
+		client.wait = func(_ context.Context, pause time.Duration) error {
+			pauses = append(pauses, pause)
+
+			return nil
+		}
+		if _, err := client.Ways(t.Context(), metreRoute(0, 200, 50)); !errors.Is(err, ErrRateLimited) {
+			t.Fatalf("Ways() error = %v, want ErrRateLimited", err)
+		}
+		server.Close()
+		for _, pause := range pauses {
+			if pause != time.Duration(seconds)*time.Second {
+				t.Errorf("pause = %v, want the %ds the endpoint asked for", pause, seconds)
+			}
+		}
+	}
+}
+
+func TestOverpassChoosesAGrowingPauseWhenTheEndpointNamesNone(t *testing.T) {
+	var requests int
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		requests++
+		writer.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer server.Close()
+
+	client := newTestOverpass(t, server)
+	var pauses []time.Duration
+	client.wait = func(_ context.Context, pause time.Duration) error {
+		pauses = append(pauses, pause)
+
+		return nil
+	}
+
+	if _, err := client.Ways(t.Context(), metreRoute(0, 200, 50)); !errors.Is(err, ErrRateLimited) {
+		t.Fatalf("Ways() error = %v, want ErrRateLimited", err)
+	}
+	if len(pauses) < 2 || pauses[1] <= pauses[0] {
+		t.Errorf("pauses = %v, want each one longer than the last", pauses)
 	}
 }
 
@@ -317,9 +413,9 @@ func TestRetryAfterFallsBackToTheDocumentedPause(t *testing.T) {
 	}{
 		{name: "an advertised pause is honoured", header: "12", want: 12 * time.Second},
 		{name: "a padded value is still read", header: " 4 ", want: 4 * time.Second},
-		{name: "no header falls back", header: "", want: rateLimitPause},
-		{name: "an http date falls back", header: "Wed, 21 Oct 2026 07:28:00 GMT", want: rateLimitPause},
-		{name: "zero falls back", header: "0", want: rateLimitPause},
+		{name: "no header is no answer", header: "", want: 0},
+		{name: "an http date is no answer", header: "Wed, 21 Oct 2026 07:28:00 GMT", want: 0},
+		{name: "zero is no answer", header: "0", want: 0},
 		{name: "an unreasonable wait is capped", header: "86400", want: 2 * rateLimitPause},
 	}
 

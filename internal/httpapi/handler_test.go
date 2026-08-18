@@ -520,6 +520,29 @@ func TestHandlerReportsTheScheduleAndEachPhaseInStatus(t *testing.T) {
 	}
 }
 
+// A stage waiting its turn and a stage that fails every pass look identical on
+// the map. The counts are what tell them apart.
+func TestHandlerReportsHowMuchOfTheLibraryIsClassified(t *testing.T) {
+	state := &fakeState{surfaceClassified: 1, surfaceTotal: 3}
+	handler := newHandler(t, &fakeOAuth{}, state)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/status"))
+	if got, want := response.Code, http.StatusOK; got != want {
+		t.Fatalf("status = %d, want %d", got, want)
+	}
+	var view statusView
+	if err := json.Unmarshal(response.Body.Bytes(), &view); err != nil {
+		t.Fatalf("decoding status = %v", err)
+	}
+	if got, want := view.Sync.Surface.Classified, 1; got != want {
+		t.Errorf("classified = %d, want %d", got, want)
+	}
+	if got, want := view.Sync.Surface.Total, 3; got != want {
+		t.Errorf("total = %d, want %d", got, want)
+	}
+}
+
 func TestHandlerReportsUnreadableScheduleAsUnavailable(t *testing.T) {
 	state := &fakeState{scheduleErr: errors.New("state unavailable")}
 	handler := newHandler(t, &fakeOAuth{}, state)
@@ -685,20 +708,23 @@ type phaseRun struct {
 }
 
 type fakeState struct {
-	surfaceErr      error
-	phaseRunErr     error
-	scheduleErr     error
-	reprocessErr    error
-	reprocessed     [][2]int64
-	surfaceHash     string
-	coordinates     json.RawMessage
-	surfaceRanges   json.RawMessage
-	summaries       []route.Summary
-	phaseRuns       []phaseRun
-	surfaceMetres   float64
-	scheduleWrites  int
-	scheduleSource  bool
-	scheduleTargets bool
+	surfaceErr        error
+	phaseRunErr       error
+	scheduleErr       error
+	coverageErr       error
+	reprocessErr      error
+	reprocessed       [][2]int64
+	surfaceHash       string
+	coordinates       json.RawMessage
+	surfaceRanges     json.RawMessage
+	summaries         []route.Summary
+	phaseRuns         []phaseRun
+	surfaceMetres     float64
+	scheduleWrites    int
+	surfaceClassified int
+	surfaceTotal      int
+	scheduleSource    bool
+	scheduleTargets   bool
 }
 
 func (*fakeState) ForEachTarget(_ context.Context, visit func(string, string) error) error {
@@ -793,6 +819,14 @@ func (s *fakeState) RequestStageReprocess(_ context.Context, routeID int64, stag
 	}
 
 	return false, nil
+}
+
+func (s *fakeState) SurfaceCoverage(context.Context) (classified, total int, err error) {
+	if s.coverageErr != nil {
+		return 0, 0, s.coverageErr
+	}
+
+	return s.surfaceClassified, s.surfaceTotal, nil
 }
 
 func (s *fakeState) SyncSchedule(context.Context) (source, targets bool, err error) {
