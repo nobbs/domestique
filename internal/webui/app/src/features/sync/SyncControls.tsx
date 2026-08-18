@@ -96,12 +96,19 @@ export function SyncControls() {
                 </span>
               </div>
               <div className="sync-controls__actions">
+                {/*
+                 * Both rows carry the same two words, so the visible text alone
+                 * names neither half. The accessible name says which one, since
+                 * a reader arriving at the second checkbox has no row above it
+                 * to tell them apart.
+                 */}
                 <label className="sync-controls__switch">
                   <input
                     type="checkbox"
                     checked={enabled}
                     disabled={schedule.isPending}
                     onChange={() => toggle(phase)}
+                    aria-label={`Schedule: ${PHASE_LABELS[phase].title}`}
                   />
                   <span>{enabled ? "Scheduled" : "Paused"}</span>
                 </label>
@@ -110,6 +117,7 @@ export function SyncControls() {
                   className="sync-controls__button"
                   disabled={run.isPending}
                   onClick={() => run.mutate(phase)}
+                  aria-label={`Run now: ${PHASE_LABELS[phase].title}`}
                 >
                   Run now
                 </button>
@@ -118,13 +126,18 @@ export function SyncControls() {
           );
         })}
       </ul>
+      {/*
+       * Announced rather than waited for: the operator has just pressed
+       * something and nothing happened, which is the case a polite live region
+       * is least suited to.
+       */}
       {schedule.isError ? (
-        <p className="sync-controls__error" role="status">
+        <p className="sync-controls__error" role="alert">
           The schedule was not changed. It is still what it was.
         </p>
       ) : null}
       {run.isError ? (
-        <p className="sync-controls__error" role="status">
+        <p className="sync-controls__error" role="alert">
           {run.error instanceof Error && run.error.message
             ? run.error.message
             : "That run could not be started."}

@@ -50,8 +50,16 @@ describe("SyncControls", () => {
 
     expect(screen.getByText("Read from VeloPlanner")).toBeInTheDocument();
     expect(screen.getByText("Write to Wahoo")).toBeInTheDocument();
-    expect(screen.getAllByRole("checkbox")).toHaveLength(2);
-    expect(screen.getAllByRole("button", { name: "Run now" })).toHaveLength(2);
+    // Each control names its own half: the visible words are the same in both
+    // rows, so the accessible name is what tells them apart.
+    expect(
+      screen.getByRole("checkbox", { name: "Schedule: Read from VeloPlanner" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Schedule: Write to Wahoo" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Run now: Read from VeloPlanner" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Run now: Write to Wahoo" })).toBeInTheDocument();
   });
 
   // The service refuses a half-named schedule, so a change to one switch has to
@@ -64,7 +72,7 @@ describe("SyncControls", () => {
     vi.stubGlobal("fetch", fetchMock);
     renderControls(status({ schedule: { source: true, targets: true } }));
 
-    await userEvent.click(screen.getAllByRole("checkbox")[1] as HTMLElement);
+    await userEvent.click(screen.getByRole("checkbox", { name: "Schedule: Write to Wahoo" }));
 
     await waitFor(() =>
       expect(fetchMock.mock.calls.some((call) => call[0] === "/v1/sync/schedule")).toBe(true),
@@ -86,9 +94,9 @@ describe("SyncControls", () => {
     vi.stubGlobal("fetch", fetchMock);
     renderControls(status({ schedule: { source: false, targets: false } }));
 
-    const [sourceButton] = screen.getAllByRole("button", { name: "Run now" });
+    const sourceButton = screen.getByRole("button", { name: /Read from VeloPlanner/ });
     expect(sourceButton).toBeEnabled();
-    await userEvent.click(sourceButton as HTMLElement);
+    await userEvent.click(sourceButton);
 
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith("/v1/sync/source", expect.anything()),
@@ -154,8 +162,12 @@ describe("SyncControls", () => {
     );
     renderControls();
 
-    await userEvent.click(screen.getAllByRole("button", { name: "Run now" })[0] as HTMLElement);
+    await userEvent.click(screen.getByRole("button", { name: "Run now: Read from VeloPlanner" }));
 
-    expect(await screen.findByText("a synchronization is already running")).toBeInTheDocument();
+    // An error the operator caused by pressing something is announced, not
+    // queued behind whatever else a screen reader is saying.
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "a synchronization is already running",
+    );
   });
 });
