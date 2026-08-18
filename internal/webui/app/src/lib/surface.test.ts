@@ -2,10 +2,13 @@ import { describe, expect, it } from "vitest";
 import type { Position, SurfaceKind, SurfaceRange } from "../api/types";
 import { SURFACE_KINDS } from "../api/types";
 import {
+  routeLinesWithin,
   SURFACE_STYLES,
   summariseSurface,
+  surfaceBandsWithin,
   surfaceKindAt,
   surfaceLines,
+  surfaceLinesWithin,
   swatchBackground,
 } from "./surface";
 
@@ -115,6 +118,86 @@ describe("surfaceKindAt", () => {
 
   it("holds the last class past the end rather than blanking the readout", () => {
     expect(surfaceKindAt(summary, summary.totalMetres + 500)).toBe("gravel");
+  });
+});
+
+describe("surfaceBandsWithin", () => {
+  const summary = summariseSurface(route(5), [range("asphalt", 0, 1), range("gravel", 2, 4)]);
+  if (!summary) {
+    throw new Error("expected a summary");
+  }
+  const quarter = summary.totalMetres / 4;
+
+  // Drawn from its true start a straddling band would run off the left of the
+  // plot, and every class boundary after it would land in the wrong place.
+  it("cuts a band that straddles an edge back to the edge", () => {
+    const bands = surfaceBandsWithin(summary, quarter, quarter * 3);
+
+    expect(bands.map((band) => band.kind)).toEqual(["asphalt", "gravel"]);
+    expect(bands[0]?.startMetres).toBeCloseTo(quarter, 6);
+    expect(bands.at(-1)?.endMetres).toBeCloseTo(quarter * 3, 6);
+  });
+
+  it("drops a band the stretch does not reach at all", () => {
+    const bands = surfaceBandsWithin(summary, quarter * 3, summary.totalMetres);
+
+    expect(bands.map((band) => band.kind)).toEqual(["gravel"]);
+  });
+
+  it("returns nothing for a stretch of no length", () => {
+    expect(surfaceBandsWithin(summary, quarter, quarter)).toEqual([]);
+  });
+});
+
+describe("surfaceLinesWithin", () => {
+  // A gap would break the drawn route, and an overlap would paint one metre of
+  // it twice at two different opacities.
+  it("separates what a window shows from what it does not, with no gap between", () => {
+    const coordinates = route(5);
+    const [gravel] = surfaceLinesWithin(coordinates, [range("gravel", 0, 4)], {
+      startIndex: 1,
+      endIndex: 3,
+    });
+    const inside = gravel?.inside[0] ?? [];
+    const before = gravel?.outside[0] ?? [];
+    const after = gravel?.outside[1] ?? [];
+
+    expect(before.at(-1)).toEqual(inside[0]);
+    expect(inside.at(-1)).toEqual(after[0]);
+    expect(before[0]).toEqual(coordinates[0]);
+    expect(after.at(-1)).toEqual(coordinates[4]);
+  });
+
+  it("leaves nothing outside when there is no window", () => {
+    const slices = surfaceLinesWithin(route(5), [range("gravel", 0, 4)], null);
+
+    expect(slices[0]?.outside).toEqual([]);
+    expect(slices[0]?.inside[0]).toHaveLength(5);
+  });
+
+  it("drops a piece of a single point, which spans no ground", () => {
+    // The window opens on the very last point, so there is nothing inside it.
+    const [gravel] = surfaceLinesWithin(route(5), [range("gravel", 0, 4)], {
+      startIndex: 4,
+      endIndex: 4,
+    });
+
+    expect(gravel?.inside).toEqual([]);
+    expect(gravel?.outside).toHaveLength(1);
+  });
+});
+
+describe("routeLinesWithin", () => {
+  it("splits the whole route the way it splits one class", () => {
+    const coordinates = route(5);
+    const slices = routeLinesWithin(coordinates, { startIndex: 1, endIndex: 3 });
+
+    expect(slices.inside[0]).toEqual(coordinates.slice(1, 4));
+    expect(slices.outside).toHaveLength(2);
+  });
+
+  it("holds the whole route inside when there is no window", () => {
+    expect(routeLinesWithin(route(5), null).inside[0]).toHaveLength(5);
   });
 });
 
