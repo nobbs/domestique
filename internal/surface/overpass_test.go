@@ -509,10 +509,43 @@ func TestOverpassAsksAboutBoundedLengthsOfRoute(t *testing.T) {
 		t.Errorf("queries = %d, want at least %d for fifty kilometres", len(corridors), wantQueries)
 	}
 	for index, commas := range corridors {
-		// Two commas per vertex, plus the one after the radius.
-		if vertices := (commas - 1) / 2; vertices > maximumQueryPoints {
+		// Two commas per vertex; the radius is not followed by one.
+		if vertices := commas / 2; vertices > maximumQueryPoints {
 			t.Errorf("query %d carried %d vertices, want at most %d", index, vertices, maximumQueryPoints)
 		}
+	}
+}
+
+// Vertices are not spread evenly along a route: a town's worth of turns inside
+// one kilometre can outnumber the cap while covering almost no ground, and the
+// distance cuts alone would hand that to one query.
+func TestChunkPointsCapsVerticesWhereTheyBunchUp(t *testing.T) {
+	coordinates := make([][2]float64, 0, 900)
+	// Six hundred points inside the first kilometre, then fifty kilometres with
+	// almost nothing on it.
+	for step := range 600 {
+		coordinates = append(coordinates, [2]float64{float64(step) * 1.6, 0})
+	}
+	for step := range 300 {
+		coordinates = append(coordinates, [2]float64{1000 + float64(step)*170, 0})
+	}
+	points := metrePoints(coordinates)
+
+	chunks := chunkPoints(points, 250, 12000)
+	for index, chunk := range chunks {
+		if len(chunk) > 250 {
+			t.Errorf("chunk[%d] holds %d points, want at most 250", index, len(chunk))
+		}
+		if got := pathMetres(chunk); got > 12001 {
+			t.Errorf("chunk[%d] covers %.1f m, want at most 12000", index, got)
+		}
+	}
+	covered := 0.0
+	for _, chunk := range chunks {
+		covered += pathMetres(chunk)
+	}
+	if got, want := covered, pathMetres(points); math.Abs(got-want) > 1 {
+		t.Errorf("chunks cover %.1f m, want %.1f m", got, want)
 	}
 }
 
@@ -539,6 +572,8 @@ func TestChunkPointsCoversTheWholeRouteWithoutGaps(t *testing.T) {
 		{name: "distance at the cap is one chunk", total: 51, size: 250, span: 5000, wantChunks: 1},
 		{name: "whichever bound is tighter decides", total: 1000, size: 250, span: 5000, wantChunks: 20},
 		{name: "a span too small to split is ignored", total: 100, size: 250, span: 0, wantChunks: 1},
+		// No distance bound is not the same as no bound at all.
+		{name: "the vertex cap holds without a span", total: 600, size: 250, span: 0, wantChunks: 3},
 	}
 
 	for _, test := range tests {

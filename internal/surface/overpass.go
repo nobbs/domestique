@@ -385,7 +385,8 @@ func decodeWays(body []byte) ([]Way, error) {
 
 // chunkPoints splits geometry into runs bounded both by vertex count and by the
 // distance they cover, each run beginning where the last one ended so the
-// queried corridor has no gap at the seam.
+// queried corridor has no gap at the seam. Each bound is applied in turn, so a
+// run answers to both however the vertices happen to be spread.
 //
 // Two bounds because a query is expensive in two different ways. Many vertices
 // cost the endpoint a long polyline to walk against its index; a long corridor
@@ -401,21 +402,28 @@ func decodeWays(body []byte) ([]Way, error) {
 // cut describes the same road the segment already did, and only ever shapes the
 // corridor the query asks about.
 func chunkPoints(points []route.Point, size int, spanMetres float64) [][]route.Point {
-	segments := len(points) - 1
-	if size < 2 || spanMetres <= 0 || segments < 1 {
+	if size < 2 || len(points) < 2 {
 		return [][]route.Point{points}
 	}
 
-	total := pathMetres(points)
-	count := (segments + size - 2) / (size - 1)
-	if total > 0 {
-		count = max(count, int(math.Ceil(total/spanMetres)))
+	bounded := make([][]route.Point, 0, len(points)/size+1)
+	for _, run := range spanChunks(points, spanMetres) {
+		bounded = append(bounded, capPoints(run, size)...)
 	}
-	if count < 2 {
+
+	return bounded
+}
+
+// spanChunks cuts the polyline into runs of at most spanMetres, at even
+// distances. A run of no length, or no bound to apply, is left whole.
+func spanChunks(points []route.Point, spanMetres float64) [][]route.Point {
+	total := pathMetres(points)
+	if spanMetres <= 0 || total <= 0 {
 		return [][]route.Point{points}
 	}
-	if total <= 0 {
-		return countChunks(points, min(count, segments))
+	count := int(math.Ceil(total / spanMetres))
+	if count < 2 {
+		return [][]route.Point{points}
 	}
 
 	chunks := make([][]route.Point, 0, count)
@@ -442,9 +450,22 @@ func chunkPoints(points []route.Point, size int, spanMetres float64) [][]route.P
 			index++
 		}
 	}
-	chunks = append(chunks, append(chunk, points[index:]...))
 
-	return chunks
+	return append(chunks, append(chunk, points[index:]...))
+}
+
+// capPoints splits a run that carries more vertices than one query may.
+//
+// The distance cuts alone cannot promise this: vertices are not spread evenly
+// along a route, and a town's worth of turns inside one kilometre can outnumber
+// the cap while covering almost no ground.
+func capPoints(points []route.Point, size int) [][]route.Point {
+	segments := len(points) - 1
+	if segments < 1 || len(points) <= size {
+		return [][]route.Point{points}
+	}
+
+	return countChunks(points, (segments+size-2)/(size-1))
 }
 
 // countChunks splits by point count alone, for geometry that covers no distance
