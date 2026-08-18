@@ -6,7 +6,7 @@
  */
 
 import { useQuery } from "@tanstack/react-query";
-import { lazy, Suspense, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useMemo, useState } from "react";
 import { Link, useParams } from "react-router";
 import { ApiError } from "../../api/client";
 import { stageGeometryQuery, webUIConfigQuery } from "../../api/queries";
@@ -16,8 +16,8 @@ import { Layout } from "../../components/Layout";
 import { ErrorMessage, LoadingMessage, StatusMessage } from "../../components/StatusMessage";
 import { SurfaceBar } from "../../components/SurfaceBar";
 import { formatAscent, formatDistance, formatGradient } from "../../lib/format";
-import type { Profile } from "../../lib/profile";
-import { buildProfile } from "../../lib/profile";
+import type { DistanceWindow, Profile } from "../../lib/profile";
+import { buildProfile, buildWindowedProfile } from "../../lib/profile";
 import type { SurfaceSummary } from "../../lib/surface";
 import { summariseSurface } from "../../lib/surface";
 import { ReprocessButton } from "./ReprocessButton";
@@ -114,8 +114,13 @@ export function StageDetail() {
  * The hovered position lives here rather than in either view, because the two
  * are one instrument: pointing at the route marks the chart, and scrubbing the
  * chart marks the route. It is a distance in metres from the start of the route
- * — ground rather than a sample index, because an index only means a place to
- * whoever holds that exact array of samples, and the map holds none.
+ * — the one unit that means the same ground to a map, to the whole profile, and
+ * to a chart showing two kilometres of it.
+ *
+ * The zoomed stretch lives here for the same reason, and for one more: the
+ * overview below unmounts the chart when it is collapsed, and a window kept
+ * inside the chart would be destroyed at exactly the moment somebody collapsed
+ * it to see the highlighted map on its own.
  */
 function StageView({
   stage,
@@ -140,8 +145,27 @@ function StageView({
   styleUrl: string;
   back: React.ReactNode;
 }) {
-  const profile = useMemo(() => buildProfile(coordinates), [coordinates]);
+  const routeProfile = useMemo(() => buildProfile(coordinates), [coordinates]);
   const [activeMetres, setActiveMetres] = useState<number | null>(null);
+  const [zoomWindow, setZoomWindow] = useState<DistanceWindow | null>(null);
+
+  // Rebuilt from the original geometry rather than from the last window, so
+  // zooming inside a zoom compounds no rounding error and needs no stack.
+  const windowed = useMemo(
+    () => (zoomWindow ? buildWindowedProfile(coordinates, zoomWindow) : null),
+    [coordinates, zoomWindow],
+  );
+  // A window that built nothing is a slip, not a view: the map must not dim
+  // around a stretch the chart is not showing.
+  const shownWindow = windowed ? zoomWindow : null;
+
+  // The position was chosen against the view being left, so it goes with it.
+  // That leaves the readout showing the new stretch's elevation range, which the
+  // chart's polite live region then announces without being asked.
+  const onZoomChange = useCallback((next: DistanceWindow | null) => {
+    setZoomWindow(next);
+    setActiveMetres(null);
+  }, []);
 
   // A classification that snapped to nothing is left unpainted rather than drawn
   // as unsurveyed from end to end: greying out the whole route to say nothing is
@@ -187,14 +211,14 @@ function StageView({
               bbox={bbox}
               title={stage.title}
               surface={surfaceSummary ? surface?.ranges : undefined}
-              profile={profile}
+              profile={routeProfile}
               activeMetres={activeMetres}
               onActiveChange={setActiveMetres}
             />
           </Suspense>
         </div>
         <ElevationOverview
-          profile={profile}
+          profile={windowed ?? routeProfile}
           title={stage.title}
           surface={surfaceSummary}
           surfaceAbsence={
@@ -204,7 +228,13 @@ function StageView({
           }
           activeMetres={activeMetres}
           onActiveChange={setActiveMetres}
-          hint={`${formatAscent(stage.ascentMetres)} climbing · ${formatGradient(stage.maxGradientPercent)} max`}
+          zoomWindow={shownWindow}
+          onZoomChange={onZoomChange}
+          hint={
+            shownWindow
+              ? `${(shownWindow.startMetres / 1000).toFixed(1)}–${(shownWindow.endMetres / 1000).toFixed(1)} km shown`
+              : `${formatAscent(stage.ascentMetres)} climbing · ${formatGradient(stage.maxGradientPercent)} max`
+          }
         />
       </section>
     </Layout>
@@ -228,6 +258,8 @@ function ElevationOverview({
   hint,
   activeMetres,
   onActiveChange,
+  zoomWindow,
+  onZoomChange,
 }: {
   profile: Profile | null;
   title: string;
@@ -236,6 +268,8 @@ function ElevationOverview({
   hint: string;
   activeMetres: number | null;
   onActiveChange: (metres: number | null) => void;
+  zoomWindow: DistanceWindow | null;
+  onZoomChange: (window: DistanceWindow | null) => void;
 }) {
   const [open, setOpen] = useState(() => {
     try {
@@ -270,7 +304,11 @@ function ElevationOverview({
           />
         </svg>
         <span>Elevation</span>
-        {/* Kept meaningful when closed, so collapsing does not hide the numbers. */}
+        {/*
+         * Kept meaningful when closed, so collapsing does not hide the numbers —
+         * and, while zoomed, so the stretch on show does not become invisible
+         * state the moment the chart holding its way back is folded away.
+         */}
         <span className="elevation-overview__hint">{hint}</span>
       </summary>
       {open ? (
@@ -281,6 +319,8 @@ function ElevationOverview({
             surface={surface}
             activeMetres={activeMetres}
             onActiveChange={onActiveChange}
+            zoomWindow={zoomWindow}
+            onZoomChange={onZoomChange}
           />
           {/*
            * The key sits under the strip it explains, not up beside the title:

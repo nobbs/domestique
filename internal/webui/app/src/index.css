@@ -478,11 +478,27 @@ body {
   padding: 0 1.15rem 0.75rem;
 }
 
-/* Sits over the plot area and carries the pointer and keyboard interaction. */
+/*
+ * Sits over the plot area and carries the pointer and keyboard interaction.
+ *
+ * `touch-action: none` is what makes a finger drawn across the chart select a
+ * stretch rather than scroll the page, and the crosshair is the standing offer
+ * to do so. Selection is off because a drag over a chart should mark ground, not
+ * highlight the readout underneath it — and on iOS a long press over a control
+ * that owns the gesture should not offer to copy the text behind it.
+ */
 .elevation-profile__scrub {
   position: absolute;
   margin-left: 1.15rem;
   touch-action: none;
+  cursor: crosshair;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.elevation-profile__scrub[data-dragging="true"] {
+  cursor: ew-resize;
 }
 
 .elevation-profile__scrub:focus-visible {
@@ -669,6 +685,42 @@ body {
   );
 }
 
+/*
+ * The readout and the way back, together: the window is what changes the meaning
+ * of the numbers beside it, so the control that leaves it belongs in the same
+ * line rather than up beside the title.
+ */
+.elevation-profile__status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.6rem;
+}
+
+/*
+ * Quiet, like the reprocess control: this is a way back, not a call to action,
+ * and it is only on the page while there is somewhere to go back from.
+ */
+.elevation-profile__reset {
+  padding: 0.15rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) - 4px);
+  background: var(--surface);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.elevation-profile__reset:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.elevation-profile__reset-span {
+  font-variant-numeric: tabular-nums;
+}
+
 .elevation-profile__readout {
   margin: 0;
   color: var(--text-muted);
@@ -744,6 +796,24 @@ body {
  */
 .elevation-profile__surface {
   stroke-linecap: butt;
+}
+
+/*
+ * The stretch being chosen, with the rest veiled rather than hidden — the same
+ * treatment the map gives the route outside the window, so both views say one
+ * thing one way. The veil is the page's own surface colour, so it lightens the
+ * ground beneath it instead of tinting it a second hue the bands would have to
+ * compete with.
+ */
+.elevation-profile__veil {
+  fill: var(--surface);
+  opacity: 0.62;
+}
+
+.elevation-profile__selection-edge {
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  stroke-dasharray: 3 3;
 }
 
 /* MapLibre lays out against its container; give it the full pane. */

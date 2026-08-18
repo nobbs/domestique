@@ -1,10 +1,11 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
+import type { UserEvent } from "@testing-library/user-event";
 import userEvent from "@testing-library/user-event";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import type { Position } from "../api/types";
-import type { ProfileSample } from "../lib/profile";
-import { buildProfile } from "../lib/profile";
+import type { DistanceWindow, ProfileSample } from "../lib/profile";
+import { buildProfile, buildWindowedProfile } from "../lib/profile";
 import type { SurfaceSummary } from "../lib/surface";
 import { SURFACE_STYLES, summariseSurface } from "../lib/surface";
 import { ElevationProfile, steadyBands } from "./ElevationProfile";
@@ -65,6 +66,14 @@ function metresAt(pixels: number): number {
   return (pixels / PLOT_WIDTH) * ROUTE_METRES;
 }
 
+async function dragAcross(user: UserEvent, target: Element, from: number, to: number) {
+  await user.pointer([
+    { keys: "[MouseLeft>]", target, coords: { clientX: from, clientY: 20 } },
+    { target, coords: { clientX: to, clientY: 20 } },
+    { keys: "[/MouseLeft]", target, coords: { clientX: to, clientY: 20 } },
+  ]);
+}
+
 /** The chart is controlled, so exercising it needs something to hold the value. */
 function Harness({
   title = "Eich Rundkurs 90",
@@ -82,6 +91,40 @@ function Harness({
       surface={surface}
       activeMetres={activeMetres}
       onActiveChange={setActiveMetres}
+    />
+  );
+}
+
+/**
+ * The chart wired the way the stage page wires it: a window chosen on the chart
+ * comes back as a profile rebuilt over that stretch. Anything less would test
+ * the drag against a chart that never redraws.
+ */
+function ZoomHarness({
+  surface = null,
+  onZoom,
+}: {
+  surface?: SurfaceSummary | null;
+  onZoom?: (window: DistanceWindow | null) => void;
+}) {
+  const coordinates = useMemo(() => climb(), []);
+  const [activeMetres, setActiveMetres] = useState<number | null>(null);
+  const [zoomWindow, setZoomWindow] = useState<DistanceWindow | null>(null);
+  const windowed = zoomWindow ? buildWindowedProfile(coordinates, zoomWindow) : null;
+
+  return (
+    <ElevationProfile
+      profile={windowed ?? buildProfile(coordinates)}
+      title="Eich Rundkurs 90"
+      surface={surface}
+      activeMetres={activeMetres}
+      onActiveChange={setActiveMetres}
+      zoomWindow={windowed ? zoomWindow : null}
+      onZoomChange={(next) => {
+        onZoom?.(next);
+        setZoomWindow(next);
+        setActiveMetres(null);
+      }}
     />
   );
 }
@@ -268,6 +311,254 @@ describe("ElevationProfile", () => {
 
     // 100 m to 295 m over the generated climb.
     expect(screen.getByText(/100–295 m/)).toBeInTheDocument();
+  });
+});
+
+describe("ElevationProfile zooming", () => {
+  it("zooms to the stretch the pointer was dragged across", async () => {
+    const user = userEvent.setup();
+    const onZoom = vi.fn();
+    render(<ZoomHarness onZoom={onZoom} />);
+
+    await dragAcross(user, measured(screen.getByRole("slider")), 20, 120);
+
+    expect(onZoom).toHaveBeenCalledTimes(1);
+    const window = onZoom.mock.calls[0]?.[0] as DistanceWindow;
+    expect(window.startMetres).toBeCloseTo(metresAt(20), 0);
+    expect(window.endMetres).toBeCloseTo(metresAt(120), 0);
+  });
+
+  // A range is the ground between two points, not a direction of travel.
+  it("reads a drag right to left the same as one left to right", async () => {
+    const user = userEvent.setup();
+    const onZoom = vi.fn();
+    render(<ZoomHarness onZoom={onZoom} />);
+
+    await dragAcross(user, measured(screen.getByRole("slider")), 120, 20);
+
+    const window = onZoom.mock.calls[0]?.[0] as DistanceWindow;
+    expect(window.startMetres).toBeCloseTo(metresAt(20), 0);
+    expect(window.endMetres).toBeCloseTo(metresAt(120), 0);
+  });
+
+  it("takes a hand that barely moved as scrubbing, not as a selection", async () => {
+    const user = userEvent.setup();
+    const onZoom = vi.fn();
+    render(<ZoomHarness onZoom={onZoom} />);
+
+    await dragAcross(user, measured(screen.getByRole("slider")), 20, 23);
+
+    expect(onZoom).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: /Whole route/ })).not.toBeInTheDocument();
+  });
+
+  it("zooms by touch as well as by mouse", async () => {
+    const user = userEvent.setup();
+    const onZoom = vi.fn();
+    render(<ZoomHarness onZoom={onZoom} />);
+
+    const scrub = measured(screen.getByRole("slider"));
+    await user.pointer([
+      { keys: "[TouchA>]", target: scrub, coords: { clientX: 30, clientY: 20 } },
+      { pointerName: "TouchA", target: scrub, coords: { clientX: 140, clientY: 20 } },
+      { keys: "[/TouchA]", target: scrub, coords: { clientX: 140, clientY: 20 } },
+    ]);
+
+    const window = onZoom.mock.calls[0]?.[0] as DistanceWindow;
+    expect(window.startMetres).toBeCloseTo(metresAt(30), 0);
+    expect(window.endMetres).toBeCloseTo(metresAt(140), 0);
+  });
+
+  it("shows the stretch under the pointer while it is still being chosen", async () => {
+    const user = userEvent.setup();
+    const { container } = render(<ZoomHarness />);
+    const scrub = measured(screen.getByRole("slider"));
+
+    await user.pointer([
+      { keys: "[MouseLeft>]", target: scrub, coords: { clientX: 20, clientY: 20 } },
+      { target: scrub, coords: { clientX: 120, clientY: 20 } },
+    ]);
+
+    const veils = [...container.querySelectorAll(".elevation-profile__veil")];
+    expect(veils).toHaveLength(2);
+    // Over what is being left behind on either side, and nothing in between.
+    expect(Number(veils[0]?.getAttribute("width"))).toBeCloseTo(20, 0);
+    expect(Number(veils[1]?.getAttribute("x"))).toBeCloseTo(120, 0);
+
+    await user.pointer({ keys: "[/MouseLeft]", target: scrub, coords: { clientX: 120 } });
+    expect(container.querySelector(".elevation-profile__veil")).toBeNull();
+  });
+
+  it("commits nothing when the gesture is cancelled out from under it", () => {
+    const onZoom = vi.fn();
+    const { container } = render(<ZoomHarness onZoom={onZoom} />);
+    const scrub = measured(screen.getByRole("slider"));
+
+    fireEvent.pointerDown(scrub, { pointerId: 1, isPrimary: true, button: 0, clientX: 20 });
+    fireEvent.pointerMove(scrub, { pointerId: 1, clientX: 120 });
+    fireEvent.pointerCancel(scrub, { pointerId: 1 });
+
+    expect(onZoom).not.toHaveBeenCalled();
+    expect(container.querySelector(".elevation-profile__veil")).toBeNull();
+  });
+
+  // The reader asked to look closer at somewhere. The answer to "closer than the
+  // data goes" is the closest the data goes, not nothing at all.
+  it("grows a selection too short to plot rather than refusing it", async () => {
+    const user = userEvent.setup();
+    const onZoom = vi.fn();
+    render(<ZoomHarness onZoom={onZoom} />);
+
+    await dragAcross(user, measured(screen.getByRole("slider")), 20, 28);
+
+    const window = onZoom.mock.calls[0]?.[0] as DistanceWindow;
+    expect(metresAt(28) - metresAt(20)).toBeLessThan(200);
+    expect(window.endMetres - window.startMetres).toBeCloseTo(200, 5);
+    // Grown about the middle of what was actually drawn.
+    expect((window.startMetres + window.endMetres) / 2).toBeCloseTo(metresAt(24), 0);
+  });
+
+  it("offers the way back only once there is somewhere to go back to", async () => {
+    const user = userEvent.setup();
+    render(<ZoomHarness />);
+
+    expect(screen.queryByRole("button", { name: /Whole route/ })).not.toBeInTheDocument();
+
+    await dragAcross(user, measured(screen.getByRole("slider")), 20, 120);
+
+    expect(screen.getByRole("button", { name: /Whole route/ })).toHaveAttribute(
+      "aria-keyshortcuts",
+      "Escape",
+    );
+  });
+
+  it("says which stretch of the route it is showing", async () => {
+    const user = userEvent.setup();
+    render(<ZoomHarness />);
+
+    await dragAcross(user, measured(screen.getByRole("slider")), 20, 120);
+
+    const shown = /0\.5–2\.9 km/;
+    expect(screen.getByRole("button", { name: /Whole route/ })).toHaveAccessibleName(shown);
+    expect(screen.getByRole("slider")).toHaveAccessibleName(shown);
+    expect(screen.getByRole("img")).toHaveAccessibleName(shown);
+    expect(Number(screen.getByRole("slider").getAttribute("aria-valuemin"))).toBeCloseTo(0.5, 5);
+  });
+
+  it("returns to the whole route when the way back is taken", async () => {
+    const user = userEvent.setup();
+    render(<ZoomHarness />);
+    await dragAcross(user, measured(screen.getByRole("slider")), 20, 120);
+
+    await user.click(screen.getByRole("button", { name: /Whole route/ }));
+
+    expect(screen.queryByRole("button", { name: /Whole route/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("slider")).toHaveAttribute("aria-valuemin", "0");
+  });
+
+  // The gesture that zooms is a drag, which leaves focus wherever it began, so
+  // the way out has to work from wherever the reader is.
+  it("returns to the whole route on Escape, from anywhere on the page", async () => {
+    const user = userEvent.setup();
+    render(<ZoomHarness />);
+    await dragAcross(user, measured(screen.getByRole("slider")), 20, 120);
+
+    await user.keyboard("{Escape}");
+
+    expect(screen.queryByRole("button", { name: /Whole route/ })).not.toBeInTheDocument();
+  });
+
+  it("leaves Escape alone while the whole route is on show", async () => {
+    const user = userEvent.setup();
+    const onZoom = vi.fn();
+    render(<ZoomHarness onZoom={onZoom} />);
+
+    await user.keyboard("{Escape}");
+
+    expect(onZoom).not.toHaveBeenCalled();
+  });
+
+  it("marks nothing when the map reports a position outside the stretch on show", () => {
+    const coordinates = climb();
+    const window = { startMetres: 1000, endMetres: 3000 };
+    const { container } = render(
+      <ElevationProfile
+        profile={buildWindowedProfile(coordinates, window)}
+        title="Eich Rundkurs 90"
+        activeMetres={200}
+        onActiveChange={() => {}}
+        zoomWindow={window}
+        onZoomChange={() => {}}
+      />,
+    );
+
+    expect(container.querySelector(".elevation-profile__cursor")).toBeNull();
+  });
+
+  it("steps within the stretch on show, not across the whole route", async () => {
+    const user = userEvent.setup();
+    const positions: number[] = [];
+    const window = { startMetres: 1000, endMetres: 3000 };
+    render(
+      <ElevationProfile
+        profile={buildWindowedProfile(climb(), window)}
+        title="Eich Rundkurs 90"
+        activeMetres={null}
+        onActiveChange={(metres) => metres !== null && positions.push(metres)}
+        zoomWindow={window}
+        onZoomChange={() => {}}
+      />,
+    );
+
+    await user.tab();
+    await user.keyboard("{ArrowLeft}");
+    await user.keyboard("{ArrowRight}");
+
+    expect(Math.min(...positions)).toBeGreaterThanOrEqual(1000);
+    expect(Math.max(...positions)).toBeLessThanOrEqual(3000);
+  });
+
+  it("clips the surface strip to the stretch on show", () => {
+    const coordinates = climb();
+    const surface = summariseSurface(coordinates, [
+      { kind: "asphalt", startIndex: 0, endIndex: 19 },
+      { kind: "gravel", startIndex: 20, endIndex: coordinates.length - 1 },
+    ]);
+    const window = { startMetres: 3000, endMetres: 4000 };
+    const { container } = render(
+      <ElevationProfile
+        profile={buildWindowedProfile(coordinates, window)}
+        title="Eich Rundkurs 90"
+        surface={surface}
+        activeMetres={null}
+        onActiveChange={() => {}}
+        zoomWindow={window}
+        onZoomChange={() => {}}
+      />,
+    );
+
+    const stretches = [...container.querySelectorAll(".elevation-profile__surface")];
+    expect(stretches.map((line) => line.getAttribute("stroke"))).toEqual([
+      SURFACE_STYLES.gravel.colour,
+    ]);
+    // Cut at the window's edge, not drawn from where the class actually starts.
+    expect(Number(stretches[0]?.getAttribute("x1"))).toBe(0);
+  });
+
+  // Zooming answers a question about the terrain; it must not also resize the
+  // instrument under the reader's hand.
+  it("keeps the instrument the same size zoomed in as zoomed out", async () => {
+    const user = userEvent.setup();
+    const coordinates = climb();
+    const surface = summariseSurface(coordinates, [
+      { kind: "gravel", startIndex: 0, endIndex: coordinates.length - 1 },
+    ]);
+    render(<ZoomHarness surface={surface} />);
+    const whole = screen.getByRole("slider").style.height;
+
+    await dragAcross(user, measured(screen.getByRole("slider")), 20, 120);
+
+    expect(screen.getByRole("slider").style.height).toBe(whole);
   });
 });
 
