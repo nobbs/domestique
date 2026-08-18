@@ -263,9 +263,20 @@ them secret: `TS_DEPLOY_CLIENT_ID` and `TS_DEPLOY_AUDIENCE` from that output,
 `DOMESTIQUE_HOST` for this host's fully-qualified MagicDNS name, and
 `DOMESTIQUE_DEPLOY_USER`. The environment is not only a deployment log: because
 the `deploy` job names it, the job's OIDC subject becomes
-`repo:nobbs/domestique:environment:production`, which is exactly what the
-federated identity matches on. Renaming or removing it stops the deploy from
-authenticating at all.
+
+```text
+repo:nobbs@203061/domestique@1336140013:environment:production
+```
+
+which is exactly what the federated identity matches on. Renaming or removing
+the environment stops the deploy from authenticating at all. The numeric owner
+and repository IDs are GitHub's immutable subject format, the default for
+repositories created after 2026-07-15; the identity has to be updated with the
+current prefix if this repository is ever transferred:
+
+```sh
+gh api repos/nobbs/domestique/actions/oidc/customization/sub --jq .sub_claim_prefix
+```
 
 ## Update and rollback
 
