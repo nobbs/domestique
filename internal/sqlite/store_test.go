@@ -473,6 +473,133 @@ func TestStoreRefusesATrustedInventoryMissingGeometry(t *testing.T) {
 	}
 }
 
+// A reprocess removes the three answers the service would otherwise reuse, and
+// keeps the one that says which Wahoo route it already owns.
+func TestStoreReprocessesOneStageWithoutLosingItsRouteIdentity(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	if err := store.EnsureTargets(t.Context(), []string{"rider-a"}); err != nil {
+		t.Fatalf("EnsureTargets() error = %v", err)
+	}
+	stage := storeTestStageWithGeometry(t, 7, 2, "revision", "content-hash", "Alpine loop", "Descent", []route.Point{
+		{Longitude: 8.4, Latitude: 49.0},
+		{Longitude: 8.5, Latitude: 49.2},
+	})
+	if err := store.StoreTrustedInventory(t.Context(), []route.Stage{stage}); err != nil {
+		t.Fatalf("StoreTrustedInventory() error = %v", err)
+	}
+	if err := store.UpsertTargetStage(t.Context(), "rider-a", 7, 2, "revision", "encoded-hash", 4242); err != nil {
+		t.Fatalf("UpsertTargetStage() error = %v", err)
+	}
+	if err := store.StoreStageSurface(
+		t.Context(), 7, 2, "content-hash", []byte(`[{"kind":"asphalt","start_index":0,"end_index":1}]`), 100,
+	); err != nil {
+		t.Fatalf("StoreStageSurface() error = %v", err)
+	}
+
+	found, err := store.RequestStageReprocess(t.Context(), 7, 2)
+	if err != nil {
+		t.Fatalf("RequestStageReprocess() error = %v", err)
+	}
+	if !found {
+		t.Fatal("RequestStageReprocess() found = false, want true")
+	}
+
+	var revision, contentHash string
+	var wahooRouteID int64
+	if scanErr := store.database.QueryRowContext(t.Context(), `
+		SELECT source_revision, content_hash, wahoo_route_id FROM target_stages
+		WHERE target_slot = 'rider-a' AND route_id = 7 AND stage_order = 2
+	`).Scan(&revision, &contentHash, &wahooRouteID); scanErr != nil {
+		t.Fatalf("reading the target mapping error = %v", scanErr)
+	}
+	// Forgotten, but still a usable row: the reconciler rejects a mapping with an
+	// empty field outright, which would fail the whole target phase instead of
+	// rewriting this one route.
+	if revision == "" || contentHash == "" {
+		t.Errorf("mapping = %q/%q, want values the reconciler can still read", revision, contentHash)
+	}
+	if revision == "revision" || contentHash == "encoded-hash" {
+		t.Errorf("mapping = %q/%q, want it to no longer claim what it pushed", revision, contentHash)
+	}
+	if got, want := wahooRouteID, int64(4242); got != want {
+		t.Errorf("wahoo route id = %d, want %d — a reprocess rewrites, never recreates", got, want)
+	}
+	_, _, surfaceFound, err := store.StageSurface(t.Context(), 7, 2, "content-hash")
+	if err != nil {
+		t.Fatalf("StageSurface() error = %v", err)
+	}
+	if surfaceFound {
+		t.Error("surface survived a reprocess, want it dropped so it is asked for again")
+	}
+}
+
+// The geometry cache skips a stage whose content has not changed. A reprocess is
+// the operator saying the derivation itself should be redone.
+func TestStoreRewritesGeometryOfAReprocessedStage(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	stage := storeTestStageWithGeometry(t, 7, 2, "revision", "content-hash", "Alpine loop", "Descent", []route.Point{
+		{Longitude: 8.4, Latitude: 49.0},
+		{Longitude: 8.5, Latitude: 49.2},
+	})
+	if err := store.StoreTrustedInventory(t.Context(), []route.Stage{stage}); err != nil {
+		t.Fatalf("StoreTrustedInventory() error = %v", err)
+	}
+	if _, err := store.database.ExecContext(t.Context(), `
+		UPDATE stage_geometry SET route_name = 'stale name' WHERE route_id = 7 AND stage_order = 2
+	`); err != nil {
+		t.Fatalf("ageing the cached geometry error = %v", err)
+	}
+
+	// Without a request, an unchanged stage is left alone.
+	if err := store.StoreTrustedInventory(t.Context(), []route.Stage{stage}); err != nil {
+		t.Fatalf("StoreTrustedInventory() error = %v", err)
+	}
+	summary, _, _, err := store.StageGeometry(t.Context(), 7, 2)
+	if err != nil {
+		t.Fatalf("StageGeometry() error = %v", err)
+	}
+	if got, want := summary.RouteName, "stale name"; got != want {
+		t.Fatalf("route name = %q, want %q — an unchanged stage should not be rewritten", got, want)
+	}
+
+	if _, requestErr := store.RequestStageReprocess(t.Context(), 7, 2); requestErr != nil {
+		t.Fatalf("RequestStageReprocess() error = %v", requestErr)
+	}
+	if storeErr := store.StoreTrustedInventory(t.Context(), []route.Stage{stage}); storeErr != nil {
+		t.Fatalf("StoreTrustedInventory() after request error = %v", storeErr)
+	}
+	summary, _, _, err = store.StageGeometry(t.Context(), 7, 2)
+	if err != nil {
+		t.Fatalf("StageGeometry() error = %v", err)
+	}
+	if got, want := summary.RouteName, "Alpine loop"; got != want {
+		t.Errorf("route name = %q, want %q — the request should have rewritten it", got, want)
+	}
+
+	// The mark is consumed, so the next pass leaves the stage alone again.
+	var marks int
+	if err := store.database.QueryRowContext(t.Context(), "SELECT COUNT(*) FROM stage_reprocess").Scan(&marks); err != nil {
+		t.Fatalf("counting reprocess requests error = %v", err)
+	}
+	if marks != 0 {
+		t.Errorf("reprocess requests = %d, want 0 after the pass that honoured it", marks)
+	}
+}
+
+// A stage that is not in the inventory cannot be redone, and a mark nothing will
+// consume is worse than an answer.
+func TestStoreRefusesToReprocessAnUnknownStage(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+
+	found, err := store.RequestStageReprocess(t.Context(), 99, 1)
+	if err != nil {
+		t.Fatalf("RequestStageReprocess() error = %v", err)
+	}
+	if found {
+		t.Error("RequestStageReprocess() found = true, want false for a stage that is not stored")
+	}
+}
+
 // Both halves are on until an operator says otherwise, which is what every
 // deployment did before the switches existed.
 func TestStoreSchedulesBothPhasesUntilChanged(t *testing.T) {

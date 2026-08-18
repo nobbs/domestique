@@ -39,6 +39,7 @@ implementation detail.
 | stage surface | cached surface classification of one stored geometry, as index ranges plus matched length, against the content hash it was measured for | none |
 | sync run | half, start, end, terminal state, aggregate counts, safe failure category | none |
 | sync schedule | whether the timer may start each half | none |
+| reprocess request | one stage an operator has asked to have redone | none |
 | notification state | last delivered failure category and suppression deadline | none |
 
 OAuth state is stored as a digest. Refresh tokens are encrypted before being
@@ -112,6 +113,32 @@ without starting duplicate provider work.
 A manual trigger runs its half whether or not the schedule is allowed to start
 it. The switches decide what happens unattended; a request is an operator who
 has already decided.
+
+## Reprocessing one stage
+
+A stage carries three derived answers the service reuses while they still look
+current: the geometry it derived and stored, the revision it last pushed to each
+target, and its surface classification. Each of those caches exists so an
+unchanged library costs nothing to keep in sync.
+
+A reprocess request is the operator saying one of them is wrong. It discards all
+three for that stage and starts a synchronization of both halves, so the stage is
+read again, derived again, encoded again, pushed to every target regardless of
+the revision recorded there, and classified again.
+
+It is not a delete and not a create. The Wahoo route identity is kept, so the
+route the service already owns is rewritten in place — the same operation an
+ordinary update performs, through the same ownership rules. The request touches
+no source data: VeloPlanner is read, never written.
+
+The request is recorded before the run is asked for, and survives a refused
+start. A run already in flight may be past that stage or may not include it, so
+the request waits for a pass that will honour it. It is consumed by the pass that
+honours it, so it is met exactly once.
+
+A request for a stage that is not in the stored inventory is refused. There would
+be nothing to redo, and a request nothing will ever consume is worse than an
+answer.
 
 ## Schedule switches
 
@@ -398,6 +425,8 @@ The implementation test suite must cover at least:
 - each half running, and being triggered, without the other;
 - a stored inventory that cannot be read back whole causing zero deletions;
 - a switched-off half being skipped by the timer and still run by a manual
-  trigger; and
+  trigger;
+- a reprocess request rewriting its stage on every target while keeping the Wahoo
+  route it already owns, and being consumed exactly once; and
 - JSON responses and Pushover messages containing no secret or raw upstream
   data.

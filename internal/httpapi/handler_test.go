@@ -365,6 +365,57 @@ func TestHandlerAcceptsManualSync(t *testing.T) {
 	}
 }
 
+// Redoing a stage is one request: mark it, then start the run that will honour
+// the mark. Both halves, because the stage has to be read again before it can be
+// written again.
+func TestHandlerReprocessesOneStageAndStartsARun(t *testing.T) {
+	state := surfaceState()
+	trigger := &fakeSyncTrigger{accepted: true}
+	handler := newHandlerWithTrigger(t, &fakeOAuth{}, state, trigger)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/routes/12/stages/1/reprocess"))
+	if got, want := response.Code, http.StatusAccepted; got != want {
+		t.Fatalf("reprocess status = %d, want %d", got, want)
+	}
+	if got, want := state.reprocessed, [][2]int64{{12, 1}}; len(got) != len(want) || got[0] != want[0] {
+		t.Errorf("reprocessed = %v, want %v", got, want)
+	}
+	if got := trigger.phases; len(got) != 1 || got[0] != SyncPhaseAll {
+		t.Errorf("triggered %v, want [%s]", got, SyncPhaseAll)
+	}
+}
+
+// A run already in flight may be past this stage or may not include it, so the
+// request waits for a pass that will honour it rather than being lost.
+func TestHandlerKeepsAReprocessRequestWhenARunIsAlreadyActive(t *testing.T) {
+	state := surfaceState()
+	handler := newHandlerWithTrigger(t, &fakeOAuth{}, state, &fakeSyncTrigger{})
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/routes/12/stages/1/reprocess"))
+	if got, want := response.Code, http.StatusAccepted; got != want {
+		t.Errorf("reprocess status = %d, want %d", got, want)
+	}
+	if len(state.reprocessed) != 1 {
+		t.Errorf("reprocessed = %v, want the request recorded anyway", state.reprocessed)
+	}
+}
+
+func TestHandlerReportsAnUnknownStageForReprocessingAsNotFound(t *testing.T) {
+	trigger := &fakeSyncTrigger{accepted: true}
+	handler := newHandlerWithTrigger(t, &fakeOAuth{}, &fakeState{}, trigger)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/routes/99/stages/1/reprocess"))
+	if got, want := response.Code, http.StatusNotFound; got != want {
+		t.Errorf("reprocess status = %d, want %d", got, want)
+	}
+	if len(trigger.phases) != 0 {
+		t.Errorf("triggered %v, want no run for a stage that is not stored", trigger.phases)
+	}
+}
+
 // Each half is triggerable on its own, because each is separately switched off
 // and separately worth starting by hand.
 func TestHandlerTriggersEachPhaseOnItsOwn(t *testing.T) {
@@ -637,6 +688,8 @@ type fakeState struct {
 	surfaceErr      error
 	phaseRunErr     error
 	scheduleErr     error
+	reprocessErr    error
+	reprocessed     [][2]int64
 	surfaceHash     string
 	coordinates     json.RawMessage
 	surfaceRanges   json.RawMessage
@@ -725,6 +778,21 @@ func (s *fakeState) ForEachPhaseRun(
 	}
 
 	return nil
+}
+
+func (s *fakeState) RequestStageReprocess(_ context.Context, routeID int64, stageOrder int) (bool, error) {
+	if s.reprocessErr != nil {
+		return false, s.reprocessErr
+	}
+	for index := range s.summaries {
+		if s.summaries[index].RouteID == routeID && s.summaries[index].StageOrder == stageOrder {
+			s.reprocessed = append(s.reprocessed, [2]int64{routeID, int64(stageOrder)})
+
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
 
 func (s *fakeState) SyncSchedule(context.Context) (source, targets bool, err error) {

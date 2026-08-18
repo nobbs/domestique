@@ -289,10 +289,57 @@ body {
   flex: 0 0 auto;
 }
 
+.stage-detail__heading {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
 .stage-detail__title {
   margin: 0 0 0.4rem;
   font-size: 1.15rem;
   font-weight: 600;
+}
+
+/*
+ * The reprocess control sits beside the title because it acts on this stage and
+ * nothing else. It is quiet by default: it is rarely the reason anyone opened
+ * the page, and its work happens in the background.
+ */
+.stage-detail__reprocess {
+  display: flex;
+  gap: 0.6rem;
+  align-items: baseline;
+  margin-bottom: 0.4rem;
+}
+
+.stage-detail__reprocess-button {
+  padding: 0.25rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) - 4px);
+  background: var(--surface);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.stage-detail__reprocess-button:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.stage-detail__reprocess-button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.stage-detail__reprocess-note {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  max-width: 22rem;
 }
 
 .stage-detail__facts {

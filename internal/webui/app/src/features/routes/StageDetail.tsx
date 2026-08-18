@@ -20,6 +20,7 @@ import type { Profile } from "../../lib/profile";
 import { buildProfile } from "../../lib/profile";
 import type { SurfaceSummary } from "../../lib/surface";
 import { summariseSurface } from "../../lib/surface";
+import { ReprocessButton } from "./ReprocessButton";
 
 // MapLibre is by far the heaviest dependency and only this view needs it, so it
 // is fetched when a route is opened rather than on first paint of the library.
@@ -97,6 +98,7 @@ export function StageDetail() {
   return (
     <StageView
       stage={stage}
+      routeId={routeId}
       coordinates={coordinates}
       bbox={bbox}
       surface={surface}
@@ -116,6 +118,7 @@ export function StageDetail() {
  */
 function StageView({
   stage,
+  routeId,
   coordinates,
   bbox,
   surface,
@@ -129,6 +132,7 @@ function StageView({
     ascentMetres: number;
     maxGradientPercent: number;
   };
+  routeId: number;
   coordinates: Position[];
   bbox: [number, number, number, number];
   surface: StageSurface | undefined;
@@ -151,7 +155,10 @@ function StageView({
     <Layout status={back}>
       <section className="stage-detail">
         <header className="stage-detail__header">
-          <h1 className="stage-detail__title">{stage.title}</h1>
+          <div className="stage-detail__heading">
+            <h1 className="stage-detail__title">{stage.title}</h1>
+            <ReprocessButton routeId={routeId} stageOrder={stage.stageOrder} />
+          </div>
           <dl className="stage-detail__facts">
             <div>
               <dt>Distance</dt>

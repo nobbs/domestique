@@ -80,6 +80,7 @@ type State interface {
 	ForEachPhaseRun(ctx context.Context, visit func(phase string, completedAt time.Time, outcome, detail string, sourceStages, created, updated, deleted int) error) error
 	SyncSchedule(ctx context.Context) (source, targets bool, err error)
 	SetSyncSchedule(ctx context.Context, source, targets bool) error
+	RequestStageReprocess(ctx context.Context, routeID int64, stageOrder int) (found bool, err error)
 }
 
 // Options carries the non-secret settings the HTTP surface needs.
@@ -162,6 +163,7 @@ func (h *Handler) routes() {
 	h.mux.Handle("GET /v1/routes", h.gated(h.stages))
 	h.mux.Handle("GET /v1/routes/{routeID}/stages/{stage}", h.gated(h.stage))
 	h.mux.Handle("GET /v1/routes/{routeID}/stages/{stage}/geometry", h.gated(h.stageGeometry))
+	h.mux.Handle("POST /v1/routes/{routeID}/stages/{stage}/reprocess", h.gated(h.reprocessStage))
 	h.mux.Handle("GET /v1/webui/config", h.gated(h.webUIConfig))
 
 	h.mux.Handle("GET /oauth/wahoo/start/{target}", h.gated(h.start))

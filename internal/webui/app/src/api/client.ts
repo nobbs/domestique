@@ -116,6 +116,19 @@ export function triggerSync(phase: SyncPhase | "all"): Promise<null> {
 }
 
 /**
+ * Asks for one stage to be redone from scratch, and for the run that will do it.
+ *
+ * The service records the request before starting anything, so a request made
+ * while a run is already in flight is honoured by the next pass rather than
+ * refused. There is nothing to parse: the work happens in the background.
+ */
+export function reprocessStage(routeId: number, stageOrder: number): Promise<null> {
+  return request(`/v1/routes/${routeId}/stages/${stageOrder}/reprocess`, () => null, {
+    method: "POST",
+  });
+}
+
+/**
  * Sets both schedule switches and returns what the service stored.
  *
  * Both travel together because the service refuses a half-named schedule: the
