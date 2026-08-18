@@ -15,9 +15,12 @@ import type {
   Status,
   SurfaceKind,
   SurfaceRange,
+  SyncPhase,
+  SyncPhaseRun,
+  SyncSchedule,
   WebUIConfig,
 } from "./types";
-import { SURFACE_KINDS } from "./types";
+import { SURFACE_KINDS, SYNC_PHASES } from "./types";
 
 export class ContractError extends Error {
   constructor(message: string) {
@@ -182,6 +185,43 @@ export function parseStageGeometry(payload: unknown): StageGeometry {
   };
 }
 
+/**
+ * Reads one half's last run. A half is absent until it has finished one, which
+ * is different from having finished one that failed.
+ */
+function syncPhaseRunFrom(value: unknown, at: string): SyncPhaseRun | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  const run = record(value, at);
+
+  return {
+    lastCompletedAt: text(run.last_completed_at, `${at}.last_completed_at`),
+    lastResult: text(run.last_result, `${at}.last_result`),
+    lastFailure: optionalText(run.last_failure, `${at}.last_failure`),
+    sourceStages: count(run.source_stages, `${at}.source_stages`),
+    created: count(run.created, `${at}.created`),
+    updated: count(run.updated, `${at}.updated`),
+    deleted: count(run.deleted, `${at}.deleted`),
+  };
+}
+
+/**
+ * Reads the two schedule switches.
+ *
+ * Both are required. A missing switch is not an off switch, and rendering a
+ * control from an assumed value would show the operator a state the service
+ * never reported.
+ */
+export function parseSyncSchedule(payload: unknown, at = "body"): SyncSchedule {
+  const schedule = record(payload, at);
+
+  return {
+    source: flag(schedule.source, `${at}.source`),
+    targets: flag(schedule.targets, `${at}.targets`),
+  };
+}
+
 export function parseStatus(payload: unknown): Status {
   const body = record(payload, "body");
   const sync = record(body.sync, "body.sync");
@@ -203,8 +243,23 @@ export function parseStatus(payload: unknown): Status {
       created: count(sync.created, "body.sync.created"),
       updated: count(sync.updated, "body.sync.updated"),
       deleted: count(sync.deleted, "body.sync.deleted"),
+      schedule: parseSyncSchedule(sync.schedule, "body.sync.schedule"),
+      phases: syncPhasesFrom(sync.phases, "body.sync.phases"),
     },
   };
+}
+
+function syncPhasesFrom(value: unknown, at: string): Partial<Record<SyncPhase, SyncPhaseRun>> {
+  const phases = record(value, at);
+  const runs: Partial<Record<SyncPhase, SyncPhaseRun>> = {};
+  for (const phase of SYNC_PHASES) {
+    const run = syncPhaseRunFrom(phases[phase], `${at}.${phase}`);
+    if (run) {
+      runs[phase] = run;
+    }
+  }
+
+  return runs;
 }
 
 export function parseWebUIConfig(payload: unknown): WebUIConfig {

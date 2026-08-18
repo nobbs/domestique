@@ -708,3 +708,110 @@ body {
   width: 100%;
   height: 100%;
 }
+
+/*
+ * Synchronisation controls: one row per half, each carrying its own switch, its
+ * own button, and the plain-language result of its last run. The rows sit above
+ * the library because what they change is what the library will next contain.
+ */
+.sync-controls {
+  margin-bottom: 1.5rem;
+  padding: 1rem 1.15rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+}
+
+.sync-controls__heading {
+  margin: 0 0 0.75rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.sync-controls__phases {
+  display: grid;
+  gap: 0.85rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sync-controls__phase {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.25rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sync-controls__text {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 15rem;
+  flex: 1 1 22rem;
+}
+
+.sync-controls__title {
+  font-weight: 600;
+}
+
+.sync-controls__detail,
+.sync-controls__run {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.sync-controls__run {
+  font-variant-numeric: tabular-nums;
+}
+
+.sync-controls__actions {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.sync-controls__switch {
+  display: inline-flex;
+  gap: 0.4rem;
+  align-items: center;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.sync-controls__switch input {
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.sync-controls__button {
+  padding: 0.35rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) - 4px);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.sync-controls__button:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.sync-controls__button:disabled,
+.sync-controls__switch input:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.sync-controls__error {
+  margin: 0.75rem 0 0;
+  font-size: 0.85rem;
+  color: var(--accent);
+}

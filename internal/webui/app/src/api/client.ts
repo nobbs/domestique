@@ -12,9 +12,10 @@ import {
   parseStageGeometry,
   parseStages,
   parseStatus,
+  parseSyncSchedule,
   parseWebUIConfig,
 } from "./parse";
-import type { Stage, StageGeometry, Status, WebUIConfig } from "./types";
+import type { Stage, StageGeometry, Status, SyncPhase, SyncSchedule, WebUIConfig } from "./types";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -32,10 +33,24 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, parse: (payload: unknown) => T): Promise<T> {
+interface RequestOptions {
+  method: string;
+  body?: unknown;
+}
+
+async function request<T>(
+  path: string,
+  parse: (payload: unknown) => T,
+  options: RequestOptions = { method: "GET" },
+): Promise<T> {
   const response = await fetch(path, {
-    headers: { Accept: "application/json" },
+    method: options.method,
+    headers:
+      options.body === undefined
+        ? { Accept: "application/json" }
+        : { Accept: "application/json", "Content-Type": "application/json" },
     credentials: "same-origin",
+    ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }),
   });
 
   let payload: unknown;
@@ -81,4 +96,34 @@ export function fetchStatus(): Promise<Status> {
 
 export function fetchWebUIConfig(): Promise<WebUIConfig> {
   return request("/v1/webui/config", parseWebUIConfig);
+}
+
+/** The paths that start one half of a synchronisation, or both. */
+const SYNC_PATHS: Record<SyncPhase | "all", string> = {
+  all: "/v1/sync",
+  source: "/v1/sync/source",
+  targets: "/v1/sync/targets",
+};
+
+/**
+ * Asks for one immediate run. The service answers `202` and runs it in the
+ * background, so there is nothing to parse and nothing to wait for; a rejected
+ * request means a run was already in flight, which surfaces as an ApiError with
+ * a 409 status rather than as a silent no-op.
+ */
+export function triggerSync(phase: SyncPhase | "all"): Promise<null> {
+  return request(SYNC_PATHS[phase], () => null, { method: "POST" });
+}
+
+/**
+ * Sets both schedule switches and returns what the service stored.
+ *
+ * Both travel together because the service refuses a half-named schedule: the
+ * unnamed switch would be left at whatever the caller assumed it was.
+ */
+export function setSyncSchedule(schedule: SyncSchedule): Promise<SyncSchedule> {
+  return request("/v1/sync/schedule", (payload) => parseSyncSchedule(payload), {
+    method: "PUT",
+    body: schedule,
+  });
 }

@@ -175,6 +175,8 @@ describe("parseStatus", () => {
         created: 1,
         updated: 2,
         deleted: 0,
+        schedule: { source: true, targets: true },
+        phases: {},
       },
     });
 
@@ -188,9 +190,108 @@ describe("parseStatus", () => {
     const status = parseStatus({
       ready: false,
       targets: [],
-      sync: { state: "not_ready", source_stages: 0, created: 0, updated: 0, deleted: 0 },
+      sync: {
+        state: "not_ready",
+        source_stages: 0,
+        created: 0,
+        updated: 0,
+        deleted: 0,
+        schedule: { source: true, targets: true },
+        phases: {},
+      },
     });
 
     expect(status.sync.lastCompletedAt).toBeUndefined();
+  });
+
+  it("reads both schedule switches and each half's last run", () => {
+    const status = parseStatus({
+      ready: true,
+      targets: [],
+      sync: {
+        state: "failed",
+        source_stages: 0,
+        created: 0,
+        updated: 0,
+        deleted: 0,
+        schedule: { source: true, targets: false },
+        phases: {
+          source: {
+            last_completed_at: "2026-08-18T06:00:00Z",
+            last_result: "succeeded",
+            source_stages: 12,
+            created: 0,
+            updated: 0,
+            deleted: 0,
+          },
+          targets: {
+            last_completed_at: "2026-08-18T06:00:04Z",
+            last_result: "failed",
+            last_failure: "destination",
+            source_stages: 12,
+            created: 1,
+            updated: 0,
+            deleted: 0,
+          },
+        },
+      },
+    });
+
+    expect(status.sync.schedule).toEqual({ source: true, targets: false });
+    expect(status.sync.phases.source?.sourceStages).toBe(12);
+    expect(status.sync.phases.targets?.lastFailure).toBe("destination");
+  });
+
+  // A half is absent until it has finished a run, which is not the same as one
+  // that finished badly.
+  it("leaves a half absent until it has run", () => {
+    const status = parseStatus({
+      ready: true,
+      targets: [],
+      sync: {
+        state: "idle",
+        source_stages: 0,
+        created: 0,
+        updated: 0,
+        deleted: 0,
+        schedule: { source: true, targets: true },
+        phases: {
+          source: {
+            last_completed_at: "2026-08-18T06:00:00Z",
+            last_result: "succeeded",
+            source_stages: 12,
+            created: 0,
+            updated: 0,
+            deleted: 0,
+          },
+        },
+      },
+    });
+
+    expect(status.sync.phases.source).toBeDefined();
+    expect(status.sync.phases.targets).toBeUndefined();
+  });
+
+  // A missing switch is not an off switch: rendering a control from an assumed
+  // value would show a state the service never reported.
+  it("refuses a schedule that names only one switch", () => {
+    const withSchedule = (schedule: unknown) => ({
+      ready: true,
+      targets: [],
+      sync: {
+        state: "idle",
+        source_stages: 0,
+        created: 0,
+        updated: 0,
+        deleted: 0,
+        schedule,
+        phases: {},
+      },
+    });
+
+    expect(() => parseStatus(withSchedule({ source: true }))).toThrow(ContractError);
+    expect(() => parseStatus(withSchedule({ source: true, targets: "yes" }))).toThrow(
+      ContractError,
+    );
   });
 });

@@ -83,6 +83,32 @@ export interface TargetStatus {
   authorisation: string;
 }
 
+/**
+ * The two halves of a synchronisation, in the wire names the service uses.
+ *
+ * `source` reads the VeloPlanner library into the service's own state; `targets`
+ * writes what is stored onto the Wahoo accounts. They are switched, triggered,
+ * and reported separately because they fail for unrelated reasons.
+ */
+export const SYNC_PHASES = ["source", "targets"] as const;
+
+export type SyncPhase = (typeof SYNC_PHASES)[number];
+
+/** What the timer is allowed to start. Absent switches are never assumed. */
+export type SyncSchedule = Record<SyncPhase, boolean>;
+
+/** The last completed run of one half. */
+export interface SyncPhaseRun {
+  lastCompletedAt: string;
+  lastResult: string;
+  /** The safe failure category, present only when the last run did not succeed. */
+  lastFailure?: string | undefined;
+  sourceStages: number;
+  created: number;
+  updated: number;
+  deleted: number;
+}
+
 export interface SyncStatus {
   state: string;
   /** Absent until a run has completed. */
@@ -92,6 +118,9 @@ export interface SyncStatus {
   created: number;
   updated: number;
   deleted: number;
+  schedule: SyncSchedule;
+  /** A half is absent here until it has finished a run of its own. */
+  phases: Partial<Record<SyncPhase, SyncPhaseRun>>;
 }
 
 export interface Status {
