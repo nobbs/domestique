@@ -3,14 +3,16 @@
 **Status:** accepted v1 design, revised for trunk-based image publishing
 
 This is a subordinate specification to [the service contract](service.md). It
-defines the local quality gate, GitHub Actions, container hardening, and the
-images it publishes. It does not place Tailnet-host configuration or secrets in this
-repository.
+defines the local quality gate, GitHub Actions, container hardening, the images
+it publishes, and how one reaches a host. It places no Tailnet-host
+configuration or secret in this repository: the one host-side file it does carry
+is a non-secret deployment script that reads every host-specific value from the
+environment it runs in.
 
 ## Development toolchain and commands
 
 The repository tracks a `.mise.toml` that pins the Go toolchain, Node.js,
-`golangci-lint`, `prek`, Actionlint, Gitleaks, Markdownlint, and
+`golangci-lint`, `prek`, Actionlint, Gitleaks, Markdownlint, ShellCheck, and
 `govulncheck`. Mise is the source of truth for the versions used by a
 developer and GitHub Actions. Bootstrap selects supported, mutually compatible
 versions and records them there; no developer-global tool configuration is
@@ -33,8 +35,9 @@ The repository provides these stable Make targets:
 `make check` is the canonical local and CI entry point. It includes
 `prek run --all-files`, linting, tests, TypeScript type checking, the browser UI
 lint and test suites, Go module verification, vulnerability analysis for both Go
-and npm dependencies, a GitHub Actions workflow check, a worktree secret scan,
-and the release-target binary compilation for every published architecture.
+and npm dependencies, a GitHub Actions workflow check, a shell-script check, a
+worktree secret scan, and the release-target binary compilation for every
+published architecture.
 `make fmt` applies Go formatting. A fixing `prek` hook exits non-zero after a
 safe mechanical repair so the resulting change can be reviewed and staged
 deliberately.
@@ -103,8 +106,10 @@ divergent list of shell commands.
 The validation workflow must:
 
 - use explicit minimal `permissions`; every job is read-only except the
-  default-branch publish, which adds `packages: write` and nothing else. No job
-  requests `id-token`, because nothing is signed;
+  default-branch publish, which adds `packages: write`, and the deployment that
+  follows it, which holds `id-token: write` alone. That token is a tailnet
+  credential obtained by workload identity federation, not a signing identity:
+  nothing is signed, and no long-lived tailnet secret is stored;
 - pin third-party actions to immutable full commit SHAs;
 - run without production credentials, Wahoo refresh tokens, or Docker secret
   files;
@@ -113,9 +118,11 @@ The validation workflow must:
   architecture fail;
 - build the production Dockerfile and discard the result on a pull request that
   changes an input of the container build, never pushing it; and
+- deploy what it published to the Tailnet host, over Tailscale SSH, passing the
+  digest and nothing else; and
 - aggregate every job into one required check that is green only when each
-  dependency succeeded or was skipped by a path filter, so a failed publish
-  cannot be mistaken for a passing run.
+  dependency succeeded or was skipped by a path filter, so a failed publish or
+  deployment cannot be mistaken for a passing run.
 
 The pull-request build and the default-branch publish are the same build split
 by event: a pull request proves it, a push to the default branch publishes it,
@@ -225,6 +232,16 @@ The publish job:
 4. runs only after linting, tests, security analysis, and the browser UI checks
    have succeeded or been skipped by a path filter.
 
+The deployment that follows it hands the Tailnet host that same index digest and
+nothing else. The host composes the reference from the repository it is
+configured with, pins it, restarts the service, and restores the digest it was
+running if the new one fails a health check — so an automated deployment that
+goes wrong leaves the service that was already running, and CI reports the
+failure. Automation therefore consumes exactly what an operator would: an
+immutable digest read from the run that produced it. It has no path to a mutable
+tag, another repository, or a locally built image, and the account it uses on
+the host can run one command and no other.
+
 **The images are not signed.** Sigstore keyless signing was removed together
 with the tag-triggered release workflow, and GitHub artifact attestations are
 not an available substitute: on a private repository they require GitHub
@@ -258,9 +275,12 @@ Before the first implementation release, the repository includes:
 - `.gitignore` entries for local configuration, databases, secrets, coverage,
   and build outputs;
 - an explicit `.dockerignore` that excludes Git metadata, local state,
-  configuration, secret files, and test artefacts from image contexts; and
+  configuration, secret files, and test artefacts from image contexts;
 - documentation for the normal local check, manual sandbox acceptance, image
-  selection and inspection, and Tailnet-host deployment boundary.
+  selection and inspection, the Tailnet-host deployment boundary, and the
+  automated deployment's host-side prerequisites; and
+- shell-script linting for every script it carries, because both of them run
+  somewhere a mistake is expensive.
 
 A published image is deployable only when the default-branch run that produced
 it was green end to end, no untriaged vulnerability finding blocks it, and the

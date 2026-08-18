@@ -4,6 +4,7 @@ GOLANGCI_LINT ?= golangci-lint
 GOVULNCHECK ?= govulncheck
 GITLEAKS ?= gitleaks
 MARKDOWNLINT ?= markdownlint-cli2
+SHELLCHECK ?= shellcheck
 PREK ?= prek
 NPM ?= npm
 GOCACHE ?= $(CURDIR)/.cache/go-build
@@ -20,7 +21,7 @@ RELEASE_ARCHES := amd64 arm64
 UI_DIR := internal/webui/app
 UI_DIST := $(UI_DIR)/dist
 
-.PHONY: fmt lint markdownlint workflow-lint test vet mod-check vulncheck secret-scan build build-check ci-lint ci-test ci-security ci-ui check
+.PHONY: fmt lint markdownlint shell-lint workflow-lint test vet mod-check vulncheck secret-scan build build-check ci-lint ci-test ci-security ci-ui check
 .PHONY: ui-install ui-dev ui-typecheck ui-lint ui-format ui-test ui-audit ui-build
 .PHONY: dev-setup dev-api
 
@@ -35,6 +36,13 @@ lint:
 markdownlint:
 	$(MARKDOWNLINT) "**/*.md"
 
+# Both scripts run somewhere a mistake is expensive: one against the deployed
+# state, the other as root on the deploying host.
+shell-lint:
+	$(SHELLCHECK) deploy/*.sh dev/*.sh
+
+# actionlint shells out to shellcheck for every `run:` block, so the pinned
+# shellcheck above is what lints the workflow scripts too.
 workflow-lint:
 	$(ACTIONLINT) .github/workflows/*.yml
 
@@ -111,6 +119,7 @@ ci-lint:
 	$(PREK) run --all-files
 	$(MAKE) lint
 	$(MAKE) markdownlint
+	$(MAKE) shell-lint
 	$(MAKE) workflow-lint
 
 ci-test:

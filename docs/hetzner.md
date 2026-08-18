@@ -204,20 +204,110 @@ the state and its key travel together.
 Leave the old host's volume in place until the new host has completed a sync;
 it is the rollback path.
 
+## Deploy from CI
+
+Merging to the default branch moves this host onto the image that merge
+published. The `deploy` job joins the tailnet as an ephemeral `tag:github` node
+— authenticated by workload identity federation, so no tailnet credential is
+stored in GitHub — and runs one command over Tailscale SSH:
+
+```sh
+sudo /usr/local/lib/domestique/domestique-deploy.sh sha256:<digest>
+```
+
+That script is [`deploy/domestique-deploy.sh`](../deploy/domestique-deploy.sh)
+in this repository. It pulls the digest, records the one being replaced, pins
+the new one in `.env`, restarts only the `domestique` service, and waits for
+`/healthz`. If the new image does not answer within a minute, or publishes
+anything other than a loopback port, the script restores the previous digest,
+restarts, and sends a Pushover alert; the CI job fails either way. Nothing in
+any path removes the state volume.
+
+**The digest is the only thing CI supplies.** The image reference is composed on
+the host from its own configured repository, so the workflow cannot point this
+host at another registry, another repository, or a mutable tag — `latest` is
+still never deployed. The account CI logs in as is unprivileged, is not in the
+`docker` group, and may run exactly this one command as root.
+
+Prepare the host once:
+
+```sh
+useradd --create-home --shell /bin/bash domestique-deploy
+install -D -o root -g root -m 0755 deploy/domestique-deploy.sh \
+  /usr/local/lib/domestique/domestique-deploy.sh
+printf '%s\n' \
+  'domestique-deploy ALL=(root) NOPASSWD: /usr/local/lib/domestique/domestique-deploy.sh' \
+  > /etc/sudoers.d/domestique-deploy
+chmod 0440 /etc/sudoers.d/domestique-deploy && visudo -c
+mkdir -p /var/lib/domestique-deploy
+chmod 600 .env   # it carries the tunnel's Tailscale auth key
+tailscale set --ssh
+```
+
+The script must stay owned by root and unwritable by `domestique-deploy`.
+Otherwise that account could rewrite what its own sudoers entry runs as root,
+and the boundary the previous paragraph describes would not exist. Reinstall it
+with the same `install` command whenever the repository copy changes; nothing
+updates it automatically.
+
+The tailnet side lives in the `nobbs/infrastructure` repository, in
+`stacks/tailscale`: policy rules letting `tag:github` reach `tag:domestique` on
+port 22 and log in over Tailscale SSH as `domestique-deploy`, and the federated
+identity the workflow authenticates as, declared as `domestique_deploy` in
+`terraform.tfvars`. That identity may do one thing, mint an ephemeral
+`tag:github` node, and the stack's `federated_identities` output carries the
+client ID and audience to set here.
+
+GitHub needs a `production` environment and four repository variables, none of
+them secret: `TS_DEPLOY_CLIENT_ID` and `TS_DEPLOY_AUDIENCE` from that output,
+`DOMESTIQUE_HOST` for this host's fully-qualified MagicDNS name, and
+`DOMESTIQUE_DEPLOY_USER`. The environment is not only a deployment log: because
+the `deploy` job names it, the job's OIDC subject becomes
+
+```text
+repo:nobbs@203061/domestique@1336140013:environment:production
+```
+
+which is exactly what the federated identity matches on. Renaming or removing
+the environment stops the deploy from authenticating at all. The numeric owner
+and repository IDs are GitHub's immutable subject format, the default for
+repositories created after 2026-07-15; the identity has to be updated with the
+current prefix if this repository is ever transferred:
+
+```sh
+gh api repos/nobbs/domestique/actions/oidc/customization/sub --jq .sub_claim_prefix
+```
+
 ## Update and rollback
 
-To update, resolve the digest of a newer published image as above, point
+Routine updates are the merge described above; what follows is the manual path,
+for a rollback or for a host CI cannot reach.
+
+The script is the same one CI runs, and it is the shortest way to move back:
+
+```sh
+sudo /usr/local/lib/domestique/domestique-deploy.sh --rollback
+```
+
+That returns the host to the digest it ran before the last change, which the
+script keeps in `/var/lib/domestique-deploy/previous`;
+`/var/lib/domestique-deploy/history` holds every digest this host has run, with
+timestamps. Passing an explicit `sha256:` digest instead goes to any published
+image. Neither restores old SQLite state.
+
+Without the script — on a host that has none, or when the script itself is what
+broke — resolve the digest of a published image as above, point
 `DOMESTIQUE_IMAGE` at it, and run `docker compose --env-file .env up -d`. The
-named state volume stays in place. Rollback is the same operation with a digest
-this host ran before; it never restores old SQLite state.
+named state volume stays in place.
 
 Keep the previous digest written down. A digest stays pullable after its tag has
 moved on, so the rollback path survives even once the local copy is gone — but
 only if the value was recorded somewhere.
 
-A host that used to build has disk to reclaim. Once a published image has
-completed a sync, remove the stale `domestique:<git-sha>` images with
-`docker image rm`, then run `docker builder prune -af` to clear the BuildKit
+A host that used to build has disk to reclaim. The deploy script prunes
+published images other than the running and the rollback digest, but it knows
+nothing about locally built ones: remove the stale `domestique:<git-sha>` images
+with `docker image rm`, then run `docker builder prune -af` to clear the BuildKit
 cache those builds accumulated. Leave the `alpine` image in place; the migration
 recipe above uses it. Never run `docker system prune --volumes`.
 
