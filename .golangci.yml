@@ -25,6 +25,7 @@ linters:
     - rowserrcheck
     - sqlclosecheck
     - tagliatelle
+    - testifylint
     - unconvert
     - wrapcheck
   settings:

@@ -144,6 +144,17 @@ Add a regression test for every behavior change, especially for safety gates.
 Use the `schedule` package's trigger seam rather than sleeping on the wall
 clock. Fixtures must contain no personal route data.
 
+Go assertions use [Testify](https://github.com/stretchr/testify). Use `require`
+for setup and preconditions, so a failed one stops the test before it cascades,
+and `assert` for independent expectations, so a single run reports every
+mismatch. Prefer the semantic assertion over a hand-rolled comparison:
+`require.ErrorIs`, `require.ErrorAs`, and `require.ErrorContains` for errors,
+and `assert.InDelta` for floating-point values. The `testifylint` linter
+enforces this through `make lint`. Do not use Testify's `mock` or `suite`
+packages — deterministic hand-written fakes remain the convention.
+[`internal/route`](internal/route) is the worked example; packages still using
+plain `testing.T` checks are converted separately.
+
 Browser UI tests are Vitest plus Testing Library over the reusable components in
 `src/components` and the API client's parsing and error paths. The map component
 itself is not unit-tested — it needs WebGL.
