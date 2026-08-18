@@ -343,8 +343,9 @@ func (s *Service) AnnotateStored(ctx context.Context) {
 // the satellite noise the normalizer exists to remove.
 //
 // A stage the processor rejects is stored as it arrived rather than failing the
-// run here: reconciliation still reports that failure per target, so this
-// changes no safety outcome.
+// run here. What is stored is what the targets are sent, so a rejected stage
+// reaches a device as the source planned it rather than not at all, and the map
+// draws the same line the device carries.
 func (s *Service) exportProfiles(ordered []route.Stage) []route.Stage {
 	stages := make([]route.Stage, 0, len(ordered))
 	for index := range ordered {
@@ -402,6 +403,13 @@ func normalizeInventory(stages []route.Stage) (map[stageKey]route.Stage, []route
 	return desired, ordered, nil
 }
 
+// reconcileTarget brings one target in line with the stored inventory.
+//
+// The stages it is given are the export profiles the source phase derived and
+// stored, and they are encoded as they are. Deriving again here would smooth an
+// already smoothed profile, and would put a different course on the device from
+// the one the stored state describes and the map draws. One derivation, in the
+// phase that owns it.
 func (s *Service) reconcileTarget(
 	ctx context.Context,
 	targetID string,
@@ -440,15 +448,11 @@ func (s *Service) reconcileTarget(
 			return result, s.handleTargetError(ctx, targetID, lookupErr)
 		}
 		if !found {
-			processed, processErr := s.processor.Process(stage)
-			if processErr != nil {
-				return result, FailureCourse
-			}
-			fitData, encodeErr := s.encoder.Encode(ctx, processed)
+			fitData, encodeErr := s.encoder.Encode(ctx, *stage)
 			if encodeErr != nil {
 				return result, FailureCourse
 			}
-			createdRouteID, createErr := s.target.CreateRoute(ctx, accessToken, &processed, fitData)
+			createdRouteID, createErr := s.target.CreateRoute(ctx, accessToken, stage, fitData)
 			if createErr != nil {
 				return result, s.handleTargetError(ctx, targetID, createErr)
 			}
@@ -476,15 +480,11 @@ func (s *Service) reconcileTarget(
 			continue
 		}
 
-		processed, processErr := s.processor.Process(stage)
-		if processErr != nil {
-			return result, FailureCourse
-		}
-		fitData, encodeErr := s.encoder.Encode(ctx, processed)
+		fitData, encodeErr := s.encoder.Encode(ctx, *stage)
 		if encodeErr != nil {
 			return result, FailureCourse
 		}
-		updatedRouteID, updateErr := s.target.UpdateRoute(ctx, wahooRouteID, accessToken, &processed, fitData)
+		updatedRouteID, updateErr := s.target.UpdateRoute(ctx, wahooRouteID, accessToken, stage, fitData)
 		if updateErr != nil {
 			return result, s.handleTargetError(ctx, targetID, updateErr)
 		}
