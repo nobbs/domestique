@@ -276,6 +276,7 @@ func TestStoreRecordsRunsAndFailureNotificationState(t *testing.T) {
 	finishedAt := startedAt.Add(time.Minute)
 	if err := store.RecordSyncRun(
 		t.Context(),
+		"targets",
 		startedAt,
 		finishedAt,
 		"succeeded",
@@ -404,6 +405,137 @@ func TestStoreMigratesExistingOAuthTransactions(t *testing.T) {
 	}
 	if err := store.UpsertTargetStage(t.Context(), "rider-a", 1, 1, "revision", "content-hash", 42); err != nil {
 		t.Fatalf("UpsertTargetStage() after migration error = %v", err)
+	}
+}
+
+// The stored inventory is what the target phase reconciles from, so it has to
+// come back as the same stages that went in, elevation included.
+func TestStoreReadsTheTrustedInventoryBackAsStages(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	elevation := 128.5
+	stage := storeTestStageWithGeometry(t, 7, 2, "revision", "content-hash", "Alpine loop", "Descent", []route.Point{
+		{Longitude: 8.4, Latitude: 49.0, Elevation: &elevation},
+		{Longitude: 8.5, Latitude: 49.2},
+	})
+	if err := store.StoreTrustedInventory(t.Context(), []route.Stage{stage}); err != nil {
+		t.Fatalf("StoreTrustedInventory() error = %v", err)
+	}
+
+	stages, err := store.TrustedInventory(t.Context())
+	if err != nil {
+		t.Fatalf("TrustedInventory() error = %v", err)
+	}
+	if got, want := len(stages), 1; got != want {
+		t.Fatalf("stages = %d, want %d", got, want)
+	}
+	restored := stages[0]
+	if got, want := restored.Key(), stage.Key(); got != want {
+		t.Errorf("key = %v, want %v", got, want)
+	}
+	if got, want := restored.ContentHash(), "content-hash"; got != want {
+		t.Errorf("content hash = %q, want %q", got, want)
+	}
+	if got, want := restored.Revision(), "revision"; got != want {
+		t.Errorf("revision = %q, want %q", got, want)
+	}
+	if got, want := restored.Title(), "Alpine loop — Descent"; got != want {
+		t.Errorf("title = %q, want %q", got, want)
+	}
+	points := restored.Geometry()
+	if got, want := len(points), 2; got != want {
+		t.Fatalf("points = %d, want %d", got, want)
+	}
+	if points[0].Elevation == nil || *points[0].Elevation != elevation {
+		t.Errorf("first elevation = %v, want %v", points[0].Elevation, elevation)
+	}
+	if points[1].Elevation != nil {
+		t.Errorf("second elevation = %v, want none", *points[1].Elevation)
+	}
+}
+
+// A partial library reads as a library whose missing stages should be deleted,
+// so a stage without geometry for its current hash fails the whole read.
+func TestStoreRefusesATrustedInventoryMissingGeometry(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	stage := storeTestStageWithGeometry(t, 7, 2, "revision", "content-hash", "Alpine loop", "Descent", []route.Point{
+		{Longitude: 8.4, Latitude: 49.0},
+		{Longitude: 8.5, Latitude: 49.2},
+	})
+	if err := store.StoreTrustedInventory(t.Context(), []route.Stage{stage}); err != nil {
+		t.Fatalf("StoreTrustedInventory() error = %v", err)
+	}
+	if _, err := store.database.ExecContext(t.Context(), "DELETE FROM stage_geometry"); err != nil {
+		t.Fatalf("clearing geometry cache error = %v", err)
+	}
+
+	if _, err := store.TrustedInventory(t.Context()); err == nil {
+		t.Error("TrustedInventory() error = nil, want a refusal to describe a partial library")
+	}
+}
+
+// Both halves are on until an operator says otherwise, which is what every
+// deployment did before the switches existed.
+func TestStoreSchedulesBothPhasesUntilChanged(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+
+	source, targets, err := store.SyncSchedule(t.Context())
+	if err != nil {
+		t.Fatalf("SyncSchedule() error = %v", err)
+	}
+	if !source || !targets {
+		t.Errorf("SyncSchedule() = %v, %v, want both enabled", source, targets)
+	}
+
+	if setErr := store.SetSyncSchedule(t.Context(), false, true); setErr != nil {
+		t.Fatalf("SetSyncSchedule() error = %v", setErr)
+	}
+	source, targets, err = store.SyncSchedule(t.Context())
+	if err != nil {
+		t.Fatalf("SyncSchedule() after change error = %v", err)
+	}
+	if source || !targets {
+		t.Errorf("SyncSchedule() = %v, %v, want the source half off and the target half on", source, targets)
+	}
+}
+
+// Each phase's own last run is what an operator reads; the newest run of the
+// other phase answers a different question.
+func TestStoreReportsTheLastRunOfEachPhase(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	startedAt := time.Date(2026, time.August, 17, 8, 0, 0, 0, time.UTC)
+	record := func(phase, outcome string, minute int, sourceStages, created int) {
+		t.Helper()
+		began := startedAt.Add(time.Duration(minute) * time.Minute)
+		if err := store.RecordSyncRun(
+			t.Context(), phase, began, began.Add(time.Second), outcome, "", sourceStages, created, 0, 0,
+		); err != nil {
+			t.Fatalf("RecordSyncRun() error = %v", err)
+		}
+	}
+	record("source", "failed", 0, 0, 0)
+	record("source", "succeeded", 1, 12, 0)
+	record("targets", "succeeded", 2, 12, 3)
+
+	outcomes := make(map[string]string)
+	counts := make(map[string]int)
+	if err := store.ForEachPhaseRun(t.Context(), func(
+		phase string, _ time.Time, outcome, _ string, sourceStages, created, _, _ int,
+	) error {
+		outcomes[phase] = outcome
+		counts[phase] = sourceStages + created
+
+		return nil
+	}); err != nil {
+		t.Fatalf("ForEachPhaseRun() error = %v", err)
+	}
+	if got, want := outcomes["source"], "succeeded"; got != want {
+		t.Errorf("source outcome = %q, want %q", got, want)
+	}
+	if got, want := outcomes["targets"], "succeeded"; got != want {
+		t.Errorf("targets outcome = %q, want %q", got, want)
+	}
+	if got, want := counts["targets"], 15; got != want {
+		t.Errorf("target run counts = %d, want %d", got, want)
 	}
 }
 

@@ -116,6 +116,17 @@ type Notifier interface {
 }
 ~~~
 
+Within sync, the reporter consumes a runner seam with one method per half plus
+the enrichment pass, rather than one method taking a phase argument. The halves
+differ in what they contact and what they may not do, so the type system, not a
+switch statement, is what keeps a caller from asking for a half that does not
+exist.
+
+The schedule package is unchanged by the split: it still starts one run per tick
+through a one-method interface. Which halves that run performs is a policy the
+sync package owns, because it is the package that knows what a half costs and
+what it may not skip.
+
 The OAuth package owns separate, narrow Wahoo and state interfaces for
 authorisation state. It does not reuse the sync interfaces merely because SQLite
 and Wahoo implement both sets of behaviour.

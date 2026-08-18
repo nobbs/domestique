@@ -18,6 +18,18 @@ const authorizedState = "authorized"
 
 const encoderContentVersion = "fit-v4-elevation-profile"
 
+// Phase is one half of a synchronization. The halves are switched, triggered,
+// recorded, and reported separately, because they fail for unrelated reasons and
+// an operator has reason to want one without the other.
+type Phase string
+
+const (
+	// PhaseSource reads the VeloPlanner library into stored state.
+	PhaseSource Phase = "source"
+	// PhaseTargets reconciles stored state onto the Wahoo targets.
+	PhaseTargets Phase = "targets"
+)
+
 // Outcome is the terminal result of one attempted synchronization run.
 type Outcome string
 
@@ -61,6 +73,9 @@ const (
 
 // Result contains aggregate, non-sensitive counts for one synchronization run.
 type Result struct {
+	// Phase names the half of a synchronization this result describes. The
+	// counts a phase does not produce stay zero.
+	Phase        Phase
 	Outcome      Outcome
 	Failure      FailureCategory
 	SourceStages int
@@ -119,6 +134,7 @@ type State interface {
 	MarkNeedsReauthorization(ctx context.Context, targetID string) error
 	TrustedInventoryCount(ctx context.Context) (int, error)
 	StoreTrustedInventory(ctx context.Context, stages []route.Stage) error
+	TrustedInventory(ctx context.Context) ([]route.Stage, error)
 	ForEachTargetStage(ctx context.Context, targetID string, visit func(routeID int64, stageOrder int, sourceRevision, contentHash string, wahooRouteID int64) error) error
 	UpsertTargetStage(ctx context.Context, targetID string, routeID int64, stageOrder int, sourceRevision, contentHash string, wahooRouteID int64) error
 	DeleteTargetStage(ctx context.Context, targetID string, routeID int64, stageOrder int) error
@@ -183,37 +199,35 @@ func New(
 	}, nil
 }
 
-// Run synchronizes both targets serially. A concurrent trigger performs no
-// work and returns OutcomeSkipped without altering durable state.
-func (s *Service) Run(ctx context.Context) Result {
+// RunSource reads the VeloPlanner library into stored state.
+//
+// It contacts no target and needs no authorisation, so a library refresh keeps
+// working while a target waits to be reauthorised. What it stores is what the
+// target phase later reconciles, which is why the empty-source gate lives here:
+// refusing to overwrite a populated inventory with an empty one is what stops
+// the deletion before anything downstream can be told to perform it.
+//
+// A concurrent run performs no work and returns OutcomeSkipped without altering
+// durable state.
+func (s *Service) RunSource(ctx context.Context) Result {
 	if !s.running.CompareAndSwap(false, true) {
-		return Result{Outcome: OutcomeSkipped}
+		return Result{Phase: PhaseSource, Outcome: OutcomeSkipped}
 	}
 	defer s.running.Store(false)
 
-	for _, targetID := range s.targetIDs {
-		authorization, err := s.state.TargetAuthorization(ctx, targetID)
-		if err != nil {
-			return Result{Outcome: OutcomeFailed, Failure: FailureState}
-		}
-		if authorization != authorizedState {
-			return Result{Outcome: OutcomeNotReady}
-		}
-	}
-
 	trustedCount, err := s.state.TrustedInventoryCount(ctx)
 	if err != nil {
-		return Result{Outcome: OutcomeFailed, Failure: FailureState}
+		return Result{Phase: PhaseSource, Outcome: OutcomeFailed, Failure: FailureState}
 	}
 	stages, err := s.source.Inventory(ctx)
 	if err != nil {
-		return Result{Outcome: OutcomeFailed, Failure: FailureSource}
+		return Result{Phase: PhaseSource, Outcome: OutcomeFailed, Failure: FailureSource}
 	}
-	desired, ordered, err := normalizeInventory(stages)
+	_, ordered, err := normalizeInventory(stages)
 	if err != nil {
-		return Result{Outcome: OutcomeFailed, Failure: FailureSource}
+		return Result{Phase: PhaseSource, Outcome: OutcomeFailed, Failure: FailureSource}
 	}
-	result := Result{SourceStages: len(ordered)}
+	result := Result{Phase: PhaseSource, SourceStages: len(ordered)}
 	if len(ordered) == 0 && trustedCount > 0 && !s.allowEmptySourceDeletion {
 		result.Outcome = OutcomeBlocked
 		result.Failure = FailureEmptySource
@@ -227,7 +241,51 @@ func (s *Service) Run(ctx context.Context) Result {
 
 		return result
 	}
+	result.Outcome = OutcomeSucceeded
 
+	return result
+}
+
+// RunTargets reconciles the stored inventory onto every configured target.
+//
+// It reads the library the source phase stored rather than fetching it again,
+// so a target that was unreachable or unauthorised catches up from the same
+// inventory the last successful read produced, without asking VeloPlanner a
+// second time for an answer already on disk.
+//
+// The stored inventory is authority for what should exist, exactly as a freshly
+// fetched one was: an inventory that cannot be read back whole fails the phase
+// as a state failure, because a partial library is indistinguishable from a
+// library whose missing stages are meant to be deleted.
+//
+// A concurrent run performs no work and returns OutcomeSkipped without altering
+// durable state.
+func (s *Service) RunTargets(ctx context.Context) Result {
+	if !s.running.CompareAndSwap(false, true) {
+		return Result{Phase: PhaseTargets, Outcome: OutcomeSkipped}
+	}
+	defer s.running.Store(false)
+
+	for _, targetID := range s.targetIDs {
+		authorization, err := s.state.TargetAuthorization(ctx, targetID)
+		if err != nil {
+			return Result{Phase: PhaseTargets, Outcome: OutcomeFailed, Failure: FailureState}
+		}
+		if authorization != authorizedState {
+			return Result{Phase: PhaseTargets, Outcome: OutcomeNotReady}
+		}
+	}
+
+	stored, err := s.state.TrustedInventory(ctx)
+	if err != nil {
+		return Result{Phase: PhaseTargets, Outcome: OutcomeFailed, Failure: FailureState}
+	}
+	desired, ordered, err := normalizeInventory(stored)
+	if err != nil {
+		return Result{Phase: PhaseTargets, Outcome: OutcomeFailed, Failure: FailureState}
+	}
+
+	result := Result{Phase: PhaseTargets, SourceStages: len(ordered)}
 	for _, targetID := range s.targetIDs {
 		counts, failure := s.reconcileTarget(ctx, targetID, desired, ordered)
 		result.Created += counts.created
@@ -248,24 +306,29 @@ func (s *Service) Run(ctx context.Context) Result {
 	if result.Outcome == "" {
 		result.Outcome = OutcomeSucceeded
 	}
-	s.annotateSurface(ctx, exported)
 
 	return result
 }
 
-// annotateSurface classifies the ground under the stages that were just stored.
+// AnnotateStored classifies the ground under the stored inventory.
 //
-// It runs last, and cannot change the result. Getting routes onto a device is
+// It is deliberately not part of either phase. Getting routes onto a device is
 // what a synchronization is for, so a slow or unavailable tagging endpoint must
-// neither delay that nor be reported as a failed sync. The annotator caches what
-// it learns and is bounded per pass, so a failure here costs only the stages this
-// run would have filled in; the next run asks again, and until then those stages
-// simply carry no surface.
+// neither delay that nor be reported as a failed sync — which is why the caller
+// runs this after every phase it intended to run, and why nothing here is
+// returned. The annotator caches what it learns and is bounded per pass, so a
+// failure costs only the stages this pass would have filled in; the next one
+// asks again, and until then those stages simply carry no surface.
 //
-// It is given the same exported inventory that was stored, because a
-// classification is a set of positions in one stored geometry's coordinates.
-func (s *Service) annotateSurface(ctx context.Context, stages []route.Stage) {
+// It reads the inventory back from state rather than being handed one, because
+// a classification is a set of positions in one stored geometry's coordinate
+// array: the stages it must describe are precisely the stored ones.
+func (s *Service) AnnotateStored(ctx context.Context) {
 	if s.annotator == nil {
+		return
+	}
+	stages, err := s.state.TrustedInventory(ctx)
+	if err != nil {
 		return
 	}
 	//nolint:errcheck // Enrichment deliberately cannot fail a run; see above.
@@ -280,8 +343,9 @@ func (s *Service) annotateSurface(ctx context.Context, stages []route.Stage) {
 // the satellite noise the normalizer exists to remove.
 //
 // A stage the processor rejects is stored as it arrived rather than failing the
-// run here: reconciliation still reports that failure per target, so this
-// changes no safety outcome.
+// run here. What is stored is what the targets are sent, so a rejected stage
+// reaches a device as the source planned it rather than not at all, and the map
+// draws the same line the device carries.
 func (s *Service) exportProfiles(ordered []route.Stage) []route.Stage {
 	stages := make([]route.Stage, 0, len(ordered))
 	for index := range ordered {
@@ -339,6 +403,13 @@ func normalizeInventory(stages []route.Stage) (map[stageKey]route.Stage, []route
 	return desired, ordered, nil
 }
 
+// reconcileTarget brings one target in line with the stored inventory.
+//
+// The stages it is given are the export profiles the source phase derived and
+// stored, and they are encoded as they are. Deriving again here would smooth an
+// already smoothed profile, and would put a different course on the device from
+// the one the stored state describes and the map draws. One derivation, in the
+// phase that owns it.
 func (s *Service) reconcileTarget(
 	ctx context.Context,
 	targetID string,
@@ -377,15 +448,11 @@ func (s *Service) reconcileTarget(
 			return result, s.handleTargetError(ctx, targetID, lookupErr)
 		}
 		if !found {
-			processed, processErr := s.processor.Process(stage)
-			if processErr != nil {
-				return result, FailureCourse
-			}
-			fitData, encodeErr := s.encoder.Encode(ctx, processed)
+			fitData, encodeErr := s.encoder.Encode(ctx, *stage)
 			if encodeErr != nil {
 				return result, FailureCourse
 			}
-			createdRouteID, createErr := s.target.CreateRoute(ctx, accessToken, &processed, fitData)
+			createdRouteID, createErr := s.target.CreateRoute(ctx, accessToken, stage, fitData)
 			if createErr != nil {
 				return result, s.handleTargetError(ctx, targetID, createErr)
 			}
@@ -413,15 +480,11 @@ func (s *Service) reconcileTarget(
 			continue
 		}
 
-		processed, processErr := s.processor.Process(stage)
-		if processErr != nil {
-			return result, FailureCourse
-		}
-		fitData, encodeErr := s.encoder.Encode(ctx, processed)
+		fitData, encodeErr := s.encoder.Encode(ctx, *stage)
 		if encodeErr != nil {
 			return result, FailureCourse
 		}
-		updatedRouteID, updateErr := s.target.UpdateRoute(ctx, wahooRouteID, accessToken, &processed, fitData)
+		updatedRouteID, updateErr := s.target.UpdateRoute(ctx, wahooRouteID, accessToken, stage, fitData)
 		if updateErr != nil {
 			return result, s.handleTargetError(ctx, targetID, updateErr)
 		}

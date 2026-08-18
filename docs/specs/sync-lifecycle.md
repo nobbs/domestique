@@ -37,7 +37,8 @@ implementation detail.
 | trusted inventory | complete validated source-stage set and observed time | none |
 | stage geometry | cached titles, geometry, length, and extent for the map view | none |
 | stage surface | cached surface classification of one stored geometry, as index ranges plus matched length, against the content hash it was measured for | none |
-| sync run | start, end, terminal state, aggregate counts, safe failure category | none |
+| sync run | half, start, end, terminal state, aggregate counts, safe failure category | none |
+| sync schedule | whether the timer may start each half | none |
 | notification state | last delivered failure category and suppression deadline | none |
 
 OAuth state is stored as a digest. Refresh tokens are encrypted before being
@@ -55,12 +56,14 @@ backs the deletion guard and is replaced wholesale each run, whereas this cache
 serves only the map view and may be dropped at any time. Losing it degrades the
 map until the next run and can never affect sync safety or authorise a deletion.
 
-The stage surface cache is filled by a separate pass at the very end of a run,
-because unlike the geometry it needs data the run does not hold: a request per
-stage to the configured Overpass endpoint. That pass cannot change the run's
-outcome, is bounded to a few stages per run so a first sync of a large library
-neither stalls nor leans on a volunteer-run server, and skips any stage already
-classified against its current content hash. A stage whose geometry has been
+The stage surface cache is filled by a separate pass, after every half a tick
+intended to run and only when the source half stored something new. Unlike the
+geometry, it needs data no run holds: a request per stage to the configured
+Overpass endpoint. It comes last because getting routes onto a device is what a
+synchronization is for, and enrichment must never delay that. It belongs to no
+half, cannot change any outcome, is bounded to a few stages per pass so a first
+sync of a large library neither stalls nor leans on a volunteer-run server, and
+skips any stage already classified against its current content hash. A stage whose geometry has been
 re-planned is reclassified, because the cached ranges are positions in the
 coordinate array that was replaced.
 
@@ -100,10 +103,35 @@ state, token, Wahoo account identity, or upstream response.
 ## Manual trigger
 
 The configured Tailnet user can request `POST /v1/sync` to start an immediate
-synchronization. It uses the same reconciliation, durable run record, and
-Pushover notification path as scheduled work. The service returns `202` only
-when no scheduled or manual run is active; otherwise it returns `409` without
-starting duplicate provider work.
+synchronization of both halves, or `POST /v1/sync/source` and
+`POST /v1/sync/targets` to start one. Each uses the same reconciliation, durable
+run record, and Pushover notification path as scheduled work. The service returns
+`202` only when no scheduled or manual run is active; otherwise it returns `409`
+without starting duplicate provider work.
+
+A manual trigger runs its half whether or not the schedule is allowed to start
+it. The switches decide what happens unattended; a request is an operator who
+has already decided.
+
+## Schedule switches
+
+Two durable switches decide what the timer starts: one for the source half, one
+for the target half. Both are on until an operator turns one off, which is what
+every deployment did before they existed.
+
+They are the operator's answer to two different situations. A library being
+re-planned should not be pushed to a device mid-edit, and a device that must not
+change today should not stop the map from staying current. Neither case is worth
+editing configuration on the host and restarting the service, and neither is
+worth stopping the service, which would also stop the browser UI.
+
+A switch governs the next tick only. It never stops a run in flight, never
+changes what a manual trigger does, and never relaxes a safety gate: a half that
+does run, runs exactly as it always did.
+
+A schedule that cannot be read starts nothing, and is recorded and notified as a
+failed source run. "Off" and "unreadable" are different answers, and a timer must
+not act on the second as though it were the first.
 
 ## Wahoo token use
 
@@ -126,21 +154,48 @@ rate limits and waits or ends the run safely; it never issues parallel retries.
 ## Sync lifecycle
 
 A healthy process schedules one delayed startup run, then one hourly run. A
-single in-process lock prevents overlap. A second trigger records no work and
-returns without modifying state.
+single in-process lock prevents overlap across both halves. A second trigger
+records no work and returns without modifying state.
+
+Each half is a run of its own: its own record, its own outcome, its own
+notification. Failure suppression is keyed by half and category together, so a
+library that has been failing to load all morning is never the reason a target
+stops reporting that it can no longer be written to.
 
 ~~~mermaid
 flowchart TD
-    Start["scheduled run"] --> Login["fresh VeloPlanner login"]
+    Start["scheduled tick"] --> SourceOn{"source half switched on?"}
+    SourceOn -- yes --> Login["fresh VeloPlanner login"]
     Login --> Inventory["fetch complete source inventory"]
     Inventory --> Guard{"trusted and safe?"}
-    Guard -- no --> Block["record blocked run and notify"]
-    Guard -- yes --> A["reconcile target A"]
+    Guard -- no --> Block["record blocked source run and notify"]
+    Guard -- yes --> Store["store trusted inventory and geometry"]
+    Store --> TargetsOn{"target half switched on?"}
+    SourceOn -- no --> TargetsOn
+    Block --> TargetsOn
+    TargetsOn -- yes --> Read["read stored inventory"]
+    Read --> Readable{"readable whole?"}
+    Readable -- no --> StateFail["record failed target run and notify"]
+    Readable -- yes --> A["reconcile target A"]
     A --> B["reconcile target B"]
     B --> Result{"all targets succeeded?"}
     Result -- yes --> Success["record success and notify"]
     Result -- no --> Failure["record failure and notify"]
+    TargetsOn -- no --> Enrich["classify surfaces, if the source half stored"]
+    Success --> Enrich
+    Failure --> Enrich
+    StateFail --> Enrich
 ~~~
+
+The stored inventory is the handover between the halves. The target half reads
+it back rather than fetching a fresh one: the library it reconciles is the last
+one validated as whole, which is what lets a lagging target catch up without
+asking the source a second question it has already answered.
+
+An inventory that cannot be read back whole fails the target half as a state
+failure and deletes nothing. A partial library is indistinguishable from a
+library whose missing stages are meant to be deleted, and the difference is not
+one a reconciler may guess at.
 
 A source inventory is trusted only when the service has a fresh successful login,
 all listing pages complete, every new or changed route detail is valid, and each
@@ -238,7 +293,26 @@ Returns 200 while the service can read state. The minimum shape is:
     "source_stages":12,
     "created":0,
     "updated":1,
-    "deleted":0
+    "deleted":0,
+    "schedule":{"source":true,"targets":true},
+    "phases":{
+      "source":{
+        "last_completed_at":"2026-08-16T12:00:00Z",
+        "last_result":"succeeded",
+        "source_stages":12,
+        "created":0,
+        "updated":0,
+        "deleted":0
+      },
+      "targets":{
+        "last_completed_at":"2026-08-16T12:00:04Z",
+        "last_result":"succeeded",
+        "source_stages":12,
+        "created":0,
+        "updated":1,
+        "deleted":0
+      }
+    }
   }
 }
 ~~~
@@ -246,6 +320,25 @@ Returns 200 while the service can read state. The minimum shape is:
 Authorisation is one of "not_authorised", "pending", "authorised", or
 "needs_reauthorisation". Sync state is "not_ready", "idle", "running",
 "succeeded", "failed", or "blocked". Timestamps are RFC 3339 UTC.
+
+`schedule` carries the two switches. A phase under `phases` is absent until that
+half has finished a run, and carries `last_failure` with the safe failure
+category when its last run did not succeed. The fields outside `phases` describe
+the most recent run of either half and are kept so an existing reader does not
+break.
+
+### PUT /v1/sync/schedule
+
+Sets both switches. The request body names both:
+
+~~~json
+{"source":true,"targets":false}
+~~~
+
+Returns 200 with the stored state in the same shape. A body naming only one
+switch, or carrying an unknown field, is refused with 400: a half-named schedule
+would leave the other switch at whatever the caller assumed. It never starts,
+stops, or alters a run in flight.
 
 ### GET /v1/routes
 
@@ -272,16 +365,19 @@ identifiers, route names, provider response text, file paths, tokens, or
 credentials. Authentication failures use 401; an authenticated but unpermitted
 identity uses 403; malformed client input uses 400.
 
-The OAuth start, callback, and protected `POST /v1/sync` trigger are the only
+The OAuth start, callback, the protected `POST /v1/sync` triggers, and the
+protected `PUT /v1/sync/schedule` switch are the only
 state-changing endpoints. There is no HTTP or CLI endpoint for route deletion,
 configuration mutation, or Wahoo target removal.
 
 ## Notifications
 
 Every terminal run updates the stored run record. A success sends one Pushover
-message with aggregate create/update/delete counts. The first occurrence of a
-failure category sends one failure message; matching failures are suppressed for
-six hours. The first following success is the recovery signal.
+message carrying the counts its half actually produced. The first occurrence of a
+failure category in a half sends one failure message; matching failures in that
+half are suppressed for six hours. The first following success is the recovery
+signal. Suppression is keyed by half and category together: the same category
+failing in both halves is two problems, and each is worth one alert.
 
 Notification content contains only the run result, target count, aggregate
 counts, and a safe failure category. It never contains a route title, source
@@ -298,6 +394,10 @@ The implementation test suite must cover at least:
 - a source removal of up to five owned stages and a sixth deletion being blocked;
 - manual Wahoo route preservation;
 - state loss adopting matching desired external IDs without deleting unknown
-  routes; and
+  routes;
+- each half running, and being triggered, without the other;
+- a stored inventory that cannot be read back whole causing zero deletions;
+- a switched-off half being skipped by the timer and still run by a manual
+  trigger; and
 - JSON responses and Pushover messages containing no secret or raw upstream
   data.

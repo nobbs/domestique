@@ -121,7 +121,20 @@ func run(ctx context.Context) error {
 		},
 		oauthService,
 		store,
-		httpapi.SyncTriggerFunc(func() bool { return reporter.Trigger(runCtx) }),
+		// The HTTP surface names a phase; the reporter decides what running one
+		// means. Manual triggers deliberately ignore the schedule switches.
+		httpapi.SyncTriggerFunc(func(phase httpapi.SyncPhase) bool {
+			switch phase {
+			case httpapi.SyncPhaseSource:
+				return reporter.TriggerPhase(runCtx, syncservice.PhaseSource)
+			case httpapi.SyncPhaseTargets:
+				return reporter.TriggerPhase(runCtx, syncservice.PhaseTargets)
+			case httpapi.SyncPhaseAll:
+				return reporter.Trigger(runCtx)
+			}
+
+			return false
+		}),
 		assets,
 	)
 	if err != nil {

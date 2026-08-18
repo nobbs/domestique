@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"encoding/json"
 	"net/http"
 	"slices"
 	"time"
@@ -40,6 +41,39 @@ func (h *Handler) status(writer http.ResponseWriter, request *http.Request, _ st
 	if ready {
 		view.Sync.State = "idle"
 	}
+	scheduleSource, scheduleTargets, err := h.state.SyncSchedule(request.Context())
+	if err != nil {
+		h.unavailable(writer)
+
+		return
+	}
+	view.Sync.Schedule = syncScheduleView{Source: scheduleSource, Targets: scheduleTargets}
+	if phaseErr := h.state.ForEachPhaseRun(request.Context(), func(
+		phase string, completedAt time.Time, outcome, detail string,
+		sourceStages, created, updated, deleted int,
+	) error {
+		run := phaseRunView{
+			LastCompletedAt: completedAt.Format(time.RFC3339),
+			LastResult:      outcome,
+			LastFailure:     detail,
+			SourceStages:    sourceStages,
+			Created:         created,
+			Updated:         updated,
+			Deleted:         deleted,
+		}
+		switch phase {
+		case string(SyncPhaseSource):
+			view.Sync.Phases.Source = &run
+		case string(SyncPhaseTargets):
+			view.Sync.Phases.Targets = &run
+		}
+
+		return nil
+	}); phaseErr != nil {
+		h.unavailable(writer)
+
+		return
+	}
 	completedAt, outcome, _, sourceStages, created, updated, deleted, found, err := h.state.LastSyncRun(request.Context())
 	if err != nil {
 		h.unavailable(writer)
@@ -55,9 +89,57 @@ func (h *Handler) status(writer http.ResponseWriter, request *http.Request, _ st
 	h.writeJSON(writer, http.StatusOK, view)
 }
 
+// setSyncSchedule switches either half of the scheduled synchronization on or
+// off. It changes nothing about a run already in flight, and never starts one.
+func (h *Handler) setSyncSchedule(writer http.ResponseWriter, request *http.Request, _ string) {
+	var body struct {
+		Source  *bool `json:"source"`
+		Targets *bool `json:"targets"`
+	}
+	decoder := json.NewDecoder(http.MaxBytesReader(writer, request.Body, maximumRequestBytes))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil || body.Source == nil || body.Targets == nil {
+		h.error(writer, http.StatusBadRequest, "invalid_request", "both schedule switches are required")
+
+		return
+	}
+	// One object, and nothing after it. A body carrying a second value is a
+	// caller who thinks they sent something this service never read, and
+	// silently acting on the first half of that is how a switch ends up in a
+	// state nobody asked for.
+	if decoder.More() {
+		h.error(writer, http.StatusBadRequest, "invalid_request", "the request body must be one object")
+
+		return
+	}
+	if err := h.state.SetSyncSchedule(request.Context(), *body.Source, *body.Targets); err != nil {
+		h.unavailable(writer)
+
+		return
+	}
+	h.writeJSON(writer, http.StatusOK, syncScheduleView{Source: *body.Source, Targets: *body.Targets})
+}
+
 // sync queues one immediate run through the same reporting path as the schedule.
 func (h *Handler) sync(writer http.ResponseWriter, _ *http.Request, _ string) {
-	if !h.syncTrigger.Trigger() {
+	h.trigger(writer, SyncPhaseAll)
+}
+
+// syncSource queues one immediate read of the source library. It runs whether or
+// not the schedule is allowed to start that phase: the switch governs unattended
+// runs, and an operator asking for one now has already decided.
+func (h *Handler) syncSource(writer http.ResponseWriter, _ *http.Request, _ string) {
+	h.trigger(writer, SyncPhaseSource)
+}
+
+// syncTargets queues one immediate reconciliation of stored state onto the
+// targets, on the same terms as syncSource.
+func (h *Handler) syncTargets(writer http.ResponseWriter, _ *http.Request, _ string) {
+	h.trigger(writer, SyncPhaseTargets)
+}
+
+func (h *Handler) trigger(writer http.ResponseWriter, phase SyncPhase) {
+	if !h.syncTrigger.Trigger(phase) {
 		h.error(writer, http.StatusConflict, "sync_in_progress", "a synchronization is already running")
 
 		return
