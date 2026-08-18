@@ -140,20 +140,51 @@ the grant restricts the tunnel node to 443 regardless.
 
 ## Cloudflare setup
 
-The `disterhoft.de` and `nobbs.dev` zones are managed in
-`infrastructure/stacks/cloudflare`. The tunnel's DNS record is created by
-Cloudflare when the tunnel route is added, so it is one of the records that
-stack leaves unmanaged, in the same way it leaves external-dns records alone.
+Everything on the Cloudflare side is Terraform, in
+`infrastructure/stacks/cloudflare/domestique.tf`: the tunnel, the hostname's
+`CNAME`, the Access group, policy and application, and a redirect rule scoped to
+this hostname. The one thing that stack deliberately does not own is the ingress
+rule, which lives in [`cloudflared.example.yml`](cloudflared.example.yml) beside
+the compose file that deploys it — because the origin is a Tailscale Service
+name, and that is the line least worth having two copies of.
 
-1. **Create the tunnel.** In Zero Trust → Networks → Tunnels, create a
-   `cloudflared` tunnel and note its ID and credentials file. Route
-   `domestique.nobbs.dev` to it.
-2. **Deploy the connector.** Copy [`cloudflared.example.yml`](cloudflared.example.yml)
-   to `./cloudflared/config.yml`, fill in the tunnel ID, and place the
-   credentials JSON beside it. Bring up
+Two prerequisites are one-time dashboard work, not Terraform:
+
+- **Zero Trust enabled**, with a team domain. Terraform can create an
+  application inside an organization but cannot create the organization. One-time
+  PIN is available by default, so no separate identity provider is required for
+  a single operator.
+- **Both Cloudflare API tokens widened.** They were zone-scoped; the tunnel and
+  the Access resources are account-scoped, and the redirect rule needs
+  `Single Redirect`. The exact permissions are in that stack's README.
+
+Then:
+
+1. **Apply the stack.** From the infrastructure root, `mise run terraform:apply
+   cloudflare`, or merge to `main` and let CI apply it. This creates the tunnel,
+   points `domestique.nobbs.dev` at it, and creates the Access application.
+2. **Take the two values the host needs**, from the stack's outputs rather than
+   from the dashboard:
+
+   - `domestique_tunnel_id` — the tunnel ID for `cloudflared`'s `config.yml`.
+   - `domestique_access_aud` — the AUD tag, for
+     `access.cloudflare.application_aud` below.
+   - `domestique_access_team_domain` — for `access.cloudflare.team_domain`. The
+     organization stays dashboard-managed, but the stack reads it, so this is
+     not transcribed by hand either.
+3. **Fetch the connector credentials.** `tunnel_secret` is intentionally left
+   unset in Terraform, so Cloudflare generates it and it never enters the state
+   file. Download the credentials JSON once from Zero Trust → Networks →
+   Tunnels.
+4. **Deploy the connector.** Copy
+   [`cloudflared.example.yml`](cloudflared.example.yml) to
+   `./cloudflared/config.yml`, fill in the tunnel ID, and place the credentials
+   JSON beside it. Bring up
    [`compose.cloudflare.example.yml`](compose.cloudflare.example.yml) alongside
-   the service's own compose file.
-3. **Approve the tunnel node** for the Service if the tailnet requires it, then
+   the service's own compose file. Its Tailscale sidecar must join with an auth
+   key carrying `tag:cloudflared`, since that tag is what the grant above is
+   written against.
+5. **Approve the tunnel node** for the Service if the tailnet requires it, then
    confirm from inside the namespace that the Service resolves:
 
    ```sh
@@ -161,15 +192,23 @@ stack leaves unmanaged, in the same way it leaves external-dns records alone.
    docker compose exec tunnel-tailscale tailscale ping domestique.fluffy-sargas.ts.net
    ```
 
-4. **Create one Access group** holding the allowed people, and reference that
-   group from the application's policy. Membership then changes in one place.
-5. **Create one self-hosted application** for `domestique.nobbs.dev` with an
-   Allow policy referencing that group. Copy its **AUD tag** into
-   `access.cloudflare.application_aud`.
-6. **Raise the session duration.** The default is short for a service one person
-   uses daily; a day or a week is appropriate for a single trusted operator.
-7. **Enable the app launcher** so the service appears on a single page listing
-   what the account can reach.
+### What the Terraform sets, and why
+
+The resources are small enough to read, but three of the choices in them are
+decisions rather than defaults:
+
+- **A group, not a list of addresses on the policy.** The allowed people are
+  named once in `var.domestique.allowed_emails`, and the policy references the
+  group. Membership then changes in one place.
+- **A session duration of a day.** Cloudflare's default is short for a service
+  one person uses daily; a day or a week is appropriate for a single trusted
+  operator.
+- **The app launcher left visible**, so the service appears on a single page
+  listing what the account can reach.
+
+Access is the outer of two gates in any case. Widening the group does not widen
+who the application will serve: Domestique still verifies each request's signed
+assertion against its own `allowed_email`.
 
 ### Only one application, deliberately
 
@@ -202,8 +241,9 @@ application_aud = "<the AUD tag of the Access application>"
 allowed_email = "<the IdP address of the operator>"
 ```
 
-None of these is a secret, so they live in `config.toml` rather than in
-`secrets/`. The section is required in full: it is the only gate the service
+`team_domain` and `application_aud` are the `domestique_access_team_domain` and
+`domestique_access_aud` outputs of the Cloudflare stack. None of these is a
+secret, so they live in `config.toml` rather than in `secrets/`. The section is required in full: it is the only gate the service
 has, so a missing or partly filled one is refused at startup rather than left
 answering every request with a 401.
 
