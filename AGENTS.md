@@ -146,8 +146,14 @@ clock. Fixtures must contain no personal route data.
 
 Browser UI tests are Vitest plus Testing Library over the reusable components in
 `src/components` and the API client's parsing and error paths. The map component
-itself is not unit-tested — it needs WebGL — so changes to it must be checked by
-running the app.
+itself is not unit-tested — it needs WebGL.
+
+Checking a map change by running the app is currently skippable, so a change may
+be handed over without ever having been rendered. Say so plainly when it has
+not, and say what specifically went unseen, so nobody reads a green `make check`
+as a change that was looked at. Everything a test can still cover — the style URL
+chosen, the palette selected, the geometry handed to a layer — belongs in a test
+whether or not the map itself was opened.
 
 ## Files an agent must not touch or read out
 
