@@ -16,6 +16,7 @@ import type { Position, SurfaceKind, SurfaceRange } from "../api/types";
 import { SURFACE_KINDS } from "../api/types";
 import type { CoordinateRange } from "./profile";
 import { cumulativeMetres } from "./profile";
+import { splitAtWindow } from "./routeLines";
 
 interface SurfaceStyle {
   label: string;
@@ -244,39 +245,6 @@ export interface SurfaceSlices {
 }
 
 /**
- * Cuts one stretch of the route into the part a window is showing and the parts
- * it is not.
- *
- * Neighbouring pieces share one point and no segment: a gap would break the
- * drawn route, and an overlap would paint one metre of it twice at two
- * different opacities. A piece of fewer than two points spans no ground and is
- * dropped, exactly as a range covering a single final point always was.
- */
-function splitAtWindow(
-  coordinates: Position[],
-  start: number,
-  end: number,
-  window: CoordinateRange | null,
-): { inside: Position[][]; outside: Position[][] } {
-  const piece = (from: number, to: number) => {
-    const line = coordinates.slice(from, to + 1);
-
-    return line.length < 2 ? [] : [line];
-  };
-  if (!window) {
-    return { inside: piece(start, end), outside: [] };
-  }
-
-  return {
-    inside: piece(Math.max(start, window.startIndex), Math.min(end, window.endIndex)),
-    outside: [
-      ...piece(start, Math.min(end, window.startIndex)),
-      ...piece(Math.max(start, window.endIndex), end),
-    ],
-  };
-}
-
-/**
  * Splits the route into one set of lines per class, separating what falls
  * inside a stretch from what falls outside it.
  *
@@ -324,22 +292,6 @@ export function surfaceLinesWithin(
 
     return slices ? [{ kind, ...slices }] : [];
   });
-}
-
-/**
- * The route itself split the same way, for the casing under the classes and for
- * a stage nobody has classified yet.
- */
-export function routeLinesWithin(
-  coordinates: Position[],
-  window: CoordinateRange | null,
-): { inside: Position[][]; outside: Position[][] } {
-  const lastIndex = coordinates.length - 1;
-  if (lastIndex < 1) {
-    return { inside: [], outside: [] };
-  }
-
-  return splitAtWindow(coordinates, 0, lastIndex, window);
 }
 
 /** Splits the route into one set of lines per class, ready to paint. */

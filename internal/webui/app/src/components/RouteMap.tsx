@@ -21,12 +21,8 @@ import type { DataDrivenPropertyValueSpecification } from "maplibre-gl";
 import type { BoundingBox, Position, SurfaceRange } from "../api/types";
 import type { DistanceWindow, Profile } from "../lib/profile";
 import { coordinateRange, nearestSample, rangeBounds, sampleAt } from "../lib/profile";
-import {
-  routeLinesWithin,
-  SURFACE_LINE_WIDTH,
-  SURFACE_STYLES,
-  surfaceLinesWithin,
-} from "../lib/surface";
+import { gradientSlices, routeLinesWithin } from "../lib/routeLines";
+import { SURFACE_LINE_WIDTH, SURFACE_STYLES, surfaceLinesWithin } from "../lib/surface";
 // Configures the shared worker pool; without it this map renders no tiles.
 import "../lib/maplibre";
 
@@ -48,6 +44,39 @@ const SURFACE_ATTRIBUTION = "Surface data © OpenStreetMap contributors (ODbL)";
 
 /** The casing's normal opacity, kept in one place so the dimmed one follows it. */
 const CASING_OPACITY = 0.85;
+
+/**
+ * The steepness ramp, band by band, mirroring `--band-*` in `index.css`.
+ *
+ * Repeated here rather than read from the stylesheet because MapLibre paints
+ * from a style document and knows nothing of CSS custom properties. The light
+ * theme's values are the ones used: the basemap is whatever the operator
+ * configured and does not follow the page, which is the same reason the surface
+ * palette and the route accent are fixed.
+ *
+ * Only the steeper two are ever drawn — see `GRADIENT_BANDS_DRAWN`.
+ */
+const BAND_COLOURS = ["#e0ac2c", "#c2542a", "#63202b"] as const;
+
+/**
+ * The bands worth ink on a map.
+ *
+ * Gentle ground is most of most routes, and painting it would edge the whole
+ * line in gold to say the unremarkable thing. Left unpainted, the white casing
+ * stands for it, and colour appears only where the road starts to bite. The
+ * chart still shows all three, which is where a reader goes to compare one
+ * stretch against another; the map is answering "where does it get steep?".
+ */
+const GRADIENT_BANDS_DRAWN = [1, 2];
+
+/**
+ * How wide the steepness line runs beneath the casing.
+ *
+ * Wider than the casing, so what shows is an edging either side of it rather
+ * than a colour behind it. The casing keeps the two encodings apart: steepness
+ * never touches the class colour it would otherwise be read as part of.
+ */
+const BAND_EDGE_WIDTH = 11;
 
 /**
  * How much of the route survives outside the stretch the chart is showing.
@@ -308,6 +337,16 @@ export function RouteMap({
     [coordinates, surface, windowRange],
   );
 
+  // One feature per band, for the same reason the classes get one each: the
+  // width and colour of an edging belong to its layer.
+  const gradientFeatures = useMemo(
+    () =>
+      gradientSlices(coordinates, windowRange)
+        .filter(({ band }) => GRADIENT_BANDS_DRAWN.includes(band))
+        .map(({ band, ...slices }) => ({ band, data: taggedCollection(slices) })),
+    [coordinates, windowRange],
+  );
+
   // The position shared with the elevation chart. An empty collection keeps the
   // source mounted, so the marker appears without rebuilding the layer.
   const marker = useMemo(() => {
@@ -369,13 +408,39 @@ export function RouteMap({
               layout={{ "line-cap": "round", "line-join": "round" }}
               paint={{
                 "line-color": ROUTE_ACCENT,
-                "line-width": 13,
+                // Wider than the steepness edging beneath the casing, so what
+                // shows is a glow around the route rather than a wash over the
+                // band colours.
+                "line-width": BAND_EDGE_WIDTH + 6,
                 "line-opacity": 0.22,
                 "line-blur": 3,
               }}
             />
           </Source>
         ) : null}
+        {/*
+         * Steepness, as an edging under the casing. Beneath it deliberately:
+         * over the casing it would be a second line to read along the route,
+         * and the point of putting it underneath is that the eye picks up the
+         * colour at the edges without ever losing the route itself.
+         */}
+        {gradientFeatures.map(({ band, data }) => (
+          <Source key={band} id={`stage-gradient-${band}`} type="geojson" data={data}>
+            <Layer
+              id={`stage-gradient-${band}-line`}
+              type="line"
+              beforeId="stage-casing"
+              // Butt caps, so a band ends on the point it hands over at rather
+              // than half a line width into the band that follows it.
+              layout={{ "line-cap": "butt", "line-join": "round" }}
+              paint={{
+                "line-color": BAND_COLOURS[band] ?? ROUTE_ACCENT,
+                "line-width": BAND_EDGE_WIDTH,
+                "line-opacity": dimmedOutside(1, windowed),
+              }}
+            />
+          </Source>
+        ))}
         <Source id={SOURCE_ID} type="geojson" data={route}>
           {/*
            * The casing is drawn from the whole route and stays solid under the

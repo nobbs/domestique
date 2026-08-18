@@ -46,7 +46,7 @@ export const GRADIENT_BANDS = [
 ] as const;
 
 /** The shortest span a gradient is measured over, matching the service. */
-const GRADIENT_WINDOW_METRES = 100;
+export const GRADIENT_WINDOW_METRES = 100;
 
 /**
  * How far past either end of a profile a position may sit and still be found.
@@ -154,7 +154,14 @@ export function cumulativeMetres(coordinates: Position[]): number[] {
   return distances;
 }
 
-function elevationOf(position: Position): number | undefined {
+/**
+ * A point's elevation, if it carries one.
+ *
+ * Exported because a `Position` is a union of a pair and a triple, so reading
+ * the third element is a narrowing question rather than an index — and every
+ * reader that measures a rise has to answer it the same way.
+ */
+export function elevationOf(position: Position): number | undefined {
   return position.length === 3 ? position[2] : undefined;
 }
 
