@@ -45,8 +45,8 @@ mise exec -- make check
 `make check` is the complete gate and is exactly what CI runs: `prek`, lint,
 markdownlint, shellcheck, actionlint, `go vet`, tests, TypeScript type checking, the UI lint
 and test suites, `go mod tidy -diff`, `go mod verify`, `govulncheck`,
-`npm audit`, `gitleaks`, and a cross-compile check for each published
-architecture. Individual targets (`make test`, `make lint`, `make fmt`,
+`npm audit`, `gitleaks`, a commit-hook cost check, and a cross-compile check
+for each published architecture. Individual targets (`make test`, `make lint`, `make fmt`,
 `make ui-test`, `make build-check`) are available while iterating, but run the
 full gate before reporting work complete.
 

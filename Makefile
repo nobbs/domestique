@@ -21,7 +21,7 @@ RELEASE_ARCHES := amd64 arm64
 UI_DIR := internal/webui/app
 UI_DIST := $(UI_DIR)/dist
 
-.PHONY: fmt lint markdownlint shell-lint workflow-lint test vet mod-check vulncheck secret-scan build build-check ci-lint ci-test ci-security ci-ui check
+.PHONY: fmt lint markdownlint shell-lint workflow-lint hook-check test vet mod-check vulncheck secret-scan build build-check ci-lint ci-test ci-security ci-ui check
 .PHONY: ui-install ui-dev ui-typecheck ui-lint ui-format ui-test ui-audit ui-build
 .PHONY: dev-setup dev-api
 
@@ -45,6 +45,12 @@ shell-lint:
 # shellcheck above is what lints the workflow scripts too.
 workflow-lint:
 	$(ACTIONLINT) .github/workflows/*.yml
+
+# The commit hook is only worth installing while it stays fast. This asserts
+# the structure that keeps it so, rather than a wall-clock number CI cannot
+# measure reliably. See dev/check-hook-cost.sh.
+hook-check:
+	./dev/check-hook-cost.sh
 
 test:
 	CGO_ENABLED=0 $(GO) test -shuffle=on ./...
@@ -121,6 +127,7 @@ ci-lint:
 	$(MAKE) markdownlint
 	$(MAKE) shell-lint
 	$(MAKE) workflow-lint
+	$(MAKE) hook-check
 
 ci-test:
 	$(MAKE) vet
