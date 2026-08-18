@@ -36,8 +36,8 @@ The repository provides these stable Make targets:
 `prek run --all-files`, linting, tests, TypeScript type checking, the browser UI
 lint and test suites, Go module verification, vulnerability analysis for both Go
 and npm dependencies, a GitHub Actions workflow check, a shell-script check, a
-worktree secret scan, and the release-target binary compilation for every
-published architecture.
+worktree secret scan, a commit-hook cost check, and the release-target binary
+compilation for every published architecture.
 `make fmt` applies Go formatting. A fixing `prek` hook exits non-zero after a
 safe mechanical repair so the resulting change can be reviewed and staged
 deliberately.
@@ -47,6 +47,16 @@ private-key and accidental-large-file checks, YAML, TOML, and Markdown
 validation where applicable, and Go formatting. Developers may install the
 `prek` hook, but the hook is a convenience rather than a substitute for
 `make check`. The project uses `prek`, never `pre-commit`.
+
+The installed hook is bounded by what it may do, because a hook slow enough to
+be bypassed protects nothing. A hook that runs a command takes its file list
+from `prek`, so a commit is judged on what it stages and not on the rest of the
+tree; the same configuration under `prek run --all-files` covers the repository,
+which is how the gate keeps its reach. Tests, full linting, audits,
+cross-compilation, image work, and the browser suites stay out of the hook and
+belong to `make check` and GitHub Actions. Both properties are asserted, so a
+later hook cannot quietly reintroduce the cost; wall-clock is not asserted,
+because a timing assertion on a shared runner is flaky.
 
 ## Development environment
 

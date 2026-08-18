@@ -1,3 +1,9 @@
+# The commit hook is a fast guard, not a second quality gate: it must stay
+# cheap enough that nobody is tempted to bypass it. Two rules keep it that way.
+# Every check here is either a whole-file safety check that costs nothing, or a
+# formatting check scoped to the files the commit stages. Tests, full linting,
+# audits, cross-compilation, image builds, and the browser suites belong to
+# `make check` and to GitHub Actions, and must not be added below.
 [[repos]]
 repo = "builtin"
 
@@ -32,19 +38,27 @@ id = "detect-private-key"
 [[repos]]
 repo = "local"
 
+# Both checks below take their file list from prek — `pass_filenames = true` —
+# so a commit is judged on what it stages and never fails on a defect in a file
+# it did not touch. `prek run --all-files`, which is what `make ci-lint` runs,
+# passes every matching file instead, so the repository-wide coverage the gate
+# needs is unchanged.
+
 [[repos.hooks]]
 id = "golangci-format"
 name = "golangci-lint format"
 entry = "mise exec -- golangci-lint fmt --diff"
 language = "system"
 files = "\\.go$"
-pass_filenames = false
+pass_filenames = true
 
+# Named files rather than a glob, so `.markdownlint-cli2.yaml`'s `ignores`
+# stops applying. That costs nothing: it excludes `node_modules` and `dist`,
+# which are gitignored, so prek never lists a file from either.
 [[repos.hooks]]
 id = "markdownlint"
 name = "Markdown lint"
 entry = "mise exec -- markdownlint-cli2"
 language = "system"
-args = ["**/*.md"]
 files = "\\.md$"
-pass_filenames = false
+pass_filenames = true
