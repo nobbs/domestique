@@ -1,9 +1,14 @@
 # Path filters consumed by the CI workflow's "Changes" job. Each key becomes an
-# output that gates one downstream job, so a docs-only pull request skips the
-# Go and image work instead of paying for it.
+# output that gates downstream jobs, so a docs-only pull request skips the Go
+# and image work instead of paying for it.
 #
 # Every filter includes this file and the workflow itself: a change to how CI
 # decides what to run must always run everything it gates.
+#
+# The `image` filter gates both the pull-request proving build and the
+# default-branch publish. A commit that changes nothing the image is built from
+# therefore publishes no image, and `latest` keeps naming an earlier commit;
+# that is the intended result, not a stalled pipeline.
 
 lint:
   - "**"

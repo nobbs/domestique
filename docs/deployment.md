@@ -53,27 +53,50 @@ Keep the state encryption key and `domestique-state` volume. Losing either
 requires Wahoo reauthorization and safe route adoption; there is intentionally
 no state backup or key-rotation workflow in v1.
 
-## Verify and select an image
+## Select an image
 
-Each tag release names an immutable `ghcr.io/nobbs/domestique@sha256:...`
-image. Record that complete digest in `/srv/domestique/.env` as
+Every default-branch change publishes an image index to
+`ghcr.io/nobbs/domestique`. The publishing run's summary prints the exact
+immutable reference; record that complete digest in `/srv/domestique/.env` as
 `DOMESTIQUE_IMAGE`. Never use a mutable tag such as `latest`.
 
-Before deployment, pull the digest and verify the keyless signature:
+The package is private, so the Pi needs a package-read credential. The container
+registry accepts only a personal access token (classic); create one whose sole
+scope is `read:packages`, then:
 
 ```sh
-docker pull "$DOMESTIQUE_IMAGE"
-cosign verify \
-  --certificate-identity-regexp '^https://github\.com/nobbs/domestique/\.github/workflows/release\.yml@refs/tags/v.*$' \
-  --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
-  "$DOMESTIQUE_IMAGE"
+read -rs GHCR_TOKEN
+printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u nobbs --password-stdin
+unset GHCR_TOKEN
 ```
 
-The Pi needs read access to the private GHCR package to pull it. Grant the
-smallest appropriate package-read credential to Docker; it is deployment
-infrastructure, not an application secret. The release image also carries
-BuildKit-generated SBOM and provenance attestations. Inspect them before a
-release when investigating supply-chain changes.
+That credential is deployment infrastructure, not an application secret, and it
+is stored base64-encoded in `~/.docker/config.json`, which must not be readable
+by anyone else. Nothing else on the Pi needs a registry credential: it pulls
+rather than builds, so it needs no `dhi.io` login.
+
+Resolve and pin the digest from the **index**, not from a pulled
+per-architecture manifest, so the same `.env` would work on either
+architecture:
+
+```sh
+IMAGE=ghcr.io/nobbs/domestique
+DIGEST=$(docker buildx imagetools inspect "$IMAGE:sha-<short-commit>" \
+  --format '{{.Manifest.Digest}}')
+docker pull "$IMAGE@$DIGEST"
+docker image inspect "$IMAGE@$DIGEST" --format '{{.Os}}/{{.Architecture}}'
+```
+
+The image is not signed, so there is no signature to check: what makes a digest
+trustworthy is that it came from the run that built it on the default branch of
+the private repository. Do not accept a digest from any other source. The image
+does carry BuildKit-generated SBOM and provenance attestations, which are worth
+inspecting when investigating a supply-chain change:
+
+```sh
+docker buildx imagetools inspect "$IMAGE@$DIGEST" --format '{{ json .Provenance }}'
+docker buildx imagetools inspect "$IMAGE@$DIGEST" --format '{{ json .SBOM }}'
+```
 
 ## Run the container
 
@@ -123,7 +146,7 @@ container; a Pushover message reports every completed sync, including success.
 
 ## Update and rollback
 
-For an update, verify the new signed digest, replace only
+For an update, take the digest from the run that published it, replace only
 `DOMESTIQUE_IMAGE` in `/srv/domestique/.env`, and run `docker compose up -d`.
 The container leaves the named state volume in place. Rollback is the same
 operation with an earlier verified digest; it never restores old SQLite state.

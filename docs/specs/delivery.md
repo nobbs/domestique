@@ -1,10 +1,10 @@
 # Domestique delivery specification
 
-**Status:** accepted v1 design
+**Status:** accepted v1 design, revised for trunk-based image publishing
 
 This is a subordinate specification to [the service contract](service.md). It
-defines the local quality gate, GitHub Actions, container hardening, and release
-artifacts. It does not place Tailnet-host configuration or secrets in this
+defines the local quality gate, GitHub Actions, container hardening, and the
+images it publishes. It does not place Tailnet-host configuration or secrets in this
 repository.
 
 ## Development toolchain and commands
@@ -94,20 +94,34 @@ suppressed in CI.
 
 ## GitHub Actions
 
-GitHub Actions runs for pull requests and changes to the default branch. It
-uses the same pinned Mise toolchain and invokes `make check`; CI does not
-reimplement a divergent list of shell commands.
+GitHub Actions runs for pull requests **targeting** the default branch and for
+pushes **to** it, and for nothing else. There is no manual trigger: every run
+answers for a specific tree that a review or a merge produced. It uses the same
+pinned Mise toolchain and invokes `make check`; CI does not reimplement a
+divergent list of shell commands.
 
 The validation workflow must:
 
-- use explicit minimal `permissions`, normally read-only;
+- use explicit minimal `permissions`; every job is read-only except the
+  default-branch publish, which adds `packages: write` and nothing else. No job
+  requests `id-token`, because nothing is signed;
 - pin third-party actions to immutable full commit SHAs;
 - run without production credentials, Wahoo refresh tokens, or Docker secret
   files;
 - fail when formatting, local hook hygiene, linting, tests, module checks,
   vulnerability analysis, or the CGO-free Linux builds for either published
-  architecture fail; and
-- build the production Dockerfile without pushing once that Dockerfile exists.
+  architecture fail;
+- build the production Dockerfile on a pull request and discard the result,
+  never pushing it; and
+- aggregate every job into one required check that is green only when each
+  dependency succeeded or was skipped by a path filter, so a failed publish
+  cannot be mistaken for a passing run.
+
+The pull-request build and the default-branch publish are the same build split
+by event: a pull request proves it, a push to the default branch publishes it,
+and neither runs the other's job, so a change is built once per event. A pull
+request may read the shared registry build cache; it may not write to it,
+because writing needs the same permission that publishes.
 
 A separate code-scanning workflow analyses Go and GitHub Actions changes.
 It also uses immutable action pins and least privilege. Repository-native
@@ -132,15 +146,16 @@ than that stage and is absent from the runtime image.
 Every base image is a **Docker Hardened Image** from `dhi.io`, pinned by digest:
 the `-dev` variants for the Node and Go build stages, which need a shell and a
 toolchain, and the minimal `static` image for the runtime. They carry SBOMs,
-SLSA Build Level 3 provenance, and signatures, which strengthens the release
-chain described below.
+SLSA Build Level 3 provenance, and signatures. Because the images this project
+publishes are themselves unsigned, that is the strongest verifiable link in the
+chain, and it is why the base images stay pinned by digest.
 
 `dhi.io` requires `docker login dhi.io` with a Docker Hub account and personal
 access token **even on the free Community tier**. It is therefore a build-time
-credential dependency: both CI and release workflows authenticate to it, and a
-machine that builds images locally must be logged in. Deployment is unaffected
-for a host that pulls the project's own signed GHCR image by digest; a host that
-builds the image from a checkout needs that login itself.
+credential dependency: the validation and publish jobs both authenticate to it,
+and a machine that builds images locally must be logged in. A deploying host is
+unaffected: it pulls a published GHCR image by digest and never builds, so it
+needs no `dhi.io` credential.
 
 The runtime image:
 
@@ -167,29 +182,60 @@ later. It must not make a direct Internet port publication easy to copy, and it
 must not contain an account identifier, callback hostname, token, or secret
 file content.
 
-## Release artifacts
+## Published images
 
-A version tag creates a GHCR image index covering `linux/amd64` and
-`linux/arm64`. It is an immutable release artifact, not a mutable deployment
-instruction. The release workflow:
+The project follows trunk-based development. There are no version tags and no
+GitHub releases; the default branch is the only thing that publishes, and every
+change reaches it through a pull request the full gate accepted.
 
-1. builds the same CGO-free target verified in CI;
-2. publishes the image and records its digest;
-3. creates a software bill of materials and provenance attestation;
-4. signs the image with GitHub OIDC-backed keyless signing; and
-5. attaches the digest and verification instructions to the release.
+A push to the default branch that touches an input of the image builds one GHCR
+image index covering `linux/amd64` and `linux/arm64` and pushes it to
+`ghcr.io/nobbs/domestique` under two tags:
 
-A host deploying a release consumes only a verified immutable digest, never a
-mutable tag such as `latest`, and verifies the signature and provenance before
-a new digest is accepted. A host may instead build the pinned Dockerfile from a
-checkout, as the macOS MVP and the Linux VM host do; such an image is a local
-build, not a release artifact, and carries no signature or provenance. Rollback
-means selecting an earlier verified digest and restarting the container; it does
-not restore SQLite state or bypass the reauthorisation and safe-adoption rules.
+| Tag | Meaning |
+| --- | --- |
+| `sha-<short-commit>` | The immutable name of the image built from that commit. It never moves. |
+| `latest` | A pointer to the most recent published default-branch image. It is for inspection, never a deployment instruction. |
 
-Release automation receives only the permissions required to publish GHCR,
-attest, sign, and create the release. It receives no application secrets and
-does not contact live provider accounts.
+A commit that changes nothing the image is built from publishes no image, so
+`latest` may name an older commit than the branch head. That is the intended
+result: an unchanged source tree does not need a new digest, and the digest
+already published is still the one to deploy. There is no republish trigger,
+because there is nothing a republished identical tree would give a host.
+
+The publish job:
+
+1. builds the same CGO-free cross-compiled target that pull requests prove,
+   exactly once for the commit;
+2. pushes the index and records its digest in the run summary, which is where an
+   operator reads the value to deploy;
+3. attaches BuildKit's software bill of materials and `mode=max` provenance
+   attestations to the index; and
+4. runs only after linting, tests, security analysis, and the browser UI checks
+   have succeeded or been skipped by a path filter.
+
+**The images are not signed.** Sigstore keyless signing was removed together
+with the tag-triggered release workflow, and GitHub artifact attestations are
+not an available substitute: on a private repository they require GitHub
+Enterprise Cloud, and this repository stays private. The trust argument is
+therefore provenance of publication rather than a detached signature — the
+package is private, only the default branch holds the permission that writes it,
+the base images are Docker Hardened Images pinned by digest, and the deploying
+host pins a digest it read from the run that produced it. A host must never
+substitute an image from anywhere else.
+
+A deploying host consumes only an immutable digest, never a mutable tag such as
+`latest`. It needs a package-read credential for the private GHCR package and no
+build credential. A machine may still build the pinned Dockerfile from a
+checkout, as the macOS MVP does; such an image is a local build, not a published
+artefact, and carries no provenance. Rollback means selecting an earlier
+published digest and restarting the container; it does not restore SQLite state
+or bypass the reauthorisation and safe-adoption rules.
+
+Publish automation receives `contents: read` and `packages: write` and nothing
+else. It receives no application secrets beyond the Docker Hardened Images pull
+credential the build cannot proceed without, and does not contact live provider
+accounts.
 
 ## Repository hygiene
 
@@ -203,8 +249,8 @@ Before the first implementation release, the repository includes:
 - an explicit `.dockerignore` that excludes Git metadata, local state,
   configuration, secret files, and test artefacts from image contexts; and
 - documentation for the normal local check, manual sandbox acceptance, image
-  verification, and Tailnet-host deployment boundary.
+  selection and inspection, and Tailnet-host deployment boundary.
 
-A release is eligible only when the default-branch CI is green, its image is
-signed and attested, no untriaged vulnerability finding blocks it, and the
+A published image is deployable only when the default-branch run that produced
+it was green end to end, no untriaged vulnerability finding blocks it, and the
 manual sandbox acceptance still covers the current Wahoo and FIT contract.
