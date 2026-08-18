@@ -95,13 +95,17 @@ Tailscale Service name rather than the node's own name, so the address the
 tunnel dials keeps working if the app ever moves hosts:
 
 ```sh
-tailscale serve --service=svc:domestique --bg --https=443 http://127.0.0.1:8080
+tailscale serve --service=svc:domestique --https=443 127.0.0.1:8080
+tailscale serve advertise svc:domestique
 tailscale serve status
 ```
 
-The Serve setting survives reboots when set with `--bg`. Serve is in the path
-even though nothing reaches Domestique over the Tailnet directly: it is what
-strips a client-supplied `Tailscale-User-Login` before the handler sees it. See
+A `--service` serve defaults to `--bg`, so it runs in the background and
+survives reboots without the flag. Advertising is the separate step that makes
+this node a host for the Service; until it runs, the Service name does not
+resolve. Serve is in the path even though nothing reaches Domestique over the
+Tailnet directly: it is what strips a client-supplied `Tailscale-User-Login`
+before the handler sees it. See
 [`cloudflare-access.md`](cloudflare-access.md) for the tunnel and the grant that
 lets exactly one tagged node dial this Service.
 
