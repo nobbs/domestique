@@ -153,6 +153,16 @@ func newVerifierWithClock(t *testing.T, keys *keySet) (*cfaccess.Verifier, *atom
 	}))
 	t.Cleanup(server.Close)
 
+	verifier, testClock := verifierAgainst(t, server)
+
+	return verifier, &fetches, testClock
+}
+
+// verifierAgainst wires a verifier to an arbitrary JWKS server, so a test can
+// supply an endpoint that fails rather than one that serves keys.
+func verifierAgainst(t *testing.T, server *httptest.Server) (*cfaccess.Verifier, *clock) {
+	t.Helper()
+
 	client := server.Client()
 	// The verifier builds an https URL from the team domain, so redirect that
 	// host to the test server rather than weakening certificate checking.
@@ -170,7 +180,7 @@ func newVerifierWithClock(t *testing.T, keys *keySet) (*cfaccess.Verifier, *atom
 		t.Fatalf("building verifier: %v", err)
 	}
 
-	return verifier, &fetches, testClock
+	return verifier, testClock
 }
 
 // rewriteHost sends requests for the team domain to the test server.
@@ -444,6 +454,45 @@ func TestVerifyRateLimitsRefetchForUnknownKeyID(t *testing.T) {
 	}
 }
 
+// The refresh floor counts attempts, not successes. A certs endpoint that is
+// down would otherwise leave it permanently open, so every arriving assertion
+// would become another request against an endpoint already in trouble.
+func TestVerifyRateLimitsRefetchWhenCertsEndpointFails(t *testing.T) {
+	t.Parallel()
+
+	keys := newKeySet(t, testKeyID)
+
+	var fetches atomic.Int64
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		fetches.Add(1)
+		writer.WriteHeader(http.StatusInternalServerError)
+	}))
+	t.Cleanup(server.Close)
+
+	verifier, testClock := verifierAgainst(t, server)
+	assertion := keys.sign(t, validHeader(), validClaims())
+
+	for range 5 {
+		if _, err := verifier.Verify(t.Context(), assertion); err == nil {
+			t.Fatal("expected verification to fail while the certs endpoint is down")
+		}
+	}
+	if got := fetches.Load(); got != 1 {
+		t.Fatalf("expected the refresh floor to hold against a failing endpoint, got %d fetches", got)
+	}
+
+	// Past the floor it is allowed to try again, so a transient outage still
+	// recovers on its own.
+	testClock.advance(2 * time.Minute)
+
+	if _, err := verifier.Verify(t.Context(), assertion); err == nil {
+		t.Fatal("expected verification to fail while the certs endpoint is down")
+	}
+	if got := fetches.Load(); got != 2 {
+		t.Fatalf("expected one retry once the floor elapsed, got %d fetches", got)
+	}
+}
+
 func TestNewValidatesOptions(t *testing.T) {
 	t.Parallel()
 
@@ -452,8 +501,12 @@ func TestNewValidatesOptions(t *testing.T) {
 		"no team domain": {Audience: testAudience},
 		"no audience":    {TeamDomain: testTeam},
 		"team with path": {TeamDomain: "example.cloudflareaccess.com/x", Audience: testAudience},
-		"blank team":     {TeamDomain: "   ", Audience: testAudience},
-		"blank audience": {TeamDomain: testTeam, Audience: "  "},
+		// Both would otherwise be concatenated into the JWKS URL and send the
+		// key fetch somewhere other than the team domain.
+		"team with userinfo": {TeamDomain: "example.cloudflareaccess.com@elsewhere.example", Audience: testAudience},
+		"team with port":     {TeamDomain: "example.cloudflareaccess.com:8443", Audience: testAudience},
+		"blank team":         {TeamDomain: "   ", Audience: testAudience},
+		"blank audience":     {TeamDomain: testTeam, Audience: "  "},
 	}
 
 	for name, options := range cases {

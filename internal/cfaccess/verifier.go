@@ -52,7 +52,9 @@ const (
 
 	// minRefreshInterval rate-limits refetching after an unknown key ID, so a
 	// stream of bogus tokens cannot turn into a request flood against
-	// Cloudflare.
+	// Cloudflare. It counts attempts rather than successes: a limit that only
+	// advances on success stops limiting exactly when the endpoint is
+	// unhealthy, which is when the flood would cost the most.
 	minRefreshInterval = time.Minute
 
 	// clockSkew tolerates a small amount of clock drift on the not-before and
@@ -95,9 +97,9 @@ type Verifier struct {
 	client *http.Client
 	now    func() time.Time
 
-	// keys and lastFetch are guarded by mu.
-	keys      map[string]*rsa.PublicKey
-	lastFetch time.Time
+	// keys and lastAttempt are guarded by mu.
+	keys        map[string]*rsa.PublicKey
+	lastAttempt time.Time
 
 	issuer   string
 	audience string
@@ -122,7 +124,11 @@ func New(options *Options) (*Verifier, error) {
 	if !strings.Contains(team, ".") {
 		team += ".cloudflareaccess.com"
 	}
-	if strings.ContainsAny(team, "/?#") {
+	// Userinfo and a port are rejected alongside path, query and fragment: the
+	// JWKS URL is built by concatenation, so "user@elsewhere.example" would
+	// otherwise be accepted here and then fetch this service's signing keys
+	// from elsewhere.example.
+	if strings.ContainsAny(team, "/?#@:") {
 		return nil, errors.New("cfaccess team domain must be a bare host")
 	}
 
@@ -219,7 +225,7 @@ func (v *Verifier) checkClaims(claims *claimSet) error {
 func (v *Verifier) key(ctx context.Context, keyID string) (*rsa.PublicKey, error) {
 	v.mu.Lock()
 	key, ok := v.keys[keyID]
-	stale := v.now().Sub(v.lastFetch) >= minRefreshInterval
+	stale := v.now().Sub(v.lastAttempt) >= minRefreshInterval
 	v.mu.Unlock()
 
 	if ok {
@@ -245,6 +251,12 @@ func (v *Verifier) key(ctx context.Context, keyID string) (*rsa.PublicKey, error
 
 // refresh replaces the cached key set from the team's JWKS endpoint.
 func (v *Verifier) refresh(ctx context.Context) (err error) {
+	// Stamped before the request rather than after it, so a failing endpoint
+	// still closes the window until minRefreshInterval has passed.
+	v.mu.Lock()
+	v.lastAttempt = v.now()
+	v.mu.Unlock()
+
 	ctx, cancel := context.WithTimeout(ctx, fetchTimeout)
 	defer cancel()
 
@@ -293,7 +305,6 @@ func (v *Verifier) refresh(ctx context.Context) (err error) {
 
 	v.mu.Lock()
 	v.keys = keys
-	v.lastFetch = v.now()
 	v.mu.Unlock()
 
 	return nil
