@@ -371,34 +371,22 @@ body {
   background: var(--surface-sunken);
 }
 
+/* Where the strip would be, saying why there is none. */
 .stage-detail__surface-absent {
-  margin: 0.6rem 0 0;
+  margin: 0.1rem 0.75rem 0.55rem 2.9rem;
   color: var(--text-muted);
   font-size: 0.72rem;
 }
 
 /* Surface split ----------------------------------------------------------- */
 
-.surface-bar {
-  margin-top: 0.6rem;
-}
-
 /*
- * The proportions. The slices are painted with the same colours and dash
- * patterns as the map, so the bar reads as the key to it; the figures live in
- * the legend below, which is why this is hidden from assistive technology.
+ * The key to the surface strip drawn along the foot of the elevation chart. It
+ * sits directly beneath it, indented to the chart's plot area so the swatches
+ * line up under the marks they name.
  */
-.surface-bar__track {
-  display: flex;
-  height: 6px;
-  border-radius: 3px;
-  overflow: hidden;
-  background: var(--surface-sunken);
-}
-
-/* A stretch too narrow to see is still worth a mark, so it keeps a minimum. */
-.surface-bar__slice {
-  min-width: 2px;
+.surface-bar {
+  margin: 0.1rem 0.75rem 0.55rem 2.9rem;
 }
 
 .surface-bar__legend {
@@ -406,7 +394,7 @@ body {
   flex-wrap: wrap;
   gap: 0.15rem 0.75rem;
   list-style: none;
-  margin: 0.3rem 0 0;
+  margin: 0;
   padding: 0;
   color: var(--text-muted);
   font-size: 0.72rem;
@@ -747,6 +735,15 @@ body {
 .sync-badge[data-state="failed"] .sync-badge__dot,
 .sync-badge[data-state="blocked"] .sync-badge__dot {
   background: var(--accent);
+}
+
+/*
+ * The surface strip's stretches meet end to end, so a butt cap is what keeps a
+ * class from bleeding into its neighbour — the same reason the map draws them
+ * this way.
+ */
+.elevation-profile__surface {
+  stroke-linecap: butt;
 }
 
 /* MapLibre lays out against its container; give it the full pane. */

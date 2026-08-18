@@ -1,16 +1,19 @@
 /**
- * The stage's surface split: a proportional bar above a legend that names each
- * class.
+ * The stage's surface split, as a key: every class present, what share of the
+ * stage it covers, and the mark it wears.
  *
- * The bar and the legend are one control, not a chart plus a key. The bar is
- * hidden from assistive technology and the legend carries every figure as text,
- * so the split is readable without seeing a single pixel of it — and the legend
- * doubles as the key to the bands drawn on the map, which is why the swatches
- * repeat the map's dash pattern rather than showing a flat chip.
+ * It carries no bar of its own. The proportions are drawn along the foot of the
+ * elevation chart, in the order they are ridden, which says everything a
+ * summary bar said and also says *where* — so a second bar beside it would be
+ * the same figures twice, one of them in the wrong order.
+ *
+ * Every figure is text, so the split is readable without seeing a pixel of the
+ * strip, and the swatches repeat the map's colour and dash pattern so the key
+ * works for the map, the strip, and the legend at once.
  *
  * Proportions are of the whole stage, and unsurveyed ground is one of the
- * classes. A bar that quietly renormalised over the surveyed part would report a
- * gravel third of a half-surveyed stage as two thirds gravel.
+ * classes. A legend that quietly renormalised over the surveyed part would
+ * report a gravel third of a half-surveyed stage as two thirds gravel.
  */
 
 import type { SurfaceSummary } from "../lib/surface";
@@ -39,18 +42,6 @@ function formatShare(share: number): string {
 export function SurfaceBar({ summary }: { summary: SurfaceSummary }) {
   return (
     <div className="surface-bar">
-      <div className="surface-bar__track" aria-hidden="true">
-        {summary.shares.map((entry) => (
-          <span
-            key={entry.kind}
-            className="surface-bar__slice"
-            style={{
-              width: `${entry.share * 100}%`,
-              background: swatchBackground(entry.kind),
-            }}
-          />
-        ))}
-      </div>
       <ul className="surface-bar__legend">
         {summary.shares.map((entry) => (
           <li key={entry.kind}>

@@ -177,15 +177,6 @@ function StageView({
               <dd>{stage.stageOrder}</dd>
             </div>
           </dl>
-          {surfaceSummary ? (
-            <SurfaceBar summary={surfaceSummary} />
-          ) : (
-            <p className="stage-detail__surface-absent">
-              {surface
-                ? "No OpenStreetMap surface data along this stage."
-                : "Surface not classified yet."}
-            </p>
-          )}
         </header>
         <div className="stage-detail__map">
           <Suspense fallback={<LoadingMessage what="the map" />}>
@@ -205,6 +196,11 @@ function StageView({
           profile={profile}
           title={stage.title}
           surface={surfaceSummary}
+          surfaceAbsence={
+            surface
+              ? "No OpenStreetMap surface data along this stage."
+              : "Surface not classified yet."
+          }
           activeIndex={activeIndex}
           onActiveChange={setActiveIndex}
           hint={`${formatAscent(stage.ascentMetres)} climbing · ${formatGradient(stage.maxGradientPercent)} max`}
@@ -227,6 +223,7 @@ function ElevationOverview({
   profile,
   title,
   surface,
+  surfaceAbsence,
   hint,
   activeIndex,
   onActiveChange,
@@ -234,6 +231,7 @@ function ElevationOverview({
   profile: Profile | null;
   title: string;
   surface: SurfaceSummary | null;
+  surfaceAbsence: string;
   hint: string;
   activeIndex: number | null;
   onActiveChange: (index: number | null) => void;
@@ -275,13 +273,25 @@ function ElevationOverview({
         <span className="elevation-overview__hint">{hint}</span>
       </summary>
       {open ? (
-        <ElevationProfile
-          profile={profile}
-          title={title}
-          surface={surface}
-          activeIndex={activeIndex}
-          onActiveChange={onActiveChange}
-        />
+        <>
+          <ElevationProfile
+            profile={profile}
+            title={title}
+            surface={surface}
+            activeIndex={activeIndex}
+            onActiveChange={onActiveChange}
+          />
+          {/*
+           * The key sits under the strip it explains, not up beside the title:
+           * a legend away from its marks is a lookup, and this one is meant to
+           * be read in the same glance as the ground it names.
+           */}
+          {surface ? (
+            <SurfaceBar summary={surface} />
+          ) : (
+            <p className="stage-detail__surface-absent">{surfaceAbsence}</p>
+          )}
+        </>
       ) : null}
     </details>
   );

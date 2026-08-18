@@ -29,19 +29,34 @@ const HATCH_ANGLES: Record<number, number> = { 1: 45, 2: 135 };
 // in a twelve-pixel band is indistinguishable from a solid block.
 const HATCH_SIZE = 6;
 
-const HEIGHT = 148;
-const PADDING = { top: 12, right: 12, bottom: 22, left: 46 };
+const HEIGHT = 159;
+const PADDING = { top: 12, right: 12, bottom: 33, left: 46 };
 const MIN_WIDTH = 240;
+
+/**
+ * The surface lane at the foot of the plot.
+ *
+ * It is thin on purpose: it carries one categorical measure along an axis that
+ * already belongs to the terrain above it, and a thick band would read as a
+ * second chart competing with the first. The gap keeps it from touching the
+ * ground of the profile, which would make the two look like one shape.
+ */
+const SURFACE_STRIP_HEIGHT = 7;
+const SURFACE_STRIP_GAP = 4;
 
 export interface ElevationProfileProps {
   profile: Profile | null;
   title: string;
   /**
-   * The ground under the route, reported for the hovered position.
+   * The ground under the route: drawn as a strip along the foot of the chart,
+   * and reported for the hovered position.
    *
-   * The chart's paint is not touched by it: the bands mean gradient, and a second
-   * measure fighting for the same ground would make both unreadable. The surface
-   * belongs on the map, and here only as a word beside the position.
+   * The chart's own paint is not touched by it. The bands mean gradient, and a
+   * second measure fighting for the same ground would make both unreadable — so
+   * the surface gets a lane of its own directly beneath the terrain, sharing the
+   * distance axis. Reading upwards from any point on the strip lands on the
+   * climb that is made of that surface, which is the question the two answer
+   * together and neither answers alone.
    */
   surface?: SurfaceSummary | null;
   /** The position shared with the map, as an index into the profile samples. */
@@ -298,12 +313,47 @@ export function ElevationProfile({
           {/* One ridge over the columns, so the silhouette stays crisp. */}
           <path className="elevation-profile__ridge" d={geometry.ridge} />
 
+          {/*
+           * The ground the route is made of, in the order it is ridden, on the
+           * distance axis the terrain above already uses. Each stretch is drawn
+           * with the colour and the dash pattern it wears on the map, at this
+           * strip's own width, so the same stretch reads the same way in both
+           * places.
+           */}
+          {surface
+            ? surface.bands.map((band) => {
+                const style = SURFACE_STYLES[band.kind];
+                const start = geometry.x(band.startMetres);
+                const end = geometry.x(band.endMetres);
+
+                return (
+                  <line
+                    key={`${band.kind}-${band.startMetres}`}
+                    className="elevation-profile__surface"
+                    x1={start}
+                    x2={end}
+                    y1={plotHeight + SURFACE_STRIP_GAP + SURFACE_STRIP_HEIGHT / 2}
+                    y2={plotHeight + SURFACE_STRIP_GAP + SURFACE_STRIP_HEIGHT / 2}
+                    stroke={style.colour}
+                    strokeWidth={SURFACE_STRIP_HEIGHT}
+                    {...(style.dashes.length > 0
+                      ? {
+                          strokeDasharray: style.dashes
+                            .map((dash) => dash * SURFACE_STRIP_HEIGHT)
+                            .join(" "),
+                        }
+                      : {})}
+                  />
+                );
+              })
+            : null}
+
           {geometry.distanceTicks.map((kilometres) => (
             <text
               key={kilometres}
               className="elevation-profile__tick"
               x={geometry.x(kilometres * 1000)}
-              y={plotHeight + 15}
+              y={plotHeight + SURFACE_STRIP_GAP + SURFACE_STRIP_HEIGHT + 15}
               textAnchor="middle"
             >
               {kilometres}
@@ -312,11 +362,16 @@ export function ElevationProfile({
 
           {active ? (
             <g className="elevation-profile__cursor">
+              {/*
+               * The cursor runs through the surface strip as well: the point on
+               * the climb and the ground under it are one position, and a line
+               * stopping at the axis would make them look like two.
+               */}
               <line
                 x1={geometry.x(active.distanceMetres)}
                 x2={geometry.x(active.distanceMetres)}
                 y1={0}
-                y2={plotHeight}
+                y2={surface ? plotHeight + SURFACE_STRIP_GAP + SURFACE_STRIP_HEIGHT : plotHeight}
               />
               <circle
                 cx={geometry.x(active.distanceMetres)}

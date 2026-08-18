@@ -52,4 +52,20 @@ describe("SurfaceBar", () => {
 
     expect(screen.getByText("Unsurveyed")).toBeInTheDocument();
   });
+
+  // The strip under the elevation chart carries the proportions in route order;
+  // a second bar here would be the same figures twice, one of them unordered.
+  it("carries no bar of its own", () => {
+    const summary = summariseSurface(route(5), [
+      { kind: "asphalt", startIndex: 0, endIndex: 1 },
+      { kind: "gravel", startIndex: 2, endIndex: 4 },
+    ]);
+    if (!summary) {
+      throw new Error("expected a summary");
+    }
+
+    const { container } = render(<SurfaceBar summary={summary} />);
+
+    expect(container.querySelector(".surface-bar__track")).toBeNull();
+  });
 });
