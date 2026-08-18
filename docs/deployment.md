@@ -90,20 +90,29 @@ ownership. If replacing it with a host bind mount, make the target writable by
 UID and GID `65532` first. Do not remove or recreate the volume during routine
 updates.
 
-Configure the host proxy once the local probe succeeds:
+Configure the host proxy once the local probe succeeds. Serve publishes a
+Tailscale Service name rather than the node's own name, so the address the
+tunnel dials keeps working if the app ever moves hosts:
 
 ```sh
-tailscale serve --bg 8080
+tailscale serve --service=svc:domestique --bg --https=443 http://127.0.0.1:8080
 tailscale serve status
 ```
 
-Tailscale Serve prints the private HTTPS URL. Put that exact URL plus
-`/oauth/wahoo/callback` into both `wahoo.redirect_url` and the Wahoo app's
-registered callback configuration. Ensure the Tailnet ACL permits only the
-configured user to reach the Pi. The Serve setting survives reboots when set
-with `--bg`.
+The Serve setting survives reboots when set with `--bg`. Serve is in the path
+even though nothing reaches Domestique over the Tailnet directly: it is what
+strips a client-supplied `Tailscale-User-Login` before the handler sees it. See
+[`cloudflare-access.md`](cloudflare-access.md) for the tunnel and the grant that
+lets exactly one tagged node dial this Service.
 
-Open the Serve URL in the configured user's browser, then authorize each fixed
+Requests are authenticated by Cloudflare Access, so browser work happens at the
+public hostname, not at the Serve URL — the Serve URL carries no Access
+assertion and answers `401`. Put that public hostname plus
+`/oauth/wahoo/callback` into both `wahoo.redirect_url` and the Wahoo app's
+registered callback configuration: the OAuth flow returns to an ordinary
+browser, which may not be on the Tailnet at all.
+
+Open the public URL in the configured user's browser, then authorize each fixed
 target slot from `/oauth/wahoo/start/<target-id>`. Check `/v1/status` after
 each authorization. The delayed first sync and hourly schedule start with the
 container; a Pushover message reports every completed sync, including success.

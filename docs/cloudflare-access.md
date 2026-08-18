@@ -124,8 +124,9 @@ Add a policy test that pins the negative case, which is the one that matters:
 ```hujson
 "tests": [
     {
-        "src":  "tag:cloudflared",
-        "deny": ["tag:homelab:443", "tag:domestique:22"],
+        "src":    "tag:cloudflared",
+        "accept": ["svc:domestique:443"],
+        "deny":   ["tag:domestique:22", "tag:domestique:8080", "tag:homelab:443"],
     },
 ],
 ```
@@ -134,9 +135,10 @@ Confirm the positive direction in the policy editor before applying; test
 support for `svc:` destinations should be checked against the current syntax
 rather than assumed.
 
-The `services` map in `stacks/tailscale/terraform.tfvars` already publishes
-`svc:domestique` on `tcp:443` and `tcp:8080`. Nothing there needs to change —
-the grant restricts the tunnel node to 443 regardless.
+The `services` map in `stacks/tailscale/terraform.tfvars` publishes
+`svc:domestique` on `tcp:443` only. It used to carry `tcp:8080` as well, from
+when the app was dialled directly; the grant confined the tunnel node to 443
+either way, but a port nothing dials is a port worth not publishing.
 
 ## Cloudflare setup
 
