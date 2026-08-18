@@ -159,6 +159,11 @@ fetching. `src/api` is the single place that knows URL shapes, and it validates
 every response so a drift from the Go DTOs fails at the boundary with a clear
 error rather than surfacing as `undefined` inside a component.
 
+Ordinary action buttons come from the shared `components/Button` rather than
+being restyled per feature, and reworked component styles are co-located CSS
+Modules. `src/index.css` keeps the theme tokens, the reset, the MapLibre
+integration, and the feature styles not yet moved.
+
 Concrete adapters do not export speculative interfaces. In particular, wahoo
 exports concrete clients, sqlite exports a concrete Store, and pushover exports
 a concrete Client. Compile-time satisfaction checks belong next to adapter types

@@ -1,7 +1,9 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import type { Position } from "../api/types";
+import type { Highlight } from "../lib/highlight";
 import type { SurfaceSummary } from "../lib/surface";
 import { summariseSurface } from "../lib/surface";
 import { StageKey } from "./StageKey";
@@ -154,6 +156,109 @@ describe("StageKey", () => {
     await user.click(gravel);
 
     expect(onHighlightChange).toHaveBeenCalledWith(null);
+  });
+
+  // Both lists are chips of one group, so the group is one tab stop and the
+  // arrows move within it: eleven classes cost one Tab to reach, not eleven.
+  it("holds the whole key on one tab stop and moves inside it with the arrows", async () => {
+    const user = userEvent.setup();
+    render(
+      <StageKey
+        surface={halfGravel()}
+        surfaceAbsence="none"
+        bands={[2]}
+        highlight={null}
+        onHighlightChange={() => {}}
+      />,
+    );
+    const asphalt = screen.getByRole("button", { name: /Asphalt/ });
+    const gravel = screen.getByRole("button", { name: /Gravel/ });
+    const band = screen.getByRole("button", { name: "8–12%" });
+
+    await user.tab();
+
+    expect(asphalt).toHaveFocus();
+
+    await user.keyboard("{ArrowRight}");
+
+    expect(gravel).toHaveFocus();
+
+    // Across the two lists, because the gradient chips are in the same group.
+    await user.keyboard("{ArrowRight}");
+
+    expect(band).toHaveFocus();
+
+    // Past the last chip the key is done, rather than trapping the reader.
+    await user.tab();
+
+    expect(band).not.toHaveFocus();
+  });
+
+  it("asks for the class the keyboard is on", async () => {
+    const user = userEvent.setup();
+    const onHighlightChange = vi.fn();
+    render(
+      <StageKey
+        surface={halfGravel()}
+        surfaceAbsence="none"
+        bands={[2]}
+        highlight={null}
+        onHighlightChange={onHighlightChange}
+      />,
+    );
+
+    await user.tab();
+    await user.keyboard("{ArrowRight}");
+    await user.keyboard("{Enter}");
+
+    expect(onHighlightChange).toHaveBeenCalledWith({ type: "surface", kind: "gravel" });
+  });
+
+  // One selection over both lists: a gradient band replaces a pressed surface
+  // rather than adding to it, which is the question the highlight can answer.
+  // Held above the key, as the page holds it, so the pressed chips are the ones
+  // the answer produced rather than the ones the key decided on its own.
+  it("gives up the pressed surface when a gradient band is picked", async () => {
+    const user = userEvent.setup();
+    const onHighlightChange = vi.fn();
+
+    function Held() {
+      const [highlight, setHighlight] = useState<Highlight | null>({
+        type: "surface",
+        kind: "gravel",
+      });
+
+      return (
+        <StageKey
+          surface={halfGravel()}
+          surfaceAbsence="none"
+          bands={[2]}
+          highlight={highlight}
+          onHighlightChange={(next) => {
+            onHighlightChange(next);
+            setHighlight(next);
+          }}
+        />
+      );
+    }
+
+    render(<Held />);
+    const gravel = screen.getByRole("button", { name: /Gravel/ });
+    const band = screen.getByRole("button", { name: "8–12%" });
+
+    expect(gravel).toHaveAttribute("aria-pressed", "true");
+
+    await user.click(band);
+
+    expect(onHighlightChange).toHaveBeenCalledWith({ type: "band", band: 2 });
+    expect(band).toHaveAttribute("aria-pressed", "true");
+    expect(gravel).toHaveAttribute("aria-pressed", "false");
+
+    // And the second press on the band is still the whole route back.
+    await user.click(band);
+
+    expect(onHighlightChange).toHaveBeenLastCalledWith(null);
+    expect(band).toHaveAttribute("aria-pressed", "false");
   });
 
   it("explains what a class name means, in the name a screen reader hears", () => {

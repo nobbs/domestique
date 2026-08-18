@@ -27,13 +27,24 @@
  * Proportions are of the whole stage, and unsurveyed ground is one of the
  * classes. A key that quietly renormalised over the surveyed part would report a
  * gravel third of a half-surveyed stage as two thirds gravel.
+ *
+ * Both lists are chips of one toggle group, which is what makes the key a single
+ * tab stop with the arrow keys moving inside it: a reader reaches eleven classes
+ * with one Tab rather than eleven, and picking a gradient band drops the surface
+ * chip that was pressed because the group holds one selection across both lists.
+ * The group is a `multiple` one holding at most a single value, deliberately.
+ * Radix's `single` group is a radio group, and a radio group promises exactly one
+ * choice that cannot be given back — which is the opposite of this key, whose
+ * resting state is nothing picked and whose way back is a second press.
  */
 
+import { ToggleGroup } from "radix-ui";
+import type { SurfaceKind } from "../api/types";
 import type { Highlight } from "../lib/highlight";
-import { sameHighlight } from "../lib/highlight";
 import { GRADIENT_BANDS } from "../lib/profile";
 import type { SurfaceSummary } from "../lib/surface";
 import { SURFACE_STYLES, swatchBackground } from "../lib/surface";
+import styles from "./StageKey.module.css";
 
 /**
  * A share as a percentage, never rounded into a contradiction.
@@ -53,6 +64,17 @@ function formatShare(share: number): string {
   }
 
   return `${Math.round(percent)}%`;
+}
+
+/**
+ * What one chip is called within the group.
+ *
+ * The group speaks in strings, and both lists share its one selection, so the
+ * class of the selection has to survive the trip: `gravel` and a band numbered
+ * two must not be able to collide on their way through it.
+ */
+function chipValue(highlight: Highlight): string {
+  return highlight.type === "surface" ? `surface:${highlight.kind}` : `band:${highlight.band}`;
 }
 
 export interface StageKeyProps {
@@ -78,65 +100,81 @@ export function StageKey({
   highlight,
   onHighlightChange,
 }: StageKeyProps) {
-  // A second click on the pressed entry is the way back, which is why these are
-  // toggles rather than a set of radio buttons: there is a state with nothing
-  // picked, and it is the one the page opens in.
-  const pick = (next: Highlight) => onHighlightChange(sameHighlight(highlight, next) ? null : next);
+  // What each chip in the group stands for, built from the classes actually
+  // offered. Reading the selection back out of this rather than parsing the
+  // string means a value the key never offered cannot become a highlight.
+  const offered = new Map<string, Highlight>();
+  const surfaceHighlight = (kind: SurfaceKind): Highlight => ({ type: "surface", kind });
+  const bandHighlight = (band: number): Highlight => ({ type: "band", band });
+  for (const entry of surface?.shares ?? []) {
+    offered.set(chipValue(surfaceHighlight(entry.kind)), surfaceHighlight(entry.kind));
+  }
+  for (const band of bands) {
+    offered.set(chipValue(bandHighlight(band)), bandHighlight(band));
+  }
+
+  // At most one value travels in, and the group hands back the pressed chip
+  // last: a press on an unpressed chip appends it to the one already there, and
+  // a press on the pressed chip leaves nothing, which is the whole route back.
+  const pick = (values: string[]) => {
+    const picked = values.at(-1);
+    onHighlightChange(picked ? (offered.get(picked) ?? null) : null);
+  };
 
   return (
-    <div className="stage-key" data-picked={highlight ? "true" : undefined}>
+    <ToggleGroup.Root
+      type="multiple"
+      className={styles.key}
+      aria-label="Stage key"
+      data-picked={highlight ? "true" : undefined}
+      value={highlight ? [chipValue(highlight)] : []}
+      onValueChange={pick}
+    >
       {surface ? (
-        <ul className="stage-key__list" aria-label="Surface classes">
+        <ul className={styles.list} aria-label="Surface classes">
           {surface.shares.map((entry) => {
             const style = SURFACE_STYLES[entry.kind];
             const share = formatShare(entry.share);
 
             return (
               <li key={entry.kind}>
-                <button
-                  type="button"
-                  className="stage-key__chip"
-                  aria-pressed={sameHighlight(highlight, { type: "surface", kind: entry.kind })}
+                <ToggleGroup.Item
+                  className={styles.chip}
+                  value={chipValue(surfaceHighlight(entry.kind))}
                   // What the class means, for a key that has to explain
                   // "compacted" — spoken as part of the name, because a tooltip
                   // is nothing to a keyboard or a finger.
                   title={style.description}
                   aria-label={`${style.label}, ${style.description}, ${share} of the stage`}
-                  onClick={() => pick({ type: "surface", kind: entry.kind })}
                 >
                   <span
-                    className="stage-key__swatch"
+                    className={styles.swatch}
                     style={{ background: swatchBackground(entry.kind) }}
                     aria-hidden="true"
                   />
                   <span>{style.label}</span>
-                  <span className="stage-key__share">{share}</span>
-                </button>
+                  <span className={styles.share}>{share}</span>
+                </ToggleGroup.Item>
               </li>
             );
           })}
         </ul>
       ) : (
-        <p className="stage-key__absent">{surfaceAbsence}</p>
+        <p className={styles.absent}>{surfaceAbsence}</p>
       )}
 
       {bands.length > 0 ? (
-        <ul className="stage-key__list" aria-label="Gradient bands">
+        <ul className={styles.list} aria-label="Gradient bands">
           {bands.map((band) => (
             <li key={band}>
-              <button
-                type="button"
-                className="stage-key__chip"
-                aria-pressed={sameHighlight(highlight, { type: "band", band })}
-                onClick={() => pick({ type: "band", band })}
-              >
-                <span className="stage-key__swatch" data-band={band} aria-hidden="true" />
+              <ToggleGroup.Item className={styles.chip} value={chipValue(bandHighlight(band))}>
+                <span className={styles.swatch} data-band={band} aria-hidden="true" />
                 <span>{GRADIENT_BANDS[band]?.label}</span>
-              </button>
+              </ToggleGroup.Item>
             </li>
           ))}
         </ul>
       ) : null}
-    </div>
+    </ToggleGroup.Root>
   );
 }

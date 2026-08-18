@@ -23,6 +23,7 @@ import type { SurfaceSummary } from "../lib/surface";
 import { SURFACE_STYLES, surfaceBandsWithin, surfaceKindAt } from "../lib/surface";
 import { useElementWidth } from "../lib/useElementWidth";
 import { useEscapeKey } from "../lib/useEscapeKey";
+import { Button } from "./Button";
 
 /**
  * Hatch patterns for the steeper bands.
@@ -688,15 +689,10 @@ export function ElevationProfile({
          * being left as well as where it goes.
          */}
         {zoomed && onZoomChange ? (
-          <button
-            type="button"
-            className="elevation-profile__reset"
-            aria-keyshortcuts="Escape"
-            onClick={() => onZoomChange(null)}
-          >
+          <Button variant="quiet" aria-keyshortcuts="Escape" onClick={() => onZoomChange(null)}>
             Whole route
             <span className="elevation-profile__reset-span"> · showing {shownLabel}</span>
-          </button>
+          </Button>
         ) : null}
         <p className="elevation-profile__readout" aria-live="polite">
           {active ? (
