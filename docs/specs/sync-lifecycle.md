@@ -122,6 +122,9 @@ state, token, Wahoo account identity, or upstream response.
 
 ## Manual trigger
 
+A manual trigger is a state change, so it carries the browser-origin
+requirement of every state-changing route.
+
 The configured Tailnet user can request `POST /v1/sync` to start an immediate
 synchronization of both halves, or `POST /v1/sync/source` and
 `POST /v1/sync/targets` to start one. Each uses the same reconciliation, durable
@@ -307,8 +310,11 @@ future reconciliation feature.
 ## HTTP JSON contract
 
 All routes except the loopback liveness probe require the configured Tailnet
-identity. Responses use application/json; charset=utf-8, include
-Cache-Control: no-store, and never include secrets or raw upstream errors.
+identity. Every state-changing route additionally requires an `Origin` header
+equal to the origin the browser UI is served from, as set out in the
+[service specification](service.md). Responses use application/json;
+charset=utf-8, include Cache-Control: no-store, and never include secrets or raw
+upstream errors.
 
 ### GET /healthz
 
@@ -414,12 +420,20 @@ Application errors use:
 Messages are stable and safe for display. They must not contain source account
 identifiers, route names, provider response text, file paths, tokens, or
 credentials. Authentication failures use 401; an authenticated but unpermitted
-identity uses 403; malformed client input uses 400.
+identity uses 403; a request that does not come from the browser UI's origin
+also uses 403; malformed client input uses 400.
 
-The OAuth start, callback, the protected `POST /v1/sync` triggers, and the
-protected `PUT /v1/sync/schedule` switch are the only
+The OAuth start, callback, the protected `POST /v1/sync` triggers, the protected
+`PUT /v1/sync/schedule` switch, and the protected
+`POST /v1/routes/{source-route-id}/stages/{stage}/reprocess` request are the only
 state-changing endpoints. There is no HTTP or CLI endpoint for route deletion,
 configuration mutation, or Wahoo target removal.
+
+Every one of them except the OAuth start and callback is refused with 403 unless
+its `Origin` header equals the browser UI's origin. Identity is settled first, so
+an unverified caller is answered 401 whatever origin it names. The OAuth callback
+stays outside the check because it is a cross-site redirect by design; its
+one-time, identity-bound, expiring state is what protects it.
 
 ## Notifications
 

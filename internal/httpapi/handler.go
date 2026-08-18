@@ -123,6 +123,13 @@ type Options struct {
 	// principal every authenticated request resolves to.
 	AccessEmail string
 
+	// BrowserOriginURL is an absolute HTTPS URL on the hostname a browser
+	// reaches this service at. Only its scheme and host are read: together they
+	// are the one origin a state-changing request may come from. The Wahoo
+	// redirect URL is that hostname by construction — it is where a browser
+	// returns from Wahoo — which is why it is what the composition root passes.
+	BrowserOriginURL string
+
 	TargetIDs []string
 }
 
@@ -137,6 +144,7 @@ type Handler struct {
 	tileStyleURL     string
 	tileStyleURLDark string
 	tileOrigin       string
+	browserOrigin    string
 	allowedEmail     string
 	targetIDs        []string
 }
@@ -170,6 +178,10 @@ func New(
 	if strings.TrimSpace(options.AccessEmail) == "" {
 		return nil, errors.New("an access email is required")
 	}
+	browserOrigin, err := browserOriginOf(options.BrowserOriginURL)
+	if err != nil {
+		return nil, err
+	}
 	tileOrigin, err := originOf(options.TileStyleURL)
 	if err != nil {
 		return nil, err
@@ -193,6 +205,7 @@ func New(
 		tileStyleURL:     options.TileStyleURL,
 		tileStyleURLDark: options.TileStyleURLDark,
 		tileOrigin:       tileOrigin,
+		browserOrigin:    browserOrigin,
 		targetIDs:        append([]string(nil), options.TargetIDs...),
 
 		accessVerifier: options.AccessVerifier,
@@ -204,19 +217,23 @@ func New(
 }
 
 // routes registers the fixed v1 surface. Every pattern except the liveness
-// probe is wrapped by the Access identity gate.
+// probe is wrapped by the Access identity gate, and every pattern that triggers
+// a run or writes state is additionally wrapped by the provenance check.
 func (h *Handler) routes() {
 	h.mux.HandleFunc("GET /healthz", h.health)
 
 	h.mux.Handle("GET /v1/status", h.gated(h.status))
-	h.mux.Handle("POST /v1/sync", h.gated(h.sync))
-	h.mux.Handle("POST /v1/sync/source", h.gated(h.syncSource))
-	h.mux.Handle("POST /v1/sync/targets", h.gated(h.syncTargets))
-	h.mux.Handle("PUT /v1/sync/schedule", h.gated(h.setSyncSchedule))
+	h.mux.Handle("POST /v1/sync", h.gated(h.sameOrigin(h.sync)))
+	h.mux.Handle("POST /v1/sync/source", h.gated(h.sameOrigin(h.syncSource)))
+	h.mux.Handle("POST /v1/sync/targets", h.gated(h.sameOrigin(h.syncTargets)))
+	h.mux.Handle("PUT /v1/sync/schedule", h.gated(h.sameOrigin(h.setSyncSchedule)))
 	h.mux.Handle("GET /v1/routes", h.gated(h.stages))
 	h.mux.Handle("GET /v1/routes/{routeID}/stages/{stage}", h.gated(h.stage))
 	h.mux.Handle("GET /v1/routes/{routeID}/stages/{stage}/geometry", h.gated(h.stageGeometry))
-	h.mux.Handle("POST /v1/routes/{routeID}/stages/{stage}/reprocess", h.gated(h.reprocessStage))
+	h.mux.Handle(
+		"POST /v1/routes/{routeID}/stages/{stage}/reprocess",
+		h.gated(h.sameOrigin(h.reprocessStage)),
+	)
 	h.mux.Handle("GET /v1/webui/config", h.gated(h.webUIConfig))
 
 	h.mux.Handle("GET /oauth/wahoo/start/{target}", h.gated(h.start))
@@ -290,6 +307,36 @@ func (h *Handler) gated(next gatedFunc) http.Handler {
 	})
 }
 
+// sameOrigin refuses a state-changing request that did not come from this
+// service's own browser UI. Every route that starts a run or writes state must
+// be wrapped in it.
+//
+// The identity gate proves who is calling; it does not prove that they meant to
+// call. An Access session lives in an ordinary browser, so a page on any other
+// site could otherwise post to these routes and have that session start a
+// synchronization or reprocess a stage on the operator's behalf.
+//
+// A browser attaches Origin to every request whose method is not GET or HEAD,
+// including a same-origin one, so the UI's own requests always carry it. A
+// missing header is therefore not "same-origin, header omitted" — it is a
+// caller that is not this UI, and it is refused rather than trusted. So is
+// "null", which is what a sandboxed or redirected context sends.
+//
+// The OAuth callback is deliberately not wrapped: it is a cross-site GET the
+// browser is redirected into, and what protects it is its one-time,
+// identity-bound, expiring state rather than its provenance.
+func (h *Handler) sameOrigin(next gatedFunc) gatedFunc {
+	return func(writer http.ResponseWriter, request *http.Request, principal string) {
+		if request.Header.Get("Origin") != h.browserOrigin {
+			h.error(writer, http.StatusForbidden, "forbidden", "request origin is not permitted")
+
+			return
+		}
+
+		next(writer, request, principal)
+	}
+}
+
 // contentSecurityPolicy confines the page to this service's own origin plus the
 // single configured tile origin. Both basemap styles share that origin, so a
 // page that follows the system colour scheme still reaches exactly one.
@@ -333,6 +380,18 @@ func (h *Handler) writeJSON(writer http.ResponseWriter, status int, value any) {
 	if err := json.NewEncoder(writer).Encode(value); err != nil {
 		return
 	}
+}
+
+// browserOriginOf reduces the URL a browser reaches this service at to the
+// origin a browser would name in an Origin header: a lowercase scheme and host,
+// without the port when it is HTTPS's default, and nothing after the host.
+func browserOriginOf(value string) (string, error) {
+	parsed, err := url.Parse(strings.TrimSpace(value))
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" {
+		return "", errors.New("browser origin URL must be an absolute HTTPS URL")
+	}
+
+	return "https://" + strings.TrimSuffix(strings.ToLower(parsed.Host), ":443"), nil
 }
 
 // originOf reduces a URL to its scheme and host for use in a CSP source list.

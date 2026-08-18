@@ -37,6 +37,12 @@ client_secret_file = "/run/secrets/wahoo_client_secret"
 # the callback registered with Wahoo. Use the public hostname when the
 # Cloudflare path is deployed, because the redirect lands in an ordinary browser
 # that may not be on the Tailnet; use the Tailnet URL otherwise.
+#
+# Its origin is also the one a state-changing request must come from, because it
+# is the hostname a browser reaches this service at. A request to a sync trigger,
+# the schedule switch, or a stage reprocess that names any other origin — or
+# none — is refused, so that an authenticated session cannot be driven from
+# another site.
 redirect_url = "https://domestique.example.com/oauth/wahoo/callback"
 
 [[wahoo.targets]]

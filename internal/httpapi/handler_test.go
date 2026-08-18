@@ -16,6 +16,10 @@ import (
 const (
 	testTileStyleURL     = "https://tiles.example.test/styles/liberty"
 	testTileStyleURLDark = "https://tiles.example.test/styles/liberty-dark"
+	// The Wahoo redirect URL the composition root passes, and the origin a
+	// browser derives from it for the requests it sends this service.
+	testBrowserOriginURL = "https://domestique.example.test/oauth/wahoo/callback"
+	testBrowserOrigin    = "https://domestique.example.test"
 )
 
 func TestHandlerGatesStateAndKeepsHealthLocal(t *testing.T) {
@@ -289,10 +293,11 @@ func TestHandlerServesTileStyleConfiguration(t *testing.T) {
 func TestHandlerOmitsAnUnconfiguredDarkTileStyle(t *testing.T) {
 	handler, err := New(
 		&Options{
-			TargetIDs:      []string{"rider-a"},
-			TileStyleURL:   testTileStyleURL,
-			AccessVerifier: &recordingVerifier{email: testAccessEmail},
-			AccessEmail:    testAccessEmail,
+			TargetIDs:        []string{"rider-a"},
+			TileStyleURL:     testTileStyleURL,
+			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
+			AccessEmail:      testAccessEmail,
+			BrowserOriginURL: testBrowserOriginURL,
 		},
 		&fakeOAuth{}, &fakeState{}, &fakeSyncTrigger{}, &fakeAssets{},
 	)
@@ -630,21 +635,24 @@ func TestNewRejectsIncompleteOptions(t *testing.T) {
 	}{
 		{name: "nil options"},
 		{name: "no targets", options: &Options{
-			TileStyleURL:   testTileStyleURL,
-			AccessVerifier: &recordingVerifier{email: testAccessEmail},
-			AccessEmail:    testAccessEmail,
+			TileStyleURL:     testTileStyleURL,
+			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
+			AccessEmail:      testAccessEmail,
+			BrowserOriginURL: testBrowserOriginURL,
 		}},
 		{name: "duplicate targets", options: &Options{
-			TargetIDs:      []string{"rider-a", "rider-a"},
-			TileStyleURL:   testTileStyleURL,
-			AccessVerifier: &recordingVerifier{email: testAccessEmail},
-			AccessEmail:    testAccessEmail,
+			TargetIDs:        []string{"rider-a", "rider-a"},
+			TileStyleURL:     testTileStyleURL,
+			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
+			AccessEmail:      testAccessEmail,
+			BrowserOriginURL: testBrowserOriginURL,
 		}},
 		{name: "plaintext tile style", options: &Options{
-			TargetIDs:      []string{"rider-a"},
-			TileStyleURL:   "http://tiles.example.test/style.json",
-			AccessVerifier: &recordingVerifier{email: testAccessEmail},
-			AccessEmail:    testAccessEmail,
+			TargetIDs:        []string{"rider-a"},
+			TileStyleURL:     "http://tiles.example.test/style.json",
+			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
+			AccessEmail:      testAccessEmail,
+			BrowserOriginURL: testBrowserOriginURL,
 		}},
 		{name: "dark tile style on another origin", options: &Options{
 			TargetIDs:        []string{"rider-a"},
@@ -652,6 +660,7 @@ func TestNewRejectsIncompleteOptions(t *testing.T) {
 			TileStyleURLDark: "https://dark.example.test/styles/dark",
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
+			BrowserOriginURL: testBrowserOriginURL,
 		}},
 		{name: "plaintext dark tile style", options: &Options{
 			TargetIDs:        []string{"rider-a"},
@@ -659,6 +668,7 @@ func TestNewRejectsIncompleteOptions(t *testing.T) {
 			TileStyleURLDark: "http://tiles.example.test/styles/dark",
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
+			BrowserOriginURL: testBrowserOriginURL,
 		}},
 	}
 
@@ -679,10 +689,11 @@ func newHandlerWithVerifier(t *testing.T, verifier AccessVerifier) *Handler {
 	t.Helper()
 	handler, err := New(
 		&Options{
-			TargetIDs:      []string{"rider-a"},
-			TileStyleURL:   testTileStyleURL,
-			AccessVerifier: verifier,
-			AccessEmail:    testAccessEmail,
+			TargetIDs:        []string{"rider-a"},
+			TileStyleURL:     testTileStyleURL,
+			AccessVerifier:   verifier,
+			AccessEmail:      testAccessEmail,
+			BrowserOriginURL: testBrowserOriginURL,
 		},
 		&fakeOAuth{}, &fakeState{}, &fakeSyncTrigger{accepted: true}, &fakeAssets{},
 	)
@@ -706,6 +717,7 @@ func newHandlerWithTrigger(t *testing.T, oauthService OAuth, state State, syncTr
 			TileStyleURLDark: testTileStyleURLDark,
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
+			BrowserOriginURL: testBrowserOriginURL,
 		},
 		oauthService, state, syncTrigger, &fakeAssets{},
 	)
@@ -719,6 +731,7 @@ func newHandlerWithTrigger(t *testing.T, oauthService OAuth, state State, syncTr
 func authenticatedRequest(method, target string) *http.Request {
 	request := httptest.NewRequestWithContext(context.Background(), method, target, http.NoBody)
 	request.Header.Set(assertionHeader, testAssertion)
+	withBrowserOrigin(request)
 
 	return request
 }
@@ -726,8 +739,17 @@ func authenticatedRequest(method, target string) *http.Request {
 func authenticatedRequestWithBody(method, target, body string) *http.Request {
 	request := httptest.NewRequestWithContext(context.Background(), method, target, strings.NewReader(body))
 	request.Header.Set(assertionHeader, testAssertion)
+	withBrowserOrigin(request)
 
 	return request
+}
+
+// withBrowserOrigin attaches Origin exactly where a browser attaches it: to
+// every request whose method is not GET or HEAD, same-origin ones included.
+func withBrowserOrigin(request *http.Request) {
+	if request.Method != http.MethodGet && request.Method != http.MethodHead {
+		request.Header.Set("Origin", testBrowserOrigin)
+	}
 }
 
 type fakeOAuth struct {

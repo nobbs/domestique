@@ -59,7 +59,10 @@ depends on `make ui-build`. Use `make ui-dev` for hot reload — it proxies the 
 to a locally running service and forwards the Cloudflare Access assertion in
 `DOMESTIQUE_DEV_ASSERTION`, so the identity gate behaves as it does in
 production. Without that variable every proxied request answers 401; there is
-deliberately no way to switch the gate off. Building images requires
+deliberately no way to switch the gate off. The proxy also names the API's
+configured browser origin, because state-changing routes require it; that
+defaults to what `dev/setup.sh` writes, and `DOMESTIQUE_DEV_ORIGIN` overrides it
+when `DOMESTIQUE_DEV_API` points at the deployed container. Building images requires
 `docker login dhi.io`, because the base images are Docker Hardened Images.
 
 **To develop against real data**, run `make dev-setup` once (snapshots the

@@ -1,0 +1,214 @@
+package httpapi
+
+import (
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+)
+
+// mutableRoutes is every route that starts a run or writes state. A route added
+// to this surface belongs here, and the provenance tests below cover it.
+var mutableRoutes = []struct { //nolint:gochecknoglobals // test fixture, read-only
+	method string
+	target string
+	body   string
+}{
+	{method: http.MethodPost, target: "/v1/sync"},
+	{method: http.MethodPost, target: "/v1/sync/source"},
+	{method: http.MethodPost, target: "/v1/sync/targets"},
+	{method: http.MethodPut, target: "/v1/sync/schedule", body: `{"source":true,"targets":true}`},
+	{method: http.MethodPost, target: "/v1/routes/12/stages/1/reprocess"},
+}
+
+// An Access session lives in an ordinary browser, so identity alone would let a
+// page on any other site start a run in it. Every one of these requests carries
+// a valid assertion and is still refused, and — the part that matters — neither
+// the trigger nor the store is touched on the way out.
+func TestMutableRoutesRejectForeignProvenance(t *testing.T) {
+	origins := map[string]string{
+		"absent":     "",
+		"cross site": "https://evil.example.test",
+		"opaque":     "null",
+		"prefix":     "https://domestique.example.test.evil.example.test",
+		"plaintext":  "http://domestique.example.test",
+		"port":       "https://domestique.example.test:8443",
+	}
+
+	for name, origin := range origins {
+		t.Run(name, func(t *testing.T) {
+			for _, route := range mutableRoutes {
+				trigger := &fakeSyncTrigger{accepted: true}
+				state := surfaceState()
+				handler := newHandlerWithTrigger(t, &fakeOAuth{}, state, trigger)
+
+				request := httptest.NewRequestWithContext(
+					t.Context(), route.method, route.target, strings.NewReader(route.body),
+				)
+				request.Header.Set(assertionHeader, testAssertion)
+				if origin != "" {
+					request.Header.Set("Origin", origin)
+				}
+
+				response := httptest.NewRecorder()
+				handler.ServeHTTP(response, request)
+
+				if got, want := response.Code, http.StatusForbidden; got != want {
+					t.Errorf("%s %s status = %d, want %d", route.method, route.target, got, want)
+				}
+				if trigger.calls != 0 {
+					t.Errorf("%s %s triggered %d runs, want none", route.method, route.target, trigger.calls)
+				}
+				if state.scheduleWrites != 0 || len(state.reprocessed) != 0 {
+					t.Errorf("%s %s wrote state, want none", route.method, route.target)
+				}
+			}
+		})
+	}
+}
+
+// The same requests, from the UI's own origin, must behave exactly as they did
+// before the guard existed.
+func TestMutableRoutesAcceptTheBrowserOrigin(t *testing.T) {
+	for _, route := range mutableRoutes {
+		trigger := &fakeSyncTrigger{accepted: true}
+		handler := newHandlerWithTrigger(t, &fakeOAuth{}, surfaceState(), trigger)
+
+		request := httptest.NewRequestWithContext(
+			t.Context(), route.method, route.target, strings.NewReader(route.body),
+		)
+		request.Header.Set(assertionHeader, testAssertion)
+		request.Header.Set("Origin", testBrowserOrigin)
+
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+
+		if response.Code == http.StatusForbidden {
+			t.Errorf("%s %s status = 403, want the route's own answer", route.method, route.target)
+		}
+	}
+}
+
+// An unverified caller learns nothing more from a mutable route than from any
+// other: identity is settled before provenance, so a bad origin and a bad
+// assertion are answered as the missing identity, not as a failed origin check.
+func TestIdentityIsSettledBeforeProvenance(t *testing.T) {
+	handler := newTestHandler(t)
+
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/sync", http.NoBody)
+	request.Header.Set("Origin", "https://evil.example.test")
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+
+	if got, want := response.Code, http.StatusUnauthorized; got != want {
+		t.Errorf("status = %d, want %d", got, want)
+	}
+}
+
+// The OAuth callback is a cross-site GET the browser is redirected into. It is
+// protected by its one-time, identity-bound, expiring state, and wrapping it in
+// a provenance check would break the flow it is there to complete.
+func TestOAuthRoutesStayOutsideTheProvenanceCheck(t *testing.T) {
+	for _, target := range []string{"/oauth/wahoo/start/rider-a", "/oauth/wahoo/callback?state=s&code=c"} {
+		handler := newTestHandler(t)
+		request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, target, http.NoBody)
+		request.Header.Set(assertionHeader, testAssertion)
+		request.Header.Set("Origin", "https://api.wahooligan.example.test")
+
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+
+		if response.Code == http.StatusForbidden {
+			t.Errorf("%s status = 403, want the flow to proceed", target)
+		}
+	}
+}
+
+// A read-only route carries no side effect to protect, and a browser sends no
+// Origin on a GET, so requiring one there would refuse the whole UI.
+func TestReadOnlyRoutesDoNotRequireAnOrigin(t *testing.T) {
+	for _, target := range []string{
+		"/v1/status",
+		"/v1/routes",
+		"/v1/routes/12/stages/1",
+		"/v1/routes/12/stages/1/geometry",
+		"/v1/webui/config",
+	} {
+		handler := newHandler(t, &fakeOAuth{}, surfaceState())
+		request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, target, http.NoBody)
+		request.Header.Set(assertionHeader, testAssertion)
+
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+
+		if got, want := response.Code, http.StatusOK; got != want {
+			t.Errorf("%s status = %d, want %d", target, got, want)
+		}
+	}
+}
+
+// The origin is compared as a browser writes it, so the configured URL is
+// reduced to a scheme and host first.
+func TestBrowserOriginNormalisation(t *testing.T) {
+	valid := map[string]string{
+		"callback URL":  "https://domestique.example.test/oauth/wahoo/callback",
+		"bare origin":   "https://domestique.example.test",
+		"mixed case":    "https://Domestique.Example.Test/oauth/wahoo/callback",
+		"default port":  "https://domestique.example.test:443/oauth/wahoo/callback",
+		"surrounded":    "  https://domestique.example.test/oauth/wahoo/callback  ",
+		"explicit port": "https://domestique.example.test:8443",
+	}
+	want := map[string]string{
+		"callback URL":  "https://domestique.example.test",
+		"bare origin":   "https://domestique.example.test",
+		"mixed case":    "https://domestique.example.test",
+		"default port":  "https://domestique.example.test",
+		"surrounded":    "https://domestique.example.test",
+		"explicit port": "https://domestique.example.test:8443",
+	}
+
+	for name, value := range valid {
+		t.Run(name, func(t *testing.T) {
+			got, err := browserOriginOf(value)
+			if err != nil {
+				t.Fatalf("browserOriginOf(%q) error = %v", value, err)
+			}
+			if got != want[name] {
+				t.Errorf("browserOriginOf(%q) = %q, want %q", value, got, want[name])
+			}
+		})
+	}
+
+	// A service with no origin to compare against has no guard, so it must not
+	// start rather than fall back to accepting anything.
+	for name, value := range map[string]string{
+		"empty":     "",
+		"plaintext": "http://domestique.example.test",
+		"relative":  "/oauth/wahoo/callback",
+		"no host":   "https://",
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := browserOriginOf(value); err == nil {
+				t.Errorf("browserOriginOf(%q) error = nil, want an error", value)
+			}
+		})
+	}
+}
+
+// Without a configured origin there is nothing to compare a state-changing
+// request against, so the handler must refuse to exist.
+func TestNewRequiresABrowserOrigin(t *testing.T) {
+	_, err := New(
+		&Options{
+			TargetIDs:      []string{"rider-a"},
+			TileStyleURL:   testTileStyleURL,
+			AccessVerifier: &recordingVerifier{email: testAccessEmail},
+			AccessEmail:    testAccessEmail,
+		},
+		&fakeOAuth{}, &fakeState{}, &fakeSyncTrigger{}, &fakeAssets{},
+	)
+	if err == nil {
+		t.Fatal("New() error = nil, want an error")
+	}
+}
