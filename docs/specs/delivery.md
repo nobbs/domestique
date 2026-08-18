@@ -1,6 +1,7 @@
 # Domestique delivery specification
 
-**Status:** accepted v1 design, revised for trunk-based image publishing
+**Status:** accepted v1 design, revised for trunk-based image publishing and
+for a fast routine local loop with GitHub Actions as the authoritative gate
 
 This is a subordinate specification to [the service contract](service.md). It
 defines the local quality gate, GitHub Actions, container hardening, the images
@@ -30,17 +31,59 @@ The repository provides these stable Make targets:
 | `make ui-dev` | Runs the UI dev server, proxying the API to the local service. |
 | `make dev-setup` | Snapshots the deployed state into an isolated development environment. |
 | `make dev-api` | Serves the API against that snapshot on `:8081`. |
-| `make check` | Runs every repository check required before review or merge. |
+| `make quick` | Runs the routine local loop: every check in `make check` except the three it defers. |
+| `make check` | Runs the full gate locally, on demand. |
 
-`make check` is the canonical local and CI entry point. It includes
+`make check` is the full gate. It includes
 `prek run --all-files`, linting, tests, TypeScript type checking, the browser UI
 lint and test suites, Go module verification, vulnerability analysis for both Go
 and npm dependencies, a GitHub Actions workflow check, a shell-script check, a
-worktree secret scan, a commit-hook cost check, and the release-target binary
-compilation for every published architecture.
+worktree secret scan, a commit-hook cost check, a local-gate structure check,
+and the release-target binary compilation for every published architecture.
 `make fmt` applies Go formatting. A fixing `prek` hook exits non-zero after a
 safe mechanical repair so the resulting change can be reviewed and staged
 deliberately.
+
+### The authoritative gate is GitHub Actions
+
+**This revises the earlier contract that `make check` was the canonical local
+and CI entry point, run in full before every hand-over.** It is a deliberate
+change to where the gate is paid, not to what the gate contains: GitHub Actions
+runs the complete validation on every pull request targeting the default branch,
+and its aggregate check is what a merge must satisfy. No check was removed,
+relaxed, or made optional in order to obtain a faster local loop.
+
+Local validation is therefore a way to learn a result earlier, and it comes at
+two depths:
+
+- `make quick` is the routine loop. It runs everything the full gate runs except
+  the three checks named below, so it stays worth running on every iteration.
+- `make check` is the full gate on demand, unchanged. Run it before handing work
+  over when an earlier answer than CI's is worth its cost.
+
+`make quick` defers exactly three checks, each because it is slow or needs the
+network rather than because it matters less:
+
+| Deferred check | Why |
+| --- | --- |
+| `build-check` | Rebuilds the UI bundle and cross-compiles both published architectures; the slowest check in the gate whenever the build cache is cold. |
+| `vulncheck` | Needs the network and a current Go advisory database. |
+| `ui-audit` | Needs the network and a current npm advisory database. |
+
+It also reuses an installed browser UI dependency tree rather than reinstalling
+it, and installs one only when none is present. `make check` and CI always
+install from a clean `npm ci`, so a lockfile change is still proved against a
+fresh tree.
+
+That `make quick` is a strict subset of `make check`, and that the difference is
+exactly the deferred set above, is asserted rather than only documented: a check
+added to the full gate fails the assertion until it is either added to the
+routine loop or deferred deliberately. The routine loop may therefore be
+narrower than the gate, but never different from it.
+
+The three depths compose: the commit hook judges the staged files in about a
+second, `make quick` judges the working tree, and GitHub Actions judges the
+merge. Each is a strict subset of the one after it.
 
 `prek` owns fast repository hygiene: whitespace and end-of-file checks,
 private-key and accidental-large-file checks, YAML, TOML, and Markdown
@@ -110,8 +153,10 @@ suppressed in CI.
 GitHub Actions runs for pull requests **targeting** the default branch and for
 pushes **to** it, and for nothing else. There is no manual trigger: every run
 answers for a specific tree that a review or a merge produced. It uses the same
-pinned Mise toolchain and invokes `make check`; CI does not reimplement a
-divergent list of shell commands.
+pinned Mise toolchain and invokes the same `ci-*` Make groups that `make check`
+runs; CI does not reimplement a divergent list of shell commands. It is the
+authoritative gate: it runs the complete validation for every changed path,
+whatever a contributor chose to run locally.
 
 The validation workflow must:
 
@@ -132,7 +177,10 @@ The validation workflow must:
   digest and nothing else; and
 - aggregate every job into one required check that is green only when each
   dependency succeeded or was skipped by a path filter, so a failed publish or
-  deployment cannot be mistaken for a passing run.
+  deployment cannot be mistaken for a passing run; and
+- record each job's result in that required check's run summary, because a
+  skipped job and a job that never ran are indistinguishable on a commit status,
+  and the gate is readable only if a skip is visibly a skip.
 
 The pull-request build and the default-branch publish are the same build split
 by event: a pull request proves it, a push to the default branch publishes it,
