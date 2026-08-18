@@ -2,10 +2,11 @@ name: CI
 
 on:
   pull_request:
+    branches:
+      - main
   push:
     branches:
       - main
-  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.sha }}
@@ -28,6 +29,7 @@ jobs:
       go: ${{ steps.filter.outputs.go }}
       ui: ${{ steps.filter.outputs.ui }}
       image: ${{ steps.filter.outputs.image }}
+      container: ${{ steps.filter.outputs.container }}
 
     steps:
       - name: Check out repository
@@ -48,8 +50,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     needs: changes
-    # A manual run has no diff to filter on, so it always runs everything.
-    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.lint == 'true'
+    if: needs.changes.outputs.lint == 'true'
 
     permissions:
       contents: read
@@ -75,7 +76,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     needs: changes
-    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.go == 'true'
+    if: needs.changes.outputs.go == 'true'
 
     permissions:
       contents: read
@@ -101,7 +102,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     needs: changes
-    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.go == 'true'
+    if: needs.changes.outputs.go == 'true'
 
     permissions:
       contents: read
@@ -127,7 +128,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     needs: changes
-    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.ui == 'true'
+    if: needs.changes.outputs.ui == 'true'
 
     permissions:
       contents: read
@@ -148,20 +149,12 @@ jobs:
       - name: Typecheck, lint and test the UI
         run: mise exec -- make ci-ui
 
-  image:
-    name: Image
+  build:
+    name: Build
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    needs:
-      - changes
-      - lint
-      - test
-    if: >-
-      always() &&
-      needs.changes.result == 'success' &&
-      (needs.lint.result == 'success' || needs.lint.result == 'skipped') &&
-      (needs.test.result == 'success' || needs.test.result == 'skipped') &&
-      (github.event_name == 'workflow_dispatch' || needs.changes.outputs.image == 'true')
+    timeout-minutes: 10
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
 
     permissions:
       contents: read
@@ -183,29 +176,210 @@ jobs:
       # embeds dist, so the JavaScript tree has to be installed first.
       - name: Install UI dependencies
         run: mise exec -- make ui-install
-      # Compiling first fails in seconds on a broken build, rather than after
-      # the image layers have been assembled.
-      - name: Verify the binary compiles
+      # This is the only check that compiles for both published architectures,
+      # so it runs on every Go change rather than only when the image is built.
+      - name: Compile for every published architecture
         run: mise exec -- make build-check
+
+  image:
+    name: Image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    needs:
+      - changes
+      - lint
+      - test
+    # The proving build belongs to the pull request, and only to one that
+    # changes an input of the container build: `container`, not the wider
+    # `image` filter that decides whether a merge publishes. A Go change alone
+    # is covered by `build`, which compiles the same targets far more cheaply.
+    # A push to the default branch goes to `publish` instead, so the same tree
+    # is never built twice.
+    if: >-
+      !cancelled() &&
+      github.event_name == 'pull_request' &&
+      needs.changes.result == 'success' &&
+      (needs.lint.result == 'success' || needs.lint.result == 'skipped') &&
+      (needs.test.result == 'success' || needs.test.result == 'skipped') &&
+      needs.changes.outputs.container == 'true'
+
+    permissions:
+      contents: read
+      packages: read
+
+    env:
+      IMAGE: ghcr.io/${{ github.repository }}
+
+    steps:
+      - name: Check out repository
+        # v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Install pinned toolchain
+        # v4.2.5
+        uses: jdx/mise-action@3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518
+        with:
+          version: 2026.8.6
+          install: true
+          cache: true
       - name: Set up Docker Buildx
         # v4.2.0
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c
+      # The build cache lives in the private GHCR package, so reading it needs
+      # a login even though this job pushes nothing.
+      - name: Log in to GitHub Container Registry
+        # v4.6.0
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       # Docker Hardened Images require authentication even on the free
       # Community tier, so the image cannot build without these secrets.
       - name: Authenticate to Docker Hardened Images
-        # v3.7.0
+        # v4.6.0
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f
         with:
           registry: dhi.io
           username: ${{ secrets.DHI_USERNAME }}
           password: ${{ secrets.DHI_TOKEN }}
       # A multi-platform result cannot be --load-ed into the local image store,
-      # so the build is proved and discarded; the release workflow is what
-      # publishes it.
+      # so the build is proved and discarded; `publish` is what pushes it. It
+      # reads the cache the default branch wrote and writes none of its own:
+      # exporting needs `packages: write`, and a pull request must never hold
+      # the permission that writes what a host deploys. A cache miss is a
+      # warning rather than a failure, so a first run needs no bootstrapping.
       - name: Build production image
         run: >-
           docker buildx build --platform linux/amd64,linux/arm64
+          --cache-from "type=registry,ref=${IMAGE}:buildcache"
           --output type=cacheonly --tag domestique:ci .
+
+  publish:
+    name: Publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    needs:
+      - changes
+      - lint
+      - test
+      - security
+      - ui
+      - build
+    # Only a push to the default branch publishes, and only behind the whole
+    # gate rather than the subset `image` waits for: what reaches the registry
+    # is what a host will run.
+    if: >-
+      !cancelled() &&
+      github.event_name == 'push' &&
+      needs.changes.result == 'success' &&
+      (needs.lint.result == 'success' || needs.lint.result == 'skipped') &&
+      (needs.test.result == 'success' || needs.test.result == 'skipped') &&
+      (needs.security.result == 'success' || needs.security.result == 'skipped') &&
+      (needs.ui.result == 'success' || needs.ui.result == 'skipped') &&
+      (needs.build.result == 'success' || needs.build.result == 'skipped') &&
+      needs.changes.outputs.image == 'true'
+
+    # The workflow's own group keys a push by commit, so two pushes in quick
+    # succession would publish in parallel and the older commit could land
+    # last. This serialises them instead of cancelling either.
+    concurrency:
+      group: publish-${{ github.workflow }}-${{ github.ref }}
+      cancel-in-progress: false
+
+    # Nothing is signed, so no `id-token` is needed. `packages: write` is the
+    # only permission this repository's automation holds beyond read.
+    permissions:
+      contents: read
+      packages: write
+
+    env:
+      IMAGE: ghcr.io/${{ github.repository }}
+      DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest
+
+    steps:
+      - name: Check out repository
+        # v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Set up Docker Buildx
+        # v4.2.0
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c
+      - name: Log in to GitHub Container Registry
+        # v4.6.0
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # Docker Hardened Images require authentication even on the free
+      # Community tier, so the image cannot build without these secrets.
+      - name: Authenticate to Docker Hardened Images
+        # v4.6.0
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f
+        with:
+          registry: dhi.io
+          username: ${{ secrets.DHI_USERNAME }}
+          password: ${{ secrets.DHI_TOKEN }}
+      # Trunk-based development has no version tags: `sha-` names the commit an
+      # image was built from and never moves, while `latest` is a pointer for
+      # inspection that a host must never deploy.
+      - name: Compute tags, labels and annotations
+        id: meta
+        # v6.2.0
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302
+        with:
+          images: ${{ env.IMAGE }}
+          flavor: latest=false
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,format=short,prefix=sha-
+      # The image is deliberately unsigned: GitHub artifact attestations need
+      # Enterprise Cloud on a private repository, and this repository stays
+      # private. BuildKit's own SBOM and mode=max provenance travel with the
+      # index instead. `image-manifest` and `oci-mediatypes` are what make the
+      # exported cache a manifest the registry accepts.
+      - name: Build and publish image
+        id: build
+        # v7.3.0
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          provenance: mode=max
+          sbom: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          annotations: ${{ steps.meta.outputs.annotations }}
+          cache-from: type=registry,ref=${{ env.IMAGE }}:buildcache
+          cache-to: type=registry,ref=${{ env.IMAGE }}:buildcache,mode=max,image-manifest=true,oci-mediatypes=true
+      # The digest is the deployment instruction, so it belongs where an
+      # operator copies it from rather than at the end of a build log.
+      - name: Report the published digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          set -eu
+
+          {
+            echo "## Published image"
+            echo
+            echo "Pin this digest in the deploying host's DOMESTIQUE_IMAGE:"
+            echo
+            echo '```text'
+            echo "${IMAGE}@${DIGEST}"
+            echo '```'
+            echo
+            echo "Tags now pointing at it:"
+            echo
+            echo '```text'
+            echo "${TAGS}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
   required:
     name: Required
@@ -217,7 +391,9 @@ jobs:
       - test
       - security
       - ui
+      - build
       - image
+      - publish
     if: always()
 
     permissions: {}
@@ -226,6 +402,10 @@ jobs:
       # Branch protection requires this single job. It fails unless every
       # dependency either succeeded or was skipped by a path filter, so a
       # cancelled or failed job upstream cannot be mistaken for a green run.
+      # `image` and `publish` never both run, and a change that touches no
+      # container input runs neither, so a skip here carries no information
+      # about whether an image exists. What it does guarantee is that a failed
+      # build or publish still reddens the commit.
       - name: Validate CI results
         env:
           CHANGES_RESULT: ${{ needs.changes.result }}
@@ -233,12 +413,15 @@ jobs:
           TEST_RESULT: ${{ needs.test.result }}
           SECURITY_RESULT: ${{ needs.security.result }}
           UI_RESULT: ${{ needs.ui.result }}
+          BUILD_RESULT: ${{ needs.build.result }}
           IMAGE_RESULT: ${{ needs.image.result }}
+          PUBLISH_RESULT: ${{ needs.publish.result }}
         run: |
           set -eu
 
           for result in "$CHANGES_RESULT" "$LINT_RESULT" "$TEST_RESULT" \
-            "$SECURITY_RESULT" "$UI_RESULT" "$IMAGE_RESULT"; do
+            "$SECURITY_RESULT" "$UI_RESULT" "$BUILD_RESULT" "$IMAGE_RESULT" \
+            "$PUBLISH_RESULT"; do
             case "$result" in
               success|skipped) ;;
               *)

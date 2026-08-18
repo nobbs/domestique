@@ -55,7 +55,7 @@ private to this service.
 ~~~
 
 The browser UI is compiled into the binary with `go:embed`, so the service ships
-as one signed artefact and the API and UI cannot drift apart in a deployment.
+as one artefact and the API and UI cannot drift apart in a deployment.
 `internal/webui/app/dist` is build output; only its placeholder is tracked.
 
 There is no public pkg directory, internal/common package, interfaces package,
@@ -265,8 +265,8 @@ Implementation proceeds in these reviewable layers:
    rate-limit handling.
 5. Implement sync, scheduler, Pushover, Tailnet-gated read-only HTTP API, and
    full safety regression tests.
-6. Add Docker, macOS MVP and Pi deployment configuration, signed GHCR release
-   delivery, and end-to-end sandbox verification.
+6. Add Docker, macOS MVP and Pi deployment configuration, GHCR image delivery
+   from the default branch, and end-to-end sandbox verification.
 
 A later layer may depend on earlier code, but it may not weaken a safety rule
 already specified. Route preview remains a future addition after this sequence.

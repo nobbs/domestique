@@ -1,6 +1,6 @@
 services:
   domestique:
-    image: "${DOMESTIQUE_IMAGE:?set a verified GHCR digest, or a locally built tag, in .env}"
+    image: "${DOMESTIQUE_IMAGE:?set an immutable GHCR image digest in .env}"
     restart: unless-stopped
     user: "65532:65532"
     read_only: true

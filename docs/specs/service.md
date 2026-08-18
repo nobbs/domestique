@@ -397,7 +397,7 @@ and performs graceful shutdown.
 ## Quality and delivery requirements
 
 The concrete local quality gate, GitHub Actions, container hardening, and
-release artifact contract is defined in the
+published image contract is defined in the
 [delivery specification](delivery.md).
 
 Implementation must include a project-local Go toolchain declaration, focused
@@ -406,9 +406,12 @@ the same essential validation. Normal tests use deterministic fakes for every
 external service. A separately invoked sandbox acceptance check validates the
 FIT/Wahoo contract and never receives production secrets through CI.
 
-Released Docker images are published to GHCR from version tags, signed, and
-deployed to the Pi by immutable digest. The macOS MVP may build locally from
-the checkout; its configuration and Docker secret files remain outside Git.
+Docker images are published to GHCR from each default-branch change that alters
+an input of the image, and deployed to the Pi by immutable digest. They are not
+signed; the [delivery specification](delivery.md) states why and what stands in
+its place.
+The macOS MVP may build locally from the checkout; its configuration and Docker
+secret files remain outside Git.
 
 ## Acceptance criteria
 
@@ -431,5 +434,5 @@ the checkout; its configuration and Docker secret files remain outside Git.
   hash changes, so an unchanged library does not rewrite the cache on every run.
 - Losing the geometry cache degrades only the map view; it cannot affect sync
   safety or cause a destructive Wahoo operation.
-- The codebase has reproducible local and GitHub validation before a release is
+- The codebase has reproducible local and GitHub validation before an image is
   published.

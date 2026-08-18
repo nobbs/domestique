@@ -32,20 +32,25 @@ secret values.
 ## Deployment
 
 The service image is CGO-free `linux/amd64` and `linux/arm64`, and embeds the
-browser UI, so the API and the UI ship as one artefact. A release published to
-GHCR is signed and carries provenance, which a deploying host verifies before it
-accepts a digest; an image built from a checkout is a local build and carries
-neither. Its base images are Docker Hardened Images, so building it requires
-`docker login dhi.io`; deploying it does not.
+browser UI, so the API and the UI ship as one artefact. A change to the default
+branch that touches an input of the image publishes it to
+`ghcr.io/nobbs/domestique` from GitHub Actions, tagged `latest` and
+`sha-<commit>` and carrying a BuildKit bill of materials and provenance. A
+change that touches none — documentation, say — publishes nothing, so `latest`
+may name an earlier commit than the branch head. A host deploys the immutable digest that run reported, never a tag.
+The image is not signed; the [delivery specification](docs/specs/delivery.md)
+states why and what stands in its place. Its base images are Docker Hardened
+Images, so *building* it requires `docker login dhi.io`; deploying it does not,
+because a host pulls rather than builds.
 The host owns the private boundary: Docker publishes only `127.0.0.1:8080`,
 while host-level Tailscale Serve provides HTTPS and is the origin a Cloudflare
 Tunnel dials by Tailscale Service name. Tailscale does not run in the image.
 
-The [Linux VM guide](docs/hetzner.md) covers the long-running host, which builds
-the image from a checkout. The
+The [Linux VM guide](docs/hetzner.md) covers the long-running host. The
 [Cloudflare Access guide](docs/cloudflare-access.md) covers how the single
-operator reaches it — the only way in, and without publishing a listener. The [Pi deployment guide](docs/deployment.md) uses the
-same runtime contract with a verified immutable image digest, and the
-[macOS Docker guide](docs/macos-mvp.md) covers the Apple-silicon MVP host. The
-optional sandbox encoder check is documented in
+operator reaches it — the only way in, and without publishing a listener. The
+[Pi deployment guide](docs/deployment.md) applies the same runtime contract to
+smaller hardware, and the [macOS Docker guide](docs/macos-mvp.md) covers the
+Apple-silicon MVP host, which still builds from the checkout. The optional
+sandbox encoder check is documented in
 [the FIT acceptance guide](docs/fit-sandbox-acceptance.md).

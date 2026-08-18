@@ -120,5 +120,5 @@ docker compose -f compose.macos.yml down
 ~~~
 
 Do not add --volumes: that removes encrypted OAuth state. The later Pi
-deployment uses the same configuration and secret-file contract, but deploys a
-verified immutable GHCR digest instead of building from the checkout.
+deployment uses the same configuration and secret-file contract, but deploys an
+immutable GHCR digest published by CI instead of building from the checkout.

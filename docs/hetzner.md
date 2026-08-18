@@ -1,15 +1,18 @@
 # Linux VM deployment
 
 Domestique runs as one Docker container on a small always-on Linux VM in the
-Tailnet. This guide covers a host that **builds the image from a checkout**,
-which is the same runtime contract as the [Pi deployment](deployment.md) but
-without a release artifact: a locally built image carries no signature and no
-provenance, so it is a deployment convenience, not a verified artifact. Prefer
-[the Pi guide](deployment.md) once a tagged release exists for the host
-architecture.
+Tailnet. This guide covers a host that **pulls a published image by digest**.
+That is the same runtime contract as the [Pi deployment](deployment.md); the two
+guides differ only in how the host itself is prepared. GitHub Actions publishes
+the image from the default branch, so this host never builds one.
 
-The compose file, configuration, secret files, and image tag stay on the host,
-outside this repository.
+Building here was the earlier arrangement, and it is where this VM's memory
+pressure came from: a two-platform `npm ci` and Go build does not fit alongside
+the running service on two vCPUs and 4 GB. A host that only pulls carries none
+of that load and needs no `dhi.io` credential.
+
+The compose file, configuration, secret files, and pinned digest stay on the
+host, outside this repository.
 
 ## Trust boundary
 
@@ -59,10 +62,10 @@ Create a directory owned by the operator, for example `/srv/domestique`:
 ```text
 /srv/domestique/
 ├── compose.yml   # docs/compose.example.yml, unmodified
-├── .env          # DOMESTIQUE_IMAGE=domestique:<git-sha>
+├── .env          # DOMESTIQUE_IMAGE=ghcr.io/nobbs/domestique@sha256:<digest>
 ├── config.toml   # config.example.toml with every placeholder replaced
 ├── secrets/      # the six secret files
-└── src/          # the checkout the image is built from
+└── src/          # optional checkout, for development against real data
 ```
 
 Copy [`config.example.toml`](../config.example.toml) to `config.toml` and
@@ -89,21 +92,45 @@ Keep the state encryption key together with the `domestique-state` volume.
 Losing either requires Wahoo reauthorisation and safe route adoption; there is
 intentionally no state backup or key-rotation workflow in v1.
 
-## Build the image
+## Pull a published image
 
-The base images are Docker Hardened Images, so the host needs `docker login
-dhi.io` with a Docker Hub account and personal access token, including on the
-free Community tier. Clone the repository into `src/`, then:
+Every default-branch change that touches an input of the image publishes one
+multi-architecture image to `ghcr.io/nobbs/domestique`. The package is private,
+so the host needs a **classic** personal access token scoped to `read:packages`
+— a fine-grained token cannot authenticate to ghcr.io:
 
 ```sh
-docker build -t "domestique:$(git -C src rev-parse --short HEAD)" src
+read -rs GHCR_TOKEN
+printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u <github-user> --password-stdin
+unset GHCR_TOKEN
+chmod 600 ~/.docker/config.json
 ```
 
-Record that tag in `.env` as `DOMESTIQUE_IMAGE`. Tagging by commit is what makes
-a rollback possible: the previous tag stays in the local image store, so
-reverting is an edit to `.env` and a restart. The Dockerfile cross-compiles from
-the build platform, so amd64 and arm64 hosts both build natively without
-emulation.
+Take the short commit from the run that published the image, and resolve the
+**index** digest:
+
+```sh
+docker buildx imagetools inspect ghcr.io/nobbs/domestique:sha-<short-commit> \
+  --format '{{.Manifest.Digest}}'
+```
+
+Confirm it matches the digest that run reported in its summary, then write the
+value into `.env`, replacing any earlier one:
+
+```text
+DOMESTIQUE_IMAGE=ghcr.io/nobbs/domestique@sha256:<digest>
+```
+
+Pin that index digest — not a per-architecture manifest digest, and not a tag.
+Reading a digest out of `docker images --digests` after a pull can hand you the
+manifest for this host's architecture alone, which silently undoes the
+multi-architecture image. `latest` moves, so it names an image to look at, never
+one to deploy.
+
+The image is not signed; [the delivery specification](specs/delivery.md) states
+why and what stands in its place.
+[The Pi guide](deployment.md#select-an-image) carries the same commands together
+with the provenance and bill-of-materials inspection.
 
 ## Run the container
 
@@ -179,8 +206,19 @@ it is the rollback path.
 
 ## Update and rollback
 
-To update, pull the checkout, rebuild, point `DOMESTIQUE_IMAGE` at the new tag,
-and run `docker compose up -d`. The named state volume stays in place. Rollback
-is the same operation with the previous tag; it never restores old SQLite state.
+To update, resolve the digest of a newer published image as above, point
+`DOMESTIQUE_IMAGE` at it, and run `docker compose --env-file .env up -d`. The
+named state volume stays in place. Rollback is the same operation with a digest
+this host ran before; it never restores old SQLite state.
+
+Keep the previous digest written down. A digest stays pullable after its tag has
+moved on, so the rollback path survives even once the local copy is gone — but
+only if the value was recorded somewhere.
+
+A host that used to build has disk to reclaim. Once a published image has
+completed a sync, remove the stale `domestique:<git-sha>` images with
+`docker image rm`, then run `docker builder prune -af` to clear the BuildKit
+cache those builds accumulated. Leave the `alpine` image in place; the migration
+recipe above uses it. Never run `docker system prune --volumes`.
 
 Do not run `docker compose down -v`, which deletes the state volume.

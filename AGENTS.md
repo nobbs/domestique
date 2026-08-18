@@ -25,7 +25,7 @@ one before changing behavior:
 | [implementation-architecture.md](docs/specs/implementation-architecture.md) | Package ownership, interface rules, composition root |
 | [configuration.md](docs/specs/configuration.md) | File schema, secret inputs, validation |
 | [sync-lifecycle.md](docs/specs/sync-lifecycle.md) | State transitions, safety gates, JSON contracts |
-| [delivery.md](docs/specs/delivery.md) | Quality gate, container hardening, release artifacts |
+| [delivery.md](docs/specs/delivery.md) | Quality gate, container hardening, published images |
 
 When an implementation detail contradicts a specification, treat the
 specification as correct and say so rather than quietly matching the code. When
