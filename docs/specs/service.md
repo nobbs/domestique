@@ -407,8 +407,9 @@ external service. A separately invoked sandbox acceptance check validates the
 FIT/Wahoo contract and never receives production secrets through CI.
 
 Docker images are published to GHCR from each default-branch change that alters
-an input of the image, and deployed to the Pi by immutable digest. They are not signed; the
-[delivery specification](delivery.md) states why and what stands in its place.
+an input of the image, and deployed to the Pi by immutable digest. They are not
+signed; the [delivery specification](delivery.md) states why and what stands in
+its place.
 The macOS MVP may build locally from the checkout; its configuration and Docker
 secret files remain outside Git.
 

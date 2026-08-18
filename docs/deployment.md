@@ -151,6 +151,6 @@ container; a Pushover message reports every completed sync, including success.
 For an update, take the digest from the run that published it, replace only
 `DOMESTIQUE_IMAGE` in `/srv/domestique/.env`, and run `docker compose up -d`.
 The container leaves the named state volume in place. Rollback is the same
-operation with an earlier verified digest; it never restores old SQLite state.
+operation with an earlier published digest; it never restores old SQLite state.
 
 Do not run `docker compose down -v`, which deletes the state volume.
