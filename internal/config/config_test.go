@@ -415,3 +415,92 @@ func removeConfigurationLine(t *testing.T, path, prefix string) {
 func sameTargets(left, right []Target) bool {
 	return slices.Equal(left, right)
 }
+
+// The public Cloudflare path is off unless every one of its values is present.
+func TestLoadLeavesCloudflareAccessDisabledByDefault(t *testing.T) {
+	configPath, _ := writeValidConfiguration(t, t.TempDir())
+	t.Setenv(configFileEnv, configPath)
+
+	settings, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if settings.Access.Cloudflare.Enabled() {
+		t.Error("Cloudflare access is enabled without configuration")
+	}
+}
+
+func TestLoadReadsCloudflareAccess(t *testing.T) {
+	directory := t.TempDir()
+	configPath, _ := writeValidConfiguration(t, directory)
+	appendConfiguration(t, configPath, `
+[access.cloudflare]
+team_domain = "example.cloudflareaccess.com"
+application_aud = "aud-tag"
+allowed_email = "rider@example.test"
+`)
+	t.Setenv(configFileEnv, configPath)
+
+	settings, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if !settings.Access.Cloudflare.Enabled() {
+		t.Fatal("Cloudflare access is disabled despite full configuration")
+	}
+	if got, want := settings.Access.Cloudflare.ApplicationAUD, "aud-tag"; got != want {
+		t.Errorf("ApplicationAUD = %q, want %q", got, want)
+	}
+	if got, want := settings.Access.Cloudflare.AllowedEmail, "rider@example.test"; got != want {
+		t.Errorf("AllowedEmail = %q, want %q", got, want)
+	}
+}
+
+// A section missing the audience tag would otherwise verify assertions minted
+// for any other application of the same team, so it is rejected outright.
+func TestLoadRejectsPartialCloudflareAccess(t *testing.T) {
+	cases := map[string]string{
+		"missing audience": `
+[access.cloudflare]
+team_domain = "example.cloudflareaccess.com"
+allowed_email = "rider@example.test"
+`,
+		"missing email": `
+[access.cloudflare]
+team_domain = "example.cloudflareaccess.com"
+application_aud = "aud-tag"
+`,
+		"missing team domain": `
+[access.cloudflare]
+application_aud = "aud-tag"
+allowed_email = "rider@example.test"
+`,
+	}
+
+	for name, section := range cases {
+		t.Run(name, func(t *testing.T) {
+			configPath, _ := writeValidConfiguration(t, t.TempDir())
+			appendConfiguration(t, configPath, section)
+			t.Setenv(configFileEnv, configPath)
+
+			if _, err := Load(); err == nil {
+				t.Fatal("expected rejection, got a valid configuration")
+			}
+		})
+	}
+}
+
+// appendConfiguration adds a section to a written configuration file.
+func appendConfiguration(t *testing.T, configPath, section string) {
+	t.Helper()
+
+	//nolint:gosec // The test passes only a path in its own temporary directory.
+	existing, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("reading configuration: %v", err)
+	}
+	//nolint:gosec // The test passes only a path in its own temporary directory.
+	if err = os.WriteFile(configPath, append(existing, []byte(section)...), 0o600); err != nil {
+		t.Fatalf("appending configuration: %v", err)
+	}
+}

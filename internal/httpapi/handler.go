@@ -14,7 +14,14 @@ import (
 	"github.com/nobbs/domestique/internal/route"
 )
 
+// identityHeader is injected by Tailscale Serve for traffic from a user node.
+// Serve strips any client-supplied copy before proxying, and never populates it
+// for a tagged device, so its presence is itself evidence of the request path.
 const identityHeader = "Tailscale-User-Login"
+
+// assertionHeader carries the signed Cloudflare Access token on the public
+// request path, where no Tailnet identity exists.
+const assertionHeader = "Cf-Access-Jwt-Assertion"
 
 // maximumRequestBytes bounds the only request bodies this service reads. They
 // carry two booleans, so anything larger is a mistake or an attempt.
@@ -84,24 +91,50 @@ type State interface {
 	RequestStageReprocess(ctx context.Context, routeID int64, stageOrder int) (found bool, err error)
 }
 
+// AccessVerifier proves the identity behind a Cloudflare Access assertion. It
+// is satisfied by internal/cfaccess and is nil when no public path is deployed.
+type AccessVerifier interface {
+	// Verify returns the email address a valid assertion names.
+	Verify(ctx context.Context, assertion string) (string, error)
+}
+
+// AccessVerifierFunc adapts a function to AccessVerifier.
+type AccessVerifierFunc func(ctx context.Context, assertion string) (string, error)
+
+// Verify calls f.
+func (f AccessVerifierFunc) Verify(ctx context.Context, assertion string) (string, error) {
+	return f(ctx, assertion)
+}
+
 // Options carries the non-secret settings the HTTP surface needs.
 type Options struct {
+	// AccessVerifier enables the public Cloudflare path when set. Leaving it
+	// nil keeps the service reachable only through Tailscale Serve.
+	AccessVerifier AccessVerifier
+
 	TailnetUserLogin string
 	TileStyleURL     string
-	TargetIDs        []string
+
+	// AccessEmail is the one address an Access assertion may name. It is
+	// required when AccessVerifier is set and ignored otherwise.
+	AccessEmail string
+
+	TargetIDs []string
 }
 
 // Handler enforces Tailnet identity and exposes the v1 HTTP surface.
 type Handler struct {
-	mux          *http.ServeMux
-	oauth        OAuth
-	syncTrigger  SyncTrigger
-	state        State
-	assets       Assets
-	allowedLogin string
-	tileStyleURL string
-	tileOrigin   string
-	targetIDs    []string
+	mux            *http.ServeMux
+	oauth          OAuth
+	syncTrigger    SyncTrigger
+	state          State
+	assets         Assets
+	accessVerifier AccessVerifier
+	allowedLogin   string
+	tileStyleURL   string
+	tileOrigin     string
+	allowedEmail   string
+	targetIDs      []string
 }
 
 // New creates a handler. Health checks are intentionally unauthenticated;
@@ -130,6 +163,12 @@ func New(
 			return nil, errors.New("target IDs must be unique")
 		}
 	}
+	if options.AccessVerifier != nil && strings.TrimSpace(options.AccessEmail) == "" {
+		return nil, errors.New("an access email is required when the Cloudflare path is enabled")
+	}
+	if options.AccessVerifier == nil && strings.TrimSpace(options.AccessEmail) != "" {
+		return nil, errors.New("an access verifier is required when an access email is configured")
+	}
 	tileOrigin, err := originOf(options.TileStyleURL)
 	if err != nil {
 		return nil, err
@@ -145,6 +184,9 @@ func New(
 		tileStyleURL: options.TileStyleURL,
 		tileOrigin:   tileOrigin,
 		targetIDs:    append([]string(nil), options.TargetIDs...),
+
+		accessVerifier: options.AccessVerifier,
+		allowedEmail:   strings.TrimSpace(options.AccessEmail),
 	}
 	handler.routes()
 
@@ -195,21 +237,63 @@ func (h *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 // gatedFunc is a handler that has already proven the caller's identity.
 type gatedFunc func(writer http.ResponseWriter, request *http.Request, login string)
 
-// gated rejects any caller that is not the single configured Tailnet identity.
+// gated rejects any caller that is not the single configured identity.
+//
+// Two request paths reach this service, and each carries different evidence:
+//
+//   - A Tailnet browser arrives through Tailscale Serve, which strips any
+//     client-supplied Tailscale-* headers and injects its own. The header is
+//     trustworthy precisely because of that, and is absent for tagged devices.
+//   - A public request arrives through Cloudflare Access and cloudflared. That
+//     node is tagged, so Serve injects no identity at all, and the signed Access
+//     assertion is the only identity the request carries.
+//
+// Because Serve strips the header, a public caller cannot present one: reaching
+// the origin by the Tailscale Service name, rather than by loopback or a node
+// address, is what keeps that stripping boundary in the path.
+//
+// Both paths resolve to the same configured principal, so a flow whose state is
+// bound to the caller — Wahoo OAuth — can begin on one path and finish on the
+// other.
 func (h *Handler) gated(next gatedFunc) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		login := request.Header.Get(identityHeader)
-		if login == "" {
-			h.error(writer, http.StatusUnauthorized, "unauthorized", "tailnet identity is required")
+		if login := request.Header.Get(identityHeader); login != "" {
+			if login != h.allowedLogin {
+				h.error(writer, http.StatusForbidden, "forbidden", "identity is not permitted")
+
+				return
+			}
+			next(writer, request, h.allowedLogin)
 
 			return
 		}
-		if login != h.allowedLogin {
-			h.error(writer, http.StatusForbidden, "forbidden", "tailnet identity is not permitted")
+		if h.accessVerifier == nil {
+			h.error(writer, http.StatusUnauthorized, "unauthorized", "an authenticated identity is required")
 
 			return
 		}
-		next(writer, request, login)
+
+		assertion := request.Header.Get(assertionHeader)
+		if assertion == "" {
+			h.error(writer, http.StatusUnauthorized, "unauthorized", "an authenticated identity is required")
+
+			return
+		}
+
+		email, err := h.accessVerifier.Verify(request.Context(), assertion)
+		if err != nil {
+			// The reason stays here. Telling an unauthenticated caller why its
+			// assertion failed describes the check it has to defeat.
+			h.error(writer, http.StatusUnauthorized, "unauthorized", "an authenticated identity is required")
+
+			return
+		}
+		if !strings.EqualFold(email, h.allowedEmail) {
+			h.error(writer, http.StatusForbidden, "forbidden", "identity is not permitted")
+
+			return
+		}
+		next(writer, request, h.allowedLogin)
 	})
 }
 

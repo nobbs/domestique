@@ -30,6 +30,13 @@ Funnel, and do not put a general-purpose reverse proxy in front of the service â
 anything that forwards a client-supplied `Tailscale-User-Login` hands over the
 entire API.
 
+Reaching the service from outside the Tailnet has one supported form, described
+in [the Cloudflare Access guide](cloudflare-access.md). It satisfies the rule
+above rather than bending it: the proxy's origin is the Tailscale Service name,
+so Tailscale Serve stays in the path and strips the client-supplied header, and
+the application independently verifies a signed Cloudflare Access assertion. Any
+other proxy, or that same proxy pointed at `127.0.0.1`, hands over the API.
+
 ## Prepare the host
 
 Install Docker Engine with the Compose plugin from Docker's own apt repository,

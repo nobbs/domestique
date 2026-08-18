@@ -42,7 +42,9 @@ while host-level Tailscale Serve provides HTTPS and the authenticated identity
 header to the container. Tailscale does not run in the image.
 
 The [Linux VM guide](docs/hetzner.md) covers the long-running host, which builds
-the image from a checkout. The [Pi deployment guide](docs/deployment.md) uses the
+the image from a checkout. The optional
+[Cloudflare Access guide](docs/cloudflare-access.md) adds a public path for the
+same single operator, without publishing a listener. The [Pi deployment guide](docs/deployment.md) uses the
 same runtime contract with a verified immutable image digest, and the
 [macOS Docker guide](docs/macos-mvp.md) covers the Apple-silicon MVP host. The
 optional sandbox encoder check is documented in

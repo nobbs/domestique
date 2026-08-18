@@ -36,6 +36,12 @@ listen_address = ":8080"
 [access]
 tailnet_user_login = "you@example.ts.net"
 
+# Optional; omit entirely to keep the service reachable only from the Tailnet.
+[access.cloudflare]
+team_domain = "yourteam.cloudflareaccess.com"
+application_aud = "the AUD tag of the Access application"
+allowed_email = "you@example.com"
+
 [state]
 database_path = "/var/lib/domestique/state.db"
 encryption_key_file = "/run/secrets/state_encryption_key"
@@ -150,6 +156,16 @@ application dependency.
   evidence of Tailnet identity.
 - `access.tailnet_user_login` is required. It is the sole Tailnet login allowed
   to use normal or OAuth endpoints.
+- `access.cloudflare` is optional and all-or-nothing: either the whole section is
+  absent, or `team_domain`, `application_aud`, and `allowed_email` are all
+  present. A partly filled section is a startup error, because the alternative
+  is a publicly reachable service whose assertions are never checked. None of the
+  three is a secret — the team domain and the audience tag are public
+  identifiers, and verification uses Cloudflare's published signing keys — so
+  they are ordinary configuration values rather than secret files.
+  `application_aud` is what confines an assertion to this one application:
+  without it, a token minted for any other application of the same Cloudflare
+  team would verify against the same key.
 - `state.database_path` is required and must reside on the persistent Docker
   volume.
 - `veloplanner.base_url` is a required absolute HTTPS URL. The authenticated

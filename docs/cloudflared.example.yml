@@ -1,0 +1,31 @@
+# cloudflared configuration for the Domestique Service.
+# Deployed to ./cloudflared/config.yml next to the credentials file.
+
+tunnel: <TUNNEL_ID>
+credentials-file: /etc/cloudflared/<TUNNEL_ID>.json
+
+# No metrics or management surface is published; cloudflared only dials out.
+no-autoupdate: true
+
+ingress:
+  # One hostname. Splitting the UI and the API across two hostnames would put
+  # the Access session cookie on one of them only, and pull CORS configuration
+  # into Access for nothing: the browser calls /v1/* on the same origin that
+  # served the page.
+  - hostname: domestique.nobbs.dev
+    # The Tailscale Service name, never a node name and never 127.0.0.1. See
+    # docs/compose.cloudflare.example.yml for why this is load-bearing.
+    service: https://domestique.fluffy-sargas.ts.net
+    originRequest:
+      # The ts.net name has a real publicly trusted certificate, so ordinary
+      # verification applies and noTLSVerify stays off.
+      originServerName: domestique.fluffy-sargas.ts.net
+      # Tailscale Serve dispatches on the Host header. Without this it would
+      # receive "domestique.nobbs.dev" and not match the served Service.
+      httpHostHeader: domestique.fluffy-sargas.ts.net
+      connectTimeout: 10s
+      # The UI holds no long-lived stream today; this leaves room for one.
+      noHappyEyeballs: false
+
+  # Anything else on this tunnel is refused rather than dispatched.
+  - service: http_status:404

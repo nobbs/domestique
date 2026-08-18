@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/nobbs/domestique/internal/cfaccess"
 	"github.com/nobbs/domestique/internal/config"
 	"github.com/nobbs/domestique/internal/elevation"
 	"github.com/nobbs/domestique/internal/fit"
@@ -113,11 +114,37 @@ func run(ctx context.Context) error {
 	}
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	// The public Cloudflare path is optional. When it is not configured the
+	// verifier stays nil and the service remains reachable only through
+	// Tailscale Serve, exactly as before.
+	var accessVerifier httpapi.AccessVerifier
+	if settings.Access.Cloudflare.Enabled() {
+		verifier, verifierErr := cfaccess.New(&cfaccess.Options{
+			TeamDomain: settings.Access.Cloudflare.TeamDomain,
+			Audience:   settings.Access.Cloudflare.ApplicationAUD,
+		})
+		if verifierErr != nil {
+			return fmt.Errorf("configuring Cloudflare Access verification: %w", verifierErr)
+		}
+		accessVerifier = httpapi.AccessVerifierFunc(
+			func(ctx context.Context, assertion string) (string, error) {
+				identity, identityErr := verifier.Verify(ctx, assertion)
+				if identityErr != nil {
+					return "", identityErr //nolint:wrapcheck // the gate discards the detail rather than reflecting it
+				}
+
+				return identity.Email, nil
+			},
+		)
+	}
+
 	handler, err := httpapi.New(
 		&httpapi.Options{
 			TailnetUserLogin: settings.Access.TailnetUserLogin,
 			TargetIDs:        targetIDs,
 			TileStyleURL:     settings.WebUI.TileStyleURL,
+			AccessVerifier:   accessVerifier,
+			AccessEmail:      settings.Access.Cloudflare.AllowedEmail,
 		},
 		oauthService,
 		store,

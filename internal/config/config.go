@@ -59,9 +59,36 @@ type HTTP struct {
 	ListenAddress string
 }
 
-// Access identifies the sole Tailnet user allowed to access the service.
+// Access identifies the sole user allowed to reach the service, on either
+// request path.
 type Access struct {
 	TailnetUserLogin string
+
+	// Cloudflare configures the optional public path. It is zero when the
+	// service is reachable only through Tailscale Serve.
+	Cloudflare CloudflareAccess
+}
+
+// CloudflareAccess configures verification of Cloudflare Access assertions.
+// None of its values is a secret: the team domain and the application audience
+// tag are public identifiers, and verification rests on Cloudflare's published
+// signing keys rather than on a shared credential.
+type CloudflareAccess struct {
+	// TeamDomain is the Zero Trust team domain that signs assertions.
+	TeamDomain string
+
+	// ApplicationAUD is the audience tag of the one Access application that
+	// fronts this service. Without it, an assertion minted for any other
+	// application of the same team would verify.
+	ApplicationAUD string
+
+	// AllowedEmail is the single address an assertion may name.
+	AllowedEmail string
+}
+
+// Enabled reports whether the public Cloudflare path is configured.
+func (c CloudflareAccess) Enabled() bool {
+	return c.TeamDomain != "" && c.ApplicationAUD != "" && c.AllowedEmail != ""
 }
 
 // WebUI configures the read-only browser route map view.
@@ -216,7 +243,14 @@ type rawSurface struct {
 }
 
 type rawAccess struct {
-	TailnetUserLogin string `koanf:"tailnet_user_login"`
+	TailnetUserLogin string              `koanf:"tailnet_user_login"`
+	Cloudflare       rawCloudflareAccess `koanf:"cloudflare"`
+}
+
+type rawCloudflareAccess struct {
+	TeamDomain     string `koanf:"team_domain"`
+	ApplicationAUD string `koanf:"application_aud"`
+	AllowedEmail   string `koanf:"allowed_email"`
 }
 
 type rawState struct {
@@ -385,11 +419,46 @@ func hasPath(values map[string]any, path []string) bool {
 	return false
 }
 
+// validateCloudflareAccess accepts the section either wholly absent or wholly
+// present. A half-configured section is rejected rather than silently ignored,
+// because the failure it would otherwise produce is a public endpoint whose
+// assertions are never checked.
+func validateCloudflareAccess(raw *rawCloudflareAccess) error {
+	values := map[string]string{
+		"access.cloudflare.team_domain":     strings.TrimSpace(raw.TeamDomain),
+		"access.cloudflare.application_aud": strings.TrimSpace(raw.ApplicationAUD),
+		"access.cloudflare.allowed_email":   strings.TrimSpace(raw.AllowedEmail),
+	}
+
+	set := 0
+	for _, value := range values {
+		if value != "" {
+			set++
+		}
+	}
+	if set == 0 || set == len(values) {
+		return nil
+	}
+
+	missing := make([]string, 0, len(values))
+	for key, value := range values {
+		if value == "" {
+			missing = append(missing, key)
+		}
+	}
+	slices.Sort(missing)
+
+	return fmt.Errorf("access.cloudflare is partly configured; missing %s", strings.Join(missing, ", "))
+}
+
 func build(raw *rawSettings) (*Settings, error) {
 	if err := validateListenAddress(raw.HTTP.ListenAddress); err != nil {
 		return nil, err
 	}
 	if err := requireValue("access.tailnet_user_login", raw.Access.TailnetUserLogin); err != nil {
+		return nil, err
+	}
+	if err := validateCloudflareAccess(&raw.Access.Cloudflare); err != nil {
 		return nil, err
 	}
 	if !filepath.IsAbs(raw.State.DatabasePath) {
@@ -492,6 +561,11 @@ func build(raw *rawSettings) (*Settings, error) {
 		},
 		Access: Access{
 			TailnetUserLogin: strings.TrimSpace(raw.Access.TailnetUserLogin),
+			Cloudflare: CloudflareAccess{
+				TeamDomain:     strings.TrimSpace(raw.Access.Cloudflare.TeamDomain),
+				ApplicationAUD: strings.TrimSpace(raw.Access.Cloudflare.ApplicationAUD),
+				AllowedEmail:   strings.TrimSpace(raw.Access.Cloudflare.AllowedEmail),
+			},
 		},
 		WebUI: WebUI{
 			TileStyleURL: strings.TrimSpace(raw.WebUI.TileStyleURL),

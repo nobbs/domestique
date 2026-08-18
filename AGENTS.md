@@ -118,9 +118,16 @@ of them needs an explicit specification revision, not a quiet edit.
   the status endpoint, logs, or notifications.
 - **Refresh tokens are encrypted at rest** in SQLite with the state-encryption
   key; access tokens live only in memory.
-- **All non-OAuth HTTP is read-only and Tailnet-identity-gated.** The handler
-  trusts the identity header only because deployment keeps the listener private
-  to the local Tailscale proxy; do not add a public listener or loosen the gate.
+- **All non-OAuth HTTP is read-only and identity-gated to one principal.** The
+  handler trusts `Tailscale-User-Login` only because deployment keeps the
+  listener private to the local Tailscale proxy, which strips any
+  client-supplied copy. Do not add a public listener or loosen the gate. The
+  optional Cloudflare path in [docs/cloudflare-access.md](docs/cloudflare-access.md)
+  adds no listener — the tunnel dials outward — and adds no principal; it proves
+  the same one by verifying a signed Access assertion, because a tagged tunnel
+  node carries no Tailnet identity at all. Its origin must stay the Tailscale
+  Service name: pointed at loopback, it would bypass the header stripping and
+  hand over the API.
 
 ## Testing
 
