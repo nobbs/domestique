@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiError, fetchStageGeometry, fetchStages } from "./client";
+import { ApiError, fetchStageGeometry, fetchStages, setSyncSchedule, triggerSync } from "./client";
 import { ContractError } from "./parse";
 
 function respondWith(status: number, body: unknown): void {
@@ -62,5 +62,55 @@ describe("the API client", () => {
     respondWith(200, { stages: [{ route_id: "not-a-number" }] });
 
     await expect(fetchStages()).rejects.toBeInstanceOf(ContractError);
+  });
+
+  it("starts the half it was asked for", async () => {
+    const fetchMock = vi.fn(
+      async (_input: RequestInfo | URL, _init?: RequestInit) =>
+        new Response(JSON.stringify({ status: "accepted" })),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await triggerSync("source");
+    await triggerSync("targets");
+    await triggerSync("all");
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "/v1/sync/source",
+      "/v1/sync/targets",
+      "/v1/sync",
+    ]);
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ method: "POST" });
+  });
+
+  // A run already in flight is a refusal worth showing, not a silent no-op.
+  it("reports a rejected trigger", async () => {
+    respondWith(409, {
+      error: { code: "sync_in_progress", message: "a synchronization is already running" },
+    });
+
+    const failure = await triggerSync("source").catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(ApiError);
+    expect((failure as ApiError).code).toBe("sync_in_progress");
+  });
+
+  it("sends both schedule switches and reads back what was stored", async () => {
+    const fetchMock = vi.fn(
+      async (_input: RequestInfo | URL, _init?: RequestInit) =>
+        new Response(JSON.stringify({ source: true, targets: false })),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const stored = await setSyncSchedule({ source: true, targets: false });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/v1/sync/schedule",
+      expect.objectContaining({
+        method: "PUT",
+        body: JSON.stringify({ source: true, targets: false }),
+      }),
+    );
+    expect(stored).toEqual({ source: true, targets: false });
   });
 });

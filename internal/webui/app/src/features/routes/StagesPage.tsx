@@ -9,6 +9,7 @@ import { stageKey } from "../../api/types";
 import { Layout } from "../../components/Layout";
 import { RouteGrid } from "../../components/RouteCard";
 import { ErrorMessage, LoadingMessage, StatusMessage } from "../../components/StatusMessage";
+import { SyncControls } from "../sync/SyncControls";
 import { MapAttribution } from "./MapAttribution";
 import { StageCard } from "./StageCard";
 import { SyncStatusBadge } from "./SyncStatusBadge";
@@ -18,6 +19,7 @@ export function StagesPage() {
 
   return (
     <Layout status={<SyncStatusBadge />}>
+      <SyncControls />
       {isPending ? <LoadingMessage what="the route library" /> : null}
       {isError ? <ErrorMessage what="the route library" error={error} /> : null}
       {data && data.length === 0 ? (
