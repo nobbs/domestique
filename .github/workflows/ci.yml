@@ -402,8 +402,10 @@ jobs:
       # Branch protection requires this single job. It fails unless every
       # dependency either succeeded or was skipped by a path filter, so a
       # cancelled or failed job upstream cannot be mistaken for a green run.
-      # `image` and `publish` are mutually exclusive, so exactly one of them is
-      # skipped on every run and a failed publish still reddens the commit.
+      # `image` and `publish` never both run, and a change that touches no
+      # container input runs neither, so a skip here carries no information
+      # about whether an image exists. What it does guarantee is that a failed
+      # build or publish still reddens the commit.
       - name: Validate CI results
         env:
           CHANGES_RESULT: ${{ needs.changes.result }}

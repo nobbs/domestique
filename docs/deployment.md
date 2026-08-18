@@ -55,10 +55,12 @@ no state backup or key-rotation workflow in v1.
 
 ## Select an image
 
-Every default-branch change publishes an image index to
-`ghcr.io/nobbs/domestique`. The publishing run's summary prints the exact
-immutable reference; record that complete digest in `/srv/domestique/.env` as
-`DOMESTIQUE_IMAGE`. Never use a mutable tag such as `latest`.
+A default-branch change that touches an input of the image publishes an image
+index to `ghcr.io/nobbs/domestique`; one that touches none publishes nothing, so
+not every commit on the branch has an image of its own. The publishing run's
+summary prints the exact immutable reference; record that complete digest in
+`/srv/domestique/.env` as `DOMESTIQUE_IMAGE`. Never use a mutable tag such as
+`latest`.
 
 The package is private, so the Pi needs a package-read credential. The container
 registry accepts only a personal access token (classic); create one whose sole

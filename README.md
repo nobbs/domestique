@@ -32,10 +32,12 @@ secret values.
 ## Deployment
 
 The service image is CGO-free `linux/amd64` and `linux/arm64`, and embeds the
-browser UI, so the API and the UI ship as one artefact. Every change to the
-default branch publishes it to `ghcr.io/nobbs/domestique` from GitHub Actions,
-tagged `latest` and `sha-<commit>` and carrying a BuildKit bill of materials and
-provenance. A host deploys the immutable digest that run reported, never a tag.
+browser UI, so the API and the UI ship as one artefact. A change to the default
+branch that touches an input of the image publishes it to
+`ghcr.io/nobbs/domestique` from GitHub Actions, tagged `latest` and
+`sha-<commit>` and carrying a BuildKit bill of materials and provenance. A
+change that touches none — documentation, say — publishes nothing, so `latest`
+may name an earlier commit than the branch head. A host deploys the immutable digest that run reported, never a tag.
 The image is not signed; the [delivery specification](docs/specs/delivery.md)
 states why and what stands in its place. Its base images are Docker Hardened
 Images, so *building* it requires `docker login dhi.io`; deploying it does not,
