@@ -89,8 +89,9 @@ export function SyncControls() {
        */}
       {data.sync.surface.total > 0 && data.sync.surface.classified < data.sync.surface.total ? (
         <p className="sync-controls__coverage">
-          Surface classified for {data.sync.surface.classified} of {data.sync.surface.total} stages.
-          The rest are retried after each read.
+          Surface classified for {data.sync.surface.classified} of {data.sync.surface.total}{" "}
+          {data.sync.surface.total === 1 ? "stage" : "stages"}. Each unclassified stage is tried
+          again after every read.
         </p>
       ) : null}
       <ul className="sync-controls__phases">

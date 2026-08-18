@@ -180,6 +180,12 @@ describe("SyncControls", () => {
     expect(screen.getByText(/classified for 1 of 3 stages/)).toBeInTheDocument();
   });
 
+  it("counts one stage as a stage", () => {
+    renderControls(status({ surface: { classified: 0, total: 1 } }));
+
+    expect(screen.getByText(/classified for 0 of 1 stage\./)).toBeInTheDocument();
+  });
+
   it("says nothing about surfaces once the whole library is classified", () => {
     renderControls(status({ surface: { classified: 3, total: 3 } }));
 

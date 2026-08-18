@@ -215,23 +215,24 @@ func (o *Overpass) post(ctx context.Context, query string) ([]byte, error) {
 		if attempt >= busyAttempts {
 			return nil, ErrRateLimited
 		}
-		// The endpoint's own Retry-After wins where it gave one; otherwise each
-		// refusal doubles the wait.
 		if waitErr := o.wait(ctx, backoff(wait, attempt)); waitErr != nil {
 			return nil, waitErr
 		}
 	}
 }
 
-// backoff grows the pause between attempts. A wait the endpoint asked for is
-// taken as given: it knows when it will have capacity, and doubling it would
-// only idle longer than the server itself suggested.
+// backoff decides how long to wait before the next attempt.
+//
+// A wait the endpoint asked for is taken as given — it knows when it will have
+// capacity, and idling longer than it suggested helps nobody. Where it asked for
+// nothing, this client chooses, and each refusal waits longer than the last so a
+// saturated endpoint is asked less often rather than more.
 func backoff(requested time.Duration, attempt int) time.Duration {
-	if requested != rateLimitPause {
+	if requested > 0 {
 		return requested
 	}
 
-	return requested * time.Duration(attempt)
+	return rateLimitPause * time.Duration(attempt)
 }
 
 // attempt performs one request. A busy endpoint is reported as errBusy along
@@ -276,13 +277,16 @@ func (o *Overpass) attempt(
 	return nil, 0, fmt.Errorf("surface: overpass returned HTTP %d", response.StatusCode)
 }
 
-// retryAfter reads the header of that name, falling back to rateLimitPause. A
-// server that names its own interval knows better than this client does, but a
-// value far in the future is not worth holding a sync open for.
+// retryAfter reads the header of that name, and reports zero when the endpoint
+// named no usable interval — including when it named one this client will not
+// wait out. Zero means "no answer", which is what lets the caller tell a wait
+// the server asked for from one this client chose, whatever the two happen to
+// be. A server that names its own interval knows better than this client does,
+// but a value far in the future is not worth holding a sync open for.
 func retryAfter(header string) time.Duration {
 	seconds, err := strconv.Atoi(strings.TrimSpace(header))
 	if err != nil || seconds <= 0 {
-		return rateLimitPause
+		return 0
 	}
 	wait := time.Duration(seconds) * time.Second
 	if wait > 2*rateLimitPause {
