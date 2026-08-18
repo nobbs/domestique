@@ -6,6 +6,7 @@ import {
   coordinateRange,
   nearestSample,
   niceStep,
+  rangeBounds,
   sampleAt,
   ticksFor,
 } from "./profile";
@@ -273,6 +274,38 @@ describe("coordinateRange", () => {
   it("refuses a stretch of no length or geometry too short to have one", () => {
     expect(coordinateRange(route([100, 200, 300]), 100, 100)).toBeNull();
     expect(coordinateRange([[8, 49, 100]], 0, 100)).toBeNull();
+  });
+});
+
+describe("rangeBounds", () => {
+  /** A dog-leg, so west and east are not simply the first and last points. */
+  const zigzag: Position[] = [
+    [8.0, 49.0],
+    [8.3, 49.2],
+    [8.1, 49.4],
+    [8.5, 49.1],
+  ];
+
+  it("contains every point of the stretch and nothing beyond it", () => {
+    // Point 3 is the westernmost of the four and lies outside the range.
+    expect(rangeBounds(zigzag, { startIndex: 1, endIndex: 2 })).toEqual([8.1, 49.2, 8.3, 49.4]);
+  });
+
+  it("spans the whole route when the range does", () => {
+    expect(rangeBounds(zigzag, { startIndex: 0, endIndex: 3 })).toEqual([8.0, 49.0, 8.5, 49.4]);
+  });
+
+  it("gives a stretch of one point a box of no area", () => {
+    // Somewhere to centre on rather than nothing: the map reads it as a place.
+    expect(rangeBounds(zigzag, { startIndex: 2, endIndex: 2 })).toEqual([8.1, 49.4, 8.1, 49.4]);
+  });
+
+  it("refuses a range that starts past the end of the geometry", () => {
+    expect(rangeBounds(zigzag, { startIndex: 9, endIndex: 12 })).toBeNull();
+  });
+
+  it("stops at the last point when the range runs past it", () => {
+    expect(rangeBounds(zigzag, { startIndex: 2, endIndex: 9 })).toEqual([8.1, 49.1, 8.5, 49.4]);
   });
 });
 
