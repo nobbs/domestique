@@ -50,7 +50,29 @@ export function usePrefersDarkScheme(): boolean {
   return useSyncExternalStore(subscribe, prefersDark);
 }
 
-/** The style document for the scheme in force. */
-export function basemapStyleUrl(config: WebUIConfig, dark: boolean): string {
-  return dark && config.tileStyleUrlDark ? config.tileStyleUrlDark : config.tileStyleUrl;
+/** The basemap on screen, and what it looks like. */
+export interface Basemap {
+  /** The style document to load. */
+  styleUrl: string;
+
+  /**
+   * Whether that document is the dark one.
+   *
+   * Not the same question as `usePrefersDarkScheme`, and the difference is the
+   * reason this is reported rather than inferred: with no dark style configured
+   * the light cartography stays on screen under a dark system scheme. Anything
+   * painted over the map has to match the ground actually loaded, not the scheme
+   * the system asked for.
+   */
+  dark: boolean;
+}
+
+/** The basemap for the scheme in force. */
+export function basemapFor(config: WebUIConfig, prefersDark: boolean): Basemap {
+  const darkStyleUrl = config.tileStyleUrlDark;
+  if (prefersDark && darkStyleUrl) {
+    return { styleUrl: darkStyleUrl, dark: true };
+  }
+
+  return { styleUrl: config.tileStyleUrl, dark: false };
 }

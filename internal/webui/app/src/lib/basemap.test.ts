@@ -1,7 +1,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WebUIConfig } from "../api/types";
-import { basemapStyleUrl, usePrefersDarkScheme } from "./basemap";
+import { basemapFor, usePrefersDarkScheme } from "./basemap";
 
 const LIGHT = "https://tiles.example.test/styles/liberty";
 const DARK = "https://tiles.example.test/styles/liberty-dark";
@@ -45,19 +45,26 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("basemapStyleUrl", () => {
+describe("basemapFor", () => {
   const config: WebUIConfig = { tileStyleUrl: LIGHT, tileStyleUrlDark: DARK };
 
   it("uses the light style under a light scheme", () => {
-    expect(basemapStyleUrl(config, false)).toBe(LIGHT);
+    expect(basemapFor(config, false)).toEqual({ styleUrl: LIGHT, dark: false });
   });
 
   it("uses the dark style under a dark scheme", () => {
-    expect(basemapStyleUrl(config, true)).toBe(DARK);
+    expect(basemapFor(config, true)).toEqual({ styleUrl: DARK, dark: true });
   });
 
   it("keeps the one style when no dark one is configured", () => {
-    expect(basemapStyleUrl({ tileStyleUrl: LIGHT }, true)).toBe(LIGHT);
+    expect(basemapFor({ tileStyleUrl: LIGHT }, true)).toEqual({ styleUrl: LIGHT, dark: false });
+  });
+
+  // The whole point of reporting darkness alongside the style rather than
+  // letting a caller re-read the system scheme: here the two disagree, and
+  // anything drawn over the map has to follow the style.
+  it("does not report darkness for a light style under a dark scheme", () => {
+    expect(basemapFor({ tileStyleUrl: LIGHT }, true).dark).toBe(false);
   });
 });
 

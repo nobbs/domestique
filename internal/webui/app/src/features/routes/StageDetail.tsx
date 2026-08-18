@@ -15,7 +15,7 @@ import { ElevationProfile } from "../../components/ElevationProfile";
 import { Layout } from "../../components/Layout";
 import { ErrorMessage, LoadingMessage, StatusMessage } from "../../components/StatusMessage";
 import { SurfaceBar } from "../../components/SurfaceBar";
-import { basemapStyleUrl, usePrefersDarkScheme } from "../../lib/basemap";
+import { type Basemap, basemapFor, usePrefersDarkScheme } from "../../lib/basemap";
 import { formatAscent, formatDistance, formatGradient } from "../../lib/format";
 import type { DistanceWindow, Profile } from "../../lib/profile";
 import { buildProfile, buildWindowedProfile } from "../../lib/profile";
@@ -44,7 +44,7 @@ export function StageDetail() {
   const enabled = routeId !== undefined && stageOrder !== undefined;
 
   const config = useQuery(webUIConfigQuery());
-  const dark = usePrefersDarkScheme();
+  const prefersDark = usePrefersDarkScheme();
   const geometry = useQuery({
     ...stageGeometryQuery(routeId ?? 0, stageOrder ?? 0),
     enabled,
@@ -104,7 +104,7 @@ export function StageDetail() {
       coordinates={coordinates}
       bbox={bbox}
       surface={surface}
-      styleUrl={basemapStyleUrl(config.data, dark)}
+      basemap={basemapFor(config.data, prefersDark)}
       back={back}
     />
   );
@@ -130,7 +130,7 @@ function StageView({
   coordinates,
   bbox,
   surface,
-  styleUrl,
+  basemap,
   back,
 }: {
   stage: {
@@ -144,7 +144,7 @@ function StageView({
   coordinates: Position[];
   bbox: [number, number, number, number];
   surface: StageSurface | undefined;
-  styleUrl: string;
+  basemap: Basemap;
   back: React.ReactNode;
 }) {
   const routeProfile = useMemo(() => buildProfile(coordinates), [coordinates]);
@@ -208,7 +208,8 @@ function StageView({
         <div className="stage-detail__map">
           <Suspense fallback={<LoadingMessage what="the map" />}>
             <RouteMap
-              styleUrl={styleUrl}
+              styleUrl={basemap.styleUrl}
+              darkBasemap={basemap.dark}
               coordinates={coordinates}
               bbox={bbox}
               title={stage.title}

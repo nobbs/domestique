@@ -23,6 +23,10 @@
    * lightness, step gaps, and adjacent separation under normal and colour-blind
    * vision. The gold sits below 3:1 against the surface, which is why the scale
    * legend labels every band rather than relying on colour alone.
+   *
+   * Both ramps are repeated in `BAND_COLOURS` in `components/RouteMap.tsx`,
+   * which paints the same bands onto a canvas that cannot read them from here.
+   * Either ramp changed must be changed in both places.
    */
   --band-0: #e0ac2c;
   --band-1: #c2542a;

@@ -49,14 +49,21 @@ const CASING_OPACITY = 0.85;
  * The steepness ramp, band by band, mirroring `--band-*` in `index.css`.
  *
  * Repeated here rather than read from the stylesheet because MapLibre paints
- * from a style document and knows nothing of CSS custom properties. The light
- * theme's values are the ones used: the basemap is whatever the operator
- * configured and does not follow the page, which is the same reason the surface
- * palette and the route accent are fixed.
+ * from a style document and knows nothing of CSS custom properties. Both ramps
+ * are carried for the same reason the stylesheet carries both: the elevation
+ * chart and the map band the same ground, and a chart that lifted its colours
+ * for a dark page while the map kept the light ones would be two legends for one
+ * encoding.
+ *
+ * Keyed on which basemap is loaded rather than on the system scheme, because
+ * these sit on the cartography rather than on the page — see `Basemap.dark`.
  *
  * Only the steeper two are ever drawn — see `GRADIENT_BANDS_DRAWN`.
  */
-const BAND_COLOURS = ["#e0ac2c", "#c2542a", "#63202b"] as const;
+const BAND_COLOURS = {
+  light: ["#e0ac2c", "#c2542a", "#63202b"],
+  dark: ["#f3cb60", "#df7126", "#b8354a"],
+} as const;
 
 /**
  * The bands worth ink on a map.
@@ -260,6 +267,14 @@ function HoverLink({
 
 export interface RouteMapProps {
   styleUrl: string;
+  /**
+   * Whether `styleUrl` is the dark cartography, which picks the steepness ramp.
+   *
+   * Passed in rather than read from the system scheme here, because a deployment
+   * with no dark style configured keeps the light basemap under a dark scheme,
+   * and the edging has to match the ground it is drawn on.
+   */
+  darkBasemap?: boolean;
   coordinates: Position[];
   bbox: BoundingBox;
   title: string;
@@ -292,6 +307,7 @@ export interface RouteMapProps {
 
 export function RouteMap({
   styleUrl,
+  darkBasemap = false,
   coordinates,
   bbox,
   title,
@@ -457,7 +473,7 @@ export function RouteMap({
               // than half a line width into the band that follows it.
               layout={{ "line-cap": "butt", "line-join": "round" }}
               paint={{
-                "line-color": BAND_COLOURS[band] ?? ROUTE_ACCENT,
+                "line-color": BAND_COLOURS[darkBasemap ? "dark" : "light"][band] ?? ROUTE_ACCENT,
                 "line-width": BAND_EDGE_WIDTH,
                 "line-opacity": dimmedOutside(1, windowed),
               }}

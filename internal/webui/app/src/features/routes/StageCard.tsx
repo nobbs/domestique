@@ -17,7 +17,7 @@ import { stageGeometryQuery, webUIConfigQuery } from "../../api/queries";
 import type { Stage } from "../../api/types";
 import { RouteCard } from "../../components/RouteCard";
 import { RouteThumbnail } from "../../components/RouteThumbnail";
-import { basemapStyleUrl, usePrefersDarkScheme } from "../../lib/basemap";
+import { basemapFor, usePrefersDarkScheme } from "../../lib/basemap";
 import { useInView } from "../../lib/useInView";
 
 const RouteMiniMap = lazy(async () => ({
@@ -28,7 +28,7 @@ export function StageCard({ stage }: { stage: Stage }) {
   const { ref, inView } = useInView<HTMLLIElement>();
   const geometry = useQuery(stageGeometryQuery(stage.routeId, stage.stageOrder));
   const config = useQuery(webUIConfigQuery());
-  const dark = usePrefersDarkScheme();
+  const prefersDark = usePrefersDarkScheme();
 
   let preview: React.ReactNode;
   if (!geometry.data) {
@@ -45,7 +45,7 @@ export function StageCard({ stage }: { stage: Stage }) {
       inView && config.data ? (
         <Suspense fallback={shape}>
           <RouteMiniMap
-            styleUrl={basemapStyleUrl(config.data, dark)}
+            styleUrl={basemapFor(config.data, prefersDark).styleUrl}
             coordinates={geometry.data.coordinates}
             bbox={geometry.data.bbox}
             title={stage.title}
