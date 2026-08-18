@@ -5,10 +5,20 @@
 # Every filter includes this file and the workflow itself: a change to how CI
 # decides what to run must always run everything it gates.
 #
-# The `image` filter gates both the pull-request proving build and the
-# default-branch publish. A commit that changes nothing the image is built from
-# therefore publishes no image, and `latest` keeps naming an earlier commit;
-# that is the intended result, not a stalled pipeline.
+# `image` decides whether a merge publishes: anything the running binary is
+# built from belongs in it. A commit that changes none of those paths publishes
+# no image, and `latest` keeps naming an earlier commit; that is the intended
+# result, not a stalled pipeline.
+#
+# `container` is deliberately narrower and gates only the pull-request proving
+# build. Re-proving an untouched Dockerfile against changed Go source costs four
+# minutes and tells us what `build` already established, so the image is built
+# before merge only when a container input moved: the Dockerfile itself, what it
+# copies in, or a dependency manifest that resolves differently inside a build
+# stage than on the runner. A Dockerfile break that slips past this is not an
+# outage — the deployed digest keeps running — but it does redden the default
+# branch, and the fix touches `container`, so the fix itself is proved before it
+# merges.
 
 lint:
   - "**"
@@ -42,3 +52,13 @@ image:
   - "go.sum"
   - "cmd/**"
   - "internal/**"
+
+container:
+  - ".dockerignore"
+  - ".github/paths-filter.yml"
+  - ".github/workflows/ci.yml"
+  - "Dockerfile"
+  - "go.mod"
+  - "go.sum"
+  - "internal/webui/app/package.json"
+  - "internal/webui/app/package-lock.json"

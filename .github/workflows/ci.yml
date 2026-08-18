@@ -29,6 +29,7 @@ jobs:
       go: ${{ steps.filter.outputs.go }}
       ui: ${{ steps.filter.outputs.ui }}
       image: ${{ steps.filter.outputs.image }}
+      container: ${{ steps.filter.outputs.container }}
 
     steps:
       - name: Check out repository
@@ -148,6 +149,38 @@ jobs:
       - name: Typecheck, lint and test the UI
         run: mise exec -- make ci-ui
 
+  build:
+    name: Build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out repository
+        # v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Install pinned toolchain
+        # v4.2.5
+        uses: jdx/mise-action@3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518
+        with:
+          version: 2026.8.6
+          install: true
+          cache: true
+      # build-check bundles the UI before it compiles, because the binary
+      # embeds dist, so the JavaScript tree has to be installed first.
+      - name: Install UI dependencies
+        run: mise exec -- make ui-install
+      # This is the only check that compiles for both published architectures,
+      # so it runs on every Go change rather than only when the image is built.
+      - name: Compile for every published architecture
+        run: mise exec -- make build-check
+
   image:
     name: Image
     runs-on: ubuntu-24.04
@@ -156,15 +189,19 @@ jobs:
       - changes
       - lint
       - test
-    # The proving build belongs to the pull request. A push to the default
-    # branch goes to `publish` instead, so the same tree is never built twice.
+    # The proving build belongs to the pull request, and only to one that
+    # changes an input of the container build: `container`, not the wider
+    # `image` filter that decides whether a merge publishes. A Go change alone
+    # is covered by `build`, which compiles the same targets far more cheaply.
+    # A push to the default branch goes to `publish` instead, so the same tree
+    # is never built twice.
     if: >-
       !cancelled() &&
       github.event_name == 'pull_request' &&
       needs.changes.result == 'success' &&
       (needs.lint.result == 'success' || needs.lint.result == 'skipped') &&
       (needs.test.result == 'success' || needs.test.result == 'skipped') &&
-      needs.changes.outputs.image == 'true'
+      needs.changes.outputs.container == 'true'
 
     permissions:
       contents: read
@@ -186,14 +223,6 @@ jobs:
           version: 2026.8.6
           install: true
           cache: true
-      # build-check bundles the UI before it compiles, because the binary
-      # embeds dist, so the JavaScript tree has to be installed first.
-      - name: Install UI dependencies
-        run: mise exec -- make ui-install
-      # Compiling first fails in seconds on a broken build, rather than after
-      # the image layers have been assembled.
-      - name: Verify the binary compiles
-        run: mise exec -- make build-check
       - name: Set up Docker Buildx
         # v4.2.0
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c
@@ -237,6 +266,7 @@ jobs:
       - test
       - security
       - ui
+      - build
     # Only a push to the default branch publishes, and only behind the whole
     # gate rather than the subset `image` waits for: what reaches the registry
     # is what a host will run.
@@ -248,6 +278,7 @@ jobs:
       (needs.test.result == 'success' || needs.test.result == 'skipped') &&
       (needs.security.result == 'success' || needs.security.result == 'skipped') &&
       (needs.ui.result == 'success' || needs.ui.result == 'skipped') &&
+      (needs.build.result == 'success' || needs.build.result == 'skipped') &&
       needs.changes.outputs.image == 'true'
 
     # The workflow's own group keys a push by commit, so two pushes in quick
@@ -360,6 +391,7 @@ jobs:
       - test
       - security
       - ui
+      - build
       - image
       - publish
     if: always()
@@ -379,13 +411,14 @@ jobs:
           TEST_RESULT: ${{ needs.test.result }}
           SECURITY_RESULT: ${{ needs.security.result }}
           UI_RESULT: ${{ needs.ui.result }}
+          BUILD_RESULT: ${{ needs.build.result }}
           IMAGE_RESULT: ${{ needs.image.result }}
           PUBLISH_RESULT: ${{ needs.publish.result }}
         run: |
           set -eu
 
           for result in "$CHANGES_RESULT" "$LINT_RESULT" "$TEST_RESULT" \
-            "$SECURITY_RESULT" "$UI_RESULT" "$IMAGE_RESULT" \
+            "$SECURITY_RESULT" "$UI_RESULT" "$BUILD_RESULT" "$IMAGE_RESULT" \
             "$PUBLISH_RESULT"; do
             case "$result" in
               success|skipped) ;;

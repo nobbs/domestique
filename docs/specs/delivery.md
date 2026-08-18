@@ -111,8 +111,8 @@ The validation workflow must:
 - fail when formatting, local hook hygiene, linting, tests, module checks,
   vulnerability analysis, or the CGO-free Linux builds for either published
   architecture fail;
-- build the production Dockerfile on a pull request and discard the result,
-  never pushing it; and
+- build the production Dockerfile and discard the result on a pull request that
+  changes an input of the container build, never pushing it; and
 - aggregate every job into one required check that is green only when each
   dependency succeeded or was skipped by a path filter, so a failed publish
   cannot be mistaken for a passing run.
@@ -122,6 +122,17 @@ by event: a pull request proves it, a push to the default branch publishes it,
 and neither runs the other's job, so a change is built once per event. A pull
 request may read the shared registry build cache; it may not write to it,
 because writing needs the same permission that publishes.
+
+The two are gated by different path filters, and deliberately so. Publishing
+follows every input of the running binary, because a source change must reach a
+new digest. The pull-request build follows only the container inputs — the
+Dockerfile, what it copies in, and the dependency manifests that resolve inside
+a build stage — because re-proving an untouched Dockerfile against changed Go
+source repeats what the cross-compile check has already established. A container
+break that reaches the default branch costs a red run and no new image; it costs
+no availability, because a deploying host is pinned to a digest that keeps
+running. The fix for such a break changes a container input by construction, so
+it is proved before it merges.
 
 A separate code-scanning workflow analyses Go and GitHub Actions changes.
 It also uses immutable action pins and least privilege. Repository-native
