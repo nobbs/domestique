@@ -50,7 +50,8 @@ The [Linux VM guide](docs/hetzner.md) covers the long-running host. The
 [Cloudflare Access guide](docs/cloudflare-access.md) covers how the single
 operator reaches it — the only way in, and without publishing a listener. The
 [Pi deployment guide](docs/deployment.md) applies the same runtime contract to
-smaller hardware, and the [macOS Docker guide](docs/macos-mvp.md) covers the
-Apple-silicon MVP host, which still builds from the checkout. The optional
+smaller hardware. The [macOS Docker guide](docs/macos-mvp.md) is a historical
+record of the Apple-silicon MVP host that first ran the service, kept for how
+it was assembled rather than as something to follow. The optional
 sandbox encoder check is documented in
 [the FIT acceptance guide](docs/fit-sandbox-acceptance.md).
