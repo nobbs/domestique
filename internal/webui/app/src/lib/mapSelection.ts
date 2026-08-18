@@ -23,7 +23,13 @@
 
 import type { DistanceWindow, Profile } from "./profile";
 import { nearestSample } from "./profile";
-import { MIN_DRAG_PIXELS, NEAR_ROUTE_PIXELS, spanBetween, widened } from "./selection";
+import {
+  MIN_DRAG_PIXELS,
+  NEAR_ROUTE_PIXELS,
+  NEAR_ROUTE_TOUCH_PIXELS,
+  spanBetween,
+  widened,
+} from "./selection";
 
 /** As much of a map as picking a stretch off it needs. */
 export interface SelectableMap {
@@ -80,6 +86,7 @@ function nearestMetres(
   profile: Profile,
   clientX: number,
   clientY: number,
+  radiusPixels: number,
 ): number | null {
   const bounds = map.getCanvasContainer().getBoundingClientRect();
   const x = clientX - bounds.left;
@@ -92,9 +99,14 @@ function nearestMetres(
   }
   const projected = map.project([sample.longitude, sample.latitude]);
 
-  return Math.hypot(projected.x - x, projected.y - y) <= NEAR_ROUTE_PIXELS
+  return Math.hypot(projected.x - x, projected.y - y) <= radiusPixels
     ? sample.distanceMetres
     : null;
+}
+
+/** How near the line counts as on it, for whatever is doing the pointing. */
+function nearRadius(pointerType: string): number {
+  return pointerType === "touch" ? NEAR_ROUTE_TOUCH_PIXELS : NEAR_ROUTE_PIXELS;
 }
 
 /**
@@ -159,7 +171,13 @@ export function routeSelection(map: SelectableMap, options: RouteSelectionOption
 
       return;
     }
-    const metres = nearestMetres(map, options.profile, event.clientX, event.clientY);
+    const metres = nearestMetres(
+      map,
+      options.profile,
+      event.clientX,
+      event.clientY,
+      nearRadius(event.pointerType),
+    );
     if (metres === null) {
       // Away from the route: this drag belongs to the map, which pans as it
       // always has. Nothing here has touched it.
@@ -189,7 +207,13 @@ export function routeSelection(map: SelectableMap, options: RouteSelectionOption
     if (!started || event.pointerId !== started.pointerId) {
       return;
     }
-    const metres = nearestMetres(map, options.profile, event.clientX, event.clientY);
+    const metres = nearestMetres(
+      map,
+      options.profile,
+      event.clientX,
+      event.clientY,
+      nearRadius(event.pointerType),
+    );
     if (metres !== null) {
       started.lastMetres = metres;
     }
@@ -237,7 +261,43 @@ export function routeSelection(map: SelectableMap, options: RouteSelectionOption
     }
   };
 
+  /**
+   * Claims a finger that lands on the route, before the page can read it as a
+   * scroll.
+   *
+   * MapLibre's cooperative gestures leave the canvas at `touch-action: pan-x
+   * pan-y`, which is what keeps a phone able to scroll past a map that fills
+   * most of its screen. The browser decides which of them a touch is at the
+   * moment it starts, though, so a finger drawn along the route was being taken
+   * for a scroll and the selection cancelled out from under it — the only way
+   * through was a double tap, which on iOS is a request to select the text of
+   * the page and did exactly that. Saying here, and only for a finger that has
+   * landed on the line, that the gesture is ours settles that question the one
+   * time it can be settled: the page still scrolls from anywhere else on the
+   * map, which is nearly all of it.
+   *
+   * This is registered without `passive`, unlike MapLibre's own touch listener,
+   * because a passive listener is one that has given up the right to say this.
+   */
+  const onTouchStart = (event: TouchEvent) => {
+    const touch = event.touches.length === 1 ? event.touches[0] : undefined;
+    if (!touch) {
+      return;
+    }
+    const metres = nearestMetres(
+      map,
+      options.profile,
+      touch.clientX,
+      touch.clientY,
+      NEAR_ROUTE_TOUCH_PIXELS,
+    );
+    if (metres !== null) {
+      event.preventDefault();
+    }
+  };
+
   container.addEventListener("pointerdown", onPointerDown);
+  container.addEventListener("touchstart", onTouchStart, { passive: false });
   window.addEventListener("pointermove", onPointerMove);
   window.addEventListener("pointerup", onPointerUp);
   window.addEventListener("pointercancel", onPointerCancel);
@@ -246,6 +306,7 @@ export function routeSelection(map: SelectableMap, options: RouteSelectionOption
   return () => {
     release();
     container.removeEventListener("pointerdown", onPointerDown);
+    container.removeEventListener("touchstart", onTouchStart);
     window.removeEventListener("pointermove", onPointerMove);
     window.removeEventListener("pointerup", onPointerUp);
     window.removeEventListener("pointercancel", onPointerCancel);

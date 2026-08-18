@@ -102,6 +102,22 @@ function pointer(
   });
 }
 
+/**
+ * A touch landing at these points.
+ *
+ * jsdom has no touch input of its own, so the event carries only what the
+ * gesture reads of one: where the fingers are, and whether the answer to it can
+ * still be given.
+ */
+function touchStart(...points: Array<[number, number]>): Event {
+  const event = new Event("touchstart", { bubbles: true, cancelable: true });
+  Object.defineProperty(event, "touches", {
+    value: points.map(([x, y]) => ({ clientX: x, clientY: y })),
+  });
+
+  return event;
+}
+
 /** A gesture, with the map and the answers it gave, ready to assert against. */
 function selecting(panEnabled = true) {
   const map = fakeMap(panEnabled);
@@ -123,6 +139,12 @@ function selecting(panEnabled = true) {
       window.dispatchEvent(pointer("pointerup", x, y, options)),
     cancel: (x: number, y: number, options?: PointerOptions) =>
       window.dispatchEvent(pointer("pointercancel", x, y, options)),
+    touch: (...points: Array<[number, number]>) => {
+      const event = touchStart(...points);
+      map.container.dispatchEvent(event);
+
+      return event;
+    },
   };
 }
 
@@ -348,5 +370,67 @@ describe("taking the gesture off the map", () => {
 
     expect(gesture.map.panEnabled()).toBe(false);
     expect(gesture.onSelect).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * What the page does with the same finger.
+ *
+ * A touch is offered to the browser before it is offered to anything on the
+ * page, and a map that fills most of a phone has to keep being somewhere the
+ * page can be scrolled from. So the only question these ask is which of the two
+ * a finger belongs to, decided where it lands.
+ */
+describe("a finger, between the route and the page", () => {
+  it("claims one that lands on the route", () => {
+    const gesture = selecting();
+
+    expect(gesture.touch([100, 0]).defaultPrevented).toBe(true);
+  });
+
+  it("leaves one that lands away from the route to the page", () => {
+    const gesture = selecting();
+
+    expect(gesture.touch([100, 200]).defaultPrevented).toBe(false);
+  });
+
+  // Two fingers are an exploration of the map, and cooperative gestures are
+  // already the answer to what they mean.
+  it("leaves a second finger alone", () => {
+    const gesture = selecting();
+
+    expect(gesture.touch([100, 0], [300, 0]).defaultPrevented).toBe(false);
+  });
+
+  it("stops claiming anything once it is disposed", () => {
+    const gesture = selecting();
+    gesture.dispose();
+
+    expect(gesture.touch([100, 0]).defaultPrevented).toBe(false);
+  });
+
+  // A fingertip covers more of the screen than it can aim with, so it is given
+  // more of the line to aim at than a cursor is.
+  it("reaches further for a fingertip than for a cursor", () => {
+    const byFinger = selecting();
+    byFinger.down(100, 28, { pointerType: "touch", pointerId: 3 });
+    byFinger.move(300, 28, { pointerType: "touch", pointerId: 3 });
+    byFinger.up(300, 28, { pointerType: "touch", pointerId: 3 });
+
+    expect(byFinger.onSelect).toHaveBeenCalledTimes(1);
+
+    const byCursor = selecting();
+    byCursor.down(100, 28);
+    byCursor.move(300, 28);
+    byCursor.up(300, 28);
+
+    expect(byCursor.onSelect).not.toHaveBeenCalled();
+    expect(byCursor.map.panEnabled()).toBe(true);
+  });
+
+  it("claims the wider reach for the page's finger too", () => {
+    const gesture = selecting();
+
+    expect(gesture.touch([100, 28]).defaultPrevented).toBe(true);
   });
 });

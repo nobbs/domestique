@@ -946,6 +946,21 @@ body {
 }
 
 /*
+ * A drag over the map marks ground, not the words around it.
+ *
+ * The route can be dragged along to pick a stretch, and a drag that begins over
+ * a map is never a request to highlight text — on iOS, where a long press or a
+ * double tap over the page offers to select and copy what is under it, one that
+ * ran on into the surrounding page was the visible half of the gesture being
+ * read as something else entirely.
+ */
+.route-map {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/*
  * Synchronisation controls: one row per half, each carrying its own switch, its
  * own button, and the plain-language result of its last run. The rows sit above
  * the library because what they change is what the library will next contain.
