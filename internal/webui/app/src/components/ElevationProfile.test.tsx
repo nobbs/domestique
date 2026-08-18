@@ -478,6 +478,45 @@ describe("ElevationProfile zooming", () => {
     expect(onZoom).not.toHaveBeenCalled();
   });
 
+  // A slider that declares a range and then reports a value outside it is not
+  // something assistive technology can place on the route.
+  it("rests at the start of the stretch on show, not at the start of the route", () => {
+    const window = { startMetres: 1000, endMetres: 3000 };
+    render(
+      <ElevationProfile
+        profile={buildWindowedProfile(climb(), window)}
+        title="Eich Rundkurs 90"
+        activeMetres={null}
+        onActiveChange={() => {}}
+        zoomWindow={window}
+        onZoomChange={() => {}}
+      />,
+    );
+
+    const scrub = screen.getByRole("slider");
+    const now = Number(scrub.getAttribute("aria-valuenow"));
+    expect(now).toBeGreaterThanOrEqual(Number(scrub.getAttribute("aria-valuemin")));
+    expect(now).toBeLessThanOrEqual(Number(scrub.getAttribute("aria-valuemax")));
+    expect(scrub).toHaveAttribute("aria-valuetext", "No position selected");
+  });
+
+  // Without capture the pointerup lands somewhere else entirely, so a band left
+  // painted here would outlive the gesture that drew it.
+  it("ends a drag the chart can no longer follow when the pointer leaves it", () => {
+    const onZoom = vi.fn();
+    const { container } = render(<ZoomHarness onZoom={onZoom} />);
+    const scrub = measured(screen.getByRole("slider"));
+
+    fireEvent.pointerDown(scrub, { pointerId: 1, isPrimary: true, button: 0, clientX: 20 });
+    fireEvent.pointerMove(scrub, { pointerId: 1, clientX: 120 });
+    expect(container.querySelector(".elevation-profile__veil")).not.toBeNull();
+
+    fireEvent.pointerLeave(scrub, { pointerId: 1 });
+
+    expect(container.querySelector(".elevation-profile__veil")).toBeNull();
+    expect(onZoom).not.toHaveBeenCalled();
+  });
+
   it("marks nothing when the map reports a position outside the stretch on show", () => {
     const coordinates = climb();
     const window = { startMetres: 1000, endMetres: 3000 };

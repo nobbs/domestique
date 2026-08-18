@@ -646,7 +646,11 @@ export function ElevationProfile({
         }
         aria-valuemin={Number((profile.startMetres / 1000).toFixed(1))}
         aria-valuemax={Number((profile.endMetres / 1000).toFixed(1))}
-        aria-valuenow={active ? Number((active.distanceMetres / 1000).toFixed(1)) : 0}
+        // Falls back to the start of the stretch on show, not to zero: zoomed
+        // into the far end of a route, zero is outside the range this slider
+        // declares, and a value outside its own bounds is nothing assistive
+        // technology can place.
+        aria-valuenow={Number(((active?.distanceMetres ?? profile.startMetres) / 1000).toFixed(1))}
         aria-valuetext={
           active
             ? `${Math.round(active.elevationMetres)} metres at ${(active.distanceMetres / 1000).toFixed(1)} kilometres, ${active.gradientPercent.toFixed(1)} percent` +
@@ -659,12 +663,21 @@ export function ElevationProfile({
         onPointerUp={onPointerUp}
         onPointerCancel={endDrag}
         onLostPointerCapture={endDrag}
-        // A drag without capture ends at the edge of the chart; blanking the
-        // readout on the way out would wipe the range being chosen with it.
-        onPointerLeave={() => {
-          if (!drag.current) {
-            onActiveChange(null);
+        /*
+         * With pointer capture this fires only once the pointer is released, so
+         * a drag follows the hand off the chart and back. Without it — a browser
+         * that refused the claim — the chart stops hearing about the pointer at
+         * its own edge, and a drag that leaves has to end here: the pointerup it
+         * is waiting for will be delivered somewhere else, and the band would
+         * stay painted over a gesture nobody is making any more.
+         */
+        onPointerLeave={(event) => {
+          const started = drag.current;
+          if (started && event.currentTarget.hasPointerCapture?.(started.pointerId)) {
+            return;
           }
+          endDrag(event);
+          onActiveChange(null);
         }}
         onBlur={() => onActiveChange(null)}
       />
