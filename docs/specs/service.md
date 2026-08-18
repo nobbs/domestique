@@ -45,6 +45,14 @@ the map and in the elevation chart while the rest of the ride is dimmed. One
 class at a time, and selecting it again restores the whole route. This changes
 what is emphasised, never what is stored.
 
+A stretch of the ride is asked for the same way on either instrument: a drag
+across the elevation chart, or a drag along the painted route, selects the
+distance range it covers, and both views then show that stretch until the whole
+route is asked for again. A drag that begins away from the route still moves the
+map, and moving the map selects nothing. The elevation chart remains the control
+that works by keyboard. Like the class selection, this changes what is shown,
+never what is stored.
+
 The UI carries one outbound link, to this service's public source repository. It
 is the only navigation that leaves the authenticated origin, it opens in a new
 context without a referrer, and it sends nothing: no route, stage, geometry, or

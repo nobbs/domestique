@@ -176,7 +176,9 @@ function StageView({
 
   // The position was chosen against the view being left, so it goes with it.
   // That leaves the readout showing the new stretch's elevation range, which the
-  // chart's polite live region then announces without being asked.
+  // chart's polite live region then announces without being asked. Both
+  // instruments hand a window over the same way: a drag across the chart and a
+  // drag along the route are one question asked in two places.
   const onZoomChange = useCallback((next: DistanceWindow | null) => {
     setZoomWindow(next);
     setActiveMetres(null);
@@ -231,6 +233,7 @@ function StageView({
               activeMetres={activeMetres}
               onActiveChange={setActiveMetres}
               zoomWindow={shownWindow}
+              onZoomChange={onZoomChange}
               highlight={highlight}
             />
           </Suspense>
