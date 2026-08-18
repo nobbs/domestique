@@ -11,7 +11,7 @@
 
 import { useCallback, useMemo } from "react";
 import type { Profile, ProfileSample } from "../lib/profile";
-import { GRADIENT_BANDS, ticksFor } from "../lib/profile";
+import { GRADIENT_BANDS, sampleAt, ticksFor } from "../lib/profile";
 import type { SurfaceSummary } from "../lib/surface";
 import { SURFACE_STYLES, surfaceKindAt } from "../lib/surface";
 import { useElementWidth } from "../lib/useElementWidth";
@@ -59,9 +59,14 @@ export interface ElevationProfileProps {
    * together and neither answers alone.
    */
   surface?: SurfaceSummary | null;
-  /** The position shared with the map, as an index into the profile samples. */
-  activeIndex: number | null;
-  onActiveChange: (index: number | null) => void;
+  /**
+   * The position shared with the map, in metres from the start of the route.
+   *
+   * Ground rather than a sample index, because an index only means a place to
+   * whoever holds that exact array of samples — and the map holds none.
+   */
+  activeMetres: number | null;
+  onActiveChange: (metres: number | null) => void;
 }
 
 interface Run {
@@ -155,7 +160,7 @@ export function ElevationProfile({
   profile,
   title,
   surface = null,
-  activeIndex,
+  activeMetres,
   onActiveChange,
 }: ElevationProfileProps) {
   const { ref, width } = useElementWidth<HTMLDivElement>();
@@ -193,13 +198,16 @@ export function ElevationProfile({
 
   const onPointerMove = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
-      if (!profile) {
+      const bounds = event.currentTarget.getBoundingClientRect();
+      // A box of no width is an element before it has been laid out. There is no
+      // position to read off it, and dividing by it would report NaN as a place
+      // on the route.
+      if (!profile || bounds.width <= 0) {
         return;
       }
-      const bounds = event.currentTarget.getBoundingClientRect();
       const ratio = (event.clientX - bounds.left) / bounds.width;
-      const index = Math.round(ratio * (profile.samples.length - 1));
-      onActiveChange(Math.min(Math.max(index, 0), profile.samples.length - 1));
+      const metres = ratio * profile.totalDistanceMetres;
+      onActiveChange(Math.min(Math.max(metres, 0), profile.totalDistanceMetres));
     },
     [profile, onActiveChange],
   );
@@ -209,15 +217,18 @@ export function ElevationProfile({
       if (!profile) {
         return;
       }
-      const step = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
-      if (step === 0) {
+      const direction = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
+      if (direction === 0) {
         return;
       }
       event.preventDefault();
-      const next = (activeIndex ?? 0) + step * 4;
-      onActiveChange(Math.min(Math.max(next, 0), profile.samples.length - 1));
+      // Four samples' worth of ground, so a keyboard covers the chart in about
+      // the same number of presses it always did.
+      const step = (profile.totalDistanceMetres / Math.max(profile.samples.length - 1, 1)) * 4;
+      const next = (activeMetres ?? 0) + direction * step;
+      onActiveChange(Math.min(Math.max(next, 0), profile.totalDistanceMetres));
     },
-    [profile, activeIndex, onActiveChange],
+    [profile, activeMetres, onActiveChange],
   );
 
   if (!profile || !geometry) {
@@ -228,7 +239,7 @@ export function ElevationProfile({
     );
   }
 
-  const active = activeIndex === null ? null : profile.samples[activeIndex];
+  const active = activeMetres === null ? null : sampleAt(profile, activeMetres);
   const activeKind = active && surface ? surfaceKindAt(surface, active.distanceMetres) : null;
   const activeSurface = activeKind ? SURFACE_STYLES[activeKind].label : null;
   const summary =

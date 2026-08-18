@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { Position } from "../api/types";
 import type { ProfileSample } from "../lib/profile";
 import { buildProfile } from "../lib/profile";
@@ -28,6 +28,43 @@ function climb(): Position[] {
   );
 }
 
+/** About 4.3 km, and the number every pointer expectation below is a share of. */
+const ROUTE_METRES = buildProfile(climb())?.totalDistanceMetres ?? 0;
+
+/**
+ * The plot's width in jsdom, where every element measures zero and the chart
+ * falls back to MIN_WIDTH: 240 less the left and right padding.
+ */
+const PLOT_WIDTH = 182;
+
+/**
+ * Gives an element a box, because jsdom gives everything a box of nothing and
+ * the chart quite correctly refuses to read a position off one.
+ *
+ * The width matches the plot's, so a pointer x-coordinate and an SVG
+ * x-coordinate are the same number and geometry can be asserted directly.
+ */
+function measured(element: Element): Element {
+  vi.spyOn(element, "getBoundingClientRect").mockReturnValue({
+    x: 0,
+    y: 0,
+    left: 0,
+    top: 0,
+    right: PLOT_WIDTH,
+    bottom: 100,
+    width: PLOT_WIDTH,
+    height: 100,
+    toJSON: () => ({}),
+  });
+
+  return element;
+}
+
+/** Where along the route a pointer at this many pixels lands. */
+function metresAt(pixels: number): number {
+  return (pixels / PLOT_WIDTH) * ROUTE_METRES;
+}
+
 /** The chart is controlled, so exercising it needs something to hold the value. */
 function Harness({
   title = "Eich Rundkurs 90",
@@ -36,15 +73,15 @@ function Harness({
   title?: string;
   surface?: SurfaceSummary | null;
 }) {
-  const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  const [activeMetres, setActiveMetres] = useState<number | null>(null);
 
   return (
     <ElevationProfile
       profile={buildProfile(climb())}
       title={title}
       surface={surface}
-      activeIndex={activeIndex}
-      onActiveChange={setActiveIndex}
+      activeMetres={activeMetres}
+      onActiveChange={setActiveMetres}
     />
   );
 }
@@ -55,7 +92,7 @@ describe("ElevationProfile", () => {
       <ElevationProfile
         profile={buildProfile(climb())}
         title="Eich Rundkurs 90"
-        activeIndex={null}
+        activeMetres={null}
         onActiveChange={() => {}}
       />,
     );
@@ -70,7 +107,7 @@ describe("ElevationProfile", () => {
       <ElevationProfile
         profile={buildProfile(climb())}
         title="Eich Rundkurs 90"
-        activeIndex={null}
+        activeMetres={null}
         onActiveChange={() => {}}
       />,
     );
@@ -92,22 +129,24 @@ describe("ElevationProfile", () => {
     expect(scrub.getAttribute("aria-valuetext")).toMatch(/metres at .* kilometres/);
   });
 
-  it("reports the scrubbed position outward, so the map can mark it", async () => {
+  // The map means a place on the route by this, and a zoomed chart holds none of
+  // the samples the whole-route one does, so the shared unit has to be ground.
+  it("reports the scrubbed position as a distance, so the map can mark it", async () => {
     const user = userEvent.setup();
     const positions: Array<number | null> = [];
     render(
       <ElevationProfile
         profile={buildProfile(climb())}
         title="Eich Rundkurs 90"
-        activeIndex={null}
-        onActiveChange={(index) => positions.push(index)}
+        activeMetres={null}
+        onActiveChange={(metres) => positions.push(metres)}
       />,
     );
 
-    await user.tab();
-    await user.keyboard("{ArrowRight}");
+    const scrub = measured(screen.getByRole("slider"));
+    await user.pointer({ target: scrub, coords: { clientX: 91, clientY: 20 } });
 
-    expect(positions.at(-1)).toBeTypeOf("number");
+    expect(positions.at(-1)).toBeCloseTo(metresAt(91), 0);
   });
 
   it("names the ground under the position when the stage has been classified", async () => {
@@ -208,7 +247,7 @@ describe("ElevationProfile", () => {
       <ElevationProfile
         profile={buildProfile(flat)}
         title="No profile"
-        activeIndex={null}
+        activeMetres={null}
         onActiveChange={() => {}}
       />,
     );
@@ -222,7 +261,7 @@ describe("ElevationProfile", () => {
       <ElevationProfile
         profile={buildProfile(climb())}
         title="Eich Rundkurs 90"
-        activeIndex={null}
+        activeMetres={null}
         onActiveChange={() => {}}
       />,
     );

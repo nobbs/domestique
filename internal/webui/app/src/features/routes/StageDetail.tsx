@@ -113,8 +113,9 @@ export function StageDetail() {
  *
  * The hovered position lives here rather than in either view, because the two
  * are one instrument: pointing at the route marks the chart, and scrubbing the
- * chart marks the route. It is an index into the profile samples, so both sides
- * mean the same place by it.
+ * chart marks the route. It is a distance in metres from the start of the route
+ * — ground rather than a sample index, because an index only means a place to
+ * whoever holds that exact array of samples, and the map holds none.
  */
 function StageView({
   stage,
@@ -140,7 +141,7 @@ function StageView({
   back: React.ReactNode;
 }) {
   const profile = useMemo(() => buildProfile(coordinates), [coordinates]);
-  const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  const [activeMetres, setActiveMetres] = useState<number | null>(null);
 
   // A classification that snapped to nothing is left unpainted rather than drawn
   // as unsurveyed from end to end: greying out the whole route to say nothing is
@@ -187,8 +188,8 @@ function StageView({
               title={stage.title}
               surface={surfaceSummary ? surface?.ranges : undefined}
               profile={profile}
-              activeIndex={activeIndex}
-              onActiveChange={setActiveIndex}
+              activeMetres={activeMetres}
+              onActiveChange={setActiveMetres}
             />
           </Suspense>
         </div>
@@ -201,8 +202,8 @@ function StageView({
               ? "No OpenStreetMap surface data along this stage."
               : "Surface not classified yet."
           }
-          activeIndex={activeIndex}
-          onActiveChange={setActiveIndex}
+          activeMetres={activeMetres}
+          onActiveChange={setActiveMetres}
           hint={`${formatAscent(stage.ascentMetres)} climbing · ${formatGradient(stage.maxGradientPercent)} max`}
         />
       </section>
@@ -225,7 +226,7 @@ function ElevationOverview({
   surface,
   surfaceAbsence,
   hint,
-  activeIndex,
+  activeMetres,
   onActiveChange,
 }: {
   profile: Profile | null;
@@ -233,8 +234,8 @@ function ElevationOverview({
   surface: SurfaceSummary | null;
   surfaceAbsence: string;
   hint: string;
-  activeIndex: number | null;
-  onActiveChange: (index: number | null) => void;
+  activeMetres: number | null;
+  onActiveChange: (metres: number | null) => void;
 }) {
   const [open, setOpen] = useState(() => {
     try {
@@ -278,7 +279,7 @@ function ElevationOverview({
             profile={profile}
             title={title}
             surface={surface}
-            activeIndex={activeIndex}
+            activeMetres={activeMetres}
             onActiveChange={onActiveChange}
           />
           {/*

@@ -19,7 +19,7 @@ import {
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { BoundingBox, Position, SurfaceRange } from "../api/types";
 import type { Profile } from "../lib/profile";
-import { nearestSample } from "../lib/profile";
+import { nearestSample, sampleAt } from "../lib/profile";
 import { SURFACE_LINE_WIDTH, SURFACE_STYLES, surfaceLines } from "../lib/surface";
 // Configures the shared worker pool; without it this map renders no tiles.
 import "../lib/maplibre";
@@ -105,7 +105,7 @@ function HoverLink({
   onActiveChange,
 }: {
   profile: Profile | null;
-  onActiveChange: ((index: number | null) => void) | undefined;
+  onActiveChange: ((metres: number | null) => void) | undefined;
 }) {
   const { current: map } = useMap();
 
@@ -128,7 +128,9 @@ function HoverLink({
       const projected = map.project([sample.longitude, sample.latitude]);
       const near =
         Math.hypot(projected.x - event.point.x, projected.y - event.point.y) <= HOVER_RADIUS_PIXELS;
-      onActiveChange(near ? index : null);
+      // Reported as a distance along the route, which is the one unit that means
+      // the same ground to this map and to a chart drawn from its own samples.
+      onActiveChange(near ? sample.distanceMetres : null);
     };
     const onLeave = () => onActiveChange(null);
 
@@ -154,10 +156,11 @@ export interface RouteMapProps {
    * the route drawn in the accent, which is what an unclassified stage gets.
    */
   surface?: SurfaceRange[] | undefined;
-  /** Shared with the elevation chart, as an index into the profile samples. */
+  /** What turns a point on this map into a distance along the route. */
   profile?: Profile | null;
-  activeIndex?: number | null;
-  onActiveChange?: (index: number | null) => void;
+  /** Shared with the elevation chart, in metres from the start of the route. */
+  activeMetres?: number | null;
+  onActiveChange?: (metres: number | null) => void;
 }
 
 export function RouteMap({
@@ -167,7 +170,7 @@ export function RouteMap({
   title,
   surface,
   profile = null,
-  activeIndex = null,
+  activeMetres = null,
   onActiveChange,
 }: RouteMapProps) {
   const feature = useMemo(
@@ -198,7 +201,7 @@ export function RouteMap({
   // The position shared with the elevation chart. An empty collection keeps the
   // source mounted, so the marker appears without rebuilding the layer.
   const marker = useMemo(() => {
-    const sample = profile && activeIndex !== null ? profile.samples[activeIndex] : undefined;
+    const sample = profile && activeMetres !== null ? sampleAt(profile, activeMetres) : null;
 
     return {
       type: "FeatureCollection" as const,
@@ -215,7 +218,7 @@ export function RouteMap({
           ]
         : [],
     };
-  }, [profile, activeIndex]);
+  }, [profile, activeMetres]);
 
   // A basemap that fails to load must not fail silently: the route itself is
   // still drawn, but the operator should be able to see why the background is
