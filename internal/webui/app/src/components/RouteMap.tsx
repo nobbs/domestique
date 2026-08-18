@@ -7,7 +7,7 @@
  * never sent anywhere.
  */
 
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Layer,
   Map as MapLibre,
@@ -21,10 +21,13 @@ import type { DataDrivenPropertyValueSpecification } from "maplibre-gl";
 import type { BoundingBox, Position, SurfaceRange } from "../api/types";
 import type { Highlight } from "../lib/highlight";
 import { highlightRanges, litRanges } from "../lib/highlight";
+import { routeSelection } from "../lib/mapSelection";
 import type { DistanceWindow, Profile } from "../lib/profile";
 import { coordinateRange, nearestSample, rangeBounds, sampleAt } from "../lib/profile";
 import { gradientSlices, routeLinesWithin } from "../lib/routeLines";
+import { NEAR_ROUTE_PIXELS } from "../lib/selection";
 import { SURFACE_LINE_WIDTH, SURFACE_STYLES, surfaceLinesWithin } from "../lib/surface";
+import { useEscapeKey } from "../lib/useEscapeKey";
 // Configures the shared worker pool; without it this map renders no tiles.
 import "../lib/maplibre";
 
@@ -190,11 +193,10 @@ function MapViewport({ bounds, maxZoom }: { bounds: BoundingBox; maxZoom: number
       return;
     }
     // Re-frame when a different stage is selected, rather than remounting the
-    // map and re-downloading the style — and when the chart is zoomed into a
-    // stretch, so the map answers the same question the chart was asked. The
-    // link runs one way only: nothing on the map sets the chart's window, so
-    // panning away to look at the surrounding roads costs nothing and needs no
-    // way back.
+    // map and re-downloading the style — and when a stretch is chosen, so the
+    // map shows the ground the chart is showing however the stretch was asked
+    // for. Only a window moves the camera: panning away to look at the
+    // surrounding roads costs nothing and needs no way back.
     map.fitBounds(
       [
         [bounds[0], bounds[1]],
@@ -206,15 +208,6 @@ function MapViewport({ bounds, maxZoom }: { bounds: BoundingBox; maxZoom: number
 
   return null;
 }
-
-/**
- * How near the route the pointer must be, in pixels, to mark a position.
- *
- * The painted line is a few pixels wide, which is a pinpoint to aim at. Testing
- * against the projected position instead gives a hit area comfortably larger
- * than the mark, so following the route with the pointer actually works.
- */
-const HOVER_RADIUS_PIXELS = 22;
 
 /**
  * Reports the position under the pointer, so the elevation chart can mark it.
@@ -250,7 +243,7 @@ function HoverLink({
       }
       const projected = map.project([sample.longitude, sample.latitude]);
       const near =
-        Math.hypot(projected.x - event.point.x, projected.y - event.point.y) <= HOVER_RADIUS_PIXELS;
+        Math.hypot(projected.x - event.point.x, projected.y - event.point.y) <= NEAR_ROUTE_PIXELS;
       // Reported as a distance along the route, which is the one unit that means
       // the same ground to this map and to a chart showing any stretch of it.
       onActiveChange(near ? sample.distanceMetres : null);
@@ -265,6 +258,37 @@ function HoverLink({
       map.off("mouseout", onLeave);
     };
   }, [map, profile, onActiveChange]);
+
+  return null;
+}
+
+/**
+ * Lets a drag along the painted route pick the stretch it covers.
+ *
+ * A child of the map for the same reason the hover link is: `useMap` is what
+ * resolves the instance, and the gesture is judged in pixels against the
+ * projected route, which needs the live camera. The stretch under the hand is
+ * reported back while it is still being drawn, so the map lights it as it goes
+ * — the same running answer the chart gives a drag across its own plot.
+ */
+function SelectionLink({
+  profile,
+  onPending,
+  onZoomChange,
+}: {
+  profile: Profile | null;
+  onPending: (window: DistanceWindow | null) => void;
+  onZoomChange: ((window: DistanceWindow | null) => void) | undefined;
+}) {
+  const { current: map } = useMap();
+
+  useEffect(() => {
+    if (!map || !profile || !onZoomChange) {
+      return;
+    }
+
+    return routeSelection(map.getMap(), { profile, onPending, onSelect: onZoomChange });
+  }, [map, profile, onPending, onZoomChange]);
 
   return null;
 }
@@ -303,10 +327,21 @@ export interface RouteMapProps {
    * that name inside this module. The camera follows it, so the map reads at
    * the scale the chart is being read at; the rest of the route stays drawn,
    * dimmed, so the stretch is still seen as part of a longer ride rather than
-   * as a route of its own. The link runs this way only — the map never sets the
-   * window, which is what keeps a look around at the surrounding roads free.
+   * as a route of its own. A drag along the painted route can set it, through
+   * `onZoomChange`; moving the camera never does, which is what keeps a look
+   * around at the surrounding roads free.
    */
   zoomWindow?: DistanceWindow | null;
+  /**
+   * Takes the stretch a drag along the route settled on, and null for the whole
+   * route again.
+   *
+   * Absent leaves the map reading the window and never writing it, which is what
+   * every other view of a route wants: a thumbnail or a mini-map is not somewhere
+   * a stretch is chosen. Present, the link runs both ways for the window alone —
+   * panning and zooming the camera still change nothing but the camera.
+   */
+  onZoomChange?: ((window: DistanceWindow | null) => void) | undefined;
   /**
    * The class picked out of the key, lit while the rest of the route dims.
    *
@@ -329,8 +364,17 @@ export function RouteMap({
   activeMetres = null,
   onActiveChange,
   zoomWindow = null,
+  onZoomChange,
   highlight = null,
 }: RouteMapProps) {
+  /**
+   * The stretch being drawn on the route right now, which is not a window yet.
+   *
+   * Kept here rather than handed up to the page: while a hand is still moving,
+   * there is nothing to show the chart and nowhere to fly the camera — the
+   * answer to a question half asked is to light the ground it covers so far.
+   */
+  const [pending, setPending] = useState<DistanceWindow | null>(null);
   // Rounded outwards, so the lit stretch covers every metre the chart draws.
   const windowRange = useMemo(
     () =>
@@ -348,16 +392,25 @@ export function RouteMap({
     [coordinates, windowRange],
   );
 
+  // The ground a drag along the route has covered so far, lit exactly as a
+  // settled window is. The camera is deliberately left out of it: flying after a
+  // hand that is still moving would drag the ground out from under the gesture
+  // being drawn on it.
+  const pendingRange = useMemo(
+    () => (pending ? coordinateRange(coordinates, pending.startMetres, pending.endMetres) : null),
+    [coordinates, pending],
+  );
+
   // Both questions come out as the same answer — the stretches of route left
   // lit — so one mask serves every layer, and asking both at once narrows
   // rather than fights.
   const lit = useMemo(
     () =>
       litRanges(
-        windowRange,
+        pendingRange ?? windowRange,
         highlight ? highlightRanges(coordinates, surface ?? [], highlight) : null,
       ),
-    [coordinates, highlight, surface, windowRange],
+    [coordinates, highlight, pendingRange, surface, windowRange],
   );
   const dimmed = lit !== null;
 
@@ -427,6 +480,16 @@ export function RouteMap({
     console.error("map error:", event.error?.message ?? event);
   }, []);
 
+  /**
+   * Escape returns to the whole route.
+   *
+   * Carried here as well as on the chart because a window can now be drawn on
+   * the map, and the chart — which is where the visible way back lives — is
+   * unmounted whenever the overview is collapsed. Without this, a stretch
+   * chosen with the overview closed would be a view with no way out of it.
+   */
+  useEscapeKey(zoomWindow !== null && onZoomChange !== undefined, () => onZoomChange?.(null));
+
   return (
     <div className="route-map">
       <MapLibre
@@ -443,6 +506,7 @@ export function RouteMap({
           maxZoom={windowBounds ? WINDOW_MAX_ZOOM : ROUTE_MAX_ZOOM}
         />
         <HoverLink profile={profile} onActiveChange={onActiveChange} />
+        <SelectionLink profile={profile} onPending={setPending} onZoomChange={onZoomChange} />
         <NavigationControl position="top-right" showCompass={false} />
         <ScaleControl position="bottom-left" unit="metric" />
         <Source id={SOURCE_ID} type="geojson" data={route}>

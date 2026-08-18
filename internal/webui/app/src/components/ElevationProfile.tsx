@@ -13,14 +13,16 @@
  * millimetres of ink, and the question a rider actually has is about one climb.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type { Highlight } from "../lib/highlight";
 import { gapsOutside, highlightLabel } from "../lib/highlight";
 import type { DistanceWindow, Profile, ProfileSample } from "../lib/profile";
 import { niceStep, sampleAt, steadyBands, ticksFor } from "../lib/profile";
+import { MIN_DRAG_PIXELS, spanBetween, widened } from "../lib/selection";
 import type { SurfaceSummary } from "../lib/surface";
 import { SURFACE_STYLES, surfaceBandsWithin, surfaceKindAt } from "../lib/surface";
 import { useElementWidth } from "../lib/useElementWidth";
+import { useEscapeKey } from "../lib/useEscapeKey";
 
 /**
  * Hatch patterns for the steeper bands.
@@ -60,27 +62,6 @@ const MIN_WIDTH = 240;
  */
 const SURFACE_STRIP_HEIGHT = 7;
 const SURFACE_STRIP_GAP = 4;
-
-/**
- * How far the pointer must travel before a scrub becomes a selection.
- *
- * A hand resting on a trackpad moves a pixel or two and a finger never lands
- * still; treating that as a range would zoom the chart every time somebody
- * looked at it. Eight pixels is past the tremble and well under the shortest
- * swipe anybody makes on purpose.
- */
-const MIN_DRAG_PIXELS = 8;
-
-/**
- * The shortest stretch a drag may settle on.
- *
- * Gradient is measured over a hundred metres, so a window much shorter than a
- * couple of those is one measurement drawn three hundred times. A selection
- * under it is grown about its middle rather than refused: the reader asked to
- * look closer at somewhere, and the answer to "closer than the data goes" is
- * the closest the data goes, not nothing.
- */
-const MIN_WINDOW_METRES = 200;
 
 export interface ElevationProfileProps {
   /** Already restricted to the stretch on show, when there is a zoom. */
@@ -194,23 +175,6 @@ function kilometreLabel(metres: number, stepKilometres: number): string {
   const decimals = Math.min(Math.max(Math.ceil(-Math.log10(stepKilometres)), 0), 3);
 
   return (metres / 1000).toFixed(decimals);
-}
-
-/**
- * A selection too short to plot is grown about its middle rather than refused,
- * and slid back inside the route rather than truncated — a window that ran off
- * the start would otherwise arrive shorter than the minimum it was grown to.
- */
-function widened(window: DistanceWindow, totalMetres: number): DistanceWindow {
-  const span = window.endMetres - window.startMetres;
-  if (span >= MIN_WINDOW_METRES) {
-    return window;
-  }
-  const wanted = Math.min(MIN_WINDOW_METRES, totalMetres);
-  const middle = (window.startMetres + window.endMetres) / 2;
-  const start = Math.min(Math.max(middle - wanted / 2, 0), Math.max(totalMetres - wanted, 0));
-
-  return { startMetres: start, endMetres: start + wanted };
 }
 
 /**
@@ -370,10 +334,7 @@ export function ElevationProfile({
       if (Math.abs(event.clientX - started.originX) < MIN_DRAG_PIXELS) {
         return;
       }
-      setSelection({
-        startMetres: Math.min(started.anchorMetres, metres),
-        endMetres: Math.max(started.anchorMetres, metres),
-      });
+      setSelection(spanBetween(started.anchorMetres, metres));
     },
     [metresAt, onActiveChange],
   );
@@ -412,25 +373,12 @@ export function ElevationProfile({
   /**
    * Escape returns to the whole route.
    *
-   * A listener on the document rather than a key handler on the scrub, because
-   * the gesture that zooms is a drag with a pointer and leaves focus wherever
-   * the drag began. The way out of a view has to work from wherever the reader
-   * is. It is registered only while zoomed, so it swallows nothing the rest of
-   * the time.
+   * The map carries the same way out, because the same window can be drawn on
+   * either instrument and this chart is not on the page when the overview is
+   * collapsed. Both simply ask for the whole route back, so whichever of them
+   * hears the key first, the reader gets the same view.
    */
-  useEffect(() => {
-    if (!zoomWindow || !onZoomChange) {
-      return;
-    }
-    const onEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !event.defaultPrevented) {
-        onZoomChange(null);
-      }
-    };
-    document.addEventListener("keydown", onEscape);
-
-    return () => document.removeEventListener("keydown", onEscape);
-  }, [zoomWindow, onZoomChange]);
+  useEscapeKey(zoomWindow !== null && onZoomChange !== undefined, () => onZoomChange?.(null));
 
   if (!profile || !geometry) {
     return (
