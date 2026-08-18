@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import type { Position, SurfaceKind, SurfaceRange } from "../api/types";
 import { SURFACE_KINDS } from "../api/types";
 import {
-  routeLinesWithin,
   SURFACE_STYLES,
   summariseSurface,
   surfaceBandsWithin,
@@ -184,20 +183,6 @@ describe("surfaceLinesWithin", () => {
 
     expect(gravel?.inside).toEqual([]);
     expect(gravel?.outside).toHaveLength(1);
-  });
-});
-
-describe("routeLinesWithin", () => {
-  it("splits the whole route the way it splits one class", () => {
-    const coordinates = route(5);
-    const slices = routeLinesWithin(coordinates, { startIndex: 1, endIndex: 3 });
-
-    expect(slices.inside[0]).toEqual(coordinates.slice(1, 4));
-    expect(slices.outside).toHaveLength(2);
-  });
-
-  it("holds the whole route inside when there is no window", () => {
-    expect(routeLinesWithin(route(5), null).inside[0]).toHaveLength(5);
   });
 });
 
