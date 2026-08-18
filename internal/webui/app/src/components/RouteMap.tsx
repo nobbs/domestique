@@ -67,7 +67,10 @@ const BAND_COLOURS = ["#e0ac2c", "#c2542a", "#63202b"] as const;
  * chart still shows all three, which is where a reader goes to compare one
  * stretch against another; the map is answering "where does it get steep?".
  */
-const GRADIENT_BANDS_DRAWN = [1, 2];
+const GRADIENT_BANDS_DRAWN = [1, 2] as const;
+
+/** The band whose layer sits lowest, and so the one the halo goes under. */
+const LOWEST_BAND_DRAWN = GRADIENT_BANDS_DRAWN[0];
 
 /**
  * How wide the steepness line runs beneath the casing.
@@ -320,10 +323,6 @@ export function RouteMap({
     [coordinates, windowRange],
   );
   const route = useMemo(() => taggedCollection(routeSlices), [routeSlices]);
-  const shownRoute = useMemo(
-    () => taggedCollection({ inside: routeSlices.inside, outside: [] }),
-    [routeSlices],
-  );
 
   // One feature per class rather than one with a data-driven colour, because
   // `line-dasharray` cannot be driven by a property: the pattern belongs to the
@@ -337,14 +336,26 @@ export function RouteMap({
     [coordinates, surface, windowRange],
   );
 
-  // One feature per band, for the same reason the classes get one each: the
-  // width and colour of an edging belong to its layer.
-  const gradientFeatures = useMemo(
-    () =>
-      gradientSlices(coordinates, windowRange)
-        .filter(({ band }) => GRADIENT_BANDS_DRAWN.includes(band))
-        .map(({ band, ...slices }) => ({ band, data: taggedCollection(slices) })),
-    [coordinates, windowRange],
+  // One feature collection per band, for the same reason the classes get one
+  // each: the width and colour of an edging belong to its layer. Always one per
+  // drawn band, empty where the route has no such ground, so the layers stay
+  // mounted and the stack keeps the order it was built in.
+  const gradientFeatures = useMemo(() => {
+    const slices = gradientSlices(coordinates, windowRange);
+
+    return GRADIENT_BANDS_DRAWN.map((band) => ({
+      band,
+      data: taggedCollection(
+        slices.find((entry) => entry.band === band) ?? { inside: [], outside: [] },
+      ),
+    }));
+  }, [coordinates, windowRange]);
+
+  // The halo marks the stretch on show, so it has nothing to draw until there
+  // is one: unzoomed, every metre of the route counts as inside.
+  const haloRoute = useMemo(
+    () => taggedCollection({ inside: windowed ? routeSlices.inside : [], outside: [] }),
+    [routeSlices, windowed],
   );
 
   // The position shared with the elevation chart. An empty collection keeps the
@@ -394,53 +405,6 @@ export function RouteMap({
         <HoverLink profile={profile} onActiveChange={onActiveChange} />
         <NavigationControl position="top-right" showCompass={false} />
         <ScaleControl position="bottom-left" unit="metric" />
-        {/*
-         * A soft halo under the stretch on show, beneath the casing so it points
-         * at the classification rather than washing over it — react-map-gl adds
-         * layers in mount order, and this one is added last.
-         */}
-        {windowed ? (
-          <Source id="stage-window" type="geojson" data={shownRoute}>
-            <Layer
-              id="stage-window-halo"
-              type="line"
-              beforeId="stage-casing"
-              layout={{ "line-cap": "round", "line-join": "round" }}
-              paint={{
-                "line-color": ROUTE_ACCENT,
-                // Wider than the steepness edging beneath the casing, so what
-                // shows is a glow around the route rather than a wash over the
-                // band colours.
-                "line-width": BAND_EDGE_WIDTH + 6,
-                "line-opacity": 0.22,
-                "line-blur": 3,
-              }}
-            />
-          </Source>
-        ) : null}
-        {/*
-         * Steepness, as an edging under the casing. Beneath it deliberately:
-         * over the casing it would be a second line to read along the route,
-         * and the point of putting it underneath is that the eye picks up the
-         * colour at the edges without ever losing the route itself.
-         */}
-        {gradientFeatures.map(({ band, data }) => (
-          <Source key={band} id={`stage-gradient-${band}`} type="geojson" data={data}>
-            <Layer
-              id={`stage-gradient-${band}-line`}
-              type="line"
-              beforeId="stage-casing"
-              // Butt caps, so a band ends on the point it hands over at rather
-              // than half a line width into the band that follows it.
-              layout={{ "line-cap": "butt", "line-join": "round" }}
-              paint={{
-                "line-color": BAND_COLOURS[band] ?? ROUTE_ACCENT,
-                "line-width": BAND_EDGE_WIDTH,
-                "line-opacity": dimmedOutside(1, windowed),
-              }}
-            />
-          </Source>
-        ))}
         <Source id={SOURCE_ID} type="geojson" data={route}>
           {/*
            * The casing is drawn from the whole route and stays solid under the
@@ -469,6 +433,59 @@ export function RouteMap({
               }}
             />
           ) : null}
+        </Source>
+        {/*
+         * Steepness, as an edging under the casing: over it, it would be a
+         * second line to read along the route, and the point of putting it
+         * underneath is that the eye picks up the colour at the edges without
+         * ever losing the route itself.
+         *
+         * Mounted after the casing it names and kept mounted whether or not the
+         * band has any ground — an empty collection draws nothing. MapLibre
+         * refuses to add a layer before one that does not exist yet, and a band
+         * that came and went with the window would be re-added at whatever
+         * height the stack happened to have then. Mounting every layer once
+         * fixes the order for the life of the map.
+         */}
+        {gradientFeatures.map(({ band, data }) => (
+          <Source key={band} id={`stage-gradient-${band}`} type="geojson" data={data}>
+            <Layer
+              id={`stage-gradient-${band}-line`}
+              type="line"
+              beforeId="stage-casing"
+              // Butt caps, so a band ends on the point it hands over at rather
+              // than half a line width into the band that follows it.
+              layout={{ "line-cap": "butt", "line-join": "round" }}
+              paint={{
+                "line-color": BAND_COLOURS[band] ?? ROUTE_ACCENT,
+                "line-width": BAND_EDGE_WIDTH,
+                "line-opacity": dimmedOutside(1, windowed),
+              }}
+            />
+          </Source>
+        ))}
+        {/*
+         * A soft halo under the stretch on show, at the bottom of the stack:
+         * it is a pointer, and a pointer that tints the two things it points at
+         * has changed what they say. Named against the lowest band rather than
+         * against the casing for that reason, and mounted last so that layer is
+         * there to name.
+         */}
+        <Source id="stage-window" type="geojson" data={haloRoute}>
+          <Layer
+            id="stage-window-halo"
+            type="line"
+            beforeId={`stage-gradient-${LOWEST_BAND_DRAWN}-line`}
+            layout={{ "line-cap": "round", "line-join": "round" }}
+            paint={{
+              "line-color": ROUTE_ACCENT,
+              // Wider than the edging it sits under, so the glow shows either
+              // side of it rather than only through it.
+              "line-width": BAND_EDGE_WIDTH + 6,
+              "line-opacity": 0.22,
+              "line-blur": 3,
+            }}
+          />
         </Source>
         {surfaceFeatures.map(({ kind, data }) => (
           <Source key={kind} id={`stage-surface-${kind}`} type="geojson" data={data}>
