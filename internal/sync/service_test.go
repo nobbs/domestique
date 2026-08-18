@@ -293,6 +293,44 @@ func TestServiceDoesNotReconcileAnUnreadableStoredInventory(t *testing.T) {
 	}
 }
 
+// What a reprocess leaves behind: a mapping that still names the Wahoo route it
+// owns, but no longer claims to have pushed the revision it holds. It has to
+// read as an update of that route — a mapping the reconciler cannot read at all
+// would fail the whole target phase over one stage.
+func TestServiceRewritesAStageWhosePushedRevisionWasForgotten(t *testing.T) {
+	desired := testStage(t, 1, 1, "current", "current-hash")
+	state := newFakeState("a")
+	target := newFakeTarget()
+	target.seedRoute("a", &desired, 101)
+	state.trusted = []route.Stage{desired}
+	state.mappings["a"][keyFor(&desired)] = targetStage{
+		sourceRevision: "reprocess-requested",
+		contentHash:    "reprocess-requested",
+		wahooRouteID:   101,
+	}
+	service, err := New(
+		&Options{TargetIDs: []string{"a"}, MaxDeletionsPerTarget: 5},
+		state, &fakeSource{}, identityProcessor{}, &fakeEncoder{}, target, nil,
+	)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	result := service.RunTargets(t.Context())
+	if got, want := result.Outcome, OutcomeSucceeded; got != want {
+		t.Fatalf("RunTargets() outcome = %q, want %q", got, want)
+	}
+	if got, want := result.Updated, 1; got != want {
+		t.Errorf("RunTargets() updated = %d, want %d", got, want)
+	}
+	if got, want := target.updatedRouteIDs, []int64{101}; len(got) != len(want) || got[0] != want[0] {
+		t.Errorf("updated routes = %v, want %v — the owned route is rewritten in place", got, want)
+	}
+	if got := len(target.deletedRouteIDs); got != 0 {
+		t.Errorf("deleted routes = %d, want 0", got)
+	}
+}
+
 func TestServiceSkipsOverlappingRun(t *testing.T) {
 	service := newService(t, newFakeState("a", "b"), &fakeSource{}, &fakeEncoder{}, newFakeTarget(), false)
 	service.running.Store(true)
@@ -683,6 +721,7 @@ type fakeTarget struct {
 	failUpdateAccess   string
 	deletedAccess      []string
 	deletedRouteIDs    []int64
+	updatedRouteIDs    []int64
 	refreshTokens      []string
 	nextRouteID        int64
 }
@@ -721,6 +760,7 @@ func (t *fakeTarget) UpdateRoute(_ context.Context, routeID int64, accessToken s
 	if accessToken == t.failUpdateAccess {
 		return 0, errDestination
 	}
+	t.updatedRouteIDs = append(t.updatedRouteIDs, routeID)
 
 	return routeID, nil
 }

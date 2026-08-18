@@ -535,6 +535,17 @@ func (s *Store) TrustedInventory(ctx context.Context) ([]route.Stage, error) {
 	return stages, nil
 }
 
+// reprocessSentinel is what a target mapping records instead of the revision and
+// content hash it last pushed, once a reprocess has been requested for it.
+//
+// It is deliberately not the empty string. A mapping is only usable to the
+// reconciler while every field is present — an empty revision is read as a
+// broken row and fails the whole target phase — so forgetting what was pushed
+// has to be written down as a value, not as an absence. Nothing produces this
+// value by accident: a real revision comes from the source and a real content
+// hash is hexadecimal.
+const reprocessSentinel = "reprocess-requested"
+
 // RequestStageReprocess asks for one stage to be redone from scratch.
 //
 // It changes no route data. It removes the three answers the service would
@@ -544,8 +555,11 @@ func (s *Store) TrustedInventory(ctx context.Context) ([]route.Stage, error) {
 // pushed so every target is written again, and the surface classification is
 // dropped so it is asked for afresh.
 //
-// The Wahoo route identity is deliberately kept. A reprocess re-writes the route
-// the service already owns; it never deletes one and never creates a second.
+// The Wahoo route identity is deliberately kept, and so is the shape of the
+// mapping: what changes is that it no longer claims to have pushed the revision
+// it holds, so the next reconciliation takes the update path. A reprocess
+// re-writes the route the service already owns; it never deletes one and never
+// creates a second.
 //
 // Reports whether the stage is in the stored inventory. A stage that is not
 // cannot be redone, and saying so is better than leaving a mark that nothing
@@ -576,9 +590,9 @@ func (s *Store) RequestStageReprocess(ctx context.Context, routeID int64, stageO
 		return false, fmt.Errorf("recording the reprocess request: %w", err)
 	}
 	if _, err := transaction.ExecContext(ctx, `
-		UPDATE target_stages SET source_revision = '', content_hash = ''
+		UPDATE target_stages SET source_revision = ?, content_hash = ?
 		WHERE route_id = ? AND stage_order = ?
-	`, routeID, stageOrder); err != nil {
+	`, reprocessSentinel, reprocessSentinel, routeID, stageOrder); err != nil {
 		return false, fmt.Errorf("forgetting the pushed revision: %w", err)
 	}
 	if _, err := transaction.ExecContext(ctx, `

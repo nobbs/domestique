@@ -512,8 +512,14 @@ func TestStoreReprocessesOneStageWithoutLosingItsRouteIdentity(t *testing.T) {
 	`).Scan(&revision, &contentHash, &wahooRouteID); scanErr != nil {
 		t.Fatalf("reading the target mapping error = %v", scanErr)
 	}
-	if revision != "" || contentHash != "" {
-		t.Errorf("mapping = %q/%q, want both forgotten", revision, contentHash)
+	// Forgotten, but still a usable row: the reconciler rejects a mapping with an
+	// empty field outright, which would fail the whole target phase instead of
+	// rewriting this one route.
+	if revision == "" || contentHash == "" {
+		t.Errorf("mapping = %q/%q, want values the reconciler can still read", revision, contentHash)
+	}
+	if revision == "revision" || contentHash == "encoded-hash" {
+		t.Errorf("mapping = %q/%q, want it to no longer claim what it pushed", revision, contentHash)
 	}
 	if got, want := wahooRouteID, int64(4242); got != want {
 		t.Errorf("wahoo route id = %d, want %d — a reprocess rewrites, never recreates", got, want)
