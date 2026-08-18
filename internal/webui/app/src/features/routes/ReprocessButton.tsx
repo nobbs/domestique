@@ -20,14 +20,19 @@ export function ReprocessButton({ routeId, stageOrder }: { routeId: number; stag
   const reprocess = useMutation({
     mutationFn: () => reprocessStage(routeId, stageOrder),
     onSuccess: async () => {
-      // The run happens in the background, so nothing here is fresh yet. Both
-      // queries are marked stale so the page picks up the new geometry and the
-      // new run result as they land rather than showing the old ones as though
-      // the request had done nothing.
       await Promise.all([
+        // The status is polled anyway, and refetching it now is how the run this
+        // request started shows up as running rather than as nothing happening.
         queryClient.invalidateQueries({ queryKey: statusQuery().queryKey }),
+        // The geometry is only marked stale. Refetching it now would fetch the
+        // old stage — the run has barely started — and then hold that answer as
+        // fresh for the five minutes the query is allowed to cache, which is
+        // exactly the wrong thing to do to a page waiting for new data. Stale
+        // instead means the next visit or focus fetches whatever has landed by
+        // then.
         queryClient.invalidateQueries({
           queryKey: stageGeometryQuery(routeId, stageOrder).queryKey,
+          refetchType: "none",
         }),
       ]);
     },

@@ -9,11 +9,14 @@ function renderButton() {
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
 
-  return render(
-    <QueryClientProvider client={client}>
-      <ReprocessButton routeId={12} stageOrder={1} />
-    </QueryClientProvider>,
-  );
+  return {
+    client,
+    ...render(
+      <QueryClientProvider client={client}>
+        <ReprocessButton routeId={12} stageOrder={1} />
+      </QueryClientProvider>,
+    ),
+  };
 }
 
 afterEach(() => {
@@ -54,5 +57,24 @@ describe("ReprocessButton", () => {
     await userEvent.click(screen.getByRole("button", { name: "Reprocess" }));
 
     expect(await screen.findByRole("status")).toHaveTextContent("resource was not found");
+  });
+
+  // Refetching now would fetch the stage as it still is and then hold that
+  // answer as fresh for the whole cache window, which is the opposite of what a
+  // page waiting for a rewrite needs.
+  it("marks the stage's geometry stale without fetching the old one back", async () => {
+    const fetchMock = vi.fn(
+      async (_input: RequestInfo | URL, _init?: RequestInit) =>
+        new Response(JSON.stringify({ status: "accepted" }), { status: 202 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { client } = renderButton();
+    client.setQueryData(["stage-geometry", 12, 1], { stage: "old" });
+
+    await userEvent.click(screen.getByRole("button", { name: "Reprocess" }));
+    await screen.findByRole("status");
+
+    expect(client.getQueryState(["stage-geometry", 12, 1])?.isInvalidated).toBe(true);
+    expect(fetchMock.mock.calls.some((call) => String(call[0]).includes("/geometry"))).toBe(false);
   });
 });
