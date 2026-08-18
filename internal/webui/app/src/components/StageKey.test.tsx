@@ -1,7 +1,9 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import type { Position } from "../api/types";
+import type { Highlight } from "../lib/highlight";
 import type { SurfaceSummary } from "../lib/surface";
 import { summariseSurface } from "../lib/surface";
 import { StageKey } from "./StageKey";
@@ -214,23 +216,49 @@ describe("StageKey", () => {
 
   // One selection over both lists: a gradient band replaces a pressed surface
   // rather than adding to it, which is the question the highlight can answer.
+  // Held above the key, as the page holds it, so the pressed chips are the ones
+  // the answer produced rather than the ones the key decided on its own.
   it("gives up the pressed surface when a gradient band is picked", async () => {
     const user = userEvent.setup();
     const onHighlightChange = vi.fn();
-    render(
-      <StageKey
-        surface={halfGravel()}
-        surfaceAbsence="none"
-        bands={[2]}
-        highlight={{ type: "surface", kind: "gravel" }}
-        onHighlightChange={onHighlightChange}
-      />,
-    );
 
-    await user.click(screen.getByRole("button", { name: "8–12%" }));
+    function Held() {
+      const [highlight, setHighlight] = useState<Highlight | null>({
+        type: "surface",
+        kind: "gravel",
+      });
+
+      return (
+        <StageKey
+          surface={halfGravel()}
+          surfaceAbsence="none"
+          bands={[2]}
+          highlight={highlight}
+          onHighlightChange={(next) => {
+            onHighlightChange(next);
+            setHighlight(next);
+          }}
+        />
+      );
+    }
+
+    render(<Held />);
+    const gravel = screen.getByRole("button", { name: /Gravel/ });
+    const band = screen.getByRole("button", { name: "8–12%" });
+
+    expect(gravel).toHaveAttribute("aria-pressed", "true");
+
+    await user.click(band);
 
     expect(onHighlightChange).toHaveBeenCalledWith({ type: "band", band: 2 });
-    expect(screen.getByRole("button", { name: /Gravel/ })).toHaveAttribute("aria-pressed", "true");
+    expect(band).toHaveAttribute("aria-pressed", "true");
+    expect(gravel).toHaveAttribute("aria-pressed", "false");
+
+    // And the second press on the band is still the whole route back.
+    await user.click(band);
+
+    expect(onHighlightChange).toHaveBeenLastCalledWith(null);
+    expect(band).toHaveAttribute("aria-pressed", "false");
   });
 
   it("explains what a class name means, in the name a screen reader hears", () => {
