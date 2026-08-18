@@ -86,6 +86,21 @@ unexpired, and an `aud` equal to the configured application's audience tag. The
 `Cf-Access-Authenticated-User-Email` header is never consulted, and neither is
 `Tailscale-User-Login`.
 
+Identity is not provenance. An Access session lives in an ordinary browser, so
+proving who is calling does not prove that they meant to call. Every
+state-changing endpoint therefore also requires an `Origin` header exactly equal
+to the origin the browser UI is served from — the scheme and host of
+`wahoo.redirect_url`, which is by construction the hostname a browser reaches
+this service at. A missing, malformed, `null`, or cross-site origin is refused
+with 403 before any trigger runs or any state is written; a browser attaches
+`Origin` to every request whose method is not GET or HEAD, including a
+same-origin one, so absent means "not this UI" rather than "same origin". This
+is a security requirement, not an implementation detail.
+
+The OAuth start and callback are deliberately outside that check. The callback
+is a cross-site GET the browser is redirected into, and what protects it is its
+one-time, identity-bound, expiring state.
+
 Requests reach the service through Cloudflare Access and a Cloudflare Tunnel
 whose origin is this service's **Tailscale Service name**. `cloudflared` runs on
 a tagged node, and Serve never populates identity headers for a tagged device,
@@ -204,6 +219,10 @@ The read-only JSON surface is deliberately small:
 - `GET /v1/routes/{source-route-id}/stages/{stage}/geometry` returns the stored
   geometry of one stage for map rendering, together with the surface
   classification of that geometry when one has been cached.
+The five endpoints below that change state — the three triggers, the schedule
+switch, and the reprocess request — additionally require the browser origin
+described above, and answer 403 without it.
+
 - `POST /v1/sync` queues one immediate synchronization of both halves through
   the same reporting path as the schedule. It returns `202 Accepted`, or `409
   Conflict` when a scheduled or manual synchronization is already running.
@@ -436,6 +455,9 @@ secret files remain outside Git.
 - A failed source inventory cannot cause a destructive Wahoo deletion.
 - Lost state cannot cause deletion of unknown Wahoo routes.
 - The service logs and notifications do not reveal secrets or route details.
+- Every state-changing HTTP interaction additionally proves it came from this
+  service's own browser UI, so an authenticated session cannot be driven from
+  another site.
 - Every HTTP interaction is identity-gated, to one principal, by a signature the
   service verifies itself. Beyond OAuth, the only ones
   that change anything are the synchronization triggers, the two schedule

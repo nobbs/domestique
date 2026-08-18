@@ -56,10 +56,11 @@ func newAccessHandler(t *testing.T, verifier AccessVerifier, oauthService OAuth)
 
 	handler, err := New(
 		&Options{
-			TargetIDs:      []string{"rider-a"},
-			TileStyleURL:   testTileStyleURL,
-			AccessVerifier: verifier,
-			AccessEmail:    testAccessEmail,
+			TargetIDs:        []string{"rider-a"},
+			TileStyleURL:     testTileStyleURL,
+			AccessVerifier:   verifier,
+			AccessEmail:      testAccessEmail,
+			BrowserOriginURL: testBrowserOriginURL,
 		},
 		oauthService, &fakeState{}, &fakeSyncTrigger{accepted: true}, &fakeAssets{},
 	)
@@ -78,6 +79,7 @@ func assertionRequest(t *testing.T, method, target string) *http.Request {
 
 	request := httptest.NewRequestWithContext(t.Context(), method, target, http.NoBody)
 	request.Header.Set(assertionHeader, testAssertion)
+	withBrowserOrigin(request)
 
 	return request
 }
@@ -244,14 +246,16 @@ func TestGateResolvesEveryRequestToTheConfiguredPrincipal(t *testing.T) {
 func TestNewRequiresAccessConfiguration(t *testing.T) {
 	cases := map[string]*Options{
 		"no verifier": {
-			TargetIDs:    []string{"rider-a"},
-			TileStyleURL: testTileStyleURL,
-			AccessEmail:  testAccessEmail,
+			TargetIDs:        []string{"rider-a"},
+			TileStyleURL:     testTileStyleURL,
+			AccessEmail:      testAccessEmail,
+			BrowserOriginURL: testBrowserOriginURL,
 		},
 		"no email": {
-			TargetIDs:      []string{"rider-a"},
-			TileStyleURL:   testTileStyleURL,
-			AccessVerifier: &recordingVerifier{email: testAccessEmail},
+			TargetIDs:        []string{"rider-a"},
+			TileStyleURL:     testTileStyleURL,
+			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
+			BrowserOriginURL: testBrowserOriginURL,
 		},
 	}
 

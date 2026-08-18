@@ -18,10 +18,23 @@ import { defineConfig } from "vitest/config";
 const apiTarget = process.env.DOMESTIQUE_DEV_API ?? "http://127.0.0.1:8081";
 const devAssertion = process.env.DOMESTIQUE_DEV_ASSERTION;
 
+// State-changing requests must come from the origin the API is configured to
+// serve its UI at, which is the origin of its wahoo.redirect_url. The dev server
+// runs on another one, so it names the API's for the requests it proxies. The
+// default is what dev/setup.sh writes; set DOMESTIQUE_DEV_ORIGIN when pointing
+// DOMESTIQUE_DEV_API at the deployed container instead, whose origin is public.
+//
+// This is not a way around the check: it is this proxy stating the origin it is
+// standing in for, exactly as it states the identity it is standing in for.
+const devOrigin = process.env.DOMESTIQUE_DEV_ORIGIN ?? "https://127.0.0.1:9";
+
 const proxy = {
   target: apiTarget,
   changeOrigin: false,
-  headers: devAssertion ? { "Cf-Access-Jwt-Assertion": devAssertion } : {},
+  headers: {
+    ...(devAssertion ? { "Cf-Access-Jwt-Assertion": devAssertion } : {}),
+    Origin: devOrigin,
+  },
 };
 
 export default defineConfig({
