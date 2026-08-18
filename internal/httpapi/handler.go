@@ -16,6 +16,10 @@ import (
 
 const identityHeader = "Tailscale-User-Login"
 
+// maximumRequestBytes bounds the only request bodies this service reads. They
+// carry two booleans, so anything larger is a mistake or an attempt.
+const maximumRequestBytes = 1 << 10
+
 const (
 	cacheAPI       = "no-store"
 	cacheDocument  = "no-cache"
@@ -28,18 +32,32 @@ type OAuth interface {
 	Complete(ctx context.Context, tailnetUserLogin, state, code string) error
 }
 
+// SyncPhase names the half of a synchronization a manual trigger asks for, or
+// both halves together. It is declared here rather than imported so this package
+// keeps knowing nothing about how synchronization is implemented.
+type SyncPhase string
+
+const (
+	// SyncPhaseAll reads the source and then writes to the targets.
+	SyncPhaseAll SyncPhase = "all"
+	// SyncPhaseSource reads the source library into stored state.
+	SyncPhaseSource SyncPhase = "source"
+	// SyncPhaseTargets reconciles stored state onto the targets.
+	SyncPhaseTargets SyncPhase = "targets"
+)
+
 // SyncTrigger starts one manual synchronization and reports whether it was
 // accepted. An accepted run continues independently of the HTTP request.
 type SyncTrigger interface {
-	Trigger() bool
+	Trigger(phase SyncPhase) bool
 }
 
 // SyncTriggerFunc adapts a function to SyncTrigger for manual wiring.
-type SyncTriggerFunc func() bool
+type SyncTriggerFunc func(phase SyncPhase) bool
 
 // Trigger starts the adapted manual synchronization.
-func (f SyncTriggerFunc) Trigger() bool {
-	return f()
+func (f SyncTriggerFunc) Trigger(phase SyncPhase) bool {
+	return f(phase)
 }
 
 // Assets serves the embedded browser UI. It is declared here so this package
@@ -59,6 +77,9 @@ type State interface {
 	StageGeometry(ctx context.Context, routeID int64, stageOrder int) (route.Summary, json.RawMessage, bool, error)
 	StageSurface(ctx context.Context, routeID int64, stageOrder int, contentHash string) (json.RawMessage, float64, bool, error)
 	LastSyncRun(ctx context.Context) (completedAt time.Time, outcome, detail string, sourceStages, created, updated, deleted int, found bool, err error)
+	ForEachPhaseRun(ctx context.Context, visit func(phase string, completedAt time.Time, outcome, detail string, sourceStages, created, updated, deleted int) error) error
+	SyncSchedule(ctx context.Context) (source, targets bool, err error)
+	SetSyncSchedule(ctx context.Context, source, targets bool) error
 }
 
 // Options carries the non-secret settings the HTTP surface needs.
@@ -135,6 +156,9 @@ func (h *Handler) routes() {
 
 	h.mux.Handle("GET /v1/status", h.gated(h.status))
 	h.mux.Handle("POST /v1/sync", h.gated(h.sync))
+	h.mux.Handle("POST /v1/sync/source", h.gated(h.syncSource))
+	h.mux.Handle("POST /v1/sync/targets", h.gated(h.syncTargets))
+	h.mux.Handle("PUT /v1/sync/schedule", h.gated(h.setSyncSchedule))
 	h.mux.Handle("GET /v1/routes", h.gated(h.stages))
 	h.mux.Handle("GET /v1/routes/{routeID}/stages/{stage}", h.gated(h.stage))
 	h.mux.Handle("GET /v1/routes/{routeID}/stages/{stage}/geometry", h.gated(h.stageGeometry))

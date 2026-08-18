@@ -34,17 +34,48 @@ type stageView struct {
 	StageOrder int `json:"stage"`
 }
 
-type syncView struct {
-	State string `json:"state"`
+// syncScheduleView reports which halves of a synchronization the timer may
+// start. They are separate switches because they fail, and are wanted, for
+// unrelated reasons.
+type syncScheduleView struct {
+	Source  bool `json:"source"`
+	Targets bool `json:"targets"`
+}
+
+// phaseRunView is the last recorded run of one phase. Absent means that phase
+// has not finished a run since the service learned to record them separately.
+type phaseRunView struct {
 	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	LastCompletedAt string `json:"last_completed_at,omitempty"`
+	LastCompletedAt string `json:"last_completed_at"`
 	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	LastResult string `json:"last_result,omitempty"`
+	LastResult string `json:"last_result"`
+	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
+	LastFailure string `json:"last_failure,omitempty"`
 	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
 	SourceStages int `json:"source_stages"`
 	Created      int `json:"created"`
 	Updated      int `json:"updated"`
 	Deleted      int `json:"deleted"`
+}
+
+type syncPhasesView struct {
+	Source  *phaseRunView `json:"source,omitempty"`
+	Targets *phaseRunView `json:"targets,omitempty"`
+}
+
+type syncView struct {
+	Phases syncPhasesView `json:"phases"`
+	State  string         `json:"state"`
+	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
+	LastCompletedAt string `json:"last_completed_at,omitempty"`
+	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
+	LastResult string `json:"last_result,omitempty"`
+	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
+	SourceStages int              `json:"source_stages"`
+	Created      int              `json:"created"`
+	Updated      int              `json:"updated"`
+	Deleted      int              `json:"deleted"`
+	Schedule     syncScheduleView `json:"schedule"`
 }
 
 type statusView struct {

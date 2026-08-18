@@ -98,7 +98,7 @@ It must exactly match the URI registered with Wahoo and configured in the
 service. The authorisation redirect is followed by the user's browser; Wahoo
 does not need a public connection to the host.
 
-The only state-changing HTTP interaction is the OAuth flow:
+The state-changing HTTP surface is the OAuth flow:
 
 - `GET /oauth/wahoo/start/{target}` starts authorisation for a configured target
   slot.
@@ -110,11 +110,35 @@ calling identity and target slot and prevents cross-account or CSRF callbacks.
 The service rejects an attempt to authorise the same Wahoo account for two
 target slots.
 
+Alongside it are the operator controls over synchronization: the manual
+triggers, and the two switches that decide what the timer is allowed to start.
+They change what the service does next; they change nothing it has stored about
+routes, and they cannot make a run less safe than a scheduled one, because a
+triggered run is the same run through the same gates. Every one of them is
+limited to the same Tailnet identity as the rest of the surface.
+
+A synchronization has two halves, and each is separately switched, triggered,
+and reported:
+
+- The **source** half reads the VeloPlanner library, validates it, and stores
+  it. It contacts no target and needs no authorisation.
+- The **target** half reconciles what is stored onto each Wahoo target. It reads
+  the stored library rather than fetching a fresh one, so a target that was
+  unreachable catches up from the last inventory known to be whole.
+
+Splitting them lets an operator stop writing to devices while still refreshing
+the library, or keep devices current while the source is known to be in flux,
+without editing configuration on the host and restarting the service. The
+switches govern the timer only: a manual trigger runs its half whether or not
+the timer is allowed to, because an operator asking for a run has already
+decided. Neither switch stops a run already in flight.
+
 The read-only JSON surface is deliberately small:
 
 - `GET /healthz` reports local process health.
 - `GET /v1/status` reports current configuration readiness, last sync outcome,
-  aggregate counts, and target authorisation state.
+  aggregate counts, target authorisation state, the two schedule switches, and
+  the last run of each half.
 - `GET /v1/routes` lists known source routes and stages with their titles and
   aggregate geometry facts.
 - `GET /v1/routes/{source-route-id}/stages/{stage}` returns stored route
@@ -122,9 +146,14 @@ The read-only JSON surface is deliberately small:
 - `GET /v1/routes/{source-route-id}/stages/{stage}/geometry` returns the stored
   geometry of one stage for map rendering, together with the surface
   classification of that geometry when one has been cached.
-- `POST /v1/sync` queues one immediate synchronization through the same
-  reporting path as the schedule. It returns `202 Accepted`, or `409 Conflict`
-  when a scheduled or manual synchronization is already running.
+- `POST /v1/sync` queues one immediate synchronization of both halves through
+  the same reporting path as the schedule. It returns `202 Accepted`, or `409
+  Conflict` when a scheduled or manual synchronization is already running.
+- `POST /v1/sync/source` and `POST /v1/sync/targets` queue one half on the same
+  terms.
+- `PUT /v1/sync/schedule` sets both switches, and answers with the state it
+  stored. A body that names only one switch is refused: the other would be left
+  at whatever the caller assumed it was.
 
 The browser UI is served from the same origin and the same authenticated
 listener: an application entry document and immutable hashed static assets.
@@ -342,7 +371,9 @@ the checkout; its configuration and Docker secret files remain outside Git.
 - A failed source inventory cannot cause a destructive Wahoo deletion.
 - Lost state cannot cause deletion of unknown Wahoo routes.
 - The service logs and notifications do not reveal secrets or route details.
-- All non-OAuth HTTP interactions are read-only and Tailnet-identity-gated.
+- Every HTTP interaction is Tailnet-identity-gated. Beyond OAuth, the only ones
+  that change anything are the synchronization triggers and the two schedule
+  switches; nothing on the surface edits stored route data.
 - The browser UI renders a stored source stage on a map, is reachable only by
   the configured Tailnet identity, and offers no editing affordance.
 - Stage geometry is cached locally and rewritten only when a stage's content

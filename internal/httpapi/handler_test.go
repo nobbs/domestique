@@ -365,6 +365,112 @@ func TestHandlerAcceptsManualSync(t *testing.T) {
 	}
 }
 
+// Each half is triggerable on its own, because each is separately switched off
+// and separately worth starting by hand.
+func TestHandlerTriggersEachPhaseOnItsOwn(t *testing.T) {
+	for path, want := range map[string]SyncPhase{
+		"/v1/sync":         SyncPhaseAll,
+		"/v1/sync/source":  SyncPhaseSource,
+		"/v1/sync/targets": SyncPhaseTargets,
+	} {
+		trigger := &fakeSyncTrigger{accepted: true}
+		handler := newHandlerWithTrigger(t, &fakeOAuth{}, &fakeState{}, trigger)
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, path))
+		if got := response.Code; got != http.StatusAccepted {
+			t.Errorf("POST %s status = %d, want %d", path, got, http.StatusAccepted)
+		}
+		if got := trigger.phases; len(got) != 1 || got[0] != want {
+			t.Errorf("POST %s triggered %v, want [%s]", path, got, want)
+		}
+	}
+}
+
+func TestHandlerSwitchesEitherHalfOfTheSchedule(t *testing.T) {
+	state := &fakeState{scheduleSource: true, scheduleTargets: true}
+	handler := newHandler(t, &fakeOAuth{}, state)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequestWithBody(
+		http.MethodPut, "/v1/sync/schedule", `{"source":true,"targets":false}`,
+	))
+	if got, want := response.Code, http.StatusOK; got != want {
+		t.Fatalf("schedule status = %d, want %d", got, want)
+	}
+	if !state.scheduleSource || state.scheduleTargets {
+		t.Errorf("stored schedule = %v, %v, want the target half off", state.scheduleSource, state.scheduleTargets)
+	}
+	if got, want := state.scheduleWrites, 1; got != want {
+		t.Errorf("schedule writes = %d, want %d", got, want)
+	}
+}
+
+// Half a schedule is not a schedule: a body naming one switch would leave the
+// other at whatever the caller happened to assume.
+func TestHandlerRejectsAnIncompleteScheduleChange(t *testing.T) {
+	for _, body := range []string{`{"source":true}`, `{}`, `{"source":true,"targets":true,"other":1}`, "not json"} {
+		state := &fakeState{}
+		handler := newHandler(t, &fakeOAuth{}, state)
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, authenticatedRequestWithBody(http.MethodPut, "/v1/sync/schedule", body))
+		if got, want := response.Code, http.StatusBadRequest; got != want {
+			t.Errorf("schedule status for %q = %d, want %d", body, got, want)
+		}
+		if state.scheduleWrites != 0 {
+			t.Errorf("schedule writes for %q = %d, want 0", body, state.scheduleWrites)
+		}
+	}
+}
+
+func TestHandlerReportsTheScheduleAndEachPhaseInStatus(t *testing.T) {
+	completedAt := time.Date(2026, time.August, 18, 6, 30, 0, 0, time.UTC)
+	state := &fakeState{
+		scheduleSource:  true,
+		scheduleTargets: false,
+		phaseRuns: []phaseRun{
+			{phase: "source", completedAt: completedAt, outcome: "succeeded", sourceStages: 12},
+			{phase: "targets", completedAt: completedAt, outcome: "failed", detail: "destination", created: 1},
+		},
+	}
+	handler := newHandler(t, &fakeOAuth{}, state)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/status"))
+	if got, want := response.Code, http.StatusOK; got != want {
+		t.Fatalf("status = %d, want %d", got, want)
+	}
+	var view statusView
+	if err := json.Unmarshal(response.Body.Bytes(), &view); err != nil {
+		t.Fatalf("decoding status = %v", err)
+	}
+	if !view.Sync.Schedule.Source || view.Sync.Schedule.Targets {
+		t.Errorf("schedule = %+v, want the source half on and the target half off", view.Sync.Schedule)
+	}
+	if view.Sync.Phases.Source == nil || view.Sync.Phases.Targets == nil {
+		t.Fatalf("phases = %+v, want a run for each", view.Sync.Phases)
+	}
+	if got, want := view.Sync.Phases.Source.SourceStages, 12; got != want {
+		t.Errorf("source stages = %d, want %d", got, want)
+	}
+	if got, want := view.Sync.Phases.Targets.LastFailure, "destination"; got != want {
+		t.Errorf("target failure = %q, want %q", got, want)
+	}
+	if got, want := view.Sync.Phases.Source.LastCompletedAt, completedAt.Format(time.RFC3339); got != want {
+		t.Errorf("source completion = %q, want %q", got, want)
+	}
+}
+
+func TestHandlerReportsUnreadableScheduleAsUnavailable(t *testing.T) {
+	state := &fakeState{scheduleErr: errors.New("state unavailable")}
+	handler := newHandler(t, &fakeOAuth{}, state)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/status"))
+	if got, want := response.Code, http.StatusInternalServerError; got != want {
+		t.Errorf("status = %d, want %d", got, want)
+	}
+}
+
 func TestHandlerRejectsOverlappingManualSync(t *testing.T) {
 	handler := newHandlerWithTrigger(t, &fakeOAuth{}, &fakeState{}, &fakeSyncTrigger{})
 	response := httptest.NewRecorder()
@@ -458,6 +564,13 @@ func authenticatedRequest(method, target string) *http.Request {
 	return request
 }
 
+func authenticatedRequestWithBody(method, target, body string) *http.Request {
+	request := httptest.NewRequestWithContext(context.Background(), method, target, strings.NewReader(body))
+	request.Header.Set(identityHeader, "rider@example.ts.net")
+
+	return request
+}
+
 type fakeOAuth struct {
 	completeErr        error
 	location, targetID string
@@ -472,12 +585,14 @@ func (o *fakeOAuth) Start(_ context.Context, _, targetID string) (string, error)
 func (o *fakeOAuth) Complete(context.Context, string, string, string) error { return o.completeErr }
 
 type fakeSyncTrigger struct {
-	accepted bool
+	phases   []SyncPhase
 	calls    int
+	accepted bool
 }
 
-func (t *fakeSyncTrigger) Trigger() bool {
+func (t *fakeSyncTrigger) Trigger(phase SyncPhase) bool {
 	t.calls++
+	t.phases = append(t.phases, phase)
 
 	return t.accepted
 }
@@ -498,13 +613,30 @@ func (*fakeAssets) Static(writer http.ResponseWriter, _ *http.Request) {
 	}
 }
 
+type phaseRun struct {
+	phase        string
+	completedAt  time.Time
+	outcome      string
+	detail       string
+	sourceStages int
+	created      int
+	updated      int
+	deleted      int
+}
+
 type fakeState struct {
-	coordinates   json.RawMessage
-	surfaceRanges json.RawMessage
-	surfaceHash   string
-	surfaceErr    error
-	summaries     []route.Summary
-	surfaceMetres float64
+	surfaceErr      error
+	phaseRunErr     error
+	scheduleErr     error
+	surfaceHash     string
+	coordinates     json.RawMessage
+	surfaceRanges   json.RawMessage
+	summaries       []route.Summary
+	phaseRuns       []phaseRun
+	surfaceMetres   float64
+	scheduleWrites  int
+	scheduleSource  bool
+	scheduleTargets bool
 }
 
 func (*fakeState) ForEachTarget(_ context.Context, visit func(string, string) error) error {
@@ -565,4 +697,41 @@ func (s *fakeState) StageSurface(
 //nolint:gocritic // This fake conforms to the persistence-free state boundary.
 func (*fakeState) LastSyncRun(context.Context) (time.Time, string, string, int, int, int, int, bool, error) {
 	return time.Time{}, "", "", 0, 0, 0, 0, false, nil
+}
+
+func (s *fakeState) ForEachPhaseRun(
+	_ context.Context,
+	visit func(phase string, completedAt time.Time, outcome, detail string, sourceStages, created, updated, deleted int) error,
+) error {
+	if s.phaseRunErr != nil {
+		return s.phaseRunErr
+	}
+	for _, run := range s.phaseRuns {
+		if err := visit(
+			run.phase, run.completedAt, run.outcome, run.detail,
+			run.sourceStages, run.created, run.updated, run.deleted,
+		); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (s *fakeState) SyncSchedule(context.Context) (source, targets bool, err error) {
+	if s.scheduleErr != nil {
+		return false, false, s.scheduleErr
+	}
+
+	return s.scheduleSource, s.scheduleTargets, nil
+}
+
+func (s *fakeState) SetSyncSchedule(_ context.Context, source, targets bool) error {
+	if s.scheduleErr != nil {
+		return s.scheduleErr
+	}
+	s.scheduleSource, s.scheduleTargets = source, targets
+	s.scheduleWrites++
+
+	return nil
 }

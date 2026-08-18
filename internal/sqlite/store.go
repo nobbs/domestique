@@ -463,6 +463,151 @@ func (s *Store) LastSyncRun(ctx context.Context) (completedAt time.Time, outcome
 	return time.Unix(completedUnix, 0).UTC(), outcome, detail, sourceStages, created, updated, deleted, true, nil
 }
 
+// TrustedInventory rebuilds the stored source inventory as the stages a target
+// reconciliation works from.
+//
+// This is the handover between the two halves of a synchronization: reading the
+// source writes it, writing to the targets reads it, and neither has to be
+// running for the other to work. The geometry it returns is the export profile
+// that was stored, so a course encoded from it is the one the source pass
+// derived rather than a second, subtly different derivation of the same stage.
+//
+// A stage whose geometry is missing or was cached against a different content
+// hash fails the whole read. Returning the rest would describe the library as
+// smaller than it is, and a smaller library is exactly what reconciliation
+// treats as an instruction to delete.
+func (s *Store) TrustedInventory(ctx context.Context) ([]route.Stage, error) {
+	rows, err := s.database.QueryContext(ctx, `
+		SELECT
+			source_stages.route_id,
+			source_stages.stage_order,
+			source_stages.source_revision,
+			source_stages.content_hash,
+			stage_geometry.content_hash,
+			stage_geometry.route_name,
+			stage_geometry.stage_name,
+			stage_geometry.coordinates
+		FROM source_stages
+		LEFT JOIN stage_geometry
+			ON stage_geometry.route_id = source_stages.route_id
+			AND stage_geometry.stage_order = source_stages.stage_order
+		ORDER BY source_stages.route_id, source_stages.stage_order
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("reading the trusted inventory: %w", err)
+	}
+	defer closeRows(rows)
+
+	stages := make([]route.Stage, 0)
+	for rows.Next() {
+		var routeID int64
+		var stageOrder int
+		var revision, contentHash string
+		var geometryHash, routeName, stageName sql.NullString
+		var coordinates []byte
+		if err := rows.Scan(
+			&routeID, &stageOrder, &revision, &contentHash,
+			&geometryHash, &routeName, &stageName, &coordinates,
+		); err != nil {
+			return nil, fmt.Errorf("reading a trusted inventory stage: %w", err)
+		}
+		if !geometryHash.Valid || geometryHash.String != contentHash {
+			return nil, fmt.Errorf(
+				"trusted inventory stage %d/%d has no geometry for its content hash", routeID, stageOrder,
+			)
+		}
+		points, err := decodeCoordinates(coordinates)
+		if err != nil {
+			return nil, err
+		}
+		stage, err := route.NewStage(
+			routeID, stageOrder, revision, routeName.String, stageName.String, points, contentHash,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("rebuilding trusted inventory stage %d/%d: %w", routeID, stageOrder, err)
+		}
+		stages = append(stages, stage)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("reading the trusted inventory: %w", err)
+	}
+
+	return stages, nil
+}
+
+// ForEachPhaseRun visits the most recent recorded run of each phase.
+//
+// The phases run and fail independently, so the single most recent run answers
+// only half the question an operator is asking. Runs recorded before phases
+// existed carry no phase and are left out rather than attributed to one.
+func (s *Store) ForEachPhaseRun(
+	ctx context.Context,
+	visit func(phase string, completedAt time.Time, outcome, detail string, sourceStages, created, updated, deleted int) error,
+) error {
+	if visit == nil {
+		return errors.New("phase run visitor is required")
+	}
+	rows, err := s.database.QueryContext(ctx, `
+		SELECT phase, finished_at_unix, outcome, COALESCE(detail, ''),
+			source_stages, created, updated, deleted
+		FROM sync_runs
+		WHERE phase <> '' AND id IN (SELECT MAX(id) FROM sync_runs WHERE phase <> '' GROUP BY phase)
+		ORDER BY phase
+	`)
+	if err != nil {
+		return fmt.Errorf("reading the last run of each phase: %w", err)
+	}
+	defer closeRows(rows)
+
+	for rows.Next() {
+		var phase, outcome, detail string
+		var completedUnix int64
+		var sourceStages, created, updated, deleted int
+		if err := rows.Scan(
+			&phase, &completedUnix, &outcome, &detail, &sourceStages, &created, &updated, &deleted,
+		); err != nil {
+			return fmt.Errorf("reading a phase run: %w", err)
+		}
+		if err := visit(
+			phase, time.Unix(completedUnix, 0).UTC(), outcome, detail, sourceStages, created, updated, deleted,
+		); err != nil {
+			return err
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("reading the runs of each phase: %w", err)
+	}
+
+	return nil
+}
+
+// SyncSchedule reports which phases the timer is allowed to start.
+func (s *Store) SyncSchedule(ctx context.Context) (source, targets bool, err error) {
+	if err := s.database.QueryRowContext(ctx, `
+		SELECT source_enabled, targets_enabled FROM sync_schedule WHERE id = 1
+	`).Scan(&source, &targets); err != nil {
+		return false, false, fmt.Errorf("reading the sync schedule: %w", err)
+	}
+
+	return source, targets, nil
+}
+
+// SetSyncSchedule records which phases the timer may start from now on.
+//
+// It never starts or stops a run in flight: a phase already running finishes,
+// and the switch decides what the next tick does.
+func (s *Store) SetSyncSchedule(ctx context.Context, source, targets bool) error {
+	if _, err := s.database.ExecContext(ctx, `
+		UPDATE sync_schedule
+		SET source_enabled = ?, targets_enabled = ?, updated_at_unix = ?
+		WHERE id = 1
+	`, source, targets, time.Now().Unix()); err != nil {
+		return fmt.Errorf("storing the sync schedule: %w", err)
+	}
+
+	return nil
+}
+
 // Target returns one target slot without exposing its refresh token.
 func (s *Store) Target(ctx context.Context, targetID string) (Target, error) {
 	var target Target
@@ -733,6 +878,30 @@ func storeStageGeometry(ctx context.Context, transaction *sql.Tx, stages []route
 // encodeCoordinates renders geometry as a JSON position array. The stored bytes
 // are exactly a GeoJSON LineString's coordinate list, so serving them needs no
 // decode and re-encode. Elevation is emitted only where the source supplied it.
+// decodeCoordinates reads back what encodeCoordinates wrote. A position carries
+// an elevation or it does not, and the difference is preserved: a stage missing
+// elevation must stay missing rather than gain a confident zero.
+func decodeCoordinates(encoded []byte) ([]route.Point, error) {
+	var positions [][]float64
+	if err := json.Unmarshal(encoded, &positions); err != nil {
+		return nil, fmt.Errorf("decoding stage coordinates: %w", err)
+	}
+	points := make([]route.Point, 0, len(positions))
+	for _, position := range positions {
+		if len(position) < 2 {
+			return nil, errors.New("decoding stage coordinates: a position needs a longitude and a latitude")
+		}
+		point := route.Point{Longitude: position[0], Latitude: position[1]}
+		if len(position) > 2 {
+			elevation := position[2]
+			point.Elevation = &elevation
+		}
+		points = append(points, point)
+	}
+
+	return points, nil
+}
+
 func encodeCoordinates(points []route.Point) ([]byte, error) {
 	positions := make([][]float64, 0, len(points))
 	for _, point := range points {
@@ -855,19 +1024,21 @@ func (s *Store) DeleteTargetStage(ctx context.Context, targetID string, routeID 
 // stable failure category, never provider text or a route name.
 func (s *Store) RecordSyncRun(
 	ctx context.Context,
+	phase string,
 	startedAt, finishedAt time.Time,
 	outcome, detail string,
 	sourceStages, created, updated, deleted int,
 ) error {
-	if startedAt.IsZero() || finishedAt.IsZero() || finishedAt.Before(startedAt) || outcome == "" ||
+	if phase == "" || startedAt.IsZero() || finishedAt.IsZero() || finishedAt.Before(startedAt) || outcome == "" ||
 		sourceStages < 0 || created < 0 || updated < 0 || deleted < 0 {
 		return errors.New("complete non-negative sync run metadata is required")
 	}
 	if _, err := s.database.ExecContext(ctx, `
 		INSERT INTO sync_runs (
-			started_at_unix, finished_at_unix, outcome, detail, source_stages, created, updated, deleted
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-	`, startedAt.Unix(), finishedAt.Unix(), outcome, detail, sourceStages, created, updated, deleted); err != nil {
+			phase, started_at_unix, finished_at_unix, outcome, detail,
+			source_stages, created, updated, deleted
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, phase, startedAt.Unix(), finishedAt.Unix(), outcome, detail, sourceStages, created, updated, deleted); err != nil {
 		return fmt.Errorf("recording sync run: %w", err)
 	}
 
@@ -1288,6 +1459,28 @@ func schemaMigrations() [][]string {
 				updated_at_unix INTEGER NOT NULL,
 				PRIMARY KEY (route_id, stage_order)
 			)`,
+		},
+		{
+			// Which half of a synchronization the timer is allowed to start.
+			// Reading the source and writing to the targets are separately
+			// switchable, so an operator can stop touching devices while still
+			// refreshing the library, or the reverse, without editing
+			// configuration on the host and restarting the service.
+			//
+			// One row, defaulted to the behaviour every existing deployment
+			// already has: both halves on.
+			`CREATE TABLE sync_schedule (
+				id              INTEGER PRIMARY KEY CHECK (id = 1),
+				source_enabled  INTEGER NOT NULL CHECK (source_enabled IN (0, 1)),
+				targets_enabled INTEGER NOT NULL CHECK (targets_enabled IN (0, 1)),
+				updated_at_unix INTEGER NOT NULL
+			)`,
+			`INSERT INTO sync_schedule (id, source_enabled, targets_enabled, updated_at_unix)
+				VALUES (1, 1, 1, 0)`,
+			// Runs are now recorded per phase. Rows written before this migration
+			// covered both halves at once; they keep an empty phase rather than
+			// claiming to be one of them.
+			`ALTER TABLE sync_runs ADD COLUMN phase TEXT NOT NULL DEFAULT ''`,
 		},
 	}
 }

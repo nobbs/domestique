@@ -24,12 +24,12 @@ func TestServiceDoesNotMutateTargetsWhenSourceFails(t *testing.T) {
 	target := newFakeTarget()
 	service := newService(t, state, &fakeSource{err: errors.New("source unavailable")}, &fakeEncoder{}, target, false)
 
-	result := service.Run(t.Context())
+	result := runBoth(t.Context(), service)
 	if got, want := result.Outcome, OutcomeFailed; got != want {
-		t.Errorf("Run() outcome = %q, want %q", got, want)
+		t.Errorf("runBoth() outcome = %q, want %q", got, want)
 	}
 	if got, want := result.Failure, FailureSource; got != want {
-		t.Errorf("Run() failure = %q, want %q", got, want)
+		t.Errorf("runBoth() failure = %q, want %q", got, want)
 	}
 	if got := len(target.deletedRouteIDs); got != 0 {
 		t.Errorf("deleted routes = %d, want 0", got)
@@ -54,12 +54,12 @@ func TestServiceSkipsFailedTargetDeletionButContinuesOtherTarget(t *testing.T) {
 	target.failUpdateAccess = accessFor("a")
 	service := newService(t, state, &fakeSource{stages: []route.Stage{desired}}, &fakeEncoder{}, target, false)
 
-	result := service.Run(t.Context())
+	result := runBoth(t.Context(), service)
 	if got, want := result.Outcome, OutcomeFailed; got != want {
-		t.Errorf("Run() outcome = %q, want %q", got, want)
+		t.Errorf("runBoth() outcome = %q, want %q", got, want)
 	}
 	if got, want := result.Failure, FailureDestination; got != want {
-		t.Errorf("Run() failure = %q, want %q", got, want)
+		t.Errorf("runBoth() failure = %q, want %q", got, want)
 	}
 	if got, want := result.Updated, 1; got != want {
 		t.Errorf("updated routes = %d, want %d", got, want)
@@ -85,12 +85,12 @@ func TestServiceBlocksSixthDeletionWithoutDeleting(t *testing.T) {
 	}
 	service := newService(t, state, &fakeSource{stages: []route.Stage{desired}}, &fakeEncoder{}, target, false)
 
-	result := service.Run(t.Context())
+	result := runBoth(t.Context(), service)
 	if got, want := result.Outcome, OutcomeBlocked; got != want {
-		t.Errorf("Run() outcome = %q, want %q", got, want)
+		t.Errorf("runBoth() outcome = %q, want %q", got, want)
 	}
 	if got, want := result.Failure, FailureDeletionLimit; got != want {
-		t.Errorf("Run() failure = %q, want %q", got, want)
+		t.Errorf("runBoth() failure = %q, want %q", got, want)
 	}
 	if got := len(target.deletedRouteIDs); got != 0 {
 		t.Errorf("deleted routes = %d, want 0", got)
@@ -106,12 +106,12 @@ func TestServiceAdoptsOwnedRoutesAfterStateLoss(t *testing.T) {
 	}
 	service := newService(t, state, &fakeSource{stages: []route.Stage{desired}}, &fakeEncoder{}, target, false)
 
-	result := service.Run(t.Context())
+	result := runBoth(t.Context(), service)
 	if got, want := result.Outcome, OutcomeSucceeded; got != want {
-		t.Errorf("Run() outcome = %q, want %q", got, want)
+		t.Errorf("runBoth() outcome = %q, want %q", got, want)
 	}
 	if result.Created != 0 || result.Updated != 0 || result.Deleted != 0 {
-		t.Errorf("Run() mutation counts = %+v, want all zero", result)
+		t.Errorf("runBoth() mutation counts = %+v, want all zero", result)
 	}
 	key := keyFor(&desired)
 	for _, targetID := range []string{"a", "b"} {
@@ -134,9 +134,9 @@ func TestServiceRecreatesMissingOwnedRoutesWithoutDeletingManualRoutes(t *testin
 	}
 	service := newService(t, state, &fakeSource{stages: []route.Stage{desired}}, &fakeEncoder{}, target, false)
 
-	result := service.Run(t.Context())
+	result := runBoth(t.Context(), service)
 	if got, want := result.Outcome, OutcomeSucceeded; got != want {
-		t.Errorf("Run() outcome = %q, want %q", got, want)
+		t.Errorf("runBoth() outcome = %q, want %q", got, want)
 	}
 	if got, want := result.Created, 2; got != want {
 		t.Errorf("created routes = %d, want %d", got, want)
@@ -158,12 +158,12 @@ func TestServiceMarksOnlyRejectedTargetForReauthorization(t *testing.T) {
 	target.rejectRefreshToken["a"] = true
 	service := newService(t, state, &fakeSource{stages: []route.Stage{desired}}, &fakeEncoder{}, target, false)
 
-	result := service.Run(t.Context())
+	result := runBoth(t.Context(), service)
 	if got, want := result.Outcome, OutcomeFailed; got != want {
-		t.Errorf("Run() outcome = %q, want %q", got, want)
+		t.Errorf("runBoth() outcome = %q, want %q", got, want)
 	}
 	if got, want := result.Failure, FailureAuthorization; got != want {
-		t.Errorf("Run() failure = %q, want %q", got, want)
+		t.Errorf("runBoth() failure = %q, want %q", got, want)
 	}
 	if got, want := state.authorizations["a"], "needs_reauthorization"; got != want {
 		t.Errorf("target a authorization = %q, want %q", got, want)
@@ -187,12 +187,12 @@ func TestServiceBlocksUnexpectedEmptySourceWithoutDeleting(t *testing.T) {
 	}
 	service := newService(t, state, &fakeSource{}, &fakeEncoder{}, target, false)
 
-	result := service.Run(t.Context())
+	result := runBoth(t.Context(), service)
 	if got, want := result.Outcome, OutcomeBlocked; got != want {
-		t.Errorf("Run() outcome = %q, want %q", got, want)
+		t.Errorf("runBoth() outcome = %q, want %q", got, want)
 	}
 	if got, want := result.Failure, FailureEmptySource; got != want {
-		t.Errorf("Run() failure = %q, want %q", got, want)
+		t.Errorf("runBoth() failure = %q, want %q", got, want)
 	}
 	if got := len(target.deletedRouteIDs); got != 0 {
 		t.Errorf("deleted routes = %d, want 0", got)
@@ -217,12 +217,79 @@ func TestServiceDeletesUpToFiveOwnedRoutesPerTarget(t *testing.T) {
 	}
 	service := newService(t, state, &fakeSource{stages: []route.Stage{desired}}, &fakeEncoder{}, target, false)
 
-	result := service.Run(t.Context())
+	result := runBoth(t.Context(), service)
 	if got, want := result.Outcome, OutcomeSucceeded; got != want {
-		t.Errorf("Run() outcome = %q, want %q", got, want)
+		t.Errorf("runBoth() outcome = %q, want %q", got, want)
 	}
 	if got, want := result.Deleted, 10; got != want {
 		t.Errorf("deleted routes = %d, want %d", got, want)
+	}
+}
+
+// The two halves are independent: a library refresh must keep working while a
+// target waits to be reauthorised, because the refresh touches no target.
+func TestServiceReadsTheSourceWhileATargetNeedsReauthorization(t *testing.T) {
+	desired := testStage(t, 1, 1, "current", "current-hash")
+	state := newFakeState("a", "b")
+	state.authorizations["b"] = "needs_reauthorization"
+	target := newFakeTarget()
+	service := newService(t, state, &fakeSource{stages: []route.Stage{desired}}, &fakeEncoder{}, target, false)
+
+	source := service.RunSource(t.Context())
+	if got, want := source.Outcome, OutcomeSucceeded; got != want {
+		t.Errorf("RunSource() outcome = %q, want %q", got, want)
+	}
+	if got, want := len(state.trusted), 1; got != want {
+		t.Errorf("stored stages = %d, want %d", got, want)
+	}
+	if got, want := service.RunTargets(t.Context()).Outcome, OutcomeNotReady; got != want {
+		t.Errorf("RunTargets() outcome = %q, want %q", got, want)
+	}
+	if got := len(target.routes); got != 0 {
+		t.Errorf("target routes = %d, want none", got)
+	}
+}
+
+// Writing to the targets works from the inventory the last read stored, so a
+// target that was unreachable catches up without asking the source again.
+func TestServiceReconcilesStoredInventoryWithoutReadingTheSource(t *testing.T) {
+	desired := testStage(t, 1, 1, "current", "current-hash")
+	state := newFakeState("a", "b")
+	source := &fakeSource{err: errors.New("source unavailable")}
+	service := newService(t, state, source, &fakeEncoder{}, newFakeTarget(), false)
+	state.trusted = []route.Stage{desired}
+
+	result := service.RunTargets(t.Context())
+	if got, want := result.Outcome, OutcomeSucceeded; got != want {
+		t.Errorf("RunTargets() outcome = %q, want %q", got, want)
+	}
+	if got, want := result.Created, 2; got != want {
+		t.Errorf("RunTargets() created = %d, want %d", got, want)
+	}
+	if source.calls != 0 {
+		t.Errorf("source inventory calls = %d, want 0", source.calls)
+	}
+}
+
+// A library that cannot be read back whole is indistinguishable from one whose
+// missing stages are meant to be deleted, so it stops the phase instead.
+func TestServiceDoesNotReconcileAnUnreadableStoredInventory(t *testing.T) {
+	stale := testStage(t, 2, 1, "old", "old-hash")
+	state := newFakeState("a", "b")
+	seedMapping(state, "a", &stale, 101)
+	state.trustedErr = errors.New("state unavailable")
+	target := newFakeTarget()
+	service := newService(t, state, &fakeSource{}, &fakeEncoder{}, target, false)
+
+	result := service.RunTargets(t.Context())
+	if got, want := result.Outcome, OutcomeFailed; got != want {
+		t.Errorf("RunTargets() outcome = %q, want %q", got, want)
+	}
+	if got, want := result.Failure, FailureState; got != want {
+		t.Errorf("RunTargets() failure = %q, want %q", got, want)
+	}
+	if got := len(target.deletedRouteIDs); got != 0 {
+		t.Errorf("deleted routes = %d, want 0", got)
 	}
 }
 
@@ -230,8 +297,8 @@ func TestServiceSkipsOverlappingRun(t *testing.T) {
 	service := newService(t, newFakeState("a", "b"), &fakeSource{}, &fakeEncoder{}, newFakeTarget(), false)
 	service.running.Store(true)
 
-	if got, want := service.Run(t.Context()).Outcome, OutcomeSkipped; got != want {
-		t.Errorf("Run() outcome = %q, want %q", got, want)
+	if got, want := runBoth(t.Context(), service).Outcome, OutcomeSkipped; got != want {
+		t.Errorf("runBoth() outcome = %q, want %q", got, want)
 	}
 }
 
@@ -244,12 +311,12 @@ func TestServiceSupportsOneTarget(t *testing.T) {
 		t.Fatalf("New() error = %v", err)
 	}
 
-	result := service.Run(t.Context())
+	result := runBoth(t.Context(), service)
 	if got, want := result.Outcome, OutcomeSucceeded; got != want {
-		t.Errorf("Run() outcome = %q, want %q", got, want)
+		t.Errorf("runBoth() outcome = %q, want %q", got, want)
 	}
 	if got, want := result.Created, 1; got != want {
-		t.Errorf("Run() created = %d, want %d", got, want)
+		t.Errorf("runBoth() created = %d, want %d", got, want)
 	}
 }
 
@@ -268,12 +335,12 @@ func TestServiceUpdatesLegacyEncoderOutput(t *testing.T) {
 		t.Fatalf("New() error = %v", err)
 	}
 
-	result := service.Run(t.Context())
+	result := runBoth(t.Context(), service)
 	if got, want := result.Outcome, OutcomeSucceeded; got != want {
-		t.Errorf("Run() outcome = %q, want %q", got, want)
+		t.Errorf("runBoth() outcome = %q, want %q", got, want)
 	}
 	if got, want := result.Updated, 1; got != want {
-		t.Errorf("Run() updated = %d, want %d", got, want)
+		t.Errorf("runBoth() updated = %d, want %d", got, want)
 	}
 	if got, want := state.mappings["a"][keyFor(&desired)].contentHash, encodedContentHash(&desired); got != want {
 		t.Errorf("stored content hash = %q, want %q", got, want)
@@ -290,9 +357,9 @@ func TestServiceAnnotatesTheStoredInventoryAfterReconciling(t *testing.T) {
 	annotator.observe = func() { annotator.createdOnEntry = len(target.routes[accessFor("a")]) }
 	service := newAnnotatedService(t, state, &fakeSource{stages: []route.Stage{desired}}, target, annotator)
 
-	result := service.Run(t.Context())
+	result := runBoth(t.Context(), service)
 	if got, want := result.Outcome, OutcomeSucceeded; got != want {
-		t.Fatalf("Run() outcome = %q, want %q", got, want)
+		t.Fatalf("runBoth() outcome = %q, want %q", got, want)
 	}
 	if got, want := annotator.calls, 1; got != want {
 		t.Fatalf("annotate calls = %d, want %d", got, want)
@@ -321,12 +388,12 @@ func TestServiceSucceedsWhenAnnotationFails(t *testing.T) {
 	annotator := &fakeAnnotator{err: errors.New("endpoint unavailable")}
 	service := newAnnotatedService(t, state, &fakeSource{stages: []route.Stage{desired}}, target, annotator)
 
-	result := service.Run(t.Context())
+	result := runBoth(t.Context(), service)
 	if got, want := result.Outcome, OutcomeSucceeded; got != want {
-		t.Errorf("Run() outcome = %q, want %q", got, want)
+		t.Errorf("runBoth() outcome = %q, want %q", got, want)
 	}
 	if got, want := result.Failure, FailureNone; got != want {
-		t.Errorf("Run() failure = %q, want %q", got, want)
+		t.Errorf("runBoth() failure = %q, want %q", got, want)
 	}
 	if got, want := result.Created, 1; got != want {
 		t.Errorf("created routes = %d, want %d", got, want)
@@ -343,9 +410,9 @@ func TestServiceSkipsAnnotationWhenNothingWasStored(t *testing.T) {
 	annotator := &fakeAnnotator{}
 	service := newAnnotatedService(t, state, &fakeSource{}, target, annotator)
 
-	result := service.Run(t.Context())
+	result := runBoth(t.Context(), service)
 	if got, want := result.Outcome, OutcomeBlocked; got != want {
-		t.Fatalf("Run() outcome = %q, want %q", got, want)
+		t.Fatalf("runBoth() outcome = %q, want %q", got, want)
 	}
 	if got := annotator.calls; got != 0 {
 		t.Errorf("annotate calls = %d, want 0", got)
@@ -452,9 +519,11 @@ func newService(t *testing.T, state *fakeState, source *fakeSource, encoder *fak
 type fakeSource struct {
 	err    error
 	stages []route.Stage
+	calls  int
 }
 
 func (s *fakeSource) Inventory(_ context.Context) ([]route.Stage, error) {
+	s.calls++
 	if s.err != nil {
 		return nil, s.err
 	}
@@ -482,6 +551,7 @@ func (e *fakeEncoder) Encode(_ context.Context, _ route.Stage) ([]byte, error) {
 }
 
 type fakeState struct {
+	trustedErr          error
 	authorizations      map[string]string
 	refreshTokens       map[string]string
 	mappings            map[string]map[stageKey]targetStage
@@ -502,6 +572,21 @@ func newFakeState(targetIDs ...string) *fakeState {
 	}
 
 	return state
+}
+
+// runBoth performs a whole synchronization the way a scheduled tick does: read
+// the source, then write to the targets. The source count travels into the
+// merged result because it describes the library both phases worked from.
+func runBoth(ctx context.Context, service *Service) Result {
+	source := service.RunSource(ctx)
+	if source.Outcome != OutcomeSucceeded {
+		return source
+	}
+	targets := service.RunTargets(ctx)
+	targets.SourceStages = source.SourceStages
+	service.AnnotateStored(ctx)
+
+	return targets
 }
 
 func (s *fakeState) TargetAuthorization(_ context.Context, targetID string) (string, error) {
@@ -533,6 +618,14 @@ func (s *fakeState) StoreTrustedInventory(_ context.Context, stages []route.Stag
 	s.trusted = append([]route.Stage(nil), stages...)
 
 	return nil
+}
+
+func (s *fakeState) TrustedInventory(_ context.Context) ([]route.Stage, error) {
+	if s.trustedErr != nil {
+		return nil, s.trustedErr
+	}
+
+	return append([]route.Stage(nil), s.trusted...), nil
 }
 
 func (s *fakeState) ForEachTargetStage(

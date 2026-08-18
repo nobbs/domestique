@@ -13,9 +13,10 @@ const failureNotificationSuppression = 6 * time.Hour
 
 // RunState records terminal run data and failure-notification delivery state.
 type RunState interface {
-	RecordSyncRun(ctx context.Context, startedAt, finishedAt time.Time, outcome, detail string, sourceStages, created, updated, deleted int) error
+	RecordSyncRun(ctx context.Context, phase string, startedAt, finishedAt time.Time, outcome, detail string, sourceStages, created, updated, deleted int) error
 	LastFailureNotification(ctx context.Context, category string) (sentAt time.Time, found bool, err error)
 	RecordFailureNotification(ctx context.Context, category string, sentAt time.Time) error
+	SyncSchedule(ctx context.Context) (source, targets bool, err error)
 }
 
 // Notifier delivers already-safe notification text.
@@ -35,9 +36,14 @@ type Reporter struct {
 }
 
 // Runner is the application service seam consumed by the reporter and
-// scheduler.
+// scheduler. Each half of a synchronization is its own call, because each is
+// separately switched and separately triggered.
 type Runner interface {
-	Run(ctx context.Context) Result
+	RunSource(ctx context.Context) Result
+	RunTargets(ctx context.Context) Result
+	// AnnotateStored enriches the stored inventory. It reports nothing because
+	// nothing it does may change a run's outcome.
+	AnnotateStored(ctx context.Context)
 }
 
 // NewReporter creates a reporting runner with explicit dependencies.
@@ -49,29 +55,84 @@ func NewReporter(runner Runner, state RunState, notifier Notifier) (*Reporter, e
 	return &Reporter{runner: runner, state: state, notifier: notifier, now: time.Now}, nil
 }
 
-// Run records a terminal run and sends the configured safe notifications.
-// Notification or state-delivery failures never rewrite the sync outcome.
+// Run performs the scheduled synchronization: whichever phases the operator has
+// left switched on, in order, each recorded and reported on its own.
+//
+// A schedule that cannot be read runs nothing. The alternative is contacting a
+// provider the operator may have switched off, and the difference between "off"
+// and "unreadable" is not one a timer should guess at. The unreadable schedule
+// is recorded as a failed source run so it reaches the same notification path as
+// any other state failure rather than passing as a quiet tick.
 func (r *Reporter) Run(ctx context.Context) Result {
 	if !r.running.CompareAndSwap(false, true) {
 		return Result{Outcome: OutcomeSkipped}
 	}
 	defer r.running.Store(false)
 
-	return r.run(ctx)
+	source, targets, err := r.state.SyncSchedule(ctx)
+	if err != nil {
+		return r.record(ctx, r.now().UTC(), &Result{
+			Phase: PhaseSource, Outcome: OutcomeFailed, Failure: FailureState,
+		})
+	}
+
+	return r.runPhases(ctx, source, targets)
 }
 
-// Trigger starts a manual synchronization in the background. It returns false
-// when a scheduled or another manual synchronization is already running.
+// Trigger starts a manual synchronization of both phases in the background. It
+// returns false when a scheduled or another manual synchronization is already
+// running.
+//
+// A manual trigger runs the phase whether or not the timer is allowed to: the
+// switches govern what happens unattended, and an operator asking for a run now
+// has already decided.
 func (r *Reporter) Trigger(ctx context.Context) bool {
+	return r.trigger(ctx, true, true)
+}
+
+// TriggerPhase starts one manual phase in the background, on the same terms as
+// Trigger.
+func (r *Reporter) TriggerPhase(ctx context.Context, phase Phase) bool {
+	return r.trigger(ctx, phase == PhaseSource, phase == PhaseTargets)
+}
+
+func (r *Reporter) trigger(ctx context.Context, source, targets bool) bool {
+	if !source && !targets {
+		return false
+	}
 	if !r.running.CompareAndSwap(false, true) {
 		return false
 	}
 	r.triggered.Go(func() {
 		defer r.running.Store(false)
-		_ = r.run(ctx)
+		_ = r.runPhases(ctx, source, targets)
 	})
 
 	return true
+}
+
+// runPhases runs the requested phases in order and returns the last result.
+//
+// Reading the source before writing to the targets is what makes one tick carry
+// a change all the way through; the order also means a failed read leaves the
+// targets reconciling the last inventory known to be whole rather than nothing.
+func (r *Reporter) runPhases(ctx context.Context, source, targets bool) Result {
+	result := Result{Outcome: OutcomeSkipped}
+	sourceStored := false
+	if source {
+		result = r.run(ctx, r.runner.RunSource)
+		sourceStored = result.Outcome == OutcomeSucceeded
+	}
+	if targets {
+		result = r.run(ctx, r.runner.RunTargets)
+	}
+	// Enrichment comes after everything a rider is waiting for, and only when
+	// this pass stored something new to enrich.
+	if sourceStored {
+		r.runner.AnnotateStored(ctx)
+	}
+
+	return result
 }
 
 // Wait waits for any manual synchronization accepted by Trigger to finish.
@@ -79,15 +140,23 @@ func (r *Reporter) Wait() {
 	r.triggered.Wait()
 }
 
-func (r *Reporter) run(ctx context.Context) Result {
+func (r *Reporter) run(ctx context.Context, phase func(context.Context) Result) Result {
 	startedAt := r.now().UTC()
-	result := r.runner.Run(ctx)
+	result := phase(ctx)
 	if result.Outcome == OutcomeSkipped {
 		return result
 	}
+
+	return r.record(ctx, startedAt, &result)
+}
+
+// record writes the run down and notifies on its outcome. Notification or
+// state-delivery failures never rewrite the outcome they describe.
+func (r *Reporter) record(ctx context.Context, startedAt time.Time, result *Result) Result {
 	finishedAt := r.now().UTC()
 	if err := r.state.RecordSyncRun(
 		ctx,
+		string(result.Phase),
 		startedAt,
 		finishedAt,
 		string(result.Outcome),
@@ -97,40 +166,56 @@ func (r *Reporter) run(ctx context.Context) Result {
 		result.Updated,
 		result.Deleted,
 	); err != nil {
-		return result
+		return *result
 	}
 
 	switch result.Outcome {
 	case OutcomeSucceeded:
 		if err := r.notifier.Send(ctx, "Domestique sync", successMessage(result)); err != nil {
-			return result
+			return *result
 		}
 	case OutcomeFailed, OutcomeBlocked:
 		r.notifyFailure(ctx, result, finishedAt)
 	}
 
-	return result
+	return *result
 }
 
-func (r *Reporter) notifyFailure(ctx context.Context, result Result, now time.Time) {
+// notifyFailure delivers one failure notification per phase and category, no
+// more often than the suppression interval.
+//
+// The phase is part of the key. A library that has been failing to load all
+// morning must not be the reason a target stops reporting that it can no longer
+// be written to: they are separate problems with separate remedies, and each is
+// worth one alert.
+func (r *Reporter) notifyFailure(ctx context.Context, result *Result, now time.Time) {
 	if result.Failure == FailureNone {
 		return
 	}
-	lastSentAt, found, err := r.state.LastFailureNotification(ctx, string(result.Failure))
+	category := string(result.Phase) + ":" + string(result.Failure)
+	lastSentAt, found, err := r.state.LastFailureNotification(ctx, category)
 	if err != nil || (found && now.Sub(lastSentAt) < failureNotificationSuppression) {
 		return
 	}
-	if err := r.notifier.Send(ctx, "Domestique sync failed", failureMessage(result.Failure)); err != nil {
+	if err := r.notifier.Send(ctx, "Domestique sync failed", failureMessage(result)); err != nil {
 		return
 	}
-	if err := r.state.RecordFailureNotification(ctx, string(result.Failure), now); err != nil {
+	if err := r.state.RecordFailureNotification(ctx, category, now); err != nil {
 		return
 	}
 }
 
-func successMessage(result Result) string {
+// successMessage reports the counts the finished phase actually produced. A
+// source run that listed forty stages and a target run that changed none are
+// different events, and a message padded with the other phase's zeroes reads as
+// though work was skipped.
+func successMessage(result *Result) string {
+	if result.Phase == PhaseSource {
+		return fmt.Sprintf("source succeeded: source_stages=%d", result.SourceStages)
+	}
+
 	return fmt.Sprintf(
-		"succeeded: source_stages=%d created=%d updated=%d deleted=%d",
+		"targets succeeded: source_stages=%d created=%d updated=%d deleted=%d",
 		result.SourceStages,
 		result.Created,
 		result.Updated,
@@ -138,6 +223,6 @@ func successMessage(result Result) string {
 	)
 }
 
-func failureMessage(category FailureCategory) string {
-	return "failed: " + string(category)
+func failureMessage(result *Result) string {
+	return string(result.Phase) + " failed: " + string(result.Failure)
 }
