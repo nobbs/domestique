@@ -151,9 +151,15 @@ name, and that is the line least worth having two copies of.
 Two prerequisites are one-time dashboard work, not Terraform:
 
 - **Zero Trust enabled**, with a team domain. Terraform can create an
-  application inside an organization but cannot create the organization. One-time
-  PIN is available by default, so no separate identity provider is required for
-  a single operator.
+  application inside an organization but cannot create the organization.
+  Organizations created since June 2026 get the **Cloudflare identity provider**
+  as their default login method: the operator authenticates with their
+  Cloudflare account credentials, and login is restricted to members of that
+  account. One-time PIN is no longer added automatically. Either way, the
+  address the identity provider asserts has to be the one in
+  `var.domestique.allowed_emails` *and* in `access.cloudflare.allowed_email`; if
+  the Cloudflare account's login address differs from the operator's, nothing
+  matches and nobody gets in.
 - **Both Cloudflare API tokens widened.** They were zone-scoped; the tunnel and
   the Access resources are account-scoped, and the redirect rule needs
   `Single Redirect`. The exact permissions are in that stack's README.
