@@ -108,6 +108,9 @@ exposed to the browser and the requests carry no account identity. The tile
 style URL is static configuration so the origin can be changed, or pointed at a
 self-hosted tile source, without a code change. A Content-Security-Policy
 restricts the browser to the service's own origin plus that single tile origin.
+A second style may be configured for a dark system colour scheme, and must be on
+that same origin, so following the operator's colour scheme reveals nothing to
+anyone new.
 
 Surface classification introduces a second, larger exception, and it is the
 **service** that makes it: to learn whether a stage runs on asphalt, paving,

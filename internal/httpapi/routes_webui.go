@@ -3,10 +3,17 @@ package httpapi
 import "net/http"
 
 // webUIConfig hands the page its runtime settings so the built assets stay
-// static and fully cacheable. It exposes no secret: the tile style URL is
+// static and fully cacheable. It exposes no secret: the tile style URLs are
 // operator-chosen configuration that the browser must know to render a map.
+//
+// Both styles are sent rather than the service picking one, because the colour
+// scheme is a property of the browser the operator is sitting at and this
+// response is cached across every page in the session.
 func (h *Handler) webUIConfig(writer http.ResponseWriter, _ *http.Request, _ string) {
-	h.writeJSON(writer, http.StatusOK, webUIConfigView{TileStyleURL: h.tileStyleURL})
+	h.writeJSON(writer, http.StatusOK, webUIConfigView{
+		TileStyleURL:     h.tileStyleURL,
+		TileStyleURLDark: h.tileStyleURLDark,
+	})
 }
 
 // index serves the application entry document for every UI route, so a deep

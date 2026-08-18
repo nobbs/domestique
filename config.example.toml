@@ -65,6 +65,13 @@ user_key_file = "/run/secrets/pushover_user_key"
 # visible to anyone who can load the UI. Self-hosted tiles avoid both concerns.
 tile_style_url = "https://tiles.openfreemap.org/styles/bright"
 
+# The style loaded instead when your system asks for a dark colour scheme, which
+# is how the map follows the rest of the UI after dark. It must be on the same
+# host as the style above: the page is confined to one tile origin, and that is
+# also the only origin a route's viewport is revealed to. Leave it empty for a
+# provider that publishes one style, and the map keeps that style in both schemes.
+tile_style_url_dark = "https://tiles.openfreemap.org/styles/dark"
+
 [surface]
 # The Overpass endpoint the service asks which OpenStreetMap ways lie along a
 # stage, so it can tell asphalt from paving, gravel, or a forest track. The

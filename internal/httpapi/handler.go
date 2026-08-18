@@ -115,6 +115,10 @@ type Options struct {
 
 	TileStyleURL string
 
+	// TileStyleURLDark is the style the page loads instead under a dark system
+	// colour scheme. It is optional, and must be on TileStyleURL's origin.
+	TileStyleURLDark string
+
 	// AccessEmail is the one address an Access assertion may name, and the
 	// principal every authenticated request resolves to.
 	AccessEmail string
@@ -124,16 +128,17 @@ type Options struct {
 
 // Handler enforces Cloudflare Access identity and exposes the v1 HTTP surface.
 type Handler struct {
-	mux            *http.ServeMux
-	oauth          OAuth
-	syncTrigger    SyncTrigger
-	state          State
-	assets         Assets
-	accessVerifier AccessVerifier
-	tileStyleURL   string
-	tileOrigin     string
-	allowedEmail   string
-	targetIDs      []string
+	mux              *http.ServeMux
+	oauth            OAuth
+	syncTrigger      SyncTrigger
+	state            State
+	assets           Assets
+	accessVerifier   AccessVerifier
+	tileStyleURL     string
+	tileStyleURLDark string
+	tileOrigin       string
+	allowedEmail     string
+	targetIDs        []string
 }
 
 // New creates a handler. Health checks are intentionally unauthenticated;
@@ -169,16 +174,26 @@ func New(
 	if err != nil {
 		return nil, err
 	}
+	// The dark style is admitted by the same Content-Security-Policy source as
+	// the light one, so a style on another origin would be served to the page
+	// and then blocked by the header it was served with. Refuse it here instead.
+	if options.TileStyleURLDark != "" {
+		darkOrigin, darkErr := originOf(options.TileStyleURLDark)
+		if darkErr != nil || darkOrigin != tileOrigin {
+			return nil, errors.New("dark tile style URL must be on the tile style URL's origin")
+		}
+	}
 
 	handler := &Handler{
-		mux:          http.NewServeMux(),
-		oauth:        oauthService,
-		state:        state,
-		syncTrigger:  syncTrigger,
-		assets:       assets,
-		tileStyleURL: options.TileStyleURL,
-		tileOrigin:   tileOrigin,
-		targetIDs:    append([]string(nil), options.TargetIDs...),
+		mux:              http.NewServeMux(),
+		oauth:            oauthService,
+		state:            state,
+		syncTrigger:      syncTrigger,
+		assets:           assets,
+		tileStyleURL:     options.TileStyleURL,
+		tileStyleURLDark: options.TileStyleURLDark,
+		tileOrigin:       tileOrigin,
+		targetIDs:        append([]string(nil), options.TargetIDs...),
 
 		accessVerifier: options.AccessVerifier,
 		allowedEmail:   strings.TrimSpace(options.AccessEmail),
@@ -276,7 +291,8 @@ func (h *Handler) gated(next gatedFunc) http.Handler {
 }
 
 // contentSecurityPolicy confines the page to this service's own origin plus the
-// single configured tile origin.
+// single configured tile origin. Both basemap styles share that origin, so a
+// page that follows the system colour scheme still reaches exactly one.
 //
 // Three allowances are deliberate, and each was confirmed against a real
 // MapLibre render rather than assumed:

@@ -15,6 +15,7 @@ import { ElevationProfile } from "../../components/ElevationProfile";
 import { Layout } from "../../components/Layout";
 import { ErrorMessage, LoadingMessage, StatusMessage } from "../../components/StatusMessage";
 import { SurfaceBar } from "../../components/SurfaceBar";
+import { basemapStyleUrl, usePrefersDarkScheme } from "../../lib/basemap";
 import { formatAscent, formatDistance, formatGradient } from "../../lib/format";
 import type { DistanceWindow, Profile } from "../../lib/profile";
 import { buildProfile, buildWindowedProfile } from "../../lib/profile";
@@ -43,6 +44,7 @@ export function StageDetail() {
   const enabled = routeId !== undefined && stageOrder !== undefined;
 
   const config = useQuery(webUIConfigQuery());
+  const dark = usePrefersDarkScheme();
   const geometry = useQuery({
     ...stageGeometryQuery(routeId ?? 0, stageOrder ?? 0),
     enabled,
@@ -102,7 +104,7 @@ export function StageDetail() {
       coordinates={coordinates}
       bbox={bbox}
       surface={surface}
-      styleUrl={config.data.tileStyleUrl}
+      styleUrl={basemapStyleUrl(config.data, dark)}
       back={back}
     />
   );

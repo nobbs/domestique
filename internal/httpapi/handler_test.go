@@ -13,7 +13,10 @@ import (
 	"github.com/nobbs/domestique/internal/route"
 )
 
-const testTileStyleURL = "https://tiles.example.test/styles/liberty"
+const (
+	testTileStyleURL     = "https://tiles.example.test/styles/liberty"
+	testTileStyleURLDark = "https://tiles.example.test/styles/liberty-dark"
+)
 
 func TestHandlerGatesStateAndKeepsHealthLocal(t *testing.T) {
 	handler := newTestHandler(t)
@@ -273,8 +276,36 @@ func TestHandlerServesTileStyleConfiguration(t *testing.T) {
 	if got, want := response.Code, http.StatusOK; got != want {
 		t.Fatalf("config status = %d, want %d", got, want)
 	}
-	if got := response.Body.String(); !strings.Contains(got, testTileStyleURL) {
-		t.Errorf("config body = %q, want the configured style URL", got)
+	body := response.Body.String()
+	// Both styles, because the page picks between them: the colour scheme is a
+	// property of the browser, and this response is cached for the session.
+	for _, want := range []string{testTileStyleURL, testTileStyleURLDark} {
+		if !strings.Contains(body, want) {
+			t.Errorf("config body = %q, want it to contain %q", body, want)
+		}
+	}
+}
+
+func TestHandlerOmitsAnUnconfiguredDarkTileStyle(t *testing.T) {
+	handler, err := New(
+		&Options{
+			TargetIDs:      []string{"rider-a"},
+			TileStyleURL:   testTileStyleURL,
+			AccessVerifier: &recordingVerifier{email: testAccessEmail},
+			AccessEmail:    testAccessEmail,
+		},
+		&fakeOAuth{}, &fakeState{}, &fakeSyncTrigger{}, &fakeAssets{},
+	)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/webui/config"))
+	// Absent rather than empty: that is how the page knows to keep one style in
+	// both colour schemes.
+	if got := response.Body.String(); strings.Contains(got, "tile_style_url_dark") {
+		t.Errorf("config body = %q, want no dark style key", got)
 	}
 }
 
@@ -295,6 +326,11 @@ func TestHandlerSetsPolicyAndCacheHeaders(t *testing.T) {
 		if !strings.Contains(policy, want) {
 			t.Errorf("CSP = %q, want it to contain %q", policy, want)
 		}
+	}
+	// Exactly one third-party origin, named once for img-src and once for
+	// connect-src. Two configured basemap styles must not become two origins.
+	if got, want := strings.Count(policy, "https://"), 2; got != want {
+		t.Errorf("CSP names %d external origins, want %d: %q", got, want, policy)
 	}
 	if got, want := api.Header().Get("Cache-Control"), cacheAPI; got != want {
 		t.Errorf("API Cache-Control = %q, want %q", got, want)
@@ -610,6 +646,20 @@ func TestNewRejectsIncompleteOptions(t *testing.T) {
 			AccessVerifier: &recordingVerifier{email: testAccessEmail},
 			AccessEmail:    testAccessEmail,
 		}},
+		{name: "dark tile style on another origin", options: &Options{
+			TargetIDs:        []string{"rider-a"},
+			TileStyleURL:     testTileStyleURL,
+			TileStyleURLDark: "https://dark.example.test/styles/dark",
+			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
+			AccessEmail:      testAccessEmail,
+		}},
+		{name: "plaintext dark tile style", options: &Options{
+			TargetIDs:        []string{"rider-a"},
+			TileStyleURL:     testTileStyleURL,
+			TileStyleURLDark: "http://tiles.example.test/styles/dark",
+			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
+			AccessEmail:      testAccessEmail,
+		}},
 	}
 
 	for _, test := range tests {
@@ -651,10 +701,11 @@ func newHandlerWithTrigger(t *testing.T, oauthService OAuth, state State, syncTr
 	t.Helper()
 	handler, err := New(
 		&Options{
-			TargetIDs:      []string{"rider-a"},
-			TileStyleURL:   testTileStyleURL,
-			AccessVerifier: &recordingVerifier{email: testAccessEmail},
-			AccessEmail:    testAccessEmail,
+			TargetIDs:        []string{"rider-a"},
+			TileStyleURL:     testTileStyleURL,
+			TileStyleURLDark: testTileStyleURLDark,
+			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
+			AccessEmail:      testAccessEmail,
 		},
 		oauthService, state, syncTrigger, &fakeAssets{},
 	)

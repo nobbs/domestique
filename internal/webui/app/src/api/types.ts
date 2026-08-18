@@ -144,6 +144,8 @@ export interface Status {
 
 export interface WebUIConfig {
   tileStyleUrl: string;
+  /** Loaded in place of tileStyleUrl under a dark system colour scheme. */
+  tileStyleUrlDark?: string | undefined;
 }
 
 /** A stage's stable identity, used for routing and list keys. */

@@ -98,6 +98,10 @@ type statusView struct {
 type webUIConfigView struct {
 	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
 	TileStyleURL string `json:"tile_style_url"`
+	// Omitted when unconfigured, which is how the page knows to keep the one
+	// style in both colour schemes.
+	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
+	TileStyleURLDark string `json:"tile_style_url_dark,omitempty"`
 }
 
 // geometryView is a GeoJSON Feature carrying one stage's stored geometry. The
