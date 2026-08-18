@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { Position } from "../api/types";
-import { buildProfile, nearestSample, niceStep, ticksFor } from "./profile";
+import {
+  buildProfile,
+  buildWindowedProfile,
+  coordinateRange,
+  nearestSample,
+  niceStep,
+  sampleAt,
+  ticksFor,
+} from "./profile";
 
 /** Points spaced by latitude, so distance grows predictably along the route. */
 function route(elevations: Array<number | undefined>, latitudeStep = 0.001): Position[] {
@@ -11,7 +19,37 @@ function route(elevations: Array<number | undefined>, latitudeStep = 0.001): Pos
   );
 }
 
+/** One point every 0.001° of latitude is one point every 111.19 metres. */
+const POINT_SPACING_METRES = 111.19;
+
+/**
+ * Twenty points of flat ground, then twenty at a steady ten percent.
+ *
+ * The climb begins about 2113 m in, which is what makes it possible to ask what
+ * a window opening partway up it reports for its own first sample.
+ */
+function flatThenSteep(): Position[] {
+  const points: Position[] = [];
+  for (let index = 0; index < 20; index++) {
+    points.push([8, 49 + index * 0.001, 100]);
+  }
+  for (let index = 1; index <= 20; index++) {
+    points.push([8, 49 + (19 + index) * 0.001, 100 + index * (POINT_SPACING_METRES / 10)]);
+  }
+
+  return points;
+}
+
+const CLIMB_STARTS_METRES = 19 * POINT_SPACING_METRES;
+
 describe("buildProfile", () => {
+  it("describes the whole route as the stretch it covers", () => {
+    const profile = buildProfile(route([100, 200, 300]), 5);
+
+    expect(profile?.startMetres).toBe(0);
+    expect(profile?.endMetres).toBeCloseTo(profile?.totalDistanceMetres ?? 0, 6);
+  });
+
   it("samples evenly by distance and spans the whole route", () => {
     const profile = buildProfile(route([100, 200, 300]), 5);
 
@@ -74,6 +112,167 @@ describe("buildProfile", () => {
     for (const sampleCount of [-1, 0, 1]) {
       expect(buildProfile(route([100, 200, 300]), sampleCount)).toBeNull();
     }
+  });
+});
+
+describe("buildWindowedProfile", () => {
+  it("spends the whole sample budget on the stretch asked for", () => {
+    const profile = buildWindowedProfile(
+      route([100, 200, 300]),
+      {
+        startMetres: 100,
+        endMetres: 200,
+      },
+      40,
+    );
+
+    expect(profile?.samples).toHaveLength(40);
+    expect(profile?.startMetres).toBe(100);
+    expect(profile?.endMetres).toBe(200);
+  });
+
+  // The whole link between map and chart rests on this: a distance means the
+  // same ground in both, whatever either happens to be showing.
+  it("measures distances from the start of the route, not of the window", () => {
+    const profile = buildWindowedProfile(
+      route([100, 200, 300]),
+      {
+        startMetres: 100,
+        endMetres: 200,
+      },
+      40,
+    );
+
+    expect(profile?.samples[0]?.distanceMetres).toBeCloseTo(100, 6);
+    expect(profile?.samples.at(-1)?.distanceMetres).toBeCloseTo(200, 6);
+    expect(profile?.totalDistanceMetres).toBeCloseTo(2 * POINT_SPACING_METRES, 1);
+  });
+
+  it("fits the elevation range to the ground on show", () => {
+    const profile = buildWindowedProfile(
+      route([100, 200, 300]),
+      {
+        startMetres: 100,
+        endMetres: 200,
+      },
+      40,
+    );
+
+    // The window opens most of the way up the first leg and closes most of the
+    // way up the second, so neither end of the route's own range is in it.
+    expect(profile?.minElevationMetres ?? 0).toBeGreaterThan(150);
+    expect(profile?.maxElevationMetres ?? 0).toBeLessThan(300);
+  });
+
+  // Without a run-up the look-back has nothing behind it to measure against, and
+  // the steepest pitch on a route would open as flat ground.
+  it("measures gradient across the leading edge of the stretch", () => {
+    const profile = buildWindowedProfile(flatThenSteep(), {
+      startMetres: CLIMB_STARTS_METRES + 150,
+      endMetres: CLIMB_STARTS_METRES + 650,
+    });
+
+    expect(profile?.samples[0]?.gradientPercent ?? 0).toBeCloseTo(10, 0);
+  });
+
+  it("leaves a stretch at the very start the shortfall the whole route has", () => {
+    const profile = buildWindowedProfile(flatThenSteep(), { startMetres: 0, endMetres: 500 });
+
+    // There is no ground before the first metre to measure a gradient against,
+    // and inventing one would be worse than reporting none.
+    expect(profile?.samples[0]?.gradientPercent).toBe(0);
+    expect(profile?.startMetres).toBe(0);
+  });
+
+  it("clamps a window a drag pushed past either end of the route", () => {
+    const coordinates = route([100, 200, 300]);
+    const total = buildProfile(coordinates)?.totalDistanceMetres ?? 0;
+    const profile = buildWindowedProfile(coordinates, {
+      startMetres: -500,
+      endMetres: total + 500,
+    });
+
+    expect(profile?.startMetres).toBe(0);
+    expect(profile?.endMetres).toBeCloseTo(total, 6);
+  });
+
+  it("refuses a window of no length rather than dividing by it", () => {
+    const coordinates = route([100, 200, 300]);
+
+    expect(buildWindowedProfile(coordinates, { startMetres: 100, endMetres: 100 })).toBeNull();
+    expect(buildWindowedProfile(coordinates, { startMetres: 200, endMetres: 100 })).toBeNull();
+  });
+});
+
+describe("sampleAt", () => {
+  it("interpolates between the samples a distance falls between", () => {
+    const profile = buildProfile(route([100, 200]), 3);
+    if (!profile) {
+      throw new Error("expected a profile");
+    }
+    const quarter = profile.totalDistanceMetres / 4;
+
+    expect(sampleAt(profile, quarter)?.elevationMetres).toBeCloseTo(125, 0);
+    expect(sampleAt(profile, quarter)?.distanceMetres).toBeCloseTo(quarter, 6);
+  });
+
+  // A band is a class, and the average of two classes is not one of them.
+  it("takes the band of the nearer sample rather than blending two", () => {
+    const profile = buildWindowedProfile(flatThenSteep(), {
+      startMetres: CLIMB_STARTS_METRES - 200,
+      endMetres: CLIMB_STARTS_METRES + 400,
+    });
+    if (!profile) {
+      throw new Error("expected a profile");
+    }
+    const bands = new Set(profile.samples.map((sample) => sample.band));
+
+    for (const sample of profile.samples) {
+      const found = sampleAt(profile, sample.distanceMetres);
+      expect(bands).toContain(found?.band);
+    }
+  });
+
+  // A chart showing two kilometres cannot mark a position five kilometres away,
+  // and drawing a cursor at the nearest edge would claim that it can.
+  it("reports nothing for a position outside the stretch it describes", () => {
+    const profile = buildWindowedProfile(route([100, 200, 300]), {
+      startMetres: 100,
+      endMetres: 200,
+    });
+    if (!profile) {
+      throw new Error("expected a profile");
+    }
+
+    expect(sampleAt(profile, 50)).toBeNull();
+    expect(sampleAt(profile, 220)).toBeNull();
+    // A hair past the edge is float error, not a position elsewhere.
+    expect(sampleAt(profile, 200.2)).not.toBeNull();
+  });
+});
+
+describe("coordinateRange", () => {
+  // What is drawn from the range has to cover every metre the stretch asked for
+  // rather than stopping just inside it.
+  it("rounds outwards to the points either side of the stretch", () => {
+    const coordinates = route([100, 200, 300, 400, 500]);
+
+    const range = coordinateRange(coordinates, 150, 250);
+
+    // Point 1 sits at 111 m and point 3 at 334 m, so the pair straddles both ends.
+    expect(range).toEqual({ startIndex: 1, endIndex: 3 });
+  });
+
+  it("covers the whole route for a stretch that is the whole route", () => {
+    const coordinates = route([100, 200, 300, 400, 500]);
+    const total = buildProfile(coordinates)?.totalDistanceMetres ?? 0;
+
+    expect(coordinateRange(coordinates, 0, total)).toEqual({ startIndex: 0, endIndex: 4 });
+  });
+
+  it("refuses a stretch of no length or geometry too short to have one", () => {
+    expect(coordinateRange(route([100, 200, 300]), 100, 100)).toBeNull();
+    expect(coordinateRange([[8, 49, 100]], 0, 100)).toBeNull();
   });
 });
 

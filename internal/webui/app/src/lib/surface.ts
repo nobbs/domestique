@@ -7,14 +7,15 @@
  * readout all take from one place so they cannot disagree.
  *
  * Lengths are measured here rather than taken from the API because a share needs
- * metres per class, and the API reports one total. The spherical model is shared
- * with the elevation profile, so the figures agree with the distance shown beside
- * them.
+ * metres per class, and the API reports one total. They are measured with the
+ * elevation profile's own ruler, so the figures agree with the distance shown
+ * beside them and the strip sits under the climb it describes.
  */
 
 import type { Position, SurfaceKind, SurfaceRange } from "../api/types";
 import { SURFACE_KINDS } from "../api/types";
-import { haversineMetres } from "./profile";
+import type { CoordinateRange } from "./profile";
+import { cumulativeMetres } from "./profile";
 
 interface SurfaceStyle {
   label: string;
@@ -137,21 +138,6 @@ function clampRange(range: SurfaceRange, lastIndex: number): { start: number; en
   return { start, end: Math.min(Math.max(range.endIndex, start), lastIndex) };
 }
 
-/** Distance from the start of the stage to each point. */
-function cumulativeMetres(coordinates: Position[]): number[] {
-  const distances = [0];
-  for (let index = 1; index < coordinates.length; index++) {
-    const previous = coordinates[index - 1];
-    const current = coordinates[index];
-    const travelled = distances[index - 1] ?? 0;
-    distances.push(
-      previous && current ? travelled + haversineMetres(previous, current) : travelled,
-    );
-  }
-
-  return distances;
-}
-
 /**
  * Places the classification along the stage and totals it by class.
  *
@@ -218,46 +204,150 @@ export function surfaceKindAt(summary: SurfaceSummary, metres: number): SurfaceK
   return (band ?? summary.bands[summary.bands.length - 1])?.kind ?? null;
 }
 
+/**
+ * The classification as it falls inside one stretch of the stage, with the
+ * bands at the edges cut to it.
+ *
+ * A zoomed chart draws its strip from this rather than from the whole stage. A
+ * band that begins before the window and ends inside it has to start at the
+ * window's edge: drawn from its true start it would run off the left of the
+ * plot, and every class boundary after it would land in the wrong place.
+ */
+export function surfaceBandsWithin(
+  summary: SurfaceSummary,
+  startMetres: number,
+  endMetres: number,
+): SurfaceBand[] {
+  if (endMetres <= startMetres) {
+    return [];
+  }
+
+  return summary.bands.flatMap((band) => {
+    const start = Math.max(band.startMetres, startMetres);
+    const end = Math.min(band.endMetres, endMetres);
+
+    return end > start ? [{ kind: band.kind, startMetres: start, endMetres: end }] : [];
+  });
+}
+
 /** The drawable geometry of one class, as separate stretches of the route. */
 export interface SurfaceLines {
   kind: SurfaceKind;
   lines: Position[][];
 }
 
+/** One class's stretches, split by whether the chart is showing them. */
+export interface SurfaceSlices {
+  kind: SurfaceKind;
+  inside: Position[][];
+  outside: Position[][];
+}
+
 /**
- * Splits the route into one set of lines per class, ready to paint.
+ * Cuts one stretch of the route into the part a window is showing and the parts
+ * it is not.
+ *
+ * Neighbouring pieces share one point and no segment: a gap would break the
+ * drawn route, and an overlap would paint one metre of it twice at two
+ * different opacities. A piece of fewer than two points spans no ground and is
+ * dropped, exactly as a range covering a single final point always was.
+ */
+function splitAtWindow(
+  coordinates: Position[],
+  start: number,
+  end: number,
+  window: CoordinateRange | null,
+): { inside: Position[][]; outside: Position[][] } {
+  const piece = (from: number, to: number) => {
+    const line = coordinates.slice(from, to + 1);
+
+    return line.length < 2 ? [] : [line];
+  };
+  if (!window) {
+    return { inside: piece(start, end), outside: [] };
+  }
+
+  return {
+    inside: piece(Math.max(start, window.startIndex), Math.min(end, window.endIndex)),
+    outside: [
+      ...piece(start, Math.min(end, window.startIndex)),
+      ...piece(Math.max(start, window.endIndex), end),
+    ],
+  };
+}
+
+/**
+ * Splits the route into one set of lines per class, separating what falls
+ * inside a stretch from what falls outside it.
  *
  * Each stretch runs one point past its range so neighbouring stretches meet on
  * the shared point, leaving neither a gap in the drawn route nor an overlap that
- * would paint one class over another. A range covering a single final point
- * spans no ground and is dropped: there is no line to draw through one point.
+ * would paint one class over another.
+ *
+ * The map dims the route outside the stretch the chart is showing, and
+ * `line-opacity` belongs to a layer rather than to a segment — so the two sides
+ * have to arrive as different features of the same source, tagged, for one paint
+ * expression to tell them apart. Splitting the ranges before they become lines
+ * rather than cutting the lines afterwards keeps the clamping and the shared
+ * boundary point exactly as they already were.
  */
-export function surfaceLines(coordinates: Position[], ranges: SurfaceRange[]): SurfaceLines[] {
-  const linesByKind = new Map<SurfaceKind, Position[][]>();
+export function surfaceLinesWithin(
+  coordinates: Position[],
+  ranges: SurfaceRange[],
+  window: CoordinateRange | null,
+): SurfaceSlices[] {
+  const slicesByKind = new Map<SurfaceKind, { inside: Position[][]; outside: Position[][] }>();
   const lastIndex = coordinates.length - 1;
   if (lastIndex < 1) {
     return [];
   }
   for (const range of ranges) {
     const { start, end } = clampRange(range, lastIndex);
-    const line = coordinates.slice(start, end + 2);
-    if (line.length < 2) {
+    // One point past the range, because the final point of a range is the first
+    // point of the stretch it hands over. The last range has nothing past it.
+    const split = splitAtWindow(coordinates, start, Math.min(end + 1, lastIndex), window);
+    if (split.inside.length === 0 && split.outside.length === 0) {
       continue;
     }
-    const existing = linesByKind.get(range.kind);
+    const existing = slicesByKind.get(range.kind);
     if (existing) {
-      existing.push(line);
+      existing.inside.push(...split.inside);
+      existing.outside.push(...split.outside);
 
       continue;
     }
-    linesByKind.set(range.kind, [line]);
+    slicesByKind.set(range.kind, split);
   }
 
   return SURFACE_KINDS.flatMap((kind) => {
-    const lines = linesByKind.get(kind);
+    const slices = slicesByKind.get(kind);
 
-    return lines ? [{ kind, lines }] : [];
+    return slices ? [{ kind, ...slices }] : [];
   });
+}
+
+/**
+ * The route itself split the same way, for the casing under the classes and for
+ * a stage nobody has classified yet.
+ */
+export function routeLinesWithin(
+  coordinates: Position[],
+  window: CoordinateRange | null,
+): { inside: Position[][]; outside: Position[][] } {
+  const lastIndex = coordinates.length - 1;
+  if (lastIndex < 1) {
+    return { inside: [], outside: [] };
+  }
+
+  return splitAtWindow(coordinates, 0, lastIndex, window);
+}
+
+/** Splits the route into one set of lines per class, ready to paint. */
+export function surfaceLines(coordinates: Position[], ranges: SurfaceRange[]): SurfaceLines[] {
+  return surfaceLinesWithin(coordinates, ranges, null).map(({ kind, inside }) => ({
+    kind,
+    lines: inside,
+  }));
 }
 
 /**

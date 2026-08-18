@@ -7,13 +7,17 @@
  * the outline, which is what makes a steep kilometre read as a block of terrain
  * at a glance. The ramp is deliberately muted so a chart of solid columns still
  * sits quietly under the map.
+ *
+ * A drag across the plot picks a stretch of the route and the chart redraws it
+ * across the full width. On a ninety kilometre stage a single climb is a few
+ * millimetres of ink, and the question a rider actually has is about one climb.
  */
 
-import { useCallback, useMemo } from "react";
-import type { Profile, ProfileSample } from "../lib/profile";
-import { GRADIENT_BANDS, ticksFor } from "../lib/profile";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { DistanceWindow, Profile, ProfileSample } from "../lib/profile";
+import { GRADIENT_BANDS, niceStep, sampleAt, ticksFor } from "../lib/profile";
 import type { SurfaceSummary } from "../lib/surface";
-import { SURFACE_STYLES, surfaceKindAt } from "../lib/surface";
+import { SURFACE_STYLES, surfaceBandsWithin, surfaceKindAt } from "../lib/surface";
 import { useElementWidth } from "../lib/useElementWidth";
 
 /**
@@ -44,7 +48,29 @@ const MIN_WIDTH = 240;
 const SURFACE_STRIP_HEIGHT = 7;
 const SURFACE_STRIP_GAP = 4;
 
+/**
+ * How far the pointer must travel before a scrub becomes a selection.
+ *
+ * A hand resting on a trackpad moves a pixel or two and a finger never lands
+ * still; treating that as a range would zoom the chart every time somebody
+ * looked at it. Eight pixels is past the tremble and well under the shortest
+ * swipe anybody makes on purpose.
+ */
+const MIN_DRAG_PIXELS = 8;
+
+/**
+ * The shortest stretch a drag may settle on.
+ *
+ * Gradient is measured over a hundred metres, so a window much shorter than a
+ * couple of those is one measurement drawn three hundred times. A selection
+ * under it is grown about its middle rather than refused: the reader asked to
+ * look closer at somewhere, and the answer to "closer than the data goes" is
+ * the closest the data goes, not nothing.
+ */
+const MIN_WINDOW_METRES = 200;
+
 export interface ElevationProfileProps {
+  /** Already restricted to the stretch on show, when there is a zoom. */
   profile: Profile | null;
   title: string;
   /**
@@ -57,11 +83,25 @@ export interface ElevationProfileProps {
    * distance axis. Reading upwards from any point on the strip lands on the
    * climb that is made of that surface, which is the question the two answer
    * together and neither answers alone.
+   *
+   * This is the whole stage's classification, not the window's: the readout asks
+   * it about an absolute distance. Only the strip clips.
    */
   surface?: SurfaceSummary | null;
-  /** The position shared with the map, as an index into the profile samples. */
-  activeIndex: number | null;
-  onActiveChange: (index: number | null) => void;
+  /** The position shared with the map, in metres from the start of the route. */
+  activeMetres: number | null;
+  onActiveChange: (metres: number | null) => void;
+  /**
+   * The stretch on show, or null for the whole route.
+   *
+   * The chart does not own this. It is the same stretch the map dims around,
+   * and a window kept in here would be thrown away every time the overview was
+   * collapsed — which is the moment somebody wants the map to itself and the
+   * highlight to stay.
+   */
+  zoomWindow?: DistanceWindow | null;
+  /** Absent leaves the chart scrubbing by pointer and keyboard, and no zoom. */
+  onZoomChange?: ((window: DistanceWindow | null) => void) | undefined;
 }
 
 interface Run {
@@ -151,17 +191,69 @@ function runsOf(
   return runs;
 }
 
+/**
+ * A distance in kilometres, with just enough decimals to tell it from its
+ * neighbour. Whole kilometres are right for a whole route and useless for a
+ * four hundred metre window, where every label would read the same number.
+ */
+function kilometreLabel(metres: number, stepKilometres: number): string {
+  const decimals = Math.min(Math.max(Math.ceil(-Math.log10(stepKilometres)), 0), 3);
+
+  return (metres / 1000).toFixed(decimals);
+}
+
+/**
+ * A selection too short to plot is grown about its middle rather than refused,
+ * and slid back inside the route rather than truncated — a window that ran off
+ * the start would otherwise arrive shorter than the minimum it was grown to.
+ */
+function widened(window: DistanceWindow, totalMetres: number): DistanceWindow {
+  const span = window.endMetres - window.startMetres;
+  if (span >= MIN_WINDOW_METRES) {
+    return window;
+  }
+  const wanted = Math.min(MIN_WINDOW_METRES, totalMetres);
+  const middle = (window.startMetres + window.endMetres) / 2;
+  const start = Math.min(Math.max(middle - wanted / 2, 0), Math.max(totalMetres - wanted, 0));
+
+  return { startMetres: start, endMetres: start + wanted };
+}
+
+/**
+ * Claims the pointer for a drag, where that is possible.
+ *
+ * A browser refuses the call for a pointer that has already gone up, and jsdom
+ * implements no capture at all. Neither is worth failing a drag over: without
+ * capture the drag simply ends when the pointer leaves the chart, which is the
+ * behaviour there was before it.
+ */
+function capturePointer(element: Element, pointerId: number) {
+  try {
+    element.setPointerCapture(pointerId);
+  } catch {
+    // Nothing to do. The gesture works without it, less forgivingly.
+  }
+}
+
 export function ElevationProfile({
   profile,
   title,
   surface = null,
-  activeIndex,
+  activeMetres,
   onActiveChange,
+  zoomWindow = null,
+  onZoomChange,
 }: ElevationProfileProps) {
   const { ref, width } = useElementWidth<HTMLDivElement>();
 
   const plotWidth = Math.max(width, MIN_WIDTH) - PADDING.left - PADDING.right;
   const plotHeight = HEIGHT - PADDING.top - PADDING.bottom;
+  // The plot and the strip beneath it, which the cursor, the scrub region and
+  // the veil all treat as one lane because they describe one position.
+  const laneHeight = surface ? plotHeight + SURFACE_STRIP_GAP + SURFACE_STRIP_HEIGHT : plotHeight;
+
+  const drag = useRef<{ pointerId: number; originX: number; anchorMetres: number } | null>(null);
+  const [selection, setSelection] = useState<DistanceWindow | null>(null);
 
   const geometry = useMemo(() => {
     if (!profile || plotWidth <= 0) {
@@ -170,8 +262,11 @@ export function ElevationProfile({
     // A flat route still needs a band to draw in, so give it one.
     const span = Math.max(profile.maxElevationMetres - profile.minElevationMetres, 10);
     const low = profile.minElevationMetres;
+    // A window of no length cannot happen, but dividing by one would put every
+    // mark on the chart at the same place rather than say so.
+    const shown = Math.max(profile.endMetres - profile.startMetres, 1);
 
-    const x = (metres: number) => (metres / profile.totalDistanceMetres) * plotWidth;
+    const x = (metres: number) => ((metres - profile.startMetres) / shown) * plotWidth;
     const y = (metres: number) => plotHeight - ((metres - low) / span) * plotHeight;
 
     const ridge = profile.samples
@@ -187,21 +282,98 @@ export function ElevationProfile({
       ridge,
       runs: runsOf(profile.samples, x, y, plotHeight),
       elevationTicks: ticksFor(low, low + span, 3),
-      distanceTicks: ticksFor(0, profile.totalDistanceMetres / 1000, 5),
+      distanceTicks: ticksFor(profile.startMetres / 1000, profile.endMetres / 1000, 5),
+      distanceStep: niceStep(shown / 1000, 5),
+      surfaceBands: surface
+        ? surfaceBandsWithin(surface, profile.startMetres, profile.endMetres)
+        : [],
     };
-  }, [profile, plotWidth, plotHeight]);
+  }, [profile, surface, plotWidth, plotHeight]);
+
+  /**
+   * Where along the route the pointer is, in metres.
+   *
+   * Null for a box of no width, which is what an element reports before it is
+   * laid out: there is no position to read off it, and dividing by it would
+   * report NaN as a place on the route.
+   */
+  const metresAt = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>): number | null => {
+      const bounds = event.currentTarget.getBoundingClientRect();
+      if (!profile || bounds.width <= 0) {
+        return null;
+      }
+      const ratio = (event.clientX - bounds.left) / bounds.width;
+      const metres = profile.startMetres + ratio * (profile.endMetres - profile.startMetres);
+
+      return Math.min(Math.max(metres, profile.startMetres), profile.endMetres);
+    },
+    [profile],
+  );
+
+  const endDrag = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    drag.current = null;
+    setSelection(null);
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  }, []);
+
+  const onPointerDown = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      // A right-click opens a menu; it must not leave a range half-drawn behind
+      // it. A second finger is not a second selection either.
+      if (!onZoomChange || !event.isPrimary || event.button !== 0) {
+        return;
+      }
+      const metres = metresAt(event);
+      if (metres === null) {
+        return;
+      }
+      drag.current = { pointerId: event.pointerId, originX: event.clientX, anchorMetres: metres };
+      setSelection(null);
+      capturePointer(event.currentTarget, event.pointerId);
+      // Report the anchor, so the readout is already showing the value under
+      // the finger that is about to drag away from it.
+      onActiveChange(metres);
+    },
+    [metresAt, onActiveChange, onZoomChange],
+  );
 
   const onPointerMove = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
-      if (!profile) {
+      const metres = metresAt(event);
+      if (metres === null) {
         return;
       }
-      const bounds = event.currentTarget.getBoundingClientRect();
-      const ratio = (event.clientX - bounds.left) / bounds.width;
-      const index = Math.round(ratio * (profile.samples.length - 1));
-      onActiveChange(Math.min(Math.max(index, 0), profile.samples.length - 1));
+      onActiveChange(metres);
+
+      const started = drag.current;
+      if (!started || started.pointerId !== event.pointerId) {
+        return;
+      }
+      if (Math.abs(event.clientX - started.originX) < MIN_DRAG_PIXELS) {
+        return;
+      }
+      setSelection({
+        startMetres: Math.min(started.anchorMetres, metres),
+        endMetres: Math.max(started.anchorMetres, metres),
+      });
     },
-    [profile, onActiveChange],
+    [metresAt, onActiveChange],
+  );
+
+  const onPointerUp = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      const started = drag.current;
+      const chosen = selection;
+      endDrag(event);
+      if (!started || started.pointerId !== event.pointerId || !chosen || !profile) {
+        return;
+      }
+      onZoomChange?.(widened(chosen, profile.totalDistanceMetres));
+    },
+    [endDrag, onZoomChange, profile, selection],
   );
 
   const onKeyDown = useCallback(
@@ -209,16 +381,41 @@ export function ElevationProfile({
       if (!profile) {
         return;
       }
-      const step = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
-      if (step === 0) {
+      const direction = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
+      if (direction === 0) {
         return;
       }
       event.preventDefault();
-      const next = (activeIndex ?? 0) + step * 4;
-      onActiveChange(Math.min(Math.max(next, 0), profile.samples.length - 1));
+      const step =
+        ((profile.endMetres - profile.startMetres) / Math.max(profile.samples.length - 1, 1)) * 4;
+      const next = (activeMetres ?? profile.startMetres) + direction * step;
+      onActiveChange(Math.min(Math.max(next, profile.startMetres), profile.endMetres));
     },
-    [profile, activeIndex, onActiveChange],
+    [profile, activeMetres, onActiveChange],
   );
+
+  /**
+   * Escape returns to the whole route.
+   *
+   * A listener on the document rather than a key handler on the scrub, because
+   * the gesture that zooms is a drag with a pointer and leaves focus wherever
+   * the drag began. The way out of a view has to work from wherever the reader
+   * is. It is registered only while zoomed, so it swallows nothing the rest of
+   * the time.
+   */
+  useEffect(() => {
+    if (!zoomWindow || !onZoomChange) {
+      return;
+    }
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !event.defaultPrevented) {
+        onZoomChange(null);
+      }
+    };
+    document.addEventListener("keydown", onEscape);
+
+    return () => document.removeEventListener("keydown", onEscape);
+  }, [zoomWindow, onZoomChange]);
 
   if (!profile || !geometry) {
     return (
@@ -228,17 +425,22 @@ export function ElevationProfile({
     );
   }
 
-  const active = activeIndex === null ? null : profile.samples[activeIndex];
+  const zoomed = zoomWindow !== null && onZoomChange !== undefined;
+  const active = activeMetres === null ? null : sampleAt(profile, activeMetres);
   const activeKind = active && surface ? surfaceKindAt(surface, active.distanceMetres) : null;
   const activeSurface = activeKind ? SURFACE_STYLES[activeKind].label : null;
+  const shownLabel =
+    `${kilometreLabel(profile.startMetres, geometry.distanceStep)}–` +
+    `${kilometreLabel(profile.endMetres, geometry.distanceStep)} km`;
   const summary =
-    `Elevation profile of ${title}: ` +
-    `${(profile.totalDistanceMetres / 1000).toFixed(1)} kilometres, ` +
+    `Elevation profile of ${title}` +
+    (zoomed ? `, ${shownLabel}` : "") +
+    `: ${((profile.endMetres - profile.startMetres) / 1000).toFixed(1)} kilometres, ` +
     `between ${Math.round(profile.minElevationMetres)} and ` +
     `${Math.round(profile.maxElevationMetres)} metres above sea level.`;
 
   return (
-    <div className="elevation-profile" ref={ref}>
+    <div className="elevation-profile" ref={ref} data-zoomed={zoomed ? "true" : undefined}>
       <svg
         width="100%"
         height={HEIGHT}
@@ -320,33 +522,29 @@ export function ElevationProfile({
            * strip's own width, so the same stretch reads the same way in both
            * places.
            */}
-          {surface
-            ? surface.bands.map((band) => {
-                const style = SURFACE_STYLES[band.kind];
-                const start = geometry.x(band.startMetres);
-                const end = geometry.x(band.endMetres);
+          {geometry.surfaceBands.map((band) => {
+            const style = SURFACE_STYLES[band.kind];
 
-                return (
-                  <line
-                    key={`${band.kind}-${band.startMetres}`}
-                    className="elevation-profile__surface"
-                    x1={start}
-                    x2={end}
-                    y1={plotHeight + SURFACE_STRIP_GAP + SURFACE_STRIP_HEIGHT / 2}
-                    y2={plotHeight + SURFACE_STRIP_GAP + SURFACE_STRIP_HEIGHT / 2}
-                    stroke={style.colour}
-                    strokeWidth={SURFACE_STRIP_HEIGHT}
-                    {...(style.dashes.length > 0
-                      ? {
-                          strokeDasharray: style.dashes
-                            .map((dash) => dash * SURFACE_STRIP_HEIGHT)
-                            .join(" "),
-                        }
-                      : {})}
-                  />
-                );
-              })
-            : null}
+            return (
+              <line
+                key={`${band.kind}-${band.startMetres}`}
+                className="elevation-profile__surface"
+                x1={geometry.x(band.startMetres)}
+                x2={geometry.x(band.endMetres)}
+                y1={plotHeight + SURFACE_STRIP_GAP + SURFACE_STRIP_HEIGHT / 2}
+                y2={plotHeight + SURFACE_STRIP_GAP + SURFACE_STRIP_HEIGHT / 2}
+                stroke={style.colour}
+                strokeWidth={SURFACE_STRIP_HEIGHT}
+                {...(style.dashes.length > 0
+                  ? {
+                      strokeDasharray: style.dashes
+                        .map((dash) => dash * SURFACE_STRIP_HEIGHT)
+                        .join(" "),
+                    }
+                  : {})}
+              />
+            );
+          })}
 
           {geometry.distanceTicks.map((kilometres) => (
             <text
@@ -356,9 +554,45 @@ export function ElevationProfile({
               y={plotHeight + SURFACE_STRIP_GAP + SURFACE_STRIP_HEIGHT + 15}
               textAnchor="middle"
             >
-              {kilometres}
+              {kilometreLabel(kilometres * 1000, geometry.distanceStep)}
             </text>
           ))}
+
+          {/*
+           * The stretch being chosen, with what is being left behind veiled
+           * rather than hidden — the ride does not stop at the edges of the
+           * window, and while the reader is still choosing, the chart should not
+           * pretend it does. It is the same treatment the map gives the route
+           * outside the window, so the two views say one thing one way.
+           */}
+          {selection ? (
+            <g className="elevation-profile__selection">
+              <rect
+                className="elevation-profile__veil"
+                x={0}
+                y={0}
+                width={Math.max(geometry.x(selection.startMetres), 0)}
+                height={laneHeight}
+              />
+              <rect
+                className="elevation-profile__veil"
+                x={geometry.x(selection.endMetres)}
+                y={0}
+                width={Math.max(plotWidth - geometry.x(selection.endMetres), 0)}
+                height={laneHeight}
+              />
+              {[selection.startMetres, selection.endMetres].map((metres) => (
+                <line
+                  key={metres}
+                  className="elevation-profile__selection-edge"
+                  x1={geometry.x(metres)}
+                  x2={geometry.x(metres)}
+                  y1={0}
+                  y2={laneHeight}
+                />
+              ))}
+            </g>
+          ) : null}
 
           {active ? (
             <g className="elevation-profile__cursor">
@@ -371,7 +605,7 @@ export function ElevationProfile({
                 x1={geometry.x(active.distanceMetres)}
                 x2={geometry.x(active.distanceMetres)}
                 y1={0}
-                y2={surface ? plotHeight + SURFACE_STRIP_GAP + SURFACE_STRIP_HEIGHT : plotHeight}
+                y2={laneHeight}
               />
               <circle
                 cx={geometry.x(active.distanceMetres)}
@@ -388,10 +622,13 @@ export function ElevationProfile({
        * The scrubbing surface is a slider rather than a decorated graphic: it
        * genuinely picks a position along the route, so that role gives keyboard
        * users arrow-key stepping and screen readers the value at each step,
-       * which a non-interactive <svg> cannot carry.
+       * which a non-interactive <svg> cannot carry. The drag that zooms is a
+       * pointer shortcut layered over it, not a second control — the way back is
+       * the button in the footer, which is the half a keyboard can reach.
        */}
       <div
         className="elevation-profile__scrub"
+        data-dragging={selection ? "true" : undefined}
         style={{
           left: PADDING.left,
           top: PADDING.top,
@@ -400,14 +637,20 @@ export function ElevationProfile({
           // crosses both lanes because they describe one position, so a pointer
           // that wandered onto the strip must not fall off the instrument and
           // blank the readout it came to check.
-          height: surface ? plotHeight + SURFACE_STRIP_GAP + SURFACE_STRIP_HEIGHT : plotHeight,
+          height: laneHeight,
         }}
         role="slider"
         tabIndex={0}
-        aria-label={`Position along ${title}`}
-        aria-valuemin={0}
-        aria-valuemax={Number((profile.totalDistanceMetres / 1000).toFixed(1))}
-        aria-valuenow={active ? Number((active.distanceMetres / 1000).toFixed(1)) : 0}
+        aria-label={
+          zoomed ? `Position along ${title}, ${shownLabel} shown` : `Position along ${title}`
+        }
+        aria-valuemin={Number((profile.startMetres / 1000).toFixed(1))}
+        aria-valuemax={Number((profile.endMetres / 1000).toFixed(1))}
+        // Falls back to the start of the stretch on show, not to zero: zoomed
+        // into the far end of a route, zero is outside the range this slider
+        // declares, and a value outside its own bounds is nothing assistive
+        // technology can place.
+        aria-valuenow={Number(((active?.distanceMetres ?? profile.startMetres) / 1000).toFixed(1))}
         aria-valuetext={
           active
             ? `${Math.round(active.elevationMetres)} metres at ${(active.distanceMetres / 1000).toFixed(1)} kilometres, ${active.gradientPercent.toFixed(1)} percent` +
@@ -415,27 +658,65 @@ export function ElevationProfile({
             : "No position selected"
         }
         onKeyDown={onKeyDown}
+        onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
-        onPointerLeave={() => onActiveChange(null)}
+        onPointerUp={onPointerUp}
+        onPointerCancel={endDrag}
+        onLostPointerCapture={endDrag}
+        /*
+         * With pointer capture this fires only once the pointer is released, so
+         * a drag follows the hand off the chart and back. Without it — a browser
+         * that refused the claim — the chart stops hearing about the pointer at
+         * its own edge, and a drag that leaves has to end here: the pointerup it
+         * is waiting for will be delivered somewhere else, and the band would
+         * stay painted over a gesture nobody is making any more.
+         */
+        onPointerLeave={(event) => {
+          const started = drag.current;
+          if (started && event.currentTarget.hasPointerCapture?.(started.pointerId)) {
+            return;
+          }
+          endDrag(event);
+          onActiveChange(null);
+        }}
         onBlur={() => onActiveChange(null)}
       />
 
       <div className="elevation-profile__footer">
-        <p className="elevation-profile__readout" aria-live="polite">
-          {active ? (
-            <>
-              <strong>{Math.round(active.elevationMetres)} m</strong>
-              <span> at {(active.distanceMetres / 1000).toFixed(1)} km</span>
-              <span> · {active.gradientPercent.toFixed(1)}%</span>
-              {activeSurface ? <span> · {activeSurface}</span> : null}
-            </>
-          ) : (
-            <span>
-              {Math.round(profile.minElevationMetres)}–{Math.round(profile.maxElevationMetres)} m
-              above sea level
-            </span>
-          )}
-        </p>
+        <div className="elevation-profile__status">
+          {/*
+           * Only while zoomed. A permanently present, permanently disabled way
+           * back is a control that spends most of its life lying about what it
+           * does. The span sits inside the button, so the name says what is
+           * being left as well as where it goes.
+           */}
+          {zoomed && onZoomChange ? (
+            <button
+              type="button"
+              className="elevation-profile__reset"
+              aria-keyshortcuts="Escape"
+              onClick={() => onZoomChange(null)}
+            >
+              Whole route
+              <span className="elevation-profile__reset-span"> · showing {shownLabel}</span>
+            </button>
+          ) : null}
+          <p className="elevation-profile__readout" aria-live="polite">
+            {active ? (
+              <>
+                <strong>{Math.round(active.elevationMetres)} m</strong>
+                <span> at {(active.distanceMetres / 1000).toFixed(1)} km</span>
+                <span> · {active.gradientPercent.toFixed(1)}%</span>
+                {activeSurface ? <span> · {activeSurface}</span> : null}
+              </>
+            ) : (
+              <span>
+                {Math.round(profile.minElevationMetres)}–{Math.round(profile.maxElevationMetres)} m
+                above sea level
+              </span>
+            )}
+          </p>
+        </div>
 
         <ul className="elevation-profile__scale">
           {GRADIENT_BANDS.map((band, index) => (
