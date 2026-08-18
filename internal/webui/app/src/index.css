@@ -785,8 +785,12 @@ body {
  * double tap over the page offers to select and copy what is under it, one that
  * ran on into the surrounding page was the visible half of the gesture being
  * read as something else entirely.
+ *
+ * It is also the frame the exploration control is placed against, in the one
+ * corner MapLibre's own controls leave free.
  */
 .route-map {
+  position: relative;
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;

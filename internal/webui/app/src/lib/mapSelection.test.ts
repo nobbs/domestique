@@ -394,8 +394,8 @@ describe("a finger, between the route and the page", () => {
     expect(gesture.touch([100, 200]).defaultPrevented).toBe(false);
   });
 
-  // Two fingers are an exploration of the map, and cooperative gestures are
-  // already the answer to what they mean.
+  // Two fingers are a gesture for the map rather than a stretch of route, and
+  // which of them gets it is `mapExploration`'s question, not this module's.
   it("leaves a second finger alone", () => {
     const gesture = selecting();
 

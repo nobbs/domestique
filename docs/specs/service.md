@@ -48,12 +48,19 @@ what is emphasised, never what is stored.
 A stretch of the ride is asked for the same way on either instrument: a drag
 across the elevation chart, or a drag along the painted route, selects the
 distance range it covers, and both views then show that stretch until the whole
-route is asked for again. A drag that begins away from the route still moves the
-map, and moving the map selects nothing; on a touch screen the same division
-holds against the page itself, so a finger that begins on the route draws along
-it and a finger that begins anywhere else still scrolls the page. The elevation
-chart remains the control that works by keyboard. Like the class selection, this
-changes what is shown, never what is stored.
+route is asked for again. A drag that begins away from the route moves the map
+instead, and moving the map selects nothing. Selecting a stretch by keyboard
+remains the elevation chart's. Like the class selection, this changes what is
+shown, never what is stored.
+
+The map is read as part of the page until it is asked to be a map. The wheel,
+the arrow keys, and a finger that begins away from the painted route belong to
+the page and scroll it, and nothing is printed over the cartography in answer to
+them. A visible control on the map hands it those gestures; that control pressed
+again, or Escape, hands them back. While the map holds them it zooms to an
+unmodified wheel, pans and zooms to the fingers, and answers the arrow keys. A
+drag along the painted route picks a stretch in either state, because that
+gesture is a question about the ride rather than about the view.
 
 The UI carries one outbound link, to this service's public source repository. It
 is the only navigation that leaves the authenticated origin, it opens in a new
