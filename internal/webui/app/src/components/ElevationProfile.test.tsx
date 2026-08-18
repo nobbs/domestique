@@ -166,6 +166,23 @@ describe("ElevationProfile", () => {
     );
   });
 
+  // The two lanes are one instrument: a pointer moving onto the strip must not
+  // leave the scrub region and blank the readout it came to read.
+  it("keeps the strip inside the region the pointer can scrub", () => {
+    const coordinates = climb();
+    const surface = summariseSurface(coordinates, [
+      { kind: "gravel", startIndex: 0, endIndex: coordinates.length - 1 },
+    ]);
+    const withSurface = render(<Harness surface={surface} />);
+    const scrubbed = withSurface.getByRole("slider").style.height;
+    withSurface.unmount();
+
+    const withoutSurface = render(<Harness />);
+    const plotOnly = withoutSurface.getByRole("slider").style.height;
+
+    expect(Number.parseFloat(scrubbed)).toBeGreaterThan(Number.parseFloat(plotOnly));
+  });
+
   it("draws no strip on a stage nothing has classified", () => {
     const { container } = render(<Harness />);
 

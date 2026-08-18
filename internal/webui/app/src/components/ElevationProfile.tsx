@@ -392,7 +392,16 @@ export function ElevationProfile({
        */}
       <div
         className="elevation-profile__scrub"
-        style={{ left: PADDING.left, top: PADDING.top, width: plotWidth, height: plotHeight }}
+        style={{
+          left: PADDING.left,
+          top: PADDING.top,
+          width: plotWidth,
+          // Down to the foot of the surface strip when there is one. The cursor
+          // crosses both lanes because they describe one position, so a pointer
+          // that wandered onto the strip must not fall off the instrument and
+          // blank the readout it came to check.
+          height: surface ? plotHeight + SURFACE_STRIP_GAP + SURFACE_STRIP_HEIGHT : plotHeight,
+        }}
         role="slider"
         tabIndex={0}
         aria-label={`Position along ${title}`}
