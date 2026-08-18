@@ -20,7 +20,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import type { DataDrivenPropertyValueSpecification } from "maplibre-gl";
 import type { BoundingBox, Position, SurfaceRange } from "../api/types";
 import type { DistanceWindow, Profile } from "../lib/profile";
-import { coordinateRange, nearestSample, sampleAt } from "../lib/profile";
+import { coordinateRange, nearestSample, rangeBounds, sampleAt } from "../lib/profile";
 import {
   routeLinesWithin,
   SURFACE_LINE_WIDTH,
@@ -98,14 +98,33 @@ function taggedCollection(slices: { inside: Position[][]; outside: Position[][] 
 }
 
 /**
- * Keeps the camera framed on the selected stage and the canvas sized to its
+ * How close the camera may come when it frames the whole stage.
+ *
+ * A short stage would otherwise open at street level, which says nothing about
+ * where the ride goes.
+ */
+const ROUTE_MAX_ZOOM = 15;
+
+/**
+ * How close it may come when it frames the stretch the chart is showing.
+ *
+ * Higher, because that framing was asked for: the shortest window the chart
+ * allows is 200 m, and holding it to the whole-stage cap would answer a request
+ * to look closer by barely moving. The cap still only bites on the very
+ * shortest selections, and it stops the map from diving past the point where
+ * the basemap has anything left to add.
+ */
+const WINDOW_MAX_ZOOM = 17;
+
+/**
+ * Keeps the camera framed on the ground on show and the canvas sized to its
  * pane.
  *
  * This is a child of the map rather than a ref on it: `useMap` is the supported
  * way to reach the instance, and it resolves once the map is actually ready,
  * whereas a ref on the map component is not populated.
  */
-function MapViewport({ bbox }: { bbox: BoundingBox }) {
+function MapViewport({ bounds, maxZoom }: { bounds: BoundingBox; maxZoom: number }) {
   const { current: map } = useMap();
 
   useEffect(() => {
@@ -128,15 +147,19 @@ function MapViewport({ bbox }: { bbox: BoundingBox }) {
       return;
     }
     // Re-frame when a different stage is selected, rather than remounting the
-    // map and re-downloading the style.
+    // map and re-downloading the style — and when the chart is zoomed into a
+    // stretch, so the map answers the same question the chart was asked. The
+    // link runs one way only: nothing on the map sets the chart's window, so
+    // panning away to look at the surrounding roads costs nothing and needs no
+    // way back.
     map.fitBounds(
       [
-        [bbox[0], bbox[1]],
-        [bbox[2], bbox[3]],
+        [bounds[0], bounds[1]],
+        [bounds[2], bounds[3]],
       ],
-      { padding: 56, duration: 600, maxZoom: 15 },
+      { padding: 56, duration: 600, maxZoom },
     );
-  }, [map, bbox]);
+  }, [map, bounds, maxZoom]);
 
   return null;
 }
@@ -226,9 +249,11 @@ export interface RouteMapProps {
    * The stretch the chart is showing, lit while the rest of the route dims.
    *
    * Named for what it is rather than `window`, which would shadow the global of
-   * that name inside this module. The camera does not follow it: re-framing on
-   * every drag would take away the one view that still says where the stretch
-   * sits in the ride, which is the whole reason the map is beside the chart.
+   * that name inside this module. The camera follows it, so the map reads at
+   * the scale the chart is being read at; the rest of the route stays drawn,
+   * dimmed, so the stretch is still seen as part of a longer ride rather than
+   * as a route of its own. The link runs this way only — the map never sets the
+   * window, which is what keeps a look around at the surrounding roads free.
    */
   zoomWindow?: DistanceWindow | null;
 }
@@ -253,6 +278,13 @@ export function RouteMap({
     [coordinates, zoomWindow],
   );
   const windowed = windowRange !== null;
+
+  // Memoised so the camera effect fires when the stretch changes rather than on
+  // every render: a fresh box each time would re-fly the map on a hover.
+  const windowBounds = useMemo(
+    () => (windowRange ? rangeBounds(coordinates, windowRange) : null),
+    [coordinates, windowRange],
+  );
 
   const routeSlices = useMemo(
     () => routeLinesWithin(coordinates, windowRange),
@@ -316,7 +348,10 @@ export function RouteMap({
         attributionControl={{ customAttribution: SURFACE_ATTRIBUTION }}
         cooperativeGestures
       >
-        <MapViewport bbox={bbox} />
+        <MapViewport
+          bounds={windowBounds ?? bbox}
+          maxZoom={windowBounds ? WINDOW_MAX_ZOOM : ROUTE_MAX_ZOOM}
+        />
         <HoverLink profile={profile} onActiveChange={onActiveChange} />
         <NavigationControl position="top-right" showCompass={false} />
         <ScaleControl position="bottom-left" unit="metric" />

@@ -16,7 +16,7 @@
  * redrawn from those would magnify the sampling rather than the terrain.
  */
 
-import type { Position } from "../api/types";
+import type { BoundingBox, Position } from "../api/types";
 
 const EARTH_RADIUS_METRES = 6_371_000;
 
@@ -395,6 +395,42 @@ export function coordinateRange(
   }
 
   return { startIndex, endIndex };
+}
+
+/**
+ * The box that contains a stretch of the coordinates.
+ *
+ * Kept here, beside the range it is built from, rather than inside the map: the
+ * map cannot be unit-tested, and framing the wrong ground is a mistake in
+ * arithmetic rather than in rendering. It is deliberately only the geometry —
+ * how much room to leave around it, and how close the camera may come, are the
+ * map's business.
+ *
+ * A stretch of one point yields a box of no area. That is honest, and
+ * `fitBounds` reads it as a place to centre on rather than as an error.
+ */
+export function rangeBounds(coordinates: Position[], range: CoordinateRange): BoundingBox | null {
+  const first = coordinates[range.startIndex];
+  if (!first) {
+    return null;
+  }
+  let west = first[0];
+  let south = first[1];
+  let east = first[0];
+  let north = first[1];
+
+  for (let index = range.startIndex + 1; index <= range.endIndex; index++) {
+    const point = coordinates[index];
+    if (!point) {
+      break;
+    }
+    west = Math.min(west, point[0]);
+    south = Math.min(south, point[1]);
+    east = Math.max(east, point[0]);
+    north = Math.max(north, point[1]);
+  }
+
+  return [west, south, east, north];
 }
 
 /**
