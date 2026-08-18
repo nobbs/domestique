@@ -81,6 +81,12 @@ added to the full gate fails the assertion until it is either added to the
 routine loop or deferred deliberately. The routine loop may therefore be
 narrower than the gate, but never different from it.
 
+The assertion also constrains the form the gate is written in, because it can
+only compare steps it can see: every step of a gate goal is its own target
+invoked through `$(MAKE)`, never a bare shell command and never a prerequisite.
+A check added in either of those shapes would pass the subset comparison while
+escaping it, so the shape is checked first.
+
 The three depths compose: the commit hook judges the staged files in about a
 second, `make quick` judges the working tree, and GitHub Actions judges the
 merge. Each is a strict subset of the one after it.

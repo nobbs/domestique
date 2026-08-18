@@ -143,6 +143,12 @@ build-check: ui-build
 # area it came from, and GitHub Actions running them is what actually gates a
 # merge. Keep them as the only decomposition of the full gate: `check` exists to
 # run the same work locally, in one command, when you want the answer earlier.
+#
+# Every step of a gate goal — the ci-* groups, `check`, and `quick` — is written
+# as its own target invoked with $(MAKE), never as a bare shell command and
+# never as a prerequisite. That is what lets `gate-check` see the steps and
+# compare the two entry points; a check written any other way would be invisible
+# to it. `gate-check` enforces the convention as well as the comparison.
 ci-lint:
 	$(MAKE) hygiene
 	$(MAKE) lint

@@ -18,6 +18,14 @@
 # running any of the underlying checks, so this costs a few milliseconds and
 # needs no network.
 #
+# That comparison can only see a step invoked as `$(MAKE) <target>`: a check
+# written as a bare shell command in a recipe, or hung off a goal as a
+# prerequisite, would be invisible to it and would slip past the two rules
+# above. So the structure the comparison depends on is asserted first — every
+# step of a gate goal must be a `$(MAKE) <target>` line, and a goal may take a
+# prerequisite only from the small allowlist below. Without that check this
+# script would assert rather less than it appears to.
+#
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -41,6 +49,62 @@ GROUP_TARGETS=(
 	ci-test
 	ci-ui
 )
+
+# The goals whose structure is constrained: the two entry points and the groups
+# they delegate to. Every step of each must be a `$(MAKE) <target>` line.
+GATE_GOALS=(
+	check
+	ci-lint
+	ci-security
+	ci-test
+	ci-ui
+	quick
+)
+
+# The only prerequisites a gate goal may carry. Both install the browser UI
+# dependency tree, which is a precondition of running the UI checks rather than
+# a check that could go unnoticed.
+ALLOWED_PREREQS=(
+	ui-ensure
+	ui-install
+)
+
+# Asserts the structure the target comparison relies on. Reads the Makefile
+# rather than `make -n`, because it is the written form that has to hold.
+check_structure() {
+	awk -v goals="${GATE_GOALS[*]}" -v allowed="${ALLOWED_PREREQS[*]}" '
+		BEGIN {
+			split(goals, g, " ")
+			for (i in g) want[g[i]] = 1
+			split(allowed, a, " ")
+			for (i in a) ok_prereq[a[i]] = 1
+		}
+		/^[a-zA-Z0-9_.-]+:/ {
+			name = $0
+			sub(/:.*/, "", name)
+			rest = $0
+			sub(/^[^:]*:/, "", rest)
+			current = (name in want) ? name : ""
+			if (current != "") {
+				n = split(rest, prereqs, " ")
+				for (i = 1; i <= n; i++)
+					if (!(prereqs[i] in ok_prereq))
+						print "prerequisite	" current "	" prereqs[i]
+			}
+			next
+		}
+		/^	/ {
+			if (current == "")
+				next
+			line = $0
+			sub(/^	/, "", line)
+			if (line !~ /^\$\(MAKE\) [a-z0-9-]+$/)
+				print "step	" current "	" line
+			next
+		}
+		{ current = "" }
+	' "${ROOT}/Makefile"
+}
 
 # Prints the sorted set of targets a goal runs, one per line. `make -n` prints a
 # recursive invocation as "<make> <target>"; the sub-make it spawns inherits -n,
@@ -68,6 +132,25 @@ if [[ -z "${quick}" || -z "${check}" ]]; then
 fi
 
 status=0
+
+# Rule zero: the structure the two comparisons below can actually see.
+violations="$(check_structure)"
+if [[ -n "${violations}" ]]; then
+	echo "check-local-gate: a gate goal has a step the subset check cannot see:" >&2
+	while IFS=$'\t' read -r kind goal detail; do
+		case "${kind}" in
+		prerequisite)
+			echo "  ${goal}: prerequisite '${detail}' is not an allowed one" >&2
+			;;
+		step)
+			echo "  ${goal}: step '${detail}' is not a \$(MAKE) <target> line" >&2
+			;;
+		esac
+	done <<<"${violations}"
+	echo "  Every gate step must be its own target, invoked as \$(MAKE) <target>," >&2
+	echo "  or the subset comparison below silently ignores it." >&2
+	status=1
+fi
 
 # Direction one: nothing is in the routine loop that the full gate skips.
 extra="$(comm -23 <(echo "${quick}") <(echo "${check}") || true)"
