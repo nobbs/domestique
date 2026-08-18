@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -62,6 +63,17 @@ const (
 	// not the ways returned — so a long stage is asked for in several queries
 	// rather than one the endpoint would labour over.
 	maximumQueryPoints = 250
+
+	// maximumQueryMetres caps how much route one around filter covers.
+	//
+	// Vertices alone are the wrong bound, because simplification removes most of
+	// them: a straight fifty kilometres survives as a couple of hundred points
+	// and would go out as one query. Measured against the public instance, a
+	// corridor that long is not answered at all — it exceeded a three-minute
+	// client timeout — while the same ground in four corridors of this size
+	// answered in seconds each. The endpoint's work follows the ground the
+	// corridor covers, so that is what has to be bounded.
+	maximumQueryMetres = 12000
 
 	// rateLimitPause is how long to wait before retrying a refused query. The
 	// Overpass documentation asks for thirty seconds when a slot is unavailable.
@@ -176,7 +188,7 @@ func (o *Overpass) Ways(ctx context.Context, points []route.Point) ([]Way, error
 
 	ways := make([]Way, 0)
 	seen := make(map[int64]bool)
-	for _, chunk := range chunkPoints(decimate(points, queryToleranceMetres), maximumQueryPoints) {
+	for _, chunk := range chunkPoints(decimate(points, queryToleranceMetres), maximumQueryPoints, maximumQueryMetres) {
 		body, err := o.post(ctx, buildQuery(chunk))
 		if err != nil {
 			return nil, err
@@ -371,24 +383,75 @@ func decodeWays(body []byte) ([]Way, error) {
 	return ways, nil
 }
 
-// chunkPoints splits geometry into runs of at most the given size, repeating the
-// last point of one run as the first of the next so the queried corridor has no
-// gap at the seam.
+// chunkPoints splits geometry into runs bounded both by vertex count and by the
+// distance they cover, each run beginning where the last one ended so the
+// queried corridor has no gap at the seam.
 //
-// The runs are made as even as the split allows rather than filled to the cap in
-// turn, because the cost of a run is one whole request either way: a stage that
-// divides into two full runs and a three-point remainder would otherwise pay for
-// a third query that covers a few metres of road.
-func chunkPoints(points []route.Point, size int) [][]route.Point {
-	if len(points) <= size || size < 2 {
+// Two bounds because a query is expensive in two different ways. Many vertices
+// cost the endpoint a long polyline to walk against its index; a long corridor
+// costs it a large area to search whatever the polyline looks like. Simplifying
+// the route removes vertices without shortening it, so a vertex cap alone lets a
+// straight fifty kilometres go out as one corridor — which, measured, is not
+// answered at all.
+//
+// The cuts fall at even distances rather than at whichever vertices happen to be
+// there, and a cut lands wherever the distance says even if that is the middle of
+// a segment: a straight run has no vertices to divide at, and it is precisely a
+// straight run that simplification leaves longest. The point invented at such a
+// cut describes the same road the segment already did, and only ever shapes the
+// corridor the query asks about.
+func chunkPoints(points []route.Point, size int, spanMetres float64) [][]route.Point {
+	segments := len(points) - 1
+	if size < 2 || spanMetres <= 0 || segments < 1 {
 		return [][]route.Point{points}
 	}
 
-	segments := len(points) - 1
-	perChunk := size - 1
-	count := (segments + perChunk - 1) / perChunk
-	base, remainder := segments/count, segments%count
+	total := pathMetres(points)
+	count := (segments + size - 2) / (size - 1)
+	if total > 0 {
+		count = max(count, int(math.Ceil(total/spanMetres)))
+	}
+	if count < 2 {
+		return [][]route.Point{points}
+	}
+	if total <= 0 {
+		return countChunks(points, min(count, segments))
+	}
 
+	chunks := make([][]route.Point, 0, count)
+	chunk := []route.Point{points[0]}
+	cursor, index, travelled := points[0], 1, 0.0
+	for cut := 1; cut < count && index < len(points); cut++ {
+		target := total * float64(cut) / float64(count)
+		for index < len(points) {
+			step := haversineMetres(cursor, points[index])
+			if travelled+step >= target {
+				at := cursor
+				if step > 0 {
+					at = interpolate(cursor, points[index], (target-travelled)/step)
+				}
+				chunks = append(chunks, append(chunk, at))
+				chunk = []route.Point{at}
+				cursor, travelled = at, target
+
+				break
+			}
+			travelled += step
+			chunk = append(chunk, points[index])
+			cursor = points[index]
+			index++
+		}
+	}
+	chunks = append(chunks, append(chunk, points[index:]...))
+
+	return chunks
+}
+
+// countChunks splits by point count alone, for geometry that covers no distance
+// and so cannot be divided by it.
+func countChunks(points []route.Point, count int) [][]route.Point {
+	segments := len(points) - 1
+	base, remainder := segments/count, segments%count
 	chunks := make([][]route.Point, 0, count)
 	start := 0
 	for index := range count {
@@ -401,6 +464,26 @@ func chunkPoints(points []route.Point, size int) [][]route.Point {
 	}
 
 	return chunks
+}
+
+// interpolate returns the point the given fraction of the way from one point to
+// another. Over the lengths one cut spans, a straight line in coordinates and a
+// straight line on the ground are the same road.
+func interpolate(from, to route.Point, fraction float64) route.Point {
+	return route.Point{
+		Longitude: from.Longitude + (to.Longitude-from.Longitude)*fraction,
+		Latitude:  from.Latitude + (to.Latitude-from.Latitude)*fraction,
+	}
+}
+
+// pathMetres is the length of the polyline through the given points.
+func pathMetres(points []route.Point) float64 {
+	total := 0.0
+	for index := 1; index < len(points); index++ {
+		total += haversineMetres(points[index-1], points[index])
+	}
+
+	return total
 }
 
 // decimate reduces geometry to the fewest points that still describe the same
