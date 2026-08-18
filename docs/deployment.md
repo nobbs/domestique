@@ -148,6 +148,10 @@ container; a Pushover message reports every completed sync, including success.
 
 ## Update and rollback
 
+This host is updated by hand. The Linux VM described in
+[the Hetzner guide](hetzner.md#deploy-from-ci) is deployed automatically by CI
+instead; a Pi that wanted the same could install the same script.
+
 For an update, take the digest from the run that published it, replace only
 `DOMESTIQUE_IMAGE` in `/srv/domestique/.env`, and run `docker compose up -d`.
 The container leaves the named state volume in place. Rollback is the same

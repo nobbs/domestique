@@ -294,6 +294,11 @@ jobs:
       contents: read
       packages: write
 
+    # The index digest is the deployment instruction, so `deploy` takes it
+    # straight from the build that produced it rather than resolving a tag.
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+
     env:
       IMAGE: ghcr.io/${{ github.repository }}
       DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest
@@ -381,6 +386,67 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    needs: publish
+    # Only what `publish` actually pushed is deployed. A commit that publishes
+    # nothing leaves the host on the digest it is already running, which is the
+    # same image that commit would have produced.
+    if: needs.publish.result == 'success'
+
+    # A GitHub Environment for the deployment record and for the approval gate
+    # it can grow later without touching this workflow.
+    environment: production
+
+    # Publishes are serialised in commit order, and deploys follow them in the
+    # same order for the same reason: cancelling one mid-flight would leave the
+    # host between two digests.
+    concurrency:
+      group: deploy-${{ github.workflow }}-${{ github.ref }}
+      cancel-in-progress: false
+
+    # Workload identity federation, so the tailnet credential is a short-lived
+    # token GitHub mints for this repository rather than a stored secret. No
+    # checkout happens here, so nothing else is needed.
+    permissions:
+      id-token: write
+
+    steps:
+      # The runner joins as an ephemeral tag:github node. Policy lets that tag
+      # reach exactly port 22 of tag:domestique, as one named account.
+      - name: Join the tailnet
+        # v4.1.3
+        uses: tailscale/github-action@780049a30b6ff5c378a9e7b389d15ece7a204888
+        with:
+          oauth-client-id: ${{ vars.TS_DEPLOY_CLIENT_ID }}
+          audience: ${{ vars.TS_DEPLOY_AUDIENCE }}
+          tags: tag:github
+          ping: ${{ vars.DOMESTIQUE_HOST }}
+      # Only the digest crosses the boundary. The host composes the reference
+      # from its own configured repository, pins it, restarts the service, and
+      # rolls back if the health gate fails; this job is green only if that
+      # whole sequence was.
+      - name: Deploy the published digest
+        env:
+          DEPLOY_HOST: ${{ vars.DOMESTIQUE_HOST }}
+          DEPLOY_USER: ${{ vars.DOMESTIQUE_DEPLOY_USER }}
+          DIGEST: ${{ needs.publish.outputs.digest }}
+        run: |
+          set -eu
+
+          case "${DIGEST}" in
+            sha256:*) ;;
+            *)
+              echo "publish reported no digest to deploy: '${DIGEST}'"
+              exit 1
+              ;;
+          esac
+
+          tailscale ssh "${DEPLOY_USER}@${DEPLOY_HOST}" \
+            sudo /usr/local/lib/domestique/domestique-deploy.sh "${DIGEST}"
+
   required:
     name: Required
     runs-on: ubuntu-24.04
@@ -394,6 +460,7 @@ jobs:
       - build
       - image
       - publish
+      - deploy
     if: always()
 
     permissions: {}
@@ -404,8 +471,10 @@ jobs:
       # cancelled or failed job upstream cannot be mistaken for a green run.
       # `image` and `publish` never both run, and a change that touches no
       # container input runs neither, so a skip here carries no information
-      # about whether an image exists. What it does guarantee is that a failed
-      # build or publish still reddens the commit.
+      # about whether an image exists. `deploy` follows `publish`, so it skips
+      # for the same commits. What this does guarantee is that a failed build,
+      # publish, or deploy — including one that rolled the host back cleanly —
+      # still reddens the commit.
       - name: Validate CI results
         env:
           CHANGES_RESULT: ${{ needs.changes.result }}
@@ -416,12 +485,13 @@ jobs:
           BUILD_RESULT: ${{ needs.build.result }}
           IMAGE_RESULT: ${{ needs.image.result }}
           PUBLISH_RESULT: ${{ needs.publish.result }}
+          DEPLOY_RESULT: ${{ needs.deploy.result }}
         run: |
           set -eu
 
           for result in "$CHANGES_RESULT" "$LINT_RESULT" "$TEST_RESULT" \
             "$SECURITY_RESULT" "$UI_RESULT" "$BUILD_RESULT" "$IMAGE_RESULT" \
-            "$PUBLISH_RESULT"; do
+            "$PUBLISH_RESULT" "$DEPLOY_RESULT"; do
             case "$result" in
               success|skipped) ;;
               *)
