@@ -40,6 +40,28 @@ Deliver one focused issue without broadening its scope.
    request formal Copilot review, and verify the requested-reviewer state. Do
    not merge unless the user explicitly authorises it.
 
+## Update a delivery pull request
+
+- Before rebasing or resolving a conflict, inspect the selected issue's pull
+  request, its intended base, the branch topology, and the worktree. Never
+  overwrite unrelated local work.
+- Rebase only a branch that belongs to the selected delivery when its base has
+  advanced. Resolve a conflict only when the smallest semantic resolution still
+  meets that issue's acceptance criteria. Stop for direction if resolving it
+  would change another feature, specification, or product decision.
+- After a rebase or conflict resolution, repeat the validation affected by the
+  changed code before pushing. When rewriting an authorised delivery branch,
+  use `--force-with-lease`, never an unguarded force push.
+- Treat material follow-up commits as a new review request: re-request formal
+  review through GitHub's requested-reviewer mechanism and verify it actually
+  registered. Report unavailable review automation rather than substituting a
+  comment or claiming it succeeded.
+- Keep one issue to one pull request by default. Create or maintain a stacked
+  pull request only when the user asks or the issue naturally splits into an
+  ordered chain of independently reviewable layers. Propose those layers before
+  creating the stack, keep it linear, update a lower layer before rebasing its
+  successors, and never merge it without explicit user authorisation.
+
 ## Report
 
 State the selected issue, why it won selection, the implementation and
