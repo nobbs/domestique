@@ -375,8 +375,9 @@ export function ElevationProfile({
    *
    * The map carries the same way out, because the same window can be drawn on
    * either instrument and this chart is not on the page when the overview is
-   * collapsed. Both simply ask for the whole route back, so whichever of them
-   * hears the key first, the reader gets the same view.
+   * collapsed. Both simply ask for the whole route back, and the hook stands the
+   * second one down, so whichever hears the key first the reader gets the same
+   * view from one press.
    */
   useEscapeKey(zoomWindow !== null && onZoomChange !== undefined, () => onZoomChange?.(null));
 

@@ -8,7 +8,10 @@
  * document and is registered only while there is something to leave.
  *
  * A key another handler has already dealt with is left alone: whoever called
- * `preventDefault` was closer to what the reader was doing.
+ * `preventDefault` was closer to what the reader was doing. Having taken the key
+ * itself, this marks it handled for the same reason — the chart and the map both
+ * offer the same way out and are often on the page together, and one press of
+ * Escape is one request, however many listeners are in a position to hear it.
  */
 
 import { useEffect, useRef } from "react";
@@ -27,6 +30,7 @@ export function useEscapeKey(active: boolean, onEscape: () => void): void {
     }
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape" && !event.defaultPrevented) {
+        event.preventDefault();
         latest.current();
       }
     };
