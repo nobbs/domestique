@@ -13,6 +13,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { webUIConfigQuery } from "../../api/queries";
+import { basemapFor, usePrefersDarkScheme } from "../../lib/basemap";
 
 /**
  * Reduces an attribution string to plain text.
@@ -85,7 +86,10 @@ async function fetchAttribution(styleUrl: string): Promise<string> {
 
 export function MapAttribution() {
   const config = useQuery(webUIConfigQuery());
-  const styleUrl = config.data?.tileStyleUrl;
+  const prefersDark = usePrefersDarkScheme();
+  // The credit is read out of the style document, so it must be read out of the
+  // one actually on screen: two styles may well carry different attribution.
+  const styleUrl = config.data ? basemapFor(config.data, prefersDark).styleUrl : undefined;
 
   const attribution = useQuery({
     queryKey: ["tile-attribution", styleUrl] as const,

@@ -275,5 +275,8 @@ function syncPhasesFrom(value: unknown, at: string): Partial<Record<SyncPhase, S
 
 export function parseWebUIConfig(payload: unknown): WebUIConfig {
   const body = record(payload, "body");
-  return { tileStyleUrl: text(body.tile_style_url, "body.tile_style_url") };
+  return {
+    tileStyleUrl: text(body.tile_style_url, "body.tile_style_url"),
+    tileStyleUrlDark: optionalText(body.tile_style_url_dark, "body.tile_style_url_dark"),
+  };
 }

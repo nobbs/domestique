@@ -136,10 +136,11 @@ func run(ctx context.Context) error {
 
 	handler, err := httpapi.New(
 		&httpapi.Options{
-			TargetIDs:      targetIDs,
-			TileStyleURL:   settings.WebUI.TileStyleURL,
-			AccessVerifier: accessVerifier,
-			AccessEmail:    settings.Access.Cloudflare.AllowedEmail,
+			TargetIDs:        targetIDs,
+			TileStyleURL:     settings.WebUI.TileStyleURL,
+			TileStyleURLDark: settings.WebUI.TileStyleURLDark,
+			AccessVerifier:   accessVerifier,
+			AccessEmail:      settings.Access.Cloudflare.AllowedEmail,
 		},
 		oauthService,
 		store,

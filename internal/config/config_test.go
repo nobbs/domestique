@@ -45,6 +45,15 @@ func TestLoadDefaultsToAKeylessTileStyle(t *testing.T) {
 	if got, want := settings.WebUI.TileStyleURL, defaultTileStyleURL; got != want {
 		t.Errorf("WebUI.TileStyleURL = %q, want %q", got, want)
 	}
+	// The dark default is the same provider's other style, so a default
+	// deployment follows the colour scheme without reaching a second origin.
+	if got, want := settings.WebUI.TileStyleURLDark, defaultTileStyleURLDark; got != want {
+		t.Errorf("WebUI.TileStyleURLDark = %q, want %q", got, want)
+	}
+	if !sameOrigin(settings.WebUI.TileStyleURL, settings.WebUI.TileStyleURLDark) {
+		t.Errorf("default styles are on different origins: %q and %q",
+			settings.WebUI.TileStyleURL, settings.WebUI.TileStyleURLDark)
+	}
 }
 
 func TestValidateTileStyleURL(t *testing.T) {
@@ -64,9 +73,36 @@ func TestValidateTileStyleURL(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			err := validateTileStyleURL(test.value)
+			err := validateTileStyleURL("webui.tile_style_url", test.value)
 			if (err != nil) != test.wantErr {
 				t.Errorf("validateTileStyleURL(%q) error = %v, wantErr %v", test.value, err, test.wantErr)
+			}
+		})
+	}
+}
+
+func TestValidateTileStyleURLDark(t *testing.T) {
+	const light = "https://tiles.example.test/styles/liberty"
+
+	tests := []struct {
+		name    string
+		value   string
+		wantErr bool
+	}{
+		{name: "empty leaves one style in both schemes", value: ""},
+		{name: "same origin", value: "https://tiles.example.test/styles/liberty-dark"},
+		{name: "host case is not an origin difference", value: "https://TILES.example.test/styles/dark"},
+		{name: "another host is rejected", value: "https://dark.example.test/styles/dark", wantErr: true},
+		{name: "another port is rejected", value: "https://tiles.example.test:8443/styles/dark", wantErr: true},
+		{name: "plaintext is rejected", value: "http://tiles.example.test/styles/dark", wantErr: true},
+		{name: "relative is rejected", value: "/styles/dark", wantErr: true},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := validateTileStyleURLDark(test.value, light)
+			if (err != nil) != test.wantErr {
+				t.Errorf("validateTileStyleURLDark(%q) error = %v, wantErr %v", test.value, err, test.wantErr)
 			}
 		})
 	}
@@ -198,6 +234,14 @@ func TestLoadRejectsInvalidConfiguration(t *testing.T) {
 				appendToFile(t, path, "\n[surface]\noverpass_url = \"http://overpass.example.test/api\"\n")
 			},
 			want: "surface.overpass_url",
+		},
+		{
+			name: "dark tile style on another origin",
+			mutate: func(t *testing.T, path string) {
+				t.Helper()
+				appendToFile(t, path, "\n[webui]\ntile_style_url_dark = \"https://dark.example.test/styles/dark\"\n")
+			},
+			want: "same origin",
 		},
 		{
 			name: "non canonical schedule",

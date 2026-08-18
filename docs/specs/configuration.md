@@ -72,6 +72,7 @@ user_key_file = "/run/secrets/pushover_user_key"
 
 [webui]
 tile_style_url = "https://tiles.openfreemap.org/styles/bright"
+tile_style_url_dark = "https://tiles.openfreemap.org/styles/dark"
 
 [surface]
 overpass_url = "https://overpass-api.de/api/interpreter"
@@ -96,6 +97,23 @@ Changing this value changes the Content-Security-Policy the service sends, which
 permits exactly the service's own origin and this one tile origin. A provider
 that serves its style, tiles, sprites, and glyphs from more than one host is not
 supported without widening that policy.
+
+`webui.tile_style_url_dark` is the style the browser loads instead when it
+reports a dark system colour scheme, so the map follows the same preference the
+rest of the UI already follows in CSS. It is optional: an empty value leaves one
+style in force under both schemes, which is what a provider publishing only one
+requires.
+
+When it is set it must be an absolute HTTPS URL **on the same origin** as
+`webui.tile_style_url`, and configuration is rejected at startup when it is not.
+That constraint keeps the guarantee above intact — one tile origin in the
+Content-Security-Policy, and one third-party origin learning the area of a viewed
+route. A dark style on a second origin would widen both, and is therefore a
+deliberate revision of this contract rather than a setting.
+
+Both styles are served to the page, which chooses between them; the service does
+not resolve the colour scheme, because the preference belongs to the browser and
+this response is cached for the session.
 
 `surface.overpass_url` is the OpenStreetMap Overpass endpoint the **service**
 asks which ways lie along a stage, in order to classify its ground as asphalt,

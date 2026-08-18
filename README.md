@@ -6,7 +6,8 @@ an amd64 or arm64 Tailnet host.
 
 It also serves a read-only browser UI on the same private listener, which draws
 one stored route stage at a time on a map. Basemap tiles come from a configurable
-keyless provider — the only request this service's page makes outside the Tailnet.
+keyless provider — the only request this service's page makes outside the Tailnet
+— and the map follows your system's light or dark colour scheme.
 
 The accepted v1 contract is in [the service specification](docs/specs/service.md).
 The supporting specifications define configuration, sync safety, architecture,

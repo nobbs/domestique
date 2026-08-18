@@ -32,6 +32,11 @@ const (
 	// tile origin.
 	defaultTileStyleURL = "https://tiles.openfreemap.org/styles/bright"
 
+	// defaultTileStyleURLDark is the same provider's dark style. It shares the
+	// light default's origin, so following the operator's system colour scheme
+	// costs a default deployment no second tile origin.
+	defaultTileStyleURLDark = "https://tiles.openfreemap.org/styles/dark"
+
 	// defaultOverpassURL is the public Overpass instance, which needs no account
 	// and no key. It is spelled out here rather than taken from the surface
 	// package so this package keeps depending on nothing inside the service.
@@ -90,6 +95,11 @@ type WebUI struct {
 	// credential is exposed. A provider that requires an API key would place it
 	// in this URL's query and thereby publish it to the browser.
 	TileStyleURL string
+
+	// TileStyleURLDark is loaded in place of TileStyleURL when the browser
+	// reports a dark system colour scheme. It must share TileStyleURL's origin.
+	// An empty value keeps one style in both schemes.
+	TileStyleURLDark string
 }
 
 // Surface configures where the road surface of a stage is looked up.
@@ -226,7 +236,8 @@ type rawHTTP struct {
 }
 
 type rawWebUI struct {
-	TileStyleURL string `koanf:"tile_style_url"`
+	TileStyleURL     string `koanf:"tile_style_url"`
+	TileStyleURLDark string `koanf:"tile_style_url_dark"`
 }
 
 type rawSurface struct {
@@ -459,7 +470,10 @@ func build(raw *rawSettings) (*Settings, error) {
 	if err := validateRedirectURL(raw.Wahoo.RedirectURL); err != nil {
 		return nil, err
 	}
-	if err := validateTileStyleURL(raw.WebUI.TileStyleURL); err != nil {
+	if err := validateTileStyleURL("webui.tile_style_url", raw.WebUI.TileStyleURL); err != nil {
+		return nil, err
+	}
+	if err := validateTileStyleURLDark(raw.WebUI.TileStyleURLDark, raw.WebUI.TileStyleURL); err != nil {
 		return nil, err
 	}
 	if err := validateOverpassURL(raw.Surface.OverpassURL); err != nil {
@@ -547,7 +561,8 @@ func build(raw *rawSettings) (*Settings, error) {
 			},
 		},
 		WebUI: WebUI{
-			TileStyleURL: strings.TrimSpace(raw.WebUI.TileStyleURL),
+			TileStyleURL:     strings.TrimSpace(raw.WebUI.TileStyleURL),
+			TileStyleURLDark: strings.TrimSpace(raw.WebUI.TileStyleURLDark),
 		},
 		Surface: Surface{
 			OverpassURL: strings.TrimSpace(raw.Surface.OverpassURL),
@@ -601,14 +616,55 @@ func validateListenAddress(address string) error {
 // service's own endpoints it permits a query string, because providers that
 // require an API key carry it there; such a key is published to the browser and
 // is the operator's deliberate choice, not a managed secret.
-func validateTileStyleURL(value string) error {
+func validateTileStyleURL(name, value string) error {
 	parsed, err := url.ParseRequestURI(strings.TrimSpace(value))
 	if err != nil || parsed.Scheme != "https" || parsed.Host == "" ||
 		parsed.User != nil || parsed.Fragment != "" {
-		return errors.New("webui.tile_style_url must be an absolute HTTPS URL without credentials or fragment")
+		return fmt.Errorf("%s must be an absolute HTTPS URL without credentials or fragment", name)
 	}
 
 	return nil
+}
+
+// validateTileStyleURLDark accepts nothing at all, or a style on the same origin
+// as the light one. An empty value is the setting for a provider that publishes
+// only one style, and leaves the map unchanged in both colour schemes.
+//
+// The shared origin is a requirement rather than a nicety. The map view's whole
+// privacy cost is one third-party origin learning the area of a viewed route,
+// and the Content-Security-Policy is what holds the page to that one origin. A
+// dark style elsewhere would widen both, which is a decision about the service's
+// posture rather than about how the map looks after dark.
+func validateTileStyleURLDark(value, light string) error {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return nil
+	}
+	if err := validateTileStyleURL("webui.tile_style_url_dark", trimmed); err != nil {
+		return err
+	}
+	if !sameOrigin(trimmed, strings.TrimSpace(light)) {
+		return errors.New("webui.tile_style_url_dark must be on the same origin as webui.tile_style_url")
+	}
+
+	return nil
+}
+
+// sameOrigin reports whether two URLs share a scheme and host. Hosts are
+// compared case-insensitively because a host is not case-sensitive, and a
+// difference in case would otherwise reject a pair the browser treats as one
+// origin.
+func sameOrigin(left, right string) bool {
+	first, err := url.ParseRequestURI(left)
+	if err != nil {
+		return false
+	}
+	second, err := url.ParseRequestURI(right)
+	if err != nil {
+		return false
+	}
+
+	return first.Scheme == second.Scheme && strings.EqualFold(first.Host, second.Host)
 }
 
 // validateOverpassURL accepts an absolute HTTPS endpoint, or nothing at all. An
@@ -762,7 +818,8 @@ func configurationDefaults() map[string]any {
 			"empty_source_deletion": string(EmptySourceDeletionDeny),
 		},
 		"webui": map[string]any{
-			"tile_style_url": defaultTileStyleURL,
+			"tile_style_url":      defaultTileStyleURL,
+			"tile_style_url_dark": defaultTileStyleURLDark,
 		},
 		"surface": map[string]any{
 			"overpass_url": defaultOverpassURL,
