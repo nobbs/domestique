@@ -2,8 +2,10 @@ package route
 
 import (
 	"math"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewStageCreatesImmutableStage(t *testing.T) {
@@ -14,29 +16,21 @@ func TestNewStageCreatesImmutableStage(t *testing.T) {
 	}
 
 	stage, err := NewStage(17, 2, "2026-08-16", "Morning ride", "Climb", geometry, "hash")
-	if err != nil {
-		t.Fatalf("NewStage() error = %v", err)
-	}
+	require.NoError(t, err)
 
-	if got, want := stage.Key().ExternalID(), "domestique:veloplanner:17:stage:2"; got != want {
-		t.Errorf("Key().ExternalID() = %q, want %q", got, want)
-	}
-	if got, want := stage.Title(), "Morning ride — Climb"; got != want {
-		t.Errorf("Title() = %q, want %q", got, want)
-	}
+	assert.Equal(t, "domestique:veloplanner:17:stage:2", stage.Key().ExternalID())
+	assert.Equal(t, "Morning ride — Climb", stage.Title())
+
 	geometry[0].Longitude = 0
 	*geometry[0].Elevation = 0
 	returned := stage.Geometry()
-	if got, want := returned[0].Longitude, 8.4; got != want {
-		t.Errorf("Geometry()[0].Longitude = %v, want %v", got, want)
-	}
-	if got, want := *returned[0].Elevation, 42.5; got != want {
-		t.Errorf("Geometry()[0].Elevation = %v, want %v", got, want)
-	}
+	require.NotEmpty(t, returned)
+	require.NotNil(t, returned[0].Elevation)
+	assert.InDelta(t, 8.4, returned[0].Longitude, 1e-9)
+	assert.InDelta(t, 42.5, *returned[0].Elevation, 1e-9)
+
 	*returned[0].Elevation = 0
-	if got, want := *stage.Geometry()[0].Elevation, 42.5; got != want {
-		t.Errorf("Geometry() leaked elevation pointer: got %v, want %v", got, want)
-	}
+	assert.InDelta(t, 42.5, *stage.Geometry()[0].Elevation, 1e-9, "Geometry() leaked its elevation pointer")
 }
 
 func TestStageDistanceMetres(t *testing.T) {
@@ -73,12 +67,9 @@ func TestStageDistanceMetres(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			stage, err := NewStage(1, 1, "revision", "route", "", test.geometry, "hash")
-			if err != nil {
-				t.Fatalf("NewStage() error = %v", err)
-			}
-			if got := stage.DistanceMetres(); math.Abs(got-test.want) > test.tolerance {
-				t.Errorf("DistanceMetres() = %v, want %v within %v", got, test.want, test.tolerance)
-			}
+			require.NoError(t, err)
+
+			assert.InDelta(t, test.want, stage.DistanceMetres(), test.tolerance)
 		})
 	}
 }
@@ -89,14 +80,10 @@ func TestStageBounds(t *testing.T) {
 		{Longitude: 8.1, Latitude: 49.9},
 		{Longitude: 8.9, Latitude: 49.0},
 	}, "hash")
-	if err != nil {
-		t.Fatalf("NewStage() error = %v", err)
-	}
+	require.NoError(t, err)
 
 	want := Bounds{MinLongitude: 8.1, MinLatitude: 49.0, MaxLongitude: 8.9, MaxLatitude: 49.9}
-	if got := stage.Bounds(); got != want {
-		t.Errorf("Bounds() = %+v, want %+v", got, want)
-	}
+	assert.Equal(t, want, stage.Bounds())
 }
 
 // A profile that climbs a known amount over a known distance, so the expected
@@ -114,9 +101,7 @@ func elevationTestStage(t *testing.T, elevations []float64, latitudeStep float64
 		})
 	}
 	stage, err := NewStage(1, 1, "revision", "route", "", geometry, "hash")
-	if err != nil {
-		t.Fatalf("NewStage() error = %v", err)
-	}
+	require.NoError(t, err)
 
 	return stage
 }
@@ -139,9 +124,8 @@ func TestStageElevationGainMetres(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			stage := elevationTestStage(t, test.elevations, step)
-			if got := stage.ElevationGainMetres(); math.Abs(got-test.want) > 0.001 {
-				t.Errorf("ElevationGainMetres() = %v, want %v", got, test.want)
-			}
+
+			assert.InDelta(t, test.want, stage.ElevationGainMetres(), 0.001)
 		})
 	}
 }
@@ -153,66 +137,50 @@ func TestStageMaxGradientPercent(t *testing.T) {
 
 	t.Run("flat ground has no gradient", func(t *testing.T) {
 		stage := elevationTestStage(t, []float64{100, 100, 100}, step)
-		if got := stage.MaxGradientPercent(); got != 0 {
-			t.Errorf("MaxGradientPercent() = %v, want 0", got)
-		}
+
+		assert.Zero(t, stage.MaxGradientPercent())
 	})
 
 	t.Run("reports the steepest section", func(t *testing.T) {
 		// Second step climbs 20 m over ~200 m, roughly 10%; the first is gentler.
 		stage := elevationTestStage(t, []float64{100, 102, 122}, step)
-		got := stage.MaxGradientPercent()
-		if got < 8 || got > 12 {
-			t.Errorf("MaxGradientPercent() = %v, want roughly 10", got)
-		}
+
+		assert.InDelta(t, 10, stage.MaxGradientPercent(), 2)
 	})
 
 	t.Run("a descent is as steep as a climb", func(t *testing.T) {
 		climbing := elevationTestStage(t, []float64{100, 120}, step)
 		descending := elevationTestStage(t, []float64{120, 100}, step)
-		climb := climbing.MaxGradientPercent()
-		descent := descending.MaxGradientPercent()
-		if math.Abs(climb-descent) > 0.001 {
-			t.Errorf("descent gradient %v, want the same magnitude as the climb %v", descent, climb)
-		}
+
+		assert.InDelta(t, climbing.MaxGradientPercent(), descending.MaxGradientPercent(), 0.001)
 	})
 
 	t.Run("a single altitude spike cannot dominate", func(t *testing.T) {
 		// Points 2 m apart: a 5 m spike between them would read as 250% if
 		// gradient were measured between adjacent points.
 		spiked := elevationTestStage(t, []float64{100, 105, 100, 100, 100}, 0.00002)
-		if got := spiked.MaxGradientPercent(); got > 50 {
-			t.Errorf("MaxGradientPercent() = %v, want a spike not to dominate", got)
-		}
+
+		assert.LessOrEqual(t, spiked.MaxGradientPercent(), 50.0)
 	})
 }
 
 func TestStageElevationStatisticsNeedACompleteProfile(t *testing.T) {
+	summit := 200.0
 	partial, err := NewStage(1, 1, "revision", "route", "", []Point{
 		{Longitude: 8.0, Latitude: 49.0},
-		{Longitude: 8.0, Latitude: 49.01, Elevation: func() *float64 { v := 200.0; return &v }()},
+		{Longitude: 8.0, Latitude: 49.01, Elevation: &summit},
 	}, "hash")
-	if err != nil {
-		t.Fatalf("NewStage() error = %v", err)
-	}
+	require.NoError(t, err)
 
-	if got := partial.ElevationGainMetres(); got != 0 {
-		t.Errorf("ElevationGainMetres() = %v, want 0 without a complete profile", got)
-	}
-	if got := partial.MaxGradientPercent(); got != 0 {
-		t.Errorf("MaxGradientPercent() = %v, want 0 without a complete profile", got)
-	}
+	assert.Zero(t, partial.ElevationGainMetres(), "elevation gain without a complete profile")
+	assert.Zero(t, partial.MaxGradientPercent(), "max gradient without a complete profile")
 }
 
 func TestZeroStageGeometryAccessorsAreSafe(t *testing.T) {
 	var stage Stage
 
-	if got := stage.DistanceMetres(); got != 0 {
-		t.Errorf("DistanceMetres() = %v, want 0", got)
-	}
-	if got := (stage.Bounds()); got != (Bounds{}) {
-		t.Errorf("Bounds() = %+v, want zero value", got)
-	}
+	assert.Zero(t, stage.DistanceMetres())
+	assert.Equal(t, Bounds{}, stage.Bounds())
 }
 
 func TestNewStageRejectsInvalidIdentityAndGeometry(t *testing.T) {
@@ -234,9 +202,8 @@ func TestNewStageRejectsInvalidIdentityAndGeometry(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			_, err := NewStage(test.routeID, test.order, "revision", "route", "stage", test.geometry, "hash")
-			if err == nil || !strings.Contains(err.Error(), test.want) {
-				t.Fatalf("NewStage() error = %v, want substring %q", err, test.want)
-			}
+
+			require.ErrorContains(t, err, test.want)
 		})
 	}
 }

@@ -83,7 +83,7 @@ protect this service's boundaries:
 - `bodyclose`, `noctx`, and `rowserrcheck` for HTTP and database resource
   handling;
 - `gocritic`, `revive`, `unconvert`, and `misspell` for maintainable Go;
-  and
+- `testifylint` for correct Testify assertion use in tests; and
 - the formatter supported by the pinned linter version.
 
 Any future exclusion is narrow, adjacent to the code it covers, and explains
