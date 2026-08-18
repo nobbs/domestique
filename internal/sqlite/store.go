@@ -653,6 +653,32 @@ func (s *Store) ForEachPhaseRun(
 	return nil
 }
 
+// SurfaceCoverage reports how many stored stages carry a classification of the
+// geometry they currently hold, and how many stages there are.
+//
+// It is the answer to the question an operator actually asks when a route has no
+// surface on the map: is this one stage waiting its turn, or has nothing been
+// classified in a week. Counting the classification against the current content
+// hash is what makes it honest — a stage whose shape changed has a stored
+// classification that describes a line it no longer has, and is not classified
+// in any sense the map can use.
+func (s *Store) SurfaceCoverage(ctx context.Context) (classified, total int, err error) {
+	if err := s.database.QueryRowContext(ctx, `
+		SELECT
+			(SELECT COUNT(*) FROM source_stages),
+			(SELECT COUNT(*)
+				FROM stage_surface
+				JOIN source_stages
+					ON source_stages.route_id = stage_surface.route_id
+					AND source_stages.stage_order = stage_surface.stage_order
+				WHERE stage_surface.content_hash = source_stages.content_hash)
+	`).Scan(&total, &classified); err != nil {
+		return 0, 0, fmt.Errorf("reading surface coverage: %w", err)
+	}
+
+	return classified, total, nil
+}
+
 // SyncSchedule reports which phases the timer is allowed to start.
 func (s *Store) SyncSchedule(ctx context.Context) (source, targets bool, err error) {
 	if err := s.database.QueryRowContext(ctx, `

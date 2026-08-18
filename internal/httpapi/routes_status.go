@@ -48,6 +48,13 @@ func (h *Handler) status(writer http.ResponseWriter, request *http.Request, _ st
 		return
 	}
 	view.Sync.Schedule = syncScheduleView{Source: scheduleSource, Targets: scheduleTargets}
+	classified, total, coverageErr := h.state.SurfaceCoverage(request.Context())
+	if coverageErr != nil {
+		h.unavailable(writer)
+
+		return
+	}
+	view.Sync.Surface = surfaceView{Classified: classified, Total: total}
 	if phaseErr := h.state.ForEachPhaseRun(request.Context(), func(
 		phase string, completedAt time.Time, outcome, detail string,
 		sourceStages, created, updated, deleted int,

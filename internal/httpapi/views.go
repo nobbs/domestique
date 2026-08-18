@@ -76,6 +76,17 @@ type syncView struct {
 	Updated      int              `json:"updated"`
 	Deleted      int              `json:"deleted"`
 	Schedule     syncScheduleView `json:"schedule"`
+	Surface      surfaceView      `json:"surface"`
+}
+
+// surfaceView reports how much of the library carries a usable classification.
+// It is the difference between "this stage is waiting its turn" and "nothing has
+// been classified in days", which is otherwise invisible: enrichment cannot fail
+// a run, so a stage that fails every pass looks exactly like one nobody asked
+// about.
+type surfaceView struct {
+	Classified int `json:"classified"`
+	Total      int `json:"total"`
 }
 
 type statusView struct {

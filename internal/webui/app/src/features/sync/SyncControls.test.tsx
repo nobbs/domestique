@@ -17,6 +17,7 @@ function status(overrides: Partial<Status["sync"]> = {}): Status {
       deleted: 0,
       schedule: { source: true, targets: true },
       phases: {},
+      surface: { classified: 0, total: 0 },
       ...overrides,
     },
   };
@@ -169,5 +170,19 @@ describe("SyncControls", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "a synchronization is already running",
     );
+  });
+
+  // Classification never fails a run, so a stage the endpoint keeps refusing is
+  // otherwise indistinguishable from one that has not come up yet.
+  it("says how much of the library is still unclassified", () => {
+    renderControls(status({ surface: { classified: 1, total: 3 } }));
+
+    expect(screen.getByText(/classified for 1 of 3 stages/)).toBeInTheDocument();
+  });
+
+  it("says nothing about surfaces once the whole library is classified", () => {
+    renderControls(status({ surface: { classified: 3, total: 3 } }));
+
+    expect(screen.queryByText(/classified for/)).not.toBeInTheDocument();
   });
 });

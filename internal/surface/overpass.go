@@ -66,6 +66,18 @@ const (
 	// rateLimitPause is how long to wait before retrying a refused query. The
 	// Overpass documentation asks for thirty seconds when a slot is unavailable.
 	rateLimitPause = 30 * time.Second
+
+	// busyAttempts is how many times one query is put to a busy endpoint before
+	// giving up on it.
+	//
+	// A public instance refuses a sizeable share of queries under load — an
+	// observed run of seven chunk queries met three refusals — and a long stage
+	// is only classified if every one of its chunks lands. One retry left such a
+	// stage failing indefinitely while each individual query was perfectly
+	// answerable a minute later. Three attempts with a growing pause turn the
+	// common case, a moment's contention, into a success; a genuinely saturated
+	// endpoint still refuses all three and is reported as such.
+	busyAttempts = 3
 )
 
 // ErrRateLimited reports that the endpoint refused a query for want of capacity
@@ -185,28 +197,41 @@ func (o *Overpass) Ways(ctx context.Context, points []route.Point) ([]Way, error
 	return ways, nil
 }
 
-// post sends one query, pausing once and retrying if the endpoint says it is
-// busy. A single retry rides out a moment's contention; a second refusal means
-// the endpoint is saturated, and saying so as ErrRateLimited lets the caller
-// give up on this run rather than queue behind it.
+// post sends one query, pausing and retrying while the endpoint says it is busy.
+//
+// The pause grows with each refusal, so a query that arrives during a moment's
+// contention is answered on the next attempt while one aimed at a saturated
+// endpoint backs off instead of adding to the load. A refusal that survives
+// every attempt is reported as ErrRateLimited, which lets the caller stop asking
+// rather than queue behind a server already turning work away.
 func (o *Overpass) post(ctx context.Context, query string) ([]byte, error) {
 	client := &http.Client{Transport: o.transport, Timeout: o.timeout}
 
-	body, wait, err := o.attempt(ctx, client, query)
-	if !errors.Is(err, errBusy) {
-		return body, err
+	for attempt := 1; ; attempt++ {
+		body, wait, err := o.attempt(ctx, client, query)
+		if !errors.Is(err, errBusy) {
+			return body, err
+		}
+		if attempt >= busyAttempts {
+			return nil, ErrRateLimited
+		}
+		// The endpoint's own Retry-After wins where it gave one; otherwise each
+		// refusal doubles the wait.
+		if waitErr := o.wait(ctx, backoff(wait, attempt)); waitErr != nil {
+			return nil, waitErr
+		}
+	}
+}
+
+// backoff grows the pause between attempts. A wait the endpoint asked for is
+// taken as given: it knows when it will have capacity, and doubling it would
+// only idle longer than the server itself suggested.
+func backoff(requested time.Duration, attempt int) time.Duration {
+	if requested != rateLimitPause {
+		return requested
 	}
 
-	if waitErr := o.wait(ctx, wait); waitErr != nil {
-		return nil, waitErr
-	}
-
-	body, _, err = o.attempt(ctx, client, query)
-	if errors.Is(err, errBusy) {
-		return nil, ErrRateLimited
-	}
-
-	return body, err
+	return requested * time.Duration(attempt)
 }
 
 // attempt performs one request. A busy endpoint is reported as errBusy along

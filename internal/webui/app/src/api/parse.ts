@@ -13,6 +13,7 @@ import type {
   StageGeometry,
   StageSurface,
   Status,
+  SurfaceCoverage,
   SurfaceKind,
   SurfaceRange,
   SyncPhase,
@@ -245,7 +246,17 @@ export function parseStatus(payload: unknown): Status {
       deleted: count(sync.deleted, "body.sync.deleted"),
       schedule: parseSyncSchedule(sync.schedule, "body.sync.schedule"),
       phases: syncPhasesFrom(sync.phases, "body.sync.phases"),
+      surface: surfaceCoverageFrom(sync.surface, "body.sync.surface"),
     },
+  };
+}
+
+function surfaceCoverageFrom(value: unknown, at: string): SurfaceCoverage {
+  const coverage = record(value, at);
+
+  return {
+    classified: count(coverage.classified, `${at}.classified`),
+    total: count(coverage.total, `${at}.total`),
   };
 }
 

@@ -200,8 +200,79 @@ func TestOverpassWaysReportsPersistentRateLimiting(t *testing.T) {
 	if !errors.Is(err, ErrRateLimited) {
 		t.Fatalf("Ways() error = %v, want ErrRateLimited", err)
 	}
-	if requests != 2 {
-		t.Errorf("request count = %d, want the endpoint left alone after the retry", requests)
+	if requests != busyAttempts {
+		t.Errorf("request count = %d, want %d before giving up", requests, busyAttempts)
+	}
+}
+
+// A refusal is usually a moment's contention on a shared server, and the query
+// that was refused is answerable a minute later. Giving up on the first retry
+// left a long stage — which is only classified once every one of its chunks
+// lands — failing indefinitely.
+func TestOverpassWaysRetriesARefusedQueryUntilItLands(t *testing.T) {
+	var requests int
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		requests++
+		if requests < busyAttempts {
+			writer.WriteHeader(http.StatusGatewayTimeout)
+
+			return
+		}
+		writeOverpass(t, writer, `{"elements":[
+			{"type":"way","id":10,"tags":{"highway":"residential","surface":"asphalt"},
+			 "geometry":[{"lat":49.0,"lon":8.0},{"lat":49.001,"lon":8.0}]}
+		]}`)
+	}))
+	defer server.Close()
+
+	client := newTestOverpass(t, server)
+	var pauses []time.Duration
+	client.wait = func(_ context.Context, pause time.Duration) error {
+		pauses = append(pauses, pause)
+
+		return nil
+	}
+
+	ways, err := client.Ways(t.Context(), metreRoute(0, 200, 50))
+	if err != nil {
+		t.Fatalf("Ways() error = %v", err)
+	}
+	if got, want := len(ways), 1; got != want {
+		t.Errorf("ways = %d, want %d", got, want)
+	}
+	// Each refusal waits longer than the last, so a saturated endpoint is asked
+	// less often rather than more.
+	if len(pauses) < 2 || pauses[1] <= pauses[0] {
+		t.Errorf("pauses = %v, want each one longer than the last", pauses)
+	}
+}
+
+// A wait the endpoint asked for is taken as given: it knows when it will have
+// capacity, and idling longer than it suggested helps nobody.
+func TestOverpassHonoursTheWaitTheEndpointAsksFor(t *testing.T) {
+	var requests int
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		requests++
+		writer.Header().Set("Retry-After", "5")
+		writer.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer server.Close()
+
+	client := newTestOverpass(t, server)
+	var pauses []time.Duration
+	client.wait = func(_ context.Context, pause time.Duration) error {
+		pauses = append(pauses, pause)
+
+		return nil
+	}
+
+	if _, err := client.Ways(t.Context(), metreRoute(0, 200, 50)); !errors.Is(err, ErrRateLimited) {
+		t.Fatalf("Ways() error = %v, want ErrRateLimited", err)
+	}
+	for _, pause := range pauses {
+		if pause != 5*time.Second {
+			t.Errorf("pause = %v, want the 5s the endpoint asked for", pause)
+		}
 	}
 }
 

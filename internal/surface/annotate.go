@@ -3,6 +3,7 @@ package surface
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/nobbs/domestique/internal/route"
@@ -55,44 +56,57 @@ func NewAnnotator(source Source, cache Cache) *Annotator {
 }
 
 // Annotate classifies the stages whose surface is not already known, up to this
-// pass's limit, and leaves the rest for a later run.
+// pass's limit, and leaves the rest for a later run. It reports how many stages
+// it classified and how many it could not.
 //
 // A stage already classified against its current content hash is skipped without
 // contacting the endpoint, so a settled library costs nothing. A stage that
 // produced nothing is still recorded: knowing that the question has been asked
 // and answered with silence is what stops it being asked again every run.
 //
-// The first failure ends the pass and is returned. Enrichment is not what a sync
-// is for, and the alternative — working through the rest of the inventory
-// against an endpoint that has just failed — spends a volunteer's capacity to
-// arrive at the same answer more slowly.
-func (a *Annotator) Annotate(ctx context.Context, stages []route.Stage) error {
-	annotated := 0
+// A stage that fails does not end the pass. The endpoint refuses a share of
+// queries under load, and a long stage — classified only once every one of its
+// chunk queries lands — fails far more often than a short one. Stopping at the
+// first failure meant one such stage starved every stage behind it, in that run
+// and in every run after, because the inventory is always walked in the same
+// order. Each stage now gets its own attempt whatever happened to the last.
+//
+// Rate limiting is the exception, and ends the pass. It is the endpoint saying
+// it has no capacity, which is an answer about the server rather than about a
+// stage: continuing would spend a volunteer's capacity to be refused again.
+func (a *Annotator) Annotate(ctx context.Context, stages []route.Stage) (classified, failed int, err error) {
+	attempted := 0
 	for index := range stages {
-		if annotated >= a.limit {
-			return nil
+		if attempted >= a.limit {
+			return classified, failed, nil
 		}
-		if err := ctx.Err(); err != nil {
-			return fmt.Errorf("surface: annotating stages: %w", err)
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return classified, failed, fmt.Errorf("surface: annotating stages: %w", ctxErr)
 		}
 
 		stage := &stages[index]
 		key := stage.Key()
-		cachedHash, found, err := a.cache.StageSurfaceHash(ctx, key.RouteID(), key.StageOrder())
-		if err != nil {
-			return fmt.Errorf("surface: reading cached classification: %w", err)
+		cachedHash, found, hashErr := a.cache.StageSurfaceHash(ctx, key.RouteID(), key.StageOrder())
+		if hashErr != nil {
+			return classified, failed, fmt.Errorf("surface: reading cached classification: %w", hashErr)
 		}
 		if found && cachedHash == stage.ContentHash() {
 			continue
 		}
 
-		if err := a.annotateStage(ctx, stage); err != nil {
-			return err
+		attempted++
+		if stageErr := a.annotateStage(ctx, stage); stageErr != nil {
+			failed++
+			if errors.Is(stageErr, ErrRateLimited) {
+				return classified, failed, stageErr
+			}
+
+			continue
 		}
-		annotated++
+		classified++
 	}
 
-	return nil
+	return classified, failed, nil
 }
 
 // annotateStage classifies one stage and caches the result.

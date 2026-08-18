@@ -109,6 +109,18 @@ export interface SyncPhaseRun {
   deleted: number;
 }
 
+/**
+ * How much of the library carries a usable surface classification.
+ *
+ * Classification cannot fail a synchronisation, by design — which means a stage
+ * the endpoint refuses every time looks exactly like one nobody has asked about
+ * yet. These two numbers are the difference.
+ */
+export interface SurfaceCoverage {
+  classified: number;
+  total: number;
+}
+
 export interface SyncStatus {
   state: string;
   /** Absent until a run has completed. */
@@ -121,6 +133,7 @@ export interface SyncStatus {
   schedule: SyncSchedule;
   /** A half is absent here until it has finished a run of its own. */
   phases: Partial<Record<SyncPhase, SyncPhaseRun>>;
+  surface: SurfaceCoverage;
 }
 
 export interface Status {
