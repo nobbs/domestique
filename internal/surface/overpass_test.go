@@ -484,18 +484,96 @@ func TestDecimateKeepsTheShapeItNeeds(t *testing.T) {
 	})
 }
 
+// Every query has to stay inside the bound that the endpoint actually feels: a
+// corridor of fifty kilometres went unanswered for three minutes where the same
+// ground in four corridors answered in seconds.
+func TestOverpassAsksAboutBoundedLengthsOfRoute(t *testing.T) {
+	var corridors []int
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if err := request.ParseForm(); err != nil {
+			t.Errorf("ParseForm() error = %v", err)
+		}
+		corridors = append(corridors, strings.Count(request.PostFormValue("data"), ","))
+		writeOverpass(t, writer, `{"elements":[]}`)
+	}))
+	defer server.Close()
+
+	// Fifty kilometres of straight road: a handful of vertices once simplified,
+	// and far more ground than one query may cover.
+	if _, err := newTestOverpass(t, server).Ways(t.Context(), metreRoute(0, 50_000, 100)); err != nil {
+		t.Fatalf("Ways() error = %v", err)
+	}
+
+	wantQueries := int(math.Ceil(50_000 / maximumQueryMetres))
+	if len(corridors) < wantQueries {
+		t.Errorf("queries = %d, want at least %d for fifty kilometres", len(corridors), wantQueries)
+	}
+	for index, commas := range corridors {
+		// Two commas per vertex; the radius is not followed by one.
+		if vertices := commas / 2; vertices > maximumQueryPoints {
+			t.Errorf("query %d carried %d vertices, want at most %d", index, vertices, maximumQueryPoints)
+		}
+	}
+}
+
+// Vertices are not spread evenly along a route: a town's worth of turns inside
+// one kilometre can outnumber the cap while covering almost no ground, and the
+// distance cuts alone would hand that to one query.
+func TestChunkPointsCapsVerticesWhereTheyBunchUp(t *testing.T) {
+	coordinates := make([][2]float64, 0, 900)
+	// Six hundred points inside the first kilometre, then fifty kilometres with
+	// almost nothing on it.
+	for step := range 600 {
+		coordinates = append(coordinates, [2]float64{float64(step) * 1.6, 0})
+	}
+	for step := range 300 {
+		coordinates = append(coordinates, [2]float64{1000 + float64(step)*170, 0})
+	}
+	points := metrePoints(coordinates)
+
+	chunks := chunkPoints(points, 250, 12000)
+	for index, chunk := range chunks {
+		if len(chunk) > 250 {
+			t.Errorf("chunk[%d] holds %d points, want at most 250", index, len(chunk))
+		}
+		if got := pathMetres(chunk); got > 12001 {
+			t.Errorf("chunk[%d] covers %.1f m, want at most 12000", index, got)
+		}
+	}
+	covered := 0.0
+	for _, chunk := range chunks {
+		covered += pathMetres(chunk)
+	}
+	if got, want := covered, pathMetres(points); math.Abs(got-want) > 1 {
+		t.Errorf("chunks cover %.1f m, want %.1f m", got, want)
+	}
+}
+
 func TestChunkPointsCoversTheWholeRouteWithoutGaps(t *testing.T) {
+	// The points are a hundred metres apart, so a route of n points covers
+	// (n-1) × 100 m and a span cap converts directly into a chunk count.
+	const unbounded = 1e9
 	tests := []struct {
 		name       string
 		total      int
 		size       int
+		span       float64
 		wantChunks int
 	}{
-		{name: "a short route is one chunk", total: 10, size: 250, wantChunks: 1},
-		{name: "a route at the cap is one chunk", total: 250, size: 250, wantChunks: 1},
-		{name: "one point over the cap splits in two", total: 251, size: 250, wantChunks: 2},
-		{name: "a long route splits evenly", total: 1000, size: 250, wantChunks: 5},
-		{name: "a size too small to split is ignored", total: 100, size: 1, wantChunks: 1},
+		{name: "a short route is one chunk", total: 10, size: 250, span: unbounded, wantChunks: 1},
+		{name: "a route at the cap is one chunk", total: 250, size: 250, span: unbounded, wantChunks: 1},
+		{name: "one point over the cap splits in two", total: 251, size: 250, span: unbounded, wantChunks: 2},
+		{name: "a long route splits evenly", total: 1000, size: 250, span: unbounded, wantChunks: 5},
+		{name: "a size too small to split is ignored", total: 100, size: 1, span: unbounded, wantChunks: 1},
+		// Simplification strips vertices without shortening the route, so a long
+		// stage arrives here well under the vertex cap and would go out as one
+		// corridor no endpoint will answer.
+		{name: "distance splits a route inside the vertex cap", total: 200, size: 250, span: 5000, wantChunks: 4},
+		{name: "distance at the cap is one chunk", total: 51, size: 250, span: 5000, wantChunks: 1},
+		{name: "whichever bound is tighter decides", total: 1000, size: 250, span: 5000, wantChunks: 20},
+		{name: "a span too small to split is ignored", total: 100, size: 250, span: 0, wantChunks: 1},
+		// No distance bound is not the same as no bound at all.
+		{name: "the vertex cap holds without a span", total: 600, size: 250, span: 0, wantChunks: 3},
 	}
 
 	for _, test := range tests {
@@ -506,12 +584,14 @@ func TestChunkPointsCoversTheWholeRouteWithoutGaps(t *testing.T) {
 			}
 			points := metrePoints(coordinates)
 
-			chunks := chunkPoints(points, test.size)
+			chunks := chunkPoints(points, test.size, test.span)
 			if len(chunks) != test.wantChunks {
 				t.Fatalf("chunk count = %d, want %d", len(chunks), test.wantChunks)
 			}
 
-			covered := len(chunks[0])
+			// A cut can land mid-segment, so the runs are checked by the ground
+			// they cover rather than by how many points that took.
+			covered := 0.0
 			for index, chunk := range chunks {
 				if len(chunk) < 2 && test.total >= 2 {
 					t.Errorf("chunk[%d] holds %d points, want a queryable run", index, len(chunk))
@@ -524,11 +604,26 @@ func TestChunkPointsCoversTheWholeRouteWithoutGaps(t *testing.T) {
 					if chunk[0] != previous[len(previous)-1] {
 						t.Errorf("chunk[%d] does not start where chunk[%d] ended", index, index-1)
 					}
-					covered += len(chunk) - 1
 				}
+				covered += pathMetres(chunk)
 			}
-			if len(chunks) > 1 && covered != test.total {
-				t.Errorf("chunks cover %d points, want %d", covered, test.total)
+			if got, want := covered, pathMetres(points); math.Abs(got-want) > 1 {
+				t.Errorf("chunks cover %.1f m, want %.1f m", got, want)
+			}
+			if chunks[0][0] != points[0] {
+				t.Error("the first chunk does not start where the route does")
+			}
+			last := chunks[len(chunks)-1]
+			if last[len(last)-1] != points[len(points)-1] {
+				t.Error("the last chunk does not end where the route does")
+			}
+			if test.span > 0 && len(chunks) > 1 {
+				for index, chunk := range chunks {
+					// Allow the metre of slack the equal-length split rounds by.
+					if got := pathMetres(chunk); got > test.span+1 {
+						t.Errorf("chunk[%d] covers %.1f m, want at most %.1f m", index, got, test.span)
+					}
+				}
 			}
 		})
 	}
