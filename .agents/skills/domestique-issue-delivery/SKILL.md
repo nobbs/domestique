@@ -48,10 +48,13 @@ marker of a claim that already succeeded.
 5. If you won, add `status:in-progress`, then read the label and the comment
    back before changing any code.
 
-Comment ids are ordered only in the API, not in the web view. List them with
-`gh api repos/nobbs/domestique/issues/<n>/comments --jq '.[] | [.id, .created_at]
-| @tsv'`, and delete a lost claim with
-`gh api --method DELETE repos/nobbs/domestique/issues/comments/<id>`.
+Comment ids are ordered only in the API, not in the web view. List them, and
+delete a claim you lost, with:
+
+~~~sh
+gh api repos/nobbs/domestique/issues/<n>/comments --jq '.[] | [.id, .created_at] | @tsv'
+gh api --method DELETE repos/nobbs/domestique/issues/comments/<id>
+~~~
 
 Claim an issue the user named by number the same way. If a live claim already
 holds it, report that and stop rather than working the issue in parallel.
