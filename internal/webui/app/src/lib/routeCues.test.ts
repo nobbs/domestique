@@ -142,6 +142,18 @@ describe("the description a reader hears", () => {
     );
   });
 
+  it("measures the gap between the ends across the ground, not along the route", () => {
+    // Three sides of a two-kilometre square: six kilometres ridden, but the
+    // finish is one side away from the start.
+    const wandering = square(2000).slice(0, 3 * (2000 / 50) + 1);
+    const cues = routeCues(wandering);
+
+    expect(cues?.lengthMetres).toBeCloseTo(6000, -2);
+    expect(cues && cuesDescription(cues)).toBe(
+      "Starts and finishes 2.0 km apart, the finish lying to the north. The ride leaves the start heading east.",
+    );
+  });
+
   it("says plainly that a loop comes back to where it started", () => {
     const cues = routeCues(square(2000));
 
@@ -244,5 +256,24 @@ describe("direction chevrons", () => {
   it("has nothing to draw without a ride or a camera", () => {
     expect(directionChevrons([[8, 49]], { metresPerPixel: resolution })).toEqual([]);
     expect(directionChevrons(eastward(21, 100), { metresPerPixel: 0 })).toEqual([]);
+  });
+});
+
+describe("the positions a chevron is built from", () => {
+  it("keeps a chevron flat where the route stores a point twice", () => {
+    // A repeated point leaves a segment with no length to walk along, and the
+    // stored points carry elevation. A chevron is map geometry either way.
+    const elevated = eastward(41, 50).map(
+      ([longitude, latitude]): Position => [longitude, latitude, 120],
+    );
+    const repeated = [...elevated.slice(0, 20), elevated[19] as Position, ...elevated.slice(20)];
+    const chevrons = directionChevrons(repeated, { metresPerPixel: metresPerPixel(13, 49) });
+
+    expect(chevrons.length).toBeGreaterThan(0);
+    for (const chevron of chevrons) {
+      for (const position of chevron) {
+        expect(position).toHaveLength(2);
+      }
+    }
   });
 });

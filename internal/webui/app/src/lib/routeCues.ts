@@ -150,6 +150,9 @@ export interface RouteCues {
   departure: number;
   /** The heading the ride is still travelling on as it reaches the finish. */
   arrival: number;
+  /** How far apart the two ends lie, straight across the ground. */
+  separationMetres: number;
+  /** How far the ride is, along the route. */
   lengthMetres: number;
 }
 
@@ -173,6 +176,7 @@ export function routeCues(coordinates: Position[]): RouteCues | null {
   // Measured over the same ground at both ends, which is what makes "left to
   // the north-east and came back from the south-west" one comparison rather
   // than two readings at whatever resolution the source happened to store.
+  const separationMetres = haversineMetres(start, finish);
   const reach = Math.min(BEARING_METRES, lengthMetres);
   const departureAt = distances.findIndex((metres) => metres >= reach);
   // The last point still that far short of the finish, rather than the first one
@@ -184,9 +188,10 @@ export function routeCues(coordinates: Position[]): RouteCues | null {
   return {
     start,
     finish,
-    sharedTerminal: haversineMetres(start, finish) <= SHARED_TERMINAL_METRES,
+    sharedTerminal: separationMetres <= SHARED_TERMINAL_METRES,
     departure: bearingBetween(start, coordinates[departureAt] ?? finish),
     arrival: bearingBetween(coordinates[arrivalAt] ?? start, finish),
+    separationMetres,
     lengthMetres,
   };
 }
@@ -206,7 +211,10 @@ export function cuesDescription(cues: RouteCues): string {
     return `Starts and finishes at the same point. The ride ${leaving} and returns from the ${compassPoint(cues.arrival + 180)}, ${formatDistance(cues.lengthMetres)} later.`;
   }
 
-  return `Starts and finishes ${formatDistance(cues.lengthMetres)} apart, the finish lying to the ${compassPoint(bearingBetween(cues.start, cues.finish))}. The ride ${leaving}.`;
+  // Apart is measured across the ground, not along the route: a stage that
+  // wanders can be far longer than the gap between its ends, and saying the
+  // length here would tell a reader the finish is much further away than it is.
+  return `Starts and finishes ${formatDistance(cues.separationMetres)} apart, the finish lying to the ${compassPoint(bearingBetween(cues.start, cues.finish))}. The ride ${leaving}.`;
 }
 
 /**
@@ -255,7 +263,12 @@ export function directionChevrons(
     const bearing = bearingBetween(behind, ahead);
     const along = distances[index] ?? 0;
     const segment = (distances[index + 1] ?? along) - along;
-    const tip = segment > 0 ? offsetPosition(behind, bearing, travelled - along) : behind;
+    const tip: Position =
+      segment > 0
+        ? offsetPosition(behind, bearing, travelled - along)
+        : // Dropping any stored elevation, so a repeated point cannot leave one
+          // chevron carrying a mix of two- and three-number positions.
+          [behind[0], behind[1]];
     chevrons.push([
       offsetPosition(tip, bearing + 180 - CHEVRON_SPREAD_DEGREES, arm),
       tip,
