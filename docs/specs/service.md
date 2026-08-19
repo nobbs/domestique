@@ -529,7 +529,10 @@ secret files remain outside Git.
 - The browser UI renders a stored source stage on a map, is reachable only by
   the configured identity, and offers no editing affordance. Selecting a surface
   class or gradient band in its key only changes what the map and the chart
-  emphasise.
+  emphasise. Searching or reordering the library does the same for the listing
+  it already holds: both are decided in the browser, over the safe display names
+  the inventory listing already carries, and neither adds a query parameter or
+  any other server-side query surface.
 - The only outbound link the UI offers is to the public source repository, and
   following it discloses neither the origin nor anything about the route on
   screen.

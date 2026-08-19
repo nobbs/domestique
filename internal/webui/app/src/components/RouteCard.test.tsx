@@ -21,7 +21,7 @@ function stage(overrides: Partial<Stage> = {}): Stage {
   };
 }
 
-function renderCard(value: Stage = stage()) {
+function renderCard(value: Stage = stage(), stageCount?: number) {
   return render(
     <MemoryRouter>
       <RouteGrid>
@@ -30,6 +30,7 @@ function renderCard(value: Stage = stage()) {
             stage={value}
             href={`/routes/${value.routeId}/${value.stageOrder}`}
             preview={<span data-testid="preview" />}
+            stageCount={stageCount}
           />
         </li>
       </RouteGrid>
@@ -66,6 +67,34 @@ describe("RouteCard", () => {
     renderCard();
 
     expect(screen.getByTestId("preview")).toBeInTheDocument();
+  });
+
+  it("says which stage of its route a split route's card is", () => {
+    renderCard(stage({ stageOrder: 2 }), 3);
+
+    expect(screen.getByText("Stage 2 of 3")).toBeInTheDocument();
+    // The route it belongs to stays named on the card, so the position has
+    // something to be a position in.
+    expect(screen.getByRole("link", { name: /Alpine loop/ })).toBeInTheDocument();
+  });
+
+  it("says nothing about stages for a route that has only one", () => {
+    renderCard(stage({ stageName: "", title: "Alpine loop" }), 1);
+
+    expect(screen.queryByText(/^Stage /)).not.toBeInTheDocument();
+  });
+
+  it("says nothing about stages when the count is not known", () => {
+    renderCard();
+
+    expect(screen.queryByText(/^Stage /)).not.toBeInTheDocument();
+  });
+
+  it("renders a very long name in full rather than cutting it short", () => {
+    const long = `${"Grand Traverse of the Upper Rhine Valley ".repeat(4)}Stage one`;
+    renderCard(stage({ title: long, routeName: long, stageName: "" }));
+
+    expect(screen.getByRole("link", { name: new RegExp(long) })).toBeInTheDocument();
   });
 
   it("still renders a stage whose geometry has not been cached yet", () => {

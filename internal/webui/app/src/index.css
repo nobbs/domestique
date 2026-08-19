@@ -275,6 +275,17 @@ body {
   overflow-wrap: anywhere;
 }
 
+/*
+ * Which stage of a split route this card is. Set apart from the title above it
+ * and the figures below it, because it is neither: it says where the card sits
+ * in a route, not what the route is or how hard it rides.
+ */
+.route-card__stage {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+}
+
 .route-card__meta {
   display: flex;
   flex-wrap: wrap;

@@ -30,6 +30,38 @@ test("the library lists every stage in the demo", async ({ offlinePage: page }) 
   await expect(page.locator(".route-card__meta").first()).toContainText("km");
 });
 
+test("searching narrows the grid without leaving the page", async ({ offlinePage: page }) => {
+  await openLibrary(page);
+
+  await page.getByRole("searchbox", { name: "Search" }).fill("forest");
+
+  await expect(page.locator(".route-card")).toHaveCount(1);
+  await expect(page.locator(".route-card__title")).toHaveText(
+    "Synthetic Rhine Traverse — Forest ramps",
+  );
+  // The stage keeps its place in the route it came from, even alone in the grid.
+  await expect(page.locator(".route-card__stage")).toHaveText("Stage 2 of 3");
+  await expect(page.getByText("Showing 1 of 6 stages")).toBeVisible();
+
+  await page.getByRole("searchbox", { name: "Search" }).fill("nothing matches this");
+
+  await expect(page.locator(".route-card")).toHaveCount(0);
+  await expect(page.getByRole("status")).toContainText("No stages match");
+  await page.getByRole("button", { name: "Clear search" }).click();
+  await expect(page.locator(".route-card")).toHaveCount(DEMO_TITLES.length);
+});
+
+test("the grid can be reordered by distance", async ({ offlinePage: page }) => {
+  await openLibrary(page);
+
+  await page.getByRole("combobox", { name: "Sort by" }).selectOption("distance");
+
+  // Longest first, which is what the order is called.
+  const distances = await page.locator(".route-card__meta > span:first-child").allInnerTexts();
+  const kilometres = distances.map((text) => Number.parseFloat(text));
+  expect(kilometres).toEqual([...kilometres].sort((left, right) => right - left));
+});
+
 test("a card's preview becomes a map once it is in view", async ({ offlinePage: page }) => {
   await openLibrary(page);
 

@@ -1,0 +1,61 @@
+/*
+ * One row above the grid, sharing its padding so the controls line up with the
+ * first column of cards rather than floating over them.
+ *
+ * It wraps rather than shrinks: on a narrow screen the two fields stack, each
+ * keeping a target big enough to hit with a thumb, which is the arrangement a
+ * search box has to survive at every width.
+ */
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.6rem 1.15rem;
+  padding: 1.15rem 1.15rem 0;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.label {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.search,
+.sort {
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) - 4px);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.85rem;
+}
+
+.search:focus-visible,
+.sort:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.search {
+  /* Wide enough for a route name, and free to take the row it wrapped onto. */
+  flex: 1 1 14rem;
+  min-width: 10rem;
+}
+
+/*
+ * The sentence saying what the search left. It sits on the row's baseline with
+ * the fields, and takes no room at all while there is nothing to say.
+ */
+.count {
+  margin: 0;
+  padding-bottom: 0.35rem;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
