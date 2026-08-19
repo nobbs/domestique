@@ -28,6 +28,7 @@ jobs:
       lint: ${{ steps.filter.outputs.lint }}
       go: ${{ steps.filter.outputs.go }}
       ui: ${{ steps.filter.outputs.ui }}
+      coverage: ${{ steps.filter.outputs.coverage }}
       image: ${{ steps.filter.outputs.image }}
       container: ${{ steps.filter.outputs.container }}
 
@@ -148,6 +149,66 @@ jobs:
           cache: true
       - name: Typecheck, lint and test the UI
         run: mise exec -- make ci-ui
+
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    needs: changes
+    # One filter for both languages: the job always measures both, because
+    # neither flag is carried forward, so a report that arrived with only one of
+    # them would leave the other's status describing a commit that is no longer
+    # the one under review.
+    if: needs.changes.outputs.coverage == 'true'
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out repository
+        # v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Install pinned toolchain
+        # v4.2.5
+        uses: jdx/mise-action@3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518
+        with:
+          version: 2026.8.6
+          install: true
+          cache: true
+      - name: Measure coverage
+        run: mise exec -- make coverage
+      # Each upload names exactly the one file it may send. disable_search and
+      # the disabled plugins stop the uploader walking the tree for anything
+      # else it recognises: this repository's working tree can hold a local
+      # database, a configuration file, and secret files, and none of them is
+      # ever an input to a coverage report.
+      #
+      # A failed upload is reported and does not fail the job. Coverage decides
+      # nothing yet, and a pull request from a fork has no token at all, so
+      # reddening CI for it would mean a broken merge gate rather than a
+      # missing report.
+      - name: Upload Go coverage
+        # v7.0.0
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: .coverage/go.out
+          flags: go
+          disable_search: true
+          plugins: noop
+          fail_ci_if_error: false
+      - name: Upload UI coverage
+        # v7.0.0
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: .coverage/ui/lcov.info
+          flags: ui
+          disable_search: true
+          plugins: noop
+          fail_ci_if_error: false
 
   build:
     name: Build
@@ -467,6 +528,7 @@ jobs:
       - test
       - security
       - ui
+      - coverage
       - build
       - image
       - publish
@@ -487,6 +549,7 @@ jobs:
           TEST_RESULT: ${{ needs.test.result }}
           SECURITY_RESULT: ${{ needs.security.result }}
           UI_RESULT: ${{ needs.ui.result }}
+          COVERAGE_RESULT: ${{ needs.coverage.result }}
           BUILD_RESULT: ${{ needs.build.result }}
           IMAGE_RESULT: ${{ needs.image.result }}
           PUBLISH_RESULT: ${{ needs.publish.result }}
@@ -508,6 +571,7 @@ jobs:
             echo "| Test | ${TEST_RESULT} |"
             echo "| Security | ${SECURITY_RESULT} |"
             echo "| UI | ${UI_RESULT} |"
+            echo "| Coverage | ${COVERAGE_RESULT} |"
             echo "| Build | ${BUILD_RESULT} |"
             echo "| Image | ${IMAGE_RESULT} |"
             echo "| Publish | ${PUBLISH_RESULT} |"
@@ -522,6 +586,13 @@ jobs:
       # for the same commits. What this does guarantee is that a failed build,
       # publish, or deploy — including one that rolled the host back cleanly —
       # still reddens the commit.
+      #
+      # `coverage` is deliberately not in the loop below. It is reported above
+      # so that a failed upload is visible, but coverage decides nothing yet and
+      # a fork's pull request cannot upload at all, so gating on it would fail
+      # merges over a missing report rather than over untested code. Adding
+      # COVERAGE_RESULT to the environment and to the loop is what makes it
+      # blocking, once there is a policy worth blocking for.
       - name: Validate CI results
         env:
           CHANGES_RESULT: ${{ needs.changes.result }}
