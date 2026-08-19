@@ -446,14 +446,6 @@ func browserOriginOf(value string) (string, error) {
 	return "https://" + strings.TrimSuffix(strings.ToLower(parsed.Host), ":443"), nil
 }
 
-// originOf reduces a URL to its scheme and host for use in a CSP source list.
-// validateSourceBaseURL checks a provider base URL before it is handed to the
-// browser. It is stricter than originOf, and deliberately so: this value is
-// echoed in a response rather than only compared against another, so anything
-// riding on it is observable. Credentials would be a secret in a JSON body, and
-// a query or fragment would be something the operator's configuration sends to
-// the provider on every visit. A path prefix is allowed — a provider may be
-// hosted under one — and nothing else is.
 // publishableRevision returns the commit object name this build may claim, or
 // empty. Dropped rather than refused: a binary that reports no revision still
 // works, whereas one that refuses to start over a build stamp is a service an
@@ -482,6 +474,8 @@ func publishableDigest(value string) string {
 	return trimmed
 }
 
+// isLowerHex reports whether value is a non-empty run of lowercase hex digits,
+// which is the shape both a commit object name and a digest have to have.
 func isLowerHex(value string) bool {
 	if value == "" {
 		return false
@@ -498,6 +492,13 @@ func isLowerHex(value string) bool {
 	return true
 }
 
+// validateSourceBaseURL checks a provider base URL before it is handed to the
+// browser. It is stricter than originOf, and deliberately so: this value is
+// echoed in a response rather than only compared against another, so anything
+// riding on it is observable. Credentials would be a secret in a JSON body, and
+// a query or fragment would be something the operator's configuration sends to
+// the provider on every visit. A path prefix is allowed — a provider may be
+// hosted under one — and nothing else is.
 func validateSourceBaseURL(value string) error {
 	invalid := errors.New("source base URL must be an absolute HTTPS URL without credentials, query, or fragment")
 
@@ -511,6 +512,7 @@ func validateSourceBaseURL(value string) error {
 	return nil
 }
 
+// originOf reduces a URL to its scheme and host for use in a CSP source list.
 func originOf(value string) (string, error) {
 	parsed, err := url.Parse(strings.TrimSpace(value))
 	if err != nil || parsed.Scheme != "https" || parsed.Host == "" {

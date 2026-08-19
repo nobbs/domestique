@@ -98,6 +98,25 @@ describe("BuildLink", () => {
     expect(screen.queryByText(new RegExp(DIGEST))).toBeNull();
   });
 
+  // Not knowing yet is not the same as knowing there is no revision: "dev" on a
+  // deployed service, even for one frame, is the exact wrong answer to the
+  // question this affordance exists to settle.
+  it("says nothing about the build until the status answers", () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise<Response>(() => {})),
+    );
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <BuildLink />
+      </QueryClientProvider>,
+    );
+
+    expect(screen.queryByText("dev")).toBeNull();
+    expect(screen.getByRole("link").getAttribute("title")).toBe("Source code on GitHub");
+  });
+
   it("still offers the repository while the status is unknown", () => {
     vi.stubGlobal(
       "fetch",
@@ -111,5 +130,8 @@ describe("BuildLink", () => {
     );
 
     expect(screen.getByRole("link")).toHaveAttribute("href", "https://github.com/nobbs/domestique");
+    // And claims nothing about the build, because a failed fetch says nothing
+    // about which one is running.
+    expect(screen.queryByText("dev")).toBeNull();
   });
 });

@@ -20,27 +20,36 @@ const REPOSITORY_URL = "https://github.com/nobbs/domestique";
 const SHORT_REVISION_LENGTH = 7;
 
 export function BuildLink() {
-  const { data } = useQuery(statusQuery());
+  const { data, isPending, isError } = useQuery(statusQuery());
   const build = data?.build;
+  // Not knowing yet is not the same as knowing there is no revision. Until the
+  // status answers — and if it never does — the link says nothing about the
+  // build at all, because "dev" on a deployed service, even for one frame, is
+  // the exact wrong answer to the question this affordance exists to settle.
+  const answered = !isPending && !isError && data !== undefined;
 
-  // No commit means no build stamp was compiled in, which is every local build.
-  // The label says "dev" rather than nothing, so an operator reading a page can
-  // tell they are looking at a development process instead of assuming the
-  // deployed one went quiet about its revision.
+  // No commit in an answer that did arrive means no build stamp was compiled in,
+  // which is every local build. The label says "dev" rather than nothing, so an
+  // operator can tell they are looking at a development process instead of
+  // assuming the deployed one went quiet about its revision.
   const href = build ? `${REPOSITORY_URL}/commit/${build.revision}` : REPOSITORY_URL;
   const label = build ? build.revision.slice(0, SHORT_REVISION_LENGTH) : "dev";
   const title = build
     ? [`Source code at commit ${build.revision}`, build.imageDigest]
         .filter(Boolean)
         .join(" · image ")
-    : "Source code on GitHub — this build carries no revision";
+    : answered
+      ? "Source code on GitHub — this build carries no revision"
+      : "Source code on GitHub";
 
   // The mark and a short revision are what a reader sees; the accessible name
   // says the same thing in a sentence, because "0123456" beside an icon means
   // nothing read aloud on its own.
   const name = build
     ? `Source code at commit ${label} on GitHub`
-    : "Source code on GitHub — this build carries no revision";
+    : answered
+      ? "Source code on GitHub — this build carries no revision"
+      : "Source code on GitHub";
 
   return (
     <a
@@ -62,7 +71,7 @@ export function BuildLink() {
        * tooltip is not there for a keyboard, a touch screen, or a screenshot
        * pasted into a message asking what is deployed.
        */}
-      <span className="layout__revision">{label}</span>
+      {answered ? <span className="layout__revision">{label}</span> : null}
     </a>
   );
 }
