@@ -466,6 +466,43 @@ jobs:
     permissions: {}
 
     steps:
+      # A skipped job and a job that never existed look identical on a commit
+      # status, so the one required check reports what each dependency actually
+      # did. This runs before the validation below, so a failing run explains
+      # itself too.
+      - name: Report what ran
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          LINT_RESULT: ${{ needs.lint.result }}
+          TEST_RESULT: ${{ needs.test.result }}
+          SECURITY_RESULT: ${{ needs.security.result }}
+          UI_RESULT: ${{ needs.ui.result }}
+          BUILD_RESULT: ${{ needs.build.result }}
+          IMAGE_RESULT: ${{ needs.image.result }}
+          PUBLISH_RESULT: ${{ needs.publish.result }}
+          DEPLOY_RESULT: ${{ needs.deploy.result }}
+        run: |
+          set -eu
+
+          {
+            echo "## CI results"
+            echo
+            echo "A job reads \`skipped\` when a path filter found nothing it"
+            echo "gates, or when the event was the other one of pull request"
+            echo "and push. That is a pass, not a gap."
+            echo
+            echo "| Job | Result |"
+            echo "| --- | --- |"
+            echo "| Changes | ${CHANGES_RESULT} |"
+            echo "| Lint | ${LINT_RESULT} |"
+            echo "| Test | ${TEST_RESULT} |"
+            echo "| Security | ${SECURITY_RESULT} |"
+            echo "| UI | ${UI_RESULT} |"
+            echo "| Build | ${BUILD_RESULT} |"
+            echo "| Image | ${IMAGE_RESULT} |"
+            echo "| Publish | ${PUBLISH_RESULT} |"
+            echo "| Deploy | ${DEPLOY_RESULT} |"
+          } >> "$GITHUB_STEP_SUMMARY"
       # Branch protection requires this single job. It fails unless every
       # dependency either succeeded or was skipped by a path filter, so a
       # cancelled or failed job upstream cannot be mistaken for a green run.

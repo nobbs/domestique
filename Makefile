@@ -21,14 +21,20 @@ RELEASE_ARCHES := amd64 arm64
 UI_DIR := internal/webui/app
 UI_DIST := $(UI_DIR)/dist
 
-.PHONY: fmt lint markdownlint shell-lint workflow-lint hook-check test vet mod-check vulncheck secret-scan build build-check ci-lint ci-test ci-security ci-ui check
-.PHONY: ui-install ui-dev ui-typecheck ui-lint ui-format ui-test ui-audit ui-build
+.PHONY: fmt hygiene lint markdownlint shell-lint workflow-lint hook-check gate-check test vet mod-check vulncheck secret-scan build build-check ci-lint ci-test ci-security ci-ui quick check
+.PHONY: ui-install ui-ensure ui-dev ui-typecheck ui-lint ui-format ui-test ui-audit ui-build
 .PHONY: dev-setup dev-api
 
 export GOCACHE
 
 fmt:
 	$(GOLANGCI_LINT) fmt
+
+# prek's own configuration over the whole tree. The installed commit hook runs
+# the same hooks over staged files alone, so this is the repository-wide pass
+# that the hook deliberately does not pay for.
+hygiene:
+	$(PREK) run --all-files
 
 lint:
 	$(GOLANGCI_LINT) run ./...
@@ -51,6 +57,13 @@ workflow-lint:
 # measure reliably. See dev/check-hook-cost.sh.
 hook-check:
 	./dev/check-hook-cost.sh
+
+# `quick` is only trustworthy while it stays a strict subset of `check`. This
+# asserts that, and that the work it defers is exactly the documented set,
+# so a new check cannot land in one and be forgotten in the other. See
+# dev/check-local-gate.sh.
+gate-check:
+	./dev/check-local-gate.sh
 
 test:
 	CGO_ENABLED=0 $(GO) test -shuffle=on ./...
@@ -81,6 +94,14 @@ dev-api:
 
 ui-install:
 	$(NPM) --prefix $(UI_DIR) ci
+
+# Installs only when the tree is missing altogether, so the routine loop does
+# not pay a clean `npm ci` every run. It cannot notice a lockfile that moved
+# under an already-installed tree, so run `make ui-install` after changing a UI
+# dependency; `ci-ui`, and therefore `check` and CI, always install from
+# scratch and would catch it anyway.
+ui-ensure:
+	@[ -d "$(UI_DIR)/node_modules" ] || $(NPM) --prefix $(UI_DIR) ci
 
 ui-dev:
 	$(NPM) --prefix $(UI_DIR) run dev
@@ -119,15 +140,23 @@ build-check: ui-build
 	done
 
 # CI runs the ci-* groups below as separate jobs so that a failure names the
-# area it came from. Keep them as the only decomposition of the quality gate:
-# check exists to run the same work locally, in one command.
+# area it came from, and GitHub Actions running them is what actually gates a
+# merge. Keep them as the only decomposition of the full gate: `check` exists to
+# run the same work locally, in one command, when you want the answer earlier.
+#
+# Every step of a gate goal — the ci-* groups, `check`, and `quick` — is written
+# as its own target invoked with $(MAKE), never as a bare shell command and
+# never as a prerequisite. That is what lets `gate-check` see the steps and
+# compare the two entry points; a check written any other way would be invisible
+# to it. `gate-check` enforces the convention as well as the comparison.
 ci-lint:
-	$(PREK) run --all-files
+	$(MAKE) hygiene
 	$(MAKE) lint
 	$(MAKE) markdownlint
 	$(MAKE) shell-lint
 	$(MAKE) workflow-lint
 	$(MAKE) hook-check
+	$(MAKE) gate-check
 
 ci-test:
 	$(MAKE) vet
@@ -146,6 +175,41 @@ ci-ui: ui-install
 	$(MAKE) ui-lint
 	$(MAKE) ui-test
 
+# The routine local loop. It runs every check that reads the tree as it stands
+# and needs nothing beyond it, and defers three things to `check` and to GitHub
+# Actions, which is the authoritative gate a merge has to pass:
+#
+#   build-check  rebuilds the UI bundle and cross-compiles both published
+#                architectures; the slowest check in the gate whenever the
+#                build cache is cold, which is every CI run
+#   vulncheck    needs the network and a current Go advisory database
+#   ui-audit     needs the network and a current npm advisory database
+#
+# Nothing is weakened by leaving them out: every one still runs in `check` and
+# on every pull request. `gate-check` asserts that this list is the whole of the
+# difference, so a check added to the full gate cannot silently skip this one.
+#
+# It reuses an installed UI tree rather than reinstalling it; see `ui-ensure`.
+quick: ui-ensure
+	$(MAKE) hygiene
+	$(MAKE) lint
+	$(MAKE) markdownlint
+	$(MAKE) shell-lint
+	$(MAKE) workflow-lint
+	$(MAKE) hook-check
+	$(MAKE) gate-check
+	$(MAKE) vet
+	$(MAKE) test
+	$(MAKE) mod-check
+	$(MAKE) secret-scan
+	$(MAKE) ui-typecheck
+	$(MAKE) ui-lint
+	$(MAKE) ui-test
+
+# The full gate, on demand. GitHub Actions runs this same work on every pull
+# request and is what gates the merge, so running it here buys an earlier
+# answer rather than a different one. Use it before handing work over; use
+# `quick` while writing it.
 check:
 	$(MAKE) ci-lint
 	$(MAKE) ci-test

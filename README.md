@@ -15,12 +15,18 @@ and delivery before implementation begins.
 
 ## Development
 
-Install the pinned local toolchain and run the complete quality gate:
+Install the pinned local toolchain and run the routine check loop:
 
 ~~~sh
 mise install
-mise exec -- make check
+mise exec -- make quick
 ~~~
+
+GitHub Actions is the authoritative gate and runs the complete validation on
+every pull request. `make quick` is the fast local loop;
+`mise exec -- make check` runs the full gate locally when an earlier answer is
+worth its cost. The [delivery specification](docs/specs/delivery.md) records
+what the two differ by and why.
 
 Install the optional Git hook with `mise exec -- prek install`. Work on the
 browser UI with `mise exec -- make ui-dev`, which serves it with hot reload and

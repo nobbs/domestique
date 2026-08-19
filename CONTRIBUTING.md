@@ -6,10 +6,26 @@ weaken their access, deletion, or secret-handling rules.
 
 ## Local checks
 
-Install the project-local tools and run the full gate:
+GitHub Actions is the authoritative gate: it runs the complete validation for
+every changed path on every pull request, and its aggregate check is what a
+merge must satisfy. Local checks exist to give you that answer sooner.
+
+Install the project-local tools and run the routine loop:
 
 ~~~sh
 mise install
+mise exec -- make quick
+~~~
+
+`make quick` runs everything the full gate runs except three checks it defers —
+`build-check`, which cross-compiles both published architectures, and
+`vulncheck` and `ui-audit`, which need the network and a current advisory
+database. That difference is asserted, not just documented, so a check added to
+the gate cannot quietly drop out of the routine loop.
+
+Run the full gate yourself with:
+
+~~~sh
 mise exec -- make check
 ~~~
 

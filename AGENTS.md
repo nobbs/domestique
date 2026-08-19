@@ -39,16 +39,32 @@ Mise; do not install tools globally or reach for a different Go version.
 
 ~~~sh
 mise install
-mise exec -- make check
+mise exec -- make quick
 ~~~
 
-`make check` is the complete gate and is exactly what CI runs: `prek`, lint,
-markdownlint, shellcheck, actionlint, `go vet`, tests, TypeScript type checking, the UI lint
-and test suites, `go mod tidy -diff`, `go mod verify`, `govulncheck`,
-`npm audit`, `gitleaks`, a commit-hook cost check, and a cross-compile check
-for each published architecture. Individual targets (`make test`, `make lint`, `make fmt`,
-`make ui-test`, `make build-check`) are available while iterating, but run the
-full gate before reporting work complete.
+**GitHub Actions is the authoritative gate.** It runs the complete validation
+for every changed path on every pull request, and its aggregate check is what a
+merge must satisfy. Running a gate locally buys an earlier answer, not a
+different one.
+
+`make quick` is the routine loop, and what to run while iterating. It runs
+everything `make check` runs except three checks it defers: `build-check`, which
+cross-compiles both published architectures, and `vulncheck` and `ui-audit`,
+which need the network and a current advisory database. Nothing else is left
+out, and `make gate-check` fails if that stops being true.
+
+`make check` is the full gate: `prek`, lint, markdownlint, shellcheck,
+actionlint, `go vet`, tests, TypeScript type checking, the UI lint and test
+suites, `go mod tidy -diff`, `go mod verify`, `govulncheck`, `npm audit`,
+`gitleaks`, a commit-hook cost check, a local-gate structure check, and a
+cross-compile check for each published architecture. Individual targets
+(`make test`, `make lint`, `make fmt`, `make ui-test`, `make build-check`) are
+also available while iterating.
+
+Run `make check` before reporting work complete. If part of it genuinely cannot
+run — no network for the advisory databases, say — run `make quick`, say plainly
+which checks did not run, and leave them to CI rather than implying a full gate
+passed.
 
 Tests run with `CGO_ENABLED=0` and `-shuffle=on`. They must stay deterministic
 under shuffling.
