@@ -330,10 +330,12 @@ process_user="$("${DOCKER}" top "${CONTAINER}" | awk 'NR == 2 { print $1 }')"
 # container's own layer, and what a mount holds is not part of it, so a write
 # that had landed anywhere but the state mount and the tmpfs would show up here.
 #
-# The two read-only mounts do show up: the image ships neither /etc/domestique
-# nor /run/secrets, so the runtime creates them, and the directories above them,
-# in that layer to mount over. That is the mounts arriving rather than the
-# service writing, so those paths are the only entries allowed.
+# The two read-only mounts do show up. The image ships /etc/domestique but no
+# configuration file in it, and no /run/secrets at all, so the runtime creates
+# those two mount points in that layer to mount over, and reports the
+# directories above them as changed because it did. That is the mounts arriving
+# rather than the service writing, so those paths and their parents are the only
+# entries allowed.
 expected_changes=()
 for target in "${CONFIG_PATH}" "${SECRETS_PATH}"; do
   while [[ "${target}" != "/" ]]; do
