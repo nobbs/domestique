@@ -3,7 +3,7 @@
 # Runs the production image the way a deployment runs it, and asserts the
 # runtime contract that arrangement depends on.
 #
-# `build-check` proves the binary compiles for both published architectures and
+# `build-check` proves the binary compiles for the published release target and
 # the image build proves the Dockerfile still builds. Neither starts the result.
 # This does: it gives the image exactly what docs/compose.example.yml gives it —
 # an unprivileged user, a read-only root filesystem, no capabilities, one tmpfs,
@@ -43,8 +43,8 @@
 #     host ports default off 8080 and 8081.
 #
 # The image is not built here. A local build needs a `docker login dhi.io` for
-# the hardened base images, and CI builds for both published architectures in a
-# job that already holds those credentials, so the image is an input: either
+# the hardened base images, and CI builds the published platform in a job that
+# already holds those credentials, so the image is an input: either
 # build `domestique:smoke` first, or point DOMESTIQUE_SMOKE_IMAGE at a
 # reference that is already in the local image store. Nothing here pulls.
 #

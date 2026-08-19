@@ -95,7 +95,7 @@ intentionally no state backup or key-rotation workflow in v1.
 ## Pull a published image
 
 Every default-branch change that touches an input of the image publishes one
-multi-architecture image to `ghcr.io/nobbs/domestique`. The package is private,
+`linux/amd64` image to `ghcr.io/nobbs/domestique`. The package is private,
 so the host needs a **classic** personal access token scoped to `read:packages`
 — a fine-grained token cannot authenticate to ghcr.io:
 
@@ -121,11 +121,12 @@ value into `.env`, replacing any earlier one:
 DOMESTIQUE_IMAGE=ghcr.io/nobbs/domestique@sha256:<digest>
 ```
 
-Pin that index digest — not a per-architecture manifest digest, and not a tag.
-Reading a digest out of `docker images --digests` after a pull can hand you the
-manifest for this host's architecture alone, which silently undoes the
-multi-architecture image. `latest` moves, so it names an image to look at, never
-one to deploy.
+Pin that index digest — not the manifest digest under it, and not a tag. The
+push is an index even though it covers one architecture, because the bill of
+materials and the provenance travel beside the image as their own manifests, and
+reading a digest out of `docker images --digests` after a pull can hand you the
+image manifest alone, which leaves those behind. `latest` moves, so it names an
+image to look at, never one to deploy.
 
 The image is not signed; [the delivery specification](specs/delivery.md) states
 why and what stands in its place.

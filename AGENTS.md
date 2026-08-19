@@ -8,8 +8,8 @@ ground with the details an agent needs to act without additional context.
 
 `domestique` mirrors one private VeloPlanner route library to one or two Wahoo
 accounts as device-ready FIT courses. It is a single-tenant, CGO-free Linux
-Docker workload for a Tailnet host, published for `linux/amd64` and
-`linux/arm64`, with no CLI. It also serves a **read-only browser UI** that
+Docker workload for a Tailnet host, published for `linux/amd64` alone, with no
+CLI. It also serves a **read-only browser UI** that
 renders one stored route stage at a time on a map. Its only state-changing HTTP
 surface is the Wahoo OAuth onboarding flow and the manual `POST /v1/sync`
 trigger.
@@ -49,7 +49,7 @@ different one.
 
 `make quick` is the routine loop, and what to run while iterating. It runs
 everything `make check` runs except five checks it defers: `build-check`, which
-cross-compiles both published architectures; `vulncheck` and `ui-audit`, which
+compiles the published release target; `vulncheck` and `ui-audit`, which
 need the network and a current advisory database; and `ui-browser-install` and
 `ui-browser-test`, which download a browser and then drive it over the demo stack
 for minutes. Nothing else is left out, and `make gate-check` fails if that stops
@@ -59,7 +59,7 @@ being true.
 actionlint, `go vet`, tests, TypeScript type checking, the UI lint and test
 suites, the browser suite, `go mod tidy -diff`, `go mod verify`, `govulncheck`,
 `npm audit`, `gitleaks`, a commit-hook cost check, a local-gate structure check, and a
-cross-compile check for each published architecture. Individual targets
+compile check for the published release target. Individual targets
 (`make test`, `make lint`, `make fmt`, `make ui-test`, `make build-check`) are
 also available while iterating.
 

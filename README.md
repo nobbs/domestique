@@ -2,7 +2,7 @@
 
 `domestique` mirrors one private VeloPlanner route library to one or two Wahoo
 accounts. It is a single-tenant service intended to run as a Docker container on
-an amd64 or arm64 Tailnet host.
+an amd64 Tailnet host.
 
 It also serves a read-only browser UI on the same private listener, which draws
 one stored route stage at a time on a map. Basemap tiles come from a configurable
@@ -38,8 +38,8 @@ secret values.
 
 ## Deployment
 
-The service image is CGO-free `linux/amd64` and `linux/arm64`, and embeds the
-browser UI, so the API and the UI ship as one artefact. A change to the default
+The service image is CGO-free `linux/amd64` and embeds the browser UI, so the
+API and the UI ship as one artefact. A change to the default
 branch that touches an input of the image publishes it to
 `ghcr.io/nobbs/domestique` from GitHub Actions, tagged `latest` and
 `sha-<commit>` and carrying a BuildKit bill of materials and provenance. A
