@@ -357,6 +357,11 @@ CGO_ENABLED=0 GOOS=linux GOARCH="${BUILD_ARCH:-$(go env GOARCH)}" \
 #
 # It waits for `ci-ui` because both rebuild the UI bundle into the same
 # directory, and the browser suite reads the bundle it built.
+#
+# The Makefile shared one flag set with `build`, so this carried the
+# `SOURCE_REVISION` injection too. It does not any more: the binary goes to
+# /dev/null, a revision stamped into it is read by nobody, and dropping it keeps
+# this check a function of the files it names rather than of the environment.
 [build-check]
 description = "Compile the published release target"
 sources = ["**/*.go", "go.mod", "go.sum", "internal/webui/app/dist/**"]
