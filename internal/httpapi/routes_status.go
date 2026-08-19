@@ -38,6 +38,12 @@ func (h *Handler) status(writer http.ResponseWriter, request *http.Request, _ st
 	}
 
 	view := statusView{Ready: ready, Targets: targets, Sync: syncView{State: "not_ready"}}
+	// Only when the revision is known: the digest alone would say which image is
+	// running without saying what is in it, and a group with nothing to identify
+	// is worse than no group.
+	if h.buildRevision != "" {
+		view.Build = &buildView{Revision: h.buildRevision, ImageDigest: h.buildImageDigest}
+	}
 	if ready {
 		view.Sync.State = "idle"
 	}

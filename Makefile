@@ -9,7 +9,14 @@ PREK ?= prek
 NPM ?= npm
 GOCACHE ?= $(CURDIR)/.cache/go-build
 
-BUILD_FLAGS := -trimpath -buildvcs=true
+# The running service reports which public commit produced it, and only a
+# trusted build input can say which one that is: a Docker build context carries
+# no VCS metadata, so nothing inside the build can work it out. SOURCE_REVISION
+# is empty for a local build on purpose — the service then reports no revision
+# at all, which is honest, rather than one an operator might act on.
+SOURCE_REVISION ?=
+REVISION_FLAGS := $(if $(SOURCE_REVISION),-ldflags=-X=github.com/nobbs/domestique/internal/build.revision=$(SOURCE_REVISION))
+BUILD_FLAGS := -trimpath -buildvcs=true $(REVISION_FLAGS)
 BUILD_TARGET := ./cmd/domestique
 BUILD_OUTPUT := build/domestique
 # The release image is published for both architectures, so the compile check

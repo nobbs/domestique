@@ -8,6 +8,7 @@
 
 import type {
   BoundingBox,
+  BuildInfo,
   Position,
   Stage,
   StageGeometry,
@@ -229,6 +230,7 @@ export function parseStatus(payload: unknown): Status {
 
   return {
     ready: flag(body.ready, "body.ready"),
+    build: buildInfoFrom(body.build, "body.build"),
     targets: array(body.targets, "body.targets").map((entry, index) => {
       const target = record(entry, `targets[${index}]`);
       return {
@@ -248,6 +250,31 @@ export function parseStatus(payload: unknown): Status {
       phases: syncPhasesFrom(sync.phases, "body.sync.phases"),
       surface: surfaceCoverageFrom(sync.surface, "body.sync.surface"),
     },
+  };
+}
+
+/**
+ * The build group, or undefined when the service did not name one.
+ *
+ * A revision the service would not stand behind never arrives — it is dropped
+ * where it is served — so anything present here is read as given, and a group
+ * without a revision is treated as no group rather than as a contract error: a
+ * missing build stamp must not cost the operator the status page.
+ */
+function buildInfoFrom(value: unknown, at: string): BuildInfo | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+
+  const build = record(value, at);
+  const revision = optionalText(build.revision, `${at}.revision`);
+  if (!revision) {
+    return undefined;
+  }
+
+  return {
+    revision,
+    imageDigest: optionalText(build.image_digest, `${at}.image_digest`),
   };
 }
 

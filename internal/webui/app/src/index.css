@@ -163,6 +163,15 @@ body {
   color: var(--accent);
 }
 
+/* The running revision: monospace because it is an identifier to compare, not
+   prose to read, and small enough to sit under the header's own weight. */
+.layout__revision {
+  margin-left: 0.4rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.02em;
+}
+
 .layout__main {
   flex: 1 1 auto;
   min-height: 0;

@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/nobbs/domestique/internal/build"
 	"github.com/nobbs/domestique/internal/cfaccess"
 	"github.com/nobbs/domestique/internal/config"
 	"github.com/nobbs/domestique/internal/elevation"
@@ -134,6 +135,15 @@ func run(ctx context.Context) error {
 		},
 	)
 
+	// Which source produced this binary, and which image is carrying it. The
+	// revision is compiled in by CI; the image reference is what the deploying
+	// host pinned, handed in through the environment because nothing inside an
+	// image can know its own digest — the configuration layer takes it out of
+	// that environment on the way past, since the prefix is its own. Only the
+	// digest survives the read: the registry and repository in front of it stay
+	// on the host.
+	buildInfo := build.Current(settings.ImageReference)
+
 	handler, err := httpapi.New(
 		&httpapi.Options{
 			TargetIDs:        targetIDs,
@@ -141,9 +151,11 @@ func run(ctx context.Context) error {
 			TileStyleURLDark: settings.WebUI.TileStyleURLDark,
 			// The page links a stage back to the source route it was made from,
 			// which is on the provider the library is read from.
-			SourceBaseURL:  settings.VeloPlanner.BaseURL,
-			AccessVerifier: accessVerifier,
-			AccessEmail:    settings.Access.Cloudflare.AllowedEmail,
+			SourceBaseURL:    settings.VeloPlanner.BaseURL,
+			BuildRevision:    buildInfo.Revision,
+			BuildImageDigest: buildInfo.ImageDigest,
+			AccessVerifier:   accessVerifier,
+			AccessEmail:      settings.Access.Cloudflare.AllowedEmail,
 			// The Wahoo redirect URL is on the hostname a browser reaches this
 			// service at, which is what makes it the origin a state-changing
 			// request has to come from.

@@ -136,8 +136,22 @@ export interface SyncStatus {
   surface: SurfaceCoverage;
 }
 
+/**
+ * Which public source produced the running service.
+ *
+ * Absent when the service was not built by CI, and then the page says so rather
+ * than offering a link to a commit that does not exist.
+ */
+export interface BuildInfo {
+  /** A full commit object name in the public repository. */
+  revision: string;
+  /** The running image's digest, when the service was told one. */
+  imageDigest?: string | undefined;
+}
+
 export interface Status {
   ready: boolean;
+  build?: BuildInfo | undefined;
   targets: TargetStatus[];
   sync: SyncStatus;
 }

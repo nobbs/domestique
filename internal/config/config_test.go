@@ -34,6 +34,43 @@ func TestLoadUsesFileSecretsAndDefaults(t *testing.T) {
 	}
 }
 
+func TestLoadCarriesThePinnedImageReferenceWithoutTreatingItAsASetting(t *testing.T) {
+	configPath, _ := writeValidConfiguration(t, t.TempDir())
+	t.Setenv(configFileEnv, configPath)
+	reference := "ghcr.io/nobbs/domestique@sha256:" + strings.Repeat("ab", 32)
+	t.Setenv(imageReferenceEnv, reference)
+
+	// Every other DOMESTIQUE_ variable is a setting and an unknown one is fatal,
+	// so this has to be consumed rather than left for Koanf to trip over. The
+	// deployed compose file passes it, which means getting this wrong would stop
+	// the service from starting at all.
+	settings, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if got, want := settings.ImageReference, reference; got != want {
+		t.Errorf("ImageReference = %q, want %q", got, want)
+	}
+	// Taken out of the environment, so nothing later in startup can read a
+	// deployment fact out of it by accident.
+	if _, found := os.LookupEnv(imageReferenceEnv); found {
+		t.Errorf("%s is still set after Load()", imageReferenceEnv)
+	}
+}
+
+func TestLoadReportsNoImageReferenceWhenTheHostNamedNone(t *testing.T) {
+	configPath, _ := writeValidConfiguration(t, t.TempDir())
+	t.Setenv(configFileEnv, configPath)
+
+	settings, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if got := settings.ImageReference; got != "" {
+		t.Errorf("ImageReference = %q, want empty", got)
+	}
+}
+
 func TestLoadDefaultsToAKeylessTileStyle(t *testing.T) {
 	configPath, _ := writeValidConfiguration(t, t.TempDir())
 	t.Setenv(configFileEnv, configPath)

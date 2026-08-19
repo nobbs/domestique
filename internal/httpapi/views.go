@@ -90,9 +90,26 @@ type surfaceView struct {
 }
 
 type statusView struct {
+	// Build names the source this service was built from. Absent for a build
+	// that was not made by CI, which is how a reader tells a development
+	// process from a deployed one.
+	Build   *buildView   `json:"build,omitempty"`
 	Targets []targetView `json:"targets"`
 	Sync    syncView     `json:"sync"`
 	Ready   bool         `json:"ready"`
+}
+
+// buildView says which public revision produced the running service, and which
+// image carries it. Both are immutable facts about the build, so this group is
+// safe to serve: it names no host, no path, no configuration, and no route.
+type buildView struct {
+	// Revision is a full commit object name in the public repository, so a
+	// reader can address exactly the source they are running.
+	Revision string `json:"revision"`
+	// ImageDigest is the digest alone, without the registry or repository the
+	// host pulls it from. Absent when the service was not told one.
+	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
+	ImageDigest string `json:"image_digest,omitempty"`
 }
 
 type webUIConfigView struct {

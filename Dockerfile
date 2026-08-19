@@ -23,6 +23,12 @@ FROM --platform=$BUILDPLATFORM dhi.io/golang@sha256:b511696c1fb6929510c24d8ce66b
 ARG TARGETARCH
 ARG TARGETOS
 
+# The commit the image is built from, passed in by CI. It cannot be derived
+# here: .dockerignore excludes .git, and a build context is not a checkout. Left
+# unset — as it is for any local `docker build` — the service reports no
+# revision rather than one it guessed.
+ARG SOURCE_REVISION=
+
 USER root
 WORKDIR /src
 
@@ -38,7 +44,8 @@ COPY --from=webui /app/dist ./internal/webui/app/dist
 
 RUN --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
-    go build -trimpath -buildvcs=true -ldflags='-s -w' \
+    go build -trimpath -buildvcs=true \
+      -ldflags="-s -w ${SOURCE_REVISION:+-X=github.com/nobbs/domestique/internal/build.revision=${SOURCE_REVISION}}" \
       -o /out/domestique ./cmd/domestique \
     && install -d -m 0755 /out/etc/domestique /out/var/lib/domestique \
     && touch /out/etc/domestique/.keep /out/var/lib/domestique/.keep \

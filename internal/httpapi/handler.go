@@ -34,6 +34,16 @@ const (
 	cacheImmutable = "public, max-age=31536000, immutable"
 )
 
+// The shapes a build stamp may have before this package will serve it. They are
+// restated here rather than imported because this is the layer that publishes
+// them: whatever produced the value, only a full commit object name and a
+// `sha256:` digest leave the service.
+const (
+	revisionLength = 40
+	digestPrefix   = "sha256:"
+	digestLength   = 64
+)
+
 // OAuth performs the protected Wahoo onboarding flow.
 type OAuth interface {
 	Start(ctx context.Context, callerLogin, targetID string) (string, error)
@@ -127,6 +137,21 @@ type Options struct {
 	// Optional: without it the page shows no such link rather than a broken one.
 	SourceBaseURL string
 
+	// BuildRevision is the public source commit this binary was built from, and
+	// BuildImageDigest the immutable digest of the image running it. Both are
+	// optional: a local build knows neither, and the status response then says
+	// so rather than naming something it cannot stand behind.
+	//
+	// Each is published only when it is what it claims to be — a full commit
+	// object name, and a `sha256:` digest — because this is the boundary that
+	// serves them, and a malformed value here would become a link to nowhere in
+	// a browser.
+	BuildRevision string
+
+	// BuildImageDigest is the digest alone. Whatever registry and repository the
+	// host pulls it from is deployment topology and stays on the host.
+	BuildImageDigest string
+
 	// AccessEmail is the one address an Access assertion may name, and the
 	// principal every authenticated request resolves to.
 	AccessEmail string
@@ -152,6 +177,8 @@ type Handler struct {
 	tileStyleURL     string
 	tileStyleURLDark string
 	sourceBaseURL    string
+	buildRevision    string
+	buildImageDigest string
 	tileOrigin       string
 	browserOrigin    string
 	allowedEmail     string
@@ -227,6 +254,8 @@ func New(
 		tileStyleURL:     options.TileStyleURL,
 		tileStyleURLDark: options.TileStyleURLDark,
 		sourceBaseURL:    sourceBaseURL,
+		buildRevision:    publishableRevision(options.BuildRevision),
+		buildImageDigest: publishableDigest(options.BuildImageDigest),
 		tileOrigin:       tileOrigin,
 		browserOrigin:    browserOrigin,
 		targetIDs:        append([]string(nil), options.TargetIDs...),
@@ -417,7 +446,52 @@ func browserOriginOf(value string) (string, error) {
 	return "https://" + strings.TrimSuffix(strings.ToLower(parsed.Host), ":443"), nil
 }
 
-// originOf reduces a URL to its scheme and host for use in a CSP source list.
+// publishableRevision returns the commit object name this build may claim, or
+// empty. Dropped rather than refused: a binary that reports no revision still
+// works, whereas one that refuses to start over a build stamp is a service an
+// operator loses for a reason that has nothing to do with cycling.
+func publishableRevision(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if len(trimmed) != revisionLength || !isLowerHex(trimmed) {
+		return ""
+	}
+
+	return trimmed
+}
+
+// publishableDigest returns the image digest this build may claim, or empty. A
+// reference with a registry and repository still in front of it is refused here
+// rather than trimmed: the composition root is where a deployment reference is
+// read, and this layer serving one would mean the topology had already reached
+// a response body once.
+func publishableDigest(value string) string {
+	trimmed := strings.TrimSpace(value)
+	hex, found := strings.CutPrefix(trimmed, digestPrefix)
+	if !found || len(hex) != digestLength || !isLowerHex(hex) {
+		return ""
+	}
+
+	return trimmed
+}
+
+// isLowerHex reports whether value is a non-empty run of lowercase hex digits,
+// which is the shape both a commit object name and a digest have to have.
+func isLowerHex(value string) bool {
+	if value == "" {
+		return false
+	}
+	for _, character := range value {
+		switch {
+		case character >= '0' && character <= '9':
+		case character >= 'a' && character <= 'f':
+		default:
+			return false
+		}
+	}
+
+	return true
+}
+
 // validateSourceBaseURL checks a provider base URL before it is handed to the
 // browser. It is stricter than originOf, and deliberately so: this value is
 // echoed in a response rather than only compared against another, so anything
@@ -438,6 +512,7 @@ func validateSourceBaseURL(value string) error {
 	return nil
 }
 
+// originOf reduces a URL to its scheme and host for use in a CSP source list.
 func originOf(value string) (string, error) {
 	parsed, err := url.Parse(strings.TrimSpace(value))
 	if err != nil || parsed.Scheme != "https" || parsed.Host == "" {

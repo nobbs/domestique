@@ -228,7 +228,14 @@ The read-only JSON surface is deliberately small:
 - `GET /v1/status` reports current configuration readiness, last sync outcome,
   aggregate counts, target authorisation state, the two schedule switches, the
   last run of each half, and how much of the library carries a current surface
-  classification.
+  classification. It also names the build that is running: the full public
+  source commit the binary was compiled from, and the digest of the image
+  carrying it when the host told the service one. That group is absent for a
+  build that carries no injected revision, which is how a reader tells a
+  development process from a deployed one. Only a full commit object name and a
+  bare `sha256:` digest are served; a value that is neither is dropped rather
+  than published, because in a browser it would become a link to nowhere. No
+  registry, repository, host, tag, or path is included.
 - `GET /v1/routes` lists known source routes and stages with their titles and
   aggregate geometry facts.
 - `GET /v1/routes/{source-route-id}/stages/{stage}` returns stored route
