@@ -204,11 +204,14 @@ func newHandler(
 		// fresh one, and it still reaches nothing. It seeds on the request rather
 		// than in the background because the whole library is a few hundred
 		// milliseconds of local writes.
+		//
+		// The answer is always that the run was accepted, because false means one
+		// is already running and nothing else: a re-seed that fails is a run that
+		// failed, not a conflict, and reporting it as a conflict would tell the
+		// browser something untrue.
 		httpapi.SyncTriggerFunc(func(_ httpapi.SyncPhase) bool {
 			if seedErr := seed(context.Background(), store, slots); seedErr != nil {
 				fmt.Fprintf(os.Stderr, "demoapi: re-seeding: %v\n", seedErr)
-
-				return false
 			}
 
 			return true
