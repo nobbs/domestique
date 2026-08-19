@@ -36,6 +36,11 @@ Run the full gate yourself with:
 mise run check
 ~~~
 
+Either loop skips a check whose files have not moved since it last passed, and
+says `sources up-to-date, skipping` where it would have run one.
+`mise run --force <task>` runs it anyway, and CI always does — the gate a merge
+must satisfy never reads that cache.
+
 Neither loop starts the production image. `mise run container-smoke` does: it
 runs the image under the hardening the deployment example documents and asserts
 that the service comes up, both probes answer, an anonymous caller is refused,

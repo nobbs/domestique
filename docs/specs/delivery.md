@@ -85,9 +85,9 @@ the network rather than because it matters less:
 | `ui-browser-test` | Drives that browser over the demo stack; minutes rather than seconds, and useless without the download above. |
 
 It also reuses an installed browser UI dependency tree rather than reinstalling
-it, and installs one only when none is present. `mise run check` and CI always
-install from a clean `npm ci`, so a lockfile change is still proved against a
-fresh tree.
+it, and installs one only when none is present. CI always installs from a clean
+`npm ci`, and a lockfile that has moved installs from scratch locally too, so a
+dependency change is still proved against a fresh tree.
 
 That `mise run quick` is a strict subset of `mise run check`, and that the
 difference is exactly the deferred set above, is asserted rather than only
@@ -125,6 +125,35 @@ cross-compilation, image work, and the browser suites stay out of the hook and
 belong to `mise run check` and GitHub Actions. Both properties are asserted, so
 a later hook cannot quietly reintroduce the cost; wall-clock is not asserted,
 because a timing assertion on a shared runner is flaky.
+
+### A local check may skip work its inputs have not changed
+
+Most checks declare the files they read, and mise skips one whose inputs have
+not moved since it last succeeded, saying so in place of the run. That is a
+local convenience only: **CI runs every task with `--force`, so the
+authoritative gate never consults a cache.** `mise run --force <task>` does the
+same locally.
+
+Three rules decide which checks may be skipped, and they are narrower than
+"whatever is slow":
+
+- A check qualifies only when its verdict is a function of the files it names.
+  `vulncheck` and `ui-audit` read an advisory database that moves without the
+  tree, so an unchanged tree can still be newly vulnerable and they always run.
+- Its inputs must be nameable. `hygiene` and `secret-scan` read the whole
+  worktree, and a source list that broad is likelier to be wrong than those runs
+  are to be slow.
+- A glob names a kind of file rather than the directories that hold it today —
+  `**/*.go`, not a list of packages — because a source list that misses a new
+  file is a check that stops noticing it.
+
+Four properties are what make skipping safe rather than merely fast. A task that
+failed is never recorded as up to date, so a red check cannot be cached green.
+Editing a task's own definition invalidates it, so a check cannot change what it
+does and stay up to date. A glob matching no file would otherwise be up to date
+for ever, which is the one way this could retire a check silently, so
+`gate-check` fails on one. And the mechanism only ever removes work from a local
+run: the merge gate does not use it.
 
 ## Coverage
 

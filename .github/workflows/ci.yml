@@ -68,8 +68,12 @@ jobs:
           version: 2026.8.6
           install: true
           cache: true
+      # --force here and in every other job: a task that declares `sources` is
+      # skipped locally when its inputs have not moved, and the gate a merge
+      # must satisfy is not the place to trust a cache. It costs nothing on a
+      # fresh runner and keeps the property true if one ever restores state.
       - name: Run linters
-        run: mise run ci-lint
+        run: mise run --force ci-lint
 
   test:
     name: Test
@@ -95,7 +99,7 @@ jobs:
           install: true
           cache: true
       - name: Run tests
-        run: mise run ci-test
+        run: mise run --force ci-test
 
   security:
     name: Security
@@ -121,7 +125,7 @@ jobs:
           install: true
           cache: true
       - name: Audit modules and dependencies
-        run: mise run ci-security
+        run: mise run --force ci-security
 
   ui:
     name: UI
@@ -154,7 +158,7 @@ jobs:
         # shared library Chromium links, so the flag only adds CJK, Thai, and
         # Cyrillic fonts the suite never renders, and it has spent over five
         # minutes waiting on the apt mirror to serve them.
-        run: mise run ci-ui
+        run: mise run --force ci-ui
 
   coverage:
     name: Coverage
@@ -208,9 +212,9 @@ jobs:
       - name: Install the browser
         # The UI half of the measurement drives the whole page in real Chromium.
         # Without --with-deps, for the reason the UI job gives.
-        run: mise run ui-browser-install
+        run: mise run --force ui-browser-install
       - name: Measure coverage
-        run: mise run coverage
+        run: mise run --force coverage
       # Each upload names exactly the one file it may send. disable_search and
       # the disabled plugins stop the uploader walking the tree for anything
       # else it recognises: this repository's working tree can hold a local
@@ -268,11 +272,11 @@ jobs:
       # build-check bundles the UI before it compiles, because the binary
       # embeds dist, so the JavaScript tree has to be installed first.
       - name: Install UI dependencies
-        run: mise run ui-install
+        run: mise run --force ui-install
       # This is the only check that compiles for both published architectures,
       # so it runs on every Go change rather than only when the image is built.
       - name: Compile for every published architecture
-        run: mise run build-check
+        run: mise run --force build-check
 
   image:
     name: Image
@@ -361,7 +365,7 @@ jobs:
       # that the service comes up under it. It reaches no provider and mounts no
       # real secret; see dev/container-smoke.sh.
       - name: Smoke-test the production runtime contract
-        run: mise run container-smoke
+        run: mise run --force container-smoke
 
   publish:
     name: Publish

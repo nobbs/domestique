@@ -77,6 +77,13 @@ routine.
 Either way, say plainly which checks you ran. A green `mise run quick` is not a
 full gate, and reporting it as one is the failure this rule exists to prevent.
 
+A second run says `sources up-to-date, skipping` for every check whose files
+have not moved, which is why the loop is cheap to repeat. It is a local
+convenience and nothing more: CI runs every task with `--force`. Use
+`mise run --force quick` when you want the checks run regardless — after
+switching branches with a dirty state directory, or when you suspect the cache
+rather than the code.
+
 Tests run with `CGO_ENABLED=0` and `-shuffle=on`. They must stay deterministic
 under shuffling.
 
