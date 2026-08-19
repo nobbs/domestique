@@ -70,8 +70,12 @@ interface CategoryGuidance {
 }
 
 /**
- * One entry per emitted category, keyed by the category itself so a new one
- * cannot be added to the service without this table failing to compile.
+ * One entry per category in `SYNC_FAILURE_CATEGORIES`, keyed by the category
+ * itself, so a category added to that list without an entry here fails to
+ * compile. The list is kept in step with the service by hand: `failure` arrives
+ * as a plain string and nothing across the wire can enforce that. A category
+ * the list does not know falls through to `UNRECOGNISED` rather than reaching
+ * the page as itself.
  *
  * `empty_source` and `deletion_limit` are the two deletion gates, and both are
  * `blocked`: the library is intact on both accounts, and the way past either is
@@ -82,7 +86,7 @@ const CATEGORY_GUIDANCE: Record<SyncFailureCategory, CategoryGuidance> = {
     kind: "failed",
     what: "stored state could not be read or written safely",
     remediation:
-      "Nothing was changed on Wahoo. Check that the state volume is writable and the state encryption key is the one this state was written with, then run this half again.",
+      "Check that the state volume is writable and the state encryption key is the one this state was written with, then run this half again: it reconciles from what is actually there rather than repeating what it tried.",
   },
   source: {
     kind: "failed",
