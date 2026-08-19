@@ -14,9 +14,17 @@ state, or delete a Wahoo route by hand.
 
 **The status page.** The browser UI at the public hostname is the status page,
 and everything it shows comes from `GET /v1/status`, which reads local state
-alone — it can be answered while VeloPlanner and Wahoo are both unreachable. It
-carries each target's `authorisation` and `convergence`, each half's last run
-under `sync.phases`, the two schedule switches, and the surface coverage counts.
+alone — it can be answered while VeloPlanner and Wahoo are both unreachable. The
+page says things in plain language: an account reads **Not connected**,
+**Behind**, **Last write failed**, or **Up to date**, and a half that did not
+succeed reads **Held by a safety gate**, **Did not finish**, or **Did not
+start** with a sentence about what to do.
+
+The wire words below — the categories, the authorisation values, the run results
+— are what `GET /v1/status` itself returns, which is where to look when the page
+does not distinguish two situations that need different answers. Fetching it
+needs the same Cloudflare Access assertion the page carries, so it is read most
+easily from the browser at `/v1/status`.
 
 **Pushover.** Every terminal run notifies. A success carries its counts. A
 failure arrives titled `Domestique sync failed` with a body naming the half and
@@ -59,8 +67,11 @@ just reaches the same gate again, which is the point of it.
 ## Reconnect a Wahoo account
 
 **You will have seen** `targets failed: authorization`, and that account reading
-`needs_reauthorization` on the status page, with its convergence shown as
-`Last write failed` or `Not connected`.
+**Not connected** on the status page. Any slot that is not authorised reads that
+way, so the page does not separate an account that has never been connected from
+one whose authorisation Wahoo has since rejected. `GET /v1/status` does: its
+`authorisation` is `not_authorized` for the first and `needs_reauthorization`
+for the second. Both are fixed by the same visit.
 
 **What already held.** Only that slot is affected: the other target is still
 attempted in the same run, and a rejected token deletes nothing anywhere. The
@@ -74,14 +85,15 @@ https://<your-public-hostname>/oauth/wahoo/start/<target-id>
 ```
 
 Sign in as the account that slot belongs to. Wahoo returns to the callback URL
-and the service redirects to the status page. Confirm the slot now reads
-`authorized`, then press **Write to Wahoo** rather than waiting for the hour:
-the run reconciles from what the account actually holds, so it will catch that
-target up without replaying anything destructive.
+and the service redirects to the status page. Confirm that the account has
+stopped reading **Not connected**, then press **Write to Wahoo** rather than
+waiting for the hour: the run reconciles from what the account actually holds,
+so it will catch that target up without replaying anything destructive.
 
-A slot that refuses to leave `pending` means the callback never completed. The
-transaction expires after ten minutes and is single-use — start it again rather
-than reloading the callback URL.
+An account still reading **Not connected** afterwards means the callback never
+completed; `authorisation` in `GET /v1/status` sits at `pending` while that is
+true. The transaction expires after ten minutes and is single-use — start it
+again rather than reloading the callback URL.
 
 **On the host**, only if reconnecting fails outright: `wahoo.redirect_url` must
 be exactly the public hostname plus `/oauth/wahoo/callback` and must match the
@@ -163,10 +175,11 @@ already owns rather than deleting and recreating it.
 ## State cannot be read, or has been lost
 
 **You will have seen** `/readyz` answering `503` with `state_unreadable` or
-`state_incomplete`, a `state` category on either half, or a status page where
-`ready` is false and sync reads `not_ready`. An unreadable schedule is reported
-the same way — as a failed source run — because "switched off" and "cannot be
-read" are different answers and a timer must not act on the second as the first.
+`state_incomplete`, a `state` category on either half, or a status page showing
+every account as **Not connected** and each half as **Did not start**. An
+unreadable schedule is reported the same way — as a failed source run — because
+"switched off" and "cannot be read" are different answers and a timer must not
+act on the second as the first.
 
 **What already held.** Lost state is never authority to delete. When the service
 comes back without state, sync stays disabled until every slot is authorised
@@ -246,9 +259,9 @@ long stages take longer to succeed than short ones.
 `overpass_url` in the host's `[surface]` configuration, and the default is a
 public instance that refuses a share of queries under load. Point it at your own
 Overpass instance, or set it to `""` to switch the lookup off and leave stages
-unclassified on purpose. A single stage classified wrongly is a **Reprocess** away; re-planning
-a stage reclassifies it automatically, because the cached ranges describe
-coordinates that were replaced.
+unclassified on purpose. A single stage classified wrongly is a **Reprocess**
+away; re-planning a stage reclassifies it automatically, because the cached
+ranges describe coordinates that were replaced.
 
 ## What this runbook does not cover
 
