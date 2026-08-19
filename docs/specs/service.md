@@ -361,6 +361,24 @@ A SQLite database on a Docker volume stores:
 The database holds no plaintext credential or token. It is intentionally not
 backed up.
 
+The schema is versioned by an append-only migration history, and migrations run
+forward only. Because there is no backup, a deployment that migrates the state
+and then fails its health gate must still be able to roll back onto the previous
+image, so:
+
+- every migration must leave the previous release's binary able to read and
+  write what it already did — additive with defaults. A migration must not drop
+  or rename anything an earlier binary uses, add a `NOT NULL` column without a
+  default to a table an earlier binary inserts into, tighten a `CHECK` or add a
+  `UNIQUE` index an earlier binary's writes could violate, or change what an
+  existing column's values mean; and
+- a binary opens a state file up to one migration ahead of itself, and refuses
+  one further ahead than that with a distinct error. A release that must stay
+  rollable therefore appends one migration.
+
+The rollback path never restores or replaces state; the tolerance is what makes
+the previous image usable against a state file the failed deploy migrated.
+
 It does hold the operator's route geometry in plaintext as a rendering cache.
 That is personal data rather than a credential, and losing it is harmless — the
 next sync refills it from the source — but it raises the sensitivity of the

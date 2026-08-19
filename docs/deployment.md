@@ -181,5 +181,9 @@ For an update, take the digest from the run that published it, replace only
 `DOMESTIQUE_IMAGE` in `/srv/domestique/.env`, and run `docker compose up -d`.
 The container leaves the named state volume in place. Rollback is the same
 operation with an earlier published digest; it never restores old SQLite state.
+It does not need to: a binary opens a state file up to one migration ahead of
+itself, so an image rolled back across a schema migration still starts. Rolling
+back further than that is refused rather than guessed at, and the deploy script
+says so specifically when it happens.
 
 Do not run `docker compose down -v`, which deletes the state volume.
