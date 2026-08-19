@@ -238,7 +238,10 @@ deployment files from the Raspberry Pi.
 
 Use Conventional Commits. Pull requests should explain any changes to the
 normative specifications, safety gates, or operator action required for
-deployment.
+deployment. A change to what an operator sees or does when a run stops belongs
+in [the operator recovery runbook](docs/runbook.md) in the same change: it is
+written against the failure categories the service emits, and a category added
+without an entry there fails `mise run test`.
 
 ## Dependency updates
 

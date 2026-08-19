@@ -168,8 +168,10 @@ browser, which may not be on the Tailnet at all.
 
 Open the public URL in the configured user's browser, then authorize each fixed
 target slot from `/oauth/wahoo/start/<target-id>`. Check `/v1/status` after
-each authorization. The delayed first sync and hourly schedule start with the
-container; a Pushover message reports every completed sync, including success.
+each authorization. When a later run stops and asks for a person, the
+[operator recovery runbook](runbook.md) covers what it is telling you. The
+delayed first sync and hourly schedule start with the container; a Pushover
+message reports every completed sync, including success.
 
 ## Update and rollback
 

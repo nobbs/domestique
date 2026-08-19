@@ -60,6 +60,8 @@ operator reaches it — the only way in, and without publishing a listener. The
 [Pi deployment guide](docs/deployment.md) applies the same runtime contract to
 smaller hardware. The [macOS Docker guide](docs/macos-mvp.md) is a historical
 record of the Apple-silicon MVP host that first ran the service, kept for how
-it was assembled rather than as something to follow. The optional
+it was assembled rather than as something to follow. The
+[operator recovery runbook](docs/runbook.md) covers the uncommon moments a
+running deployment asks for a person. The optional
 sandbox encoder check is documented in
 [the FIT acceptance guide](docs/fit-sandbox-acceptance.md).
