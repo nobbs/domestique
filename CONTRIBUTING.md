@@ -200,3 +200,24 @@ deployment files from the Raspberry Pi.
 Use Conventional Commits. Pull requests should explain any changes to the
 normative specifications, safety gates, or operator action required for
 deployment.
+
+## Dependency updates
+
+Renovate proposes dependency updates as they are released, at most two an hour
+and five open at once; `renovate.json5` holds the configuration and says next to
+each rule why it is what it is. Most
+non-major updates automerge through GitHub's auto-merge once the required checks
+pass, so the gate is what makes them safe — see
+[the delivery specification](docs/specs/delivery.md#dependency-updates) for what
+that covers and what it deliberately does not.
+
+Three things want a person: any major, anything touching `maplibre-gl` or
+`react-map-gl`, and anything opened for a published advisory. The map packages
+are there because the browser suite renders the map without judging it, which is
+the same reason a map change of your own needs a look before it merges.
+
+The `dhi.io` base images are covered, and their digests automerge — that is what
+a hardened base image is for, and a Dockerfile change is built and smoke-tested
+before it merges. A tag change comes grouped with the `.mise.toml` and `go.mod`
+entries it has to agree with, so a new Node or Go arrives as one pull request
+rather than three.
