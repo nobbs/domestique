@@ -9,6 +9,7 @@ internal/webui/app/dist
 coverage.*
 *.coverprofile
 .coverage
+.test-results
 *.db
 *.db-shm
 *.db-wal

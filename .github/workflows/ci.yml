@@ -100,6 +100,32 @@ jobs:
           cache: true
       - name: Run tests
         run: mise run --force ci-test
+      # Test results go to Codecov's test analytics, which is what makes a
+      # failure and a flake readable on the pull request instead of only in a
+      # folded log here. They are uploaded from this job and the UI one rather
+      # than from `coverage`, even though both are path-filtered and that one is
+      # not: nothing compares a test report against a base, and none of these
+      # uploads is a required status, so a commit that skipped a suite is a
+      # commit with nothing to say rather than a missing context. Uploading from
+      # here also means the report describes the suite as it normally runs,
+      # rather than the instrumented variant `coverage` drives.
+      #
+      # A failed suite is exactly the run worth uploading, so the step is
+      # conditioned on the run not being cancelled rather than on the one above
+      # succeeding. It names its file, does not search the tree, and reports an
+      # upload failure without failing the job — the same constraints the
+      # coverage uploads carry, and for the same reasons. `plugins` is not an
+      # input of this action: it runs no coverage plugin to disable.
+      - name: Upload Go test results
+        if: ${{ !cancelled() }}
+        # v1.2.1
+        uses: codecov/test-results-action@0fa95f0e1eeaafde2c782583b36b28ad0d8c77d3
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: .test-results/go.xml
+          flags: go
+          disable_search: true
+          fail_ci_if_error: false
 
   security:
     name: Security
@@ -159,6 +185,21 @@ jobs:
         # Cyrillic fonts the suite never renders, and it has spent over five
         # minutes waiting on the apt mirror to serve them.
         run: mise run --force ci-ui
+      # Both UI suites under the `ui` flag, so Codecov distinguishes them from
+      # the Go results the way the coverage flags already do. See the Go upload
+      # above for why this job uploads at all and why it runs when the suite
+      # failed. A step of `ci-ui` before the suites can fail and leave a file
+      # unwritten, which the uploader reports and does not fail the job for.
+      - name: Upload UI test results
+        if: ${{ !cancelled() }}
+        # v1.2.1
+        uses: codecov/test-results-action@0fa95f0e1eeaafde2c782583b36b28ad0d8c77d3
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: .test-results/ui/vitest.xml,.test-results/ui/browser.xml
+          flags: ui
+          disable_search: true
+          fail_ci_if_error: false
 
   coverage:
     name: Coverage

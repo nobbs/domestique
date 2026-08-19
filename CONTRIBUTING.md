@@ -200,6 +200,35 @@ The verdict comes from Codecov rather than from the workflow. The `Required` job
 deliberately does not judge coverage itself, so a failure names the app that
 measured it and CI stays green on its own terms.
 
+## Test results
+
+Every suite writes a JUnit report as it runs, under `/.test-results/`, which is
+gitignored:
+
+| Suite | Report |
+| --- | --- |
+| `mise run test` | `.test-results/go.xml` |
+| `mise run ui-test` | `.test-results/ui/vitest.xml` |
+| `mise run ui-browser-test` | `.test-results/ui/browser.xml` |
+
+Nothing local reads them — the terminal output is still what a local run is for.
+They exist so that CI can upload the same files to Codecov's test analytics, from
+the `Test` and `UI` jobs, under the same `go` and `ui` flags the coverage reports
+use.
+
+That upload is what puts a failure on the pull request. The Codecov comment names
+the tests that failed, with their output, instead of leaving them in a folded
+Actions log; and because Codecov keeps the results of past runs, it also marks a
+test as **flaky** when it has both passed and failed on `main` without the code
+under it changing. A flake marked there is a test to fix or delete rather than
+one to re-run: the browser suite retries nothing, deliberately, so a test that is
+not reproducible reports nothing.
+
+No test result gates a merge. Nothing compares them against a base commit, no
+required status reads them, and a pull request that skipped a path-filtered job
+simply has no report for that suite on that commit. A failed upload — no token on
+a fork, or Codecov unavailable — costs the report and not the run.
+
 ## Contributions
 
 Keep changes focused, add regression tests for behavior changes, and avoid

@@ -68,6 +68,12 @@ export default defineConfig({
     setupFiles: ["./src/test/setup.ts"],
     css: false,
     restoreMocks: true,
+    // The terminal summary a contributor reads, and the JUnit report CI uploads
+    // to Codecov's test analytics beside the browser suite's own. It is written
+    // on every run rather than behind a flag, so the file a failure is read from
+    // locally is the same one the pull request comment was assembled from.
+    reporters: ["default", "junit"],
+    outputFile: { junit: "../../../.test-results/ui/vitest.xml" },
     coverage: {
       provider: "v8",
       // The repository collects Go and UI coverage side by side, so both
