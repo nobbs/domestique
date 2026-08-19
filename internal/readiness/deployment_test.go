@@ -77,6 +77,45 @@ func TestNoDocumentServesTheReadinessPortThroughTailscale(t *testing.T) {
 	}
 }
 
+// The container smoke test is only worth running while it runs the container an
+// operator deploys. Each pair below is one line of the documented runtime and the
+// flag that reproduces it, so relaxing either file fails here rather than quietly
+// leaving the smoke test asserting a healthy service inside a softer container
+// than the one it stands for. It is asserted here because this is where the
+// deployment files are held to each other, and because the probe the smoke test
+// waits for is this package's.
+func TestTheContainerSmokeTestRunsTheDocumentedRuntime(t *testing.T) {
+	compose := readRepositoryFile(t, "docs/compose.example.yml")
+	smoke := readRepositoryFile(t, "dev/container-smoke.sh")
+
+	for name, pair := range map[string]struct{ documented, asserted string }{
+		"unprivileged user":   {`user: "65532:65532"`, `IMAGE_USER="65532:65532"`},
+		"read-only root":      {"read_only: true", "--read-only"},
+		"no capabilities":     {"cap_drop", "--cap-drop ALL"},
+		"no new privileges":   {"no-new-privileges:true", "--security-opt no-new-privileges"},
+		"temporary directory": {"/tmp:mode=1777,nosuid,nodev,noexec", "--tmpfs /tmp:mode=1777,nosuid,nodev,noexec"},
+		"writable state":      {"/var/lib/domestique", `STATE_PATH="/var/lib/domestique"`},
+		"read-only config":    {"/etc/domestique/config.toml:ro", `--volume "${CONFIG_FILE}:${CONFIG_PATH}:ro"`},
+	} {
+		t.Run(name, func(t *testing.T) {
+			assert.Contains(t, compose, pair.documented, "the documented deployment no longer says this")
+			assert.Contains(t, smoke, pair.asserted, "the smoke test no longer runs the container this way")
+		})
+	}
+}
+
+// Both probes, on both listeners. A smoke test that asked only for liveness would
+// pass a container that answers HTTP and cannot read its own state, which is the
+// deployment failure the readiness probe exists to catch.
+func TestTheContainerSmokeTestProbesBothListeners(t *testing.T) {
+	smoke := readRepositoryFile(t, "dev/container-smoke.sh")
+
+	assert.Contains(t, smoke, "/healthz")
+	assert.Contains(t, smoke, "/readyz")
+	assert.Contains(t, smoke, `readiness_address = ":`+readinessPort+`"`)
+	assert.Contains(t, smoke, `:${READINESS_PORT}:`+readinessPort)
+}
+
 func readRepositoryFile(t *testing.T, name string) string {
 	t.Helper()
 	contents, err := os.ReadFile(filepath.Join(repositoryRoot(t), name)) //nolint:gosec // a repository file, named by this test

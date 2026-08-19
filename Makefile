@@ -41,7 +41,7 @@ GO_COVERPKG := ./cmd/...,./internal/...
 .PHONY: ui-install ui-ensure ui-dev ui-typecheck ui-lint ui-format ui-test ui-audit ui-build
 .PHONY: ui-browser-install ui-browser-test
 .PHONY: coverage coverage-go coverage-ui
-.PHONY: dev-setup dev-api demo
+.PHONY: dev-setup dev-api demo container-smoke
 
 export GOCACHE
 
@@ -199,6 +199,17 @@ build-check: ui-build
 		echo "==> linux/$$arch"; \
 		CGO_ENABLED=0 GOOS=linux GOARCH=$$arch $(GO) build $(BUILD_FLAGS) -o /dev/null $(BUILD_TARGET) || exit 1; \
 	done
+
+# Starts the production image under the runtime a deployment gives it and asks
+# whether the service comes up: the one check that runs the built container
+# rather than reasoning about it. Deliberately outside `check` and `quick`, and
+# outside the ci-* groups: it needs an image, and building one needs a
+# `docker login dhi.io` for the hardened base images, which a local gate must
+# not require. CI runs it in the `Image` job, which already holds those
+# credentials, over a natively built image. See dev/container-smoke.sh for how to
+# point it at an image locally.
+container-smoke:
+	./dev/container-smoke.sh
 
 # CI runs the ci-* groups below as separate jobs so that a failure names the
 # area it came from, and GitHub Actions running them is what actually gates a

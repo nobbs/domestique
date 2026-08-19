@@ -91,6 +91,17 @@ defaults to what `dev/setup.sh` writes, and `DOMESTIQUE_DEV_ORIGIN` overrides it
 when `DOMESTIQUE_DEV_API` points at the deployed container. Building images requires
 `docker login dhi.io`, because the base images are Docker Hardened Images.
 
+**To check that the production image still runs**, use `make container-smoke`. It
+starts the image the way `docs/compose.example.yml` starts it — unprivileged,
+read-only root, no capabilities, one tmpfs, one state mount — and asserts the
+probes, the response headers, the refusal of an anonymous caller, the process's
+own uid, that nothing was written outside the state mount, and that no secret
+value reached the log. It builds nothing: point `DOMESTIQUE_SMOKE_IMAGE` at an
+image already in the local store, or build `domestique:smoke` first. It is
+outside `make check`, because building an image needs the `dhi.io` login above;
+CI runs it in the pull-request `Image` job. Every credential it mounts is a
+placeholder it writes itself, and it reaches no provider.
+
 **To develop against no data at all**, run `make demo`. One command writes a
 throwaway configuration under `.local/demo`, seeds a database with the synthetic
 library in `internal/demo`, and starts the API and the UI dev server against it.

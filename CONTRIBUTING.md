@@ -31,6 +31,16 @@ Run the full gate yourself with:
 mise exec -- make check
 ~~~
 
+Neither loop starts the production image. `make container-smoke` does: it runs
+the image under the hardening the deployment example documents and asserts that
+the service comes up, both probes answer, an anonymous caller is refused, the
+process is unprivileged, and nothing was written outside the state mount. It
+takes an image rather than building one — a local image build needs a
+`docker login dhi.io` for the hardened base images — so set
+`DOMESTIQUE_SMOKE_IMAGE` to a reference in your local image store, or build
+`domestique:smoke` first. CI runs it on every pull request that changes a
+container input.
+
 Install the optional local Git hook with:
 
 ~~~sh

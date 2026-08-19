@@ -31,6 +31,7 @@ The repository provides these stable Make targets:
 | `make ui-dev` | Runs the UI dev server, proxying the API to the local service. |
 | `make dev-setup` | Snapshots the deployed state into an isolated development environment. |
 | `make dev-api` | Serves the API against that snapshot on `:8081`. |
+| `make container-smoke` | Starts the production image under the documented deployment runtime and asserts the runtime contract. Takes an image; builds none. |
 | `make quick` | Runs the routine local loop: every check in `make check` except the five it defers. |
 | `make check` | Runs the full gate locally, on demand. |
 | `make coverage` | Writes a Go coverage profile and the browser UI's LCOV report to a gitignored directory and summarises both. |
@@ -321,7 +322,9 @@ The validation workflow must:
   vulnerability analysis, or the CGO-free Linux builds for either published
   architecture fail;
 - build the production Dockerfile and discard the result on a pull request that
-  changes an input of the container build, never pushing it; and
+  changes an input of the container build, never pushing it, and start a natively
+  built copy of that image once, so the runtime contract is answered by a
+  container that ran rather than by a build that succeeded; and
 - deploy what it published to the Tailnet host, over Tailscale SSH, passing the
   digest and nothing else, on every publish and not only on the commits that
   happened to touch every part of the tree: a published image the host is never
@@ -425,6 +428,52 @@ surface. The host's Tailscale process owns `tailscale serve`
 and the identity header boundary; Tailscale is not embedded in the application
 container. The compose file, static configuration, Docker secret files, and
 pinned image digest are operator-managed deployment state outside Git.
+
+### Proving the runtime contract
+
+A successful build says the image can be produced. It says nothing about whether
+the service comes up inside it, which is what an operator finds out at deploy
+time. `dev/container-smoke.sh`, run by `make container-smoke`, is the answer to
+that: it starts the image with the runtime the compose example documents — the
+image's own unprivileged user, a read-only root filesystem, no capabilities,
+`no-new-privileges`, the documented `/tmp` tmpfs, one writable state mount, and
+read-only configuration and secret files — and asserts that
+
+- the image declares the unprivileged user, both listener ports, the state
+  volume, and the service itself as its entrypoint;
+- the liveness probe answers on the served listener, carrying the response
+  headers every answer on that listener carries;
+- the readiness probe answers ready on its own listener, with `no-store`, over a
+  state directory that run created, and serves nothing else;
+- an unauthenticated request to the gated surface is refused;
+- the running process is that unprivileged user and not root, which is asked of
+  the container runtime because the runtime image ships no shell to ask from
+  inside;
+- the root filesystem took no writes and the state database landed in its mount;
+- no synthetic secret value reached the container log; and
+- `SIGTERM` stops the service cleanly.
+
+A failure prints the container log. That is safe because the service redacts, and
+because the absence of every synthetic credential from that log is asserted
+before anything can print it.
+
+The smoke test contacts nothing. Every credential it mounts is a placeholder it
+wrote itself, each provider points at an unroutable address, the surface lookup
+is switched off, the first scheduled synchronisation is a year away, and no
+request presents an Access assertion — so the lazy fetch of Cloudflare's signing
+keys never happens either. Its state directory and published ports are its own,
+so a host already running the deployment is untouched.
+
+The image is an input rather than something the script builds: a local build
+needs the `dhi.io` credential above, and the local gate must not require one. So
+the smoke test is outside `make check` and `make quick`, and CI runs it in the
+pull-request `Image` job, which already holds that credential.
+`DOMESTIQUE_SMOKE_IMAGE` names the reference to run, which must already be in
+the local image store; nothing pulls. In CI that reference is a single image
+built for the runner's own architecture and loaded into its image store. The
+two-architecture verification stays a build: a multi-platform result cannot be
+loaded, and driving the foreign half under emulation would answer for the
+emulator.
 
 The repository may provide a non-secret, clearly placeholder deployment example
 later. It must not make a direct Internet port publication easy to copy, and it
