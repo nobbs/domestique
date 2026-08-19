@@ -1,6 +1,8 @@
 # Path filters consumed by the CI workflow's "Changes" job. Each key becomes an
 # output that gates downstream jobs, so a docs-only pull request skips the Go
-# and image work instead of paying for it.
+# and image work instead of paying for it — except for the deployment documents
+# the Go suite asserts, which are named under `go` below and for that reason are
+# not docs as far as this file is concerned.
 #
 # Every filter includes this file and the workflow itself: a change to how CI
 # decides what to run must always run everything it gates.
@@ -11,28 +13,39 @@
 # result, not a stalled pipeline.
 #
 # `container` is deliberately narrower and gates only the pull-request proving
-# build and the smoke test that runs its result, so the script that asserts the
-# runtime contract belongs in it too. Re-proving an untouched Dockerfile against changed Go source costs four
-# minutes and tells us what `build` already established, so the image is built
-# before merge only when a container input moved: the Dockerfile itself, what it
-# copies in, or a dependency manifest that resolves differently inside a build
-# stage than on the runner. A Dockerfile break that slips past this is not an
-# outage — the deployed digest keeps running — but it does redden the default
-# branch, and the fix touches `container`, so the fix itself is proved before it
-# merges.
+# build and the smoke test that runs its result. Re-proving an untouched
+# Dockerfile against changed Go source costs four minutes and tells us what
+# `build` already established, so the image is built before merge only when a
+# container input moved: the Dockerfile itself, what it copies in, a dependency
+# manifest that resolves differently inside a build stage than on the runner, or
+# the smoke test and the Make target CI runs it through, since a change that
+# turned the smoke step off would otherwise never run it. A Dockerfile break
+# that slips past this is not an outage — the deployed digest keeps running —
+# but it does redden the default branch, and the fix touches `container`, so the
+# fix itself is proved before it merges.
 
 lint:
   - "**"
 
+# `go` also covers the deployment files the Go suite holds to the code, which
+# are not Go: internal/readiness reads the Dockerfile, both compose files, the
+# deploy script and the container smoke test, and asserts that they still name
+# the same probe port and the same hardening. Those files are inputs of a test,
+# so a change to one has to run the test — otherwise the drift each of those
+# tests exists to catch could arrive in a pull request that touches no Go.
 go:
   - ".github/paths-filter.yml"
   - ".github/workflows/ci.yml"
   - ".golangci.yml"
   - ".mise.toml"
+  - "Dockerfile"
   - "Makefile"
+  - "compose.macos.yml"
+  - "docs/compose.example.yml"
   - "go.mod"
   - "go.sum"
   - "cmd/**"
+  - "deploy/**"
   - "dev/**"
   - "internal/**"
 
@@ -69,6 +82,7 @@ container:
   - ".github/paths-filter.yml"
   - ".github/workflows/ci.yml"
   - "Dockerfile"
+  - "Makefile"
   - "dev/container-smoke.sh"
   - "go.mod"
   - "go.sum"
