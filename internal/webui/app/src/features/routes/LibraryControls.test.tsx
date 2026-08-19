@@ -38,14 +38,18 @@ describe("LibraryControls", () => {
     expect(landmark).toContainElement(screen.getByRole("combobox", { name: "Sort by" }));
   });
 
-  it("reports every typed character to the page", async () => {
+  it("reports what the box holds back to the page", async () => {
     const user = userEvent.setup();
+    // The box is controlled by the page. This harness holds the query at "" and
+    // never feeds a keystroke back, so what arrives here is one press against an
+    // empty box rather than a growing word; `StagesPage` is where a whole word is
+    // typed against the state that actually holds it.
     const props = renderControls();
 
-    await user.type(screen.getByRole("searchbox", { name: "Search" }), "rh");
+    await user.type(screen.getByRole("searchbox", { name: "Search" }), "r");
 
-    expect(props.onQueryChange).toHaveBeenNthCalledWith(1, "r");
-    expect(props.onQueryChange).toHaveBeenNthCalledWith(2, "h");
+    expect(props.onQueryChange).toHaveBeenCalledTimes(1);
+    expect(props.onQueryChange).toHaveBeenCalledWith("r");
   });
 
   it("is reachable and usable by keyboard alone", async () => {
