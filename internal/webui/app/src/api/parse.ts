@@ -40,20 +40,28 @@ export class ContractError extends Error {
   readonly where: string;
   readonly endpoint: string | undefined;
 
-  constructor(where: string, endpoint?: string) {
+  constructor(where: string, endpoint?: string, options?: ErrorOptions) {
     super(
       endpoint === undefined
         ? `unexpected API response: ${where}`
         : `unexpected API response from ${endpoint}: ${where}`,
+      options,
     );
     this.name = "ContractError";
     this.where = where;
     this.endpoint = endpoint;
   }
 
-  /** The same failure, attributed to the request it arrived on. */
+  /**
+   * The same failure, attributed to the request it arrived on.
+   *
+   * The unattributed failure travels along as the cause, because its stack is
+   * the one that points at the check that failed. A new error is what carries
+   * the endpoint into the message a reader sees, and the message is what the
+   * page shows; the trace worth following is one level down.
+   */
   at(endpoint: string): ContractError {
-    return new ContractError(this.where, endpoint);
+    return new ContractError(this.where, endpoint, { cause: this });
   }
 }
 

@@ -241,7 +241,7 @@ func newHandler(
 func bundleAssets() httpapi.Assets {
 	assets, err := webui.New()
 	if err != nil {
-		fmt.Printf("No browser UI bundle is embedded (%v); "+
+		fmt.Fprintf(os.Stderr, "demoapi: no browser UI bundle is embedded (%v); "+
 			"the demo serves the UI from the Vite dev server\n", err)
 
 		return unbuiltAssets{}

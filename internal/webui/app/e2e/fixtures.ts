@@ -116,7 +116,12 @@ export async function installOfflineBasemap(
   options: OfflineOptions = {},
 ): Promise<string[]> {
   const requested = options.requested ?? [];
-  const headers = options.headers ?? {};
+  // Header names are case-insensitive on the wire and Playwright reports a
+  // request's own in lower case, so a caller's spelling must not decide whether
+  // an override replaces a header or arrives beside it under a second name.
+  const headers = Object.fromEntries(
+    Object.entries(options.headers ?? {}).map(([name, value]) => [name.toLowerCase(), value]),
+  );
   const origin = new URL(baseUrl).origin;
   const styles = await styleUrls(page, baseUrl, headers);
   const leaks: string[] = [];
