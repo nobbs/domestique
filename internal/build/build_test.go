@@ -72,7 +72,7 @@ func TestValidDigestKeepsTheDigestAndDropsWhereItCameFrom(t *testing.T) {
 }
 
 // TestInjectedRevisionReachesInfo compiles the documented -X symbol into a real
-// binary. The Dockerfile and the Makefile both write that symbol as a string:
+// binary. The Dockerfile and the `build` task both write that symbol as a string:
 // nothing else in the build would notice if this package renamed the variable,
 // and the failure would be a service that quietly reports no revision.
 func TestInjectedRevisionReachesInfo(t *testing.T) {

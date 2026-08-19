@@ -265,9 +265,9 @@ provider. The sandbox FIT/Wahoo acceptance test is separate from normal CI.
 
 Implementation proceeds in these reviewable layers:
 
-1. Bootstrap the module and developer quality gate: CGO-free Go toolchain,
-   Make targets, golangci-lint, prek, GitHub Actions, MIT licence, and
-   repository hygiene.
+1. Bootstrap the module and developer quality gate: CGO-free Go toolchain, mise
+   tasks, golangci-lint, prek, GitHub Actions, MIT licence, and repository
+   hygiene.
 2. Implement configuration, route values, secret input, SQLite migrations, and
    focused unit tests.
 3. Port and harden the VeloPlanner adapter; implement FIT encoding and a

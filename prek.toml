@@ -3,7 +3,7 @@
 # Every check here is either a whole-file safety check that costs nothing, or a
 # formatting check scoped to the files the commit stages. Tests, full linting,
 # audits, cross-compilation, image builds, and the browser suites belong to
-# `make check` and to GitHub Actions, and must not be added below.
+# `mise run check` and to GitHub Actions, and must not be added below.
 [[repos]]
 repo = "builtin"
 
@@ -40,7 +40,7 @@ repo = "local"
 
 # Both checks below take their file list from prek — `pass_filenames = true` —
 # so a commit is judged on what it stages and never fails on a defect in a file
-# it did not touch. `prek run --all-files`, which is what `make ci-lint` runs,
+# it did not touch. `prek run --all-files`, which is what `mise run ci-lint` runs,
 # passes every matching file instead, so the repository-wide coverage the gate
 # needs is unchanged.
 

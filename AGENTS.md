@@ -34,12 +34,15 @@ the same change and call it out.
 
 ## Commands
 
-The toolchain is pinned in [`.mise.toml`](.mise.toml). Run everything through
-Mise; do not install tools globally or reach for a different Go version.
+The toolchain is pinned in [`.mise.toml`](.mise.toml) and every command is a
+Mise task in [`mise-tasks.toml`](mise-tasks.toml). Run everything through Mise;
+do not install tools globally or reach for a different Go version. There is no
+Makefile and no runner-free entry point: `mise run <task>` is how this
+repository is built, tested, and checked.
 
 ~~~sh
 mise install
-mise exec -- make quick
+mise run quick
 ~~~
 
 **GitHub Actions is the authoritative gate.** It runs the complete validation
@@ -47,71 +50,74 @@ for every changed path on every pull request, and its aggregate check is what a
 merge must satisfy. Running a gate locally buys an earlier answer, not a
 different one.
 
-`make quick` is the routine loop, and what to run while iterating. It runs
-everything `make check` runs except five checks it defers: `build-check`, which
-compiles the published release target; `vulncheck` and `ui-audit`, which
+`mise run quick` is the routine loop, and what to run while iterating. It runs
+everything `mise run check` runs except five checks it defers: `build-check`,
+which compiles the published release target; `vulncheck` and `ui-audit`, which
 need the network and a current advisory database; and `ui-browser-install` and
-`ui-browser-test`, which download a browser and then drive it over the demo stack
-for minutes. Nothing else is left out, and `make gate-check` fails if that stops
-being true.
+`ui-browser-test`, which download a browser and then drive it over the demo
+stack for minutes. Nothing else is left out, and `mise run gate-check` fails if
+that stops being true.
 
-`make check` is the full gate: `prek`, lint, markdownlint, shellcheck,
+`mise run check` is the full gate: `prek`, lint, markdownlint, shellcheck,
 actionlint, `go vet`, tests, TypeScript type checking, the UI lint and test
 suites, the browser suite, `go mod tidy -diff`, `go mod verify`, `govulncheck`,
-`npm audit`, `gitleaks`, a commit-hook cost check, a local-gate structure check, and a
-compile check for the published release target. Individual targets
-(`make test`, `make lint`, `make fmt`, `make ui-test`, `make build-check`) are
-also available while iterating.
+`npm audit`, `gitleaks`, a commit-hook cost check, a task-definition check, a
+local-gate structure check, and a compile check for the published release
+target. Individual tasks (`mise run test`, `mise run lint`, `mise run fmt`,
+`mise run ui-test`, `mise run build-check`) are also available while iterating.
 
-Run `make quick` before reporting work complete. It is the expected gate for a
-hand-over: the five checks it defers all run on every pull request, so paying for
-them locally as well buys an earlier answer at the cost of a browser download and
-minutes of driving it. Reach for `make check` when you have a specific reason to
-want one of those five before pushing — a change to the release build, to a
-dependency, or to the browser suite itself — rather than as routine.
+Run `mise run quick` before reporting work complete. It is the expected gate for
+a hand-over: the five checks it defers all run on every pull request, so paying
+for them locally as well buys an earlier answer at the cost of a browser
+download and minutes of driving it. Reach for `mise run check` when you have a
+specific reason to want one of those five before pushing — a change to the
+release build, to a dependency, or to the browser suite itself — rather than as
+routine.
 
-Either way, say plainly which checks you ran. A green `make quick` is not a full
-gate, and reporting it as one is the failure this rule exists to prevent.
+Either way, say plainly which checks you ran. A green `mise run quick` is not a
+full gate, and reporting it as one is the failure this rule exists to prevent.
 
 Tests run with `CGO_ENABLED=0` and `-shuffle=on`. They must stay deterministic
 under shuffling.
 
-`make coverage` writes a Go coverage profile to `.coverage/go.out` and the UI's
-LCOV report to `.coverage/ui/lcov.info`, and prints a summary for each. It is not
-part of `make check`, and nothing local fails on a percentage. CI publishes both
-to Codecov under the `go` and `ui` flags, where the two patch statuses do decide
-a merge: each requires the lines a change adds or alters to be covered at least
-as well as the base commit's already are. The UI number is the Vitest suites and
-the browser suite merged, so a change to code only the whole page exercises is
-judged on coverage it actually has. `make coverage-ui` drives a browser and is
-correspondingly slow; with none installed it keeps the unit half, says what it
-left out, and still succeeds. See [CONTRIBUTING.md](CONTRIBUTING.md) for what is
-measured and what is left out.
+`mise run coverage` writes a Go coverage profile to `.coverage/go.out` and the
+UI's LCOV report to `.coverage/ui/lcov.info`, and prints a summary for each. It
+is not part of `mise run check`, and nothing local fails on a percentage. CI
+publishes both to Codecov under the `go` and `ui` flags, where the two patch
+statuses do decide a merge: each requires the lines a change adds or alters to
+be covered at least as well as the base commit's already are. The UI number is
+the Vitest suites and the browser suite merged, so a change to code only the
+whole page exercises is judged on coverage it actually has.
+`mise run coverage-ui` drives a browser and is correspondingly slow; with none
+installed it keeps the unit half, says what it left out, and still succeeds. See
+[CONTRIBUTING.md](CONTRIBUTING.md) for what is measured and what is left out.
 
 **The browser UI** lives in `internal/webui/app` (TypeScript, React, Vite,
-MapLibre) and is compiled into the binary with `go:embed`, so `make build`
-depends on `make ui-build`. Use `make ui-dev` for hot reload — it proxies the API
-to a locally running service and forwards the Cloudflare Access assertion in
-`DOMESTIQUE_DEV_ASSERTION`, so the identity gate behaves as it does in
-production. Without that variable every proxied request answers 401; there is
+MapLibre) and is compiled into the binary with `go:embed`, so `mise run build`
+depends on `mise run ui-build`. Use `mise run ui-dev` for hot reload — it
+proxies the API to a locally running service and forwards the Cloudflare Access
+assertion in `DOMESTIQUE_DEV_ASSERTION`, so the identity gate behaves as it does
+in production. Without that variable every proxied request answers 401; there is
 deliberately no way to switch the gate off. The proxy also names the API's
 configured browser origin, because state-changing routes require it; that
 defaults to what `dev/setup.sh` writes, and `DOMESTIQUE_DEV_ORIGIN` overrides it
-when `DOMESTIQUE_DEV_API` points at the deployed container. Building images requires
-`docker login dhi.io`, because the base images are Docker Hardened Images.
+when `DOMESTIQUE_DEV_API` points at the deployed container. Building images
+requires `docker login dhi.io`, because the base images are Docker Hardened
+Images.
 
-**To check that the production image still runs**, use `make container-smoke`. It
-starts the image the way `docs/compose.example.yml` starts it — unprivileged,
-read-only root, no capabilities, one tmpfs, one state mount — and asserts the
-probes, the response headers, the refusal of an anonymous caller, the process's
-own uid, that nothing was written outside the state mount, and that no secret
-value reached the log. It builds nothing: point `DOMESTIQUE_SMOKE_IMAGE` at an
-image already in the local store, or build `domestique:smoke` first. It is
-outside `make check`, because building an image needs the `dhi.io` login above;
-CI runs it in the pull-request `Image` job. Every credential it mounts is a
-placeholder it writes itself, and it reaches no provider.
+**To check that the production image still runs**, use
+`mise run container-smoke`. It starts the image the way
+`docs/compose.example.yml` starts it — unprivileged, read-only root, no
+capabilities, one tmpfs, one state mount — and asserts the probes, the response
+headers, the refusal of an anonymous caller, the process's own uid, that nothing
+was written outside the state mount, and that no secret value reached the log.
+It builds nothing: point `DOMESTIQUE_SMOKE_IMAGE` at an image already in the
+local store, or build `domestique:smoke` first. It is outside `mise run check`,
+because building an image needs the `dhi.io` login above; CI runs it in the
+pull-request `Image` job. Every credential it mounts is a placeholder it writes
+itself, and it reaches no provider.
 
-**To develop against no data at all**, run `make demo`. One command writes a
+**To develop against no data at all**, run `mise run demo`. One command writes a
 throwaway configuration under `.local/demo`, seeds a database with the synthetic
 library in `internal/demo`, and starts the API and the UI dev server against it.
 It needs no account, no secret and no snapshot, and it cannot reach VeloPlanner,
@@ -120,15 +126,16 @@ mints an assertion with a key it generates at start-up and verifies it with the
 production verifier. Use it for UI work, and prefer it over a snapshot whenever
 the change does not depend on real routes. `./dev/demo.sh --with-bundle` builds
 the browser UI first, so the API also serves a current production bundle at its
-own port — the arrangement a deployment runs, and what the browser suite's bundle
-project drives.
+own port — the arrangement a deployment runs, and what the browser suite's
+bundle project drives.
 
-**To develop against real data**, run `make dev-setup` once (snapshots the
-deployed SQLite state into `.local/dev`), then `make dev-api` and `make ui-dev`.
-The dev service reads VeloPlanner but **cannot reach Wahoo** — its encryption
-key is a placeholder, so a run fails at the state step before any Wahoo request,
-and its Wahoo endpoints are unroutable. Never weaken those guards to "make sync
-work" in development; use the sandbox acceptance check instead.
+**To develop against real data**, run `mise run dev-setup` once (snapshots the
+deployed SQLite state into `.local/dev`), then `mise run dev-api` and
+`mise run ui-dev`. The dev service reads VeloPlanner but **cannot reach Wahoo**
+— its encryption key is a placeholder, so a run fails at the state step before
+any Wahoo request, and its Wahoo endpoints are unroutable. Never weaken those
+guards to "make sync work" in development; use the sandbox acceptance check
+instead.
 
 ## Architecture rules
 
@@ -211,27 +218,27 @@ and `assert` for independent expectations, so a single run reports every
 mismatch. Prefer the semantic assertion over a hand-rolled comparison:
 `require.ErrorIs`, `require.ErrorAs`, and `require.ErrorContains` for errors,
 and `assert.InDelta` for floating-point values. The `testifylint` linter
-enforces this through `make lint`. Do not use Testify's `mock` or `suite`
+enforces this through `mise run lint`. Do not use Testify's `mock` or `suite`
 packages — deterministic hand-written fakes remain the convention.
 [`internal/route`](internal/route) is the worked example; packages still using
 plain `testing.T` checks are converted separately.
 
-Browser UI tests come in two suites. `make ui-test` is Vitest plus Testing
+Browser UI tests come in two suites. `mise run ui-test` is Vitest plus Testing
 Library over the reusable components in `src/components` and the API client's
-parsing and error paths: jsdom, no browser, and a second to run — anything it can
-reach belongs there.
+parsing and error paths: jsdom, no browser, and a second to run — anything it
+can reach belongs there.
 
-`make ui-browser-test` is Playwright over a real Chromium, and covers what jsdom
-cannot observe: the MapLibre map, which needs WebGL, and the interactions that
-span components rather than living inside one — scrubbing the elevation chart,
-dragging a stretch out of the map, following a card into a route. The specs are
-in `internal/webui/app/e2e`, and `make ui-browser-install` downloads the browser
-they need. It runs against `dev/demo.sh`, so it reads the synthetic library in
-`internal/demo` and never a real route, and its fixtures answer the one
-third-party request the application makes — the basemap style — from memory and
-fail the test if anything else leaves the page. No screenshot is stored: a visual
-assertion compares the map against itself within the run, after waiting for two
-identical frames.
+`mise run ui-browser-test` is Playwright over a real Chromium, and covers what
+jsdom cannot observe: the MapLibre map, which needs WebGL, and the interactions
+that span components rather than living inside one — scrubbing the elevation
+chart, dragging a stretch out of the map, following a card into a route. The
+specs are in `internal/webui/app/e2e`, and `mise run ui-browser-install`
+downloads the browser they need. It runs against `dev/demo.sh`, so it reads the
+synthetic library in `internal/demo` and never a real route, and its fixtures
+answer the one third-party request the application makes — the basemap style —
+from memory and fail the test if anything else leaves the page. No screenshot is
+stored: a visual assertion compares the map against itself within the run, after
+waiting for two identical frames.
 
 It drives that one stack as two projects. `dev-server` runs the specs in `e2e`
 against the Vite dev server. `bundle` runs the specs in `e2e/contract` against

@@ -285,7 +285,7 @@ function say(message: string): void {
 async function run(): Promise<number> {
   if (!existsSync(vitestReport)) {
     process.stderr.write(
-      `no Vitest report at ${vitestReport}: run \`make coverage-ui\`, which measures that half first\n`,
+      `no Vitest report at ${vitestReport}: run \`mise run coverage-ui\`, which measures that half first\n`,
     );
 
     return 1;
@@ -300,7 +300,7 @@ async function run(): Promise<number> {
     process.stderr.write(
       "no browser installed, so the LCOV report covers the Vitest suites only.\n" +
         "The map and the page-level components will read lower here than they do in CI.\n" +
-        "Run `make ui-browser-install` to measure the browser half as well.\n",
+        "Run `mise run ui-browser-install` to measure the browser half as well.\n",
     );
 
     return 0;

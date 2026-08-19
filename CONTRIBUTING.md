@@ -14,11 +14,16 @@ Install the project-local tools and run the routine loop:
 
 ~~~sh
 mise install
-mise exec -- make quick
+mise run quick
 ~~~
 
-`make quick` runs everything the full gate runs except five checks it defers —
-`build-check`, which compiles the published release target; `vulncheck` and
+Mise pins the toolchain and defines every command as a task, so it is required
+rather than convenient: there is no Makefile and no other entry point. Install
+it from [mise.jdx.dev](https://mise.jdx.dev) first; `mise tasks` then lists
+everything this repository offers.
+
+`mise run quick` runs everything the full gate runs except five checks it defers
+— `build-check`, which compiles the published release target; `vulncheck` and
 `ui-audit`, which need the network and a current advisory database; and
 `ui-browser-install` and `ui-browser-test`, which download a browser and then
 drive it over the demo stack for minutes. That difference is asserted, not just
@@ -28,13 +33,13 @@ loop.
 Run the full gate yourself with:
 
 ~~~sh
-mise exec -- make check
+mise run check
 ~~~
 
-Neither loop starts the production image. `make container-smoke` does: it runs
-the image under the hardening the deployment example documents and asserts that
-the service comes up, both probes answer, an anonymous caller is refused, the
-process is unprivileged, and nothing was written outside the state mount. It
+Neither loop starts the production image. `mise run container-smoke` does: it
+runs the image under the hardening the deployment example documents and asserts
+that the service comes up, both probes answer, an anonymous caller is refused,
+the process is unprivileged, and nothing was written outside the state mount. It
 takes an image rather than building one — a local image build needs a
 `docker login dhi.io` for the hardened base images — so set
 `DOMESTIQUE_SMOKE_IMAGE` to a reference in your local image store, or build
@@ -47,21 +52,21 @@ Install the optional local Git hook with:
 mise exec -- prek install
 ~~~
 
-`make fmt` applies Go formatting. The Git hook may also make safe whitespace
+`mise run fmt` applies Go formatting. The Git hook may also make safe whitespace
 repairs and exits non-zero so they can be reviewed and staged deliberately.
 
-The hook judges a commit on the files it stages: Go formatting and Markdown
-lint see the staged files alone, so a commit never fails on a defect in a file
-it did not touch. It deliberately runs no tests, no full linting, no audit, no
+The hook judges a commit on the files it stages: Go formatting and Markdown lint
+see the staged files alone, so a commit never fails on a defect in a file it did
+not touch. It deliberately runs no tests, no full linting, no audit, no
 cross-compilation, no image build, and no browser suite — that work belongs to
-`make check` and to GitHub Actions, and `make hook-check` fails if it appears
-in `prek.toml`. Keeping the hook to roughly a second is what keeps it worth
-leaving installed.
+`mise run check` and to GitHub Actions, and `mise run hook-check` fails if it
+appears in `prek.toml`. Keeping the hook to roughly a second is what keeps it
+worth leaving installed.
 
 ## Coverage
 
 Nothing local fails on a percentage: neither `quick` nor `check` measures
-coverage, and `make coverage` is something you run to read a change with its
+coverage, and `mise run coverage` is something you run to read a change with its
 untested parts visible. On a pull request, one number is a merge condition.
 
 CI measures both languages on every pull request and every push — including a
@@ -113,19 +118,19 @@ that job takes as long as it does.
 Locally:
 
 ~~~sh
-mise exec -- make coverage
+mise run coverage
 ~~~
 
 That writes a Go coverage profile to `.coverage/go.out` and the browser UI's
 LCOV report to `.coverage/ui/lcov.info`, and prints a summary for each. Nothing
-is committed — `/.coverage/` is gitignored. `make coverage-go` and
-`make coverage-ui` run one side alone.
+is committed — `/.coverage/` is gitignored. `mise run coverage-go` and
+`mise run coverage-ui` run one side alone.
 
-`make coverage-ui` is the slow one, because after the unit suites it runs the
-whole-page suite in a real browser and merges what that reached into the same
-report. If no browser is installed it says so, keeps the unit half, and still
-succeeds — run `make ui-browser-install` once if you want the whole number
-locally.
+`mise run coverage-ui` is the slow one, because after the unit suites it runs
+the whole-page suite in a real browser and merges what that reached into the
+same report. If no browser is installed it says so, keeps the unit half, and
+still succeeds — run `mise run ui-browser-install` once if you want the whole
+number locally.
 
 The Go profile is collected with `-coverpkg` over `./cmd/...` and
 `./internal/...`, so a function exercised only through another package's tests

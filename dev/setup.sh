@@ -106,4 +106,4 @@ EOF
 
 stages=$(sqlite3 "${DEV_DIR}/state.db" "SELECT COUNT(*) FROM stage_geometry;" 2>/dev/null || echo "?")
 echo "Snapshot ready: ${DEV_DIR}/state.db (${stages} cached stage geometries)"
-echo "Start the API with 'make dev-api', then the UI with 'make ui-dev'."
+echo "Start the API with 'mise run dev-api', then the UI with 'mise run ui-dev'."

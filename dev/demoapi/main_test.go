@@ -108,7 +108,7 @@ func TestUnbuiltAssetsExplainThemselves(t *testing.T) {
 			))
 
 			assert.Equal(t, http.StatusNotFound, recorder.Code)
-			assert.Contains(t, recorder.Body.String(), "make ui-build",
+			assert.Contains(t, recorder.Body.String(), "mise run ui-build",
 				"the message names the command that builds a bundle")
 		})
 	}

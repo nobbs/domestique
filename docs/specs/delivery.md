@@ -19,54 +19,62 @@ developer and GitHub Actions. Bootstrap selects supported, mutually compatible
 versions and records them there; no developer-global tool configuration is
 required.
 
-The repository provides these stable Make targets:
+Mise is also the task runner, and the only entry point the repository offers.
+The tasks live in a `mise-tasks.toml` that `.mise.toml` includes, so the pins
+and the commands stay separately readable. There is no second, runner-free way
+in: a contributor without mise cannot build, test, or check this repository at
+all. That is the accepted cost of keeping one definition of each command rather
+than two that drift apart, and installing mise is a single command that the
+contributor guide names.
 
-| Target | Contract |
+The repository provides these stable tasks:
+
+| Task | Contract |
 | --- | --- |
-| `make fmt` | Applies Go formatting to owned Go source. |
-| `make lint` | Runs the configured `golangci-lint` checks. |
-| `make test` | Runs the normal deterministic test suite with `CGO_ENABLED=0`. |
-| `make build` | Compiles the Linux service binary for `BUILD_ARCH`, the machine's own architecture unless overridden, with `CGO_ENABLED=0`, after building the browser UI. |
-| `make ui-build` | Builds the browser UI bundle that the binary embeds. |
-| `make ui-dev` | Runs the UI dev server, proxying the API to the local service. |
-| `make dev-setup` | Snapshots the deployed state into an isolated development environment. |
-| `make dev-api` | Serves the API against that snapshot on `:8081`. |
-| `make container-smoke` | Starts the production image under the documented deployment runtime and asserts the runtime contract. Takes an image; builds none. |
-| `make quick` | Runs the routine local loop: every check in `make check` except the five it defers. |
-| `make check` | Runs the full gate locally, on demand. |
-| `make coverage` | Writes a Go coverage profile and the browser UI's LCOV report to a gitignored directory and summarises both. |
+| `mise run fmt` | Applies Go formatting to owned Go source. |
+| `mise run lint` | Runs the configured `golangci-lint` checks. |
+| `mise run test` | Runs the normal deterministic test suite with `CGO_ENABLED=0`. |
+| `mise run build` | Compiles the Linux service binary for `BUILD_ARCH`, the machine's own architecture unless overridden, with `CGO_ENABLED=0`, after building the browser UI. |
+| `mise run ui-build` | Builds the browser UI bundle that the binary embeds. |
+| `mise run ui-dev` | Runs the UI dev server, proxying the API to the local service. |
+| `mise run dev-setup` | Snapshots the deployed state into an isolated development environment. |
+| `mise run dev-api` | Serves the API against that snapshot on `:8081`. |
+| `mise run container-smoke` | Starts the production image under the documented deployment runtime and asserts the runtime contract. Takes an image; builds none. |
+| `mise run quick` | Runs the routine local loop: every check in `mise run check` except the five it defers. |
+| `mise run check` | Runs the full gate locally, on demand. |
+| `mise run coverage` | Writes a Go coverage profile and the browser UI's LCOV report to a gitignored directory and summarises both. |
 
-`make check` is the full gate. It includes
-`prek run --all-files`, linting, tests, TypeScript type checking, the browser UI
-lint and test suites, the browser suite, Go module verification, vulnerability analysis for both Go
-and npm dependencies, a GitHub Actions workflow check, a shell-script check, a
-worktree secret scan, a commit-hook cost check, a local-gate structure check,
-and the release-target binary compilation for the published architecture.
-`make fmt` applies Go formatting. A fixing `prek` hook exits non-zero after a
-safe mechanical repair so the resulting change can be reviewed and staged
-deliberately.
+`mise run check` is the full gate. It includes `prek run --all-files`, linting,
+tests, TypeScript type checking, the browser UI lint and test suites, the
+browser suite, Go module verification, vulnerability analysis for both Go and
+npm dependencies, a GitHub Actions workflow check, a shell-script check, a
+worktree secret scan, a commit-hook cost check, a task-definition check, a
+local-gate structure check, and the release-target binary compilation for the
+published architecture. `mise run fmt` applies Go formatting. A fixing `prek`
+hook exits non-zero after a safe mechanical repair so the resulting change can
+be reviewed and staged deliberately.
 
 ### The authoritative gate is GitHub Actions
 
-**This revises the earlier contract that `make check` was the canonical local
-and CI entry point, run in full before every hand-over.** It is a deliberate
-change to where the gate is paid, not to what the gate contains: GitHub Actions
-runs the complete validation on every pull request targeting the default branch,
-and its aggregate check is what a merge must satisfy. No check was removed,
-relaxed, or made optional in order to obtain a faster local loop.
+**This revises the earlier contract that `mise run check` was the canonical
+local and CI entry point, run in full before every hand-over.** It is a
+deliberate change to where the gate is paid, not to what the gate contains:
+GitHub Actions runs the complete validation on every pull request targeting the
+default branch, and its aggregate check is what a merge must satisfy. No check
+was removed, relaxed, or made optional in order to obtain a faster local loop.
 
 Local validation is therefore a way to learn a result earlier, and it comes at
 two depths:
 
-- `make quick` is the routine loop, and the expected gate before a hand-over. It
-  runs everything the full gate runs except the five checks named below, so it
-  stays worth running on every iteration.
-- `make check` is the full gate on demand, unchanged. Reach for it when one of
-  those five checks is specifically implicated by the change in hand, not as a
-  routine step before pushing: each of them runs on every pull request anyway.
+- `mise run quick` is the routine loop, and the expected gate before a
+  hand-over. It runs everything the full gate runs except the five checks named
+  below, so it stays worth running on every iteration.
+- `mise run check` is the full gate on demand, unchanged. Reach for it when one
+  of those five checks is specifically implicated by the change in hand, not as
+  a routine step before pushing: each of them runs on every pull request anyway.
 
-`make quick` defers exactly five checks, each because it is slow or needs the
-network rather than because it matters less:
+`mise run quick` defers exactly five checks, each because it is slow or needs
+the network rather than because it matters less:
 
 | Deferred check | Why |
 | --- | --- |
@@ -77,31 +85,35 @@ network rather than because it matters less:
 | `ui-browser-test` | Drives that browser over the demo stack; minutes rather than seconds, and useless without the download above. |
 
 It also reuses an installed browser UI dependency tree rather than reinstalling
-it, and installs one only when none is present. `make check` and CI always
+it, and installs one only when none is present. `mise run check` and CI always
 install from a clean `npm ci`, so a lockfile change is still proved against a
 fresh tree.
 
-That `make quick` is a strict subset of `make check`, and that the difference is
-exactly the deferred set above, is asserted rather than only documented: a check
-added to the full gate fails the assertion until it is either added to the
-routine loop or deferred deliberately. The routine loop may therefore be
-narrower than the gate, but never different from it.
+That `mise run quick` is a strict subset of `mise run check`, and that the
+difference is exactly the deferred set above, is asserted rather than only
+documented: a check added to the full gate fails the assertion until it is
+either added to the routine loop or deferred deliberately. The routine loop may
+therefore be narrower than the gate, but never different from it. The assertion
+reads the declared task graph from `mise tasks ls --json`, which resolves every
+dependency without running anything, so it costs milliseconds and needs no
+network.
 
 The assertion also constrains the form the gate is written in, because it can
-only compare steps it can see: every step of a gate goal is its own target
-invoked through `$(MAKE)`, never a bare shell command and never a prerequisite.
-A check added in either of those shapes would pass the subset comparison while
-escaping it, so the shape is checked first.
+only compare steps it can see: every step of a gate task is a task of its own,
+named in `depends`, and the gate task runs no command itself. A check written
+inline on a gate task would pass the subset comparison while escaping it, so the
+shape is checked first. Membership is `depends` alone; `wait_for` orders tasks
+that already run and never schedules one, so it cannot add a step.
 
 The three depths compose: the commit hook judges the staged files in about a
-second, `make quick` judges the working tree, and GitHub Actions judges the
+second, `mise run quick` judges the working tree, and GitHub Actions judges the
 merge. Each is a strict subset of the one after it.
 
 `prek` owns fast repository hygiene: whitespace and end-of-file checks,
 private-key and accidental-large-file checks, YAML, TOML, and Markdown
 validation where applicable, and Go formatting. Developers may install the
 `prek` hook, but the hook is a convenience rather than a substitute for
-`make check`. The project uses `prek`, never `pre-commit`.
+`mise run check`. The project uses `prek`, never `pre-commit`.
 
 The installed hook is bounded by what it may do, because a hook slow enough to
 be bypassed protects nothing. A hook that runs a command takes its file list
@@ -109,15 +121,15 @@ from `prek`, so a commit is judged on what it stages and not on the rest of the
 tree; the same configuration under `prek run --all-files` covers the repository,
 which is how the gate keeps its reach. Tests, full linting, audits,
 cross-compilation, image work, and the browser suites stay out of the hook and
-belong to `make check` and GitHub Actions. Both properties are asserted, so a
-later hook cannot quietly reintroduce the cost; wall-clock is not asserted,
+belong to `mise run check` and GitHub Actions. Both properties are asserted, so
+a later hook cannot quietly reintroduce the cost; wall-clock is not asserted,
 because a timing assertion on a shared runner is flaky.
 
 ## Coverage
 
 Coverage is measured on demand locally, where it reports rather than judges:
-`make coverage` is not part of `make check`, and no local check fails on a
-percentage. On a pull request one number is a merge condition, stated below.
+`mise run coverage` is not part of `mise run check`, and no local check fails on
+a percentage. On a pull request one number is a merge condition, stated below.
 
 The Go profile is collected across the service as a whole rather than per
 package under test, so that a function exercised only through another package's
@@ -211,7 +223,7 @@ measures both languages and still passes; only the upload is missing.
 
 ## Development environment
 
-`make dev-setup` prepares an environment that shows real route data without
+`mise run dev-setup` prepares an environment that shows real route data without
 risking the deployment. It copies the deployed SQLite state into `.local/dev`
 and writes a configuration beside it, so the development service and the
 deployed container never share a database file.
@@ -224,8 +236,8 @@ Wahoo request; the Wahoo endpoints additionally point at an unroutable address;
 and scheduled synchronisation is pushed a year out so a run only happens on
 request. Pushover credentials are placeholders, so no notification is delivered.
 
-`make demo` prepares the other kind of development environment: one that needs
-no account, no snapshot, and nobody's routes. It writes a throwaway
+`mise run demo` prepares the other kind of development environment: one that
+needs no account, no snapshot, and nobody's routes. It writes a throwaway
 configuration under `.local/demo`, seeds a fresh database with the synthetic
 library in `internal/demo`, serves it with `dev/demoapi`, and runs the UI dev
 server in front of it. Every stage, surface, run and target state it shows is
@@ -255,7 +267,7 @@ and the interactions that span components — scrubbing the elevation chart,
 selecting a stretch off the map, following a card into a stage. It is not a
 second home for logic that a component test could reach.
 
-The suite runs against `make demo`, so it is subject to everything that
+The suite runs against `mise run demo`, so it is subject to everything that
 environment guarantees above: the synthetic library, the unroutable providers,
 and the production identity gate in front of them. No test in it reads a real
 route, and no personal data is involved in running it.
@@ -275,10 +287,10 @@ act on.
 
 The bundle has to exist for that project to mean anything, and it is embedded at
 compile time from a gitignored directory. `dev/demo.sh --with-bundle` builds the
-UI before building `dev/demoapi`, which is how the suite guarantees the bundle it
-drives is the current one; the flag is what `make ui-browser-test` starts the
-stack with. Without it the demo still runs, and the listener says that no bundle
-is embedded rather than serving a blank page.
+UI before building `dev/demoapi`, which is how the suite guarantees the bundle
+it drives is the current one; the flag is what `mise run ui-browser-test` starts
+the stack with. Without it the demo still runs, and the listener says that no
+bundle is embedded rather than serving a blank page.
 
 There is no proxy in front of the service in that project, so two things the dev
 server does on the way through are done by the harness instead: the identity
@@ -306,11 +318,12 @@ scheme, locale, time zone, motion and font stack — is pinned by the configurat
 and the fixtures. Traces, failure screenshots and the HTML report are written to
 the gitignored `.playwright/` directory.
 
-The browser and its system libraries are a download, so `make ui-browser-install`
-is a separate target and both it and `make ui-browser-test` are deferred out of
-the routine loop. They run in `make check` and in the CI UI job, which is where
-they gate a merge. A machine that cannot install a browser can still pass the
-routine loop; it cannot claim the full gate.
+The browser and its system libraries are a download, so
+`mise run ui-browser-install` is a separate target and both it and
+`mise run ui-browser-test` are deferred out of the routine loop. They run in
+`mise run check` and in the CI UI job, which is where they gate a merge. A
+machine that cannot install a browser can still pass the routine loop; it cannot
+claim the full gate.
 
 CI installs the browser alone, without Playwright's `--with-deps`. The hosted
 runner image already carries every shared library Chromium links, so on that
@@ -358,10 +371,10 @@ suppressed in CI.
 GitHub Actions runs for pull requests **targeting** the default branch and for
 pushes **to** it, and for nothing else. There is no manual trigger: every run
 answers for a specific tree that a review or a merge produced. It uses the same
-pinned Mise toolchain and invokes the same `ci-*` Make groups that `make check`
-runs; CI does not reimplement a divergent list of shell commands. It is the
-authoritative gate: it runs the complete validation for every changed path,
-whatever a contributor chose to run locally.
+pinned Mise toolchain and invokes the same `ci-*` task groups that
+`mise run check` runs; CI does not reimplement a divergent list of shell
+commands. It is the authoritative gate: it runs the complete validation for
+every changed path, whatever a contributor chose to run locally.
 
 The validation workflow must:
 
@@ -567,9 +580,9 @@ pinned image digest are operator-managed deployment state outside Git.
 
 A successful build says the image can be produced. It says nothing about whether
 the service comes up inside it, which is what an operator finds out at deploy
-time. `dev/container-smoke.sh`, run by `make container-smoke`, is the answer to
-that: it starts the image with the runtime the compose example documents — the
-image's own unprivileged user, a read-only root filesystem, no capabilities,
+time. `dev/container-smoke.sh`, run by `mise run container-smoke`, is the answer
+to that: it starts the image with the runtime the compose example documents —
+the image's own unprivileged user, a read-only root filesystem, no capabilities,
 `no-new-privileges`, the documented `/tmp` tmpfs, one writable state mount, and
 read-only configuration and secret files — and asserts that
 
@@ -602,8 +615,8 @@ so a host already running the deployment is untouched.
 
 The image is an input rather than something the script builds: a local build
 needs the `dhi.io` credential above, and the local gate must not require one. So
-the smoke test is outside `make check` and `make quick`, and CI runs it in the
-pull-request `Image` job, which already holds that credential.
+the smoke test is outside `mise run check` and `mise run quick`, and CI runs it
+in the pull-request `Image` job, which already holds that credential.
 `DOMESTIQUE_SMOKE_IMAGE` names the reference to run, which must already be in
 the local image store; nothing pulls. In CI that reference is the image the job
 just built: one platform can be loaded into the runner's image store, so what is

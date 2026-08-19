@@ -5,7 +5,7 @@
  * basemap, a page whose rendering does not drift between runs, and a way to wait
  * for a WebGL map to stop moving before asserting anything about it.
  *
- * The suite runs against `make demo` — the anonymous synthetic library in
+ * The suite runs against `mise run demo` — the anonymous synthetic library in
  * `internal/demo`, served by `dev/demoapi` behind the production identity gate.
  * No test here knows a real route, and none can reach a provider: the demo has
  * nowhere to reach, and the one origin outside it the application would otherwise

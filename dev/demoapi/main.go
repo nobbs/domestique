@@ -235,7 +235,7 @@ func newHandler(
 // policy — and the browser suite has a project that drives exactly that.
 //
 // The bundle is embedded at compile time from a gitignored directory, so whether
-// it exists depends on whether `make ui-build` ran before this binary was built.
+// it exists depends on whether `mise run ui-build` ran before this binary was built.
 // A missing one is reported rather than served as a blank page; `dev/demo.sh
 // --with-bundle` is what guarantees a fresh one.
 func bundleAssets() httpapi.Assets {
@@ -264,7 +264,7 @@ func (unbuiltAssets) Static(writer http.ResponseWriter, _ *http.Request) {
 }
 
 const unbuiltMessage = "no browser UI bundle is embedded in this binary: " +
-	"run `make ui-build` before building it, or use the Vite dev server"
+	"run `mise run ui-build` before building it, or use the Vite dev server"
 
 // reseeder runs one demo synchronisation at a time. Two concurrent seeds would
 // interleave their writes over the same rows, and the second caller is in the

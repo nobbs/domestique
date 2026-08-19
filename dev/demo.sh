@@ -50,11 +50,11 @@ CONFIG="${DEMO_DIR}/config.toml"
 DATABASE="${DEMO_DIR}/state.db"
 ASSERTION_FILE="${DEMO_DIR}/assertion"
 
-# Not :8081, so a demo can run beside `make dev-api` without either of them
+# Not :8081, so a demo can run beside `mise run dev-api` without either of them
 # wondering why the other's routes are missing.
-# `go` and `npm` are taken from the environment for the same reason the Makefile
-# takes them from GO and NPM: whatever activated the pinned toolchain for the
-# caller has already put them on the path.
+# `go` and `npm` are taken from the environment rather than resolved here:
+# whatever activated the pinned toolchain for the caller — Mise, in every
+# documented setup — has already put them on the path.
 GO="${GO:-go}"
 NPM="${NPM:-npm}"
 
@@ -143,7 +143,7 @@ export CGO_ENABLED=0
 # Before the binary, because the bundle is embedded at compile time: building it
 # afterwards would leave the running API serving the previous one. The bundler
 # empties dist, which would remove the placeholder that keeps the go:embed
-# pattern valid, so it is restored the same way `make ui-build` does.
+# pattern valid, so it is restored the same way `mise run ui-build` does.
 if [[ "${WITH_BUNDLE}" == true ]]; then
   "${NPM}" --prefix "${ROOT}/internal/webui/app" run build
   touch "${ROOT}/internal/webui/app/dist/.gitkeep"
