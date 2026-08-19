@@ -672,7 +672,8 @@ func validateListenAddress(address string) error {
 }
 
 // validateReadinessAddress accepts a listener for the readiness probe on the
-// same terms as the served one, and additionally refuses the served port itself.
+// same terms as the served one, and additionally refuses the served listener's
+// own port.
 // Sharing it would put readiness behind Tailscale Serve and the tunnel, which is
 // exactly the surface the probe is supposed to stay off.
 func validateReadinessAddress(address, listenAddress string) error {

@@ -180,9 +180,10 @@ application dependency.
   evidence of Tailnet identity.
 - `http.readiness_address` is optional and defaults to `:8081`. It is the second
   listener, and it serves the readiness probe alone. It is validated on the same
-  terms as `http.listen_address` and must not name its port: sharing one would
-  put readiness behind Tailscale Serve and the tunnel, which is the surface the
-  probe exists to stay off. An existing configuration file needs no change.
+  terms as `http.listen_address`, and its port must differ from that listener's:
+  one port serving both would put readiness behind Tailscale Serve and the
+  tunnel, which is the surface the probe exists to stay off. An existing
+  configuration file needs no change.
 - `access.cloudflare` is required in full: `team_domain`, `application_aud`, and
   `allowed_email` must all be present. It is the only gate the service has, so a
   missing or partly filled section is a startup error rather than a service that

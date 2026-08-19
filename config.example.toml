@@ -7,8 +7,8 @@ listen_address = ":8080"
 # The readiness probe's own listener. Optional; this is the default. It is a
 # second port rather than a second path so that only the served one is given to
 # `tailscale serve`, which keeps readiness reachable from host-local health
-# checking and off the authenticated public surface. It must not be the served
-# port.
+# checking and off the authenticated public surface. Its port must differ from
+# listen_address above.
 readiness_address = ":8081"
 
 # Cloudflare Access is the only way in. Every request must carry an assertion
