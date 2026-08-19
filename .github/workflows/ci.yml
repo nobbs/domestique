@@ -28,7 +28,6 @@ jobs:
       lint: ${{ steps.filter.outputs.lint }}
       go: ${{ steps.filter.outputs.go }}
       ui: ${{ steps.filter.outputs.ui }}
-      coverage: ${{ steps.filter.outputs.coverage }}
       image: ${{ steps.filter.outputs.image }}
       container: ${{ steps.filter.outputs.container }}
 
@@ -155,11 +154,20 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     needs: changes
-    # One filter for both languages: the job always measures both, because
-    # neither flag is carried forward, so a report that arrived with only one of
-    # them would leave the other's status describing a commit that is no longer
-    # the one under review.
-    if: needs.changes.outputs.coverage == 'true'
+    # Deliberately unfiltered: this job runs for every pull request and every
+    # push, including one that touches only documentation.
+    #
+    # The branch ruleset requires `codecov/patch/go` and `codecov/patch/ui`, and
+    # Codecov posts a status only for a commit it received a report for. A path
+    # filter here would mean a documentation-only pull request uploads nothing,
+    # the two required contexts never arrive, and the pull request is blocked
+    # with nothing to un-block it. The same gap read from the other side: a
+    # commit on the default branch with no report is a commit no later pull
+    # request can compare against.
+    #
+    # The job measures both languages in one run because neither flag is carried
+    # forward, so a report that arrived with only one of them would leave the
+    # other's status describing a commit that is no longer the one under review.
 
     permissions:
       contents: read
@@ -597,11 +605,11 @@ jobs:
       # still reddens the commit.
       #
       # `coverage` is deliberately not in the loop below. It is reported above
-      # so that a failed upload is visible, but coverage decides nothing yet and
-      # a fork's pull request cannot upload at all, so gating on it would fail
-      # merges over a missing report rather than over untested code. Adding
-      # COVERAGE_RESULT to the environment and to the loop is what makes it
-      # blocking, once there is a policy worth blocking for.
+      # so that a failed upload is visible, but this job does not judge the
+      # numbers: the ruleset requires Codecov's own `codecov/patch/*` contexts,
+      # so the verdict arrives from the app that measured it rather than from a
+      # step here polling for it. A failed upload therefore still costs a report
+      # rather than reddening this check.
       - name: Validate CI results
         env:
           CHANGES_RESULT: ${{ needs.changes.result }}
