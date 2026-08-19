@@ -31,13 +31,13 @@ The repository provides these stable Make targets:
 | `make ui-dev` | Runs the UI dev server, proxying the API to the local service. |
 | `make dev-setup` | Snapshots the deployed state into an isolated development environment. |
 | `make dev-api` | Serves the API against that snapshot on `:8081`. |
-| `make quick` | Runs the routine local loop: every check in `make check` except the three it defers. |
+| `make quick` | Runs the routine local loop: every check in `make check` except the five it defers. |
 | `make check` | Runs the full gate locally, on demand. |
 | `make coverage` | Writes a Go coverage profile and the browser UI's LCOV report to a gitignored directory and summarises both. |
 
 `make check` is the full gate. It includes
 `prek run --all-files`, linting, tests, TypeScript type checking, the browser UI
-lint and test suites, Go module verification, vulnerability analysis for both Go
+lint and test suites, the browser suite, Go module verification, vulnerability analysis for both Go
 and npm dependencies, a GitHub Actions workflow check, a shell-script check, a
 worktree secret scan, a commit-hook cost check, a local-gate structure check,
 and the release-target binary compilation for every published architecture.
@@ -58,11 +58,11 @@ Local validation is therefore a way to learn a result earlier, and it comes at
 two depths:
 
 - `make quick` is the routine loop. It runs everything the full gate runs except
-  the three checks named below, so it stays worth running on every iteration.
+  the five checks named below, so it stays worth running on every iteration.
 - `make check` is the full gate on demand, unchanged. Run it before handing work
   over when an earlier answer than CI's is worth its cost.
 
-`make quick` defers exactly three checks, each because it is slow or needs the
+`make quick` defers exactly five checks, each because it is slow or needs the
 network rather than because it matters less:
 
 | Deferred check | Why |
@@ -70,6 +70,8 @@ network rather than because it matters less:
 | `build-check` | Rebuilds the UI bundle and cross-compiles both published architectures; the slowest check in the gate whenever the build cache is cold. |
 | `vulncheck` | Needs the network and a current Go advisory database. |
 | `ui-audit` | Needs the network and a current npm advisory database. |
+| `ui-browser-install` | Downloads a browser: a network fetch and a few hundred megabytes on disk. |
+| `ui-browser-test` | Drives that browser over the demo stack; minutes rather than seconds, and useless without the download above. |
 
 It also reuses an installed browser UI dependency tree rather than reinstalling
 it, and installs one only when none is present. `make check` and CI always
@@ -195,6 +197,46 @@ against a team that exists only inside that process.
 
 Both of these apply to the development environment only. Neither is a substitute
 for the sandbox acceptance check, and neither runs in CI.
+
+## The browser suite
+
+The browser UI is validated at two depths. The Vitest suites run in jsdom over
+the reusable components and the API client, and are the routine cost. The
+Playwright suite in `internal/webui/app/e2e` runs the whole page in a real
+Chromium, and exists for what jsdom cannot observe: the map, which needs WebGL,
+and the interactions that span components — scrubbing the elevation chart,
+selecting a stretch off the map, following a card into a stage. It is not a
+second home for logic that a component test could reach.
+
+The suite runs against `make demo`, so it is subject to everything that
+environment guarantees above: the synthetic library, the unroutable providers,
+and the production identity gate in front of them. No test in it reads a real
+route, and no personal data is involved in running it.
+
+It is hermetic. The only third-party request the application makes is the basemap
+style the service names, and the suite answers both the light and the dark
+document from memory with a background-only style that causes MapLibre to issue no
+further request. Every other cross-origin request is refused and reported, and a
+test that let one out fails — so the suite cannot quietly start depending on a
+provider being reachable.
+
+No reference image is committed. A visual assertion compares the map region
+against itself within the run, after waiting for two consecutive identical frames,
+so it proves that an interaction changed what was painted without acquiring a
+screenshot that goes stale on a renderer or font change. Everything about the
+environment that a pixel depends on — viewport, device scale factor, colour
+scheme, locale, time zone, motion and font stack — is pinned by the configuration
+and the fixtures. Traces, failure screenshots and the HTML report are written to
+the gitignored `.playwright/` directory.
+
+The browser and its system libraries are a download, so `make ui-browser-install`
+is a separate target and both it and `make ui-browser-test` are deferred out of
+the routine loop. They run in `make check` and in the CI UI job, which is where
+they gate a merge. A machine that cannot install a browser can still pass the
+routine loop; it cannot claim the full gate.
+
+The suite renders the map but does not judge it. Looking at a map change remains
+a human act, and a change handed over without one is reported as such.
 
 Normal Go tests run without network access to VeloPlanner, Wahoo, Pushover,
 Tailscale, or a secret system. The normal test command enables deterministic

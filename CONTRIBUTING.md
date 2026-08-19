@@ -17,11 +17,13 @@ mise install
 mise exec -- make quick
 ~~~
 
-`make quick` runs everything the full gate runs except three checks it defers —
-`build-check`, which cross-compiles both published architectures, and
-`vulncheck` and `ui-audit`, which need the network and a current advisory
-database. That difference is asserted, not just documented, so a check added to
-the gate cannot quietly drop out of the routine loop.
+`make quick` runs everything the full gate runs except five checks it defers —
+`build-check`, which cross-compiles both published architectures; `vulncheck` and
+`ui-audit`, which need the network and a current advisory database; and
+`ui-browser-install` and `ui-browser-test`, which download a browser and then
+drive it over the demo stack for minutes. That difference is asserted, not just
+documented, so a check added to the gate cannot quietly drop out of the routine
+loop.
 
 Run the full gate yourself with:
 

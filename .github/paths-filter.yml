@@ -35,12 +35,21 @@ go:
   - "dev/**"
   - "internal/**"
 
+# `ui` also covers the stack the browser suite runs against: `make demo` builds
+# `dev/demoapi` over the synthetic library in `internal/demo` and serves the
+# embedded app, so a change to any of those can fail the UI job. The rest of the
+# service is left to the `go` job, which tests it directly.
 ui:
   - ".github/paths-filter.yml"
   - ".github/workflows/ci.yml"
   - ".mise.toml"
   - "Makefile"
-  - "internal/webui/app/**"
+  - "go.mod"
+  - "go.sum"
+  - "dev/demo.sh"
+  - "dev/demoapi/**"
+  - "internal/demo/**"
+  - "internal/webui/**"
 
 image:
   - ".dockerignore"

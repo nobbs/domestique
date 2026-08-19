@@ -39,6 +39,7 @@ GO_COVERPKG := ./cmd/...,./internal/...
 
 .PHONY: fmt hygiene lint markdownlint shell-lint workflow-lint hook-check gate-check test vet mod-check vulncheck secret-scan build build-check ci-lint ci-test ci-security ci-ui quick check
 .PHONY: ui-install ui-ensure ui-dev ui-typecheck ui-lint ui-format ui-test ui-audit ui-build
+.PHONY: ui-browser-install ui-browser-test
 .PHONY: coverage coverage-go coverage-ui
 .PHONY: dev-setup dev-api demo
 
@@ -163,6 +164,21 @@ ui-format:
 ui-test:
 	$(NPM) --prefix $(UI_DIR) run test
 
+# Downloads the browser the whole-page suite runs in. Separate from running the
+# suite so that a failure names which of the two went wrong, and so a contributor
+# can pay the download once. PLAYWRIGHT_INSTALL_FLAGS is how CI adds --with-deps,
+# which also installs the browser's system libraries and needs root.
+ui-browser-install:
+	$(NPM) --prefix $(UI_DIR) run test:browser:install -- $(PLAYWRIGHT_INSTALL_FLAGS)
+
+# The whole page in a real browser, over `make demo`'s synthetic library: what a
+# WebGL map and a cross-component interaction cannot be asserted about in jsdom.
+# It starts the demo stack itself, so it needs the Go toolchain as well as the
+# browser, and it reaches nothing but the service it started. See
+# $(UI_DIR)/playwright.config.ts.
+ui-browser-test:
+	$(NPM) --prefix $(UI_DIR) run test:browser
+
 # govulncheck does not see npm packages, so the JavaScript tree needs its own
 # advisory check in the same gate.
 ui-audit:
@@ -219,9 +235,11 @@ ci-ui: ui-install
 	$(MAKE) ui-typecheck
 	$(MAKE) ui-lint
 	$(MAKE) ui-test
+	$(MAKE) ui-browser-install
+	$(MAKE) ui-browser-test
 
 # The routine local loop. It runs every check that reads the tree as it stands
-# and needs nothing beyond it, and defers three things to `check` and to GitHub
+# and needs nothing beyond it, and defers five things to `check` and to GitHub
 # Actions, which is the authoritative gate a merge has to pass:
 #
 #   build-check  rebuilds the UI bundle and cross-compiles both published
@@ -229,6 +247,12 @@ ci-ui: ui-install
 #                build cache is cold, which is every CI run
 #   vulncheck    needs the network and a current Go advisory database
 #   ui-audit     needs the network and a current npm advisory database
+#   ui-browser-install
+#                downloads a browser, which is a network fetch and a few hundred
+#                megabytes on disk
+#   ui-browser-test
+#                runs that browser over the demo stack: minutes rather than
+#                seconds, and useless without the download above
 #
 # Nothing is weakened by leaving them out: every one still runs in `check` and
 # on every pull request. `gate-check` asserts that this list is the whole of the

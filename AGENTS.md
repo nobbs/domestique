@@ -48,15 +48,17 @@ merge must satisfy. Running a gate locally buys an earlier answer, not a
 different one.
 
 `make quick` is the routine loop, and what to run while iterating. It runs
-everything `make check` runs except three checks it defers: `build-check`, which
-cross-compiles both published architectures, and `vulncheck` and `ui-audit`,
-which need the network and a current advisory database. Nothing else is left
-out, and `make gate-check` fails if that stops being true.
+everything `make check` runs except five checks it defers: `build-check`, which
+cross-compiles both published architectures; `vulncheck` and `ui-audit`, which
+need the network and a current advisory database; and `ui-browser-install` and
+`ui-browser-test`, which download a browser and then drive it over the demo stack
+for minutes. Nothing else is left out, and `make gate-check` fails if that stops
+being true.
 
 `make check` is the full gate: `prek`, lint, markdownlint, shellcheck,
 actionlint, `go vet`, tests, TypeScript type checking, the UI lint and test
-suites, `go mod tidy -diff`, `go mod verify`, `govulncheck`, `npm audit`,
-`gitleaks`, a commit-hook cost check, a local-gate structure check, and a
+suites, the browser suite, `go mod tidy -diff`, `go mod verify`, `govulncheck`,
+`npm audit`, `gitleaks`, a commit-hook cost check, a local-gate structure check, and a
 cross-compile check for each published architecture. Individual targets
 (`make test`, `make lint`, `make fmt`, `make ui-test`, `make build-check`) are
 also available while iterating.
@@ -191,16 +193,27 @@ packages — deterministic hand-written fakes remain the convention.
 [`internal/route`](internal/route) is the worked example; packages still using
 plain `testing.T` checks are converted separately.
 
-Browser UI tests are Vitest plus Testing Library over the reusable components in
-`src/components` and the API client's parsing and error paths. The map component
-itself is not unit-tested — it needs WebGL.
+Browser UI tests come in two suites. `make ui-test` is Vitest plus Testing
+Library over the reusable components in `src/components` and the API client's
+parsing and error paths: jsdom, no browser, and a second to run — anything it can
+reach belongs there.
 
-Checking a map change by running the app is currently skippable, so a change may
-be handed over without ever having been rendered. Say so plainly when it has
-not, and say what specifically went unseen, so nobody reads a green `make check`
-as a change that was looked at. Everything a test can still cover — the style URL
-chosen, the palette selected, the geometry handed to a layer — belongs in a test
-whether or not the map itself was opened.
+`make ui-browser-test` is Playwright over a real Chromium, and covers what jsdom
+cannot observe: the MapLibre map, which needs WebGL, and the interactions that
+span components rather than living inside one — scrubbing the elevation chart,
+dragging a stretch out of the map, following a card into a route. The specs are
+in `internal/webui/app/e2e`, and `make ui-browser-install` downloads the browser
+they need. It runs against `dev/demo.sh`, so it reads the synthetic library in
+`internal/demo` and never a real route, and its fixtures answer the one
+third-party request the application makes — the basemap style — from memory and
+fail the test if anything else leaves the page. No screenshot is stored: a visual
+assertion compares the map against itself within the run, after waiting for two
+identical frames.
+
+That suite renders the map, but it does not look at it. Checking a map change by
+eye is still skippable, so a change may be handed over without anyone having seen
+it. Say so plainly when it has not, and say what specifically went unseen, so
+nobody reads a green `make check` as a change that was looked at.
 
 ## Files an agent must not touch or read out
 
