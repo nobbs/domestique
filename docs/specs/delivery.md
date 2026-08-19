@@ -56,8 +56,8 @@ be reviewed and staged deliberately.
 
 ### The authoritative gate is GitHub Actions
 
-**This revises the earlier contract that `mise run check` was the canonical
-local and CI entry point, run in full before every hand-over.** It is a
+**This revises the earlier contract that the full gate was the canonical local
+and CI entry point, run in full before every hand-over.** It is a
 deliberate change to where the gate is paid, not to what the gate contains:
 GitHub Actions runs the complete validation on every pull request targeting the
 default branch, and its aggregate check is what a merge must satisfy. No check
@@ -100,10 +100,11 @@ network.
 
 The assertion also constrains the form the gate is written in, because it can
 only compare steps it can see: every step of a gate task is a task of its own,
-named in `depends`, and the gate task runs no command itself. A check written
-inline on a gate task would pass the subset comparison while escaping it, so the
-shape is checked first. Membership is `depends` alone; `wait_for` orders tasks
-that already run and never schedules one, so it cannot add a step.
+named in `depends` or `depends_post`, and the gate task runs no command itself.
+A check written inline on a gate task would pass the subset comparison while
+escaping it, so the shape is checked first. Those two are the whole of
+membership; `wait_for` orders tasks that already run and never schedules one, so
+it cannot add a step.
 
 The three depths compose: the commit hook judges the staged files in about a
 second, `mise run quick` judges the working tree, and GitHub Actions judges the
