@@ -58,7 +58,12 @@ account to be authorized again.
 ~~~sh
 docker compose -f compose.macos.yml up --build --detach
 curl --fail http://127.0.0.1:8080/healthz
+curl --fail http://127.0.0.1:8081/readyz
 ~~~
+
+The second probe is readiness, on its own loopback port: it reports whether the
+service can read its local state, contacts nothing outside this Mac, and is
+never served through Tailscale.
 
 The Compose target builds the repository's pinned linux/arm64 image locally,
 runs it as UID/GID 65532, drops all Linux capabilities, uses a read-only root

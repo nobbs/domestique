@@ -64,6 +64,10 @@ COPY --from=build --chown=65532:65532 /out/var/lib/domestique /var/lib/domestiqu
 USER 65532:65532
 WORKDIR /var/lib/domestique
 VOLUME ["/var/lib/domestique"]
-EXPOSE 8080
+# The served port, and the readiness probe's own port. The host publishes both
+# to its loopback address only; the readiness one is deliberately never fronted
+# by Tailscale Serve, which is what keeps the probe off the authenticated public
+# surface.
+EXPOSE 8080 8081
 
 ENTRYPOINT ["/usr/local/bin/domestique"]

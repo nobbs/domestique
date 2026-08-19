@@ -309,8 +309,9 @@ future reconciliation feature.
 
 ## HTTP JSON contract
 
-All routes except the loopback liveness probe require the configured Tailnet
-identity. Every state-changing route additionally requires an `Origin` header
+All routes on the served listener except the loopback liveness probe require the
+configured Tailnet identity, and the readiness probe is not on that listener at
+all. Every state-changing route additionally requires an `Origin` header
 equal to the origin the browser UI is served from, as set out in the
 [service specification](service.md). Responses use application/json;
 charset=utf-8, include Cache-Control: no-store, and never include secrets or raw
@@ -326,6 +327,34 @@ Returns 200 with:
 
 It verifies the process can serve requests. It does not test VeloPlanner,
 Wahoo, Pushover, or the database.
+
+### GET /readyz
+
+Served on the readiness listener (`http.readiness_address`, default `:8081`) and
+on no other. Returns 200 with:
+
+~~~json
+{"status":"ready"}
+~~~
+
+while local configuration and the state the process needs are usable, and 503
+with a category and nothing more when they are not:
+
+~~~json
+{"status":"unready","reason":"state_unreadable"}
+~~~
+
+The categories are `state_unreadable`, when the local state cannot be read, and
+`state_incomplete`, when a configured target has no state row. Readiness makes
+no upstream call of any kind, and it is deliberately indifferent to target
+authorisation: an unauthorised slot is a deployment waiting for its one-time
+browser visit, not a process that cannot run.
+
+The two probes answer different questions on different sockets. Liveness says the
+process is answering HTTP; readiness says it can do its job with what the host
+gave it. The readiness listener is never fronted by Tailscale Serve or the
+tunnel, which is what keeps it available to Docker and host-local health checking
+and unavailable to the authenticated public surface.
 
 ### GET /v1/status
 

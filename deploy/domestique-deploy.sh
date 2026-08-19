@@ -30,7 +30,9 @@ STATE_DIR="${STATE_DIR:-/var/lib/domestique-deploy}"
 COMPOSE_PROJECT="${COMPOSE_PROJECT:-domestique}"
 COMPOSE_SERVICE="${COMPOSE_SERVICE:-domestique}"
 HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:8080/healthz}"
+READY_URL="${READY_URL:-http://127.0.0.1:8081/readyz}"
 CONTAINER_PORT="${CONTAINER_PORT:-8080}"
+READINESS_PORT="${READINESS_PORT:-8081}"
 HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-60}"
 LOCK_FILE="${LOCK_FILE:-/run/lock/domestique-deploy.lock}"
 
@@ -153,6 +155,38 @@ wait_healthy() {
   done
 }
 
+# Liveness says the process answers HTTP; readiness says it can read the state
+# it was configured with. A deploy that comes up but cannot reach its database is
+# exactly the failure this gate exists for, so it is checked before the deploy is
+# called good.
+#
+# Skipped, with a line saying so, when this host's compose file does not publish
+# the readiness port. The script deploys images, not compose files, so it has to
+# work against a host that has not added that publication yet — and a missing
+# publication must not roll back an image that is otherwise healthy.
+wait_ready() {
+  local published deadline
+  published="$(compose port "${COMPOSE_SERVICE}" "${READINESS_PORT}" 2>/dev/null || true)"
+  if [[ -z "${published}" ]]; then
+    log "readiness port ${READINESS_PORT} is not published; readiness gate skipped"
+    return 0
+  fi
+  if [[ "${published}" != 127.0.0.1:* ]]; then
+    log "readiness port is published on ${published}, which is not loopback"
+    return 1
+  fi
+  deadline=$(($(date +%s) + HEALTH_TIMEOUT))
+  while true; do
+    if curl -fs --max-time 3 -o /dev/null "${READY_URL}"; then
+      return 0
+    fi
+    if [[ "$(date +%s)" -ge "${deadline}" ]]; then
+      return 1
+    fi
+    sleep 2
+  done
+}
+
 # The listener must stay loopback-only: this host has a public address, and a
 # published 0.0.0.0:8080 would hand the API to the internet.
 loopback_only() {
@@ -231,7 +265,7 @@ else
   log "compose up failed"
 fi
 
-if [[ "${started}" -eq 1 ]] && wait_healthy && loopback_only; then
+if [[ "${started}" -eq 1 ]] && wait_healthy && wait_ready && loopback_only; then
   log "healthy on ${IMAGE_REPO}@${requested}"
   prune_images "${requested}" "${current}"
   exit 0

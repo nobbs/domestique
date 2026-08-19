@@ -281,6 +281,30 @@ func TestLoadRejectsInvalidConfiguration(t *testing.T) {
 			want: "same origin",
 		},
 		{
+			name: "readiness address sharing the served port",
+			mutate: func(t *testing.T, path string) {
+				t.Helper()
+				replaceInFile(t, path, "listen_address = \":8080\"", "listen_address = \":8080\"\nreadiness_address = \":8080\"")
+			},
+			want: "must not be http.listen_address",
+		},
+		{
+			name: "readiness address naming a host",
+			mutate: func(t *testing.T, path string) {
+				t.Helper()
+				replaceInFile(t, path, "listen_address = \":8080\"", "listen_address = \":8080\"\nreadiness_address = \"0.0.0.0:8081\"")
+			},
+			want: "http.readiness_address",
+		},
+		{
+			name: "readiness address without a port",
+			mutate: func(t *testing.T, path string) {
+				t.Helper()
+				replaceInFile(t, path, "listen_address = \":8080\"", "listen_address = \":8080\"\nreadiness_address = \":0\"")
+			},
+			want: "valid port",
+		},
+		{
 			name: "non canonical schedule",
 			mutate: func(t *testing.T, path string) {
 				t.Helper()
@@ -557,5 +581,39 @@ func TestLoadRejectsPartialCloudflareAccess(t *testing.T) {
 				t.Fatalf("Load() error = %v, want rejection of the partial section", err)
 			}
 		})
+	}
+}
+
+// An existing deployment's configuration file says nothing about readiness, so
+// the probe has to arrive with a listener of its own rather than an empty one.
+func TestLoadDefaultsTheReadinessListenerToItsOwnPort(t *testing.T) {
+	configPath, _ := writeValidConfiguration(t, t.TempDir())
+	t.Setenv(configFileEnv, configPath)
+
+	settings, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if got, want := settings.HTTP.ReadinessAddress, ":8081"; got != want {
+		t.Errorf("HTTP.ReadinessAddress = %q, want %q", got, want)
+	}
+	if settings.HTTP.ReadinessAddress == settings.HTTP.ListenAddress {
+		t.Error("the readiness listener must not be the served listener")
+	}
+}
+
+func TestLoadReadsAConfiguredReadinessListener(t *testing.T) {
+	configPath, _ := writeValidConfiguration(t, t.TempDir())
+	replaceInFile(t, configPath, "listen_address = \":8080\"", "listen_address = \":8080\"\nreadiness_address = \":9101\"")
+	t.Setenv(configFileEnv, configPath)
+
+	settings, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if got, want := settings.HTTP.ReadinessAddress, ":9101"; got != want {
+		t.Errorf("HTTP.ReadinessAddress = %q, want %q", got, want)
 	}
 }

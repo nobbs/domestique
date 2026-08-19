@@ -13,6 +13,9 @@ services:
       - no-new-privileges:true
     ports:
       - "127.0.0.1:8080:8080"
+      # The readiness probe. Loopback only, and never given to `tailscale serve`:
+      # host-local health checking is the only caller it has.
+      - "127.0.0.1:8081:8081"
     tmpfs:
       - /tmp:mode=1777,nosuid,nodev,noexec
     volumes:
