@@ -1,0 +1,80 @@
+# Codecov reports coverage on a pull request; it does not gate one.
+#
+# Every status below is informational: a shortfall shows up on the pull request
+# and never blocks it. That is deliberate for now — coverage has to be visible
+# and trusted before it decides anything, and a gate switched on the same day
+# the first report arrives cannot be told apart from a broken upload. See
+# "Making coverage enforceable" in CONTRIBUTING.md for what turning one on
+# involves.
+
+codecov:
+  # A report from a run whose checks failed describes a tree nobody is going to
+  # merge, so there is nothing worth saying about it yet.
+  require_ci_to_pass: true
+  notify:
+    # Both flags upload from the same job. Waiting for both means one comment
+    # covering the change rather than one per language.
+    after_n_builds: 2
+
+coverage:
+  precision: 1
+  round: down
+  # The band the report is coloured against. It sets no threshold and blocks
+  # nothing; it is chosen to sit around where the service measures today.
+  range: "60...95"
+
+  status:
+    # No unflagged status: an aggregate over two languages names nothing anyone
+    # can act on. Each flag answers for itself instead.
+    project:
+      default: false
+      go:
+        flags:
+          - go
+        informational: true
+      ui:
+        flags:
+          - ui
+        informational: true
+    patch:
+      default: false
+      go:
+        flags:
+          - go
+        informational: true
+      ui:
+        flags:
+          - ui
+        informational: true
+
+# Both flags upload on every run of the coverage job, so nothing has to be
+# carried forward from an older commit; a report is always the tree it names.
+flags:
+  go:
+    paths:
+      - cmd/
+      - internal/
+    carryforward: false
+  ui:
+    paths:
+      - internal/webui/app/src/
+    carryforward: false
+
+# Neither toolchain writes paths that are relative to the repository root.
+fixes:
+  # A Go profile names each file by import path.
+  - "github.com/nobbs/domestique/::"
+  # Vitest writes LCOV paths relative to the UI project root.
+  - "src/::internal/webui/app/src/"
+
+ignore:
+  # Repository tooling rather than the service. It is already outside the
+  # profile's -coverpkg set; this keeps it out if that ever widens.
+  - "dev/**"
+
+comment:
+  layout: "condensed_header, diff, flags, files"
+  behavior: default
+  # Say so even when coverage did not move: silence is ambiguous, because it
+  # reads the same as an upload that never arrived.
+  require_changes: false

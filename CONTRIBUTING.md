@@ -52,6 +52,14 @@ Coverage is a report here, not a gate: neither `quick`, nor `check`, nor GitHub
 Actions fails on a percentage. The number exists so that a change can be read
 with its untested parts visible.
 
+On a pull request, CI measures both languages and publishes them to Codecov
+under two flags, `go` and `ui`, so that a shortfall names the language it came
+from. The statuses it posts are informational and the upload does not gate the
+required check, so a Codecov outage, or a pull request from a fork that has no
+upload token, costs a report rather than a merge.
+
+Locally:
+
 ~~~sh
 mise exec -- make coverage
 ~~~
@@ -83,6 +91,32 @@ The map components need WebGL, and the page-level components are assembled
 rather than unit-tested, so both report low — which is the honest answer.
 Browser-level coverage for them is tracked as its own work; excluding them would
 hide a real gap behind a comfortable number.
+
+### Making coverage enforceable
+
+Nothing here blocks a merge yet, deliberately: a gate switched on the same day
+the first report arrives cannot be told apart from a broken upload. Turning one
+on is three deliberate steps, and `codecov.yml` and the CI workflow are written
+so that each is a small edit rather than a redesign.
+
+1. Choose what is measured. A **patch** target — the lines a change adds or
+   alters — is the one worth enforcing. A project-total target fails on the
+   legitimate deletion of well-covered code and on a refactor that moves
+   statements between packages, which teaches contributors to route around it
+   rather than to write a test.
+2. Drop `informational: true` from the status it should apply to in
+   `codecov.yml`. Each flag has its own project and patch status, so Go and the
+   UI can be enforced separately and at different levels.
+3. Make the verdict blocking. The branch ruleset requires exactly one status
+   context, `Required`, which reports what the `Coverage` job did but does not
+   fail with it; the comment above its validation step says what to add. The
+   alternative is to require Codecov's own status contexts in the ruleset
+   instead, which needs a repository-settings change rather than a repository
+   one.
+
+Whatever the rule ends up being, it needs an exception path and somewhere to
+record one. A gate with no legitimate override gets bypassed by an
+administrator merge instead, which is worse than no gate.
 
 ## Contributions
 

@@ -42,6 +42,21 @@ ui:
   - "Makefile"
   - "internal/webui/app/**"
 
+# Coverage spans both languages and its own configuration: a threshold or flag
+# edited in codecov.yml has to be measured against a report from the same run,
+# not read against one an earlier commit uploaded.
+coverage:
+  - ".github/paths-filter.yml"
+  - ".github/workflows/ci.yml"
+  - ".mise.toml"
+  - "Makefile"
+  - "codecov.yml"
+  - "go.mod"
+  - "go.sum"
+  - "cmd/**"
+  - "dev/**"
+  - "internal/**"
+
 image:
   - ".dockerignore"
   - ".github/paths-filter.yml"

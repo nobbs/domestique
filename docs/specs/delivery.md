@@ -124,9 +124,27 @@ declarations, and the bootstrap that mounts React. Nothing else is excluded — 
 particular, code that only a browser-level test could reach is measured and
 reports low, because a number that hides a gap is worse than one that shows it.
 
-Both reports are written to one gitignored directory, so that a later upload
-step has a single place to look. No coverage report is committed, and none
-enters an image context.
+Both reports are written to one gitignored directory, so that the upload step
+has a single place to look. No coverage report is committed, and none enters an
+image context.
+
+GitHub Actions measures both languages on a pull request and publishes them to
+Codecov under separate flags, so that a shortfall names the language it came
+from and the two are never averaged into a single number. The statuses Codecov
+posts are informational, and the coverage job is reported by the single required
+check without being validated by it: a coverage report is evidence, not a merge
+condition, and an upload that fails — a service outage, or a fork's pull request
+with no access to the upload token — must cost a report rather than a merge.
+
+The upload is constrained to the two files the run just produced. The uploader
+does not search the working tree, and its plugins are disabled, because that
+tree can hold a local database, configuration, and secret files, none of which
+is ever an input to a coverage report. It carries no other credential.
+
+Publishing requires one operator action that the repository cannot take for
+itself: authorising Codecov for the repository and storing its upload token as
+the `CODECOV_TOKEN` repository secret. Without it the coverage job still
+measures both languages and still passes; only the upload is missing.
 
 ## Development environment
 
