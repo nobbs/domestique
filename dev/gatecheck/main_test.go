@@ -37,7 +37,6 @@ func graph() []task {
 		{Name: "ui-browser-test", Run: []string{"npm run test:browser"}},
 		{Name: "ui-build", Run: []string{"npm run build"}},
 		{Name: "ui-install", Run: []string{"npm ci"}},
-		{Name: "ui-install", Run: []string{"npm ci"}},
 
 		// Defined but wired into neither root, so a case can add a step
 		// without also having to define it.

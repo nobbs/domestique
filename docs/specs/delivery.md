@@ -152,7 +152,7 @@ Four properties are what make skipping safe rather than merely fast. A task that
 failed is never recorded as up to date, so a red check cannot be cached green.
 Editing a task's own definition invalidates it, so a check cannot change what it
 does and stay up to date. A glob matching no file would otherwise be up to date
-for ever, which is the one way this could retire a check silently, so
+forever, which is the one way this could retire a check silently, so
 `gate-check` fails on one. And the mechanism only ever removes work from a local
 run: the merge gate does not use it.
 
