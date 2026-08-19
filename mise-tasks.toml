@@ -107,11 +107,60 @@ run = "mise tasks validate"
 # All three suites write their report under one gitignored directory, for the
 # reason the coverage reports share theirs: an upload step should have one place
 # to look.
+#
+# `-timeout` is spelled out rather than left to `go test`'s default, which is the
+# same ten minutes. It is stated because the CI job that runs this also runs
+# `test-race` after it, and the job's own budget has to exceed both — a number
+# the gate can only check if both tasks say what they are. See dev/gatecheck.
 [test]
 description = "Run the Go tests and write their JUnit report"
 sources = ["**/*.go", "go.mod", "go.sum", "**/testdata/**", "internal/webui/app/dist/**"]
 outputs = { auto = true }
-run = "CGO_ENABLED=0 gotestsum --format standard-quiet --junitfile .test-results/go.xml -- -shuffle=on ./..."
+run = "CGO_ENABLED=0 gotestsum --format standard-quiet --junitfile .test-results/go.xml -- -shuffle=on -timeout=10m ./..."
+
+# The same suite under the race detector, which answers a different question
+# from the one `test` answers: `-shuffle=on` catches tests coupled through
+# ordering, and the detector catches memory shared without synchronisation. The
+# service is genuinely concurrent — the sync service and its reporter, the Wahoo
+# client, the Access verifier and the composition root all run goroutines — and
+# a data race there does not surface as a failing test. It surfaces as a
+# corrupted report or a wedged run, in production, on a schedule.
+#
+# It is a second invocation rather than a flag on `test` because the two answer
+# different questions and cost differently. The detector needs cgo, so it cannot
+# share the `CGO_ENABLED=0` the rest of this file uses — on the pinned toolchain
+# `CGO_ENABLED=0 go test -race` fails outright — and instrumenting the build
+# costs several times the wall clock of the plain run. The routine local loop
+# stays fast and cgo-free; `gate-check`'s deferred set is where that is written
+# down.
+#
+# Nothing about the shipped artefact changes. `build`, `build-check` and the
+# image stay `CGO_ENABLED=0` and statically linked; the detector instruments a
+# test binary that is never published.
+#
+# `-timeout` is explicit because the toolchain has to be the one that gives up
+# on a wedged package first: `go test` prints every goroutine's stack when its
+# own timeout expires, and the runner prints nothing at all when
+# `timeout-minutes` does. Both defaults are ten minutes, so left alone they
+# expire together and the dump is lost.
+#
+# The budget that has to clear it is the CI job's, and that job runs `test`
+# first, so it has to exceed both timeouts rather than only this one — a
+# `-timeout` applies to each test binary, not to the invocation, so neither
+# suite's total runtime is bounded by it. dev/gatecheck asserts that sum against
+# the job. That is a floor rather than a guarantee: a tree slow enough that the
+# surviving packages alone outlast the job would still be cut off, which is a
+# reason to watch the job's duration, not a reason to leave the floor unstated.
+#
+# It waits for `test` for the reason the two coverage halves are ordered: both
+# drive the whole suite, and running them at once on the same machine buys less
+# wall clock than it costs in contention. Running it alone schedules only this.
+[test-race]
+description = "Run the Go tests under the race detector"
+sources = ["**/*.go", "go.mod", "go.sum", "**/testdata/**", "internal/webui/app/dist/**"]
+outputs = { auto = true }
+wait_for = ["test"]
+run = "CGO_ENABLED=1 go test -race -shuffle=on -timeout=10m ./..."
 
 [vet]
 description = "Vet the Go tree"
@@ -430,7 +479,7 @@ depends = [
 
 [ci-test]
 description = "The test half of the gate, as CI groups it"
-depends = ["vet", "test"]
+depends = ["vet", "test", "test-race"]
 
 [ci-security]
 description = "The security half of the gate, as CI groups it"
@@ -451,12 +500,14 @@ depends = [
 ]
 
 # The routine local loop. It runs every check that reads the tree as it stands
-# and needs nothing beyond it, and defers five things to `check` and to GitHub
+# and needs nothing beyond it, and defers six things to `check` and to GitHub
 # Actions, which is the authoritative gate a merge has to pass:
 #
 #   build-check  rebuilds the UI bundle and compiles the published release
 #                target; the slowest check in the gate whenever the build cache
 #                is cold, which is every CI run
+#   test-race    reruns the whole Go suite under the race detector, which needs
+#                cgo and costs several times the wall clock of the plain run
 #   vulncheck    needs the network and a current Go advisory database
 #   ui-audit     needs the network and a current npm advisory database
 #   ui-browser-install

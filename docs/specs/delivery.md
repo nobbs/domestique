@@ -34,18 +34,20 @@ The repository provides these stable tasks:
 | `mise run fmt` | Applies Go formatting to owned Go source. |
 | `mise run lint` | Runs the configured `golangci-lint` checks. |
 | `mise run test` | Runs the normal deterministic test suite with `CGO_ENABLED=0` and writes its JUnit report to a gitignored directory. |
+| `mise run test-race` | Runs the same suite under the race detector with `CGO_ENABLED=1` and an explicit `-timeout`. Instruments a test binary only; nothing published is built with cgo. |
 | `mise run build` | Compiles the Linux service binary for `BUILD_ARCH`, the machine's own architecture unless overridden, with `CGO_ENABLED=0`, after building the browser UI. |
 | `mise run ui-build` | Builds the browser UI bundle that the binary embeds. |
 | `mise run ui-dev` | Runs the UI dev server, proxying the API to the local service. |
 | `mise run dev-setup` | Snapshots the deployed state into an isolated development environment. |
 | `mise run dev-api` | Serves the API against that snapshot on `:8081`. |
 | `mise run container-smoke` | Starts the production image under the documented deployment runtime and asserts the runtime contract. Takes an image; builds none. |
-| `mise run quick` | Runs the routine local loop: every check in `mise run check` except the five it defers. |
+| `mise run quick` | Runs the routine local loop: every check in `mise run check` except the six it defers. |
 | `mise run check` | Runs the full gate locally, on demand. |
 | `mise run coverage` | Writes a Go coverage profile and the browser UI's LCOV report to a gitignored directory and summarises both. |
 
 `mise run check` is the full gate. It includes `prek run --all-files`, linting,
-tests, TypeScript type checking, the browser UI lint and test suites, the
+tests, the same tests under the race detector, TypeScript type checking, the
+browser UI lint and test suites, the
 browser suite, Go module verification, vulnerability analysis for both Go and
 npm dependencies, a GitHub Actions workflow check, a shell-script check, a
 worktree secret scan, a commit-hook cost check, a task-definition check, a
@@ -67,18 +69,19 @@ Local validation is therefore a way to learn a result earlier, and it comes at
 two depths:
 
 - `mise run quick` is the routine loop, and the expected gate before a
-  hand-over. It runs everything the full gate runs except the five checks named
+  hand-over. It runs everything the full gate runs except the six checks named
   below, so it stays worth running on every iteration.
 - `mise run check` is the full gate on demand, unchanged. Reach for it when one
-  of those five checks is specifically implicated by the change in hand, not as
+  of those six checks is specifically implicated by the change in hand, not as
   a routine step before pushing: each of them runs on every pull request anyway.
 
-`mise run quick` defers exactly five checks, each because it is slow or needs
+`mise run quick` defers exactly six checks, each because it is slow or needs
 the network rather than because it matters less:
 
 | Deferred check | Why |
 | --- | --- |
 | `build-check` | Rebuilds the UI bundle and compiles the published release target; the slowest check in the gate whenever the build cache is cold. |
+| `test-race` | Reruns the whole Go suite under the race detector; needs cgo, which the rest of the repository does without, and costs several times the wall clock of the plain run. |
 | `vulncheck` | Needs the network and a current Go advisory database. |
 | `ui-audit` | Needs the network and a current npm advisory database. |
 | `ui-browser-install` | Downloads a browser: a network fetch and a few hundred megabytes on disk. |
@@ -400,9 +403,26 @@ a human act, and a change handed over without one is reported as such.
 
 Normal Go tests run without network access to VeloPlanner, Wahoo, Pushover,
 Tailscale, or a secret system. The normal test command enables deterministic
-test ordering variation with `-shuffle=on`. The v1 quality gate does not
-require a race-detector job; the release and normal test contract remains
-CGO-free.
+test ordering variation with `-shuffle=on`.
+
+**This revises the earlier contract that the gate requires no race-detector
+job.** The gate now runs the whole Go suite a second time under the detector,
+because the two invocations answer different questions: shuffling catches tests
+coupled through ordering, and the detector catches memory shared between
+goroutines without synchronisation. A data race in the sync service does not
+surface as a failing test but as a corrupted report or a wedged run, on a
+schedule, where it is least reproducible.
+
+What did not change is the CGO-free contract for everything that ships. The
+detector needs cgo and is therefore the one command in this repository that runs
+with `CGO_ENABLED=1`; it instruments a test binary that is never published. The
+release build, the published image, and the container smoke test remain
+`CGO_ENABLED=0` and statically linked, and the normal test command remains
+CGO-free as well. The race check is deferred out of the routine local loop for
+its cost, runs in the same CI job as the normal suite, and sets an explicit
+`-timeout` below that job's own budget so that a hang is given up on by the
+toolchain, which prints every goroutine's stack, rather than by the runner,
+which prints nothing.
 
 ## Linting and static analysis
 

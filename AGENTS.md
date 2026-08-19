@@ -51,15 +51,17 @@ merge must satisfy. Running a gate locally buys an earlier answer, not a
 different one.
 
 `mise run quick` is the routine loop, and what to run while iterating. It runs
-everything `mise run check` runs except five checks it defers: `build-check`,
-which compiles the published release target; `vulncheck` and `ui-audit`, which
-need the network and a current advisory database; and `ui-browser-install` and
+everything `mise run check` runs except six checks it defers: `build-check`,
+which compiles the published release target; `test-race`, which reruns the whole
+Go suite under the race detector; `vulncheck` and `ui-audit`, which need the
+network and a current advisory database; and `ui-browser-install` and
 `ui-browser-test`, which download a browser and then drive it over the demo
 stack for minutes. Nothing else is left out, and `mise run gate-check` fails if
 that stops being true.
 
 `mise run check` is the full gate: `prek`, lint, markdownlint, shellcheck,
-actionlint, `go vet`, tests, TypeScript type checking, the UI lint and test
+actionlint, `go vet`, tests, the same tests under the race detector, TypeScript
+type checking, the UI lint and test
 suites, the browser suite, `go mod tidy -diff`, `go mod verify`, `govulncheck`,
 `npm audit`, `gitleaks`, a commit-hook cost check, a task-definition check, a
 local-gate structure check, and a compile check for the published release
@@ -67,12 +69,12 @@ target. Individual tasks (`mise run test`, `mise run lint`, `mise run fmt`,
 `mise run ui-test`, `mise run build-check`) are also available while iterating.
 
 Run `mise run quick` before reporting work complete. It is the expected gate for
-a hand-over: the five checks it defers all run on every pull request, so paying
+a hand-over: the six checks it defers all run on every pull request, so paying
 for them locally as well buys an earlier answer at the cost of a browser
 download and minutes of driving it. Reach for `mise run check` when you have a
-specific reason to want one of those five before pushing — a change to the
-release build, to a dependency, or to the browser suite itself — rather than as
-routine.
+specific reason to want one of those six before pushing — a change to the
+release build, to concurrent code, to a dependency, or to the browser suite
+itself — rather than as routine.
 
 Either way, say plainly which checks you ran. A green `mise run quick` is not a
 full gate, and reporting it as one is the failure this rule exists to prevent.
@@ -86,6 +88,17 @@ rather than the code.
 
 Tests run with `CGO_ENABLED=0` and `-shuffle=on`. They must stay deterministic
 under shuffling.
+
+`mise run test-race` runs the same suite under the race detector, which is a
+different question: shuffling catches tests coupled through ordering, and the
+detector catches memory shared between goroutines without synchronisation. It is
+the one command here that needs cgo, so it needs a C compiler and is several
+times slower than `mise run test`; that is why it is deferred out of the routine
+loop rather than folded into it. Reach for it after touching anything
+concurrent — the sync service and its reporter, the Wahoo client, the Access
+verifier, or the composition root. Nothing it does reaches the shipped artefact:
+`mise run build`, `mise run build-check` and the image stay `CGO_ENABLED=0` and
+statically linked.
 
 `mise run coverage` writes a Go coverage profile to `.coverage/go.out` and the
 UI's LCOV report to `.coverage/ui/lcov.info`, and prints a summary for each. It

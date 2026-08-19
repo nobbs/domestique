@@ -69,13 +69,16 @@ type rules struct {
 //
 // build-check rebuilds the UI bundle and compiles the published release target,
 // which is the slowest check in the gate whenever the build cache is cold;
-// vulncheck and ui-audit each need the network and a current advisory database;
+// test-race reruns the whole Go suite under the race detector, which needs cgo
+// and costs several times the wall clock of the plain run; vulncheck and
+// ui-audit each need the network and a current advisory database;
 // ui-browser-install downloads a browser, and ui-browser-test then drives it
 // over the demo stack for minutes. That is why each is deferred.
 func gateRules() rules {
 	return rules{
 		deferred: []string{
 			"build-check",
+			"test-race",
 			"ui-audit",
 			"ui-browser-install",
 			"ui-browser-test",

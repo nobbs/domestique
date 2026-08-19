@@ -22,13 +22,24 @@ rather than convenient: there is no Makefile and no other entry point. Install
 it from [mise.jdx.dev](https://mise.jdx.dev) first; `mise tasks` then lists
 everything this repository offers.
 
-`mise run quick` runs everything the full gate runs except five checks it defers
-— `build-check`, which compiles the published release target; `vulncheck` and
-`ui-audit`, which need the network and a current advisory database; and
+`mise run quick` runs everything the full gate runs except six checks it defers
+— `build-check`, which compiles the published release target; `test-race`, which
+reruns the whole Go suite under the race detector; `vulncheck` and `ui-audit`,
+which need the network and a current advisory database; and
 `ui-browser-install` and `ui-browser-test`, which download a browser and then
 drive it over the demo stack for minutes. That difference is asserted, not just
 documented, so a check added to the gate cannot quietly drop out of the routine
 loop.
+
+`mise run test-race` is worth running yourself after touching anything
+concurrent — the sync service and its reporter, the Wahoo client, the Access
+verifier, or the composition root. A data race there does not surface as a
+failing test; it surfaces as a corrupted report or a wedged run, in production,
+on a schedule. It is the one command in this repository that needs cgo, so it
+needs a C compiler installed and takes several times as long as `mise run test`,
+which is why it sits outside the routine loop rather than inside it. It changes
+nothing about what ships: the release build and the image stay `CGO_ENABLED=0`
+and statically linked, and the detector only ever instruments a test binary.
 
 Run the full gate yourself with:
 
