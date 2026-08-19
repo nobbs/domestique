@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/nobbs/domestique/internal/config"
 	"github.com/nobbs/domestique/internal/demo"
@@ -19,9 +20,7 @@ func demoTeam(t *testing.T) *team {
 		ApplicationAUD: "demo-application",
 		AllowedEmail:   "rider@example.test",
 	})
-	if err != nil {
-		t.Fatalf("newTeam() error = %v", err)
-	}
+	require.NoError(t, err)
 
 	return local
 }
@@ -33,16 +32,11 @@ func TestMintedAssertionPassesTheProductionGate(t *testing.T) {
 	local := demoTeam(t)
 
 	assertion, err := local.mint()
-	if err != nil {
-		t.Fatalf("mint() error = %v", err)
-	}
+	require.NoError(t, err)
+
 	email, err := local.Verify(t.Context(), assertion)
-	if err != nil {
-		t.Fatalf("Verify() error = %v", err)
-	}
-	if want := "rider@example.test"; email != want {
-		t.Errorf("Verify() = %q, want %q", email, want)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "rider@example.test", email)
 }
 
 // A demo that could be talked into fetching keys from a real team would be a
@@ -50,34 +44,28 @@ func TestMintedAssertionPassesTheProductionGate(t *testing.T) {
 func TestKeySetTransportServesOnlyTheLocalTeam(t *testing.T) {
 	local := demoTeam(t)
 
-	if _, err := local.Verify(t.Context(), "not.a.token"); err == nil {
-		t.Fatal("expected a malformed assertion to be rejected")
-	}
+	_, err := local.Verify(t.Context(), "not.a.token")
+	require.Error(t, err, "a malformed assertion must be rejected")
 
 	other := demoTeam(t)
 	other.issuer = "https://elsewhere.example.test"
 	assertion, err := local.mint()
-	if err != nil {
-		t.Fatalf("mint() error = %v", err)
-	}
-	if _, err := other.Verify(t.Context(), assertion); err == nil {
-		t.Fatal("expected a key set fetched from another origin to fail")
-	}
+	require.NoError(t, err)
+
+	_, err = other.Verify(t.Context(), assertion)
+	require.Error(t, err, "a key set fetched from another origin must fail")
 }
 
 func TestSlotsForPairsConfiguredTargetsWithRequestedStates(t *testing.T) {
 	targets := []config.Target{{ID: "rider-a"}, {ID: "rider-b"}}
 
 	slots, err := slotsFor(targets, "current, unauthorized")
-	if err != nil {
-		t.Fatalf("slotsFor() error = %v", err)
-	}
-	if len(slots) != 2 || slots[0].ID != "rider-a" || slots[1].ID != "rider-b" {
-		t.Fatalf("slotsFor() = %+v, want the configured slots in order", slots)
-	}
-	if slots[0].State != demo.SlotCurrent || slots[1].State != demo.SlotUnauthorized {
-		t.Errorf("slotsFor() states = %q, %q", slots[0].State, slots[1].State)
-	}
+	require.NoError(t, err)
+	require.Len(t, slots, 2)
+	assert.Equal(t, "rider-a", slots[0].ID, "the configured slots came back out of order")
+	assert.Equal(t, "rider-b", slots[1].ID, "the configured slots came back out of order")
+	assert.Equal(t, demo.SlotCurrent, slots[0].State)
+	assert.Equal(t, demo.SlotUnauthorized, slots[1].State)
 }
 
 // A state list that does not line up with the configured slots would seed a
@@ -85,12 +73,11 @@ func TestSlotsForPairsConfiguredTargetsWithRequestedStates(t *testing.T) {
 func TestSlotsForRejectsAMismatchedRequest(t *testing.T) {
 	targets := []config.Target{{ID: "rider-a"}}
 
-	if _, err := slotsFor(targets, "current,failed"); err == nil {
-		t.Error("expected too many states to be rejected")
-	}
-	if _, err := slotsFor(targets, "lagging"); err == nil {
-		t.Error("expected an unknown state to be rejected")
-	}
+	_, err := slotsFor(targets, "current,failed")
+	require.Error(t, err, "too many states must be rejected")
+
+	_, err = slotsFor(targets, "lagging")
+	require.Error(t, err, "an unknown state must be rejected")
 }
 
 func TestIssuerMatchesHowTheVerifierDerivesIt(t *testing.T) {
@@ -101,9 +88,7 @@ func TestIssuerMatchesHowTheVerifierDerivesIt(t *testing.T) {
 	}
 
 	for domain, want := range tests {
-		if got := issuerFor(domain); got != want {
-			t.Errorf("issuerFor(%q) = %q, want %q", domain, got, want)
-		}
+		assert.Equal(t, want, issuerFor(domain), "issuerFor(%q)", domain)
 	}
 }
 

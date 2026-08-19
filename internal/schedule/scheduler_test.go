@@ -6,6 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/nobbs/domestique/internal/sync"
 )
 
@@ -14,9 +17,7 @@ func TestSchedulerRunsAfterDelayAndOnEachTick(t *testing.T) {
 	ticks := make(chan time.Time, 2)
 	runner := newFakeRunner()
 	scheduler, err := New(Options{InitialDelay: time.Second, Interval: time.Hour}, runner)
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
+	require.NoError(t, err)
 	fakeTicker := &fakeTicker{ticks: ticks}
 	scheduler.after = func(time.Duration) <-chan time.Time { return initial }
 	scheduler.ticker = func(time.Duration) ticker { return fakeTicker }
@@ -37,18 +38,14 @@ func TestSchedulerRunsAfterDelayAndOnEachTick(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("Scheduler.Run() did not stop after cancellation")
 	}
-	if !fakeTicker.stopped {
-		t.Error("Scheduler.Run() did not stop the ticker")
-	}
+	assert.True(t, fakeTicker.stopped, "Scheduler.Run() did not stop the ticker")
 }
 
 func TestSchedulerStopsBeforeInitialRunWhenCancelled(t *testing.T) {
 	initial := make(chan time.Time)
 	runner := newFakeRunner()
 	scheduler, err := New(Options{InitialDelay: time.Second, Interval: time.Hour}, runner)
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
+	require.NoError(t, err)
 	scheduler.after = func(time.Duration) <-chan time.Time { return initial }
 
 	ctx, cancel := context.WithCancel(t.Context())
@@ -63,9 +60,7 @@ func TestSchedulerStopsBeforeInitialRunWhenCancelled(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("Scheduler.Run() did not stop after cancellation")
 	}
-	if got := runner.calls.Load(); got != 0 {
-		t.Errorf("runner calls = %d, want 0", got)
-	}
+	assert.Zero(t, runner.calls.Load(), "the runner ran despite the cancellation arriving first")
 }
 
 type fakeRunner struct {

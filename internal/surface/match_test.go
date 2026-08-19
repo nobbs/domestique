@@ -4,6 +4,9 @@ import (
 	"math"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/nobbs/domestique/internal/route"
 )
 
@@ -20,14 +23,11 @@ func TestMatchSnapsToTheWayUnderTheRoute(t *testing.T) {
 		metreWay(1, KindAsphalt, [2]float64{0, 0}, [2]float64{200, 0}),
 		metreWay(2, KindGravel, [2]float64{0, 60}, [2]float64{200, 60}),
 	}
+	points := metreRoute(0, 200, 20)
 
-	kinds := Match(metreRoute(0, 200, 20), ways)
+	kinds := Match(points, ways)
 
-	for index, kind := range kinds {
-		if kind != KindAsphalt {
-			t.Errorf("kind[%d] = %v, want %v", index, kind, KindAsphalt)
-		}
-	}
+	assertEveryPointIs(t, points, kinds, KindAsphalt)
 }
 
 // TestMatchLeavesUnreachedPointsUnknown covers the case the Overpass query
@@ -35,14 +35,11 @@ func TestMatchSnapsToTheWayUnderTheRoute(t *testing.T) {
 // this stretch of the route to say anything about it.
 func TestMatchLeavesUnreachedPointsUnknown(t *testing.T) {
 	ways := []Way{metreWay(1, KindAsphalt, [2]float64{0, 60}, [2]float64{200, 60})}
+	points := metreRoute(0, 200, 20)
 
-	kinds := Match(metreRoute(0, 200, 20), ways)
+	kinds := Match(points, ways)
 
-	for index, kind := range kinds {
-		if kind != KindUnknown {
-			t.Errorf("kind[%d] = %v, want %v", index, kind, KindUnknown)
-		}
-	}
+	assertEveryPointIs(t, points, kinds, KindUnknown)
 }
 
 // TestMatchPrefersTheRoadOverACrossingWay exercises the heading penalty. At the
@@ -53,14 +50,11 @@ func TestMatchPrefersTheRoadOverACrossingWay(t *testing.T) {
 		metreWay(1, KindAsphalt, [2]float64{0, 0}, [2]float64{200, 0}),
 		metreWay(2, KindGround, [2]float64{100, -50}, [2]float64{100, 50}),
 	}
+	points := metreRoute(0, 200, 20)
 
-	kinds := Match(metreRoute(0, 200, 20), ways)
+	kinds := Match(points, ways)
 
-	for index, kind := range kinds {
-		if kind != KindAsphalt {
-			t.Errorf("kind[%d] = %v, want %v", index, kind, KindAsphalt)
-		}
-	}
+	assertEveryPointIs(t, points, kinds, KindAsphalt)
 }
 
 // TestMatchIgnoresAFlickerOntoAParallelPath is the failure this package is
@@ -81,20 +75,16 @@ func TestMatchIgnoresAFlickerOntoAParallelPath(t *testing.T) {
 		}
 		points = append(points, [2]float64{east, north})
 	}
+	geometry := metrePoints(points)
 
-	kinds := Match(metrePoints(points), ways)
+	kinds := Match(geometry, ways)
 
-	for index, kind := range kinds {
-		if kind != KindAsphalt {
-			t.Errorf("kind[%d] = %v, want %v", index, kind, KindAsphalt)
-		}
-	}
+	assertEveryPointIs(t, geometry, kinds, KindAsphalt)
 }
 
 func TestMatchHandlesEmptyInput(t *testing.T) {
-	if got := Match(nil, []Way{metreWay(1, KindAsphalt, [2]float64{0, 0}, [2]float64{10, 0})}); len(got) != 0 {
-		t.Errorf("Match(no points) = %v, want empty", got)
-	}
+	assert.Empty(t, Match(nil, []Way{metreWay(1, KindAsphalt, [2]float64{0, 0}, [2]float64{10, 0})}),
+		"Match() classified points it was never given")
 
 	points := metreRoute(0, 100, 20)
 	for name, ways := range map[string][]Way{
@@ -102,15 +92,7 @@ func TestMatchHandlesEmptyInput(t *testing.T) {
 		"a way with no line": {{ID: 1, Kind: KindAsphalt}},
 	} {
 		t.Run(name, func(t *testing.T) {
-			kinds := Match(points, ways)
-			if len(kinds) != len(points) {
-				t.Fatalf("kind count = %d, want %d", len(kinds), len(points))
-			}
-			for index, kind := range kinds {
-				if kind != KindUnknown {
-					t.Errorf("kind[%d] = %v, want %v", index, kind, KindUnknown)
-				}
-			}
+			assertEveryPointIs(t, points, Match(points, ways), KindUnknown)
 		})
 	}
 }
@@ -170,15 +152,7 @@ func TestDespeckleReplacesShortRunsWithTheLongerNeighbour(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got := despeckle(test.kinds)
-			if len(got) != len(test.want) {
-				t.Fatalf("despeckle() length = %d, want %d", len(got), len(test.want))
-			}
-			for index := range got {
-				if got[index] != test.want[index] {
-					t.Fatalf("despeckle() = %v, want %v", got, test.want)
-				}
-			}
+			assert.Equal(t, test.want, despeckle(test.kinds))
 		})
 	}
 }
@@ -222,17 +196,9 @@ func TestCompressFoldsRunsIntoRanges(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			got := Compress(test.kinds)
-			if got == nil {
-				t.Fatal("Compress() = nil, want a non-nil slice")
-			}
-			if len(got) != len(test.want) {
-				t.Fatalf("Compress() = %v, want %v", got, test.want)
-			}
-			for index := range got {
-				if got[index] != test.want[index] {
-					t.Fatalf("Compress() = %v, want %v", got, test.want)
-				}
-			}
+			// Non-nil so an unclassified stage serves [] rather than null.
+			require.NotNil(t, got)
+			assert.Equal(t, test.want, got)
 		})
 	}
 }
@@ -269,10 +235,19 @@ func TestMatchedMetresCountsOnlyClassifiedLength(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if got := MatchedMetres(points, test.kinds); math.Abs(got-test.want) > 1 {
-				t.Errorf("MatchedMetres() = %v, want %v within 1", got, test.want)
-			}
+			assert.InDelta(t, test.want, MatchedMetres(points, test.kinds), 1)
 		})
+	}
+}
+
+// assertEveryPointIs checks that the whole stage was classified, and classified
+// the one way. The length check is what stops a Match that returned nothing from
+// passing the loop vacuously.
+func assertEveryPointIs(t *testing.T, points []route.Point, kinds []Kind, want Kind) {
+	t.Helper()
+	require.Len(t, kinds, len(points), "Match() did not classify every point")
+	for index, kind := range kinds {
+		assert.Equal(t, want, kind, "point %d", index)
 	}
 }
 

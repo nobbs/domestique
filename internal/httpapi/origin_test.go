@@ -5,6 +5,9 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // mutableRoutes is every route that starts a run or writes state. A route added
@@ -53,15 +56,10 @@ func TestMutableRoutesRejectForeignProvenance(t *testing.T) {
 				response := httptest.NewRecorder()
 				handler.ServeHTTP(response, request)
 
-				if got, want := response.Code, http.StatusForbidden; got != want {
-					t.Errorf("%s %s status = %d, want %d", route.method, route.target, got, want)
-				}
-				if trigger.calls != 0 {
-					t.Errorf("%s %s triggered %d runs, want none", route.method, route.target, trigger.calls)
-				}
-				if state.scheduleWrites != 0 || len(state.reprocessed) != 0 {
-					t.Errorf("%s %s wrote state, want none", route.method, route.target)
-				}
+				assert.Equalf(t, http.StatusForbidden, response.Code, "%s %s", route.method, route.target)
+				assert.Zerof(t, trigger.calls, "%s %s started a run", route.method, route.target)
+				assert.Zerof(t, state.scheduleWrites, "%s %s wrote the schedule", route.method, route.target)
+				assert.Emptyf(t, state.reprocessed, "%s %s reprocessed a stage", route.method, route.target)
 			}
 		})
 	}
@@ -83,9 +81,8 @@ func TestMutableRoutesAcceptTheBrowserOrigin(t *testing.T) {
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, request)
 
-		if response.Code == http.StatusForbidden {
-			t.Errorf("%s %s status = 403, want the route's own answer", route.method, route.target)
-		}
+		assert.NotEqualf(t, http.StatusForbidden, response.Code,
+			"%s %s was refused, want the route's own answer", route.method, route.target)
 	}
 }
 
@@ -101,9 +98,7 @@ func TestIdentityIsSettledBeforeProvenance(t *testing.T) {
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
 
-	if got, want := response.Code, http.StatusUnauthorized; got != want {
-		t.Errorf("status = %d, want %d", got, want)
-	}
+	assert.Equal(t, http.StatusUnauthorized, response.Code)
 }
 
 // The OAuth callback is a cross-site GET the browser is redirected into. It is
@@ -119,9 +114,7 @@ func TestOAuthRoutesStayOutsideTheProvenanceCheck(t *testing.T) {
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, request)
 
-		if response.Code == http.StatusForbidden {
-			t.Errorf("%s status = 403, want the flow to proceed", target)
-		}
+		assert.NotEqualf(t, http.StatusForbidden, response.Code, "%s was refused, want the flow to proceed", target)
 	}
 }
 
@@ -142,9 +135,7 @@ func TestReadOnlyRoutesDoNotRequireAnOrigin(t *testing.T) {
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, request)
 
-		if got, want := response.Code, http.StatusOK; got != want {
-			t.Errorf("%s status = %d, want %d", target, got, want)
-		}
+		assert.Equalf(t, http.StatusOK, response.Code, "%s", target)
 	}
 }
 
@@ -171,12 +162,8 @@ func TestBrowserOriginNormalisation(t *testing.T) {
 	for name, value := range valid {
 		t.Run(name, func(t *testing.T) {
 			got, err := browserOriginOf(value)
-			if err != nil {
-				t.Fatalf("browserOriginOf(%q) error = %v", value, err)
-			}
-			if got != want[name] {
-				t.Errorf("browserOriginOf(%q) = %q, want %q", value, got, want[name])
-			}
+			require.NoErrorf(t, err, "browserOriginOf(%q)", value)
+			assert.Equalf(t, want[name], got, "browserOriginOf(%q)", value)
 		})
 	}
 
@@ -189,9 +176,8 @@ func TestBrowserOriginNormalisation(t *testing.T) {
 		"no host":   "https://",
 	} {
 		t.Run(name, func(t *testing.T) {
-			if _, err := browserOriginOf(value); err == nil {
-				t.Errorf("browserOriginOf(%q) error = nil, want an error", value)
-			}
+			_, err := browserOriginOf(value)
+			require.Errorf(t, err, "browserOriginOf(%q) accepted an origin it cannot compare against", value)
 		})
 	}
 }
@@ -208,7 +194,5 @@ func TestNewRequiresABrowserOrigin(t *testing.T) {
 		},
 		&fakeOAuth{}, &fakeState{}, &fakeSyncTrigger{}, &fakeAssets{},
 	)
-	if err == nil {
-		t.Fatal("New() error = nil, want an error")
-	}
+	require.Error(t, err, "New() built a handler with no origin to compare against")
 }

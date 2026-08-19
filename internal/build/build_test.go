@@ -6,6 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 const testRevision = "0123456789abcdef0123456789abcdef01234567"
@@ -14,18 +17,12 @@ func TestCurrentReportsNothingForAnUninjectedBuild(t *testing.T) {
 	// Every local build lands here. Absent rather than "unknown" or a short
 	// abbreviation, so nothing downstream can render a link out of it.
 	info := Current("")
-	if info.Revision != "" {
-		t.Errorf("revision = %q, want empty for a build with no injected revision", info.Revision)
-	}
-	if info.ImageDigest != "" {
-		t.Errorf("image digest = %q, want empty when no image reference was given", info.ImageDigest)
-	}
+	assert.Empty(t, info.Revision, "a build with no injected revision must report none")
+	assert.Empty(t, info.ImageDigest, "no image reference was given, so there is no digest to report")
 }
 
 func TestValidRevisionAcceptsOnlyAFullObjectName(t *testing.T) {
-	if got := validRevision("  " + testRevision + "\n"); got != testRevision {
-		t.Errorf("validRevision(padded) = %q, want %q", got, testRevision)
-	}
+	assert.Equal(t, testRevision, validRevision("  "+testRevision+"\n"), "validRevision(padded)")
 
 	// A short SHA is refused on purpose: an abbreviation can become ambiguous
 	// as the repository grows, and a link built from one would rot silently.
@@ -39,9 +36,7 @@ func TestValidRevisionAcceptsOnlyAFullObjectName(t *testing.T) {
 		"refs/heads/main",
 		"$GITHUB_SHA",
 	} {
-		if got := validRevision(value); got != "" {
-			t.Errorf("validRevision(%q) = %q, want empty", value, got)
-		}
+		assert.Empty(t, validRevision(value), "validRevision(%q)", value)
 	}
 }
 
@@ -56,9 +51,7 @@ func TestValidDigestKeepsTheDigestAndDropsWhereItCameFrom(t *testing.T) {
 		"ghcr.io/nobbs/domestique@" + digest,
 		"registry.internal.example/mirror/domestique@" + digest,
 	} {
-		if got := validDigest(reference); got != digest {
-			t.Errorf("validDigest(%q) = %q, want %q", reference, got, digest)
-		}
+		assert.Equal(t, digest, validDigest(reference), "validDigest(%q)", reference)
 	}
 
 	// A tag names whatever was last pushed to it, so it cannot answer "which
@@ -74,9 +67,7 @@ func TestValidDigestKeepsTheDigestAndDropsWhereItCameFrom(t *testing.T) {
 		"sha256:" + strings.Repeat("AB", 32),
 		"ghcr.io/nobbs/domestique@notadigest",
 	} {
-		if got := validDigest(reference); got != "" {
-			t.Errorf("validDigest(%q) = %q, want empty", reference, got)
-		}
+		assert.Empty(t, validDigest(reference), "validDigest(%q)", reference)
 	}
 }
 
@@ -96,19 +87,14 @@ func TestInjectedRevisionReachesInfo(t *testing.T) {
 	build := exec.CommandContext(t.Context(), goTool, "build",
 		"-ldflags", "-X github.com/nobbs/domestique/internal/build.revision="+testRevision,
 		"-o", binary, "./testdata/revision")
-	if output, buildErr := build.CombinedOutput(); buildErr != nil {
-		t.Fatalf("building the probe: %v\n%s", buildErr, output)
-	}
+	output, buildErr := build.CombinedOutput()
+	require.NoErrorf(t, buildErr, "building the probe:\n%s", output)
 
 	//nolint:gosec // The binary is the one this test just built into its own temporary directory.
 	probe := exec.CommandContext(t.Context(), binary)
 	probe.Env = append(os.Environ(), "IMAGE_REFERENCE=ghcr.io/nobbs/domestique@"+digest)
 	output, probeErr := probe.Output()
-	if probeErr != nil {
-		t.Fatalf("running the probe: %v", probeErr)
-	}
+	require.NoError(t, probeErr, "running the probe")
 
-	if got, want := strings.TrimSpace(string(output)), testRevision+" "+digest; got != want {
-		t.Errorf("probe reported %q, want %q", got, want)
-	}
+	assert.Equal(t, testRevision+" "+digest, strings.TrimSpace(string(output)), "the probe reported the wrong build")
 }

@@ -1,9 +1,11 @@
 package surface
 
 import (
-	"math"
 	"math/rand/v2"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestSegmentGridFindsEverySegmentWithinTheRadius checks the guarantee the grid
@@ -37,10 +39,12 @@ func TestSegmentGridFindsEverySegmentWithinTheRadius(t *testing.T) {
 			found[index] = true
 		}
 		for index := range segments {
-			if segments[index].distanceTo(east, north) <= radius && !found[index] {
-				t.Fatalf("segment %d is %.2fm from (%.2f, %.2f) but near() did not return it",
-					index, segments[index].distanceTo(east, north), east, north)
+			distance := segments[index].distanceTo(east, north)
+			if distance > radius {
+				continue
 			}
+			require.Truef(t, found[index], "segment %d is %.2fm from (%.2f, %.2f) but near() did not return it",
+				index, distance, east, north)
 		}
 	}
 }
@@ -79,13 +83,13 @@ func TestSegmentGridFindsASegmentAcrossItsLength(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if got := test.target.distanceTo(test.queryEast, test.queryNorth); got > radius {
-				t.Fatalf("the test's own query is %.2fm away, beyond the %.2fm radius", got, radius)
-			}
+			distance := test.target.distanceTo(test.queryEast, test.queryNorth)
+			require.LessOrEqualf(t, distance, radius,
+				"the test's own query is %.2fm away, beyond the %.2fm radius", distance, radius)
+
 			grid := newSegmentGrid([]segment{test.target}, radius)
-			if len(grid.near(test.queryEast, test.queryNorth)) == 0 {
-				t.Error("near() returned no candidates, want the segment")
-			}
+			assert.NotEmpty(t, grid.near(test.queryEast, test.queryNorth),
+				"near() returned no candidates, want the segment")
 		})
 	}
 }
@@ -121,10 +125,9 @@ func TestSegmentGridPrunesDistantSegments(t *testing.T) {
 	}
 
 	naive := queryCount * segmentCount
-	if examined > naive/10 {
-		t.Errorf("near() examined %d candidates over %d queries, want well under a tenth of the %d a full scan costs",
-			examined, queryCount, naive)
-	}
+	assert.LessOrEqualf(t, examined, naive/10,
+		"near() examined %d candidates over %d queries, want well under a tenth of the %d a full scan costs",
+		examined, queryCount, naive)
 }
 
 func TestSegmentGridDistanceToClampsToTheSegmentEnds(t *testing.T) {
@@ -144,9 +147,8 @@ func TestSegmentGridDistanceToClampsToTheSegmentEnds(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if got := target.distanceTo(test.east, test.north); math.Abs(got-test.want) > 0.001 {
-				t.Errorf("distanceTo(%v, %v) = %v, want %v", test.east, test.north, got, test.want)
-			}
+			assert.InDelta(t, test.want, target.distanceTo(test.east, test.north), 0.001,
+				"distanceTo(%v, %v)", test.east, test.north)
 		})
 	}
 }

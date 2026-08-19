@@ -3,21 +3,20 @@ package pushover
 import (
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestClientSendsFormNotification(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		if got, want := request.Method, http.MethodPost; got != want {
-			t.Errorf("method = %q, want %q", got, want)
-		}
-		if got, want := request.URL.Path, "/1/messages.json"; got != want {
-			t.Errorf("path = %q, want %q", got, want)
-		}
-		if err := request.ParseForm(); err != nil {
-			t.Errorf("ParseForm() error = %v", err)
+		// The handler runs on the server's goroutine, where FailNow is unsafe,
+		// so every check here is an assert and the parse failure returns early.
+		assert.Equal(t, http.MethodPost, request.Method)
+		assert.Equal(t, "/1/messages.json", request.URL.Path)
+		if !assert.NoError(t, request.ParseForm()) {
 			return
 		}
 		for key, want := range map[string]string{
@@ -26,9 +25,7 @@ func TestClientSendsFormNotification(t *testing.T) {
 			"title":   "Domestique sync",
 			"message": "succeeded: 2 created, 0 updated, 1 deleted",
 		} {
-			if got := request.Form.Get(key); got != want {
-				t.Errorf("form %q = %q, want %q", key, got, want)
-			}
+			assert.Equal(t, want, request.Form.Get(key), "form field %q", key)
 		}
 		writer.Header().Set("Content-Type", "application/json")
 		writeResponse(t, writer, http.StatusOK, `{"status":1}`)
@@ -36,9 +33,7 @@ func TestClientSendsFormNotification(t *testing.T) {
 	defer server.Close()
 
 	client := newTestClient(t, server)
-	if err := client.Send(t.Context(), "Domestique sync", "succeeded: 2 created, 0 updated, 1 deleted"); err != nil {
-		t.Fatalf("Send() error = %v", err)
-	}
+	require.NoError(t, client.Send(t.Context(), "Domestique sync", "succeeded: 2 created, 0 updated, 1 deleted"))
 }
 
 func TestClientHidesProviderFailureDetails(t *testing.T) {
@@ -48,12 +43,9 @@ func TestClientHidesProviderFailureDetails(t *testing.T) {
 	defer server.Close()
 
 	err := newTestClient(t, server).Send(t.Context(), "Domestique sync", "failed: destination")
-	if err == nil {
-		t.Fatal("Send() error = nil, want failure")
-	}
-	if strings.Contains(err.Error(), "private provider failure") || strings.Contains(err.Error(), "application-token") {
-		t.Errorf("Send() exposed sensitive detail: %q", err)
-	}
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "private provider failure", "Send() repeated the provider's body")
+	assert.NotContains(t, err.Error(), "application-token", "Send() exposed the application token")
 }
 
 func TestClientRejectsUnacceptedSuccessResponse(t *testing.T) {
@@ -64,9 +56,7 @@ func TestClientRejectsUnacceptedSuccessResponse(t *testing.T) {
 	defer server.Close()
 
 	err := newTestClient(t, server).Send(t.Context(), "Domestique sync", "failed: destination")
-	if got, want := err.Error(), "pushover: notification was not accepted"; got != want {
-		t.Errorf("Send() error = %v, want rejected notification", err)
-	}
+	assert.EqualError(t, err, "pushover: notification was not accepted")
 }
 
 func newTestClient(t *testing.T, server *httptest.Server) *Client {
@@ -78,9 +68,7 @@ func newTestClient(t *testing.T, server *httptest.Server) *Client {
 		Timeout:          time.Second,
 		Transport:        server.Client().Transport,
 	})
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
+	require.NoError(t, err)
 
 	return client
 }
@@ -88,7 +76,6 @@ func newTestClient(t *testing.T, server *httptest.Server) *Client {
 func writeResponse(t *testing.T, writer http.ResponseWriter, status int, body string) {
 	t.Helper()
 	writer.WriteHeader(status)
-	if _, err := writer.Write([]byte(body)); err != nil {
-		t.Errorf("writing response: %v", err)
-	}
+	_, err := writer.Write([]byte(body))
+	assert.NoError(t, err, "writing the response")
 }

@@ -7,84 +7,64 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestServiceCompletesBoundAuthorization(t *testing.T) {
 	store := &fakeStateStore{}
 	wahoo := &fakeWahoo{accessToken: "access-token", refreshToken: "refresh-token", userID: "wahoo-user"}
 	service, err := New(store, wahoo)
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
+	require.NoError(t, err)
 
 	url, err := service.Start(t.Context(), "rider@example.ts.net", "rider-a")
-	if err != nil {
-		t.Fatalf("Start() error = %v", err)
-	}
+	require.NoError(t, err)
 	state := strings.TrimPrefix(url, "https://wahoo.example.test/authorize?state=")
-	if state == url {
-		t.Fatalf("Start() URL = %q, want an authorization state", url)
-	}
-	if completeErr := service.Complete(t.Context(), "rider@example.ts.net", state, "authorization-code"); completeErr != nil {
-		t.Fatalf("Complete() error = %v", completeErr)
-	}
-	if got, want := store.authorizedTarget, "rider-a"; got != want {
-		t.Errorf("authorized target = %q, want %q", got, want)
-	}
-	if got, want := store.authorizedUser, "wahoo-user"; got != want {
-		t.Errorf("authorized user = %q, want %q", got, want)
-	}
-	if got, want := store.refreshToken, "refresh-token"; got != want {
-		t.Errorf("refresh token = %q, want %q", got, want)
-	}
+	require.NotEqualf(t, url, state, "Start() URL = %q, want an authorization state", url)
+
+	require.NoError(t, service.Complete(t.Context(), "rider@example.ts.net", state, "authorization-code"))
+	assert.Equal(t, "rider-a", store.authorizedTarget)
+	assert.Equal(t, "wahoo-user", store.authorizedUser)
+	assert.Equal(t, "refresh-token", store.refreshToken)
 }
 
 func TestServiceRejectsInvalidOrReusedAuthorization(t *testing.T) {
 	store := &fakeStateStore{}
 	service, err := New(store, &fakeWahoo{accessToken: "access", refreshToken: "refresh", userID: "wahoo-user"})
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
+	require.NoError(t, err)
 
-	if completeErr := service.Complete(t.Context(), "rider@example.ts.net", "not-base64", "code"); !errors.Is(completeErr, ErrInvalidAuthorization) {
-		t.Fatalf("Complete() error = %v, want ErrInvalidAuthorization", completeErr)
-	}
+	require.ErrorIs(t,
+		service.Complete(t.Context(), "rider@example.ts.net", "not-base64", "code"),
+		ErrInvalidAuthorization, "a state that is not even base64")
 
 	url, err := service.Start(t.Context(), "rider@example.ts.net", "rider-a")
-	if err != nil {
-		t.Fatalf("Start() error = %v", err)
-	}
+	require.NoError(t, err)
 	state := strings.TrimPrefix(url, "https://wahoo.example.test/authorize?state=")
-	if err := service.Complete(t.Context(), "other@example.ts.net", state, "code"); !errors.Is(err, ErrInvalidAuthorization) {
-		t.Fatalf("Complete() with different caller error = %v, want ErrInvalidAuthorization", err)
-	}
-	if err := service.Complete(t.Context(), "rider@example.ts.net", state, "code"); err != nil {
-		t.Fatalf("Complete() with original caller error = %v", err)
-	}
-	if err := service.Complete(t.Context(), "rider@example.ts.net", state, "code"); !errors.Is(err, ErrInvalidAuthorization) {
-		t.Fatalf("Complete() after state reuse error = %v, want ErrInvalidAuthorization", err)
-	}
+
+	require.ErrorIs(t,
+		service.Complete(t.Context(), "other@example.ts.net", state, "code"),
+		ErrInvalidAuthorization, "a different caller completing the authorization")
+	require.NoError(t,
+		service.Complete(t.Context(), "rider@example.ts.net", state, "code"),
+		"the original caller")
+	require.ErrorIs(t,
+		service.Complete(t.Context(), "rider@example.ts.net", state, "code"),
+		ErrInvalidAuthorization, "reusing the state")
 }
 
 func TestServiceHidesUpstreamFailure(t *testing.T) {
 	store := &fakeStateStore{}
 	service, err := New(store, &fakeWahoo{exchangeErr: errors.New("code=private-code")})
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
+	require.NoError(t, err)
 
 	url, err := service.Start(t.Context(), "rider@example.ts.net", "rider-a")
-	if err != nil {
-		t.Fatalf("Start() error = %v", err)
-	}
+	require.NoError(t, err)
 	state := strings.TrimPrefix(url, "https://wahoo.example.test/authorize?state=")
+
 	err = service.Complete(t.Context(), "rider@example.ts.net", state, "code")
-	if !errors.Is(err, ErrAuthorizationFailed) {
-		t.Fatalf("Complete() error = %v, want ErrAuthorizationFailed", err)
-	}
-	if strings.Contains(err.Error(), "private-code") {
-		t.Errorf("Complete() exposed upstream error %q", err)
-	}
+	require.ErrorIs(t, err, ErrAuthorizationFailed)
+	assert.NotContains(t, err.Error(), "private-code", "Complete() exposed the upstream error")
 }
 
 type fakeStateStore struct {
