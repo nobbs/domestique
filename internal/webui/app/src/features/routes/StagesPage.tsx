@@ -37,6 +37,14 @@ export function StagesPage() {
 
   return (
     <Layout status={<SyncStatusBadge />}>
+      {/*
+       * The page's own name. Every other heading on it is a section heading, so
+       * without this the document starts at level two and a reader navigating by
+       * heading is dropped into the middle of a hierarchy with no top. It is not
+       * drawn, because the header beside it already says whose library this is
+       * and a second title under the wordmark would be the same word twice.
+       */}
+      <h1 className="visually-hidden">Route library</h1>
       <SyncControls />
       <TargetConvergence />
       {isPending ? <LoadingMessage what="the route library" /> : null}

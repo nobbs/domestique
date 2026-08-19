@@ -6,6 +6,14 @@
 :root {
   --accent: #c8502e;
   --accent-soft: rgb(200 80 46 / 12%);
+  /*
+   * The accent as small text. The brand rust clears 4.5:1 on white and on
+   * nothing else the page has: on a raised panel it is 4.2:1, so a word set in
+   * it there is below the threshold on the surface it is actually set on. This
+   * is the same hue darkened until it clears 4.5:1 on the sunken surface, which
+   * is the darkest ground any of this text sits on.
+   */
+  --accent-text: #b84325;
 
   --surface: #ffffff;
   --surface-raised: #f6f6f5;
@@ -53,6 +61,8 @@
     --text: #f2f0ee;
     --text-muted: #a09b95;
     --accent-soft: rgb(200 80 46 / 20%);
+    /* Lifted rather than darkened, for the same 4.5:1 against dark panels. */
+    --accent-text: #e8794f;
 
     /*
      * Stepped separately for the dark surface rather than flipped: the same
@@ -353,7 +363,8 @@ body {
   font-size: 0.9rem;
 }
 
-.stage-detail__back:hover {
+.stage-detail__back:hover,
+.stage-detail__back:focus-visible {
   color: var(--accent);
 }
 
@@ -1040,10 +1051,139 @@ body {
 
 .convergence__target[data-convergence="failed"] .convergence__state,
 .convergence__target[data-convergence="unauthorized"] .convergence__state {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 /* A run that never started is not something to act on, so it reads as ordinary. */
 .convergence__target[data-run="waiting"] .convergence__state {
   color: var(--text-muted);
+}
+
+/* Narrow portrait ---------------------------------------------------------- */
+
+/*
+ * One breakpoint, at the width a phone held upright gives a page.
+ *
+ * Everything above lays out with wrapping flex boxes and an auto-filled grid,
+ * so most of the page narrows without being told to. What does not are the four
+ * places that were written as one line because they are one line on a desktop:
+ * the header, the stage's facts, and the two indents that align the key with the
+ * chart above it. A stage page at 375 points lost its figures off the right edge
+ * and gave the map whatever height was left, which on a short screen was none.
+ */
+@media (max-width: 30rem) {
+  /*
+   * The header becomes as tall as it needs to be. Its height is a token because
+   * the desktop header is one line; here the sync badge is a sentence, and
+   * holding it to one line either clips it or pushes the build link off screen.
+   */
+  .layout__header {
+    height: auto;
+    min-height: var(--header-height);
+    flex-wrap: wrap;
+    gap: 0.35rem 0.75rem;
+    padding: 0.5rem 0.9rem;
+  }
+
+  .layout__end {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .stage-detail__header {
+    padding: 0.7rem 0.9rem;
+  }
+
+  /* Four figures on one line is three too many at this width. */
+  .stage-detail__facts {
+    flex-wrap: wrap;
+    gap: 0.5rem 1.5rem;
+  }
+
+  /*
+   * The map keeps a workable height rather than taking what is left, which with
+   * the header wrapped and the profile open was close to nothing. The main pane
+   * already scrolls, so the page grows instead of the map disappearing.
+   */
+  .stage-detail__map {
+    min-height: 15rem;
+  }
+
+  /*
+   * The chart's indent is the axis labels' room on a wide screen. Here that
+   * indent is a tenth of the viewport, so it goes: the key beneath it follows,
+   * in StageKey.module.css, which carries the matching rule.
+   */
+  .elevation-profile {
+    padding: 0 0.9rem 0.75rem;
+  }
+
+  .elevation-profile__scrub {
+    margin-left: 0.9rem;
+  }
+
+  .elevation-overview__summary {
+    padding: 0.55rem 0.9rem;
+  }
+
+  .route-grid,
+  .grid-attribution {
+    padding-left: 0.9rem;
+    padding-right: 0.9rem;
+  }
+}
+
+/* Forced colours ----------------------------------------------------------- */
+
+/*
+ * What a forced palette must not take away.
+ *
+ * Forced-colours mode replaces every authored colour — including an SVG `fill`
+ * and `stroke` — with one of a handful the reader chose. That is right for text
+ * and chrome, and wrong for the two places on this page where the colour *is*
+ * the information: the gradient ramp along the elevation chart, and the swatches
+ * in the key that name it. Five bands forced to one ink is a chart that says a
+ * stage is steep somewhere.
+ *
+ * So those marks, and only those, opt out. Everything else keeps the reader's
+ * palette, and the opted-out marks are given the forced background to sit on so
+ * they are not left on a surface that is no longer the one they were fitted
+ * against.
+ */
+@media (forced-colors: active) {
+  .elevation-profile,
+  .elevation-overview {
+    background: Canvas;
+  }
+
+  .elevation-profile__column,
+  .elevation-profile__hatch-ground,
+  .elevation-profile__hatch-line,
+  .elevation-profile__surface,
+  .elevation-profile__cursor circle {
+    forced-color-adjust: none;
+  }
+
+  /*
+   * The silhouette, the chrome and the veil stay forced: they are read against
+   * the bands rather than as colours of their own, and the ridge in particular
+   * has to be the reader's ink to stay legible over an opted-out ramp.
+   */
+  .elevation-profile__ridge {
+    stroke: CanvasText;
+    stroke-opacity: 1;
+  }
+
+  .elevation-profile__veil {
+    fill: Canvas;
+  }
+
+  /*
+   * The dot beside the sync state is decoration in both palettes — the state is
+   * the word next to it — but a forced palette makes every dot the same, so it
+   * says nothing rather than something wrong.
+   */
+  .sync-badge__dot {
+    background: CanvasText;
+  }
 }

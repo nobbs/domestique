@@ -12,42 +12,17 @@
  * deployment did before this existed.
  */
 
-import { useSyncExternalStore } from "react";
 import type { WebUIConfig } from "../api/types";
+import { useMediaQuery } from "./mediaQuery";
 
 const DARK_SCHEME = "(prefers-color-scheme: dark)";
 
 /**
- * Subscribes to the system colour scheme.
- *
- * A fresh `MediaQueryList` per subscription rather than one held at module
- * scope: matching is stateless, the browser deduplicates the underlying
- * listener, and a module-level query would evaluate at import time, before any
- * test has had the chance to stub `matchMedia`.
- */
-function subscribe(onChange: () => void): () => void {
-  const query = window.matchMedia(DARK_SCHEME);
-  query.addEventListener("change", onChange);
-
-  return () => {
-    query.removeEventListener("change", onChange);
-  };
-}
-
-function prefersDark(): boolean {
-  return window.matchMedia(DARK_SCHEME).matches;
-}
-
-/**
  * Reports whether the system asks for a dark colour scheme, and re-renders when
- * that changes.
- *
- * `useSyncExternalStore` rather than an effect that seeds state: an effect runs
- * after the first paint, so a dark-mode page would build its map on the light
- * style and immediately swap it — a visible flash and a wasted style fetch.
+ * that changes. See `mediaQuery.ts` for why it is not an effect.
  */
 export function usePrefersDarkScheme(): boolean {
-  return useSyncExternalStore(subscribe, prefersDark);
+  return useMediaQuery(DARK_SCHEME);
 }
 
 /** The basemap on screen, and what it looks like. */

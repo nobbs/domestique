@@ -31,7 +31,13 @@ vi.mock("react-map-gl/maplibre", () => ({
 
 const { RouteMap } = await import("./RouteMap");
 
+/** How the camera was last framed, so a test can ask whether it flew there. */
+interface Framing {
+  duration: number;
+}
+
 function fakeMap() {
+  const framings: Framing[] = [];
   const container = document.createElement("div");
   const canvasContainer = document.createElement("div");
   const canvas = document.createElement("canvas");
@@ -74,7 +80,12 @@ function fakeMap() {
     // there is no camera.
     getMap: () => map,
     resize: () => {},
-    fitBounds: () => {},
+    // The camera does not move — there is none — but how it was asked to is the
+    // whole of what the reduced-motion preference changes here.
+    fitBounds: (_bounds: unknown, options: { duration: number }) => {
+      framings.push({ duration: options.duration });
+    },
+    framings: () => framings,
     getContainer: () => container,
     // A camera the direction cues can ask what a pixel is worth on the ground.
     getZoom: () => 13,
@@ -99,7 +110,25 @@ const COORDINATES: Position[] = Array.from(
 );
 const BBOX: BoundingBox = [8, 49, 8.02, 49];
 
+/**
+ * A `matchMedia` answering one question: whether less movement was asked for.
+ *
+ * jsdom implements none, and the map reads the preference to decide whether to
+ * fly to a new framing or simply be there.
+ */
+function stubReducedMotion(reduced: boolean) {
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn((query: string) => ({
+      matches: reduced && query.includes("prefers-reduced-motion"),
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    })),
+  );
+}
+
 beforeEach(() => {
+  stubReducedMotion(false);
   stub.current = fakeMap();
   // The map observes its container to keep the canvas sized to its pane, and
   // jsdom has no such observer of its own.
@@ -143,6 +172,24 @@ function show(
     control: () => screen.getByRole("button", { name: "Explore map" }),
   };
 }
+
+describe("the map's camera", () => {
+  it("flies to its framing by default", () => {
+    const view = show();
+
+    expect(view.map().framings()).toEqual([{ duration: 600 }]);
+  });
+
+  it("arrives at it outright when less movement was asked for", () => {
+    stubReducedMotion(true);
+    const view = show();
+
+    // The camera is animated by MapLibre rather than by a CSS transition, so
+    // the stylesheet's reduced-motion block cannot reach it and this is the
+    // only place the preference can be honoured.
+    expect(view.map().framings()).toEqual([{ duration: 0 }]);
+  });
+});
 
 describe("the map's interaction model", () => {
   it("leaves the gestures to the page until they are asked for", () => {

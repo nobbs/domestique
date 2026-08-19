@@ -23,6 +23,18 @@
   margin: 0.1rem 0.75rem 0.55rem 2.9rem;
 }
 
+/*
+ * The indent is the chart's axis room, and the chart gives it up on a narrow
+ * screen — see the narrow-portrait block in index.css. The key follows it, or
+ * it is left pointing at marks that have moved.
+ */
+@media (max-width: 30rem) {
+  .key {
+    margin-left: 0.9rem;
+    margin-right: 0.9rem;
+  }
+}
+
 .list {
   display: flex;
   flex-wrap: wrap;
@@ -47,8 +59,16 @@
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
-  margin: 0 -0.35rem;
-  padding: 0.1rem 0.35rem;
+  /*
+   * The padding is pulled back out of the layout on both axes, so growing the
+   * hit area to something a thumb can find does not push the key away from the
+   * chart it sits under. Vertically it is what takes the chip past the minimum
+   * target size; horizontally it is what keeps the first swatch on the chart's
+   * left edge.
+   */
+  margin: -0.15rem -0.35rem;
+  padding: 0.25rem 0.35rem;
+  min-height: 24px;
   border: 1px solid transparent;
   border-radius: calc(var(--radius) - 4px);
   background: none;
@@ -143,4 +163,28 @@
     repeating-linear-gradient(0deg, transparent 0 1.5px, var(--surface) 1.5px 3px),
     repeating-linear-gradient(90deg, transparent 0 1.5px, var(--surface) 1.5px 3px),
     var(--band-4);
+}
+
+/*
+ * A forced palette flattens the pressed chip into the resting one: the accent
+ * border and the tinted background it is stated in are both authored colours.
+ * The reader's own selection pair says it instead, which is what a forced
+ * palette has for exactly this.
+ */
+@media (forced-colors: active) {
+  .chip[aria-pressed="true"] {
+    background: Highlight;
+    color: HighlightText;
+    border-color: Highlight;
+  }
+
+  /*
+   * The swatches are the key to a ramp whose colour is its meaning, so they opt
+   * out with the marks they name — see the forced-colours block in index.css.
+   * The border keeps them visible where a band is close to the forced surface.
+   */
+  .swatch {
+    forced-color-adjust: none;
+    border: 1px solid CanvasText;
+  }
 }

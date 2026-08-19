@@ -28,6 +28,7 @@ import type { Highlight } from "../lib/highlight";
 import { highlightRanges, litRanges } from "../lib/highlight";
 import { mapExploration } from "../lib/mapExploration";
 import { routeMetresAt, routeSelection } from "../lib/mapSelection";
+import { usePrefersReducedMotion } from "../lib/mediaQuery";
 import type { DistanceWindow, Profile } from "../lib/profile";
 import { coordinateRange, nearestSample, rangeBounds, sampleAt } from "../lib/profile";
 import { cuesDescription, directionChevrons, metresPerPixel, routeCues } from "../lib/routeCues";
@@ -197,6 +198,10 @@ const WINDOW_MAX_ZOOM = 17;
  */
 function MapViewport({ bounds, maxZoom }: { bounds: BoundingBox; maxZoom: number }) {
   const { current: map } = useMap();
+  // The camera is animated by MapLibre rather than by a transition, so the
+  // stylesheet's reduced-motion block cannot reach it. A reader who asked for
+  // less movement gets the new framing outright instead of a flight to it.
+  const reducedMotion = usePrefersReducedMotion();
 
   useEffect(() => {
     if (!map) {
@@ -227,9 +232,9 @@ function MapViewport({ bounds, maxZoom }: { bounds: BoundingBox; maxZoom: number
         [bounds[0], bounds[1]],
         [bounds[2], bounds[3]],
       ],
-      { padding: 56, duration: 600, maxZoom },
+      { padding: 56, duration: reducedMotion ? 0 : 600, maxZoom },
     );
-  }, [map, bounds, maxZoom]);
+  }, [map, bounds, maxZoom, reducedMotion]);
 
   return null;
 }

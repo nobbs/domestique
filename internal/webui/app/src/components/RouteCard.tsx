@@ -35,9 +35,23 @@ export function RouteCard({ stage, href, preview, stageCount }: RouteCardProps) 
         ) : null}
         <span className="route-card__meta">
           <span>{formatDistance(stage.distanceMetres)}</span>
-          <span title="Total climbing">↑ {formatAscent(stage.ascentMetres)}</span>
+          {/*
+           * Each figure says in words what its symbol stands for. The symbol
+           * alone means nothing to a screen reader, and the tooltip that used
+           * to explain it was reachable by pointer and by nothing else — no
+           * keyboard, no finger — so the meaning of two of the three figures on
+           * every card was hover-only. The words are taken out of the layout
+           * rather than out of the document; the symbol stays for the eye.
+           */}
+          <span title="Total climbing">
+            <span aria-hidden="true">↑ </span>
+            <span className="visually-hidden">Total climbing </span>
+            {formatAscent(stage.ascentMetres)}
+          </span>
           <span title="Steepest sustained gradient">
-            ⌃ {formatGradient(stage.maxGradientPercent)}
+            <span aria-hidden="true">⌃ </span>
+            <span className="visually-hidden">Steepest sustained gradient </span>
+            {formatGradient(stage.maxGradientPercent)}
           </span>
         </span>
       </span>

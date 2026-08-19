@@ -11,7 +11,15 @@
   z-index: 1;
   top: 10px;
   left: 10px;
+  /*
+   * Bounded on the right by MapLibre's own navigation control, and wrapping
+   * inside what is left. On a phone the note is wider than the map is, and a row
+   * that could not wrap ran off the map entirely — taking the way out of
+   * exploration with it, on the one input where Escape is not available.
+   */
+  right: 56px;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem;
   /* The row is only ever as wide as its contents; the map beside it stays
@@ -65,4 +73,17 @@
   padding: 0.3rem 0.55rem;
   border-radius: calc(var(--radius) - 4px);
   background: var(--surface);
+}
+
+/*
+ * Pressed is the whole difference between reading the page and exploring the
+ * map, and a forced palette would take the accent that says so. The reader's own
+ * selection pair says it instead.
+ */
+@media (forced-colors: active) {
+  .toggle[data-state="on"] {
+    background: Highlight;
+    color: HighlightText;
+    border-color: Highlight;
+  }
 }
