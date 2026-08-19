@@ -3,7 +3,6 @@ package sync
 import (
 	"context"
 	"errors"
-	"slices"
 	"testing"
 	"time"
 
@@ -23,18 +22,12 @@ func TestReporterRecordsAndNotifiesEverySuccess(t *testing.T) {
 	reporter.now = func() time.Time { return now }
 
 	reporter.Run(t.Context())
-	if got, want := state.runs, 2; got != want {
-		t.Errorf("recorded runs = %d, want %d", got, want)
-	}
-	if got, want := state.phases, []string{"source", "targets"}; !slices.Equal(got, want) {
-		t.Errorf("recorded phases = %v, want %v", got, want)
-	}
-	if got, want := notifier.messages, []notification{
+	assert.Equal(t, 2, state.runs, "recorded runs")
+	assert.Equal(t, []string{"source", "targets"}, state.phases, "recorded phases")
+	assert.Equal(t, []notification{
 		{title: "Domestique sync", message: "source succeeded: source_stages=3"},
 		{title: "Domestique sync", message: "targets succeeded: source_stages=3 created=2 updated=1 deleted=0"},
-	}; !equalNotifications(got, want) {
-		t.Errorf("notifications = %#v, want %#v", got, want)
-	}
+	}, notifier.messages)
 }
 
 // The switches govern the timer, so a scheduled tick performs only what is still
@@ -48,12 +41,8 @@ func TestReporterRunsOnlyTheScheduledPhases(t *testing.T) {
 	reporter := newReporter(t, runner, state, &fakeNotifier{})
 
 	reporter.Run(t.Context())
-	if runner.targetRuns != 0 {
-		t.Errorf("target runs = %d, want 0 while the target schedule is off", runner.targetRuns)
-	}
-	if got, want := state.phases, []string{"source"}; !slices.Equal(got, want) {
-		t.Errorf("recorded phases = %v, want %v", got, want)
-	}
+	assert.Zero(t, runner.targetRuns, "the target phase ran while its schedule was off")
+	assert.Equal(t, []string{"source"}, state.phases, "recorded phases")
 }
 
 func TestReporterRunsNothingWhenBothPhasesAreSwitchedOff(t *testing.T) {
@@ -61,15 +50,9 @@ func TestReporterRunsNothingWhenBothPhasesAreSwitchedOff(t *testing.T) {
 	state := &fakeRunState{}
 	reporter := newReporter(t, runner, state, &fakeNotifier{})
 
-	if got, want := reporter.Run(t.Context()).Outcome, OutcomeSkipped; got != want {
-		t.Errorf("Run() outcome = %q, want %q", got, want)
-	}
-	if runner.sourceRuns+runner.targetRuns != 0 {
-		t.Errorf("runs = %d, want none", runner.sourceRuns+runner.targetRuns)
-	}
-	if state.runs != 0 {
-		t.Errorf("recorded runs = %d, want 0", state.runs)
-	}
+	assert.Equal(t, OutcomeSkipped, reporter.Run(t.Context()).Outcome, "Run() outcome")
+	assert.Zero(t, runner.sourceRuns+runner.targetRuns, "a phase ran with both schedules off")
+	assert.Zero(t, state.runs, "recorded runs")
 }
 
 // "Off" and "unreadable" are different answers, and a timer must not act on the
@@ -81,21 +64,11 @@ func TestReporterRunsNothingAndReportsAnUnreadableSchedule(t *testing.T) {
 	reporter := newReporter(t, runner, state, notifier)
 
 	result := reporter.Run(t.Context())
-	if got, want := result.Outcome, OutcomeFailed; got != want {
-		t.Errorf("Run() outcome = %q, want %q", got, want)
-	}
-	if got, want := result.Failure, FailureState; got != want {
-		t.Errorf("Run() failure = %q, want %q", got, want)
-	}
-	if runner.sourceRuns+runner.targetRuns != 0 {
-		t.Errorf("runs = %d, want none", runner.sourceRuns+runner.targetRuns)
-	}
-	if got, want := state.runs, 1; got != want {
-		t.Errorf("recorded runs = %d, want %d", got, want)
-	}
-	if len(notifier.messages) != 1 {
-		t.Errorf("notifications = %#v, want one failure alert", notifier.messages)
-	}
+	assert.Equal(t, OutcomeFailed, result.Outcome, "Run() outcome")
+	assert.Equal(t, FailureState, result.Failure, "Run() failure")
+	assert.Zero(t, runner.sourceRuns+runner.targetRuns, "a phase ran on an unreadable schedule")
+	assert.Equal(t, 1, state.runs, "recorded runs")
+	assert.Len(t, notifier.messages, 1, "want one failure alert")
 }
 
 // An operator asking for a phase has already decided; the switch only ever
@@ -105,16 +78,10 @@ func TestReporterTriggersAPhaseTheScheduleHasSwitchedOff(t *testing.T) {
 	state := &fakeRunState{}
 	reporter := newReporter(t, runner, state, &fakeNotifier{})
 
-	if !reporter.TriggerPhase(t.Context(), PhaseTargets) {
-		t.Fatal("TriggerPhase() = false, want accepted run")
-	}
+	require.True(t, reporter.TriggerPhase(t.Context(), PhaseTargets), "TriggerPhase() rejected the run")
 	reporter.Wait()
-	if got, want := runner.targetRuns, 1; got != want {
-		t.Errorf("target runs = %d, want %d", got, want)
-	}
-	if runner.sourceRuns != 0 {
-		t.Errorf("source runs = %d, want 0", runner.sourceRuns)
-	}
+	assert.Equal(t, 1, runner.targetRuns, "target runs")
+	assert.Zero(t, runner.sourceRuns, "the source phase ran for a target trigger")
 }
 
 func TestReporterSuppressesMatchingFailureForSixHours(t *testing.T) {
@@ -130,12 +97,10 @@ func TestReporterSuppressesMatchingFailureForSixHours(t *testing.T) {
 	reporter.Run(t.Context())
 	now = now.Add(time.Hour)
 	reporter.Run(t.Context())
-	if got, want := notifier.messages, []notification{
+	assert.Equal(t, []notification{
 		{title: "Domestique sync failed", message: "targets failed: destination"},
 		{title: "Domestique sync failed", message: "targets failed: destination"},
-	}; !equalNotifications(got, want) {
-		t.Errorf("notifications = %#v, want %#v", got, want)
-	}
+	}, notifier.messages)
 }
 
 // A library that has been failing to load all morning must not be the reason a
@@ -152,12 +117,10 @@ func TestReporterAlertsOnEachPhaseFailingTheSameWay(t *testing.T) {
 	reporter.now = func() time.Time { return now }
 
 	reporter.Run(t.Context())
-	if got, want := notifier.messages, []notification{
+	assert.Equal(t, []notification{
 		{title: "Domestique sync failed", message: "source failed: state"},
 		{title: "Domestique sync failed", message: "targets failed: state"},
-	}; !equalNotifications(got, want) {
-		t.Errorf("notifications = %#v, want %#v", got, want)
-	}
+	}, notifier.messages)
 }
 
 // Enrichment follows the work a rider is waiting for, and only happens when a
@@ -168,21 +131,15 @@ func TestReporterEnrichesOnlyAfterStoringANewInventory(t *testing.T) {
 		targets: Result{Phase: PhaseTargets, Outcome: OutcomeSucceeded},
 	}
 	newReporter(t, stored, &fakeRunState{source: true, targets: true}, &fakeNotifier{}).Run(t.Context())
-	if got, want := stored.annotations, 1; got != want {
-		t.Errorf("annotation passes = %d, want %d", got, want)
-	}
+	assert.Equal(t, 1, stored.annotations, "annotation passes")
 
 	failed := &reportingRunner{source: Result{Phase: PhaseSource, Outcome: OutcomeFailed, Failure: FailureSource}}
 	newReporter(t, failed, &fakeRunState{source: true}, &fakeNotifier{}).Run(t.Context())
-	if got, want := failed.annotations, 0; got != want {
-		t.Errorf("annotation passes after a failed read = %d, want %d", got, want)
-	}
+	assert.Zero(t, failed.annotations, "a failed read was enriched anyway")
 
 	targetsOnly := &reportingRunner{targets: Result{Phase: PhaseTargets, Outcome: OutcomeSucceeded}}
 	newReporter(t, targetsOnly, &fakeRunState{targets: true}, &fakeNotifier{}).Run(t.Context())
-	if got, want := targetsOnly.annotations, 0; got != want {
-		t.Errorf("annotation passes without a source run = %d, want %d", got, want)
-	}
+	assert.Zero(t, targetsOnly.annotations, "a run that stored no inventory was enriched anyway")
 }
 
 func TestReporterDoesNotRecordOrNotifySkippedRun(t *testing.T) {
@@ -195,30 +152,20 @@ func TestReporterDoesNotRecordOrNotifySkippedRun(t *testing.T) {
 	reporter := newReporter(t, runner, state, notifier)
 
 	reporter.Run(t.Context())
-	if state.runs != 0 {
-		t.Errorf("recorded runs = %d, want 0", state.runs)
-	}
-	if len(notifier.messages) != 0 {
-		t.Errorf("notifications = %#v, want none", notifier.messages)
-	}
+	assert.Zero(t, state.runs, "a skipped run was recorded")
+	assert.Empty(t, notifier.messages, "a skipped run was notified")
 }
 
 func TestReporterTriggerRejectsOverlappingRun(t *testing.T) {
 	runner := &blockingReportingRunner{started: make(chan struct{}), release: make(chan struct{})}
 	state := &fakeRunState{}
 	reporter := newReporter(t, runner, state, &fakeNotifier{})
-	if !reporter.Trigger(t.Context()) {
-		t.Fatal("Trigger() = false, want accepted run")
-	}
+	require.True(t, reporter.Trigger(t.Context()), "Trigger() rejected the first run")
 	<-runner.started
-	if reporter.Trigger(t.Context()) {
-		t.Error("Trigger() = true, want rejection while run is active")
-	}
+	assert.False(t, reporter.Trigger(t.Context()), "Trigger() accepted a run while one was active")
 	close(runner.release)
 	reporter.Wait()
-	if got, want := state.runs, 2; got != want {
-		t.Errorf("recorded runs = %d, want %d", got, want)
-	}
+	assert.Equal(t, 2, state.runs, "recorded runs")
 }
 
 type reportingRunner struct {
@@ -355,15 +302,9 @@ func (n *fakeNotifier) Send(_ context.Context, title, message string) error {
 func newReporter(t *testing.T, runner Runner, state RunState, notifier Notifier) *Reporter {
 	t.Helper()
 	reporter, err := NewReporter(runner, state, notifier)
-	if err != nil {
-		t.Fatalf("NewReporter() error = %v", err)
-	}
+	require.NoError(t, err, "NewReporter()")
 
 	return reporter
-}
-
-func equalNotifications(left, right []notification) bool {
-	return slices.Equal(left, right)
 }
 
 // The per-slot rows are what a status page reads to answer "is this account
