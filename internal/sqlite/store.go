@@ -1530,6 +1530,15 @@ func rollback(transaction *sql.Tx) {
 	_ = transaction.Rollback()
 }
 
+// schemaMigrations is the ordered, append-only history of this database.
+//
+// A migration is identified by its position and by nothing else: the applied
+// version is a count, so element N is "migration N" forever. A new migration is
+// therefore appended and never inserted — inserting one renumbers every element
+// after it, and a deployment that has already applied the old numbering then
+// re-runs somebody else's migration under the new one. That fails at startup on
+// exactly the databases that carry the operator's data, and passes every test
+// that only ever migrates an empty file.
 func schemaMigrations() [][]string {
 	return [][]string{
 		{
@@ -1682,22 +1691,6 @@ func schemaMigrations() [][]string {
 			`ALTER TABLE sync_runs ADD COLUMN phase TEXT NOT NULL DEFAULT ''`,
 		},
 		{
-			// The last recorded reconciliation of each target, one row per slot.
-			//
-			// The aggregate run in sync_runs answers "did that run succeed", which
-			// is a different question from "is this account current": a run that
-			// wrote one slot and failed the other is recorded once as failed, and
-			// nothing in it says which slot is behind. Only the last attempt per
-			// slot is kept, because that is the whole of what convergence needs
-			// and a per-target history nobody reads is state to migrate forever.
-			`CREATE TABLE target_runs (
-				target_slot      TEXT PRIMARY KEY REFERENCES targets(slot),
-				finished_at_unix INTEGER NOT NULL,
-				outcome          TEXT    NOT NULL,
-				detail           TEXT    NOT NULL
-			)`,
-		},
-		{
 			// One stage an operator has asked to be redone from scratch.
 			//
 			// It is its own table rather than a column on source_stages, because
@@ -1712,6 +1705,22 @@ func schemaMigrations() [][]string {
 				stage_order       INTEGER NOT NULL,
 				requested_at_unix INTEGER NOT NULL,
 				PRIMARY KEY (route_id, stage_order)
+			)`,
+		},
+		{
+			// The last recorded reconciliation of each target, one row per slot.
+			//
+			// The aggregate run in sync_runs answers "did that run succeed", which
+			// is a different question from "is this account current": a run that
+			// wrote one slot and failed the other is recorded once as failed, and
+			// nothing in it says which slot is behind. Only the last attempt per
+			// slot is kept, because that is the whole of what convergence needs
+			// and a per-target history nobody reads is state to migrate forever.
+			`CREATE TABLE target_runs (
+				target_slot      TEXT PRIMARY KEY REFERENCES targets(slot),
+				finished_at_unix INTEGER NOT NULL,
+				outcome          TEXT    NOT NULL,
+				detail           TEXT    NOT NULL
 			)`,
 		},
 	}
