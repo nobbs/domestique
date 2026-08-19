@@ -138,7 +138,63 @@ describe("SyncControls", () => {
     );
 
     expect(screen.getByText(/12 stages/)).toBeInTheDocument();
-    expect(screen.getByText(/failed \(destination\)/)).toBeInTheDocument();
+    expect(screen.queryByText(/failed \(destination\)/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Did not finish/)).toBeInTheDocument();
+    expect(screen.getByText(/Writing to Wahoo could not finish/)).toBeInTheDocument();
+  });
+
+  /*
+   * The two gates, in the half that trips them. Nothing was deleted in either
+   * case, and the way past both is a deliberate configuration change rather than
+   * pressing the button again — which is exactly what an operator does when a
+   * gate is presented as a failure.
+   */
+  it.each([
+    ["deletion_limit", /raise the per-run deletion maximum deliberately/],
+    ["empty_source", /empty-source deletion acknowledgement/],
+  ])("explains the %s gate and what would clear it", (lastFailure, remediation) => {
+    renderControls(
+      status({
+        phases: {
+          targets: {
+            lastCompletedAt: "2026-08-18T06:00:04Z",
+            lastResult: "blocked",
+            lastFailure,
+            sourceStages: 12,
+            created: 0,
+            updated: 0,
+            deleted: 0,
+          },
+        },
+      }),
+    );
+
+    expect(screen.getByText(/Held by a safety gate/)).toBeInTheDocument();
+    expect(screen.getByText(/Writing to Wahoo stopped/)).toBeInTheDocument();
+    expect(screen.getByText(remediation)).toBeInTheDocument();
+  });
+
+  it("names the half a source failure happened in", () => {
+    renderControls(
+      status({
+        phases: {
+          source: {
+            lastCompletedAt: "2026-08-18T06:00:00Z",
+            lastResult: "failed",
+            lastFailure: "source",
+            sourceStages: 0,
+            created: 0,
+            updated: 0,
+            deleted: 0,
+          },
+        },
+      }),
+    );
+
+    expect(screen.getByText(/Reading the library could not finish/)).toBeInTheDocument();
+    // The non-destructive half of the promise is the part worth stating: an
+    // incomplete read must never be read as routes having gone away.
+    expect(screen.getByText(/Nothing was deleted/)).toBeInTheDocument();
   });
 
   it("says a half has not run rather than showing an empty result", () => {

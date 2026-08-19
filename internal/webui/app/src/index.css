@@ -900,6 +900,30 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/*
+ * Why a run did not succeed, and what to do about it. A held gate is coloured
+ * like the fault it is not, because both are states the operator has to act on —
+ * what separates them is the sentence, which is why there is one.
+ */
+.sync-controls__guidance,
+.convergence__guidance {
+  margin-top: 0.25rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  text-wrap: pretty;
+}
+
+.sync-controls__guidance-headline,
+.convergence__guidance-headline {
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.sync-controls__guidance[data-kind="waiting"] .sync-controls__guidance-headline,
+.convergence__guidance[data-kind="waiting"] .convergence__guidance-headline {
+  color: var(--text-muted);
+}
+
 .sync-controls__actions {
   display: flex;
   gap: 0.6rem;
@@ -1006,4 +1030,9 @@ body {
 .convergence__target[data-convergence="failed"] .convergence__state,
 .convergence__target[data-convergence="unauthorized"] .convergence__state {
   color: var(--accent);
+}
+
+/* A run that never started is not something to act on, so it reads as ordinary. */
+.convergence__target[data-run="waiting"] .convergence__state {
+  color: var(--text-muted);
 }

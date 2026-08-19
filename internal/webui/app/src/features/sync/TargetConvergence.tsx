@@ -17,6 +17,7 @@ import { statusQuery } from "../../api/queries";
 import type { TargetConvergence as Convergence, TargetStatus } from "../../api/types";
 import { ErrorMessage } from "../../components/StatusMessage";
 import { formatTimestamp } from "../../lib/format";
+import { GUIDANCE_LABELS, syncGuidance } from "../../lib/syncGuidance";
 
 const CONVERGENCE_LABELS: Record<Convergence, string> = {
   current: "Up to date",
@@ -37,17 +38,30 @@ export function stagesSummary(target: TargetStatus): string {
   return `${target.stages.current} written · ${target.stages.pending} outstanding`;
 }
 
-/** What one account's own last reconciliation amounts to, in a sentence. */
+/**
+ * What one account's own last reconciliation amounts to, in a sentence.
+ *
+ * Every run reported here is the writing half, so its guidance is read against
+ * that phase whatever else the page is showing.
+ */
 export function lastRunSummary(target: TargetStatus): string {
   if (!target.lastRun) {
     return "Has not been written to yet.";
   }
   const when = formatTimestamp(target.lastRun.completedAt);
-  if (target.lastRun.result === "succeeded") {
+  const guidance = targetGuidance(target);
+  if (!guidance) {
     return `Last written ${when}`;
   }
 
-  return `${target.lastRun.result}${target.lastRun.failure ? ` (${target.lastRun.failure})` : ""} · ${when}`;
+  return `${GUIDANCE_LABELS[guidance.kind]} · ${when}`;
+}
+
+/** One account's last reconciliation, explained, or nothing when it succeeded. */
+function targetGuidance(target: TargetStatus) {
+  return target.lastRun
+    ? syncGuidance("targets", target.lastRun.result, target.lastRun.failure)
+    : undefined;
 }
 
 export function TargetConvergence() {
@@ -73,16 +87,40 @@ export function TargetConvergence() {
         routes on its own schedule.
       </p>
       <ul className="convergence__targets">
-        {data.targets.map((target) => (
-          <li className="convergence__target" data-convergence={target.convergence} key={target.id}>
-            <div className="convergence__text">
-              <span className="convergence__id">{target.id}</span>
-              <span className="convergence__stages">{stagesSummary(target)}</span>
-              <span className="convergence__run">{lastRunSummary(target)}</span>
-            </div>
-            <span className="convergence__state">{CONVERGENCE_LABELS[target.convergence]}</span>
-          </li>
-        ))}
+        {data.targets.map((target) => {
+          const guidance = targetGuidance(target);
+          // The service reduces every unsuccessful run to `failed` in its one
+          // word, because that word answers a different question — whether this
+          // account is behind — and a held gate leaves it behind either way.
+          // Here there is room to say which, and a gate must not be read as a
+          // fault: the account is intact and the next move is the operator's.
+          const state =
+            guidance?.kind === "blocked"
+              ? GUIDANCE_LABELS.blocked
+              : CONVERGENCE_LABELS[target.convergence];
+
+          return (
+            <li
+              className="convergence__target"
+              data-convergence={target.convergence}
+              data-run={guidance?.kind}
+              key={target.id}
+            >
+              <div className="convergence__text">
+                <span className="convergence__id">{target.id}</span>
+                <span className="convergence__stages">{stagesSummary(target)}</span>
+                <span className="convergence__run">{lastRunSummary(target)}</span>
+                {guidance ? (
+                  <span className="convergence__guidance" data-kind={guidance.kind}>
+                    <span className="convergence__guidance-headline">{guidance.headline}</span>{" "}
+                    {guidance.remediation}
+                  </span>
+                ) : null}
+              </div>
+              <span className="convergence__state">{state}</span>
+            </li>
+          );
+        })}
       </ul>
     </section>
   );

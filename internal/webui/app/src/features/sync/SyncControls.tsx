@@ -21,6 +21,7 @@ import { SYNC_PHASES } from "../../api/types";
 import { Button } from "../../components/Button";
 import { ErrorMessage } from "../../components/StatusMessage";
 import { formatTimestamp } from "../../lib/format";
+import { GUIDANCE_LABELS, syncGuidance } from "../../lib/syncGuidance";
 
 const PHASE_LABELS: Record<SyncPhase, { title: string; detail: string }> = {
   source: {
@@ -33,14 +34,21 @@ const PHASE_LABELS: Record<SyncPhase, { title: string; detail: string }> = {
   },
 };
 
-/** What one half's last run amounts to, in a sentence. */
+/**
+ * What one half's last run amounts to, in a sentence.
+ *
+ * A run that did not succeed reduces to how it ended and when. What it means and
+ * what to do about it is the guidance line beside this one, because "blocked"
+ * and "failed" ask opposite things of an operator and neither fits in a count.
+ */
 export function runSummary(phase: SyncPhase, run: SyncPhaseRun | undefined): string {
   if (!run) {
     return "Has not run yet.";
   }
   const when = formatTimestamp(run.lastCompletedAt);
-  if (run.lastResult !== "succeeded") {
-    return `${run.lastResult}${run.lastFailure ? ` (${run.lastFailure})` : ""} · ${when}`;
+  const guidance = syncGuidance(phase, run.lastResult, run.lastFailure);
+  if (guidance) {
+    return `${GUIDANCE_LABELS[guidance.kind]} · ${when}`;
   }
   const counts =
     phase === "source"
@@ -98,15 +106,28 @@ export function SyncControls() {
       <ul className="sync-controls__phases">
         {SYNC_PHASES.map((phase) => {
           const enabled = data.sync.schedule[phase];
+          const phaseRun = data.sync.phases[phase];
+          const guidance = phaseRun
+            ? syncGuidance(phase, phaseRun.lastResult, phaseRun.lastFailure)
+            : undefined;
 
           return (
             <li className="sync-controls__phase" key={phase}>
               <div className="sync-controls__text">
                 <span className="sync-controls__title">{PHASE_LABELS[phase].title}</span>
                 <span className="sync-controls__detail">{PHASE_LABELS[phase].detail}</span>
-                <span className="sync-controls__run">
-                  {runSummary(phase, data.sync.phases[phase])}
-                </span>
+                <span className="sync-controls__run">{runSummary(phase, phaseRun)}</span>
+                {/*
+                 * A gate that held is not an error the operator caused, so it is
+                 * stated rather than announced: the page is being read, not
+                 * interrupted, and the run it describes finished some time ago.
+                 */}
+                {guidance ? (
+                  <span className="sync-controls__guidance" data-kind={guidance.kind}>
+                    <span className="sync-controls__guidance-headline">{guidance.headline}</span>{" "}
+                    {guidance.remediation}
+                  </span>
+                ) : null}
               </div>
               <div className="sync-controls__actions">
                 {/*
