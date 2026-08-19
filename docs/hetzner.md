@@ -290,7 +290,9 @@ gh api repos/nobbs/domestique/actions/oidc/customization/sub --jq .sub_claim_pre
 ## Update and rollback
 
 Routine updates are the merge described above; what follows is the manual path,
-for a rollback or for a host CI cannot reach.
+for a rollback or for a host CI cannot reach. The
+[operator recovery runbook](runbook.md) covers the other interventions this host
+occasionally needs, and what each one is safe to assume.
 
 The script is the same one CI runs, and it is the shortest way to move back:
 
