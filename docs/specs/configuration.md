@@ -20,9 +20,11 @@ setting and is removed before Koanf loads the remaining environment. Nested
 environment keys use a double underscore, so
 `DOMESTIQUE_WAHOO__CLIENT_ID` maps to `wahoo.client_id`.
 
-`DOMESTIQUE_IMAGE` is read directly rather than through Koanf, and is not a
-setting: it is the image reference the deploying host pinned, which compose
-already holds in order to start the container. Only the digest is taken from it,
+`DOMESTIQUE_IMAGE` is not a setting either. It is the image reference the
+deploying host pinned, which compose already holds in order to start the
+container, and it is taken out of the environment before Koanf reads the rest —
+for the same reason the configuration selector is, since every remaining
+`DOMESTIQUE_` variable is treated as a setting and an unknown one is fatal. Only the digest is taken from it,
 so the service can report which image is running; the registry and repository in
 front of the digest are deployment topology and never leave the host. Absent, as
 it is in local development, the service reports no image digest at all.

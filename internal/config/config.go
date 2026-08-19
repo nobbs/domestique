@@ -26,6 +26,9 @@ const (
 	defaultConfigFile = "/etc/domestique/config.toml"
 	envPrefix         = "DOMESTIQUE_"
 	configFileEnv     = envPrefix + "CONFIG_FILE"
+	// The image the deploying host pinned. Named for what the host already calls
+	// it, so the compose passthrough needs no translation table.
+	imageReferenceEnv = envPrefix + "IMAGE"
 
 	// defaultTileStyleURL is a keyless MapLibre style, so the default deployment
 	// exposes no credential to the browser and sends no account identity to the
@@ -48,6 +51,13 @@ const (
 // Settings is the validated, startup-only configuration for one service
 // process. Its sensitive values are held in dedicated types without JSON tags.
 type Settings struct {
+	// ImageReference is not configuration: it is the container image the
+	// deploying host pinned, which the host passes in so the running service can
+	// report which image it is. It arrives here only because this package owns
+	// the DOMESTIQUE_ prefix and refuses unknown keys within it — leaving it in
+	// the environment would fail startup. Empty when the host said nothing.
+	ImageReference string
+
 	Wahoo         Wahoo
 	VeloPlanner   VeloPlanner
 	Notifications Notifications
@@ -327,6 +337,14 @@ func Load() (settings *Settings, err error) {
 		return nil, err
 	}
 
+	// Consumed before Koanf reads the environment, for the same reason the
+	// configuration selector is: every remaining DOMESTIQUE_ variable is treated
+	// as a setting, and an unknown one is fatal.
+	imageReference, referenceErr := consumeImageReference()
+	if referenceErr != nil {
+		return nil, referenceErr
+	}
+
 	//nolint:gosec // The trusted operator selects the sole startup configuration file.
 	contents, err := os.ReadFile(path)
 	if err != nil {
@@ -371,7 +389,28 @@ func Load() (settings *Settings, err error) {
 		return nil, fmt.Errorf("decoding configuration: %w", err)
 	}
 
-	return build(&raw)
+	built, buildErr := build(&raw)
+	if buildErr != nil {
+		return nil, buildErr
+	}
+	built.ImageReference = imageReference
+
+	return built, nil
+}
+
+// consumeImageReference takes the pinned image reference out of the environment
+// and returns it. It is not validated here: this package cannot say what a valid
+// image reference is, and the only consumer keeps just the digest it can prove.
+func consumeImageReference() (string, error) {
+	reference, found := os.LookupEnv(imageReferenceEnv)
+	if !found {
+		return "", nil
+	}
+	if err := os.Unsetenv(imageReferenceEnv); err != nil {
+		return "", fmt.Errorf("clearing image reference: %w", err)
+	}
+
+	return reference, nil
 }
 
 func configuredPath() (string, error) {

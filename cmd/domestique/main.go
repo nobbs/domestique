@@ -38,12 +38,6 @@ const (
 	httpMaximumHeaderBytes = 8 << 10
 )
 
-// imageReferenceEnv names the image the deploying host pinned. Compose already
-// holds that reference to start the container, so passing it in adds no new
-// deployment fact — it only lets the running service say which image it is.
-// Absent, as it is in local development, the service reports no image digest.
-const imageReferenceEnv = "DOMESTIQUE_IMAGE"
-
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	if err := run(ctx); err != nil {
@@ -144,9 +138,11 @@ func run(ctx context.Context) error {
 	// Which source produced this binary, and which image is carrying it. The
 	// revision is compiled in by CI; the image reference is what the deploying
 	// host pinned, handed in through the environment because nothing inside an
-	// image can know its own digest. Only the digest survives the read: the
-	// registry and repository in front of it stay on the host.
-	buildInfo := build.Current(os.Getenv(imageReferenceEnv))
+	// image can know its own digest — the configuration layer takes it out of
+	// that environment on the way past, since the prefix is its own. Only the
+	// digest survives the read: the registry and repository in front of it stay
+	// on the host.
+	buildInfo := build.Current(settings.ImageReference)
 
 	handler, err := httpapi.New(
 		&httpapi.Options{
