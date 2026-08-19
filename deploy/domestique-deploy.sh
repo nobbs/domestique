@@ -187,6 +187,16 @@ wait_ready() {
   done
 }
 
+# A rollback onto a binary older than the schema the failed deploy migrated is a
+# different failure from a rollback that is merely unhealthy: the image is fine,
+# the state is intact, and no amount of restarting fixes it. The store refuses
+# with a fixed message (internal/sqlite/store.go), so the log says which one this
+# is, and the operator gets told rather than left to read the crash loop.
+schema_ahead_of_binary() {
+  compose logs --tail 50 --no-color "${COMPOSE_SERVICE}" 2>/dev/null |
+    grep -q 'state schema version is newer than this service'
+}
+
 # The listener must stay loopback-only: this host has a public address, and a
 # published 0.0.0.0:8080 would hand the API to the internet.
 loopback_only() {
@@ -282,6 +292,12 @@ if wait_healthy; then
   notify "Domestique: deploy rolled back" \
     "${requested} did not pass the health gate. The host is back on ${current}."
   die "deploy of ${requested} rolled back to ${current}"
+fi
+
+if schema_ahead_of_binary; then
+  notify "Domestique: DOWN after rollback (state schema)" \
+    "${requested} failed, and ${current} cannot open the state ${requested} migrated. The state is intact; recovery needs a binary at or past that schema."
+  die "rollback to ${current} cannot open the migrated state; manual recovery needed"
 fi
 
 notify "Domestique: DOWN after rollback" \

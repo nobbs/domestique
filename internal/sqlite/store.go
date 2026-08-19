@@ -24,6 +24,24 @@ import (
 
 const driverName = "sqlite"
 
+// forwardCompatibleMigrations is how far ahead of this binary a state file may
+// be and still open. It exists for one case: a deploy that migrated the state
+// and then failed its health gate, whose rollback puts the previous binary back
+// in front of a database it has never seen. Refusing there leaves the host down
+// with no way back, which is worse than running one release behind the schema —
+// the migration compatibility rule on schemaMigrations is what makes running
+// behind safe. Beyond that the refusal stands: a binary many releases old
+// against a much newer schema is a mistake to report, not to absorb. It also
+// means a release that appends more than one migration cannot be rolled back
+// through, so a release that must stay rollable appends one.
+const forwardCompatibleMigrations = 1
+
+// schemaAheadMessage is the stable prefix of the refusal above. The deploy
+// script matches on it to tell a rollback that cannot read its state from a
+// rollback that is unhealthy for any other reason, so it is a contract with
+// deploy/domestique-deploy.sh rather than free-form error text.
+const schemaAheadMessage = "state schema version is newer than this service"
+
 var (
 	// ErrTargetNotFound reports an operation for an unknown configured target slot.
 	ErrTargetNotFound = errors.New("target slot not found")
@@ -1451,8 +1469,9 @@ func (s *Store) migrate(ctx context.Context) error {
 		return fmt.Errorf("reading state schema version: %w", err)
 	}
 	migrations := schemaMigrations()
-	if currentVersion > len(migrations) {
-		return errors.New("state schema version is newer than this service")
+	if currentVersion > len(migrations)+forwardCompatibleMigrations {
+		return fmt.Errorf("%s: the state file is at version %d and this service knows %d",
+			schemaAheadMessage, currentVersion, len(migrations))
 	}
 
 	for version := currentVersion + 1; version <= len(migrations); version++ {
@@ -1539,6 +1558,22 @@ func rollback(transaction *sql.Tx) {
 // re-runs somebody else's migration under the new one. That fails at startup on
 // exactly the databases that carry the operator's data, and passes every test
 // that only ever migrates an empty file.
+//
+// A migration must also leave the previous release's binary working, because a
+// deploy that migrates the state and then fails its health gate is rolled back
+// onto that binary — see forwardCompatibleMigrations. Additive with defaults is
+// the allowed shape. A migration must not:
+//
+//   - drop or rename a table, column, or index an earlier binary reads or
+//     writes;
+//   - add a NOT NULL column without a default to a table an earlier binary
+//     inserts into;
+//   - tighten a CHECK constraint or add a UNIQUE index an earlier binary's
+//     writes could violate; or
+//   - change what the values of an existing column mean.
+//
+// TestNewMigrationsStayReadableByThePreviousRelease enforces the structural half
+// of this; the last item is on the author.
 func schemaMigrations() [][]string {
 	return [][]string{
 		{
