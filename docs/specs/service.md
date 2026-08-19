@@ -236,6 +236,15 @@ The read-only JSON surface is deliberately small:
 - `GET /v1/routes/{source-route-id}/stages/{stage}/geometry` returns the stored
   geometry of one stage for map rendering, together with the surface
   classification of that geometry when one has been cached.
+- `GET /v1/webui/config` returns the settings the browser UI needs at runtime so
+  the built assets stay static: the map tile style URLs, and the source
+  provider's base URL. The base URL is the whole of what is sent about the
+  provider — the page builds a stage's link back to its source route from it,
+  rather than the service repeating a route URL on every stage it serves. It is
+  omitted when unconfigured, so the page shows no such link rather than a broken
+  one. That link is only useful to the operator whose account holds the route:
+  the source route is private to that account, and following it as anyone else
+  reaches the provider's own refusal, not the route.
 The five endpoints below that change state — the three triggers, the schedule
 switch, and the reprocess request — additionally require the browser origin
 described above, and answer 403 without it.

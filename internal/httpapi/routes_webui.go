@@ -9,10 +9,16 @@ import "net/http"
 // Both styles are sent rather than the service picking one, because the colour
 // scheme is a property of the browser the operator is sitting at and this
 // response is cached across every page in the session.
+//
+// The provider base URL rides along for the same reason: the page builds the
+// link back to a stage's source route from it, and the alternative — the service
+// putting a route URL on every stage it serves — would be the same fact repeated
+// once per stage.
 func (h *Handler) webUIConfig(writer http.ResponseWriter, _ *http.Request, _ string) {
 	h.writeJSON(writer, http.StatusOK, webUIConfigView{
 		TileStyleURL:     h.tileStyleURL,
 		TileStyleURLDark: h.tileStyleURLDark,
+		SourceBaseURL:    h.sourceBaseURL,
 	})
 }
 

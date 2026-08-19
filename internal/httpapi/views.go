@@ -102,6 +102,15 @@ type webUIConfigView struct {
 	// style in both colour schemes.
 	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
 	TileStyleURLDark string `json:"tile_style_url_dark,omitempty"`
+	// The provider's own web application, from which the page builds an outbound
+	// link to the source route a stage was made from. Omitted when unconfigured,
+	// which is how the page knows to offer no link rather than a broken one.
+	//
+	// A base URL only: the route identifier the link needs is already in the
+	// stage the page is showing, and no route name, URL, or geometry is added
+	// here.
+	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
+	SourceBaseURL string `json:"source_base_url,omitempty"`
 }
 
 // geometryView is a GeoJSON Feature carrying one stage's stored geometry. The

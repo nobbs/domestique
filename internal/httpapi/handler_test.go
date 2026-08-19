@@ -16,6 +16,7 @@ import (
 const (
 	testTileStyleURL     = "https://tiles.example.test/styles/liberty"
 	testTileStyleURLDark = "https://tiles.example.test/styles/liberty-dark"
+	testSourceBaseURL    = "https://source.example.test"
 	// The Wahoo redirect URL the composition root passes, and the origin a
 	// browser derives from it for the requests it sends this service.
 	testBrowserOriginURL = "https://domestique.example.test/oauth/wahoo/callback"
@@ -282,8 +283,10 @@ func TestHandlerServesTileStyleConfiguration(t *testing.T) {
 	}
 	body := response.Body.String()
 	// Both styles, because the page picks between them: the colour scheme is a
-	// property of the browser, and this response is cached for the session.
-	for _, want := range []string{testTileStyleURL, testTileStyleURLDark} {
+	// property of the browser, and this response is cached for the session. The
+	// provider base URL rides along, because the link back to a stage's source
+	// route is built from it.
+	for _, want := range []string{testTileStyleURL, testTileStyleURLDark, testSourceBaseURL} {
 		if !strings.Contains(body, want) {
 			t.Errorf("config body = %q, want it to contain %q", body, want)
 		}
@@ -311,6 +314,118 @@ func TestHandlerOmitsAnUnconfiguredDarkTileStyle(t *testing.T) {
 	// both colour schemes.
 	if got := response.Body.String(); strings.Contains(got, "tile_style_url_dark") {
 		t.Errorf("config body = %q, want no dark style key", got)
+	}
+}
+
+func TestHandlerOmitsAnUnconfiguredSourceBaseURL(t *testing.T) {
+	handler, err := New(
+		&Options{
+			TargetIDs:        []string{"rider-a"},
+			TileStyleURL:     testTileStyleURL,
+			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
+			AccessEmail:      testAccessEmail,
+			BrowserOriginURL: testBrowserOriginURL,
+		},
+		&fakeOAuth{}, &fakeState{}, &fakeSyncTrigger{}, &fakeAssets{},
+	)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/webui/config"))
+	// Absent rather than empty: that is how the page knows to offer no source
+	// link at all rather than one pointing at nowhere.
+	if got := response.Body.String(); strings.Contains(got, "source_base_url") {
+		t.Errorf("config body = %q, want no source base URL key", got)
+	}
+}
+
+func TestHandlerRefusesASourceBaseURLThatIsNotOne(t *testing.T) {
+	// The value is echoed to the browser rather than only compared, so anything
+	// riding on it is observable: credentials would be a secret in a JSON body,
+	// and a query or fragment would be sent to the provider on every visit.
+	for _, value := range []string{
+		"http://source.example.test",
+		"source.example.test",
+		"/user-routes",
+		"https://rider:hunter2@source.example.test",
+		"https://source.example.test?utm_source=domestique",
+		"https://source.example.test/#fragment",
+		"https://",
+	} {
+		_, err := New(
+			&Options{
+				TargetIDs:        []string{"rider-a"},
+				TileStyleURL:     testTileStyleURL,
+				SourceBaseURL:    value,
+				AccessVerifier:   &recordingVerifier{email: testAccessEmail},
+				AccessEmail:      testAccessEmail,
+				BrowserOriginURL: testBrowserOriginURL,
+			},
+			&fakeOAuth{}, &fakeState{}, &fakeSyncTrigger{}, &fakeAssets{},
+		)
+		if err == nil {
+			t.Errorf("New() with source base URL %q error = nil, want an error", value)
+		}
+	}
+}
+
+func TestHandlerSendsASourceBaseURLWithoutSurroundingWhitespace(t *testing.T) {
+	handler, err := New(
+		&Options{
+			TargetIDs:        []string{"rider-a"},
+			TileStyleURL:     testTileStyleURL,
+			SourceBaseURL:    "  " + testSourceBaseURL + "\n",
+			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
+			AccessEmail:      testAccessEmail,
+			BrowserOriginURL: testBrowserOriginURL,
+		},
+		&fakeOAuth{}, &fakeState{}, &fakeSyncTrigger{}, &fakeAssets{},
+	)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/webui/config"))
+	// The page must receive the value that was validated, not a wider one: a
+	// browser cannot parse a URL with whitespace around it, so an accepted
+	// configuration would silently produce no link.
+	var payload struct {
+		//nolint:tagliatelle // Mirrors the wire field the page reads.
+		SourceBaseURL string `json:"source_base_url"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decoding config body: %v", err)
+	}
+	if got, want := payload.SourceBaseURL, testSourceBaseURL; got != want {
+		t.Errorf("source base URL = %q, want %q", got, want)
+	}
+}
+
+func TestHandlerAcceptsASourceBaseURLHostedUnderAPath(t *testing.T) {
+	// A provider need not sit at the root of its host, and the page builds the
+	// route path underneath whatever prefix it is given.
+	handler, err := New(
+		&Options{
+			TargetIDs:        []string{"rider-a"},
+			TileStyleURL:     testTileStyleURL,
+			SourceBaseURL:    testSourceBaseURL + "/planner",
+			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
+			AccessEmail:      testAccessEmail,
+			BrowserOriginURL: testBrowserOriginURL,
+		},
+		&fakeOAuth{}, &fakeState{}, &fakeSyncTrigger{}, &fakeAssets{},
+	)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/webui/config"))
+	if got, want := response.Body.String(), testSourceBaseURL+"/planner"; !strings.Contains(got, want) {
+		t.Errorf("config body = %q, want it to contain %q", got, want)
 	}
 }
 
@@ -715,6 +830,7 @@ func newHandlerWithTrigger(t *testing.T, oauthService OAuth, state State, syncTr
 			TargetIDs:        []string{"rider-a"},
 			TileStyleURL:     testTileStyleURL,
 			TileStyleURLDark: testTileStyleURLDark,
+			SourceBaseURL:    testSourceBaseURL,
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,

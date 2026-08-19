@@ -146,6 +146,12 @@ export interface WebUIConfig {
   tileStyleUrl: string;
   /** Loaded in place of tileStyleUrl under a dark system colour scheme. */
   tileStyleUrlDark?: string | undefined;
+  /**
+   * The provider's own web application, from which a link back to a stage's
+   * source route is built. Absent when the service cannot name one, and then no
+   * such link is offered.
+   */
+  sourceBaseUrl?: string | undefined;
 }
 
 /** A stage's stable identity, used for routing and list keys. */

@@ -119,6 +119,14 @@ type Options struct {
 	// colour scheme. It is optional, and must be on TileStyleURL's origin.
 	TileStyleURLDark string
 
+	// SourceBaseURL is the provider's own web application, as the operator
+	// configured it. The page builds an outbound link to a stage's source route
+	// from it, so an operator can open the route this stage was made from
+	// without hunting for it by name.
+	//
+	// Optional: without it the page shows no such link rather than a broken one.
+	SourceBaseURL string
+
 	// AccessEmail is the one address an Access assertion may name, and the
 	// principal every authenticated request resolves to.
 	AccessEmail string
@@ -143,6 +151,7 @@ type Handler struct {
 	accessVerifier   AccessVerifier
 	tileStyleURL     string
 	tileStyleURLDark string
+	sourceBaseURL    string
 	tileOrigin       string
 	browserOrigin    string
 	allowedEmail     string
@@ -196,6 +205,19 @@ func New(
 		}
 	}
 
+	// Validated here rather than trusted, because it leaves the service as a
+	// link a browser will follow. A configured value that cannot be one is a
+	// mistake worth refusing at startup; the absent case is the supported one.
+	// Trimmed before validating and then stored trimmed, so the value the page
+	// receives is the one that was checked: surrounding whitespace survives a
+	// hand-edited config file, and a browser will not parse it back into a URL.
+	sourceBaseURL := strings.TrimSpace(options.SourceBaseURL)
+	if sourceBaseURL != "" {
+		if err := validateSourceBaseURL(sourceBaseURL); err != nil {
+			return nil, err
+		}
+	}
+
 	handler := &Handler{
 		mux:              http.NewServeMux(),
 		oauth:            oauthService,
@@ -204,6 +226,7 @@ func New(
 		assets:           assets,
 		tileStyleURL:     options.TileStyleURL,
 		tileStyleURLDark: options.TileStyleURLDark,
+		sourceBaseURL:    sourceBaseURL,
 		tileOrigin:       tileOrigin,
 		browserOrigin:    browserOrigin,
 		targetIDs:        append([]string(nil), options.TargetIDs...),
@@ -395,6 +418,26 @@ func browserOriginOf(value string) (string, error) {
 }
 
 // originOf reduces a URL to its scheme and host for use in a CSP source list.
+// validateSourceBaseURL checks a provider base URL before it is handed to the
+// browser. It is stricter than originOf, and deliberately so: this value is
+// echoed in a response rather than only compared against another, so anything
+// riding on it is observable. Credentials would be a secret in a JSON body, and
+// a query or fragment would be something the operator's configuration sends to
+// the provider on every visit. A path prefix is allowed — a provider may be
+// hosted under one — and nothing else is.
+func validateSourceBaseURL(value string) error {
+	invalid := errors.New("source base URL must be an absolute HTTPS URL without credentials, query, or fragment")
+
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" ||
+		parsed.User != nil || parsed.RawQuery != "" || parsed.ForceQuery ||
+		parsed.Fragment != "" || parsed.Opaque != "" {
+		return invalid
+	}
+
+	return nil
+}
+
 func originOf(value string) (string, error) {
 	parsed, err := url.Parse(strings.TrimSpace(value))
 	if err != nil || parsed.Scheme != "https" || parsed.Host == "" {
