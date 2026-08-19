@@ -17,8 +17,7 @@
 
 import type { Position, SurfaceKind, SurfaceRange } from "../api/types";
 import type { CoordinateRange, DistanceWindow } from "./profile";
-import { GRADIENT_BANDS } from "./profile";
-import { gradientRanges } from "./routeLines";
+import { GRADIENT_BANDS, gradientRanges } from "./profile";
 import { SURFACE_STYLES } from "./surface";
 
 /** A gradient band, or a surface class. Never both, and never several. */

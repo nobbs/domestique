@@ -85,8 +85,9 @@ export interface StageKeyProps {
    * The bands this stage actually has, gentlest first.
    *
    * Of the whole stage rather than of the stretch on show, so zooming does not
-   * reshuffle the key underneath the reader's hand — and taken from the profile,
-   * so the key offers no class the chart has nothing to light.
+   * reshuffle the key underneath the reader's hand — and taken from the stage's
+   * one classification, so the key offers no class the chart has nothing to
+   * light, and lists every class the chart can paint at any zoom level.
    */
   bands: number[];
   highlight: Highlight | null;

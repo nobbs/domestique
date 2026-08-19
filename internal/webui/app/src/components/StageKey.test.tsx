@@ -4,6 +4,7 @@ import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import type { Position } from "../api/types";
 import type { Highlight } from "../lib/highlight";
+import { gradientRanges, presentBands } from "../lib/profile";
 import type { SurfaceSummary } from "../lib/surface";
 import { summariseSurface } from "../lib/surface";
 import { StageKey } from "./StageKey";
@@ -115,6 +116,41 @@ describe("StageKey", () => {
     expect(screen.getByRole("button", { name: "< 4%" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "12–16%" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "4–8%" })).toBeNull();
+  });
+
+  // A gap in the middle of the ramp is the honest answer for a stage that has
+  // gentle ground, a drag, and a wall, and nothing in between: the key must not
+  // fill it in with a class the chart has nothing to light, and must not stop at
+  // it and leave the wall unnamed.
+  it("carries a gap in the ramp through from the classification", () => {
+    // Eleven metres a point: flat, then a long six percent drag, then fourteen
+    // percent — which is bands nought, one, and three, with two missing.
+    const climbing: Position[] = [[8, 49, 100]];
+    [...Array(40).fill(0), ...Array(40).fill(6), ...Array(40).fill(14)].forEach(
+      (percent, index) => {
+        const previous = climbing[index] as [number, number, number];
+        climbing.push([8, 49 + (index + 1) * 0.0001, previous[2] + (11.119 * percent) / 100]);
+      },
+    );
+    const bands = presentBands(gradientRanges(climbing));
+    expect(bands).toEqual([0, 1, 3]);
+
+    render(
+      <StageKey
+        surface={null}
+        surfaceAbsence="none"
+        bands={bands}
+        highlight={null}
+        onHighlightChange={() => {}}
+      />,
+    );
+
+    expect(screen.getAllByRole("button")).toHaveLength(3);
+    expect(screen.getByRole("button", { name: "< 4%" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "4–8%" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "12–16%" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "8–12%" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "≥ 16%" })).toBeNull();
   });
 
   it("asks for the class that was clicked", async () => {

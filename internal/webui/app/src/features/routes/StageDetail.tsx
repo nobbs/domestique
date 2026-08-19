@@ -20,7 +20,12 @@ import { formatAscent, formatDistance, formatGradient } from "../../lib/format";
 import type { Highlight } from "../../lib/highlight";
 import { highlightLabel } from "../../lib/highlight";
 import type { DistanceWindow, Profile } from "../../lib/profile";
-import { buildProfile, buildWindowedProfile, presentBands } from "../../lib/profile";
+import {
+  buildProfile,
+  buildWindowedProfile,
+  gradientRanges,
+  presentBands,
+} from "../../lib/profile";
 import type { SurfaceSummary } from "../../lib/surface";
 import { summariseSurface } from "../../lib/surface";
 import { ReprocessButton } from "./ReprocessButton";
@@ -184,6 +189,13 @@ function StageView({
     setActiveMetres(null);
   }, []);
 
+  // The stage's steepness, classified from the coordinates the service stored
+  // rather than from any resampling of them. The key lists the bands it found and
+  // the chart colours the runs `buildProfile` reads from the same classifier, so
+  // neither can name a band the other has nothing to show. Held here so the key
+  // does not re-run the classification on every hover.
+  const gradient = useMemo(() => gradientRanges(coordinates), [coordinates]);
+
   // A classification that snapped to nothing is left unpainted rather than drawn
   // as unsurveyed from end to end: greying out the whole route to say nothing is
   // known says it less clearly than one sentence does.
@@ -247,7 +259,7 @@ function StageView({
               ? "No OpenStreetMap surface data along this stage."
               : "Surface not classified yet."
           }
-          bands={routeProfile ? presentBands(routeProfile) : []}
+          bands={presentBands(gradient)}
           activeMetres={activeMetres}
           onActiveChange={setActiveMetres}
           zoomWindow={shownWindow}

@@ -1,31 +1,20 @@
 import { describe, expect, it } from "vitest";
 import type { Position } from "../api/types";
-import type { ProfileSample } from "./profile";
 import {
   buildProfile,
   buildWindowedProfile,
   coordinateRange,
+  cumulativeMetres,
+  GRADIENT_WINDOW_METRES,
   gradientBand,
+  gradientRanges,
   nearestSample,
   niceStep,
   presentBands,
   rangeBounds,
   sampleAt,
-  steadyBands,
   ticksFor,
 } from "./profile";
-
-/** Only the band matters to steadyBands; the rest is filler. */
-function samplesOf(bands: number[]): ProfileSample[] {
-  return bands.map((band) => ({
-    distanceMetres: 0,
-    elevationMetres: 0,
-    longitude: 8,
-    latitude: 49,
-    gradientPercent: 0,
-    band,
-  }));
-}
 
 /** Points spaced by latitude, so distance grows predictably along the route. */
 function route(elevations: Array<number | undefined>, latitudeStep = 0.001): Position[] {
@@ -58,6 +47,53 @@ function flatThenSteep(): Position[] {
 }
 
 const CLIMB_STARTS_METRES = 19 * POINT_SPACING_METRES;
+
+/** One ten-thousandth of a degree of latitude is 11.119 metres. */
+const FINE_SPACING_METRES = 11.119;
+
+/**
+ * A route whose segments run at the given gradients, in percent.
+ *
+ * Points sit eleven metres apart, so the hundred-metre look-back spans about
+ * nine segments — close to the spacing a recorded track actually has, and the
+ * only spacing at which the smoothing can be seen doing anything.
+ */
+function ramp(percents: number[]): Position[] {
+  const points: Position[] = [[8, 49, 100]];
+  percents.forEach((percent, index) => {
+    const previous = points[index] as [number, number, number];
+    points.push([
+      8,
+      49 + (index + 1) * 0.0001,
+      previous[2] + (FINE_SPACING_METRES * percent) / 100,
+    ]);
+  });
+
+  return points;
+}
+
+/**
+ * A route from segments of the given length, in degrees of latitude, each
+ * arriving at the given elevation.
+ *
+ * Unevenly spaced deliberately: how long a run is, and how long the window it
+ * was measured over is, are two different lengths, and a uniform route cannot
+ * hold one of them still while the other changes.
+ */
+function unevenRoute(steps: Array<[latitudeDelta: number, elevation: number]>): Position[] {
+  let latitude = 49;
+
+  return steps.map(([delta, elevation], index) => {
+    latitude += index === 0 ? 0 : delta;
+
+    return [8, latitude, elevation] as Position;
+  });
+}
+
+/** Two hundred metres of latitude, twice the window a gradient is measured over. */
+const LONG_STEP = 0.0018;
+/** Sixty metres: a pitch shorter than the window that measured it. */
+const SHORT_STEP = 0.00054;
 
 describe("buildProfile", () => {
   it("describes the whole route as the stretch it covers", () => {
@@ -412,46 +448,175 @@ describe("gradientBand", () => {
   });
 });
 
-describe("steadyBands", () => {
-  it("absorbs a short opening run into the run that follows it", () => {
-    expect(steadyBands(samplesOf([2, 0, 0, 0, 0]))).toEqual([0, 0, 0, 0, 0]);
+describe("gradientRanges", () => {
+  it("bands a steady climb as one run from its first metre", () => {
+    expect(gradientRanges(ramp(Array(40).fill(10)))).toEqual([
+      { band: 2, startIndex: 0, endIndex: 39 },
+    ]);
   });
 
-  it("absorbs a short run into the run before it", () => {
-    expect(steadyBands(samplesOf([0, 0, 0, 2, 0, 0, 0]))).toEqual([0, 0, 0, 0, 0, 0, 0]);
+  it("reads a descent as steeply as the climb it mirrors", () => {
+    expect(gradientRanges(ramp(Array(40).fill(-10)))).toEqual([
+      { band: 2, startIndex: 0, endIndex: 39 },
+    ]);
   });
 
-  it("leaves a sustained opening run alone", () => {
-    expect(steadyBands(samplesOf([2, 2, 2, 0, 0, 0]))).toEqual([2, 2, 2, 0, 0, 0]);
+  it("hands the steep ground its own run once the flat ends", () => {
+    const ranges = gradientRanges(ramp([...Array(40).fill(0), ...Array(40).fill(10)]));
+
+    // Two runs, not three: the climb passes through the middle band in well
+    // under a hundred metres, and a colour that brief is a smear, not a stretch.
+    expect(ranges.map((range) => range.band)).toEqual([0, 2]);
+    // The gradient is measured backwards, so the climb is reported a little way
+    // into itself — the same lag the chart shows for the same stretch.
+    const steep = ranges[1]?.startIndex ?? 0;
+    expect(steep).toBeGreaterThan(40);
+    expect((steep - 40) * FINE_SPACING_METRES).toBeLessThan(100);
   });
 
-  it("leaves a profile of one run alone, short or not", () => {
-    expect(steadyBands(samplesOf([2, 2]))).toEqual([2, 2]);
+  it("collapses a stipple of short runs into the drag it belongs to", () => {
+    // Six percent and two, alternating: the look-back averages a little either
+    // side of the four percent edge and crosses it at every single segment,
+    // which unmerged would draw one steady drag as two colours of dotted line.
+    const wobble = Array.from({ length: 60 }, (_, index) => (index % 2 === 0 ? 6 : 2));
+
+    expect(gradientRanges(ramp(wobble))).toEqual([{ band: 1, startIndex: 0, endIndex: 59 }]);
+  });
+
+  // A run shorter than the window it was measured over was never sustained by
+  // the definition that classified it, so the pair below differ in one thing
+  // only: the length of the pitch, either side of that window.
+  it("absorbs a pitch shorter than the gradient window", () => {
+    const pitch = unevenRoute([
+      [0, 100],
+      [LONG_STEP, 100],
+      [LONG_STEP, 100],
+      [SHORT_STEP, 112],
+      [LONG_STEP, 112],
+      [LONG_STEP, 112],
+    ]);
+
+    expect(SHORT_STEP * (POINT_SPACING_METRES / 0.001)).toBeLessThan(GRADIENT_WINDOW_METRES);
+    expect(presentBands(gradientRanges(pitch))).toEqual([0]);
+  });
+
+  it("keeps a pitch longer than the gradient window", () => {
+    const pitch = unevenRoute([
+      [0, 100],
+      [LONG_STEP, 100],
+      [LONG_STEP, 100],
+      [LONG_STEP, 128],
+      [LONG_STEP, 128],
+      [LONG_STEP, 128],
+    ]);
+
+    expect(LONG_STEP * (POINT_SPACING_METRES / 0.001)).toBeGreaterThan(GRADIENT_WINDOW_METRES);
+    expect(presentBands(gradientRanges(pitch))).toEqual([0, 3]);
+  });
+
+  it("classifies the same ground however finely the chart samples it", () => {
+    const coordinates = flatThenSteep();
+    const offered = presentBands(gradientRanges(coordinates));
+
+    for (const sampleCount of [16, 40, 320, 1000]) {
+      const profile = buildProfile(coordinates, sampleCount);
+      if (!profile) {
+        throw new Error("expected a profile");
+      }
+      const drawn = new Set(profile.samples.map((sample) => sample.band));
+
+      expect(offered).toEqual(expect.arrayContaining([...drawn]));
+    }
+  });
+
+  // The floor is a hundred metres and a whole-route chart of a long stage gives
+  // each of them about a pixel and a half, so the question is whether a stage
+  // full of terrain-model wobble comes out as a stipple of slivers. It does not:
+  // the window the gradient is measured over smooths well past its own length,
+  // and nothing shorter than a couple of pixels survives it. This is the check
+  // that would notice if that stopped being true.
+  it("does not shatter a long noisy stage into slivers", () => {
+    // Rolling hills under a deterministic ±0.6 m of wobble, twelve metres a
+    // point, sixty kilometres of it.
+    let seed = 42;
+    const wobble = () => {
+      seed = (seed * 1103515245 + 12345) % 2 ** 31;
+
+      return (seed / 2 ** 31 - 0.5) * 1.2;
+    };
+    const coordinates: Position[] = [];
+    for (let index = 0; index < 5000; index++) {
+      const metres = index * 12;
+      const hills = 200 + 60 * Math.sin(metres / 1800) + 25 * Math.sin(metres / 430);
+      coordinates.push([8, 49 + index * 0.000108, hills + wobble()]);
+    }
+    const distances = cumulativeMetres(coordinates);
+    const lengths = gradientRanges(coordinates).map(
+      (range) => (distances[range.endIndex + 1] ?? 0) - (distances[range.startIndex] ?? 0),
+    );
+
+    expect(lengths.length).toBeLessThan(200);
+    expect(Math.min(...lengths)).toBeGreaterThanOrEqual(GRADIENT_WINDOW_METRES);
+  });
+
+  it("refuses geometry that is not fully surveyed", () => {
+    expect(gradientRanges(route([100, undefined, 120]))).toEqual([]);
+    expect(gradientRanges(route([100]))).toEqual([]);
   });
 });
 
 describe("presentBands", () => {
-  // Flat ground, a stretch of the transition the smoothing measures at a few
-  // percent, then the climb itself — and nothing steeper, which is the half of
-  // the answer that keeps unusable classes out of the key.
+  // Flat ground and the climb itself, and nothing between them: the transition
+  // is over in one segment, which is the half of the answer that keeps unusable
+  // classes out of the key.
   it("offers only the bands the stage actually has, gentlest first", () => {
-    const profile = buildProfile(flatThenSteep());
-    if (!profile) {
-      throw new Error("expected a profile");
-    }
-
-    expect(presentBands(profile)).toEqual([0, 1, 2]);
+    expect(presentBands(gradientRanges(flatThenSteep()))).toEqual([0, 2]);
   });
 
-  // The chart draws the bands it smoothed, so a wobble the columns absorbed
-  // must not appear in the key as a class with nothing to light.
-  it("offers nothing the chart has smoothed away", () => {
-    const profile = buildProfile(flatThenSteep());
-    if (!profile) {
-      throw new Error("expected a profile");
-    }
-    const bands = new Set(steadyBands(profile.samples));
+  // The same fixture the Go MaxGradientPercent test uses: steps of about two
+  // hundred metres climbing two metres and then twenty, which the service
+  // reports as about ten percent. The two implementations are pinned to one
+  // another here, so the summary line and the key cannot come to disagree.
+  it("offers the band the reported max gradient falls in", () => {
+    const stage = route([100, 102, 122], LONG_STEP);
 
-    expect(presentBands(profile).every((band) => bands.has(band))).toBe(true);
+    expect(presentBands(gradientRanges(stage))).toContain(gradientBand(10));
+  });
+
+  // What the key offers is a fact about the ground, so a reader zooming in and
+  // out must not watch the chips reshuffle underneath their hand.
+  it("offers the same bands whatever stretch the chart is showing", () => {
+    const coordinates = flatThenSteep();
+    const offered = presentBands(gradientRanges(coordinates));
+    const windows = [
+      { startMetres: 0, endMetres: 39 * POINT_SPACING_METRES },
+      { startMetres: CLIMB_STARTS_METRES - 200, endMetres: CLIMB_STARTS_METRES + 400 },
+      { startMetres: CLIMB_STARTS_METRES + 50, endMetres: CLIMB_STARTS_METRES + 200 },
+    ];
+
+    for (const window of windows) {
+      const profile = buildWindowedProfile(coordinates, window);
+      if (!profile) {
+        throw new Error("expected a profile");
+      }
+      const drawn = new Set(profile.samples.map((sample) => sample.band));
+
+      expect(offered).toEqual(expect.arrayContaining([...drawn]));
+    }
+  });
+
+  it("reports the same band for one pitch at every zoom level", () => {
+    const coordinates = flatThenSteep();
+    const inTheClimb = CLIMB_STARTS_METRES + 300;
+    const whole = buildProfile(coordinates);
+    const zoomed = buildWindowedProfile(coordinates, {
+      startMetres: inTheClimb - 150,
+      endMetres: inTheClimb + 150,
+    });
+    if (!whole || !zoomed) {
+      throw new Error("expected both profiles");
+    }
+
+    expect(sampleAt(zoomed, inTheClimb)?.band).toBe(sampleAt(whole, inTheClimb)?.band);
   });
 });
