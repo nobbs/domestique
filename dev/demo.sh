@@ -25,6 +25,25 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# --with-bundle builds the browser UI first, so the demo API embeds a current
+# production bundle and serves it at its own port beside the dev server. That is
+# the arrangement a deployment runs — the built bundle behind the identity gate,
+# the cache headers and the content security policy — and it is what the browser
+# suite's bundle project drives. Without the flag the demo is the dev server
+# alone, and the API serves whatever bundle the last build left embedded, if any.
+WITH_BUNDLE=false
+for argument in "$@"; do
+  case "${argument}" in
+  --with-bundle)
+    WITH_BUNDLE=true
+    ;;
+  *)
+    echo "usage: $(basename "$0") [--with-bundle]" >&2
+    exit 2
+    ;;
+  esac
+done
 DEMO_DIR="${ROOT}/.local/demo"
 DEMO_SECRETS="${DEMO_DIR}/secrets"
 CONFIG="${DEMO_DIR}/config.toml"
@@ -121,6 +140,15 @@ export CGO_ENABLED=0
 # Built rather than `go run`, because `go run` starts a child of its own: the
 # process this script can signal would not be the one holding the port, and
 # stopping the demo would leave an API behind still serving it.
+# Before the binary, because the bundle is embedded at compile time: building it
+# afterwards would leave the running API serving the previous one. The bundler
+# empties dist, which would remove the placeholder that keeps the go:embed
+# pattern valid, so it is restored the same way `make ui-build` does.
+if [[ "${WITH_BUNDLE}" == true ]]; then
+  "${NPM}" --prefix "${ROOT}/internal/webui/app" run build
+  touch "${ROOT}/internal/webui/app/dist/.gitkeep"
+fi
+
 BIN_DIR="${DEMO_DIR}/bin"
 mkdir -p "${BIN_DIR}"
 "${GO}" build -o "${BIN_DIR}/" "${ROOT}/dev/demoapi"

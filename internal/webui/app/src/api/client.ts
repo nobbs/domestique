@@ -8,6 +8,7 @@
  */
 
 import {
+  ContractError,
   parseStage,
   parseStageGeometry,
   parseStages,
@@ -63,7 +64,20 @@ async function request<T>(
   if (!response.ok) {
     throw new ApiError(response.status, errorCode(payload), errorMessage(payload, response.status));
   }
-  return parse(payload);
+
+  try {
+    return parse(payload);
+  } catch (error) {
+    // The parsers report which field failed; only this layer knows which request
+    // it came back from. Attaching it here is what makes a drift between the Go
+    // views and this client readable as "unexpected API response from GET
+    // /v1/routes: stages[0].title is not a string" wherever the message
+    // surfaces, including on screen.
+    if (error instanceof ContractError) {
+      throw error.at(`${options.method} ${path}`);
+    }
+    throw error;
+  }
 }
 
 function errorCode(payload: unknown): string {

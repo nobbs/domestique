@@ -42,6 +42,7 @@ import (
 	"github.com/nobbs/domestique/internal/oauth"
 	"github.com/nobbs/domestique/internal/sqlite"
 	"github.com/nobbs/domestique/internal/wahoo"
+	"github.com/nobbs/domestique/internal/webui"
 )
 
 const (
@@ -214,7 +215,7 @@ func newHandler(
 			slots:   slots,
 			running: &atomic.Bool{},
 		}.trigger),
-		devServerAssets{},
+		bundleAssets(),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("creating HTTP handler: %w", err)
@@ -223,18 +224,47 @@ func newHandler(
 	return handler, nil
 }
 
-// devServerAssets stands in for the embedded bundle. The UI is served by the
-// Vite dev server in a demo, so the document this would return is never the one
-// a browser loads; saying so is more useful than serving a blank page.
-type devServerAssets struct{}
+// bundleAssets is the embedded browser UI, when one has been built into this
+// binary, and an explanation when one has not.
+//
+// A demo is normally driven through the Vite dev server, which serves the UI from
+// source and proxies the API here, so for years the honest answer from this
+// listener was "the UI is somewhere else". It is served here as well because that
+// is the arrangement a deployment actually runs — the production bundle, behind
+// this handler's identity gate, its cache headers and its content security
+// policy — and the browser suite has a project that drives exactly that.
+//
+// The bundle is embedded at compile time from a gitignored directory, so whether
+// it exists depends on whether `make ui-build` ran before this binary was built.
+// A missing one is reported rather than served as a blank page; `dev/demo.sh
+// --with-bundle` is what guarantees a fresh one.
+func bundleAssets() httpapi.Assets {
+	assets, err := webui.New()
+	if err != nil {
+		fmt.Printf("No browser UI bundle is embedded (%v); "+
+			"the demo serves the UI from the Vite dev server\n", err)
 
-func (devServerAssets) Index(writer http.ResponseWriter, _ *http.Request) {
-	http.Error(writer, "the demo serves the UI from the Vite dev server", http.StatusNotFound)
+		return unbuiltAssets{}
+	}
+	fmt.Println("Serving the embedded browser UI bundle")
+
+	return assets
 }
 
-func (devServerAssets) Static(writer http.ResponseWriter, _ *http.Request) {
-	http.Error(writer, "the demo serves the UI from the Vite dev server", http.StatusNotFound)
+// unbuiltAssets stands in for a bundle that was never built. Saying so is more
+// useful than serving a blank page.
+type unbuiltAssets struct{}
+
+func (unbuiltAssets) Index(writer http.ResponseWriter, _ *http.Request) {
+	http.Error(writer, unbuiltMessage, http.StatusNotFound)
 }
+
+func (unbuiltAssets) Static(writer http.ResponseWriter, _ *http.Request) {
+	http.Error(writer, unbuiltMessage, http.StatusNotFound)
+}
+
+const unbuiltMessage = "no browser UI bundle is embedded in this binary: " +
+	"run `make ui-build` before building it, or use the Vite dev server"
 
 // reseeder runs one demo synchronisation at a time. Two concurrent seeds would
 // interleave their writes over the same rows, and the second caller is in the

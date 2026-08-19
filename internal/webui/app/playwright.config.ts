@@ -17,6 +17,18 @@ import { defineConfig, devices } from "@playwright/test";
  * dev server in front of it. Nothing here reads a real route, and the fixtures in
  * `e2e/fixtures.ts` answer the only third-party request the application makes.
  *
+ * That one stack serves the suite twice over, as two projects:
+ *
+ *   dev-server  the specs in `e2e`, against the Vite dev server. The UI as it is
+ *               being written, which is what a change to it should be checked as.
+ *   bundle      the specs in `e2e/contract`, against the Go service directly: the
+ *               production bundle from `internal/webui`'s embed handler, the real
+ *               routes behind it, and the identity gate, cache headers and content
+ *               security policy a deployment applies. A handler test and a parser
+ *               test can both pass while the JSON they assume has drifted apart,
+ *               and this is the project that reads a real response with the real
+ *               client.
+ *
  * Everything about the environment that a rendered pixel depends on is pinned
  * below — viewport, scale factor, colour scheme, locale, time zone and motion —
  * because a page that renders differently between two runs cannot be asserted
@@ -24,6 +36,17 @@ import { defineConfig, devices } from "@playwright/test";
  * page against itself within a run, and writes images, traces and a report under
  * `.playwright/` only when something failed.
  */
+/** Where the Vite dev server answers, as `dev/demo.sh` starts it. */
+const DEV_SERVER_URL = "http://localhost:5173";
+
+/**
+ * Where the Go service answers, which is also where it serves the bundle.
+ *
+ * `dev/demo.sh` takes the port from the same variable, so overriding it moves
+ * both and the two stay in step.
+ */
+const SERVICE_URL = `http://127.0.0.1:${process.env.DOMESTIQUE_DEMO_PORT ?? "8082"}`;
+
 export default defineConfig({
   testDir: "./e2e",
   // One demo API, one database, one dev server, and a software WebGL renderer for
@@ -41,9 +64,23 @@ export default defineConfig({
   // one place holds everything a run leaves behind for a human to look at.
   outputDir: "../../../.playwright/results",
   reporter: [["list"], ["html", { outputFolder: "../../../.playwright/report", open: "never" }]],
+  projects: [
+    {
+      name: "dev-server",
+      testDir: "./e2e",
+      // The bundle project's specs live below this directory and must not be
+      // collected twice, once against a server they were not written for.
+      testIgnore: "**/contract/**",
+      use: { baseURL: DEV_SERVER_URL },
+    },
+    {
+      name: "bundle",
+      testDir: "./e2e/contract",
+      use: { baseURL: SERVICE_URL },
+    },
+  ],
   use: {
     ...devices["Desktop Chrome"],
-    baseURL: "http://localhost:5173",
     viewport: { width: 1280, height: 900 },
     deviceScaleFactor: 1,
     colorScheme: "light",
@@ -69,15 +106,20 @@ export default defineConfig({
     },
   },
   webServer: {
-    command: "./dev/demo.sh",
+    // --with-bundle builds the browser UI before the demo API is compiled, so the
+    // bundle the bundle project drives is the current one rather than whatever a
+    // previous build left embedded.
+    command: "./dev/demo.sh --with-bundle",
     cwd: "../../..",
-    url: "http://localhost:5173",
+    // The dev server is the last thing `dev/demo.sh` starts, and it starts it only
+    // after the API answers its own health check, so waiting here waits for both.
+    url: DEV_SERVER_URL,
     // Locally, a demo already running is the one to test against; in CI there is
     // never one to reuse, and silently using a stale server would be worse than
     // failing to start.
     reuseExistingServer: !process.env.CI,
-    // A cold run compiles the demo API and installs nothing: the budget is the Go
-    // build plus the dev server's first transform.
+    // A cold run bundles the UI and compiles the demo API: the budget is the Vite
+    // production build plus the Go build plus the dev server's first transform.
     timeout: 180_000,
     stdout: "pipe",
     stderr: "pipe",

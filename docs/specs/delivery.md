@@ -213,6 +213,36 @@ environment guarantees above: the synthetic library, the unroutable providers,
 and the production identity gate in front of them. No test in it reads a real
 route, and no personal data is involved in running it.
 
+That one stack is driven as two projects. The `dev-server` project runs the specs
+in `e2e` against the Vite dev server: the UI as it is being written, which is how
+a change to it should be checked. The `bundle` project runs the specs in
+`e2e/contract` against the Go service directly — the production bundle served by
+`internal/webui`'s embed handler, the real routes behind it, and the cache
+headers, content security policy and gates a deployment applies. It exists
+because a handler test and a parser test can both keep passing while the JSON
+they each assume has drifted apart: only the shipped client reading a real
+response catches that, so a contract failure there is a real defect rather than a
+stale fixture. Contract failures name the request they came back from, because a
+mismatch that names neither the endpoint nor the field is a bug report nobody can
+act on.
+
+The bundle has to exist for that project to mean anything, and it is embedded at
+compile time from a gitignored directory. `dev/demo.sh --with-bundle` builds the
+UI before building `dev/demoapi`, which is how the suite guarantees the bundle it
+drives is the current one; the flag is what `make ui-browser-test` starts the
+stack with. Without it the demo still runs, and the listener says that no bundle
+is embedded rather than serving a blank page.
+
+There is no proxy in front of the service in that project, so two things the dev
+server does on the way through are done by the harness instead: the identity
+assertion is added to every request, and state-changing requests are forwarded
+with the configured browser origin. `Origin` is browser-managed — Chromium keeps
+the page's own origin whatever a test asks for — so those requests are made from
+outside the browser and their answer handed back to it. That is the same hop the
+dev proxy is, and the gate itself is untouched: the production verifier checks a
+real signature, audience, expiry and address, and the origin check is asserted
+directly by a request that presents the wrong one and is refused.
+
 It is hermetic. The only third-party request the application makes is the basemap
 style the service names, and the suite answers both the light and the dark
 document from memory with a background-only style that causes MapLibre to issue no
