@@ -142,8 +142,9 @@ rather than a chosen percentage, so no number has to be invented or maintained
 and the requirement rises with the tree. The status reads only the diff, so
 deleting well-covered code or moving statements between packages cannot fail a
 change — the property a project-total ratchet cannot offer. A change carrying no
-measurable Go passes, and so does one whose base commit holds no report at all,
-because there is nothing to compare it against.
+measurable Go passes. A change whose base commit carries no report is outside
+what this contract relies on: it is rebased onto a default-branch commit that
+carries one, and nothing here asserts what the status would otherwise report.
 
 The UI patch status is required to arrive rather than to pass, and the two
 project statuses report trend. That is deliberate and not pending: the UI

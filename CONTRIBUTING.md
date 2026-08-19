@@ -67,10 +67,14 @@ code or moving statements between packages cannot fail a pull request. A 1%
 threshold absorbs rounding, and a change with no measurable Go in it reports
 "Coverage not affected" and passes.
 
-One edge worth knowing: if the base commit carries no coverage report at all —
-a branch forked from before coverage was published — there is nothing to compare
-against and the status passes rather than blocking. Rebasing onto current `main`
-is what makes it measure.
+One edge worth knowing. A branch forked from before coverage was published has a
+base commit with no report, so the patch status has nothing to compare against;
+and if that branch's tree also predates the coverage job, it uploads nothing
+itself, so the required contexts never arrive and the pull request blocks on
+their absence rather than on a number. Codecov is expected to pass a patch it
+cannot compare, but that has not been observed here and nothing depends on it.
+Rebasing onto current `main` answers both, and is worth doing before opening the
+pull request rather than after.
 
 `codecov/patch/ui` is required too, but stays informational: it has to arrive,
 and its number never fails. The UI measurement does not yet describe what the
