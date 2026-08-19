@@ -84,10 +84,11 @@ the network rather than because it matters less:
 | `ui-browser-install` | Downloads a browser: a network fetch and a few hundred megabytes on disk. |
 | `ui-browser-test` | Drives that browser over the demo stack; minutes rather than seconds, and useless without the download above. |
 
-It also reuses an installed browser UI dependency tree rather than reinstalling
-it, and installs one only when none is present. CI always installs from a clean
-`npm ci`, and a lockfile that has moved installs from scratch locally too, so a
-dependency change is still proved against a fresh tree.
+One task installs the browser UI dependency tree, and every check that reads
+it waits for that task rather than installing anything itself. It reinstalls
+from the lockfile when the lockfile has moved or the tree is gone, and does
+nothing otherwise, so a dependency change is proved against a fresh tree
+locally as well as in CI.
 
 That `mise run quick` is a strict subset of `mise run check`, and that the
 difference is exactly the deferred set above, is asserted rather than only

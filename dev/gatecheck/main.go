@@ -59,9 +59,9 @@ type rules struct {
 	gate []string
 
 	// preparation is the only dependency of a gate task that is not a check.
-	// Both entries install the browser UI dependency tree, which is a
-	// precondition of running the UI checks rather than a check that could go
-	// unnoticed, so neither counts towards the comparison.
+	// It installs the browser UI dependency tree, which is a precondition of
+	// running the UI checks rather than a check that could go unnoticed, so it
+	// does not count towards the comparison.
 	preparation []string
 }
 
@@ -90,7 +90,6 @@ func gateRules() rules {
 			"quick",
 		},
 		preparation: []string{
-			"ui-ensure",
 			"ui-install",
 		},
 	}

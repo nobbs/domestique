@@ -18,7 +18,7 @@ import (
 // and the walk must not count it as a step.
 func graph() []task {
 	return []task{
-		{Name: "quick", Depends: []string{"ui-ensure", "hygiene", "vet"}},
+		{Name: "quick", Depends: []string{"ui-install", "hygiene", "vet"}},
 		{Name: "check", Depends: []string{
 			"ci-lint", "ci-test", "ci-security", "ci-ui", "build-check",
 		}},
@@ -36,7 +36,7 @@ func graph() []task {
 		{Name: "ui-browser-install", Run: []string{"npm run test:browser:install"}},
 		{Name: "ui-browser-test", Run: []string{"npm run test:browser"}},
 		{Name: "ui-build", Run: []string{"npm run build"}},
-		{Name: "ui-ensure", Run: []string{"npm ci"}},
+		{Name: "ui-install", Run: []string{"npm ci"}},
 		{Name: "ui-install", Run: []string{"npm ci"}},
 
 		// Defined but wired into neither root, so a case can add a step
@@ -91,7 +91,7 @@ func TestAnalyseRejectsACheckOnlyTheRoutineLoopRuns(t *testing.T) {
 
 	problems, err := analyse(with(&task{
 		Name:    "quick",
-		Depends: []string{"ui-ensure", "hygiene", "vet", "secret-scan"},
+		Depends: []string{"ui-install", "hygiene", "vet", "secret-scan"},
 	}), nil)
 	require.NoError(t, err)
 
@@ -137,7 +137,7 @@ func TestAnalyseReportsEveryBrokenRuleAtOnce(t *testing.T) {
 
 	tasks := with(&task{
 		Name:    "quick",
-		Depends: []string{"ui-ensure", "hygiene", "vet", "secret-scan"},
+		Depends: []string{"ui-install", "hygiene", "vet", "secret-scan"},
 	})
 
 	for i, t2 := range tasks {

@@ -174,7 +174,7 @@ run = [
 # halves.
 [coverage-ui]
 description = "Measure UI coverage across the jsdom and browser suites"
-depends = ["ui-ensure"]
+depends = ["ui-install"]
 wait_for = ["coverage-go"]
 run = [
   "npm --prefix internal/webui/app run test:coverage",
@@ -198,9 +198,13 @@ run = "DOMESTIQUE_CONFIG_FILE={{config_root}}/.local/dev/config.toml CGO_ENABLED
 # secret, and no copy of anyone's routes. See dev/demo.sh.
 [demo]
 description = "Run the whole stack against a synthetic library"
-depends = ["ui-ensure"]
+depends = ["ui-install"]
 run = "./dev/demo.sh"
 
+# The only thing that installs node_modules. It declares the lockfile as its
+# source and the installed lockfile as its output, so it reinstalls when a
+# dependency changes or the tree is gone, and costs a few milliseconds
+# otherwise — which is why the routine loop can afford to depend on it.
 [ui-install]
 description = "Install the UI dependency tree from the lockfile"
 sources = [
@@ -210,26 +214,13 @@ sources = [
 outputs = ["internal/webui/app/node_modules/.package-lock.json"]
 run = "npm --prefix internal/webui/app ci"
 
-# Installs only when the tree is missing altogether, so the routine loop does
-# not pay a clean `npm ci` every run. It cannot notice a lockfile that moved
-# under an already-installed tree, so run `mise run ui-install` after changing a
-# UI dependency; `ci-ui`, and therefore `check` and CI, always install from
-# scratch and would catch it anyway.
-#
-# It waits for `ui-install` so that the two never race when a gate schedules
-# both: after a clean install this has nothing left to do, which is the point.
-[ui-ensure]
-description = "Install the UI dependency tree if it is missing"
-wait_for = ["ui-install"]
-run = '[ -d "internal/webui/app/node_modules" ] || npm --prefix internal/webui/app ci'
-
 [ui-dev]
 description = "Serve the UI with hot reload"
 run = "npm --prefix internal/webui/app run dev"
 
 # The UI checks below read node_modules but do not install it. `wait_for` orders
-# them behind whichever installer a gate scheduled, and does nothing when one is
-# run on its own.
+# them behind `ui-install` when a gate scheduled it, and does nothing when one
+# of them is run on its own.
 [ui-typecheck]
 description = "Type-check the UI"
 sources = [
@@ -242,7 +233,7 @@ sources = [
   "internal/webui/app/*.json",
 ]
 outputs = { auto = true }
-wait_for = ["ui-install", "ui-ensure"]
+wait_for = ["ui-install"]
 run = "npm --prefix internal/webui/app run typecheck"
 
 [ui-lint]
@@ -257,12 +248,12 @@ sources = [
   "internal/webui/app/*.json",
 ]
 outputs = { auto = true }
-wait_for = ["ui-install", "ui-ensure"]
+wait_for = ["ui-install"]
 run = "npm --prefix internal/webui/app run lint"
 
 [ui-format]
 description = "Format the UI"
-wait_for = ["ui-install", "ui-ensure"]
+wait_for = ["ui-install"]
 run = "npm --prefix internal/webui/app run format"
 
 [ui-test]
@@ -277,7 +268,7 @@ sources = [
   "internal/webui/app/*.json",
 ]
 outputs = { auto = true }
-wait_for = ["ui-install", "ui-ensure"]
+wait_for = ["ui-install"]
 run = "npm --prefix internal/webui/app run test"
 
 # Downloads the browser the whole-page suite runs in. Separate from running the
@@ -297,7 +288,7 @@ run = "npm --prefix internal/webui/app run test"
 # before `mise run coverage` drives it.
 [ui-browser-install]
 description = "Download the browser the whole-page suite runs in"
-depends = ["ui-ensure"]
+depends = ["ui-install"]
 run = "npm --prefix internal/webui/app run test:browser:install --"
 
 # The whole page in a real browser, over `mise run demo`'s synthetic library:
@@ -314,7 +305,7 @@ run = "npm --prefix internal/webui/app run test:browser"
 # advisory check in the same gate.
 [ui-audit]
 description = "Check the UI dependency tree against the advisory database"
-wait_for = ["ui-install", "ui-ensure"]
+wait_for = ["ui-install"]
 run = "npm --prefix internal/webui/app audit --omit=dev"
 
 # The bundler empties dist, which would remove the committed placeholder that
@@ -331,7 +322,7 @@ sources = [
   "internal/webui/app/*.json",
 ]
 outputs = ["internal/webui/app/dist/**"]
-wait_for = ["ui-install", "ui-ensure"]
+wait_for = ["ui-install"]
 run = [
   "npm --prefix internal/webui/app run build",
   "touch internal/webui/app/dist/.gitkeep",
@@ -426,7 +417,7 @@ depends = ["mod-check", "vulncheck", "ui-audit", "secret-scan"]
 
 # Every UI task reads node_modules, so this group installs before it runs
 # anything — `ui-install` is a step here, and the checks that follow it wait for
-# it. Nothing else in the gate may assume the tree is already installed.
+# it.
 [ci-ui]
 description = "The UI half of the gate, as CI groups it"
 depends = [
@@ -458,11 +449,10 @@ depends = [
 # on every pull request. `gate-check` asserts that this list is the whole of the
 # difference, so a check added to the full gate cannot silently skip this one.
 #
-# It reuses an installed UI tree rather than reinstalling it; see `ui-ensure`.
 [quick]
 description = "The routine local loop"
 depends = [
-  "ui-ensure",
+  "ui-install",
   "hygiene",
   "lint",
   "markdownlint",
