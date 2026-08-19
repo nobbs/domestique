@@ -373,7 +373,11 @@ screenshot that goes stale on a renderer or font change. Everything about the
 environment that a pixel depends on — viewport, device scale factor, colour
 scheme, locale, time zone, motion and font stack — is pinned by the configuration
 and the fixtures. Traces, failure screenshots and the HTML report are written to
-the gitignored `.playwright/` directory.
+the gitignored `.playwright/` directory, which both browser-driving CI jobs
+upload as a short-lived artifact when they fail, and never when they pass. The
+suite also reports through Playwright's `github` reporter on a runner, so a
+failure annotates the pull request at the line it failed on rather than only in
+the job log.
 
 The browser and its system libraries are a download, so
 `mise run ui-browser-install` is a separate target and both it and

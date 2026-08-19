@@ -229,6 +229,30 @@ required status reads them, and a pull request that skipped a path-filtered job
 simply has no report for that suite on that commit. A failed upload — no token on
 a fork, or Codecov unavailable — costs the report and not the run.
 
+### When a browser test fails
+
+The browser suite is the one whose failures are expensive to reproduce — a
+Chromium download and a demo stack — so it is set up to explain itself from a
+single run, and CI keeps what it wrote.
+
+On a runner the suite reports through Playwright's `github` reporter, which
+annotates the pull request's Files-changed view at the file and line the
+assertion failed on. Locally it reports through `list`, unchanged.
+
+Everything else it leaves goes under the gitignored `.playwright/` directory: a
+trace per failed test under `.playwright/results/`, the failure screenshot beside
+it, and the HTML report under `.playwright/report/`. Both jobs that drive the
+browser upload that directory as an artifact when they fail, as `playwright-ui`
+and `playwright-coverage`, kept for seven days — long enough to look at a failure,
+not long enough to accumulate. A green run uploads nothing.
+
+Open a downloaded trace at [trace.playwright.dev](https://trace.playwright.dev),
+which runs in the browser and uploads nothing, or with
+`npx playwright show-trace <file>`. It carries the DOM, the console, the network
+and a screenshot per step, which is most of what re-running the test locally
+would have told you. The library behind it is the synthetic one in
+`internal/demo`, so a trace holds no real route.
+
 ## Contributions
 
 Keep changes focused, add regression tests for behavior changes, and avoid
