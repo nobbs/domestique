@@ -166,7 +166,16 @@ describe("parseStatus", () => {
   it("reads readiness and the last run", () => {
     const status = parseStatus({
       ready: true,
-      targets: [{ id: "rider-a", authorisation: "authorized" }],
+      converged: false,
+      targets: [
+        {
+          id: "rider-a",
+          authorisation: "authorized",
+          convergence: "lagging",
+          stages: { current: 3, pending: 1 },
+          last_run: { completed_at: "2026-08-17T08:00:00Z", result: "succeeded" },
+        },
+      ],
       sync: {
         state: "succeeded",
         last_result: "succeeded",
@@ -187,10 +196,138 @@ describe("parseStatus", () => {
     expect(status.sync.lastCompletedAt).toBe("2026-08-17T08:00:00Z");
   });
 
+  it("reads each account's convergence, counts, and last write", () => {
+    const status = parseStatus({
+      ready: true,
+      converged: false,
+      targets: [
+        {
+          id: "rider-a",
+          authorisation: "authorized",
+          convergence: "current",
+          stages: { current: 4, pending: 0 },
+          last_run: { completed_at: "2026-08-18T06:00:00Z", result: "succeeded" },
+        },
+        {
+          id: "rider-b",
+          authorisation: "authorized",
+          convergence: "failed",
+          stages: { current: 3, pending: 1 },
+          last_run: {
+            completed_at: "2026-08-18T06:00:04Z",
+            result: "failed",
+            failure: "destination",
+          },
+        },
+      ],
+      sync: {
+        state: "failed",
+        source_stages: 4,
+        created: 0,
+        updated: 0,
+        deleted: 0,
+        schedule: { source: true, targets: true },
+        phases: {},
+        surface: { classified: 0, total: 0 },
+      },
+    });
+
+    expect(status.converged).toBe(false);
+    expect(status.targets[0]?.convergence).toBe("current");
+    expect(status.targets[0]?.stages).toEqual({ current: 4, pending: 0 });
+    expect(status.targets[0]?.lastRun?.failure).toBeUndefined();
+    expect(status.targets[1]?.convergence).toBe("failed");
+    expect(status.targets[1]?.stages.pending).toBe(1);
+    expect(status.targets[1]?.lastRun?.failure).toBe("destination");
+  });
+
+  // An account that has never been written to is absent from the run record, not
+  // an account whose write succeeded with nothing to do.
+  it("reads an account that has never been written to", () => {
+    const status = parseStatus({
+      ready: true,
+      converged: false,
+      targets: [
+        {
+          id: "rider-a",
+          authorisation: "not_authorized",
+          convergence: "unauthorized",
+          stages: { current: 0, pending: 4 },
+        },
+      ],
+      sync: {
+        state: "not_ready",
+        source_stages: 4,
+        created: 0,
+        updated: 0,
+        deleted: 0,
+        schedule: { source: true, targets: true },
+        phases: {},
+        surface: { classified: 0, total: 0 },
+      },
+    });
+
+    expect(status.targets[0]?.lastRun).toBeUndefined();
+    expect(status.targets[0]?.convergence).toBe("unauthorized");
+  });
+
+  // A word this build has never heard of cannot be presented as "everything is
+  // fine", so it degrades to the state that asks the operator to look.
+  it("degrades an unfamiliar convergence to failed", () => {
+    const status = parseStatus({
+      ready: true,
+      converged: false,
+      targets: [
+        {
+          id: "rider-a",
+          authorisation: "authorized",
+          convergence: "reticulating",
+          stages: { current: 0, pending: 0 },
+        },
+      ],
+      sync: {
+        state: "idle",
+        source_stages: 0,
+        created: 0,
+        updated: 0,
+        deleted: 0,
+        schedule: { source: true, targets: true },
+        phases: {},
+        surface: { classified: 0, total: 0 },
+      },
+    });
+
+    expect(status.targets[0]?.convergence).toBe("failed");
+  });
+
+  it("refuses a status missing overall convergence or an account's counts", () => {
+    const sync = {
+      state: "idle",
+      source_stages: 0,
+      created: 0,
+      updated: 0,
+      deleted: 0,
+      schedule: { source: true, targets: true },
+      phases: {},
+      surface: { classified: 0, total: 0 },
+    };
+
+    expect(() => parseStatus({ ready: true, targets: [], sync })).toThrow(ContractError);
+    expect(() =>
+      parseStatus({
+        ready: true,
+        converged: true,
+        targets: [{ id: "rider-a", authorisation: "authorized", convergence: "current" }],
+        sync,
+      }),
+    ).toThrow(ContractError);
+  });
+
   it("reads the build the service is running", () => {
     const revision = "0123456789abcdef0123456789abcdef01234567";
     const status = parseStatus({
       ready: true,
+      converged: true,
       targets: [],
       build: { revision, image_digest: `sha256:${"cd".repeat(32)}` },
       sync: {
@@ -215,6 +352,7 @@ describe("parseStatus", () => {
   it("treats a missing or identity-less build as no build", () => {
     const withBuild = (build: unknown) => ({
       ready: true,
+      converged: true,
       targets: [],
       ...(build === undefined ? {} : { build }),
       sync: {
@@ -241,6 +379,7 @@ describe("parseStatus", () => {
   it("tolerates a run that has never completed", () => {
     const status = parseStatus({
       ready: false,
+      converged: true,
       targets: [],
       sync: {
         state: "not_ready",
@@ -260,6 +399,7 @@ describe("parseStatus", () => {
   it("reads both schedule switches and each half's last run", () => {
     const status = parseStatus({
       ready: true,
+      converged: true,
       targets: [],
       sync: {
         state: "failed",
@@ -301,6 +441,7 @@ describe("parseStatus", () => {
   it("leaves a half absent until it has run", () => {
     const status = parseStatus({
       ready: true,
+      converged: true,
       targets: [],
       sync: {
         state: "idle",
@@ -332,6 +473,7 @@ describe("parseStatus", () => {
   it("refuses a schedule that names only one switch", () => {
     const withSchedule = (schedule: unknown) => ({
       ready: true,
+      converged: true,
       targets: [],
       sync: {
         state: "idle",

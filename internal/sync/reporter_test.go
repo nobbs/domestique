@@ -6,6 +6,9 @@ import (
 	"slices"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestReporterRecordsAndNotifiesEverySuccess(t *testing.T) {
@@ -261,12 +264,41 @@ func (r *blockingReportingRunner) RunTargets(context.Context) Result {
 func (r *blockingReportingRunner) AnnotateStored(context.Context) {}
 
 type fakeRunState struct {
-	scheduleErr error
-	lastFailure map[string]time.Time
-	phases      []string
-	runs        int
-	source      bool
-	targets     bool
+	scheduleErr  error
+	targetRunErr error
+	lastFailure  map[string]time.Time
+	phases       []string
+	recordedRuns []recordedTargetRun
+	runs         int
+	source       bool
+	targets      bool
+}
+
+// recordedTargetRun is one slot's result as it reached durable state.
+type recordedTargetRun struct {
+	finishedAt time.Time
+	id         string
+	outcome    string
+	detail     string
+}
+
+func (s *fakeRunState) RecordTargetRun(
+	_ context.Context,
+	targetID string,
+	finishedAt time.Time,
+	outcome, detail string,
+) error {
+	if s.targetRunErr != nil {
+		return s.targetRunErr
+	}
+	s.recordedRuns = append(s.recordedRuns, recordedTargetRun{
+		finishedAt: finishedAt,
+		id:         targetID,
+		outcome:    outcome,
+		detail:     detail,
+	})
+
+	return nil
 }
 
 func (s *fakeRunState) RecordSyncRun(
@@ -332,4 +364,57 @@ func newReporter(t *testing.T, runner Runner, state RunState, notifier Notifier)
 
 func equalNotifications(left, right []notification) bool {
 	return slices.Equal(left, right)
+}
+
+// The per-slot rows are what a status page reads to answer "is this account
+// current", so each one is written with the run's own finish time.
+func TestReporterRecordsEachTargetsOwnResult(t *testing.T) {
+	runner := &reportingRunner{targets: Result{
+		Phase:   PhaseTargets,
+		Outcome: OutcomeFailed,
+		Failure: FailureDestination,
+		Targets: []TargetResult{
+			{ID: "rider-a", Outcome: OutcomeSucceeded},
+			{ID: "rider-b", Outcome: OutcomeFailed, Failure: FailureDestination},
+		},
+	}}
+	state := &fakeRunState{targets: true}
+	reporter := newReporter(t, runner, state, &fakeNotifier{})
+	now := time.Date(2026, time.August, 18, 9, 0, 0, 0, time.UTC)
+	reporter.now = func() time.Time { return now }
+
+	reporter.Run(t.Context())
+	assert.Equal(t, []recordedTargetRun{
+		{finishedAt: now, id: "rider-a", outcome: "succeeded"},
+		{finishedAt: now, id: "rider-b", outcome: "failed", detail: "destination"},
+	}, state.recordedRuns)
+}
+
+// A slot whose row cannot be written costs an operator one stale line. Stopping
+// there would cost them every line after it, and the run itself is already
+// recorded and reported by then.
+func TestReporterStillNotifiesWhenATargetRowCannotBeWritten(t *testing.T) {
+	runner := &reportingRunner{targets: Result{
+		Phase:   PhaseTargets,
+		Outcome: OutcomeSucceeded,
+		Targets: []TargetResult{{ID: "rider-a", Outcome: OutcomeSucceeded}},
+	}}
+	state := &fakeRunState{targets: true, targetRunErr: errors.New("state unavailable")}
+	notifier := &fakeNotifier{}
+	reporter := newReporter(t, runner, state, notifier)
+
+	result := reporter.Run(t.Context())
+	require.Equal(t, OutcomeSucceeded, result.Outcome)
+	assert.Empty(t, state.recordedRuns)
+	assert.Len(t, notifier.messages, 1)
+}
+
+// The source phase writes to no target, so it records nothing about one.
+func TestReporterRecordsNoTargetRunsForASourceRun(t *testing.T) {
+	runner := &reportingRunner{source: Result{Phase: PhaseSource, Outcome: OutcomeSucceeded, SourceStages: 2}}
+	state := &fakeRunState{source: true}
+	reporter := newReporter(t, runner, state, &fakeNotifier{})
+
+	reporter.Run(t.Context())
+	assert.Empty(t, state.recordedRuns)
 }

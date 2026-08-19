@@ -8,6 +8,7 @@ import { SyncControls } from "./SyncControls";
 function status(overrides: Partial<Status["sync"]> = {}): Status {
   return {
     ready: true,
+    converged: true,
     targets: [],
     sync: {
       state: "idle",

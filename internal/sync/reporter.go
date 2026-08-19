@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	stdsync "sync"
 	"sync/atomic"
 	"time"
@@ -14,6 +15,7 @@ const failureNotificationSuppression = 6 * time.Hour
 // RunState records terminal run data and failure-notification delivery state.
 type RunState interface {
 	RecordSyncRun(ctx context.Context, phase string, startedAt, finishedAt time.Time, outcome, detail string, sourceStages, created, updated, deleted int) error
+	RecordTargetRun(ctx context.Context, targetID string, finishedAt time.Time, outcome, detail string) error
 	LastFailureNotification(ctx context.Context, category string) (sentAt time.Time, found bool, err error)
 	RecordFailureNotification(ctx context.Context, category string, sentAt time.Time) error
 	SyncSchedule(ctx context.Context) (source, targets bool, err error)
@@ -168,6 +170,7 @@ func (r *Reporter) record(ctx context.Context, startedAt time.Time, result *Resu
 	); err != nil {
 		return *result
 	}
+	r.recordTargetRuns(ctx, finishedAt, result.Targets)
 
 	switch result.Outcome {
 	case OutcomeSucceeded:
@@ -179,6 +182,26 @@ func (r *Reporter) record(ctx context.Context, startedAt time.Time, result *Resu
 	}
 
 	return *result
+}
+
+// recordTargetRuns writes down what each slot's own reconciliation came to.
+//
+// A slot that cannot be recorded is passed over rather than allowed to stop the
+// rest: these rows report convergence, and losing one costs an operator a stale
+// line on a status page, whereas abandoning the loop would cost them every line
+// after it.
+func (r *Reporter) recordTargetRuns(ctx context.Context, finishedAt time.Time, targets []TargetResult) {
+	for _, target := range targets {
+		if err := r.state.RecordTargetRun(
+			ctx,
+			target.ID,
+			finishedAt,
+			string(target.Outcome),
+			string(target.Failure),
+		); err != nil {
+			slog.Warn("target run not recorded", "target", target.ID, "reason", "state")
+		}
+	}
 }
 
 // notifyFailure delivers one failure notification per phase and category, no

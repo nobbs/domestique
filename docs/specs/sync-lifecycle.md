@@ -90,17 +90,18 @@ coordinate array that was replaced.
 ## OAuth lifecycle
 
 The configuration has one or two target slots. Each begins in
-"not_authorised"; automatic sync does not start until every configured slot is
-"authorised".
+"not_authorized"; automatic sync does not start until every configured slot is
+"authorized". These are the values the service stores and serves, so they are
+spelled as the wire spells them even where the surrounding prose is not.
 
 ~~~mermaid
 stateDiagram-v2
-    [*] --> not_authorised
-    not_authorised --> pending: protected start request
-    pending --> authorised: valid callback and token exchange
-    pending --> not_authorised: expiry, denial, or exchange failure
-    authorised --> needs_reauthorisation: Wahoo invalidates refresh token
-    needs_reauthorisation --> pending: protected start request
+    [*] --> not_authorized
+    not_authorized --> pending: protected start request
+    pending --> authorized: valid callback and token exchange
+    pending --> not_authorized: expiry, denial, or exchange failure
+    authorized --> needs_reauthorization: Wahoo invalidates refresh token
+    needs_reauthorization --> pending: protected start request
 ~~~
 
 1. The configured Tailnet user requests
@@ -192,7 +193,7 @@ Wahoo access and refresh tokens are handled per target:
    later request, so a crash cannot leave only a stale token on disk.
 3. It performs the required API request with the in-memory access token.
 4. A rejected refresh token sets only that target to
-   "needs_reauthorisation"; the other target is still attempted.
+   "needs_reauthorization"; the other target is still attempted.
 
 limits and request-response boundaries before the next target call begins.
 All Wahoo calls are serial across configured targets. The client observes
@@ -363,9 +364,26 @@ Returns 200 while the service can read state. The minimum shape is:
 ~~~json
 {
   "ready": true,
+  "converged": false,
   "targets": [
-    {"id":"rider-a","authorisation":"authorised"},
-    {"id":"rider-b","authorisation":"authorised"}
+    {
+      "id":"rider-a",
+      "authorisation":"authorized",
+      "convergence":"current",
+      "stages":{"current":12,"pending":0},
+      "last_run":{"completed_at":"2026-08-16T12:00:04Z","result":"succeeded"}
+    },
+    {
+      "id":"rider-b",
+      "authorisation":"authorized",
+      "convergence":"lagging",
+      "stages":{"current":11,"pending":1},
+      "last_run":{
+        "completed_at":"2026-08-16T12:00:04Z",
+        "result":"failed",
+        "failure":"destination"
+      }
+    }
   ],
   "sync": {
     "state":"idle",
@@ -399,13 +417,44 @@ Returns 200 while the service can read state. The minimum shape is:
 }
 ~~~
 
-Authorisation is one of "not_authorised", "pending", "authorised", or
-"needs_reauthorisation". Sync state is "not_ready", "idle", "running",
+Authorisation is one of "not_authorized", "pending", "authorized", or
+"needs_reauthorization". Sync state is "not_ready", "idle", "running",
 "succeeded", "failed", or "blocked". Timestamps are RFC 3339 UTC.
 
 `surface` counts how many stored stages carry a classification measured against
 the geometry they hold now; a classification of an earlier shape of a stage does
 not count, because it describes a line the map no longer draws.
+
+`converged` and the per-target `convergence`, `stages`, and `last_run` answer
+whether every stored stage at its current revision has been applied to every
+configured target. They are derived from local state alone — the stored source
+revision of each stage against the revision each target was last given, plus the
+recorded result of each target's last reconciliation. A status request never
+contacts Wahoo, so it can be answered while Wahoo is unreachable.
+
+This is convergence of the Wahoo accounts, not a claim about physical device
+download: a head unit fetches routes from its account on its own schedule, and
+the service cannot see whether it has.
+
+`convergence` is one of:
+
+- "current" — every stored stage is on that account at its stored revision, and
+  its last reconciliation succeeded.
+- "lagging" — stages remain to be written or removed there.
+- "failed" — its last reconciliation did not succeed.
+- "unauthorized" — the slot is not authorised, so nothing can be written until
+  the one-time browser visit happens. This outranks the others, because a
+  lagging count there says nothing an operator can act on differently.
+
+`stages.current` counts stored stages that account holds at the stored revision.
+`stages.pending` counts the remaining stored stages plus any stage the account
+still holds that has left the library — outstanding removal is outstanding work.
+`last_run` is absent until that account has been reconciled once, which is not
+the same as a reconciliation that had nothing to do. Neither carries a Wahoo
+identifier, route name, or URL.
+
+`converged` is true only when every configured target reads "current". An empty
+library converges: there is nothing left to apply.
 
 `schedule` carries the two switches. A phase under `phases` is absent until that
 half has finished a run, and carries `last_failure` with the safe failure

@@ -89,17 +89,49 @@ type Assets interface {
 
 // State provides only non-secret metadata and stored geometry for the read
 // model. It never exposes tokens or upstream response bodies.
+//
+// It is composed of the concerns behind the served surface rather than written
+// as one long list, so a reader can see which of them a route actually touches.
 type State interface {
+	TargetState
+	StageState
+	RunState
+	ScheduleState
+}
+
+// TargetState is what is known locally about each configured Wahoo account:
+// whether it is onboarded, what it was last written, and how its own last
+// reconciliation ended. Every one of these is a local read — a status request
+// never asks Wahoo what it holds.
+type TargetState interface {
 	ForEachTarget(ctx context.Context, visit func(id, authorization string) error) error
+	ForEachTargetStage(ctx context.Context, targetID string, visit func(routeID int64, stageOrder int, sourceRevision, contentHash string, wahooRouteID int64) error) error
+	ForEachTargetRun(ctx context.Context, visit func(targetID string, finishedAt time.Time, outcome, detail string) error) error
+}
+
+// StageState is the stored library: what each stage is, the revision it is held
+// at, and the geometry and classification derived from it. The revision here,
+// against the one in TargetState, is all convergence is derived from.
+type StageState interface {
+	ForEachSourceStage(ctx context.Context, visit func(routeID int64, stageOrder int, sourceRevision, contentHash string) error) error
 	ForEachStageSummary(ctx context.Context, visit func(summary route.Summary) error) error
 	StageGeometry(ctx context.Context, routeID int64, stageOrder int) (route.Summary, json.RawMessage, bool, error)
 	StageSurface(ctx context.Context, routeID int64, stageOrder int, contentHash string) (json.RawMessage, float64, bool, error)
+	SurfaceCoverage(ctx context.Context) (classified, total int, err error)
+	RequestStageReprocess(ctx context.Context, routeID int64, stageOrder int) (found bool, err error)
+}
+
+// RunState is what the last synchronization runs recorded, in aggregate and per
+// half.
+type RunState interface {
 	LastSyncRun(ctx context.Context) (completedAt time.Time, outcome, detail string, sourceStages, created, updated, deleted int, found bool, err error)
 	ForEachPhaseRun(ctx context.Context, visit func(phase string, completedAt time.Time, outcome, detail string, sourceStages, created, updated, deleted int) error) error
-	SurfaceCoverage(ctx context.Context) (classified, total int, err error)
+}
+
+// ScheduleState is the pair of switches governing unattended runs.
+type ScheduleState interface {
 	SyncSchedule(ctx context.Context) (source, targets bool, err error)
 	SetSyncSchedule(ctx context.Context, source, targets bool) error
-	RequestStageReprocess(ctx context.Context, routeID int64, stageOrder int) (found bool, err error)
 }
 
 // AccessVerifier proves the identity behind a Cloudflare Access assertion. It

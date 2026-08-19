@@ -72,13 +72,30 @@ const (
 	FailureDeletionLimit FailureCategory = "deletion_limit"
 )
 
+// TargetResult is one target's own share of a reconciliation.
+//
+// A run is recorded once, so its outcome is the worst of what happened across
+// the slots. That is the wrong answer to the question an operator asks about one
+// Wahoo account, which is why each slot reports its own here: a run that wrote
+// one account and could not write the other is a partial failure, and both
+// halves of that fact are worth keeping.
+type TargetResult struct {
+	// ID is the configured target slot. It is never a Wahoo user identifier.
+	ID      string
+	Outcome Outcome
+	Failure FailureCategory
+}
+
 // Result contains aggregate, non-sensitive counts for one synchronization run.
 type Result struct {
 	// Phase names the half of a synchronization this result describes. The
 	// counts a phase does not produce stay zero.
-	Phase        Phase
-	Outcome      Outcome
-	Failure      FailureCategory
+	Phase   Phase
+	Outcome Outcome
+	Failure FailureCategory
+	// Targets carries each slot's own outcome, in configured order. Only the
+	// target phase produces it, and only for the slots it actually attempted.
+	Targets      []TargetResult
 	SourceStages int
 	Created      int
 	Updated      int
@@ -290,12 +307,21 @@ func (s *Service) RunTargets(ctx context.Context) Result {
 		return Result{Phase: PhaseTargets, Outcome: OutcomeFailed, Failure: FailureState}
 	}
 
-	result := Result{Phase: PhaseTargets, SourceStages: len(ordered)}
+	result := Result{
+		Phase:        PhaseTargets,
+		SourceStages: len(ordered),
+		Targets:      make([]TargetResult, 0, len(s.targetIDs)),
+	}
 	for _, targetID := range s.targetIDs {
 		counts, failure := s.reconcileTarget(ctx, targetID, desired, ordered)
 		result.Created += counts.created
 		result.Updated += counts.updated
 		result.Deleted += counts.deleted
+		result.Targets = append(result.Targets, TargetResult{
+			ID:      targetID,
+			Outcome: targetOutcome(failure),
+			Failure: failure,
+		})
 		if failure == FailureNone {
 			continue
 		}
@@ -313,6 +339,22 @@ func (s *Service) RunTargets(ctx context.Context) Result {
 	}
 
 	return result
+}
+
+// targetOutcome states one slot's reconciliation in the same vocabulary a run
+// uses, so a reader does not have to know the failure categories to tell a
+// blocked slot from a broken one.
+func targetOutcome(failure FailureCategory) Outcome {
+	if failure == FailureNone {
+		return OutcomeSucceeded
+	}
+	// A deletion limit is a guard doing its job, not a fault: the slot is intact
+	// and waiting for an operator to confirm the removals.
+	if failure == FailureDeletionLimit {
+		return OutcomeBlocked
+	}
+
+	return OutcomeFailed
 }
 
 // AnnotateStored classifies the ground under the stored inventory.

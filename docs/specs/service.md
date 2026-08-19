@@ -239,7 +239,13 @@ The read-only JSON surface is deliberately small:
 - `GET /v1/status` reports current configuration readiness, last sync outcome,
   aggregate counts, target authorisation state, the two schedule switches, the
   last run of each half, and how much of the library carries a current surface
-  classification. It also names the build that is running: the full public
+  classification. It also reports whether every stored stage at its current
+  revision has reached every configured target: one convergence word, safe
+  aggregate current and pending counts, and the last reconciliation result per
+  target, plus one overall answer that is true only when every target is
+  current. Those are derived from stored revisions alone, never by asking Wahoo
+  what it holds, and they describe the Wahoo accounts rather than what any
+  physical head unit has downloaded. It also names the build that is running: the full public
   source commit the binary was compiled from, and the digest of the image
   carrying it when the host told the service one. That group is absent for a
   build that carries no injected revision, which is how a reader tells a

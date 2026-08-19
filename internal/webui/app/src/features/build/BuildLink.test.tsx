@@ -9,6 +9,7 @@ const DIGEST = `sha256:${"cd".repeat(32)}`;
 function statusBody(build?: Record<string, unknown>) {
   return {
     ready: true,
+    converged: true,
     targets: [],
     sync: {
       state: "idle",

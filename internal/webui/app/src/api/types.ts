@@ -78,9 +78,47 @@ export interface StageGeometry {
   surface?: StageSurface | undefined;
 }
 
+/**
+ * What one Wahoo account amounts to, in one word.
+ *
+ * `current` means the account holds every stored stage at the revision the
+ * library holds now. It is a statement about the Wahoo account, not about any
+ * head unit: whether a device has since downloaded those routes is not something
+ * this service can see.
+ */
+export const TARGET_CONVERGENCES = ["current", "lagging", "failed", "unauthorized"] as const;
+
+export type TargetConvergence = (typeof TARGET_CONVERGENCES)[number];
+
+/** How much of the stored library one account holds. Counts only, never names. */
+export interface TargetStages {
+  current: number;
+  /**
+   * Everything the account still owes the library: a stage never written, a
+   * stage written at an older revision, and a stage the account still carries
+   * that the library no longer has.
+   */
+  pending: number;
+}
+
+/** One account's own last reconciliation. */
+export interface TargetRun {
+  completedAt: string;
+  result: string;
+  /** The safe failure category, present only when that run did not succeed. */
+  failure?: string | undefined;
+}
+
 export interface TargetStatus {
   id: string;
   authorisation: string;
+  convergence: TargetConvergence;
+  stages: TargetStages;
+  /**
+   * Absent until this account has been reconciled once, which is a different
+   * state from having been reconciled and failed.
+   */
+  lastRun?: TargetRun | undefined;
 }
 
 /**
@@ -151,6 +189,11 @@ export interface BuildInfo {
 
 export interface Status {
   ready: boolean;
+  /**
+   * True only when every stored stage is current on every configured account.
+   * Like the per-account word, it says nothing about device downloads.
+   */
+  converged: boolean;
   build?: BuildInfo | undefined;
   targets: TargetStatus[];
   sync: SyncStatus;

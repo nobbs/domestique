@@ -9,7 +9,7 @@ import (
 
 const authorizedState = "authorized"
 
-// status reports readiness, target authorisation, and the last terminal run.
+// status reports readiness, per-target convergence, and the last terminal run.
 func (h *Handler) status(writer http.ResponseWriter, request *http.Request, _ string) {
 	authorizations := make(map[string]string, len(h.targetIDs))
 	if err := h.state.ForEachTarget(request.Context(), func(id, authorization string) error {
@@ -24,8 +24,21 @@ func (h *Handler) status(writer http.ResponseWriter, request *http.Request, _ st
 		return
 	}
 
+	stageCounts, err := h.targetStageCounts(request.Context())
+	if err != nil {
+		h.unavailable(writer)
+
+		return
+	}
+	runs, err := h.targetRuns(request.Context())
+	if err != nil {
+		h.unavailable(writer)
+
+		return
+	}
+
 	targets := make([]targetView, 0, len(h.targetIDs))
-	ready := true
+	ready, converged := true, true
 	for _, targetID := range h.targetIDs {
 		authorization, found := authorizations[targetID]
 		if !found {
@@ -33,11 +46,31 @@ func (h *Handler) status(writer http.ResponseWriter, request *http.Request, _ st
 
 			return
 		}
-		targets = append(targets, targetView{ID: targetID, Authorization: authorization})
+		stages := stageCounts[targetID]
+		var lastRun *targetRunView
+		if run, recorded := runs[targetID]; recorded {
+			lastRun = &run
+		}
+		convergence := convergenceState(authorization, stages, lastRun)
+		targets = append(targets, targetView{
+			ID:            targetID,
+			Authorization: authorization,
+			Convergence:   convergence,
+			Stages:        stages,
+			LastRun:       lastRun,
+		})
 		ready = ready && authorization == authorizedState
+		// Overall convergence is the conjunction, so one lagging slot is enough
+		// to say the library is not everywhere it belongs.
+		converged = converged && convergence == convergenceCurrent
 	}
 
-	view := statusView{Ready: ready, Targets: targets, Sync: syncView{State: "not_ready"}}
+	view := statusView{
+		Ready:     ready,
+		Converged: converged,
+		Targets:   targets,
+		Sync:      syncView{State: "not_ready"},
+	}
 	// Only when the revision is known: the digest alone would say which image is
 	// running without saying what is in it, and a group with nothing to identify
 	// is worse than no group.
