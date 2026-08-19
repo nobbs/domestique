@@ -161,8 +161,26 @@ Wahoo request; the Wahoo endpoints additionally point at an unroutable address;
 and scheduled synchronisation is pushed a year out so a run only happens on
 request. Pushover credentials are placeholders, so no notification is delivered.
 
-This applies to the development environment only. It is not a substitute for the
-sandbox acceptance check, and it never runs in CI.
+`make demo` prepares the other kind of development environment: one that needs
+no account, no snapshot, and nobody's routes. It writes a throwaway
+configuration under `.local/demo`, seeds a fresh database with the synthetic
+library in `internal/demo`, serves it with `dev/demoapi`, and runs the UI dev
+server in front of it. Every stage, surface, run and target state it shows is
+generated; VeloPlanner, Wahoo and Pushover all point at an unroutable address;
+and no scheduler, source client or reporter is wired, so a manual
+synchronisation re-seeds the synthetic library at the current instant instead of
+contacting anything. The run it reports is therefore a real one and its data
+still comes from nowhere.
+
+The identity gate is not switched off there, because a demo whose gate is absent
+demonstrates a service this repository does not ship. `dev/demoapi` generates a
+signing key at start-up, publishes it to the production verifier through an
+in-process key-set endpoint, and mints one assertion for the dev server to
+present: the real signature, audience, expiry and allowed-email checks all run,
+against a team that exists only inside that process.
+
+Both of these apply to the development environment only. Neither is a substitute
+for the sandbox acceptance check, and neither runs in CI.
 
 Normal Go tests run without network access to VeloPlanner, Wahoo, Pushover,
 Tailscale, or a secret system. The normal test command enables deterministic

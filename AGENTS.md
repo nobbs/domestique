@@ -89,6 +89,15 @@ defaults to what `dev/setup.sh` writes, and `DOMESTIQUE_DEV_ORIGIN` overrides it
 when `DOMESTIQUE_DEV_API` points at the deployed container. Building images requires
 `docker login dhi.io`, because the base images are Docker Hardened Images.
 
+**To develop against no data at all**, run `make demo`. One command writes a
+throwaway configuration under `.local/demo`, seeds a database with the synthetic
+library in `internal/demo`, and starts the API and the UI dev server against it.
+It needs no account, no secret and no snapshot, and it cannot reach VeloPlanner,
+Wahoo, Pushover or a deployment. The identity gate still runs in full: the demo
+mints an assertion with a key it generates at start-up and verifies it with the
+production verifier. Use it for UI work, and prefer it over a snapshot whenever
+the change does not depend on real routes.
+
 **To develop against real data**, run `make dev-setup` once (snapshots the
 deployed SQLite state into `.local/dev`), then `make dev-api` and `make ui-dev`.
 The dev service reads VeloPlanner but **cannot reach Wahoo** — its encryption

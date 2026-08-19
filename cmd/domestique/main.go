@@ -98,7 +98,7 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("creating sync service: %w", err)
 	}
-	notifier, err := pushover.New(&pushover.Options{ApplicationToken: settings.Notifications.Pushover.ApplicationToken().Bytes(), UserKey: settings.Notifications.Pushover.UserKey().Bytes()})
+	notifier, err := pushover.New(&pushover.Options{BaseURL: settings.Notifications.Pushover.BaseURL, ApplicationToken: settings.Notifications.Pushover.ApplicationToken().Bytes(), UserKey: settings.Notifications.Pushover.UserKey().Bytes()})
 	if err != nil {
 		return fmt.Errorf("creating Pushover client: %w", err)
 	}

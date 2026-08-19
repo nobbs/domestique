@@ -158,6 +158,35 @@ func TestLoadDefaultsToThePublicOverpassEndpoint(t *testing.T) {
 	}
 }
 
+func TestLoadDefaultsToPushoversOwnOrigin(t *testing.T) {
+	configPath, _ := writeValidConfiguration(t, t.TempDir())
+	t.Setenv(configFileEnv, configPath)
+
+	settings, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if got, want := settings.Notifications.Pushover.BaseURL, defaultPushoverURL; got != want {
+		t.Errorf("Notifications.Pushover.BaseURL = %q, want %q", got, want)
+	}
+}
+
+// A development environment overrides the origin to keep a placeholder token off
+// the real service, so an override has to survive loading intact.
+func TestLoadKeepsAnOverriddenPushoverOrigin(t *testing.T) {
+	configPath, _ := writeValidConfiguration(t, t.TempDir())
+	replaceInFile(t, configPath, "[notifications.pushover]", "[notifications.pushover]\nbase_url = \"https://pushover.example.test\"")
+	t.Setenv(configFileEnv, configPath)
+
+	settings, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if got, want := settings.Notifications.Pushover.BaseURL, "https://pushover.example.test"; got != want {
+		t.Errorf("Notifications.Pushover.BaseURL = %q, want %q", got, want)
+	}
+}
+
 // An empty endpoint is how an operator declines to send stage shapes anywhere,
 // so it must load rather than fail as a missing setting.
 func TestLoadTreatsAnEmptyOverpassEndpointAsDisabled(t *testing.T) {
@@ -271,6 +300,22 @@ func TestLoadRejectsInvalidConfiguration(t *testing.T) {
 				appendToFile(t, path, "\n[surface]\noverpass_url = \"http://overpass.example.test/api\"\n")
 			},
 			want: "surface.overpass_url",
+		},
+		{
+			name: "plaintext notification origin",
+			mutate: func(t *testing.T, path string) {
+				t.Helper()
+				replaceInFile(t, path, "[notifications.pushover]", "[notifications.pushover]\nbase_url = \"http://pushover.example.test\"")
+			},
+			want: "notifications.pushover.base_url",
+		},
+		{
+			name: "notification origin carrying a path",
+			mutate: func(t *testing.T, path string) {
+				t.Helper()
+				replaceInFile(t, path, "[notifications.pushover]", "[notifications.pushover]\nbase_url = \"https://pushover.example.test/1/messages.json\"")
+			},
+			want: "must be an origin",
 		},
 		{
 			name: "dark tile style on another origin",

@@ -40,7 +40,7 @@ GO_COVERPKG := ./cmd/...,./internal/...
 .PHONY: fmt hygiene lint markdownlint shell-lint workflow-lint hook-check gate-check test vet mod-check vulncheck secret-scan build build-check ci-lint ci-test ci-security ci-ui quick check
 .PHONY: ui-install ui-ensure ui-dev ui-typecheck ui-lint ui-format ui-test ui-audit ui-build
 .PHONY: coverage coverage-go coverage-ui
-.PHONY: dev-setup dev-api
+.PHONY: dev-setup dev-api demo
 
 export GOCACHE
 
@@ -130,6 +130,12 @@ dev-setup:
 dev-api:
 	DOMESTIQUE_CONFIG_FILE=$(CURDIR)/.local/dev/config.toml \
 		CGO_ENABLED=0 $(GO) run $(BUILD_TARGET)
+
+# Starts the whole demo: a throwaway configuration, a freshly seeded synthetic
+# library, the API serving it, and the UI dev server in front. No account, no
+# secret, and no copy of anyone's routes. See dev/demo.sh.
+demo: ui-ensure
+	./dev/demo.sh
 
 ui-install:
 	$(NPM) --prefix $(UI_DIR) ci

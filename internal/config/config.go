@@ -53,6 +53,12 @@ const (
 	//
 	//nolint:gosec // G101 matches "pass" inside "Overpass"; this is a public endpoint.
 	defaultOverpassURL = "https://overpass-api.de/api/interpreter"
+
+	// defaultPushoverURL is Pushover's own origin. It is a default rather than a
+	// compiled-in constant so a development or demo environment can point it at
+	// an address that goes nowhere instead of reaching the real service with a
+	// placeholder token.
+	defaultPushoverURL = "https://api.pushover.net"
 )
 
 // Settings is the validated, startup-only configuration for one service
@@ -217,8 +223,13 @@ type Notifications struct {
 	Pushover Pushover
 }
 
-// Pushover holds the credentials needed to send a notification.
+// Pushover holds the credentials needed to send a notification, and the origin
+// they are sent to. The origin is configurable for the same reason every other
+// provider's is: a development or demo environment has to be able to point it at
+// an address that goes nowhere, and the alternative is a compiled-in host that
+// such an environment would quietly reach with a placeholder token.
 type Pushover struct {
+	BaseURL          string
 	applicationToken Secret
 	userKey          Secret
 }
@@ -320,6 +331,7 @@ type rawNotifications struct {
 }
 
 type rawPushover struct {
+	BaseURL              string `koanf:"base_url"`
 	ApplicationTokenFile string `koanf:"application_token_file"`
 	ApplicationToken     string `koanf:"application_token"`
 	UserKeyFile          string `koanf:"user_key_file"`
@@ -537,6 +549,9 @@ func build(raw *rawSettings) (*Settings, error) {
 	if err := validateOverpassURL(raw.Surface.OverpassURL); err != nil {
 		return nil, err
 	}
+	if err := validateHTTPSOrigin("notifications.pushover.base_url", raw.Notifications.Pushover.BaseURL); err != nil {
+		return nil, err
+	}
 
 	targets, err := validateTargets(raw.Wahoo.Targets)
 	if err != nil {
@@ -651,6 +666,7 @@ func build(raw *rawSettings) (*Settings, error) {
 		},
 		Notifications: Notifications{
 			Pushover: Pushover{
+				BaseURL:          raw.Notifications.Pushover.BaseURL,
 				applicationToken: applicationToken,
 				userKey:          userKey,
 			},
@@ -763,6 +779,22 @@ func validateHTTPSURL(name, value string) error {
 	if err != nil || parsed.Scheme != "https" || parsed.Host == "" ||
 		parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
 		return fmt.Errorf("%s must be an absolute HTTPS URL without credentials, query, or fragment", name)
+	}
+
+	return nil
+}
+
+// validateHTTPSOrigin is validateHTTPSURL plus the absence of a path, which is
+// what a setting the client parses as an origin has to be. Rejecting a path here
+// rather than letting the client reject it keeps the failure where every other
+// configuration failure is: before a listener opens, naming the setting.
+func validateHTTPSOrigin(name, value string) error {
+	if err := validateHTTPSURL(name, value); err != nil {
+		return err
+	}
+	parsed, err := url.Parse(value)
+	if err != nil || (parsed.Path != "" && parsed.Path != "/") {
+		return fmt.Errorf("%s must be an origin, without a path", name)
 	}
 
 	return nil
@@ -906,6 +938,11 @@ func configurationDefaults() map[string]any {
 		},
 		"surface": map[string]any{
 			"overpass_url": defaultOverpassURL,
+		},
+		"notifications": map[string]any{
+			"pushover": map[string]any{
+				"base_url": defaultPushoverURL,
+			},
 		},
 	}
 }
