@@ -4,6 +4,9 @@ import (
 	"math"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/nobbs/domestique/internal/route"
 )
 
@@ -11,28 +14,18 @@ func TestNormalizerProcessResamplesAndRemovesIsolatedSpike(t *testing.T) {
 	stage := elevatedStage(t, []float64{100, 100, 130, 100, 100})
 
 	processed, err := New().Process(&stage)
-	if err != nil {
-		t.Fatalf("Process() error = %v", err)
-	}
+	require.NoError(t, err)
+
 	geometry := processed.Geometry()
-	if got, want := len(geometry), 5; got != want {
-		t.Fatalf("normalized point count = %d, want %d", got, want)
-	}
+	require.Len(t, geometry, 5, "normalization changed the point count")
 	for index, point := range geometry {
 		original := stage.Geometry()[index]
-		if point.Latitude != original.Latitude || point.Longitude != original.Longitude {
-			t.Errorf("normalized point[%d] coordinates = (%v, %v), want (%v, %v)", index, point.Latitude, point.Longitude, original.Latitude, original.Longitude)
-		}
-		if point.Elevation == nil {
-			t.Fatalf("normalized point %d has no elevation", index)
-		}
-		if got := *point.Elevation; math.Abs(got-100) > 0.1 {
-			t.Errorf("normalized elevation[%d] = %v, want approximately 100", index, got)
-		}
+		assert.InDelta(t, original.Latitude, point.Latitude, 0, "normalized point[%d] moved in latitude", index)
+		assert.InDelta(t, original.Longitude, point.Longitude, 0, "normalized point[%d] moved in longitude", index)
+		require.NotNilf(t, point.Elevation, "normalized point %d has no elevation", index)
+		assert.InDelta(t, 100, *point.Elevation, 0.1, "the spike survived at point %d", index)
 	}
-	if got, want := processed.ContentHash(), stage.ContentHash(); got != want {
-		t.Errorf("content hash = %q, want %q", got, want)
-	}
+	assert.Equal(t, stage.ContentHash(), processed.ContentHash(), "normalization must not restate the source content")
 }
 
 func TestNormalizerProcessPreservesIncompleteElevation(t *testing.T) {
@@ -41,17 +34,12 @@ func TestNormalizerProcessPreservesIncompleteElevation(t *testing.T) {
 		{Latitude: 49, Longitude: 8, Elevation: &elevation},
 		{Latitude: 49.001, Longitude: 8.001},
 	}, "hash")
-	if err != nil {
-		t.Fatalf("NewStage() error = %v", err)
-	}
+	require.NoError(t, err)
 
 	processed, err := New().Process(&stage)
-	if err != nil {
-		t.Fatalf("Process() error = %v", err)
-	}
-	if got, want := processed.Geometry(), stage.Geometry(); !equalGeometry(got, want) {
-		t.Errorf("incomplete geometry = %#v, want %#v", got, want)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, stage.Geometry(), processed.Geometry(),
+		"a stage missing an elevation must come back untouched")
 }
 
 func elevatedStage(t *testing.T, elevations []float64) route.Stage {
@@ -61,23 +49,7 @@ func elevatedStage(t *testing.T, elevations []float64) route.Stage {
 		points = append(points, route.Point{Latitude: 49 + float64(index)*25/earthRadiusMetres*180/math.Pi, Longitude: 8, Elevation: &elevation})
 	}
 	stage, err := route.NewStage(1, 1, "revision", "Route", "", points, "hash")
-	if err != nil {
-		t.Fatalf("NewStage() error = %v", err)
-	}
-	return stage
-}
+	require.NoError(t, err)
 
-func equalGeometry(left, right []route.Point) bool {
-	if len(left) != len(right) {
-		return false
-	}
-	for index := range left {
-		if left[index].Longitude != right[index].Longitude || left[index].Latitude != right[index].Latitude || (left[index].Elevation == nil) != (right[index].Elevation == nil) {
-			return false
-		}
-		if left[index].Elevation != nil && *left[index].Elevation != *right[index].Elevation {
-			return false
-		}
-	}
-	return true
+	return stage
 }

@@ -4,11 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 	"sort"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/nobbs/domestique/internal/route"
 )
@@ -27,18 +27,10 @@ func TestServiceDoesNotMutateTargetsWhenSourceFails(t *testing.T) {
 	service := newService(t, state, &fakeSource{err: errors.New("source unavailable")}, &fakeEncoder{}, target, false)
 
 	result := runBoth(t.Context(), service)
-	if got, want := result.Outcome, OutcomeFailed; got != want {
-		t.Errorf("runBoth() outcome = %q, want %q", got, want)
-	}
-	if got, want := result.Failure, FailureSource; got != want {
-		t.Errorf("runBoth() failure = %q, want %q", got, want)
-	}
-	if got := len(target.deletedRouteIDs); got != 0 {
-		t.Errorf("deleted routes = %d, want 0", got)
-	}
-	if got := len(target.refreshTokens); got != 0 {
-		t.Errorf("refresh calls = %d, want 0", got)
-	}
+	assert.Equal(t, OutcomeFailed, result.Outcome, "runBoth() outcome")
+	assert.Equal(t, FailureSource, result.Failure, "runBoth() failure")
+	assert.Empty(t, target.deletedRouteIDs, "deleted routes")
+	assert.Empty(t, target.refreshTokens, "refresh calls")
 }
 
 func TestServiceSkipsFailedTargetDeletionButContinuesOtherTarget(t *testing.T) {
@@ -57,21 +49,11 @@ func TestServiceSkipsFailedTargetDeletionButContinuesOtherTarget(t *testing.T) {
 	service := newService(t, state, &fakeSource{stages: []route.Stage{desired}}, &fakeEncoder{}, target, false)
 
 	result := runBoth(t.Context(), service)
-	if got, want := result.Outcome, OutcomeFailed; got != want {
-		t.Errorf("runBoth() outcome = %q, want %q", got, want)
-	}
-	if got, want := result.Failure, FailureDestination; got != want {
-		t.Errorf("runBoth() failure = %q, want %q", got, want)
-	}
-	if got, want := result.Updated, 1; got != want {
-		t.Errorf("updated routes = %d, want %d", got, want)
-	}
-	if got, want := result.Deleted, 1; got != want {
-		t.Errorf("deleted routes = %d, want %d", got, want)
-	}
-	if got, want := target.deletedAccess, []string{accessFor("b")}; !equalStrings(got, want) {
-		t.Errorf("delete callers = %v, want %v", got, want)
-	}
+	assert.Equal(t, OutcomeFailed, result.Outcome, "runBoth() outcome")
+	assert.Equal(t, FailureDestination, result.Failure, "runBoth() failure")
+	assert.Equal(t, 1, result.Updated, "updated routes")
+	assert.Equal(t, 1, result.Deleted, "deleted routes")
+	assert.Equal(t, []string{accessFor("b")}, target.deletedAccess, "delete callers")
 }
 
 func TestServiceBlocksSixthDeletionWithoutDeleting(t *testing.T) {
@@ -88,15 +70,9 @@ func TestServiceBlocksSixthDeletionWithoutDeleting(t *testing.T) {
 	service := newService(t, state, &fakeSource{stages: []route.Stage{desired}}, &fakeEncoder{}, target, false)
 
 	result := runBoth(t.Context(), service)
-	if got, want := result.Outcome, OutcomeBlocked; got != want {
-		t.Errorf("runBoth() outcome = %q, want %q", got, want)
-	}
-	if got, want := result.Failure, FailureDeletionLimit; got != want {
-		t.Errorf("runBoth() failure = %q, want %q", got, want)
-	}
-	if got := len(target.deletedRouteIDs); got != 0 {
-		t.Errorf("deleted routes = %d, want 0", got)
-	}
+	assert.Equal(t, OutcomeBlocked, result.Outcome, "runBoth() outcome")
+	assert.Equal(t, FailureDeletionLimit, result.Failure, "runBoth() failure")
+	assert.Empty(t, target.deletedRouteIDs, "deleted routes")
 }
 
 func TestServiceAdoptsOwnedRoutesAfterStateLoss(t *testing.T) {
@@ -109,21 +85,15 @@ func TestServiceAdoptsOwnedRoutesAfterStateLoss(t *testing.T) {
 	service := newService(t, state, &fakeSource{stages: []route.Stage{desired}}, &fakeEncoder{}, target, false)
 
 	result := runBoth(t.Context(), service)
-	if got, want := result.Outcome, OutcomeSucceeded; got != want {
-		t.Errorf("runBoth() outcome = %q, want %q", got, want)
-	}
-	if result.Created != 0 || result.Updated != 0 || result.Deleted != 0 {
-		t.Errorf("runBoth() mutation counts = %+v, want all zero", result)
-	}
+	assert.Equal(t, OutcomeSucceeded, result.Outcome, "runBoth() outcome")
+	assert.Zero(t, result.Created, "created routes")
+	assert.Zero(t, result.Updated, "updated routes")
+	assert.Zero(t, result.Deleted, "deleted routes")
 	key := keyFor(&desired)
 	for _, targetID := range []string{"a", "b"} {
-		if _, found := state.mappings[targetID][key]; !found {
-			t.Errorf("target %q did not adopt the existing route", targetID)
-		}
+		assert.Containsf(t, state.mappings[targetID], key, "target %q did not adopt the existing route", targetID)
 	}
-	if got := len(target.deletedRouteIDs); got != 0 {
-		t.Errorf("deleted routes = %d, want 0", got)
-	}
+	assert.Empty(t, target.deletedRouteIDs, "deleted routes")
 }
 
 func TestServiceRecreatesMissingOwnedRoutesWithoutDeletingManualRoutes(t *testing.T) {
@@ -137,19 +107,11 @@ func TestServiceRecreatesMissingOwnedRoutesWithoutDeletingManualRoutes(t *testin
 	service := newService(t, state, &fakeSource{stages: []route.Stage{desired}}, &fakeEncoder{}, target, false)
 
 	result := runBoth(t.Context(), service)
-	if got, want := result.Outcome, OutcomeSucceeded; got != want {
-		t.Errorf("runBoth() outcome = %q, want %q", got, want)
-	}
-	if got, want := result.Created, 2; got != want {
-		t.Errorf("created routes = %d, want %d", got, want)
-	}
-	if got := len(target.deletedRouteIDs); got != 0 {
-		t.Errorf("deleted routes = %d, want 0", got)
-	}
+	assert.Equal(t, OutcomeSucceeded, result.Outcome, "runBoth() outcome")
+	assert.Equal(t, 2, result.Created, "created routes")
+	assert.Empty(t, target.deletedRouteIDs, "deleted routes")
 	for _, targetID := range []string{"a", "b"} {
-		if _, found := target.routes[accessFor(targetID)]["manual-route"]; !found {
-			t.Errorf("target %q removed a manual route", targetID)
-		}
+		assert.Containsf(t, target.routes[accessFor(targetID)], "manual-route", "target %q removed a manual route", targetID)
 	}
 }
 
@@ -161,21 +123,11 @@ func TestServiceMarksOnlyRejectedTargetForReauthorization(t *testing.T) {
 	service := newService(t, state, &fakeSource{stages: []route.Stage{desired}}, &fakeEncoder{}, target, false)
 
 	result := runBoth(t.Context(), service)
-	if got, want := result.Outcome, OutcomeFailed; got != want {
-		t.Errorf("runBoth() outcome = %q, want %q", got, want)
-	}
-	if got, want := result.Failure, FailureAuthorization; got != want {
-		t.Errorf("runBoth() failure = %q, want %q", got, want)
-	}
-	if got, want := state.authorizations["a"], "needs_reauthorization"; got != want {
-		t.Errorf("target a authorization = %q, want %q", got, want)
-	}
-	if got, want := state.authorizations["b"], authorizedState; got != want {
-		t.Errorf("target b authorization = %q, want %q", got, want)
-	}
-	if got, want := result.Created, 1; got != want {
-		t.Errorf("created routes = %d, want %d", got, want)
-	}
+	assert.Equal(t, OutcomeFailed, result.Outcome, "runBoth() outcome")
+	assert.Equal(t, FailureAuthorization, result.Failure, "runBoth() failure")
+	assert.Equal(t, "needs_reauthorization", state.authorizations["a"], "target a authorization")
+	assert.Equal(t, authorizedState, state.authorizations["b"], "target b authorization")
+	assert.Equal(t, 1, result.Created, "created routes")
 }
 
 func TestServiceBlocksUnexpectedEmptySourceWithoutDeleting(t *testing.T) {
@@ -190,18 +142,10 @@ func TestServiceBlocksUnexpectedEmptySourceWithoutDeleting(t *testing.T) {
 	service := newService(t, state, &fakeSource{}, &fakeEncoder{}, target, false)
 
 	result := runBoth(t.Context(), service)
-	if got, want := result.Outcome, OutcomeBlocked; got != want {
-		t.Errorf("runBoth() outcome = %q, want %q", got, want)
-	}
-	if got, want := result.Failure, FailureEmptySource; got != want {
-		t.Errorf("runBoth() failure = %q, want %q", got, want)
-	}
-	if got := len(target.deletedRouteIDs); got != 0 {
-		t.Errorf("deleted routes = %d, want 0", got)
-	}
-	if got := state.storeInventoryCalls; got != 0 {
-		t.Errorf("stored inventories = %d, want 0", got)
-	}
+	assert.Equal(t, OutcomeBlocked, result.Outcome, "runBoth() outcome")
+	assert.Equal(t, FailureEmptySource, result.Failure, "runBoth() failure")
+	assert.Empty(t, target.deletedRouteIDs, "deleted routes")
+	assert.Zero(t, state.storeInventoryCalls, "stored inventories")
 }
 
 func TestServiceDeletesUpToFiveOwnedRoutesPerTarget(t *testing.T) {
@@ -220,12 +164,8 @@ func TestServiceDeletesUpToFiveOwnedRoutesPerTarget(t *testing.T) {
 	service := newService(t, state, &fakeSource{stages: []route.Stage{desired}}, &fakeEncoder{}, target, false)
 
 	result := runBoth(t.Context(), service)
-	if got, want := result.Outcome, OutcomeSucceeded; got != want {
-		t.Errorf("runBoth() outcome = %q, want %q", got, want)
-	}
-	if got, want := result.Deleted, 10; got != want {
-		t.Errorf("deleted routes = %d, want %d", got, want)
-	}
+	assert.Equal(t, OutcomeSucceeded, result.Outcome, "runBoth() outcome")
+	assert.Equal(t, 10, result.Deleted, "deleted routes")
 }
 
 // The two halves are independent: a library refresh must keep working while a
@@ -238,18 +178,10 @@ func TestServiceReadsTheSourceWhileATargetNeedsReauthorization(t *testing.T) {
 	service := newService(t, state, &fakeSource{stages: []route.Stage{desired}}, &fakeEncoder{}, target, false)
 
 	source := service.RunSource(t.Context())
-	if got, want := source.Outcome, OutcomeSucceeded; got != want {
-		t.Errorf("RunSource() outcome = %q, want %q", got, want)
-	}
-	if got, want := len(state.trusted), 1; got != want {
-		t.Errorf("stored stages = %d, want %d", got, want)
-	}
-	if got, want := service.RunTargets(t.Context()).Outcome, OutcomeNotReady; got != want {
-		t.Errorf("RunTargets() outcome = %q, want %q", got, want)
-	}
-	if got := len(target.routes); got != 0 {
-		t.Errorf("target routes = %d, want none", got)
-	}
+	assert.Equal(t, OutcomeSucceeded, source.Outcome, "RunSource() outcome")
+	assert.Len(t, state.trusted, 1, "stored stages")
+	assert.Equal(t, OutcomeNotReady, service.RunTargets(t.Context()).Outcome, "RunTargets() outcome")
+	assert.Empty(t, target.routes, "target routes")
 }
 
 // Writing to the targets works from the inventory the last read stored, so a
@@ -262,15 +194,9 @@ func TestServiceReconcilesStoredInventoryWithoutReadingTheSource(t *testing.T) {
 	state.trusted = []route.Stage{desired}
 
 	result := service.RunTargets(t.Context())
-	if got, want := result.Outcome, OutcomeSucceeded; got != want {
-		t.Errorf("RunTargets() outcome = %q, want %q", got, want)
-	}
-	if got, want := result.Created, 2; got != want {
-		t.Errorf("RunTargets() created = %d, want %d", got, want)
-	}
-	if source.calls != 0 {
-		t.Errorf("source inventory calls = %d, want 0", source.calls)
-	}
+	assert.Equal(t, OutcomeSucceeded, result.Outcome, "RunTargets() outcome")
+	assert.Equal(t, 2, result.Created, "RunTargets() created")
+	assert.Zero(t, source.calls, "source inventory calls")
 }
 
 // A library that cannot be read back whole is indistinguishable from one whose
@@ -284,15 +210,9 @@ func TestServiceDoesNotReconcileAnUnreadableStoredInventory(t *testing.T) {
 	service := newService(t, state, &fakeSource{}, &fakeEncoder{}, target, false)
 
 	result := service.RunTargets(t.Context())
-	if got, want := result.Outcome, OutcomeFailed; got != want {
-		t.Errorf("RunTargets() outcome = %q, want %q", got, want)
-	}
-	if got, want := result.Failure, FailureState; got != want {
-		t.Errorf("RunTargets() failure = %q, want %q", got, want)
-	}
-	if got := len(target.deletedRouteIDs); got != 0 {
-		t.Errorf("deleted routes = %d, want 0", got)
-	}
+	assert.Equal(t, OutcomeFailed, result.Outcome, "RunTargets() outcome")
+	assert.Equal(t, FailureState, result.Failure, "RunTargets() failure")
+	assert.Empty(t, target.deletedRouteIDs, "deleted routes")
 }
 
 // What a reprocess leaves behind: a mapping that still names the Wahoo route it
@@ -314,32 +234,21 @@ func TestServiceRewritesAStageWhosePushedRevisionWasForgotten(t *testing.T) {
 		&Options{TargetIDs: []string{"a"}, MaxDeletionsPerTarget: 5},
 		state, &fakeSource{}, identityProcessor{}, &fakeEncoder{}, target, nil,
 	)
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
+	require.NoError(t, err, "New()")
 
 	result := service.RunTargets(t.Context())
-	if got, want := result.Outcome, OutcomeSucceeded; got != want {
-		t.Fatalf("RunTargets() outcome = %q, want %q", got, want)
-	}
-	if got, want := result.Updated, 1; got != want {
-		t.Errorf("RunTargets() updated = %d, want %d", got, want)
-	}
-	if got, want := target.updatedRouteIDs, []int64{101}; len(got) != len(want) || got[0] != want[0] {
-		t.Errorf("updated routes = %v, want %v — the owned route is rewritten in place", got, want)
-	}
-	if got := len(target.deletedRouteIDs); got != 0 {
-		t.Errorf("deleted routes = %d, want 0", got)
-	}
+	require.Equal(t, OutcomeSucceeded, result.Outcome, "RunTargets() outcome")
+	assert.Equal(t, 1, result.Updated, "RunTargets() updated")
+	// The owned route is rewritten in place rather than replaced.
+	assert.Equal(t, []int64{101}, target.updatedRouteIDs, "updated routes")
+	assert.Empty(t, target.deletedRouteIDs, "deleted routes")
 }
 
 func TestServiceSkipsOverlappingRun(t *testing.T) {
 	service := newService(t, newFakeState("a", "b"), &fakeSource{}, &fakeEncoder{}, newFakeTarget(), false)
 	service.running.Store(true)
 
-	if got, want := runBoth(t.Context(), service).Outcome, OutcomeSkipped; got != want {
-		t.Errorf("runBoth() outcome = %q, want %q", got, want)
-	}
+	assert.Equal(t, OutcomeSkipped, runBoth(t.Context(), service).Outcome, "runBoth() outcome")
 }
 
 func TestServiceSupportsOneTarget(t *testing.T) {
@@ -347,17 +256,11 @@ func TestServiceSupportsOneTarget(t *testing.T) {
 	state := newFakeState("a")
 	target := newFakeTarget()
 	service, err := New(&Options{TargetIDs: []string{"a"}, MaxDeletionsPerTarget: 5}, state, &fakeSource{stages: []route.Stage{desired}}, identityProcessor{}, &fakeEncoder{}, target, nil)
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
+	require.NoError(t, err, "New()")
 
 	result := runBoth(t.Context(), service)
-	if got, want := result.Outcome, OutcomeSucceeded; got != want {
-		t.Errorf("runBoth() outcome = %q, want %q", got, want)
-	}
-	if got, want := result.Created, 1; got != want {
-		t.Errorf("runBoth() created = %d, want %d", got, want)
-	}
+	assert.Equal(t, OutcomeSucceeded, result.Outcome, "runBoth() outcome")
+	assert.Equal(t, 1, result.Created, "runBoth() created")
 }
 
 func TestServiceUpdatesLegacyEncoderOutput(t *testing.T) {
@@ -371,20 +274,12 @@ func TestServiceUpdatesLegacyEncoderOutput(t *testing.T) {
 		wahooRouteID:   101,
 	}
 	service, err := New(&Options{TargetIDs: []string{"a"}, MaxDeletionsPerTarget: 5}, state, &fakeSource{stages: []route.Stage{desired}}, identityProcessor{}, &fakeEncoder{}, target, nil)
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
+	require.NoError(t, err, "New()")
 
 	result := runBoth(t.Context(), service)
-	if got, want := result.Outcome, OutcomeSucceeded; got != want {
-		t.Errorf("runBoth() outcome = %q, want %q", got, want)
-	}
-	if got, want := result.Updated, 1; got != want {
-		t.Errorf("runBoth() updated = %d, want %d", got, want)
-	}
-	if got, want := state.mappings["a"][keyFor(&desired)].contentHash, encodedContentHash(&desired); got != want {
-		t.Errorf("stored content hash = %q, want %q", got, want)
-	}
+	assert.Equal(t, OutcomeSucceeded, result.Outcome, "runBoth() outcome")
+	assert.Equal(t, 1, result.Updated, "runBoth() updated")
+	assert.Equal(t, encodedContentHash(&desired), state.mappings["a"][keyFor(&desired)].contentHash, "stored content hash")
 }
 
 // The annotator classifies stored geometry, so it must see the same inventory
@@ -398,24 +293,12 @@ func TestServiceAnnotatesTheStoredInventoryAfterReconciling(t *testing.T) {
 	service := newAnnotatedService(t, state, &fakeSource{stages: []route.Stage{desired}}, target, annotator)
 
 	result := runBoth(t.Context(), service)
-	if got, want := result.Outcome, OutcomeSucceeded; got != want {
-		t.Fatalf("runBoth() outcome = %q, want %q", got, want)
-	}
-	if got, want := annotator.calls, 1; got != want {
-		t.Fatalf("annotate calls = %d, want %d", got, want)
-	}
-	if got, want := len(annotator.stages), 1; got != want {
-		t.Fatalf("annotated stages = %d, want %d", got, want)
-	}
-	if got, want := annotator.createdOnEntry, 1; got != want {
-		t.Errorf("routes on the target when annotation began = %d, want %d", got, want)
-	}
-	if got, want := elevationOf(t, &annotator.stages[0]), exportedElevation; got != want {
-		t.Errorf("annotated elevation = %v, want the exported profile %v", got, want)
-	}
-	if got, want := elevationOf(t, &state.trusted[0]), exportedElevation; got != want {
-		t.Errorf("stored elevation = %v, want the exported profile %v", got, want)
-	}
+	require.Equal(t, OutcomeSucceeded, result.Outcome, "runBoth() outcome")
+	require.Equal(t, 1, annotator.calls, "annotate calls")
+	require.Len(t, annotator.stages, 1, "annotated stages")
+	assert.Equal(t, 1, annotator.createdOnEntry, "routes on the target when annotation began")
+	assert.InDelta(t, exportedElevation, elevationOf(t, &annotator.stages[0]), 0.001, "annotated elevation")
+	assert.InDelta(t, exportedElevation, elevationOf(t, &state.trusted[0]), 0.001, "stored elevation")
 }
 
 // Enrichment is not what a synchronization is for: a tagging endpoint that is
@@ -429,15 +312,9 @@ func TestServiceSucceedsWhenAnnotationFails(t *testing.T) {
 	service := newAnnotatedService(t, state, &fakeSource{stages: []route.Stage{desired}}, target, annotator)
 
 	result := runBoth(t.Context(), service)
-	if got, want := result.Outcome, OutcomeSucceeded; got != want {
-		t.Errorf("runBoth() outcome = %q, want %q", got, want)
-	}
-	if got, want := result.Failure, FailureNone; got != want {
-		t.Errorf("runBoth() failure = %q, want %q", got, want)
-	}
-	if got, want := result.Created, 1; got != want {
-		t.Errorf("created routes = %d, want %d", got, want)
-	}
+	assert.Equal(t, OutcomeSucceeded, result.Outcome, "runBoth() outcome")
+	assert.Equal(t, FailureNone, result.Failure, "runBoth() failure")
+	assert.Equal(t, 1, result.Created, "created routes")
 }
 
 func TestServiceSkipsAnnotationWhenNothingWasStored(t *testing.T) {
@@ -451,12 +328,8 @@ func TestServiceSkipsAnnotationWhenNothingWasStored(t *testing.T) {
 	service := newAnnotatedService(t, state, &fakeSource{}, target, annotator)
 
 	result := runBoth(t.Context(), service)
-	if got, want := result.Outcome, OutcomeBlocked; got != want {
-		t.Fatalf("runBoth() outcome = %q, want %q", got, want)
-	}
-	if got := annotator.calls; got != 0 {
-		t.Errorf("annotate calls = %d, want 0", got)
-	}
+	require.Equal(t, OutcomeBlocked, result.Outcome, "runBoth() outcome")
+	assert.Zero(t, annotator.calls, "annotate calls")
 }
 
 func newAnnotatedService(
@@ -476,9 +349,7 @@ func newAnnotatedService(
 		target,
 		annotator,
 	)
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
+	require.NoError(t, err, "New()")
 
 	return service
 }
@@ -540,9 +411,8 @@ func (exportProcessor) Process(stage *route.Stage) (route.Stage, error) {
 func elevationOf(t *testing.T, stage *route.Stage) float64 {
 	t.Helper()
 	points := stage.Geometry()
-	if len(points) == 0 || points[0].Elevation == nil {
-		t.Fatalf("stage carries no elevation")
-	}
+	require.NotEmpty(t, points, "the stage carries no geometry")
+	require.NotNil(t, points[0].Elevation, "the stage carries no elevation")
 
 	return *points[0].Elevation
 }
@@ -554,9 +424,7 @@ func newService(t *testing.T, state *fakeState, source *fakeSource, encoder *fak
 		MaxDeletionsPerTarget:    5,
 		AllowEmptySourceDeletion: allowEmpty,
 	}, state, source, identityProcessor{}, encoder, target, nil)
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
+	require.NoError(t, err, "New()")
 
 	return service
 }
@@ -840,15 +708,9 @@ func testStage(t *testing.T, routeID int64, stageOrder int, revision, contentHas
 		[]route.Point{{Longitude: 8.4, Latitude: 49.0}, {Longitude: 8.401, Latitude: 49.001}},
 		contentHash,
 	)
-	if err != nil {
-		t.Fatalf("NewStage() error = %v", err)
-	}
+	require.NoError(t, err, "NewStage()")
 
 	return stage
-}
-
-func equalStrings(left, right []string) bool {
-	return slices.Equal(left, right)
 }
 
 // A run is recorded once, so its outcome is the worst of what happened. The

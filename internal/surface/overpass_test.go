@@ -2,7 +2,6 @@ package surface
 
 import (
 	"context"
-	"errors"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -11,19 +10,24 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/nobbs/domestique/internal/route"
 )
 
 func TestOverpassWaysClassifiesTheWaysItIsGiven(t *testing.T) {
 	var query string
+	// Every check inside a handler runs on the server's goroutine, where FailNow is
+	// unsafe, so the handlers in this file assert and return rather than require.
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if err := request.ParseForm(); err != nil {
-			t.Errorf("ParseForm() error = %v", err)
+			assert.Failf(t, "parsing the query form", "%v", err)
+
+			return
 		}
 		query = request.PostFormValue("data")
-		if got := request.Header.Get("User-Agent"); got != userAgent {
-			t.Errorf("User-Agent = %q, want %q", got, userAgent)
-		}
+		assert.Equal(t, userAgent, request.Header.Get("User-Agent"), "User-Agent")
 		writeOverpass(t, writer, `{"elements":[
 			{"type":"way","id":10,"tags":{"highway":"residential","surface":"sett"},
 			 "geometry":[{"lat":49.0,"lon":8.0},{"lat":49.001,"lon":8.0}]},
@@ -39,24 +43,17 @@ func TestOverpassWaysClassifiesTheWaysItIsGiven(t *testing.T) {
 	defer server.Close()
 
 	ways, err := newTestOverpass(t, server).Ways(t.Context(), metreRoute(0, 200, 50))
-	if err != nil {
-		t.Fatalf("Ways() error = %v", err)
-	}
+	require.NoError(t, err)
 
 	// The node and the single-coordinate way are absent from want on purpose:
 	// neither can be snapped to, so both must be dropped rather than carried
 	// through as candidates that match nothing.
 	want := []Way{{ID: 10, Kind: KindPaving}, {ID: 11, Kind: KindGravel}, {ID: 12, Kind: KindUnknown}}
-	if len(ways) != len(want) {
-		t.Fatalf("way count = %d, want %d", len(ways), len(want))
-	}
+	require.Len(t, ways, len(want), "way count")
 	for index, way := range ways {
-		if way.ID != want[index].ID || way.Kind != want[index].Kind {
-			t.Errorf("way[%d] = {id %d, %v}, want {id %d, %v}", index, way.ID, way.Kind, want[index].ID, want[index].Kind)
-		}
-		if len(way.Line) < 2 {
-			t.Errorf("way[%d] carries %d coordinates, want at least 2", index, len(way.Line))
-		}
+		assert.Equalf(t, want[index].ID, way.ID, "way[%d] id", index)
+		assert.Equalf(t, want[index].Kind, way.Kind, "way[%d] kind", index)
+		assert.GreaterOrEqualf(t, len(way.Line), 2, "way[%d] carries %d coordinates, want at least 2", index, len(way.Line))
 	}
 	for _, want := range []string{
 		"[out:json][timeout:150];",
@@ -65,9 +62,7 @@ func TestOverpassWaysClassifiesTheWaysItIsGiven(t *testing.T) {
 		`["area"!="yes"]`,
 		"out tags geom;",
 	} {
-		if !strings.Contains(query, want) {
-			t.Errorf("query %q does not contain %q", query, want)
-		}
+		assert.Contains(t, query, want, "the query omits a clause it needs")
 	}
 }
 
@@ -85,24 +80,14 @@ func TestOverpassWaysAsksAboutTheRouteAsRidden(t *testing.T) {
 	// A right-angle turn: the corner is the one point a simplified corridor must
 	// not drop, or the query cuts across ground the route never touches.
 	points := metrePoints([][2]float64{{0, 0}, {200, 0}, {400, 0}, {400, 200}, {400, 400}})
-	if _, err := newTestOverpass(t, server).Ways(t.Context(), points); err != nil {
-		t.Fatalf("Ways() error = %v", err)
-	}
+	_, err := newTestOverpass(t, server).Ways(t.Context(), points)
+	require.NoError(t, err)
 
-	corner := points[2]
-	if got := coordinatePair(corner); !strings.Contains(query, got) {
-		t.Errorf("query %q omits the corner %q", query, got)
-	}
-	if got := coordinatePair(points[0]); !strings.Contains(query, got) {
-		t.Errorf("query %q omits the start %q", query, got)
-	}
-	if got := coordinatePair(points[len(points)-1]); !strings.Contains(query, got) {
-		t.Errorf("query %q omits the end %q", query, got)
-	}
+	assert.Contains(t, query, coordinatePair(points[2]), "the query omits the corner")
+	assert.Contains(t, query, coordinatePair(points[0]), "the query omits the start")
+	assert.Contains(t, query, coordinatePair(points[len(points)-1]), "the query omits the end")
 	// The points midway along each straight leg say nothing the leg's ends do not.
-	if got := coordinatePair(points[1]); strings.Contains(query, got) {
-		t.Errorf("query %q carries the redundant point %q", query, got)
-	}
+	assert.NotContains(t, query, coordinatePair(points[1]), "the query carries a redundant point")
 }
 
 func TestOverpassWaysSplitsALongRouteAndReportsEachWayOnce(t *testing.T) {
@@ -128,21 +113,14 @@ func TestOverpassWaysSplitsALongRouteAndReportsEachWayOnce(t *testing.T) {
 	}
 
 	ways, err := newTestOverpass(t, server).Ways(t.Context(), metrePoints(coordinates))
-	if err != nil {
-		t.Fatalf("Ways() error = %v", err)
-	}
+	require.NoError(t, err)
 
-	if len(queries) < 2 {
-		t.Fatalf("query count = %d, want the route split across several", len(queries))
-	}
+	require.GreaterOrEqual(t, len(queries), 2, "the route was not split across several queries")
 	for index, query := range queries {
-		if got := strings.Count(query, ".")/2 + 1; got > maximumQueryPoints+1 {
-			t.Errorf("query[%d] names about %d points, want at most %d", index, got, maximumQueryPoints)
-		}
+		named := strings.Count(query, ".")/2 + 1
+		assert.LessOrEqualf(t, named, maximumQueryPoints+1, "query[%d] names about %d points", index, named)
 	}
-	if len(ways) != 1 {
-		t.Errorf("way count = %d, want the repeated way reported once", len(ways))
-	}
+	assert.Len(t, ways, 1, "the repeated way was not reported once")
 }
 
 func TestOverpassWaysRetriesOnceWhenTheEndpointIsBusy(t *testing.T) {
@@ -171,18 +149,11 @@ func TestOverpassWaysRetriesOnceWhenTheEndpointIsBusy(t *testing.T) {
 	}
 
 	ways, err := client.Ways(t.Context(), metreRoute(0, 200, 50))
-	if err != nil {
-		t.Fatalf("Ways() error = %v", err)
-	}
-	if len(ways) != 1 || ways[0].Kind != KindGravel {
-		t.Errorf("ways = %v, want one gravel way", ways)
-	}
-	if got, want := waited, 7*time.Second; got != want {
-		t.Errorf("wait = %s, want the advertised %s", got, want)
-	}
-	if requests != 2 {
-		t.Errorf("request count = %d, want 2", requests)
-	}
+	require.NoError(t, err)
+	require.Len(t, ways, 1)
+	assert.Equal(t, KindGravel, ways[0].Kind, "the way the retry returned")
+	assert.Equal(t, 7*time.Second, waited, "the client did not wait the advertised pause")
+	assert.Equal(t, 2, requests, "request count")
 }
 
 func TestOverpassWaysReportsPersistentRateLimiting(t *testing.T) {
@@ -197,12 +168,8 @@ func TestOverpassWaysReportsPersistentRateLimiting(t *testing.T) {
 	client.wait = func(context.Context, time.Duration) error { return nil }
 
 	_, err := client.Ways(t.Context(), metreRoute(0, 200, 50))
-	if !errors.Is(err, ErrRateLimited) {
-		t.Fatalf("Ways() error = %v, want ErrRateLimited", err)
-	}
-	if requests != busyAttempts {
-		t.Errorf("request count = %d, want %d before giving up", requests, busyAttempts)
-	}
+	require.ErrorIs(t, err, ErrRateLimited)
+	assert.Equal(t, busyAttempts, requests, "requests made before giving up")
 }
 
 // A refusal is usually a moment's contention on a shared server, and the query
@@ -234,17 +201,12 @@ func TestOverpassWaysRetriesARefusedQueryUntilItLands(t *testing.T) {
 	}
 
 	ways, err := client.Ways(t.Context(), metreRoute(0, 200, 50))
-	if err != nil {
-		t.Fatalf("Ways() error = %v", err)
-	}
-	if got, want := len(ways), 1; got != want {
-		t.Errorf("ways = %d, want %d", got, want)
-	}
+	require.NoError(t, err)
+	assert.Len(t, ways, 1)
 	// Each refusal waits longer than the last, so a saturated endpoint is asked
 	// less often rather than more.
-	if len(pauses) < 2 || pauses[1] <= pauses[0] {
-		t.Errorf("pauses = %v, want each one longer than the last", pauses)
-	}
+	require.GreaterOrEqualf(t, len(pauses), 2, "pauses = %v, want one per refusal", pauses)
+	assert.Greaterf(t, pauses[1], pauses[0], "pauses = %v, want each one longer than the last", pauses)
 }
 
 // A wait the endpoint asked for is taken as given, including when it happens to
@@ -265,14 +227,11 @@ func TestOverpassHonoursTheWaitTheEndpointAsksFor(t *testing.T) {
 
 			return nil
 		}
-		if _, err := client.Ways(t.Context(), metreRoute(0, 200, 50)); !errors.Is(err, ErrRateLimited) {
-			t.Fatalf("Ways() error = %v, want ErrRateLimited", err)
-		}
+		_, err := client.Ways(t.Context(), metreRoute(0, 200, 50))
+		require.ErrorIs(t, err, ErrRateLimited)
 		server.Close()
 		for _, pause := range pauses {
-			if pause != time.Duration(seconds)*time.Second {
-				t.Errorf("pause = %v, want the %ds the endpoint asked for", pause, seconds)
-			}
+			assert.Equalf(t, time.Duration(seconds)*time.Second, pause, "want the %ds the endpoint asked for", seconds)
 		}
 	}
 }
@@ -293,12 +252,10 @@ func TestOverpassChoosesAGrowingPauseWhenTheEndpointNamesNone(t *testing.T) {
 		return nil
 	}
 
-	if _, err := client.Ways(t.Context(), metreRoute(0, 200, 50)); !errors.Is(err, ErrRateLimited) {
-		t.Fatalf("Ways() error = %v, want ErrRateLimited", err)
-	}
-	if len(pauses) < 2 || pauses[1] <= pauses[0] {
-		t.Errorf("pauses = %v, want each one longer than the last", pauses)
-	}
+	_, err := client.Ways(t.Context(), metreRoute(0, 200, 50))
+	require.ErrorIs(t, err, ErrRateLimited)
+	require.GreaterOrEqualf(t, len(pauses), 2, "pauses = %v, want one per refusal", pauses)
+	assert.Greaterf(t, pauses[1], pauses[0], "pauses = %v, want each one longer than the last", pauses)
 }
 
 func TestOverpassWaysRejectsUnusableResponses(t *testing.T) {
@@ -332,16 +289,13 @@ func TestOverpassWaysRejectsUnusableResponses(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 				writer.WriteHeader(test.status)
-				if _, err := writer.Write([]byte(test.body)); err != nil {
-					t.Errorf("Write() error = %v", err)
-				}
+				_, err := writer.Write([]byte(test.body))
+				assert.NoError(t, err, "writing the response")
 			}))
 			defer server.Close()
 
 			_, err := newTestOverpass(t, server).Ways(t.Context(), metreRoute(0, 200, 50))
-			if err == nil || !strings.Contains(err.Error(), test.want) {
-				t.Fatalf("Ways() error = %v, want substring %q", err, test.want)
-			}
+			require.ErrorContains(t, err, test.want)
 		})
 	}
 }
@@ -350,7 +304,7 @@ func TestOverpassWaysRejectsUnusableResponses(t *testing.T) {
 // request on a stage that cannot produce a corridor at all.
 func TestOverpassWaysSkipsGeometryItCannotAskAbout(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
-		t.Error("the endpoint was queried for geometry with no extent")
+		assert.Fail(t, "the endpoint was queried for geometry with no extent")
 	}))
 	defer server.Close()
 
@@ -362,12 +316,8 @@ func TestOverpassWaysSkipsGeometryItCannotAskAbout(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			ways, err := client.Ways(t.Context(), points)
-			if err != nil {
-				t.Fatalf("Ways() error = %v", err)
-			}
-			if len(ways) != 0 {
-				t.Errorf("ways = %v, want none", ways)
-			}
+			require.NoError(t, err)
+			assert.Empty(t, ways, "geometry with no extent produced ways")
 		})
 	}
 }
@@ -385,24 +335,17 @@ func TestNewOverpassRejectsInvalidOptions(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if _, err := NewOverpass(test.options); err == nil {
-				t.Error("NewOverpass() error = nil, want an error")
-			}
+			_, err := NewOverpass(test.options)
+			require.Error(t, err, "NewOverpass() accepted the options")
 		})
 	}
 }
 
 func TestNewOverpassDefaultsToThePublicEndpoint(t *testing.T) {
 	client, err := NewOverpass(nil)
-	if err != nil {
-		t.Fatalf("NewOverpass() error = %v", err)
-	}
-	if got := client.endpoint.String(); got != DefaultEndpoint {
-		t.Errorf("endpoint = %q, want %q", got, DefaultEndpoint)
-	}
-	if got := client.timeout; got != defaultTimeout {
-		t.Errorf("timeout = %s, want %s", got, defaultTimeout)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, DefaultEndpoint, client.endpoint.String(), "endpoint")
+	assert.Equal(t, defaultTimeout, client.timeout, "timeout")
 }
 
 func TestRetryAfterFallsBackToTheDocumentedPause(t *testing.T) {
@@ -421,9 +364,7 @@ func TestRetryAfterFallsBackToTheDocumentedPause(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if got := retryAfter(test.header); got != test.want {
-				t.Errorf("retryAfter(%q) = %s, want %s", test.header, got, test.want)
-			}
+			assert.Equalf(t, test.want, retryAfter(test.header), "retryAfter(%q)", test.header)
 		})
 	}
 }
@@ -442,9 +383,7 @@ func TestDecimateStaysWithinItsTolerance(t *testing.T) {
 	points := metrePoints(coordinates)
 
 	kept := decimate(points, tolerance)
-	if len(kept) >= len(points) {
-		t.Fatalf("kept %d of %d points, want a reduction", len(kept), len(points))
-	}
+	require.Lessf(t, len(kept), len(points), "kept %d of %d points, want a reduction", len(kept), len(points))
 
 	projection := newProjection(points[0].Longitude, points[0].Latitude)
 	keptSegments := buildSegments(projection, []Way{lineOf(kept)})
@@ -454,33 +393,27 @@ func TestDecimateStaysWithinItsTolerance(t *testing.T) {
 		for _, candidate := range keptSegments {
 			nearest = math.Min(nearest, candidate.distanceTo(east, north))
 		}
-		if nearest > tolerance {
-			t.Fatalf("point %d sits %.2fm from the simplified line, beyond the %.2fm tolerance", index, nearest, tolerance)
-		}
+		require.LessOrEqualf(t, nearest, tolerance,
+			"point %d sits %.2fm from the simplified line, beyond the %.2fm tolerance", index, nearest, tolerance)
 	}
 }
 
 func TestDecimateKeepsTheShapeItNeeds(t *testing.T) {
 	t.Run("a straight run collapses to its ends", func(t *testing.T) {
 		points := metreRoute(0, 1000, 25)
-		if got := decimate(points, queryToleranceMetres); len(got) != 2 {
-			t.Errorf("kept %d points, want 2", len(got))
-		}
+		assert.Len(t, decimate(points, queryToleranceMetres), 2, "a straight run did not collapse to its ends")
 	})
 
 	t.Run("geometry with no extent is returned unchanged", func(t *testing.T) {
 		for _, points := range [][]route.Point{nil, metreRoute(0, 0, 25), metreRoute(0, 50, 50)} {
-			if got := decimate(points, queryToleranceMetres); len(got) != len(points) {
-				t.Errorf("kept %d of %d points, want all of them", len(got), len(points))
-			}
+			assert.Lenf(t, decimate(points, queryToleranceMetres), len(points),
+				"geometry with no extent lost one of its %d points", len(points))
 		}
 	})
 
 	t.Run("a turn sharper than the tolerance is kept", func(t *testing.T) {
 		points := metrePoints([][2]float64{{0, 0}, {100, 0}, {100, 100}})
-		if got := decimate(points, queryToleranceMetres); len(got) != 3 {
-			t.Errorf("kept %d points, want the corner kept", len(got))
-		}
+		assert.Len(t, decimate(points, queryToleranceMetres), 3, "the corner was not kept")
 	})
 }
 
@@ -491,7 +424,9 @@ func TestOverpassAsksAboutBoundedLengthsOfRoute(t *testing.T) {
 	var corridors []int
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if err := request.ParseForm(); err != nil {
-			t.Errorf("ParseForm() error = %v", err)
+			assert.Failf(t, "parsing the query form", "%v", err)
+
+			return
 		}
 		corridors = append(corridors, strings.Count(request.PostFormValue("data"), ","))
 		writeOverpass(t, writer, `{"elements":[]}`)
@@ -500,19 +435,14 @@ func TestOverpassAsksAboutBoundedLengthsOfRoute(t *testing.T) {
 
 	// Fifty kilometres of straight road: a handful of vertices once simplified,
 	// and far more ground than one query may cover.
-	if _, err := newTestOverpass(t, server).Ways(t.Context(), metreRoute(0, 50_000, 100)); err != nil {
-		t.Fatalf("Ways() error = %v", err)
-	}
+	_, err := newTestOverpass(t, server).Ways(t.Context(), metreRoute(0, 50_000, 100))
+	require.NoError(t, err)
 
 	wantQueries := int(math.Ceil(50_000 / maximumQueryMetres))
-	if len(corridors) < wantQueries {
-		t.Errorf("queries = %d, want at least %d for fifty kilometres", len(corridors), wantQueries)
-	}
+	assert.GreaterOrEqualf(t, len(corridors), wantQueries, "want at least %d queries for fifty kilometres", wantQueries)
 	for index, commas := range corridors {
 		// Two commas per vertex; the radius is not followed by one.
-		if vertices := commas / 2; vertices > maximumQueryPoints {
-			t.Errorf("query %d carried %d vertices, want at most %d", index, vertices, maximumQueryPoints)
-		}
+		assert.LessOrEqualf(t, commas/2, maximumQueryPoints, "query %d carried too many vertices", index)
 	}
 }
 
@@ -533,20 +463,14 @@ func TestChunkPointsCapsVerticesWhereTheyBunchUp(t *testing.T) {
 
 	chunks := chunkPoints(points, 250, 12000)
 	for index, chunk := range chunks {
-		if len(chunk) > 250 {
-			t.Errorf("chunk[%d] holds %d points, want at most 250", index, len(chunk))
-		}
-		if got := pathMetres(chunk); got > 12001 {
-			t.Errorf("chunk[%d] covers %.1f m, want at most 12000", index, got)
-		}
+		assert.LessOrEqualf(t, len(chunk), 250, "chunk[%d] holds too many points", index)
+		assert.LessOrEqualf(t, pathMetres(chunk), 12001.0, "chunk[%d] covers more than 12000 m", index)
 	}
 	covered := 0.0
 	for _, chunk := range chunks {
 		covered += pathMetres(chunk)
 	}
-	if got, want := covered, pathMetres(points); math.Abs(got-want) > 1 {
-		t.Errorf("chunks cover %.1f m, want %.1f m", got, want)
-	}
+	assert.InDelta(t, pathMetres(points), covered, 1, "the chunks do not cover the route they were cut from")
 }
 
 func TestChunkPointsCoversTheWholeRouteWithoutGaps(t *testing.T) {
@@ -585,44 +509,32 @@ func TestChunkPointsCoversTheWholeRouteWithoutGaps(t *testing.T) {
 			points := metrePoints(coordinates)
 
 			chunks := chunkPoints(points, test.size, test.span)
-			if len(chunks) != test.wantChunks {
-				t.Fatalf("chunk count = %d, want %d", len(chunks), test.wantChunks)
-			}
+			require.Len(t, chunks, test.wantChunks, "chunk count")
 
 			// A cut can land mid-segment, so the runs are checked by the ground
 			// they cover rather than by how many points that took.
 			covered := 0.0
 			for index, chunk := range chunks {
-				if len(chunk) < 2 && test.total >= 2 {
-					t.Errorf("chunk[%d] holds %d points, want a queryable run", index, len(chunk))
+				if test.total >= 2 {
+					assert.GreaterOrEqualf(t, len(chunk), 2, "chunk[%d] is not a queryable run", index)
 				}
-				if test.size >= 2 && len(chunk) > test.size {
-					t.Errorf("chunk[%d] holds %d points, want at most %d", index, len(chunk), test.size)
+				if test.size >= 2 {
+					assert.LessOrEqualf(t, len(chunk), test.size, "chunk[%d] holds more than %d points", index, test.size)
 				}
 				if index > 0 {
 					previous := chunks[index-1]
-					if chunk[0] != previous[len(previous)-1] {
-						t.Errorf("chunk[%d] does not start where chunk[%d] ended", index, index-1)
-					}
+					assert.Equalf(t, previous[len(previous)-1], chunk[0], "chunk[%d] does not start where chunk[%d] ended", index, index-1)
 				}
 				covered += pathMetres(chunk)
 			}
-			if got, want := covered, pathMetres(points); math.Abs(got-want) > 1 {
-				t.Errorf("chunks cover %.1f m, want %.1f m", got, want)
-			}
-			if chunks[0][0] != points[0] {
-				t.Error("the first chunk does not start where the route does")
-			}
+			assert.InDelta(t, pathMetres(points), covered, 1, "the chunks do not cover the route they were cut from")
+			assert.Equal(t, points[0], chunks[0][0], "the first chunk does not start where the route does")
 			last := chunks[len(chunks)-1]
-			if last[len(last)-1] != points[len(points)-1] {
-				t.Error("the last chunk does not end where the route does")
-			}
+			assert.Equal(t, points[len(points)-1], last[len(last)-1], "the last chunk does not end where the route does")
 			if test.span > 0 && len(chunks) > 1 {
 				for index, chunk := range chunks {
 					// Allow the metre of slack the equal-length split rounds by.
-					if got := pathMetres(chunk); got > test.span+1 {
-						t.Errorf("chunk[%d] covers %.1f m, want at most %.1f m", index, got, test.span)
-					}
+					assert.LessOrEqualf(t, pathMetres(chunk), test.span+1, "chunk[%d] covers more than the %.1f m span", index, test.span)
 				}
 			}
 		})
@@ -636,9 +548,7 @@ func newTestOverpass(t *testing.T, server *httptest.Server) *Overpass {
 		Timeout:   5 * time.Second,
 		Transport: server.Client().Transport,
 	})
-	if err != nil {
-		t.Fatalf("NewOverpass() error = %v", err)
-	}
+	require.NoError(t, err, "NewOverpass()")
 
 	return client
 }
@@ -646,9 +556,8 @@ func newTestOverpass(t *testing.T, server *httptest.Server) *Overpass {
 func writeOverpass(t *testing.T, writer http.ResponseWriter, body string) {
 	t.Helper()
 	writer.Header().Set("Content-Type", "application/json")
-	if _, err := writer.Write([]byte(body)); err != nil {
-		t.Errorf("Write() error = %v", err)
-	}
+	_, err := writer.Write([]byte(body))
+	assert.NoError(t, err, "writing the response")
 }
 
 // coordinatePair renders a point the way buildQuery does, so a test can look for

@@ -6,6 +6,9 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/nobbs/domestique/internal/route"
 )
 
@@ -20,18 +23,10 @@ func TestAnnotateClassifiesTheStagesAfterOneThatFailed(t *testing.T) {
 	annotator := NewAnnotator(source, cache)
 
 	classified, failed, err := annotator.Annotate(t.Context(), testStages(t, 1, 2, 3))
-	if err != nil {
-		t.Fatalf("Annotate() error = %v", err)
-	}
-	if got, want := classified, 2; got != want {
-		t.Errorf("classified = %d, want %d", got, want)
-	}
-	if got, want := failed, 1; got != want {
-		t.Errorf("failed = %d, want %d", got, want)
-	}
-	if _, stored := cache.stored[3]; !stored {
-		t.Error("the stage after the failure was never classified")
-	}
+	require.NoError(t, err)
+	assert.Equal(t, 2, classified)
+	assert.Equal(t, 1, failed)
+	assert.Contains(t, cache.stored, int64(3), "the stage after the failure was never classified")
 }
 
 // Rate limiting is an answer about the server, not about a stage: carrying on
@@ -42,18 +37,10 @@ func TestAnnotateStopsWhenTheEndpointRefusesCapacity(t *testing.T) {
 	annotator := NewAnnotator(source, cache)
 
 	classified, failed, err := annotator.Annotate(t.Context(), testStages(t, 1, 2, 3))
-	if !errors.Is(err, ErrRateLimited) {
-		t.Fatalf("Annotate() error = %v, want ErrRateLimited", err)
-	}
-	if got, want := classified, 1; got != want {
-		t.Errorf("classified = %d, want %d", got, want)
-	}
-	if got, want := failed, 1; got != want {
-		t.Errorf("failed = %d, want %d", got, want)
-	}
-	if _, stored := cache.stored[3]; stored {
-		t.Error("kept asking a server that said it had no capacity")
-	}
+	require.ErrorIs(t, err, ErrRateLimited)
+	assert.Equal(t, 1, classified)
+	assert.Equal(t, 1, failed)
+	assert.NotContains(t, cache.stored, int64(3), "kept asking a server that said it had no capacity")
 }
 
 func TestAnnotateSkipsAStageAlreadyClassifiedAgainstItsGeometry(t *testing.T) {
@@ -63,18 +50,11 @@ func TestAnnotateSkipsAStageAlreadyClassifiedAgainstItsGeometry(t *testing.T) {
 	annotator := NewAnnotator(source, cache)
 
 	classified, failed, err := annotator.Annotate(t.Context(), testStages(t, 1, 2))
-	if err != nil {
-		t.Fatalf("Annotate() error = %v", err)
-	}
-	if got, want := classified, 1; got != want {
-		t.Errorf("classified = %d, want %d", got, want)
-	}
-	if failed != 0 {
-		t.Errorf("failed = %d, want 0", failed)
-	}
-	if source.asked[1] {
-		t.Error("asked the endpoint about a stage already classified for this geometry")
-	}
+	require.NoError(t, err)
+	assert.Equal(t, 1, classified)
+	assert.Zero(t, failed)
+	assert.False(t, source.asked[1],
+		"asked the endpoint about a stage already classified for this geometry")
 }
 
 func testStages(t *testing.T, routeIDs ...int64) []route.Stage {
@@ -90,9 +70,7 @@ func testStages(t *testing.T, routeIDs ...int64) []route.Stage {
 		stage, err := route.NewStage(
 			routeID, 1, "revision", "Route", "Stage", geometry, "hash-"+strconv.FormatInt(routeID, 10),
 		)
-		if err != nil {
-			t.Fatalf("NewStage() error = %v", err)
-		}
+		require.NoError(t, err)
 		stages = append(stages, stage)
 	}
 

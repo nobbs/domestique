@@ -2,12 +2,13 @@ package main
 
 import (
 	"context"
-	"errors"
 	"net"
 	"net/http"
-	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestServeWaitsForCancelledSchedulerBeforeReturning(t *testing.T) {
@@ -36,9 +37,7 @@ func TestServeWaitsForCancelledSchedulerBeforeReturning(t *testing.T) {
 	}
 
 	close(scheduler.release)
-	if err := <-result; err != nil {
-		t.Fatalf("serve returned error: %v", err)
-	}
+	require.NoError(t, <-result)
 }
 
 // Both listeners are shut down together, so a serve that returns has stopped
@@ -61,14 +60,10 @@ func TestServeStopsBothListeners(t *testing.T) {
 	cancel()
 	<-scheduler.cancelled
 	close(scheduler.release)
-	if err := <-result; err != nil {
-		t.Fatalf("serve returned error: %v", err)
-	}
+	require.NoError(t, <-result)
 
 	for name, server := range map[string]*http.Server{"served": server, "readiness": readinessServer} {
-		if err := server.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
-			t.Errorf("%s listener error = %v, want %v", name, err, http.ErrServerClosed)
-		}
+		assert.ErrorIsf(t, server.ListenAndServe(), http.ErrServerClosed, "the %s listener is still open", name)
 	}
 }
 
@@ -81,9 +76,7 @@ func TestServeStopsWhenTheReadinessListenerCannotBind(t *testing.T) {
 
 	var listenConfig net.ListenConfig
 	occupied, err := listenConfig.Listen(t.Context(), "tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("reserving a port: %v", err)
-	}
+	require.NoError(t, err, "reserving a port")
 	t.Cleanup(func() {
 		if closeErr := occupied.Close(); closeErr != nil {
 			t.Logf("closing the reserved port: %v", closeErr)
@@ -109,15 +102,10 @@ func TestServeStopsWhenTheReadinessListenerCannotBind(t *testing.T) {
 	close(scheduler.release)
 
 	err = <-result
-	if err == nil {
-		t.Fatal("serve returned no error for a readiness listener that cannot bind")
-	}
-	if got := err.Error(); !strings.Contains(got, "serving HTTP") || !strings.Contains(got, "address already in use") {
-		t.Errorf("serve error = %q, want the bind failure", got)
-	}
-	if errors.Is(err, http.ErrServerClosed) {
-		t.Error("serve error carries ErrServerClosed, which is not a failure")
-	}
+	require.Error(t, err, "serve returned no error for a readiness listener that cannot bind")
+	require.ErrorContains(t, err, "serving HTTP")
+	require.ErrorContains(t, err, "address already in use")
+	assert.NotErrorIs(t, err, http.ErrServerClosed, "ErrServerClosed is not a failure")
 }
 
 func newTestServer() *http.Server {

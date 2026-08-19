@@ -1,6 +1,10 @@
 package surface
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+)
 
 func TestClassifyReadsTheSurfaceTag(t *testing.T) {
 	tests := []struct {
@@ -26,9 +30,8 @@ func TestClassifyReadsTheSurfaceTag(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if got := Classify(map[string]string{"surface": test.surface}); got != test.want {
-				t.Errorf("Classify(surface=%q) = %v, want %v", test.surface, got, test.want)
-			}
+			assert.Equal(t, test.want, Classify(map[string]string{"surface": test.surface}),
+				"Classify(surface=%q)", test.surface)
 		})
 	}
 }
@@ -73,9 +76,7 @@ func TestClassifyFallsBackToTrackTypeForTracksOnly(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if got := Classify(test.tags); got != test.want {
-				t.Errorf("Classify(%v) = %v, want %v", test.tags, got, test.want)
-			}
+			assert.Equal(t, test.want, Classify(test.tags), "Classify(%v)", test.tags)
 		})
 	}
 }
@@ -86,20 +87,15 @@ func TestClassifyFallsBackToTrackTypeForTracksOnly(t *testing.T) {
 func TestClassifyInfersNothingFromTheHighwayTag(t *testing.T) {
 	for _, highway := range []string{"residential", "primary", "cycleway", "footway", "path", "service"} {
 		t.Run(highway, func(t *testing.T) {
-			if got := Classify(map[string]string{"highway": highway}); got != KindUnknown {
-				t.Errorf("Classify(highway=%q) = %v, want %v", highway, got, KindUnknown)
-			}
+			assert.Equal(t, KindUnknown, Classify(map[string]string{"highway": highway}),
+				"Classify(highway=%q)", highway)
 		})
 	}
 }
 
 func TestClassifyHandlesAbsentTags(t *testing.T) {
-	if got := Classify(nil); got != KindUnknown {
-		t.Errorf("Classify(nil) = %v, want %v", got, KindUnknown)
-	}
-	if got := Classify(map[string]string{}); got != KindUnknown {
-		t.Errorf("Classify(empty) = %v, want %v", got, KindUnknown)
-	}
+	assert.Equal(t, KindUnknown, Classify(nil), "Classify(nil)")
+	assert.Equal(t, KindUnknown, Classify(map[string]string{}), "Classify(empty)")
 }
 
 // TestKindStringIsStable pins the wire names. Changing one of these silently
@@ -121,9 +117,7 @@ func TestKindStringIsStable(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.want, func(t *testing.T) {
-			if got := test.kind.String(); got != test.want {
-				t.Errorf("Kind(%d).String() = %q, want %q", test.kind, got, test.want)
-			}
+			assert.Equal(t, test.want, test.kind.String(), "Kind(%d).String()", test.kind)
 		})
 	}
 }

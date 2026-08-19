@@ -31,26 +31,20 @@ func TestHandlerGatesStateAndKeepsHealthLocal(t *testing.T) {
 	health := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/healthz", http.NoBody)
 	healthResponse := httptest.NewRecorder()
 	handler.ServeHTTP(healthResponse, health)
-	if got, want := healthResponse.Code, http.StatusOK; got != want {
-		t.Errorf("health status = %d, want %d", got, want)
-	}
+	assert.Equal(t, http.StatusOK, healthResponse.Code, "health status")
 
 	status := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/status", http.NoBody)
 	statusResponse := httptest.NewRecorder()
 	handler.ServeHTTP(statusResponse, status)
-	if got, want := statusResponse.Code, http.StatusUnauthorized; got != want {
-		t.Errorf("unauthenticated status = %d, want %d", got, want)
-	}
+	assert.Equal(t, http.StatusUnauthorized, statusResponse.Code, "unauthenticated status")
 
 	status.Header.Set(assertionHeader, testAssertion)
 	statusResponse = httptest.NewRecorder()
 	handler.ServeHTTP(statusResponse, status)
-	if got, want := statusResponse.Code, http.StatusOK; got != want {
-		t.Errorf("authenticated status = %d, want %d", got, want)
-	}
-	if body := statusResponse.Body.String(); strings.Contains(body, "private-token") || !strings.Contains(body, "authorized") {
-		t.Errorf("status body = %q, want safe authorization state", body)
-	}
+	assert.Equal(t, http.StatusOK, statusResponse.Code, "authenticated status")
+	body := statusResponse.Body.String()
+	assert.NotContains(t, body, "private-token", "the status body exposed a token")
+	assert.Contains(t, body, "authorized", "the status body omits the authorization state")
 }
 
 // Every route added for the browser UI must sit behind the same identity gate.
@@ -77,15 +71,11 @@ func TestHandlerGatesEveryNonHealthRoute(t *testing.T) {
 			response := httptest.NewRecorder()
 			handler.ServeHTTP(response, httptest.NewRequestWithContext(
 				t.Context(), http.MethodGet, path, http.NoBody))
-			if got, want := response.Code, http.StatusUnauthorized; got != want {
-				t.Errorf("unauthenticated %s = %d, want %d", path, got, want)
-			}
+			assert.Equalf(t, http.StatusUnauthorized, response.Code, "unauthenticated %s", path)
 
 			forbiddenResponse := httptest.NewRecorder()
 			foreign.ServeHTTP(forbiddenResponse, authenticatedRequest(http.MethodGet, path))
-			if got, want := forbiddenResponse.Code, http.StatusForbidden; got != want {
-				t.Errorf("wrong identity %s = %d, want %d", path, got, want)
-			}
+			assert.Equalf(t, http.StatusForbidden, forbiddenResponse.Code, "wrong identity %s", path)
 		})
 	}
 }
@@ -103,29 +93,17 @@ func TestHandlerServesStageGeometryAsGeoJSON(t *testing.T) {
 
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/routes/12/stages/1/geometry"))
-	if got, want := response.Code, http.StatusOK; got != want {
-		t.Fatalf("geometry status = %d, want %d", got, want)
-	}
+	require.Equal(t, http.StatusOK, response.Code, "geometry status")
 
 	var view geometryView
-	if err := json.Unmarshal(response.Body.Bytes(), &view); err != nil {
-		t.Fatalf("decoding geometry = %v", err)
-	}
-	if got, want := view.Type, "Feature"; got != want {
-		t.Errorf("type = %q, want %q", got, want)
-	}
-	if got, want := view.Geometry.Type, "LineString"; got != want {
-		t.Errorf("geometry type = %q, want %q", got, want)
-	}
-	if got, want := string(view.Geometry.Coordinates), `[[8.4,49],[8.5,49.2]]`; got != want {
-		t.Errorf("coordinates = %s, want %s", got, want)
-	}
-	if got, want := view.Properties.Title, "Alpine loop — Descent"; got != want {
-		t.Errorf("title = %q, want %q", got, want)
-	}
-	if want := []float64{8.4, 49.0, 8.5, 49.2}; len(view.BBox) != 4 {
-		t.Errorf("bbox = %v, want %v", view.BBox, want)
-	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &view), "decoding geometry")
+	assert.Equal(t, "Feature", view.Type, "type")
+	assert.Equal(t, "LineString", view.Geometry.Type, "geometry type")
+	assert.Equal(t, `[[8.4,49],[8.5,49.2]]`, string(view.Geometry.Coordinates), "coordinates")
+	assert.Equal(t, "Alpine loop — Descent", view.Properties.Title, "title")
+	// The bounding box is the corners of the two coordinates, which is what a map
+	// frames the stage by.
+	assert.InDeltaSlice(t, []float64{8.4, 49.0, 8.5, 49.2}, view.BBox, 1e-9, "bbox")
 }
 
 func TestHandlerServesTheStoredSurfaceWithGeometry(t *testing.T) {
@@ -134,23 +112,13 @@ func TestHandlerServesTheStoredSurfaceWithGeometry(t *testing.T) {
 
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/routes/12/stages/1/geometry"))
-	if got, want := response.Code, http.StatusOK; got != want {
-		t.Fatalf("geometry status = %d, want %d", got, want)
-	}
+	require.Equal(t, http.StatusOK, response.Code, "geometry status")
 
 	var view geometryView
-	if err := json.Unmarshal(response.Body.Bytes(), &view); err != nil {
-		t.Fatalf("decoding geometry = %v", err)
-	}
-	if view.Properties.Surface == nil {
-		t.Fatalf("geometry omitted the stored surface")
-	}
-	if got, want := string(view.Properties.Surface.Ranges), string(state.surfaceRanges); got != want {
-		t.Errorf("surface ranges = %s, want %s", got, want)
-	}
-	if got, want := view.Properties.Surface.MatchedMetres, 1234.5; got != want {
-		t.Errorf("matched metres = %v, want %v", got, want)
-	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &view), "decoding geometry")
+	require.NotNil(t, view.Properties.Surface, "the geometry omitted the stored surface")
+	assert.Equal(t, string(state.surfaceRanges), string(view.Properties.Surface.Ranges), "surface ranges")
+	assert.InDelta(t, 1234.5, view.Properties.Surface.MatchedMetres, 0.001, "matched metres")
 }
 
 // A stage nobody has surveyed is still a stage that was asked about. It is
@@ -165,23 +133,13 @@ func TestHandlerServesAnUnsurveyedSurfaceAsClassified(t *testing.T) {
 
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/routes/12/stages/1/geometry"))
-	if got, want := response.Code, http.StatusOK; got != want {
-		t.Fatalf("geometry status = %d, want %d", got, want)
-	}
+	require.Equal(t, http.StatusOK, response.Code, "geometry status")
 
 	var view geometryView
-	if err := json.Unmarshal(response.Body.Bytes(), &view); err != nil {
-		t.Fatalf("decoding geometry = %v", err)
-	}
-	if view.Properties.Surface == nil {
-		t.Fatalf("geometry omitted a classification that matched nothing")
-	}
-	if got, want := string(view.Properties.Surface.Ranges), string(state.surfaceRanges); got != want {
-		t.Errorf("surface ranges = %s, want %s", got, want)
-	}
-	if got := view.Properties.Surface.MatchedMetres; got != 0 {
-		t.Errorf("matched metres = %v, want 0", got)
-	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &view), "decoding geometry")
+	require.NotNil(t, view.Properties.Surface, "the geometry omitted a classification that matched nothing")
+	assert.Equal(t, string(state.surfaceRanges), string(view.Properties.Surface.Ranges), "surface ranges")
+	assert.Zero(t, view.Properties.Surface.MatchedMetres, "matched metres")
 }
 
 // A classification is a set of positions in one stored coordinate array, so one
@@ -194,12 +152,8 @@ func TestHandlerOmitsASurfaceMeasuredAgainstOtherGeometry(t *testing.T) {
 
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/routes/12/stages/1/geometry"))
-	if got, want := response.Code, http.StatusOK; got != want {
-		t.Fatalf("geometry status = %d, want %d", got, want)
-	}
-	if body := response.Body.String(); strings.Contains(body, "surface") {
-		t.Errorf("geometry carried a stale surface: %q", body)
-	}
+	require.Equal(t, http.StatusOK, response.Code, "geometry status")
+	assert.NotContains(t, response.Body.String(), "surface", "the geometry carried a stale surface")
 }
 
 func TestHandlerReportsUnreadableSurfaceStateAsUnavailable(t *testing.T) {
@@ -209,9 +163,7 @@ func TestHandlerReportsUnreadableSurfaceStateAsUnavailable(t *testing.T) {
 
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/routes/12/stages/1/geometry"))
-	if got, want := response.Code, http.StatusInternalServerError; got != want {
-		t.Errorf("geometry status = %d, want %d", got, want)
-	}
+	assert.Equal(t, http.StatusInternalServerError, response.Code, "geometry status")
 }
 
 // surfaceState holds one stage whose surface has been classified against the
@@ -234,9 +186,7 @@ func TestHandlerReportsMissingGeometryAsNotFound(t *testing.T) {
 	handler := newHandler(t, &fakeOAuth{}, &fakeState{})
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/routes/99/stages/1/geometry"))
-	if got, want := response.Code, http.StatusNotFound; got != want {
-		t.Errorf("geometry status = %d, want %d", got, want)
-	}
+	assert.Equal(t, http.StatusNotFound, response.Code, "geometry status")
 }
 
 func TestHandlerRejectsMalformedStageIdentifiers(t *testing.T) {
@@ -250,9 +200,7 @@ func TestHandlerRejectsMalformedStageIdentifiers(t *testing.T) {
 		t.Run(path, func(t *testing.T) {
 			response := httptest.NewRecorder()
 			handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, path))
-			if got, want := response.Code, http.StatusNotFound; got != want {
-				t.Errorf("status = %d, want %d", got, want)
-			}
+			assert.Equal(t, http.StatusNotFound, response.Code, "status")
 		})
 	}
 }
@@ -265,34 +213,24 @@ func TestHandlerListsStagesWithoutGeometry(t *testing.T) {
 
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/routes"))
-	if got, want := response.Code, http.StatusOK; got != want {
-		t.Fatalf("routes status = %d, want %d", got, want)
-	}
+	require.Equal(t, http.StatusOK, response.Code, "routes status")
 	body := response.Body.String()
-	if !strings.Contains(body, `"title":"Sunday"`) {
-		t.Errorf("routes body = %q, want the stage title", body)
-	}
-	if strings.Contains(body, "coordinates") {
-		t.Errorf("routes body leaked geometry: %q", body)
-	}
+	assert.Contains(t, body, `"title":"Sunday"`, "the routes body omits the stage title")
+	assert.NotContains(t, body, "coordinates", "the routes body leaked geometry")
 }
 
 func TestHandlerServesTileStyleConfiguration(t *testing.T) {
 	handler := newTestHandler(t)
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/webui/config"))
-	if got, want := response.Code, http.StatusOK; got != want {
-		t.Fatalf("config status = %d, want %d", got, want)
-	}
+	require.Equal(t, http.StatusOK, response.Code, "config status")
 	body := response.Body.String()
 	// Both styles, because the page picks between them: the colour scheme is a
 	// property of the browser, and this response is cached for the session. The
 	// provider base URL rides along, because the link back to a stage's source
 	// route is built from it.
 	for _, want := range []string{testTileStyleURL, testTileStyleURLDark, testSourceBaseURL} {
-		if !strings.Contains(body, want) {
-			t.Errorf("config body = %q, want it to contain %q", body, want)
-		}
+		assert.Contains(t, body, want, "the config body omits a value the page is built from")
 	}
 }
 
@@ -307,17 +245,13 @@ func TestHandlerOmitsAnUnconfiguredDarkTileStyle(t *testing.T) {
 		},
 		&fakeOAuth{}, &fakeState{}, &fakeSyncTrigger{}, &fakeAssets{},
 	)
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
+	require.NoError(t, err, "New()")
 
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/webui/config"))
 	// Absent rather than empty: that is how the page knows to keep one style in
 	// both colour schemes.
-	if got := response.Body.String(); strings.Contains(got, "tile_style_url_dark") {
-		t.Errorf("config body = %q, want no dark style key", got)
-	}
+	assert.NotContains(t, response.Body.String(), "tile_style_url_dark", "the config body carries a dark style key")
 }
 
 func TestHandlerOmitsAnUnconfiguredSourceBaseURL(t *testing.T) {
@@ -331,17 +265,13 @@ func TestHandlerOmitsAnUnconfiguredSourceBaseURL(t *testing.T) {
 		},
 		&fakeOAuth{}, &fakeState{}, &fakeSyncTrigger{}, &fakeAssets{},
 	)
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
+	require.NoError(t, err, "New()")
 
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/webui/config"))
 	// Absent rather than empty: that is how the page knows to offer no source
 	// link at all rather than one pointing at nowhere.
-	if got := response.Body.String(); strings.Contains(got, "source_base_url") {
-		t.Errorf("config body = %q, want no source base URL key", got)
-	}
+	assert.NotContains(t, response.Body.String(), "source_base_url", "the config body carries a source base URL key")
 }
 
 func TestHandlerRefusesASourceBaseURLThatIsNotOne(t *testing.T) {
@@ -368,9 +298,7 @@ func TestHandlerRefusesASourceBaseURLThatIsNotOne(t *testing.T) {
 			},
 			&fakeOAuth{}, &fakeState{}, &fakeSyncTrigger{}, &fakeAssets{},
 		)
-		if err == nil {
-			t.Errorf("New() with source base URL %q error = nil, want an error", value)
-		}
+		require.Errorf(t, err, "New() accepted the source base URL %q", value)
 	}
 }
 
@@ -386,9 +314,7 @@ func TestHandlerSendsASourceBaseURLWithoutSurroundingWhitespace(t *testing.T) {
 		},
 		&fakeOAuth{}, &fakeState{}, &fakeSyncTrigger{}, &fakeAssets{},
 	)
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
+	require.NoError(t, err, "New()")
 
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/webui/config"))
@@ -399,12 +325,8 @@ func TestHandlerSendsASourceBaseURLWithoutSurroundingWhitespace(t *testing.T) {
 		//nolint:tagliatelle // Mirrors the wire field the page reads.
 		SourceBaseURL string `json:"source_base_url"`
 	}
-	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
-		t.Fatalf("decoding config body: %v", err)
-	}
-	if got, want := payload.SourceBaseURL, testSourceBaseURL; got != want {
-		t.Errorf("source base URL = %q, want %q", got, want)
-	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &payload), "decoding config body")
+	assert.Equal(t, testSourceBaseURL, payload.SourceBaseURL, "source base URL")
 }
 
 func TestHandlerAcceptsASourceBaseURLHostedUnderAPath(t *testing.T) {
@@ -421,15 +343,11 @@ func TestHandlerAcceptsASourceBaseURLHostedUnderAPath(t *testing.T) {
 		},
 		&fakeOAuth{}, &fakeState{}, &fakeSyncTrigger{}, &fakeAssets{},
 	)
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
+	require.NoError(t, err, "New()")
 
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/webui/config"))
-	if got, want := response.Body.String(), testSourceBaseURL+"/planner"; !strings.Contains(got, want) {
-		t.Errorf("config body = %q, want it to contain %q", got, want)
-	}
+	assert.Contains(t, response.Body.String(), testSourceBaseURL+"/planner", "the config body omits the planner link")
 }
 
 func TestHandlerNamesTheBuildItIsRunning(t *testing.T) {
@@ -446,18 +364,10 @@ func TestHandlerNamesTheBuildItIsRunning(t *testing.T) {
 			ImageDigest string `json:"image_digest"`
 		} `json:"build"`
 	}
-	if err := json.Unmarshal(response.Body.Bytes(), &view); err != nil {
-		t.Fatalf("decoding status body: %v", err)
-	}
-	if view.Build == nil {
-		t.Fatalf("status body = %q, want a build group", response.Body.String())
-	}
-	if got, want := view.Build.Revision, revision; got != want {
-		t.Errorf("revision = %q, want %q", got, want)
-	}
-	if got, want := view.Build.ImageDigest, digest; got != want {
-		t.Errorf("image digest = %q, want %q", got, want)
-	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &view), "decoding status body")
+	require.NotNil(t, view.Build, "the status body carries no build group")
+	assert.Equal(t, revision, view.Build.Revision, "revision")
+	assert.Equal(t, digest, view.Build.ImageDigest, "image digest")
 }
 
 func TestHandlerSaysNothingAboutAnUninjectedBuild(t *testing.T) {
@@ -468,9 +378,7 @@ func TestHandlerSaysNothingAboutAnUninjectedBuild(t *testing.T) {
 	// Absent rather than an empty group: that is how the page tells a local
 	// development process from a deployed one, instead of offering a link to a
 	// commit nobody can look up.
-	if got := response.Body.String(); strings.Contains(got, "\"build\"") {
-		t.Errorf("status body = %q, want no build group", got)
-	}
+	assert.NotContains(t, response.Body.String(), "\"build\"", "the status body carries a build group")
 }
 
 func TestHandlerRefusesToPublishABuildStampThatIsNotOne(t *testing.T) {
@@ -487,9 +395,7 @@ func TestHandlerRefusesToPublishABuildStampThatIsNotOne(t *testing.T) {
 		handler := newHandlerWithBuild(t, revision, digest)
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/status"))
-		if got := response.Body.String(); strings.Contains(got, "\"build\"") {
-			t.Errorf("status body for revision %q = %q, want no build group", revision, got)
-		}
+		assert.NotContainsf(t, response.Body.String(), "\"build\"", "the status body for revision %q carries a build group", revision)
 	}
 
 	for _, value := range []string{
@@ -503,14 +409,10 @@ func TestHandlerRefusesToPublishABuildStampThatIsNotOne(t *testing.T) {
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/status"))
 		body := response.Body.String()
-		if strings.Contains(body, "image_digest") {
-			t.Errorf("status body for image %q = %q, want no image digest", value, body)
-		}
+		assert.NotContainsf(t, body, "image_digest", "the status body for image %q carries a digest", value)
 		// The revision still stands on its own: one unusable value must not cost
 		// the operator the other.
-		if !strings.Contains(body, strings.Repeat("ab", 20)) {
-			t.Errorf("status body for image %q = %q, want the revision kept", value, body)
-		}
+		assert.Containsf(t, body, strings.Repeat("ab", 20), "the status body for image %q lost the revision", value)
 	}
 }
 
@@ -529,9 +431,7 @@ func newHandlerWithBuild(t *testing.T, revision, imageDigest string) *Handler {
 		},
 		&fakeOAuth{}, &fakeState{}, &fakeSyncTrigger{}, &fakeAssets{},
 	)
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
+	require.NoError(t, err, "New()")
 
 	return handler
 }
@@ -550,30 +450,20 @@ func TestHandlerSetsPolicyAndCacheHeaders(t *testing.T) {
 		"worker-src 'self' blob:",
 		"https://tiles.example.test",
 	} {
-		if !strings.Contains(policy, want) {
-			t.Errorf("CSP = %q, want it to contain %q", policy, want)
-		}
+		assert.Contains(t, policy, want, "the CSP omits a directive the page needs")
 	}
 	// Exactly one third-party origin, named once for img-src and once for
 	// connect-src. Two configured basemap styles must not become two origins.
-	if got, want := strings.Count(policy, "https://"), 2; got != want {
-		t.Errorf("CSP names %d external origins, want %d: %q", got, want, policy)
-	}
-	if got, want := api.Header().Get("Cache-Control"), cacheAPI; got != want {
-		t.Errorf("API Cache-Control = %q, want %q", got, want)
-	}
+	assert.Equalf(t, 2, strings.Count(policy, "https://"), "the CSP names the wrong number of external origins: %q", policy)
+	assert.Equal(t, cacheAPI, api.Header().Get("Cache-Control"), "API Cache-Control")
 
 	asset := httptest.NewRecorder()
 	handler.ServeHTTP(asset, authenticatedRequest(http.MethodGet, "/assets/app-abc123.js"))
-	if got, want := asset.Header().Get("Cache-Control"), cacheImmutable; got != want {
-		t.Errorf("asset Cache-Control = %q, want %q", got, want)
-	}
+	assert.Equal(t, cacheImmutable, asset.Header().Get("Cache-Control"), "asset Cache-Control")
 
 	document := httptest.NewRecorder()
 	handler.ServeHTTP(document, authenticatedRequest(http.MethodGet, "/"))
-	if got, want := document.Header().Get("Cache-Control"), cacheDocument; got != want {
-		t.Errorf("document Cache-Control = %q, want %q", got, want)
-	}
+	assert.Equal(t, cacheDocument, document.Header().Get("Cache-Control"), "document Cache-Control")
 }
 
 func TestHandlerServesTheApplicationDocumentForDeepLinks(t *testing.T) {
@@ -582,12 +472,8 @@ func TestHandlerServesTheApplicationDocumentForDeepLinks(t *testing.T) {
 		t.Run(path, func(t *testing.T) {
 			response := httptest.NewRecorder()
 			handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, path))
-			if got, want := response.Code, http.StatusOK; got != want {
-				t.Fatalf("status = %d, want %d", got, want)
-			}
-			if got := response.Body.String(); !strings.Contains(got, "<!doctype html>") {
-				t.Errorf("body = %q, want the application document", got)
-			}
+			require.Equal(t, http.StatusOK, response.Code, "status")
+			assert.Contains(t, response.Body.String(), "<!doctype html>", "the response is not the application document")
 		})
 	}
 }
@@ -597,21 +483,13 @@ func TestHandlerRunsCallerBoundOAuthFlow(t *testing.T) {
 	handler := newHandler(t, oauthService, &fakeState{})
 	startResponse := httptest.NewRecorder()
 	handler.ServeHTTP(startResponse, authenticatedRequest(http.MethodGet, "/oauth/wahoo/start/rider-a"))
-	if got, want := startResponse.Code, http.StatusFound; got != want {
-		t.Errorf("start status = %d, want %d", got, want)
-	}
-	if got, want := oauthService.targetID, "rider-a"; got != want {
-		t.Errorf("oauth target = %q, want %q", got, want)
-	}
+	assert.Equal(t, http.StatusFound, startResponse.Code, "start status")
+	assert.Equal(t, "rider-a", oauthService.targetID, "oauth target")
 
 	callbackResponse := httptest.NewRecorder()
 	handler.ServeHTTP(callbackResponse, authenticatedRequest(http.MethodGet, "/oauth/wahoo/callback?state=state&code=code"))
-	if got, want := callbackResponse.Code, http.StatusSeeOther; got != want {
-		t.Errorf("callback status = %d, want %d", got, want)
-	}
-	if got, want := callbackResponse.Header().Get("Location"), "/v1/status"; got != want {
-		t.Errorf("callback location = %q, want %q", got, want)
-	}
+	assert.Equal(t, http.StatusSeeOther, callbackResponse.Code, "callback status")
+	assert.Equal(t, "/v1/status", callbackResponse.Header().Get("Location"), "callback location")
 }
 
 func TestHandlerAcceptsManualSync(t *testing.T) {
@@ -619,12 +497,8 @@ func TestHandlerAcceptsManualSync(t *testing.T) {
 	handler := newHandlerWithTrigger(t, &fakeOAuth{}, &fakeState{}, trigger)
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/sync"))
-	if got, want := response.Code, http.StatusAccepted; got != want {
-		t.Errorf("sync status = %d, want %d", got, want)
-	}
-	if got, want := trigger.calls, 1; got != want {
-		t.Errorf("trigger calls = %d, want %d", got, want)
-	}
+	assert.Equal(t, http.StatusAccepted, response.Code, "sync status")
+	assert.Equal(t, 1, trigger.calls, "trigger calls")
 }
 
 // Redoing a stage is one request: mark it, then start the run that will honour
@@ -637,15 +511,9 @@ func TestHandlerReprocessesOneStageAndStartsARun(t *testing.T) {
 
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/routes/12/stages/1/reprocess"))
-	if got, want := response.Code, http.StatusAccepted; got != want {
-		t.Fatalf("reprocess status = %d, want %d", got, want)
-	}
-	if got, want := state.reprocessed, [][2]int64{{12, 1}}; len(got) != len(want) || got[0] != want[0] {
-		t.Errorf("reprocessed = %v, want %v", got, want)
-	}
-	if got := trigger.phases; len(got) != 1 || got[0] != SyncPhaseAll {
-		t.Errorf("triggered %v, want [%s]", got, SyncPhaseAll)
-	}
+	require.Equal(t, http.StatusAccepted, response.Code, "reprocess status")
+	assert.Equal(t, [][2]int64{{12, 1}}, state.reprocessed, "reprocessed stages")
+	assert.Equal(t, []SyncPhase{SyncPhaseAll}, trigger.phases, "triggered phases")
 }
 
 // A run already in flight may be past this stage or may not include it, so the
@@ -656,12 +524,8 @@ func TestHandlerKeepsAReprocessRequestWhenARunIsAlreadyActive(t *testing.T) {
 
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/routes/12/stages/1/reprocess"))
-	if got, want := response.Code, http.StatusAccepted; got != want {
-		t.Errorf("reprocess status = %d, want %d", got, want)
-	}
-	if len(state.reprocessed) != 1 {
-		t.Errorf("reprocessed = %v, want the request recorded anyway", state.reprocessed)
-	}
+	assert.Equal(t, http.StatusAccepted, response.Code, "reprocess status")
+	assert.Len(t, state.reprocessed, 1, "the request was not recorded")
 }
 
 func TestHandlerReportsAnUnknownStageForReprocessingAsNotFound(t *testing.T) {
@@ -670,12 +534,8 @@ func TestHandlerReportsAnUnknownStageForReprocessingAsNotFound(t *testing.T) {
 
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/routes/99/stages/1/reprocess"))
-	if got, want := response.Code, http.StatusNotFound; got != want {
-		t.Errorf("reprocess status = %d, want %d", got, want)
-	}
-	if len(trigger.phases) != 0 {
-		t.Errorf("triggered %v, want no run for a stage that is not stored", trigger.phases)
-	}
+	assert.Equal(t, http.StatusNotFound, response.Code, "reprocess status")
+	assert.Empty(t, trigger.phases, "a stage that is not stored triggered a run")
 }
 
 // Each half is triggerable on its own, because each is separately switched off
@@ -690,12 +550,8 @@ func TestHandlerTriggersEachPhaseOnItsOwn(t *testing.T) {
 		handler := newHandlerWithTrigger(t, &fakeOAuth{}, &fakeState{}, trigger)
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, path))
-		if got := response.Code; got != http.StatusAccepted {
-			t.Errorf("POST %s status = %d, want %d", path, got, http.StatusAccepted)
-		}
-		if got := trigger.phases; len(got) != 1 || got[0] != want {
-			t.Errorf("POST %s triggered %v, want [%s]", path, got, want)
-		}
+		assert.Equalf(t, http.StatusAccepted, response.Code, "POST %s status", path)
+		assert.Equalf(t, []SyncPhase{want}, trigger.phases, "POST %s triggered phases", path)
 	}
 }
 
@@ -707,15 +563,10 @@ func TestHandlerSwitchesEitherHalfOfTheSchedule(t *testing.T) {
 	handler.ServeHTTP(response, authenticatedRequestWithBody(
 		http.MethodPut, "/v1/sync/schedule", `{"source":true,"targets":false}`,
 	))
-	if got, want := response.Code, http.StatusOK; got != want {
-		t.Fatalf("schedule status = %d, want %d", got, want)
-	}
-	if !state.scheduleSource || state.scheduleTargets {
-		t.Errorf("stored schedule = %v, %v, want the target half off", state.scheduleSource, state.scheduleTargets)
-	}
-	if got, want := state.scheduleWrites, 1; got != want {
-		t.Errorf("schedule writes = %d, want %d", got, want)
-	}
+	require.Equal(t, http.StatusOK, response.Code, "schedule status")
+	assert.True(t, state.scheduleSource, "the stored schedule switched the source half off")
+	assert.False(t, state.scheduleTargets, "the stored schedule left the target half on")
+	assert.Equal(t, 1, state.scheduleWrites, "schedule writes")
 }
 
 // Half a schedule is not a schedule: a body naming one switch would leave the
@@ -735,12 +586,8 @@ func TestHandlerRejectsAnIncompleteScheduleChange(t *testing.T) {
 		handler := newHandler(t, &fakeOAuth{}, state)
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, authenticatedRequestWithBody(http.MethodPut, "/v1/sync/schedule", body))
-		if got, want := response.Code, http.StatusBadRequest; got != want {
-			t.Errorf("schedule status for %q = %d, want %d", body, got, want)
-		}
-		if state.scheduleWrites != 0 {
-			t.Errorf("schedule writes for %q = %d, want 0", body, state.scheduleWrites)
-		}
+		assert.Equalf(t, http.StatusBadRequest, response.Code, "schedule status for %q", body)
+		assert.Zerof(t, state.scheduleWrites, "a rejected body %q was written to the schedule", body)
 	}
 }
 
@@ -758,28 +605,16 @@ func TestHandlerReportsTheScheduleAndEachPhaseInStatus(t *testing.T) {
 
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/status"))
-	if got, want := response.Code, http.StatusOK; got != want {
-		t.Fatalf("status = %d, want %d", got, want)
-	}
+	require.Equal(t, http.StatusOK, response.Code, "status")
 	var view statusView
-	if err := json.Unmarshal(response.Body.Bytes(), &view); err != nil {
-		t.Fatalf("decoding status = %v", err)
-	}
-	if !view.Sync.Schedule.Source || view.Sync.Schedule.Targets {
-		t.Errorf("schedule = %+v, want the source half on and the target half off", view.Sync.Schedule)
-	}
-	if view.Sync.Phases.Source == nil || view.Sync.Phases.Targets == nil {
-		t.Fatalf("phases = %+v, want a run for each", view.Sync.Phases)
-	}
-	if got, want := view.Sync.Phases.Source.SourceStages, 12; got != want {
-		t.Errorf("source stages = %d, want %d", got, want)
-	}
-	if got, want := view.Sync.Phases.Targets.LastFailure, "destination"; got != want {
-		t.Errorf("target failure = %q, want %q", got, want)
-	}
-	if got, want := view.Sync.Phases.Source.LastCompletedAt, completedAt.Format(time.RFC3339); got != want {
-		t.Errorf("source completion = %q, want %q", got, want)
-	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &view), "decoding status")
+	assert.True(t, view.Sync.Schedule.Source, "the reported schedule has the source half off")
+	assert.False(t, view.Sync.Schedule.Targets, "the reported schedule has the target half on")
+	require.NotNil(t, view.Sync.Phases.Source, "the status reports no source run")
+	require.NotNil(t, view.Sync.Phases.Targets, "the status reports no target run")
+	assert.Equal(t, 12, view.Sync.Phases.Source.SourceStages, "source stages")
+	assert.Equal(t, "destination", view.Sync.Phases.Targets.LastFailure, "target failure")
+	assert.Equal(t, completedAt.Format(time.RFC3339), view.Sync.Phases.Source.LastCompletedAt, "source completion")
 }
 
 // A stage waiting its turn and a stage that fails every pass look identical on
@@ -790,19 +625,11 @@ func TestHandlerReportsHowMuchOfTheLibraryIsClassified(t *testing.T) {
 
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/status"))
-	if got, want := response.Code, http.StatusOK; got != want {
-		t.Fatalf("status = %d, want %d", got, want)
-	}
+	require.Equal(t, http.StatusOK, response.Code, "status")
 	var view statusView
-	if err := json.Unmarshal(response.Body.Bytes(), &view); err != nil {
-		t.Fatalf("decoding status = %v", err)
-	}
-	if got, want := view.Sync.Surface.Classified, 1; got != want {
-		t.Errorf("classified = %d, want %d", got, want)
-	}
-	if got, want := view.Sync.Surface.Total, 3; got != want {
-		t.Errorf("total = %d, want %d", got, want)
-	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &view), "decoding status")
+	assert.Equal(t, 1, view.Sync.Surface.Classified, "classified")
+	assert.Equal(t, 3, view.Sync.Surface.Total, "total")
 }
 
 func TestHandlerReportsUnreadableScheduleAsUnavailable(t *testing.T) {
@@ -811,18 +638,14 @@ func TestHandlerReportsUnreadableScheduleAsUnavailable(t *testing.T) {
 
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/status"))
-	if got, want := response.Code, http.StatusInternalServerError; got != want {
-		t.Errorf("status = %d, want %d", got, want)
-	}
+	assert.Equal(t, http.StatusInternalServerError, response.Code, "status")
 }
 
 func TestHandlerRejectsOverlappingManualSync(t *testing.T) {
 	handler := newHandlerWithTrigger(t, &fakeOAuth{}, &fakeState{}, &fakeSyncTrigger{})
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/sync"))
-	if got, want := response.Code, http.StatusConflict; got != want {
-		t.Errorf("sync status = %d, want %d", got, want)
-	}
+	assert.Equal(t, http.StatusConflict, response.Code, "sync status")
 }
 
 func TestHandlerRejectsInactiveTarget(t *testing.T) {
@@ -830,24 +653,16 @@ func TestHandlerRejectsInactiveTarget(t *testing.T) {
 	handler := newHandler(t, oauthService, &fakeState{})
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/oauth/wahoo/start/rider-b"))
-	if got, want := response.Code, http.StatusNotFound; got != want {
-		t.Errorf("start status = %d, want %d", got, want)
-	}
-	if got := oauthService.targetID; got != "" {
-		t.Errorf("OAuth start target = %q, want no OAuth request", got)
-	}
+	assert.Equal(t, http.StatusNotFound, response.Code, "start status")
+	assert.Empty(t, oauthService.targetID, "an unknown target still started an OAuth request")
 }
 
 func TestHandlerHidesOAuthFailure(t *testing.T) {
 	handler := newHandler(t, &fakeOAuth{completeErr: errors.New("private-token")}, &fakeState{})
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/oauth/wahoo/callback?state=state&code=code"))
-	if got, want := response.Code, http.StatusBadRequest; got != want {
-		t.Errorf("callback status = %d, want %d", got, want)
-	}
-	if body := response.Body.String(); strings.Contains(body, "private-token") {
-		t.Errorf("callback body exposed upstream error: %q", body)
-	}
+	assert.Equal(t, http.StatusBadRequest, response.Code, "callback status")
+	assert.NotContains(t, response.Body.String(), "private-token", "the callback body exposed the upstream error")
 }
 
 func TestNewRejectsIncompleteOptions(t *testing.T) {
@@ -896,9 +711,8 @@ func TestNewRejectsIncompleteOptions(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if _, err := New(test.options, &fakeOAuth{}, &fakeState{}, &fakeSyncTrigger{}, &fakeAssets{}); err == nil {
-				t.Error("New() error = nil, want an error")
-			}
+			_, err := New(test.options, &fakeOAuth{}, &fakeState{}, &fakeSyncTrigger{}, &fakeAssets{})
+			require.Error(t, err, "New() accepted the options")
 		})
 	}
 }
@@ -919,9 +733,7 @@ func newHandlerWithVerifier(t *testing.T, verifier AccessVerifier) *Handler {
 		},
 		&fakeOAuth{}, &fakeState{}, &fakeSyncTrigger{accepted: true}, &fakeAssets{},
 	)
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
+	require.NoError(t, err, "New()")
 
 	return handler
 }
@@ -944,9 +756,7 @@ func newHandlerWithTargets(t *testing.T, state State, targetIDs ...string) *Hand
 		},
 		&fakeOAuth{}, state, &fakeSyncTrigger{accepted: true}, &fakeAssets{},
 	)
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
+	require.NoError(t, err, "New()")
 
 	return handler
 }
@@ -965,9 +775,7 @@ func newHandlerWithTrigger(t *testing.T, oauthService OAuth, state State, syncTr
 		},
 		oauthService, state, syncTrigger, &fakeAssets{},
 	)
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
+	require.NoError(t, err, "New()")
 
 	return handler
 }

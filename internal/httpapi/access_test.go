@@ -7,6 +7,9 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 const (
@@ -64,9 +67,7 @@ func newAccessHandler(t *testing.T, verifier AccessVerifier, oauthService OAuth)
 		},
 		oauthService, &fakeState{}, &fakeSyncTrigger{accepted: true}, &fakeAssets{},
 	)
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
+	require.NoError(t, err)
 
 	return handler
 }
@@ -91,12 +92,8 @@ func TestGateAcceptsVerifiedAccessAssertion(t *testing.T) {
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, assertionRequest(t, http.MethodGet, "/v1/status"))
 
-	if got, want := response.Code, http.StatusOK; got != want {
-		t.Errorf("status = %d, want %d", got, want)
-	}
-	if verifier.calls != 1 {
-		t.Errorf("verifier calls = %d, want 1", verifier.calls)
-	}
+	assert.Equal(t, http.StatusOK, response.Code)
+	assert.Equal(t, 1, verifier.calls, "the assertion was not verified exactly once")
 }
 
 // The email claim's domain part is case-insensitive in practice, and an IdP may
@@ -107,9 +104,7 @@ func TestGateAcceptsAssertionRegardlessOfEmailCase(t *testing.T) {
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, assertionRequest(t, http.MethodGet, "/v1/status"))
 
-	if got, want := response.Code, http.StatusOK; got != want {
-		t.Errorf("status = %d, want %d", got, want)
-	}
+	assert.Equal(t, http.StatusOK, response.Code)
 }
 
 // A valid assertion for somebody else must not open the service. This is the
@@ -120,9 +115,7 @@ func TestGateRejectsAssertionNamingAnotherEmail(t *testing.T) {
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, assertionRequest(t, http.MethodGet, "/v1/status"))
 
-	if got, want := response.Code, http.StatusForbidden; got != want {
-		t.Errorf("status = %d, want %d", got, want)
-	}
+	assert.Equal(t, http.StatusForbidden, response.Code)
 }
 
 func TestGateRejectsUnverifiableAssertion(t *testing.T) {
@@ -131,13 +124,10 @@ func TestGateRejectsUnverifiableAssertion(t *testing.T) {
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, assertionRequest(t, http.MethodGet, "/v1/status"))
 
-	if got, want := response.Code, http.StatusUnauthorized; got != want {
-		t.Errorf("status = %d, want %d", got, want)
-	}
+	assert.Equal(t, http.StatusUnauthorized, response.Code)
 	// The rejection must not describe the check the caller has to defeat.
-	if body := response.Body.String(); strings.Contains(body, "kid-7") || strings.Contains(body, "expired") {
-		t.Errorf("body = %q, want no verification detail", body)
-	}
+	assert.NotContains(t, response.Body.String(), "kid-7")
+	assert.NotContains(t, response.Body.String(), "expired")
 }
 
 func TestGateRejectsMissingAssertionOnPublicPath(t *testing.T) {
@@ -147,9 +137,7 @@ func TestGateRejectsMissingAssertionOnPublicPath(t *testing.T) {
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
 
-	if got, want := response.Code, http.StatusUnauthorized; got != want {
-		t.Errorf("status = %d, want %d", got, want)
-	}
+	assert.Equal(t, http.StatusUnauthorized, response.Code)
 }
 
 // Tailscale-User-Login is not an identity here. Serve still fronts the
@@ -159,39 +147,39 @@ func TestGateRejectsMissingAssertionOnPublicPath(t *testing.T) {
 // nothing at all.
 func TestGateIgnoresTailscaleIdentityHeader(t *testing.T) {
 	tests := []struct {
-		verifier *recordingVerifier
-		name     string
-		want     int
-		wantCall int
-		assert   bool
+		verifier      *recordingVerifier
+		name          string
+		want          int
+		wantCall      int
+		withAssertion bool
 	}{
 		{
-			name:     "header alone is not identity",
-			verifier: &recordingVerifier{email: testAccessEmail},
-			assert:   false,
-			want:     http.StatusUnauthorized,
-			wantCall: 0,
+			name:          "header alone is not identity",
+			verifier:      &recordingVerifier{email: testAccessEmail},
+			withAssertion: false,
+			want:          http.StatusUnauthorized,
+			wantCall:      0,
 		},
 		{
-			name:     "header does not skip verification",
-			verifier: &recordingVerifier{email: testAccessEmail},
-			assert:   true,
-			want:     http.StatusOK,
-			wantCall: 1,
+			name:          "header does not skip verification",
+			verifier:      &recordingVerifier{email: testAccessEmail},
+			withAssertion: true,
+			want:          http.StatusOK,
+			wantCall:      1,
 		},
 		{
-			name:     "header does not rescue a bad assertion",
-			verifier: &recordingVerifier{err: errors.New("bad signature")},
-			assert:   true,
-			want:     http.StatusUnauthorized,
-			wantCall: 1,
+			name:          "header does not rescue a bad assertion",
+			verifier:      &recordingVerifier{err: errors.New("bad signature")},
+			withAssertion: true,
+			want:          http.StatusUnauthorized,
+			wantCall:      1,
 		},
 		{
-			name:     "header does not override the asserted identity",
-			verifier: &recordingVerifier{email: "someone-else@example.com"},
-			assert:   true,
-			want:     http.StatusForbidden,
-			wantCall: 1,
+			name:          "header does not override the asserted identity",
+			verifier:      &recordingVerifier{email: "someone-else@example.com"},
+			withAssertion: true,
+			want:          http.StatusForbidden,
+			wantCall:      1,
 		},
 	}
 
@@ -202,18 +190,14 @@ func TestGateIgnoresTailscaleIdentityHeader(t *testing.T) {
 			request := httptest.NewRequestWithContext(
 				t.Context(), http.MethodGet, "/v1/status", http.NoBody)
 			request.Header.Set("Tailscale-User-Login", testAccessEmail)
-			if test.assert {
+			if test.withAssertion {
 				request.Header.Set(assertionHeader, testAssertion)
 			}
 			response := httptest.NewRecorder()
 			handler.ServeHTTP(response, request)
 
-			if got := response.Code; got != test.want {
-				t.Errorf("status = %d, want %d", got, test.want)
-			}
-			if got := test.verifier.calls; got != test.wantCall {
-				t.Errorf("verifier calls = %d, want %d", got, test.wantCall)
-			}
+			assert.Equal(t, test.want, response.Code)
+			assert.Equal(t, test.wantCall, test.verifier.calls, "verifier calls")
 		})
 	}
 }
@@ -232,12 +216,9 @@ func TestGateResolvesEveryRequestToTheConfiguredPrincipal(t *testing.T) {
 	handler.ServeHTTP(httptest.NewRecorder(),
 		assertionRequest(t, http.MethodGet, "/oauth/wahoo/callback?state=s&code=c"))
 
-	if oauthService.startLogin != testAccessEmail {
-		t.Errorf("start login = %q, want %q", oauthService.startLogin, testAccessEmail)
-	}
-	if oauthService.completeLogin != oauthService.startLogin {
-		t.Errorf("complete login = %q, want %q", oauthService.completeLogin, oauthService.startLogin)
-	}
+	assert.Equal(t, testAccessEmail, oauthService.startLogin, "start login")
+	assert.Equal(t, oauthService.startLogin, oauthService.completeLogin,
+		"the two requests resolved to different principals")
 }
 
 // Without a verifier the service has no gate at all, and without an allowed
@@ -261,9 +242,8 @@ func TestNewRequiresAccessConfiguration(t *testing.T) {
 
 	for name, options := range cases {
 		t.Run(name, func(t *testing.T) {
-			if _, err := New(options, &fakeOAuth{}, &fakeState{}, &fakeSyncTrigger{}, &fakeAssets{}); err == nil {
-				t.Fatal("expected rejection, got a handler")
-			}
+			_, err := New(options, &fakeOAuth{}, &fakeState{}, &fakeSyncTrigger{}, &fakeAssets{})
+			require.Error(t, err, "expected rejection, got a handler")
 		})
 	}
 }
@@ -277,7 +257,5 @@ func TestHealthRemainsUngated(t *testing.T) {
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
 
-	if got, want := response.Code, http.StatusOK; got != want {
-		t.Errorf("status = %d, want %d", got, want)
-	}
+	assert.Equal(t, http.StatusOK, response.Code)
 }

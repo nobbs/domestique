@@ -1,6 +1,11 @@
 package veloplanner
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
 
 func TestConvertRouteCreatesSortedMultiStageTitles(t *testing.T) {
 	converted, err := convertRoute(sourceRoute{
@@ -24,25 +29,14 @@ func TestConvertRouteCreatesSortedMultiStageTitles(t *testing.T) {
 			},
 		}},
 	})
-	if err != nil {
-		t.Fatalf("convertRoute() error = %v", err)
-	}
-	if got, want := len(converted), 2; got != want {
-		t.Fatalf("len(convertRoute()) = %d, want %d", got, want)
-	}
+	require.NoError(t, err)
+	require.Len(t, converted, 2)
 
-	if got, want := converted[0].Key().StageOrder(), 1; got != want {
-		t.Errorf("first stage order = %d, want %d", got, want)
-	}
-	if got, want := converted[0].Title(), "Weekend tour — Outbound"; got != want {
-		t.Errorf("first title = %q, want %q", got, want)
-	}
-	if got, want := converted[1].Title(), "Weekend tour — Return"; got != want {
-		t.Errorf("second title = %q, want %q", got, want)
-	}
-	if converted[0].ContentHash() == converted[1].ContentHash() {
-		t.Error("stage content hashes must differ for different stage content")
-	}
+	assert.Equal(t, 1, converted[0].Key().StageOrder(), "the stages came back out of order")
+	assert.Equal(t, "Weekend tour — Outbound", converted[0].Title())
+	assert.Equal(t, "Weekend tour — Return", converted[1].Title())
+	assert.NotEqual(t, converted[0].ContentHash(), converted[1].ContentHash(),
+		"stage content hashes must differ for different stage content")
 }
 
 func TestConvertRouteUsesStableFallbackName(t *testing.T) {
@@ -56,10 +50,7 @@ func TestConvertRouteUsesStableFallbackName(t *testing.T) {
 			}}}},
 		}}},
 	})
-	if err != nil {
-		t.Fatalf("convertRoute() error = %v", err)
-	}
-	if got, want := converted[0].Title(), "VeloPlanner 46"; got != want {
-		t.Errorf("Title() = %q, want %q", got, want)
-	}
+	require.NoError(t, err)
+	require.NotEmpty(t, converted)
+	assert.Equal(t, "VeloPlanner 46", converted[0].Title())
 }

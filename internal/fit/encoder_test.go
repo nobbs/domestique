@@ -3,79 +3,47 @@ package fit
 import (
 	"bytes"
 	"context"
-	"errors"
-	"math"
 	"testing"
 
 	"github.com/muktihari/fit/decoder"
 	"github.com/muktihari/fit/profile/filedef"
 	"github.com/muktihari/fit/profile/typedef"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/nobbs/domestique/internal/route"
 )
 
 func TestEncoderEncodeCreatesDecodableCourse(t *testing.T) {
 	encoded, err := New().Encode(t.Context(), testStage(t))
-	if err != nil {
-		t.Fatalf("Encode() error = %v", err)
-	}
-	if len(encoded) == 0 {
-		t.Fatal("Encode() returned no FIT data")
-	}
+	require.NoError(t, err)
+	require.NotEmpty(t, encoded, "Encode() returned no FIT data")
 
 	course := decodeCourse(t, encoded)
-	if got, want := course.FileId.Type, typedef.FileCourse; got != want {
-		t.Errorf("file type = %v, want %v", got, want)
-	}
-	if got, want := course.FileId.ProductName, "domestique"; got != want {
-		t.Errorf("product name = %q, want %q", got, want)
-	}
-	if course.Course == nil {
-		t.Fatal("course message is missing")
-	}
-	if got, want := course.Course.Name, "Morning ride — Climb"; got != want {
-		t.Errorf("course name = %q, want %q", got, want)
-	}
-	if got, want := course.Course.Sport, typedef.SportCycling; got != want {
-		t.Errorf("course sport = %v, want %v", got, want)
-	}
-	if got, want := len(course.Records), 2; got != want {
-		t.Fatalf("record count = %d, want %d", got, want)
-	}
+	assert.Equal(t, typedef.FileCourse, course.FileId.Type)
+	assert.Equal(t, "domestique", course.FileId.ProductName)
+	require.NotNil(t, course.Course, "course message is missing")
+	assert.Equal(t, "Morning ride — Climb", course.Course.Name)
+	assert.Equal(t, typedef.SportCycling, course.Course.Sport)
+	require.Len(t, course.Records, 2)
 
 	first := course.Records[0]
-	if got, want := first.PositionLatDegrees(), 49.0; math.Abs(got-want) > 0.000001 {
-		t.Errorf("first latitude = %v, want %v", got, want)
-	}
-	if got, want := first.PositionLongDegrees(), 8.4; math.Abs(got-want) > 0.000001 {
-		t.Errorf("first longitude = %v, want %v", got, want)
-	}
-	if got, want := first.AltitudeScaled(), 321.4; math.Abs(got-want) > 0.001 {
-		t.Errorf("first altitude = %v, want %v", got, want)
-	}
-	if got := first.DistanceScaled(); math.Abs(got) > 0.001 {
-		t.Errorf("first distance = %v, want 0", got)
-	}
-	if got := course.Records[1].DistanceScaled(); got <= 0 {
-		t.Errorf("second distance = %v, want positive cumulative metres", got)
-	}
-	if got, want := course.Records[1].Timestamp.Sub(first.Timestamp).Seconds(), 1.0; got != want {
-		t.Errorf("record timestamp interval = %v, want %v", got, want)
-	}
+	assert.InDelta(t, 49.0, first.PositionLatDegrees(), 0.000001, "first latitude")
+	assert.InDelta(t, 8.4, first.PositionLongDegrees(), 0.000001, "first longitude")
+	assert.InDelta(t, 321.4, first.AltitudeScaled(), 0.001, "first altitude")
+	assert.InDelta(t, 0, first.DistanceScaled(), 0.001, "the first record starts the distance at zero")
+	assert.Positive(t, course.Records[1].DistanceScaled(), "the second record carries no cumulative metres")
+	assert.InDelta(t, 1.0, course.Records[1].Timestamp.Sub(first.Timestamp).Seconds(), 0,
+		"records must be one second apart")
 }
 
 func TestEncoderEncodeIsDeterministic(t *testing.T) {
 	encoder := New()
 	first, err := encoder.Encode(t.Context(), testStage(t))
-	if err != nil {
-		t.Fatalf("first Encode() error = %v", err)
-	}
+	require.NoError(t, err, "first Encode()")
 	second, err := encoder.Encode(t.Context(), testStage(t))
-	if err != nil {
-		t.Fatalf("second Encode() error = %v", err)
-	}
-	if !bytes.Equal(first, second) {
-		t.Fatal("Encode() produced different bytes for the same stage")
-	}
+	require.NoError(t, err, "second Encode()")
+	assert.Equal(t, first, second, "Encode() produced different bytes for the same stage")
 }
 
 func TestEncoderEncodeRespectsCanceledContext(t *testing.T) {
@@ -83,9 +51,7 @@ func TestEncoderEncodeRespectsCanceledContext(t *testing.T) {
 	cancel()
 
 	_, err := New().Encode(ctx, testStage(t))
-	if !errors.Is(err, context.Canceled) {
-		t.Fatalf("Encode() error = %v, want context.Canceled", err)
-	}
+	require.ErrorIs(t, err, context.Canceled)
 }
 
 func TestEncoderEncodeRejectsUnsupportedElevation(t *testing.T) {
@@ -99,14 +65,10 @@ func TestEncoderEncodeRejectsUnsupportedElevation(t *testing.T) {
 		[]route.Point{{Longitude: 8.4, Latitude: 49.0, Elevation: &elevation}, {Longitude: 8.5, Latitude: 49.1}},
 		"hash",
 	)
-	if err != nil {
-		t.Fatalf("NewStage() error = %v", err)
-	}
+	require.NoError(t, err)
 
 	_, err = New().Encode(t.Context(), stage)
-	if err == nil {
-		t.Fatal("Encode() error = nil, want an elevation range error")
-	}
+	require.Error(t, err, "an elevation outside the FIT range must be refused")
 }
 
 func testStage(t *testing.T) route.Stage {
@@ -124,9 +86,7 @@ func testStage(t *testing.T) route.Stage {
 		},
 		"hash",
 	)
-	if err != nil {
-		t.Fatalf("NewStage() error = %v", err)
-	}
+	require.NoError(t, err)
 
 	return stage
 }
@@ -137,13 +97,12 @@ func decodeCourse(t *testing.T, encoded []byte) *filedef.Course {
 	defer listener.Close()
 
 	fitDecoder := decoder.New(bytes.NewReader(encoded), decoder.WithMesgListener(listener), decoder.WithBroadcastOnly())
-	if _, err := fitDecoder.Decode(); err != nil {
-		t.Fatalf("Decode() error = %v", err)
-	}
-	file, ok := listener.File().(*filedef.Course)
-	if !ok {
-		t.Fatalf("decoded file = %T, want *filedef.Course", file)
-	}
+	_, err := fitDecoder.Decode()
+	require.NoError(t, err)
+
+	decoded := listener.File()
+	file, ok := decoded.(*filedef.Course)
+	require.Truef(t, ok, "decoded file = %T, want *filedef.Course", decoded)
 
 	return file
 }
