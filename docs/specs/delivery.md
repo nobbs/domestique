@@ -257,10 +257,10 @@ The validation workflow must:
   a green check; and
 - aggregate every job into a single required check that is green only when each
   dependency succeeded or was skipped by a path filter, so a failed publish or
-  deployment cannot be mistaken for a passing run. That check does not validate
-  coverage: the coverage verdict is required separately and directly from the
-  service that measured it, so the aggregate never asserts a result it did not
-  compute; and
+  deployment cannot be mistaken for a passing run. That check speaks only for
+  the jobs this workflow runs. A verdict produced outside it — the coverage
+  measurement and the secret scan — is required directly from the service that
+  produced it, so the aggregate never asserts a result it did not compute; and
 - record each job's result in that required check's run summary, because a
   skipped job and a job that never ran are indistinguishable on a commit status,
   and the gate is readable only if a skip is visibly a skip.
@@ -291,10 +291,16 @@ published build depends on is exercised by the build that proves it. A build
 without it — every local one — reports no revision rather than a guessed one.
 
 A separate code-scanning workflow analyses Go and GitHub Actions changes.
-It also uses immutable action pins and least privilege. Repository-native
-secret scanning is enabled where available, but it is a defence in depth:
-the committed fixtures, logs, examples, and test data must themselves contain
-no credentials or personal routes.
+It also uses immutable action pins and least privilege.
+
+Secret scanning runs against every pull request, and its check is required by
+the branch ruleset: a scan that reports a finding, or that does not report at
+all, holds the merge. That makes it a gate rather than only a report — but it
+does not make it the control. The committed fixtures, logs, examples, and test
+data must themselves contain no credentials or personal routes, because a
+scanner is pattern matching over what was written and cannot be relied on to
+notice a secret it has no pattern for. Repository-native secret scanning stays
+enabled alongside it as defence in depth.
 
 No GitHub Actions workflow invokes the live VeloPlanner account, authorises a
 Wahoo account, uploads a route, or sends a Pushover notification. Sandbox FIT
