@@ -90,17 +90,18 @@ coordinate array that was replaced.
 ## OAuth lifecycle
 
 The configuration has one or two target slots. Each begins in
-"not_authorised"; automatic sync does not start until every configured slot is
-"authorised".
+"not_authorized"; automatic sync does not start until every configured slot is
+"authorized". These are the values the service stores and serves, so they are
+spelled as the wire spells them even where the surrounding prose is not.
 
 ~~~mermaid
 stateDiagram-v2
-    [*] --> not_authorised
-    not_authorised --> pending: protected start request
-    pending --> authorised: valid callback and token exchange
-    pending --> not_authorised: expiry, denial, or exchange failure
-    authorised --> needs_reauthorisation: Wahoo invalidates refresh token
-    needs_reauthorisation --> pending: protected start request
+    [*] --> not_authorized
+    not_authorized --> pending: protected start request
+    pending --> authorized: valid callback and token exchange
+    pending --> not_authorized: expiry, denial, or exchange failure
+    authorized --> needs_reauthorization: Wahoo invalidates refresh token
+    needs_reauthorization --> pending: protected start request
 ~~~
 
 1. The configured Tailnet user requests
@@ -192,7 +193,7 @@ Wahoo access and refresh tokens are handled per target:
    later request, so a crash cannot leave only a stale token on disk.
 3. It performs the required API request with the in-memory access token.
 4. A rejected refresh token sets only that target to
-   "needs_reauthorisation"; the other target is still attempted.
+   "needs_reauthorization"; the other target is still attempted.
 
 limits and request-response boundaries before the next target call begins.
 All Wahoo calls are serial across configured targets. The client observes
@@ -367,14 +368,14 @@ Returns 200 while the service can read state. The minimum shape is:
   "targets": [
     {
       "id":"rider-a",
-      "authorisation":"authorised",
+      "authorisation":"authorized",
       "convergence":"current",
       "stages":{"current":12,"pending":0},
       "last_run":{"completed_at":"2026-08-16T12:00:04Z","result":"succeeded"}
     },
     {
       "id":"rider-b",
-      "authorisation":"authorised",
+      "authorisation":"authorized",
       "convergence":"lagging",
       "stages":{"current":11,"pending":1},
       "last_run":{
@@ -416,8 +417,8 @@ Returns 200 while the service can read state. The minimum shape is:
 }
 ~~~
 
-Authorisation is one of "not_authorised", "pending", "authorised", or
-"needs_reauthorisation". Sync state is "not_ready", "idle", "running",
+Authorisation is one of "not_authorized", "pending", "authorized", or
+"needs_reauthorization". Sync state is "not_ready", "idle", "running",
 "succeeded", "failed", or "blocked". Timestamps are RFC 3339 UTC.
 
 `surface` counts how many stored stages carry a classification measured against
