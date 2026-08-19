@@ -98,7 +98,10 @@ It needs no account, no secret and no snapshot, and it cannot reach VeloPlanner,
 Wahoo, Pushover or a deployment. The identity gate still runs in full: the demo
 mints an assertion with a key it generates at start-up and verifies it with the
 production verifier. Use it for UI work, and prefer it over a snapshot whenever
-the change does not depend on real routes.
+the change does not depend on real routes. `./dev/demo.sh --with-bundle` builds
+the browser UI first, so the API also serves a current production bundle at its
+own port — the arrangement a deployment runs, and what the browser suite's bundle
+project drives.
 
 **To develop against real data**, run `make dev-setup` once (snapshots the
 deployed SQLite state into `.local/dev`), then `make dev-api` and `make ui-dev`.
@@ -209,6 +212,16 @@ third-party request the application makes — the basemap style — from memory 
 fail the test if anything else leaves the page. No screenshot is stored: a visual
 assertion compares the map against itself within the run, after waiting for two
 identical frames.
+
+It drives that one stack as two projects. `dev-server` runs the specs in `e2e`
+against the Vite dev server. `bundle` runs the specs in `e2e/contract` against
+the Go service itself — the production bundle from `internal/webui`'s embed
+handler, and the routes, gates and headers a deployment serves it with — so that
+the shipped client is seen parsing a real response rather than a fixture. Its
+stack is started with `dev/demo.sh --with-bundle`, which builds the UI first so
+the embedded bundle is the current one, and its harness adds the identity
+assertion the dev proxy would and forwards state-changing requests with the
+configured origin, because a browser will not let a test set its own.
 
 That suite renders the map, but it does not look at it. Checking a map change by
 eye is still skippable, so a change may be handed over without anyone having seen

@@ -1,7 +1,11 @@
 package main
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 
 	"github.com/nobbs/domestique/internal/config"
 	"github.com/nobbs/domestique/internal/demo"
@@ -100,5 +104,27 @@ func TestIssuerMatchesHowTheVerifierDerivesIt(t *testing.T) {
 		if got := issuerFor(domain); got != want {
 			t.Errorf("issuerFor(%q) = %q, want %q", domain, got, want)
 		}
+	}
+}
+
+// A demo built without a bundle still serves the API, and says why the UI is not
+// there. The alternative — a blank page from an index that is not embedded — is
+// indistinguishable from an application that failed to start.
+func TestUnbuiltAssetsExplainThemselves(t *testing.T) {
+	for name, serve := range map[string]func(http.ResponseWriter, *http.Request){
+		"index":  unbuiltAssets{}.Index,
+		"static": unbuiltAssets{}.Static,
+	} {
+		t.Run(name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+
+			serve(recorder, httptest.NewRequestWithContext(
+				t.Context(), http.MethodGet, "/", http.NoBody,
+			))
+
+			assert.Equal(t, http.StatusNotFound, recorder.Code)
+			assert.Contains(t, recorder.Body.String(), "make ui-build",
+				"the message names the command that builds a bundle")
+		})
 	}
 }

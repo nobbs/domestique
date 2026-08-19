@@ -56,8 +56,12 @@ const DETERMINISTIC_RENDERING = `
   }
 `;
 
-async function styleUrls(page: Page, baseUrl: string): Promise<StyleUrls> {
-  const response = await page.request.get(`${baseUrl}/v1/webui/config`);
+async function styleUrls(
+  page: Page,
+  baseUrl: string,
+  headers: Record<string, string>,
+): Promise<StyleUrls> {
+  const response = await page.request.get(`${baseUrl}/v1/webui/config`, { headers });
   expect(response.ok(), "the demo API serves its browser configuration").toBeTruthy();
   const payload = (await response.json()) as {
     tile_style_url?: string;
@@ -68,6 +72,36 @@ async function styleUrls(page: Page, baseUrl: string): Promise<StyleUrls> {
   return { light: payload.tile_style_url ?? "", dark: payload.tile_style_url_dark };
 }
 
+/** What an offline page may be given beyond the defaults. */
+export interface OfflineOptions {
+  /**
+   * Collects the style documents the page really asked for, in order.
+   *
+   * The colour scheme decides which one the application loads, and a canvas
+   * cannot be read back from JavaScript — MapLibre keeps no drawing buffer — so
+   * this is how a test knows the dark basemap was chosen rather than merely that
+   * the page looks different.
+   */
+  requested?: string[];
+  /**
+   * Headers added to every same-origin request.
+   *
+   * The Vite dev server injects the identity assertion and the configured origin
+   * on its way through, so a page talking to it needs none. A page talking
+   * straight to the Go service does: the gate is the production one, and a
+   * browser holds no credential. Injecting them here is the same arrangement as
+   * the dev proxy's, in the place a browser test can put it.
+   *
+   * `Origin` is the exception. It is browser-managed: Chromium keeps the page's
+   * own origin on a request whatever a route handler asks for, so a request that
+   * carries one has to be forwarded by the harness rather than merely annotated.
+   * That is the hop the dev proxy is, and it is only a hop — the request is
+   * still the one the shipped client composed, and the answer is still the one
+   * the shipped client parses.
+   */
+  headers?: Record<string, string>;
+}
+
 /**
  * Cuts a page off from everything but the service in front of it.
  *
@@ -75,26 +109,36 @@ async function styleUrls(page: Page, baseUrl: string): Promise<StyleUrls> {
  * cross-origin request is refused and recorded in the returned list, so a caller
  * can fail at teardown rather than at the moment of the request — a leak is then
  * reported as itself instead of as whatever the aborted request broke.
- *
- * `requested` collects the style documents the page really asked for, in order.
- * The colour scheme decides which one the application loads, and a canvas cannot
- * be read back from JavaScript — MapLibre keeps no drawing buffer — so this is how
- * a test knows the dark basemap was chosen rather than merely that the page looks
- * different.
  */
 export async function installOfflineBasemap(
   page: Page,
   baseUrl: string,
-  requested: string[] = [],
+  options: OfflineOptions = {},
 ): Promise<string[]> {
+  const requested = options.requested ?? [];
+  // Header names are case-insensitive on the wire and Playwright reports a
+  // request's own in lower case, so a caller's spelling must not decide whether
+  // an override replaces a header or arrives beside it under a second name.
+  const headers = Object.fromEntries(
+    Object.entries(options.headers ?? {}).map(([name, value]) => [name.toLowerCase(), value]),
+  );
   const origin = new URL(baseUrl).origin;
-  const styles = await styleUrls(page, baseUrl);
+  const styles = await styleUrls(page, baseUrl, headers);
   const leaks: string[] = [];
 
   await page.route("**/*", async (route) => {
     const url = route.request().url();
     if (url.startsWith(origin) || url.startsWith("data:") || url.startsWith("blob:")) {
-      await route.continue();
+      const forwarded = { ...route.request().headers(), ...headers };
+      // A browser attaches Origin to everything that is not a GET or a HEAD, and
+      // it attaches its own. Requests that have to arrive with a different one
+      // are made from outside the browser and their answer handed back to it.
+      if (headers.origin !== undefined && "origin" in route.request().headers()) {
+        await route.fulfill({ response: await route.fetch({ headers: forwarded }) });
+
+        return;
+      }
+      await route.continue({ headers: forwarded });
 
       return;
     }
@@ -147,7 +191,9 @@ export const test = playwrightTest.extend<{
   },
 
   offlinePage: async ({ page, baseURL, basemapRequests }, use) => {
-    const leaks = await installOfflineBasemap(page, baseURL ?? "", basemapRequests);
+    const leaks = await installOfflineBasemap(page, baseURL ?? "", {
+      requested: basemapRequests,
+    });
     await pinRendering(page);
 
     await use(page);

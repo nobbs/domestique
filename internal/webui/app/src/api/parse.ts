@@ -27,10 +27,41 @@ import type {
 } from "./types";
 import { SURFACE_KINDS, SYNC_PHASES, TARGET_CONVERGENCES } from "./types";
 
+/**
+ * A response that did not have the shape this client parses.
+ *
+ * `where` names the field the check failed on, and `endpoint` the request it
+ * came back from — set by the caller in `client.ts`, because the parsers know
+ * the shape and only the request knows the URL. A drift between the Go views and
+ * this client is then reported as the endpoint and the field it happened at,
+ * rather than as a value that turned out to be undefined somewhere later.
+ */
 export class ContractError extends Error {
-  constructor(message: string) {
-    super(`unexpected API response: ${message}`);
+  readonly where: string;
+  readonly endpoint: string | undefined;
+
+  constructor(where: string, endpoint?: string, options?: ErrorOptions) {
+    super(
+      endpoint === undefined
+        ? `unexpected API response: ${where}`
+        : `unexpected API response from ${endpoint}: ${where}`,
+      options,
+    );
     this.name = "ContractError";
+    this.where = where;
+    this.endpoint = endpoint;
+  }
+
+  /**
+   * The same failure, attributed to the request it arrived on.
+   *
+   * The unattributed failure travels along as the cause, because its stack is
+   * the one that points at the check that failed. A new error is what carries
+   * the endpoint into the message a reader sees, and the message is what the
+   * page shows; the trace worth following is one level down.
+   */
+  at(endpoint: string): ContractError {
+    return new ContractError(this.where, endpoint, { cause: this });
   }
 }
 

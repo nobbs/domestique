@@ -64,6 +64,29 @@ describe("the API client", () => {
     await expect(fetchStages()).rejects.toBeInstanceOf(ContractError);
   });
 
+  it("names the request a contract failure came back from", async () => {
+    respondWith(200, { stages: [{ route_id: "not-a-number" }] });
+
+    const failure = (await fetchStages().catch((error: unknown) => error)) as ContractError;
+
+    // The endpoint is the half the parsers cannot know, and it is what turns a
+    // drift report into something a reader can go and look at.
+    expect(failure.endpoint).toBe("GET /v1/routes");
+    expect(failure.where).toBe("stages[0].route_id is not a finite number");
+    expect(failure.message).toContain("GET /v1/routes");
+    expect(failure.message).toContain("stages[0].route_id");
+  });
+
+  it("names a mutation's endpoint the same way", async () => {
+    respondWith(200, { source: true });
+
+    const failure = (await setSyncSchedule({ source: true, targets: false }).catch(
+      (error: unknown) => error,
+    )) as ContractError;
+
+    expect(failure.endpoint).toBe("PUT /v1/sync/schedule");
+  });
+
   it("starts the half it was asked for", async () => {
     const fetchMock = vi.fn(
       async (_input: RequestInfo | URL, _init?: RequestInit) =>
