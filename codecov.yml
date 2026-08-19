@@ -1,11 +1,12 @@
-# Codecov reports coverage on a pull request; it does not gate one.
+# Codecov reports coverage on a pull request, and one of the four statuses
+# below decides whether it can merge.
 #
-# Every status below is informational: a shortfall shows up on the pull request
-# and never blocks it. That is deliberate for now — coverage has to be visible
-# and trusted before it decides anything, and a gate switched on the same day
-# the first report arrives cannot be told apart from a broken upload. See
-# "Making coverage enforceable" in CONTRIBUTING.md for what turning one on
-# involves.
+# `patch.go` is that one: the Go lines a pull request adds or changes must be
+# covered at least as well as the base commit's Go already is. The rest —
+# `patch.ui` and both project statuses — stay informational, so a shortfall
+# shows up on the pull request and never blocks it. See "Coverage" in
+# CONTRIBUTING.md for the rule, why the UI half only reports, and what to do
+# when a change legitimately cannot clear the gate.
 
 codecov:
   # A report from a run whose checks failed describes a tree nobody is going to
@@ -38,10 +39,24 @@ coverage:
         informational: true
     patch:
       default: false
+      # The enforced status. `target` is left unset, which means `auto`: the
+      # base commit's coverage for this same flag. That is not an approximation
+      # of "coverage must not fall" but exactly it — with existing coverage c
+      # and a patch of n lines covered at rate p, the new total is at least c
+      # precisely when p is at least c. Reading only the diff is what keeps the
+      # legitimate deletion of well-covered code from failing a pull request,
+      # which a project-total ratchet cannot avoid.
       go:
         flags:
           - go
-        informational: true
+        # Room for rounding against a base a fraction of a point higher, not
+        # room for an untested function.
+        threshold: 1%
+      # Reports only, until the UI measurement describes what the browser suite
+      # actually reaches. That suite drives the map and page-level components in
+      # real Chromium, but its coverage never enters the LCOV report uploaded
+      # here, so they still read as untested — and an enforced target would fail
+      # every pull request touching them, making the override the normal route.
       ui:
         flags:
           - ui
