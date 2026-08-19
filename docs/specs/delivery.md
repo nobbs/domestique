@@ -128,13 +128,27 @@ Both reports are written to one gitignored directory, so that the upload step
 has a single place to look. No coverage report is committed, and none enters an
 image context.
 
-GitHub Actions measures both languages on a pull request and publishes them to
-Codecov under separate flags, so that a shortfall names the language it came
-from and the two are never averaged into a single number. The statuses Codecov
-posts are informational, and the coverage job is reported by the single required
-check without being validated by it: a coverage report is evidence, not a merge
-condition, and an upload that fails — a service outage, or a fork's pull request
-with no access to the upload token — must cost a report rather than a merge.
+GitHub Actions measures both languages on every run it performs, under no path
+filter, and publishes them to Codecov under separate flags, so that a shortfall
+names the language it came from and the two are never averaged into a single
+number.
+
+The statuses Codecov posts are informational: no percentage fails a check. Two
+of them, the per-flag patch statuses, are required by the branch ruleset, so
+what a merge waits for is that the report *arrived* — not that it cleared a bar.
+The measurement carries no path filter for that reason: Codecov reports only on
+a commit it received a report for, so a run that measured nothing would leave a
+required context that never arrives and a pull request that nothing can
+un-block. The same gap seen from the other side is a default-branch commit with
+no report, which is a commit no later pull request can compare against.
+
+This revises the earlier contract, under which a failed upload cost a report
+rather than a merge. It no longer does: while Codecov is unavailable, or for a
+pull request from a fork that has no access to the upload token, the contexts do
+not arrive and the merge waits. The escape hatch is removing them from the
+ruleset, which is a repository settings change rather than a code one. What has
+not changed is that no coverage *number* decides a merge; that remains true for
+as long as both patch statuses stay informational.
 
 The upload is constrained to the two files the run just produced. The uploader
 does not search the working tree, and its plugins are disabled, because that
@@ -241,9 +255,12 @@ The validation workflow must:
   happened to touch every part of the tree: a published image the host is never
   given leaves the default branch ahead of what is running, silently and behind
   a green check; and
-- aggregate every job into one required check that is green only when each
+- aggregate every job into a single required check that is green only when each
   dependency succeeded or was skipped by a path filter, so a failed publish or
-  deployment cannot be mistaken for a passing run; and
+  deployment cannot be mistaken for a passing run. That check does not validate
+  coverage: the coverage verdict is required separately and directly from the
+  service that measured it, so the aggregate never asserts a result it did not
+  compute; and
 - record each job's result in that required check's run summary, because a
   skipped job and a job that never ran are indistinguishable on a commit status,
   and the gate is readable only if a skip is visibly a skip.
