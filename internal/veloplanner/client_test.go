@@ -1,14 +1,15 @@
 package veloplanner
 
 import (
-	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestClientInventoryUsesFreshAuthenticatedSession(t *testing.T) {
@@ -18,30 +19,21 @@ func TestClientInventoryUsesFreshAuthenticatedSession(t *testing.T) {
 		case request.Method == http.MethodGet && request.URL.Path == "/login":
 			writeBody(t, writer, `<input value="csrf-token" name="_csrf_token" type="hidden">`)
 		case request.Method == http.MethodPost && request.URL.Path == "/login":
-			if err := request.ParseForm(); err != nil {
-				t.Errorf("ParseForm() error = %v", err)
+			if !assert.NoError(t, request.ParseForm()) {
 				return
 			}
-			if got, want := request.Form.Get("_csrf_token"), "csrf-token"; got != want {
-				t.Errorf("csrf token = %q, want %q", got, want)
-			}
-			if got, want := request.Form.Get("user[email]"), "rider@example.test"; got != want {
-				t.Errorf("email = %q, want %q", got, want)
-			}
-			if got, want := request.Form.Get("user[password]"), "test-password"; got != want {
-				t.Errorf("password = %q, want %q", got, want)
-			}
+			assert.Equal(t, "csrf-token", request.Form.Get("_csrf_token"), "csrf token")
+			assert.Equal(t, "rider@example.test", request.Form.Get("user[email]"), "email")
+			assert.Equal(t, "test-password", request.Form.Get("user[password]"), "password")
 			http.SetCookie(writer, authenticatedCookie())
 			loginCount.Add(1)
 			writeBody(t, writer, `isUserLoggedIn: true, userId: 42`)
 		case request.Method == http.MethodGet && request.URL.Path == "/api/internal/users/42/routes":
-			requireSessionCookie(t, request)
-			if got, want := request.URL.Query().Get("page"), "1"; got != want {
-				t.Errorf("page = %q, want %q", got, want)
-			}
+			assertSessionCookie(t, request)
+			assert.Equal(t, "1", request.URL.Query().Get("page"), "page")
 			writeBody(t, writer, `{"data":[{"id":100}],"metadata":{"page":1,"total_pages":1,"total_count":1}}`)
 		case request.Method == http.MethodGet && request.URL.Path == "/api/internal/user_routes/100":
-			requireSessionCookie(t, request)
+			assertSessionCookie(t, request)
 			writeBody(t, writer, `{
                 "data": {
                     "id": 100,
@@ -60,7 +52,7 @@ func TestClientInventoryUsesFreshAuthenticatedSession(t *testing.T) {
                 }
             }`)
 		default:
-			t.Errorf("unexpected request: %s %s", request.Method, request.URL)
+			assert.Failf(t, "unexpected request", "%s %s", request.Method, request.URL)
 			writer.WriteHeader(http.StatusNotFound)
 		}
 	}))
@@ -68,28 +60,16 @@ func TestClientInventoryUsesFreshAuthenticatedSession(t *testing.T) {
 
 	client := newTestClient(t, server)
 	stages, err := client.Inventory(t.Context())
-	if err != nil {
-		t.Fatalf("Inventory() error = %v", err)
-	}
-	if got, want := len(stages), 1; got != want {
-		t.Fatalf("len(Inventory()) = %d, want %d", got, want)
-	}
+	require.NoError(t, err)
+	require.Len(t, stages, 1)
 
 	stage := stages[0]
-	if got, want := stage.Key().ExternalID(), "domestique:veloplanner:100:stage:1"; got != want {
-		t.Errorf("ExternalID() = %q, want %q", got, want)
-	}
-	if got, want := stage.Title(), "Morning route"; got != want {
-		t.Errorf("Title() = %q, want %q", got, want)
-	}
-	if got := stage.ContentHash(); len(got) != 64 {
-		t.Errorf("ContentHash() length = %d, want 64", len(got))
-	}
+	assert.Equal(t, "domestique:veloplanner:100:stage:1", stage.Key().ExternalID())
+	assert.Equal(t, "Morning route", stage.Title())
+	assert.Len(t, stage.ContentHash(), 64, "the content hash is a hex SHA-256 digest")
 
 	geometry := stage.Geometry()
-	if got, want := len(geometry), 3; got != want {
-		t.Fatalf("geometry length = %d, want %d", got, want)
-	}
+	require.Len(t, geometry, 3, "the segments were not stitched into one line")
 	for index, expected := range []struct {
 		longitude float64
 		latitude  float64
@@ -99,25 +79,17 @@ func TestClientInventoryUsesFreshAuthenticatedSession(t *testing.T) {
 		{longitude: 8.41, latitude: 49.01, elevation: 101},
 		{longitude: 8.42, latitude: 49.02, elevation: 102},
 	} {
-		if got, want := geometry[index].Longitude, expected.longitude; got != want {
-			t.Errorf("geometry[%d].Longitude = %v, want %v", index, got, want)
-		}
-		if got, want := geometry[index].Latitude, expected.latitude; got != want {
-			t.Errorf("geometry[%d].Latitude = %v, want %v", index, got, want)
-		}
-		if geometry[index].Elevation == nil {
-			t.Errorf("geometry[%d].Elevation = nil", index)
-		} else if got, want := *geometry[index].Elevation, expected.elevation; got != want {
-			t.Errorf("geometry[%d].Elevation = %v, want %v", index, got, want)
+		point := geometry[index]
+		assert.InDelta(t, expected.longitude, point.Longitude, 1e-9, "geometry[%d].Longitude", index)
+		assert.InDelta(t, expected.latitude, point.Latitude, 1e-9, "geometry[%d].Latitude", index)
+		if assert.NotNilf(t, point.Elevation, "geometry[%d].Elevation", index) {
+			assert.InDelta(t, expected.elevation, *point.Elevation, 1e-9, "geometry[%d].Elevation", index)
 		}
 	}
 
-	if _, err := client.Inventory(t.Context()); err != nil {
-		t.Fatalf("second Inventory() error = %v", err)
-	}
-	if got, want := loginCount.Load(), int32(2); got != want {
-		t.Errorf("login count = %d, want %d", got, want)
-	}
+	_, err = client.Inventory(t.Context())
+	require.NoError(t, err, "second Inventory()")
+	assert.Equal(t, int32(2), loginCount.Load(), "each run must authenticate its own session")
 }
 
 func TestClientInventoryRejectsUnauthenticatedLogin(t *testing.T) {
@@ -136,9 +108,7 @@ func TestClientInventoryRejectsUnauthenticatedLogin(t *testing.T) {
 	defer server.Close()
 
 	_, err := newTestClient(t, server).Inventory(t.Context())
-	if !errors.Is(err, ErrAuthentication) {
-		t.Fatalf("Inventory() error = %v, want ErrAuthentication", err)
-	}
+	require.ErrorIs(t, err, ErrAuthentication)
 }
 
 func TestClientInventoryRejectsMalformedGeometry(t *testing.T) {
@@ -156,9 +126,7 @@ func TestClientInventoryRejectsMalformedGeometry(t *testing.T) {
 	defer server.Close()
 
 	_, err := newTestClient(t, server).Inventory(t.Context())
-	if err == nil || !strings.Contains(err.Error(), "decoded point") {
-		t.Fatalf("Inventory() error = %v, want malformed geometry error", err)
-	}
+	require.ErrorContains(t, err, "decoded point")
 }
 
 func TestNewRejectsInvalidOptions(t *testing.T) {
@@ -186,9 +154,8 @@ func TestNewRejectsInvalidOptions(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if _, err := New(&test.options); err == nil {
-				t.Fatal("New() error = nil, want an error")
-			}
+			_, err := New(&test.options)
+			require.Error(t, err)
 		})
 	}
 }
@@ -202,9 +169,7 @@ func newTestClient(t *testing.T, server *httptest.Server) *Client {
 		Timeout:   time.Second,
 		Transport: server.Client().Transport,
 	})
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
+	require.NoError(t, err)
 
 	return client
 }
@@ -221,10 +186,10 @@ func authenticatedRouteServer(t *testing.T, detail string) *httptest.Server {
 			http.SetCookie(writer, authenticatedCookie())
 			writeBody(t, writer, `isUserLoggedIn: true, userId: 42`)
 		case "/api/internal/users/42/routes":
-			requireSessionCookie(t, request)
+			assertSessionCookie(t, request)
 			writeBody(t, writer, `{"data":[{"id":100}],"metadata":{"page":1,"total_pages":1,"total_count":1}}`)
 		case "/api/internal/user_routes/100":
-			requireSessionCookie(t, request)
+			assertSessionCookie(t, request)
 			writeBody(t, writer, detail)
 		default:
 			writer.WriteHeader(http.StatusNotFound)
@@ -232,12 +197,17 @@ func authenticatedRouteServer(t *testing.T, detail string) *httptest.Server {
 	}))
 }
 
-func requireSessionCookie(t *testing.T, request *http.Request) {
+// assertSessionCookie runs on the server's goroutine, so it asserts rather than
+// requires: FailNow off the test goroutine would leave the request hanging.
+func assertSessionCookie(t *testing.T, request *http.Request) {
 	t.Helper()
 	cookie, err := request.Cookie(sessionCookie)
-	if err != nil || cookie.Value == "" {
-		t.Errorf("request did not carry the VeloPlanner session cookie")
+	if err != nil {
+		assert.Failf(t, "request did not carry the VeloPlanner session cookie", "%v", err)
+
+		return
 	}
+	assert.NotEmpty(t, cookie.Value, "the VeloPlanner session cookie was empty")
 }
 
 func authenticatedCookie() *http.Cookie {
@@ -253,7 +223,6 @@ func authenticatedCookie() *http.Cookie {
 
 func writeBody(t *testing.T, writer http.ResponseWriter, body string) {
 	t.Helper()
-	if _, err := io.WriteString(writer, body); err != nil {
-		t.Errorf("writing test response: %v", err)
-	}
+	_, err := io.WriteString(writer, body)
+	assert.NoError(t, err, "writing the test response")
 }

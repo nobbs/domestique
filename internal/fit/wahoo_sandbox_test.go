@@ -19,6 +19,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	fitadapter "github.com/nobbs/domestique/internal/fit"
 	"github.com/nobbs/domestique/internal/route"
 )
@@ -30,50 +33,36 @@ const (
 )
 
 func TestWahooSandboxAcceptance(t *testing.T) {
-	if got := os.Getenv("DOMESTIQUE_WAHOO_ENVIRONMENT"); got != wahooSandboxEnvironment {
-		t.Fatalf("DOMESTIQUE_WAHOO_ENVIRONMENT must be %q for this test", wahooSandboxEnvironment)
-	}
+	require.Equalf(t, wahooSandboxEnvironment, os.Getenv("DOMESTIQUE_WAHOO_ENVIRONMENT"),
+		"DOMESTIQUE_WAHOO_ENVIRONMENT must be %q for this test", wahooSandboxEnvironment)
 	accessToken := os.Getenv("DOMESTIQUE_WAHOO_SANDBOX_ACCESS_TOKEN")
-	if accessToken == "" {
-		t.Fatal("DOMESTIQUE_WAHOO_SANDBOX_ACCESS_TOKEN is required")
-	}
+	require.NotEmpty(t, accessToken, "DOMESTIQUE_WAHOO_SANDBOX_ACCESS_TOKEN is required")
 	baseURL, err := parseSandboxBaseURL(os.Getenv("DOMESTIQUE_WAHOO_SANDBOX_BASE_URL"))
-	if err != nil {
-		t.Fatalf("sandbox base url: %v", err)
-	}
+	require.NoError(t, err, "sandbox base url")
 
 	stage := sandboxStage(t)
 	encoded, err := fitadapter.New().Encode(t.Context(), stage)
-	if err != nil {
-		t.Fatalf("Encode() error = %v", err)
-	}
+	require.NoError(t, err)
 	externalID, err := sandboxExternalID()
-	if err != nil {
-		t.Fatalf("creating external id: %v", err)
-	}
+	require.NoError(t, err, "creating external id")
 
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
 	client := &http.Client{Timeout: 30 * time.Second}
 	created, err := createRoute(ctx, client, baseURL, accessToken, &stage, encoded, externalID)
-	if err != nil {
-		t.Fatalf("creating sandbox route: %v", err)
-	}
+	require.NoError(t, err, "creating sandbox route")
 	t.Cleanup(func() {
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cleanupCancel()
-		if cleanupErr := deleteRoute(cleanupCtx, client, baseURL, accessToken, created.ID); cleanupErr != nil {
-			t.Errorf("deleting temporary sandbox route: %v", cleanupErr)
-		}
+		assert.NoError(t, deleteRoute(cleanupCtx, client, baseURL, accessToken, created.ID),
+			"deleting temporary sandbox route")
 	})
 
 	fetched, err := getRoute(ctx, client, baseURL, accessToken, created.ID)
-	if err != nil {
-		t.Fatalf("retrieving created sandbox route: %v", err)
-	}
-	if fetched.ID != created.ID || fetched.ExternalID != externalID || fetched.File.URL == "" {
-		t.Fatal("wahoo did not retain a usable route for the uploaded fit course")
-	}
+	require.NoError(t, err, "retrieving created sandbox route")
+	assert.Equal(t, created.ID, fetched.ID, "wahoo returned a different route")
+	assert.Equal(t, externalID, fetched.ExternalID, "wahoo did not retain the external id")
+	assert.NotEmpty(t, fetched.File.URL, "wahoo retained no file for the uploaded course")
 }
 
 type wahooRoute struct {
@@ -227,9 +216,7 @@ func sandboxStage(t *testing.T) route.Stage {
 		[]route.Point{{Longitude: 8.4, Latitude: 49.0}, {Longitude: 8.401, Latitude: 49.001}},
 		"sandbox-acceptance",
 	)
-	if err != nil {
-		t.Fatalf("NewStage() error = %v", err)
-	}
+	require.NoError(t, err)
 
 	return stage
 }

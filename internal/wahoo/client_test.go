@@ -3,13 +3,15 @@ package wahoo
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/nobbs/domestique/internal/route"
 )
@@ -18,30 +20,19 @@ func TestClientCompletesOAuthAndFindsAuthenticatedUser(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		switch request.URL.Path {
 		case "/oauth/token":
-			if request.Method != http.MethodPost {
-				t.Errorf("token method = %s, want POST", request.Method)
-			}
-			if err := request.ParseForm(); err != nil {
-				t.Errorf("ParseForm() error = %v", err)
+			assert.Equal(t, http.MethodPost, request.Method, "token method")
+			if !assert.NoError(t, request.ParseForm()) {
 				return
 			}
-			if got, want := request.Form.Get("client_id"), "client-id"; got != want {
-				t.Errorf("client id = %q, want %q", got, want)
-			}
-			if got, want := request.Form.Get("client_secret"), "test-client-secret"; got != want {
-				t.Errorf("client secret = %q, want %q", got, want)
-			}
-			if got, want := request.Form.Get("code"), "authorization-code"; got != want {
-				t.Errorf("code = %q, want %q", got, want)
-			}
+			assert.Equal(t, "client-id", request.Form.Get("client_id"), "client id")
+			assert.Equal(t, "test-client-secret", request.Form.Get("client_secret"), "client secret")
+			assert.Equal(t, "authorization-code", request.Form.Get("code"), "code")
 			writeJSON(t, writer, map[string]string{"access_token": "access-token", "refresh_token": "refresh-token"})
 		case "/v1/user":
-			if got, want := request.Header.Get("Authorization"), "Bearer access-token"; got != want {
-				t.Errorf("authorization = %q, want %q", got, want)
-			}
+			assert.Equal(t, "Bearer access-token", request.Header.Get("Authorization"), "authorization")
 			writeJSON(t, writer, map[string]int64{"id": 42})
 		default:
-			t.Errorf("unexpected request: %s %s", request.Method, request.URL)
+			assert.Failf(t, "unexpected request", "%s %s", request.Method, request.URL)
 			writer.WriteHeader(http.StatusNotFound)
 		}
 	}))
@@ -49,37 +40,20 @@ func TestClientCompletesOAuthAndFindsAuthenticatedUser(t *testing.T) {
 
 	client := newTestClient(t, server)
 	authorizationURL, err := client.AuthorizationURL("state-value")
-	if err != nil {
-		t.Fatalf("AuthorizationURL() error = %v", err)
-	}
+	require.NoError(t, err)
 	parsed, err := url.Parse(authorizationURL)
-	if err != nil {
-		t.Fatalf("parsing authorization URL: %v", err)
-	}
-	if got, want := parsed.Path, "/oauth/authorize"; got != want {
-		t.Errorf("authorization path = %q, want %q", got, want)
-	}
-	if got, want := parsed.Query().Get("scope"), "routes_read routes_write user_read"; got != want {
-		t.Errorf("authorization scope = %q, want %q", got, want)
-	}
-	if got, want := parsed.Query().Get("state"), "state-value"; got != want {
-		t.Errorf("authorization state = %q, want %q", got, want)
-	}
+	require.NoError(t, err, "parsing the authorization URL")
+	assert.Equal(t, "/oauth/authorize", parsed.Path, "authorization path")
+	assert.Equal(t, "routes_read routes_write user_read", parsed.Query().Get("scope"), "authorization scope")
+	assert.Equal(t, "state-value", parsed.Query().Get("state"), "authorization state")
 
 	accessToken, refreshToken, err := client.ExchangeAuthorizationCode(t.Context(), "authorization-code")
-	if err != nil {
-		t.Fatalf("ExchangeAuthorizationCode() error = %v", err)
-	}
-	if got, want := refreshToken, "refresh-token"; got != want {
-		t.Errorf("refresh token = %q, want %q", got, want)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "refresh-token", refreshToken)
+
 	userID, err := client.AuthenticatedUser(t.Context(), accessToken)
-	if err != nil {
-		t.Fatalf("AuthenticatedUser() error = %v", err)
-	}
-	if got, want := userID, "42"; got != want {
-		t.Errorf("user id = %q, want %q", got, want)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "42", userID)
 }
 
 func TestClientWritesAndFindsOwnedRoute(t *testing.T) {
@@ -90,12 +64,10 @@ func TestClientWritesAndFindsOwnedRoute(t *testing.T) {
 		case "/v1/routes":
 			switch request.Method {
 			case http.MethodPost:
-				requireRouteForm(t, request, externalID, true)
+				assertRouteForm(t, request, externalID, true)
 				writeJSON(t, writer, map[string]any{"id": 51, "external_id": externalID})
 			case http.MethodGet:
-				if got, want := request.URL.Query().Get("external_id"), externalID; got != want {
-					t.Errorf("external id query = %q, want %q", got, want)
-				}
+				assert.Equal(t, externalID, request.URL.Query().Get("external_id"), "external id query")
 				writeJSON(t, writer, []map[string]any{{"id": 51, "external_id": externalID}})
 			default:
 				writer.WriteHeader(http.StatusMethodNotAllowed)
@@ -103,7 +75,7 @@ func TestClientWritesAndFindsOwnedRoute(t *testing.T) {
 		case "/v1/routes/51":
 			switch request.Method {
 			case http.MethodPut:
-				requireRouteForm(t, request, externalID, false)
+				assertRouteForm(t, request, externalID, false)
 				writeJSON(t, writer, map[string]any{"id": 51, "external_id": externalID})
 			case http.MethodDelete:
 				writer.WriteHeader(http.StatusNoContent)
@@ -118,28 +90,18 @@ func TestClientWritesAndFindsOwnedRoute(t *testing.T) {
 
 	client := newTestClient(t, server)
 	createdRouteID, err := client.CreateRoute(t.Context(), "access-token", &stage, []byte("fit-data"))
-	if err != nil {
-		t.Fatalf("CreateRoute() error = %v", err)
-	}
-	if got, want := createdRouteID, int64(51); got != want {
-		t.Errorf("created route id = %d, want %d", got, want)
-	}
-	if _, updateErr := client.UpdateRoute(t.Context(), createdRouteID, "access-token", &stage, []byte("new-fit-data")); updateErr != nil {
-		t.Fatalf("UpdateRoute() error = %v", updateErr)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, int64(51), createdRouteID, "created route id")
+
+	_, err = client.UpdateRoute(t.Context(), createdRouteID, "access-token", &stage, []byte("new-fit-data"))
+	require.NoError(t, err)
+
 	foundRouteID, found, err := client.RouteByExternalID(t.Context(), "access-token", externalID)
-	if err != nil {
-		t.Fatalf("RouteByExternalID() error = %v", err)
-	}
-	if !found {
-		t.Fatal("RouteByExternalID() found = false, want true")
-	}
-	if got, want := foundRouteID, int64(51); got != want {
-		t.Errorf("found route id = %d, want %d", got, want)
-	}
-	if err := client.DeleteRoute(t.Context(), createdRouteID, "access-token"); err != nil {
-		t.Fatalf("DeleteRoute() error = %v", err)
-	}
+	require.NoError(t, err)
+	require.True(t, found, "the route this test just created was not found")
+	assert.Equal(t, int64(51), foundRouteID, "found route id")
+
+	require.NoError(t, client.DeleteRoute(t.Context(), createdRouteID, "access-token"))
 }
 
 func TestClientWaitsForAdvertisedRateLimit(t *testing.T) {
@@ -164,15 +126,11 @@ func TestClientWaitsForAdvertisedRateLimit(t *testing.T) {
 		return nil
 	}
 
-	if _, err := client.AuthenticatedUser(t.Context(), "access-token"); err != nil {
-		t.Fatalf("first AuthenticatedUser() error = %v", err)
-	}
-	if _, err := client.AuthenticatedUser(t.Context(), "access-token"); err != nil {
-		t.Fatalf("second AuthenticatedUser() error = %v", err)
-	}
-	if got, want := waited, 5*time.Second; got != want {
-		t.Errorf("rate limit wait = %s, want %s", got, want)
-	}
+	_, err := client.AuthenticatedUser(t.Context(), "access-token")
+	require.NoError(t, err, "first AuthenticatedUser()")
+	_, err = client.AuthenticatedUser(t.Context(), "access-token")
+	require.NoError(t, err, "second AuthenticatedUser()")
+	assert.Equal(t, 5*time.Second, waited, "the advertised reset was not waited out")
 }
 
 func TestClientClassifiesRejectedRefreshToken(t *testing.T) {
@@ -182,9 +140,7 @@ func TestClientClassifiesRejectedRefreshToken(t *testing.T) {
 	defer server.Close()
 
 	_, _, err := newTestClient(t, server).RefreshAccessToken(t.Context(), "refresh-token")
-	if !errors.Is(err, ErrUnauthorized) {
-		t.Fatalf("RefreshAccessToken() error = %v, want ErrUnauthorized", err)
-	}
+	require.ErrorIs(t, err, ErrUnauthorized)
 }
 
 func newTestClient(t *testing.T, server *httptest.Server) *Client {
@@ -198,9 +154,7 @@ func newTestClient(t *testing.T, server *httptest.Server) *Client {
 		Timeout:      time.Second,
 		Transport:    server.Client().Transport,
 	})
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
+	require.NoError(t, err)
 
 	return client
 }
@@ -220,40 +174,37 @@ func testStage(t *testing.T) route.Stage {
 		},
 		"hash",
 	)
-	if err != nil {
-		t.Fatalf("NewStage() error = %v", err)
-	}
+	require.NoError(t, err)
 
 	return stage
 }
 
-func requireRouteForm(t *testing.T, request *http.Request, externalID string, expectExternalID bool) {
+// assertRouteForm runs on the server's goroutine, so it asserts rather than
+// requires: FailNow off the test goroutine would leave the request hanging.
+func assertRouteForm(t *testing.T, request *http.Request, externalID string, expectExternalID bool) {
 	t.Helper()
 	if err := request.ParseForm(); err != nil {
-		t.Errorf("ParseForm() error = %v", err)
+		assert.Failf(t, "parsing the submitted route form", "%v", err)
+
 		return
 	}
-	if got := request.Form.Get("route[file]"); !strings.HasPrefix(got, "data:application/vnd.fit;base64,") {
-		t.Errorf("route file = %q, want FIT data URI", got)
-	}
-	if got, want := request.Form.Get("route[name]"), "Morning route"; got != want {
-		t.Errorf("route name = %q, want %q", got, want)
-	}
-	if got := request.Form.Get("route[distance]"); got == "" || got == "0" {
-		t.Errorf("route distance = %q, want a positive value", got)
-	}
+	assert.True(t,
+		strings.HasPrefix(request.Form.Get("route[file]"), "data:application/vnd.fit;base64,"),
+		"route file is not a FIT data URI")
+	assert.Equal(t, "Morning route", request.Form.Get("route[name]"), "route name")
+	distance := request.Form.Get("route[distance]")
+	assert.NotEmpty(t, distance, "route distance")
+	assert.NotEqual(t, "0", distance, "route distance must be a positive value")
 	if expectExternalID {
-		if got, want := request.Form.Get("route[external_id]"), externalID; got != want {
-			t.Errorf("route external id = %q, want %q", got, want)
-		}
-	} else if got := request.Form.Get("route[external_id]"); got != "" {
-		t.Errorf("update external id = %q, want empty", got)
+		assert.Equal(t, externalID, request.Form.Get("route[external_id]"), "route external id")
+	} else {
+		// An update names the route by id; resending the external id would let
+		// a typo in it point the stage at somebody else's route.
+		assert.Empty(t, request.Form.Get("route[external_id]"), "update external id")
 	}
 }
 
 func writeJSON(t *testing.T, writer http.ResponseWriter, value any) {
 	t.Helper()
-	if err := json.NewEncoder(writer).Encode(value); err != nil {
-		t.Errorf("writing JSON response: %v", err)
-	}
+	assert.NoError(t, json.NewEncoder(writer).Encode(value), "writing the JSON response")
 }
