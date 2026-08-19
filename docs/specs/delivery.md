@@ -122,9 +122,29 @@ package under test, so that a function exercised only through another package's
 tests is not reported as dead. Repository tooling under `dev/` is outside the
 measured set: it is not the service, and its own tests run in the normal suite.
 The browser UI's report excludes its tests and their harness, type-only
-declarations, and the bootstrap that mounts React. Nothing else is excluded — in
-particular, code that only a browser-level test could reach is measured and
-reports low, because a number that hides a gap is worse than one that shows it.
+declarations, and the bootstrap that mounts React. Nothing else is excluded, and
+code that only a browser-level test can reach is measured by a browser-level
+test: the UI number is the unit suites and the whole-page suite merged. A
+component the whole page exercises therefore reads as exercised rather than as a
+gap the report cannot see. Both halves are V8 coverage over the same source
+files, so a statement both reach counts once and the total stays a count of the
+tree rather than of the collectors.
+
+The measured half of the whole-page suite is the one that runs against the
+development server, which serves every module with a source map back to the file
+under `src/` it was built from. The half that runs against the embedded
+production bundle is not measured: that bundle is minified and ships without a
+source map, and measuring both would pay twice to learn the same thing.
+
+The unit report is the subject of the merge on both axes: the files it contains,
+and the statements it records for each of them. The browser's counts are carried
+onto those, matched by source location, and what has no counterpart there is
+dropped — so the merge moves the numerator and never the denominator, and the
+two collectors cannot come to disagree about what is being measured. The result
+is one report, merged before upload rather than uploaded as two, so that the
+number a status compares is assembled the same way on every commit. Where no
+browser is installed the unit half is still produced, and the run says what it
+left out.
 
 Both reports are written to one gitignored directory, so that the upload step
 has a single place to look. No coverage report is committed, and none enters an
@@ -133,25 +153,31 @@ image context.
 GitHub Actions measures both languages on every run it performs, under no path
 filter, and publishes them to Codecov under separate flags, so that a shortfall
 names the language it came from and the two are never averaged into a single
-number.
+number. The browser half is collected there rather than handed over from the
+path-filtered job that runs the same suite for its own sake, because a flag
+assembled by a filtered job would mean one thing on the commits that job ran on
+and another on the commits it skipped, and a patch status compares two commits.
+The cost is that a change touching no UI still drives a browser.
 
-Both per-flag patch statuses are required by the branch ruleset, and the Go one
-judges. It must show that the Go lines a change adds or alters are covered at
-least as well as the base commit's Go already is; beyond a rounding threshold, a
-shortfall fails the check and the change does not merge. The bar is the base
-rather than a chosen percentage, so no number has to be invented or maintained
-and the requirement rises with the tree. The status reads only the diff, so
-deleting well-covered code or moving statements between packages cannot fail a
-change — the property a project-total ratchet cannot offer. A change carrying no
-measurable Go passes. A change whose base commit carries no report is outside
-what this contract relies on: it is rebased onto a default-branch commit that
-carries one, and nothing here asserts what the status would otherwise report.
+Both per-flag patch statuses are required by the branch ruleset, and both judge.
+Each must show that the lines a change adds or alters in its own language are
+covered at least as well as the base commit's already are; beyond a rounding
+threshold, a shortfall fails the check and the change does not merge. The bar is
+the base rather than a chosen percentage, so no number has to be invented or
+maintained and the requirement rises with the tree. A status reads only the
+diff, so deleting well-covered code or moving statements between packages cannot
+fail a change — the property a project-total ratchet cannot offer. A change
+carrying nothing measurable in a language passes that language's status. A
+change whose base commit carries no report is outside what this contract relies
+on: it is rebased onto a default-branch commit that carries one, and nothing
+here asserts what the status would otherwise report.
 
-The UI patch status is required to arrive rather than to pass, and the two
-project statuses report trend. That is deliberate and not pending: the UI
-measurement does not yet include what the browser-level suite reaches, so
-enforcing it would fail changes to code that is in fact exercised, and a gate
-whose ordinary outcome is an override is worse than a report.
+The UI status judging is a revision. It reported and did not judge for as long
+as the measurement omitted what the browser-level suite reached, because a gate
+that fails changes to code that is in fact exercised has its ordinary outcome be
+an override. That omission is what the merged report closes, and the status
+follows the measurement. The two project statuses continue to report trend and
+block nothing.
 
 The measurement carries no path filter because a required context has to arrive:
 Codecov reports only on a commit it received a report for, so a run that
@@ -283,6 +309,15 @@ is a separate target and both it and `make ui-browser-test` are deferred out of
 the routine loop. They run in `make check` and in the CI UI job, which is where
 they gate a merge. A machine that cannot install a browser can still pass the
 routine loop; it cannot claim the full gate.
+
+CI installs the browser alone, without Playwright's `--with-deps`. The hosted
+runner image already carries every shared library Chromium links, so on that
+image the flag adds nothing but CJK, Thai and Cyrillic font packages: the
+interface is Latin, and the suite's basemap names no glyph source, so nothing it
+renders needs them. Nor can their absence move a comparison, because the
+appearance checks compare a page against itself within one run rather than
+against a stored image. `PLAYWRIGHT_INSTALL_FLAGS` remains the way to pass the
+flag on a host that does need it, such as a bare container.
 
 The suite renders the map but does not judge it. Looking at a map change remains
 a human act, and a change handed over without one is reported as such.

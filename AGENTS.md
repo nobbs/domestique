@@ -72,12 +72,16 @@ Tests run with `CGO_ENABLED=0` and `-shuffle=on`. They must stay deterministic
 under shuffling.
 
 `make coverage` writes a Go coverage profile to `.coverage/go.out` and the UI's
-LCOV report to `.coverage/ui/lcov.info`, and prints a per-package summary for
-each. It is not part of `make check`, and nothing fails on a percentage: CI
-publishes both to Codecov under the `go` and `ui` flags, and every status it
-posts is informational. See [CONTRIBUTING.md](CONTRIBUTING.md) for what is
-measured, what is left out, and what making a coverage rule enforceable would
-involve.
+LCOV report to `.coverage/ui/lcov.info`, and prints a summary for each. It is not
+part of `make check`, and nothing local fails on a percentage. CI publishes both
+to Codecov under the `go` and `ui` flags, where the two patch statuses do decide
+a merge: each requires the lines a change adds or alters to be covered at least
+as well as the base commit's already are. The UI number is the Vitest suites and
+the browser suite merged, so a change to code only the whole page exercises is
+judged on coverage it actually has. `make coverage-ui` drives a browser and is
+correspondingly slow; with none installed it keeps the unit half, says what it
+left out, and still succeeds. See [CONTRIBUTING.md](CONTRIBUTING.md) for what is
+measured and what is left out.
 
 **The browser UI** lives in `internal/webui/app` (TypeScript, React, Vite,
 MapLibre) and is compiled into the binary with `go:embed`, so `make build`

@@ -61,8 +61,10 @@ export default defineConfig({
     environment: "jsdom",
     // Vitest would otherwise collect e2e/*.spec.ts, which is Playwright's suite
     // and needs a browser. The unit suites stay a jsdom-only run that a
-    // contributor with no browser installed can still pass.
-    include: ["src/**/*.test.{ts,tsx}"],
+    // contributor with no browser installed can still pass. `scripts` is the
+    // coverage tooling rather than the UI, so it is tested here and measured
+    // nowhere, exactly as `dev/` is on the Go side.
+    include: ["src/**/*.test.{ts,tsx}", "scripts/**/*.test.ts"],
     setupFiles: ["./src/test/setup.ts"],
     css: false,
     restoreMocks: true,
@@ -71,7 +73,12 @@ export default defineConfig({
       // The repository collects Go and UI coverage side by side, so both
       // reports land under one gitignored directory at the repository root.
       reportsDirectory: "../../../.coverage/ui",
-      reporter: ["text-summary", "lcov"],
+      // `json` is what the browser half merges against. LCOV cannot be read back
+      // without losing the statement locations the merge aligns on, and it is
+      // also this report that tells the browser half which files are measured at
+      // all — every file the two lists below match appears in it, covered or
+      // not, so the two collectors cannot end up measuring different trees.
+      reporter: ["text-summary", "lcov", "json"],
       // Measure the whole application, not only the files a test happened to
       // import: an untested module is the number's point, not an omission.
       // Vitest reports every file this matches, covered or not.
