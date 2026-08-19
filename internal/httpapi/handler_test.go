@@ -342,7 +342,18 @@ func TestHandlerOmitsAnUnconfiguredSourceBaseURL(t *testing.T) {
 }
 
 func TestHandlerRefusesASourceBaseURLThatIsNotOne(t *testing.T) {
-	for _, value := range []string{"http://source.example.test", "source.example.test", "/user-routes"} {
+	// The value is echoed to the browser rather than only compared, so anything
+	// riding on it is observable: credentials would be a secret in a JSON body,
+	// and a query or fragment would be sent to the provider on every visit.
+	for _, value := range []string{
+		"http://source.example.test",
+		"source.example.test",
+		"/user-routes",
+		"https://rider:hunter2@source.example.test",
+		"https://source.example.test?utm_source=domestique",
+		"https://source.example.test/#fragment",
+		"https://",
+	} {
 		_, err := New(
 			&Options{
 				TargetIDs:        []string{"rider-a"},
@@ -390,6 +401,31 @@ func TestHandlerSendsASourceBaseURLWithoutSurroundingWhitespace(t *testing.T) {
 	}
 	if got, want := payload.SourceBaseURL, testSourceBaseURL; got != want {
 		t.Errorf("source base URL = %q, want %q", got, want)
+	}
+}
+
+func TestHandlerAcceptsASourceBaseURLHostedUnderAPath(t *testing.T) {
+	// A provider need not sit at the root of its host, and the page builds the
+	// route path underneath whatever prefix it is given.
+	handler, err := New(
+		&Options{
+			TargetIDs:        []string{"rider-a"},
+			TileStyleURL:     testTileStyleURL,
+			SourceBaseURL:    testSourceBaseURL + "/planner",
+			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
+			AccessEmail:      testAccessEmail,
+			BrowserOriginURL: testBrowserOriginURL,
+		},
+		&fakeOAuth{}, &fakeState{}, &fakeSyncTrigger{}, &fakeAssets{},
+	)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/webui/config"))
+	if got, want := response.Body.String(), testSourceBaseURL+"/planner"; !strings.Contains(got, want) {
+		t.Errorf("config body = %q, want it to contain %q", got, want)
 	}
 }
 

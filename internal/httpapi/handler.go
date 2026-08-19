@@ -213,8 +213,8 @@ func New(
 	// hand-edited config file, and a browser will not parse it back into a URL.
 	sourceBaseURL := strings.TrimSpace(options.SourceBaseURL)
 	if sourceBaseURL != "" {
-		if _, sourceErr := originOf(sourceBaseURL); sourceErr != nil {
-			return nil, errors.New("source base URL must be an absolute HTTPS URL")
+		if err := validateSourceBaseURL(sourceBaseURL); err != nil {
+			return nil, err
 		}
 	}
 
@@ -418,6 +418,26 @@ func browserOriginOf(value string) (string, error) {
 }
 
 // originOf reduces a URL to its scheme and host for use in a CSP source list.
+// validateSourceBaseURL checks a provider base URL before it is handed to the
+// browser. It is stricter than originOf, and deliberately so: this value is
+// echoed in a response rather than only compared against another, so anything
+// riding on it is observable. Credentials would be a secret in a JSON body, and
+// a query or fragment would be something the operator's configuration sends to
+// the provider on every visit. A path prefix is allowed — a provider may be
+// hosted under one — and nothing else is.
+func validateSourceBaseURL(value string) error {
+	invalid := errors.New("source base URL must be an absolute HTTPS URL without credentials, query, or fragment")
+
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" ||
+		parsed.User != nil || parsed.RawQuery != "" || parsed.ForceQuery ||
+		parsed.Fragment != "" || parsed.Opaque != "" {
+		return invalid
+	}
+
+	return nil
+}
+
 func originOf(value string) (string, error) {
 	parsed, err := url.Parse(strings.TrimSpace(value))
 	if err != nil || parsed.Scheme != "https" || parsed.Host == "" {
