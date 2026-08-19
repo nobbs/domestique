@@ -39,6 +39,18 @@ and said to be unclassified, never presented as unsurveyed ground. Because the
 classification is a derived OpenStreetMap database, the map view carries the
 ODbL attribution its share-alike terms require.
 
+The drawn route says where a ride goes and nothing about which end it begins at,
+so the view marks both terminals and the direction of travel. The start and the
+finish are marked distinctly, and stay distinguishable on a stage that finishes
+where it started: the two markers are separated on screen rather than drawn on
+one point. Direction cues are placed along the route at a spacing measured on
+screen, so a stage gets the same restrained handful of them whatever its length
+and however far the camera is pulled back. Every cue is derived from the stored
+geometry already drawn — no request is made to answer it — and every cue has a
+textual equivalent stating which way the ride leaves, whether it returns to its
+start, and which way it comes back, because the cues themselves are drawn into a
+canvas that carries no text.
+
 The key to what the view draws is also how it is questioned: a surface class or
 a gradient band can be selected, and the stretches of route it covers stay lit on
 the map and in the elevation chart while the rest of the ride is dimmed. One

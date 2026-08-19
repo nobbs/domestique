@@ -30,6 +30,7 @@ import { mapExploration } from "../lib/mapExploration";
 import { routeMetresAt, routeSelection } from "../lib/mapSelection";
 import type { DistanceWindow, Profile } from "../lib/profile";
 import { coordinateRange, nearestSample, rangeBounds, sampleAt } from "../lib/profile";
+import { cuesDescription, directionChevrons, metresPerPixel, routeCues } from "../lib/routeCues";
 import { gradientSlices, routeLinesWithin } from "../lib/routeLines";
 import { NEAR_ROUTE_PIXELS, NEAR_ROUTE_TOUCH_PIXELS } from "../lib/selection";
 import { SURFACE_LINE_WIDTH, SURFACE_STYLES, surfaceLinesWithin } from "../lib/surface";
@@ -56,6 +57,23 @@ const SURFACE_ATTRIBUTION = "Surface data © OpenStreetMap contributors (ODbL)";
 
 /** The casing's normal opacity, kept in one place so the dimmed one follows it. */
 const CASING_OPACITY = 0.85;
+
+/**
+ * How far the two terminal markers are nudged apart, in screen pixels.
+ *
+ * A loop and an out-and-back both finish where they started, so both markers
+ * would be drawn on the same coordinate and one would simply be missing. The
+ * nudge is applied only when the two ends are that close: elsewhere each marker
+ * sits exactly on its own point, because a marker is where a ride begins, not a
+ * decoration near it. Even nudged, it stays a label for the terminal rather than
+ * a survey mark, which is why the words beside the map say plainly that the two
+ * ends are the same place.
+ */
+const TERMINAL_NUDGE_PIXELS = 9;
+
+/** How wide a terminal marker is drawn, and how heavy its ring. */
+const TERMINAL_RADIUS = 7;
+const TERMINAL_RING_WIDTH = 3;
 
 /**
  * The steepness ramp, band by band, mirroring `--band-*` in `index.css`.
@@ -363,6 +381,91 @@ function ExplorationLink({
   return null;
 }
 
+/**
+ * Chevrons along the route, pointing the way it is ridden.
+ *
+ * A child of the map because the cues are sized and spaced in screen pixels, and
+ * only the live camera can say what a pixel is worth on the ground. They are
+ * rebuilt when the camera settles rather than on every frame of a flight: the
+ * geometry is measured over the whole route, and a stage of several thousand
+ * points would otherwise be re-measured sixty times a second to no visible end.
+ */
+function DirectionCues({ coordinates }: { coordinates: Position[] }) {
+  const { current: map } = useMap();
+  const [resolution, setResolution] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!map) {
+      return;
+    }
+    const read = () => setResolution(metresPerPixel(map.getZoom(), map.getCenter().lat));
+    read();
+    map.on("moveend", read);
+    map.on("zoomend", read);
+
+    return () => {
+      map.off("moveend", read);
+      map.off("zoomend", read);
+    };
+  }, [map]);
+
+  const chevrons = useMemo(
+    () =>
+      resolution === null ? [] : directionChevrons(coordinates, { metresPerPixel: resolution }),
+    [coordinates, resolution],
+  );
+  // An empty collection keeps the source and its layer mounted, so the stack
+  // above them never has to be rebuilt when a zoom leaves no room for a cue.
+  const data = useMemo(
+    () => ({
+      type: "FeatureCollection" as const,
+      features:
+        chevrons.length === 0
+          ? []
+          : [
+              {
+                type: "Feature" as const,
+                geometry: { type: "MultiLineString" as const, coordinates: chevrons },
+                properties: {},
+              },
+            ],
+    }),
+    [chevrons],
+  );
+
+  return (
+    <Source id="stage-direction" type="geojson" data={data}>
+      {/*
+       * White, and over the route rather than beside it: every class and band
+       * beneath is a mid-to-dark colour, so the same cue reads on all of them,
+       * and a cue drawn alongside the line would be a second thing to follow.
+       */}
+      <Layer
+        id="stage-direction-chevrons"
+        type="line"
+        layout={{ "line-cap": "round", "line-join": "round" }}
+        paint={{ "line-color": "#ffffff", "line-width": 2.4, "line-opacity": 0.95 }}
+      />
+    </Source>
+  );
+}
+
+/** One terminal as a point collection, empty when the stage has no cues. */
+function terminalCollection(position: Position | undefined) {
+  return {
+    type: "FeatureCollection" as const,
+    features: position
+      ? [
+          {
+            type: "Feature" as const,
+            geometry: { type: "Point" as const, coordinates: position },
+            properties: {},
+          },
+        ]
+      : [],
+  };
+}
+
 export interface RouteMapProps {
   styleUrl: string;
   /**
@@ -551,6 +654,16 @@ export function RouteMap({
     };
   }, [profile, activeMetres]);
 
+  // The terminals and the direction they are ridden in, from the same stored
+  // coordinates already drawn. Null for anything that is not a ride — a single
+  // point has an end but no direction, and there is nothing honest to draw.
+  const cues = useMemo(() => routeCues(coordinates), [coordinates]);
+  const startPoint = useMemo(() => terminalCollection(cues?.start), [cues]);
+  const finishPoint = useMemo(() => terminalCollection(cues?.finish), [cues]);
+  // Opposite nudges, so a loop shows two markers side by side at the one point
+  // it both leaves and returns to.
+  const nudge = cues?.sharedTerminal ? TERMINAL_NUDGE_PIXELS : 0;
+
   // A basemap that fails to load must not fail silently: the route itself is
   // still drawn, but the operator should be able to see why the background is
   // empty.
@@ -707,6 +820,39 @@ export function RouteMap({
             />
           </Source>
         ))}
+        <DirectionCues coordinates={coordinates} />
+        {/*
+         * The two ends, mounted above the route and the cues so neither is lost
+         * under a line. They are told apart by shape as well as by fill — a disc
+         * for the start, a ring for the finish — because a reader who cannot
+         * separate the two colours still has to be able to separate the two ends.
+         */}
+        <Source id="stage-start" type="geojson" data={startPoint}>
+          <Layer
+            id="stage-start-point"
+            type="circle"
+            paint={{
+              "circle-radius": TERMINAL_RADIUS,
+              "circle-color": ROUTE_ACCENT,
+              "circle-stroke-color": "#ffffff",
+              "circle-stroke-width": 2.5,
+              "circle-translate": [-nudge, 0],
+            }}
+          />
+        </Source>
+        <Source id="stage-finish" type="geojson" data={finishPoint}>
+          <Layer
+            id="stage-finish-point"
+            type="circle"
+            paint={{
+              "circle-radius": TERMINAL_RADIUS - TERMINAL_RING_WIDTH / 2,
+              "circle-color": "#ffffff",
+              "circle-stroke-color": ROUTE_ACCENT,
+              "circle-stroke-width": TERMINAL_RING_WIDTH,
+              "circle-translate": [nudge, 0],
+            }}
+          />
+        </Source>
         <Source id="stage-position" type="geojson" data={marker}>
           <Layer
             id="stage-position-halo"
@@ -720,6 +866,13 @@ export function RouteMap({
           />
         </Source>
       </MapLibre>
+      {/*
+       * The cues in words. Markers and chevrons are drawn into a WebGL surface
+       * that carries no text at all, so this is not a caption repeating what is
+       * visible — for a reader who is not looking at the canvas it is the whole
+       * of what the cues say.
+       */}
+      {cues ? <p className="visually-hidden">{cuesDescription(cues)}</p> : null}
       <ExploreToggle exploring={exploring} onExploringChange={setExploring} />
     </div>
   );
