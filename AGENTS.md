@@ -63,10 +63,15 @@ compile check for the published release target. Individual targets
 (`make test`, `make lint`, `make fmt`, `make ui-test`, `make build-check`) are
 also available while iterating.
 
-Run `make check` before reporting work complete. If part of it genuinely cannot
-run — no network for the advisory databases, say — run `make quick`, say plainly
-which checks did not run, and leave them to CI rather than implying a full gate
-passed.
+Run `make quick` before reporting work complete. It is the expected gate for a
+hand-over: the five checks it defers all run on every pull request, so paying for
+them locally as well buys an earlier answer at the cost of a browser download and
+minutes of driving it. Reach for `make check` when you have a specific reason to
+want one of those five before pushing — a change to the release build, to a
+dependency, or to the browser suite itself — rather than as routine.
+
+Either way, say plainly which checks you ran. A green `make quick` is not a full
+gate, and reporting it as one is the failure this rule exists to prevent.
 
 Tests run with `CGO_ENABLED=0` and `-shuffle=on`. They must stay deterministic
 under shuffling.
@@ -241,7 +246,7 @@ configured origin, because a browser will not let a test set its own.
 That suite renders the map, but it does not look at it. Checking a map change by
 eye is still skippable, so a change may be handed over without anyone having seen
 it. Say so plainly when it has not, and say what specifically went unseen, so
-nobody reads a green `make check` as a change that was looked at.
+nobody reads a green gate as a change that was looked at.
 
 ## Files an agent must not touch or read out
 

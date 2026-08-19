@@ -311,8 +311,9 @@ quick: ui-ensure
 
 # The full gate, on demand. GitHub Actions runs this same work on every pull
 # request and is what gates the merge, so running it here buys an earlier
-# answer rather than a different one. Use it before handing work over; use
-# `quick` while writing it.
+# answer rather than a different one. `quick` is what to run while writing and
+# before handing work over; reach for this when a change specifically implicates
+# one of the five checks `quick` defers.
 check:
 	$(MAKE) ci-lint
 	$(MAKE) ci-test
