@@ -1,12 +1,12 @@
-# Codecov reports coverage on a pull request, and one of the four statuses
-# below decides whether it can merge.
+# Codecov reports coverage on a pull request, and two of the four statuses
+# below decide whether it can merge.
 #
-# `patch.go` is that one: the Go lines a pull request adds or changes must be
-# covered at least as well as the base commit's Go already is. The rest —
-# `patch.ui` and both project statuses — stay informational, so a shortfall
-# shows up on the pull request and never blocks it. See "Coverage" in
-# CONTRIBUTING.md for the rule, why the UI half only reports, and what to do
-# when a change legitimately cannot clear the gate.
+# `patch.go` and `patch.ui` are those two: the lines a pull request adds or
+# changes must be covered at least as well as the base commit's already are, in
+# each language separately. Both project statuses stay informational, so a
+# shortfall in the trend shows up on the pull request and never blocks it. See
+# "Coverage" in CONTRIBUTING.md for the rule and what to do when a change
+# legitimately cannot clear the gate.
 
 codecov:
   # A report from a run whose checks failed describes a tree nobody is going to
@@ -52,15 +52,17 @@ coverage:
         # Room for rounding against a base a fraction of a point higher, not
         # room for an untested function.
         threshold: 1%
-      # Reports only, until the UI measurement describes what the browser suite
-      # actually reaches. That suite drives the map and page-level components in
-      # real Chromium, but its coverage never enters the LCOV report uploaded
-      # here, so they still read as untested — and an enforced target would fail
-      # every pull request touching them, making the override the normal route.
+      # Enforced on the same terms as `go`, and for the same reason. It reported
+      # only for as long as the measurement was Vitest alone: the browser suite
+      # drives the map and the page-level components in real Chromium, none of
+      # that entered the LCOV file, and an enforced target would have failed every
+      # pull request touching them — making the override the normal route rather
+      # than the exception. The uploaded report now merges both suites, so the
+      # number describes what is actually reached and can be held to.
       ui:
         flags:
           - ui
-        informational: true
+        threshold: 1%
 
 # Both flags upload on every run of the coverage job, so nothing has to be
 # carried forward from an older commit; a report is always the tree it names.

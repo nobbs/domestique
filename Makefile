@@ -116,10 +116,22 @@ coverage-go:
 		-coverprofile=$(GO_COVERPROFILE) ./...
 	$(GO) run ./dev/coveragesummary <$(GO_COVERPROFILE)
 
-# Vitest writes its LCOV and terminal summary under $(COVERAGE_DIR); see the
-# coverage block in $(UI_DIR)/vite.config.ts for what it measures.
+# Both browser UI suites, in the order the merge needs them.
+#
+# Vitest writes its LCOV, its JSON report and a terminal summary under
+# $(COVERAGE_DIR); see the coverage block in $(UI_DIR)/vite.config.ts for what it
+# measures. The second step drives the browser suite over the demo stack,
+# attributes what it reached back to $(UI_DIR)/src, and rewrites the LCOV file as
+# the two suites merged — so one file describes one language, rather than the map
+# and the page-level components reading untested because only jsdom was asked.
+#
+# The second step needs the browser and the Go toolchain, and says so and stops
+# rather than failing when the browser is not installed: the first half is still
+# a report, and downloading a browser is not something a coverage run should do
+# on someone's behalf. Run `make ui-browser-install` once to measure both halves.
 coverage-ui: ui-ensure
 	$(NPM) --prefix $(UI_DIR) run test:coverage
+	$(NPM) --prefix $(UI_DIR) run test:coverage:browser
 
 # Snapshots the deployed SQLite state and writes a development configuration
 # that reads real VeloPlanner data but cannot reach Wahoo. See dev/setup.sh.
@@ -168,7 +180,11 @@ ui-test:
 # suite so that a failure names which of the two went wrong, and so a contributor
 # can pay the download once. PLAYWRIGHT_INSTALL_FLAGS is how CI adds --with-deps,
 # which also installs the browser's system libraries and needs root.
-ui-browser-install:
+#
+# It installs the dependency tree first so that it can be the first UI target a
+# job runs, which is what the Coverage job needs: the browser has to be there
+# before `make coverage` drives it.
+ui-browser-install: ui-ensure
 	$(NPM) --prefix $(UI_DIR) run test:browser:install -- $(PLAYWRIGHT_INSTALL_FLAGS)
 
 # The whole page in a real browser, over `make demo`'s synthetic library: what a

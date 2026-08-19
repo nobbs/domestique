@@ -157,7 +157,10 @@ jobs:
   coverage:
     name: Coverage
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    # Measuring the UI means running the browser suite, so this job carries the
+    # same cost the UI job does: a Chromium download, a demo stack to build, and
+    # a software-rendered map to drive serially.
+    timeout-minutes: 25
     needs: changes
     # Deliberately unfiltered: this job runs for every pull request and every
     # push, including one that touches only documentation.
@@ -173,6 +176,16 @@ jobs:
     # The job measures both languages in one run because neither flag is carried
     # forward, so a report that arrived with only one of them would leave the
     # other's status describing a commit that is no longer the one under review.
+    #
+    # The browser half of the UI number is collected here rather than handed over
+    # from the UI job, and that is a correctness decision rather than a tidiness
+    # one. The UI job is path-filtered; this one is not. A `ui` flag assembled
+    # from a filtered job would mean different things on different commits — the
+    # tree as Vitest alone sees it where that job did not run, and both suites
+    # where it did — and `patch.ui` compares a head report against a base one. It
+    # cannot tolerate the two having been measured by different sets of jobs: the
+    # comparison would pass or fail on which jobs ran rather than on the change.
+    # The cost is that a documentation-only pull request pays for the browser too.
 
     permissions:
       contents: read
@@ -190,6 +203,11 @@ jobs:
           version: 2026.8.6
           install: true
           cache: true
+      - name: Install the browser
+        # The UI half of the measurement drives the whole page in real Chromium.
+        # --with-deps also installs the browser's system libraries, which a hosted
+        # runner does not carry and which the suite cannot start without.
+        run: mise exec -- make ui-browser-install PLAYWRIGHT_INSTALL_FLAGS=--with-deps
       - name: Measure coverage
         run: mise exec -- make coverage
       # Each upload names exactly the one file it may send. disable_search and

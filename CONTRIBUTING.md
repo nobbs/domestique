@@ -68,14 +68,15 @@ CI measures both languages on every pull request and every push — including a
 documentation-only one — and publishes them to Codecov under two flags, `go` and
 `ui`, so that a shortfall names the language it came from.
 
-**The Go lines a pull request adds or changes must be covered at least as well
-as the base commit's Go already is.** That is `codecov/patch/go`: required by
-the branch ruleset, and no longer informational. There is no fixed percentage to
-clear, because the bar is whatever the tree already manages — which also means
-it rises as coverage improves. It reads only the diff, so deleting well-covered
-code or moving statements between packages cannot fail a pull request. A 1%
-threshold absorbs rounding, and a change with no measurable Go in it reports
-"Coverage not affected" and passes.
+**The lines a pull request adds or changes must be covered at least as well as
+the base commit's already are, in each language separately.** That is
+`codecov/patch/go` and `codecov/patch/ui`: both required by the branch ruleset,
+and neither informational. There is no fixed percentage to clear, because the
+bar is whatever the tree already manages — which also means it rises as coverage
+improves. A status reads only the diff, so deleting well-covered code or moving
+statements between packages cannot fail a pull request. A 1% threshold absorbs
+rounding, and a change with no measurable Go, or no measurable UI, reports
+"Coverage not affected" for that flag and passes it.
 
 One edge worth knowing. A branch forked from before coverage was published has a
 base commit with no report, so the patch status has nothing to compare against;
@@ -86,15 +87,13 @@ cannot compare, but that has not been observed here and nothing depends on it.
 Rebasing onto current `main` answers both, and is worth doing before opening the
 pull request rather than after.
 
-`codecov/patch/ui` is required too, but stays informational: it has to arrive,
-and its number never fails. The UI measurement does not yet describe what the
-browser suite reaches — the Playwright run drives the map and the page-level
-components in real Chromium, but its coverage never enters the LCOV report
-uploaded here, so those components still read as untested. An enforced target on
-`ui` would fail every pull request that touches them, which would make the
-override below the normal route rather than the exception. Fixing that
-measurement is tracked as its own work, and flipping `ui` belongs to it. Both
-project statuses report trend and block nothing.
+`codecov/patch/ui` was informational for a while, and is not any more. It could
+not judge while the UI measurement described only what jsdom reaches: the
+Playwright run drives the map and the page-level components in real Chromium,
+but none of that entered the uploaded report, so a pull request touching them
+would have failed a status for code it had in fact exercised. The report now
+includes the browser suite, so the number the status reads is the one the tree
+deserves. Both project statuses report trend and block nothing.
 
 Because both contexts are required to arrive, the coverage job carries no path
 filter: a commit that uploaded nothing would leave them never posted and the
@@ -103,6 +102,13 @@ while Codecov is down, or for a pull request from a fork that has no upload
 token, the contexts do not arrive and the merge waits. Removing them from the
 ruleset is the escape hatch, and it is a repository settings change rather than
 a code one.
+
+That same job is where the browser half of the UI number is collected, rather
+than the path-filtered `UI` job that runs the same suite for its own sake. A
+flag assembled by a filtered job would mean one thing on the commits that job
+ran on and another on the commits it skipped, and `patch/ui` compares two
+commits. So a change touching no UI still drives a browser, which is most of why
+that job takes as long as it does.
 
 Locally:
 
@@ -114,6 +120,12 @@ That writes a Go coverage profile to `.coverage/go.out` and the browser UI's
 LCOV report to `.coverage/ui/lcov.info`, and prints a summary for each. Nothing
 is committed — `/.coverage/` is gitignored. `make coverage-go` and
 `make coverage-ui` run one side alone.
+
+`make coverage-ui` is the slow one, because after the unit suites it runs the
+whole-page suite in a real browser and merges what that reached into the same
+report. If no browser is installed it says so, keeps the unit half, and still
+succeeds — run `make ui-browser-install` once if you want the whole number
+locally.
 
 The Go profile is collected with `-coverpkg` over `./cmd/...` and
 `./internal/...`, so a function exercised only through another package's tests
@@ -130,20 +142,37 @@ Four things are deliberately not measured:
 | `dev/` | Repository tooling rather than the service. It has its own tests, and they run in the normal suite. |
 | `src/**/*.test.{ts,tsx}` and `src/test/` | The tests and their harness are the measurement, not its subject. |
 | `src/**/*.d.ts` | Type-only declarations emit no runtime statement to reach. |
-| `src/main.tsx` | It mounts React onto a real document and does nothing else, so a test of it would assert the framework rather than this UI. |
+| `src/main.tsx` | It mounts React onto a real document and does nothing else, so a test of it would assert the framework rather than this UI. The browser does load it, and the merge drops it there too, so that the total does not depend on which collector ran. |
 
-Everything else is measured, including code that no unit test can reach today.
-The map components need WebGL, and the page-level components are assembled
-rather than unit-tested, so both report low — which is the honest answer.
-Browser-level coverage for them is tracked as its own work; excluding them would
-hide a real gap behind a comfortable number.
+Everything else is measured, and code no unit test can reach is measured by the
+test that can reach it. The map components need WebGL and the page-level
+components are assembled rather than unit-tested, so both are read from the
+whole-page suite: `scripts/coverage.ts` runs the `dev-server` Playwright
+project with V8 coverage recording, maps each module the dev server served back
+through its source map to the file under `src/` it came from, and merges that
+with the Vitest report before the LCOV file is written. Both halves are V8
+coverage over the same files, so a statement both suites reach counts once.
 
-### When a change cannot clear the Go gate
+The `bundle` project is not measured. It drives the minified production bundle,
+which ships without a source map, so nothing it records could be attributed back
+to `src/` — and it exercises the same UI, so measuring it would pay twice for
+the same answer.
+
+The Vitest report is the subject on both axes: which files are measured, and
+which statements each of them has. The files come from its own list rather than
+from globs restated somewhere else, and the browser's counts are carried onto
+its statement maps by source location. So the merge can only move the numerator.
+The total is the same tree either way, the two halves cannot drift apart about
+what they are measuring, and neither can drift from the `include` and `exclude`
+in `vite.config.ts`.
+
+### When a change cannot clear a coverage gate
 
 Some changes legitimately cannot, and the gate is not a claim otherwise:
-generated code, a package only a live provider can exercise, a fix that has to
-ship before the test that pins it. What the gate asks is that this be a decision
-somebody made and wrote down.
+generated code, a package only a live provider can exercise, a component whose
+behaviour is a browser's rather than this UI's, a fix that has to ship before
+the test that pins it. What the gate asks is that this be a decision somebody
+made and wrote down.
 
 The branch ruleset grants the Admin repository role a `pull_request` bypass. It
 permits merging a pull request whose required checks have not passed, and

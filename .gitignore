@@ -13,8 +13,10 @@
 
 # Code coverage profiles and other test artifacts. `make coverage` writes the
 # Go profile and the UI LCOV report under /.coverage; no report is committed.
+# The bare `coverage.*` inherited from the Go template is anchored to the root:
+# unanchored it also swallowed the UI's own coverage tooling, which is source.
 *.out
-coverage.*
+/coverage.*
 *.coverprofile
 profile.cov
 /.coverage/

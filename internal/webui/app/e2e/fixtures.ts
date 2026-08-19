@@ -15,6 +15,7 @@
 
 import { expect, type Locator, type Page, test as playwrightTest } from "@playwright/test";
 import { darkBasemapStyle, lightBasemapStyle } from "./basemap";
+import { measuringCoverage, startCoverage, stopCoverage } from "./coverage";
 
 /**
  * Which style documents the service tells the browser to load.
@@ -183,6 +184,29 @@ export const test = playwrightTest.extend<{
   offlinePage: Page;
   basemapRequests: string[];
 }>({
+  /**
+   * Every page, recording what of `src/**` it executed.
+   *
+   * The built-in fixture is overridden rather than a second one added, so the
+   * recording covers the specs that drive a page this harness did not build as
+   * well as the ones that ask for `offlinePage`. A suite that measured only the
+   * tests someone had remembered to annotate would report a number that moved
+   * with that memory.
+   *
+   * It costs nothing when the run is not being measured, which is every run
+   * except the one `scripts/coverage.ts` starts.
+   */
+  page: async ({ page }, use, testInfo) => {
+    if (!measuringCoverage) {
+      await use(page);
+
+      return;
+    }
+    await startCoverage(page);
+    await use(page);
+    await stopCoverage(page, testInfo.testId);
+  },
+
   /** The style documents the page asked for, in order. */
   // Playwright reads a fixture's dependencies out of this destructuring, and this one has none.
   // biome-ignore lint/correctness/noEmptyPattern: see above
