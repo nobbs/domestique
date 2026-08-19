@@ -404,7 +404,16 @@ jobs:
     # Only what `publish` actually pushed is deployed. A commit that publishes
     # nothing leaves the host on the digest it is already running, which is the
     # same image that commit would have produced.
-    if: needs.publish.result == 'success'
+    #
+    # `!cancelled()` is what makes that the whole condition. Without a status
+    # function here the implicit gate is `success()` over every ancestor, not
+    # over `publish` alone, so a commit that touched no UI file skipped `ui`,
+    # published an image, and then skipped the deploy of it — green, and the
+    # host left on an older digest than main. `publish` guards itself the same
+    # way for the same reason.
+    if: >-
+      !cancelled() &&
+      needs.publish.result == 'success'
 
     # A GitHub Environment for the deployment record and for the approval gate
     # it can grow later without touching this workflow.

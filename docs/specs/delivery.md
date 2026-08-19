@@ -201,7 +201,10 @@ The validation workflow must:
 - build the production Dockerfile and discard the result on a pull request that
   changes an input of the container build, never pushing it; and
 - deploy what it published to the Tailnet host, over Tailscale SSH, passing the
-  digest and nothing else; and
+  digest and nothing else, on every publish and not only on the commits that
+  happened to touch every part of the tree: a published image the host is never
+  given leaves the default branch ahead of what is running, silently and behind
+  a green check; and
 - aggregate every job into one required check that is green only when each
   dependency succeeded or was skipped by a path filter, so a failed publish or
   deployment cannot be mistaken for a passing run; and
