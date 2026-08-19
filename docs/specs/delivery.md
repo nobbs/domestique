@@ -453,9 +453,11 @@ read-only configuration and secret files — and asserts that
 - no synthetic secret value reached the container log; and
 - `SIGTERM` stops the service cleanly.
 
-A failure prints the container log. That is safe because the service redacts, and
-because the absence of every synthetic credential from that log is asserted
-before anything can print it.
+A failure prints the container log, with every placeholder the run mounted
+replaced on the way out. The service is what should keep a secret value out of a
+log line in the first place, and that is asserted separately, over the log as it
+really is — but a run can fail long before it reaches that assertion, including
+while starting, so what a failure prints is filtered rather than trusted.
 
 The smoke test contacts nothing. Every credential it mounts is a placeholder it
 wrote itself, each provider points at an unroutable address, the surface lookup

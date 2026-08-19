@@ -85,13 +85,16 @@ func TestNoDocumentServesTheReadinessPortThroughTailscale(t *testing.T) {
 // deployment files are held to each other, and because the probe the smoke test
 // waits for is this package's.
 func TestTheContainerSmokeTestRunsTheDocumentedRuntime(t *testing.T) {
-	compose := readRepositoryFile(t, "docs/compose.example.yml")
+	// The compose file is compared with its whitespace collapsed, so a pair can
+	// name a clause that spans two lines of YAML — dropping capabilities is one —
+	// without depending on how deeply it happens to be indented.
+	compose := strings.Join(strings.Fields(readRepositoryFile(t, "docs/compose.example.yml")), " ")
 	smoke := readRepositoryFile(t, "dev/container-smoke.sh")
 
 	for name, pair := range map[string]struct{ documented, asserted string }{
 		"unprivileged user":   {`user: "65532:65532"`, `IMAGE_USER="65532:65532"`},
 		"read-only root":      {"read_only: true", "--read-only"},
-		"no capabilities":     {"cap_drop", "--cap-drop ALL"},
+		"no capabilities":     {"cap_drop: - ALL", "--cap-drop ALL"},
 		"no new privileges":   {"no-new-privileges:true", "--security-opt no-new-privileges"},
 		"temporary directory": {"/tmp:mode=1777,nosuid,nodev,noexec", "--tmpfs /tmp:mode=1777,nosuid,nodev,noexec"},
 		"writable state":      {"/var/lib/domestique", `STATE_PATH="/var/lib/domestique"`},

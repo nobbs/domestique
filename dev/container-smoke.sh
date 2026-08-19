@@ -24,6 +24,9 @@
 #   * no synthetic secret value reached the container log;
 #   * SIGTERM stops the service cleanly.
 #
+# A failure prints the container log with every placeholder of this run replaced,
+# so a failure that happens before that assertion cannot print one either.
+#
 # Safety model — this reaches no provider and uses no production secret:
 #
 #   * Every credential is written here, by this script, as an obvious
@@ -105,14 +108,21 @@ die() {
   exit 1
 }
 
-# The container log is dumped on failure and only on failure. It is safe to
-# print because the service redacts: secret values, route names and geometry
-# never reach a log line, which is asserted below before this can run.
+# The container log is dumped on failure and only on failure, and every
+# placeholder this run mounted is replaced on the way out. The service is what
+# should keep a secret value out of a log line, and that is asserted below over
+# the log as it really is — but a run can fail long before it reaches that
+# assertion, including while starting, so what a failure prints is filtered
+# rather than trusted.
+redacted() {
+  sed -e "s|${SECRET_PLACEHOLDER}|[redacted]|g" -e "s|${ENCRYPTION_KEY}|[redacted]|g"
+}
+
 cleanup() {
   local status=$?
   if [[ "${status}" -ne 0 ]] && "${DOCKER}" inspect "${CONTAINER}" >/dev/null 2>&1; then
-    printf 'container-smoke: the container log follows\n' >&2
-    "${DOCKER}" logs "${CONTAINER}" >&2 2>&1 || true
+    printf 'container-smoke: the container log follows, with every placeholder redacted\n' >&2
+    "${DOCKER}" logs "${CONTAINER}" 2>&1 | redacted >&2 || true
   fi
   "${DOCKER}" rm --force --volumes "${CONTAINER}" >/dev/null 2>&1 || true
 }
@@ -346,6 +356,8 @@ done <<< "$("${DOCKER}" diff "${CONTAINER}")"
 
 log "checking that no secret value reached the log"
 
+# The log as it really is, not the filtered form a failure prints: the point is
+# that the service keeps these out, not that this script can hide them.
 container_log="$("${DOCKER}" logs "${CONTAINER}" 2>&1)"
 for secret in "${SECRET_PLACEHOLDER}" "${ENCRYPTION_KEY}"; do
   [[ "${container_log}" != *"${secret}"* ]] ||
