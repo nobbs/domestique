@@ -24,7 +24,14 @@ const RouteMiniMap = lazy(async () => ({
   default: (await import("../../components/RouteMiniMap")).RouteMiniMap,
 }));
 
-export function StageCard({ stage }: { stage: Stage }) {
+export function StageCard({
+  stage,
+  stageCount,
+}: {
+  stage: Stage;
+  /** How many stages the source route has, when it has more than one. */
+  stageCount?: number | undefined;
+}) {
   const { ref, inView } = useInView<HTMLLIElement>();
   const geometry = useQuery(stageGeometryQuery(stage.routeId, stage.stageOrder));
   const config = useQuery(webUIConfigQuery());
@@ -62,6 +69,7 @@ export function StageCard({ stage }: { stage: Stage }) {
         stage={stage}
         href={`/routes/${stage.routeId}/${stage.stageOrder}`}
         preview={preview}
+        stageCount={stageCount}
       />
     </li>
   );
