@@ -114,17 +114,22 @@ jobs:
       # conditioned on the run not being cancelled rather than on the one above
       # succeeding. It names its file, does not search the tree, and reports an
       # upload failure without failing the job — the same constraints the
-      # coverage uploads carry, and for the same reasons. `plugins` is not an
-      # input of this action: it runs no coverage plugin to disable.
+      # coverage uploads carry, and for the same reasons. It is also the same
+      # action at the same pinned version, with `report_type` telling it these
+      # are test results rather than coverage; the dedicated
+      # `codecov/test-results-action` does the same job but is deprecated in
+      # favour of exactly this.
       - name: Upload Go test results
         if: ${{ !cancelled() }}
-        # v1.2.1
-        uses: codecov/test-results-action@0fa95f0e1eeaafde2c782583b36b28ad0d8c77d3
+        # v7.0.0
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: .test-results/go.xml
           flags: go
+          report_type: test_results
           disable_search: true
+          plugins: noop
           fail_ci_if_error: false
 
   security:
@@ -192,13 +197,15 @@ jobs:
       # unwritten, which the uploader reports and does not fail the job for.
       - name: Upload UI test results
         if: ${{ !cancelled() }}
-        # v1.2.1
-        uses: codecov/test-results-action@0fa95f0e1eeaafde2c782583b36b28ad0d8c77d3
+        # v7.0.0
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: .test-results/ui/vitest.xml,.test-results/ui/browser.xml
           flags: ui
+          report_type: test_results
           disable_search: true
+          plugins: noop
           fail_ci_if_error: false
 
   coverage:
