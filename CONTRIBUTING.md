@@ -52,11 +52,21 @@ Coverage is a report here, not a gate: neither `quick`, nor `check`, nor GitHub
 Actions fails on a percentage. The number exists so that a change can be read
 with its untested parts visible.
 
-On a pull request, CI measures both languages and publishes them to Codecov
-under two flags, `go` and `ui`, so that a shortfall names the language it came
-from. The statuses it posts are informational and the upload does not gate the
-required check, so a Codecov outage, or a pull request from a fork that has no
-upload token, costs a report rather than a merge.
+CI measures both languages on every pull request and every push — including a
+documentation-only one — and publishes them to Codecov under two flags, `go` and
+`ui`, so that a shortfall names the language it came from.
+
+The statuses Codecov posts are informational: none of them fails on a
+percentage. Two of them, `codecov/patch/go` and `codecov/patch/ui`, are required
+by the branch ruleset, so what a merge waits for today is that the report
+*arrived*, not that it cleared a bar. That is why the coverage job carries no
+path filter: a commit that uploaded nothing would leave those two contexts
+never posted and the pull request blocked with nothing to un-block it.
+
+The trade that comes with it: while Codecov is down, or for a pull request from
+a fork that has no upload token, the contexts do not arrive and the merge waits.
+Removing them from the ruleset is the escape hatch, and it is a repository
+settings change rather than a code one.
 
 Locally:
 
@@ -94,10 +104,9 @@ hide a real gap behind a comfortable number.
 
 ### Making coverage enforceable
 
-Nothing here blocks a merge yet, deliberately: a gate switched on the same day
-the first report arrives cannot be told apart from a broken upload. Turning one
-on is three deliberate steps, and `codecov.yml` and the CI workflow are written
-so that each is a small edit rather than a redesign.
+No number blocks a merge yet, deliberately: a gate switched on the same day the
+first report arrives cannot be told apart from a broken upload. The wiring is in
+place, so turning one on is a small edit rather than a redesign.
 
 1. Choose what is measured. A **patch** target — the lines a change adds or
    alters — is the one worth enforcing. A project-total target fails on the
@@ -107,12 +116,11 @@ so that each is a small edit rather than a redesign.
 2. Drop `informational: true` from the status it should apply to in
    `codecov.yml`. Each flag has its own project and patch status, so Go and the
    UI can be enforced separately and at different levels.
-3. Make the verdict blocking. The branch ruleset requires exactly one status
-   context, `Required`, which reports what the `Coverage` job did but does not
-   fail with it; the comment above its validation step says what to add. The
-   alternative is to require Codecov's own status contexts in the ruleset
-   instead, which needs a repository-settings change rather than a repository
-   one.
+3. Make the verdict blocking. This step is already done: the branch ruleset
+   requires `codecov/patch/go` and `codecov/patch/ui` alongside `Required`, so
+   the moment either stops being informational its verdict decides a merge. The
+   `Required` job deliberately does not judge coverage itself — the verdict
+   comes from the app that measured it rather than from a step polling for it.
 
 Whatever the rule ends up being, it needs an exception path and somewhere to
 record one. A gate with no legitimate override gets bypassed by an
