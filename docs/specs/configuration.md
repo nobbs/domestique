@@ -77,6 +77,7 @@ max_deletions_per_target = 5
 empty_source_deletion = "deny"
 
 [notifications.pushover]
+base_url = "https://api.pushover.net"
 application_token_file = "/run/secrets/pushover_application_token"
 user_key_file = "/run/secrets/pushover_user_key"
 
@@ -214,6 +215,12 @@ application dependency.
   across deployments; it is a configured slot, not a Wahoo user identifier.
 - `sync.initial_delay` is positive. `sync.interval` equals one hour in v1.
   `sync.max_deletions_per_target` equals `5` in v1.
+- `notifications.pushover.base_url` is an absolute HTTPS URL and defaults to
+  Pushover's own origin, so a deployment that says nothing about it notifies
+  Pushover. It is a setting rather than a compiled-in constant for the same
+  reason the provider endpoints above are: a development or demo environment has
+  to be able to point it at an address that goes nowhere, and the alternative is
+  such an environment reaching the real service with a placeholder token.
 - `sync.empty_source_deletion` is `deny` or `allow`, defaulting to `deny`.
   The operator sets `allow` only for a deliberate final-library deletion and
   returns it to `deny` immediately afterward.

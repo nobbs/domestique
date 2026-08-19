@@ -118,7 +118,7 @@ func (a *Annotator) annotateStage(ctx context.Context, stage *route.Stage) error
 	}
 
 	kinds := Match(geometry, ways)
-	ranges, err := encodeRanges(Compress(kinds))
+	ranges, err := EncodeRanges(Compress(kinds))
 	if err != nil {
 		return err
 	}
@@ -150,8 +150,11 @@ type storedRange struct {
 	EndIndex int `json:"end_index"`
 }
 
-// encodeRanges renders ranges as the JSON array the endpoint serves.
-func encodeRanges(ranges []Range) ([]byte, error) {
+// EncodeRanges renders ranges as the JSON array the endpoint serves. It is
+// exported because the wire form of a classification has exactly one definition,
+// and a fixture that stores a classification without going through a live
+// Overpass query still has to store that one.
+func EncodeRanges(ranges []Range) ([]byte, error) {
 	stored := make([]storedRange, 0, len(ranges))
 	for _, band := range ranges {
 		stored = append(stored, storedRange{
