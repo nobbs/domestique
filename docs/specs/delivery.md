@@ -58,10 +58,12 @@ relaxed, or made optional in order to obtain a faster local loop.
 Local validation is therefore a way to learn a result earlier, and it comes at
 two depths:
 
-- `make quick` is the routine loop. It runs everything the full gate runs except
-  the five checks named below, so it stays worth running on every iteration.
-- `make check` is the full gate on demand, unchanged. Run it before handing work
-  over when an earlier answer than CI's is worth its cost.
+- `make quick` is the routine loop, and the expected gate before a hand-over. It
+  runs everything the full gate runs except the five checks named below, so it
+  stays worth running on every iteration.
+- `make check` is the full gate on demand, unchanged. Reach for it when one of
+  those five checks is specifically implicated by the change in hand, not as a
+  routine step before pushing: each of them runs on every pull request anyway.
 
 `make quick` defers exactly five checks, each because it is slow or needs the
 network rather than because it matters less:
