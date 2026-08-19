@@ -69,10 +69,10 @@ owns a distinct responsibility in this tree.
 | --- | --- | --- |
 | config | TOML and environment layering, file-secret resolution, validation, immutable runtime settings | HTTP clients, business decisions, provider-specific secret syntax |
 | route | source-stage identity, geometry, revision, and validation types | SQL, HTTP, FIT, Wahoo details |
-| sync | inventory reconciliation, deletion gates, target progress, aggregate run result | HTTP handlers, SQL queries, Wahoo URLs |
+| sync | inventory reconciliation, deletion gates, target progress, aggregate run result, per-target run result | HTTP handlers, SQL queries, Wahoo URLs |
 | oauth | one-time callback state, target onboarding, duplicate-account rejection | HTTP routing, SQL queries, Wahoo URL formatting |
 | schedule | startup delay, hourly cadence, no-overlap guard, cancellation | sync decisions or notification content |
-| httpapi | Tailnet identity gate, routing, request parsing, JSON status and error mapping, response security and cache headers | OAuth exchange, sync logic, or how the UI is built |
+| httpapi | Tailnet identity gate, routing, request parsing, JSON status and error mapping, per-target convergence derived from stored revisions, response security and cache headers | OAuth exchange, sync logic, how a course is encoded, or how the UI is built |
 | readiness | the loopback readiness probe: whether local configuration and state are usable | any upstream call, identity, routing of the served surface, or authorisation state |
 | webui | the embedded browser bundle and serving it; the TypeScript application | HTTP routing, identity, or any knowledge of persistence |
 | elevation | sampling and median-filtering the exported elevation profile | source fetching, storage, FIT bytes |

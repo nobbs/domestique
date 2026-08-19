@@ -12,6 +12,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/nobbs/domestique/internal/route"
 )
 
@@ -1124,4 +1127,63 @@ func storeTestStageWithGeometry(
 
 func equalStrings(left, right []string) bool {
 	return slices.Equal(left, right)
+}
+
+// Convergence is answered from the last attempt per slot, so a second run
+// replaces what the first recorded rather than accumulating a history nobody
+// reads.
+func TestStoreKeepsOnlyTheLastRunOfEachTarget(t *testing.T) {
+	store := openTestStore(t, testKey(9))
+	require.NoError(t, store.EnsureTargets(t.Context(), []string{"rider-a", "rider-b"}))
+
+	first := time.Date(2026, time.August, 18, 6, 0, 0, 0, time.UTC)
+	second := first.Add(time.Hour)
+	require.NoError(t, store.RecordTargetRun(t.Context(), "rider-a", first, "failed", "destination"))
+	require.NoError(t, store.RecordTargetRun(t.Context(), "rider-b", first, "succeeded", ""))
+	require.NoError(t, store.RecordTargetRun(t.Context(), "rider-a", second, "succeeded", ""))
+
+	type recorded struct {
+		finishedAt time.Time
+		id         string
+		outcome    string
+		detail     string
+	}
+	var runs []recorded
+	require.NoError(t, store.ForEachTargetRun(
+		t.Context(),
+		func(targetID string, finishedAt time.Time, outcome, detail string) error {
+			runs = append(runs, recorded{finishedAt: finishedAt, id: targetID, outcome: outcome, detail: detail})
+
+			return nil
+		},
+	))
+	assert.Equal(t, []recorded{
+		{finishedAt: second, id: "rider-a", outcome: "succeeded"},
+		{finishedAt: first, id: "rider-b", outcome: "succeeded"},
+	}, runs)
+}
+
+// A slot that has never been reconciled is absent rather than reported as a run
+// that succeeded with nothing to do.
+func TestStoreReportsNoRunForAnUnreconciledTarget(t *testing.T) {
+	store := openTestStore(t, testKey(10))
+	require.NoError(t, store.EnsureTargets(t.Context(), []string{"rider-a"}))
+
+	visits := 0
+	require.NoError(t, store.ForEachTargetRun(t.Context(), func(string, time.Time, string, string) error {
+		visits++
+
+		return nil
+	}))
+	assert.Zero(t, visits)
+}
+
+func TestStoreRefusesAnIncompleteTargetRun(t *testing.T) {
+	store := openTestStore(t, testKey(11))
+	require.NoError(t, store.EnsureTargets(t.Context(), []string{"rider-a"}))
+	finishedAt := time.Date(2026, time.August, 18, 6, 0, 0, 0, time.UTC)
+
+	require.Error(t, store.RecordTargetRun(t.Context(), " ", finishedAt, "succeeded", ""))
+	require.Error(t, store.RecordTargetRun(t.Context(), "rider-a", time.Time{}, "succeeded", ""))
+	require.Error(t, store.RecordTargetRun(t.Context(), "rider-a", finishedAt, "", ""))
 }

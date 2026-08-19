@@ -363,9 +363,26 @@ Returns 200 while the service can read state. The minimum shape is:
 ~~~json
 {
   "ready": true,
+  "converged": false,
   "targets": [
-    {"id":"rider-a","authorisation":"authorised"},
-    {"id":"rider-b","authorisation":"authorised"}
+    {
+      "id":"rider-a",
+      "authorisation":"authorised",
+      "convergence":"current",
+      "stages":{"current":12,"pending":0},
+      "last_run":{"completed_at":"2026-08-16T12:00:04Z","result":"succeeded"}
+    },
+    {
+      "id":"rider-b",
+      "authorisation":"authorised",
+      "convergence":"lagging",
+      "stages":{"current":11,"pending":1},
+      "last_run":{
+        "completed_at":"2026-08-16T12:00:04Z",
+        "result":"failed",
+        "failure":"destination"
+      }
+    }
   ],
   "sync": {
     "state":"idle",
@@ -406,6 +423,37 @@ Authorisation is one of "not_authorised", "pending", "authorised", or
 `surface` counts how many stored stages carry a classification measured against
 the geometry they hold now; a classification of an earlier shape of a stage does
 not count, because it describes a line the map no longer draws.
+
+`converged` and the per-target `convergence`, `stages`, and `last_run` answer
+whether every stored stage at its current revision has been applied to every
+configured target. They are derived from local state alone — the stored source
+revision of each stage against the revision each target was last given, plus the
+recorded result of each target's last reconciliation. A status request never
+contacts Wahoo, so it can be answered while Wahoo is unreachable.
+
+This is convergence of the Wahoo accounts, not a claim about physical device
+download: a head unit fetches routes from its account on its own schedule, and
+the service cannot see whether it has.
+
+`convergence` is one of:
+
+- "current" — every stored stage is on that account at its stored revision, and
+  its last reconciliation succeeded.
+- "lagging" — stages remain to be written or removed there.
+- "failed" — its last reconciliation did not succeed.
+- "unauthorized" — the slot is not authorised, so nothing can be written until
+  the one-time browser visit happens. This outranks the others, because a
+  lagging count there says nothing an operator can act on differently.
+
+`stages.current` counts stored stages that account holds at the stored revision.
+`stages.pending` counts the remaining stored stages plus any stage the account
+still holds that has left the library — outstanding removal is outstanding work.
+`last_run` is absent until that account has been reconciled once, which is not
+the same as a reconciliation that had nothing to do. Neither carries a Wahoo
+identifier, route name, or URL.
+
+`converged` is true only when every configured target reads "current". An empty
+library converges: there is nothing left to apply.
 
 `schedule` carries the two switches. A phase under `phases` is absent until that
 half has finished a run, and carries `last_failure` with the safe failure

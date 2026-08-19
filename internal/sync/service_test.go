@@ -8,6 +8,8 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/nobbs/domestique/internal/route"
 )
 
@@ -847,4 +849,57 @@ func testStage(t *testing.T, routeID int64, stageOrder int, revision, contentHas
 
 func equalStrings(left, right []string) bool {
 	return slices.Equal(left, right)
+}
+
+// A run is recorded once, so its outcome is the worst of what happened. The
+// operator's question is about one Wahoo account, and a run that wrote one slot
+// and could not write the other has to answer it for each.
+func TestServiceReportsEachTargetsOwnOutcome(t *testing.T) {
+	previous := testStage(t, 1, 1, "old", "old-hash")
+	desired := testStage(t, 1, 1, "new", "new-hash")
+	state := newFakeState("a", "b")
+	target := newFakeTarget()
+	for _, targetID := range []string{"a", "b"} {
+		seedMapping(state, targetID, &previous, remoteID(targetID, 1))
+		target.seedRoute(targetID, &previous, remoteID(targetID, 1))
+	}
+	target.failUpdateAccess = accessFor("a")
+	service := newService(t, state, &fakeSource{stages: []route.Stage{desired}}, &fakeEncoder{}, target, false)
+
+	result := runBoth(t.Context(), service)
+	assert.Equal(t, []TargetResult{
+		{ID: "a", Outcome: OutcomeFailed, Failure: FailureDestination},
+		{ID: "b", Outcome: OutcomeSucceeded},
+	}, result.Targets)
+}
+
+// A deletion limit is a guard doing its job, not a broken account, and the slot
+// it held reports the same word the run does.
+func TestServiceReportsABlockedTargetAsBlocked(t *testing.T) {
+	desired := testStage(t, 1, 1, "current", "current-hash")
+	state := newFakeState("a", "b")
+	target := newFakeTarget()
+	for _, targetID := range []string{"a", "b"} {
+		for routeID := int64(2); routeID <= 7; routeID++ {
+			stale := testStage(t, routeID, 1, "old", "old-hash")
+			seedMapping(state, targetID, &stale, remoteID(targetID, routeID))
+			target.seedRoute(targetID, &stale, remoteID(targetID, routeID))
+		}
+	}
+	service := newService(t, state, &fakeSource{stages: []route.Stage{desired}}, &fakeEncoder{}, target, false)
+
+	result := runBoth(t.Context(), service)
+	assert.Equal(t, []TargetResult{
+		{ID: "a", Outcome: OutcomeBlocked, Failure: FailureDeletionLimit},
+		{ID: "b", Outcome: OutcomeBlocked, Failure: FailureDeletionLimit},
+	}, result.Targets)
+}
+
+// The source phase touches no target, so it claims nothing about one.
+func TestServiceReportsNoTargetOutcomesForASourceRun(t *testing.T) {
+	desired := testStage(t, 1, 1, "current", "current-hash")
+	state := newFakeState("a", "b")
+	service := newService(t, state, &fakeSource{stages: []route.Stage{desired}}, &fakeEncoder{}, newFakeTarget(), false)
+
+	assert.Empty(t, service.RunSource(t.Context()).Targets)
 }

@@ -10,6 +10,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/nobbs/domestique/internal/route"
 )
 
@@ -927,6 +930,27 @@ func newHandler(t *testing.T, oauthService OAuth, state State) *Handler {
 	return newHandlerWithTrigger(t, oauthService, state, &fakeSyncTrigger{accepted: true})
 }
 
+// newHandlerWithTargets builds a handler configured for more than one slot, which
+// is what a partial target failure needs to be visible at all.
+func newHandlerWithTargets(t *testing.T, state State, targetIDs ...string) *Handler {
+	t.Helper()
+	handler, err := New(
+		&Options{
+			TargetIDs:        targetIDs,
+			TileStyleURL:     testTileStyleURL,
+			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
+			AccessEmail:      testAccessEmail,
+			BrowserOriginURL: testBrowserOriginURL,
+		},
+		&fakeOAuth{}, state, &fakeSyncTrigger{accepted: true}, &fakeAssets{},
+	)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	return handler
+}
+
 func newHandlerWithTrigger(t *testing.T, oauthService OAuth, state State, syncTrigger SyncTrigger) *Handler {
 	t.Helper()
 	handler, err := New(
@@ -1031,7 +1055,14 @@ type fakeState struct {
 	scheduleErr       error
 	coverageErr       error
 	reprocessErr      error
+	sourceStageErr    error
+	targetStageErr    error
+	targetRunErr      error
+	targetStages      map[string][]storedStage
 	reprocessed       [][2]int64
+	targets           []fakeTarget
+	sourceStages      []storedStage
+	targetRuns        []fakeTargetRun
 	surfaceHash       string
 	coordinates       json.RawMessage
 	surfaceRanges     json.RawMessage
@@ -1045,8 +1076,91 @@ type fakeState struct {
 	scheduleTargets   bool
 }
 
-func (*fakeState) ForEachTarget(_ context.Context, visit func(string, string) error) error {
-	return visit("rider-a", "authorised")
+// fakeTarget is one configured slot and the authorisation state it is in.
+type fakeTarget struct {
+	id            string
+	authorization string
+}
+
+// storedStage is one row of either stage table: which stage, and the source
+// revision it is recorded at. Convergence is the comparison of the two tables on
+// exactly these fields.
+type storedStage struct {
+	revision   string
+	routeID    int64
+	stageOrder int
+}
+
+// fakeTargetRun is one slot's own last reconciliation.
+type fakeTargetRun struct {
+	completedAt time.Time
+	id          string
+	outcome     string
+	failure     string
+}
+
+// ForEachTarget reports the configured slots, defaulting to the single
+// authorised slot the older tests were written against.
+func (s *fakeState) ForEachTarget(_ context.Context, visit func(string, string) error) error {
+	if len(s.targets) == 0 {
+		return visit("rider-a", "authorised")
+	}
+	for _, target := range s.targets {
+		if err := visit(target.id, target.authorization); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (s *fakeState) ForEachSourceStage(
+	_ context.Context,
+	visit func(routeID int64, stageOrder int, sourceRevision, contentHash string) error,
+) error {
+	if s.sourceStageErr != nil {
+		return s.sourceStageErr
+	}
+	for _, stage := range s.sourceStages {
+		if err := visit(stage.routeID, stage.stageOrder, stage.revision, "hash"); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (s *fakeState) ForEachTargetStage(
+	_ context.Context,
+	targetID string,
+	visit func(routeID int64, stageOrder int, sourceRevision, contentHash string, wahooRouteID int64) error,
+) error {
+	if s.targetStageErr != nil {
+		return s.targetStageErr
+	}
+	for _, stage := range s.targetStages[targetID] {
+		if err := visit(stage.routeID, stage.stageOrder, stage.revision, "encoded-hash", 900+stage.routeID); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (s *fakeState) ForEachTargetRun(
+	_ context.Context,
+	visit func(targetID string, finishedAt time.Time, outcome, detail string) error,
+) error {
+	if s.targetRunErr != nil {
+		return s.targetRunErr
+	}
+	for _, run := range s.targetRuns {
+		if err := visit(run.id, run.completedAt, run.outcome, run.failure); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (s *fakeState) ForEachStageSummary(_ context.Context, visit func(route.Summary) error) error {
@@ -1163,4 +1277,186 @@ func (s *fakeState) SetSyncSchedule(_ context.Context, source, targets bool) err
 	s.scheduleWrites++
 
 	return nil
+}
+
+// statusOf reads the status document as the handler serves it.
+func statusOf(t *testing.T, handler *Handler) statusView {
+	t.Helper()
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/status"))
+	require.Equal(t, http.StatusOK, response.Code)
+	var view statusView
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &view))
+
+	return view
+}
+
+// convergenceStateFixture builds a library of two stages where one slot holds
+// both at their current revision and the other is a revision behind on one and
+// has never been written the other.
+func convergenceStateFixture() *fakeState {
+	return &fakeState{
+		targets: []fakeTarget{
+			{id: "rider-a", authorization: "authorized"},
+			{id: "rider-b", authorization: "authorized"},
+		},
+		sourceStages: []storedStage{
+			{routeID: 12, stageOrder: 1, revision: "r2"},
+			{routeID: 12, stageOrder: 2, revision: "r1"},
+		},
+		targetStages: map[string][]storedStage{
+			"rider-a": {
+				{routeID: 12, stageOrder: 1, revision: "r2"},
+				{routeID: 12, stageOrder: 2, revision: "r1"},
+			},
+			"rider-b": {
+				// Written before the first stage changed, and never written the
+				// second stage at all.
+				{routeID: 12, stageOrder: 1, revision: "r1"},
+			},
+		},
+	}
+}
+
+// The operator's core question: is every stored stage, at the revision it is
+// stored at, on every configured Wahoo account.
+func TestHandlerReportsPerTargetConvergence(t *testing.T) {
+	state := convergenceStateFixture()
+	state.targetRuns = []fakeTargetRun{
+		{id: "rider-a", completedAt: time.Date(2026, time.August, 18, 6, 0, 0, 0, time.UTC), outcome: "succeeded"},
+	}
+	view := statusOf(t, newHandlerWithTargets(t, state, "rider-a", "rider-b"))
+
+	require.Len(t, view.Targets, 2)
+	assert.Equal(t, convergenceCurrent, view.Targets[0].Convergence)
+	assert.Equal(t, targetStagesView{Current: 2, Pending: 0}, view.Targets[0].Stages)
+	require.NotNil(t, view.Targets[0].LastRun)
+	assert.Equal(t, "succeeded", view.Targets[0].LastRun.Result)
+	assert.Equal(t, "2026-08-18T06:00:00Z", view.Targets[0].LastRun.CompletedAt)
+
+	assert.Equal(t, convergenceLagging, view.Targets[1].Convergence)
+	assert.Equal(t, targetStagesView{Current: 0, Pending: 2}, view.Targets[1].Stages)
+	// A slot that has never been reconciled is not a slot whose run succeeded
+	// with nothing to do.
+	assert.Nil(t, view.Targets[1].LastRun)
+
+	assert.False(t, view.Converged, "one lagging slot is enough to say the library is not everywhere")
+}
+
+// Overall convergence is the conjunction, and is true only when every stored
+// stage is current on every configured target.
+func TestHandlerReportsOverallConvergenceOnlyWhenEveryTargetIsCurrent(t *testing.T) {
+	state := convergenceStateFixture()
+	state.targetStages["rider-b"] = state.targetStages["rider-a"]
+	view := statusOf(t, newHandlerWithTargets(t, state, "rider-a", "rider-b"))
+
+	assert.True(t, view.Converged)
+	for _, target := range view.Targets {
+		assert.Equal(t, convergenceCurrent, target.Convergence)
+		assert.Equal(t, targetStagesView{Current: 2, Pending: 0}, target.Stages)
+	}
+}
+
+// A run that wrote one account and could not write the other is recorded once as
+// failed. Convergence has to say which account that was.
+func TestHandlerReportsPartialTargetFailurePerTarget(t *testing.T) {
+	state := convergenceStateFixture()
+	state.targetStages["rider-b"] = state.targetStages["rider-a"]
+	completedAt := time.Date(2026, time.August, 18, 6, 30, 0, 0, time.UTC)
+	state.targetRuns = []fakeTargetRun{
+		{id: "rider-a", completedAt: completedAt, outcome: "succeeded"},
+		{id: "rider-b", completedAt: completedAt, outcome: "failed", failure: "destination"},
+	}
+	view := statusOf(t, newHandlerWithTargets(t, state, "rider-a", "rider-b"))
+
+	require.Len(t, view.Targets, 2)
+	assert.Equal(t, convergenceCurrent, view.Targets[0].Convergence)
+	assert.Equal(t, convergenceFailed, view.Targets[1].Convergence)
+	require.NotNil(t, view.Targets[1].LastRun)
+	assert.Equal(t, "destination", view.Targets[1].LastRun.Failure)
+	assert.False(t, view.Converged)
+}
+
+// A stage that has left the library is still on the target until a run removes
+// it, so that removal is outstanding work rather than a stage nobody counts.
+func TestHandlerCountsARouteTheLibraryNoLongerHasAsPending(t *testing.T) {
+	state := convergenceStateFixture()
+	state.sourceStages = []storedStage{{routeID: 12, stageOrder: 1, revision: "r2"}}
+	state.targetStages["rider-a"] = []storedStage{
+		{routeID: 12, stageOrder: 1, revision: "r2"},
+		{routeID: 40, stageOrder: 1, revision: "r9"},
+	}
+	state.targetStages["rider-b"] = []storedStage{{routeID: 12, stageOrder: 1, revision: "r2"}}
+	view := statusOf(t, newHandlerWithTargets(t, state, "rider-a", "rider-b"))
+
+	require.Len(t, view.Targets, 2)
+	assert.Equal(t, targetStagesView{Current: 1, Pending: 1}, view.Targets[0].Stages)
+	assert.Equal(t, convergenceLagging, view.Targets[0].Convergence)
+	assert.Equal(t, targetStagesView{Current: 1, Pending: 0}, view.Targets[1].Stages)
+	assert.Equal(t, convergenceCurrent, view.Targets[1].Convergence)
+	assert.False(t, view.Converged)
+}
+
+// An empty library is nothing owed, not something unknown. It must not read as
+// lagging, and it must not fail the status request.
+func TestHandlerReportsAnEmptyLibraryAsCurrentEverywhere(t *testing.T) {
+	state := &fakeState{
+		targets:      []fakeTarget{{id: "rider-a", authorization: "authorized"}},
+		targetStages: map[string][]storedStage{},
+	}
+	view := statusOf(t, newHandlerWithTargets(t, state, "rider-a"))
+
+	require.Len(t, view.Targets, 1)
+	assert.Equal(t, convergenceCurrent, view.Targets[0].Convergence)
+	assert.Equal(t, targetStagesView{}, view.Targets[0].Stages)
+	assert.True(t, view.Converged)
+}
+
+// Nothing can be written to a slot waiting for its one-time browser visit, and
+// saying it is merely "lagging" would suggest the next run will fix it.
+func TestHandlerReportsAnUnauthorizedTargetAsUnconverged(t *testing.T) {
+	state := convergenceStateFixture()
+	state.targets[1].authorization = "not_authorized"
+	view := statusOf(t, newHandlerWithTargets(t, state, "rider-a", "rider-b"))
+
+	require.Len(t, view.Targets, 2)
+	assert.Equal(t, convergenceUnauthorized, view.Targets[1].Convergence)
+	assert.False(t, view.Converged)
+}
+
+// Convergence is derived from local state, so an unreadable table is an
+// unavailable status rather than a status that quietly says everything is fine.
+func TestHandlerReportsUnreadableConvergenceStateAsUnavailable(t *testing.T) {
+	for name, state := range map[string]*fakeState{
+		"source stages": {sourceStageErr: errors.New("state unavailable")},
+		"target stages": {targetStageErr: errors.New("state unavailable")},
+		"target runs":   {targetRunErr: errors.New("state unavailable")},
+	} {
+		t.Run(name, func(t *testing.T) {
+			response := httptest.NewRecorder()
+			newHandlerWithTargets(t, state, "rider-a").
+				ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/status"))
+			assert.Equal(t, http.StatusInternalServerError, response.Code)
+		})
+	}
+}
+
+// Convergence is counts and categories. A route name, a Wahoo route identifier,
+// or a revision would put the library's contents on a document that exists to be
+// safe to look at.
+func TestHandlerReportsConvergenceWithoutNamingAnything(t *testing.T) {
+	state := convergenceStateFixture()
+	state.summaries = []route.Summary{{
+		RouteID: 12, StageOrder: 1, RouteName: "Alpine loop", StageName: "Descent",
+		SourceRevision: "r2",
+	}}
+	response := httptest.NewRecorder()
+	newHandlerWithTargets(t, state, "rider-a", "rider-b").
+		ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/status"))
+	require.Equal(t, http.StatusOK, response.Code)
+
+	body := response.Body.String()
+	for _, secret := range []string{"Alpine loop", "Descent", "r2", "912", "wahoo"} {
+		assert.NotContains(t, body, secret)
+	}
 }

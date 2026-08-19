@@ -20,9 +20,12 @@ import type {
   SyncPhase,
   SyncPhaseRun,
   SyncSchedule,
+  TargetConvergence,
+  TargetRun,
+  TargetStatus,
   WebUIConfig,
 } from "./types";
-import { SURFACE_KINDS, SYNC_PHASES } from "./types";
+import { SURFACE_KINDS, SYNC_PHASES, TARGET_CONVERGENCES } from "./types";
 
 export class ContractError extends Error {
   constructor(message: string) {
@@ -231,13 +234,10 @@ export function parseStatus(payload: unknown): Status {
   return {
     ready: flag(body.ready, "body.ready"),
     build: buildInfoFrom(body.build, "body.build"),
-    targets: array(body.targets, "body.targets").map((entry, index) => {
-      const target = record(entry, `targets[${index}]`);
-      return {
-        id: text(target.id, `targets[${index}].id`),
-        authorisation: text(target.authorisation, `targets[${index}].authorisation`),
-      };
-    }),
+    converged: flag(body.converged, "body.converged"),
+    targets: array(body.targets, "body.targets").map((entry, index) =>
+      targetFrom(record(entry, `targets[${index}]`), `targets[${index}]`),
+    ),
     sync: {
       state: text(sync.state, "body.sync.state"),
       lastResult: optionalText(sync.last_result, "body.sync.last_result"),
@@ -250,6 +250,51 @@ export function parseStatus(payload: unknown): Status {
       phases: syncPhasesFrom(sync.phases, "body.sync.phases"),
       surface: surfaceCoverageFrom(sync.surface, "body.sync.surface"),
     },
+  };
+}
+
+/**
+ * Reads one word of convergence, degrading an unfamiliar one to `failed`.
+ *
+ * The forgiving direction matters here. A state this build has never heard of is
+ * a state it cannot claim is fine, so it reads as the one that asks the operator
+ * to look — the opposite of `surfaceKind`, where the honest fallback is "nobody
+ * surveyed this".
+ */
+function targetConvergence(value: unknown, at: string): TargetConvergence {
+  const name = text(value, at);
+
+  return (TARGET_CONVERGENCES as readonly string[]).includes(name)
+    ? (name as TargetConvergence)
+    : "failed";
+}
+
+/** Reads one account's last reconciliation, absent until it has had one. */
+function targetRunFrom(value: unknown, at: string): TargetRun | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  const run = record(value, at);
+
+  return {
+    completedAt: text(run.completed_at, `${at}.completed_at`),
+    result: text(run.result, `${at}.result`),
+    failure: optionalText(run.failure, `${at}.failure`),
+  };
+}
+
+function targetFrom(target: Record<string, unknown>, at: string): TargetStatus {
+  const stages = record(target.stages, `${at}.stages`);
+
+  return {
+    id: text(target.id, `${at}.id`),
+    authorisation: text(target.authorisation, `${at}.authorisation`),
+    convergence: targetConvergence(target.convergence, `${at}.convergence`),
+    stages: {
+      current: count(stages.current, `${at}.stages.current`),
+      pending: count(stages.pending, `${at}.stages.pending`),
+    },
+    lastRun: targetRunFrom(target.last_run, `${at}.last_run`),
   };
 }
 

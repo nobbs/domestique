@@ -6,9 +6,47 @@ import "encoding/json"
 // deliberately separate from persistence and adapter structs so a storage
 // change cannot silently alter the wire format.
 
+// targetView is one configured Wahoo account: whether it is onboarded, how much
+// of the stored library has been written to it, and how its own last
+// reconciliation ended.
+//
+// Everything here is derived from local state. The counts say what this service
+// has successfully applied to that Wahoo account; they are not a claim about
+// what any physical head unit has downloaded, which this service cannot observe.
 type targetView struct {
-	ID            string `json:"id"`
-	Authorization string `json:"authorisation"`
+	// LastRun is absent until this slot has been reconciled once, which is a
+	// different state from having been reconciled and failed.
+	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
+	LastRun       *targetRunView `json:"last_run,omitempty"`
+	ID            string         `json:"id"`
+	Authorization string         `json:"authorisation"`
+	// Convergence is the one word for this target: "current", "lagging",
+	// "failed", or "unauthorized". It is a summary of the fields beside it, not
+	// an extra fact.
+	Convergence string           `json:"convergence"`
+	Stages      targetStagesView `json:"stages"`
+}
+
+// targetStagesView counts stored stages against one target. Counts only: naming
+// the stages would put route names on a status response that exists to be safe
+// to look at.
+type targetStagesView struct {
+	Current int `json:"current"`
+	// Pending is everything this target still owes the stored library: a stage
+	// never written, a stage written at an older revision, and a stage the
+	// target still carries that the library no longer has.
+	Pending int `json:"pending"`
+}
+
+// targetRunView is one target's own last reconciliation, in the same vocabulary
+// a run uses.
+type targetRunView struct {
+	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
+	CompletedAt string `json:"completed_at"`
+	Result      string `json:"result"`
+	// Failure is the safe failure category, present only when that run did not
+	// succeed. It is never provider text.
+	Failure string `json:"failure,omitempty"`
 }
 
 type stageView struct {
@@ -97,6 +135,10 @@ type statusView struct {
 	Targets []targetView `json:"targets"`
 	Sync    syncView     `json:"sync"`
 	Ready   bool         `json:"ready"`
+	// Converged is true only when every stored stage is current on every
+	// configured target. It says the Wahoo accounts hold what the library holds,
+	// and nothing about whether a device has since fetched it.
+	Converged bool `json:"converged"`
 }
 
 // buildView says which public revision produced the running service, and which

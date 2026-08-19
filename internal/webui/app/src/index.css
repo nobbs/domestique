@@ -930,3 +930,80 @@ body {
   font-size: 0.85rem;
   color: var(--accent);
 }
+
+/*
+ * Whether each Wahoo account holds the library. It sits under the sync controls
+ * because it is the result of what those controls do, and it repeats the
+ * account/device distinction in prose: "up to date" must not be read as a claim
+ * about a head unit, which this service cannot see.
+ */
+.convergence {
+  margin-bottom: 1.5rem;
+  padding: 1rem 1.15rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+}
+
+.convergence__heading {
+  margin: 0 0 0.75rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.convergence__scope {
+  margin: -0.35rem 0 0.85rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.convergence__targets {
+  display: grid;
+  gap: 0.85rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.convergence__target {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.25rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.convergence__text {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 15rem;
+  flex: 1 1 22rem;
+}
+
+.convergence__id {
+  font-weight: 600;
+}
+
+.convergence__stages,
+.convergence__run {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * The one word for an account. Only a state the operator has to act on is
+ * coloured; an account that is merely catching up reads as ordinary.
+ */
+.convergence__state {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.convergence__target[data-convergence="failed"] .convergence__state,
+.convergence__target[data-convergence="unauthorized"] .convergence__state {
+  color: var(--accent);
+}

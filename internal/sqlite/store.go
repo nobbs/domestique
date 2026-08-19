@@ -1182,6 +1182,68 @@ func (s *Store) RecordSyncRun(
 	return nil
 }
 
+// RecordTargetRun stores the terminal result of one target's reconciliation,
+// replacing whatever that slot recorded before. Its detail is a stable failure
+// category, never provider text, a route name, or a Wahoo identifier.
+func (s *Store) RecordTargetRun(
+	ctx context.Context,
+	targetID string,
+	finishedAt time.Time,
+	outcome, detail string,
+) error {
+	if strings.TrimSpace(targetID) == "" || finishedAt.IsZero() || outcome == "" {
+		return errors.New("target ID, finish time, and outcome are required")
+	}
+	if _, err := s.database.ExecContext(ctx, `
+		INSERT INTO target_runs (target_slot, finished_at_unix, outcome, detail)
+		VALUES (?, ?, ?, ?)
+		ON CONFLICT(target_slot) DO UPDATE SET
+			finished_at_unix = excluded.finished_at_unix,
+			outcome = excluded.outcome,
+			detail = excluded.detail
+	`, targetID, finishedAt.Unix(), outcome, detail); err != nil {
+		return fmt.Errorf("recording target run: %w", err)
+	}
+
+	return nil
+}
+
+// ForEachTargetRun visits the last recorded reconciliation of each target in
+// stable slot order. A slot that has never been reconciled is not visited, which
+// is how a reader tells "never attempted" from "attempted and failed".
+func (s *Store) ForEachTargetRun(
+	ctx context.Context,
+	visit func(targetID string, finishedAt time.Time, outcome, detail string) error,
+) error {
+	if visit == nil {
+		return errors.New("target run visitor is required")
+	}
+	rows, err := s.database.QueryContext(ctx, `
+		SELECT target_slot, finished_at_unix, outcome, detail
+		FROM target_runs ORDER BY target_slot
+	`)
+	if err != nil {
+		return fmt.Errorf("listing target runs: %w", err)
+	}
+	defer closeRows(rows)
+
+	for rows.Next() {
+		var targetID, outcome, detail string
+		var finishedUnix int64
+		if err := rows.Scan(&targetID, &finishedUnix, &outcome, &detail); err != nil {
+			return fmt.Errorf("reading a target run: %w", err)
+		}
+		if err := visit(targetID, time.Unix(finishedUnix, 0).UTC(), outcome, detail); err != nil {
+			return fmt.Errorf("visiting a target run: %w", err)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterating target runs: %w", err)
+	}
+
+	return nil
+}
+
 // LastFailureNotification returns the previous delivery time for one safe
 // failure category. The caller decides whether the configured suppression
 // interval has elapsed.
@@ -1618,6 +1680,22 @@ func schemaMigrations() [][]string {
 			// covered both halves at once; they keep an empty phase rather than
 			// claiming to be one of them.
 			`ALTER TABLE sync_runs ADD COLUMN phase TEXT NOT NULL DEFAULT ''`,
+		},
+		{
+			// The last recorded reconciliation of each target, one row per slot.
+			//
+			// The aggregate run in sync_runs answers "did that run succeed", which
+			// is a different question from "is this account current": a run that
+			// wrote one slot and failed the other is recorded once as failed, and
+			// nothing in it says which slot is behind. Only the last attempt per
+			// slot is kept, because that is the whole of what convergence needs
+			// and a per-target history nobody reads is state to migrate forever.
+			`CREATE TABLE target_runs (
+				target_slot      TEXT PRIMARY KEY REFERENCES targets(slot),
+				finished_at_unix INTEGER NOT NULL,
+				outcome          TEXT    NOT NULL,
+				detail           TEXT    NOT NULL
+			)`,
 		},
 		{
 			// One stage an operator has asked to be redone from scratch.
