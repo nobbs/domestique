@@ -76,10 +76,22 @@ function fakeMap() {
     resize: () => {},
     fitBounds: () => {},
     getContainer: () => container,
+    // A camera the direction cues can ask what a pixel is worth on the ground.
+    getZoom: () => 13,
+    getCenter: () => ({ lat: 49, lng: 8 }),
     on: () => {},
     off: () => {},
   };
 }
+
+/** A closed square, ridden anticlockwise from its south-west corner. */
+const LOOP: Position[] = [
+  ...Array.from({ length: 20 }, (_, index): Position => [8 + index * 0.001, 49]),
+  ...Array.from({ length: 20 }, (_, index): Position => [8.02, 49 + index * 0.0006]),
+  ...Array.from({ length: 20 }, (_, index): Position => [8.02 - index * 0.001, 49.012]),
+  ...Array.from({ length: 20 }, (_, index): Position => [8, 49.012 - index * 0.0006]),
+  [8, 49],
+];
 
 const COORDINATES: Position[] = Array.from(
   { length: 21 },
@@ -100,12 +112,17 @@ beforeEach(() => {
   );
 });
 
-function show(props: { zoomWindow?: { startMetres: number; endMetres: number } | null } = {}) {
+function show(
+  props: {
+    zoomWindow?: { startMetres: number; endMetres: number } | null;
+    coordinates?: Position[];
+  } = {},
+) {
   const onZoomChange = vi.fn();
   render(
     <RouteMap
       styleUrl="https://tiles.example/style.json"
-      coordinates={COORDINATES}
+      coordinates={props.coordinates ?? COORDINATES}
       bbox={BBOX}
       title="Stage 1"
       zoomWindow={props.zoomWindow ?? null}
@@ -178,5 +195,39 @@ describe("the map's interaction model", () => {
     await userEvent.keyboard("{Escape}");
 
     expect(view.onZoomChange).toHaveBeenCalledWith(null);
+  });
+});
+
+/**
+ * The cues themselves are drawn into a canvas this suite never renders, so what
+ * is asked here is the part that survives without one: the words a reader who is
+ * not looking at the map has instead. They are the accessible equivalent of the
+ * markers and arrows, so they are also the only place the component's reading of
+ * the geometry is observable at all.
+ */
+describe("the map's start, finish, and direction cues", () => {
+  it("says which way a point-to-point stage is ridden", () => {
+    show();
+
+    expect(
+      screen.getByText(
+        "Starts and finishes 1.5 km apart, the finish lying to the east. The ride leaves the start heading east.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  // The case the painted line cannot answer: both markers land on one point.
+  it("says a loop comes back to where it started, and which way round", () => {
+    show({ coordinates: LOOP });
+
+    expect(screen.getByText(/Starts and finishes at the same point\./)).toBeInTheDocument();
+    expect(screen.getByText(/leaves the start heading east/)).toBeInTheDocument();
+    expect(screen.getByText(/returns from the north/)).toBeInTheDocument();
+  });
+
+  it("claims nothing about a stage that is not a ride", () => {
+    show({ coordinates: [[8, 49]] });
+
+    expect(screen.queryByText(/Starts and finishes/)).not.toBeInTheDocument();
   });
 });
