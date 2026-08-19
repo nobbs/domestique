@@ -239,7 +239,7 @@ ci-ui: ui-install
 	$(MAKE) ui-browser-test
 
 # The routine local loop. It runs every check that reads the tree as it stands
-# and needs nothing beyond it, and defers three things to `check` and to GitHub
+# and needs nothing beyond it, and defers five things to `check` and to GitHub
 # Actions, which is the authoritative gate a merge has to pass:
 #
 #   build-check  rebuilds the UI bundle and cross-compiles both published
