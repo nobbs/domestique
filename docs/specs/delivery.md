@@ -33,6 +33,7 @@ The repository provides these stable Make targets:
 | `make dev-api` | Serves the API against that snapshot on `:8081`. |
 | `make quick` | Runs the routine local loop: every check in `make check` except the three it defers. |
 | `make check` | Runs the full gate locally, on demand. |
+| `make coverage` | Writes a Go coverage profile and the browser UI's LCOV report to a gitignored directory and summarises both. |
 
 `make check` is the full gate. It includes
 `prek run --all-files`, linting, tests, TypeScript type checking, the browser UI
@@ -106,6 +107,26 @@ cross-compilation, image work, and the browser suites stay out of the hook and
 belong to `make check` and GitHub Actions. Both properties are asserted, so a
 later hook cannot quietly reintroduce the cost; wall-clock is not asserted,
 because a timing assertion on a shared runner is flaky.
+
+## Coverage
+
+Coverage is measured on demand and reports rather than judges: `make coverage`
+is not part of `make check`, and no repository check fails on a percentage.
+Making a coverage number a merge condition is a separate decision, and this
+specification does not yet take it.
+
+The Go profile is collected across the service as a whole rather than per
+package under test, so that a function exercised only through another package's
+tests is not reported as dead. Repository tooling under `dev/` is outside the
+measured set: it is not the service, and its own tests run in the normal suite.
+The browser UI's report excludes its tests and their harness, type-only
+declarations, and the bootstrap that mounts React. Nothing else is excluded — in
+particular, code that only a browser-level test could reach is measured and
+reports low, because a number that hides a gap is worse than one that shows it.
+
+Both reports are written to one gitignored directory, so that a later upload
+step has a single place to look. No coverage report is committed, and none
+enters an image context.
 
 ## Development environment
 

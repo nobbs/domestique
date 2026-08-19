@@ -28,8 +28,18 @@ RELEASE_ARCHES := amd64 arm64
 UI_DIR := internal/webui/app
 UI_DIST := $(UI_DIR)/dist
 
+# Both coverage reports land under one gitignored directory so that a single
+# upload step can find them without rediscovering where each toolchain likes to
+# write. Vitest is pointed at the same place from vite.config.ts.
+COVERAGE_DIR := $(CURDIR)/.coverage
+GO_COVERPROFILE := $(COVERAGE_DIR)/go.out
+# The service is what the number is about; dev/ is repository tooling, measured
+# by its own tests but not part of the service's coverage.
+GO_COVERPKG := ./cmd/...,./internal/...
+
 .PHONY: fmt hygiene lint markdownlint shell-lint workflow-lint hook-check gate-check test vet mod-check vulncheck secret-scan build build-check ci-lint ci-test ci-security ci-ui quick check
 .PHONY: ui-install ui-ensure ui-dev ui-typecheck ui-lint ui-format ui-test ui-audit ui-build
+.PHONY: coverage coverage-go coverage-ui
 .PHONY: dev-setup dev-api
 
 export GOCACHE
@@ -87,6 +97,28 @@ vulncheck:
 
 secret-scan:
 	$(GITLEAKS) dir . --redact --no-banner
+
+# Coverage is measured on demand and is deliberately not part of `quick`,
+# `check`, or the CI gate: instrumenting the tree makes the suite slower, and
+# nothing here fails on a number. It reports what a change leaves untested; it
+# does not judge it.
+coverage: coverage-go coverage-ui
+
+# -coverpkg attributes coverage across the whole service, so a function
+# exercised only through another package's tests is not reported as dead. The
+# cost is that the per-package percentage `go test` prints on each line below
+# becomes the fraction of the whole service that package's tests reached; the
+# real per-package number is the summary printed after it.
+coverage-go:
+	mkdir -p $(COVERAGE_DIR)
+	CGO_ENABLED=0 $(GO) test -shuffle=on -coverpkg=$(GO_COVERPKG) \
+		-coverprofile=$(GO_COVERPROFILE) ./...
+	$(GO) run ./dev/coveragesummary <$(GO_COVERPROFILE)
+
+# Vitest writes its LCOV and terminal summary under $(COVERAGE_DIR); see the
+# coverage block in $(UI_DIR)/vite.config.ts for what it measures.
+coverage-ui: ui-ensure
+	$(NPM) --prefix $(UI_DIR) run test:coverage
 
 # Snapshots the deployed SQLite state and writes a development configuration
 # that reads real VeloPlanner data but cannot reach Wahoo. See dev/setup.sh.
