@@ -258,7 +258,7 @@ jobs:
   image:
     name: Image
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 20
     needs:
       - changes
       - lint
@@ -334,6 +334,29 @@ jobs:
           --build-arg "SOURCE_REVISION=${SOURCE_REVISION}"
           --cache-from "type=registry,ref=${IMAGE}:buildcache"
           --output type=cacheonly --tag domestique:ci .
+
+      # The runtime contract is asserted against a container that runs, which
+      # needs a single native image in the local store: a multi-platform result
+      # cannot be --load-ed, and driving the foreign half under emulation would
+      # be a test of qemu. So the multi-architecture proof above stays exactly
+      # that, a build, and this is the step that starts the result. Every layer
+      # it needs was just built for linux/amd64, so this costs the export rather
+      # than another build. amd64 is named explicitly because it is what this
+      # runner is; a runner of another architecture would need its own.
+      - name: Build the native image
+        env:
+          SOURCE_REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: >-
+          docker buildx build --platform linux/amd64
+          --build-arg "SOURCE_REVISION=${SOURCE_REVISION}"
+          --cache-from "type=registry,ref=${IMAGE}:buildcache"
+          --load --tag domestique:smoke .
+      # Runs the image the way docs/compose.example.yml runs it — unprivileged,
+      # read-only root, no capabilities, one tmpfs, one state mount — and asserts
+      # that the service comes up under it. It reaches no provider and mounts no
+      # real secret; see dev/container-smoke.sh.
+      - name: Smoke-test the production runtime contract
+        run: mise exec -- make container-smoke
 
   publish:
     name: Publish
