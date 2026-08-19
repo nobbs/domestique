@@ -19,29 +19,54 @@ import (
 // runs it is given. These tests read the files themselves, the way
 // internal/readiness reads the deployment files it holds to the code.
 
-// A hung suite has to be given up on by the toolchain rather than by the runner.
-// `go test` prints every goroutine's stack when its own -timeout expires, which
-// is the only artefact that explains a hang; GitHub Actions prints nothing at
-// all when `timeout-minutes` does. Both default to ten minutes, so they expire
-// together unless the suite's is set explicitly and set lower — and a
-// race-instrumented build runs slower, which tightens that collision rather
-// than loosening it.
+// A wedged package has to be given up on by the toolchain rather than by the
+// runner. `go test` prints every goroutine's stack when its own -timeout
+// expires, which is the only artefact that explains a hang; GitHub Actions
+// prints nothing at all when `timeout-minutes` does. Both default to ten
+// minutes, so left alone they expire together and the dump is lost.
+//
+// The comparison is against the sum of both suites, not the race one alone. The
+// Test job runs `test` and then `test-race`, and a -timeout bounds each test
+// binary rather than the invocation, so neither suite's total runtime is capped
+// by its own number: a job budget that cleared only the race timeout could still
+// expire while the second suite was inside its first ten minutes.
+//
+// A sum is a floor rather than a guarantee — a tree slow enough that the
+// packages that do finish outlast the job on their own would still be cut off —
+// but it is the strongest bound available without timing the suite, and it fails
+// on the edit that would otherwise reintroduce the collision quietly: lowering
+// the job budget, or raising a suite's timeout into it.
 func TestTheToolchainGivesUpBeforeTheRunnerDoes(t *testing.T) {
 	t.Parallel()
 
-	race := taskRun(t, "test-race")
-	require.Contains(t, race, " -race ", "the race task must actually run the detector")
+	require.Contains(t, taskRun(t, "test-race"), " -race ",
+		"the race task must actually run the detector")
 
-	match := regexp.MustCompile(`-timeout=(\d+)m\b`).FindStringSubmatch(race)
-	require.Len(t, match, 2, "the race task must set an explicit -timeout in minutes: %q", race)
-
-	suite, err := strconv.Atoi(match[1])
-	require.NoError(t, err)
+	plain := suiteTimeoutMinutes(t, "test")
+	race := suiteTimeoutMinutes(t, "test-race")
 
 	job := jobTimeoutMinutes(t, "test")
-	assert.Less(t, suite, job,
-		"the race suite's -timeout=%dm must sit below the Test job's timeout-minutes: %d",
-		suite, job)
+	assert.Greater(t, job, plain+race,
+		"the Test job's timeout-minutes (%d) must exceed both suites' timeouts together "+
+			"(test %dm + test-race %dm), because it runs them back to back",
+		job, plain, race)
+}
+
+// suiteTimeoutMinutes returns the -timeout one Go suite gives the toolchain.
+// Both suites state it rather than inheriting the default, so that the sum above
+// is a number the gate can read.
+func suiteTimeoutMinutes(t *testing.T, name string) int {
+	t.Helper()
+
+	run := taskRun(t, name)
+
+	match := regexp.MustCompile(`-timeout=(\d+)m\b`).FindStringSubmatch(run)
+	require.Len(t, match, 2, "task %q must set an explicit -timeout in minutes: %q", name, run)
+
+	minutes, err := strconv.Atoi(match[1])
+	require.NoError(t, err)
+
+	return minutes
 }
 
 // The detector is the one thing in this repository that needs cgo, and the one

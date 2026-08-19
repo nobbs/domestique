@@ -107,11 +107,16 @@ run = "mise tasks validate"
 # All three suites write their report under one gitignored directory, for the
 # reason the coverage reports share theirs: an upload step should have one place
 # to look.
+#
+# `-timeout` is spelled out rather than left to `go test`'s default, which is the
+# same ten minutes. It is stated because the CI job that runs this also runs
+# `test-race` after it, and the job's own budget has to exceed both — a number
+# the gate can only check if both tasks say what they are. See dev/gatecheck.
 [test]
 description = "Run the Go tests and write their JUnit report"
 sources = ["**/*.go", "go.mod", "go.sum", "**/testdata/**", "internal/webui/app/dist/**"]
 outputs = { auto = true }
-run = "CGO_ENABLED=0 gotestsum --format standard-quiet --junitfile .test-results/go.xml -- -shuffle=on ./..."
+run = "CGO_ENABLED=0 gotestsum --format standard-quiet --junitfile .test-results/go.xml -- -shuffle=on -timeout=10m ./..."
 
 # The same suite under the race detector, which answers a different question
 # from the one `test` answers: `-shuffle=on` catches tests coupled through
@@ -133,12 +138,19 @@ run = "CGO_ENABLED=0 gotestsum --format standard-quiet --junitfile .test-results
 # image stay `CGO_ENABLED=0` and statically linked; the detector instruments a
 # test binary that is never published.
 #
-# `-timeout` is explicit and sits below the CI job's `timeout-minutes`, because
-# the two defaults are both ten minutes and a suite that wedges would be killed
-# by the runner at roughly the moment the toolchain would have printed the
-# goroutine dump that explains it. An instrumented suite runs slower, which
-# tightens that collision rather than loosening it. The toolchain has to be the
-# one that gives up first, so that a hang leaves a stack trace behind.
+# `-timeout` is explicit because the toolchain has to be the one that gives up
+# on a wedged package first: `go test` prints every goroutine's stack when its
+# own timeout expires, and the runner prints nothing at all when
+# `timeout-minutes` does. Both defaults are ten minutes, so left alone they
+# expire together and the dump is lost.
+#
+# The budget that has to clear it is the CI job's, and that job runs `test`
+# first, so it has to exceed both timeouts rather than only this one — a
+# `-timeout` applies to each test binary, not to the invocation, so neither
+# suite's total runtime is bounded by it. dev/gatecheck asserts that sum against
+# the job. That is a floor rather than a guarantee: a tree slow enough that the
+# surviving packages alone outlast the job would still be cut off, which is a
+# reason to watch the job's duration, not a reason to leave the floor unstated.
 #
 # It waits for `test` for the reason the two coverage halves are ordered: both
 # drive the whole suite, and running them at once on the same machine buys less
