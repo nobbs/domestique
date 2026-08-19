@@ -64,7 +64,7 @@ func with(replacement *task) []task {
 func TestAnalyseAcceptsASubsetGraph(t *testing.T) {
 	t.Parallel()
 
-	problems, err := analyse(graph())
+	problems, err := analyse(graph(), nil)
 	require.NoError(t, err)
 	assert.Empty(t, problems)
 }
@@ -78,7 +78,7 @@ func TestAnalyseRejectsAnInlineRunOnAGateTask(t *testing.T) {
 		Name:    "ci-test",
 		Depends: []string{"vet"},
 		Run:     []string{"go test ./..."},
-	}))
+	}), nil)
 	require.NoError(t, err)
 
 	require.Len(t, problems, 1)
@@ -92,7 +92,7 @@ func TestAnalyseRejectsACheckOnlyTheRoutineLoopRuns(t *testing.T) {
 	problems, err := analyse(with(&task{
 		Name:    "quick",
 		Depends: []string{"ui-ensure", "hygiene", "vet", "secret-scan"},
-	}))
+	}), nil)
 	require.NoError(t, err)
 
 	require.Len(t, problems, 1)
@@ -108,7 +108,7 @@ func TestAnalyseRejectsAnUndeclaredDeferral(t *testing.T) {
 	problems, err := analyse(with(&task{
 		Name:    "ci-test",
 		Depends: []string{"vet", "test"},
-	}))
+	}), nil)
 	require.NoError(t, err)
 
 	require.Len(t, problems, 1)
@@ -122,7 +122,7 @@ func TestAnalyseRejectsAStaleDeferral(t *testing.T) {
 	problems, err := analyse(with(&task{
 		Name:    "ci-security",
 		Depends: []string{"ui-audit"},
-	}))
+	}), nil)
 	require.NoError(t, err)
 
 	require.Len(t, problems, 1)
@@ -146,7 +146,7 @@ func TestAnalyseReportsEveryBrokenRuleAtOnce(t *testing.T) {
 		}
 	}
 
-	problems, err := analyse(tasks)
+	problems, err := analyse(tasks, nil)
 	require.NoError(t, err)
 	assert.Len(t, problems, 2)
 }
@@ -190,7 +190,7 @@ func TestAnalyseErrorsOnATaskThatDoesNotExist(t *testing.T) {
 	_, err := analyse(with(&task{
 		Name:    "ci-test",
 		Depends: []string{"vet", "typo-check"},
-	}))
+	}), nil)
 	require.ErrorContains(t, err, `task "ci-test" depends on "typo-check", which does not exist`)
 }
 
@@ -205,7 +205,7 @@ func TestAnalyseErrorsOnAMissingGateTask(t *testing.T) {
 		}
 	}
 
-	_, err := analyse(tasks)
+	_, err := analyse(tasks, nil)
 	require.ErrorContains(t, err, `no task named "ci-ui"`)
 }
 
@@ -223,6 +223,64 @@ func TestStepsTerminatesOnACycle(t *testing.T) {
 	found, err := gateRules().steps(byName, "quick")
 	require.NoError(t, err)
 	assert.Equal(t, []string{"vet"}, found)
+}
+
+// A glob that matches nothing is what mise reads as "nothing to do", so it is
+// the one way caching can retire a check without anyone noticing.
+func TestAnalyseRejectsASourceGlobThatMatchesNothing(t *testing.T) {
+	t.Parallel()
+
+	tracked := []string{"internal/app/main.go", "docs/specs/delivery.md"}
+
+	problems, err := analyse(with(&task{
+		Name:    "vet",
+		Sources: []string{"**/*.go", "cmd/**/*.rs"},
+		Run:     []string{"go vet ./..."},
+	}), tracked)
+	require.NoError(t, err)
+
+	require.Len(t, problems, 1)
+	assert.Contains(t, problems[0], `task "vet" declares the source "cmd/**/*.rs"`)
+	assert.NotContains(t, problems[0], "**/*.go")
+}
+
+func TestAnalyseAcceptsSourceGlobsThatMatch(t *testing.T) {
+	t.Parallel()
+
+	problems, err := analyse(with(&task{
+		Name:    "vet",
+		Sources: []string{"**/*.go", "docs/**", "go.mod"},
+		Run:     []string{"go vet ./..."},
+	}), []string{"internal/app/main.go", "docs/specs/delivery.md", "go.mod"})
+	require.NoError(t, err)
+	assert.Empty(t, problems)
+}
+
+func TestMatchGlob(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		pattern string
+		name    string
+		want    bool
+	}{
+		{"**/*.go", "main.go", true},
+		{"**/*.go", "internal/app/main.go", true},
+		{"**/*.go", "internal/app/main.ts", false},
+		{"**/testdata/**", "internal/sqlite/testdata/schema.sha256", true},
+		{"**/testdata/**", "internal/sqlite/schema.sha256", false},
+		{"internal/webui/app/src/**", "internal/webui/app/src/map/view.tsx", true},
+		{"internal/webui/app/src/**", "internal/webui/app/e2e/library.spec.ts", false},
+		{"internal/webui/app/*.ts", "internal/webui/app/vite.config.ts", true},
+		{"internal/webui/app/*.ts", "internal/webui/app/src/main.ts", false},
+		{"deploy/*.sh", "deploy/deploy.sh", true},
+		{"go.mod", "go.mod", true},
+		{"go.mod", "dev/go.mod", false},
+	}
+
+	for _, c := range cases {
+		assert.Equal(t, c.want, matchGlob(c.pattern, c.name), "%q against %q", c.pattern, c.name)
+	}
 }
 
 func TestDecodeReadsTheFieldsTheRulesUse(t *testing.T) {

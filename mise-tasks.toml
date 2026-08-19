@@ -12,6 +12,25 @@
 # to follow another, it says so with `wait_for`, which orders two tasks when
 # both are scheduled and does nothing when only one is. Ordering is never left
 # to a `depends` list that happens to work.
+#
+# Most checks below declare `sources`, so mise skips one whose inputs have not
+# moved since it last succeeded, and says so where it would have run it. Three
+# rules decide which check gets that treatment:
+#
+#   * Its verdict must be a function of the files it names. `vulncheck` and
+#     `ui-audit` read an advisory database that moves without the tree, so an
+#     unchanged tree can still be newly vulnerable and they always run.
+#   * Its inputs must be nameable. `hygiene` and `secret-scan` read the whole
+#     worktree, and a source list that broad is likelier to be wrong than those
+#     runs are to be slow.
+#   * A glob is written to match a whole kind of file — `**/*.go`, not the
+#     directories that hold Go today — because a list that misses a new file is
+#     a check that stops noticing it.
+#
+# What makes that safe rather than merely fast: a failed task is never recorded
+# as up to date, editing a task's own definition invalidates it, a glob that
+# matches nothing is a `gate-check` failure, and CI runs `mise run --force`, so
+# the gate a merge must satisfy never consults any of this.
 
 [fmt]
 description = "Format the Go tree"
@@ -26,22 +45,30 @@ run = "prek run --all-files"
 
 [lint]
 description = "Lint the Go tree"
+sources = ["**/*.go", "go.mod", "go.sum", ".golangci.yml", "internal/webui/app/dist/**"]
+outputs = { auto = true }
 run = "golangci-lint run ./..."
 
 [markdownlint]
 description = "Lint the Markdown"
+sources = ["**/*.md", ".markdownlint-cli2.yaml"]
+outputs = { auto = true }
 run = 'markdownlint-cli2 "**/*.md"'
 
 # Both scripts run somewhere a mistake is expensive: one against the deployed
 # state, the other as root on the deploying host.
 [shell-lint]
 description = "Lint the shell scripts"
+sources = ["deploy/*.sh", "dev/*.sh"]
+outputs = { auto = true }
 run = "shellcheck deploy/*.sh dev/*.sh"
 
 # actionlint shells out to shellcheck for every `run:` block, so the pinned
 # shellcheck above is what lints the workflow scripts too.
 [workflow-lint]
 description = "Lint the GitHub Actions workflows"
+sources = [".github/workflows/*.yml"]
+outputs = { auto = true }
 run = "actionlint .github/workflows/*.yml"
 
 # The commit hook is only worth installing while it stays fast. This asserts
@@ -49,6 +76,8 @@ run = "actionlint .github/workflows/*.yml"
 # measure reliably. See dev/check-hook-cost.sh.
 [hook-check]
 description = "Assert the commit hook stays cheap"
+sources = ["prek.toml", "dev/check-hook-cost.sh"]
+outputs = { auto = true }
 run = "./dev/check-hook-cost.sh"
 
 # `quick` is only trustworthy while it stays a strict subset of `check`. This
@@ -57,24 +86,34 @@ run = "./dev/check-hook-cost.sh"
 # dev/gatecheck.
 [gate-check]
 description = "Assert `quick` is a strict subset of `check`"
+sources = ["mise-tasks.toml", ".mise.toml", "dev/gatecheck/*.go"]
+outputs = { auto = true }
 run = "go run ./dev/gatecheck"
 
 # Catches a cycle or a malformed task definition, which the gate would otherwise
 # discover by failing somewhere less obvious.
 [task-check]
 description = "Validate the task definitions"
+sources = ["mise-tasks.toml", ".mise.toml"]
+outputs = { auto = true }
 run = "mise tasks validate"
 
 [test]
 description = "Run the Go tests"
+sources = ["**/*.go", "go.mod", "go.sum", "**/testdata/**", "internal/webui/app/dist/**"]
+outputs = { auto = true }
 run = "CGO_ENABLED=0 go test -shuffle=on ./..."
 
 [vet]
 description = "Vet the Go tree"
+sources = ["**/*.go", "go.mod", "go.sum", "internal/webui/app/dist/**"]
+outputs = { auto = true }
 run = "CGO_ENABLED=0 go vet ./..."
 
 [mod-check]
 description = "Check the Go module graph is tidy and verified"
+sources = ["**/*.go", "go.mod", "go.sum"]
+outputs = { auto = true }
 run = ["go mod tidy -diff", "go mod verify"]
 
 [vulncheck]
@@ -164,6 +203,11 @@ run = "./dev/demo.sh"
 
 [ui-install]
 description = "Install the UI dependency tree from the lockfile"
+sources = [
+  "internal/webui/app/package.json",
+  "internal/webui/app/package-lock.json",
+]
+outputs = ["internal/webui/app/node_modules/.package-lock.json"]
 run = "npm --prefix internal/webui/app ci"
 
 # Installs only when the tree is missing altogether, so the routine loop does
@@ -188,11 +232,31 @@ run = "npm --prefix internal/webui/app run dev"
 # run on its own.
 [ui-typecheck]
 description = "Type-check the UI"
+sources = [
+  "internal/webui/app/src/**",
+  "internal/webui/app/e2e/**",
+  "internal/webui/app/scripts/**",
+  "internal/webui/app/public/**",
+  "internal/webui/app/index.html",
+  "internal/webui/app/*.ts",
+  "internal/webui/app/*.json",
+]
+outputs = { auto = true }
 wait_for = ["ui-install", "ui-ensure"]
 run = "npm --prefix internal/webui/app run typecheck"
 
 [ui-lint]
 description = "Lint the UI"
+sources = [
+  "internal/webui/app/src/**",
+  "internal/webui/app/e2e/**",
+  "internal/webui/app/scripts/**",
+  "internal/webui/app/public/**",
+  "internal/webui/app/index.html",
+  "internal/webui/app/*.ts",
+  "internal/webui/app/*.json",
+]
+outputs = { auto = true }
 wait_for = ["ui-install", "ui-ensure"]
 run = "npm --prefix internal/webui/app run lint"
 
@@ -203,6 +267,16 @@ run = "npm --prefix internal/webui/app run format"
 
 [ui-test]
 description = "Run the jsdom UI suite"
+sources = [
+  "internal/webui/app/src/**",
+  "internal/webui/app/e2e/**",
+  "internal/webui/app/scripts/**",
+  "internal/webui/app/public/**",
+  "internal/webui/app/index.html",
+  "internal/webui/app/*.ts",
+  "internal/webui/app/*.json",
+]
+outputs = { auto = true }
 wait_for = ["ui-install", "ui-ensure"]
 run = "npm --prefix internal/webui/app run test"
 
@@ -247,6 +321,16 @@ run = "npm --prefix internal/webui/app audit --omit=dev"
 # keeps the go:embed pattern valid before a UI build. Restore it afterwards.
 [ui-build]
 description = "Build the UI bundle"
+sources = [
+  "internal/webui/app/src/**",
+  "internal/webui/app/e2e/**",
+  "internal/webui/app/scripts/**",
+  "internal/webui/app/public/**",
+  "internal/webui/app/index.html",
+  "internal/webui/app/*.ts",
+  "internal/webui/app/*.json",
+]
+outputs = ["internal/webui/app/dist/**"]
 wait_for = ["ui-install", "ui-ensure"]
 run = [
   "npm --prefix internal/webui/app run build",
@@ -284,6 +368,8 @@ CGO_ENABLED=0 GOOS=linux GOARCH="${BUILD_ARCH:-$(go env GOARCH)}" \
 # directory, and the browser suite reads the bundle it built.
 [build-check]
 description = "Compile the published release target"
+sources = ["**/*.go", "go.mod", "go.sum", "internal/webui/app/dist/**"]
+outputs = { auto = true }
 depends = ["ui-build"]
 wait_for = ["ci-ui"]
 run = """

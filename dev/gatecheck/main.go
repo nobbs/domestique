@@ -16,6 +16,12 @@
 // dependencies without running any of them, so this costs a few milliseconds
 // and needs no network.
 //
+// A cached check is subject to the same kind of hole. A task that declares
+// `sources` runs only when one of them has moved since it last succeeded, and a
+// glob matching no file at all counts as "nothing moved" — forever. So every
+// glob is asserted to match a tracked file, which is what stops a renamed
+// directory from quietly retiring the check that used to read it.
+//
 // That comparison can only see a step declared as a dependency, and mise lets a
 // task carry an inline `run` alongside its `depends`. A command written there
 // would still run as part of the gate while being invisible to a dependency
@@ -33,6 +39,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path"
 	"slices"
 	"strings"
 )
@@ -94,19 +101,28 @@ func gateRules() rules {
 type task struct {
 	Name    string   `json:"name"`
 	Depends []string `json:"depends"`
+	Sources []string `json:"sources"`
 	//nolint:tagliatelle // mise's task JSON uses snake_case.
 	DependsPost []string `json:"depends_post"`
 	Run         []string `json:"run"`
 }
 
 func main() {
-	tasks, err := load(context.Background())
+	ctx := context.Background()
+
+	tasks, err := load(ctx)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "gatecheck: %v\n", err)
 		os.Exit(1)
 	}
 
-	problems, err := analyse(tasks)
+	tracked, err := trackedFiles(ctx)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "gatecheck: %v\n", err)
+		os.Exit(1)
+	}
+
+	problems, err := analyse(tasks, tracked)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "gatecheck: %v\n", err)
 		os.Exit(1)
@@ -138,6 +154,22 @@ func load(ctx context.Context) ([]task, error) {
 	return decode(bytes.NewReader(out))
 }
 
+// trackedFiles lists what Git holds, which is the set a source glob is allowed
+// to name: a file Git does not track cannot be a dependable input to a check.
+func trackedFiles(ctx context.Context) ([]string, error) {
+	cmd := exec.CommandContext(ctx, "git", "ls-files", "-z")
+	cmd.Stderr = os.Stderr
+
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("listing the tracked files: %w", err)
+	}
+
+	names := strings.Split(strings.TrimSuffix(string(out), "\x00"), "\x00")
+
+	return slices.DeleteFunc(names, func(name string) bool { return name == "" }), nil
+}
+
 func decode(r io.Reader) ([]task, error) {
 	var tasks []task
 	if err := json.NewDecoder(r).Decode(&tasks); err != nil {
@@ -150,7 +182,7 @@ func decode(r io.Reader) ([]task, error) {
 // analyse returns every way the two entry points fail the rules above, as
 // messages ready to print. An error is returned only when the graph cannot be
 // walked at all, which is a different kind of failure from a rule being broken.
-func analyse(tasks []task) ([]string, error) {
+func analyse(tasks []task, tracked []string) ([]string, error) {
 	r := gateRules()
 
 	byName := make(map[string]task, len(tasks))
@@ -158,7 +190,7 @@ func analyse(tasks []task) ([]string, error) {
 		byName[t.Name] = t
 	}
 
-	var problems []string
+	problems := staleSources(tasks, tracked)
 
 	// Rule zero: the structure the two comparisons below can actually see.
 	for _, name := range r.gate {
@@ -210,6 +242,63 @@ func analyse(tasks []task) ([]string, error) {
 	}
 
 	return problems, nil
+}
+
+// staleSources reports every source glob that matches nothing, because mise
+// treats one as permanently up to date and would skip the check that declares
+// it for good.
+func staleSources(tasks []task, tracked []string) []string {
+	var problems []string
+
+	for _, t := range tasks {
+		for _, pattern := range t.Sources {
+			if slices.ContainsFunc(tracked, func(name string) bool {
+				return matchGlob(pattern, name)
+			}) {
+				continue
+			}
+
+			problems = append(problems, fmt.Sprintf(
+				"task %q declares the source %q, which matches no tracked file.\n"+
+					"  mise reads that as nothing to do and skips the task from now on,\n"+
+					"  so correct the glob or drop it.", t.Name, pattern))
+		}
+	}
+
+	return problems
+}
+
+// matchGlob reports whether a mise source glob matches a slash-separated path.
+// `**` stands for any number of path segments, including none; within a segment
+// the usual shell metacharacters apply.
+func matchGlob(pattern, name string) bool {
+	return matchSegments(strings.Split(pattern, "/"), strings.Split(name, "/"))
+}
+
+func matchSegments(pattern, name []string) bool {
+	for len(pattern) > 0 {
+		if pattern[0] == "**" {
+			for i := range len(name) + 1 {
+				if matchSegments(pattern[1:], name[i:]) {
+					return true
+				}
+			}
+
+			return false
+		}
+
+		if len(name) == 0 {
+			return false
+		}
+
+		if ok, err := path.Match(pattern[0], name[0]); err != nil || !ok {
+			return false
+		}
+
+		pattern, name = pattern[1:], name[1:]
+	}
+
+	return len(name) == 0
 }
 
 // steps returns the checks a gate task runs, sorted. The walk descends through
