@@ -11,7 +11,7 @@ import { defineConfig, devices } from "@playwright/test";
  * for logic tests: anything a unit test can reach belongs there, where it runs in
  * a second and needs no browser.
  *
- * `webServer` is `make demo`'s own script, so the suite runs against exactly the
+ * `webServer` is `mise run demo`'s own script, so the suite runs against exactly the
  * stack a developer would start by hand: `dev/demoapi` serving the invented
  * library in `internal/demo` behind the production identity gate, with the Vite
  * dev server in front of it. Nothing here reads a real route, and the fixtures in

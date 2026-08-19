@@ -19,22 +19,21 @@ Install the pinned local toolchain and run the routine check loop:
 
 ~~~sh
 mise install
-mise exec -- make quick
+mise run quick
 ~~~
 
 GitHub Actions is the authoritative gate and runs the complete validation on
-every pull request. `make quick` is the fast local loop;
-`mise exec -- make check` runs the full gate locally when an earlier answer is
-worth its cost. The [delivery specification](docs/specs/delivery.md) records
-what the two differ by and why.
+every pull request. `mise run quick` is the fast local loop; `mise run check`
+runs the full gate locally when an earlier answer is worth its cost. The
+[delivery specification](docs/specs/delivery.md) records what the two differ by
+and why.
 
 Install the optional Git hook with `mise exec -- prek install`. Work on the
-browser UI with `mise exec -- make ui-dev`, which serves it with hot reload and
-proxies the API to a locally running service. See
-[CONTRIBUTING.md](CONTRIBUTING.md) for the contributor workflow. Copy
-[`config.example.toml`](config.example.toml) outside the repository when
-preparing a local deployment; it references secret files and never embeds
-secret values.
+browser UI with `mise run ui-dev`, which serves it with hot reload and proxies
+the API to a locally running service. See [CONTRIBUTING.md](CONTRIBUTING.md) for
+the contributor workflow. Copy [`config.example.toml`](config.example.toml)
+outside the repository when preparing a local deployment; it references secret
+files and never embeds secret values.
 
 ## Deployment
 

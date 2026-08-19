@@ -56,7 +56,7 @@ test("the page reports what the demo's two slots are doing", async ({ offlinePag
   await openLibrary(page);
 
   // One slot holds the whole library and one has never completed onboarding,
-  // which is the pair `make demo` seeds and the state the onboarding path is
+  // which is the pair `mise run demo` seeds and the state the onboarding path is
   // demonstrated from.
   await expect(page.getByRole("region", { name: /synchronisation/i })).toBeVisible();
   await expect(page.getByRole("button", { name: /Run now/ }).first()).toBeVisible();

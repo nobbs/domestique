@@ -11,7 +11,7 @@
 # Test binary, built with `go test -c`
 *.test
 
-# Code coverage profiles and other test artifacts. `make coverage` writes the
+# Code coverage profiles and other test artifacts. `mise run coverage` writes the
 # Go profile and the UI LCOV report under /.coverage; no report is committed.
 # The bare `coverage.*` inherited from the Go template is anchored to the root:
 # unanchored it also swallowed the UI's own coverage tooling, which is source.
@@ -57,6 +57,6 @@ config.local.toml
 # .vscode/
 
 # Browser suite artefacts: traces, failure screenshots and the HTML report a
-# failed `make ui-browser-test` leaves behind. No image is committed; the suite
+# failed `mise run ui-browser-test` leaves behind. No image is committed; the suite
 # compares a page against itself within a run.
 /.playwright/

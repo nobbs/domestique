@@ -18,7 +18,7 @@
 # `build` already established, so the image is built before merge only when a
 # container input moved: the Dockerfile itself, what it copies in, a dependency
 # manifest that resolves differently inside a build stage than on the runner, or
-# the smoke test and the Make target CI runs it through, since a change that
+# the smoke test and the task CI runs it through, since a change that
 # turned the smoke step off would otherwise never run it. A Dockerfile break
 # that slips past this is not an outage — the deployed digest keeps running —
 # but it does redden the default branch, and the fix touches `container`, so the
@@ -39,7 +39,7 @@ go:
   - ".golangci.yml"
   - ".mise.toml"
   - "Dockerfile"
-  - "Makefile"
+  - "mise-tasks.toml"
   - "compose.macos.yml"
   - "docs/compose.example.yml"
   - "go.mod"
@@ -49,7 +49,7 @@ go:
   - "dev/**"
   - "internal/**"
 
-# `ui` also covers the stack the browser suite runs against: `make demo` builds
+# `ui` also covers the stack the browser suite runs against: `mise run demo` builds
 # `dev/demoapi` over the synthetic library in `internal/demo` and serves the
 # embedded app, so a change to any of those can fail the UI job. The rest of the
 # service is left to the `go` job, which tests it directly.
@@ -57,7 +57,7 @@ ui:
   - ".github/paths-filter.yml"
   - ".github/workflows/ci.yml"
   - ".mise.toml"
-  - "Makefile"
+  - "mise-tasks.toml"
   - "go.mod"
   - "go.sum"
   - "dev/demo.sh"
@@ -71,7 +71,7 @@ image:
   - ".github/workflows/ci.yml"
   - ".mise.toml"
   - "Dockerfile"
-  - "Makefile"
+  - "mise-tasks.toml"
   - "go.mod"
   - "go.sum"
   - "cmd/**"
@@ -82,7 +82,7 @@ container:
   - ".github/paths-filter.yml"
   - ".github/workflows/ci.yml"
   - "Dockerfile"
-  - "Makefile"
+  - "mise-tasks.toml"
   - "dev/container-smoke.sh"
   - "go.mod"
   - "go.sum"

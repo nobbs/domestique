@@ -32,7 +32,7 @@ import type { Page } from "@playwright/test";
  * Where raw V8 output is written.
  *
  * Unset means the suite is not being measured, which is the normal case:
- * `make ui-browser-test` runs it as a test suite and pays nothing for coverage.
+ * `mise run ui-browser-test` runs it as a test suite and pays nothing for coverage.
  * `scripts/coverage.ts` sets this when it runs the suite for its numbers.
  *
  * Deliberately not `DOMESTIQUE_`-prefixed. The demo API the suite runs against

@@ -1,9 +1,9 @@
 # gitleaks configuration: the default rule set, plus the directories a local run
 # leaves generated state in.
 #
-# `make secret-scan` scans the working tree rather than history, so it also sees
+# `mise run secret-scan` scans the working tree rather than history, so it also sees
 # files git never will. Two of those directories necessarily hold credential-
-# shaped material: `make demo` mints a signed assertion for its dev server, and a
+# shaped material: `mise run demo` mints a signed assertion for its dev server, and a
 # development environment holds a placeholder key set. Both are gitignored, both
 # are generated on the spot, and neither can reach a commit — but a scan that
 # flags them fails the gate for having run the demo, which trains people to

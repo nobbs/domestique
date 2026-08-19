@@ -12,3 +12,8 @@ shellcheck = "0.11.0"
 [env]
 GOCACHE = "{{config_root}}/.cache/go-build"
 GOLANGCI_LINT_CACHE = "{{config_root}}/.cache/golangci-lint"
+
+# Every task lives in mise-tasks.toml, so this file stays what it has always
+# been: the pins. See that file for the tasks themselves.
+[task_config]
+includes = ["mise-tasks.toml"]

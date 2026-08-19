@@ -1,7 +1,7 @@
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vitest/config";
 
-// The development API from `make dev-api` listens here. The dev server proxies
+// The development API from `mise run dev-api` listens here. The dev server proxies
 // to it and forwards a Cloudflare Access assertion, which is the only identity
 // the service accepts.
 //

@@ -19,7 +19,7 @@ const bundleRoot = "app/dist"
 // ErrBundleMissing reports a binary built without its browser UI. The build
 // fails loudly rather than serving a placeholder, so a released image can never
 // be missing the UI silently.
-var ErrBundleMissing = errors.New("browser UI bundle is missing: run `make ui-build` before building the binary")
+var ErrBundleMissing = errors.New("browser UI bundle is missing: run `mise run ui-build` before building the binary")
 
 // The all: prefix keeps the embed valid when the working tree holds only the
 // committed .gitkeep, so the package compiles before the UI has been built.
