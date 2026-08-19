@@ -360,6 +360,39 @@ func TestHandlerRefusesASourceBaseURLThatIsNotOne(t *testing.T) {
 	}
 }
 
+func TestHandlerSendsASourceBaseURLWithoutSurroundingWhitespace(t *testing.T) {
+	handler, err := New(
+		&Options{
+			TargetIDs:        []string{"rider-a"},
+			TileStyleURL:     testTileStyleURL,
+			SourceBaseURL:    "  " + testSourceBaseURL + "\n",
+			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
+			AccessEmail:      testAccessEmail,
+			BrowserOriginURL: testBrowserOriginURL,
+		},
+		&fakeOAuth{}, &fakeState{}, &fakeSyncTrigger{}, &fakeAssets{},
+	)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/webui/config"))
+	// The page must receive the value that was validated, not a wider one: a
+	// browser cannot parse a URL with whitespace around it, so an accepted
+	// configuration would silently produce no link.
+	var payload struct {
+		//nolint:tagliatelle // Mirrors the wire field the page reads.
+		SourceBaseURL string `json:"source_base_url"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decoding config body: %v", err)
+	}
+	if got, want := payload.SourceBaseURL, testSourceBaseURL; got != want {
+		t.Errorf("source base URL = %q, want %q", got, want)
+	}
+}
+
 func TestHandlerSetsPolicyAndCacheHeaders(t *testing.T) {
 	handler := newTestHandler(t)
 

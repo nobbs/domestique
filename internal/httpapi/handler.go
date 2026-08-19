@@ -208,8 +208,12 @@ func New(
 	// Validated here rather than trusted, because it leaves the service as a
 	// link a browser will follow. A configured value that cannot be one is a
 	// mistake worth refusing at startup; the absent case is the supported one.
-	if options.SourceBaseURL != "" {
-		if _, sourceErr := originOf(options.SourceBaseURL); sourceErr != nil {
+	// Trimmed before validating and then stored trimmed, so the value the page
+	// receives is the one that was checked: surrounding whitespace survives a
+	// hand-edited config file, and a browser will not parse it back into a URL.
+	sourceBaseURL := strings.TrimSpace(options.SourceBaseURL)
+	if sourceBaseURL != "" {
+		if _, sourceErr := originOf(sourceBaseURL); sourceErr != nil {
 			return nil, errors.New("source base URL must be an absolute HTTPS URL")
 		}
 	}
@@ -222,7 +226,7 @@ func New(
 		assets:           assets,
 		tileStyleURL:     options.TileStyleURL,
 		tileStyleURLDark: options.TileStyleURLDark,
-		sourceBaseURL:    options.SourceBaseURL,
+		sourceBaseURL:    sourceBaseURL,
 		tileOrigin:       tileOrigin,
 		browserOrigin:    browserOrigin,
 		targetIDs:        append([]string(nil), options.TargetIDs...),

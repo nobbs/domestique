@@ -28,8 +28,10 @@ export interface SourceRoute {
   /** Where the route lives, absolute, for an anchor to point at. */
   href: string;
   /**
-   * The provider's hostname, so the affordance can say where it leads rather
-   * than making a reader hover a link to find out.
+   * The provider's host, port included when the base URL names one, so the
+   * affordance can say where it leads rather than making a reader hover a link
+   * to find out. It is what a reader would read off the address bar after
+   * following it, which is the point of saying it beforehand.
    */
   host: string;
 }
