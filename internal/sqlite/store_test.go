@@ -975,7 +975,8 @@ func TestStoreRefusesStateTooFarAhead(t *testing.T) {
 // on schemaMigrations: what a migration means by an existing column's values is
 // beyond a schema comparison and stays with the author.
 func TestNewMigrationsStayReadableByThePreviousRelease(t *testing.T) {
-	for version := compatibilityRuleFromMigration; version <= len(schemaMigrations()); version++ {
+	migrations := schemaMigrations()
+	for version := compatibilityRuleFromMigration; version <= len(migrations); version++ {
 		t.Run(fmt.Sprintf("migration %d", version), func(t *testing.T) {
 			before := readSchemaShape(t, version-1)
 			after := readSchemaShape(t, version)
@@ -1123,8 +1124,12 @@ func readTableColumns(t *testing.T, database *sql.DB, table string) map[string]s
 		columns[name] = schemaColumn{
 			declaredType: declaredType,
 			nullable:     notNull == 0,
-			hasDefault:   defaultValue.Valid,
-			primaryKey:   primaryKey > 0,
+			// An explicit DEFAULT NULL is recorded as a default but supplies
+			// nothing: an earlier binary's insert omits the column, gets NULL,
+			// and fails the NOT NULL constraint. That is the case this check
+			// exists for, so it does not count as a default.
+			hasDefault: defaultValue.Valid && !strings.EqualFold(defaultValue.String, "NULL"),
+			primaryKey: primaryKey > 0,
 		}
 	}
 	require.NoError(t, rows.Err())
