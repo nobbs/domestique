@@ -23,7 +23,7 @@ func graph() []task {
 			"ci-lint", "ci-test", "ci-security", "ci-ui", "build-check",
 		}},
 		{Name: "ci-lint", Depends: []string{"hygiene"}},
-		{Name: "ci-test", Depends: []string{"vet"}},
+		{Name: "ci-test", Depends: []string{"vet", "test-race"}},
 		{Name: "ci-security", Depends: []string{"vulncheck", "ui-audit"}},
 		{Name: "ci-ui", Depends: []string{
 			"ui-install", "ui-browser-install", "ui-browser-test",
@@ -31,6 +31,7 @@ func graph() []task {
 		{Name: "build-check", Depends: []string{"ui-build"}, Run: []string{"go build ./..."}},
 		{Name: "hygiene", Run: []string{"prek run --all-files"}},
 		{Name: "vet", Run: []string{"go vet ./..."}},
+		{Name: "test-race", Run: []string{"go test -race ./..."}},
 		{Name: "vulncheck", Run: []string{"govulncheck ./..."}},
 		{Name: "ui-audit", Run: []string{"npm audit"}},
 		{Name: "ui-browser-install", Run: []string{"npm run test:browser:install"}},
@@ -75,7 +76,7 @@ func TestAnalyseRejectsAnInlineRunOnAGateTask(t *testing.T) {
 
 	problems, err := analyse(with(&task{
 		Name:    "ci-test",
-		Depends: []string{"vet"},
+		Depends: []string{"vet", "test-race"},
 		Run:     []string{"go test ./..."},
 	}), nil)
 	require.NoError(t, err)
@@ -106,7 +107,7 @@ func TestAnalyseRejectsAnUndeclaredDeferral(t *testing.T) {
 
 	problems, err := analyse(with(&task{
 		Name:    "ci-test",
-		Depends: []string{"vet", "test"},
+		Depends: []string{"vet", "test-race", "test"},
 	}), nil)
 	require.NoError(t, err)
 
@@ -188,7 +189,7 @@ func TestAnalyseErrorsOnATaskThatDoesNotExist(t *testing.T) {
 
 	_, err := analyse(with(&task{
 		Name:    "ci-test",
-		Depends: []string{"vet", "typo-check"},
+		Depends: []string{"vet", "test-race", "typo-check"},
 	}), nil)
 	require.ErrorContains(t, err, `task "ci-test" depends on "typo-check", which does not exist`)
 }

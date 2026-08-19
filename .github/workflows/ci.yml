@@ -78,7 +78,13 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    # The suite runs twice here: once as it normally does, and once instrumented
+    # by the race detector, which compiles and runs several times slower. The
+    # budget is raised rather than the detector given less room, and it stays
+    # above the `-timeout` the race task sets, so a wedged suite is killed by the
+    # toolchain — which prints every goroutine's stack — rather than by the
+    # runner, which prints nothing. dev/gatecheck asserts that ordering.
+    timeout-minutes: 20
     needs: changes
     if: needs.changes.outputs.go == 'true'
 
