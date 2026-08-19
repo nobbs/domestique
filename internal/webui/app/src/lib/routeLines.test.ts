@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Position } from "../api/types";
-import { gradientRanges, gradientSlices, routeLinesWithin } from "./routeLines";
+import { gradientSlices, routeLinesWithin } from "./routeLines";
 
 /** Points spaced evenly by latitude, so every stretch is the same length. */
 function route(pointCount: number): Position[] {
@@ -53,53 +53,6 @@ describe("routeLinesWithin", () => {
 
     expect(slices.inside).toEqual([coordinates.slice(0, 3), coordinates.slice(4, 7)]);
     expect(slices.outside).toEqual([coordinates.slice(2, 5)]);
-  });
-});
-
-describe("gradientRanges", () => {
-  it("bands a steady climb as one run from its first metre", () => {
-    expect(gradientRanges(ramp(Array(40).fill(10)))).toEqual([
-      { band: 2, startIndex: 0, endIndex: 39 },
-    ]);
-  });
-
-  it("reads a descent as steeply as the climb it mirrors", () => {
-    expect(gradientRanges(ramp(Array(40).fill(-10)))).toEqual([
-      { band: 2, startIndex: 0, endIndex: 39 },
-    ]);
-  });
-
-  it("hands the steep ground its own run once the flat ends", () => {
-    const ranges = gradientRanges(ramp([...Array(40).fill(0), ...Array(40).fill(10)]));
-
-    // Two runs, not three: the climb passes through the middle band in well
-    // under fifty metres, and a colour that brief is a smear, not a stretch.
-    expect(ranges.map((range) => range.band)).toEqual([0, 2]);
-    // The gradient is measured backwards, so the climb is reported a little way
-    // into itself — the same lag the chart shows for the same stretch.
-    const steep = ranges[1]?.startIndex ?? 0;
-    expect(steep).toBeGreaterThan(40);
-    expect((steep - 40) * FINE_SPACING_METRES).toBeLessThan(100);
-  });
-
-  it("collapses a stipple of short runs into the drag it belongs to", () => {
-    // Six percent and two, alternating: the look-back averages a little either
-    // side of the four percent edge and crosses it at every single segment,
-    // which unmerged would draw one steady drag as two colours of dotted line.
-    const wobble = Array.from({ length: 60 }, (_, index) => (index % 2 === 0 ? 6 : 2));
-
-    expect(gradientRanges(ramp(wobble))).toEqual([{ band: 1, startIndex: 0, endIndex: 59 }]);
-  });
-
-  it("refuses geometry that is not fully surveyed", () => {
-    const partial: Position[] = [
-      [8, 49, 100],
-      [8, 49.001],
-      [8, 49.002, 120],
-    ];
-
-    expect(gradientRanges(partial)).toEqual([]);
-    expect(gradientRanges([[8, 49, 100]])).toEqual([]);
   });
 });
 

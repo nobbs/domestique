@@ -179,6 +179,145 @@ export function elevationOf(position: Position): number | undefined {
   return position.length === 3 ? position[2] : undefined;
 }
 
+/**
+ * A run of the route that carries one steepness band, as segment indices.
+ *
+ * `endIndex` is where the *last segment* of the run starts, which is the same
+ * convention the service's surface ranges use: a range covers the ground from
+ * point `startIndex` to point `endIndex + 1`.
+ */
+export interface BandedRange {
+  band: number;
+  startIndex: number;
+  endIndex: number;
+}
+
+/**
+ * A run of one band shorter than this is absorbed into the run before it.
+ *
+ * The window a gradient is measured over is its own floor: a run shorter than
+ * that was never sustained by the definition that classified it, and elevation
+ * from a terrain model wobbles enough that a long steady four-percent drag
+ * crosses the band edge repeatedly. Absorbed, the drag is reported as the one
+ * thing it is.
+ *
+ * It is the same floor the service's `maxGradientPercent` uses, which is what
+ * makes the summary line and the key agree by construction rather than by luck.
+ */
+const MIN_BAND_METRES = GRADIENT_WINDOW_METRES;
+
+/**
+ * The route as runs of one steepness band, in the order they are ridden.
+ *
+ * This is the stage's one steepness classification, and everything that speaks
+ * about bands reads it: the key that lists them, the chart's columns, and the
+ * lines the map paints. It bands the source coordinates rather than any
+ * resampling of them, so which bands a stage has is a fact about the ground
+ * instead of about how many samples a chart happened to ask for — a stage banded
+ * at whole-route zoom is banded identically at two kilometres of it.
+ *
+ * A segment is banded by the gradient measured back over
+ * `GRADIENT_WINDOW_METRES`, never across the segment itself: source points can
+ * be metres apart, and a rise of one metre over five is a fifth of a hillside,
+ * not a twenty percent wall.
+ *
+ * Empty for geometry that is not fully surveyed, which is the same refusal
+ * `buildProfile` makes — a map that banded the surveyed half and left the rest
+ * flat would report missing data as level ground.
+ */
+export function gradientRanges(coordinates: Position[]): BandedRange[] {
+  const lastIndex = coordinates.length - 1;
+  if (lastIndex < 1 || coordinates.some((point) => elevationOf(point) === undefined)) {
+    return [];
+  }
+
+  return bandedRanges(coordinates, cumulativeMetres(coordinates));
+}
+
+/** The classification proper, for a caller that has already measured the route. */
+function bandedRanges(coordinates: Position[], distances: number[]): BandedRange[] {
+  const lastIndex = coordinates.length - 1;
+  const elevations = coordinates.map((point) => elevationOf(point) ?? 0);
+
+  const runs: BandedRange[] = [];
+  let behind = 0;
+  for (let index = 1; index <= lastIndex; index++) {
+    // The first point at least a full window back, or the start of the route.
+    // The route's opening segments are measured over what there is, which is the
+    // same shortfall the profile has at its own start.
+    while (
+      behind + 1 < index &&
+      (distances[index] ?? 0) - (distances[behind + 1] ?? 0) >= GRADIENT_WINDOW_METRES
+    ) {
+      behind++;
+    }
+    const run = (distances[index] ?? 0) - (distances[behind] ?? 0);
+    const rise = (elevations[index] ?? 0) - (elevations[behind] ?? 0);
+    const band = gradientBand(run > 0 ? (rise / run) * 100 : 0);
+
+    const current = runs[runs.length - 1];
+    if (current && current.band === band) {
+      current.endIndex = index - 1;
+
+      continue;
+    }
+    runs.push({ band, startIndex: index - 1, endIndex: index - 1 });
+  }
+
+  return merged(runs, distances);
+}
+
+/**
+ * Absorbs runs too short to be sustained into the run before them.
+ *
+ * Forwards in one pass, so a stipple of short runs collapses into the last band
+ * that earned its place rather than into whichever of them happened to be
+ * measured first. A short run at the very start has nothing to join and keeps
+ * its own band; it is the one place where a wobble can still show, and it is
+ * one run rather than a stipple.
+ */
+function merged(runs: BandedRange[], distances: number[]): BandedRange[] {
+  const kept: BandedRange[] = [];
+  for (const run of runs) {
+    const length = (distances[run.endIndex + 1] ?? 0) - (distances[run.startIndex] ?? 0);
+    const previous = kept[kept.length - 1];
+    if (previous && length < MIN_BAND_METRES) {
+      previous.endIndex = run.endIndex;
+
+      continue;
+    }
+    if (previous && previous.band === run.band) {
+      previous.endIndex = run.endIndex;
+
+      continue;
+    }
+    kept.push({ ...run });
+  }
+
+  return kept;
+}
+
+/**
+ * The band covering each of a list of ascending distances along the route.
+ *
+ * One cursor walks both lists, because the runs cover the route end to end in
+ * order and the distances asked about are the samples of a profile, which do
+ * too. A distance sitting exactly on a boundary belongs to the run that ends
+ * there, which is also how the run drawn over it is cut.
+ */
+function bandsAt(ranges: readonly BandedRange[], distances: number[], targets: number[]): number[] {
+  const ends = ranges.map((range) => distances[range.endIndex + 1] ?? 0);
+  let cursor = 0;
+
+  return targets.map((target) => {
+    while (cursor < ends.length - 1 && (ends[cursor] ?? 0) < target) {
+      cursor++;
+    }
+
+    return ranges[cursor]?.band ?? 0;
+  });
+}
+
 interface PlacedSample {
   distanceMetres: number;
   elevationMetres: number;
@@ -205,6 +344,7 @@ interface PlacedSample {
 function profileBetween(
   coordinates: Position[],
   distances: number[],
+  ranges: readonly BandedRange[],
   totalDistanceMetres: number,
   startMetres: number,
   endMetres: number,
@@ -246,6 +386,14 @@ function profileBetween(
     });
   }
 
+  // Bands come from the stage's one classification rather than from these
+  // samples, so the class under a stretch of chart does not change with the
+  // spacing the chart was drawn at.
+  const bands = bandsAt(
+    ranges,
+    distances,
+    placed.map((sample) => sample.distanceMetres),
+  );
   const measured: ProfileSample[] = placed.map((sample, index) => {
     let behind = index;
     while (
@@ -259,7 +407,7 @@ function profileBetween(
     const rise = reference ? sample.elevationMetres - reference.elevationMetres : 0;
     const gradientPercent = run > 0 ? (rise / run) * 100 : 0;
 
-    return { ...sample, gradientPercent, band: gradientBand(gradientPercent) };
+    return { ...sample, gradientPercent, band: bands[index] ?? 0 };
   });
 
   const samples = measured.slice(leadCount);
@@ -279,7 +427,7 @@ function profileBetween(
 function measure(
   coordinates: Position[],
   sampleCount: number,
-): { distances: number[]; total: number } | null {
+): { distances: number[]; total: number; ranges: BandedRange[] } | null {
   if (sampleCount < 2) {
     return null;
   }
@@ -289,7 +437,7 @@ function measure(
   const distances = cumulativeMetres(coordinates);
   const total = distances[distances.length - 1] ?? 0;
 
-  return total > 0 ? { distances, total } : null;
+  return total > 0 ? { distances, total, ranges: bandedRanges(coordinates, distances) } : null;
 }
 
 /**
@@ -309,6 +457,7 @@ export function buildProfile(coordinates: Position[], sampleCount = 320): Profil
   return profileBetween(
     coordinates,
     measured.distances,
+    measured.ranges,
     measured.total,
     0,
     measured.total,
@@ -339,7 +488,15 @@ export function buildWindowedProfile(
   const start = Math.min(Math.max(window.startMetres, 0), measured.total);
   const end = Math.min(Math.max(window.endMetres, start), measured.total);
 
-  return profileBetween(coordinates, measured.distances, measured.total, start, end, sampleCount);
+  return profileBetween(
+    coordinates,
+    measured.distances,
+    measured.ranges,
+    measured.total,
+    start,
+    end,
+    sampleCount,
+  );
 }
 
 /**
@@ -388,56 +545,17 @@ export function sampleAt(profile: Profile, metres: number): ProfileSample | null
   };
 }
 
-/** A run of one band shorter than this is absorbed into its neighbour. */
-const MIN_RUN_SAMPLES = 3;
-
 /**
- * The band of each sample, with momentary flicker removed.
+ * The bands a stage has, gentlest first.
  *
- * Where a gradient hovers on a threshold it crosses back and forth every few
- * metres. Drawn literally that produces a barcode of alternating colour that
- * says nothing about the terrain — the bands are meant to show *sustained*
- * steepness, so a run too short to be sustained takes its neighbour's band.
- *
- * It lives beside the bands rather than in the chart that draws them, because
- * the key listing a stage's bands and the chart colouring them have to agree on
- * which bands the stage has: a band smoothed away in one and kept in the other
- * would be a legend entry with nothing to point at.
+ * What the key offers to pick out, read off the stage's one classification, so
+ * it offers no class the chart has nothing to light and does not reshuffle
+ * underneath the reader's hand when the chart is zoomed. A run too narrow to
+ * come out as a visible column at whole-route zoom still counts: the stage has
+ * that ground whether or not this many pixels can show it.
  */
-export function steadyBands(samples: ProfileSample[]): number[] {
-  const bands = samples.map((sample) => sample.band);
-
-  let start = 0;
-  for (let index = 1; index <= bands.length; index++) {
-    if (index < bands.length && bands[index] === bands[start]) {
-      continue;
-    }
-    if (index - start < MIN_RUN_SAMPLES) {
-      // A short run takes the preceding band where there is one, and otherwise
-      // the following one, so a brief opening run is smoothed like any other.
-      // A profile that is a single run has no neighbour and stands as it is.
-      const neighbour = start > 0 ? bands[start - 1] : bands[index];
-      if (neighbour !== undefined) {
-        for (let fill = start; fill < index; fill++) {
-          bands[fill] = neighbour;
-        }
-      }
-    }
-    start = index;
-  }
-
-  return bands;
-}
-
-/**
- * The bands a profile actually has, gentlest first.
- *
- * What the key offers to pick out, so it never offers a class this stage has
- * none of. Taken after smoothing, so it lists what is drawn rather than what a
- * wobble in the terrain model touched for twenty metres.
- */
-export function presentBands(profile: Profile): number[] {
-  const present = new Set(steadyBands(profile.samples));
+export function presentBands(ranges: readonly BandedRange[]): number[] {
+  const present = new Set(ranges.map((range) => range.band));
 
   return GRADIENT_BANDS.map((_, index) => index).filter((band) => present.has(band));
 }

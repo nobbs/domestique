@@ -17,7 +17,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import type { Highlight } from "../lib/highlight";
 import { gapsOutside, highlightLabel } from "../lib/highlight";
 import type { DistanceWindow, Profile, ProfileSample } from "../lib/profile";
-import { niceStep, sampleAt, steadyBands, ticksFor } from "../lib/profile";
+import { niceStep, sampleAt, ticksFor } from "../lib/profile";
 import { MIN_DRAG_PIXELS, spanBetween, widened } from "../lib/selection";
 import type { SurfaceSummary } from "../lib/surface";
 import { SURFACE_STYLES, surfaceBandsWithin, surfaceKindAt } from "../lib/surface";
@@ -135,7 +135,9 @@ function runsOf(
   y: (metres: number) => number,
   plotHeight: number,
 ): Run[] {
-  const bands = steadyBands(samples);
+  // The samples carry the stage's classification; the chart does not re-derive
+  // one from its own spacing, or it could paint a band the key has no chip for.
+  const bands = samples.map((sample) => sample.band);
   const runs: Run[] = [];
   let start = 0;
 
