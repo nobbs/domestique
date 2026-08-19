@@ -205,6 +205,14 @@ no availability, because a deploying host is pinned to a digest that keeps
 running. The fix for such a break changes a container input by construction, so
 it is proved before it merges.
 
+The commit an image was built from is a build input, not something the build
+looks up: the context excludes `.git`, so nothing inside it can work the revision
+out. CI passes the commit it is running for as a `SOURCE_REVISION` build argument
+and the Go link step compiles it in, which is what lets the running service name
+its own source. The pull-request build passes it too, so the argument the
+published build depends on is exercised by the build that proves it. A build
+without it — every local one — reports no revision rather than a guessed one.
+
 A separate code-scanning workflow analyses Go and GitHub Actions changes.
 It also uses immutable action pins and least privilege. Repository-native
 secret scanning is enabled where available, but it is a defence in depth:

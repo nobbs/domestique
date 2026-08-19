@@ -187,6 +187,57 @@ describe("parseStatus", () => {
     expect(status.sync.lastCompletedAt).toBe("2026-08-17T08:00:00Z");
   });
 
+  it("reads the build the service is running", () => {
+    const revision = "0123456789abcdef0123456789abcdef01234567";
+    const status = parseStatus({
+      ready: true,
+      targets: [],
+      build: { revision, image_digest: `sha256:${"cd".repeat(32)}` },
+      sync: {
+        state: "idle",
+        source_stages: 0,
+        created: 0,
+        updated: 0,
+        deleted: 0,
+        schedule: { source: true, targets: true },
+        phases: {},
+        surface: { classified: 0, total: 0 },
+      },
+    });
+
+    expect(status.build?.revision).toBe(revision);
+    expect(status.build?.imageDigest).toBe(`sha256:${"cd".repeat(32)}`);
+  });
+
+  // A build stamp is not worth the status page: the service drops a value it
+  // would not stand behind, so an absent or identity-less group is read as "not
+  // built by CI" rather than as a broken contract.
+  it("treats a missing or identity-less build as no build", () => {
+    const withBuild = (build: unknown) => ({
+      ready: true,
+      targets: [],
+      ...(build === undefined ? {} : { build }),
+      sync: {
+        state: "idle",
+        source_stages: 0,
+        created: 0,
+        updated: 0,
+        deleted: 0,
+        schedule: { source: true, targets: true },
+        phases: {},
+        surface: { classified: 0, total: 0 },
+      },
+    });
+
+    expect(parseStatus(withBuild(undefined)).build).toBeUndefined();
+    expect(parseStatus(withBuild(null)).build).toBeUndefined();
+    expect(parseStatus(withBuild({})).build).toBeUndefined();
+    expect(parseStatus(withBuild({ revision: "" })).build).toBeUndefined();
+    expect(
+      parseStatus(withBuild({ image_digest: `sha256:${"cd".repeat(32)}` })).build,
+    ).toBeUndefined();
+  });
+
   it("tolerates a run that has never completed", () => {
     const status = parseStatus({
       ready: false,

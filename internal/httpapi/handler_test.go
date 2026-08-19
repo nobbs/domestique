@@ -429,6 +429,110 @@ func TestHandlerAcceptsASourceBaseURLHostedUnderAPath(t *testing.T) {
 	}
 }
 
+func TestHandlerNamesTheBuildItIsRunning(t *testing.T) {
+	revision := strings.Repeat("ab", 20)
+	digest := "sha256:" + strings.Repeat("cd", 32)
+	handler := newHandlerWithBuild(t, revision, digest)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/status"))
+	var view struct {
+		Build *struct {
+			Revision string `json:"revision"`
+			//nolint:tagliatelle // Mirrors the wire field the page reads.
+			ImageDigest string `json:"image_digest"`
+		} `json:"build"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &view); err != nil {
+		t.Fatalf("decoding status body: %v", err)
+	}
+	if view.Build == nil {
+		t.Fatalf("status body = %q, want a build group", response.Body.String())
+	}
+	if got, want := view.Build.Revision, revision; got != want {
+		t.Errorf("revision = %q, want %q", got, want)
+	}
+	if got, want := view.Build.ImageDigest, digest; got != want {
+		t.Errorf("image digest = %q, want %q", got, want)
+	}
+}
+
+func TestHandlerSaysNothingAboutAnUninjectedBuild(t *testing.T) {
+	handler := newHandlerWithBuild(t, "", "")
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/status"))
+	// Absent rather than an empty group: that is how the page tells a local
+	// development process from a deployed one, instead of offering a link to a
+	// commit nobody can look up.
+	if got := response.Body.String(); strings.Contains(got, "\"build\"") {
+		t.Errorf("status body = %q, want no build group", got)
+	}
+}
+
+func TestHandlerRefusesToPublishABuildStampThatIsNotOne(t *testing.T) {
+	digest := "sha256:" + strings.Repeat("cd", 32)
+
+	// Dropped rather than served: a truncated or wrong revision becomes a link
+	// to nowhere in a browser, and a tag cannot answer which image is running.
+	for _, revision := range []string{
+		"0123456",
+		strings.Repeat("ab", 20) + "c",
+		strings.ToUpper(strings.Repeat("ab", 20)),
+		"refs/heads/main",
+	} {
+		handler := newHandlerWithBuild(t, revision, digest)
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/status"))
+		if got := response.Body.String(); strings.Contains(got, "\"build\"") {
+			t.Errorf("status body for revision %q = %q, want no build group", revision, got)
+		}
+	}
+
+	for _, value := range []string{
+		"latest",
+		"sha-0123456",
+		"ghcr.io/nobbs/domestique@" + digest,
+		"sha256:" + strings.Repeat("cd", 31),
+		strings.ToUpper(digest),
+	} {
+		handler := newHandlerWithBuild(t, strings.Repeat("ab", 20), value)
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/status"))
+		body := response.Body.String()
+		if strings.Contains(body, "image_digest") {
+			t.Errorf("status body for image %q = %q, want no image digest", value, body)
+		}
+		// The revision still stands on its own: one unusable value must not cost
+		// the operator the other.
+		if !strings.Contains(body, strings.Repeat("ab", 20)) {
+			t.Errorf("status body for image %q = %q, want the revision kept", value, body)
+		}
+	}
+}
+
+func newHandlerWithBuild(t *testing.T, revision, imageDigest string) *Handler {
+	t.Helper()
+
+	handler, err := New(
+		&Options{
+			TargetIDs:        []string{"rider-a"},
+			TileStyleURL:     testTileStyleURL,
+			BuildRevision:    revision,
+			BuildImageDigest: imageDigest,
+			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
+			AccessEmail:      testAccessEmail,
+			BrowserOriginURL: testBrowserOriginURL,
+		},
+		&fakeOAuth{}, &fakeState{}, &fakeSyncTrigger{}, &fakeAssets{},
+	)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	return handler
+}
+
 func TestHandlerSetsPolicyAndCacheHeaders(t *testing.T) {
 	handler := newTestHandler(t)
 

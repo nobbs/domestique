@@ -62,6 +62,12 @@ summary prints the exact immutable reference; record that complete digest in
 `/srv/domestique/.env` as `DOMESTIQUE_IMAGE`. Never use a mutable tag such as
 `latest`.
 
+The compose file also passes `DOMESTIQUE_IMAGE` into the container, so the
+running service can report which image it is on its status page beside the commit
+it was built from. Only the digest is read from it; the registry and repository
+stay on the host. Nothing breaks without it — the service then names the commit
+alone.
+
 The package is private, so the Pi needs a package-read credential. The container
 registry accepts only a personal access token (classic); create one whose sole
 scope is `read:packages`, then:

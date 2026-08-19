@@ -250,9 +250,14 @@ jobs:
       # exporting needs `packages: write`, and a pull request must never hold
       # the permission that writes what a host deploys. A cache miss is a
       # warning rather than a failure, so a first run needs no bootstrapping.
+      # SOURCE_REVISION is passed here too, so the argument the published build
+      # depends on is exercised by the pull-request build that proves it.
       - name: Build production image
+        env:
+          SOURCE_REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
         run: >-
           docker buildx build --platform linux/amd64,linux/arm64
+          --build-arg "SOURCE_REVISION=${SOURCE_REVISION}"
           --cache-from "type=registry,ref=${IMAGE}:buildcache"
           --output type=cacheonly --tag domestique:ci .
 
@@ -353,6 +358,11 @@ jobs:
         with:
           context: .
           platforms: linux/amd64,linux/arm64
+          # The commit is a build input rather than something the build can look
+          # up: .dockerignore excludes .git, so this is the only trusted source
+          # of the revision the running service reports.
+          build-args: |
+            SOURCE_REVISION=${{ github.sha }}
           push: true
           provenance: mode=max
           sbom: true

@@ -1,6 +1,11 @@
 services:
   domestique:
     image: "${DOMESTIQUE_IMAGE:?set an immutable GHCR image digest in .env}"
+    # The same pinned reference the image line already uses, so the running
+    # service can report which image it is. Only the digest is read from it;
+    # the registry and repository in front of it never leave the host.
+    environment:
+      DOMESTIQUE_IMAGE: "${DOMESTIQUE_IMAGE}"
     restart: unless-stopped
     user: "65532:65532"
     read_only: true
