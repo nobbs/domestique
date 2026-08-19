@@ -178,8 +178,13 @@ ui-test:
 
 # Downloads the browser the whole-page suite runs in. Separate from running the
 # suite so that a failure names which of the two went wrong, and so a contributor
-# can pay the download once. PLAYWRIGHT_INSTALL_FLAGS is how CI adds --with-deps,
-# which also installs the browser's system libraries and needs root.
+# can pay the download once.
+#
+# PLAYWRIGHT_INSTALL_FLAGS is the escape hatch for a host that needs --with-deps,
+# which installs the browser's system libraries and needs root. CI deliberately
+# does not pass it: on ubuntu-24.04 every library Chromium links is already on
+# the image, so --with-deps adds nothing but fonts, off an apt mirror that has
+# taken over five minutes to serve them. Reach for it on a bare container.
 #
 # It installs the dependency tree first so that it can be the first UI target a
 # job runs, which is what the Coverage job needs: the browser has to be there

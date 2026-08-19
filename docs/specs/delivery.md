@@ -310,6 +310,15 @@ the routine loop. They run in `make check` and in the CI UI job, which is where
 they gate a merge. A machine that cannot install a browser can still pass the
 routine loop; it cannot claim the full gate.
 
+CI installs the browser alone, without Playwright's `--with-deps`. The hosted
+runner image already carries every shared library Chromium links, so on that
+image the flag adds nothing but CJK, Thai and Cyrillic font packages: the
+interface is Latin, and the suite's basemap names no glyph source, so nothing it
+renders needs them. Nor can their absence move a comparison, because the
+appearance checks compare a page against itself within one run rather than
+against a stored image. `PLAYWRIGHT_INSTALL_FLAGS` remains the way to pass the
+flag on a host that does need it, such as a bare container.
+
 The suite renders the map but does not judge it. Looking at a map change remains
 a human act, and a change handed over without one is reported as such.
 
