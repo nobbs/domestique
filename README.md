@@ -49,9 +49,11 @@ The image is not signed; the [delivery specification](docs/specs/delivery.md)
 states why and what stands in its place. Its base images are Docker Hardened
 Images, so *building* it requires `docker login dhi.io`; deploying it does not,
 because a host pulls rather than builds.
-The host owns the private boundary: Docker publishes only `127.0.0.1:8080`,
-while host-level Tailscale Serve provides HTTPS and is the origin a Cloudflare
-Tunnel dials by Tailscale Service name. Tailscale does not run in the image.
+The host owns the private boundary: Docker publishes only `127.0.0.1:8080` and
+the readiness probe's own `127.0.0.1:8081`, while host-level Tailscale Serve
+provides HTTPS for the first of those and is the origin a Cloudflare Tunnel dials
+by Tailscale Service name. Readiness is never served through it, so it stays a
+host-local health check rather than an endpoint on the public surface. Tailscale does not run in the image.
 
 The [Linux VM guide](docs/hetzner.md) covers the long-running host. The
 [Cloudflare Access guide](docs/cloudflare-access.md) covers how the single

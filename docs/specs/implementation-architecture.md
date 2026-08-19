@@ -40,6 +40,7 @@ private to this service.
 │   ├── oauth/                      Wahoo OAuth use case and its interfaces
 │   ├── schedule/                   delayed-start and hourly execution
 │   ├── httpapi/                    Tailnet-gated handlers and JSON mapping
+│   ├── readiness/                  loopback readiness probe, local state only
 │   ├── elevation/                  device-export elevation normalization
 │   ├── surface/                    OSM surface classification and snapping
 │   ├── veloplanner/                VeloPlanner HTTP source adapter
@@ -72,6 +73,7 @@ owns a distinct responsibility in this tree.
 | oauth | one-time callback state, target onboarding, duplicate-account rejection | HTTP routing, SQL queries, Wahoo URL formatting |
 | schedule | startup delay, hourly cadence, no-overlap guard, cancellation | sync decisions or notification content |
 | httpapi | Tailnet identity gate, routing, request parsing, JSON status and error mapping, response security and cache headers | OAuth exchange, sync logic, or how the UI is built |
+| readiness | the loopback readiness probe: whether local configuration and state are usable | any upstream call, identity, routing of the served surface, or authorisation state |
 | webui | the embedded browser bundle and serving it; the TypeScript application | HTTP routing, identity, or any knowledge of persistence |
 | elevation | sampling and median-filtering the exported elevation profile | source fetching, storage, FIT bytes |
 | surface | OSM surface and tracktype classification, Overpass querying, snapping a stage to the ways under it, caching policy | SQL, HTTP routing, what the UI draws |
@@ -185,6 +187,7 @@ flowchart LR
     Schedule["schedule"] --> Sync
 
     Main --> WebUI["webui"]
+    Main --> Readiness["readiness"]
 
     Sync --> Route["route"]
 
@@ -199,8 +202,10 @@ flowchart LR
 ~~~
 
 Only main imports an application use case and its concrete adapters together.
-No adapter imports sync, oauth, schedule, or httpapi. This keeps dependency
-arrows one-way and prevents adapter-to-adapter coupling.
+The readiness probe has one dependency, the local state it reads, so nothing it
+is given could reach a provider. No adapter imports sync, oauth, schedule,
+httpapi, or readiness. This keeps dependency arrows one-way and prevents
+adapter-to-adapter coupling.
 
 ## Composition and lifecycle
 
@@ -247,6 +252,7 @@ Tests live with the package under test:
 | veloplanner and wahoo | httptest servers with malformed, rate-limit, and retry cases |
 | sqlite | temporary database and migration/recovery tests |
 | httpapi | handler tests for identity on every route, JSON shape, safe errors, and the security and cache headers |
+| readiness | handler tests for the ready, unreadable-state, and incomplete-state answers, and container tests that the image, compose files, and deploy gate still name the probe's own port |
 | webui | serving the embedded bundle, and reporting an unbuilt one |
 | webui/app | Vitest and Testing Library over reusable components and the API client's parsing and error paths |
 | schedule | deterministic clock or trigger seam, no wall-clock sleeping |

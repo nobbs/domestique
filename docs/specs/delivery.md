@@ -262,7 +262,11 @@ The runtime image:
   the selected runtime needs one.
 
 The host runs the container with a loopback-only publication such as
-`127.0.0.1:8080:8080`. The host's Tailscale process owns `tailscale serve`
+`127.0.0.1:8080:8080`, plus the readiness listener on the same terms
+(`127.0.0.1:8081:8081`). Both are loopback-only; only the served one is given to
+`tailscale serve`, which is what keeps the readiness probe available to
+host-local health checking and unreachable from the authenticated public
+surface. The host's Tailscale process owns `tailscale serve`
 and the identity header boundary; Tailscale is not embedded in the application
 container. The compose file, static configuration, Docker secret files, and
 pinned image digest are operator-managed deployment state outside Git.
@@ -307,7 +311,8 @@ The publish job:
 The deployment that follows it hands the Tailnet host that same index digest and
 nothing else. The host composes the reference from the repository it is
 configured with, pins it, restarts the service, and restores the digest it was
-running if the new one fails a health check — so an automated deployment that
+running if the new one fails the health gate — which asks both probes: that the
+new image answers HTTP, and that it can read the state it was configured with — so an automated deployment that
 goes wrong leaves the service that was already running, and CI reports the
 failure. Automation therefore consumes exactly what an operator would: an
 immutable digest read from the run that produced it. It has no path to a mutable

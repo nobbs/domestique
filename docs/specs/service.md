@@ -89,8 +89,12 @@ change to that boundary requires revising this document first.
 Docker publishes the service port only to the host's `127.0.0.1`; the
 container has no public host port. The Tailnet host exposes it privately through
 `tailscale serve`; it is never directly published to the Internet. All service
-endpoints require the configured sole identity, apart from a loopback-only
-liveness probe if one is needed by Docker. The HTTP server trusts Tailnet
+endpoints require the configured sole identity, apart from two loopback probes:
+a liveness probe on the served listener, and a readiness probe on a second
+listener of its own. Tailscale Serve and the tunnel front the served listener
+only, so the readiness listener is reachable from host-local health checking and
+not from the authenticated public surface. It must never be given to
+`tailscale serve`. The HTTP server trusts Tailnet
 identity headers only from that local proxy.
 
 The service is single-tenant, and remains so. One person is authorised, and
@@ -224,7 +228,14 @@ decided. Neither switch stops a run already in flight.
 
 The read-only JSON surface is deliberately small:
 
-- `GET /healthz` reports local process health.
+- `GET /healthz` reports local process health, on the served listener.
+- `GET /readyz`, on the readiness listener alone, reports whether local
+  configuration and the state the process needs are usable. It verifies nothing
+  else: no VeloPlanner, Wahoo, Pushover, Cloudflare, Tailscale, or tile provider
+  call, and no judgement about whether a target has completed its one-time
+  authorisation, because a slot waiting for a browser visit is a correctly
+  running deployment. It reports a fixed category when it is not ready, never a
+  path, key, or upstream detail.
 - `GET /v1/status` reports current configuration readiness, last sync outcome,
   aggregate counts, target authorisation state, the two schedule switches, the
   last run of each half, and how much of the library carries a current surface

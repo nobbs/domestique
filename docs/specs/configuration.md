@@ -41,6 +41,7 @@ The following is safe to commit:
 ```toml
 [http]
 listen_address = ":8080"
+readiness_address = ":8081"
 
 [access.cloudflare]
 team_domain = "yourteam.cloudflareaccess.com"
@@ -177,6 +178,11 @@ application dependency.
 - `http.listen_address` is required. Docker maps the container port to the
   Tailnet host's `127.0.0.1` only; the application must not use the address itself as
   evidence of Tailnet identity.
+- `http.readiness_address` is optional and defaults to `:8081`. It is the second
+  listener, and it serves the readiness probe alone. It is validated on the same
+  terms as `http.listen_address` and must not name its port: sharing one would
+  put readiness behind Tailscale Serve and the tunnel, which is the surface the
+  probe exists to stay off. An existing configuration file needs no change.
 - `access.cloudflare` is required in full: `team_domain`, `application_aud`, and
   `allowed_email` must all be present. It is the only gate the service has, so a
   missing or partly filled section is a startup error rather than a service that

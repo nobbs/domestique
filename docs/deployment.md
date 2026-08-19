@@ -114,7 +114,16 @@ Copy [`compose.example.yml`](compose.example.yml) to
 ```sh
 docker compose --env-file .env -f compose.yml up -d
 curl --fail http://127.0.0.1:8080/healthz
+curl --fail http://127.0.0.1:8081/readyz
 ```
+
+The two probes answer different questions. `/healthz`, on the served port, says
+the process is answering HTTP. `/readyz`, on its own loopback port, says it can
+read the state it was configured with — it makes no call to VeloPlanner, Wahoo,
+Pushover, Cloudflare, Tailscale, or the tile provider, and it stays ready while
+a target still waits for its one-time authorisation. Only the served port is
+given to `tailscale serve`, so readiness never becomes an endpoint on the
+authenticated public surface.
 
 The named volume is initialized from the image with the unprivileged runtime
 ownership. If replacing it with a host bind mount, make the target writable by

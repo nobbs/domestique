@@ -24,8 +24,15 @@ import (
 
 const (
 	defaultConfigFile = "/etc/domestique/config.toml"
-	envPrefix         = "DOMESTIQUE_"
-	configFileEnv     = envPrefix + "CONFIG_FILE"
+
+	// defaultReadinessAddress is the readiness listener an operator gets without
+	// saying anything. It is a second port rather than a second path, so a host
+	// that publishes only the served one has no way to reach readiness through
+	// the front door — and an existing deployment keeps working unchanged,
+	// because nothing has to be added to its configuration file.
+	defaultReadinessAddress = ":8081"
+	envPrefix               = "DOMESTIQUE_"
+	configFileEnv           = envPrefix + "CONFIG_FILE"
 	// The image the deploying host pinned. Named for what the host already calls
 	// it, so the compose passthrough needs no translation table.
 	imageReferenceEnv = envPrefix + "IMAGE"
@@ -69,9 +76,17 @@ type Settings struct {
 	State         State
 }
 
-// HTTP configures the service listener.
+// HTTP configures the service listeners.
 type HTTP struct {
 	ListenAddress string
+
+	// ReadinessAddress is the second, separate listener that answers the
+	// readiness probe. It exists apart from ListenAddress because the two
+	// answer different callers: the Tailnet host publishes and serves the first
+	// one, and only a local health check reaches the second. Keeping readiness
+	// off the served listener is what keeps it off the authenticated public
+	// surface, so the two must never be the same port.
+	ReadinessAddress string
 }
 
 // Access identifies the sole user allowed to reach the service.
@@ -242,7 +257,8 @@ type rawSettings struct {
 }
 
 type rawHTTP struct {
-	ListenAddress string `koanf:"listen_address"`
+	ListenAddress    string `koanf:"listen_address"`
+	ReadinessAddress string `koanf:"readiness_address"`
 }
 
 type rawWebUI struct {
@@ -488,6 +504,9 @@ func build(raw *rawSettings) (*Settings, error) {
 	if err := validateListenAddress(raw.HTTP.ListenAddress); err != nil {
 		return nil, err
 	}
+	if err := validateReadinessAddress(raw.HTTP.ReadinessAddress, raw.HTTP.ListenAddress); err != nil {
+		return nil, err
+	}
 	if err := validateCloudflareAccess(&raw.Access.Cloudflare); err != nil {
 		return nil, err
 	}
@@ -590,7 +609,8 @@ func build(raw *rawSettings) (*Settings, error) {
 
 	return &Settings{
 		HTTP: HTTP{
-			ListenAddress: raw.HTTP.ListenAddress,
+			ListenAddress:    raw.HTTP.ListenAddress,
+			ReadinessAddress: strings.TrimSpace(raw.HTTP.ReadinessAddress),
 		},
 		Access: Access{
 			Cloudflare: CloudflareAccess{
@@ -646,6 +666,26 @@ func validateListenAddress(address string) error {
 	portNumber, err := strconv.ParseUint(port, 10, 16)
 	if err != nil || portNumber == 0 {
 		return errors.New("http.listen_address must contain a valid port")
+	}
+
+	return nil
+}
+
+// validateReadinessAddress accepts a listener for the readiness probe on the
+// same terms as the served one, and additionally refuses the served port itself.
+// Sharing it would put readiness behind Tailscale Serve and the tunnel, which is
+// exactly the surface the probe is supposed to stay off.
+func validateReadinessAddress(address, listenAddress string) error {
+	host, port, err := net.SplitHostPort(strings.TrimSpace(address))
+	if err != nil || host != "" {
+		return errors.New("http.readiness_address must be a loopback-proxy listener such as :8081")
+	}
+	portNumber, err := strconv.ParseUint(port, 10, 16)
+	if err != nil || portNumber == 0 {
+		return errors.New("http.readiness_address must contain a valid port")
+	}
+	if _, listenPort, listenErr := net.SplitHostPort(listenAddress); listenErr == nil && listenPort == port {
+		return errors.New("http.readiness_address must not be http.listen_address")
 	}
 
 	return nil
@@ -853,6 +893,9 @@ func trimTerminalLineBreak(value string) string {
 
 func configurationDefaults() map[string]any {
 	return map[string]any{
+		"http": map[string]any{
+			"readiness_address": defaultReadinessAddress,
+		},
 		"sync": map[string]any{
 			"empty_source_deletion": string(EmptySourceDeletionDeny),
 		},

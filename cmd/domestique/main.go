@@ -20,6 +20,7 @@ import (
 	"github.com/nobbs/domestique/internal/httpapi"
 	"github.com/nobbs/domestique/internal/oauth"
 	"github.com/nobbs/domestique/internal/pushover"
+	"github.com/nobbs/domestique/internal/readiness"
 	"github.com/nobbs/domestique/internal/schedule"
 	"github.com/nobbs/domestique/internal/sqlite"
 	"github.com/nobbs/domestique/internal/surface"
@@ -183,6 +184,15 @@ func run(ctx context.Context) error {
 		return fmt.Errorf("creating HTTP handler: %w", err)
 	}
 
+	// Readiness answers on its own listener, with only local state behind it.
+	// The served listener is what Tailscale Serve and the tunnel front, so a
+	// probe on a second port is how readiness stays off the authenticated public
+	// surface without a second gate to get wrong.
+	readinessHandler, err := readiness.New(targetIDs, store)
+	if err != nil {
+		return fmt.Errorf("creating readiness handler: %w", err)
+	}
+
 	server := &http.Server{
 		Addr:              settings.HTTP.ListenAddress,
 		Handler:           handler,
@@ -192,7 +202,16 @@ func run(ctx context.Context) error {
 		ReadTimeout:       httpReadTimeout,
 		WriteTimeout:      httpWriteTimeout,
 	}
-	return serve(runCtx, cancel, server, scheduler, reporter)
+	readinessServer := &http.Server{
+		Addr:              settings.HTTP.ReadinessAddress,
+		Handler:           readinessHandler,
+		IdleTimeout:       httpIdleTimeout,
+		MaxHeaderBytes:    httpMaximumHeaderBytes,
+		ReadHeaderTimeout: httpReadHeaderTimeout,
+		ReadTimeout:       httpReadTimeout,
+		WriteTimeout:      httpWriteTimeout,
+	}
+	return serve(runCtx, cancel, server, readinessServer, scheduler, reporter)
 }
 
 type schedulerRunner interface {
@@ -203,13 +222,24 @@ type manualSyncWaiter interface {
 	Wait()
 }
 
-// serve runs HTTP and scheduled synchronization under one cancellation scope.
-// It waits for a cancelled synchronization run before its caller can close the
-// durable state that the run may still be using.
-func serve(ctx context.Context, cancel context.CancelFunc, server *http.Server, scheduler schedulerRunner, manualSync manualSyncWaiter) error {
+// serve runs both HTTP listeners and scheduled synchronization under one
+// cancellation scope. It waits for a cancelled synchronization run before its
+// caller can close the durable state that the run may still be using.
+//
+// Either listener failing stops the process. A readiness probe that cannot bind
+// is a deployment whose health checking silently answers nothing, which is worse
+// than a service that refuses to start and says why.
+func serve(
+	ctx context.Context,
+	cancel context.CancelFunc,
+	server, readinessServer *http.Server,
+	scheduler schedulerRunner,
+	manualSync manualSyncWaiter,
+) error {
 	defer cancel()
-	serverErrors := make(chan error, 1)
+	serverErrors := make(chan error, 2)
 	go func() { serverErrors <- server.ListenAndServe() }()
+	go func() { serverErrors <- readinessServer.ListenAndServe() }()
 	schedulerDone := make(chan struct{})
 	go func() {
 		defer close(schedulerDone)
@@ -227,7 +257,7 @@ func serve(ctx context.Context, cancel context.CancelFunc, server *http.Server, 
 	cancel()
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer shutdownCancel()
-	shutdownErr := server.Shutdown(shutdownCtx)
+	shutdownErr := errors.Join(server.Shutdown(shutdownCtx), readinessServer.Shutdown(shutdownCtx))
 	<-schedulerDone
 	manualSync.Wait()
 	if shutdownErr != nil {

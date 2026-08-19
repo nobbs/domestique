@@ -140,11 +140,18 @@ it from the deployment directory:
 ```sh
 docker compose --env-file .env up -d
 curl --fail http://127.0.0.1:8080/healthz
-ss -tlnp | grep 8080
+curl --fail http://127.0.0.1:8081/readyz
+ss -tlnp | grep -E '8080|8081'
 ```
 
-The last command must show `127.0.0.1:8080` and nothing bound to a public
-address. The service writes no log line on a healthy start — it logs only
+The readiness probe is the second port, published to loopback like the first and
+deliberately never given to `tailscale serve`: it says the service can read the
+state it was configured with, while `/healthz` says only that the process
+answers HTTP. Readiness contacts nothing outside this host, and a target still
+waiting for its one-time authorisation does not make it unready.
+
+The last command must show `127.0.0.1:8080` and `127.0.0.1:8081`, and nothing
+bound to a public address. The service writes no log line on a healthy start — it logs only
 errors — so a running container with no restarts and a passing health probe is
 the expected quiet result.
 
@@ -218,8 +225,9 @@ sudo /usr/local/lib/domestique/domestique-deploy.sh sha256:<digest>
 That script is [`deploy/domestique-deploy.sh`](../deploy/domestique-deploy.sh)
 in this repository. It pulls the digest, records the one being replaced, pins
 the new one in `.env`, restarts only the `domestique` service, and waits for
-`/healthz`. If the new image does not answer within a minute, or publishes
-anything other than a loopback port, the script restores the previous digest,
+`/healthz` and then `/readyz`. If the new image does not answer within a minute,
+cannot read its state, or publishes anything other than a loopback port, the
+script restores the previous digest,
 restarts, and sends a Pushover alert; the CI job fails either way. Nothing in
 any path removes the state volume.
 
