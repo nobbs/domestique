@@ -11,11 +11,13 @@
 # Test binary, built with `go test -c`
 *.test
 
-# Code coverage profiles and other test artifacts
+# Code coverage profiles and other test artifacts. `make coverage` writes the
+# Go profile and the UI LCOV report under /.coverage; no report is committed.
 *.out
 coverage.*
 *.coverprofile
 profile.cov
+/.coverage/
 
 # Dependency directories (remove the comment below to include it)
 # vendor/

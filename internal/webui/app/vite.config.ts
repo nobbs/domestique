@@ -62,5 +62,26 @@ export default defineConfig({
     setupFiles: ["./src/test/setup.ts"],
     css: false,
     restoreMocks: true,
+    coverage: {
+      provider: "v8",
+      // The repository collects Go and UI coverage side by side, so both
+      // reports land under one gitignored directory at the repository root.
+      reportsDirectory: "../../../.coverage/ui",
+      reporter: ["text-summary", "lcov"],
+      // Measure the whole application, not only the files a test happened to
+      // import: an untested module is the number's point, not an omission.
+      // Vitest reports every file this matches, covered or not.
+      include: ["src/**/*.{ts,tsx}"],
+      exclude: [
+        // Test files and their harness are the measurement, not the subject.
+        "src/**/*.test.{ts,tsx}",
+        "src/test/**",
+        // Type-only declarations emit no runtime statement to cover.
+        "src/**/*.d.ts",
+        // The bootstrap mounts React onto a real document and does nothing
+        // else; a test of it would assert the framework, not this UI.
+        "src/main.tsx",
+      ],
+    },
   },
 });

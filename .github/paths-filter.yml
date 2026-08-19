@@ -32,6 +32,7 @@ go:
   - "go.mod"
   - "go.sum"
   - "cmd/**"
+  - "dev/**"
   - "internal/**"
 
 ui:

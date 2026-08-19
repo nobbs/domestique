@@ -46,6 +46,44 @@ cross-compilation, no image build, and no browser suite — that work belongs to
 in `prek.toml`. Keeping the hook to roughly a second is what keeps it worth
 leaving installed.
 
+## Coverage
+
+Coverage is a report here, not a gate: neither `quick`, nor `check`, nor GitHub
+Actions fails on a percentage. The number exists so that a change can be read
+with its untested parts visible.
+
+~~~sh
+mise exec -- make coverage
+~~~
+
+That writes a Go coverage profile to `.coverage/go.out` and the browser UI's
+LCOV report to `.coverage/ui/lcov.info`, and prints a summary for each. Nothing
+is committed — `/.coverage/` is gitignored. `make coverage-go` and
+`make coverage-ui` run one side alone.
+
+The Go profile is collected with `-coverpkg` over `./cmd/...` and
+`./internal/...`, so a function exercised only through another package's tests
+counts as covered rather than dead. The same flag makes the percentage `go test`
+prints on each of its own lines meaningless — that one is the fraction of the
+whole service one package's tests reached — so read the per-package summary
+printed after the run, which `dev/coveragesummary` produces from the merged
+profile.
+
+Four things are deliberately not measured:
+
+| Not measured | Why |
+| --- | --- |
+| `dev/` | Repository tooling rather than the service. It has its own tests, and they run in the normal suite. |
+| `src/**/*.test.{ts,tsx}` and `src/test/` | The tests and their harness are the measurement, not its subject. |
+| `src/**/*.d.ts` | Type-only declarations emit no runtime statement to reach. |
+| `src/main.tsx` | It mounts React onto a real document and does nothing else, so a test of it would assert the framework rather than this UI. |
+
+Everything else is measured, including code that no unit test can reach today.
+The map components need WebGL, and the page-level components are assembled
+rather than unit-tested, so both report low — which is the honest answer.
+Browser-level coverage for them is tracked as its own work; excluding them would
+hide a real gap behind a comfortable number.
+
 ## Contributions
 
 Keep changes focused, add regression tests for behavior changes, and avoid

@@ -69,6 +69,11 @@ passed.
 Tests run with `CGO_ENABLED=0` and `-shuffle=on`. They must stay deterministic
 under shuffling.
 
+`make coverage` writes a Go coverage profile to `.coverage/go.out` and the UI's
+LCOV report to `.coverage/ui/lcov.info`, and prints a per-package summary for
+each. It is not part of `make check` and nothing fails on a percentage; see
+[CONTRIBUTING.md](CONTRIBUTING.md) for what it measures and what it leaves out.
+
 **The browser UI** lives in `internal/webui/app` (TypeScript, React, Vite,
 MapLibre) and is compiled into the binary with `go:embed`, so `make build`
 depends on `make ui-build`. Use `make ui-dev` for hot reload — it proxies the API

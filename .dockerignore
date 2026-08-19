@@ -8,6 +8,7 @@ node_modules
 internal/webui/app/dist
 coverage.*
 *.coverprofile
+.coverage
 *.db
 *.db-shm
 *.db-wal
