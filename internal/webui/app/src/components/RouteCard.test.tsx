@@ -63,6 +63,20 @@ describe("RouteCard", () => {
     expect(screen.getByTitle("Steepest sustained gradient")).toHaveTextContent("—");
   });
 
+  it("names in words what each figure's symbol stands for", () => {
+    renderCard();
+
+    // The symbols carried their meaning in a tooltip, which a pointer can reach
+    // and a screen reader or a touch device cannot. Asserted through the link's
+    // accessible name so the words have to be in the document, not just in an
+    // attribute. The name is computed by flattening the card, which trims each
+    // element's own text, so the gap between a label and its figure is optional.
+    expect(screen.getByRole("link", { name: /Total climbing\s*620 m/ })).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: /Steepest sustained gradient\s*11%/ }),
+    ).toBeInTheDocument();
+  });
+
   it("renders whatever preview it is given", () => {
     renderCard();
 
