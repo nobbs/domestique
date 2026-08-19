@@ -126,7 +126,13 @@ cleanup() {
   fi
   "${DOCKER}" rm --force --volumes "${CONTAINER}" >/dev/null 2>&1 || true
 }
-trap cleanup EXIT INT TERM
+# Cleanup hangs off EXIT alone, so it runs once however this ends. A signal
+# turns into an exit rather than a handler that returns: a trap that only ran
+# cleanup would leave the script carrying on from wherever the signal landed,
+# against a container it had just removed.
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 image_field() {
   "${DOCKER}" image inspect --format "$1" "${IMAGE}"
