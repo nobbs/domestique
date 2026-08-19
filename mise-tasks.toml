@@ -313,7 +313,8 @@ run = "./dev/container-smoke.sh"
 # run the same work locally, in one command, when you want the answer earlier.
 #
 # Every step of a gate task — the ci-* groups, `check`, and `quick` — is a task
-# of its own, named in `depends`, and the gate task carries no `run` of its own.
+# of its own, named in `depends` (or `depends_post`, which counts the same way),
+# and the gate task carries no `run` of its own.
 # A command written inline on a gate task would still run as part of the gate
 # while being invisible to a dependency query, so `gate-check` rejects one.
 [ci-lint]
