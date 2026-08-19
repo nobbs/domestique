@@ -209,12 +209,14 @@ const MIN_BAND_METRES = GRADIENT_WINDOW_METRES;
 /**
  * The route as runs of one steepness band, in the order they are ridden.
  *
- * This is the stage's one steepness classification, and everything that speaks
- * about bands reads it: the key that lists them, the chart's columns, and the
- * lines the map paints. It bands the source coordinates rather than any
- * resampling of them, so which bands a stage has is a fact about the ground
- * instead of about how many samples a chart happened to ask for — a stage banded
- * at whole-route zoom is banded identically at two kilometres of it.
+ * The one rule for a stage's steepness, and everything that speaks about bands
+ * asks it: the key that lists them, the chart's columns, and the lines the map
+ * paints. It bands the source coordinates rather than any resampling of them, so
+ * which bands a stage has is a fact about the ground instead of about how many
+ * samples a chart happened to ask for — a stage banded at whole-route zoom is
+ * banded identically at two kilometres of it. Each caller runs it over the same
+ * coordinates and gets the same runs back; nothing here is cached, and nothing
+ * needs to be for the answers to agree.
  *
  * A segment is banded by the gradient measured back over
  * `GRADIENT_WINDOW_METRES`, never across the segment itself: source points can

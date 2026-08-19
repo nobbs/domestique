@@ -189,9 +189,11 @@ function StageView({
     setActiveMetres(null);
   }, []);
 
-  // The stage's steepness, classified once from the coordinates the service
-  // stored. The key lists the bands it found and the chart colours the runs it
-  // reports, so neither can name a band the other has nothing to show.
+  // The stage's steepness, classified from the coordinates the service stored
+  // rather than from any resampling of them. The key lists the bands it found and
+  // the chart colours the runs `buildProfile` reads from the same classifier, so
+  // neither can name a band the other has nothing to show. Held here so the key
+  // does not re-run the classification on every hover.
   const gradient = useMemo(() => gradientRanges(coordinates), [coordinates]);
 
   // A classification that snapped to nothing is left unpainted rather than drawn

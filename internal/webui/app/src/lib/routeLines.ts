@@ -8,9 +8,10 @@
  * and share no segment, because a gap would break the drawn route and an
  * overlap would paint one metre of it twice.
  *
- * Steepness itself is classified once, in `profile`, from the source
- * coordinates — so the colour under a stretch of route, the column under the
- * same stretch of chart, and the chip in the key all come from one pass. What is
+ * Steepness itself is classified in `profile`, from the source coordinates, and
+ * every caller here asks that one function for it — so the colour under a
+ * stretch of route, the column under the same stretch of chart, and the chip in
+ * the key are the same answer arrived at the same way, whoever asked. What is
  * left here is the cutting: the runs it reports are point indices, and a line
  * drawn through the profile's few hundred samples instead would cut every bend,
  * which shows as colour spilling out of the corners of the route drawn over it.
