@@ -3,12 +3,16 @@ package sqlite
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"math"
+	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -352,6 +356,97 @@ func TestStoreMigrationsAreIdempotent(t *testing.T) {
 	}
 	if got, want := version, len(schemaMigrations()); got != want {
 		t.Errorf("schema version = %d, want %d", got, want)
+	}
+}
+
+// The one guard that catches a migration inserted into shipped history.
+//
+// Every other test here builds its database from the list as it stands now, so a
+// list whose elements have been reordered still migrates cleanly from any prefix
+// of itself. A deployment cannot: it recorded a count against the old order, so
+// element N must still be the migration that shipped as N. The fingerprints in
+// testdata are that record. Appending a migration means appending one line;
+// changing a line means an already-applied migration has been rewritten, which
+// no deployment will ever re-run.
+func TestStoreMigrationHistoryIsAppendOnly(t *testing.T) {
+	recorded, err := os.ReadFile(filepath.Join("testdata", "schema-migrations.sha256"))
+	require.NoError(t, err)
+
+	want := strings.Fields(strings.TrimSpace(string(recorded)))
+	got := make([]string, 0, len(want))
+	for _, statements := range schemaMigrations() {
+		digest := sha256.Sum256([]byte(strings.Join(statements, "\n")))
+		got = append(got, hex.EncodeToString(digest[:]))
+	}
+
+	require.Len(t, got, len(want),
+		"a migration was added or removed; append its fingerprint to testdata/schema-migrations.sha256")
+	for index := range want {
+		assert.Equal(t, want[index], got[index],
+			"migration %d is not the one that shipped as %d", index+1, index+1)
+	}
+}
+
+// A deployment upgrades from whatever version it is on, and every version this
+// service has ever shipped is still out there in somebody's volume. Opening a
+// database at each earlier version is what proves the history is still
+// append-only: insert a migration rather than append one, and the deployment
+// that already applied the old numbering re-runs the migration that took its
+// place. That is a startup failure on exactly the databases carrying the
+// operator's data, and every other test here migrates an empty file and passes.
+func TestStoreUpgradesFromEveryEarlierVersion(t *testing.T) {
+	migrations := schemaMigrations()
+	for version := 1; version < len(migrations); version++ {
+		t.Run(fmt.Sprintf("version %d", version), func(t *testing.T) {
+			databasePath := filepath.Join(t.TempDir(), "state.db")
+			seedSchemaVersion(t, databasePath, version)
+
+			store, err := Open(t.Context(), databasePath, testKey(1))
+			require.NoError(t, err, "opening a database left at version %d", version)
+			t.Cleanup(func() {
+				assert.NoError(t, store.Close())
+			})
+
+			var applied int
+			require.NoError(t, store.database.QueryRowContext(
+				t.Context(),
+				"SELECT MAX(version) FROM schema_migrations",
+			).Scan(&applied))
+			assert.Equal(t, len(migrations), applied)
+		})
+	}
+}
+
+// seedSchemaVersion builds a database that has applied exactly the first
+// `version` migrations, as a deployment last started on that release would have.
+func seedSchemaVersion(t *testing.T, databasePath string, version int) {
+	t.Helper()
+
+	database, err := sql.Open(driverName, databasePath)
+	require.NoError(t, err)
+	defer func() {
+		assert.NoError(t, database.Close())
+	}()
+
+	_, err = database.ExecContext(t.Context(), `
+		CREATE TABLE schema_migrations (
+			version INTEGER PRIMARY KEY,
+			applied_at_unix INTEGER NOT NULL
+		)
+	`)
+	require.NoError(t, err)
+	for applied, statements := range schemaMigrations()[:version] {
+		for _, statement := range statements {
+			_, err = database.ExecContext(t.Context(), statement)
+			require.NoError(t, err, "applying migration %d", applied+1)
+		}
+		_, err = database.ExecContext(
+			t.Context(),
+			"INSERT INTO schema_migrations (version, applied_at_unix) VALUES (?, ?)",
+			applied+1,
+			time.Now().Unix(),
+		)
+		require.NoError(t, err)
 	}
 }
 
