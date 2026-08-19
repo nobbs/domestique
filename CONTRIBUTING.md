@@ -50,25 +50,49 @@ leaving installed.
 
 ## Coverage
 
-Coverage is a report here, not a gate: neither `quick`, nor `check`, nor GitHub
-Actions fails on a percentage. The number exists so that a change can be read
-with its untested parts visible.
+Nothing local fails on a percentage: neither `quick` nor `check` measures
+coverage, and `make coverage` is something you run to read a change with its
+untested parts visible. On a pull request, one number is a merge condition.
 
 CI measures both languages on every pull request and every push — including a
 documentation-only one — and publishes them to Codecov under two flags, `go` and
 `ui`, so that a shortfall names the language it came from.
 
-The statuses Codecov posts are informational: none of them fails on a
-percentage. Two of them, `codecov/patch/go` and `codecov/patch/ui`, are required
-by the branch ruleset, so what a merge waits for today is that the report
-*arrived*, not that it cleared a bar. That is why the coverage job carries no
-path filter: a commit that uploaded nothing would leave those two contexts
-never posted and the pull request blocked with nothing to un-block it.
+**The Go lines a pull request adds or changes must be covered at least as well
+as the base commit's Go already is.** That is `codecov/patch/go`: required by
+the branch ruleset, and no longer informational. There is no fixed percentage to
+clear, because the bar is whatever the tree already manages — which also means
+it rises as coverage improves. It reads only the diff, so deleting well-covered
+code or moving statements between packages cannot fail a pull request. A 1%
+threshold absorbs rounding, and a change with no measurable Go in it reports
+"Coverage not affected" and passes.
 
-The trade that comes with it: while Codecov is down, or for a pull request from
-a fork that has no upload token, the contexts do not arrive and the merge waits.
-Removing them from the ruleset is the escape hatch, and it is a repository
-settings change rather than a code one.
+One edge worth knowing. A branch forked from before coverage was published has a
+base commit with no report, so the patch status has nothing to compare against;
+and if that branch's tree also predates the coverage job, it uploads nothing
+itself, so the required contexts never arrive and the pull request blocks on
+their absence rather than on a number. Codecov is expected to pass a patch it
+cannot compare, but that has not been observed here and nothing depends on it.
+Rebasing onto current `main` answers both, and is worth doing before opening the
+pull request rather than after.
+
+`codecov/patch/ui` is required too, but stays informational: it has to arrive,
+and its number never fails. The UI measurement does not yet describe what the
+browser suite reaches — the Playwright run drives the map and the page-level
+components in real Chromium, but its coverage never enters the LCOV report
+uploaded here, so those components still read as untested. An enforced target on
+`ui` would fail every pull request that touches them, which would make the
+override below the normal route rather than the exception. Fixing that
+measurement is tracked as its own work, and flipping `ui` belongs to it. Both
+project statuses report trend and block nothing.
+
+Because both contexts are required to arrive, the coverage job carries no path
+filter: a commit that uploaded nothing would leave them never posted and the
+pull request blocked with nothing to un-block it. The trade that comes with it:
+while Codecov is down, or for a pull request from a fork that has no upload
+token, the contexts do not arrive and the merge waits. Removing them from the
+ruleset is the escape hatch, and it is a repository settings change rather than
+a code one.
 
 Locally:
 
@@ -104,29 +128,28 @@ rather than unit-tested, so both report low — which is the honest answer.
 Browser-level coverage for them is tracked as its own work; excluding them would
 hide a real gap behind a comfortable number.
 
-### Making coverage enforceable
+### When a change cannot clear the Go gate
 
-No number blocks a merge yet, deliberately: a gate switched on the same day the
-first report arrives cannot be told apart from a broken upload. The wiring is in
-place, so turning one on is a small edit rather than a redesign.
+Some changes legitimately cannot, and the gate is not a claim otherwise:
+generated code, a package only a live provider can exercise, a fix that has to
+ship before the test that pins it. What the gate asks is that this be a decision
+somebody made and wrote down.
 
-1. Choose what is measured. A **patch** target — the lines a change adds or
-   alters — is the one worth enforcing. A project-total target fails on the
-   legitimate deletion of well-covered code and on a refactor that moves
-   statements between packages, which teaches contributors to route around it
-   rather than to write a test.
-2. Drop `informational: true` from the status it should apply to in
-   `codecov.yml`. Each flag has its own project and patch status, so Go and the
-   UI can be enforced separately and at different levels.
-3. Make the verdict blocking. This step is already done: the branch ruleset
-   requires `codecov/patch/go` and `codecov/patch/ui` alongside `Required`, so
-   the moment either stops being informational its verdict decides a merge. The
-   `Required` job deliberately does not judge coverage itself — the verdict
-   comes from the app that measured it rather than from a step polling for it.
+The branch ruleset grants the Admin repository role a `pull_request` bypass. It
+permits merging a pull request whose required checks have not passed, and
+nothing else — direct push, force-push, and branch deletion stay closed. GitHub
+records the override on the pull request, which is the reason to use that
+mechanism rather than switching the status off for an afternoon.
 
-Whatever the rule ends up being, it needs an exception path and somewhere to
-record one. A gate with no legitimate override gets bypassed by an
-administrator merge instead, which is worse than no gate.
+The mechanism cannot ask why, and a ruleset cannot make a required check
+conditional on a label, so any label-driven exception would be decoration. Write
+the reason in the pull request body instead: what is uncovered, why a test is
+not the answer here, and what would have to change for it to be. An override
+nobody can read is indistinguishable from a gate that never fired.
+
+The verdict comes from Codecov rather than from the workflow. The `Required` job
+deliberately does not judge coverage itself, so a failure names the app that
+measured it and CI stays green on its own terms.
 
 ## Contributions
 

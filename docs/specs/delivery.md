@@ -112,10 +112,9 @@ because a timing assertion on a shared runner is flaky.
 
 ## Coverage
 
-Coverage is measured on demand and reports rather than judges: `make coverage`
-is not part of `make check`, and no repository check fails on a percentage.
-Making a coverage number a merge condition is a separate decision, and this
-specification does not yet take it.
+Coverage is measured on demand locally, where it reports rather than judges:
+`make coverage` is not part of `make check`, and no local check fails on a
+percentage. On a pull request one number is a merge condition, stated below.
 
 The Go profile is collected across the service as a whole rather than per
 package under test, so that a function exercised only through another package's
@@ -135,22 +134,41 @@ filter, and publishes them to Codecov under separate flags, so that a shortfall
 names the language it came from and the two are never averaged into a single
 number.
 
-The statuses Codecov posts are informational: no percentage fails a check. Two
-of them, the per-flag patch statuses, are required by the branch ruleset, so
-what a merge waits for is that the report *arrived* — not that it cleared a bar.
-The measurement carries no path filter for that reason: Codecov reports only on
-a commit it received a report for, so a run that measured nothing would leave a
-required context that never arrives and a pull request that nothing can
-un-block. The same gap seen from the other side is a default-branch commit with
-no report, which is a commit no later pull request can compare against.
+Both per-flag patch statuses are required by the branch ruleset, and the Go one
+judges. It must show that the Go lines a change adds or alters are covered at
+least as well as the base commit's Go already is; beyond a rounding threshold, a
+shortfall fails the check and the change does not merge. The bar is the base
+rather than a chosen percentage, so no number has to be invented or maintained
+and the requirement rises with the tree. The status reads only the diff, so
+deleting well-covered code or moving statements between packages cannot fail a
+change — the property a project-total ratchet cannot offer. A change carrying no
+measurable Go passes. A change whose base commit carries no report is outside
+what this contract relies on: it is rebased onto a default-branch commit that
+carries one, and nothing here asserts what the status would otherwise report.
 
-This revises the earlier contract, under which a failed upload cost a report
-rather than a merge. It no longer does: while Codecov is unavailable, or for a
-pull request from a fork that has no access to the upload token, the contexts do
-not arrive and the merge waits. The escape hatch is removing them from the
-ruleset, which is a repository settings change rather than a code one. What has
-not changed is that no coverage *number* decides a merge; that remains true for
-as long as both patch statuses stay informational.
+The UI patch status is required to arrive rather than to pass, and the two
+project statuses report trend. That is deliberate and not pending: the UI
+measurement does not yet include what the browser-level suite reaches, so
+enforcing it would fail changes to code that is in fact exercised, and a gate
+whose ordinary outcome is an override is worse than a report.
+
+The measurement carries no path filter because a required context has to arrive:
+Codecov reports only on a commit it received a report for, so a run that
+measured nothing would leave a required context that never arrives and a pull
+request that nothing can un-block. The same gap seen from the other side is a
+default-branch commit with no report, which is a commit no later pull request
+can compare against.
+
+This revises the earlier contract twice over. A failed upload used to cost a
+report rather than a merge; it now costs a merge, because while Codecov is
+unavailable, or for a pull request from a fork with no access to the upload
+token, the contexts do not arrive and the merge waits. And no coverage number
+used to decide a merge; one now does. An enforced gate must therefore carry a
+recorded exception rather than none: the branch ruleset grants the administrator
+role a pull-request bypass, which permits merging a non-compliant pull request
+and nothing else, and records on that pull request that it was used. Removing
+the contexts from the ruleset remains the escape hatch for the arrival problem.
+Both are repository settings changes rather than code ones.
 
 The upload is constrained to the two files the run just produced. The uploader
 does not search the working tree, and its plugins are disabled, because that
