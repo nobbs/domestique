@@ -72,7 +72,14 @@ export default defineConfig({
   // Gitignored, and at the repository root beside the coverage reports, so that
   // one place holds everything a run leaves behind for a human to look at.
   outputDir: "../../../.playwright/results",
-  reporter: [["list"], ["html", { outputFolder: "../../../.playwright/report", open: "never" }]],
+  // The JUnit report goes beside the Vitest one rather than under .playwright/,
+  // which holds what a failed run leaves for a human to look at. CI uploads both
+  // under the `ui` flag; see the test-results block in .github/workflows/ci.yml.
+  reporter: [
+    ["list"],
+    ["html", { outputFolder: "../../../.playwright/report", open: "never" }],
+    ["junit", { outputFile: "../../../.test-results/ui/browser.xml" }],
+  ],
   projects: [
     {
       name: "dev-server",

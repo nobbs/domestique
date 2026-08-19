@@ -98,11 +98,20 @@ sources = ["mise-tasks.toml", ".mise.toml"]
 outputs = { auto = true }
 run = "mise tasks validate"
 
+# gotestsum runs `go test` and reformats its JSON stream: `standard-quiet` is
+# what `go test` itself prints, so the only thing that changed here is the JUnit
+# report written alongside it. CI uploads that file to Codecov's test analytics,
+# which is what turns a failure into something readable on the pull request
+# rather than a folded log; see the test-results block in .github/workflows/ci.yml.
+#
+# All three suites write their report under one gitignored directory, for the
+# reason the coverage reports share theirs: an upload step should have one place
+# to look.
 [test]
-description = "Run the Go tests"
+description = "Run the Go tests and write their JUnit report"
 sources = ["**/*.go", "go.mod", "go.sum", "**/testdata/**", "internal/webui/app/dist/**"]
 outputs = { auto = true }
-run = "CGO_ENABLED=0 go test -shuffle=on ./..."
+run = "CGO_ENABLED=0 gotestsum --format standard-quiet --junitfile .test-results/go.xml -- -shuffle=on ./..."
 
 [vet]
 description = "Vet the Go tree"

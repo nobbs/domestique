@@ -15,6 +15,12 @@ codecov:
   notify:
     # Both flags upload from the same job. Waiting for both means one comment
     # covering the change rather than one per language.
+    #
+    # The count is coverage reports, not uploads of every kind: the `Test` and
+    # `UI` jobs also upload JUnit results under these same two flags, and those
+    # are a separate report type that Codecov does not wait on here. So this
+    # stays 2 — the two coverage reports the `Coverage` job produces — and a
+    # pull request still gets one comment, now with any failed test named in it.
     after_n_builds: 2
 
 coverage:

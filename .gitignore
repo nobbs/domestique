@@ -21,6 +21,11 @@
 profile.cov
 /.coverage/
 
+# JUnit reports from the three test suites, written by `mise run test`,
+# `mise run ui-test` and `mise run ui-browser-test` and uploaded to Codecov's
+# test analytics by CI. Nothing here is committed.
+/.test-results/
+
 # Dependency directories (remove the comment below to include it)
 # vendor/
 

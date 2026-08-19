@@ -33,7 +33,7 @@ The repository provides these stable tasks:
 | --- | --- |
 | `mise run fmt` | Applies Go formatting to owned Go source. |
 | `mise run lint` | Runs the configured `golangci-lint` checks. |
-| `mise run test` | Runs the normal deterministic test suite with `CGO_ENABLED=0`. |
+| `mise run test` | Runs the normal deterministic test suite with `CGO_ENABLED=0` and writes its JUnit report to a gitignored directory. |
 | `mise run build` | Compiles the Linux service binary for `BUILD_ARCH`, the machine's own architecture unless overridden, with `CGO_ENABLED=0`, after building the browser UI. |
 | `mise run ui-build` | Builds the browser UI bundle that the binary embeds. |
 | `mise run ui-dev` | Runs the UI dev server, proxying the API to the local service. |
@@ -251,6 +251,32 @@ Publishing requires one operator action that the repository cannot take for
 itself: authorising Codecov for the repository and storing its upload token as
 the `CODECOV_TOKEN` repository secret. Without it the coverage job still
 measures both languages and still passes; only the upload is missing.
+
+## Test results
+
+Each suite writes a JUnit report of the run it just performed, to the same
+gitignored directory as its siblings, and CI uploads those reports to the same
+account the coverage reports go to, under the same two flags. The point is a
+readable failure: a test that failed, and a test that fails intermittently on the
+default branch, are named on the pull request rather than left in a folded log
+that only the person who thinks to open it will read.
+
+The reports are produced by the ordinary task, not by a CI-only invocation, so
+the file a contributor can inspect locally is the file that was uploaded.
+
+They are uploaded from the jobs that run the suites, which are path-filtered,
+rather than from the unfiltered measurement job. Nothing compares a test report
+against a base commit and no required status reads one, so a commit that ran no
+suite for a language is a commit with nothing to report rather than one missing a
+context that blocks it — which is the property that makes the filtered jobs the
+right place, and is exactly what the coverage upload cannot rely on. A report
+from those jobs also describes the suite as it normally runs rather than the
+instrumented variant the measurement drives.
+
+An upload is attempted even when the suite it describes failed, since that is the
+run worth reporting. It is constrained the way the coverage uploads are: it names
+its files, the uploader searches nothing, and a failed upload is reported without
+failing the job. No test result decides a merge.
 
 ## Development environment
 
