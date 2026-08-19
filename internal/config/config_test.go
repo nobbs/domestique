@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestLoadUsesFileSecretsAndDefaults(t *testing.T) {
@@ -16,22 +18,12 @@ func TestLoadUsesFileSecretsAndDefaults(t *testing.T) {
 	t.Setenv(configFileEnv, configPath)
 
 	settings, err := Load()
-	if err != nil {
-		t.Fatalf("Load() error = %v", err)
-	}
+	require.NoError(t, err)
 
-	if got, want := settings.State.EncryptionKey(), key; got != want {
-		t.Errorf("State.EncryptionKey() = %v, want %v", got, want)
-	}
-	if got, want := settings.Sync.EmptySourceDeletion, EmptySourceDeletionDeny; got != want {
-		t.Errorf("Sync.EmptySourceDeletion = %q, want %q", got, want)
-	}
-	if got, want := settings.Wahoo.Targets(), []Target{{ID: "rider-a"}, {ID: "rider-b"}}; !sameTargets(got, want) {
-		t.Errorf("Wahoo.Targets() = %#v, want %#v", got, want)
-	}
-	if got, want := string(settings.VeloPlanner.Email().Bytes()), "rider@example.test"; got != want {
-		t.Errorf("VeloPlanner.Email() = %q, want %q", got, want)
-	}
+	assert.Equal(t, key, settings.State.EncryptionKey(), "State.EncryptionKey()")
+	assert.Equal(t, EmptySourceDeletionDeny, settings.Sync.EmptySourceDeletion, "Sync.EmptySourceDeletion")
+	assert.Equal(t, []Target{{ID: "rider-a"}, {ID: "rider-b"}}, settings.Wahoo.Targets())
+	assert.Equal(t, "rider@example.test", string(settings.VeloPlanner.Email().Bytes()), "VeloPlanner.Email()")
 }
 
 func TestLoadCarriesThePinnedImageReferenceWithoutTreatingItAsASetting(t *testing.T) {
@@ -45,17 +37,12 @@ func TestLoadCarriesThePinnedImageReferenceWithoutTreatingItAsASetting(t *testin
 	// deployed compose file passes it, which means getting this wrong would stop
 	// the service from starting at all.
 	settings, err := Load()
-	if err != nil {
-		t.Fatalf("Load() error = %v", err)
-	}
-	if got, want := settings.ImageReference, reference; got != want {
-		t.Errorf("ImageReference = %q, want %q", got, want)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, reference, settings.ImageReference, "ImageReference")
 	// Taken out of the environment, so nothing later in startup can read a
 	// deployment fact out of it by accident.
-	if _, found := os.LookupEnv(imageReferenceEnv); found {
-		t.Errorf("%s is still set after Load()", imageReferenceEnv)
-	}
+	_, found := os.LookupEnv(imageReferenceEnv)
+	assert.Falsef(t, found, "%s is still set after Load()", imageReferenceEnv)
 }
 
 func TestLoadReportsNoImageReferenceWhenTheHostNamedNone(t *testing.T) {
@@ -63,12 +50,8 @@ func TestLoadReportsNoImageReferenceWhenTheHostNamedNone(t *testing.T) {
 	t.Setenv(configFileEnv, configPath)
 
 	settings, err := Load()
-	if err != nil {
-		t.Fatalf("Load() error = %v", err)
-	}
-	if got := settings.ImageReference; got != "" {
-		t.Errorf("ImageReference = %q, want empty", got)
-	}
+	require.NoError(t, err)
+	assert.Empty(t, settings.ImageReference, "a host that pinned no image must report none")
 }
 
 func TestLoadDefaultsToAKeylessTileStyle(t *testing.T) {
@@ -76,21 +59,14 @@ func TestLoadDefaultsToAKeylessTileStyle(t *testing.T) {
 	t.Setenv(configFileEnv, configPath)
 
 	settings, err := Load()
-	if err != nil {
-		t.Fatalf("Load() error = %v", err)
-	}
-	if got, want := settings.WebUI.TileStyleURL, defaultTileStyleURL; got != want {
-		t.Errorf("WebUI.TileStyleURL = %q, want %q", got, want)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, defaultTileStyleURL, settings.WebUI.TileStyleURL, "WebUI.TileStyleURL")
 	// The dark default is the same provider's other style, so a default
 	// deployment follows the colour scheme without reaching a second origin.
-	if got, want := settings.WebUI.TileStyleURLDark, defaultTileStyleURLDark; got != want {
-		t.Errorf("WebUI.TileStyleURLDark = %q, want %q", got, want)
-	}
-	if !sameOrigin(settings.WebUI.TileStyleURL, settings.WebUI.TileStyleURLDark) {
-		t.Errorf("default styles are on different origins: %q and %q",
-			settings.WebUI.TileStyleURL, settings.WebUI.TileStyleURLDark)
-	}
+	assert.Equal(t, defaultTileStyleURLDark, settings.WebUI.TileStyleURLDark, "WebUI.TileStyleURLDark")
+	assert.Truef(t, sameOrigin(settings.WebUI.TileStyleURL, settings.WebUI.TileStyleURLDark),
+		"default styles are on different origins: %q and %q",
+		settings.WebUI.TileStyleURL, settings.WebUI.TileStyleURLDark)
 }
 
 func TestValidateTileStyleURL(t *testing.T) {
@@ -111,9 +87,12 @@ func TestValidateTileStyleURL(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			err := validateTileStyleURL("webui.tile_style_url", test.value)
-			if (err != nil) != test.wantErr {
-				t.Errorf("validateTileStyleURL(%q) error = %v, wantErr %v", test.value, err, test.wantErr)
+			if test.wantErr {
+				require.Errorf(t, err, "validateTileStyleURL(%q)", test.value)
+
+				return
 			}
+			require.NoErrorf(t, err, "validateTileStyleURL(%q)", test.value)
 		})
 	}
 }
@@ -138,9 +117,12 @@ func TestValidateTileStyleURLDark(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			err := validateTileStyleURLDark(test.value, light)
-			if (err != nil) != test.wantErr {
-				t.Errorf("validateTileStyleURLDark(%q) error = %v, wantErr %v", test.value, err, test.wantErr)
+			if test.wantErr {
+				require.Errorf(t, err, "validateTileStyleURLDark(%q)", test.value)
+
+				return
 			}
+			require.NoErrorf(t, err, "validateTileStyleURLDark(%q)", test.value)
 		})
 	}
 }
@@ -150,12 +132,8 @@ func TestLoadDefaultsToThePublicOverpassEndpoint(t *testing.T) {
 	t.Setenv(configFileEnv, configPath)
 
 	settings, err := Load()
-	if err != nil {
-		t.Fatalf("Load() error = %v", err)
-	}
-	if got, want := settings.Surface.OverpassURL, defaultOverpassURL; got != want {
-		t.Errorf("Surface.OverpassURL = %q, want %q", got, want)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, defaultOverpassURL, settings.Surface.OverpassURL, "Surface.OverpassURL")
 }
 
 func TestLoadDefaultsToPushoversOwnOrigin(t *testing.T) {
@@ -163,12 +141,8 @@ func TestLoadDefaultsToPushoversOwnOrigin(t *testing.T) {
 	t.Setenv(configFileEnv, configPath)
 
 	settings, err := Load()
-	if err != nil {
-		t.Fatalf("Load() error = %v", err)
-	}
-	if got, want := settings.Notifications.Pushover.BaseURL, defaultPushoverURL; got != want {
-		t.Errorf("Notifications.Pushover.BaseURL = %q, want %q", got, want)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, defaultPushoverURL, settings.Notifications.Pushover.BaseURL, "Notifications.Pushover.BaseURL")
 }
 
 // A development environment overrides the origin to keep a placeholder token off
@@ -179,12 +153,8 @@ func TestLoadKeepsAnOverriddenPushoverOrigin(t *testing.T) {
 	t.Setenv(configFileEnv, configPath)
 
 	settings, err := Load()
-	if err != nil {
-		t.Fatalf("Load() error = %v", err)
-	}
-	if got, want := settings.Notifications.Pushover.BaseURL, "https://pushover.example.test"; got != want {
-		t.Errorf("Notifications.Pushover.BaseURL = %q, want %q", got, want)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "https://pushover.example.test", settings.Notifications.Pushover.BaseURL, "Notifications.Pushover.BaseURL")
 }
 
 // An empty endpoint is how an operator declines to send stage shapes anywhere,
@@ -195,12 +165,8 @@ func TestLoadTreatsAnEmptyOverpassEndpointAsDisabled(t *testing.T) {
 	t.Setenv(configFileEnv, configPath)
 
 	settings, err := Load()
-	if err != nil {
-		t.Fatalf("Load() error = %v", err)
-	}
-	if got := settings.Surface.OverpassURL; got != "" {
-		t.Errorf("Surface.OverpassURL = %q, want an empty endpoint", got)
-	}
+	require.NoError(t, err)
+	assert.Empty(t, settings.Surface.OverpassURL, "an empty endpoint declines the lookup")
 }
 
 func TestValidateOverpassURL(t *testing.T) {
@@ -221,9 +187,12 @@ func TestValidateOverpassURL(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			err := validateOverpassURL(test.value)
-			if (err != nil) != test.wantErr {
-				t.Errorf("validateOverpassURL(%q) error = %v, wantErr %v", test.value, err, test.wantErr)
+			if test.wantErr {
+				require.Errorf(t, err, "validateOverpassURL(%q)", test.value)
+
+				return
 			}
+			require.NoErrorf(t, err, "validateOverpassURL(%q)", test.value)
 		})
 	}
 }
@@ -235,15 +204,10 @@ func TestLoadDirectSecretWinsAndIsCleared(t *testing.T) {
 	t.Setenv(envPrefix+"VELOPLANNER__EMAIL", "environment@example.test")
 
 	settings, err := Load()
-	if err != nil {
-		t.Fatalf("Load() error = %v", err)
-	}
-	if got, want := string(settings.VeloPlanner.Email().Bytes()), "environment@example.test"; got != want {
-		t.Errorf("VeloPlanner.Email() = %q, want %q", got, want)
-	}
-	if _, found := os.LookupEnv(envPrefix + "VELOPLANNER__EMAIL"); found {
-		t.Error("direct secret environment value remains after Load()")
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "environment@example.test", string(settings.VeloPlanner.Email().Bytes()), "VeloPlanner.Email()")
+	_, found := os.LookupEnv(envPrefix + "VELOPLANNER__EMAIL")
+	assert.False(t, found, "the direct secret environment value remains after Load()")
 }
 
 func TestLoadFileEnvironmentOverridesTOML(t *testing.T) {
@@ -254,12 +218,8 @@ func TestLoadFileEnvironmentOverridesTOML(t *testing.T) {
 	t.Setenv(envPrefix+"NOTIFICATIONS__PUSHOVER__USER_KEY_FILE", overridePath)
 
 	settings, err := Load()
-	if err != nil {
-		t.Fatalf("Load() error = %v", err)
-	}
-	if got, want := string(settings.Notifications.Pushover.UserKey().Bytes()), "override-user-key"; got != want {
-		t.Errorf("Pushover.UserKey() = %q, want %q", got, want)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "override-user-key", string(settings.Notifications.Pushover.UserKey().Bytes()), "Pushover.UserKey()")
 }
 
 func TestLoadRejectsInvalidConfiguration(t *testing.T) {
@@ -366,9 +326,7 @@ func TestLoadRejectsInvalidConfiguration(t *testing.T) {
 			t.Setenv(configFileEnv, configPath)
 
 			_, err := Load()
-			if err == nil || !strings.Contains(err.Error(), test.want) {
-				t.Fatalf("Load() error = %v, want substring %q", err, test.want)
-			}
+			require.ErrorContains(t, err, test.want)
 		})
 	}
 }
@@ -379,12 +337,8 @@ func TestLoadAllowsOneWahooTarget(t *testing.T) {
 	t.Setenv(configFileEnv, configPath)
 
 	settings, err := Load()
-	if err != nil {
-		t.Fatalf("Load() error = %v", err)
-	}
-	if got, want := settings.Wahoo.Targets(), []Target{{ID: "rider-a"}}; !sameTargets(got, want) {
-		t.Errorf("Wahoo.Targets() = %#v, want %#v", got, want)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, []Target{{ID: "rider-a"}}, settings.Wahoo.Targets())
 }
 
 func TestLoadDoesNotExposeSecretFilePath(t *testing.T) {
@@ -394,12 +348,8 @@ func TestLoadDoesNotExposeSecretFilePath(t *testing.T) {
 	t.Setenv(configFileEnv, configPath)
 
 	_, err := Load()
-	if err == nil {
-		t.Fatal("Load() error = nil, want unavailable secret file error")
-	}
-	if strings.Contains(err.Error(), secretPath) {
-		t.Errorf("Load() error exposes secret file path: %v", err)
-	}
+	require.Error(t, err, "an unreadable secret file must stop the service")
+	assert.NotContains(t, err.Error(), secretPath, "Load() exposed the secret file path")
 }
 
 func TestLoadRejectsAmbiguousSecretEnvironment(t *testing.T) {
@@ -409,12 +359,8 @@ func TestLoadRejectsAmbiguousSecretEnvironment(t *testing.T) {
 	t.Setenv(envPrefix+"WAHOO__CLIENT_SECRET_FILE", "/run/secrets/wahoo-client-secret")
 
 	_, err := Load()
-	if err == nil || !strings.Contains(err.Error(), "both direct and file environment") {
-		t.Fatalf("Load() error = %v, want ambiguous secret input error", err)
-	}
-	if strings.Contains(err.Error(), "direct-secret") {
-		t.Errorf("Load() error exposes direct secret: %v", err)
-	}
+	require.ErrorContains(t, err, "both direct and file environment")
+	assert.NotContains(t, err.Error(), "direct-secret", "Load() exposed the direct secret")
 }
 
 func TestLoadClearsDirectSecretsWhenValidationFails(t *testing.T) {
@@ -424,12 +370,10 @@ func TestLoadClearsDirectSecretsWhenValidationFails(t *testing.T) {
 	t.Setenv(envPrefix+"WAHOO__CLIENT_SECRET", "direct-client-secret")
 
 	_, err := Load()
-	if err == nil || !strings.Contains(err.Error(), "must equal 1h") {
-		t.Fatalf("Load() error = %v, want invalid interval error", err)
-	}
-	if _, found := os.LookupEnv(envPrefix + "WAHOO__CLIENT_SECRET"); found {
-		t.Error("direct secret environment value remains after failed Load()")
-	}
+	require.ErrorContains(t, err, "must equal 1h")
+
+	_, found := os.LookupEnv(envPrefix + "WAHOO__CLIENT_SECRET")
+	assert.False(t, found, "the direct secret environment value remains after a failed Load()")
 }
 
 func writeValidConfiguration(t *testing.T, directory string) (configPath string, key [32]byte) {
@@ -486,9 +430,7 @@ application_token_file = %q
 user_key_file = %q
 `, filepath.Join(directory, "state.db"), keyPath, emailPath, passwordPath, clientSecretPath, applicationTokenPath, userKeyPath)
 	configPath = filepath.Join(directory, "config.toml")
-	if err := os.WriteFile(configPath, []byte(contents), 0o600); err != nil {
-		t.Fatalf("WriteFile(%q): %v", configPath, err)
-	}
+	require.NoErrorf(t, os.WriteFile(configPath, []byte(contents), 0o600), "WriteFile(%q)", configPath)
 
 	return configPath, key
 }
@@ -497,9 +439,7 @@ func writeSecretFile(t *testing.T, directory, name, value string) string {
 	t.Helper()
 
 	path := filepath.Join(directory, name)
-	if err := os.WriteFile(path, []byte(value+"\n"), 0o600); err != nil {
-		t.Fatalf("WriteFile(%q): %v", path, err)
-	}
+	require.NoErrorf(t, os.WriteFile(path, []byte(value+"\n"), 0o600), "WriteFile(%q)", path)
 
 	return path
 }
@@ -509,17 +449,12 @@ func replaceInFile(t *testing.T, path, old, replacement string) {
 
 	//nolint:gosec // The test passes only a path in its own temporary directory.
 	contents, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("ReadFile(%q): %v", path, err)
-	}
-	if !bytes.Contains(contents, []byte(old)) {
-		t.Fatalf("configuration does not contain %q", old)
-	}
+	require.NoErrorf(t, err, "ReadFile(%q)", path)
+	require.Containsf(t, string(contents), old, "the configuration has nothing to replace")
+
 	updated := bytes.Replace(contents, []byte(old), []byte(replacement), 1)
 	//nolint:gosec // The test passes only a path in its own temporary directory.
-	if err := os.WriteFile(path, updated, 0o600); err != nil {
-		t.Fatalf("WriteFile(%q): %v", path, err)
-	}
+	require.NoErrorf(t, os.WriteFile(path, updated, 0o600), "WriteFile(%q)", path)
 }
 
 func appendToFile(t *testing.T, path, text string) {
@@ -527,17 +462,13 @@ func appendToFile(t *testing.T, path, text string) {
 
 	//nolint:gosec // The test passes only a path in its own temporary directory.
 	file, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0)
-	if err != nil {
-		t.Fatalf("OpenFile(%q): %v", path, err)
-	}
+	require.NoErrorf(t, err, "OpenFile(%q)", path)
 	defer func() {
-		if err := file.Close(); err != nil {
-			t.Errorf("Close(%q): %v", path, err)
-		}
+		assert.NoErrorf(t, file.Close(), "Close(%q)", path)
 	}()
-	if _, err := file.WriteString(text); err != nil {
-		t.Fatalf("WriteString(%q): %v", path, err)
-	}
+
+	_, err = file.WriteString(text)
+	require.NoErrorf(t, err, "WriteString(%q)", path)
 }
 
 func removeConfigurationLine(t *testing.T, path, prefix string) {
@@ -545,27 +476,22 @@ func removeConfigurationLine(t *testing.T, path, prefix string) {
 
 	//nolint:gosec // The test passes only a path in its own temporary directory.
 	contents, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("ReadFile(%q): %v", path, err)
-	}
+	require.NoErrorf(t, err, "ReadFile(%q)", path)
+
 	lines := strings.Split(string(contents), "\n")
 	for index, line := range lines {
 		if strings.HasPrefix(line, prefix) {
 			copy(lines[index:], lines[index+1:])
 			updated := lines[:len(lines)-1]
 			//nolint:gosec // The test passes only a path in its own temporary directory.
-			if err := os.WriteFile(path, []byte(strings.Join(updated, "\n")), 0o600); err != nil {
-				t.Fatalf("WriteFile(%q): %v", path, err)
-			}
+			require.NoErrorf(t, os.WriteFile(path, []byte(strings.Join(updated, "\n")), 0o600),
+				"WriteFile(%q)", path)
+
 			return
 		}
 	}
 
-	t.Fatalf("configuration does not contain a line beginning with %q", prefix)
-}
-
-func sameTargets(left, right []Target) bool {
-	return slices.Equal(left, right)
+	require.Failf(t, "nothing to remove", "the configuration has no line beginning with %q", prefix)
 }
 
 // Cloudflare Access is the only gate this service has. A configuration that
@@ -581,9 +507,7 @@ allowed_email = "rider@example.test"
 	t.Setenv(configFileEnv, configPath)
 
 	_, err := Load()
-	if err == nil || !strings.Contains(err.Error(), "access.cloudflare is required") {
-		t.Fatalf("Load() error = %v, want the section to be required", err)
-	}
+	require.ErrorContains(t, err, "access.cloudflare is required")
 }
 
 func TestLoadReadsCloudflareAccess(t *testing.T) {
@@ -591,18 +515,10 @@ func TestLoadReadsCloudflareAccess(t *testing.T) {
 	t.Setenv(configFileEnv, configPath)
 
 	settings, err := Load()
-	if err != nil {
-		t.Fatalf("Load() error = %v", err)
-	}
-	if got, want := settings.Access.Cloudflare.TeamDomain, "example.cloudflareaccess.com"; got != want {
-		t.Errorf("TeamDomain = %q, want %q", got, want)
-	}
-	if got, want := settings.Access.Cloudflare.ApplicationAUD, "aud-tag"; got != want {
-		t.Errorf("ApplicationAUD = %q, want %q", got, want)
-	}
-	if got, want := settings.Access.Cloudflare.AllowedEmail, "rider@example.test"; got != want {
-		t.Errorf("AllowedEmail = %q, want %q", got, want)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "example.cloudflareaccess.com", settings.Access.Cloudflare.TeamDomain, "TeamDomain")
+	assert.Equal(t, "aud-tag", settings.Access.Cloudflare.ApplicationAUD, "ApplicationAUD")
+	assert.Equal(t, "rider@example.test", settings.Access.Cloudflare.AllowedEmail, "AllowedEmail")
 }
 
 // Each value carries its own weight: without the audience tag an assertion
@@ -622,9 +538,7 @@ func TestLoadRejectsPartialCloudflareAccess(t *testing.T) {
 			t.Setenv(configFileEnv, configPath)
 
 			_, err := Load()
-			if err == nil || !strings.Contains(err.Error(), "access.cloudflare is required") {
-				t.Fatalf("Load() error = %v, want rejection of the partial section", err)
-			}
+			require.ErrorContains(t, err, "access.cloudflare is required")
 		})
 	}
 }
@@ -636,16 +550,11 @@ func TestLoadDefaultsTheReadinessListenerToItsOwnPort(t *testing.T) {
 	t.Setenv(configFileEnv, configPath)
 
 	settings, err := Load()
-	if err != nil {
-		t.Fatalf("Load() error = %v", err)
-	}
+	require.NoError(t, err)
 
-	if got, want := settings.HTTP.ReadinessAddress, ":8081"; got != want {
-		t.Errorf("HTTP.ReadinessAddress = %q, want %q", got, want)
-	}
-	if settings.HTTP.ReadinessAddress == settings.HTTP.ListenAddress {
-		t.Error("the readiness listener must not be the served listener")
-	}
+	assert.Equal(t, ":8081", settings.HTTP.ReadinessAddress, "HTTP.ReadinessAddress")
+	assert.NotEqual(t, settings.HTTP.ListenAddress, settings.HTTP.ReadinessAddress,
+		"the readiness listener must not be the served listener")
 }
 
 func TestLoadReadsAConfiguredReadinessListener(t *testing.T) {
@@ -654,11 +563,7 @@ func TestLoadReadsAConfiguredReadinessListener(t *testing.T) {
 	t.Setenv(configFileEnv, configPath)
 
 	settings, err := Load()
-	if err != nil {
-		t.Fatalf("Load() error = %v", err)
-	}
+	require.NoError(t, err)
 
-	if got, want := settings.HTTP.ReadinessAddress, ":9101"; got != want {
-		t.Errorf("HTTP.ReadinessAddress = %q, want %q", got, want)
-	}
+	assert.Equal(t, ":9101", settings.HTTP.ReadinessAddress, "HTTP.ReadinessAddress")
 }

@@ -15,6 +15,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/nobbs/domestique/internal/cfaccess"
 )
 
@@ -41,9 +44,7 @@ func newKeySet(t *testing.T, keyID string) *keySet {
 	t.Helper()
 
 	private, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		t.Fatalf("generating key: %v", err)
-	}
+	require.NoError(t, err, "generating key")
 
 	return &keySet{private: private, keyID: keyID}
 }
@@ -74,9 +75,7 @@ func (k *keySet) sign(t *testing.T, header, claims map[string]any) string {
 
 	segment := func(value map[string]any) string {
 		encoded, err := json.Marshal(value)
-		if err != nil {
-			t.Fatalf("marshalling segment: %v", err)
-		}
+		require.NoError(t, err, "marshalling segment")
 
 		return base64.RawURLEncoding.EncodeToString(encoded)
 	}
@@ -84,9 +83,7 @@ func (k *keySet) sign(t *testing.T, header, claims map[string]any) string {
 	signingInput := segment(header) + "." + segment(claims)
 	digest := sha256.Sum256([]byte(signingInput))
 	signature, err := rsa.SignPKCS1v15(rand.Reader, k.private, crypto.SHA256, digest[:])
-	if err != nil {
-		t.Fatalf("signing: %v", err)
-	}
+	require.NoError(t, err, "signing")
 
 	return signingInput + "." + base64.RawURLEncoding.EncodeToString(signature)
 }
@@ -147,9 +144,8 @@ func newVerifierWithClock(t *testing.T, keys *keySet) (*cfaccess.Verifier, *atom
 		}
 		fetches.Add(1)
 		writer.Header().Set("Content-Type", "application/json")
-		if _, err := writer.Write(keys.jwks()); err != nil {
-			t.Errorf("writing key set: %v", err)
-		}
+		_, err := writer.Write(keys.jwks())
+		assert.NoError(t, err, "writing the key set")
 	}))
 	t.Cleanup(server.Close)
 
@@ -176,9 +172,7 @@ func verifierAgainst(t *testing.T, server *httptest.Server) (*cfaccess.Verifier,
 		HTTPClient: client,
 		Now:        testClock.now,
 	})
-	if err != nil {
-		t.Fatalf("building verifier: %v", err)
-	}
+	require.NoError(t, err, "building verifier")
 
 	return verifier, testClock
 }
@@ -205,23 +199,14 @@ func TestVerifyAcceptsValidAssertion(t *testing.T) {
 	verifier, fetches := newVerifier(t, keys)
 
 	identity, err := verifier.Verify(t.Context(), keys.sign(t, validHeader(), validClaims()))
-	if err != nil {
-		t.Fatalf("expected acceptance, got %v", err)
-	}
-	if identity.Email != "rider@example.com" {
-		t.Fatalf("expected the email claim, got %q", identity.Email)
-	}
-	if identity.Subject != "subject-1" {
-		t.Fatalf("expected the subject claim, got %q", identity.Subject)
-	}
+	require.NoError(t, err, "expected acceptance")
+	assert.Equal(t, "rider@example.com", identity.Email, "email claim")
+	assert.Equal(t, "subject-1", identity.Subject, "subject claim")
 
 	// A second assertion must reuse the cached key set.
-	if _, err = verifier.Verify(t.Context(), keys.sign(t, validHeader(), validClaims())); err != nil {
-		t.Fatalf("expected the cached key to verify, got %v", err)
-	}
-	if got := fetches.Load(); got != 1 {
-		t.Fatalf("expected one key fetch, got %d", got)
-	}
+	_, err = verifier.Verify(t.Context(), keys.sign(t, validHeader(), validClaims()))
+	require.NoError(t, err, "expected the cached key to verify")
+	assert.Equal(t, int64(1), fetches.Load(), "the key set was fetched more than once")
 }
 
 func TestVerifyAcceptsAudienceAsString(t *testing.T) {
@@ -233,9 +218,8 @@ func TestVerifyAcceptsAudienceAsString(t *testing.T) {
 	claims := validClaims()
 	claims["aud"] = testAudience
 
-	if _, err := verifier.Verify(t.Context(), keys.sign(t, validHeader(), claims)); err != nil {
-		t.Fatalf("expected a string aud to be accepted, got %v", err)
-	}
+	_, err := verifier.Verify(t.Context(), keys.sign(t, validHeader(), claims))
+	require.NoError(t, err, "expected a string aud to be accepted")
 }
 
 func TestVerifyRejectsBadAssertions(t *testing.T) {
@@ -326,9 +310,8 @@ func TestVerifyRejectsBadAssertions(t *testing.T) {
 			keys := newKeySet(t, testKeyID)
 			verifier, _ := newVerifier(t, keys)
 
-			if _, err := verifier.Verify(t.Context(), keys.sign(t, testCase.header(), testCase.claims())); err == nil {
-				t.Fatal("expected rejection, got acceptance")
-			}
+			_, err := verifier.Verify(t.Context(), keys.sign(t, testCase.header(), testCase.claims()))
+			require.Error(t, err, "expected rejection, got acceptance")
 		})
 	}
 }
@@ -349,9 +332,8 @@ func TestVerifyRejectsAlgorithmSubstitution(t *testing.T) {
 			header := validHeader()
 			header["alg"] = algorithm
 
-			if _, err := verifier.Verify(t.Context(), keys.sign(t, header, validClaims())); err == nil {
-				t.Fatalf("expected %q to be rejected", algorithm)
-			}
+			_, err := verifier.Verify(t.Context(), keys.sign(t, header, validClaims()))
+			require.Errorf(t, err, "expected alg %q to be rejected", algorithm)
 		})
 	}
 }
@@ -367,9 +349,8 @@ func TestVerifyRejectsForeignSignature(t *testing.T) {
 	// Same advertised key ID, different private key.
 	forged := newKeySet(t, testKeyID)
 
-	if _, err := verifier.Verify(t.Context(), forged.sign(t, validHeader(), validClaims())); err == nil {
-		t.Fatal("expected a foreign signature to be rejected")
-	}
+	_, err := verifier.Verify(t.Context(), forged.sign(t, validHeader(), validClaims()))
+	require.Error(t, err, "expected a foreign signature to be rejected")
 }
 
 func TestVerifyRejectsMalformedAssertions(t *testing.T) {
@@ -389,9 +370,8 @@ func TestVerifyRejectsMalformedAssertions(t *testing.T) {
 			keys := newKeySet(t, testKeyID)
 			verifier, _ := newVerifier(t, keys)
 
-			if _, err := verifier.Verify(t.Context(), token); err == nil {
-				t.Fatalf("expected %s to be rejected", name)
-			}
+			_, err := verifier.Verify(t.Context(), token)
+			require.Errorf(t, err, "expected %s to be rejected", name)
 		})
 	}
 }
@@ -405,9 +385,8 @@ func TestVerifyRefetchesAfterKeyRotation(t *testing.T) {
 	keys := newKeySet(t, testKeyID)
 	verifier, fetches, testClock := newVerifierWithClock(t, keys)
 
-	if _, err := verifier.Verify(t.Context(), keys.sign(t, validHeader(), validClaims())); err != nil {
-		t.Fatalf("expected the first assertion to verify, got %v", err)
-	}
+	_, err := verifier.Verify(t.Context(), keys.sign(t, validHeader(), validClaims()))
+	require.NoError(t, err, "expected the first assertion to verify")
 
 	// The endpoint now publishes a different key under a new ID.
 	rotated := newKeySet(t, "key-2")
@@ -421,12 +400,9 @@ func TestVerifyRefetchesAfterKeyRotation(t *testing.T) {
 	// assertion verifies against the newly published key.
 	testClock.advance(2 * time.Minute)
 
-	if _, err := verifier.Verify(t.Context(), rotated.sign(t, header, validClaims())); err != nil {
-		t.Fatalf("expected the rotated key to verify, got %v", err)
-	}
-	if got := fetches.Load(); got != 2 {
-		t.Fatalf("expected exactly one refetch, got %d fetches", got)
-	}
+	_, err = verifier.Verify(t.Context(), rotated.sign(t, header, validClaims()))
+	require.NoError(t, err, "expected the rotated key to verify")
+	assert.Equal(t, int64(2), fetches.Load(), "the rotation cost more than one refetch")
 }
 
 // A stream of assertions naming key IDs that do not exist must not become a
@@ -437,21 +413,17 @@ func TestVerifyRateLimitsRefetchForUnknownKeyID(t *testing.T) {
 	keys := newKeySet(t, testKeyID)
 	verifier, fetches, _ := newVerifierWithClock(t, keys)
 
-	if _, err := verifier.Verify(t.Context(), keys.sign(t, validHeader(), validClaims())); err != nil {
-		t.Fatalf("expected the first assertion to verify, got %v", err)
-	}
+	_, err := verifier.Verify(t.Context(), keys.sign(t, validHeader(), validClaims()))
+	require.NoError(t, err, "expected the first assertion to verify")
 
 	header := validHeader()
 	header["kid"] = "key-that-was-never-published"
 
 	for range 5 {
-		if _, err := verifier.Verify(t.Context(), keys.sign(t, header, validClaims())); err == nil {
-			t.Fatal("expected an unknown key ID to be rejected")
-		}
+		_, err = verifier.Verify(t.Context(), keys.sign(t, header, validClaims()))
+		require.Error(t, err, "expected an unknown key ID to be rejected")
 	}
-	if got := fetches.Load(); got != 1 {
-		t.Fatalf("expected the refresh floor to suppress refetches, got %d fetches", got)
-	}
+	assert.Equal(t, int64(1), fetches.Load(), "the refresh floor did not suppress the refetches")
 }
 
 // The refresh floor counts attempts, not successes. A certs endpoint that is
@@ -473,24 +445,18 @@ func TestVerifyRateLimitsRefetchWhenCertsEndpointFails(t *testing.T) {
 	assertion := keys.sign(t, validHeader(), validClaims())
 
 	for range 5 {
-		if _, err := verifier.Verify(t.Context(), assertion); err == nil {
-			t.Fatal("expected verification to fail while the certs endpoint is down")
-		}
+		_, err := verifier.Verify(t.Context(), assertion)
+		require.Error(t, err, "expected verification to fail while the certs endpoint is down")
 	}
-	if got := fetches.Load(); got != 1 {
-		t.Fatalf("expected the refresh floor to hold against a failing endpoint, got %d fetches", got)
-	}
+	assert.Equal(t, int64(1), fetches.Load(), "the refresh floor did not hold against a failing endpoint")
 
 	// Past the floor it is allowed to try again, so a transient outage still
 	// recovers on its own.
 	testClock.advance(2 * time.Minute)
 
-	if _, err := verifier.Verify(t.Context(), assertion); err == nil {
-		t.Fatal("expected verification to fail while the certs endpoint is down")
-	}
-	if got := fetches.Load(); got != 2 {
-		t.Fatalf("expected one retry once the floor elapsed, got %d fetches", got)
-	}
+	_, err := verifier.Verify(t.Context(), assertion)
+	require.Error(t, err, "expected verification to fail while the certs endpoint is down")
+	assert.Equal(t, int64(2), fetches.Load(), "the elapsed floor did not allow exactly one retry")
 }
 
 func TestNewValidatesOptions(t *testing.T) {
@@ -513,9 +479,8 @@ func TestNewValidatesOptions(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			if _, err := cfaccess.New(options); err == nil {
-				t.Fatalf("expected %s to be rejected", name)
-			}
+			_, err := cfaccess.New(options)
+			require.Errorf(t, err, "expected %s to be rejected", name)
 		})
 	}
 }
@@ -525,8 +490,7 @@ func TestNewAcceptsFullTeamDomain(t *testing.T) {
 	t.Parallel()
 
 	for _, team := range []string{"example", "example.cloudflareaccess.com"} {
-		if _, err := cfaccess.New(&cfaccess.Options{TeamDomain: team, Audience: testAudience}); err != nil {
-			t.Fatalf("expected %q to be accepted, got %v", team, err)
-		}
+		_, err := cfaccess.New(&cfaccess.Options{TeamDomain: team, Audience: testAudience})
+		require.NoErrorf(t, err, "expected team domain %q to be accepted", team)
 	}
 }
