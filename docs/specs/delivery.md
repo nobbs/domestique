@@ -283,7 +283,10 @@ failing the job. No test result decides a merge.
 `mise run dev-setup` prepares an environment that shows real route data without
 risking the deployment. It copies the deployed SQLite state into `.local/dev`
 and writes a configuration beside it, so the development service and the
-deployed container never share a database file.
+deployed container never share a database file. That configuration names the
+deployed Cloudflare Access application, read out of the running container at
+setup time, so the identity gate behaves there exactly as it does in
+production.
 
 That environment may read VeloPlanner, so a manual `POST /v1/sync` refreshes
 real routes and geometry. It must never reach Wahoo, which is enforced in depth:

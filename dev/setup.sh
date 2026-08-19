@@ -39,6 +39,43 @@ for secret in veloplanner_email veloplanner_password; do
   fi
 done
 
+# The Cloudflare Access identifiers are public identifiers rather than secrets,
+# but they belong to the deployment rather than to this repository, so they are
+# read out of the running container instead of being written down here.
+DEPLOYED_CONFIG="$(mktemp)"
+trap 'rm -f "${DEPLOYED_CONFIG}"' EXIT
+
+if ! docker cp "${CONTAINER}:/etc/domestique/config.toml" "${DEPLOYED_CONFIG}" >/dev/null 2>&1; then
+  echo "error: cannot read /etc/domestique/config.toml from ${CONTAINER}; the deployment must mount its configuration there" >&2
+  exit 1
+fi
+
+cloudflare_identifier() {
+  awk -v key="$1" '
+    /^\[/ { section = $0; next }
+    section == "[access.cloudflare]" && $0 ~ "^[[:space:]]*" key "[[:space:]]*=" {
+      sub(/^[^=]*=[[:space:]]*/, "")
+      gsub(/^["'"'"']|["'"'"']$/, "")
+      print
+      exit
+    }
+  ' "${DEPLOYED_CONFIG}"
+}
+
+CF_TEAM_DOMAIN="$(cloudflare_identifier team_domain)"
+CF_APPLICATION_AUD="$(cloudflare_identifier application_aud)"
+CF_ALLOWED_EMAIL="$(cloudflare_identifier allowed_email)"
+
+missing=()
+[[ -n "${CF_TEAM_DOMAIN}" ]] || missing+=("team_domain")
+[[ -n "${CF_APPLICATION_AUD}" ]] || missing+=("application_aud")
+[[ -n "${CF_ALLOWED_EMAIL}" ]] || missing+=("allowed_email")
+
+if ((${#missing[@]} > 0)); then
+  echo "error: the deployed configuration has no access.cloudflare ${missing[*]}; the deployment must be gated by Cloudflare Access before development can mirror it" >&2
+  exit 1
+fi
+
 mkdir -p "${DEV_SECRETS}"
 
 # Snapshot the deployed state. The write-ahead log is copied too so the snapshot
@@ -63,11 +100,16 @@ cat > "${DEV_DIR}/config.toml" <<EOF
 
 [http]
 listen_address = ":8081"
+# The readiness listener defaults to :8081, which the snapshot service serves on,
+# and the two must never be the same port.
+readiness_address = ":8083"
 
-[access]
-# Matches the identity the UI dev server injects, so the gate behaves as it does
-# behind tailscale serve.
-tailnet_user_login = "rider@example.ts.net"
+[access.cloudflare]
+# The deployed Access application, so the identity gate behaves exactly as it
+# does in production.
+team_domain = "${CF_TEAM_DOMAIN}"
+application_aud = "${CF_APPLICATION_AUD}"
+allowed_email = "${CF_ALLOWED_EMAIL}"
 
 [state]
 database_path = "${DEV_DIR}/state.db"
