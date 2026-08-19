@@ -277,7 +277,7 @@ func slotState(name string) (demo.SlotState, error) {
 	case demo.SlotUnauthorized:
 		return demo.SlotUnauthorized, nil
 	default:
-		return "", errors.New("unknown slot state " + name + ": want current, failed, or unauthorized")
+		return "", fmt.Errorf("unknown slot state %q: want current, failed, or unauthorized", name)
 	}
 }
 

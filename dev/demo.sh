@@ -33,6 +33,12 @@ ASSERTION_FILE="${DEMO_DIR}/assertion"
 
 # Not :8081, so a demo can run beside `make dev-api` without either of them
 # wondering why the other's routes are missing.
+# `go` and `npm` are taken from the environment for the same reason the Makefile
+# takes them from GO and NPM: whatever activated the pinned toolchain for the
+# caller has already put them on the path.
+GO="${GO:-go}"
+NPM="${NPM:-npm}"
+
 API_PORT="${DOMESTIQUE_DEMO_PORT:-8082}"
 API_URL="http://127.0.0.1:${API_PORT}"
 # The origin the API is configured to serve its UI at, which state-changing
@@ -117,7 +123,7 @@ export CGO_ENABLED=0
 # stopping the demo would leave an API behind still serving it.
 BIN_DIR="${DEMO_DIR}/bin"
 mkdir -p "${BIN_DIR}"
-go build -o "${BIN_DIR}/" "${ROOT}/dev/demoapi"
+"${GO}" build -o "${BIN_DIR}/" "${ROOT}/dev/demoapi"
 
 # A fresh database every run, so the demo is the fixture and not whatever last
 # week's session left behind.
@@ -154,4 +160,4 @@ echo "Demo API on ${API_URL}; starting the UI dev server on http://127.0.0.1:517
 DOMESTIQUE_DEV_API="${API_URL}" \
   DOMESTIQUE_DEV_ASSERTION="$(cat "${ASSERTION_FILE}")" \
   DOMESTIQUE_DEV_ORIGIN="${BROWSER_ORIGIN}" \
-  npm --prefix "${ROOT}/internal/webui/app" run dev
+  "${NPM}" --prefix "${ROOT}/internal/webui/app" run dev
