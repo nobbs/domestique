@@ -23,9 +23,9 @@ Each VeloPlanner route stage is a separate Wahoo route. A single-stage route
 keeps its route name. A multi-stage route uses `Route — Stage` so its stages are
 individually identifiable on a device.
 
-The service is a single-tenant Docker workload for an amd64 or arm64 Tailnet
-host. The initial MVP host is macOS with Docker Desktop; the long-running target
-is a Linux host, either a Raspberry Pi or a small cloud VM. It has no CLI.
+The service is a single-tenant Docker workload for an amd64 Tailnet host, which
+is the only architecture the image is published for. The long-running target is a
+small Linux cloud VM. It has no CLI.
 
 The service serves a read-only browser UI for route preview. Its HTTP surface is
 read-only JSON for status, route data, and route geometry, except for the

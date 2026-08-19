@@ -41,7 +41,7 @@ The repository provides these stable Make targets:
 lint and test suites, the browser suite, Go module verification, vulnerability analysis for both Go
 and npm dependencies, a GitHub Actions workflow check, a shell-script check, a
 worktree secret scan, a commit-hook cost check, a local-gate structure check,
-and the release-target binary compilation for every published architecture.
+and the release-target binary compilation for the published architecture.
 `make fmt` applies Go formatting. A fixing `prek` hook exits non-zero after a
 safe mechanical repair so the resulting change can be reviewed and staged
 deliberately.
@@ -68,7 +68,7 @@ network rather than because it matters less:
 
 | Deferred check | Why |
 | --- | --- |
-| `build-check` | Rebuilds the UI bundle and cross-compiles both published architectures; the slowest check in the gate whenever the build cache is cold. |
+| `build-check` | Rebuilds the UI bundle and compiles the published release target; the slowest check in the gate whenever the build cache is cold. |
 | `vulncheck` | Needs the network and a current Go advisory database. |
 | `ui-audit` | Needs the network and a current npm advisory database. |
 | `ui-browser-install` | Downloads a browser: a network fetch and a few hundred megabytes on disk. |
@@ -372,12 +372,12 @@ The validation workflow must:
 - run without production credentials, Wahoo refresh tokens, or Docker secret
   files;
 - fail when formatting, local hook hygiene, linting, tests, module checks,
-  vulnerability analysis, or the CGO-free Linux builds for either published
+  vulnerability analysis, or the CGO-free Linux build for the published
   architecture fail;
-- build the production Dockerfile and discard the result on a pull request that
-  changes an input of the container build, never pushing it, and start a natively
-  built copy of that image once, so the runtime contract is answered by a
-  container that ran rather than by a build that succeeded; and
+- build the production Dockerfile on a pull request that changes an input of the
+  container build, never pushing it, and start that image once, so the runtime
+  contract is answered by a container that ran rather than by a build that
+  succeeded; and
 - deploy what it published to the Tailnet host, over Tailscale SSH, passing the
   digest and nothing else, on every publish and not only on the commits that
   happened to touch every part of the tree: a published image the host is never
@@ -404,7 +404,7 @@ follows every input of the running binary, because a source change must reach a
 new digest. The pull-request build follows only the container inputs — the
 Dockerfile, what it copies in, and the dependency manifests that resolve inside
 a build stage — because re-proving an untouched Dockerfile against changed Go
-source repeats what the cross-compile check has already established. A container
+source repeats what the compile check has already established. A container
 break that reaches the default branch costs a red run and no new image; it costs
 no availability, because a deploying host is pinned to a digest that keeps
 running. The fix for such a break changes a container input by construction, so
@@ -438,9 +438,12 @@ provisioned non-production credentials, and its output must be redacted.
 ## Container contract
 
 The production image is a multi-stage build that produces a statically linked
-Linux binary with `CGO_ENABLED=0`, published for `linux/amd64` and
-`linux/arm64`. The build stages cross-compile from the build platform, so
-neither architecture requires emulation. A first stage builds the browser UI
+Linux binary with `CGO_ENABLED=0`, published for `linux/amd64` alone. That is
+the architecture of the deployed host, and of the runner that builds it, so no
+stage needs emulation. The accepted cost is that the published image does not
+run on an arm64 host without it; the `TARGETOS`/`TARGETARCH` parameterisation in
+the Dockerfile is kept, so restoring a second platform is a build argument at
+each build site rather than a rewrite. A first stage builds the browser UI
 bundle with Node.js, which the Go stage then embeds; Node reaches no further
 than that stage and is absent from the runtime image.
 
@@ -524,11 +527,9 @@ needs the `dhi.io` credential above, and the local gate must not require one. So
 the smoke test is outside `make check` and `make quick`, and CI runs it in the
 pull-request `Image` job, which already holds that credential.
 `DOMESTIQUE_SMOKE_IMAGE` names the reference to run, which must already be in
-the local image store; nothing pulls. In CI that reference is a single image
-built for the runner's own architecture and loaded into its image store. The
-two-architecture verification stays a build: a multi-platform result cannot be
-loaded, and driving the foreign half under emulation would answer for the
-emulator.
+the local image store; nothing pulls. In CI that reference is the image the job
+just built: one platform can be loaded into the runner's image store, so what is
+started is the artefact that was proved rather than a second build of it.
 
 The repository may provide a non-secret, clearly placeholder deployment example
 later. It must not make a direct Internet port publication easy to copy, and it
@@ -542,8 +543,12 @@ GitHub releases; the default branch is the only thing that publishes, and every
 change reaches it through a pull request the full gate accepted.
 
 A push to the default branch that touches an input of the image builds one GHCR
-image index covering `linux/amd64` and `linux/arm64` and pushes it to
-`ghcr.io/nobbs/domestique` under two tags:
+image index covering `linux/amd64` and pushes it to `ghcr.io/nobbs/domestique`
+under two tags. It remains an index rather than a bare manifest even with one
+architecture under it, because the software bill of materials and the `mode=max`
+provenance travel as their own manifests beside the image — which is why the
+operator instruction to pin the index digest is unaffected by the platform
+count:
 
 | Tag | Meaning |
 | --- | --- |
@@ -558,8 +563,8 @@ because there is nothing a republished identical tree would give a host.
 
 The publish job:
 
-1. builds the same CGO-free cross-compiled target that pull requests prove,
-   exactly once for the commit;
+1. builds the same CGO-free target that pull requests prove, exactly once for
+   the commit;
 2. pushes the index and records its digest in the run summary, which is where an
    operator reads the value to deploy;
 3. attaches BuildKit's software bill of materials and `mode=max` provenance

@@ -5,6 +5,15 @@ the Tailnet. This guide deliberately keeps the compose file, static
 configuration, Docker secrets, and image digest on the Pi, outside this
 repository.
 
+> **The published image no longer covers this host.** It is built for
+> `linux/amd64` alone, which is the deployed cloud VM in
+> [the Hetzner guide](hetzner.md) and the only architecture this repository
+> publishes. A Raspberry Pi is arm64, so pulling the published image gives it
+> nothing it can run without emulation. Everything below other than the image
+> reference still describes the arrangement; building an arm64 image locally, or
+> restoring the second published platform, is the missing piece. Whether to
+> retire this guide is a separate decision.
+
 ## Trust boundary
 
 ```mermaid
@@ -83,9 +92,10 @@ is stored base64-encoded in `~/.docker/config.json`, which must not be readable
 by anyone else. Nothing else on the Pi needs a registry credential: it pulls
 rather than builds, so it needs no `dhi.io` login.
 
-Resolve and pin the digest from the **index**, not from a pulled
-per-architecture manifest, so the same `.env` would work on either
-architecture:
+Resolve and pin the digest from the **index**, not from the image manifest under
+it. The push is an index even with one architecture, because the bill of
+materials and the provenance travel beside the image as their own manifests, and
+a digest read out of a pull leaves those behind:
 
 ```sh
 IMAGE=ghcr.io/nobbs/domestique

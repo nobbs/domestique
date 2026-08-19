@@ -31,8 +31,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # Deferred to `check` and to GitHub Actions. build-check rebuilds the UI bundle
-# and cross-compiles both published architectures, which is the slowest check in
-# the gate whenever the build cache is cold; vulncheck and ui-audit each need the
+# and compiles the published release target, which is the slowest check in the
+# gate whenever the build cache is cold; vulncheck and ui-audit each need the
 # network and a current advisory database; ui-browser-install downloads a browser,
 # and ui-browser-test then drives it over the demo stack for minutes. Adding a
 # target here removes it from the routine local loop, so it needs a reason.

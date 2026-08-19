@@ -337,32 +337,18 @@ jobs:
           registry: dhi.io
           username: ${{ secrets.DHI_USERNAME }}
           password: ${{ secrets.DHI_TOKEN }}
-      # A multi-platform result cannot be --load-ed into the local image store,
-      # so the build is proved and discarded; `publish` is what pushes it. It
-      # reads the cache the default branch wrote and writes none of its own:
-      # exporting needs `packages: write`, and a pull request must never hold
-      # the permission that writes what a host deploys. A cache miss is a
+      # One platform, which is the one that is published and the one this runner
+      # is. That is what lets the result be --load-ed into the local image store
+      # rather than proved and discarded: the smoke test below starts the very
+      # image this step built, instead of a second build of it.
+      #
+      # The build reads the cache the default branch wrote and writes none of
+      # its own: exporting needs `packages: write`, and a pull request must never
+      # hold the permission that writes what a host deploys. A cache miss is a
       # warning rather than a failure, so a first run needs no bootstrapping.
       # SOURCE_REVISION is passed here too, so the argument the published build
       # depends on is exercised by the pull-request build that proves it.
       - name: Build production image
-        env:
-          SOURCE_REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: >-
-          docker buildx build --platform linux/amd64,linux/arm64
-          --build-arg "SOURCE_REVISION=${SOURCE_REVISION}"
-          --cache-from "type=registry,ref=${IMAGE}:buildcache"
-          --output type=cacheonly --tag domestique:ci .
-
-      # The runtime contract is asserted against a container that runs, which
-      # needs a single native image in the local store: a multi-platform result
-      # cannot be --load-ed, and driving the foreign half under emulation would
-      # be a test of qemu. So the multi-architecture proof above stays exactly
-      # that, a build, and this is the step that starts the result. Every layer
-      # it needs was just built for linux/amd64, so this costs the export rather
-      # than another build. amd64 is named explicitly because it is what this
-      # runner is; a runner of another architecture would need its own.
-      - name: Build the native image
         env:
           SOURCE_REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
         run: >-
@@ -473,7 +459,11 @@ jobs:
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a
         with:
           context: .
-          platforms: linux/amd64,linux/arm64
+          # One platform. The push is still an index, because mode=max
+          # provenance and the SBOM travel as their own manifests beside the
+          # image, so the operator instruction to pin the index digest is
+          # unchanged by there being one architecture under it.
+          platforms: linux/amd64
           # The commit is a build input rather than something the build can look
           # up: .dockerignore excludes .git, so this is the only trusted source
           # of the revision the running service reports.

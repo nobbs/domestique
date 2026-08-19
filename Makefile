@@ -19,12 +19,14 @@ REVISION_FLAGS := $(if $(SOURCE_REVISION),-ldflags=-X=github.com/nobbs/domestiqu
 BUILD_FLAGS := -trimpath -buildvcs=true $(REVISION_FLAGS)
 BUILD_TARGET := ./cmd/domestique
 BUILD_OUTPUT := build/domestique
-# The release image is published for both architectures, so the compile check
-# covers both. BUILD_ARCH selects the one that `make build` writes to disk, and
-# defaults to the machine's own so a local build runs where it was built. Set it
-# explicitly to cross-compile for the other host.
+# The release image is published for linux/amd64 alone, so that is what the
+# compile check covers. BUILD_ARCH selects what `make build` writes to disk, and
+# defaults to the machine's own architecture so a local build runs where it was
+# built; set it explicitly to cross-compile for the deployed host from another.
+# RELEASE_ARCHES is a list so that publishing a second architecture again is
+# this line plus the two platform arguments in the workflow.
 BUILD_ARCH ?= $(shell $(GO) env GOARCH)
-RELEASE_ARCHES := amd64 arm64
+RELEASE_ARCHES := amd64
 UI_DIR := internal/webui/app
 UI_DIST := $(UI_DIR)/dist
 
@@ -274,9 +276,9 @@ ci-ui: ui-install
 # and needs nothing beyond it, and defers five things to `check` and to GitHub
 # Actions, which is the authoritative gate a merge has to pass:
 #
-#   build-check  rebuilds the UI bundle and cross-compiles both published
-#                architectures; the slowest check in the gate whenever the
-#                build cache is cold, which is every CI run
+#   build-check  rebuilds the UI bundle and compiles the published release
+#                target; the slowest check in the gate whenever the build cache
+#                is cold, which is every CI run
 #   vulncheck    needs the network and a current Go advisory database
 #   ui-audit     needs the network and a current npm advisory database
 #   ui-browser-install
