@@ -139,8 +139,11 @@ func run(ctx context.Context) error {
 			TargetIDs:        targetIDs,
 			TileStyleURL:     settings.WebUI.TileStyleURL,
 			TileStyleURLDark: settings.WebUI.TileStyleURLDark,
-			AccessVerifier:   accessVerifier,
-			AccessEmail:      settings.Access.Cloudflare.AllowedEmail,
+			// The page links a stage back to the source route it was made from,
+			// which is on the provider the library is read from.
+			SourceBaseURL:  settings.VeloPlanner.BaseURL,
+			AccessVerifier: accessVerifier,
+			AccessEmail:    settings.Access.Cloudflare.AllowedEmail,
 			// The Wahoo redirect URL is on the hostname a browser reaches this
 			// service at, which is what makes it the origin a state-changing
 			// request has to come from.

@@ -9,11 +9,11 @@ import { Logo } from "./Logo";
 /**
  * Where this service comes from.
  *
- * The one link on the page that leaves the Tailnet, and the only outbound
- * navigation the UI has at all — everything else it shows was already stored
- * locally. It is opened in a new tab with `noreferrer`, so following it neither
- * loses the route being read nor hands GitHub the private origin the reader is
- * reading it on.
+ * One of the two links on the page that leave the Tailnet — the other is a
+ * stage's way back to its source route — and everything else the UI shows was
+ * already stored locally. It is opened in a new tab with `noreferrer`, so
+ * following it neither loses the route being read nor hands GitHub the private
+ * origin the reader is reading it on.
  */
 const REPOSITORY_URL = "https://github.com/nobbs/domestique";
 

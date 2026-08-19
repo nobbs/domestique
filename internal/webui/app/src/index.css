@@ -358,6 +358,36 @@ body {
 }
 
 /*
+ * Everything that sits opposite the title, so the space-between above keeps the
+ * title at one end and this group at the other however many things are in it.
+ */
+.stage-detail__heading-end {
+  display: flex;
+  align-items: baseline;
+  gap: 1.1rem;
+}
+
+/*
+ * Quiet, like the provenance link in the header: it is a way out to the provider
+ * rather than something this page is urging, and nothing here edits a route.
+ */
+.stage-detail__source {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-bottom: 0.4rem;
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.stage-detail__source:hover,
+.stage-detail__source:focus-visible {
+  color: var(--accent);
+}
+
+/*
  * The reprocess control sits beside the title because it acts on this stage and
  * nothing else. It is quiet by default: it is rarely the reason anyone opened
  * the page, and its work happens in the background.

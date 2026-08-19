@@ -13,6 +13,7 @@ import { stageGeometryQuery, webUIConfigQuery } from "../../api/queries";
 import type { Position, StageSurface } from "../../api/types";
 import { ElevationProfile } from "../../components/ElevationProfile";
 import { Layout } from "../../components/Layout";
+import { SourceRouteLink } from "../../components/SourceRouteLink";
 import { StageKey } from "../../components/StageKey";
 import { ErrorMessage, LoadingMessage, StatusMessage } from "../../components/StatusMessage";
 import { type Basemap, basemapFor, usePrefersDarkScheme } from "../../lib/basemap";
@@ -112,6 +113,7 @@ export function StageDetail() {
       bbox={bbox}
       surface={surface}
       basemap={basemapFor(config.data, prefersDark)}
+      sourceBaseUrl={config.data?.sourceBaseUrl}
       back={back}
     />
   );
@@ -138,6 +140,7 @@ function StageView({
   bbox,
   surface,
   basemap,
+  sourceBaseUrl,
   back,
 }: {
   stage: {
@@ -152,6 +155,8 @@ function StageView({
   bbox: [number, number, number, number];
   surface: StageSurface | undefined;
   basemap: Basemap;
+  /** The provider's web application, for the way back to the source route. */
+  sourceBaseUrl: string | undefined;
   back: React.ReactNode;
 }) {
   const routeProfile = useMemo(() => buildProfile(coordinates), [coordinates]);
@@ -211,7 +216,15 @@ function StageView({
         <header className="stage-detail__header">
           <div className="stage-detail__heading">
             <h1 className="stage-detail__title">{stage.title}</h1>
-            <ReprocessButton routeId={routeId} stageOrder={stage.stageOrder} />
+            <div className="stage-detail__heading-end">
+              {/*
+               * The way back to the route this stage was made from, which is
+               * also the only place anything about it can be changed. Absent
+               * when the service cannot name the provider.
+               */}
+              <SourceRouteLink baseUrl={sourceBaseUrl} routeId={routeId} />
+              <ReprocessButton routeId={routeId} stageOrder={stage.stageOrder} />
+            </div>
           </div>
           <dl className="stage-detail__facts">
             <div>

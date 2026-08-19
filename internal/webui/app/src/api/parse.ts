@@ -278,5 +278,6 @@ export function parseWebUIConfig(payload: unknown): WebUIConfig {
   return {
     tileStyleUrl: text(body.tile_style_url, "body.tile_style_url"),
     tileStyleUrlDark: optionalText(body.tile_style_url_dark, "body.tile_style_url_dark"),
+    sourceBaseUrl: optionalText(body.source_base_url, "body.source_base_url"),
   };
 }

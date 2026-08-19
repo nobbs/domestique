@@ -186,7 +186,10 @@ application dependency.
 - `state.database_path` is required and must reside on the persistent Docker
   volume.
 - `veloplanner.base_url` is a required absolute HTTPS URL. The authenticated
-  VeloPlanner user ID is discovered, not configured.
+  VeloPlanner user ID is discovered, not configured. It also reaches the browser
+  through `GET /v1/webui/config` as the base of a stage's link back to its
+  source route, so pointing it at a different deployment moves both the
+  inventory it reads and the link it offers.
 - `wahoo.api_base_url` and `wahoo.oauth_base_url` are required absolute HTTPS
   URLs. `wahoo.client_id` is non-secret.
 - `wahoo.redirect_url` is required HTTPS and must exactly match Wahoo's

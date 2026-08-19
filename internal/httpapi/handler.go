@@ -119,6 +119,14 @@ type Options struct {
 	// colour scheme. It is optional, and must be on TileStyleURL's origin.
 	TileStyleURLDark string
 
+	// SourceBaseURL is the provider's own web application, as the operator
+	// configured it. The page builds an outbound link to a stage's source route
+	// from it, so an operator can open the route this stage was made from
+	// without hunting for it by name.
+	//
+	// Optional: without it the page shows no such link rather than a broken one.
+	SourceBaseURL string
+
 	// AccessEmail is the one address an Access assertion may name, and the
 	// principal every authenticated request resolves to.
 	AccessEmail string
@@ -143,6 +151,7 @@ type Handler struct {
 	accessVerifier   AccessVerifier
 	tileStyleURL     string
 	tileStyleURLDark string
+	sourceBaseURL    string
 	tileOrigin       string
 	browserOrigin    string
 	allowedEmail     string
@@ -196,6 +205,15 @@ func New(
 		}
 	}
 
+	// Validated here rather than trusted, because it leaves the service as a
+	// link a browser will follow. A configured value that cannot be one is a
+	// mistake worth refusing at startup; the absent case is the supported one.
+	if options.SourceBaseURL != "" {
+		if _, sourceErr := originOf(options.SourceBaseURL); sourceErr != nil {
+			return nil, errors.New("source base URL must be an absolute HTTPS URL")
+		}
+	}
+
 	handler := &Handler{
 		mux:              http.NewServeMux(),
 		oauth:            oauthService,
@@ -204,6 +222,7 @@ func New(
 		assets:           assets,
 		tileStyleURL:     options.TileStyleURL,
 		tileStyleURLDark: options.TileStyleURLDark,
+		sourceBaseURL:    options.SourceBaseURL,
 		tileOrigin:       tileOrigin,
 		browserOrigin:    browserOrigin,
 		targetIDs:        append([]string(nil), options.TargetIDs...),
