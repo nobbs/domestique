@@ -53,3 +53,8 @@ config.local.toml
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# Browser suite artefacts: traces, failure screenshots and the HTML report a
+# failed `make ui-browser-test` leaves behind. No image is committed; the suite
+# compares a page against itself within a run.
+/.playwright/

@@ -126,7 +126,10 @@ jobs:
   ui:
     name: UI
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    # The browser suite downloads Chromium and its system libraries, builds the
+    # demo API and then drives a software-rendered WebGL map, so this job is
+    # minutes rather than seconds.
+    timeout-minutes: 20
     needs: changes
     if: needs.changes.outputs.ui == 'true'
 
@@ -147,7 +150,9 @@ jobs:
           install: true
           cache: true
       - name: Typecheck, lint and test the UI
-        run: mise exec -- make ci-ui
+        # --with-deps also installs the browser's system libraries, which a hosted
+        # runner does not carry and which the suite cannot start without.
+        run: mise exec -- make ci-ui PLAYWRIGHT_INSTALL_FLAGS=--with-deps
 
   coverage:
     name: Coverage

@@ -59,6 +59,10 @@ export default defineConfig({
   },
   test: {
     environment: "jsdom",
+    // Vitest would otherwise collect e2e/*.spec.ts, which is Playwright's suite
+    // and needs a browser. The unit suites stay a jsdom-only run that a
+    // contributor with no browser installed can still pass.
+    include: ["src/**/*.test.{ts,tsx}"],
     setupFiles: ["./src/test/setup.ts"],
     css: false,
     restoreMocks: true,
