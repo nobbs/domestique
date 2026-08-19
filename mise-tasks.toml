@@ -310,6 +310,12 @@ run = "npm --prefix internal/webui/app audit --omit=dev"
 
 # The bundler empties dist, which would remove the committed placeholder that
 # keeps the go:embed pattern valid before a UI build. Restore it afterwards.
+#
+# It waits for `ci-ui` for the same reason `build-check` does: the browser suite
+# in that group bundles into this same directory. `build-check` waiting is not
+# enough on its own, because a dependency is scheduled independently of what the
+# task depending on it waits for — so the write has to be ordered where it
+# happens.
 [ui-build]
 description = "Build the UI bundle"
 sources = [
@@ -322,7 +328,7 @@ sources = [
   "internal/webui/app/*.json",
 ]
 outputs = ["internal/webui/app/dist/**"]
-wait_for = ["ui-install"]
+wait_for = ["ui-install", "ci-ui"]
 run = [
   "npm --prefix internal/webui/app run build",
   "touch internal/webui/app/dist/.gitkeep",
@@ -356,7 +362,8 @@ CGO_ENABLED=0 GOOS=linux GOARCH="${BUILD_ARCH:-$(go env GOARCH)}" \
 # workflow.
 #
 # It waits for `ci-ui` because both rebuild the UI bundle into the same
-# directory, and the browser suite reads the bundle it built.
+# directory, and the browser suite reads the bundle it built. So does `ui-build`
+# itself, which is where the write actually happens.
 #
 # The Makefile shared one flag set with `build`, so this carried the
 # `SOURCE_REVISION` injection too. It does not any more: the binary goes to
