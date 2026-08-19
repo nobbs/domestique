@@ -168,7 +168,9 @@ library in `internal/demo`, serves it with `dev/demoapi`, and runs the UI dev
 server in front of it. Every stage, surface, run and target state it shows is
 generated; VeloPlanner, Wahoo and Pushover all point at an unroutable address;
 and no scheduler, source client or reporter is wired, so a manual
-synchronisation is declined rather than attempted.
+synchronisation re-seeds the synthetic library at the current instant instead of
+contacting anything. The run it reports is therefore a real one and its data
+still comes from nowhere.
 
 The identity gate is not switched off there, because a demo whose gate is absent
 demonstrates a service this repository does not ship. `dev/demoapi` generates a
