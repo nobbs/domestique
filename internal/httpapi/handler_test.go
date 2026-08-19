@@ -48,7 +48,7 @@ func TestHandlerGatesStateAndKeepsHealthLocal(t *testing.T) {
 	if got, want := statusResponse.Code, http.StatusOK; got != want {
 		t.Errorf("authenticated status = %d, want %d", got, want)
 	}
-	if body := statusResponse.Body.String(); strings.Contains(body, "private-token") || !strings.Contains(body, "authorised") {
+	if body := statusResponse.Body.String(); strings.Contains(body, "private-token") || !strings.Contains(body, "authorized") {
 		t.Errorf("status body = %q, want safe authorization state", body)
 	}
 }
@@ -1100,10 +1100,12 @@ type fakeTargetRun struct {
 }
 
 // ForEachTarget reports the configured slots, defaulting to the single
-// authorised slot the older tests were written against.
+// authorised slot the older tests were written against. The value is the one
+// the store actually holds, so a test cannot pass on a state production can
+// never produce.
 func (s *fakeState) ForEachTarget(_ context.Context, visit func(string, string) error) error {
 	if len(s.targets) == 0 {
-		return visit("rider-a", "authorised")
+		return visit("rider-a", "authorized")
 	}
 	for _, target := range s.targets {
 		if err := visit(target.id, target.authorization); err != nil {
