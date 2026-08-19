@@ -31,6 +31,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -205,17 +206,14 @@ func newHandler(
 		// than in the background because the whole library is a few hundred
 		// milliseconds of local writes.
 		//
-		// The answer is always that the run was accepted, because false means one
-		// is already running and nothing else: a re-seed that fails is a run that
-		// failed, not a conflict, and reporting it as a conflict would tell the
-		// browser something untrue.
-		httpapi.SyncTriggerFunc(func(_ httpapi.SyncPhase) bool {
-			if seedErr := seed(context.Background(), store, slots); seedErr != nil {
-				fmt.Fprintf(os.Stderr, "demoapi: re-seeding: %v\n", seedErr)
-			}
-
-			return true
-		}),
+		// False means one run is already in progress and nothing else, so that is
+		// the only thing it is used for here. A re-seed that fails is a run that
+		// failed rather than a conflict, and its error goes to the log.
+		httpapi.SyncTriggerFunc(reseeder{
+			store:   store,
+			slots:   slots,
+			running: &atomic.Bool{},
+		}.trigger),
 		devServerAssets{},
 	)
 	if err != nil {
@@ -236,6 +234,28 @@ func (devServerAssets) Index(writer http.ResponseWriter, _ *http.Request) {
 
 func (devServerAssets) Static(writer http.ResponseWriter, _ *http.Request) {
 	http.Error(writer, "the demo serves the UI from the Vite dev server", http.StatusNotFound)
+}
+
+// reseeder runs one demo synchronisation at a time. Two concurrent seeds would
+// interleave their writes over the same rows, and the second caller is in the
+// state the served surface already has a word for: a run is in progress.
+type reseeder struct {
+	store   *sqlite.Store
+	running *atomic.Bool
+	slots   []demo.Slot
+}
+
+func (r reseeder) trigger(_ httpapi.SyncPhase) bool {
+	if !r.running.CompareAndSwap(false, true) {
+		return false
+	}
+	defer r.running.Store(false)
+
+	if err := seed(context.Background(), r.store, r.slots); err != nil {
+		fmt.Fprintf(os.Stderr, "demoapi: re-seeding: %v\n", err)
+	}
+
+	return true
 }
 
 // seed fills the database with the synthetic library. The clock is the wall
