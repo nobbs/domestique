@@ -158,7 +158,7 @@ describe("the description a reader hears", () => {
     const cues = routeCues(square(2000));
 
     expect(cues && cuesDescription(cues)).toBe(
-      "Starts and finishes at the same point. The ride leaves the start heading east and returns from the north, 8.0 km later.",
+      "Starts and finishes in the same place. The ride leaves the start heading east and returns from the north, 8.0 km later.",
     );
   });
 });

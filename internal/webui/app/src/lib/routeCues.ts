@@ -207,8 +207,11 @@ export function routeCues(coordinates: Position[]): RouteCues | null {
  */
 export function cuesDescription(cues: RouteCues): string {
   const leaving = `leaves the start heading ${compassPoint(cues.departure)}`;
+  // In the same place rather than at the same point: the two ends only have to
+  // be close enough that one marker would hide the other, and a stage that
+  // finishes a street away from where it started is a loop to a rider.
   if (cues.sharedTerminal) {
-    return `Starts and finishes at the same point. The ride ${leaving} and returns from the ${compassPoint(cues.arrival + 180)}, ${formatDistance(cues.lengthMetres)} later.`;
+    return `Starts and finishes in the same place. The ride ${leaving} and returns from the ${compassPoint(cues.arrival + 180)}, ${formatDistance(cues.lengthMetres)} later.`;
   }
 
   // Apart is measured across the ground, not along the route: a stage that

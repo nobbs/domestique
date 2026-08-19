@@ -220,7 +220,7 @@ describe("the map's start, finish, and direction cues", () => {
   it("says a loop comes back to where it started, and which way round", () => {
     show({ coordinates: LOOP });
 
-    expect(screen.getByText(/Starts and finishes at the same point\./)).toBeInTheDocument();
+    expect(screen.getByText(/Starts and finishes in the same place\./)).toBeInTheDocument();
     expect(screen.getByText(/leaves the start heading east/)).toBeInTheDocument();
     expect(screen.getByText(/returns from the north/)).toBeInTheDocument();
   });
