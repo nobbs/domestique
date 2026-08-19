@@ -1,7 +1,7 @@
 # Contributing
 
 Domestique is a private single-tenant service. The accepted contracts in
-[`docs/specs`](docs/specs) define v1 behavior; a change must not silently
+[`docs/specs`](docs/specs) define its behavior; a change must not silently
 weaken their access, deletion, or secret-handling rules.
 
 ## Local checks
@@ -23,29 +23,21 @@ it from [mise.jdx.dev](https://mise.jdx.dev) first; `mise tasks` then lists
 everything this repository offers.
 
 `mise run quick` runs everything the full gate runs except six checks it defers
-— `build-check`, which compiles the published release target; `test-race`, which
-reruns the whole Go suite under the race detector; `vulncheck` and `ui-audit`,
-which need the network and a current advisory database; and
-`ui-browser-install` and `ui-browser-test`, which download a browser and then
-drive it over the demo stack for minutes. That difference is asserted, not just
-documented, so a check added to the gate cannot quietly drop out of the routine
-loop.
+— `build-check`, `test-race`, `vulncheck`, `ui-audit`, `ui-browser-install` and
+`ui-browser-test` — so it stays worth running on every iteration and is not
+itself a full gate. Run the full gate yourself with `mise run check` when a
+change implicates one of the six: the release build, concurrent code, a
+dependency, or the browser suite.
+[The delivery specification](docs/specs/delivery.md#the-authoritative-gate-is-github-actions)
+says why each is deferred, and how the difference is asserted rather than only
+documented.
 
-`mise run test-race` is worth running yourself after touching anything
-concurrent — the sync service and its reporter, the Wahoo client, the Access
-verifier, or the composition root. A data race there does not surface as a
-failing test; it surfaces as a corrupted report or a wedged run, in production,
-on a schedule. It is the one command in this repository that needs cgo, so it
-needs a C compiler installed and takes several times as long as `mise run test`,
-which is why it sits outside the routine loop rather than inside it. It changes
-nothing about what ships: the release build and the image stay `CGO_ENABLED=0`
-and statically linked, and the detector only ever instruments a test binary.
-
-Run the full gate yourself with:
-
-~~~sh
-mise run check
-~~~
+`mise run test-race` is the one to reach for after touching anything concurrent
+— the sync service and its reporter, the Wahoo client, the Access verifier, or
+the composition root — because a data race there surfaces as a corrupted report
+or a wedged run rather than as a failing test. It is the one command here that
+needs cgo, so it needs a C compiler and takes several times as long as
+`mise run test`.
 
 Either loop skips a check whose files have not moved since it last passed, and
 says `sources up-to-date, skipping` where it would have run one.
@@ -53,14 +45,16 @@ says `sources up-to-date, skipping` where it would have run one.
 must satisfy never reads that cache.
 
 Neither loop starts the production image. `mise run container-smoke` does: it
-runs the image under the hardening the deployment example documents and asserts
-that the service comes up, both probes answer, an anonymous caller is refused,
-the process is unprivileged, and nothing was written outside the state mount. It
-takes an image rather than building one — a local image build needs a
-`docker login dhi.io` for the hardened base images — so set
+runs the image under the hardening
+[`docs/compose.example.yml`](docs/compose.example.yml) documents and asserts the
+runtime contract, so an image that builds but cannot come up fails here rather
+than at deploy time. It takes an image rather than building one — a local image
+build needs a `docker login dhi.io` for the hardened base images — so set
 `DOMESTIQUE_SMOKE_IMAGE` to a reference in your local image store, or build
 `domestique:smoke` first. CI runs it on every pull request that changes a
-container input.
+container input, and
+[the delivery specification](docs/specs/delivery.md#proving-the-runtime-contract)
+lists everything it asserts.
 
 Install the optional local Git hook with:
 
@@ -83,55 +77,7 @@ worth leaving installed.
 
 Nothing local fails on a percentage: neither `quick` nor `check` measures
 coverage, and `mise run coverage` is something you run to read a change with its
-untested parts visible. On a pull request, one number is a merge condition.
-
-CI measures both languages on every pull request and every push — including a
-documentation-only one — and publishes them to Codecov under two flags, `go` and
-`ui`, so that a shortfall names the language it came from.
-
-**The lines a pull request adds or changes must be covered at least as well as
-the base commit's already are, in each language separately.** That is
-`codecov/patch/go` and `codecov/patch/ui`: both required by the branch ruleset,
-and neither informational. There is no fixed percentage to clear, because the
-bar is whatever the tree already manages — which also means it rises as coverage
-improves. A status reads only the diff, so deleting well-covered code or moving
-statements between packages cannot fail a pull request. A 1% threshold absorbs
-rounding, and a change with no measurable Go, or no measurable UI, reports
-"Coverage not affected" for that flag and passes it.
-
-One edge worth knowing. A branch forked from before coverage was published has a
-base commit with no report, so the patch status has nothing to compare against;
-and if that branch's tree also predates the coverage job, it uploads nothing
-itself, so the required contexts never arrive and the pull request blocks on
-their absence rather than on a number. Codecov is expected to pass a patch it
-cannot compare, but that has not been observed here and nothing depends on it.
-Rebasing onto current `main` answers both, and is worth doing before opening the
-pull request rather than after.
-
-`codecov/patch/ui` was informational for a while, and is not any more. It could
-not judge while the UI measurement described only what jsdom reaches: the
-Playwright run drives the map and the page-level components in real Chromium,
-but none of that entered the uploaded report, so a pull request touching them
-would have failed a status for code it had in fact exercised. The report now
-includes the browser suite, so the number the status reads is the one the tree
-deserves. Both project statuses report trend and block nothing.
-
-Because both contexts are required to arrive, the coverage job carries no path
-filter: a commit that uploaded nothing would leave them never posted and the
-pull request blocked with nothing to un-block it. The trade that comes with it:
-while Codecov is down, or for a pull request from a fork that has no upload
-token, the contexts do not arrive and the merge waits. Removing them from the
-ruleset is the escape hatch, and it is a repository settings change rather than
-a code one.
-
-That same job is where the browser half of the UI number is collected, rather
-than the path-filtered `UI` job that runs the same suite for its own sake. A
-flag assembled by a filtered job would mean one thing on the commits that job
-ran on and another on the commits it skipped, and `patch/ui` compares two
-commits. So a change touching no UI still drives a browser, which is most of why
-that job takes as long as it does.
-
-Locally:
+untested parts visible.
 
 ~~~sh
 mise run coverage
@@ -140,52 +86,33 @@ mise run coverage
 That writes a Go coverage profile to `.coverage/go.out` and the browser UI's
 LCOV report to `.coverage/ui/lcov.info`, and prints a summary for each. Nothing
 is committed — `/.coverage/` is gitignored. `mise run coverage-go` and
-`mise run coverage-ui` run one side alone.
-
-`mise run coverage-ui` is the slow one, because after the unit suites it runs
-the whole-page suite in a real browser and merges what that reached into the
-same report. If no browser is installed it says so, keeps the unit half, and
-still succeeds — run `mise run ui-browser-install` once if you want the whole
-number locally.
+`mise run coverage-ui` run one side alone. `coverage-ui` is the slow one,
+because after the unit suites it runs the whole-page suite in a real browser and
+merges what that reached into the same report; with no browser installed it says
+so, keeps the unit half, and still succeeds — run `mise run ui-browser-install`
+once if you want the whole number locally.
 
 The Go profile is collected with `-coverpkg` over `./cmd/...` and
-`./internal/...`, so a function exercised only through another package's tests
-counts as covered rather than dead. The same flag makes the percentage `go test`
-prints on each of its own lines meaningless — that one is the fraction of the
-whole service one package's tests reached — so read the per-package summary
-printed after the run, which `dev/coveragesummary` produces from the merged
-profile.
+`./internal/...`, which makes the percentage `go test` prints on each of its own
+lines meaningless: that one is the fraction of the whole service one package's
+tests reached. Read the per-package summary printed after the run, which
+`dev/coveragesummary` produces from the merged profile.
 
-Four things are deliberately not measured:
+**On a pull request, two statuses decide the merge.** `codecov/patch/go` and
+`codecov/patch/ui` each require the lines your change adds or alters in that
+language to be covered at least as well as the base commit's already are; both
+are required by the branch ruleset and neither is informational. There is no
+fixed percentage to clear, deleting well-covered code cannot fail a status, and
+a change with no measurable Go or no measurable UI passes that flag.
+[The delivery specification](docs/specs/delivery.md#coverage) states what is
+measured, what is deliberately not, and why the statuses are shaped this way.
 
-| Not measured | Why |
-| --- | --- |
-| `dev/` | Repository tooling rather than the service. It has its own tests, and they run in the normal suite. |
-| `src/**/*.test.{ts,tsx}` and `src/test/` | The tests and their harness are the measurement, not its subject. |
-| `src/**/*.d.ts` | Type-only declarations emit no runtime statement to reach. |
-| `src/main.tsx` | It mounts React onto a real document and does nothing else, so a test of it would assert the framework rather than this UI. The browser does load it, and the merge drops it there too, so that the total does not depend on which collector ran. |
-
-Everything else is measured, and code no unit test can reach is measured by the
-test that can reach it. The map components need WebGL and the page-level
-components are assembled rather than unit-tested, so both are read from the
-whole-page suite: `scripts/coverage.ts` runs the `dev-server` Playwright
-project with V8 coverage recording, maps each module the dev server served back
-through its source map to the file under `src/` it came from, and merges that
-with the Vitest report before the LCOV file is written. Both halves are V8
-coverage over the same files, so a statement both suites reach counts once.
-
-The `bundle` project is not measured. It drives the minified production bundle,
-which ships without a source map, so nothing it records could be attributed back
-to `src/` — and it exercises the same UI, so measuring it would pay twice for
-the same answer.
-
-The Vitest report is the subject on both axes: which files are measured, and
-which statements each of them has. The files come from its own list rather than
-from globs restated somewhere else, and the browser's counts are carried onto
-its statement maps by source location. So the merge can only move the numerator.
-The total is the same tree either way, the two halves cannot drift apart about
-what they are measuring, and neither can drift from the `include` and `exclude`
-in `vite.config.ts`.
+One edge worth knowing. A branch forked from before coverage was published has a
+base commit with no report, so the patch status has nothing to compare against;
+and if that branch's tree also predates the coverage job, it uploads nothing
+itself, so the required contexts never arrive and the pull request blocks on
+their absence rather than on a number. Rebasing onto current `main` answers
+both, and is worth doing before opening the pull request rather than after.
 
 ### When a change cannot clear a coverage gate
 
@@ -195,17 +122,12 @@ behaviour is a browser's rather than this UI's, a fix that has to ship before
 the test that pins it. What the gate asks is that this be a decision somebody
 made and wrote down.
 
-The branch ruleset grants the Admin repository role a `pull_request` bypass. It
-permits merging a pull request whose required checks have not passed, and
-nothing else — direct push, force-push, and branch deletion stay closed. GitHub
-records the override on the pull request, which is the reason to use that
-mechanism rather than switching the status off for an afternoon.
-
-The mechanism cannot ask why, and a ruleset cannot make a required check
-conditional on a label, so any label-driven exception would be decoration. Write
-the reason in the pull request body instead: what is uncovered, why a test is
-not the answer here, and what would have to change for it to be. An override
-nobody can read is indistinguishable from a gate that never fired.
+The escape hatch is the administrator pull-request bypass the branch ruleset
+grants, which GitHub records on the pull request. Use that rather than switching
+a status off for an afternoon, and write the reason in the pull request body:
+what is uncovered, why a test is not the answer here, and what would have to
+change for it to be. The mechanism cannot ask why, so an override nobody can
+read is indistinguishable from a gate that never fired.
 
 The verdict comes from Codecov rather than from the workflow. The `Required` job
 deliberately does not judge coverage itself, so a failure names the app that
@@ -268,8 +190,8 @@ would have told you. The library behind it is the synthetic one in
 
 Keep changes focused, add regression tests for behavior changes, and avoid
 network access in normal tests. Do not commit credentials, tokens, static
-configuration, private route data, generated FIT files, SQLite state, or
-deployment files from the Raspberry Pi.
+configuration, private route data, generated FIT files, SQLite state, or host
+deployment files.
 
 Use Conventional Commits. Pull requests should explain any changes to the
 normative specifications, safety gates, or operator action required for

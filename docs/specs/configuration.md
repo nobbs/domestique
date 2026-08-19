@@ -1,6 +1,6 @@
 # Domestique configuration specification
 
-**Status:** accepted v1 design
+**Status:** accepted
 
 This is a subordinate specification to [the service contract](service.md).
 It defines the static configuration and secret-input contract. It does not
@@ -213,8 +213,8 @@ application dependency.
   registered callback URI, ending in `/oauth/wahoo/callback`.
 - `wahoo.targets` contains one or two entries. Each `id` is unique and stable
   across deployments; it is a configured slot, not a Wahoo user identifier.
-- `sync.initial_delay` is positive. `sync.interval` equals one hour in v1.
-  `sync.max_deletions_per_target` equals `5` in v1.
+- `sync.initial_delay` is positive. `sync.interval` equals one hour.
+  `sync.max_deletions_per_target` equals `5`.
 - `notifications.pushover.base_url` is an absolute HTTPS origin without a path,
   and defaults to Pushover's own, so a deployment that says nothing about it
   notifies Pushover. It is a setting rather than a compiled-in constant for the same
@@ -236,7 +236,7 @@ and ambiguous secret inputs before it opens an HTTP listener.
 Dynamic Wahoo refresh tokens are not configuration. They are encrypted in
 SQLite using the supplied state key; access tokens remain in memory only. The
 state database is intentionally not backed up. Changing the state key makes the
-existing encrypted state unreadable, and key rotation is not a v1 feature.
+existing encrypted state unreadable, and key rotation is not a feature.
 
 ## Diagnostics and exclusions
 
@@ -246,7 +246,7 @@ sync interval, and whether a target needs OAuth authorisation. They must not
 report secret paths, secret values, client-secret material, tokens, or
 VeloPlanner account identifiers.
 
-Outside the v1 contract:
+Outside the contract:
 
 - a secret-manager SDK, provider URI, provider credential, or secret reference
   syntax in Go or TOML;

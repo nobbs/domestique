@@ -1,16 +1,10 @@
 # Domestique service specification
 
-**Status:** accepted v2 design
+**Status:** accepted
 
 This document is the normative contract for the Domestique service. Where
 implementation details differ from this document, this document wins until it is
 deliberately revised.
-
-v2 adds a read-only route map view. It revises three v1 decisions: the service
-now has a browser UI, it caches source route geometry locally, and it serves
-that geometry to the single authorised identity. Everything else in the
-v1 contract — the sync safety gates, the secret handling, and the deletion
-rules — is unchanged.
 
 ## Purpose and scope
 
@@ -85,7 +79,7 @@ change to that boundary requires revising this document first.
 
 ## Constraints and non-goals
 
-- Sync every route in the configured VeloPlanner library; v1 has no selection
+- Sync every route in the configured VeloPlanner library; there is no selection
   by tag, prefix, or allow-list.
 - Preserve no integration with Ride with GPS.
 - Do not provide route editing or a command-line interface. The browser UI is
@@ -301,7 +295,8 @@ described above, and answer 403 without it.
 The browser UI is served from the same origin and the same authenticated
 listener: an application entry document and immutable hashed static assets.
 
-Exact response schemas are an implementation follow-up. They must never expose
+The response schemas are defined in
+[the sync lifecycle specification](sync-lifecycle.md). They must never expose
 secrets, tokens, or raw upstream response bodies.
 
 Route geometry is served **only** on the dedicated geometry endpoint, only to
@@ -409,16 +404,18 @@ centred 100-metre moving median to remove isolated altitude spikes. It retains
 the original route geometry. The resulting profile is the single source for
 FIT elevations and Wahoo ascent/descent metadata. Each FIT record carries
 cumulative route distance in metres as well as coordinates and elevation, so
-Wahoo can derive an elevation profile and gradients. The initial FIT adapter may use
+Wahoo can derive an elevation profile and gradients. The FIT adapter uses
 [`github.com/muktihari/fit`](https://github.com/muktihari/fit), isolated behind
 the course encoder boundary and without vendoring Garmin SDK files or test data.
 The source code remains MIT-licensed; third-party notices remain with their
 respective dependencies. Operating the service requires compliance with the
 [FIT Protocol License](https://www.thisisant.com/developer/ant/licensing/flexible-and-interoperable-data-transfer-fit-protocol-license).
 
-Before adopting an encoder, an acceptance test must decode the generated FIT,
-upload it to the Wahoo sandbox, and confirm the resulting course is usable by a
-Wahoo account. No personal route data belongs in repository fixtures.
+An acceptance test decodes the generated FIT, uploads it to the Wahoo sandbox,
+and confirms the resulting course is usable by a Wahoo account; it is run by the
+operator, as [the FIT acceptance guide](../fit-sandbox-acceptance.md) describes.
+An encoder change is adopted only once that check covers it. No personal route
+data belongs in repository fixtures.
 
 ## Wahoo synchronisation
 

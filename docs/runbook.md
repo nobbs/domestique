@@ -265,7 +265,7 @@ ranges describe coordinates that were replaced.
 
 ## What this runbook does not cover
 
-There is no state backup, no key rotation, and no remote route cleanup in v1.
+There is no state backup, no key rotation, and no remote route cleanup.
 There is also no HTTP or CLI path to delete a route, mutate configuration, or
 remove a target: everything in this guide is either a browser action the service
 already offers or a change to static configuration on the host followed by a

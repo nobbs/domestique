@@ -1,6 +1,6 @@
 # Domestique implementation architecture specification
 
-**Status:** accepted v1 design
+**Status:** accepted
 
 This is a subordinate specification to [the service contract](service.md).
 It defines the Go module layout, package ownership, manually wired dependencies,
@@ -20,8 +20,8 @@ framework:
   boundary need substitution; and
 - main is the composition root and calls constructors explicitly.
 
-Manual constructor injection is final for v1. There is no Wire, Dig, Fx, Do,
-service locator, global registry, or package initialisation with side effects.
+Manual constructor injection is final. There is no Wire, Dig, Fx, Do, service
+locator, global registry, or package initialisation with side effects.
 
 ## Module and directory layout
 
@@ -252,7 +252,7 @@ Tests live with the package under test:
 | veloplanner and wahoo | httptest servers with malformed, rate-limit, and retry cases |
 | sqlite | temporary database and migration/recovery tests |
 | httpapi | handler tests for identity on every route, JSON shape, safe errors, and the security and cache headers |
-| readiness | handler tests for the ready, unreadable-state, and incomplete-state answers, and container tests that the image, compose files, and deploy gate still name the probe's own port |
+| readiness | handler tests for the ready, unreadable-state, and incomplete-state answers, and container tests that the image, the compose example, and the deploy gate still name the probe's own port |
 | webui | serving the embedded bundle, and reporting an unbuilt one |
 | webui/app | Vitest and Testing Library over reusable components and the API client's parsing and error paths |
 | schedule | deterministic clock or trigger seam, no wall-clock sleeping |
@@ -261,30 +261,10 @@ Tests live with the package under test:
 No normal test contacts VeloPlanner, Wahoo, Pushover, Tailscale, or a secret
 provider. The sandbox FIT/Wahoo acceptance test is separate from normal CI.
 
-## Delivery sequence
-
-Implementation proceeds in these reviewable layers:
-
-1. Bootstrap the module and developer quality gate: CGO-free Go toolchain, mise
-   tasks, golangci-lint, prek, GitHub Actions, MIT licence, and repository
-   hygiene.
-2. Implement configuration, route values, secret input, SQLite migrations, and
-   focused unit tests.
-3. Port and harden the VeloPlanner adapter; implement FIT encoding and a
-   sandbox-only acceptance harness.
-4. Implement Wahoo OAuth, encrypted token state, direct route operations, and
-   rate-limit handling.
-5. Implement sync, scheduler, Pushover, Tailnet-gated read-only HTTP API, and
-   full safety regression tests.
-6. Add Docker, macOS MVP and Pi deployment configuration, GHCR image delivery
-   from the default branch, and end-to-end sandbox verification.
-
-A later layer may depend on earlier code, but it may not weaken a safety rule
-already specified. Route preview remains a future addition after this sequence.
-
 ## Definition of architectural compliance
 
-A change complies with this specification when:
+A change may depend on existing code, but it may not weaken a safety rule
+already specified. It complies with this specification when:
 
 - cmd/domestique is the only composition root and contains no business logic;
 - every package has one owner responsibility and no import cycle;

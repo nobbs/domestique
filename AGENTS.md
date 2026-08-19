@@ -1,8 +1,9 @@
 # AGENTS.md
 
 Guidance for AI coding agents working in this repository. Human contributors
-should read [CONTRIBUTING.md](CONTRIBUTING.md) first; this file covers the same
-ground with the details an agent needs to act without additional context.
+should read [CONTRIBUTING.md](CONTRIBUTING.md) first. Where a rule has a
+reason, [the delivery specification](docs/specs/delivery.md) holds it; this file
+gives the command and what turns on it.
 
 ## What this service is
 
@@ -16,7 +17,7 @@ trigger.
 
 ## Specifications are normative
 
-[`docs/specs`](docs/specs) contains the accepted v1 contracts. Read the relevant
+[`docs/specs`](docs/specs) contains the accepted contracts. Read the relevant
 one before changing behavior:
 
 | Specification | Covers |
@@ -51,33 +52,17 @@ merge must satisfy. Running a gate locally buys an earlier answer, not a
 different one.
 
 `mise run quick` is the routine loop, and what to run while iterating. It runs
-everything `mise run check` runs except six checks it defers: `build-check`,
-which compiles the published release target; `test-race`, which reruns the whole
-Go suite under the race detector; `vulncheck` and `ui-audit`, which need the
-network and a current advisory database; and `ui-browser-install` and
-`ui-browser-test`, which download a browser and then drive it over the demo
-stack for minutes. Nothing else is left out, and `mise run gate-check` fails if
-that stops being true.
+everything `mise run check` runs except six checks it defers — `build-check`,
+`test-race`, `vulncheck`, `ui-audit`, `ui-browser-install` and
+`ui-browser-test` — so a green `quick` is not a full gate. `mise run check` is
+that full gate; reach for it when a change specifically implicates one of the
+six — the release build, concurrent code, a dependency, or the browser suite —
+rather than as routine. [The delivery specification](docs/specs/delivery.md)
+says why each is deferred and how the subset is asserted.
 
-`mise run check` is the full gate: `prek`, lint, markdownlint, shellcheck,
-actionlint, `go vet`, tests, the same tests under the race detector, TypeScript
-type checking, the UI lint and test
-suites, the browser suite, `go mod tidy -diff`, `go mod verify`, `govulncheck`,
-`npm audit`, `gitleaks`, a commit-hook cost check, a task-definition check, a
-local-gate structure check, and a compile check for the published release
-target. Individual tasks (`mise run test`, `mise run lint`, `mise run fmt`,
-`mise run ui-test`, `mise run build-check`) are also available while iterating.
-
-Run `mise run quick` before reporting work complete. It is the expected gate for
-a hand-over: the six checks it defers all run on every pull request, so paying
-for them locally as well buys an earlier answer at the cost of a browser
-download and minutes of driving it. Reach for `mise run check` when you have a
-specific reason to want one of those six before pushing — a change to the
-release build, to concurrent code, to a dependency, or to the browser suite
-itself — rather than as routine.
-
-Either way, say plainly which checks you ran. A green `mise run quick` is not a
-full gate, and reporting it as one is the failure this rule exists to prevent.
+Run `mise run quick` before reporting work complete, and say plainly which
+checks you ran. Reporting a green `mise run quick` as a full gate is the failure
+this rule exists to prevent.
 
 A second run says `sources up-to-date, skipping` for every check whose files
 have not moved, which is why the loop is cheap to repeat. It is a local
@@ -87,30 +72,22 @@ switching branches with a dirty state directory, or when you suspect the cache
 rather than the code.
 
 Tests run with `CGO_ENABLED=0` and `-shuffle=on`. They must stay deterministic
-under shuffling.
-
-`mise run test-race` runs the same suite under the race detector, which is a
-different question: shuffling catches tests coupled through ordering, and the
-detector catches memory shared between goroutines without synchronisation. It is
-the one command here that needs cgo, so it needs a C compiler and is several
-times slower than `mise run test`; that is why it is deferred out of the routine
-loop rather than folded into it. Reach for it after touching anything
-concurrent — the sync service and its reporter, the Wahoo client, the Access
-verifier, or the composition root. Nothing it does reaches the shipped artefact:
-`mise run build`, `mise run build-check` and the image stay `CGO_ENABLED=0` and
-statically linked.
+under shuffling. `mise run test-race` runs the same suite under the race
+detector, which asks a different question and needs cgo. Reach for it after
+touching anything concurrent — the sync service and its reporter, the Wahoo
+client, the Access verifier, or the composition root. Nothing it does reaches
+the shipped artefact.
 
 `mise run coverage` writes a Go coverage profile to `.coverage/go.out` and the
-UI's LCOV report to `.coverage/ui/lcov.info`, and prints a summary for each. It
-is not part of `mise run check`, and nothing local fails on a percentage. CI
-publishes both to Codecov under the `go` and `ui` flags, where the two patch
-statuses do decide a merge: each requires the lines a change adds or alters to
-be covered at least as well as the base commit's already are. The UI number is
-the Vitest suites and the browser suite merged, so a change to code only the
-whole page exercises is judged on coverage it actually has.
-`mise run coverage-ui` drives a browser and is correspondingly slow; with none
-installed it keeps the unit half, says what it left out, and still succeeds. See
-[CONTRIBUTING.md](CONTRIBUTING.md) for what is measured and what is left out.
+UI's LCOV report to `.coverage/ui/lcov.info`, and prints a summary for each.
+Nothing local fails on a percentage, but CI publishes both to Codecov under the
+`go` and `ui` flags, where each language's patch status requires the lines a
+change adds or alters to be covered at least as well as the base commit's
+already are — so an uncovered change does not merge. `mise run coverage-ui`
+drives a browser and is correspondingly slow; with none installed it keeps the
+unit half, says what it left out, and still succeeds.
+[The delivery specification](docs/specs/delivery.md#coverage) states what is
+measured, what is deliberately not, and why the statuses are shaped that way.
 
 **The browser UI** lives in `internal/webui/app` (TypeScript, React, Vite,
 MapLibre) and is compiled into the binary with `go:embed`, so `mise run build`
@@ -126,16 +103,15 @@ requires `docker login dhi.io`, because the base images are Docker Hardened
 Images.
 
 **To check that the production image still runs**, use
-`mise run container-smoke`. It starts the image the way
-`docs/compose.example.yml` starts it — unprivileged, read-only root, no
-capabilities, one tmpfs, one state mount — and asserts the probes, the response
-headers, the refusal of an anonymous caller, the process's own uid, that nothing
-was written outside the state mount, and that no secret value reached the log.
-It builds nothing: point `DOMESTIQUE_SMOKE_IMAGE` at an image already in the
-local store, or build `domestique:smoke` first. It is outside `mise run check`,
-because building an image needs the `dhi.io` login above; CI runs it in the
-pull-request `Image` job. Every credential it mounts is a placeholder it writes
-itself, and it reaches no provider.
+`mise run container-smoke`. It starts the image under the runtime
+`docs/compose.example.yml` documents and asserts that contract, so a service
+that builds but cannot come up fails here rather than at deploy time. It builds
+nothing: point `DOMESTIQUE_SMOKE_IMAGE` at an image already in the local store,
+or build `domestique:smoke` first. It is outside `mise run check` because
+building an image needs the `dhi.io` login above; CI runs it in the
+pull-request `Image` job.
+[The delivery specification](docs/specs/delivery.md#proving-the-runtime-contract)
+lists everything it asserts.
 
 **To develop against no data at all**, run `mise run demo`. One command writes a
 throwaway configuration under `.local/demo`, seeds a database with the synthetic
@@ -243,32 +219,19 @@ packages — deterministic hand-written fakes remain the convention.
 [`internal/route`](internal/route) is the worked example; packages still using
 plain `testing.T` checks are converted separately.
 
-Browser UI tests come in two suites. `mise run ui-test` is Vitest plus Testing
-Library over the reusable components in `src/components` and the API client's
-parsing and error paths: jsdom, no browser, and a second to run — anything it
-can reach belongs there.
-
-`mise run ui-browser-test` is Playwright over a real Chromium, and covers what
-jsdom cannot observe: the MapLibre map, which needs WebGL, and the interactions
-that span components rather than living inside one — scrubbing the elevation
-chart, dragging a stretch out of the map, following a card into a route. The
-specs are in `internal/webui/app/e2e`, and `mise run ui-browser-install`
-downloads the browser they need. It runs against `dev/demo.sh`, so it reads the
-synthetic library in `internal/demo` and never a real route, and its fixtures
-answer the one third-party request the application makes — the basemap style —
-from memory and fail the test if anything else leaves the page. No screenshot is
-stored: a visual assertion compares the map against itself within the run, after
-waiting for two identical frames.
-
-It drives that one stack as two projects. `dev-server` runs the specs in `e2e`
-against the Vite dev server. `bundle` runs the specs in `e2e/contract` against
-the Go service itself — the production bundle from `internal/webui`'s embed
-handler, and the routes, gates and headers a deployment serves it with — so that
-the shipped client is seen parsing a real response rather than a fixture. Its
-stack is started with `dev/demo.sh --with-bundle`, which builds the UI first so
-the embedded bundle is the current one, and its harness adds the identity
-assertion the dev proxy would and forwards state-changing requests with the
-configured origin, because a browser will not let a test set its own.
+Browser UI tests come in two suites, and which one a test belongs in is a
+decision. `mise run ui-test` is Vitest plus Testing Library over the reusable
+components in `src/components` and the API client's parsing and error paths:
+jsdom, no browser, and a second to run — anything it can reach belongs there.
+`mise run ui-browser-test` is Playwright over a real Chromium, with the specs in
+`internal/webui/app/e2e` and `mise run ui-browser-install` for the browser they
+need; it is for what jsdom cannot observe — the MapLibre map, which needs WebGL,
+and the interactions that span components — and is not a second home for logic a
+component test could reach. It reads the synthetic library in `internal/demo`
+and never a real route.
+[The delivery specification](docs/specs/delivery.md#the-browser-suite) covers its
+two projects, its hermeticity, and how a visual assertion works without a stored
+screenshot.
 
 That suite renders the map, but it does not look at it. Checking a map change by
 eye is still skippable, so a change may be handed over without anyone having seen
@@ -285,14 +248,13 @@ their values into the repository, or commit them.
 references secret **files** — it never embeds secret values.
 
 Never commit credentials, OAuth tokens, the Wahoo client secret, personal route
-fixtures, generated FIT files, SQLite state, or Raspberry Pi deployment files.
+fixtures, generated FIT files, SQLite state, or host deployment files.
 
 ## Commits and pull requests
 
 Use [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) with
 the scopes already established in the history (`sync`, `elevation`, `fit`,
-`wahoo`, `http`, `config`, `runtime`, `container`, `macos`, `hetzner`,
-`release`). Keep changes focused. A pull request should explain any change to
-the normative
+`wahoo`, `http`, `config`, `runtime`, `container`, `hetzner`, `release`). Keep
+changes focused. A pull request should explain any change to the normative
 specifications, to a safety gate, or to the operator action required for
 deployment.

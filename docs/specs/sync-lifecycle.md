@@ -1,6 +1,6 @@
 # Domestique sync lifecycle specification
 
-**Status:** accepted v1 design
+**Status:** accepted
 
 This is a subordinate specification to [the service contract](service.md).
 It defines the durable lifecycle of OAuth onboarding, synchronisation, and the
