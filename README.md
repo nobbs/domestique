@@ -9,9 +9,9 @@ one stored route stage at a time on a map. Basemap tiles come from a configurabl
 keyless provider — the only request this service's page makes outside the Tailnet
 — and the map follows your system's light or dark colour scheme.
 
-The accepted v1 contract is in [the service specification](docs/specs/service.md).
+The accepted contract is in [the service specification](docs/specs/service.md).
 The supporting specifications define configuration, sync safety, architecture,
-and delivery before implementation begins.
+and delivery.
 
 ## Development
 
@@ -57,11 +57,6 @@ host-local health check rather than an endpoint on the public surface. Tailscale
 The [Linux VM guide](docs/hetzner.md) covers the long-running host. The
 [Cloudflare Access guide](docs/cloudflare-access.md) covers how the single
 operator reaches it — the only way in, and without publishing a listener. The
-[Pi deployment guide](docs/deployment.md) applies the same runtime contract to
-smaller hardware. The [macOS Docker guide](docs/macos-mvp.md) is a historical
-record of the Apple-silicon MVP host that first ran the service, kept for how
-it was assembled rather than as something to follow. The
 [operator recovery runbook](docs/runbook.md) covers the uncommon moments a
-running deployment asks for a person. The optional
-sandbox encoder check is documented in
-[the FIT acceptance guide](docs/fit-sandbox-acceptance.md).
+running deployment asks for a person. The optional sandbox encoder check is
+documented in [the FIT acceptance guide](docs/fit-sandbox-acceptance.md).

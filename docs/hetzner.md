@@ -1,9 +1,7 @@
 # Linux VM deployment
 
 Domestique runs as one Docker container on a small always-on Linux VM in the
-Tailnet. This guide covers a host that **pulls a published image by digest**.
-That is the same runtime contract as the [Pi deployment](deployment.md); the two
-guides differ only in how the host itself is prepared. GitHub Actions publishes
+Tailnet, and **pulls a published image by digest**. GitHub Actions publishes
 the image from the default branch, so this host never builds one.
 
 Building here was the earlier arrangement, and it is where this VM's memory
@@ -25,9 +23,9 @@ flowchart LR
   app --> providers["VeloPlanner, Wahoo, Pushover"]
 ```
 
-This is the same boundary the other host guides describe, and it is the reason
-the listener stays private at all. On a VM with a public IP it deserves extra
-care: the container must publish to `127.0.0.1` only, never to `0.0.0.0`.
+This boundary is the reason the listener stays private at all. On a VM with a
+public IP it deserves extra care: the container must publish to `127.0.0.1`
+only, never to `0.0.0.0`.
 Confirm it after every start with `ss -tlnp`. Do not use Tailscale Funnel, and
 do not put a general-purpose reverse proxy in front of the service. The
 application authenticates every request by verifying a Cloudflare Access
@@ -40,6 +38,10 @@ above rather than bending it: the proxy's origin is the Tailscale Service name,
 so Tailscale Serve stays in the path and strips the client-supplied header, and
 the application independently verifies a signed Cloudflare Access assertion. Any
 other proxy, or that same proxy pointed at `127.0.0.1`, hands over the API.
+
+Wahoo never connects to this host. The browser follows Wahoo's authorisation
+redirect back to the callback URL after the user signs in, so the OAuth flow
+needs no inbound path of its own.
 
 ## Prepare the host
 
@@ -90,7 +92,7 @@ chmod 0444 config.toml
 
 Keep the state encryption key together with the `domestique-state` volume.
 Losing either requires Wahoo reauthorisation and safe route adoption; there is
-intentionally no state backup or key-rotation workflow in v1.
+intentionally no state backup or key-rotation workflow.
 
 ## Pull a published image
 
@@ -121,6 +123,12 @@ value into `.env`, replacing any earlier one:
 DOMESTIQUE_IMAGE=ghcr.io/nobbs/domestique@sha256:<digest>
 ```
 
+The compose file also passes `DOMESTIQUE_IMAGE` into the container, so the
+running service can report which image it is on its status page beside the
+commit it was built from. Only the digest is read from it; the registry and
+repository stay on the host. Nothing breaks without it — the service then names
+the commit alone.
+
 Pin that index digest — not the manifest digest under it, and not a tag. The
 push is an index even though it covers one architecture, because the bill of
 materials and the provenance travel beside the image as their own manifests, and
@@ -128,10 +136,19 @@ reading a digest out of `docker images --digests` after a pull can hand you the
 image manifest alone, which leaves those behind. `latest` moves, so it names an
 image to look at, never one to deploy.
 
-The image is not signed; [the delivery specification](specs/delivery.md) states
-why and what stands in its place.
-[The Pi guide](deployment.md#select-an-image) carries the same commands together
-with the provenance and bill-of-materials inspection.
+The image is not signed, so there is no signature to check: what makes a digest
+trustworthy is that it came from the run that built it on the default branch of
+the private repository. Do not accept a digest from any other source.
+[The delivery specification](specs/delivery.md) states why nothing is signed and
+what stands in its place. The image does carry BuildKit-generated SBOM and
+provenance attestations, which are worth inspecting when investigating a
+supply-chain change:
+
+```sh
+IMAGE=ghcr.io/nobbs/domestique@sha256:<digest>
+docker buildx imagetools inspect "$IMAGE" --format '{{ json .Provenance }}'
+docker buildx imagetools inspect "$IMAGE" --format '{{ json .SBOM }}'
+```
 
 ## Run the container
 
@@ -152,9 +169,12 @@ answers HTTP. Readiness contacts nothing outside this host, and a target still
 waiting for its one-time authorisation does not make it unready.
 
 The last command must show `127.0.0.1:8080` and `127.0.0.1:8081`, and nothing
-bound to a public address. The service writes no log line on a healthy start — it logs only
-errors — so a running container with no restarts and a passing health probe is
-the expected quiet result.
+bound to a public address. The named state volume is initialised from the image
+with the unprivileged runtime ownership; replacing it with a host bind mount
+means making the target writable by UID and GID `65532` first. Do not remove or
+recreate it during a routine update. The service writes no log line on a healthy
+start — it logs only errors — so a running container with no restarts and a
+passing health probe is the expected quiet result.
 
 ## Publish it through Tailscale
 

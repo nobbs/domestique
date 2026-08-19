@@ -13,7 +13,7 @@ import (
 
 // readinessPort is the port the shipped container and the deployment files agree
 // on. It is restated here rather than imported, because the point of these tests
-// is that the image, the compose files, and the deploy script all still name the
+// is that the image, the compose file, and the deploy script all still name the
 // same one as internal/config defaults to.
 const readinessPort = "8081"
 
@@ -28,22 +28,18 @@ func TestTheImageExposesTheReadinessPort(t *testing.T) {
 	assert.Contains(t, expose, "8080", "the served port must stay exposed")
 }
 
-// Loopback only, on both files an operator starts from. A readiness probe
+// Loopback only, on the file an operator starts from. A readiness probe
 // published on a public address would be the one unauthenticated endpoint on the
 // internet.
-func TestTheComposeFilesPublishReadinessToLoopbackOnly(t *testing.T) {
-	for _, name := range []string{"docs/compose.example.yml", "compose.macos.yml"} {
-		t.Run(name, func(t *testing.T) {
-			contents := readRepositoryFile(t, name)
+func TestTheComposeFilePublishesReadinessToLoopbackOnly(t *testing.T) {
+	contents := readRepositoryFile(t, "docs/compose.example.yml")
 
-			assert.Contains(t, contents, `"127.0.0.1:`+readinessPort+`:`+readinessPort+`"`)
-			for line := range strings.SplitSeq(contents, "\n") {
-				if !strings.Contains(line, ":"+readinessPort+":"+readinessPort) {
-					continue
-				}
-				assert.Contains(t, line, "127.0.0.1:", "line %q publishes readiness off loopback", line)
-			}
-		})
+	assert.Contains(t, contents, `"127.0.0.1:`+readinessPort+`:`+readinessPort+`"`)
+	for line := range strings.SplitSeq(contents, "\n") {
+		if !strings.Contains(line, ":"+readinessPort+":"+readinessPort) {
+			continue
+		}
+		assert.Contains(t, line, "127.0.0.1:", "line %q publishes readiness off loopback", line)
 	}
 }
 

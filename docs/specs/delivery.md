@@ -1,7 +1,6 @@
 # Domestique delivery specification
 
-**Status:** accepted v1 design, revised for trunk-based image publishing and
-for a fast routine local loop with GitHub Actions as the authoritative gate
+**Status:** accepted
 
 This is a subordinate specification to [the service contract](service.md). It
 defines the local quality gate, GitHub Actions, container hardening, the images
@@ -58,12 +57,11 @@ be reviewed and staged deliberately.
 
 ### The authoritative gate is GitHub Actions
 
-**This revises the earlier contract that the full gate was the canonical local
-and CI entry point, run in full before every hand-over.** It is a
-deliberate change to where the gate is paid, not to what the gate contains:
 GitHub Actions runs the complete validation on every pull request targeting the
-default branch, and its aggregate check is what a merge must satisfy. No check
-was removed, relaxed, or made optional in order to obtain a faster local loop.
+default branch, and its aggregate check is what a merge must satisfy. The gate
+is paid there rather than locally; the routine local loop is fast because of
+where the gate is paid, not because any check is removed, relaxed, or made
+optional.
 
 Local validation is therefore a way to learn a result earlier, and it comes at
 two depths:
@@ -167,11 +165,17 @@ a percentage. On a pull request one number is a merge condition, stated below.
 
 The Go profile is collected across the service as a whole rather than per
 package under test, so that a function exercised only through another package's
-tests is not reported as dead. Repository tooling under `dev/` is outside the
-measured set: it is not the service, and its own tests run in the normal suite.
-The browser UI's report excludes its tests and their harness, type-only
-declarations, and the bootstrap that mounts React. Nothing else is excluded, and
-code that only a browser-level test can reach is measured by a browser-level
+tests is not reported as dead. Four things are deliberately outside the measured
+set, and nothing else is:
+
+| Not measured | Why |
+| --- | --- |
+| `dev/` | Repository tooling rather than the service. It has its own tests, and they run in the normal suite. |
+| `src/**/*.test.{ts,tsx}` and `src/test/` | The tests and their harness are the measurement, not its subject. |
+| `src/**/*.d.ts` | Type-only declarations emit no runtime statement to reach. |
+| `src/main.tsx` | It mounts React onto a real document and does nothing else, so a test of it would assert the framework rather than this UI. The browser does load it, and the merge drops it there too, so that the total does not depend on which collector ran. |
+
+Code that only a browser-level test can reach is measured by a browser-level
 test: the UI number is the unit suites and the whole-page suite merged. A
 component the whole page exercises therefore reads as exercised rather than as a
 gap the report cannot see. Both halves are V8 coverage over the same source
@@ -220,12 +224,10 @@ change whose base commit carries no report is outside what this contract relies
 on: it is rebased onto a default-branch commit that carries one, and nothing
 here asserts what the status would otherwise report.
 
-The UI status judging is a revision. It reported and did not judge for as long
-as the measurement omitted what the browser-level suite reached, because a gate
-that fails changes to code that is in fact exercised has its ordinary outcome be
-an override. That omission is what the merged report closes, and the status
-follows the measurement. The two project statuses continue to report trend and
-block nothing.
+The UI status can judge because the measurement includes what the browser-level
+suite reaches: a gate that failed changes to code that is in fact exercised
+would have its ordinary outcome be an override. The two project statuses report
+trend and block nothing.
 
 The measurement carries no path filter because a required context has to arrive:
 Codecov reports only on a commit it received a report for, so a run that
@@ -234,16 +236,14 @@ request that nothing can un-block. The same gap seen from the other side is a
 default-branch commit with no report, which is a commit no later pull request
 can compare against.
 
-This revises the earlier contract twice over. A failed upload used to cost a
-report rather than a merge; it now costs a merge, because while Codecov is
+A failed upload therefore costs a merge rather than a report: while Codecov is
 unavailable, or for a pull request from a fork with no access to the upload
-token, the contexts do not arrive and the merge waits. And no coverage number
-used to decide a merge; one now does. An enforced gate must therefore carry a
-recorded exception rather than none: the branch ruleset grants the administrator
-role a pull-request bypass, which permits merging a non-compliant pull request
-and nothing else, and records on that pull request that it was used. Removing
-the contexts from the ruleset remains the escape hatch for the arrival problem.
-Both are repository settings changes rather than code ones.
+token, the contexts do not arrive and the merge waits. An enforced gate carries
+a recorded exception: the branch ruleset grants the administrator role a
+pull-request bypass, which permits merging a non-compliant pull request and
+nothing else, and records on that pull request that it was used. Removing the
+contexts from the ruleset remains the escape hatch for the arrival problem. Both
+are repository settings changes rather than code ones.
 
 The upload is constrained to the two files the run just produced. The uploader
 does not search the working tree, and its plugins are disabled, because that
@@ -408,17 +408,16 @@ Normal Go tests run without network access to VeloPlanner, Wahoo, Pushover,
 Tailscale, or a secret system. The normal test command enables deterministic
 test ordering variation with `-shuffle=on`.
 
-**This revises the earlier contract that the gate requires no race-detector
-job.** The gate now runs the whole Go suite a second time under the detector,
-because the two invocations answer different questions: shuffling catches tests
-coupled through ordering, and the detector catches memory shared between
-goroutines without synchronisation. A data race in the sync service does not
+The gate runs the whole Go suite a second time under the race detector, because
+the two invocations answer different questions: shuffling catches tests coupled
+through ordering, and the detector catches memory shared between goroutines
+without synchronisation. A data race in the sync service does not
 surface as a failing test but as a corrupted report or a wedged run, on a
 schedule, where it is least reproducible.
 
-What did not change is the CGO-free contract for everything that ships. The
-detector needs cgo and is therefore the one command in this repository that runs
-with `CGO_ENABLED=1`; it instruments a test binary that is never published. The
+The CGO-free contract for everything that ships is unaffected. The detector
+needs cgo and is therefore the one command in this repository that runs with
+`CGO_ENABLED=1`; it instruments a test binary that is never published. The
 release build, the published image, and the container smoke test remain
 `CGO_ENABLED=0` and statically linked, and the normal test command remains
 CGO-free as well. The race check is deferred out of the routine local loop for
@@ -706,10 +705,10 @@ the local image store; nothing pulls. In CI that reference is the image the job
 just built: one platform can be loaded into the runner's image store, so what is
 started is the artefact that was proved rather than a second build of it.
 
-The repository may provide a non-secret, clearly placeholder deployment example
-later. It must not make a direct Internet port publication easy to copy, and it
-must not contain an account identifier, callback hostname, token, or secret
-file content.
+The repository provides non-secret, clearly placeholder deployment examples.
+They must not make a direct Internet port publication easy to copy, and must not
+contain an account identifier, callback hostname, token, or secret file
+content.
 
 ## Published images
 
@@ -771,10 +770,10 @@ substitute an image from anywhere else.
 A deploying host consumes only an immutable digest, never a mutable tag such as
 `latest`. It needs a package-read credential for the private GHCR package and no
 build credential. A machine may still build the pinned Dockerfile from a
-checkout, as the macOS MVP does; such an image is a local build, not a published
-artefact, and carries no provenance. Rollback means selecting an earlier
-published digest and restarting the container; it does not restore SQLite state
-or bypass the reauthorisation and safe-adoption rules.
+checkout; such an image is a local build, not a published artefact, and carries
+no provenance. Rollback means selecting an earlier published digest and
+restarting the container; it does not restore SQLite state or bypass the
+reauthorisation and safe-adoption rules.
 
 Publish automation receives `contents: read` and `packages: write` and nothing
 else. It receives no application secrets beyond the Docker Hardened Images pull
@@ -783,7 +782,7 @@ accounts.
 
 ## Repository hygiene
 
-Before the first implementation release, the repository includes:
+The repository includes:
 
 - the MIT `LICENSE`;
 - a concise `SECURITY.md` with a private reporting channel and supported

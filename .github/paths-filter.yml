@@ -28,7 +28,7 @@ lint:
   - "**"
 
 # `go` also covers the deployment files the Go suite holds to the code, which
-# are not Go: internal/readiness reads the Dockerfile, both compose files, the
+# are not Go: internal/readiness reads the Dockerfile, the compose example, the
 # deploy script and the container smoke test, and asserts that they still name
 # the same probe port and the same hardening. Those files are inputs of a test,
 # so a change to one has to run the test — otherwise the drift each of those
@@ -40,7 +40,6 @@ go:
   - ".mise.toml"
   - "Dockerfile"
   - "mise-tasks.toml"
-  - "compose.macos.yml"
   - "docs/compose.example.yml"
   - "go.mod"
   - "go.sum"

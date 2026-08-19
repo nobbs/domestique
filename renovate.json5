@@ -123,12 +123,6 @@
     },
 
     {
-      description: "compose.macos.yml names a locally built tag, not a registry image.",
-      matchFileNames: ["compose.macos.yml"],
-      enabled: false,
-    },
-
-    {
       description: "Lock file refreshes are mechanical and fully covered by the gate.",
       matchUpdateTypes: ["lockFileMaintenance"],
       automerge: true,
