@@ -549,7 +549,7 @@ func build(raw *rawSettings) (*Settings, error) {
 	if err := validateOverpassURL(raw.Surface.OverpassURL); err != nil {
 		return nil, err
 	}
-	if err := validateHTTPSURL("notifications.pushover.base_url", raw.Notifications.Pushover.BaseURL); err != nil {
+	if err := validateHTTPSOrigin("notifications.pushover.base_url", raw.Notifications.Pushover.BaseURL); err != nil {
 		return nil, err
 	}
 
@@ -779,6 +779,22 @@ func validateHTTPSURL(name, value string) error {
 	if err != nil || parsed.Scheme != "https" || parsed.Host == "" ||
 		parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
 		return fmt.Errorf("%s must be an absolute HTTPS URL without credentials, query, or fragment", name)
+	}
+
+	return nil
+}
+
+// validateHTTPSOrigin is validateHTTPSURL plus the absence of a path, which is
+// what a setting the client parses as an origin has to be. Rejecting a path here
+// rather than letting the client reject it keeps the failure where every other
+// configuration failure is: before a listener opens, naming the setting.
+func validateHTTPSOrigin(name, value string) error {
+	if err := validateHTTPSURL(name, value); err != nil {
+		return err
+	}
+	parsed, err := url.Parse(value)
+	if err != nil || (parsed.Path != "" && parsed.Path != "/") {
+		return fmt.Errorf("%s must be an origin, without a path", name)
 	}
 
 	return nil

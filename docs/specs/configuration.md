@@ -215,12 +215,14 @@ application dependency.
   across deployments; it is a configured slot, not a Wahoo user identifier.
 - `sync.initial_delay` is positive. `sync.interval` equals one hour in v1.
   `sync.max_deletions_per_target` equals `5` in v1.
-- `notifications.pushover.base_url` is an absolute HTTPS URL and defaults to
-  Pushover's own origin, so a deployment that says nothing about it notifies
-  Pushover. It is a setting rather than a compiled-in constant for the same
+- `notifications.pushover.base_url` is an absolute HTTPS origin without a path,
+  and defaults to Pushover's own, so a deployment that says nothing about it
+  notifies Pushover. It is a setting rather than a compiled-in constant for the same
   reason the provider endpoints above are: a development or demo environment has
   to be able to point it at an address that goes nowhere, and the alternative is
-  such an environment reaching the real service with a placeholder token.
+  such an environment reaching the real service with a placeholder token. The
+  path is rejected at startup rather than by the notifier, so the failure names
+  the setting.
 - `sync.empty_source_deletion` is `deny` or `allow`, defaulting to `deny`.
   The operator sets `allow` only for a deliberate final-library deletion and
   returns it to `deny` immediately afterward.

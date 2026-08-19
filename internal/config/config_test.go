@@ -310,6 +310,14 @@ func TestLoadRejectsInvalidConfiguration(t *testing.T) {
 			want: "notifications.pushover.base_url",
 		},
 		{
+			name: "notification origin carrying a path",
+			mutate: func(t *testing.T, path string) {
+				t.Helper()
+				replaceInFile(t, path, "[notifications.pushover]", "[notifications.pushover]\nbase_url = \"https://pushover.example.test/1/messages.json\"")
+			},
+			want: "must be an origin",
+		},
+		{
 			name: "dark tile style on another origin",
 			mutate: func(t *testing.T, path string) {
 				t.Helper()
