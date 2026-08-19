@@ -29,6 +29,9 @@ Use the existing type labels (`enhancement`, `bug`, `documentation`, and
 - Automation: `agent-ready` only when the issue can be completed without an
   unresolved decision, credentials, live provider access, third-party app
   installation, repository-policy choice, or other operator authority.
+- Status: `status:in-progress` records that a delivery session has claimed the
+  issue. Delivery writes and removes it against a claim comment; triage does
+  not. Never add it to reserve work, and never remove it to unblock a pickup.
 
 Never promote an issue to `priority:now` without explicit user direction.
 Default speculative ideas to `priority:later`; use `priority:next` only for
@@ -51,6 +54,8 @@ deliberately selected work.
 ## Housekeeping
 
 Keep labels mutually consistent, remove obsolete duplicate labels only with
-user approval, and verify every external write by reading it back. Treat a
+user approval, and verify every external write by reading it back. Treat
+`status:in-progress` on an issue with no live claim comment and no open pull
+request as a dead session's leftover, and clear it only with user approval. Treat a
 pull request as implementation progress, not automatic closure or proof that
 the issue is ready to merge.

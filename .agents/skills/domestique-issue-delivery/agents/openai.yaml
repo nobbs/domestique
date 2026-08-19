@@ -1,4 +1,4 @@
 interface:
   display_name: "Domestique Issue Delivery"
-  short_description: "Deliver one ready Domestique GitHub issue"
-  default_prompt: "Use $domestique-issue-delivery to pick and deliver the next ready Domestique issue."
+  short_description: "Claim and deliver one ready Domestique GitHub issue"
+  default_prompt: "Use $domestique-issue-delivery to claim and deliver the next ready Domestique issue."

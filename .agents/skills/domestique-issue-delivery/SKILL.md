@@ -1,6 +1,6 @@
 ---
 name: domestique-issue-delivery
-description: "Select and deliver one agent-ready GitHub issue for nobbs/domestique, from issue triage through a review-ready pull request. Use when asked to pick the next ready issue or implement a labelled Domestique issue; not for backlog administration."
+description: "Select, claim, and deliver one agent-ready GitHub issue for nobbs/domestique, from issue triage through a review-ready pull request. Use when asked to pick the next ready issue or implement a labelled Domestique issue; the claim keeps parallel sessions off the same issue. Not for backlog administration."
 ---
 
 # Domestique Issue Delivery
@@ -13,6 +13,9 @@ Deliver one focused issue without broadening its scope.
   an issue title, priority, or lack of objections.
 - Read the live issue body, labels, comments, linked work, and relevant open
   pull requests before choosing it. Do not duplicate active work.
+- Skip an issue that carries `status:in-progress` or already has an open linked
+  pull request. Another session holds it. Reclaim a stale claim only under the
+  rule below.
 - Prefer `priority:now`, then `priority:next`, then `priority:later`. Within a
   priority, choose the oldest clear issue unless the user names one.
 - If a selected issue has unresolved product choices, requires secrets or a
@@ -21,6 +24,54 @@ Deliver one focused issue without broadening its scope.
   inconsistent. Do not silently remove or change labels.
 - If there is no eligible issue, report that result and do not broaden the
   search or invent work.
+
+## Claim it before working
+
+GitHub has no atomic label write, so two sessions can read the same issue as
+free within the same second and both label it. Claim through the comment log,
+which is ordered and stable, and treat `status:in-progress` as the visible
+marker of a claim that already succeeded.
+
+1. Mint a claim id unique to this session: `claim:$(openssl rand -hex 4)`.
+2. Post exactly one comment on the chosen issue, first line verbatim:
+
+   ~~~text
+   Delivery claim <claim-id> by domestique-issue-delivery at <UTC RFC 3339>.
+   ~~~
+
+3. Re-read every comment on the issue and collect the live claims — a claim is
+   live unless a later comment releases or supersedes it. The lowest comment id
+   wins, whatever the wall-clock timestamps say.
+4. If another live claim won, delete your own claim comment, leave the issue
+   untouched, and select the next candidate. Never delete or release another
+   session's claim comment, and never take an issue you lost.
+5. If you won, add `status:in-progress`, then read the label and the comment
+   back before changing any code.
+
+Comment ids are ordered only in the API, not in the web view. List them with
+`gh api repos/nobbs/domestique/issues/<n>/comments --jq '.[] | [.id, .created_at]
+| @tsv'`, and delete a lost claim with
+`gh api --method DELETE repos/nobbs/domestique/issues/comments/<id>`.
+
+Claim an issue the user named by number the same way. If a live claim already
+holds it, report that and stop rather than working the issue in parallel.
+
+## Hold and release the claim
+
+- Hold the claim for the whole delivery, including while the pull request is in
+  review. The issue stays open until that pull request merges, and the label is
+  what keeps a second session off it in the meantime.
+- Release when you stop short of delivery — you abandon the issue, hand it back
+  for operator authority, or find `agent-ready` inconsistent. Post
+  `Delivery claim <claim-id> released: <reason>.` and remove
+  `status:in-progress`. Report the reason to the user too.
+- Leave the label in place once the issue closes. Selection only considers open
+  issues, so a closed issue needs no cleanup.
+- A claim is stale when its comment is more than 4 hours old and the issue has
+  no open linked pull request. Reclaim one by posting
+  `Delivery claim <old-id> superseded by <new-id>: stale since <timestamp>, no
+  open pull request.` and then claiming from step 3 above. A claim younger than
+  that is contention, not a leftover: report it and choose another issue.
 
 ## Deliver it
 
@@ -64,6 +115,7 @@ Deliver one focused issue without broadening its scope.
 
 ## Report
 
-State the selected issue, why it won selection, the implementation and
-validation result, and any remaining operator action. Do not change backlog
+State the selected issue, why it won selection, the claim id you hold or
+released, the implementation and validation result, and any remaining operator
+action. Do not change backlog
 labels or close the issue merely because a pull request exists.
