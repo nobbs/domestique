@@ -1,0 +1,137 @@
+{
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+
+  // JSON5 rather than JSON so the rules can say why they exist. `config:
+  // best-practices` carries almost all of the mechanics — digest pinning for
+  // Docker and for actions, pinned devDependencies, the npm release-age hold,
+  // abandonment warnings, weekly lock file maintenance, config migration — so
+  // what is left below is only what is specific to this repository.
+  extends: ["config:best-practices", ":semanticCommits"],
+
+  timezone: "Europe/Berlin",
+  // No schedule: updates arrive as they are released. Every pull request here
+  // runs the browser suite and the coverage job, so the two limits below are
+  // what keeps that from becoming a stampede — a trickle, not a queue that
+  // empties all at once on a Monday.
+  prConcurrentLimit: 5,
+  prHourlyLimit: 2,
+  rebaseWhen: "behind-base-branch",
+
+  // Everything automerges by default; the rules below carve out what a green
+  // run does not actually answer for.
+  //
+  // Automerge goes through GitHub's own auto-merge rather than Renovate merging
+  // on its own reading of the checks. That is the safety property: the merge is
+  // performed by the same mechanism a human merge goes through, so it cannot
+  // happen unless the branch ruleset's required checks — Required,
+  // codecov/patch/go, codecov/patch/ui and GitGuardian — have all passed.
+  // Turning auto-merge off at the repository stops all of it, and Renovate then
+  // opens the pull request and leaves it, which is the right failure direction.
+  automerge: true,
+  platformAutomerge: true,
+  automergeStrategy: "squash",
+
+  // `config:best-practices` holds npm releases for three days. Everything else
+  // — Go modules, base image digests, the toolchain in .mise.toml — gets the
+  // same wait, for the same reason: a compromised release is usually withdrawn
+  // well inside that window, and this repository has no reason to be an early
+  // consumer of anything.
+  minimumReleaseAge: "3 days",
+
+  // The manifest should state what is actually installed. Everything else here
+  // is pinned exactly — the toolchain, the action commits, the base images —
+  // and a caret range covering a version nobody has run is the odd one out.
+  // devDependencies are pinned outright by the preset.
+  npm: { rangeStrategy: "bump" },
+
+  // go.sum and the module graph stay consistent with the manifest.
+  postUpdateOptions: ["gomodTidy"],
+
+  // A published advisory is the one case where waiting is worse than moving, so
+  // these skip the release-age hold and the concurrency limits. They are not
+  // automerged: something is already known to be wrong, so a human reads it.
+  vulnerabilityAlerts: {
+    enabled: true,
+    minimumReleaseAge: null,
+    automerge: false,
+    labels: ["dependencies", "security"],
+  },
+  osvVulnerabilityAlerts: true,
+
+  packageRules: [
+    {
+      description: "Everything Renovate opens is a dependency update.",
+      matchPackageNames: ["*"],
+      labels: ["dependencies"],
+    },
+
+    {
+      description: [
+        "A major version is where a dependency is allowed to change its mind, ",
+        "which is what a passing test suite is worst at noticing. Read by a ",
+        "person, and held longer before it is even offered.",
+      ],
+      matchUpdateTypes: ["major"],
+      automerge: false,
+      minimumReleaseAge: "14 days",
+    },
+
+    {
+      description: [
+        "The map stack never automerges, at any update type. The browser suite ",
+        "renders the map but does not judge it — docs/specs/delivery.md makes ",
+        "looking at a map change a human act — so a green run says nothing ",
+        "about whether the map still draws correctly.",
+      ],
+      matchPackageNames: ["maplibre-gl", "react-map-gl"],
+      groupName: "map stack",
+      automerge: false,
+      addLabels: ["area:ui"],
+    },
+
+    {
+      description: [
+        "The Go toolchain moves in one place or it is inconsistent: .mise.toml ",
+        "pins the compiler, go.mod names the language version, and the ",
+        "Dockerfile builds on a matching base image tag. Grouped so they travel ",
+        "together in one pull request, and never automerged — it is what ",
+        "everything else is built with.",
+      ],
+      matchDepNames: ["go", "golang", "dhi.io/golang"],
+      groupName: "Go toolchain",
+      automerge: false,
+    },
+
+    {
+      description: [
+        "And likewise Node: .mise.toml pins the runtime CI and every ",
+        "contributor use, @types/node has to describe that same major, and the ",
+        "webui build stage builds on a matching base image tag.",
+      ],
+      matchDepNames: ["node", "@types/node", "dhi.io/node"],
+      groupName: "Node runtime",
+      automerge: false,
+    },
+
+    {
+      description: [
+        "Actions arrive as one batch rather than nine pull requests, each of ",
+        "which would run the whole gate.",
+      ],
+      matchManagers: ["github-actions"],
+      groupName: "GitHub Actions",
+    },
+
+    {
+      description: "compose.macos.yml names a locally built tag, not a registry image.",
+      matchFileNames: ["compose.macos.yml"],
+      enabled: false,
+    },
+
+    {
+      description: "Lock file refreshes are mechanical and fully covered by the gate.",
+      matchUpdateTypes: ["lockFileMaintenance"],
+      automerge: true,
+    },
+  ],
+}

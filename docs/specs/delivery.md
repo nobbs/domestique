@@ -435,6 +435,79 @@ Wahoo account, uploads a route, or sends a Pushover notification. Sandbox FIT
 and Wahoo acceptance is an explicit operator-run check with separately
 provisioned non-production credentials, and its output must be redacted.
 
+## Dependency updates
+
+Dependencies are proposed by Renovate, configured in `renovate.json5` at the
+repository root. Its job is to keep every pinned thing current: the npm tree,
+the Go module graph, the toolchain in `.mise.toml`, the action commits in the
+workflow, and the images the example compose files name.
+
+Updates arrive as they are released rather than in a scheduled batch. What
+bounds them is concurrency — at most two pull requests an hour and five open at
+a time — because every one of them runs the browser suite and the coverage job.
+
+The configuration is `config:best-practices` plus a short list of rules. The
+preset supplies the mechanics — digests pinned for Docker and for actions,
+devDependencies pinned to exact versions, a release-age hold on npm, warnings
+for abandoned packages, weekly lock file maintenance — so each remaining rule
+exists because of something true about this repository rather than about
+dependency management in general, and there are few enough of them to read.
+
+Most of those proposals merge without a human reading them. That is a deliberate
+trade, and it rests entirely on the gate: an update is automerged through
+**GitHub's own auto-merge**, never by Renovate deciding for itself that the
+checks look fine. The merge therefore goes through the same mechanism a human
+merge goes through and is subject to the same branch ruleset, so it cannot
+happen while a required check is failing or absent. Turning auto-merge off at
+the repository is sufficient to stop all of it, and the failure direction is
+correct: Renovate opens the pull request and leaves it.
+
+What is not automerged is what the gate cannot answer for:
+
+- **Majors**, at any level of the tree. A major version is where a dependency is
+  permitted to change its mind, which is what a passing suite is worst at
+  noticing.
+- **The map stack**, `maplibre-gl` and `react-map-gl`, at every update type. The
+  browser suite renders the map but does not judge it, so a green run says
+  nothing about whether the map still draws correctly, and looking at it remains
+  a human act.
+- **The Go and Node toolchains.** The compiler and runtime in `.mise.toml`, the
+  language version in `go.mod`, the types in `@types/node` and the build stages'
+  base image tags each describe one decision spread across several files, so
+  each is grouped and moved by a person. It is what everything else is built
+  with.
+- **A published advisory.** These ignore the release-age hold and the
+  concurrency limits because waiting is the greater risk, but they are read
+  rather than merged: something is already known to be wrong.
+
+Nothing is automerged until its release has been public for three days, and a
+major until fourteen. This is not a quality judgement about the maintainers of
+anything; it is that a compromised release is usually withdrawn well inside that
+window and this repository has no reason to be an early consumer.
+
+The base images are covered, and their digests automerge. A hardened base image
+exists to be rebuilt against current system packages, so taking its next digest
+promptly is the point of using one; and a pull request that changes the
+Dockerfile builds the image and starts it under the container smoke test, which
+makes this one of the better-proved updates the repository takes. Each `FROM`
+therefore names its tag beside the digest. The digest is what resolves and the
+tag changes nothing about which image is built on, but it records the stream the
+digest came from, without which the next digest offered would be `latest`'s.
+
+A tag change is offered too, but it does not arrive on its own: the Node and Go
+base image tags are grouped with the toolchain entries they have to agree with,
+so moving to a new compiler or runtime is one pull request that changes
+`.mise.toml`, `go.mod` and the `Dockerfile` together, and a person reads it.
+
+**An automerged update reaches production.** A merge to the default branch that
+touches an input of the image publishes it, and the deployment follows the
+publish; the `production` environment carries no approval gate. What stands
+between a dependency update and the running service is the gate itself — the
+full suite, the browser suite, the coverage statuses, the secret scan, and the
+container smoke test that starts the built image and exercises its runtime
+contract. Narrowing what automerges, or adding a required reviewer to that
+environment, are the two places to intervene if that trade stops being worth it.
+
 ## Container contract
 
 The production image is a multi-stage build that produces a statically linked
@@ -452,7 +525,10 @@ the `-dev` variants for the Node and Go build stages, which need a shell and a
 toolchain, and the minimal `static` image for the runtime. They carry SBOMs,
 SLSA Build Level 3 provenance, and signatures. Because the images this project
 publishes are themselves unsigned, that is the strongest verifiable link in the
-chain, and it is why the base images stay pinned by digest.
+chain, and it is why the base images stay pinned by digest. Each reference names
+its tag beside that digest — `dhi.io/node:24-dev@sha256:…` — which resolves
+identically and exists so that an automated digest refresh follows the intended
+stream rather than `latest`.
 
 `dhi.io` requires `docker login dhi.io` with a Docker Hub account and personal
 access token **even on the free Community tier**. It is therefore a build-time

@@ -3,9 +3,14 @@
 # Base images are Docker Hardened Images from dhi.io, pinned by digest. Pulling
 # them requires `docker login dhi.io` with a Docker Hub account and personal
 # access token, including on the free Community tier.
+#
+# Each carries its tag beside the digest. The digest is what resolves — the tag
+# changes nothing about which image this builds on — but it names the stream the
+# digest was taken from, which is what lets the updater offer the next digest of
+# that stream rather than of `latest`.
 
-# dhi.io/node:24-dev — the -dev variant carries npm and a shell.
-FROM --platform=$BUILDPLATFORM dhi.io/node@sha256:1949e745d8b5365e45dbd7ba20a495178aa55fda7248c5c5af3928d84467d047 AS webui
+# The -dev variant carries npm and a shell.
+FROM --platform=$BUILDPLATFORM dhi.io/node:24-dev@sha256:1949e745d8b5365e45dbd7ba20a495178aa55fda7248c5c5af3928d84467d047 AS webui
 
 USER root
 WORKDIR /app
@@ -17,8 +22,8 @@ RUN npm ci
 COPY internal/webui/app/ ./
 RUN npm run build
 
-# dhi.io/golang:1.26-dev — the -dev variant carries the toolchain and coreutils.
-FROM --platform=$BUILDPLATFORM dhi.io/golang@sha256:b511696c1fb6929510c24d8ce66b90e7f9fc763082e5a8f73f778d7a177df93c AS build
+# The -dev variant carries the toolchain and coreutils.
+FROM --platform=$BUILDPLATFORM dhi.io/golang:1.26-dev@sha256:b511696c1fb6929510c24d8ce66b90e7f9fc763082e5a8f73f778d7a177df93c AS build
 
 ARG TARGETARCH
 ARG TARGETOS
@@ -51,9 +56,9 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
     && touch /out/etc/domestique/.keep /out/var/lib/domestique/.keep \
     && chown -R 65532:65532 /out/etc /out/var
 
-# dhi.io/static:20260611-alpine — minimal runtime for a static binary. Its
-# nonroot user is UID 65532, matching the ownership set above.
-FROM dhi.io/static@sha256:93568eb7c673afb3ad79b15cca341469d3e02cf859caae1049aa22fe7fbce90a
+# Minimal runtime for a static binary. Its nonroot user is UID 65532,
+# matching the ownership set above.
+FROM dhi.io/static:20260611-alpine@sha256:93568eb7c673afb3ad79b15cca341469d3e02cf859caae1049aa22fe7fbce90a
 
 LABEL org.opencontainers.image.source="https://github.com/nobbs/domestique"
 
