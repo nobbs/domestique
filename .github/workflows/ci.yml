@@ -207,6 +207,23 @@ jobs:
           disable_search: true
           plugins: noop
           fail_ci_if_error: false
+      # A failed browser test leaves a trace, a failure screenshot and an HTML
+      # report under `.playwright/`, and the runner discards them with itself.
+      # The suite retries nothing on purpose, so a failure here is meant to be
+      # reproducible from what it left rather than by running it again; without
+      # the upload, reproducing it costs a Chromium download and a demo stack.
+      # The path is Playwright's own output directory alone, never the working
+      # tree, which can hold a configuration file, a local database and
+      # `.local/`. Nothing uploads from a green run, and the retention is the
+      # window in which somebody is actually looking at the failure.
+      - name: Upload the browser suite's failure artefacts
+        if: failure()
+        # v7.0.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: playwright-ui
+          path: .playwright/
+          retention-days: 7
 
   coverage:
     name: Coverage
@@ -293,6 +310,17 @@ jobs:
           disable_search: true
           plugins: noop
           fail_ci_if_error: false
+      # This job drives the browser too, through `coverage-ui`, so it leaves the
+      # same trail behind the same kind of failure. See the UI job's upload for
+      # why it is worth keeping; the name is what tells the two apart.
+      - name: Upload the browser suite's failure artefacts
+        if: failure()
+        # v7.0.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: playwright-coverage
+          path: .playwright/
+          retention-days: 7
 
   build:
     name: Build

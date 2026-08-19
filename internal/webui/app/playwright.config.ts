@@ -1,4 +1,4 @@
-import { defineConfig, devices } from "@playwright/test";
+import { defineConfig, devices, type ReporterDescription } from "@playwright/test";
 
 /**
  * The browser suite: the whole page, in a real browser, over the synthetic demo
@@ -56,6 +56,19 @@ const SERVICE_URL = `http://127.0.0.1:${process.env.DOMESTIQUE_DEMO_PORT ?? "808
  */
 const measuringCoverage = process.env.WEBUI_COVERAGE_DIR !== undefined;
 
+/**
+ * What narrates the run: `list` in a terminal, `github` on a runner.
+ *
+ * `github` is the only built-in reporter that emits `::error` workflow commands,
+ * which GitHub renders as inline annotations on the pull request's Files-changed
+ * view, at the file and line the assertion failed on. It narrates the run as
+ * `list` does besides, so nothing is lost in the Actions log by swapping one for
+ * the other. The documented caveat — that a matrix strategy multiplies each
+ * annotation by the number of legs — does not apply: this suite is `workers: 1`,
+ * `fullyParallel: false`, and runs under no matrix.
+ */
+const progressReporter: ReporterDescription = process.env.CI ? ["github"] : ["list"];
+
 export default defineConfig({
   testDir: "./e2e",
   // One demo API, one database, one dev server, and a software WebGL renderer for
@@ -76,7 +89,7 @@ export default defineConfig({
   // which holds what a failed run leaves for a human to look at. CI uploads both
   // under the `ui` flag; see the test-results block in .github/workflows/ci.yml.
   reporter: [
-    ["list"],
+    progressReporter,
     ["html", { outputFolder: "../../../.playwright/report", open: "never" }],
     ["junit", { outputFile: "../../../.test-results/ui/browser.xml" }],
   ],
