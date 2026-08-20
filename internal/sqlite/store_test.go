@@ -146,6 +146,74 @@ func TestStoreRejectsExpiredOAuthAuthorization(t *testing.T) {
 	require.ErrorIs(t, err, ErrOAuthTransactionExpired, "ConsumeAuthorization()")
 }
 
+func TestStoreReportsOnlyLiveAuthorizationsAsPending(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargets(t.Context(), []string{"rider-a", "rider-b", "rider-c"}), "EnsureTargets()")
+	begin := func(targetID string, digestByte byte) []byte {
+		digest := bytes.Repeat([]byte{digestByte}, 32)
+		require.NoError(t, store.BeginAuthorization(
+			t.Context(),
+			targetID,
+			"rider@example.ts.net",
+			digest,
+			time.Now().Add(time.Minute),
+		), "BeginAuthorization()")
+
+		return digest
+	}
+	begin("rider-a", 3)
+	consumed := begin("rider-b", 4)
+	expired := begin("rider-c", 5)
+	_, err := store.ConsumeAuthorization(t.Context(), "rider@example.ts.net", consumed)
+	require.NoError(t, err, "ConsumeAuthorization()")
+	_, err = store.database.ExecContext(
+		t.Context(),
+		"UPDATE oauth_transactions SET expires_at_unix = ? WHERE state_digest = ?",
+		time.Now().Add(-time.Second).Unix(),
+		expired,
+	)
+	require.NoError(t, err, "expiring OAuth authorization")
+
+	var pending []string
+	require.NoError(t, store.ForEachPendingAuthorization(t.Context(), func(targetID string) error {
+		pending = append(pending, targetID)
+
+		return nil
+	}), "ForEachPendingAuthorization()")
+
+	// A flow that was completed and one that ran out of time are both over, and
+	// a slot waiting on neither must not read as one an operator is midway
+	// through connecting.
+	assert.Equal(t, []string{"rider-a"}, pending, "pending target slots")
+}
+
+// The visitor is this method's entire output, so a caller that supplied none and
+// a visitor that fails partway both have to be answered rather than iterated
+// past: the status view reads a slot as pending on the strength of a visit, and
+// a swallowed failure would report a half-read table as a whole one.
+func TestStoreStopsReadingPendingAuthorizationsOnVisitorFailure(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargets(t.Context(), []string{"rider-a"}), "EnsureTargets()")
+	require.NoError(t, store.BeginAuthorization(
+		t.Context(),
+		"rider-a",
+		"rider@example.ts.net",
+		bytes.Repeat([]byte{6}, 32),
+		time.Now().Add(time.Minute),
+	), "BeginAuthorization()")
+
+	require.Error(
+		t,
+		store.ForEachPendingAuthorization(t.Context(), nil),
+		"ForEachPendingAuthorization() without a visitor",
+	)
+
+	visitErr := errors.New("visiting pending authorization")
+	assert.ErrorIs(t, store.ForEachPendingAuthorization(t.Context(), func(string) error {
+		return visitErr
+	}), visitErr, "ForEachPendingAuthorization() with a failing visitor")
+}
+
 func TestStorePersistsTrustedInventoryAndTargetStages(t *testing.T) {
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.EnsureTargets(t.Context(), []string{"rider-a"}), "EnsureTargets()")

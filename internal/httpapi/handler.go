@@ -105,6 +105,11 @@ type State interface {
 // never asks Wahoo what it holds.
 type TargetState interface {
 	ForEachTarget(ctx context.Context, visit func(id, authorization string) error) error
+	// ForEachPendingAuthorization visits the slots with an authorization in
+	// flight. The stored state cannot say so — it holds what a slot durably is,
+	// and being midway through the browser flow is not that — so the status view
+	// reads the two together.
+	ForEachPendingAuthorization(ctx context.Context, visit func(targetID string) error) error
 	ForEachTargetStage(ctx context.Context, targetID string, visit func(routeID int64, stageOrder int, sourceRevision, contentHash string, wahooRouteID int64) error) error
 	ForEachTargetRun(ctx context.Context, visit func(targetID string, finishedAt time.Time, outcome, detail string) error) error
 }

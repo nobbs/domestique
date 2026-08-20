@@ -7,7 +7,33 @@ import (
 	"time"
 )
 
-const authorizedState = "authorized"
+// The authorisation words this service serves. Three of them are the states a
+// target slot durably holds; "pending" is the fourth, and is derived rather
+// than stored, because it describes the flow rather than the slot — the moment
+// between a protected start request and the callback that ends it. Deriving it
+// is what keeps the slot from needing transitions on expiry, denial, and
+// exchange failure, none of which anything tells this service about.
+const (
+	notAuthorizedState        = "not_authorized"
+	pendingState              = "pending"
+	authorizedState           = "authorized"
+	needsReauthorizationState = "needs_reauthorization"
+)
+
+// reportedAuthorization is what the status view says about one slot, given what
+// the store holds and whether an authorization is in flight for it.
+//
+// The substitution is deliberately narrow. A slot that is already authorised
+// stays authorised while a fresh flow runs: it holds a working refresh token
+// until that flow replaces it, and reporting otherwise would say the service
+// had stopped being able to write to an account it can still write to.
+func reportedAuthorization(stored string, inFlight bool) string {
+	if inFlight && (stored == notAuthorizedState || stored == needsReauthorizationState) {
+		return pendingState
+	}
+
+	return stored
+}
 
 // status reports readiness, per-target convergence, and the last terminal run.
 func (h *Handler) status(writer http.ResponseWriter, request *http.Request, _ string) {
@@ -16,6 +42,17 @@ func (h *Handler) status(writer http.ResponseWriter, request *http.Request, _ st
 		if slices.Contains(h.targetIDs, id) {
 			authorizations[id] = authorization
 		}
+
+		return nil
+	}); err != nil {
+		h.unavailable(writer)
+
+		return
+	}
+
+	inFlight := make(map[string]bool, len(h.targetIDs))
+	if err := h.state.ForEachPendingAuthorization(request.Context(), func(targetID string) error {
+		inFlight[targetID] = true
 
 		return nil
 	}); err != nil {
@@ -40,12 +77,13 @@ func (h *Handler) status(writer http.ResponseWriter, request *http.Request, _ st
 	targets := make([]targetView, 0, len(h.targetIDs))
 	ready, converged := true, true
 	for _, targetID := range h.targetIDs {
-		authorization, found := authorizations[targetID]
+		stored, found := authorizations[targetID]
 		if !found {
 			h.unavailable(writer)
 
 			return
 		}
+		authorization := reportedAuthorization(stored, inFlight[targetID])
 		stages := stageCounts[targetID]
 		var lastRun *targetRunView
 		if run, recorded := runs[targetID]; recorded {

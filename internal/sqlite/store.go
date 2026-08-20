@@ -1431,6 +1431,50 @@ func (s *Store) ConsumeAuthorization(ctx context.Context, callerLogin string, st
 	return targetID, nil
 }
 
+// ForEachPendingAuthorization visits every target slot that has an
+// authorization in flight: a transaction this service started, that has neither
+// expired nor been consumed.
+//
+// It exists because "pending" is a state of the flow rather than of the slot.
+// The targets table holds the three states a slot durably has, and the moment
+// between a start request and its callback is not one of them — it is the
+// presence of exactly this row, which BeginAuthorization writes and
+// ConsumeAuthorization retires. Reading it here rather than storing a fourth
+// state keeps that moment from needing transitions of its own on expiry,
+// denial, and exchange failure, none of which the service is told about.
+//
+// It reports the slot alone. The state digest, the caller identity, and the
+// expiry are the flow's own secrets and never leave this method.
+func (s *Store) ForEachPendingAuthorization(ctx context.Context, visit func(targetID string) error) error {
+	if visit == nil {
+		return errors.New("pending authorization visitor is required")
+	}
+	rows, err := s.database.QueryContext(ctx, `
+		SELECT DISTINCT target_slot
+		FROM oauth_transactions
+		WHERE used_at_unix IS NULL AND expires_at_unix > ?
+		ORDER BY target_slot
+	`, time.Now().Unix())
+	if err != nil {
+		return fmt.Errorf("listing pending authorizations: %w", err)
+	}
+	defer closeRows(rows)
+	for rows.Next() {
+		var targetID string
+		if err := rows.Scan(&targetID); err != nil {
+			return fmt.Errorf("reading pending authorization: %w", err)
+		}
+		if err := visit(targetID); err != nil {
+			return err
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterating pending authorizations: %w", err)
+	}
+
+	return nil
+}
+
 func (s *Store) configure(ctx context.Context) error {
 	if err := s.database.PingContext(ctx); err != nil {
 		return fmt.Errorf("opening state database: %w", err)

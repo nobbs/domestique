@@ -91,15 +91,25 @@ coordinate array that was replaced.
 
 The configuration has one or two target slots. Each begins in
 "not_authorized"; automatic sync does not start until every configured slot is
-"authorized". These are the values the service stores and serves, so they are
-spelled as the wire spells them even where the surrounding prose is not.
+"authorized". These are the values the service serves, so they are spelled as
+the wire spells them even where the surrounding prose is not.
+
+Three of the four are stored on the slot. "pending" is not, and is derived when
+the status is read, from an OAuth transaction that has neither expired nor been
+consumed. It is a state of the flow rather than of the slot: the slot still
+holds whatever it held before the browser left, and the flow ends by expiry,
+denial, or exchange failure as often as by success — none of which anything
+tells the service about, so a stored fourth state would have no transition out
+of it. A slot that is already "authorized" stays so while a fresh flow runs,
+because its refresh token keeps working until that flow replaces it.
 
 ~~~mermaid
 stateDiagram-v2
     [*] --> not_authorized
     not_authorized --> pending: protected start request
     pending --> authorized: valid callback and token exchange
-    pending --> not_authorized: expiry, denial, or exchange failure
+    pending --> not_authorized: abandoned flow, from an unconnected slot
+    pending --> needs_reauthorization: abandoned flow, from a rejected slot
     authorized --> needs_reauthorization: Wahoo invalidates refresh token
     needs_reauthorization --> pending: protected start request
 ~~~
@@ -115,8 +125,10 @@ stateDiagram-v2
 4. The service obtains the Wahoo user identity with the existing user_read
    grant. It rejects an account already associated with the other target slot.
 5. It atomically encrypts and stores the new refresh token, marks the transaction
-   consumed, and redirects with 303 See Other to /v1/status. The authorisation
-   code and state are thereby removed from the browser URL.
+   consumed, and redirects with 303 See Other to the browser UI at /. The
+   authorisation code and state are thereby removed from the browser URL, and
+   the operator arrives back at the page that sent them, where that slot is
+   described.
 
 A callback failure returns a generic error response. It never echoes the code,
 state, token, Wahoo account identity, or upstream response.
@@ -418,6 +430,8 @@ Returns 200 while the service can read state. The minimum shape is:
 ~~~
 
 Authorisation is one of "not_authorized", "pending", "authorized", or
+"needs_reauthorization"; "pending" is derived at read time as the OAuth
+lifecycle above describes, and replaces only "not_authorized" or
 "needs_reauthorization". Sync state is "not_ready", "idle", "running",
 "succeeded", "failed", or "blocked". Timestamps are RFC 3339 UTC.
 
