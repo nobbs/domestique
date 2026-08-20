@@ -663,21 +663,31 @@ func TestStoreReadsTheRecordedHistoryOnePageAtATime(t *testing.T) {
 }
 
 // A cursor this store did not issue is a client mistake rather than an empty
-// history, and it is reported as one so the caller can say so.
+// history, and it is reported as one so the caller can say so. A number is not
+// enough to be one: a position past the newest run would silently serve the
+// first page again, which reads as a history that starts over.
 func TestStoreRefusesACursorItDidNotIssue(t *testing.T) {
 	store := openTestStore(t, testKey(1))
+	startedAt := time.Date(2026, time.August, 17, 8, 0, 0, 0, time.UTC)
+	_, err := store.RecordSyncRun(
+		t.Context(), "source", startedAt, startedAt.Add(time.Second), "succeeded", "", 3, 0, 0, 0,
+	)
+	require.NoError(t, err, "RecordSyncRun()")
 
-	visited := 0
-	_, usable, err := store.ForEachSyncRun(t.Context(), "the-newest-one", 10, func(
-		string, string, time.Time, string, string, int, int, int, int,
-	) error {
-		visited++
+	for _, cursor := range []string{"the-newest-one", "0", "-1", "999999999"} {
+		visited := 0
+		next, usable, err := store.ForEachSyncRun(t.Context(), cursor, 10, func(
+			string, string, time.Time, string, string, int, int, int, int,
+		) error {
+			visited++
 
-		return nil
-	})
-	require.NoError(t, err, "ForEachSyncRun() with an unissued cursor")
-	assert.False(t, usable, "ForEachSyncRun() accepted a cursor it did not issue")
-	assert.Zero(t, visited, "runs visited under an unusable cursor")
+			return nil
+		})
+		require.NoError(t, err, "ForEachSyncRun(%q)", cursor)
+		assert.False(t, usable, "ForEachSyncRun(%q) accepted a cursor it did not issue", cursor)
+		assert.Empty(t, next, "a cursor served under %q", cursor)
+		assert.Zero(t, visited, "runs visited under %q", cursor)
+	}
 }
 
 // The visitor is this method's entire output, and the page size decides how much

@@ -708,10 +708,22 @@ func (s *Store) ForEachSyncRun(
 	}
 	position := int64(math.MaxInt64)
 	if after != "" {
-		position, err = strconv.ParseInt(after, 10, 64)
-		if err != nil {
+		cursor, parseErr := strconv.ParseInt(after, 10, 64)
+		if parseErr != nil {
 			return "", false, nil
 		}
+		issued, readErr := s.lastSyncRunID(ctx)
+		if readErr != nil {
+			return "", false, readErr
+		}
+		// Positions are handed out from one upwards and the highest only grows,
+		// because pruning never drops the newest run. A cursor outside that
+		// range is one this store never issued; inside it, a pruned row is
+		// still a position the runs before it can be read from.
+		if cursor <= 0 || cursor > issued {
+			return "", false, nil
+		}
+		position = cursor
 	}
 	// One row past the page, so "is there more" is read rather than guessed
 	// from a page that happened to come back full.
@@ -757,6 +769,19 @@ func (s *Store) ForEachSyncRun(
 
 	// The page was not filled, so nothing follows it.
 	return "", true, nil
+}
+
+// lastSyncRunID reports the highest position the store has issued to a recorded
+// run, or zero when it has recorded none.
+func (s *Store) lastSyncRunID(ctx context.Context) (int64, error) {
+	var highest int64
+	if err := s.database.QueryRowContext(
+		ctx, `SELECT COALESCE(MAX(id), 0) FROM sync_runs`,
+	).Scan(&highest); err != nil {
+		return 0, fmt.Errorf("reading sync runs: %w", err)
+	}
+
+	return highest, nil
 }
 
 // SurfaceCoverage reports how many stored stages carry a classification of the

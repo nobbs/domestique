@@ -173,34 +173,33 @@ func wahooRouteID(routeID int64, stageOrder int) int64 {
 	return 900_000_000 + routeID*100 + int64(stageOrder)
 }
 
-// pastRuns are the finished runs the demo starts with, oldest first. The last
-// two are the pair a first synchronization leaves behind; the rest are there so
-// the history is a history rather than one line, and the blocked one is how a
-// deletion gate looks to a reader without a demo that can delete anything.
-//
-//nolint:gochecknoglobals // A fixture table, read once by seedRuns.
-var pastRuns = []struct {
-	phase   string
-	outcome string
-	failure string
-	minutes int
-	created int
-	updated int
-	deleted int
-}{
-	{phase: "source", outcome: "succeeded", minutes: 189},
-	{phase: "targets", outcome: "succeeded", minutes: 188, updated: 3},
-	{phase: "source", outcome: "succeeded", minutes: 129},
-	{phase: "targets", outcome: "blocked", failure: "deletion_limit", minutes: 128},
-	{phase: "source", outcome: "succeeded", minutes: 69},
-	{phase: "targets", outcome: "failed", failure: "destination", minutes: 68},
-	{phase: "source", outcome: "succeeded", minutes: 9, created: 2, updated: 1},
-	{phase: "targets", outcome: "succeeded", minutes: 8, created: 2, updated: 1},
-}
-
 // seedRuns records the demo's run history in order, so the newest row is the
 // most recent run here as it would be on a service that had been running.
+//
+// The last two runs are the pair a first synchronization leaves behind; the
+// rest are there so the history is a history rather than one line, and the
+// blocked one is how a deletion gate looks to a reader without a demo that can
+// delete anything.
 func seedRuns(ctx context.Context, state State, stages int, now time.Time) error {
+	pastRuns := []struct {
+		phase   string
+		outcome string
+		failure string
+		minutes int
+		created int
+		updated int
+		deleted int
+	}{
+		{phase: "source", outcome: "succeeded", minutes: 189},
+		{phase: "targets", outcome: "succeeded", minutes: 188, updated: 3},
+		{phase: "source", outcome: "succeeded", minutes: 129},
+		{phase: "targets", outcome: "blocked", failure: "deletion_limit", minutes: 128},
+		{phase: "source", outcome: "succeeded", minutes: 69},
+		{phase: "targets", outcome: "failed", failure: "destination", minutes: 68},
+		{phase: "source", outcome: "succeeded", minutes: 9, created: 2, updated: 1},
+		{phase: "targets", outcome: "succeeded", minutes: 8, created: 2, updated: 1},
+	}
+
 	for _, run := range pastRuns {
 		finishedAt := now.Add(-time.Duration(run.minutes) * time.Minute)
 		if _, err := state.RecordSyncRun(

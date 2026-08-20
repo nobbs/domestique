@@ -79,6 +79,20 @@ describe("SyncHistory", () => {
     expect(screen.getByText("Run bbbbbbbbbbbb")).toBeInTheDocument();
   });
 
+  // A binary rolled back past the migration that named runs records rows with
+  // no reference, and two of them are still two runs.
+  it("shows a run recorded before runs were named", () => {
+    renderHistory({
+      runs: [
+        run({ reference: "", completedAt: "2026-08-18T06:30:00Z" }),
+        run({ reference: "", completedAt: "2026-08-18T06:00:00Z" }),
+      ],
+    });
+
+    expect(screen.getAllByText("1 created · 2 updated · 0 deleted")).toHaveLength(2);
+    expect(screen.queryByText(/^Run/)).not.toBeInTheDocument();
+  });
+
   // A gate that held and a run that broke are opposite events, and the raw
   // category says neither.
   it("tells a held gate apart from a fault", () => {

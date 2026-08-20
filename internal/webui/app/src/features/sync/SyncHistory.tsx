@@ -47,6 +47,11 @@ export function runCounts(run: SyncRun): string {
     : `${run.created} created · ${run.updated} updated · ${run.deleted} deleted`;
 }
 
+/** What names one row apart from the others; see where it is used. */
+function runKey(run: SyncRun): string {
+  return `${run.phase}-${run.completedAt}-${run.reference}`;
+}
+
 export function SyncHistory() {
   const queryClient = useQueryClient();
   const { data: status } = useQuery(statusQuery());
@@ -90,7 +95,13 @@ export function SyncHistory() {
         <>
           <ul className="history__runs">
             {runs.map((run) => (
-              <li className="history__run" data-phase={run.phase} key={run.reference}>
+              /*
+               * A run recorded by a binary rolled back past the migration that
+               * named runs has no reference, so the reference alone does not
+               * name a row. Which half finished when is the rest of the name:
+               * the two halves never run at once, so no two rows share both.
+               */
+              <li className="history__run" data-phase={run.phase} key={runKey(run)}>
                 <div className="history__text">
                   <span className="history__phase">{PHASE_LABELS[run.phase]}</span>
                   <span className="history__counts">{runCounts(run)}</span>
@@ -98,9 +109,12 @@ export function SyncHistory() {
                    * The reference is the only thing on the row that is not about
                    * what happened. It is here so a notification can be traced to
                    * the run it was sent for, and it is presented as the opaque
-                   * string it is rather than dressed up as an identifier.
+                   * string it is rather than dressed up as an identifier. A run
+                   * recorded before runs were named has none to show.
                    */}
-                  <span className="history__reference">Run {run.reference}</span>
+                  {run.reference === "" ? null : (
+                    <span className="history__reference">Run {run.reference}</span>
+                  )}
                 </div>
                 <div className="history__outcome">
                   <span className="history__result">{runResult(run)}</span>
