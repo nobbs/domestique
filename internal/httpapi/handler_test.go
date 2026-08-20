@@ -709,6 +709,33 @@ func TestHandlerRefusesADuplicateTriggerWithoutManufacturingASecondRun(t *testin
 	assert.Equal(t, "source", view.Sync.Active.Phase, "active phase")
 }
 
+func TestSyncFuncsAdaptAPairOfFunctions(t *testing.T) {
+	activity := SyncActivityState{Phase: SyncPhaseSource, Running: true}
+
+	var asked SyncPhase
+
+	funcs := SyncFuncs{
+		TriggerFunc: func(phase SyncPhase) bool {
+			asked = phase
+
+			return true
+		},
+		ActivityFunc: func() SyncActivityState { return activity },
+	}
+
+	assert.True(t, funcs.Trigger(SyncPhaseTargets), "trigger")
+	assert.Equal(t, SyncPhaseTargets, asked, "the phase the trigger was asked for")
+	assert.Equal(t, activity, funcs.Activity(), "activity")
+}
+
+// A process whose runs begin and end inside the request that asked for one has
+// no in-flight window to describe, so it wires no ActivityFunc at all.
+func TestSyncFuncsReportNothingUnderWayWithoutAnActivityFunc(t *testing.T) {
+	funcs := SyncFuncs{TriggerFunc: func(SyncPhase) bool { return false }}
+
+	assert.Equal(t, SyncActivityState{}, funcs.Activity(), "activity")
+}
+
 // An operator who has started the browser flow and not finished it is in a
 // state the targets table cannot hold, and it matters: told "not connected",
 // they would start the flow a second time and invalidate the first.
