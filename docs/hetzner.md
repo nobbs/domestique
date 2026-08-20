@@ -176,6 +176,14 @@ recreate it during a routine update. The service writes no log line on a healthy
 start — it logs only errors — so a running container with no restarts and a
 passing health probe is the expected quiet result.
 
+`compose.yml` also sets `stop_grace_period`, which has to stay longer than the
+shutdown budget in `cmd/domestique/main.go`: Docker's default of ten seconds is
+shorter than that budget and kills the container part-way through a drain. A
+host set up before this line existed still has the older file — a deploy
+replaces the image and never the compose file — so copy the current
+`compose.example.yml` over it, or add the one line, and recreate the service
+once with `docker compose --env-file .env up -d`.
+
 ## Publish it through Tailscale
 
 Configure the host as the proxy for the managed Tailnet Service:

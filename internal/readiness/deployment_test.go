@@ -4,8 +4,10 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -41,6 +43,59 @@ func TestTheComposeFilePublishesReadinessToLoopbackOnly(t *testing.T) {
 		}
 		assert.Contains(t, line, "127.0.0.1:", "line %q publishes readiness off loopback", line)
 	}
+}
+
+// Docker kills a container that outstays its grace period, and its default of
+// ten seconds is shorter than the fifteen the service spends draining its
+// listeners: a recreate can cut the shutdown off before the service has even
+// reached the part it does after that. The two numbers sit in different files
+// and neither names the other, so this is what keeps a change to either from
+// quietly reintroducing the kill.
+//
+// It is only the bounded part of the shutdown that can be compared. The
+// scheduler drain and the wait for an in-flight manual sync run with no deadline
+// at all, and a reconciliation long enough to outlast any grace period is still
+// cut off — safely, because the store is in WAL mode, but at an arbitrary point
+// rather than at a boundary the service chose.
+func TestTheComposeFileOutwaitsTheServiceShutdown(t *testing.T) {
+	grace := composeStopGracePeriod(t)
+	drain := serviceShutdownTimeout(t)
+
+	assert.Greater(t, grace, drain,
+		"docs/compose.example.yml gives the container %s to stop, and cmd/domestique/main.go "+
+			"spends up to %s draining its listeners before it starts waiting on anything else",
+		grace, drain)
+}
+
+// composeStopGracePeriod returns how long the documented deployment lets the
+// container take to stop.
+func composeStopGracePeriod(t *testing.T) time.Duration {
+	t.Helper()
+
+	compose := readRepositoryFile(t, "docs/compose.example.yml")
+
+	match := regexp.MustCompile(`(?m)^\s*stop_grace_period: (\S+)$`).FindStringSubmatch(compose)
+	require.Len(t, match, 2, "the compose file must declare a stop_grace_period")
+
+	period, err := time.ParseDuration(match[1])
+	require.NoError(t, err)
+
+	return period
+}
+
+// serviceShutdownTimeout returns the budget the service gives its own listeners.
+func serviceShutdownTimeout(t *testing.T) time.Duration {
+	t.Helper()
+
+	main := readRepositoryFile(t, "cmd/domestique/main.go")
+
+	match := regexp.MustCompile(`shutdownTimeout\s+= (\d+) \* time\.Second`).FindStringSubmatch(main)
+	require.Len(t, match, 2, "cmd/domestique/main.go must state its shutdown timeout in whole seconds")
+
+	seconds, err := strconv.Atoi(match[1])
+	require.NoError(t, err)
+
+	return time.Duration(seconds) * time.Second
 }
 
 // The deploy gate has to ask whether the new image can read its state, not only

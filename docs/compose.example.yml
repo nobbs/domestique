@@ -7,6 +7,14 @@ services:
     environment:
       DOMESTIQUE_IMAGE: "${DOMESTIQUE_IMAGE}"
     restart: unless-stopped
+    # Longer than the service gives itself. On SIGTERM it drains both listeners
+    # under the 15s `shutdownTimeout` in cmd/domestique/main.go, and Docker's
+    # default grace period of 10s kills it before that budget is even spent. The
+    # scheduler drain and the wait for an in-flight manual sync that follow have
+    # no deadline, so no number here can promise a long reconciliation finishes;
+    # the state database is in WAL mode and a killed process still leaves its
+    # committed work intact. internal/readiness holds these two values together.
+    stop_grace_period: 30s
     user: "65532:65532"
     read_only: true
     cap_drop:
