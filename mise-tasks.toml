@@ -235,8 +235,8 @@ description = "Measure UI coverage across the jsdom and browser suites"
 depends = ["ui-install"]
 wait_for = ["coverage-go"]
 run = [
-  "npm --prefix internal/webui/app run test:coverage",
-  "npm --prefix internal/webui/app run test:coverage:browser",
+  "pnpm --dir internal/webui/app run test:coverage",
+  "pnpm --dir internal/webui/app run test:coverage:browser",
 ]
 
 # Snapshots the deployed SQLite state and writes a development configuration
@@ -260,21 +260,30 @@ depends = ["ui-install"]
 run = "./dev/demo.sh"
 
 # The only thing that installs node_modules. It declares the lockfile as its
-# source and the installed lockfile as its output, so it reinstalls when a
-# dependency changes or the tree is gone, and costs a few milliseconds
-# otherwise — which is why the routine loop can afford to depend on it.
+# source and the state file pnpm writes beside the installed tree as its output,
+# so it reinstalls when a dependency changes or the tree is gone, and costs a few
+# milliseconds otherwise — which is why the routine loop can afford to depend on
+# it.
+#
+# The timestamp is bumped afterwards because an install with nothing to do leaves
+# that file alone: without it, anything newer than the last real install — a task
+# definition edited here, most often — leaves the task permanently stale and it
+# reinstalls on every run.
 [ui-install]
 description = "Install the UI dependency tree from the lockfile"
 sources = [
   "internal/webui/app/package.json",
-  "internal/webui/app/package-lock.json",
+  "internal/webui/app/pnpm-lock.yaml",
 ]
-outputs = ["internal/webui/app/node_modules/.package-lock.json"]
-run = "npm --prefix internal/webui/app ci"
+outputs = ["internal/webui/app/node_modules/.modules.yaml"]
+run = [
+  "pnpm --dir internal/webui/app install --frozen-lockfile",
+  "touch internal/webui/app/node_modules/.modules.yaml",
+]
 
 [ui-dev]
 description = "Serve the UI with hot reload"
-run = "npm --prefix internal/webui/app run dev"
+run = "pnpm --dir internal/webui/app run dev"
 
 # The UI checks below read node_modules but do not install it. `wait_for` orders
 # them behind `ui-install` when a gate scheduled it, and does nothing when one
@@ -292,7 +301,7 @@ sources = [
 ]
 outputs = { auto = true }
 wait_for = ["ui-install"]
-run = "npm --prefix internal/webui/app run typecheck"
+run = "pnpm --dir internal/webui/app run typecheck"
 
 [ui-lint]
 description = "Lint the UI"
@@ -307,12 +316,12 @@ sources = [
 ]
 outputs = { auto = true }
 wait_for = ["ui-install"]
-run = "npm --prefix internal/webui/app run lint"
+run = "pnpm --dir internal/webui/app run lint"
 
 [ui-format]
 description = "Format the UI"
 wait_for = ["ui-install"]
-run = "npm --prefix internal/webui/app run format"
+run = "pnpm --dir internal/webui/app run format"
 
 [ui-test]
 description = "Run the jsdom UI suite"
@@ -327,7 +336,7 @@ sources = [
 ]
 outputs = { auto = true }
 wait_for = ["ui-install"]
-run = "npm --prefix internal/webui/app run test"
+run = "pnpm --dir internal/webui/app run test"
 
 # Downloads the browser the whole-page suite runs in. Separate from running the
 # suite so that a failure names which of the two went wrong, and so a contributor
@@ -347,7 +356,7 @@ run = "npm --prefix internal/webui/app run test"
 [ui-browser-install]
 description = "Download the browser the whole-page suite runs in"
 depends = ["ui-install"]
-run = "npm --prefix internal/webui/app run test:browser:install --"
+run = "pnpm --dir internal/webui/app run test:browser:install"
 
 # The whole page in a real browser, over `mise run demo`'s synthetic library:
 # what a WebGL map and a cross-component interaction cannot be asserted about in
@@ -357,14 +366,14 @@ run = "npm --prefix internal/webui/app run test:browser:install --"
 [ui-browser-test]
 description = "Run the browser UI suite over the demo stack"
 wait_for = ["ui-browser-install"]
-run = "npm --prefix internal/webui/app run test:browser"
+run = "pnpm --dir internal/webui/app run test:browser"
 
 # govulncheck does not see npm packages, so the JavaScript tree needs its own
 # advisory check in the same gate.
 [ui-audit]
 description = "Check the UI dependency tree against the advisory database"
 wait_for = ["ui-install"]
-run = "npm --prefix internal/webui/app audit --omit=dev"
+run = "pnpm --dir internal/webui/app audit --prod"
 
 # The bundler empties dist, which would remove the committed placeholder that
 # keeps the go:embed pattern valid before a UI build. Restore it afterwards.
@@ -388,7 +397,7 @@ sources = [
 outputs = ["internal/webui/app/dist/**"]
 wait_for = ["ui-install", "ci-ui"]
 run = [
-  "npm --prefix internal/webui/app run build",
+  "pnpm --dir internal/webui/app run build",
   "touch internal/webui/app/dist/.gitkeep",
 ]
 

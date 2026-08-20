@@ -37,7 +37,7 @@ fi
 # gate task by name runs the gate, while `mise exec -- <tool>` is how every hook
 # here reaches its pinned tool at all. `r` is the alias for `run`, so it is
 # matched too — otherwise the rule is one keystroke from silent.
-EXPENSIVE='(go|npm|npx)[[:space:]]+(test|build|audit|run|ci)|mise[[:space:]]+(run|r)[[:space:]]|golangci-lint[[:space:]]+run|govulncheck|gitleaks|vitest|docker|actionlint|shellcheck'
+EXPENSIVE='(go|npm|npx|pnpm)[[:space:]]+(test|build|audit|run|ci|install)|mise[[:space:]]+(run|r)[[:space:]]|golangci-lint[[:space:]]+run|govulncheck|gitleaks|vitest|docker|actionlint|shellcheck'
 
 # Paths a hook must not name for itself: a recursive glob, a Go package root,
 # and a bare directory argument. Written without backslashes because awk

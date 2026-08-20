@@ -5,9 +5,9 @@ Tailnet, and **pulls a published image by digest**. GitHub Actions publishes
 the image from the default branch, so this host never builds one.
 
 Building here was the earlier arrangement, and it is where this VM's memory
-pressure came from: a two-platform `npm ci` and Go build does not fit alongside
-the running service on two vCPUs and 4 GB. A host that only pulls carries none
-of that load and needs no `dhi.io` credential.
+pressure came from: a two-platform `pnpm install` and Go build does not fit
+alongside the running service on two vCPUs and 4 GB. A host that only pulls
+carries none of that load and needs no `dhi.io` credential.
 
 The compose file, configuration, secret files, and pinned digest stay on the
 host, outside this repository.
