@@ -9,18 +9,22 @@
 # digest was taken from, which is what lets the updater offer the next digest of
 # that stream rather than of `latest`.
 
-# The -dev variant carries npm and a shell.
+# The -dev variant carries corepack and a shell. Corepack installs the pnpm
+# version pinned by `packageManager` in package.json, so the build resolves the
+# same pnpm the repository does without pinning it a second time here.
 FROM --platform=$BUILDPLATFORM dhi.io/node:24-dev@sha256:1949e745d8b5365e45dbd7ba20a495178aa55fda7248c5c5af3928d84467d047 AS webui
 
 USER root
 WORKDIR /app
 
+RUN corepack enable pnpm
+
 # The lockfile is copied first so a source-only change reuses the install layer.
-COPY internal/webui/app/package.json internal/webui/app/package-lock.json ./
-RUN npm ci
+COPY internal/webui/app/package.json internal/webui/app/pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
 
 COPY internal/webui/app/ ./
-RUN npm run build
+RUN pnpm run build
 
 # The -dev variant carries the toolchain and coreutils.
 FROM --platform=$BUILDPLATFORM dhi.io/golang:1.26-dev@sha256:b511696c1fb6929510c24d8ce66b90e7f9fc763082e5a8f73f778d7a177df93c AS build

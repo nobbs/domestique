@@ -86,4 +86,4 @@ container:
   - "go.mod"
   - "go.sum"
   - "internal/webui/app/package.json"
-  - "internal/webui/app/package-lock.json"
+  - "internal/webui/app/pnpm-lock.yaml"

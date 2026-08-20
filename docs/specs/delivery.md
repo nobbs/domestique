@@ -11,7 +11,7 @@ environment it runs in.
 
 ## Development toolchain and commands
 
-The repository tracks a `.mise.toml` that pins the Go toolchain, Node.js,
+The repository tracks a `.mise.toml` that pins the Go toolchain, Node.js, pnpm,
 `golangci-lint`, `prek`, Actionlint, Gitleaks, Markdownlint, ShellCheck, and
 `govulncheck`. Mise is the source of truth for the versions used by a
 developer and GitHub Actions. Bootstrap selects supported, mutually compatible

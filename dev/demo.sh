@@ -52,11 +52,11 @@ ASSERTION_FILE="${DEMO_DIR}/assertion"
 
 # Not :8081, so a demo can run beside `mise run dev-api` without either of them
 # wondering why the other's routes are missing.
-# `go` and `npm` are taken from the environment rather than resolved here:
+# `go` and `pnpm` are taken from the environment rather than resolved here:
 # whatever activated the pinned toolchain for the caller — Mise, in every
 # documented setup — has already put them on the path.
 GO="${GO:-go}"
-NPM="${NPM:-npm}"
+PNPM="${PNPM:-pnpm}"
 
 API_PORT="${DOMESTIQUE_DEMO_PORT:-8082}"
 API_URL="http://127.0.0.1:${API_PORT}"
@@ -145,7 +145,7 @@ export CGO_ENABLED=0
 # empties dist, which would remove the placeholder that keeps the go:embed
 # pattern valid, so it is restored the same way `mise run ui-build` does.
 if [[ "${WITH_BUNDLE}" == true ]]; then
-  "${NPM}" --prefix "${ROOT}/internal/webui/app" run build
+  "${PNPM}" --dir "${ROOT}/internal/webui/app" run build
   touch "${ROOT}/internal/webui/app/dist/.gitkeep"
 fi
 
@@ -188,4 +188,4 @@ echo "Demo API on ${API_URL}; starting the UI dev server on http://127.0.0.1:517
 DOMESTIQUE_DEV_API="${API_URL}" \
   DOMESTIQUE_DEV_ASSERTION="$(cat "${ASSERTION_FILE}")" \
   DOMESTIQUE_DEV_ORIGIN="${BROWSER_ORIGIN}" \
-  "${NPM}" --prefix "${ROOT}/internal/webui/app" run dev
+  "${PNPM}" --dir "${ROOT}/internal/webui/app" run dev

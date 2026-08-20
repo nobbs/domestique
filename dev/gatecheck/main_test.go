@@ -33,11 +33,11 @@ func graph() []task {
 		{Name: "vet", Run: []string{"go vet ./..."}},
 		{Name: "test-race", Run: []string{"go test -race ./..."}},
 		{Name: "vulncheck", Run: []string{"govulncheck ./..."}},
-		{Name: "ui-audit", Run: []string{"npm audit"}},
-		{Name: "ui-browser-install", Run: []string{"npm run test:browser:install"}},
-		{Name: "ui-browser-test", Run: []string{"npm run test:browser"}},
-		{Name: "ui-build", Run: []string{"npm run build"}},
-		{Name: "ui-install", Run: []string{"npm ci"}},
+		{Name: "ui-audit", Run: []string{"pnpm audit"}},
+		{Name: "ui-browser-install", Run: []string{"pnpm run test:browser:install"}},
+		{Name: "ui-browser-test", Run: []string{"pnpm run test:browser"}},
+		{Name: "ui-build", Run: []string{"pnpm run build"}},
+		{Name: "ui-install", Run: []string{"pnpm install --frozen-lockfile"}},
 
 		// Defined but wired into neither root, so a case can add a step
 		// without also having to define it.
