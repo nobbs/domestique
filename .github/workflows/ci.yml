@@ -65,7 +65,7 @@ jobs:
         # v4.2.5
         uses: jdx/mise-action@3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518
         with:
-          version: 2026.8.6
+          version: 2026.8.8
           install: true
           cache: true
       # The module downloads and the compiler cache, which every Go job otherwise
@@ -142,7 +142,7 @@ jobs:
         # v4.2.5
         uses: jdx/mise-action@3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518
         with:
-          version: 2026.8.6
+          version: 2026.8.8
           install: true
           cache: true
       # The Go caches, as the Lint job above explains them.
@@ -212,7 +212,7 @@ jobs:
         # v4.2.5
         uses: jdx/mise-action@3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518
         with:
-          version: 2026.8.6
+          version: 2026.8.8
           install: true
           cache: true
       # The Go caches, as the Lint job above explains them.
@@ -254,7 +254,7 @@ jobs:
         # v4.2.5
         uses: jdx/mise-action@3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518
         with:
-          version: 2026.8.6
+          version: 2026.8.8
           install: true
           cache: true
       # pnpm downloads every package once into a content-addressed store and hard
@@ -366,7 +366,7 @@ jobs:
         # v4.2.5
         uses: jdx/mise-action@3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518
         with:
-          version: 2026.8.6
+          version: 2026.8.8
           install: true
           cache: true
       # The Go caches, as the Lint job above explains them.
@@ -462,7 +462,7 @@ jobs:
         # v4.2.5
         uses: jdx/mise-action@3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518
         with:
-          version: 2026.8.6
+          version: 2026.8.8
           install: true
           cache: true
       # The Go caches, as the Lint job above explains them.
@@ -538,7 +538,7 @@ jobs:
         # v4.2.5
         uses: jdx/mise-action@3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518
         with:
-          version: 2026.8.6
+          version: 2026.8.8
           install: true
           cache: true
       - name: Set up Docker Buildx
