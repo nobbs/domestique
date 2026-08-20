@@ -67,33 +67,37 @@ just reaches the same gate again, which is the point of it.
 ## Reconnect a Wahoo account
 
 **You will have seen** `targets failed: authorization`, and that account reading
-**Not connected** on the status page. Any slot that is not authorised reads that
-way, so the page does not separate an account that has never been connected from
-one whose authorisation Wahoo has since rejected. `GET /v1/status` does: its
-`authorisation` is `not_authorized` for the first and `needs_reauthorization`
-for the second. Both are fixed by the same visit.
+**Reconnect needed** on the status page. An account that has never been
+connected reads **Not connected** instead; both are fixed by the same visit, but
+they are different situations and the page says which it is. `authorisation` in
+`GET /v1/status` is `needs_reauthorization` for the first and `not_authorized`
+for the second.
 
 **What already held.** Only that slot is affected: the other target is still
 attempted in the same run, and a rejected token deletes nothing anywhere. The
 refresh token stays encrypted at rest, and access tokens never leave memory.
 
-**In the browser.** There is no reconnect button; authorisation is a redirect
-flow, so it is started by visiting the start URL at the public hostname:
+**In the browser.** The account carries a **Connect** or **Reconnect** link
+under **Wahoo accounts** on the status page. It is a link rather than a button
+because authorisation is a redirect flow: following it leaves for Wahoo and
+comes back. The same flow is reachable directly at the public hostname, which is
+what to use when the page itself will not load:
 
 ```text
 https://<your-public-hostname>/oauth/wahoo/start/<target-id>
 ```
 
 Sign in as the account that slot belongs to. Wahoo returns to the callback URL
-and the service redirects to the status page. Confirm that the account has
-stopped reading **Not connected**, then press **Write to Wahoo** rather than
+and the service redirects back to the status page. Confirm that the account has
+stopped asking to be connected, then press **Write to Wahoo** rather than
 waiting for the hour: the run reconciles from what the account actually holds,
 so it will catch that target up without replaying anything destructive.
 
-An account still reading **Not connected** afterwards means the callback never
-completed; `authorisation` in `GET /v1/status` sits at `pending` while that is
-true. The transaction expires after ten minutes and is single-use — start it
-again rather than reloading the callback URL.
+An account reading **Connecting** afterwards means the callback never completed.
+That is also why it offers nothing to press: the transaction is single-use, and
+starting a second one invalidates the first. It expires ten minutes after it was
+started, after which the account reads as it did before and the link comes back
+— start it again rather than reloading the callback URL.
 
 **On the host**, only if reconnecting fails outright: `wahoo.redirect_url` must
 be exactly the public hostname plus `/oauth/wahoo/callback` and must match the

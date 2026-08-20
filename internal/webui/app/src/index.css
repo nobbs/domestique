@@ -946,6 +946,35 @@ body {
   color: var(--text-muted);
 }
 
+/*
+ * What an account's authorisation state means, and the way to the flow that
+ * ends it. It reads like the run guidance beside it, because it is the same
+ * kind of sentence: a state the operator has to act on, and the act.
+ */
+.convergence__authorisation {
+  margin-top: 0.25rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  text-wrap: pretty;
+}
+
+/*
+ * The one link on this page that starts something. It is underlined rather than
+ * made a button: it navigates away to Wahoo, which is what a link does and what
+ * a button in this UI never does.
+ */
+.convergence__connect {
+  /* The accent as small text: the plain accent is below 4.5:1 on this panel. */
+  color: var(--accent-text);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.convergence__connect:hover,
+.convergence__connect:focus-visible {
+  color: var(--text);
+}
+
 .sync-controls__actions {
   display: flex;
   gap: 0.6rem;

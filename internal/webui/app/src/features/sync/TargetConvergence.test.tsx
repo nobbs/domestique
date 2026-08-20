@@ -99,9 +99,91 @@ describe("TargetConvergence", () => {
     );
 
     expect(screen.getByText("Not connected")).toBeInTheDocument();
-    expect(screen.getByText(/Waiting to be connected to Wahoo/)).toBeInTheDocument();
+    expect(screen.getByText(/has never been connected to Wahoo/)).toBeInTheDocument();
     expect(screen.getByText("Has not been written to yet.")).toBeInTheDocument();
     expect(screen.getByText(/Some stored stages are not yet on every account/)).toBeInTheDocument();
+  });
+
+  /*
+   * The point of the whole section, for an operator who has just deployed: the
+   * flow that fixes an unconnected account is a redirect, and until now the
+   * page named no way to it at all.
+   */
+  it.each([
+    ["not_authorized", "Connect rider-a to Wahoo"],
+    ["needs_reauthorization", "Reconnect rider-a to Wahoo"],
+  ])("offers the protected flow for a %s account", (authorisation, name) => {
+    renderConvergence(
+      status(false, [
+        target({ authorisation, convergence: "unauthorized", stages: { current: 0, pending: 4 } }),
+      ]),
+    );
+
+    // The slot is in the accessible name because two accounts sit in this list.
+    const connect = screen.getByRole("link", { name });
+    // The service's own protected route, reached by leaving the application:
+    // the flow goes to Wahoo and comes back, so it cannot be a client-side one.
+    expect(connect).toHaveAttribute("href", "/oauth/wahoo/start/rider-a");
+  });
+
+  it("separates an account Wahoo rejected from one never connected", () => {
+    renderConvergence(
+      status(false, [
+        target({
+          authorisation: "needs_reauthorization",
+          convergence: "unauthorized",
+          stages: { current: 4, pending: 0 },
+          lastRun: {
+            completedAt: "2026-08-18T06:00:04Z",
+            result: "failed",
+            failure: "authorization",
+          },
+        }),
+      ]),
+    );
+
+    expect(screen.getByText("Reconnect needed")).toBeInTheDocument();
+    expect(screen.getByText(/Wahoo stopped accepting/)).toBeInTheDocument();
+    // Nothing about a rejected authorisation costs the operator any data, and a
+    // page that leaves that unsaid invites a panicked re-run.
+    expect(screen.getByText(/Nothing was deleted and nothing has been lost/)).toBeInTheDocument();
+  });
+
+  /*
+   * A second flow invalidates the first, so an account midway through
+   * connecting must be told to finish the one it has rather than handed a
+   * control that quietly destroys it.
+   */
+  it("offers nothing to press while a connection is in flight", () => {
+    renderConvergence(
+      status(false, [
+        target({
+          authorisation: "pending",
+          convergence: "unauthorized",
+          stages: { current: 0, pending: 4 },
+          lastRun: undefined,
+        }),
+      ]),
+    );
+
+    expect(screen.getByText("Connecting")).toBeInTheDocument();
+    expect(screen.getByText(/A connection was started and has not come back/)).toBeInTheDocument();
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+    expect(screen.queryByText("Not connected")).not.toBeInTheDocument();
+  });
+
+  it("asks the operator to look when it does not recognise the state", () => {
+    renderConvergence(
+      status(false, [
+        target({ authorisation: "revoked_by_operator", convergence: "unauthorized" }),
+      ]),
+    );
+
+    expect(screen.getByText("Connection state unknown")).toBeInTheDocument();
+    expect(screen.getByText(/may be older than the service/)).toBeInTheDocument();
+    // Starting a flow against a state this build cannot explain is a guess, and
+    // one that would invalidate whatever flow is already running.
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
   });
 
   /*

@@ -32,6 +32,13 @@ func (h *Handler) start(writer http.ResponseWriter, request *http.Request, login
 }
 
 // callback consumes the one-time OAuth state without echoing its query values.
+//
+// It returns the browser to the UI rather than to the JSON status endpoint.
+// What arrives here is an operator who was sent to Wahoo by a link on that
+// page, and the page is where the target they just connected is described; the
+// endpoint would answer the same question in a format nobody came to read. The
+// redirect drops the authorization code and state from the browser URL either
+// way, which is what the 303 is for.
 func (h *Handler) callback(writer http.ResponseWriter, request *http.Request, login string) {
 	query := request.URL.Query()
 	if err := h.oauth.Complete(request.Context(), login, query.Get("state"), query.Get("code")); err != nil {
@@ -39,5 +46,5 @@ func (h *Handler) callback(writer http.ResponseWriter, request *http.Request, lo
 
 		return
 	}
-	http.Redirect(writer, request, "/v1/status", http.StatusSeeOther)
+	http.Redirect(writer, request, "/", http.StatusSeeOther)
 }

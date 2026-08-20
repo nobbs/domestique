@@ -489,7 +489,10 @@ func TestHandlerRunsCallerBoundOAuthFlow(t *testing.T) {
 	callbackResponse := httptest.NewRecorder()
 	handler.ServeHTTP(callbackResponse, authenticatedRequest(http.MethodGet, "/oauth/wahoo/callback?state=state&code=code"))
 	assert.Equal(t, http.StatusSeeOther, callbackResponse.Code, "callback status")
-	assert.Equal(t, "/v1/status", callbackResponse.Header().Get("Location"), "callback location")
+	// The UI, not the JSON endpoint: whoever arrives here followed a link from
+	// the page, and that page is where the account they just connected is
+	// described.
+	assert.Equal(t, "/", callbackResponse.Header().Get("Location"), "callback location")
 }
 
 func TestHandlerAcceptsManualSync(t *testing.T) {
@@ -630,6 +633,56 @@ func TestHandlerReportsHowMuchOfTheLibraryIsClassified(t *testing.T) {
 	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &view), "decoding status")
 	assert.Equal(t, 1, view.Sync.Surface.Classified, "classified")
 	assert.Equal(t, 3, view.Sync.Surface.Total, "total")
+}
+
+// An operator who has started the browser flow and not finished it is in a
+// state the targets table cannot hold, and it matters: told "not connected",
+// they would start the flow a second time and invalidate the first.
+func TestHandlerReportsAnInFlightAuthorizationAsPending(t *testing.T) {
+	state := &fakeState{
+		targets: []fakeTarget{
+			{id: "rider-a", authorization: "not_authorized"},
+			{id: "rider-b", authorization: "needs_reauthorization"},
+		},
+		pendingAuth: []string{"rider-a", "rider-b"},
+	}
+	handler := newHandlerWithTargets(t, state, "rider-a", "rider-b")
+
+	view := statusOf(t, handler)
+
+	require.Len(t, view.Targets, 2, "targets")
+	for _, target := range view.Targets {
+		assert.Equalf(t, "pending", target.Authorization, "%s authorisation", target.ID)
+		// Pending is still not authorised. Nothing may be written to a slot whose
+		// flow has not come back, and the one word each target gets says so.
+		assert.Equalf(t, convergenceUnauthorized, target.Convergence, "%s convergence", target.ID)
+	}
+	assert.False(t, view.Ready, "a target midway through connecting reported the service ready")
+}
+
+// A slot that already holds a working refresh token keeps it until a fresh flow
+// replaces it, so starting one must not report the account as unconnectable.
+func TestHandlerKeepsAnAuthorizedTargetAuthorizedDuringAFreshFlow(t *testing.T) {
+	state := &fakeState{
+		targets:     []fakeTarget{{id: "rider-a", authorization: "authorized"}},
+		pendingAuth: []string{"rider-a"},
+	}
+	handler := newHandlerWithTargets(t, state, "rider-a")
+
+	view := statusOf(t, handler)
+
+	require.Len(t, view.Targets, 1, "targets")
+	assert.Equal(t, "authorized", view.Targets[0].Authorization, "authorisation")
+	assert.True(t, view.Ready, "an authorised target stopped the service being ready")
+}
+
+func TestHandlerReportsUnreadablePendingAuthorizationsAsUnavailable(t *testing.T) {
+	state := &fakeState{pendingAuthErr: errors.New("state unavailable")}
+	handler := newHandler(t, &fakeOAuth{}, state)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/status"))
+	assert.Equal(t, http.StatusInternalServerError, response.Code, "status")
 }
 
 func TestHandlerReportsUnreadableScheduleAsUnavailable(t *testing.T) {
@@ -866,9 +919,11 @@ type fakeState struct {
 	sourceStageErr    error
 	targetStageErr    error
 	targetRunErr      error
+	pendingAuthErr    error
 	targetStages      map[string][]storedStage
 	reprocessed       [][2]int64
 	targets           []fakeTarget
+	pendingAuth       []string
 	sourceStages      []storedStage
 	targetRuns        []fakeTargetRun
 	surfaceHash       string
@@ -917,6 +972,22 @@ func (s *fakeState) ForEachTarget(_ context.Context, visit func(string, string) 
 	}
 	for _, target := range s.targets {
 		if err := visit(target.id, target.authorization); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// ForEachPendingAuthorization reports the slots this fake is holding an
+// in-flight browser flow for. Empty is the ordinary case, which is why every
+// test that does not name one reads exactly as it did before.
+func (s *fakeState) ForEachPendingAuthorization(_ context.Context, visit func(string) error) error {
+	if s.pendingAuthErr != nil {
+		return s.pendingAuthErr
+	}
+	for _, targetID := range s.pendingAuth {
+		if err := visit(targetID); err != nil {
 			return err
 		}
 	}

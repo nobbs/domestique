@@ -18,6 +18,7 @@ import type { TargetConvergence as Convergence, TargetStatus } from "../../api/t
 import { ErrorMessage } from "../../components/StatusMessage";
 import { formatTimestamp } from "../../lib/format";
 import { GUIDANCE_LABELS, syncGuidance } from "../../lib/syncGuidance";
+import { authorisationGuidance, authorisationStartHref } from "../../lib/targetAuthorisation";
 
 const CONVERGENCE_LABELS: Record<Convergence, string> = {
   current: "Up to date",
@@ -26,11 +27,14 @@ const CONVERGENCE_LABELS: Record<Convergence, string> = {
   unauthorized: "Not connected",
 };
 
-/** What one account's counts amount to, in a sentence. */
+/**
+ * What one account's counts amount to, in a sentence.
+ *
+ * An account that is not connected gets the counts like any other. What being
+ * unconnected means, and what to do about it, is the authorisation guidance
+ * beside them, which is more specific than a sentence here could be.
+ */
 export function stagesSummary(target: TargetStatus): string {
-  if (target.convergence === "unauthorized") {
-    return "Waiting to be connected to Wahoo. Nothing can be written until it is.";
-  }
   if (target.stages.pending === 0) {
     return `All ${target.stages.current} ${target.stages.current === 1 ? "stage" : "stages"} written.`;
   }
@@ -89,15 +93,20 @@ export function TargetConvergence() {
       <ul className="convergence__targets">
         {data.targets.map((target) => {
           const guidance = targetGuidance(target);
+          const authorisation = authorisationGuidance(target.authorisation);
           // The service reduces every unsuccessful run to `failed` in its one
           // word, because that word answers a different question — whether this
           // account is behind — and a held gate leaves it behind either way.
           // Here there is room to say which, and a gate must not be read as a
           // fault: the account is intact and the next move is the operator's.
+          //
+          // Authorisation wins over both, because an account that cannot be
+          // written to at all has nothing to say about how far behind it is.
           const state =
-            guidance?.kind === "blocked"
+            authorisation?.label ??
+            (guidance?.kind === "blocked"
               ? GUIDANCE_LABELS.blocked
-              : CONVERGENCE_LABELS[target.convergence];
+              : CONVERGENCE_LABELS[target.convergence]);
 
           return (
             <li
@@ -110,6 +119,29 @@ export function TargetConvergence() {
                 <span className="convergence__id">{target.id}</span>
                 <span className="convergence__stages">{stagesSummary(target)}</span>
                 <span className="convergence__run">{lastRunSummary(target)}</span>
+                {authorisation ? (
+                  <span className="convergence__authorisation">
+                    {authorisation.detail}{" "}
+                    {authorisation.action ? (
+                      /*
+                       * A plain anchor, and a full-page navigation: the flow
+                       * leaves this application for Wahoo and returns to it, so
+                       * there is nothing here for a client-side route or a
+                       * background request to carry. It is a GET the service
+                       * gates on the same identity as this page.
+                       */
+                      <a
+                        className="convergence__connect"
+                        href={authorisationStartHref(target.id)}
+                        // The slot is in the name because two accounts sit in
+                        // this list and "Connect" alone would not say which.
+                        aria-label={`${authorisation.action} ${target.id} to Wahoo`}
+                      >
+                        {authorisation.action}
+                      </a>
+                    ) : null}
+                  </span>
+                ) : null}
                 {guidance ? (
                   <span className="convergence__guidance" data-kind={guidance.kind}>
                     <span className="convergence__guidance-headline">{guidance.headline}</span>{" "}
