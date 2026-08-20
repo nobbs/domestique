@@ -68,6 +68,45 @@ jobs:
           version: 2026.8.6
           install: true
           cache: true
+      # The module downloads and the compiler cache, which every Go job otherwise
+      # pays for from scratch. Two of these paths are `.mise.toml`'s own choice
+      # read back — it puts GOCACHE and GOLANGCI_LINT_CACHE under `.cache/` — and
+      # dev/gatecheck asserts that the two files still name the same directories,
+      # because a cache pointed at a directory nothing writes is saved on every
+      # run and restores nothing.
+      #
+      # The key is the pinned toolchain, then `go.sum`, then the Go tree, so an
+      # unchanged tree hits exactly and writes nothing back, and a source change
+      # restores the entry built from the same dependencies and recompiles only
+      # what moved. `.mise.toml` leads because it is what decides which compiler
+      # wrote these directories: without it, a toolchain bump on its own would
+      # still hit the old entry exactly, nothing the new compiler produced would
+      # ever be saved, and every run would recompile cold until some source file
+      # happened to move. The loosest restore-key drops it again on purpose — a
+      # bump makes the compiler cache useless but not the module downloads, which
+      # are the same bytes whatever compiles them. Each job keys its own entry
+      # rather than sharing one: they compile different things — the race
+      # detector's object files are not the plain suite's, and golangci-lint's
+      # cache is neither — and a shared entry would be whichever job happened to
+      # finish last.
+      #
+      # Nothing restored here can make a check pass that would otherwise fail:
+      # every job runs `mise run --force`, and a compiler cache is keyed by the
+      # content it was built from. It is the download and the recompilation that
+      # is skipped, not the work.
+      - name: Restore the Go caches
+        # v6.1.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: |
+            ~/go/pkg/mod
+            .cache/go-build
+            .cache/golangci-lint
+          key: go-lint-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-${{ hashFiles('go.sum') }}-${{ hashFiles('**/*.go') }}
+          restore-keys: |
+            go-lint-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-${{ hashFiles('go.sum') }}-
+            go-lint-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-
+            go-lint-${{ runner.os }}-
       # --force here and in every other job: a task that declares `sources` is
       # skipped locally when its inputs have not moved, and the gate a merge
       # must satisfy is not the place to trust a cache. It costs nothing on a
@@ -106,6 +145,19 @@ jobs:
           version: 2026.8.6
           install: true
           cache: true
+      # The Go caches, as the Lint job above explains them.
+      - name: Restore the Go caches
+        # v6.1.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: |
+            ~/go/pkg/mod
+            .cache/go-build
+          key: go-test-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-${{ hashFiles('go.sum') }}-${{ hashFiles('**/*.go') }}
+          restore-keys: |
+            go-test-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-${{ hashFiles('go.sum') }}-
+            go-test-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-
+            go-test-${{ runner.os }}-
       - name: Run tests
         run: mise run --force ci-test
       # Test results go to Codecov's test analytics, which is what makes a
@@ -163,6 +215,19 @@ jobs:
           version: 2026.8.6
           install: true
           cache: true
+      # The Go caches, as the Lint job above explains them.
+      - name: Restore the Go caches
+        # v6.1.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: |
+            ~/go/pkg/mod
+            .cache/go-build
+          key: go-security-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-${{ hashFiles('go.sum') }}-${{ hashFiles('**/*.go') }}
+          restore-keys: |
+            go-security-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-${{ hashFiles('go.sum') }}-
+            go-security-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-
+            go-security-${{ runner.os }}-
       - name: Audit modules and dependencies
         run: mise run --force ci-security
 
@@ -192,6 +257,28 @@ jobs:
           version: 2026.8.6
           install: true
           cache: true
+      # pnpm downloads every package once into a content-addressed store and hard
+      # links it into node_modules, so the store is what makes `ui-install` a
+      # link rather than a download. Its location is asked for rather than
+      # assumed: pnpm derives it from the platform, and a merely probable path
+      # would save an empty directory on every run and never hit.
+      #
+      # Keyed on the pinned toolchain and then the lockfile: the lockfile decides
+      # what the store must hold, and `.mise.toml` decides which pnpm holds it,
+      # and therefore which store layout at which path. The looser fallbacks
+      # still save most of the download when a single dependency moved, or when
+      # the pnpm pin moved without changing the store layout it writes.
+      - name: Locate the pnpm store
+        run: echo "PNPM_STORE=$(mise exec -- pnpm store path)" >> "${GITHUB_ENV}"
+      - name: Restore the pnpm store
+        # v6.1.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: ${{ env.PNPM_STORE }}
+          key: pnpm-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-${{ hashFiles('internal/webui/app/pnpm-lock.yaml') }}
+          restore-keys: |
+            pnpm-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-
+            pnpm-${{ runner.os }}-
       - name: Typecheck, lint and test the UI
         # Deliberately without --with-deps: the runner image already carries every
         # shared library Chromium links, so the flag only adds CJK, Thai, and
@@ -282,6 +369,31 @@ jobs:
           version: 2026.8.6
           install: true
           cache: true
+      # The Go caches, as the Lint job above explains them.
+      - name: Restore the Go caches
+        # v6.1.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: |
+            ~/go/pkg/mod
+            .cache/go-build
+          key: go-coverage-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-${{ hashFiles('go.sum') }}-${{ hashFiles('**/*.go') }}
+          restore-keys: |
+            go-coverage-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-${{ hashFiles('go.sum') }}-
+            go-coverage-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-
+            go-coverage-${{ runner.os }}-
+      # The pnpm store, as the UI job above explains it.
+      - name: Locate the pnpm store
+        run: echo "PNPM_STORE=$(mise exec -- pnpm store path)" >> "${GITHUB_ENV}"
+      - name: Restore the pnpm store
+        # v6.1.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: ${{ env.PNPM_STORE }}
+          key: pnpm-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-${{ hashFiles('internal/webui/app/pnpm-lock.yaml') }}
+          restore-keys: |
+            pnpm-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-
+            pnpm-${{ runner.os }}-
       - name: Install the browser
         # The UI half of the measurement drives the whole page in real Chromium.
         # Without --with-deps, for the reason the UI job gives.
@@ -353,6 +465,31 @@ jobs:
           version: 2026.8.6
           install: true
           cache: true
+      # The Go caches, as the Lint job above explains them.
+      - name: Restore the Go caches
+        # v6.1.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: |
+            ~/go/pkg/mod
+            .cache/go-build
+          key: go-build-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-${{ hashFiles('go.sum') }}-${{ hashFiles('**/*.go') }}
+          restore-keys: |
+            go-build-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-${{ hashFiles('go.sum') }}-
+            go-build-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-
+            go-build-${{ runner.os }}-
+      # The pnpm store, as the UI job above explains it.
+      - name: Locate the pnpm store
+        run: echo "PNPM_STORE=$(mise exec -- pnpm store path)" >> "${GITHUB_ENV}"
+      - name: Restore the pnpm store
+        # v6.1.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: ${{ env.PNPM_STORE }}
+          key: pnpm-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-${{ hashFiles('internal/webui/app/pnpm-lock.yaml') }}
+          restore-keys: |
+            pnpm-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-
+            pnpm-${{ runner.os }}-
       # build-check bundles the UI before it compiles, because the binary
       # embeds dist, so the JavaScript tree has to be installed first.
       - name: Install UI dependencies
