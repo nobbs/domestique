@@ -49,6 +49,61 @@
 }
 
 /*
+ * The two presentations, offered side by side as one control rather than as two
+ * loose buttons, so the pair reads as a choice with one of them taken.
+ */
+.views {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) - 4px);
+  overflow: hidden;
+}
+
+.view {
+  padding: 0.35rem 0.7rem;
+  border: 0;
+  background: var(--surface);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.view + .view {
+  border-left: 1px solid var(--border);
+}
+
+/* The accent as small text: the plain accent is below 4.5:1 at this size. */
+.view:hover {
+  color: var(--accent-text);
+}
+
+.view:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/*
+ * Which presentation the library is in is the whole of what this control says,
+ * so it is stated in the accent rather than as a shade of the resting state.
+ */
+.view[data-state="on"] {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+/*
+ * A forced palette would take the accent that says which one is chosen. The
+ * reader's own selection pair says it instead.
+ */
+@media (forced-colors: active) {
+  .view[data-state="on"] {
+    background: Highlight;
+    color: HighlightText;
+  }
+}
+
+/*
  * The sentence saying what the search left. It sits on the row's baseline with
  * the fields, and takes no room at all while there is nothing to say.
  */

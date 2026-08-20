@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -51,6 +51,14 @@ function titles(): string[] {
     .getAllByRole("link")
     .map((link) => link.querySelector(".route-card__title")?.textContent ?? "")
     .filter(Boolean);
+}
+
+/** The stage names the table view is showing, read down its rows. */
+function rows(): string[] {
+  return screen
+    .getAllByRole("row")
+    .slice(1)
+    .map((row) => within(row).getByRole("link").textContent ?? "");
 }
 
 beforeEach(() => {
@@ -131,6 +139,63 @@ describe("StagesPage", () => {
     await user.click(screen.getByRole("button", { name: "Clear search" }));
 
     expect(titles()).toHaveLength(3);
+  });
+
+  it("reads the library as rows when the table view is chosen", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(screen.getByRole("radio", { name: "Table" }));
+
+    // The same stages in the same order as the grid, and no cards left behind.
+    expect(rows()).toEqual([
+      "Kaiserstuhl Loop",
+      "Rhine Traverse — Forest ramps",
+      "Rhine Traverse — Valley floor",
+    ]);
+    expect(titles()).toEqual([]);
+  });
+
+  it("carries the search and the order across a change of presentation", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.selectOptions(screen.getByRole("combobox", { name: "Sort by" }), "distance");
+    await user.type(screen.getByRole("searchbox", { name: "Search" }), "rhine");
+    await user.click(screen.getByRole("radio", { name: "Table" }));
+
+    // The table is another way of reading the arranged list, not another list:
+    // what the search left is still what is shown, in the order it was left in.
+    expect(rows()).toEqual(["Rhine Traverse — Forest ramps", "Rhine Traverse — Valley floor"]);
+    expect(screen.getByText("Showing 2 of 3 stages")).toBeInTheDocument();
+  });
+
+  it("points each row at the stage it names", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(screen.getByRole("radio", { name: "Table" }));
+
+    expect(screen.getByRole("link", { name: "Kaiserstuhl Loop" })).toHaveAttribute(
+      "href",
+      "/routes/2/1",
+    );
+  });
+
+  it("explains a search that matched nothing whichever presentation is on", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(screen.getByRole("radio", { name: "Table" }));
+    await user.type(screen.getByRole("searchbox", { name: "Search" }), "summit");
+
+    // One explanation serves both views rather than each carrying its own.
+    expect(screen.getByRole("status")).toHaveTextContent("No stages match “summit”.");
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Clear search" }));
+
+    expect(rows()).toHaveLength(3);
   });
 
   it("explains an empty library differently from an empty search", () => {

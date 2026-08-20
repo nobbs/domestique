@@ -1,9 +1,11 @@
 /**
- * The library page: the grid, its previews, and the way into a route.
+ * The library page: the grid, its previews, the table beside it, and the way
+ * into a route.
  *
  * These are the paths a component test cannot reach — a card's preview is a
- * MapLibre map, and following a card is a client-side navigation into a view that
- * fetches its own geometry.
+ * MapLibre map, following a card or a row is a client-side navigation into a view
+ * that fetches its own geometry, and what the two presentations agree on is only
+ * worth asserting over the whole page they are both rendered on.
  */
 
 import { expect, mapRegion, openLibrary, settleMap, test } from "./fixtures";
@@ -60,6 +62,32 @@ test("the grid can be reordered by distance", async ({ offlinePage: page }) => {
   const distances = await page.locator(".route-card__meta > span:first-child").allInnerTexts();
   const kilometres = distances.map((text) => Number.parseFloat(text));
   expect(kilometres).toEqual([...kilometres].sort((left, right) => right - left));
+});
+
+test("the table reads the same stages, in the same order, as the grid", async ({
+  offlinePage: page,
+}) => {
+  await openLibrary(page);
+  await page.getByRole("combobox", { name: "Sort by" }).selectOption("distance");
+  const cards = await page.locator(".route-card__title").allInnerTexts();
+
+  await page.getByRole("radio", { name: "Table" }).click();
+
+  expect(await page.locator("tbody th a").allInnerTexts()).toEqual(cards);
+  await expect(page.locator(".route-card")).toHaveCount(0);
+  // Rows are figures rather than previews, so the table takes no WebGL context
+  // for a library the grid would have drawn a map per card for.
+  await expect(page.locator(".maplibregl-canvas")).toHaveCount(0);
+});
+
+test("following a row opens that stage", async ({ offlinePage: page }) => {
+  await openLibrary(page);
+  await page.getByRole("radio", { name: "Table" }).click();
+
+  await page.getByRole("link", { name: "Synthetic Kaiserstuhl Loop" }).click();
+
+  await expect(page).toHaveURL(/\/routes\/4102\/1$/);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Synthetic Kaiserstuhl Loop");
 });
 
 test("a card's preview becomes a map once it is in view", async ({ offlinePage: page }) => {
