@@ -8,6 +8,10 @@
  * `RouteCard` is: it takes the stages the page already arranged and knows
  * nothing about fetching, so the search and the order stay the page's.
  *
+ * The column headers say what the cards say in words, rather than the shorthand
+ * a narrow column invites: the same figure must not be called two things
+ * depending on which presentation it is being read in.
+ *
  * The name is the row's header cell, so a screen reader announces which stage a
  * figure belongs to when reading across, and the link sits in it rather than
  * around the row: a row is not a link, and wrapping one in an anchor would make
@@ -29,7 +33,7 @@ export function StageTable({ stages }: { stages: Stage[] }) {
           <th scope="col">Stage</th>
           <th scope="col">Distance</th>
           <th scope="col">Total climbing</th>
-          <th scope="col">Steepest gradient</th>
+          <th scope="col">Steepest sustained gradient</th>
         </tr>
       </thead>
       <tbody>

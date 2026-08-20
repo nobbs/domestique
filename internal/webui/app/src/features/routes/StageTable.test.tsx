@@ -47,7 +47,9 @@ describe("StageTable", () => {
     expect(screen.getByRole("columnheader", { name: "Stage" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Distance" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Total climbing" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "Steepest gradient" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("columnheader", { name: "Steepest sustained gradient" }),
+    ).toBeInTheDocument();
     expect(screen.getByRole("rowheader", { name: "Alpine loop" })).toBeInTheDocument();
   });
 

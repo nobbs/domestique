@@ -44,7 +44,8 @@ describe("LibraryControls", () => {
 
     await user.click(screen.getByRole("radio", { name: "Table" }));
 
-    expect(props.onViewChange).toHaveBeenCalledExactlyOnceWith("table");
+    expect(props.onViewChange).toHaveBeenCalledTimes(1);
+    expect(props.onViewChange).toHaveBeenCalledWith("table");
   });
 
   it("leaves the presentation alone when the one already chosen is pressed again", async () => {
