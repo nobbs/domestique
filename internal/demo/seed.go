@@ -18,7 +18,7 @@ type State interface {
 	EnsureTargets(ctx context.Context, targetIDs []string) error
 	AuthorizeTarget(ctx context.Context, targetID, wahooUserID, refreshToken string) error
 	UpsertTargetStage(ctx context.Context, targetID string, routeID int64, stageOrder int, sourceRevision, contentHash string, wahooRouteID int64) error
-	RecordSyncRun(ctx context.Context, phase string, startedAt, finishedAt time.Time, outcome, detail string, sourceStages, created, updated, deleted int) error
+	RecordSyncRun(ctx context.Context, phase string, startedAt, finishedAt time.Time, outcome, detail string, sourceStages, created, updated, deleted int) (string, error)
 	RecordTargetRun(ctx context.Context, targetID string, finishedAt time.Time, outcome, detail string) error
 	SetSyncSchedule(ctx context.Context, source, targets bool) error
 }
@@ -103,17 +103,8 @@ func Seed(ctx context.Context, state State, slots []Slot, now time.Time) error {
 		}
 	}
 
-	if err := state.RecordSyncRun(
-		ctx, "source", now.Add(-9*time.Minute), now.Add(-8*time.Minute),
-		"succeeded", "", len(stages), 2, 1, 0,
-	); err != nil {
-		return fmt.Errorf("demo: recording source run: %w", err)
-	}
-	if err := state.RecordSyncRun(
-		ctx, "targets", now.Add(-8*time.Minute), now.Add(-7*time.Minute),
-		"succeeded", "", len(stages), 2, 1, 0,
-	); err != nil {
-		return fmt.Errorf("demo: recording targets run: %w", err)
+	if err := seedRuns(ctx, state, len(stages), now); err != nil {
+		return err
 	}
 	// Both halves left on, because a demo of a service that synchronises should
 	// show the switches the way an operator running it would see them. It still
@@ -180,4 +171,45 @@ func seedSlot(ctx context.Context, state State, slot Slot, stages []route.Stage,
 // wahooRouteID is the identifier a target pretends Wahoo gave a written stage.
 func wahooRouteID(routeID int64, stageOrder int) int64 {
 	return 900_000_000 + routeID*100 + int64(stageOrder)
+}
+
+// pastRuns are the finished runs the demo starts with, oldest first. The last
+// two are the pair a first synchronization leaves behind; the rest are there so
+// the history is a history rather than one line, and the blocked one is how a
+// deletion gate looks to a reader without a demo that can delete anything.
+//
+//nolint:gochecknoglobals // A fixture table, read once by seedRuns.
+var pastRuns = []struct {
+	phase   string
+	outcome string
+	failure string
+	minutes int
+	created int
+	updated int
+	deleted int
+}{
+	{phase: "source", outcome: "succeeded", minutes: 189},
+	{phase: "targets", outcome: "succeeded", minutes: 188, updated: 3},
+	{phase: "source", outcome: "succeeded", minutes: 129},
+	{phase: "targets", outcome: "blocked", failure: "deletion_limit", minutes: 128},
+	{phase: "source", outcome: "succeeded", minutes: 69},
+	{phase: "targets", outcome: "failed", failure: "destination", minutes: 68},
+	{phase: "source", outcome: "succeeded", minutes: 9, created: 2, updated: 1},
+	{phase: "targets", outcome: "succeeded", minutes: 8, created: 2, updated: 1},
+}
+
+// seedRuns records the demo's run history in order, so the newest row is the
+// most recent run here as it would be on a service that had been running.
+func seedRuns(ctx context.Context, state State, stages int, now time.Time) error {
+	for _, run := range pastRuns {
+		finishedAt := now.Add(-time.Duration(run.minutes) * time.Minute)
+		if _, err := state.RecordSyncRun(
+			ctx, run.phase, finishedAt.Add(-time.Minute), finishedAt,
+			run.outcome, run.failure, stages, run.created, run.updated, run.deleted,
+		); err != nil {
+			return fmt.Errorf("demo: recording %s run: %w", run.phase, err)
+		}
+	}
+
+	return nil
 }

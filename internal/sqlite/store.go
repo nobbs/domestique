@@ -12,8 +12,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -41,6 +43,18 @@ const forwardCompatibleMigrations = 1
 // rollback that is unhealthy for any other reason, so it is a contract with
 // deploy/domestique-deploy.sh rather than free-form error text.
 const schemaAheadMessage = "state schema version is newer than this service"
+
+// retainedSyncRuns bounds the recorded run history. Both halves run on the
+// configured interval, so an hourly deployment writes about fifty rows a day
+// and this window holds a little over a week of them — long enough to answer
+// "when did this start going wrong" and short enough that the state file this
+// service keeps forever stops growing.
+const retainedSyncRuns = 500
+
+// syncRunReferenceBytes is how much randomness names a run. Twelve hex
+// characters are readable aloud and leave the retained window nowhere near a
+// collision.
+const syncRunReferenceBytes = 6
 
 var (
 	// ErrTargetNotFound reports an operation for an unknown configured target slot.
@@ -671,6 +685,80 @@ func (s *Store) ForEachPhaseRun(
 	return nil
 }
 
+// ForEachSyncRun visits one page of the recorded history, newest first, and
+// returns the cursor for the page after it — empty when the history ends here.
+// A cursor this store did not issue is reported as unusable rather than as a
+// failure: it is the caller's input, not a broken store.
+//
+// The page starts after the run the caller's cursor names, or at the newest run
+// when there is none. A cursor is a position rather than a name: the run it was
+// taken from may have been pruned by the time the next page is asked for, and a
+// position still resolves where a name would have to fail.
+func (s *Store) ForEachSyncRun(
+	ctx context.Context,
+	after string,
+	limit int,
+	visit func(reference, phase string, completedAt time.Time, outcome, detail string, sourceStages, created, updated, deleted int) error,
+) (next string, usable bool, err error) {
+	if visit == nil {
+		return "", false, errors.New("sync run visitor is required")
+	}
+	if limit <= 0 {
+		return "", false, errors.New("a positive page size is required")
+	}
+	position := int64(math.MaxInt64)
+	if after != "" {
+		position, err = strconv.ParseInt(after, 10, 64)
+		if err != nil {
+			return "", false, nil
+		}
+	}
+	// One row past the page, so "is there more" is read rather than guessed
+	// from a page that happened to come back full.
+	rows, err := s.database.QueryContext(ctx, `
+		SELECT id, reference, phase, finished_at_unix, outcome, COALESCE(detail, ''),
+			source_stages, created, updated, deleted
+		FROM sync_runs
+		WHERE id < ?
+		ORDER BY id DESC
+		LIMIT ?
+	`, position, limit+1)
+	if err != nil {
+		return "", false, fmt.Errorf("reading sync runs: %w", err)
+	}
+	defer closeRows(rows)
+
+	visited := 0
+	for rows.Next() {
+		var id, completedUnix int64
+		var reference, phase, outcome, detail string
+		var sourceStages, created, updated, deleted int
+		if err := rows.Scan(
+			&id, &reference, &phase, &completedUnix, &outcome, &detail,
+			&sourceStages, &created, &updated, &deleted,
+		); err != nil {
+			return "", false, fmt.Errorf("reading a sync run: %w", err)
+		}
+		if visited == limit {
+			return next, true, nil
+		}
+		visited++
+		next = strconv.FormatInt(id, 10)
+		if err := visit(
+			reference, phase, time.Unix(completedUnix, 0).UTC(), outcome, detail,
+			sourceStages, created, updated, deleted,
+		); err != nil {
+			return "", false, err
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return "", false, fmt.Errorf("reading sync runs: %w", err)
+	}
+
+	// The page was not filled, so nothing follows it.
+	return "", true, nil
+}
+
 // SurfaceCoverage reports how many stored stages carry a classification of the
 // geometry they currently hold, and how many stages there are.
 //
@@ -1175,26 +1263,79 @@ func (s *Store) DeleteTargetStage(ctx context.Context, targetID string, routeID 
 	return nil
 }
 
-// RecordSyncRun stores one terminal synchronization result. Its detail is a
-// stable failure category, never provider text or a route name.
+// RecordSyncRun stores one terminal synchronization result and returns the
+// reference naming it. Its detail is a stable failure category, never provider
+// text or a route name.
+//
+// Recording a run also prunes the history back to its bound, so the file this
+// service keeps forever holds a fixed number of runs rather than one per hour
+// for as long as it is deployed.
 func (s *Store) RecordSyncRun(
 	ctx context.Context,
 	phase string,
 	startedAt, finishedAt time.Time,
 	outcome, detail string,
 	sourceStages, created, updated, deleted int,
-) error {
+) (string, error) {
 	if phase == "" || startedAt.IsZero() || finishedAt.IsZero() || finishedAt.Before(startedAt) || outcome == "" ||
 		sourceStages < 0 || created < 0 || updated < 0 || deleted < 0 {
-		return errors.New("complete non-negative sync run metadata is required")
+		return "", errors.New("complete non-negative sync run metadata is required")
 	}
-	if _, err := s.database.ExecContext(ctx, `
+	reference, err := newSyncRunReference()
+	if err != nil {
+		return "", err
+	}
+	transaction, err := s.database.BeginTx(ctx, nil)
+	if err != nil {
+		return "", fmt.Errorf("recording sync run: %w", err)
+	}
+	defer rollback(transaction)
+
+	if _, err := transaction.ExecContext(ctx, `
 		INSERT INTO sync_runs (
-			phase, started_at_unix, finished_at_unix, outcome, detail,
+			reference, phase, started_at_unix, finished_at_unix, outcome, detail,
 			source_stages, created, updated, deleted
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, phase, startedAt.Unix(), finishedAt.Unix(), outcome, detail, sourceStages, created, updated, deleted); err != nil {
-		return fmt.Errorf("recording sync run: %w", err)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, reference, phase, startedAt.Unix(), finishedAt.Unix(), outcome, detail,
+		sourceStages, created, updated, deleted); err != nil {
+		return "", fmt.Errorf("recording sync run: %w", err)
+	}
+	if err := pruneSyncRuns(ctx, transaction); err != nil {
+		return "", err
+	}
+	if err := transaction.Commit(); err != nil {
+		return "", fmt.Errorf("committing sync run: %w", err)
+	}
+
+	return reference, nil
+}
+
+// newSyncRunReference mints the name one run is known by. Six random bytes are
+// short enough to read back off a phone and far enough apart that the retained
+// history will not hold two the same.
+func newSyncRunReference() (string, error) {
+	reference := make([]byte, syncRunReferenceBytes)
+	if _, err := io.ReadFull(rand.Reader, reference); err != nil {
+		return "", fmt.Errorf("naming sync run: %w", err)
+	}
+
+	return hex.EncodeToString(reference), nil
+}
+
+// pruneSyncRuns drops everything past the retained window, in the caller's
+// transaction.
+//
+// The most recent run of each phase is kept whatever its age. It is not history
+// there: the status response reads it as what that half last came to, and a
+// half switched off for a week must not lose its last answer because the other
+// half filled the window.
+func pruneSyncRuns(ctx context.Context, transaction *sql.Tx) error {
+	if _, err := transaction.ExecContext(ctx, `
+		DELETE FROM sync_runs
+		WHERE id NOT IN (SELECT id FROM sync_runs ORDER BY id DESC LIMIT ?)
+		  AND id NOT IN (SELECT MAX(id) FROM sync_runs GROUP BY phase)
+	`, retainedSyncRuns); err != nil {
+		return fmt.Errorf("pruning sync runs: %w", err)
 	}
 
 	return nil
@@ -1801,6 +1942,24 @@ func schemaMigrations() [][]string {
 				outcome          TEXT    NOT NULL,
 				detail           TEXT    NOT NULL
 			)`,
+		},
+		{
+			// A name for one recorded run, so a notification about it and the
+			// record an operator opens afterwards are legibly the same run.
+			//
+			// It carries no meaning: the row identifier is a position in this
+			// file and the counts are a position in the operator's week, and
+			// neither is something to hand to a reader as a name. Random bytes
+			// name the run and say nothing else about it.
+			`ALTER TABLE sync_runs ADD COLUMN reference TEXT NOT NULL DEFAULT ''`,
+			// Existing rows are named here rather than left empty, so history
+			// that predates this migration is as addressable as history after
+			// it.
+			`UPDATE sync_runs SET reference = lower(hex(randomblob(6))) WHERE reference = ''`,
+			// Deliberately not unique: an earlier binary rolled back onto this
+			// schema still inserts rows with the column's default, and a second
+			// such row must not fail its own run.
+			`CREATE INDEX sync_runs_reference_index ON sync_runs(reference)`,
 		},
 	}
 }

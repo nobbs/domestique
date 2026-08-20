@@ -37,10 +37,23 @@ implementation detail.
 | trusted inventory | complete validated source-stage set and observed time | none |
 | stage geometry | cached titles, geometry, length, and extent for the map view | none |
 | stage surface | cached surface classification of one stored geometry, as index ranges plus matched length, against the content hash it was measured for | none |
-| sync run | half, start, end, terminal state, aggregate counts, safe failure category | none |
+| sync run | opaque reference, half, start, end, terminal state, aggregate counts, safe failure category | none |
 | sync schedule | whether the timer may start each half | none |
 | reprocess request | one stage an operator has asked to have redone | none |
 | notification state | last delivered failure category and suppression deadline | none |
+
+Every recorded run carries an opaque reference: random bytes, meaningless on
+their own, and the one thing about a run that may be said out loud. It is what a
+notification names and what an operator matches a served record against.
+
+Run records are the only history this service keeps, and a service that runs
+every hour would otherwise grow them forever. They are bounded to a fixed number
+of the most recent runs, pruned in the same transaction that records a run. The
+newest run of each half is never pruned, whatever its age: that record is what
+`GET /v1/status` reports for a half, and a half switched off while the other
+keeps running would otherwise lose its answer. Pruning touches nothing else — it
+can never affect the trusted inventory, target stage mappings, OAuth state, or a
+deletion gate, none of which are derived from this history.
 
 OAuth state is stored as a digest. Refresh tokens are encrypted before being
 written. Access tokens, OAuth authorisation codes, CSRF state values, raw
@@ -521,6 +534,44 @@ switch, or carrying an unknown field, is refused with 400: a half-named schedule
 would leave the other switch at whatever the caller assumed. It never starts,
 stops, or alters a run in flight.
 
+### GET /v1/sync/runs
+
+Returns one page of the recorded run history, newest first:
+
+~~~json
+{
+  "runs": [
+    {
+      "reference": "1a2b3c4d5e6f",
+      "phase": "targets",
+      "completed_at": "2026-08-18T06:30:00Z",
+      "result": "failed",
+      "failure": "destination",
+      "source_stages": 0,
+      "created": 1,
+      "updated": 0,
+      "deleted": 0
+    }
+  ],
+  "next": "412"
+}
+~~~
+
+`failure` is present only when the run did not succeed, and is the same safe
+category the status response reports. `next` is the cursor for the page after
+this one, and is absent when the history ends with this page. A cursor is a
+position rather than a name, so a page still resolves after the run it was taken
+from has been pruned.
+
+`limit` sets the page size, defaulting to 20 and capped at 100 so one request
+cannot read the whole retained window. `after` continues from a cursor. A page
+size outside that range, or a cursor this service did not issue, is refused with
+400 rather than answered with the newest page, which would silently restart a
+walk through the history.
+
+A record carries only what the run itself came to. It names no route, carries no
+geometry, no Wahoo identity, and nothing a provider said.
+
 ### GET /v1/routes
 
 Returns known source metadata in stable source-stage order. It may include a
@@ -569,8 +620,11 @@ signal. Suppression is keyed by half and category together: the same category
 failing in both halves is two problems, and each is worth one alert.
 
 Notification content contains only the run result, target count, aggregate
-counts, and a safe failure category. It never contains a route title, source
-identity, Wahoo identity, credential, token, secret path, or upstream body.
+counts, a safe failure category, and the recorded run's opaque reference. It
+never contains a route title, source identity, Wahoo identity, credential,
+token, secret path, or upstream body. The reference says which run the message
+is about without saying anything about it, and resolves to that run's record in
+`GET /v1/sync/runs`.
 
 ## Required tests
 
@@ -594,6 +648,9 @@ The implementation test suite must cover at least:
   the endpoint reports it has no capacity;
 - a status request during a run reporting that run rather than the outcome of
   the last one to finish, and a refused duplicate trigger leaving that report
-  unchanged; and
+  unchanged;
+- the run history being read a page at a time, refusing a cursor this service
+  did not issue, staying bounded as runs accumulate while keeping the newest run
+  of each half, and naming runs recorded before references existed; and
 - JSON responses and Pushover messages containing no secret or raw upstream
   data.

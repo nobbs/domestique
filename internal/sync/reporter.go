@@ -14,7 +14,9 @@ const failureNotificationSuppression = 6 * time.Hour
 
 // RunState records terminal run data and failure-notification delivery state.
 type RunState interface {
-	RecordSyncRun(ctx context.Context, phase string, startedAt, finishedAt time.Time, outcome, detail string, sourceStages, created, updated, deleted int) error
+	// RecordSyncRun writes one terminal run down and returns the reference it
+	// is recorded under, which is the name a notification about it can carry.
+	RecordSyncRun(ctx context.Context, phase string, startedAt, finishedAt time.Time, outcome, detail string, sourceStages, created, updated, deleted int) (string, error)
 	RecordTargetRun(ctx context.Context, targetID string, finishedAt time.Time, outcome, detail string) error
 	LastFailureNotification(ctx context.Context, category string) (sentAt time.Time, found bool, err error)
 	RecordFailureNotification(ctx context.Context, category string, sentAt time.Time) error
@@ -189,7 +191,7 @@ func (r *Reporter) run(ctx context.Context, phase func(context.Context) Result) 
 // state-delivery failures never rewrite the outcome they describe.
 func (r *Reporter) record(ctx context.Context, startedAt time.Time, result *Result) Result {
 	finishedAt := r.now().UTC()
-	if err := r.state.RecordSyncRun(
+	reference, err := r.state.RecordSyncRun(
 		ctx,
 		string(result.Phase),
 		startedAt,
@@ -200,18 +202,19 @@ func (r *Reporter) record(ctx context.Context, startedAt time.Time, result *Resu
 		result.Created,
 		result.Updated,
 		result.Deleted,
-	); err != nil {
+	)
+	if err != nil {
 		return *result
 	}
 	r.recordTargetRuns(ctx, finishedAt, result.Targets)
 
 	switch result.Outcome {
 	case OutcomeSucceeded:
-		if err := r.notifier.Send(ctx, "Domestique sync", successMessage(result)); err != nil {
+		if err := r.notifier.Send(ctx, "Domestique sync", successMessage(result, reference)); err != nil {
 			return *result
 		}
 	case OutcomeFailed, OutcomeBlocked:
-		r.notifyFailure(ctx, result, finishedAt)
+		r.notifyFailure(ctx, result, reference, finishedAt)
 	}
 
 	return *result
@@ -244,7 +247,7 @@ func (r *Reporter) recordTargetRuns(ctx context.Context, finishedAt time.Time, t
 // morning must not be the reason a target stops reporting that it can no longer
 // be written to: they are separate problems with separate remedies, and each is
 // worth one alert.
-func (r *Reporter) notifyFailure(ctx context.Context, result *Result, now time.Time) {
+func (r *Reporter) notifyFailure(ctx context.Context, result *Result, reference string, now time.Time) {
 	if result.Failure == FailureNone {
 		return
 	}
@@ -253,7 +256,7 @@ func (r *Reporter) notifyFailure(ctx context.Context, result *Result, now time.T
 	if err != nil || (found && now.Sub(lastSentAt) < failureNotificationSuppression) {
 		return
 	}
-	if err := r.notifier.Send(ctx, "Domestique sync failed", failureMessage(result)); err != nil {
+	if err := r.notifier.Send(ctx, "Domestique sync failed", failureMessage(result, reference)); err != nil {
 		return
 	}
 	if err := r.state.RecordFailureNotification(ctx, category, now); err != nil {
@@ -265,20 +268,33 @@ func (r *Reporter) notifyFailure(ctx context.Context, result *Result, now time.T
 // source run that listed forty stages and a target run that changed none are
 // different events, and a message padded with the other phase's zeroes reads as
 // though work was skipped.
-func successMessage(result *Result) string {
+func successMessage(result *Result, reference string) string {
 	if result.Phase == PhaseSource {
-		return fmt.Sprintf("source succeeded: source_stages=%d", result.SourceStages)
+		return withReference(fmt.Sprintf("source succeeded: source_stages=%d", result.SourceStages), reference)
 	}
 
-	return fmt.Sprintf(
+	return withReference(fmt.Sprintf(
 		"targets succeeded: source_stages=%d created=%d updated=%d deleted=%d",
 		result.SourceStages,
 		result.Created,
 		result.Updated,
 		result.Deleted,
-	)
+	), reference)
 }
 
-func failureMessage(result *Result) string {
-	return string(result.Phase) + " failed: " + string(result.Failure)
+func failureMessage(result *Result, reference string) string {
+	return withReference(string(result.Phase)+" failed: "+string(result.Failure), reference)
+}
+
+// withReference names the recorded run a message is about, so an operator
+// reading it on a phone can find that run and nothing else in the history.
+//
+// The reference is random and means nothing on its own, which is what makes it
+// safe to send: it says which run without saying anything about it.
+func withReference(message, reference string) string {
+	if reference == "" {
+		return message
+	}
+
+	return message + " run=" + reference
 }

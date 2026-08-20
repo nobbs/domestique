@@ -20,6 +20,8 @@ import type {
   SyncActive,
   SyncPhase,
   SyncPhaseRun,
+  SyncRun,
+  SyncRunPage,
   SyncSchedule,
   TargetConvergence,
   TargetRun,
@@ -406,6 +408,43 @@ function syncPhasesFrom(value: unknown, at: string): Partial<Record<SyncPhase, S
   }
 
   return runs;
+}
+
+/**
+ * Reads one page of the recorded run history.
+ *
+ * A phase word this build does not know is a drift rather than something to
+ * degrade past: every row is labelled by its half, and a row that cannot be
+ * labelled would be shown as a run of nothing in particular.
+ */
+export function parseSyncRuns(payload: unknown): SyncRunPage {
+  const body = record(payload, "body");
+
+  return {
+    runs: array(body.runs, "body.runs").map((entry, index) =>
+      syncRunFrom(record(entry, `body.runs[${index}]`), `body.runs[${index}]`),
+    ),
+    next: optionalText(body.next, "body.next"),
+  };
+}
+
+function syncRunFrom(run: Record<string, unknown>, at: string): SyncRun {
+  const phase = text(run.phase, `${at}.phase`);
+  if (!(SYNC_PHASES as readonly string[]).includes(phase)) {
+    throw new ContractError(`${at}.phase is not a known synchronisation half`);
+  }
+
+  return {
+    reference: text(run.reference, `${at}.reference`),
+    phase: phase as SyncPhase,
+    completedAt: text(run.completed_at, `${at}.completed_at`),
+    result: text(run.result, `${at}.result`),
+    failure: optionalText(run.failure, `${at}.failure`),
+    sourceStages: count(run.source_stages, `${at}.source_stages`),
+    created: count(run.created, `${at}.created`),
+    updated: count(run.updated, `${at}.updated`),
+    deleted: count(run.deleted, `${at}.deleted`),
+  };
 }
 
 export function parseWebUIConfig(payload: unknown): WebUIConfig {

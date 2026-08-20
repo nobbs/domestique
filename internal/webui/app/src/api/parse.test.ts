@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { ContractError, parseStageGeometry, parseStages, parseStatus } from "./parse";
+import {
+  ContractError,
+  parseStageGeometry,
+  parseStages,
+  parseStatus,
+  parseSyncRuns,
+} from "./parse";
 
 const stagePayload = {
   route_id: 12,
@@ -569,5 +575,54 @@ describe("parseStatus", () => {
     expect(() => parseStatus(withSchedule({ source: true, targets: "yes" }))).toThrow(
       ContractError,
     );
+  });
+});
+
+describe("parseSyncRuns", () => {
+  const runPayload = {
+    reference: "1a2b3c4d5e6f",
+    phase: "targets",
+    completed_at: "2026-08-18T06:30:00Z",
+    result: "failed",
+    failure: "destination",
+    source_stages: 0,
+    created: 1,
+    updated: 0,
+    deleted: 0,
+  };
+
+  it("reads a page and the cursor for the one after it", () => {
+    const page = parseSyncRuns({ runs: [runPayload], next: "412" });
+
+    expect(page.next).toBe("412");
+    expect(page.runs[0]).toEqual({
+      reference: "1a2b3c4d5e6f",
+      phase: "targets",
+      completedAt: "2026-08-18T06:30:00Z",
+      result: "failed",
+      failure: "destination",
+      sourceStages: 0,
+      created: 1,
+      updated: 0,
+      deleted: 0,
+    });
+  });
+
+  it("reads the last page as one with no cursor after it", () => {
+    expect(parseSyncRuns({ runs: [] }).next).toBeUndefined();
+  });
+
+  // Every row is labelled by its half, so a half this build cannot name would
+  // reach the page as a run of nothing in particular.
+  it("refuses a run whose half it cannot name", () => {
+    expect(() => parseSyncRuns({ runs: [{ ...runPayload, phase: "surface" }] })).toThrow(
+      ContractError,
+    );
+  });
+
+  it("refuses a run recorded without the counts it is measured by", () => {
+    const { created: _created, ...withoutCreated } = runPayload;
+
+    expect(() => parseSyncRuns({ runs: [withoutCreated] })).toThrow(ContractError);
   });
 });

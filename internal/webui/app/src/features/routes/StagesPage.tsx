@@ -20,6 +20,7 @@ import { ErrorMessage, LoadingMessage, StatusMessage } from "../../components/St
 import type { LibraryView, StageSort } from "../../lib/library";
 import { arrangeStages, stageCounts } from "../../lib/library";
 import { SyncControls } from "../sync/SyncControls";
+import { SyncHistory } from "../sync/SyncHistory";
 import { TargetConvergence } from "../sync/TargetConvergence";
 import { LibraryControls } from "./LibraryControls";
 import { MapAttribution } from "./MapAttribution";
@@ -53,6 +54,7 @@ export function StagesPage() {
       <h1 className="visually-hidden">Route library</h1>
       <SyncControls />
       <TargetConvergence />
+      <SyncHistory />
       {isPending ? <LoadingMessage what="the route library" /> : null}
       {isError ? <ErrorMessage what="the route library" error={error} /> : null}
       {data && data.length === 0 ? (

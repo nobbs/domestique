@@ -113,8 +113,12 @@ describe("StagesPage", () => {
     // Narrowing and ordering are questions about the listing already held, so
     // neither may become a query the service has to answer: the cards fetch
     // their own geometry and the map configuration, and nothing asks for a
-    // filtered or ordered listing.
-    const calls = vi.mocked(fetch).mock.calls.map(([input]) => String(input));
+    // filtered or ordered listing. The run history is the one request on this
+    // page that does carry a query, and it asks about runs rather than routes.
+    const calls = vi
+      .mocked(fetch)
+      .mock.calls.map(([input]) => String(input))
+      .filter((url) => !url.startsWith("/v1/sync/runs"));
     expect(calls.every((url) => !url.includes("?"))).toBe(true);
   });
 

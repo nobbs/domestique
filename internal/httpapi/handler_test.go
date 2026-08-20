@@ -6,6 +6,8 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -53,6 +55,7 @@ func TestHandlerGatesEveryNonHealthRoute(t *testing.T) {
 	foreign := newHandlerWithVerifier(t, &recordingVerifier{email: "someone-else@example.com"})
 	paths := []string{
 		"/v1/status",
+		"/v1/sync/runs",
 		"/v1/routes",
 		"/v1/routes/1/stages/1",
 		"/v1/routes/1/stages/1/geometry",
@@ -620,6 +623,126 @@ func TestHandlerReportsTheScheduleAndEachPhaseInStatus(t *testing.T) {
 	assert.Equal(t, completedAt.Format(time.RFC3339), view.Sync.Phases.Source.LastCompletedAt, "source completion")
 }
 
+// historyStateFixture holds three recorded runs, newest first.
+func historyStateFixture() *fakeState {
+	endedAt := time.Date(2026, time.August, 18, 6, 30, 0, 0, time.UTC)
+
+	return &fakeState{history: []recordedRun{
+		{reference: "aaaaaaaaaaaa", phaseRun: phaseRun{
+			phase: "targets", completedAt: endedAt, outcome: "failed", detail: "destination", created: 1,
+		}},
+		{reference: "bbbbbbbbbbbb", phaseRun: phaseRun{
+			phase: "source", completedAt: endedAt.Add(-time.Hour), outcome: "succeeded", sourceStages: 12,
+		}},
+		{reference: "cccccccccccc", phaseRun: phaseRun{
+			phase: "targets", completedAt: endedAt.Add(-2 * time.Hour), outcome: "succeeded", updated: 2,
+		}},
+	}}
+}
+
+func historyPage(t *testing.T, handler http.Handler, query string) syncRunsView {
+	t.Helper()
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/sync/runs"+query))
+	require.Equal(t, http.StatusOK, response.Code, "status")
+	var view syncRunsView
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &view), "decoding the history")
+
+	return view
+}
+
+// The history is bounded on the way out as well as in storage: a caller reads
+// it a page at a time, following the cursor the page before it ended with.
+func TestHandlerServesTheRecordedHistoryOnePageAtATime(t *testing.T) {
+	handler := newHandler(t, &fakeOAuth{}, historyStateFixture())
+
+	first := historyPage(t, handler, "?limit=2")
+	require.Len(t, first.Runs, 2, "the first page")
+	assert.Equal(t, []string{"aaaaaaaaaaaa", "bbbbbbbbbbbb"},
+		[]string{first.Runs[0].Reference, first.Runs[1].Reference}, "the newest runs, newest first")
+	assert.Equal(t, "targets", first.Runs[0].Phase, "phase")
+	assert.Equal(t, "failed", first.Runs[0].Result, "result")
+	assert.Equal(t, "destination", first.Runs[0].Failure, "failure")
+	assert.Equal(t, "2026-08-18T06:30:00Z", first.Runs[0].CompletedAt, "completion")
+	assert.Equal(t, 12, first.Runs[1].SourceStages, "source stages")
+	require.NotEmpty(t, first.Next, "a cursor for the page after the first")
+
+	second := historyPage(t, handler, "?limit=2&after="+first.Next)
+	require.Len(t, second.Runs, 1, "the page after the first")
+	assert.Equal(t, "cccccccccccc", second.Runs[0].Reference, "the oldest run")
+	assert.Empty(t, second.Next, "a cursor past the oldest recorded run")
+}
+
+// A page carries the aggregate record of a run and nothing else. Anything a run
+// touched — the routes it moved, their geometry, the identifiers the provider
+// knows them by, whatever it said when it refused — stays out of it.
+func TestHandlerServesNothingAboutWhatARunTouched(t *testing.T) {
+	handler := newHandler(t, &fakeOAuth{}, historyStateFixture())
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/sync/runs?limit=1"))
+	require.Equal(t, http.StatusOK, response.Code, "status")
+	var page struct {
+		Runs []map[string]any `json:"runs"`
+	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &page), "decoding the history")
+	require.Len(t, page.Runs, 1, "the page")
+	fields := make([]string, 0, len(page.Runs[0]))
+	for field := range page.Runs[0] {
+		fields = append(fields, field)
+	}
+	slices.Sort(fields)
+	assert.Equal(t, []string{
+		"completed_at", "created", "deleted", "failure", "phase", "reference", "result", "source_stages", "updated",
+	}, fields, "the fields a recorded run is served as")
+}
+
+// State this service cannot read is its own fault, and it says so as one rather
+// than serving an empty history that would read as "nothing has run".
+func TestHandlerReportsAHistoryItCannotRead(t *testing.T) {
+	state := historyStateFixture()
+	state.historyErr = errors.New("state is unavailable")
+	handler := newHandler(t, &fakeOAuth{}, state)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/sync/runs"))
+	assert.Equal(t, http.StatusInternalServerError, response.Code, "status")
+}
+
+// A cursor this service did not issue is the caller's mistake, and answering it
+// with the newest page would silently restart a walk through the history.
+func TestHandlerRefusesAHistoryCursorItDidNotIssue(t *testing.T) {
+	handler := newHandler(t, &fakeOAuth{}, historyStateFixture())
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/sync/runs?after=the-newest-one"))
+	assert.Equal(t, http.StatusBadRequest, response.Code, "status")
+	assert.Contains(t, response.Body.String(), "invalid_request", "the error code")
+}
+
+// The page size is bounded so one request cannot read the whole retained window.
+func TestHandlerRefusesAPageSizeItWillNotServe(t *testing.T) {
+	handler := newHandler(t, &fakeOAuth{}, historyStateFixture())
+
+	for _, limit := range []string{"0", "-1", "1000", "all"} {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/sync/runs?limit="+limit))
+		assert.Equal(t, http.StatusBadRequest, response.Code, "status for limit="+limit)
+	}
+}
+
+// An empty history is a page with nothing in it, not a missing list: a caller
+// reading runs out of the response must not have to guard against null.
+func TestHandlerServesAnEmptyHistoryAsAnEmptyPage(t *testing.T) {
+	handler := newHandler(t, &fakeOAuth{}, &fakeState{})
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/sync/runs"))
+	require.Equal(t, http.StatusOK, response.Code, "status")
+	assert.JSONEq(t, `{"runs":[]}`, response.Body.String(), "the empty page")
+}
+
 // A stage waiting its turn and a stage that fails every pass look identical on
 // the map. The counts are what tell them apart.
 func TestHandlerReportsHowMuchOfTheLibraryIsClassified(t *testing.T) {
@@ -1037,6 +1160,12 @@ func (*fakeAssets) Static(writer http.ResponseWriter, _ *http.Request) {
 	}
 }
 
+// recordedRun is one run of the fake's history, which it holds newest first.
+type recordedRun struct {
+	reference string
+	phaseRun
+}
+
 type phaseRun struct {
 	phase        string
 	completedAt  time.Time
@@ -1051,6 +1180,7 @@ type phaseRun struct {
 type fakeState struct {
 	surfaceErr        error
 	phaseRunErr       error
+	historyErr        error
 	scheduleErr       error
 	coverageErr       error
 	reprocessErr      error
@@ -1070,6 +1200,7 @@ type fakeState struct {
 	surfaceRanges     json.RawMessage
 	summaries         []route.Summary
 	phaseRuns         []phaseRun
+	history           []recordedRun
 	surfaceMetres     float64
 	scheduleWrites    int
 	surfaceClassified int
@@ -1262,6 +1393,43 @@ func (s *fakeState) ForEachPhaseRun(
 	}
 
 	return nil
+}
+
+// ForEachSyncRun pages over the held history. Its cursor is the position the
+// next page starts at, which is what the store's own cursor is.
+func (s *fakeState) ForEachSyncRun(
+	_ context.Context,
+	after string,
+	limit int,
+	visit func(reference, phase string, completedAt time.Time, outcome, detail string, sourceStages, created, updated, deleted int) error,
+) (next string, usable bool, err error) {
+	if s.historyErr != nil {
+		return "", false, s.historyErr
+	}
+	start := 0
+	if after != "" {
+		parsed, err := strconv.Atoi(after)
+		// A cursor this fake did not issue is the caller's input, and the store
+		// reports it as unusable rather than as a failure.
+		if err != nil {
+			return "", false, nil //nolint:nilerr // The cursor is unusable, not broken.
+		}
+		start = min(parsed, len(s.history))
+	}
+	for index := start; index < min(start+limit, len(s.history)); index++ {
+		run := s.history[index]
+		if err := visit(
+			run.reference, run.phase, run.completedAt, run.outcome, run.detail,
+			run.sourceStages, run.created, run.updated, run.deleted,
+		); err != nil {
+			return "", false, err
+		}
+	}
+	if start+limit >= len(s.history) {
+		return "", true, nil
+	}
+
+	return strconv.Itoa(start + limit), true, nil
 }
 
 func (s *fakeState) RequestStageReprocess(_ context.Context, routeID int64, stageOrder int) (bool, error) {

@@ -148,6 +148,39 @@ export interface SyncPhaseRun {
 }
 
 /**
+ * One terminal run in the recorded history.
+ *
+ * `reference` is the opaque name the service recorded the run under. It means
+ * nothing on its own, which is what makes it safe to send in a notification: it
+ * says which run without saying anything about it, and it is what an operator
+ * matches a Pushover message against this list with.
+ */
+export interface SyncRun {
+  reference: string;
+  phase: SyncPhase;
+  completedAt: string;
+  result: string;
+  /** The safe failure category, present only when the run did not succeed. */
+  failure?: string | undefined;
+  sourceStages: number;
+  created: number;
+  updated: number;
+  deleted: number;
+}
+
+/**
+ * One page of that history, newest first.
+ *
+ * `next` is the cursor the page after this one starts at, and is absent when the
+ * history ends here. The service prunes old runs, so the history is recent
+ * history rather than a permanent record.
+ */
+export interface SyncRunPage {
+  runs: SyncRun[];
+  next?: string | undefined;
+}
+
+/**
  * How much of the library carries a usable surface classification.
  *
  * Classification cannot fail a synchronisation, by design — which means a stage

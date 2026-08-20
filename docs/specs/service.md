@@ -259,6 +259,13 @@ The read-only JSON surface is deliberately small:
   bare `sha256:` digest are served; a value that is neither is dropped rather
   than published, because in a browser it would become a link to nowhere. No
   registry, repository, host, tag, or path is included.
+- `GET /v1/sync/runs` returns a bounded, paginated history of terminal runs,
+  newest first: each one's opaque reference, half, completion time, result, safe
+  failure category, and aggregate counts. Older runs are pruned as new ones are
+  recorded, so it is recent history rather than a permanent record. It is the
+  one read that takes query parameters — a bounded page size, and the cursor the
+  previous page ended with — because a page of history cannot be decided in the
+  browser from a listing it already holds.
 - `GET /v1/routes` lists known source routes and stages with their titles and
   aggregate geometry facts.
 - `GET /v1/routes/{source-route-id}/stages/{stage}` returns stored route
