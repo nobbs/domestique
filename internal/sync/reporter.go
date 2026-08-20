@@ -268,33 +268,26 @@ func (r *Reporter) notifyFailure(ctx context.Context, result *Result, reference 
 // source run that listed forty stages and a target run that changed none are
 // different events, and a message padded with the other phase's zeroes reads as
 // though work was skipped.
+//
+// Every message names the run it is about, so an operator reading it on a phone
+// can find that run and nothing else in the history. The reference is random and
+// means nothing on its own, which is what makes it safe to send: it says which
+// run without saying anything about it.
 func successMessage(result *Result, reference string) string {
 	if result.Phase == PhaseSource {
-		return withReference(fmt.Sprintf("source succeeded: source_stages=%d", result.SourceStages), reference)
+		return fmt.Sprintf("source succeeded: source_stages=%d run=%s", result.SourceStages, reference)
 	}
 
-	return withReference(fmt.Sprintf(
-		"targets succeeded: source_stages=%d created=%d updated=%d deleted=%d",
+	return fmt.Sprintf(
+		"targets succeeded: source_stages=%d created=%d updated=%d deleted=%d run=%s",
 		result.SourceStages,
 		result.Created,
 		result.Updated,
 		result.Deleted,
-	), reference)
+		reference,
+	)
 }
 
 func failureMessage(result *Result, reference string) string {
-	return withReference(string(result.Phase)+" failed: "+string(result.Failure), reference)
-}
-
-// withReference names the recorded run a message is about, so an operator
-// reading it on a phone can find that run and nothing else in the history.
-//
-// The reference is random and means nothing on its own, which is what makes it
-// safe to send: it says which run without saying anything about it.
-func withReference(message, reference string) string {
-	if reference == "" {
-		return message
-	}
-
-	return message + " run=" + reference
+	return string(result.Phase) + " failed: " + string(result.Failure) + " run=" + reference
 }

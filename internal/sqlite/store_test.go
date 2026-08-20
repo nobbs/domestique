@@ -680,6 +680,59 @@ func TestStoreRefusesACursorItDidNotIssue(t *testing.T) {
 	assert.Zero(t, visited, "runs visited under an unusable cursor")
 }
 
+// The visitor is this method's entire output, and the page size decides how much
+// of the table it reads, so a caller that supplied neither is answered rather
+// than served an empty history it would read as "nothing has run". A visitor
+// that fails partway stops the page for the same reason: a swallowed failure
+// would serve half a page as a whole one.
+func TestStoreStopsReadingTheHistoryOnVisitorFailure(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	startedAt := time.Date(2026, time.August, 17, 8, 0, 0, 0, time.UTC)
+	_, err := store.RecordSyncRun(
+		t.Context(), "source", startedAt, startedAt.Add(time.Second), "succeeded", "", 3, 0, 0, 0,
+	)
+	require.NoError(t, err, "RecordSyncRun()")
+
+	_, _, err = store.ForEachSyncRun(t.Context(), "", 10, nil)
+	require.Error(t, err, "ForEachSyncRun() without a visitor")
+
+	_, _, err = store.ForEachSyncRun(t.Context(), "", 0, func(
+		string, string, time.Time, string, string, int, int, int, int,
+	) error {
+		return nil
+	})
+	require.Error(t, err, "ForEachSyncRun() without a page size")
+
+	visitErr := errors.New("visiting sync run")
+	_, _, err = store.ForEachSyncRun(t.Context(), "", 10, func(
+		string, string, time.Time, string, string, int, int, int, int,
+	) error {
+		return visitErr
+	})
+	assert.ErrorIs(t, err, visitErr, "ForEachSyncRun() with a failing visitor")
+}
+
+// A run is what the history and the status response are both read from, so a
+// record that could not describe one is refused rather than stored as a row that
+// reports nothing.
+func TestStoreRefusesAnIncompleteSyncRun(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	startedAt := time.Date(2026, time.August, 17, 8, 0, 0, 0, time.UTC)
+	finishedAt := startedAt.Add(time.Second)
+
+	_, err := store.RecordSyncRun(t.Context(), "", startedAt, finishedAt, "succeeded", "", 0, 0, 0, 0)
+	require.Error(t, err, "RecordSyncRun() without a phase")
+
+	_, err = store.RecordSyncRun(t.Context(), "source", startedAt, startedAt.Add(-time.Second), "succeeded", "", 0, 0, 0, 0)
+	require.Error(t, err, "RecordSyncRun() finishing before it started")
+
+	_, err = store.RecordSyncRun(t.Context(), "source", startedAt, finishedAt, "", "", 0, 0, 0, 0)
+	require.Error(t, err, "RecordSyncRun() without an outcome")
+
+	_, err = store.RecordSyncRun(t.Context(), "source", startedAt, finishedAt, "succeeded", "", 0, -1, 0, 0)
+	require.Error(t, err, "RecordSyncRun() with a negative count")
+}
+
 // Runs are recorded forever on a service that is deployed forever, so the
 // history is bounded. What it must never drop is the newest run of a half: the
 // status response reads that as what the half last came to, and a half switched
