@@ -124,9 +124,9 @@ func (r *Reporter) trigger(ctx context.Context, source, targets bool) bool {
 // falling back to the last finished run, which would claim a terminal result
 // for work that has not begun.
 func (r *Reporter) Running() (Phase, bool) {
-	// Read the phase first: a finishing run clears its phase before it releases
-	// the lock, so this order can report a half without a run but never a run
-	// without the half it was in.
+	// Read the phase first: a finishing run clears its phase before it clears
+	// running, so this order can report a run without the half it is in, but
+	// never a half of a run that has already finished.
 	phase := r.phase.Load()
 	running := r.running.Load()
 	if phase == nil || !running {

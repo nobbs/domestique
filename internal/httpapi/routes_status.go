@@ -215,7 +215,10 @@ func (h *Handler) status(writer http.ResponseWriter, request *http.Request, _ st
 			Targets: len(h.targetIDs),
 			Stages:  allStages,
 		}
-		if !activity.StartsAt.IsZero() {
+		// Only a delay has a due instant to report. A run triggered while the
+		// first one is still being held back is under way now, and saying when
+		// something else was going to start would read as its own progress.
+		if state == delayedState {
 			view.Sync.Active.StartsAt = activity.StartsAt.UTC().Format(time.RFC3339)
 		}
 	}

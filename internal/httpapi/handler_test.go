@@ -684,6 +684,21 @@ func TestHandlerReportsAFirstRunHeldBackByTheInitialDelay(t *testing.T) {
 	assert.Empty(t, view.Sync.Active.Phase, "a half was named before the run started")
 }
 
+// A manual trigger during that startup delay is work happening now, and the
+// instant the held-back run is still due at belongs to a different run.
+func TestHandlerOmitsTheHeldBackInstantFromARunAlreadyUnderWay(t *testing.T) {
+	activity := SyncActivityState{
+		StartsAt: time.Date(2026, time.August, 18, 6, 5, 0, 0, time.UTC),
+		Phase:    SyncPhaseSource,
+		Running:  true,
+	}
+	view := statusOf(t, newHandlerWithLiveSync(t, convergenceStateFixture(), activity))
+
+	assert.Equal(t, runningState, view.Sync.State, "sync state")
+	require.NotNil(t, view.Sync.Active, "the status reports no work under way")
+	assert.Empty(t, view.Sync.Active.StartsAt, "a due instant was reported for a run already under way")
+}
+
 // Nothing under way is the absence of a state rather than one more state to
 // report, so the group is absent too.
 func TestHandlerOmitsWorkUnderWayWhenNothingIsRunning(t *testing.T) {

@@ -454,16 +454,16 @@ changes, and `active` appears beside it:
 ~~~json
 "active": {
   "phase": "targets",
-  "starts_at": "2026-08-16T12:00:00Z",
   "targets": 2,
   "stages": {"current": 11, "pending": 1}
 }
 ~~~
 
 `active` is present only in those three states. `phase` is absent until a half
-has started, and `starts_at` only while a run is being held back. `targets` is
-how many accounts are configured, and `stages` is the aggregate of the
-per-target counts above. That is the whole of the progress reported: it is
+has started, and `starts_at` appears in "delayed" alone, carrying the instant
+the held-back run is due — never beside a phase, because a run under way is not
+the run being waited for. `targets` is how many accounts are configured, and
+`stages` is the aggregate of the per-target counts above. That is the whole of the progress reported: it is
 derived from local state alone, so watching a run costs no provider call, and
 it is counts only, so no route is named.
 
