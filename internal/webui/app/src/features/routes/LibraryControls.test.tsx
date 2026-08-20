@@ -9,6 +9,8 @@ function renderControls(overrides: Partial<LibraryControlsProps> = {}) {
     onQueryChange: vi.fn(),
     sort: "name",
     onSortChange: vi.fn(),
+    view: "grid",
+    onViewChange: vi.fn(),
     shown: 6,
     total: 6,
     ...overrides,
@@ -19,14 +21,46 @@ function renderControls(overrides: Partial<LibraryControlsProps> = {}) {
 }
 
 describe("LibraryControls", () => {
-  it("offers a named search box and a named order", () => {
+  it("offers a named search box, a named order and a named pair of views", () => {
     renderControls();
 
     expect(screen.getByRole("searchbox", { name: "Search" })).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Sort by" })).toBeInTheDocument();
+    expect(screen.getByRole("radiogroup", { name: "View" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Grid" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Table" })).toBeInTheDocument();
   });
 
-  it("groups both controls in one named search landmark", () => {
+  it("shows which presentation the library is in", () => {
+    renderControls({ view: "table" });
+
+    expect(screen.getByRole("radio", { name: "Table" })).toBeChecked();
+    expect(screen.getByRole("radio", { name: "Grid" })).not.toBeChecked();
+  });
+
+  it("reports a change of presentation back to the page", async () => {
+    const user = userEvent.setup();
+    const props = renderControls();
+
+    await user.click(screen.getByRole("radio", { name: "Table" }));
+
+    expect(props.onViewChange).toHaveBeenCalledTimes(1);
+    expect(props.onViewChange).toHaveBeenCalledWith("table");
+  });
+
+  it("leaves the presentation alone when the one already chosen is pressed again", async () => {
+    const user = userEvent.setup();
+    // Radix reports deselection as an empty value, and an empty value is not one
+    // of the two presentations: pressing "Grid" while in the grid must not leave
+    // the page with no view to render.
+    const props = renderControls();
+
+    await user.click(screen.getByRole("radio", { name: "Grid" }));
+
+    expect(props.onViewChange).not.toHaveBeenCalled();
+  });
+
+  it("groups every control in one named search landmark", () => {
     renderControls();
 
     // Asserted on the element rather than through its role: `search` is a
@@ -36,6 +70,7 @@ describe("LibraryControls", () => {
     expect(landmark).toHaveAttribute("aria-label", "Route library");
     expect(landmark).toContainElement(screen.getByRole("searchbox", { name: "Search" }));
     expect(landmark).toContainElement(screen.getByRole("combobox", { name: "Sort by" }));
+    expect(landmark).toContainElement(screen.getByRole("radiogroup", { name: "View" }));
   });
 
   it("reports what the box holds back to the page", async () => {
@@ -64,6 +99,15 @@ describe("LibraryControls", () => {
 
     await user.selectOptions(sort, "ascent");
     expect(props.onSortChange).toHaveBeenCalledWith("ascent");
+
+    // The pair of views is one tab stop rather than two: the arrows walk between
+    // them and the press is what chooses one.
+    await user.tab();
+    expect(screen.getByRole("radio", { name: "Grid" })).toHaveFocus();
+    await user.keyboard("{ArrowRight}");
+    expect(screen.getByRole("radio", { name: "Table" })).toHaveFocus();
+    await user.keyboard("{Enter}");
+    expect(props.onViewChange).toHaveBeenCalledWith("table");
   });
 
   it("names each order with the direction it runs in", () => {

@@ -17,6 +17,7 @@ import { MemoryRouter } from "react-router";
 import { describe, it } from "vitest";
 import type { Position, Stage } from "../api/types";
 import { LibraryControls } from "../features/routes/LibraryControls";
+import { StageTable } from "../features/routes/StageTable";
 import { gradientRanges, presentBands } from "../lib/profile";
 import { summariseSurface } from "../lib/surface";
 import { expectNoAxeViolations } from "../test/axe";
@@ -85,9 +86,21 @@ describe("accessibility", () => {
         onQueryChange={() => {}}
         sort="name"
         onSortChange={() => {}}
+        view="grid"
+        onViewChange={() => {}}
         shown={1}
         total={6}
       />,
+    );
+
+    await expectNoAxeViolations(container);
+  });
+
+  it("holds for the library read as a table", async () => {
+    const { container } = render(
+      <MemoryRouter>
+        <StageTable stages={[STAGE]} />
+      </MemoryRouter>,
     );
 
     await expectNoAxeViolations(container);

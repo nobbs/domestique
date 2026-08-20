@@ -50,6 +50,13 @@ test("the library page has nothing for axe to report", async ({ offlinePage: pag
   expect(await violations(page)).toEqual([]);
 });
 
+test("the library read as a table has nothing for axe to report", async ({ offlinePage: page }) => {
+  await openLibrary(page);
+  await page.getByRole("radio", { name: "Table" }).click();
+
+  expect(await violations(page)).toEqual([]);
+});
+
 test("a stage page has nothing for axe to report", async ({ offlinePage: page }) => {
   await openStage(page, LOOP_STAGE.routeId, LOOP_STAGE.stageOrder);
 
@@ -90,8 +97,14 @@ test.describe("in a forced-colours palette", () => {
 test.describe("on a phone-sized portrait viewport", () => {
   test.use({ viewport: { width: 390, height: 844 } });
 
-  test("the library fits its width", async ({ offlinePage: page }) => {
+  test("the library fits its width, as cards and as rows", async ({ offlinePage: page }) => {
     await openLibrary(page);
+
+    expect(await overflowsSideways(page)).toBe(false);
+
+    // A table is the shape most likely to push a phone sideways: four columns
+    // that cannot wrap out of each other's way.
+    await page.getByRole("radio", { name: "Table" }).click();
 
     expect(await overflowsSideways(page)).toBe(false);
   });

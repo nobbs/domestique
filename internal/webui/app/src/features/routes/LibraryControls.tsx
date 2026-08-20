@@ -1,10 +1,10 @@
 /**
- * The controls above the library grid: what to look for, and what order to read
- * it in.
+ * The controls above the library: what to look for, what order to read it in,
+ * and whether to read it as cards or as rows.
  *
- * Both are held by the page rather than here, because both describe what the
- * grid below is showing and the grid is the page's. This is the row of controls
- * and the sentence saying what they left, and nothing else.
+ * All three are held by the page rather than here, because all three describe
+ * what the page is showing and the library is the page's. This is the row of
+ * controls and the sentence saying what they left, and nothing else.
  *
  * The search is a landmark, so a reader who arrives by keyboard reaches it
  * without walking the whole header, and the count beside it is polite rather
@@ -13,9 +13,15 @@
  * typing stops.
  */
 
+import { ToggleGroup } from "radix-ui";
 import { useId } from "react";
-import type { StageSort } from "../../lib/library";
-import { STAGE_SORT_LABELS, STAGE_SORTS } from "../../lib/library";
+import type { LibraryView, StageSort } from "../../lib/library";
+import {
+  LIBRARY_VIEW_LABELS,
+  LIBRARY_VIEWS,
+  STAGE_SORT_LABELS,
+  STAGE_SORTS,
+} from "../../lib/library";
 import styles from "./LibraryControls.module.css";
 
 export interface LibraryControlsProps {
@@ -23,7 +29,9 @@ export interface LibraryControlsProps {
   onQueryChange: (query: string) => void;
   sort: StageSort;
   onSortChange: (sort: StageSort) => void;
-  /** How many stages the grid is showing, and how many the library holds. */
+  view: LibraryView;
+  onViewChange: (view: LibraryView) => void;
+  /** How many stages the library is showing, and how many it holds. */
   shown: number;
   total: number;
 }
@@ -47,11 +55,14 @@ export function LibraryControls({
   onQueryChange,
   sort,
   onSortChange,
+  view,
+  onViewChange,
   shown,
   total,
 }: LibraryControlsProps) {
   const searchId = useId();
   const sortId = useId();
+  const viewId = useId();
   const count = countLabel(shown, total);
 
   return (
@@ -93,6 +104,38 @@ export function LibraryControls({
             </option>
           ))}
         </select>
+      </div>
+      <div className={styles.field}>
+        <span className={styles.label} id={viewId}>
+          View
+        </span>
+        {/*
+         * A group of two rather than one button that changes its own word: the
+         * reader can see both presentations on offer and which of them they are
+         * in, and arrow keys move between them. The chosen one is read back out
+         * of the offered presentations, so a value the control never listed
+         * cannot become the one the library renders — and pressing the pressed
+         * button, which Radix reports as an empty value, leaves the view alone
+         * rather than emptying the page.
+         */}
+        <ToggleGroup.Root
+          type="single"
+          className={styles.views}
+          aria-labelledby={viewId}
+          value={view}
+          onValueChange={(picked) => {
+            const chosen = LIBRARY_VIEWS.find((option) => option === picked);
+            if (chosen) {
+              onViewChange(chosen);
+            }
+          }}
+        >
+          {LIBRARY_VIEWS.map((option) => (
+            <ToggleGroup.Item key={option} className={styles.view} value={option}>
+              {LIBRARY_VIEW_LABELS[option]}
+            </ToggleGroup.Item>
+          ))}
+        </ToggleGroup.Root>
       </div>
       <p className={styles.count} aria-live="polite">
         {count}

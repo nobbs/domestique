@@ -20,6 +20,17 @@ export const STAGE_SORTS = ["name", "distance", "ascent"] as const;
 
 export type StageSort = (typeof STAGE_SORTS)[number];
 
+/** The ways the library can be presented, in the wire names the control uses. */
+export const LIBRARY_VIEWS = ["grid", "table"] as const;
+
+export type LibraryView = (typeof LIBRARY_VIEWS)[number];
+
+/** What each presentation is called in the control that switches between them. */
+export const LIBRARY_VIEW_LABELS: Record<LibraryView, string> = {
+  grid: "Grid",
+  table: "Table",
+};
+
 /** What each order is called, and which way it runs, said in the control. */
 export const STAGE_SORT_LABELS: Record<StageSort, string> = {
   name: "Name (A–Z)",

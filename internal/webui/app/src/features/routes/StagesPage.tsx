@@ -1,11 +1,12 @@
 /**
- * The route library: a grid of stage cards, each linking to its full preview.
- * A later feature adds a sibling directory here rather than changing this one.
+ * The route library, read either as a grid of stage cards or as a table of
+ * figures. Both link into the same full preview, and both are the same list.
  *
- * The search and the order live here rather than in the controls, because they
- * describe this grid: the controls state them and hand back a change, and one
- * place decides what is shown. Neither reaches the service — the listing is
- * already held, and narrowing it is a question about what is on screen.
+ * The search, the order and the presentation live here rather than in the
+ * controls, because all three describe what this page is showing: the controls
+ * state them and hand back a change, and one place decides what is shown. None
+ * reaches the service — the listing is already held, and narrowing, ordering or
+ * redrawing it is a question about what is on screen.
  */
 
 import { useQuery } from "@tanstack/react-query";
@@ -16,19 +17,24 @@ import { Button } from "../../components/Button";
 import { Layout } from "../../components/Layout";
 import { RouteGrid } from "../../components/RouteCard";
 import { ErrorMessage, LoadingMessage, StatusMessage } from "../../components/StatusMessage";
-import type { StageSort } from "../../lib/library";
+import type { LibraryView, StageSort } from "../../lib/library";
 import { arrangeStages, stageCounts } from "../../lib/library";
 import { SyncControls } from "../sync/SyncControls";
 import { TargetConvergence } from "../sync/TargetConvergence";
 import { LibraryControls } from "./LibraryControls";
 import { MapAttribution } from "./MapAttribution";
 import { StageCard } from "./StageCard";
+import { StageTable } from "./StageTable";
 import { SyncStatusBadge } from "./SyncStatusBadge";
 
 export function StagesPage() {
   const { data, isPending, isError, error } = useQuery(stagesQuery());
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<StageSort>("name");
+  // Session-only, like the search and the order beside it: which presentation
+  // the library is being read in is a fact about this visit, not about the
+  // library, and nothing is stored anywhere for it.
+  const [view, setView] = useState<LibraryView>("grid");
 
   const shown = useMemo(() => arrangeStages(data ?? [], query, sort), [data, query, sort]);
   // Over the whole library rather than what the search left, so a card keeps
@@ -62,6 +68,8 @@ export function StagesPage() {
             onQueryChange={setQuery}
             sort={sort}
             onSortChange={setSort}
+            view={view}
+            onViewChange={setView}
             shown={shown.length}
             total={data.length}
           />
@@ -79,6 +87,8 @@ export function StagesPage() {
                 Clear search
               </Button>
             </StatusMessage>
+          ) : view === "table" ? (
+            <StageTable stages={shown} />
           ) : (
             <>
               <RouteGrid>
@@ -90,6 +100,7 @@ export function StagesPage() {
                   />
                 ))}
               </RouteGrid>
+              {/* The attribution belongs to the basemap, so it goes with the maps. */}
               <MapAttribution />
             </>
           )}
