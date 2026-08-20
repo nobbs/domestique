@@ -1100,6 +1100,85 @@ body {
   color: var(--text-muted);
 }
 
+/*
+ * Recent runs. The same card as the sections above it, and deliberately quieter:
+ * it is history, and nothing in it asks the operator to act.
+ */
+.history {
+  margin-bottom: 1.5rem;
+  padding: 1rem 1.15rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+}
+
+.history__heading {
+  margin: 0 0 0.75rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.history__runs {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.history__run {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1.25rem;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.history__text {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 15rem;
+  flex: 1 1 22rem;
+}
+
+.history__phase {
+  font-weight: 600;
+}
+
+.history__counts,
+.history__when,
+.history__reference {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.history__outcome {
+  display: grid;
+  gap: 0.15rem;
+  justify-items: end;
+  text-align: right;
+}
+
+.history__result {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.history__empty,
+.history__end {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.history__more {
+  margin-top: 0.85rem;
+}
+
 /* Narrow portrait ---------------------------------------------------------- */
 
 /*

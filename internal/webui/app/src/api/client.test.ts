@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiError, fetchStageGeometry, fetchStages, setSyncSchedule, triggerSync } from "./client";
+import {
+  ApiError,
+  fetchStageGeometry,
+  fetchStages,
+  fetchSyncRuns,
+  setSyncSchedule,
+  triggerSync,
+} from "./client";
 import { ContractError } from "./parse";
 
 function respondWith(status: number, body: unknown): void {
@@ -23,6 +30,23 @@ describe("the API client", () => {
     await fetchStages();
 
     expect(fetchMock).toHaveBeenCalledWith("/v1/routes", expect.anything());
+  });
+
+  it("asks for the newest page of history without a cursor, and follows one after", async () => {
+    const fetchMock = vi.fn(
+      async () => new Response(JSON.stringify({ runs: [] }), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await fetchSyncRuns(undefined, 10);
+    await fetchSyncRuns("412", 10);
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, "/v1/sync/runs?limit=10", expect.anything());
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "/v1/sync/runs?limit=10&after=412",
+      expect.anything(),
+    );
   });
 
   it("surfaces the service's safe error envelope", async () => {

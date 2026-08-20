@@ -169,6 +169,7 @@ type StageState interface {
 type RunState interface {
 	LastSyncRun(ctx context.Context) (completedAt time.Time, outcome, detail string, sourceStages, created, updated, deleted int, found bool, err error)
 	ForEachPhaseRun(ctx context.Context, visit func(phase string, completedAt time.Time, outcome, detail string, sourceStages, created, updated, deleted int) error) error
+	ForEachSyncRun(ctx context.Context, after string, limit int, visit func(reference, phase string, completedAt time.Time, outcome, detail string, sourceStages, created, updated, deleted int) error) (next string, usable bool, err error)
 }
 
 // ScheduleState is the pair of switches governing unattended runs.
@@ -354,6 +355,7 @@ func (h *Handler) routes() {
 	h.mux.Handle("POST /v1/sync/source", h.gated(h.sameOrigin(h.syncSource)))
 	h.mux.Handle("POST /v1/sync/targets", h.gated(h.sameOrigin(h.syncTargets)))
 	h.mux.Handle("PUT /v1/sync/schedule", h.gated(h.sameOrigin(h.setSyncSchedule)))
+	h.mux.Handle("GET /v1/sync/runs", h.gated(h.syncHistory))
 	h.mux.Handle("GET /v1/routes", h.gated(h.stages))
 	h.mux.Handle("GET /v1/routes/{routeID}/stages/{stage}", h.gated(h.stage))
 	h.mux.Handle("GET /v1/routes/{routeID}/stages/{stage}/geometry", h.gated(h.stageGeometry))

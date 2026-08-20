@@ -20,6 +20,7 @@ import { ErrorMessage, LoadingMessage, StatusMessage } from "../../components/St
 import type { LibraryView, StageSort } from "../../lib/library";
 import { arrangeStages, stageCounts } from "../../lib/library";
 import { SyncControls } from "../sync/SyncControls";
+import { SyncHistory } from "../sync/SyncHistory";
 import { TargetConvergence } from "../sync/TargetConvergence";
 import { LibraryControls } from "./LibraryControls";
 import { MapAttribution } from "./MapAttribution";
@@ -106,6 +107,12 @@ export function StagesPage() {
           )}
         </>
       ) : null}
+      {/*
+       * Last, under the library rather than above it. It is the one section on
+       * the page that asks nothing of the reader, and a page that opens on
+       * three months of history has pushed what it is for off the screen.
+       */}
+      <SyncHistory />
     </Layout>
   );
 }

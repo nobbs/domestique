@@ -25,8 +25,8 @@ func TestReporterRecordsAndNotifiesEverySuccess(t *testing.T) {
 	assert.Equal(t, 2, state.runs, "recorded runs")
 	assert.Equal(t, []string{"source", "targets"}, state.phases, "recorded phases")
 	assert.Equal(t, []notification{
-		{title: "Domestique sync", message: "source succeeded: source_stages=3"},
-		{title: "Domestique sync", message: "targets succeeded: source_stages=3 created=2 updated=1 deleted=0"},
+		{title: "Domestique sync", message: "source succeeded: source_stages=3 run=" + recordedRunReference},
+		{title: "Domestique sync", message: "targets succeeded: source_stages=3 created=2 updated=1 deleted=0 run=" + recordedRunReference},
 	}, notifier.messages)
 }
 
@@ -98,8 +98,8 @@ func TestReporterSuppressesMatchingFailureForSixHours(t *testing.T) {
 	now = now.Add(time.Hour)
 	reporter.Run(t.Context())
 	assert.Equal(t, []notification{
-		{title: "Domestique sync failed", message: "targets failed: destination"},
-		{title: "Domestique sync failed", message: "targets failed: destination"},
+		{title: "Domestique sync failed", message: "targets failed: destination run=" + recordedRunReference},
+		{title: "Domestique sync failed", message: "targets failed: destination run=" + recordedRunReference},
 	}, notifier.messages)
 }
 
@@ -118,8 +118,8 @@ func TestReporterAlertsOnEachPhaseFailingTheSameWay(t *testing.T) {
 
 	reporter.Run(t.Context())
 	assert.Equal(t, []notification{
-		{title: "Domestique sync failed", message: "source failed: state"},
-		{title: "Domestique sync failed", message: "targets failed: state"},
+		{title: "Domestique sync failed", message: "source failed: state run=" + recordedRunReference},
+		{title: "Domestique sync failed", message: "targets failed: state run=" + recordedRunReference},
 	}, notifier.messages)
 }
 
@@ -232,6 +232,11 @@ func (r *blockingReportingRunner) RunTargets(context.Context) Result {
 
 func (r *blockingReportingRunner) AnnotateStored(context.Context) {}
 
+// recordedRunReference is what this fake names every run it records. The store
+// mints a different one per run; what matters here is that whatever it returns
+// reaches the notification.
+const recordedRunReference = "1a2b3c4d5e6f"
+
 type fakeRunState struct {
 	scheduleErr  error
 	targetRunErr error
@@ -276,11 +281,11 @@ func (s *fakeRunState) RecordSyncRun(
 	_, _ time.Time,
 	_, _ string,
 	_, _, _, _ int,
-) error {
+) (string, error) {
 	s.runs++
 	s.phases = append(s.phases, phase)
 
-	return nil
+	return recordedRunReference, nil
 }
 
 func (s *fakeRunState) SyncSchedule(context.Context) (source, targets bool, err error) {

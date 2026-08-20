@@ -96,6 +96,34 @@ type phaseRunView struct {
 	Deleted      int `json:"deleted"`
 }
 
+// syncRunView is one terminal run in the recorded history: which half it was,
+// when it ended, how it ended, and what it moved. It names no route, carries no
+// geometry, and quotes nothing a provider said — the failure is the same safe
+// category the status response reports.
+//
+// Reference is the opaque name the run was recorded under. It is what a
+// notification can say out loud, and what an operator matches this row against.
+type syncRunView struct {
+	Reference string `json:"reference"`
+	Phase     string `json:"phase"`
+	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
+	CompletedAt string `json:"completed_at"`
+	Result      string `json:"result"`
+	Failure     string `json:"failure,omitempty"`
+	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
+	SourceStages int `json:"source_stages"`
+	Created      int `json:"created"`
+	Updated      int `json:"updated"`
+	Deleted      int `json:"deleted"`
+}
+
+// syncRunsView is one page of that history, newest first, with the cursor for
+// the page after it. Next is absent when the history ends with this page.
+type syncRunsView struct {
+	Next string        `json:"next,omitempty"`
+	Runs []syncRunView `json:"runs"`
+}
+
 type syncPhasesView struct {
 	Source  *phaseRunView `json:"source,omitempty"`
 	Targets *phaseRunView `json:"targets,omitempty"`

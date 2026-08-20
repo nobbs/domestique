@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"slices"
+	"strconv"
 	"time"
 )
 
@@ -254,6 +255,69 @@ func (h *Handler) setSyncSchedule(writer http.ResponseWriter, request *http.Requ
 		return
 	}
 	h.writeJSON(writer, http.StatusOK, syncScheduleView{Source: *body.Source, Targets: *body.Targets})
+}
+
+// The recorded history is served a page at a time. The default is what the page
+// shows without asking for more, and the ceiling keeps one request from reading
+// the whole retained window into a response.
+const (
+	defaultSyncRunPage = 20
+	maximumSyncRunPage = 100
+)
+
+// syncHistory serves one page of the recorded run history, newest first,
+// followed by the cursor for the page after it.
+//
+// Every field is read from the same local records the status response is
+// derived from, so a page names no route, carries no geometry, quotes nothing a
+// provider said, and costs no provider call.
+func (h *Handler) syncHistory(writer http.ResponseWriter, request *http.Request, _ string) {
+	query := request.URL.Query()
+	limit := defaultSyncRunPage
+	if raw := query.Get("limit"); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 1 || parsed > maximumSyncRunPage {
+			h.error(writer, http.StatusBadRequest, "invalid_request",
+				"limit must be between 1 and "+strconv.Itoa(maximumSyncRunPage))
+
+			return
+		}
+		limit = parsed
+	}
+	// An empty history is an empty list rather than a null one: the page is the
+	// answer either way.
+	view := syncRunsView{Runs: []syncRunView{}}
+	next, usable, err := h.state.ForEachSyncRun(request.Context(), query.Get("after"), limit, func(
+		reference, phase string, completedAt time.Time, outcome, detail string,
+		sourceStages, created, updated, deleted int,
+	) error {
+		view.Runs = append(view.Runs, syncRunView{
+			Reference:    reference,
+			Phase:        phase,
+			CompletedAt:  completedAt.Format(time.RFC3339),
+			Result:       outcome,
+			Failure:      detail,
+			SourceStages: sourceStages,
+			Created:      created,
+			Updated:      updated,
+			Deleted:      deleted,
+		})
+
+		return nil
+	})
+	if err != nil {
+		h.unavailable(writer)
+
+		return
+	}
+	if !usable {
+		h.error(writer, http.StatusBadRequest, "invalid_request",
+			"the history cursor is not one this service issued")
+
+		return
+	}
+	view.Next = next
+	h.writeJSON(writer, http.StatusOK, view)
 }
 
 // sync queues one immediate run through the same reporting path as the schedule.

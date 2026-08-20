@@ -13,10 +13,19 @@ import {
   parseStageGeometry,
   parseStages,
   parseStatus,
+  parseSyncRuns,
   parseSyncSchedule,
   parseWebUIConfig,
 } from "./parse";
-import type { Stage, StageGeometry, Status, SyncPhase, SyncSchedule, WebUIConfig } from "./types";
+import type {
+  Stage,
+  StageGeometry,
+  Status,
+  SyncPhase,
+  SyncRunPage,
+  SyncSchedule,
+  WebUIConfig,
+} from "./types";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -106,6 +115,22 @@ export function fetchStageGeometry(routeId: number, stageOrder: number): Promise
 
 export function fetchStatus(): Promise<Status> {
   return request("/v1/status", parseStatus);
+}
+
+/**
+ * Reads one page of the recorded run history, newest first.
+ *
+ * `after` is the cursor the previous page ended with, absent for the newest
+ * page. The service refuses a cursor it did not issue rather than answering with
+ * the newest page, so a cursor is never invented here.
+ */
+export function fetchSyncRuns(after: string | undefined, limit: number): Promise<SyncRunPage> {
+  const query = new URLSearchParams({ limit: String(limit) });
+  if (after !== undefined) {
+    query.set("after", after);
+  }
+
+  return request(`/v1/sync/runs?${query.toString()}`, parseSyncRuns);
 }
 
 export function fetchWebUIConfig(): Promise<WebUIConfig> {

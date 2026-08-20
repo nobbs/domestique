@@ -247,7 +247,7 @@ func TestStoreRecordsRunsAndFailureNotificationState(t *testing.T) {
 	store := openTestStore(t, testKey(1))
 	startedAt := time.Date(2026, time.August, 17, 8, 0, 0, 0, time.UTC)
 	finishedAt := startedAt.Add(time.Minute)
-	require.NoError(t, store.RecordSyncRun(
+	reference, err := store.RecordSyncRun(
 		t.Context(),
 		"targets",
 		startedAt,
@@ -258,7 +258,9 @@ func TestStoreRecordsRunsAndFailureNotificationState(t *testing.T) {
 		2,
 		1,
 		0,
-	), "RecordSyncRun()")
+	)
+	require.NoError(t, err, "RecordSyncRun()")
+	assert.Len(t, reference, 2*syncRunReferenceBytes, "the reference naming the recorded run")
 
 	var (
 		outcome      string
@@ -607,9 +609,10 @@ func TestStoreReportsTheLastRunOfEachPhase(t *testing.T) {
 	record := func(phase, outcome string, minute int, sourceStages, created int) {
 		t.Helper()
 		began := startedAt.Add(time.Duration(minute) * time.Minute)
-		require.NoError(t, store.RecordSyncRun(
+		_, err := store.RecordSyncRun(
 			t.Context(), phase, began, began.Add(time.Second), outcome, "", sourceStages, created, 0, 0,
-		), "RecordSyncRun()")
+		)
+		require.NoError(t, err, "RecordSyncRun()")
 	}
 	record("source", "failed", 0, 0, 0)
 	record("source", "succeeded", 1, 12, 0)
@@ -628,6 +631,187 @@ func TestStoreReportsTheLastRunOfEachPhase(t *testing.T) {
 	assert.Equal(t, "succeeded", outcomes["source"], "source outcome")
 	assert.Equal(t, "succeeded", outcomes["targets"], "targets outcome")
 	assert.Equal(t, 15, counts["targets"], "target run counts")
+}
+
+// The history is what an operator reads back after a notification, so a run and
+// the record of it must be the same run, and the page must come back newest
+// first with a cursor that continues where it stopped.
+func TestStoreReadsTheRecordedHistoryOnePageAtATime(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	startedAt := time.Date(2026, time.August, 17, 8, 0, 0, 0, time.UTC)
+	references := make([]string, 0, 5)
+	for minute := range 5 {
+		began := startedAt.Add(time.Duration(minute) * time.Minute)
+		reference, err := store.RecordSyncRun(
+			t.Context(), "source", began, began.Add(time.Second), "succeeded", "", minute, 0, 0, 0,
+		)
+		require.NoError(t, err, "RecordSyncRun()")
+		references = append(references, reference)
+	}
+
+	page, next := readSyncRunPage(t, store, "", 2)
+	assert.Equal(t, []string{references[4], references[3]}, page, "the newest page, newest first")
+	require.NotEmpty(t, next, "a cursor for the runs before that page")
+
+	page, next = readSyncRunPage(t, store, next, 2)
+	assert.Equal(t, []string{references[2], references[1]}, page, "the page after the cursor")
+	require.NotEmpty(t, next, "a cursor for the runs before that page")
+
+	page, next = readSyncRunPage(t, store, next, 2)
+	assert.Equal(t, []string{references[0]}, page, "the oldest page")
+	assert.Empty(t, next, "a cursor past the oldest recorded run")
+}
+
+// A cursor this store did not issue is a client mistake rather than an empty
+// history, and it is reported as one so the caller can say so. A number is not
+// enough to be one: a position past the newest run would silently serve the
+// first page again, which reads as a history that starts over.
+func TestStoreRefusesACursorItDidNotIssue(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	startedAt := time.Date(2026, time.August, 17, 8, 0, 0, 0, time.UTC)
+	_, err := store.RecordSyncRun(
+		t.Context(), "source", startedAt, startedAt.Add(time.Second), "succeeded", "", 3, 0, 0, 0,
+	)
+	require.NoError(t, err, "RecordSyncRun()")
+
+	for _, cursor := range []string{"the-newest-one", "0", "-1", "999999999"} {
+		visited := 0
+		next, usable, err := store.ForEachSyncRun(t.Context(), cursor, 10, func(
+			string, string, time.Time, string, string, int, int, int, int,
+		) error {
+			visited++
+
+			return nil
+		})
+		require.NoError(t, err, "ForEachSyncRun(%q)", cursor)
+		assert.False(t, usable, "ForEachSyncRun(%q) accepted a cursor it did not issue", cursor)
+		assert.Empty(t, next, "a cursor served under %q", cursor)
+		assert.Zero(t, visited, "runs visited under %q", cursor)
+	}
+}
+
+// The visitor is this method's entire output, and the page size decides how much
+// of the table it reads, so a caller that supplied neither is answered rather
+// than served an empty history it would read as "nothing has run". A visitor
+// that fails partway stops the page for the same reason: a swallowed failure
+// would serve half a page as a whole one.
+func TestStoreStopsReadingTheHistoryOnVisitorFailure(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	startedAt := time.Date(2026, time.August, 17, 8, 0, 0, 0, time.UTC)
+	_, err := store.RecordSyncRun(
+		t.Context(), "source", startedAt, startedAt.Add(time.Second), "succeeded", "", 3, 0, 0, 0,
+	)
+	require.NoError(t, err, "RecordSyncRun()")
+
+	_, _, err = store.ForEachSyncRun(t.Context(), "", 10, nil)
+	require.Error(t, err, "ForEachSyncRun() without a visitor")
+
+	_, _, err = store.ForEachSyncRun(t.Context(), "", 0, func(
+		string, string, time.Time, string, string, int, int, int, int,
+	) error {
+		return nil
+	})
+	require.Error(t, err, "ForEachSyncRun() without a page size")
+
+	visitErr := errors.New("visiting sync run")
+	_, _, err = store.ForEachSyncRun(t.Context(), "", 10, func(
+		string, string, time.Time, string, string, int, int, int, int,
+	) error {
+		return visitErr
+	})
+	assert.ErrorIs(t, err, visitErr, "ForEachSyncRun() with a failing visitor")
+}
+
+// A run is what the history and the status response are both read from, so a
+// record that could not describe one is refused rather than stored as a row that
+// reports nothing.
+func TestStoreRefusesAnIncompleteSyncRun(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	startedAt := time.Date(2026, time.August, 17, 8, 0, 0, 0, time.UTC)
+	finishedAt := startedAt.Add(time.Second)
+
+	_, err := store.RecordSyncRun(t.Context(), "", startedAt, finishedAt, "succeeded", "", 0, 0, 0, 0)
+	require.Error(t, err, "RecordSyncRun() without a phase")
+
+	_, err = store.RecordSyncRun(t.Context(), "source", startedAt, startedAt.Add(-time.Second), "succeeded", "", 0, 0, 0, 0)
+	require.Error(t, err, "RecordSyncRun() finishing before it started")
+
+	_, err = store.RecordSyncRun(t.Context(), "source", startedAt, finishedAt, "", "", 0, 0, 0, 0)
+	require.Error(t, err, "RecordSyncRun() without an outcome")
+
+	_, err = store.RecordSyncRun(t.Context(), "source", startedAt, finishedAt, "succeeded", "", 0, -1, 0, 0)
+	require.Error(t, err, "RecordSyncRun() with a negative count")
+}
+
+// Runs are recorded forever on a service that is deployed forever, so the
+// history is bounded. What it must never drop is the newest run of a half: the
+// status response reads that as what the half last came to, and a half switched
+// off while the other keeps running would otherwise lose its answer.
+func TestStoreBoundsTheRecordedHistoryAndKeepsEachPhasesLastRun(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	startedAt := time.Date(2026, time.August, 17, 8, 0, 0, 0, time.UTC)
+	record := func(phase string, minute int) {
+		t.Helper()
+		began := startedAt.Add(time.Duration(minute) * time.Minute)
+		_, err := store.RecordSyncRun(
+			t.Context(), phase, began, began.Add(time.Second), "succeeded", "", 0, 0, 0, 0,
+		)
+		require.NoError(t, err, "RecordSyncRun()")
+	}
+	record("targets", 0)
+	for minute := 1; minute <= retainedSyncRuns+10; minute++ {
+		record("source", minute)
+	}
+
+	var runs, targetRuns int
+	require.NoError(t, store.database.QueryRowContext(t.Context(), `
+		SELECT COUNT(*), COUNT(*) FILTER (WHERE phase = 'targets') FROM sync_runs
+	`).Scan(&runs, &targetRuns), "counting retained runs")
+	assert.Equal(t, retainedSyncRuns+1, runs, "retained runs, plus the target half's last one")
+	assert.Equal(t, 1, targetRuns, "the target half's last run was pruned with the rest")
+}
+
+// A deployment upgrading into this feature has a history already, and it is as
+// addressable as anything recorded after the upgrade.
+func TestStoreNamesRunsRecordedBeforeReferencesExisted(t *testing.T) {
+	databasePath := filepath.Join(t.TempDir(), "state.db")
+	seedSchemaVersion(t, databasePath, len(schemaMigrations())-1)
+	database, err := sql.Open(driverName, databasePath)
+	require.NoError(t, err, "opening the seeded database")
+	_, err = database.ExecContext(t.Context(), `
+		INSERT INTO sync_runs (phase, started_at_unix, finished_at_unix, outcome, detail)
+		VALUES ('source', 100, 160, 'succeeded', '')
+	`)
+	require.NoError(t, err, "recording a run under the earlier schema")
+	require.NoError(t, database.Close(), "closing the seeded database")
+
+	store, err := Open(t.Context(), databasePath, testKey(1))
+	require.NoError(t, err, "Open()")
+	t.Cleanup(func() {
+		assert.NoError(t, store.Close(), "Close()")
+	})
+
+	page, _ := readSyncRunPage(t, store, "", 10)
+	require.Len(t, page, 1, "the run recorded under the earlier schema")
+	assert.Len(t, page[0], 2*syncRunReferenceBytes, "the reference the migration gave it")
+}
+
+// readSyncRunPage collects one page of the recorded history as the references
+// it names, newest first, with the cursor for the page after it.
+func readSyncRunPage(t *testing.T, store *Store, after string, limit int) (references []string, next string) {
+	t.Helper()
+
+	next, usable, err := store.ForEachSyncRun(t.Context(), after, limit, func(
+		reference, _ string, _ time.Time, _, _ string, _, _, _, _ int,
+	) error {
+		references = append(references, reference)
+
+		return nil
+	})
+	require.NoError(t, err, "ForEachSyncRun()")
+	require.True(t, usable, "ForEachSyncRun() rejected a cursor it issued")
+
+	return references, next
 }
 
 func TestStoreCachesStageGeometryForTheMapView(t *testing.T) {
