@@ -31,7 +31,7 @@ export interface LibraryControlsProps {
   onSortChange: (sort: StageSort) => void;
   view: LibraryView;
   onViewChange: (view: LibraryView) => void;
-  /** How many stages the grid is showing, and how many the library holds. */
+  /** How many stages the library is showing, and how many it holds. */
   shown: number;
   total: number;
 }
