@@ -101,9 +101,31 @@ type syncPhasesView struct {
 	Targets *phaseRunView `json:"targets,omitempty"`
 }
 
+// activeView describes a run that has not finished: which half is in flight,
+// when a held-back run is due to start, and how much of the library is already
+// where it belongs. It is absent whenever nothing is under way.
+//
+// Aggregate counts only, and every one of them is read from the same local
+// state the rest of this response is derived from. Watching a run therefore
+// costs no provider call and names no route.
+type activeView struct {
+	// Phase is the half in flight, absent while a run has been accepted but no
+	// half of it has started.
+	Phase string `json:"phase,omitempty"`
+	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
+	StartsAt string `json:"starts_at,omitempty"`
+	// Targets is how many accounts are configured, which is what the stage
+	// counts beside it are measured against.
+	Targets int              `json:"targets"`
+	Stages  targetStagesView `json:"stages"`
+}
+
 type syncView struct {
 	Phases syncPhasesView `json:"phases"`
-	State  string         `json:"state"`
+	// Active is present only while a run is queued, running, or held back —
+	// the states in which no terminal result may be claimed.
+	Active *activeView `json:"active,omitempty"`
+	State  string      `json:"state"`
 	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
 	LastCompletedAt string `json:"last_completed_at,omitempty"`
 	//nolint:tagliatelle // This v1 JSON contract uses snake_case.

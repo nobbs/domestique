@@ -29,10 +29,13 @@ type Notifier interface {
 // Reporter adds durable run recording and notification policy around a
 // synchronization service. It does not expose provider errors or route names.
 type Reporter struct {
-	runner    Runner
-	state     RunState
-	notifier  Notifier
-	now       func() time.Time
+	runner   Runner
+	state    RunState
+	notifier Notifier
+	now      func() time.Time
+	// phase names the half being run right now, and is nil between the moment a
+	// run is accepted and the moment its first half starts.
+	phase     atomic.Pointer[Phase]
 	running   atomic.Bool
 	triggered stdsync.WaitGroup
 }
@@ -113,19 +116,49 @@ func (r *Reporter) trigger(ctx context.Context, source, targets bool) bool {
 	return true
 }
 
+// Running reports what this process has under way: the half in flight, and
+// whether a run is under way at all.
+//
+// The two answers are separate because a run is accepted before its first half
+// starts. Reporting nothing in that window would leave a status response
+// falling back to the last finished run, which would claim a terminal result
+// for work that has not begun.
+func (r *Reporter) Running() (Phase, bool) {
+	// Read the phase first: a finishing run clears its phase before it releases
+	// the lock, so this order can report a half without a run but never a run
+	// without the half it was in.
+	phase := r.phase.Load()
+	running := r.running.Load()
+	if phase == nil || !running {
+		return "", running
+	}
+
+	return *phase, true
+}
+
+// enter records which half is being run. The phase is a parameter so each call
+// stores a copy of its own, rather than rewriting a value a reader may hold.
+func (r *Reporter) enter(phase Phase) {
+	r.phase.Store(&phase)
+}
+
 // runPhases runs the requested phases in order and returns the last result.
 //
 // Reading the source before writing to the targets is what makes one tick carry
 // a change all the way through; the order also means a failed read leaves the
 // targets reconciling the last inventory known to be whole rather than nothing.
 func (r *Reporter) runPhases(ctx context.Context, source, targets bool) Result {
+	defer r.phase.Store(nil)
+
 	result := Result{Outcome: OutcomeSkipped}
 	sourceStored := false
 	if source {
+		r.enter(PhaseSource)
 		result = r.run(ctx, r.runner.RunSource)
 		sourceStored = result.Outcome == OutcomeSucceeded
 	}
 	if targets {
+		r.enter(PhaseTargets)
 		result = r.run(ctx, r.runner.RunTargets)
 	}
 	// Enrichment comes after everything a rider is waiting for, and only when

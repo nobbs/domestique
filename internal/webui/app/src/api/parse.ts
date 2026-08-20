@@ -17,6 +17,7 @@ import type {
   SurfaceCoverage,
   SurfaceKind,
   SurfaceRange,
+  SyncActive,
   SyncPhase,
   SyncPhaseRun,
   SyncSchedule,
@@ -271,6 +272,7 @@ export function parseStatus(payload: unknown): Status {
     ),
     sync: {
       state: text(sync.state, "body.sync.state"),
+      active: syncActiveFrom(sync.active, "body.sync.active"),
       lastResult: optionalText(sync.last_result, "body.sync.last_result"),
       lastCompletedAt: optionalText(sync.last_completed_at, "body.sync.last_completed_at"),
       sourceStages: count(sync.source_stages, "body.sync.source_stages"),
@@ -360,6 +362,36 @@ function surfaceCoverageFrom(value: unknown, at: string): SurfaceCoverage {
   return {
     classified: count(coverage.classified, `${at}.classified`),
     total: count(coverage.total, `${at}.total`),
+  };
+}
+
+/**
+ * Reads the group describing a run that has not finished. Absent is the answer
+ * that nothing is under way, so it stays absent rather than becoming an empty
+ * run nobody started.
+ *
+ * A half this build has never heard of reads as no half at all: the run is
+ * still happening, and the page can say that much without inventing a name for
+ * what it is doing.
+ */
+function syncActiveFrom(value: unknown, at: string): SyncActive | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  const active = record(value, at);
+  const phase = optionalText(active.phase, `${at}.phase`);
+  const stages = record(active.stages, `${at}.stages`);
+
+  return {
+    phase: (SYNC_PHASES as readonly string[]).includes(phase ?? "")
+      ? (phase as SyncPhase)
+      : undefined,
+    startsAt: optionalText(active.starts_at, `${at}.starts_at`),
+    targets: count(active.targets, `${at}.targets`),
+    stages: {
+      current: count(stages.current, `${at}.stages.current`),
+      pending: count(stages.pending, `${at}.stages.pending`),
+    },
   };
 }
 

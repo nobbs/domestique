@@ -132,7 +132,7 @@ func (h *Handler) reprocessStage(writer http.ResponseWriter, request *http.Reque
 	}
 	// Both halves, in order: the stage is read and derived again, then written
 	// to every target. Asking for only one would leave the request half met.
-	h.syncTrigger.Trigger(SyncPhaseAll)
+	h.syncRuns.Trigger(SyncPhaseAll)
 	h.writeJSON(writer, http.StatusAccepted, map[string]string{"status": "accepted"})
 }
 

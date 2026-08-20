@@ -143,7 +143,9 @@ synchronization of both halves, or `POST /v1/sync/source` and
 `POST /v1/sync/targets` to start one. Each uses the same reconciliation, durable
 run record, and Pushover notification path as scheduled work. The service returns
 `202` only when no scheduled or manual run is active; otherwise it returns `409`
-without starting duplicate provider work.
+without starting duplicate provider work. A refused trigger changes nothing at
+all, the status included: the run already in flight stays the one described, and
+no second run state comes into being.
 
 A manual trigger runs its half whether or not the schedule is allowed to start
 it. The switches decide what happens unattended; a request is an operator who
@@ -432,8 +434,38 @@ Returns 200 while the service can read state. The minimum shape is:
 Authorisation is one of "not_authorized", "pending", "authorized", or
 "needs_reauthorization"; "pending" is derived at read time as the OAuth
 lifecycle above describes, and replaces only "not_authorized" or
-"needs_reauthorization". Sync state is "not_ready", "idle", "running",
-"succeeded", "failed", or "blocked". Timestamps are RFC 3339 UTC.
+"needs_reauthorization". Sync state is "not_ready", "idle", "queued",
+"running", "delayed", "succeeded", "failed", or "blocked". Timestamps are
+RFC 3339 UTC.
+
+Three of those states describe work that has not finished, and each outranks
+whatever else `state` would have said. "queued" is a run accepted before its
+first half starts, "running" is a half in flight, and "delayed" is a run
+deliberately held back — the initial startup delay — rather than one waiting
+its turn on the interval. The interval itself is never reported as a delay: it
+is this service's cadence, and a state that never settled would leave a reader,
+and anything polling on their behalf, with nothing to wait for.
+
+Reporting a finished run's outcome while another is under way would announce a
+result for work that has produced none, and nothing in the response would say
+which run it described. The recorded fields stay where they are; only `state`
+changes, and `active` appears beside it:
+
+~~~json
+"active": {
+  "phase": "targets",
+  "starts_at": "2026-08-16T12:00:00Z",
+  "targets": 2,
+  "stages": {"current": 11, "pending": 1}
+}
+~~~
+
+`active` is present only in those three states. `phase` is absent until a half
+has started, and `starts_at` only while a run is being held back. `targets` is
+how many accounts are configured, and `stages` is the aggregate of the
+per-target counts above. That is the whole of the progress reported: it is
+derived from local state alone, so watching a run costs no provider call, and
+it is counts only, so no route is named.
 
 `surface` counts how many stored stages carry a classification measured against
 the geometry they hold now; a classification of an earlier shape of a stage does
@@ -559,6 +591,9 @@ The implementation test suite must cover at least:
 - a reprocess request rewriting its stage on every target while keeping the Wahoo
   route it already owns, and being consumed exactly once;
 - a classification pass continuing past a stage that failed, and stopping when
-  the endpoint reports it has no capacity; and
+  the endpoint reports it has no capacity;
+- a status request during a run reporting that run rather than the outcome of
+  the last one to finish, and a refused duplicate trigger leaving that report
+  unchanged; and
 - JSON responses and Pushover messages containing no secret or raw upstream
   data.

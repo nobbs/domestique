@@ -159,8 +159,28 @@ export interface SurfaceCoverage {
   total: number;
 }
 
+/**
+ * Work that has not finished: the half in flight, when a run being held back is
+ * due to start, and how much of the library the accounts already hold.
+ *
+ * Present only while the service reports a state that has no result yet, which
+ * is what makes its presence the answer to whether anything is happening.
+ */
+export interface SyncActive {
+  /** Absent until a half of the run has started. */
+  phase?: SyncPhase | undefined;
+  /** Present only while a run is deliberately being held back. */
+  startsAt?: string | undefined;
+  /** How many accounts are configured, which is what the counts are across. */
+  targets: number;
+  /** The aggregate of the per-account counts, and the only progress reported. */
+  stages: TargetStages;
+}
+
 export interface SyncStatus {
   state: string;
+  /** Absent whenever nothing is queued, running, or being held back. */
+  active?: SyncActive | undefined;
   /** Absent until a run has completed. */
   lastResult?: string | undefined;
   lastCompletedAt?: string | undefined;

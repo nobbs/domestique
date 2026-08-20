@@ -166,18 +166,32 @@ func run(ctx context.Context) error {
 		store,
 		// The HTTP surface names a phase; the reporter decides what running one
 		// means. Manual triggers deliberately ignore the schedule switches.
-		httpapi.SyncTriggerFunc(func(phase httpapi.SyncPhase) bool {
-			switch phase {
-			case httpapi.SyncPhaseSource:
-				return reporter.TriggerPhase(runCtx, syncservice.PhaseSource)
-			case httpapi.SyncPhaseTargets:
-				return reporter.TriggerPhase(runCtx, syncservice.PhaseTargets)
-			case httpapi.SyncPhaseAll:
-				return reporter.Trigger(runCtx)
-			}
+		httpapi.SyncFuncs{
+			TriggerFunc: func(phase httpapi.SyncPhase) bool {
+				switch phase {
+				case httpapi.SyncPhaseSource:
+					return reporter.TriggerPhase(runCtx, syncservice.PhaseSource)
+				case httpapi.SyncPhaseTargets:
+					return reporter.TriggerPhase(runCtx, syncservice.PhaseTargets)
+				case httpapi.SyncPhaseAll:
+					return reporter.Trigger(runCtx)
+				}
 
-			return false
-		}),
+				return false
+			},
+			// Two halves of one answer: the reporter knows what is running now,
+			// and the scheduler knows what it is still holding back.
+			ActivityFunc: func() httpapi.SyncActivityState {
+				phase, running := reporter.Running()
+				startsAt, _ := scheduler.NextRunAt()
+
+				return httpapi.SyncActivityState{
+					StartsAt: startsAt,
+					Phase:    httpapi.SyncPhase(phase),
+					Running:  running,
+				}
+			},
+		},
 		assets,
 	)
 	if err != nil {

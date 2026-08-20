@@ -16,7 +16,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { setSyncSchedule, triggerSync } from "../../api/client";
 import { statusQuery } from "../../api/queries";
-import type { SyncPhase, SyncPhaseRun, SyncSchedule } from "../../api/types";
+import type { SyncActive, SyncPhase, SyncPhaseRun, SyncSchedule } from "../../api/types";
 import { SYNC_PHASES } from "../../api/types";
 import { Button } from "../../components/Button";
 import { ErrorMessage } from "../../components/StatusMessage";
@@ -33,6 +33,46 @@ const PHASE_LABELS: Record<SyncPhase, { title: string; detail: string }> = {
     detail: "Reconciles the stored library onto every target account.",
   },
 };
+
+/** What each half is doing while it is doing it, rather than what to press. */
+const RUNNING_LABELS: Record<SyncPhase, string> = {
+  source: "Reading from VeloPlanner",
+  targets: "Writing to Wahoo",
+};
+
+function activeHeadline(state: string, active: SyncActive): string {
+  if (state === "delayed") {
+    return active.startsAt
+      ? `First run at ${formatTimestamp(active.startsAt)}`
+      : "Waiting to start";
+  }
+  if (active.phase) {
+    return RUNNING_LABELS[active.phase];
+  }
+
+  // Accepted, and not yet in either half. It is a moment long, and it is the
+  // moment an operator who has just pressed the button is looking at.
+  return "Starting";
+}
+
+/**
+ * What is happening right now, in a sentence.
+ *
+ * The counts are the aggregate the service reports and nothing beyond it: how
+ * much of what the accounts are owed they already hold. A run cannot say which
+ * stage it is on without naming one, so it does not try, and an empty library
+ * is left to the headline alone rather than told it is nought of nought.
+ */
+export function activeSummary(state: string, active: SyncActive): string {
+  const headline = activeHeadline(state, active);
+  const total = active.stages.current + active.stages.pending;
+  if (total === 0) {
+    return headline;
+  }
+  const accounts = active.targets === 1 ? "account" : "accounts";
+
+  return `${headline} · ${active.stages.current} of ${total} stages across ${active.targets} ${accounts}`;
+}
 
 /**
  * What one half's last run amounts to, in a sentence.
@@ -91,6 +131,17 @@ export function SyncControls() {
       <h2 className="sync-controls__heading" id="sync-controls-heading">
         Synchronisation
       </h2>
+      {/*
+       * The one line here that changes while it is being read. It is announced
+       * politely rather than assertively: the operator asked for this run, so
+       * its progress is something to look at when they choose to, and the text
+       * only changes when the run does.
+       */}
+      {data.sync.active ? (
+        <p className="sync-controls__active" aria-live="polite">
+          {activeSummary(data.sync.state, data.sync.active)}
+        </p>
+      ) : null}
       {/*
        * Classification is enrichment: it never fails a run, so a stage the
        * endpoint keeps refusing is otherwise indistinguishable from one that has

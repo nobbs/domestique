@@ -64,18 +64,56 @@ const (
 	SyncPhaseTargets SyncPhase = "targets"
 )
 
-// SyncTrigger starts one manual synchronization and reports whether it was
-// accepted. An accepted run continues independently of the HTTP request.
-type SyncTrigger interface {
+// Sync is the synchronization process behind this surface: it starts a manual
+// run, and it says what has not finished yet.
+//
+// Both answers come from the process rather than from stored state. A run that
+// has not finished has recorded nothing, and one that has not started has
+// nothing to record, so a status built from state alone can only describe the
+// last run that ended.
+type Sync interface {
+	// Trigger starts one manual synchronization and reports whether it was
+	// accepted. An accepted run continues independently of the HTTP request.
 	Trigger(phase SyncPhase) bool
+	// Activity reports the run that has not finished, if there is one.
+	Activity() SyncActivityState
 }
 
-// SyncTriggerFunc adapts a function to SyncTrigger for manual wiring.
-type SyncTriggerFunc func(phase SyncPhase) bool
+// SyncActivityState is what the process knows about a run that has not
+// finished. Its zero value says nothing is under way.
+type SyncActivityState struct {
+	// StartsAt is when a run being deliberately held back is due to start —
+	// an initial delay rather than the ordinary wait for the next tick. Zero
+	// when nothing is being held.
+	StartsAt time.Time
+	// Phase names the half in flight. Empty while a run has been accepted but
+	// no half of it has started.
+	Phase SyncPhase
+	// Running is true from the moment a run is accepted until its last half has
+	// finished.
+	Running bool
+}
+
+// SyncFuncs adapts a pair of functions to Sync for manual wiring. An unset
+// ActivityFunc reports no work under way, which is the honest answer from a
+// process whose runs begin and end inside the request that asked for one.
+type SyncFuncs struct {
+	TriggerFunc  func(phase SyncPhase) bool
+	ActivityFunc func() SyncActivityState
+}
 
 // Trigger starts the adapted manual synchronization.
-func (f SyncTriggerFunc) Trigger(phase SyncPhase) bool {
-	return f(phase)
+func (f SyncFuncs) Trigger(phase SyncPhase) bool {
+	return f.TriggerFunc(phase)
+}
+
+// Activity reports the adapted process state.
+func (f SyncFuncs) Activity() SyncActivityState {
+	if f.ActivityFunc == nil {
+		return SyncActivityState{}
+	}
+
+	return f.ActivityFunc()
 }
 
 // Assets serves the embedded browser UI. It is declared here so this package
@@ -207,7 +245,7 @@ type Options struct {
 type Handler struct {
 	mux              *http.ServeMux
 	oauth            OAuth
-	syncTrigger      SyncTrigger
+	syncRuns         Sync
 	state            State
 	assets           Assets
 	accessVerifier   AccessVerifier
@@ -228,11 +266,11 @@ func New(
 	options *Options,
 	oauthService OAuth,
 	state State,
-	syncTrigger SyncTrigger,
+	syncRuns Sync,
 	assets Assets,
 ) (*Handler, error) {
-	if options == nil || oauthService == nil || state == nil || syncTrigger == nil || assets == nil {
-		return nil, errors.New("http options, oauth service, state, sync trigger, and assets are required")
+	if options == nil || oauthService == nil || state == nil || syncRuns == nil || assets == nil {
+		return nil, errors.New("http options, oauth service, state, sync process, and assets are required")
 	}
 	if len(options.TargetIDs) < 1 || len(options.TargetIDs) > 2 {
 		return nil, errors.New("between one and two target IDs are required")
@@ -286,7 +324,7 @@ func New(
 		mux:              http.NewServeMux(),
 		oauth:            oauthService,
 		state:            state,
-		syncTrigger:      syncTrigger,
+		syncRuns:         syncRuns,
 		assets:           assets,
 		tileStyleURL:     options.TileStyleURL,
 		tileStyleURLDark: options.TileStyleURLDark,

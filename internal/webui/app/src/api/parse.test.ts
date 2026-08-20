@@ -271,6 +271,84 @@ describe("parseStatus", () => {
     expect(status.targets[0]?.convergence).toBe("unauthorized");
   });
 
+  // A run that has not finished is the one thing on this page that is not a
+  // record of something that already happened.
+  it("reads the run that has not finished", () => {
+    const status = parseStatus({
+      ready: true,
+      converged: false,
+      targets: [],
+      sync: {
+        state: "running",
+        active: {
+          phase: "targets",
+          starts_at: "2026-08-18T06:05:00Z",
+          targets: 2,
+          stages: { current: 11, pending: 1 },
+        },
+        source_stages: 12,
+        created: 0,
+        updated: 0,
+        deleted: 0,
+        schedule: { source: true, targets: true },
+        phases: {},
+        surface: { classified: 0, total: 0 },
+      },
+    });
+
+    expect(status.sync.state).toBe("running");
+    expect(status.sync.active?.phase).toBe("targets");
+    expect(status.sync.active?.startsAt).toBe("2026-08-18T06:05:00Z");
+    expect(status.sync.active?.targets).toBe(2);
+    expect(status.sync.active?.stages).toEqual({ current: 11, pending: 1 });
+  });
+
+  // Absent is the answer that nothing is happening, so it must not become an
+  // empty run the page then has to explain.
+  it("reads no run under way as none", () => {
+    const status = parseStatus({
+      ready: true,
+      converged: true,
+      targets: [],
+      sync: {
+        state: "idle",
+        source_stages: 0,
+        created: 0,
+        updated: 0,
+        deleted: 0,
+        schedule: { source: true, targets: true },
+        phases: {},
+        surface: { classified: 0, total: 0 },
+      },
+    });
+
+    expect(status.sync.active).toBeUndefined();
+  });
+
+  // A half this build has never heard of leaves the run without a name for what
+  // it is doing, which is still better than presenting the word as one.
+  it("reads an unfamiliar half of a running sync as no half", () => {
+    const status = parseStatus({
+      ready: true,
+      converged: false,
+      targets: [],
+      sync: {
+        state: "running",
+        active: { phase: "reticulating", targets: 1, stages: { current: 0, pending: 0 } },
+        source_stages: 0,
+        created: 0,
+        updated: 0,
+        deleted: 0,
+        schedule: { source: true, targets: true },
+        phases: {},
+        surface: { classified: 0, total: 0 },
+      },
+    });
+
+    expect(status.sync.active?.phase).toBeUndefined();
+    expect(status.sync.active?.targets).toBe(1);
+  });
+
   // A word this build has never heard of cannot be presented as "everything is
   // fine", so it degrades to the state that asks the operator to look.
   it("degrades an unfamiliar convergence to failed", () => {

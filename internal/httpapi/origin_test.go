@@ -41,9 +41,9 @@ func TestMutableRoutesRejectForeignProvenance(t *testing.T) {
 	for name, origin := range origins {
 		t.Run(name, func(t *testing.T) {
 			for _, route := range mutableRoutes {
-				trigger := &fakeSyncTrigger{accepted: true}
+				trigger := &fakeSync{accepted: true}
 				state := surfaceState()
-				handler := newHandlerWithTrigger(t, &fakeOAuth{}, state, trigger)
+				handler := newHandlerWithSync(t, &fakeOAuth{}, state, trigger)
 
 				request := httptest.NewRequestWithContext(
 					t.Context(), route.method, route.target, strings.NewReader(route.body),
@@ -69,8 +69,8 @@ func TestMutableRoutesRejectForeignProvenance(t *testing.T) {
 // before the guard existed.
 func TestMutableRoutesAcceptTheBrowserOrigin(t *testing.T) {
 	for _, route := range mutableRoutes {
-		trigger := &fakeSyncTrigger{accepted: true}
-		handler := newHandlerWithTrigger(t, &fakeOAuth{}, surfaceState(), trigger)
+		trigger := &fakeSync{accepted: true}
+		handler := newHandlerWithSync(t, &fakeOAuth{}, surfaceState(), trigger)
 
 		request := httptest.NewRequestWithContext(
 			t.Context(), route.method, route.target, strings.NewReader(route.body),
@@ -192,7 +192,7 @@ func TestNewRequiresABrowserOrigin(t *testing.T) {
 			AccessVerifier: &recordingVerifier{email: testAccessEmail},
 			AccessEmail:    testAccessEmail,
 		},
-		&fakeOAuth{}, &fakeState{}, &fakeSyncTrigger{}, &fakeAssets{},
+		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{},
 	)
 	require.Error(t, err, "New() built a handler with no origin to compare against")
 }
