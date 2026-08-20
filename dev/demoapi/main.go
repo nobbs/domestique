@@ -210,11 +210,11 @@ func newHandler(
 		// False means one run is already in progress and nothing else, so that is
 		// the only thing it is used for here. A re-seed that fails is a run that
 		// failed rather than a conflict, and its error goes to the log.
-		httpapi.SyncTriggerFunc(reseeder{
+		httpapi.SyncFuncs{TriggerFunc: reseeder{
 			store:   store,
 			slots:   slots,
 			running: &atomic.Bool{},
-		}.trigger),
+		}.trigger},
 		bundleAssets(),
 	)
 	if err != nil {

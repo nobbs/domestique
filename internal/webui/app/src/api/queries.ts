@@ -12,6 +12,9 @@ import {
   fetchWebUIConfig,
 } from "./client";
 
+/** How often a run that has not finished is asked what it is doing now. */
+const ACTIVE_POLL_MS = 2000;
+
 export const stagesQuery = () =>
   queryOptions({
     queryKey: ["stages"] as const,
@@ -36,7 +39,13 @@ export const statusQuery = () =>
   queryOptions({
     queryKey: ["status"] as const,
     queryFn: fetchStatus,
-    refetchInterval: 60 * 1000,
+    // Poll only while the service says something has not finished, and quickly
+    // while it does. A run reports its own progress, so there is something new
+    // to see every few seconds; once it ends there is nothing to watch, and a
+    // timer that kept asking would be asking on nobody's behalf. Every control
+    // on the page invalidates this query, so the first answer after an operator
+    // acts is never waited for.
+    refetchInterval: (query) => (query.state.data?.sync.active ? ACTIVE_POLL_MS : false),
   });
 
 export const webUIConfigQuery = () =>

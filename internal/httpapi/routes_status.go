@@ -35,6 +35,33 @@ func reportedAuthorization(stored string, inFlight bool) string {
 	return stored
 }
 
+// The words for work that has not finished. None of them may be replaced by the
+// outcome of an earlier run: a run in flight has produced no result, and one
+// that has not started has produced nothing at all.
+const (
+	queuedState  = "queued"
+	runningState = "running"
+	delayedState = "delayed"
+)
+
+// liveSyncState names the state of a run that has not finished, and reports
+// false when none is under way.
+//
+// A run outranks a delay, because a manual trigger during the initial delay is
+// work happening rather than work waiting for its turn.
+func liveSyncState(activity SyncActivityState) (string, bool) {
+	switch {
+	case activity.Running && activity.Phase != "":
+		return runningState, true
+	case activity.Running:
+		return queuedState, true
+	case !activity.StartsAt.IsZero():
+		return delayedState, true
+	}
+
+	return "", false
+}
+
 // status reports readiness, per-target convergence, and the last terminal run.
 func (h *Handler) status(writer http.ResponseWriter, request *http.Request, _ string) {
 	authorizations := make(map[string]string, len(h.targetIDs))
@@ -75,6 +102,10 @@ func (h *Handler) status(writer http.ResponseWriter, request *http.Request, _ st
 	}
 
 	targets := make([]targetView, 0, len(h.targetIDs))
+	// The aggregate of the per-target counts, which is the only progress a run
+	// in flight reports: how much of the library is already on the configured
+	// accounts, and how much of it is still owed to them.
+	allStages := targetStagesView{}
 	ready, converged := true, true
 	for _, targetID := range h.targetIDs {
 		stored, found := authorizations[targetID]
@@ -97,12 +128,15 @@ func (h *Handler) status(writer http.ResponseWriter, request *http.Request, _ st
 			Stages:        stages,
 			LastRun:       lastRun,
 		})
+		allStages.Current += stages.Current
+		allStages.Pending += stages.Pending
 		ready = ready && authorization == authorizedState
 		// Overall convergence is the conjunction, so one lagging slot is enough
 		// to say the library is not everywhere it belongs.
 		converged = converged && convergence == convergenceCurrent
 	}
 
+	activity := h.syncRuns.Activity()
 	view := statusView{
 		Ready:     ready,
 		Converged: converged,
@@ -170,6 +204,24 @@ func (h *Handler) status(writer http.ResponseWriter, request *http.Request, _ st
 		view.Sync.SourceStages, view.Sync.Created, view.Sync.Updated, view.Sync.Deleted =
 			sourceStages, created, updated, deleted
 	}
+	// A run that has not finished outranks the last one that did. Reporting
+	// "succeeded" while work is under way would be describing the previous run
+	// with nothing to say so, and an operator who has just pressed a button
+	// would read it as their answer.
+	if state, live := liveSyncState(activity); live {
+		view.Sync.State = state
+		view.Sync.Active = &activeView{
+			Phase:   string(activity.Phase),
+			Targets: len(h.targetIDs),
+			Stages:  allStages,
+		}
+		// Only a delay has a due instant to report. A run triggered while the
+		// first one is still being held back is under way now, and saying when
+		// something else was going to start would read as its own progress.
+		if state == delayedState {
+			view.Sync.Active.StartsAt = activity.StartsAt.UTC().Format(time.RFC3339)
+		}
+	}
 	h.writeJSON(writer, http.StatusOK, view)
 }
 
@@ -223,7 +275,7 @@ func (h *Handler) syncTargets(writer http.ResponseWriter, _ *http.Request, _ str
 }
 
 func (h *Handler) trigger(writer http.ResponseWriter, phase SyncPhase) {
-	if !h.syncTrigger.Trigger(phase) {
+	if !h.syncRuns.Trigger(phase) {
 		h.error(writer, http.StatusConflict, "sync_in_progress", "a synchronization is already running")
 
 		return

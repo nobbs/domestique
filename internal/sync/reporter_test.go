@@ -168,6 +168,28 @@ func TestReporterTriggerRejectsOverlappingRun(t *testing.T) {
 	assert.Equal(t, 2, state.runs, "recorded runs")
 }
 
+// A status response is built while a run is in flight, so whatever it says
+// about one has to be true at the moment it is asked.
+func TestReporterReportsThePhaseInFlight(t *testing.T) {
+	runner := &blockingReportingRunner{started: make(chan struct{}), release: make(chan struct{})}
+	reporter := newReporter(t, runner, &fakeRunState{}, &fakeNotifier{})
+	phase, running := reporter.Running()
+	assert.False(t, running, "Running() reported a run before one started")
+	assert.Empty(t, phase, "Running() named a phase before a run started")
+
+	require.True(t, reporter.Trigger(t.Context()), "Trigger() rejected the run")
+	<-runner.started
+	phase, running = reporter.Running()
+	assert.True(t, running, "Running() reported no run while one was in flight")
+	assert.Equal(t, PhaseSource, phase, "Running() phase")
+
+	close(runner.release)
+	reporter.Wait()
+	phase, running = reporter.Running()
+	assert.False(t, running, "Running() reported a run after the last phase finished")
+	assert.Empty(t, phase, "Running() named a phase after the last phase finished")
+}
+
 type reportingRunner struct {
 	source      Result
 	targets     Result

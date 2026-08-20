@@ -3,7 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Status } from "../../api/types";
-import { SyncControls } from "./SyncControls";
+import { activeSummary, SyncControls } from "./SyncControls";
 
 function status(overrides: Partial<Status["sync"]> = {}): Status {
   return {
@@ -47,6 +47,56 @@ afterEach(() => {
 });
 
 describe("SyncControls", () => {
+  // The whole point of the line: a run under way says so, rather than leaving
+  // the last finished run on the page as though it were the answer.
+  it("says which half is running and how much the accounts already hold", () => {
+    renderControls(
+      status({
+        state: "running",
+        active: { phase: "targets", targets: 2, stages: { current: 11, pending: 1 } },
+      }),
+    );
+
+    expect(
+      screen.getByText("Writing to Wahoo · 11 of 12 stages across 2 accounts"),
+    ).toBeInTheDocument();
+  });
+
+  // Accepted and not yet in either half. It is a moment long, and it is the
+  // moment the operator who pressed the button is looking at.
+  it("says a run has been accepted before either half starts", () => {
+    renderControls(
+      status({ state: "queued", active: { targets: 1, stages: { current: 0, pending: 0 } } }),
+    );
+
+    expect(screen.getByText("Starting")).toBeInTheDocument();
+  });
+
+  // A service holding its first run back has something to say for itself, and
+  // "idle" is not it.
+  it("says when a first run is being held back", () => {
+    renderControls(
+      status({
+        state: "delayed",
+        active: {
+          startsAt: "2026-08-18T06:05:00Z",
+          targets: 1,
+          stages: { current: 3, pending: 1 },
+        },
+      }),
+    );
+
+    expect(
+      screen.getByText(/^First run at .* · 3 of 4 stages across 1 account$/),
+    ).toBeInTheDocument();
+  });
+
+  it("says nothing about a run when nothing is under way", () => {
+    renderControls();
+
+    expect(screen.queryByText(/Reading from VeloPlanner|Writing to Wahoo|Starting/)).toBeNull();
+  });
+
   it("shows each half with its own switch and button", () => {
     renderControls();
 
@@ -247,5 +297,15 @@ describe("SyncControls", () => {
     renderControls(status({ surface: { classified: 3, total: 3 } }));
 
     expect(screen.queryByText(/classified for/)).not.toBeInTheDocument();
+  });
+});
+
+describe("activeSummary", () => {
+  // The instant is what makes a delay worth reporting, but a service that did
+  // not give one is still waiting rather than idle.
+  it("says a held-back run is waiting when nothing said until when", () => {
+    expect(activeSummary("delayed", { targets: 1, stages: { current: 1, pending: 1 } })).toBe(
+      "Waiting to start · 1 of 2 stages across 1 account",
+    );
   });
 });

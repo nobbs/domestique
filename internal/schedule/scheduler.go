@@ -4,6 +4,7 @@ package schedule
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"time"
 
 	"github.com/nobbs/domestique/internal/sync"
@@ -24,10 +25,14 @@ type Options struct {
 // starts concurrent work; each Runner invocation finishes before the next tick
 // is considered.
 type Scheduler struct {
-	runner  Runner
-	after   func(time.Duration) <-chan time.Time
-	ticker  func(time.Duration) ticker
-	options Options
+	runner Runner
+	after  func(time.Duration) <-chan time.Time
+	ticker func(time.Duration) ticker
+	now    func() time.Time
+	// startsAt holds the instant the first run is due, and only while it is
+	// still due. Nil is the ordinary state of a scheduler that has started.
+	startsAt atomic.Pointer[time.Time]
+	options  Options
 }
 
 type ticker interface {
@@ -47,13 +52,18 @@ func New(options Options, runner Runner) (*Scheduler, error) {
 		options: options,
 		after:   time.After,
 		ticker:  newTicker,
+		now:     time.Now,
 	}, nil
 }
 
 // Run waits for the initial delay, invokes the runner, and continues invoking
 // it at the configured interval until ctx is cancelled.
 func (s *Scheduler) Run(ctx context.Context) {
-	if !wait(ctx, s.after(s.options.InitialDelay)) {
+	startsAt := s.now().UTC().Add(s.options.InitialDelay)
+	s.startsAt.Store(&startsAt)
+	started := wait(ctx, s.after(s.options.InitialDelay))
+	s.startsAt.Store(nil)
+	if !started {
 		return
 	}
 	s.runner.Run(ctx)
@@ -68,6 +78,22 @@ func (s *Scheduler) Run(ctx context.Context) {
 			s.runner.Run(ctx)
 		}
 	}
+}
+
+// NextRunAt reports the instant the first run is being held until, while the
+// scheduler is still holding it.
+//
+// Only the initial delay answers here. The interval between runs is this
+// service's cadence rather than work being held back, and a scheduler that
+// called every gap between hourly runs "waiting" would leave a status page —
+// and anything polling one — with nothing to settle on.
+func (s *Scheduler) NextRunAt() (time.Time, bool) {
+	startsAt := s.startsAt.Load()
+	if startsAt == nil {
+		return time.Time{}, false
+	}
+
+	return *startsAt, true
 }
 
 type timeTicker struct {

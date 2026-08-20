@@ -243,7 +243,7 @@ func TestHandlerOmitsAnUnconfiguredDarkTileStyle(t *testing.T) {
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
 		},
-		&fakeOAuth{}, &fakeState{}, &fakeSyncTrigger{}, &fakeAssets{},
+		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{},
 	)
 	require.NoError(t, err, "New()")
 
@@ -263,7 +263,7 @@ func TestHandlerOmitsAnUnconfiguredSourceBaseURL(t *testing.T) {
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
 		},
-		&fakeOAuth{}, &fakeState{}, &fakeSyncTrigger{}, &fakeAssets{},
+		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{},
 	)
 	require.NoError(t, err, "New()")
 
@@ -296,7 +296,7 @@ func TestHandlerRefusesASourceBaseURLThatIsNotOne(t *testing.T) {
 				AccessEmail:      testAccessEmail,
 				BrowserOriginURL: testBrowserOriginURL,
 			},
-			&fakeOAuth{}, &fakeState{}, &fakeSyncTrigger{}, &fakeAssets{},
+			&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{},
 		)
 		require.Errorf(t, err, "New() accepted the source base URL %q", value)
 	}
@@ -312,7 +312,7 @@ func TestHandlerSendsASourceBaseURLWithoutSurroundingWhitespace(t *testing.T) {
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
 		},
-		&fakeOAuth{}, &fakeState{}, &fakeSyncTrigger{}, &fakeAssets{},
+		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{},
 	)
 	require.NoError(t, err, "New()")
 
@@ -341,7 +341,7 @@ func TestHandlerAcceptsASourceBaseURLHostedUnderAPath(t *testing.T) {
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
 		},
-		&fakeOAuth{}, &fakeState{}, &fakeSyncTrigger{}, &fakeAssets{},
+		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{},
 	)
 	require.NoError(t, err, "New()")
 
@@ -429,7 +429,7 @@ func newHandlerWithBuild(t *testing.T, revision, imageDigest string) *Handler {
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
 		},
-		&fakeOAuth{}, &fakeState{}, &fakeSyncTrigger{}, &fakeAssets{},
+		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{},
 	)
 	require.NoError(t, err, "New()")
 
@@ -496,8 +496,8 @@ func TestHandlerRunsCallerBoundOAuthFlow(t *testing.T) {
 }
 
 func TestHandlerAcceptsManualSync(t *testing.T) {
-	trigger := &fakeSyncTrigger{accepted: true}
-	handler := newHandlerWithTrigger(t, &fakeOAuth{}, &fakeState{}, trigger)
+	trigger := &fakeSync{accepted: true}
+	handler := newHandlerWithSync(t, &fakeOAuth{}, &fakeState{}, trigger)
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/sync"))
 	assert.Equal(t, http.StatusAccepted, response.Code, "sync status")
@@ -509,8 +509,8 @@ func TestHandlerAcceptsManualSync(t *testing.T) {
 // written again.
 func TestHandlerReprocessesOneStageAndStartsARun(t *testing.T) {
 	state := surfaceState()
-	trigger := &fakeSyncTrigger{accepted: true}
-	handler := newHandlerWithTrigger(t, &fakeOAuth{}, state, trigger)
+	trigger := &fakeSync{accepted: true}
+	handler := newHandlerWithSync(t, &fakeOAuth{}, state, trigger)
 
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/routes/12/stages/1/reprocess"))
@@ -523,7 +523,7 @@ func TestHandlerReprocessesOneStageAndStartsARun(t *testing.T) {
 // request waits for a pass that will honour it rather than being lost.
 func TestHandlerKeepsAReprocessRequestWhenARunIsAlreadyActive(t *testing.T) {
 	state := surfaceState()
-	handler := newHandlerWithTrigger(t, &fakeOAuth{}, state, &fakeSyncTrigger{})
+	handler := newHandlerWithSync(t, &fakeOAuth{}, state, &fakeSync{})
 
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/routes/12/stages/1/reprocess"))
@@ -532,8 +532,8 @@ func TestHandlerKeepsAReprocessRequestWhenARunIsAlreadyActive(t *testing.T) {
 }
 
 func TestHandlerReportsAnUnknownStageForReprocessingAsNotFound(t *testing.T) {
-	trigger := &fakeSyncTrigger{accepted: true}
-	handler := newHandlerWithTrigger(t, &fakeOAuth{}, &fakeState{}, trigger)
+	trigger := &fakeSync{accepted: true}
+	handler := newHandlerWithSync(t, &fakeOAuth{}, &fakeState{}, trigger)
 
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/routes/99/stages/1/reprocess"))
@@ -549,8 +549,8 @@ func TestHandlerTriggersEachPhaseOnItsOwn(t *testing.T) {
 		"/v1/sync/source":  SyncPhaseSource,
 		"/v1/sync/targets": SyncPhaseTargets,
 	} {
-		trigger := &fakeSyncTrigger{accepted: true}
-		handler := newHandlerWithTrigger(t, &fakeOAuth{}, &fakeState{}, trigger)
+		trigger := &fakeSync{accepted: true}
+		handler := newHandlerWithSync(t, &fakeOAuth{}, &fakeState{}, trigger)
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, path))
 		assert.Equalf(t, http.StatusAccepted, response.Code, "POST %s status", path)
@@ -635,6 +635,122 @@ func TestHandlerReportsHowMuchOfTheLibraryIsClassified(t *testing.T) {
 	assert.Equal(t, 3, view.Sync.Surface.Total, "total")
 }
 
+// A run that has not finished must not be reported as the last one that did.
+// An operator who has just pressed a button would read "succeeded" as their
+// answer, and nothing in the response would say otherwise.
+func TestHandlerReportsARunInFlightRatherThanTheLastResult(t *testing.T) {
+	state := convergenceStateFixture()
+	state.lastRun = &phaseRun{
+		phase:       "targets",
+		completedAt: time.Date(2026, time.August, 18, 6, 0, 0, 0, time.UTC),
+		outcome:     "succeeded",
+	}
+	view := statusOf(t, newHandlerWithLiveSync(t, state, SyncActivityState{
+		Phase: SyncPhaseTargets, Running: true,
+	}))
+
+	assert.Equal(t, runningState, view.Sync.State, "sync state")
+	// The finished run is still reported beside it. It remains the last thing
+	// that happened; it is only no longer the answer to "what is happening".
+	assert.Equal(t, "succeeded", view.Sync.LastResult, "last result")
+	require.NotNil(t, view.Sync.Active, "the status reports no work under way")
+	assert.Equal(t, "targets", view.Sync.Active.Phase, "active phase")
+	assert.Equal(t, 2, view.Sync.Active.Targets, "configured targets")
+	// The aggregate of the two slots in the fixture: one holds both stages, the
+	// other owes both.
+	assert.Equal(t, targetStagesView{Current: 2, Pending: 2}, view.Sync.Active.Stages, "active stages")
+	assert.Empty(t, view.Sync.Active.StartsAt, "a run under way is being held back")
+}
+
+// A run is accepted before its first half starts. That window is short, and it
+// is exactly when an operator is looking at the page.
+func TestHandlerReportsAnAcceptedRunBeforeItsFirstHalfStarts(t *testing.T) {
+	view := statusOf(t, newHandlerWithLiveSync(t, convergenceStateFixture(), SyncActivityState{Running: true}))
+
+	assert.Equal(t, queuedState, view.Sync.State, "sync state")
+	require.NotNil(t, view.Sync.Active, "the status reports no work under way")
+	assert.Empty(t, view.Sync.Active.Phase, "a half was named before one started")
+}
+
+// Startup holds the first run back deliberately. Reporting that as "idle" would
+// describe a service with nothing to do.
+func TestHandlerReportsAFirstRunHeldBackByTheInitialDelay(t *testing.T) {
+	startsAt := time.Date(2026, time.August, 18, 6, 5, 0, 0, time.UTC)
+	view := statusOf(t, newHandlerWithLiveSync(t, convergenceStateFixture(), SyncActivityState{StartsAt: startsAt}))
+
+	assert.Equal(t, delayedState, view.Sync.State, "sync state")
+	require.NotNil(t, view.Sync.Active, "the status reports no work under way")
+	assert.Equal(t, "2026-08-18T06:05:00Z", view.Sync.Active.StartsAt, "the instant the run is held until")
+	assert.Empty(t, view.Sync.Active.Phase, "a half was named before the run started")
+}
+
+// A manual trigger during that startup delay is work happening now, and the
+// instant the held-back run is still due at belongs to a different run.
+func TestHandlerOmitsTheHeldBackInstantFromARunAlreadyUnderWay(t *testing.T) {
+	activity := SyncActivityState{
+		StartsAt: time.Date(2026, time.August, 18, 6, 5, 0, 0, time.UTC),
+		Phase:    SyncPhaseSource,
+		Running:  true,
+	}
+	view := statusOf(t, newHandlerWithLiveSync(t, convergenceStateFixture(), activity))
+
+	assert.Equal(t, runningState, view.Sync.State, "sync state")
+	require.NotNil(t, view.Sync.Active, "the status reports no work under way")
+	assert.Empty(t, view.Sync.Active.StartsAt, "a due instant was reported for a run already under way")
+}
+
+// Nothing under way is the absence of a state rather than one more state to
+// report, so the group is absent too.
+func TestHandlerOmitsWorkUnderWayWhenNothingIsRunning(t *testing.T) {
+	view := statusOf(t, newHandlerWithLiveSync(t, convergenceStateFixture(), SyncActivityState{}))
+
+	assert.Equal(t, "idle", view.Sync.State, "sync state")
+	assert.Nil(t, view.Sync.Active, "the status reports work under way with nothing running")
+}
+
+// A refused trigger is a conflict and nothing else. It must not leave the
+// status describing a second run that was never started.
+func TestHandlerRefusesADuplicateTriggerWithoutManufacturingASecondRun(t *testing.T) {
+	syncRuns := &fakeSync{activity: SyncActivityState{Phase: SyncPhaseSource, Running: true}}
+	handler := newHandlerWithSync(t, &fakeOAuth{}, &fakeState{}, syncRuns)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/sync"))
+	require.Equal(t, http.StatusConflict, response.Code, "POST /v1/sync status")
+
+	view := statusOf(t, handler)
+	assert.Equal(t, runningState, view.Sync.State, "sync state")
+	require.NotNil(t, view.Sync.Active, "the status reports no work under way")
+	assert.Equal(t, "source", view.Sync.Active.Phase, "active phase")
+}
+
+func TestSyncFuncsAdaptAPairOfFunctions(t *testing.T) {
+	activity := SyncActivityState{Phase: SyncPhaseSource, Running: true}
+
+	var asked SyncPhase
+
+	funcs := SyncFuncs{
+		TriggerFunc: func(phase SyncPhase) bool {
+			asked = phase
+
+			return true
+		},
+		ActivityFunc: func() SyncActivityState { return activity },
+	}
+
+	assert.True(t, funcs.Trigger(SyncPhaseTargets), "trigger")
+	assert.Equal(t, SyncPhaseTargets, asked, "the phase the trigger was asked for")
+	assert.Equal(t, activity, funcs.Activity(), "activity")
+}
+
+// A process whose runs begin and end inside the request that asked for one has
+// no in-flight window to describe, so it wires no ActivityFunc at all.
+func TestSyncFuncsReportNothingUnderWayWithoutAnActivityFunc(t *testing.T) {
+	funcs := SyncFuncs{TriggerFunc: func(SyncPhase) bool { return false }}
+
+	assert.Equal(t, SyncActivityState{}, funcs.Activity(), "activity")
+}
+
 // An operator who has started the browser flow and not finished it is in a
 // state the targets table cannot hold, and it matters: told "not connected",
 // they would start the flow a second time and invalidate the first.
@@ -695,7 +811,7 @@ func TestHandlerReportsUnreadableScheduleAsUnavailable(t *testing.T) {
 }
 
 func TestHandlerRejectsOverlappingManualSync(t *testing.T) {
-	handler := newHandlerWithTrigger(t, &fakeOAuth{}, &fakeState{}, &fakeSyncTrigger{})
+	handler := newHandlerWithSync(t, &fakeOAuth{}, &fakeState{}, &fakeSync{})
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/sync"))
 	assert.Equal(t, http.StatusConflict, response.Code, "sync status")
@@ -764,7 +880,7 @@ func TestNewRejectsIncompleteOptions(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := New(test.options, &fakeOAuth{}, &fakeState{}, &fakeSyncTrigger{}, &fakeAssets{})
+			_, err := New(test.options, &fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{})
 			require.Error(t, err, "New() accepted the options")
 		})
 	}
@@ -784,7 +900,7 @@ func newHandlerWithVerifier(t *testing.T, verifier AccessVerifier) *Handler {
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
 		},
-		&fakeOAuth{}, &fakeState{}, &fakeSyncTrigger{accepted: true}, &fakeAssets{},
+		&fakeOAuth{}, &fakeState{}, &fakeSync{accepted: true}, &fakeAssets{},
 	)
 	require.NoError(t, err, "New()")
 
@@ -792,7 +908,7 @@ func newHandlerWithVerifier(t *testing.T, verifier AccessVerifier) *Handler {
 }
 
 func newHandler(t *testing.T, oauthService OAuth, state State) *Handler {
-	return newHandlerWithTrigger(t, oauthService, state, &fakeSyncTrigger{accepted: true})
+	return newHandlerWithSync(t, oauthService, state, &fakeSync{accepted: true})
 }
 
 // newHandlerWithTargets builds a handler configured for more than one slot, which
@@ -807,14 +923,33 @@ func newHandlerWithTargets(t *testing.T, state State, targetIDs ...string) *Hand
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
 		},
-		&fakeOAuth{}, state, &fakeSyncTrigger{accepted: true}, &fakeAssets{},
+		&fakeOAuth{}, state, &fakeSync{accepted: true}, &fakeAssets{},
 	)
 	require.NoError(t, err, "New()")
 
 	return handler
 }
 
-func newHandlerWithTrigger(t *testing.T, oauthService OAuth, state State, syncTrigger SyncTrigger) *Handler {
+// newHandlerWithLiveSync builds a two-slot handler whose synchronization process
+// reports the given work as unfinished.
+func newHandlerWithLiveSync(t *testing.T, state State, activity SyncActivityState) *Handler {
+	t.Helper()
+	handler, err := New(
+		&Options{
+			TargetIDs:        []string{"rider-a", "rider-b"},
+			TileStyleURL:     testTileStyleURL,
+			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
+			AccessEmail:      testAccessEmail,
+			BrowserOriginURL: testBrowserOriginURL,
+		},
+		&fakeOAuth{}, state, &fakeSync{accepted: true, activity: activity}, &fakeAssets{},
+	)
+	require.NoError(t, err, "New()")
+
+	return handler
+}
+
+func newHandlerWithSync(t *testing.T, oauthService OAuth, state State, syncRuns Sync) *Handler {
 	t.Helper()
 	handler, err := New(
 		&Options{
@@ -826,7 +961,7 @@ func newHandlerWithTrigger(t *testing.T, oauthService OAuth, state State, syncTr
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
 		},
-		oauthService, state, syncTrigger, &fakeAssets{},
+		oauthService, state, syncRuns, &fakeAssets{},
 	)
 	require.NoError(t, err, "New()")
 
@@ -870,18 +1005,21 @@ func (o *fakeOAuth) Start(_ context.Context, _, targetID string) (string, error)
 
 func (o *fakeOAuth) Complete(context.Context, string, string, string) error { return o.completeErr }
 
-type fakeSyncTrigger struct {
+type fakeSync struct {
+	activity SyncActivityState
 	phases   []SyncPhase
 	calls    int
 	accepted bool
 }
 
-func (t *fakeSyncTrigger) Trigger(phase SyncPhase) bool {
+func (t *fakeSync) Trigger(phase SyncPhase) bool {
 	t.calls++
 	t.phases = append(t.phases, phase)
 
 	return t.accepted
 }
+
+func (t *fakeSync) Activity() SyncActivityState { return t.activity }
 
 type fakeAssets struct{}
 
@@ -926,6 +1064,7 @@ type fakeState struct {
 	pendingAuth       []string
 	sourceStages      []storedStage
 	targetRuns        []fakeTargetRun
+	lastRun           *phaseRun
 	surfaceHash       string
 	coordinates       json.RawMessage
 	surfaceRanges     json.RawMessage
@@ -1096,8 +1235,14 @@ func (s *fakeState) StageSurface(
 }
 
 //nolint:gocritic // This fake conforms to the persistence-free state boundary.
-func (*fakeState) LastSyncRun(context.Context) (time.Time, string, string, int, int, int, int, bool, error) {
-	return time.Time{}, "", "", 0, 0, 0, 0, false, nil
+func (s *fakeState) LastSyncRun(context.Context) (time.Time, string, string, int, int, int, int, bool, error) {
+	if s.lastRun == nil {
+		return time.Time{}, "", "", 0, 0, 0, 0, false, nil
+	}
+	run := s.lastRun
+
+	return run.completedAt, run.outcome, run.detail,
+		run.sourceStages, run.created, run.updated, run.deleted, true, nil
 }
 
 func (s *fakeState) ForEachPhaseRun(

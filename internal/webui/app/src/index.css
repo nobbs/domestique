@@ -879,6 +879,18 @@ body {
   color: var(--text-muted);
 }
 
+/*
+ * What the service is doing right now. It reads as a statement rather than an
+ * alert — the run was asked for, and this is it proceeding — but it carries the
+ * accent, because it is the only line on the page that is still changing.
+ */
+.sync-controls__active {
+  margin: -0.35rem 0 0.85rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--accent-text);
+}
+
 .sync-controls__coverage {
   margin: -0.35rem 0 0.85rem;
   font-size: 0.85rem;

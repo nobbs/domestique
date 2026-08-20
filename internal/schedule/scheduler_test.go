@@ -63,6 +63,41 @@ func TestSchedulerStopsBeforeInitialRunWhenCancelled(t *testing.T) {
 	assert.Zero(t, runner.calls.Load(), "the runner ran despite the cancellation arriving first")
 }
 
+// A first run held back by the initial delay is work waiting rather than a
+// service with nothing to do, and nothing else can tell the two apart.
+func TestSchedulerReportsTheHeldBackFirstRun(t *testing.T) {
+	initial := make(chan time.Time, 1)
+	waiting := make(chan struct{})
+	runner := newFakeRunner()
+	scheduler, err := New(Options{InitialDelay: time.Minute, Interval: time.Hour}, runner)
+	require.NoError(t, err)
+	startedAt := time.Date(2026, time.August, 20, 6, 0, 0, 0, time.UTC)
+	scheduler.now = func() time.Time { return startedAt }
+	scheduler.after = func(time.Duration) <-chan time.Time {
+		close(waiting)
+
+		return initial
+	}
+	scheduler.ticker = func(time.Duration) ticker { return &fakeTicker{ticks: make(chan time.Time)} }
+	_, held := scheduler.NextRunAt()
+	assert.False(t, held, "NextRunAt() held a run before Run() started")
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	go scheduler.Run(ctx)
+
+	<-waiting
+	nextRunAt, held := scheduler.NextRunAt()
+	assert.True(t, held, "NextRunAt() reported nothing while the first run was waiting")
+	assert.Equal(t, startedAt.Add(time.Minute), nextRunAt, "NextRunAt()")
+
+	initial <- startedAt
+	waitForRun(t, runner.called)
+	// The interval between runs is this service's cadence, not work held back.
+	_, held = scheduler.NextRunAt()
+	assert.False(t, held, "NextRunAt() still held a run once the first one had started")
+}
+
 type fakeRunner struct {
 	called chan struct{}
 	calls  atomic.Int32
