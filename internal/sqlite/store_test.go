@@ -187,6 +187,33 @@ func TestStoreReportsOnlyLiveAuthorizationsAsPending(t *testing.T) {
 	assert.Equal(t, []string{"rider-a"}, pending, "pending target slots")
 }
 
+// The visitor is this method's entire output, so a caller that supplied none and
+// a visitor that fails partway both have to be answered rather than iterated
+// past: the status view reads a slot as pending on the strength of a visit, and
+// a swallowed failure would report a half-read table as a whole one.
+func TestStoreStopsReadingPendingAuthorizationsOnVisitorFailure(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargets(t.Context(), []string{"rider-a"}), "EnsureTargets()")
+	require.NoError(t, store.BeginAuthorization(
+		t.Context(),
+		"rider-a",
+		"rider@example.ts.net",
+		bytes.Repeat([]byte{6}, 32),
+		time.Now().Add(time.Minute),
+	), "BeginAuthorization()")
+
+	require.Error(
+		t,
+		store.ForEachPendingAuthorization(t.Context(), nil),
+		"ForEachPendingAuthorization() without a visitor",
+	)
+
+	visitErr := errors.New("visiting pending authorization")
+	assert.ErrorIs(t, store.ForEachPendingAuthorization(t.Context(), func(string) error {
+		return visitErr
+	}), visitErr, "ForEachPendingAuthorization() with a failing visitor")
+}
+
 func TestStorePersistsTrustedInventoryAndTargetStages(t *testing.T) {
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.EnsureTargets(t.Context(), []string{"rider-a"}), "EnsureTargets()")
