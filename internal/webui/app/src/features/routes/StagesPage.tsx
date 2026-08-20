@@ -54,7 +54,6 @@ export function StagesPage() {
       <h1 className="visually-hidden">Route library</h1>
       <SyncControls />
       <TargetConvergence />
-      <SyncHistory />
       {isPending ? <LoadingMessage what="the route library" /> : null}
       {isError ? <ErrorMessage what="the route library" error={error} /> : null}
       {data && data.length === 0 ? (
@@ -108,6 +107,12 @@ export function StagesPage() {
           )}
         </>
       ) : null}
+      {/*
+       * Last, under the library rather than above it. It is the one section on
+       * the page that asks nothing of the reader, and a page that opens on
+       * three months of history has pushed what it is for off the screen.
+       */}
+      <SyncHistory />
     </Layout>
   );
 }
