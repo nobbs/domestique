@@ -94,6 +94,17 @@ describe("SyncPage", () => {
     ).toBeInTheDocument();
   });
 
+  // `/sync?run=` names no run. Reading the empty string as a reference would put
+  // a card at the top of the page about a run nobody asked after.
+  it("ignores a run parameter with nothing in it", async () => {
+    renderPage("/sync?run=");
+
+    // Waited on so the assertion below is made against a settled history rather
+    // than against a card that had not decided what to say yet.
+    expect(await screen.findByText("Nothing has run yet.")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /That run/ })).toBeNull();
+  });
+
   it("addresses the exact commit the running service was built from", async () => {
     renderPage("/sync", statusBody({ revision: REVISION, image_digest: DIGEST }));
 

@@ -96,8 +96,10 @@ function BuildLine() {
 export function SyncPage() {
   const [params] = useSearchParams();
   // The opaque name a Pushover message carries, and nothing else from the query
-  // string. It is matched against the recorded runs and printed as it is.
-  const reference = params.get("run");
+  // string. It is matched against the recorded runs and printed as it is. A
+  // `?run=` with nothing after it names no run, so it is read as no parameter
+  // rather than as a reference the history will never hold.
+  const reference = params.get("run") || null;
 
   return (
     <PageShell>
