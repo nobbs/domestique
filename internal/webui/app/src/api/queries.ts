@@ -19,6 +19,16 @@ const ACTIVE_POLL_MS = 2000;
 /** How many recorded runs one page of the history holds. */
 const HISTORY_PAGE_SIZE = 10;
 
+/**
+ * How many the notice reads at a time when it is looking for one named run.
+ *
+ * The largest page the service will serve. Resolving a reference means being
+ * able to say it is not there, which is a question about the whole history
+ * rather than about its first page — and the history is bounded, so the largest
+ * page turns a walk of fifty requests into one of five.
+ */
+const LOOKUP_PAGE_SIZE = 100;
+
 export const routesQuery = () =>
   queryOptions({
     queryKey: ["stages"] as const,
@@ -63,6 +73,22 @@ export const syncRunsQuery = () =>
   infiniteQueryOptions({
     queryKey: ["sync-runs"] as const,
     queryFn: ({ pageParam }) => fetchSyncRuns(pageParam, HISTORY_PAGE_SIZE),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (page) => page.next,
+  });
+
+/**
+ * The same history, read for one reference rather than for reading.
+ *
+ * Kept apart from the card's own query because the two want different pages:
+ * the card shows ten at a time because that is a readable card, and this reads
+ * a hundred at a time because it is searching. It is only ever asked when a
+ * notification named a run.
+ */
+export const syncRunLookupQuery = (reference: string) =>
+  infiniteQueryOptions({
+    queryKey: ["sync-run-lookup", reference] as const,
+    queryFn: ({ pageParam }) => fetchSyncRuns(pageParam, LOOKUP_PAGE_SIZE),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (page) => page.next,
   });

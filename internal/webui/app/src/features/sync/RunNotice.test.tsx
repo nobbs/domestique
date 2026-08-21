@@ -126,7 +126,10 @@ function renderNotice(
     },
   });
   client.setQueryData(["status"], value);
-  client.setQueryData(["sync-runs"], { pages: [{ runs }], pageParams: [undefined] });
+  client.setQueryData(["sync-run-lookup", reference ?? ""], {
+    pages: [{ runs }],
+    pageParams: [undefined],
+  });
   render(
     <QueryClientProvider client={client}>
       <MemoryRouter>
@@ -244,7 +247,7 @@ describe("RunNotice", () => {
     });
     client.setQueryData(["status"], status());
     // One page held, and a cursor saying the history goes further back.
-    client.setQueryData(["sync-runs"], {
+    client.setQueryData(["sync-run-lookup", "aaaaaaaaaaaa"], {
       pages: [{ runs: [run({ reference: "bbbbbbbbbbbb" })], next: "cursor" }],
       pageParams: [undefined],
     });

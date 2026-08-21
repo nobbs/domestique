@@ -20,7 +20,7 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tansta
 import { useEffect } from "react";
 import { Link } from "react-router";
 import { triggerSync } from "../../api/client";
-import { statusQuery, syncRunsQuery } from "../../api/queries";
+import { statusQuery, syncRunLookupQuery } from "../../api/queries";
 import type { Status, SyncPhase, SyncRun } from "../../api/types";
 import { SYNC_PHASES } from "../../api/types";
 import { Button } from "../../components/Button";
@@ -86,10 +86,16 @@ const RETRY_LABELS: Record<SyncPhase, string> = {
 export function RunNotice({ reference }: { reference: string | null }) {
   const queryClient = useQueryClient();
   const status = useQuery(statusQuery());
-  // The history card below has already asked for this, so on an ordinary visit
-  // this is the cache. A notification tap arrives with nothing cached and this
-  // is the request that resolves the reference.
-  const history = useInfiniteQuery(syncRunsQuery());
+  /*
+   * Only asked when a notification named a run. The history card below reads
+   * the same endpoint for its own card-sized pages; this reads it in hundreds,
+   * because what it needs is not the recent runs but whether one particular run
+   * is anywhere in the history at all.
+   */
+  const history = useInfiniteQuery({
+    ...syncRunLookupQuery(reference ?? ""),
+    enabled: reference !== null,
+  });
   const run = useMutation({
     mutationFn: (phase: SyncPhase) => triggerSync(phase),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: statusQuery().queryKey }),
@@ -99,14 +105,15 @@ export function RunNotice({ reference }: { reference: string | null }) {
   const notice = noticeRun(reference, runs, status.data);
 
   /*
-   * The history is read a page at a time, and a notification can be older than
-   * the first page of it. A reference the loaded pages do not hold is therefore
-   * not yet an answer: keep asking for the next page until the run is found or
-   * the history runs out. A page that fails to arrive ends the walk — retrying
-   * it here would be a loop rather than a search.
+   * Even in hundreds the history can be more than one page, and a notification
+   * can be older than the page that has arrived. A reference the loaded pages
+   * do not hold is therefore not yet an answer: keep asking for the next page
+   * until the run is found or the history runs out. A page that fails to arrive
+   * ends the walk — retrying it here would be a loop rather than a search.
    */
   const { fetchNextPage, hasNextPage, isFetchingNextPage, isFetchNextPageError } = history;
   const searching = hasNextPage && !isFetchNextPageError;
+
   useEffect(() => {
     if (reference === null || notice || !searching || isFetchingNextPage) {
       return;
