@@ -31,9 +31,20 @@ const drawn = vi.hoisted(() => ({
   layers: [] as LayerRecord[],
   viewports: [] as Array<{ bounds: unknown; maxZoom: number }>,
   maps: [] as Array<Record<string, unknown>>,
+  furniture: [] as Array<{ control: string; position: string }>,
+  /** What the loaded map hands back as its own container. */
+  container: null as HTMLElement | null,
 }));
 
 vi.mock("../../lib/maplibre", () => ({}));
+
+/*
+ * The credit asks the style document what it must attribute, which is a fetch
+ * and nothing this file is about. What is asked here is where it lands.
+ */
+vi.mock("../../components/MapCredits", () => ({
+  MapCredits: () => <p data-testid="credits">© somebody</p>,
+}));
 
 vi.mock("../../components/MapViewport", () => ({
   MapViewport: (props: { bounds: unknown; maxZoom: number }) => {
@@ -44,18 +55,47 @@ vi.mock("../../components/MapViewport", () => ({
 }));
 
 vi.mock("react-map-gl/maplibre", () => ({
-  Map: ({ children, ...rest }: { children?: ReactNode; "aria-label"?: string }) => {
+  Map: ({
+    children,
+    onLoad,
+    ...rest
+  }: {
+    children?: ReactNode;
+    "aria-label"?: string;
+    onLoad?: (event: { target: { getContainer: () => HTMLElement | null } }) => void;
+  }) => {
     drawn.maps.push(rest);
 
-    return <div data-testid="map">{children}</div>;
+    // A ref callback rather than the render pass: the real map reports itself
+    // loaded once it is mounted, and so must the stand-in.
+    return (
+      <div
+        data-testid="map"
+        ref={(node) => {
+          if (node) {
+            onLoad?.({ target: { getContainer: () => drawn.container } });
+          }
+        }}
+      >
+        {children}
+      </div>
+    );
   },
   Layer: (props: LayerRecord) => {
     drawn.layers.push(props);
 
     return null;
   },
-  NavigationControl: () => null,
-  ScaleControl: () => null,
+  NavigationControl: ({ position }: { position: string }) => {
+    drawn.furniture.push({ control: "navigation", position });
+
+    return null;
+  },
+  ScaleControl: ({ position }: { position: string }) => {
+    drawn.furniture.push({ control: "scale", position });
+
+    return null;
+  },
   Source: ({ children, ...rest }: { children?: ReactNode } & SourceRecord) => {
     drawn.sources.push(rest);
 
@@ -79,11 +119,25 @@ function line(key: string, offset = 0) {
   };
 }
 
+/** A map container with the corner MapLibre keeps its controls in. */
+function containerWithCluster(): HTMLElement {
+  const container = document.createElement("div");
+  const cluster = document.createElement("div");
+  cluster.className = "maplibregl-ctrl-bottom-left";
+  container.append(cluster);
+  document.body.append(container);
+
+  return container;
+}
+
 beforeEach(() => {
   drawn.sources = [];
   drawn.layers = [];
   drawn.viewports = [];
   drawn.maps = [];
+  drawn.furniture = [];
+  drawn.container?.remove();
+  drawn.container = containerWithCluster();
 });
 
 function show(props: Partial<Parameters<typeof LibraryMap>[0]> = {}) {
@@ -253,5 +307,41 @@ describe("LibraryMap", () => {
       "aria-label": "Map of the route library",
       attributionControl: false,
     });
+  });
+
+  /*
+   * One corner rather than four. The scale bar is asked for first because
+   * MapLibre adds to a bottom corner by prepending, so the zoom pair asked for
+   * after it ends up above it: the cluster reads zoom, scale, credit downward.
+   */
+  it("asks for every control in the one corner, zoom pair uppermost", () => {
+    show();
+
+    // The first pass: finding the cluster to draw the credit into renders the
+    // map a second time, and MapLibre keeps a control it has already been given.
+    expect(drawn.furniture.slice(0, 2)).toEqual([
+      { control: "scale", position: "bottom-left" },
+      { control: "navigation", position: "bottom-left" },
+    ]);
+  });
+
+  it("draws the credit into that same corner, under the controls", () => {
+    show();
+
+    expect(drawn.container?.querySelector(".maplibregl-ctrl-bottom-left")?.textContent).toBe(
+      "© somebody",
+    );
+  });
+
+  /*
+   * A licence obliges the credit to be visible, so a map that reports no corner
+   * to put it in costs it its place in the cluster rather than its place on the
+   * page.
+   */
+  it("keeps the credit on the page when the map reports no cluster", () => {
+    drawn.container = document.createElement("div");
+    show();
+
+    expect(screen.getByTestId("credits")).toBeInTheDocument();
   });
 });

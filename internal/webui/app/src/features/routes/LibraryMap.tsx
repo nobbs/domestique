@@ -18,7 +18,8 @@
  * the screen.
  */
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   Layer,
   Map as MapLibre,
@@ -50,6 +51,9 @@ const LIBRARY_INK = { light: "#1c2126", dark: "#eef0f3" } as const;
  * be two different colours.
  */
 const SELECTION_ACCENT = { light: "#236fc7", dark: "#70adfb" } as const;
+
+/** Where MapLibre keeps the controls this map asked for. */
+const CLUSTER_SELECTOR = ".maplibregl-ctrl-bottom-left";
 
 /**
  * How strongly the library is drawn.
@@ -142,6 +146,7 @@ export function LibraryMap({
   extraCredit,
 }: LibraryMapProps) {
   const theme = darkBasemap ? "dark" : "light";
+  const [cluster, setCluster] = useState<HTMLElement | null>(null);
 
   // The selected route stays in the collection rather than being cut out of it:
   // removing it would rebuild every line on every selection, and the overlay
@@ -155,23 +160,40 @@ export function LibraryMap({
   };
 
   /*
+   * The corner MapLibre keeps its controls in, once there is one.
+   *
+   * It is read off the loaded map rather than assumed, so a version of MapLibre
+   * that arranges its corners differently costs the credit its place in the
+   * cluster rather than its place on the page.
+   */
+  const findCluster = (event: { target?: { getContainer?: () => HTMLElement } }) => {
+    setCluster(event.target?.getContainer?.()?.querySelector(CLUSTER_SELECTOR) ?? null);
+  };
+
+  /*
    * MapLibre's own attribution control is off. It renders the provider's own
    * markup into a corner of its own, and this map has one corner: the credit is
-   * drawn by MapCredits below, under the zoom pair and the scale bar.
+   * drawn by MapCredits, under the zoom pair and the scale bar.
    */
   return (
     <div className="route-map">
       <MapLibre
         mapStyle={styleUrl}
         onError={onError}
+        onLoad={findCluster}
         style={{ width: "100%", height: "100%" }}
         aria-label="Map of the route library"
         attributionControl={false}
       >
         <MapViewport bounds={bounds} maxZoom={maxZoom} />
-        {/* One cluster, top-right: the credit, the zoom pair, the scale bar. */}
-        <NavigationControl position="top-right" showCompass={false} />
-        <ScaleControl position="top-right" unit="metric" />
+        {/*
+         * One cluster, bottom-left: the zoom pair, the scale bar, the credit,
+         * top to bottom. They are asked for in the other order because MapLibre
+         * adds to a bottom corner by prepending, so that a control added later
+         * stacks above the corner rather than under the ones already there.
+         */}
+        <ScaleControl position="bottom-left" unit="metric" />
+        <NavigationControl position="bottom-left" showCompass={false} />
         <Source id="library-lines" type="geojson" data={library}>
           <Layer
             id="library-line"
@@ -214,7 +236,19 @@ export function LibraryMap({
          */}
         {overlay}
       </MapLibre>
-      <MapCredits styleUrl={styleUrl} extra={extraCredit} />
+      {/*
+       * Into the cluster if the map has one, and into the corner itself if it
+       * has not. Drawn into MapLibre's own container rather than beside it so
+       * the three pieces of furniture are one column with one gap: a credit
+       * positioned alongside the cluster would have to be cleared by it, and
+       * whatever number did that clearing would be wrong for the next provider
+       * whose attribution runs to a second line.
+       */}
+      {cluster === null ? (
+        <MapCredits styleUrl={styleUrl} extra={extraCredit} />
+      ) : (
+        createPortal(<MapCredits styleUrl={styleUrl} extra={extraCredit} />, cluster)
+      )}
     </div>
   );
 }
