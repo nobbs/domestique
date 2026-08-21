@@ -192,15 +192,25 @@ body {
  * own chrome — 714 pt of an 874 pt screen — and reports every safe-area inset as
  * 0 px whatever `viewport-fit` says, so no element of the page reaches them
  * however it is positioned. The one thing that paints there is the document
- * canvas, which takes its colour from the body; `theme-color` is ignored.
+ * canvas, which takes its colour from the body; `theme-color` is ignored, and so
+ * is a colour on the root, which WebKit paints behind the body rather than into
+ * the strips.
  *
  * So: black, and the map reads as letterboxed rather than as cartography that
- * stopped short of a slab of page background. Only where the map is — the pages
- * that scroll keep the page colour behind their own overscroll — and only in a
- * tab, since an installed copy has no strips left to fill.
+ * stopped short of a slab of page background.
+ *
+ * Three things have to be true at once for that to be the right colour, which is
+ * what the query and the selector are between them saying. Only on a phone,
+ * because a window this is not has no strips and the surface of the page should
+ * stay the surface of the page. Only under the map, so the pages that scroll
+ * keep that surface behind their own overscroll. And only in a tab — an
+ * installed copy is given the whole screen above, and has no strips left to
+ * fill.
  */
-body:has(.shell:not(.shell--page)) {
-  background: var(--letterbox);
+@media (max-width: 52rem) {
+  body:has(.shell:not(.shell--page)) {
+    background: var(--letterbox);
+  }
 }
 
 /*
