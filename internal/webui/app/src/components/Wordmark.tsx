@@ -97,7 +97,7 @@ export function Wordmark() {
 
   return (
     <div className="panel wordmark">
-      <Logo size={26} />
+      <Logo className="wordmark__logo" size={22} />
       <span className="wordmark__name">domestique</span>
       <Link
         className="wordmark__sync"
