@@ -209,6 +209,58 @@ describe("RunNotice", () => {
   });
 
   /*
+   * The history is read ten runs at a time and a notification can be older than
+   * the first page of it. The card walks back through the pages rather than
+   * calling the run pruned because it was not in the first ten.
+   */
+  it("keeps asking for older pages until the named run turns up", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        return new Response(
+          JSON.stringify({
+            runs: [
+              {
+                reference: "aaaaaaaaaaaa",
+                phase: "targets",
+                completed_at: "2026-08-17T06:30:00Z",
+                result: "succeeded",
+                source_stages: 0,
+                created: 1,
+                updated: 0,
+                deleted: 0,
+              },
+            ],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }),
+    );
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false, staleTime: Number.POSITIVE_INFINITY },
+        mutations: { retry: false },
+      },
+    });
+    client.setQueryData(["status"], status());
+    // One page held, and a cursor saying the history goes further back.
+    client.setQueryData(["sync-runs"], {
+      pages: [{ runs: [run({ reference: "bbbbbbbbbbbb" })], next: "cursor" }],
+      pageParams: [undefined],
+    });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <RunNotice reference="aaaaaaaaaaaa" />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByRole("heading", { name: "That run finished" })).toBeInTheDocument();
+    expect(screen.queryByText(/no longer kept/)).toBeNull();
+  });
+
+  /*
    * A history that could not be read says nothing about the run: reporting that
    * as a pruning would tell the operator their run is gone on the strength of a
    * lookup that never happened.

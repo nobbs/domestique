@@ -17,6 +17,7 @@
  */
 
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect } from "react";
 import { Link } from "react-router";
 import { triggerSync } from "../../api/client";
 import { statusQuery, syncRunsQuery } from "../../api/queries";
@@ -98,6 +99,22 @@ export function RunNotice({ reference }: { reference: string | null }) {
   const notice = noticeRun(reference, runs, status.data);
 
   /*
+   * The history is read a page at a time, and a notification can be older than
+   * the first page of it. A reference the loaded pages do not hold is therefore
+   * not yet an answer: keep asking for the next page until the run is found or
+   * the history runs out. A page that fails to arrive ends the walk — retrying
+   * it here would be a loop rather than a search.
+   */
+  const { fetchNextPage, hasNextPage, isFetchingNextPage, isFetchNextPageError } = history;
+  const searching = hasNextPage && !isFetchNextPageError;
+  useEffect(() => {
+    if (reference === null || notice || !searching || isFetchingNextPage) {
+      return;
+    }
+    void fetchNextPage();
+  }, [reference, notice, searching, isFetchingNextPage, fetchNextPage]);
+
+  /*
    * A reference the history no longer holds is the ordinary end of a pruned
    * run, not a fault: the notification outlived what it pointed at. That is
    * only true once the history has actually been read, though — a history the
@@ -105,11 +122,13 @@ export function RunNotice({ reference }: { reference: string | null }) {
    * told apart rather than both reported as a pruning.
    */
   if (!notice) {
-    if (reference === null || history.isPending) {
+    if (reference === null || history.isPending || searching) {
       return null;
     }
 
-    const unread = !history.isSuccess;
+    // Either the history never arrived, or the walk back through it stopped on
+    // a page that did not. Both leave the reference unchecked.
+    const unread = !history.isSuccess || isFetchNextPageError;
 
     return (
       <section className="panel sync-card run-notice" aria-labelledby="notice-heading">
