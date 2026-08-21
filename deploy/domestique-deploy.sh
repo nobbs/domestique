@@ -253,7 +253,7 @@ prune_images() {
       docker image rm "${reference}" > /dev/null 2>&1 ||
         log "kept ${reference} (still in use)"
     done < <(docker image inspect "${id}" --format '{{range .RepoDigests}}{{println .}}{{end}}' 2> /dev/null)
-  done < <(docker images --quiet "${IMAGE_REPO}" | sort --unique)
+  done < <(docker images --quiet "${IMAGE_REPO}" | sort -u)
 }
 
 record() {
