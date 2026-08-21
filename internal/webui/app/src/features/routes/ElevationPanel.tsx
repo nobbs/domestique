@@ -74,7 +74,10 @@ export function ElevationPanel({
           className="elevation-panel__collapse"
           type="button"
           aria-expanded={!collapsed}
-          aria-controls="elevation-plot"
+          // Only while there is a plot to point at: the chart is unmounted when
+          // the panel is a pill, and a control naming an element that is not in
+          // the document is a dangling reference a screen reader cannot follow.
+          {...(collapsed ? {} : { "aria-controls": "elevation-plot" })}
           onClick={() => onCollapsedChange(!collapsed)}
         >
           {collapsed ? "Show the profile" : "Hide the profile"}

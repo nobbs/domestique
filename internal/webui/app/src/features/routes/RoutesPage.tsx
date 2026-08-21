@@ -199,6 +199,15 @@ export function RoutesPage() {
   );
 
   /*
+   * A route the library holds whose geometry did not arrive. Nothing can be
+   * drawn, framed, or profiled from it, so the panel would be a title over an
+   * empty page and the chart an axis with no line under it: the page says what
+   * happened instead, and leaves the search standing as the way on.
+   */
+  const openFailed = openRoute !== null && openGeometry.isError;
+  const shownRoute = openFailed ? null : openRoute;
+
+  /*
    * Everything asked of the open route. It lives here rather than in either
    * view because both views answer it: the hovered position marks the chart and
    * the map, the stretch on show dims one and frames the other, and a class
@@ -385,11 +394,11 @@ export function RoutesPage() {
             selectedKey={focusKey}
             bounds={bounds}
             maxZoom={windowBounds ? WINDOW_MAX_ZOOM : ROUTE_MAX_ZOOM}
-            extraCredit={openRoute ? SURFACE_ATTRIBUTION : undefined}
+            extraCredit={shownRoute ? SURFACE_ATTRIBUTION : undefined}
             onPick={pick}
             inertKey={openKey}
             overlay={
-              openRoute && openCoordinates.length > 1 ? (
+              shownRoute && openCoordinates.length > 1 ? (
                 <RouteOverlay
                   darkBasemap={basemap.dark}
                   coordinates={openCoordinates}
@@ -440,9 +449,16 @@ export function RoutesPage() {
           detail="It may have been removed from the library since the link was made."
         />
       ) : null}
-      {openRoute ? (
+      {openFailed ? (
+        <StatusMessage
+          tone="error"
+          title="Could not load that route's geometry."
+          detail="The library still lists it, so this is worth retrying; search below for another route in the meantime."
+        />
+      ) : null}
+      {shownRoute ? (
         <RoutePanel
-          route={openRoute}
+          route={shownRoute}
           highestMetres={routeProfile ? routeProfile.maxElevationMetres : null}
           subtitle={subtitle}
           surface={surfaceSummary}
@@ -476,11 +492,11 @@ export function RoutesPage() {
           readAt={readAt ? formatReadTime(readAt) : null}
         />
       ) : null}
-      {openRoute ? (
+      {shownRoute ? (
         <ElevationPanel
           profile={windowed ?? routeProfile}
-          title={openRoute.title}
-          ascentMetres={openRoute.ascentMetres}
+          title={shownRoute.title}
+          ascentMetres={shownRoute.ascentMetres}
           surface={surfaceSummary}
           activeMetres={activeMetres}
           onActiveChange={setActiveMetres}

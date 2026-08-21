@@ -424,6 +424,23 @@ describe("RoutesPage", () => {
     expect(screen.getByText("No route at that address.")).toBeInTheDocument();
   });
 
+  /*
+   * The listing has the route and the geometry endpoint does not. A panel built
+   * from no points is a title over an empty page, so the page says what happened
+   * and leaves the search standing rather than drawing a route it cannot draw.
+   */
+  it("says so when the open route's geometry never arrives", async () => {
+    renderPage(LIBRARY, {
+      geometryFor: [LIBRARY[0] as Route, LIBRARY[1] as Route],
+      at: "/?route=2%2F1",
+    });
+
+    expect(await screen.findByText("Could not load that route's geometry.")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Kaiserstuhl Loop" })).toBeNull();
+    expect(screen.getByRole("searchbox")).toBeInTheDocument();
+    expect(lastDrawing().overlaid).toBe(false);
+  });
+
   it("goes back to the search it came from", async () => {
     renderPage(LIBRARY, { at: "/?route=2%2F1" });
     await userEvent.click(screen.getByRole("button", { name: /^← Search \d+ routes?$/ }));
