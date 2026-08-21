@@ -229,17 +229,24 @@ notify() {
 # Keeps the running digest and the rollback target. A digest stays pullable
 # after its tag has moved on, so this is disk hygiene rather than the rollback
 # mechanism itself.
+#
+# The digest is read from each image rather than from the listing, because
+# `docker images` fills its digest column only for an image that still holds the
+# tag it was pulled under. Every image this prunes has lost that tag to a later
+# deployment, so a prune reading the column saw an empty digest for all of them
+# and removed nothing at all. An image carrying no repository digest was built
+# on this host rather than deployed to it, and is left alone.
 prune_images() {
-  local keep_a="$1" keep_b="$2" repo digest
-  while read -r repo digest; do
-    [[ "${repo}" == "${IMAGE_REPO}" ]] || continue
-    [[ "${digest}" == sha256:* ]] || continue
-    if [[ "${digest}" == "${keep_a}" || "${digest}" == "${keep_b}" ]]; then
+  local keep_a="$1" keep_b="$2" id digests
+  while read -r id; do
+    digests="$(docker image inspect "${id}" --format '{{range .RepoDigests}}{{.}} {{end}}' 2> /dev/null)" || continue
+    [[ -n "${digests// /}" ]] || continue
+    if [[ "${digests}" == *"${IMAGE_REPO}@${keep_a}"* || "${digests}" == *"${IMAGE_REPO}@${keep_b}"* ]]; then
       continue
     fi
-    docker image rm "${IMAGE_REPO}@${digest}" > /dev/null 2>&1 ||
-      log "kept ${digest} (still in use)"
-  done < <(docker images --no-trunc --format '{{.Repository}} {{.Digest}}')
+    docker image rm "${id}" > /dev/null 2>&1 ||
+      log "kept ${id} (still in use)"
+  done < <(docker images --quiet "${IMAGE_REPO}" | sort --unique)
 }
 
 record() {
