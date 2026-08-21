@@ -24,11 +24,14 @@ const ARMS = Array.from({ length: 5 }, (_, index) => index * 72);
 export interface LogoProps {
   size?: number;
   title?: string;
+  /** For the caller to set the colour the mark inherits, and nothing else. */
+  className?: string;
 }
 
-export function Logo({ size = 28, title = "domestique" }: LogoProps) {
+export function Logo({ size = 28, title = "domestique", className }: LogoProps) {
   return (
     <svg
+      className={className}
       width={size}
       height={size}
       viewBox="0 0 128 128"

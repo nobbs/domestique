@@ -34,6 +34,15 @@ export interface SourceRoute {
    * following it, which is the point of saying it beforehand.
    */
   host: string;
+  /**
+   * The same place as a name rather than as an address: no port, and no `www.`
+   * in front. A control is wide enough for the part that identifies a provider
+   * to a reader, which is the part that survives dropping both.
+   *
+   * It stays a part of what `host` says, so an affordance that shows this and
+   * announces that is not calling itself two different things.
+   */
+  name: string;
 }
 
 /**
@@ -68,5 +77,9 @@ export function sourceRoute(baseUrl: string | undefined, routeId: number): Sourc
   const url = new URL(base.origin);
   url.pathname = `${base.pathname.replace(/\/+$/, "")}/${SOURCE_ROUTE_PATH}/${routeId}`;
 
-  return { href: url.toString(), host: base.host };
+  return {
+    href: url.toString(),
+    host: base.host,
+    name: base.hostname.replace(/^www\./, ""),
+  };
 }

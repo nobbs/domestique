@@ -255,11 +255,25 @@ body {
   padding: var(--space-2) var(--space-3);
 }
 
-/* Takes the slack, which is what holds the link against the far edge. */
+/*
+ * The mark is the loud half of the pair, so the name is set at body size and
+ * only weighted up: a wordmark standing on a map is a label for the thing the
+ * reader is already looking at, not a masthead over a page they arrived at.
+ *
+ * It also takes the slack, which is what holds the link against the far edge.
+ */
 .wordmark__name {
   margin-right: auto;
-  font: var(--type-title);
-  letter-spacing: var(--track-title);
+  font: var(--type-body);
+  font-weight: 600;
+  letter-spacing: var(--track-body);
+}
+
+/* The one coloured mark in the furniture, and the only thing that names the
+ * application. Given the accent from outside rather than inside, so the mark
+ * keeps its `currentColor` contract and can still be set in ink elsewhere. */
+.wordmark__logo {
+  color: var(--accent);
 }
 
 /*
@@ -483,8 +497,14 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/*
+ * The figures are the panel's content, so they are set at the same step as the
+ * title above them and separated from it by weight instead: a heading that has
+ * to shout down its own numbers is a heading in the wrong place.
+ */
 .route-panel__figures dd {
   font: var(--type-title);
+  font-weight: 500;
   letter-spacing: var(--track-title);
   font-variant-numeric: tabular-nums;
 }
@@ -724,10 +744,15 @@ body {
   color: var(--accent);
 }
 
+/*
+ * A step below the display size the sync page's title takes. This one heads a
+ * card floating over a map rather than a page, and set any larger it becomes
+ * the loudest thing on the screen — louder than the route it is naming.
+ */
 .route-panel__title {
   margin: 0;
-  font: var(--type-display);
-  letter-spacing: var(--track-display);
+  font: var(--type-title);
+  letter-spacing: var(--track-title);
 }
 
 .route-panel__subtitle {
@@ -746,21 +771,22 @@ body {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-2) var(--space-4);
+  /* One gap on both axes: matched controls sitting as a pair, not as two asides. */
+  gap: var(--space-2);
   padding-top: var(--space-3);
   border-top: 1px solid var(--rule);
 }
 
-.route-panel__source {
-  color: var(--ink-2);
-  font: var(--type-row);
-  letter-spacing: var(--track-row);
-  text-decoration: none;
-}
-
-.route-panel__source:hover,
-.route-panel__source:focus-visible {
-  color: var(--accent);
+/*
+ * The link out wears the shared control, so the row reads as two controls
+ * rather than as a button with a sentence next to it. Everything that makes it
+ * look like one comes from Button.module.css; what is left here is the arrow,
+ * which no other control has.
+ */
+.route-panel__source svg {
+  /* Sat on the baseline it reads as a superscript, which it is not. */
+  vertical-align: -2px;
+  margin-left: 3px;
 }
 
 .route-panel__reprocess {
@@ -795,14 +821,18 @@ body {
 }
 
 /*
- * Collapsed, it is a pill in the same corner rather than a panel that shrank:
- * it keeps the right edge it had, so the thing the reader put away is plainly
- * still there and plainly still theirs to open.
+ * Collapsed, it is a pill: it keeps the left edge it had and gives up the right
+ * one, so the panel reads as having folded up in place rather than as having
+ * crossed the map to a corner it was never in.
+ *
+ * Fully round rather than the one radius the panels share, because at this size
+ * that radius would make it a small panel — and a small panel is a thing that
+ * lost its contents, where a pill is a thing that put them away.
  */
 .elevation-panel[data-collapsed="true"] {
-  left: auto;
+  right: auto;
   padding: 0;
-  border-radius: var(--radius);
+  border-radius: 999px;
 }
 
 .elevation-panel__header {
@@ -818,11 +848,17 @@ body {
   padding: var(--space-2) var(--space-4);
 }
 
+/*
+ * The same mark every other section label in the panels wears — SURFACE,
+ * DISTANCE, CLIMBING. It was the one heading set as a sentence, which read as
+ * emphasis nobody had asked for rather than as the label it is.
+ */
 .elevation-panel__header h2 {
   margin: 0;
-  font: var(--type-body);
-  font-weight: 600;
-  letter-spacing: var(--track-body);
+  color: var(--ink-2);
+  font: var(--type-micro);
+  letter-spacing: var(--track-micro);
+  text-transform: uppercase;
 }
 
 .elevation-panel__summary {
@@ -830,6 +866,22 @@ body {
   font: var(--type-small);
   letter-spacing: var(--track-small);
   font-variant-numeric: tabular-nums;
+}
+
+/*
+ * A hairline between the label and the figures, but only in the pill. Open, the
+ * two sit on their own line above a chart and the gap alone separates them;
+ * closed, they are one strip of text a hand's width long, and the rule is what
+ * keeps "ELEVATION" from reading as the first word of the summary.
+ */
+.elevation-panel[data-collapsed="true"] .elevation-panel__summary::before {
+  content: "";
+  display: inline-block;
+  width: 1px;
+  height: 14px;
+  margin-right: var(--space-3);
+  vertical-align: -3px;
+  background: var(--rule);
 }
 
 /* Pushed to the far end: it governs the panel rather than describing it. */
@@ -1460,8 +1512,9 @@ body {
     width: 100%;
   }
 
+  /* Folds up against the same edge it does on the desktop, for the same reason. */
   .elevation-panel[data-collapsed="true"] {
-    align-self: end;
+    align-self: start;
     width: auto;
   }
 
