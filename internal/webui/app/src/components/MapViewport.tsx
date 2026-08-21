@@ -34,9 +34,15 @@ export function MapViewport({ bounds, maxZoom, padding = 56 }: MapViewportProps)
     // paint. Observing the container also keeps the canvas correct when the
     // panel beside it reflows at narrow widths.
     const container = map.getContainer();
+    map.resize();
+
+    // Without the API the canvas is sized once, on mount, rather than not at
+    // all: a map that never reflows still draws.
+    if (typeof ResizeObserver === "undefined") {
+      return;
+    }
     const observer = new ResizeObserver(() => map.resize());
     observer.observe(container);
-    map.resize();
 
     return () => observer.disconnect();
   }, [map]);

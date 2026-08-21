@@ -264,7 +264,7 @@ export interface WebUIConfig {
   sourceBaseUrl?: string | undefined;
 }
 
-/** A stage's stable identity, used for routing and list keys. */
-export function routeKey(stage: Pick<Route, "routeId" | "stageOrder">): string {
-  return `${stage.routeId}/${stage.stageOrder}`;
+/** A route's stable identity, used for routing and list keys. */
+export function routeKey(route: Pick<Route, "routeId" | "stageOrder">): string {
+  return `${route.routeId}/${route.stageOrder}`;
 }
