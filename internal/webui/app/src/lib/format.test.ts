@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { formatCount, formatDistance, formatElevation, formatTimestamp } from "./format";
+import {
+  formatCount,
+  formatDistance,
+  formatElevation,
+  formatReadTime,
+  formatTimestamp,
+} from "./format";
 
 describe("formatDistance", () => {
   it.each([
@@ -37,6 +43,38 @@ describe("formatTimestamp", () => {
 
   it("renders a valid timestamp", () => {
     expect(formatTimestamp("2026-08-17T08:00:00Z")).not.toBe("unknown");
+  });
+});
+
+describe("formatReadTime", () => {
+  it("reports a library that has never been read", () => {
+    expect(formatReadTime(undefined)).toBe("never");
+  });
+
+  it("reports an unparseable timestamp without throwing", () => {
+    expect(formatReadTime("not-a-date")).toBe("unknown");
+  });
+
+  /*
+   * The clock alone for today's read, which is nearly every read a card shows.
+   * Asserted against what the platform itself would print rather than against a
+   * literal, so the test says the same thing under every locale the suite runs
+   * in — what is being checked is that the date was dropped, not the separator.
+   */
+  it("gives a read from today the clock alone", () => {
+    const now = new Date("2026-08-17T19:38:00Z");
+    const expected = now.toLocaleTimeString(undefined, { timeStyle: "short" });
+
+    expect(formatReadTime(now.toISOString(), now)).toBe(expected);
+  });
+
+  // The one case where the short form would mislead: "19:38" on a library that
+  // was last read on Sunday reads as a library read minutes ago.
+  it("keeps the date on an older read", () => {
+    const now = new Date("2026-08-17T19:38:00Z");
+    const earlier = "2026-08-15T19:38:00Z";
+
+    expect(formatReadTime(earlier, now)).toBe(formatTimestamp(earlier));
   });
 });
 
