@@ -383,6 +383,16 @@ func (s *Store) StageGeometry(
 // stale row absent rather than wrong: the caller sees a stage whose surface is
 // not known yet, which is the truth until the next enrichment pass runs.
 //
+// The index generation is deliberately not part of this filter, though it is
+// half of what StageSurfaceHash checks. The two mismatches are not alike. A row
+// measured against an earlier index is stale rather than wrong — its ranges
+// still index the geometry the stage actually has — and the table holds one row
+// per stage, so withholding it here would serve no surface at all rather than a
+// newer one. Every rebuild would blank the whole library until enrichment had
+// walked it again, to correct the rare road that was genuinely resurfaced.
+// Re-measurement is what corrects those, and StageSurfaceHash is what schedules
+// it.
+//
 // The ranges are returned as stored, ready to serve without re-encoding.
 func (s *Store) StageSurface(
 	ctx context.Context,

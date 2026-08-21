@@ -994,6 +994,36 @@ func TestStoreHidesASurfaceMeasuredAgainstOtherGeometry(t *testing.T) {
 	assert.Equal(t, "earlier-hash", hash, "StageSurfaceHash()")
 }
 
+// The mirror of the test above, and deliberately the opposite answer. A stale
+// generation is not a stale geometry: those ranges still index the coordinates
+// the stage actually has, so they are old rather than wrong. There is one row
+// per stage, so withholding it would serve no surface at all — every rebuild
+// would blank the library until enrichment had walked it again. The hash read
+// is what notices, and the next pass is what corrects it.
+func TestStoreKeepsASurfaceMeasuredAgainstAnEarlierIndex(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	stage := storeTestStage(t, 1, 1, "revision", "content-hash")
+	require.NoError(t, store.StoreTrustedInventory(t.Context(), []route.Stage{stage}), "StoreTrustedInventory()")
+	require.NoError(t, store.StoreStageSurface(
+		t.Context(), 1, 1, "content-hash", "earlier-generation", []byte(testSurfaceRanges), 10,
+	), "StoreStageSurface()")
+
+	ranges, _, found, err := store.StageSurface(t.Context(), 1, 1, "content-hash")
+	require.NoError(t, err, "StageSurface() after a rebuild")
+	require.True(t, found, "a stage was blanked because the index had been rebuilt")
+	// Byte-identical, as everywhere here: the endpoint serves the stored ranges
+	// as they are rather than re-encoding them.
+	wantRanges := []byte(testSurfaceRanges)
+	assert.Equal(t, wantRanges, []byte(ranges), "ranges")
+
+	// What the enrichment pass compares against the live generation, and so what
+	// makes the stage be measured again rather than left as it is forever.
+	_, generation, hashFound, err := store.StageSurfaceHash(t.Context(), 1, 1)
+	require.NoError(t, err, "StageSurfaceHash()")
+	require.True(t, hashFound, "StageSurfaceHash() did not find the stored hash")
+	assert.Equal(t, "earlier-generation", generation, "the generation the row was measured against")
+}
+
 func TestStoreReplacesAStageSurfaceRatherThanAccumulatingOne(t *testing.T) {
 	store := openTestStore(t, testKey(1))
 	stage := storeTestStage(t, 1, 1, "revision", "second-hash")

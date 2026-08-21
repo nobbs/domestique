@@ -365,8 +365,12 @@ A SQLite database on a Docker volume stores:
   be dropped without touching deletion-safety state;
 - a cache of the surface classification of that geometry, in its own table for
   the same reason, recorded against both the content hash and the surface-index
-  generation it was measured for, so neither a re-planned stage nor a rebuilt map
-  is ever described by an earlier answer;
+  generation it was measured for. The two are not acted on alike: a changed
+  content hash withdraws the cached answer, whose ranges are positions in a
+  geometry the stage no longer has, while a newer index leaves it on display and
+  marks the stage for re-measurement on the next enrichment pass — those ranges
+  still fit, so a rebuild costs the library nothing while the rare road that was
+  actually resurfaced is still corrected;
 - when the last surface index build finished and which generation it produced, so
   the rebuild interval is time between builds rather than time since this process
   started;
