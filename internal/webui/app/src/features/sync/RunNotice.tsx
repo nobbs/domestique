@@ -97,20 +97,40 @@ export function RunNotice({ reference }: { reference: string | null }) {
   const runs = history.data?.pages.flatMap((page) => page.runs) ?? [];
   const notice = noticeRun(reference, runs, status.data);
 
-  // A reference the history no longer holds is the ordinary end of a pruned
-  // run, not a fault: the notification outlived what it pointed at.
+  /*
+   * A reference the history no longer holds is the ordinary end of a pruned
+   * run, not a fault: the notification outlived what it pointed at. That is
+   * only true once the history has actually been read, though — a history the
+   * service could not answer for says nothing about the run, so the two are
+   * told apart rather than both reported as a pruning.
+   */
   if (!notice) {
-    return reference !== null && !history.isPending ? (
+    if (reference === null || history.isPending) {
+      return null;
+    }
+
+    const unread = !history.isSuccess;
+
+    return (
       <section className="panel sync-card run-notice" aria-labelledby="notice-heading">
         <h2 className="sync-card__heading" id="notice-heading">
-          That run is no longer kept
+          {unread ? "That run could not be looked up" : "That run is no longer kept"}
         </h2>
         <p className="sync-card__line">
-          The notification named run {reference}, which has been pruned since it was sent. What has
-          happened since is below.
+          {unread ? (
+            <>
+              The notification named run {reference}, and the history it would be found in could not
+              be read. The error is below.
+            </>
+          ) : (
+            <>
+              The notification named run {reference}, which has been pruned since it was sent. What
+              has happened since is below.
+            </>
+          )}
         </p>
       </section>
-    ) : null;
+    );
   }
 
   const guidance = syncGuidance(notice.phase, notice.result, notice.failure);

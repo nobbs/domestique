@@ -208,6 +208,37 @@ describe("RunNotice", () => {
     expect(await screen.findByRole("alert")).toBeInTheDocument();
   });
 
+  /*
+   * A history that could not be read says nothing about the run: reporting that
+   * as a pruning would tell the operator their run is gone on the strength of a
+   * lookup that never happened.
+   */
+  it("tells an unreadable history apart from a pruned run", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("no", { status: 500 })),
+    );
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false, staleTime: Number.POSITIVE_INFINITY },
+        mutations: { retry: false },
+      },
+    });
+    client.setQueryData(["status"], status());
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <RunNotice reference="aaaaaaaaaaaa" />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(
+      await screen.findByRole("heading", { name: "That run could not be looked up" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/pruned/)).toBeNull();
+  });
+
   // The notification outlived what it pointed at. That is the pruning working,
   // not a fault, and the page says which reference it could not find.
   it("says a named run has been pruned", () => {
