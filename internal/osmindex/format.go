@@ -40,6 +40,13 @@ const cellDegrees = 0.01
 // precision coordinates are held at between the node pass and quantisation.
 const nativeScale = 1e7
 
+// coordinateMissing marks a node the extract referenced but never supplied, and
+// is deliberately not zero: (0, 0) is a real point in the Gulf of Guinea, so a
+// zero default would make a node there indistinguishable from an absent one.
+// At nativeScale a coordinate reaches 1.8e9 at the antimeridian, which leaves
+// the int32 floor unreachable by any real place.
+const coordinateMissing = math.MinInt32
+
 // errShortRecord means a cell blob ended in the middle of a way record, which
 // can only happen if the file is truncated or was written by another format.
 var errShortRecord = errors.New("osmindex: cell record is truncated")

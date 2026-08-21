@@ -324,8 +324,14 @@ func scanNodes(ctx context.Context, path string, nodeIDs []int64) (latitude, lon
 	scanner.SkipRelations = true
 	defer closeScanner(scanner)
 
+	// Every slot starts unresolved rather than at zero, because zero is a real
+	// place. A slot still holding the sentinel after this pass is a node the
+	// extract referenced but does not contain.
 	latitude = make([]int32, len(nodeIDs))
 	longitude = make([]int32, len(nodeIDs))
+	for index := range latitude {
+		latitude[index], longitude[index] = coordinateMissing, coordinateMissing
+	}
 	for scanner.Scan() {
 		node, ok := scanner.Object().(*osm.Node)
 		if !ok {
@@ -379,7 +385,7 @@ func packWays(
 			at, hit := slices.BinarySearch(nodeIDs, references[reference])
 			// A node the extract references but does not contain is one cut off
 			// at the region border. The way keeps whatever of it lies inside.
-			if !hit || (latitude[at] == 0 && longitude[at] == 0) {
+			if !hit || latitude[at] == coordinateMissing {
 				continue
 			}
 			x = append(x, longitude[at]/divisor)
