@@ -227,7 +227,14 @@ body {
    * under the notch and the home indicator — it is cartography, and cartography
    * running under the furniture reads as a map that continues rather than as one
    * that was cut — but nothing a reader has to read or press may go there.
+   *
+   * The gutter on its own first, the same way the height above is written twice.
+   * A browser that cannot read `env()` drops the whole declaration rather than
+   * the one term it does not understand, and a dropped padding is not a smaller
+   * gutter but none at all — panels flush against the edge of the pane. Every
+   * inset padding in this file is written as a pair for that reason.
    */
+  padding: var(--space-5);
   padding: calc(var(--space-5) + env(safe-area-inset-top))
     calc(var(--space-5) + env(safe-area-inset-right))
     calc(var(--space-5) + env(safe-area-inset-bottom))
@@ -662,6 +669,7 @@ body {
   flex-direction: column;
   align-items: start;
   gap: var(--space-3);
+  padding: var(--space-5);
   padding: var(--space-5) var(--space-5) calc(var(--space-5) + env(safe-area-inset-bottom))
     calc(var(--space-5) + env(safe-area-inset-left));
 }
@@ -1153,6 +1161,7 @@ body {
   width: 100%;
   max-width: 940px;
   margin: 0 auto;
+  padding: var(--space-6) var(--space-5);
   padding: calc(var(--space-6) + env(safe-area-inset-top))
     calc(var(--space-5) + env(safe-area-inset-right))
     calc(var(--space-6) + env(safe-area-inset-bottom))
@@ -1485,6 +1494,7 @@ body {
  */
 @media (max-width: 52rem) {
   .shell__overlay {
+    padding: var(--space-4) 14px 18px;
     padding: calc(var(--space-4) + env(safe-area-inset-top))
       calc(14px + env(safe-area-inset-right)) calc(18px + env(safe-area-inset-bottom))
       calc(14px + env(safe-area-inset-left));
@@ -1511,11 +1521,13 @@ body {
     top: 0;
     bottom: auto;
     gap: var(--space-2);
+    padding: var(--space-4);
     padding: calc(var(--space-4) + env(safe-area-inset-top)) var(--space-4) var(--space-4)
       calc(var(--space-4) + env(safe-area-inset-left));
   }
 
   .sync-page {
+    padding: var(--space-6) var(--space-4);
     padding: calc(var(--space-6) + env(safe-area-inset-top))
       calc(var(--space-4) + env(safe-area-inset-right))
       calc(var(--space-6) + env(safe-area-inset-bottom))
