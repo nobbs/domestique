@@ -44,7 +44,7 @@ const EARTH_RADIUS_METRES = 6_371_000;
  * the climb it mirrors.
  */
 export const GRADIENT_BANDS = [
-  { limit: 4, label: "≤ 4%" },
+  { limit: 4, label: "< 4%" },
   { limit: 8, label: "4–8%" },
   { limit: 12, label: "8–12%" },
   { limit: 16, label: "12–16%" },

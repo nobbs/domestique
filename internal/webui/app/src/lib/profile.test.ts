@@ -5,6 +5,7 @@ import {
   buildWindowedProfile,
   coordinateRange,
   cumulativeMetres,
+  GRADIENT_BANDS,
   GRADIENT_WINDOW_METRES,
   gradientBand,
   gradientMix,
@@ -444,8 +445,20 @@ describe("gradientBand", () => {
     expect(gradientBand(-14)).toBe(gradientBand(14));
   });
 
-  it("puts a gradient in the band its own upper limit names", () => {
+  /*
+   * The bands are half-open: a gradient on a boundary belongs to the band above
+   * it. The labels have to say the same thing, or the key would name a band a
+   * reader's own number does not fall into.
+   */
+  it("puts a gradient on a boundary in the band that boundary opens", () => {
     expect([0, 4, 8, 12, 16, 30].map(gradientBand)).toEqual([0, 1, 2, 3, 4, 4]);
+    expect(GRADIENT_BANDS.map((band) => band.label)).toEqual([
+      "< 4%",
+      "4–8%",
+      "8–12%",
+      "12–16%",
+      "≥ 16%",
+    ]);
   });
 });
 

@@ -113,7 +113,7 @@ describe("RouteKey", () => {
       />,
     );
 
-    expect(screen.getByRole("button", { name: "≤ 4%" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "< 4%" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "12–16%" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "4–8%" })).toBeNull();
   });
@@ -146,7 +146,7 @@ describe("RouteKey", () => {
     );
 
     expect(screen.getAllByRole("button")).toHaveLength(3);
-    expect(screen.getByRole("button", { name: "≤ 4%" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "< 4%" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "4–8%" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "12–16%" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "8–12%" })).toBeNull();
