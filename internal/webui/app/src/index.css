@@ -42,12 +42,12 @@
   --hold: #8f6100; /* a gate held — 5.32:1 */
 
   /*
-   * The steepness ramp, gentlest first. It fills ground at 0.5 opacity under an
-   * ink ridge, and paints at full strength wherever it is a small mark: a 2 px
-   * route glyph, a 7 px mix bar.
+   * The steepness ramp, gentlest first. It fills ground at 0.5 opacity and
+   * strokes that ground's own edge at full strength, and paints at full
+   * strength wherever it is a small mark: a 2 px route glyph, a 7 px mix bar.
    *
    * The same five values are duplicated as literals in BAND_COLOURS in
-   * components/RouteMap.tsx, because MapLibre paints on a canvas and cannot
+   * components/RouteOverlay.tsx, because MapLibre paints on a canvas and cannot
    * resolve a custom property. The two copies must stay in step.
    */
   --grade-0: #8e979f; /* under 3% */
@@ -264,15 +264,14 @@ body {
 
 /*
  * The only thing the entry page says about synchronisation, and it says it in
- * one word. The tone is the state: quiet when the library is current, coloured
+ * one mark. The tone is the state: quiet when the library is current, coloured
  * only when a run needs the operator — and whatever the colour cannot say is
  * said by the link's own name.
  */
 .wordmark__sync {
+  display: inline-flex;
+  padding: 2px;
   color: var(--ink-2);
-  font: var(--type-small);
-  letter-spacing: var(--track-small);
-  text-decoration: none;
 }
 
 .wordmark__sync:hover,
@@ -835,19 +834,39 @@ body {
 
 /* Pushed to the far end: it governs the panel rather than describing it. */
 .elevation-panel__collapse {
+  display: inline-flex;
+  align-items: center;
   margin-left: auto;
-  padding: 0;
+  padding: 2px;
   border: 0;
   background: none;
   color: var(--ink-2);
-  font: var(--type-row);
-  letter-spacing: var(--track-row);
   cursor: pointer;
 }
 
 .elevation-panel__collapse:hover,
 .elevation-panel__collapse:focus-visible {
   color: var(--accent);
+}
+
+/*
+ * Down while the chart is open, up while it is a pill — the same mark turned
+ * through the change rather than two marks cut between, so the movement itself
+ * says which way the panel just went.
+ */
+.elevation-panel__chevron {
+  transition: transform 120ms ease;
+}
+
+.elevation-panel[data-collapsed="true"] .elevation-panel__chevron {
+  transform: rotate(180deg);
+}
+
+/* The turn is the flourish; the direction it ends up pointing is the message. */
+@media (prefers-reduced-motion: reduce) {
+  .elevation-panel__chevron {
+    transition: none;
+  }
 }
 
 /* Elevation profile ------------------------------------------------------- */
@@ -903,38 +922,37 @@ body {
 }
 
 /*
- * The ground, banded by steepness. It is a backdrop for the silhouette rather
- * than a block of paint, so it fills at half strength; the ridge over it is what
- * carries the shape.
+ * The ground, banded by steepness. Each band is a backdrop rather than a block
+ * of paint, so it fills at half strength and strokes its own edge at full
+ * strength: the terrain is read from where the bands meet rather than from a
+ * line drawn over them, and the vertical join between two bands is the boundary
+ * between them.
  */
 .elevation-profile__column {
   fill-opacity: 0.5;
-  stroke: none;
+  stroke-width: 2.4;
+  stroke-linejoin: round;
 }
 
 .elevation-profile__column[data-band="0"] {
   fill: var(--grade-0);
+  stroke: var(--grade-0);
 }
 .elevation-profile__column[data-band="1"] {
   fill: var(--grade-1);
+  stroke: var(--grade-1);
 }
 .elevation-profile__column[data-band="2"] {
   fill: var(--grade-2);
+  stroke: var(--grade-2);
 }
 .elevation-profile__column[data-band="3"] {
   fill: var(--grade-3);
+  stroke: var(--grade-3);
 }
 .elevation-profile__column[data-band="4"] {
   fill: var(--grade-4);
-}
-
-.elevation-profile__ridge {
-  fill: none;
-  stroke: var(--ink);
-  stroke-opacity: 0.7;
-  stroke-width: 1.5;
-  stroke-linejoin: round;
-  stroke-linecap: round;
+  stroke: var(--grade-4);
 }
 
 /*
@@ -1472,15 +1490,9 @@ body {
   }
 
   /*
-   * The silhouette, the chrome and the veil stay forced: they are read against
-   * the bands rather than as colours of their own, and the ridge in particular
-   * has to be the reader's ink to stay legible over an opted-out ramp.
+   * The chrome and the veil stay forced: they are read against the bands rather
+   * than as colours of their own.
    */
-  .elevation-profile__ridge {
-    stroke: CanvasText;
-    stroke-opacity: 1;
-  }
-
   .elevation-profile__veil {
     fill: Canvas;
   }

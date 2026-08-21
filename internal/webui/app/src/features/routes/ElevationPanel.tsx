@@ -74,13 +74,36 @@ export function ElevationPanel({
           className="elevation-panel__collapse"
           type="button"
           aria-expanded={!collapsed}
+          // The words the button used to carry. A chevron at the end of a header
+          // row is read as "this folds away" by anyone who can see it, and the
+          // sentence is still there for anyone who cannot.
+          aria-label={collapsed ? "Show the profile" : "Hide the profile"}
           // Only while there is a plot to point at: the chart is unmounted when
           // the panel is a pill, and a control naming an element that is not in
           // the document is a dangling reference a screen reader cannot follow.
           {...(collapsed ? {} : { "aria-controls": "elevation-plot" })}
           onClick={() => onCollapsedChange(!collapsed)}
         >
-          {collapsed ? "Show the profile" : "Hide the profile"}
+          {/*
+           * One chevron, turned rather than swapped: the same mark rotating
+           * through the change says the panel folded away, where two paths
+           * cutting from one to the other would only say it is gone.
+           */}
+          <svg
+            className="elevation-panel__chevron"
+            viewBox="0 0 12 12"
+            width="12"
+            height="12"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+            focusable="false"
+          >
+            <polyline points="2.5,4.5 6,8 9.5,4.5" />
+          </svg>
         </button>
       </div>
       {/*

@@ -1,5 +1,5 @@
 /**
- * The key to the two encodings drawn along a stage: the ground it is made of,
+ * The key to the two encodings drawn along a route: the ground it is made of,
  * and how steeply it climbs.
  *
  * Two named sections, gradient first, each a proportion bar with the classes
@@ -24,9 +24,9 @@
  * of either bar, and the swatches repeat the map's own colours so the key works
  * for the map, the strip, and the chart at once.
  *
- * Proportions are of the whole stage, and unsurveyed ground is one of the
+ * Proportions are of the whole route, and unsurveyed ground is one of the
  * classes. A key that quietly renormalised over the surveyed part would report a
- * gravel third of a half-surveyed stage as two thirds gravel.
+ * gravel third of a half-surveyed route as two thirds gravel.
  *
  * Both lists are chips of one toggle group, which is what makes the key a single
  * tab stop with the arrow keys moving inside it: a reader reaches eleven classes
@@ -51,7 +51,7 @@ import styles from "./RouteKey.module.css";
 /**
  * A share as a percentage, never rounded into a contradiction.
  *
- * A kilometre of gravel in a hundred-kilometre stage is worth knowing about, and
+ * A kilometre of gravel in a hundred-kilometre route is worth knowing about, and
  * "0%" beside a visible band on the map reads as a bug rather than as a small
  * number. The same holds at the other end: rounding the rest to "100%" while
  * another class is still listed beside it makes the key argue with itself.
@@ -109,10 +109,10 @@ export interface RouteKeyProps {
   surface: SurfaceSummary | null;
   surfaceAbsence: string;
   /**
-   * The bands this stage actually has and their shares of it, gentlest first.
+   * The bands this route actually has and their shares of it, gentlest first.
    *
-   * Of the whole stage rather than of the stretch on show, so zooming does not
-   * reshuffle the key underneath the reader's hand — and taken from the stage's
+   * Of the whole route rather than of the stretch on show, so zooming does not
+   * reshuffle the key underneath the reader's hand — and taken from the route's
    * one classification, so the key offers no class the chart has nothing to
    * light, and lists every class the chart can paint at any zoom level.
    */

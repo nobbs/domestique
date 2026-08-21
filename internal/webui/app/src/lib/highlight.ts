@@ -63,7 +63,7 @@ interface Span {
  * The ground a stretch of chart does *not* cover, within the stretch on show.
  *
  * The chart fades what was not asked for rather than lighting what was: the
- * terrain is drawn as columns of band colour under a silhouette, and brightening
+ * terrain is drawn as columns of band colour, edge and all, and brightening
  * a column would change the colour that is the whole point of it. Veiling the
  * gaps leaves every mark exactly the colour it means and simply takes the light
  * off the rest — which is also what the map does outside a zoomed stretch, so
