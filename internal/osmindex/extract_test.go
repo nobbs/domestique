@@ -79,6 +79,43 @@ func TestDownloadExtractRefusesAndRemovesAMismatchedFile(t *testing.T) {
 	assert.Empty(t, entries, "the refused extract was left on disk")
 }
 
+// A dropped connection is the failure this download is most likely to meet: an
+// extract is hundreds of megabytes over a link nobody controls. It has to leave
+// nothing behind, because a partial file that survives is one a later run could
+// mistake for a whole one.
+//
+// The checksum would catch a short body too, but only after it had been written
+// — this is the earlier branch, where the transfer itself reports the error.
+func TestDownloadExtractRemovesWhatADroppedConnectionLeft(t *testing.T) {
+	directory := t.TempDir()
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Length", "4096")
+		_, err := writer.Write([]byte("the first few bytes"))
+		assert.NoError(t, err, "writing the truncated body")
+		// Flushed so the response reaches the client and the copy is genuinely
+		// under way; abandoned after, which the client sees as a connection that
+		// went away rather than as a body that ended.
+		flusher, ok := writer.(http.Flusher)
+		if !assert.True(t, ok, "the test server's writer flushes") {
+			return
+		}
+		flusher.Flush()
+		panic(http.ErrAbortHandler)
+	}))
+	t.Cleanup(server.Close)
+
+	path, err := downloadExtract(
+		t.Context(), server.Client(), server.URL, "europe/germany", digestOf([]byte("a whole extract")), directory,
+	)
+	require.Error(t, err, "downloadExtract() accepted a transfer that never finished")
+	assert.Contains(t, err.Error(), "downloading extract", "the transfer itself is what failed")
+	assert.Empty(t, path, "downloadExtract() named a file it refused")
+
+	entries, readErr := os.ReadDir(directory)
+	require.NoError(t, readErr)
+	assert.Empty(t, entries, "the partial extract was left on disk")
+}
+
 func TestDownloadExtractKeepsAVerifiedFile(t *testing.T) {
 	directory := t.TempDir()
 	body := "a whole extract"

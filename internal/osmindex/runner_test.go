@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nobbs/domestique/internal/route"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -285,4 +287,44 @@ func (n *fakeNotifier) Send(_ context.Context, title, message string) error {
 	n.sent = append(n.sent, title+": "+message)
 
 	return nil
+}
+
+// A build that succeeds has to leave the service using what it built. Every
+// other test here stops short of that: a failure never opens an index, and an
+// unchanged check deliberately keeps the one already live. This is the run that
+// installs, and it is the only one that proves the pieces fit — that Build's
+// file is one Open accepts, that the generation written down is the generation
+// now being served, and that a crash's leftovers go with it.
+func TestRunInstallsWhatItBuilds(t *testing.T) {
+	extract := testExtract(t)
+	digest := digestOf(extract)
+	server := extractServer(t, map[string]string{
+		"/europe/germany-latest.osm.pbf":     string(extract),
+		"/europe/germany-latest.osm.pbf.md5": digest + "  germany-latest.osm.pbf\n",
+	})
+
+	// An index no Current holds, which is what a build interrupted partway
+	// leaves behind: Swap deletes what it replaces, so only a crash gets here.
+	directory := t.TempDir()
+	orphan := writeTestIndex(t, directory, "cccccccccccc")
+
+	current := NewCurrent()
+	t.Cleanup(func() { assert.NoError(t, current.Close(), "Close()") })
+	state := &fakeState{}
+	notifier := &fakeNotifier{}
+
+	testRunnerIn(t, directory, server, current, state, notifier).Run(t.Context())
+
+	require.Empty(t, notifier.sent, "a successful build was announced as a failure")
+	generation := generationOf(map[string]string{"europe/germany": digest})
+	assert.Equal(t, generation, current.Generation(), "the generation now being served")
+	assert.Equal(t, generation, state.generation, "the generation written down")
+	assert.False(t, state.builtAt.IsZero(), "the build was not written down")
+
+	ways, err := current.Ways(t.Context(), []route.Point{{Longitude: 8.3015, Latitude: 49.9015}})
+	require.NoError(t, err, "Ways()")
+	assert.NotEmpty(t, ways, "the installed index answers for the region it was built from")
+
+	assert.NoFileExists(t, orphan, "an index from an earlier build was left on disk")
+	assert.FileExists(t, IndexPath(directory, generation), "the index the runner installed")
 }
