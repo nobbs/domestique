@@ -5,9 +5,10 @@ accounts. It is a single-tenant service intended to run as a Docker container on
 an amd64 Tailnet host.
 
 It also serves a read-only browser UI on the same private listener, which draws
-the whole stored library on one map and gives each route a page of its own. Basemap tiles come from a configurable
-keyless provider — the only request this service's page makes outside the Tailnet
-— and the map follows your system's light or dark colour scheme.
+the whole stored library on one map and gives each route a page of its own.
+Basemap tiles come from a configurable keyless provider — the only request this
+service's page makes outside the Tailnet — and the map follows your system's
+light or dark colour scheme.
 
 The accepted contract is in [the service specification](docs/specs/service.md).
 The supporting specifications define configuration, sync safety, architecture,
