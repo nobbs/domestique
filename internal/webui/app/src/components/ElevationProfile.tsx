@@ -136,7 +136,7 @@ function runsOf(
     const first = slice[0];
     const last = slice[slice.length - 1];
     if (slice.length >= 2 && first && last) {
-      const ridge = slice
+      const crest = slice
         .map(
           (sample, offset) =>
             `${offset === 0 ? "M" : "L"}${x(sample.distanceMetres).toFixed(1)},${y(sample.elevationMetres).toFixed(1)}`,
@@ -145,7 +145,7 @@ function runsOf(
 
       runs.push({
         band: bands[start] ?? 0,
-        column: `${ridge} L${x(last.distanceMetres).toFixed(1)},${plotHeight.toFixed(1)} L${x(first.distanceMetres).toFixed(1)},${plotHeight.toFixed(1)} Z`,
+        column: `${crest} L${x(last.distanceMetres).toFixed(1)},${plotHeight.toFixed(1)} L${x(first.distanceMetres).toFixed(1)},${plotHeight.toFixed(1)} Z`,
         startMetres: first.distanceMetres,
         endMetres: last.distanceMetres,
       });
@@ -223,17 +223,9 @@ export function ElevationProfile({
     const x = (metres: number) => ((metres - profile.startMetres) / shown) * plotWidth;
     const y = (metres: number) => plotHeight - ((metres - low) / span) * plotHeight;
 
-    const ridge = profile.samples
-      .map(
-        (sample, index) =>
-          `${index === 0 ? "M" : "L"}${x(sample.distanceMetres).toFixed(1)},${y(sample.elevationMetres).toFixed(1)}`,
-      )
-      .join(" ");
-
     return {
       x,
       y,
-      ridge,
       runs: runsOf(profile.samples, x, y, plotHeight),
       elevationTicks: ticksFor(low, low + span, 3),
       distanceTicks: ticksFor(profile.startMetres / 1000, profile.endMetres / 1000, 5),
@@ -444,9 +436,6 @@ export function ElevationProfile({
               d={run.column}
             />
           ))}
-          {/* One ridge over the columns, so the silhouette stays crisp. */}
-          <path className="elevation-profile__ridge" d={geometry.ridge} />
-
           {/*
            * The ground the route is made of, in the order it is ridden, on the
            * distance axis the terrain above already uses. Each stretch wears the

@@ -180,12 +180,13 @@ describe("Wordmark", () => {
 
     const link = screen.getByRole("link", { name: /^Sync/ });
     expect(link).toHaveAttribute("href", "/sync");
-    expect(link).toHaveTextContent("Sync");
+    // A mark rather than a word, so what says `Sync` is the name it is given.
+    expect(link).toHaveAccessibleName(/^Sync/);
     expect(screen.getByText("domestique")).toBeInTheDocument();
   });
 
   /*
-   * The row has room for one word, so the state is the link's colour — and a
+   * The row has room for one mark, so the state is the link's colour — and a
    * colour is nothing to a screen reader or to anyone who cannot tell these two
    * apart. The name says what the colour meant.
    */
