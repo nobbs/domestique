@@ -65,6 +65,7 @@ func TestHandlerGatesEveryNonHealthRoute(t *testing.T) {
 		"/assets/app-abc123.js",
 		"/favicon.svg",
 		"/icon-256.png",
+		"/icon-512.png",
 		"/manifest.webmanifest",
 		"/",
 		"/routes/1/1",
@@ -470,12 +471,19 @@ func TestHandlerSetsPolicyAndCacheHeaders(t *testing.T) {
 	handler.ServeHTTP(document, authenticatedRequest(http.MethodGet, "/"))
 	assert.Equal(t, cacheDocument, document.Header().Get("Cache-Control"), "document Cache-Control")
 
-	// The manifest carries no content hash and decides how an installed copy
-	// launches, so it revalidates; its type is set by hand because the responses
-	// forbid sniffing.
+	// Everything addressed by a fixed name revalidates rather than being cached
+	// for a year, because a new one arrives at the URL the old one had. An
+	// immutable icon is an installed copy showing last year's icon.
+	for _, path := range []string{"/favicon.svg", "/icon-256.png", "/icon-512.png", "/manifest.webmanifest"} {
+		stable := httptest.NewRecorder()
+		handler.ServeHTTP(stable, authenticatedRequest(http.MethodGet, path))
+		assert.Equalf(t, cacheDocument, stable.Header().Get("Cache-Control"), "%s Cache-Control", path)
+	}
+
+	// The manifest's type is set by hand because Go's table does not know the
+	// extension and the responses forbid sniffing.
 	manifest := httptest.NewRecorder()
 	handler.ServeHTTP(manifest, authenticatedRequest(http.MethodGet, "/manifest.webmanifest"))
-	assert.Equal(t, cacheDocument, manifest.Header().Get("Cache-Control"), "manifest Cache-Control")
 	assert.Equal(t, "application/manifest+json", manifest.Header().Get("Content-Type"), "manifest Content-Type")
 }
 
