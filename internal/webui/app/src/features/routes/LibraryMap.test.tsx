@@ -15,12 +15,15 @@ import type { BoundingBox, Position } from "../../api/types";
 
 interface SourceRecord {
   id: string;
-  data: { features: Array<{ geometry: { coordinates: Position[] } }> };
+  data: {
+    features: Array<{ geometry: { coordinates: Position[] }; properties: { key: string } }>;
+  };
 }
 
 interface LayerRecord {
   id: string;
   paint: Record<string, unknown>;
+  filter?: unknown;
 }
 
 const drawn = vi.hoisted(() => ({
@@ -126,6 +129,17 @@ describe("LibraryMap", () => {
     expect(source("library-lines").data.features).toHaveLength(2);
   });
 
+  // The filter the selection layer draws by reads this, so a line without its
+  // key is a line that can never be selected.
+  it("carries each route's identity on the line itself", () => {
+    show();
+
+    expect(source("library-lines").data.features.map((feature) => feature.properties.key)).toEqual([
+      "1/1",
+      "2/1",
+    ]);
+  });
+
   /*
    * The whole decision the entry map rests on: one ink, one weight, nothing
    * classified. Forty-seven routes in five colours is a pattern rather than an
@@ -147,6 +161,39 @@ describe("LibraryMap", () => {
     show({ selectedKey: "2/1" });
 
     expect(layer("library-line").paint["line-opacity"]).toBe(0.14);
+  });
+
+  /*
+   * The other half of dropping the library back: something has to be lifted out
+   * of it. Without this the route the reader just picked fades along with the
+   * rest, and the camera flies to a line that is no longer there to look at.
+   */
+  it("paints the route picked out of the column in the accent", () => {
+    show({ selectedKey: "2/1" });
+
+    expect(layer("library-selected-line").paint["line-color"]).toBe("#236fc7");
+    expect(layer("library-selected-line").paint["line-opacity"]).toBe(1);
+    expect(layer("library-selected-line").filter).toEqual(["==", ["get", "key"], "2/1"]);
+  });
+
+  it("takes the selection's ink from the basemap too", () => {
+    show({ selectedKey: "2/1", darkBasemap: true });
+
+    expect(layer("library-selected-line").paint["line-color"]).toBe("#70adfb");
+  });
+
+  // The opened route is drawn by the overlay's own stack, several times wider:
+  // a second line underneath it would be paint nobody ever sees.
+  it("leaves the accent to the overlay once the route is opened", () => {
+    show({ selectedKey: "2/1", overlay: <div data-testid="overlay" /> });
+
+    expect(drawn.layers.find((entry) => entry.id === "library-selected-line")).toBeUndefined();
+  });
+
+  it("draws nothing in the accent while no route is picked", () => {
+    show({ selectedKey: null });
+
+    expect(drawn.layers.find((entry) => entry.id === "library-selected-line")).toBeUndefined();
   });
 
   // The selection is drawn over the library rather than cut out of it: the line

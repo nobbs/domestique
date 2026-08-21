@@ -43,6 +43,15 @@ import "../../lib/maplibre";
 const LIBRARY_INK = { light: "#1c2126", dark: "#eef0f3" } as const;
 
 /**
+ * And the ink the selected one is drawn in, per basemap.
+ *
+ * The same pair as `--accent` in index.css and `ROUTE_ACCENT` in RouteOverlay,
+ * because a route picked out of the column and the same route opened must not
+ * be two different colours.
+ */
+const SELECTION_ACCENT = { light: "#236fc7", dark: "#70adfb" } as const;
+
+/**
  * How strongly the library is drawn.
  *
  * Below full so the basemap's own roads and rivers stay legible underneath —
@@ -114,7 +123,10 @@ function collectionOf(lines: LibraryLine[]) {
       .map((line) => ({
         type: "Feature" as const,
         geometry: { type: "LineString" as const, coordinates: line.coordinates },
-        properties: {},
+        // The identity travels with the line so the selection can be drawn out
+        // of the same collection by filter, rather than by a second source that
+        // would have to be rebuilt on every selection.
+        properties: { key: line.key },
       })),
   };
 }
@@ -171,6 +183,28 @@ export function LibraryMap({
               "line-opacity": selectedKey === null ? LIBRARY_OPACITY : CONTEXT_OPACITY,
             }}
           />
+          {/*
+           * The selection, in the accent.
+           *
+           * Picking a route out of the column drops the library to context, so
+           * without this the one route being pointed at fades along with the
+           * rest: the camera would fly to a line the reader can no longer see.
+           * `RouteOverlay` paints the same geometry far wider once the route is
+           * opened, so this is drawn only while there is no overlay covering it.
+           */}
+          {selectedKey !== null && !overlay ? (
+            <Layer
+              id="library-selected-line"
+              type="line"
+              filter={["==", ["get", "key"], selectedKey]}
+              layout={{ "line-cap": "round", "line-join": "round" }}
+              paint={{
+                "line-color": SELECTION_ACCENT[theme],
+                "line-width": 3,
+                "line-opacity": 1,
+              }}
+            />
+          ) : null}
         </Source>
         {/*
          * The selection, over the library. It is mounted and unmounted with the
