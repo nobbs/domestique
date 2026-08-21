@@ -383,6 +383,16 @@ func (s *Store) StageGeometry(
 // stale row absent rather than wrong: the caller sees a stage whose surface is
 // not known yet, which is the truth until the next enrichment pass runs.
 //
+// The index generation is deliberately not part of this filter, though it is
+// half of what StageSurfaceHash checks. The two mismatches are not alike. A row
+// measured against an earlier index is stale rather than wrong — its ranges
+// still index the geometry the stage actually has — and the table holds one row
+// per stage, so withholding it here would serve no surface at all rather than a
+// newer one. Every rebuild would blank the whole library until enrichment had
+// walked it again, to correct the rare road that was genuinely resurfaced.
+// Re-measurement is what corrects those, and StageSurfaceHash is what schedules
+// it.
+//
 // The ranges are returned as stored, ready to serve without re-encoding.
 func (s *Store) StageSurface(
 	ctx context.Context,
@@ -406,47 +416,55 @@ func (s *Store) StageSurface(
 	return json.RawMessage(stored), matchedMetres, true, nil
 }
 
-// StageSurfaceHash returns the content hash the stored classification was
-// measured against, so a caller can tell what still needs fetching without
-// reading the ranges themselves.
+// StageSurfaceHash returns what the stored classification was measured against —
+// the stage's geometry and the build of the map — so a caller can tell what still
+// needs classifying without reading the ranges themselves.
+//
+// Both halves have to match for a cached row to still be an answer. The content
+// hash covers the stage changing under a fixed map; the generation covers the
+// map changing under a fixed stage, which is the ordinary case here: a weekly
+// index is a weekly opportunity for a road to have been resurfaced.
 func (s *Store) StageSurfaceHash(
 	ctx context.Context,
 	routeID int64,
 	stageOrder int,
-) (contentHash string, found bool, err error) {
+) (contentHash, indexGeneration string, found bool, err error) {
 	err = s.database.QueryRowContext(ctx, `
-		SELECT content_hash FROM stage_surface WHERE route_id = ? AND stage_order = ?
-	`, routeID, stageOrder).Scan(&contentHash)
+		SELECT content_hash, index_generation
+		FROM stage_surface WHERE route_id = ? AND stage_order = ?
+	`, routeID, stageOrder).Scan(&contentHash, &indexGeneration)
 	if errors.Is(err, sql.ErrNoRows) {
-		return "", false, nil
+		return "", "", false, nil
 	}
 	if err != nil {
-		return "", false, fmt.Errorf("reading stage surface hash: %w", err)
+		return "", "", false, fmt.Errorf("reading stage surface hash: %w", err)
 	}
 
-	return contentHash, true, nil
+	return contentHash, indexGeneration, true, nil
 }
 
-// StoreStageSurface caches one stage's classification. The ranges are stored as
-// given, which is exactly the JSON the geometry endpoint serves.
+// StoreStageSurface caches one stage's classification against the geometry and
+// the index build it was measured from. The ranges are stored as given, which is
+// exactly the JSON the geometry endpoint serves.
 func (s *Store) StoreStageSurface(
 	ctx context.Context,
 	routeID int64,
 	stageOrder int,
-	contentHash string,
+	contentHash, indexGeneration string,
 	ranges []byte,
 	matchedMetres float64,
 ) error {
 	if _, err := s.database.ExecContext(ctx, `
 		INSERT INTO stage_surface (
-			route_id, stage_order, content_hash, ranges, matched_metres, updated_at_unix
-		) VALUES (?, ?, ?, ?, ?, ?)
+			route_id, stage_order, content_hash, index_generation, ranges, matched_metres, updated_at_unix
+		) VALUES (?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (route_id, stage_order) DO UPDATE SET
 			content_hash = excluded.content_hash,
+			index_generation = excluded.index_generation,
 			ranges = excluded.ranges,
 			matched_metres = excluded.matched_metres,
 			updated_at_unix = excluded.updated_at_unix
-	`, routeID, stageOrder, contentHash, ranges, matchedMetres, time.Now().UTC().Unix()); err != nil {
+	`, routeID, stageOrder, contentHash, indexGeneration, ranges, matchedMetres, time.Now().UTC().Unix()); err != nil {
 		return fmt.Errorf("storing stage surface: %w", err)
 	}
 
@@ -793,6 +811,12 @@ func (s *Store) lastSyncRunID(ctx context.Context) (int64, error) {
 // hash is what makes it honest — a stage whose shape changed has a stored
 // classification that describes a line it no longer has, and is not classified
 // in any sense the map can use.
+//
+// It counts on the same terms StageSurface serves on, which is what keeps this
+// number and the map agreeing. The index generation is no more a condition here
+// than it is there: a stage measured against an earlier index is still shown a
+// surface, so counting it as unclassified would report nothing covered after
+// every rebuild while every route on the map still had its surfaces.
 func (s *Store) SurfaceCoverage(ctx context.Context) (classified, total int, err error) {
 	if err := s.database.QueryRowContext(ctx, `
 		SELECT
@@ -808,6 +832,38 @@ func (s *Store) SurfaceCoverage(ctx context.Context) (classified, total int, err
 	}
 
 	return classified, total, nil
+}
+
+// SurfaceIndexBuild reports when the surface index was last built and which
+// generation that build produced. A service that has never built one reports the
+// zero time and an empty generation.
+func (s *Store) SurfaceIndexBuild(ctx context.Context) (builtAt time.Time, generation string, err error) {
+	var builtAtUnix int64
+	if err := s.database.QueryRowContext(ctx, `
+		SELECT built_at_unix, generation FROM surface_index WHERE id = 1
+	`).Scan(&builtAtUnix, &generation); err != nil {
+		return time.Time{}, "", fmt.Errorf("reading the surface index build: %w", err)
+	}
+	if builtAtUnix == 0 {
+		return time.Time{}, generation, nil
+	}
+
+	return time.Unix(builtAtUnix, 0).UTC(), generation, nil
+}
+
+// RecordSurfaceIndexBuild writes down that a build finished.
+//
+// It is written for a build that found nothing to do as well as for one that
+// produced a new index, because what the next start needs to know is when the
+// upstream was last looked at, not when the file last changed.
+func (s *Store) RecordSurfaceIndexBuild(ctx context.Context, builtAt time.Time, generation string) error {
+	if _, err := s.database.ExecContext(ctx, `
+		UPDATE surface_index SET built_at_unix = ?, generation = ? WHERE id = 1
+	`, builtAt.UTC().Unix(), generation); err != nil {
+		return fmt.Errorf("storing the surface index build: %w", err)
+	}
+
+	return nil
 }
 
 // SyncSchedule reports which phases the timer is allowed to start.
@@ -1985,6 +2041,35 @@ func schemaMigrations() [][]string {
 			// schema still inserts rows with the column's default, and a second
 			// such row must not fail its own run.
 			`CREATE INDEX sync_runs_reference_index ON sync_runs(reference)`,
+		},
+		{
+			// Which build of the local map a cached classification was measured
+			// against.
+			//
+			// Surfaces now come from an index this service builds from published
+			// OpenStreetMap extracts, and a new index is a new set of answers: a
+			// road resurfaced since the last build classifies differently from
+			// the same geometry read a week ago. The generation is therefore part
+			// of what makes a cached classification current, alongside the
+			// content hash that already tracked the stage's own shape.
+			//
+			// Existing rows default to the empty generation, which matches no
+			// index and so reclassifies once, on the first pass after the first
+			// build. That is the correct outcome: those rows came from Overpass
+			// and nothing recorded which day's map they describe.
+			`ALTER TABLE stage_surface ADD COLUMN index_generation TEXT NOT NULL DEFAULT ''`,
+			// When the index was last built, and what it produced.
+			//
+			// The scheduler counts its interval from process start, which on a
+			// service deployed several times a day would mean a weekly rebuild
+			// either runs on every deploy or never runs at all. One row, read at
+			// startup, is what turns the interval into time between builds.
+			`CREATE TABLE surface_index (
+				id            INTEGER PRIMARY KEY CHECK (id = 1),
+				built_at_unix INTEGER NOT NULL,
+				generation    TEXT    NOT NULL
+			)`,
+			`INSERT INTO surface_index (id, built_at_unix, generation) VALUES (1, 0, '')`,
 		},
 	}
 }

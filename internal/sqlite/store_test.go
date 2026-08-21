@@ -485,7 +485,7 @@ func TestStoreReprocessesOneStageWithoutLosingItsRouteIdentity(t *testing.T) {
 	require.NoError(t, store.StoreTrustedInventory(t.Context(), []route.Stage{stage}), "StoreTrustedInventory()")
 	require.NoError(t, store.UpsertTargetStage(t.Context(), "rider-a", 7, 2, "revision", "encoded-hash", 4242), "UpsertTargetStage()")
 	require.NoError(t, store.StoreStageSurface(
-		t.Context(), 7, 2, "content-hash", []byte(`[{"kind":"asphalt","start_index":0,"end_index":1}]`), 100,
+		t.Context(), 7, 2, "content-hash", "index-gen", []byte(`[{"kind":"asphalt","start_index":0,"end_index":1}]`), 100,
 	), "StoreStageSurface()")
 
 	found, err := store.RequestStageReprocess(t.Context(), 7, 2)
@@ -571,10 +571,10 @@ func TestStoreCountsOnlyClassificationsOfTheCurrentGeometry(t *testing.T) {
 	require.Equal(t, 2, total, "total stages")
 
 	require.NoError(t, store.StoreStageSurface(
-		t.Context(), 7, 1, "hash-a", []byte(`[{"kind":"asphalt","start_index":0,"end_index":1}]`), 100,
+		t.Context(), 7, 1, "hash-a", "index-gen", []byte(`[{"kind":"asphalt","start_index":0,"end_index":1}]`), 100,
 	), "StoreStageSurface()")
 	require.NoError(t, store.StoreStageSurface(
-		t.Context(), 8, 1, "an-earlier-shape", []byte(`[{"kind":"gravel","start_index":0,"end_index":1}]`), 100,
+		t.Context(), 8, 1, "an-earlier-shape", "index-gen", []byte(`[{"kind":"gravel","start_index":0,"end_index":1}]`), 100,
 	), "StoreStageSurface()")
 
 	classified, total, err = store.SurfaceCoverage(t.Context())
@@ -771,11 +771,17 @@ func TestStoreBoundsTheRecordedHistoryAndKeepsEachPhasesLastRun(t *testing.T) {
 	assert.Equal(t, 1, targetRuns, "the target half's last run was pruned with the rest")
 }
 
+// syncRunReferenceVersion is the migration that named the recorded runs. It is
+// pinned rather than counted from the end of the list, because what the test
+// below needs is the schema immediately before that one migration, which stops
+// being the last one the moment another is appended.
+const syncRunReferenceVersion = 11
+
 // A deployment upgrading into this feature has a history already, and it is as
 // addressable as anything recorded after the upgrade.
 func TestStoreNamesRunsRecordedBeforeReferencesExisted(t *testing.T) {
 	databasePath := filepath.Join(t.TempDir(), "state.db")
-	seedSchemaVersion(t, databasePath, len(schemaMigrations())-1)
+	seedSchemaVersion(t, databasePath, syncRunReferenceVersion-1)
 	database, err := sql.Open(driverName, databasePath)
 	require.NoError(t, err, "opening the seeded database")
 	_, err = database.ExecContext(t.Context(), `
@@ -944,12 +950,12 @@ func TestStoreCachesStageSurfaceAgainstTheGeometryItDescribes(t *testing.T) {
 	stage := storeTestStage(t, 7, 2, "revision", "content-hash")
 	require.NoError(t, store.StoreTrustedInventory(t.Context(), []route.Stage{stage}), "StoreTrustedInventory()")
 
-	_, found, err := store.StageSurfaceHash(t.Context(), 7, 2)
+	_, _, found, err := store.StageSurfaceHash(t.Context(), 7, 2)
 	require.NoError(t, err, "StageSurfaceHash() before enrichment")
 	assert.False(t, found, "a surface hash was stored before enrichment")
 
 	require.NoError(t, store.StoreStageSurface(
-		t.Context(), 7, 2, "content-hash", []byte(testSurfaceRanges), 1234.5,
+		t.Context(), 7, 2, "content-hash", "index-gen", []byte(testSurfaceRanges), 1234.5,
 	), "StoreStageSurface()")
 
 	ranges, matchedMetres, found, err := store.StageSurface(t.Context(), 7, 2, "content-hash")
@@ -960,10 +966,11 @@ func TestStoreCachesStageSurfaceAgainstTheGeometryItDescribes(t *testing.T) {
 	assert.Equal(t, wantRanges, []byte(ranges), "ranges")
 	assert.InDelta(t, 1234.5, matchedMetres, 0.001, "matchedMetres")
 
-	hash, found, err := store.StageSurfaceHash(t.Context(), 7, 2)
+	hash, generation, found, err := store.StageSurfaceHash(t.Context(), 7, 2)
 	require.NoError(t, err, "StageSurfaceHash()")
 	require.True(t, found, "StageSurfaceHash() did not find the stored hash")
 	assert.Equal(t, "content-hash", hash, "StageSurfaceHash()")
+	assert.Equal(t, "index-gen", generation, "StageSurfaceHash() generation")
 }
 
 func TestStoreHidesASurfaceMeasuredAgainstOtherGeometry(t *testing.T) {
@@ -971,7 +978,7 @@ func TestStoreHidesASurfaceMeasuredAgainstOtherGeometry(t *testing.T) {
 	stage := storeTestStage(t, 1, 1, "revision", "current-hash")
 	require.NoError(t, store.StoreTrustedInventory(t.Context(), []route.Stage{stage}), "StoreTrustedInventory()")
 	require.NoError(t, store.StoreStageSurface(
-		t.Context(), 1, 1, "earlier-hash", []byte(testSurfaceRanges), 10,
+		t.Context(), 1, 1, "earlier-hash", "index-gen", []byte(testSurfaceRanges), 10,
 	), "StoreStageSurface()")
 
 	// The ranges index the coordinates of the geometry they were measured
@@ -981,19 +988,49 @@ func TestStoreHidesASurfaceMeasuredAgainstOtherGeometry(t *testing.T) {
 	assert.False(t, found, "ranges measured against replaced geometry were served for it")
 	// The hash is still readable, which is how the enrichment pass knows the
 	// stage needs asking about again.
-	hash, hashFound, err := store.StageSurfaceHash(t.Context(), 1, 1)
+	hash, _, hashFound, err := store.StageSurfaceHash(t.Context(), 1, 1)
 	require.NoError(t, err, "StageSurfaceHash()")
 	require.True(t, hashFound, "StageSurfaceHash() did not find the stored hash")
 	assert.Equal(t, "earlier-hash", hash, "StageSurfaceHash()")
+}
+
+// The mirror of the test above, and deliberately the opposite answer. A stale
+// generation is not a stale geometry: those ranges still index the coordinates
+// the stage actually has, so they are old rather than wrong. There is one row
+// per stage, so withholding it would serve no surface at all — every rebuild
+// would blank the library until enrichment had walked it again. The hash read
+// is what notices, and the next pass is what corrects it.
+func TestStoreKeepsASurfaceMeasuredAgainstAnEarlierIndex(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	stage := storeTestStage(t, 1, 1, "revision", "content-hash")
+	require.NoError(t, store.StoreTrustedInventory(t.Context(), []route.Stage{stage}), "StoreTrustedInventory()")
+	require.NoError(t, store.StoreStageSurface(
+		t.Context(), 1, 1, "content-hash", "earlier-generation", []byte(testSurfaceRanges), 10,
+	), "StoreStageSurface()")
+
+	ranges, _, found, err := store.StageSurface(t.Context(), 1, 1, "content-hash")
+	require.NoError(t, err, "StageSurface() after a rebuild")
+	require.True(t, found, "a stage was blanked because the index had been rebuilt")
+	// Byte-identical, as everywhere here: the endpoint serves the stored ranges
+	// as they are rather than re-encoding them.
+	wantRanges := []byte(testSurfaceRanges)
+	assert.Equal(t, wantRanges, []byte(ranges), "ranges")
+
+	// What the enrichment pass compares against the live generation, and so what
+	// makes the stage be measured again rather than left as it is forever.
+	_, generation, hashFound, err := store.StageSurfaceHash(t.Context(), 1, 1)
+	require.NoError(t, err, "StageSurfaceHash()")
+	require.True(t, hashFound, "StageSurfaceHash() did not find the stored hash")
+	assert.Equal(t, "earlier-generation", generation, "the generation the row was measured against")
 }
 
 func TestStoreReplacesAStageSurfaceRatherThanAccumulatingOne(t *testing.T) {
 	store := openTestStore(t, testKey(1))
 	stage := storeTestStage(t, 1, 1, "revision", "second-hash")
 	require.NoError(t, store.StoreTrustedInventory(t.Context(), []route.Stage{stage}), "StoreTrustedInventory()")
-	require.NoError(t, store.StoreStageSurface(t.Context(), 1, 1, "first-hash", []byte(`[]`), 1), "first StoreStageSurface()")
+	require.NoError(t, store.StoreStageSurface(t.Context(), 1, 1, "first-hash", "index-gen", []byte(`[]`), 1), "first StoreStageSurface()")
 	require.NoError(t, store.StoreStageSurface(
-		t.Context(), 1, 1, "second-hash", []byte(testSurfaceRanges), 2,
+		t.Context(), 1, 1, "second-hash", "index-gen", []byte(testSurfaceRanges), 2,
 	), "second StoreStageSurface()")
 
 	ranges, matchedMetres, found, err := store.StageSurface(t.Context(), 1, 1, "second-hash")
@@ -1011,15 +1048,15 @@ func TestStorePrunesSurfaceForStagesLeavingTheInventory(t *testing.T) {
 	second := storeTestStage(t, 2, 1, "revision", "hash-two")
 	require.NoError(t, store.StoreTrustedInventory(t.Context(), []route.Stage{first, second}), "StoreTrustedInventory()")
 	require.NoError(t, store.StoreStageSurface(
-		t.Context(), 1, 1, "hash-one", []byte(testSurfaceRanges), 10,
+		t.Context(), 1, 1, "hash-one", "index-gen", []byte(testSurfaceRanges), 10,
 	), "StoreStageSurface()")
 	require.NoError(t, store.StoreStageSurface(
-		t.Context(), 2, 1, "hash-two", []byte(testSurfaceRanges), 10,
+		t.Context(), 2, 1, "hash-two", "index-gen", []byte(testSurfaceRanges), 10,
 	), "StoreStageSurface()")
 
 	require.NoError(t, store.StoreTrustedInventory(t.Context(), []route.Stage{first}), "second StoreTrustedInventory()")
 
-	_, removedFound, err := store.StageSurfaceHash(t.Context(), 2, 1)
+	_, _, removedFound, err := store.StageSurfaceHash(t.Context(), 2, 1)
 	require.NoError(t, err, "StageSurfaceHash() for a removed stage")
 	assert.False(t, removedFound, "the surface hash of a removed stage is still stored")
 
@@ -1033,7 +1070,7 @@ func TestStorePrunesSurfaceMeasuredAgainstReplacedGeometry(t *testing.T) {
 	stage := storeTestStage(t, 1, 1, "revision", "hash-one")
 	require.NoError(t, store.StoreTrustedInventory(t.Context(), []route.Stage{stage}), "StoreTrustedInventory()")
 	require.NoError(t, store.StoreStageSurface(
-		t.Context(), 1, 1, "hash-one", []byte(testSurfaceRanges), 10,
+		t.Context(), 1, 1, "hash-one", "index-gen", []byte(testSurfaceRanges), 10,
 	), "StoreStageSurface()")
 
 	replanned := storeTestStage(t, 1, 1, "revision", "hash-two")

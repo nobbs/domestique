@@ -157,14 +157,14 @@ type syncView struct {
 	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
 	LastCompletedAt string `json:"last_completed_at,omitempty"`
 	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	LastResult string `json:"last_result,omitempty"`
+	LastResult string      `json:"last_result,omitempty"`
+	Surface    surfaceView `json:"surface"`
 	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
 	SourceStages int              `json:"source_stages"`
 	Created      int              `json:"created"`
 	Updated      int              `json:"updated"`
 	Deleted      int              `json:"deleted"`
 	Schedule     syncScheduleView `json:"schedule"`
-	Surface      surfaceView      `json:"surface"`
 }
 
 // surfaceView reports how much of the library carries a usable classification.
@@ -172,9 +172,16 @@ type syncView struct {
 // been classified in days", which is otherwise invisible: enrichment cannot fail
 // a run, so a stage that fails every pass looks exactly like one nobody asked
 // about.
+//
+// Generation and BuiltAt name the map build the classifications were read from.
+// Both stay empty while surface classification is switched off, and until a
+// first index has finished building.
 type surfaceView struct {
-	Classified int `json:"classified"`
-	Total      int `json:"total"`
+	Generation string `json:"generation,omitempty"`
+	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
+	BuiltAt    string `json:"built_at,omitempty"`
+	Classified int    `json:"classified"`
+	Total      int    `json:"total"`
 }
 
 type statusView struct {

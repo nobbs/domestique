@@ -86,14 +86,28 @@ tile_style_url = "https://tiles.openfreemap.org/styles/bright"
 tile_style_url_dark = "https://tiles.openfreemap.org/styles/dark"
 
 [surface]
-# The Overpass endpoint the service asks which OpenStreetMap ways lie along a
-# stage, so it can tell asphalt from paving, gravel, or a forest track. The
-# default public instance needs no account and no key.
+# The OpenStreetMap regions the service builds its own surface index from, so it
+# can tell asphalt from paving, gravel, or a forest track. Each entry is a
+# Geofabrik region path.
 #
-# This one is the service talking, not your browser: it sends a simplified form
-# of each stage's shape, so the endpoint learns where your routes go. Nothing
-# else is sent, and each stage is asked about once — the answer is cached until
-# you re-plan that stage. Point this at your own Overpass instance to keep the
-# shapes on your infrastructure, or set it to "" to switch the lookup off and
-# leave stages unclassified.
-overpass_url = "https://overpass-api.de/api/interpreter"
+# Name the regions you actually ride. Naming more only costs disk and build time
+# for map nobody will be matched against. The default is an empty list, which
+# switches classification off entirely: nothing is downloaded, no index is built,
+# and stages carry no surface.
+#
+# No route shape ever leaves this host — classification reads a local file. The
+# only thing that goes out is the scheduled download of each region's published
+# extract, which tells the extract host which regions you care about and nothing
+# about any route.
+regions = []
+# regions = ["europe/germany/rheinland-pfalz", "europe/germany/hessen"]
+
+# How often the index is rebuilt. This is time between builds, not time since
+# this process started, so restarting the service does not restart the clock.
+#
+# A rebuild fetches each region's published checksum first and stops there when
+# nothing upstream has changed, so a weekly cadence costs one small request per
+# region on most weeks. The index is written beside the state database, and a
+# build needs about half a gigabyte of memory and a few hundred megabytes of
+# disk for the extract it stages.
+rebuild_interval = "168h"

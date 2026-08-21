@@ -43,6 +43,7 @@ private to this service.
 │   ├── readiness/                  loopback readiness probe, local state only
 │   ├── elevation/                  device-export elevation normalization
 │   ├── surface/                    OSM surface classification and snapping
+│   ├── osmindex/                   OSM extract download, index build, schedule
 │   ├── veloplanner/                VeloPlanner HTTP source adapter
 │   ├── fit/                        FIT encoding adapter
 │   ├── wahoo/                      Wahoo OAuth and route HTTP adapter
@@ -76,7 +77,8 @@ owns a distinct responsibility in this tree.
 | readiness | the loopback readiness probe: whether local configuration and state are usable | any upstream call, identity, routing of the served surface, or authorisation state |
 | webui | the embedded browser bundle and serving it; the TypeScript application | HTTP routing, identity, or any knowledge of persistence |
 | elevation | sampling and median-filtering the exported elevation profile | source fetching, storage, FIT bytes |
-| surface | OSM surface and tracktype classification, Overpass querying, snapping a stage to the ways under it, caching policy | SQL, HTTP routing, what the UI draws |
+| surface | OSM surface and tracktype classification, snapping a stage to the ways under it, caching policy | SQL, HTTP routing, what the UI draws, where the ways come from |
+| osmindex | downloading regional OSM extracts, packing them into a cell-partitioned surface index, the rebuild schedule, serving the ways near a stage | classification rules, SQL of the state store, what a stage is |
 | veloplanner | login, listing, detail decoding, route conversion | SQLite and Wahoo concerns |
 | fit | deterministic FIT bytes for one valid route stage | VeloPlanner requests, OAuth, HTTP |
 | wahoo | authorisation URL, exchange, refresh, user lookup, FIT route operations, rate headers | route-source parsing, SQLite queries, Pushover |

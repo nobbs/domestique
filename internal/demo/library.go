@@ -218,7 +218,7 @@ type Classification struct {
 // Classifications returns the stored surface for every stage that has one.
 //
 // The ranges are compressed and encoded by the same code that stores a real
-// Overpass answer, and the matched length is measured the same way, so a fixture
+// classification, and the matched length is measured the same way, so a fixture
 // cannot drift into a shape the production reader would not accept.
 func Classifications(stages []route.Stage) ([]Classification, error) {
 	specs := specs()

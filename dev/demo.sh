@@ -123,9 +123,9 @@ max_deletions_per_target = 5
 empty_source_deletion = "deny"
 
 [surface]
-# Empty: the demo's classifications are seeded, so no stage shape is ever sent
-# to a third-party server.
-overpass_url = ""
+# Empty: the demo's classifications are seeded, so no map extract is ever
+# downloaded and no surface index is ever built.
+regions = []
 
 [notifications.pushover]
 base_url = "${BROWSER_ORIGIN}"

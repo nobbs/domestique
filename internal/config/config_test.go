@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -127,13 +128,14 @@ func TestValidateTileStyleURLDark(t *testing.T) {
 	}
 }
 
-func TestLoadDefaultsToThePublicOverpassEndpoint(t *testing.T) {
+func TestLoadDefaultsToNoRegionsAndAWeeklyRebuild(t *testing.T) {
 	configPath, _ := writeValidConfiguration(t, t.TempDir())
 	t.Setenv(configFileEnv, configPath)
 
 	settings, err := Load()
 	require.NoError(t, err)
-	assert.Equal(t, defaultOverpassURL, settings.Surface.OverpassURL, "Surface.OverpassURL")
+	assert.Empty(t, settings.Surface.Regions, "surface classification is off until regions are named")
+	assert.Equal(t, defaultRebuildInterval, settings.Surface.RebuildInterval, "Surface.RebuildInterval")
 }
 
 func TestLoadDefaultsToPushoversOwnOrigin(t *testing.T) {
@@ -157,42 +159,101 @@ func TestLoadKeepsAnOverriddenPushoverOrigin(t *testing.T) {
 	assert.Equal(t, "https://pushover.example.test", settings.Notifications.Pushover.BaseURL, "Notifications.Pushover.BaseURL")
 }
 
-// An empty endpoint is how an operator declines to send stage shapes anywhere,
-// so it must load rather than fail as a missing setting.
-func TestLoadTreatsAnEmptyOverpassEndpointAsDisabled(t *testing.T) {
+// Regions are what an operator actually configures, so they have to survive
+// loading in the order and shape they were written.
+func TestLoadKeepsConfiguredRegions(t *testing.T) {
 	configPath, _ := writeValidConfiguration(t, t.TempDir())
-	appendToFile(t, configPath, "\n[surface]\noverpass_url = \"\"\n")
+	appendToFile(t, configPath,
+		"\n[surface]\nregions = [\"europe/germany/rheinland-pfalz\", \" europe/germany/hessen \"]\n"+
+			"rebuild_interval = \"72h\"\n")
 	t.Setenv(configFileEnv, configPath)
 
 	settings, err := Load()
 	require.NoError(t, err)
-	assert.Empty(t, settings.Surface.OverpassURL, "an empty endpoint declines the lookup")
+	assert.Equal(t,
+		[]string{"europe/germany/rheinland-pfalz", "europe/germany/hessen"},
+		settings.Surface.Regions,
+		"surrounding whitespace is not part of a slug",
+	)
+	assert.Equal(t, 72*time.Hour, settings.Surface.RebuildInterval, "Surface.RebuildInterval")
 }
 
-func TestValidateOverpassURL(t *testing.T) {
+// A region named twice is a typo that would otherwise be paid for twice, in
+// download, decode, and index size, for an index that answers identically.
+func TestLoadNamesEachRegionOnce(t *testing.T) {
+	configPath, _ := writeValidConfiguration(t, t.TempDir())
+	appendToFile(t, configPath,
+		"\n[surface]\nregions = [\"europe/germany/rheinland-pfalz\", \"europe/germany/hessen\", "+
+			"\" europe/germany/rheinland-pfalz \"]\nrebuild_interval = \"72h\"\n")
+	t.Setenv(configFileEnv, configPath)
+
+	settings, err := Load()
+	require.NoError(t, err)
+	assert.Equal(t,
+		[]string{"europe/germany/rheinland-pfalz", "europe/germany/hessen"},
+		settings.Surface.Regions,
+		"a repeat is dropped and the first position kept",
+	)
+}
+
+// An empty list is how an operator declines the whole feature, so it must load
+// rather than fail as a missing setting.
+func TestLoadTreatsNoRegionsAsDisabled(t *testing.T) {
+	configPath, _ := writeValidConfiguration(t, t.TempDir())
+	appendToFile(t, configPath, "\n[surface]\nregions = []\n")
+	t.Setenv(configFileEnv, configPath)
+
+	settings, err := Load()
+	require.NoError(t, err)
+	assert.Empty(t, settings.Surface.Regions, "no regions declines classification")
+}
+
+func TestValidateSurface(t *testing.T) {
 	tests := []struct {
 		name    string
-		value   string
+		surface rawSurface
 		wantErr bool
 	}{
-		{name: "public default", value: defaultOverpassURL},
-		{name: "self-hosted instance", value: "https://overpass.example.test/api/interpreter"},
-		{name: "empty disables the lookup", value: ""},
-		{name: "plaintext is rejected", value: "http://overpass.example.test/api/interpreter", wantErr: true},
-		//nolint:gosec // A rejection fixture for URL userinfo, not a real credential.
-		{name: "credentials are rejected", value: "https://user:pass@overpass.example.test/api", wantErr: true},
-		{name: "relative is rejected", value: "/api/interpreter", wantErr: true},
+		{name: "no regions at all", surface: rawSurface{}},
+		{
+			name:    "a region path",
+			surface: rawSurface{Regions: []string{"europe/germany/rheinland-pfalz"}, RebuildInterval: time.Hour},
+		},
+		{
+			name:    "a top-level region",
+			surface: rawSurface{Regions: []string{"antarctica"}, RebuildInterval: time.Hour},
+		},
+		{
+			name:    "a traversal is rejected",
+			surface: rawSurface{Regions: []string{"europe/../../etc/passwd"}, RebuildInterval: time.Hour},
+			wantErr: true,
+		},
+		{
+			name:    "an absolute URL is rejected",
+			surface: rawSurface{Regions: []string{"https://example.test/x.osm.pbf"}, RebuildInterval: time.Hour},
+			wantErr: true,
+		},
+		{
+			name:    "uppercase is rejected",
+			surface: rawSurface{Regions: []string{"europe/Germany"}, RebuildInterval: time.Hour},
+			wantErr: true,
+		},
+		{
+			name:    "a region without a cadence is rejected",
+			surface: rawSurface{Regions: []string{"antarctica"}},
+			wantErr: true,
+		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			err := validateOverpassURL(test.value)
+			err := validateSurface(test.surface)
 			if test.wantErr {
-				require.Errorf(t, err, "validateOverpassURL(%q)", test.value)
+				require.Errorf(t, err, "validateSurface(%v)", test.surface)
 
 				return
 			}
-			require.NoErrorf(t, err, "validateOverpassURL(%q)", test.value)
+			require.NoErrorf(t, err, "validateSurface(%v)", test.surface)
 		})
 	}
 }
@@ -254,12 +315,12 @@ func TestLoadRejectsInvalidConfiguration(t *testing.T) {
 			want: "between one and two",
 		},
 		{
-			name: "plaintext surface endpoint",
+			name: "a region that is not a region path",
 			mutate: func(t *testing.T, path string) {
 				t.Helper()
-				appendToFile(t, path, "\n[surface]\noverpass_url = \"http://overpass.example.test/api\"\n")
+				appendToFile(t, path, "\n[surface]\nregions = [\"../../etc/passwd\"]\n")
 			},
-			want: "surface.overpass_url",
+			want: "surface.regions",
 		},
 		{
 			name: "plaintext notification origin",

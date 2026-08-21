@@ -774,6 +774,35 @@ func TestHandlerReportsHowMuchOfTheLibraryIsClassified(t *testing.T) {
 	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &view), "decoding status")
 	assert.Equal(t, 1, view.Sync.Surface.Classified, "classified")
 	assert.Equal(t, 3, view.Sync.Surface.Total, "total")
+	assert.Empty(t, view.Sync.Surface.Generation, "a service with no index named one")
+	assert.Empty(t, view.Sync.Surface.BuiltAt, "a service with no index dated one")
+}
+
+// The counts alone cannot say whether a full library is classified against a map
+// from this week or from last spring. The generation is what makes a rebuild that
+// has silently stopped happening visible.
+func TestHandlerNamesTheMapBuildTheClassificationsCameFrom(t *testing.T) {
+	builtAt := time.Date(2026, time.August, 17, 3, 41, 0, 0, time.UTC)
+	handler := newHandlerWithSurfaceIndex(t, func() (string, time.Time, bool) {
+		return "9f2c41ab77de", builtAt, true
+	})
+
+	view := statusOf(t, handler)
+	assert.Equal(t, "9f2c41ab77de", view.Sync.Surface.Generation, "generation")
+	assert.Equal(t, "2026-08-17T03:41:00Z", view.Sync.Surface.BuiltAt, "built_at")
+}
+
+// A build the state database remembers whose file did not survive a restart is
+// exactly the case worth seeing, so the status reports what is loaded rather than
+// what was last recorded.
+func TestHandlerNamesNoMapBuildBeforeOneIsLoaded(t *testing.T) {
+	handler := newHandlerWithSurfaceIndex(t, func() (string, time.Time, bool) {
+		return "", time.Time{}, false
+	})
+
+	view := statusOf(t, handler)
+	assert.Empty(t, view.Sync.Surface.Generation, "generation")
+	assert.Empty(t, view.Sync.Surface.BuiltAt, "built_at")
 }
 
 // A run that has not finished must not be reported as the last one that did.
@@ -1040,6 +1069,26 @@ func newHandlerWithVerifier(t *testing.T, verifier AccessVerifier) *Handler {
 			AccessVerifier:   verifier,
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
+		},
+		&fakeOAuth{}, &fakeState{}, &fakeSync{accepted: true}, &fakeAssets{},
+	)
+	require.NoError(t, err, "New()")
+
+	return handler
+}
+
+// newHandlerWithSurfaceIndex builds a handler that reads the live surface index
+// through the given accessor, which is how the composition root supplies it.
+func newHandlerWithSurfaceIndex(t *testing.T, index func() (string, time.Time, bool)) *Handler {
+	t.Helper()
+	handler, err := New(
+		&Options{
+			TargetIDs:        []string{"rider-a"},
+			TileStyleURL:     testTileStyleURL,
+			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
+			AccessEmail:      testAccessEmail,
+			BrowserOriginURL: testBrowserOriginURL,
+			SurfaceIndexFunc: index,
 		},
 		&fakeOAuth{}, &fakeState{}, &fakeSync{accepted: true}, &fakeAssets{},
 	)

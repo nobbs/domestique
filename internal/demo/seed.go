@@ -14,7 +14,7 @@ import (
 // drag the SQLite adapter into anything that only wants the fixtures.
 type State interface {
 	StoreTrustedInventory(ctx context.Context, stages []route.Stage) error
-	StoreStageSurface(ctx context.Context, routeID int64, stageOrder int, contentHash string, ranges []byte, matchedMetres float64) error
+	StoreStageSurface(ctx context.Context, routeID int64, stageOrder int, contentHash, indexGeneration string, ranges []byte, matchedMetres float64) error
 	EnsureTargets(ctx context.Context, targetIDs []string) error
 	AuthorizeTarget(ctx context.Context, targetID, wahooUserID, refreshToken string) error
 	UpsertTargetStage(ctx context.Context, targetID string, routeID int64, stageOrder int, sourceRevision, contentHash string, wahooRouteID int64) error
@@ -49,6 +49,12 @@ type Slot struct {
 // has. It is deliberately not one of the generated route IDs.
 const orphanRouteID = 4199
 
+// demoIndexGeneration marks every seeded classification as coming from a map
+// build that no real index will ever carry. A demo that is later pointed at
+// configured regions therefore reclassifies its fixtures rather than trusting
+// them, which is what any stage classified by a retired index should do.
+const demoIndexGeneration = "demo"
+
 // Seed writes the synthetic library, its surfaces, and one state per slot.
 //
 // The clock is a parameter because everything else here is a function of the
@@ -82,6 +88,7 @@ func Seed(ctx context.Context, state State, slots []Slot, now time.Time) error {
 			classification.RouteID,
 			classification.StageOrder,
 			classification.ContentHash,
+			demoIndexGeneration,
 			classification.Ranges,
 			classification.MatchedMetres,
 		); err != nil {

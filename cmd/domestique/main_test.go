@@ -4,11 +4,16 @@ import (
 	"context"
 	"net"
 	"net/http"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/nobbs/domestique/internal/config"
+	"github.com/nobbs/domestique/internal/pushover"
+	"github.com/nobbs/domestique/internal/sqlite"
 )
 
 func TestServeWaitsForCancelledSchedulerBeforeReturning(t *testing.T) {
@@ -24,7 +29,9 @@ func TestServeWaitsForCancelledSchedulerBeforeReturning(t *testing.T) {
 	server := newTestServer()
 	readinessServer := newTestServer()
 	result := make(chan error, 1)
-	go func() { result <- serve(ctx, cancel, server, readinessServer, scheduler, &blockingManualSync{}) }()
+	go func() {
+		result <- serve(ctx, cancel, server, readinessServer, []schedulerRunner{scheduler}, &blockingManualSync{})
+	}()
 
 	<-scheduler.started
 	cancel()
@@ -37,6 +44,51 @@ func TestServeWaitsForCancelledSchedulerBeforeReturning(t *testing.T) {
 	}
 
 	close(scheduler.release)
+	require.NoError(t, <-result)
+}
+
+// Synchronization and the surface index rebuild are two independent schedules,
+// and serve owns the shutdown of both. A serve that waited for only the first
+// would close the state database and the index files while the other was still
+// reading them.
+func TestServeWaitsForEverySchedulerBeforeReturning(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	first := &blockingScheduler{
+		started:   make(chan struct{}),
+		cancelled: make(chan struct{}),
+		release:   make(chan struct{}),
+	}
+	second := &blockingScheduler{
+		started:   make(chan struct{}),
+		cancelled: make(chan struct{}),
+		release:   make(chan struct{}),
+	}
+	result := make(chan error, 1)
+	go func() {
+		result <- serve(
+			ctx, cancel, newTestServer(), newTestServer(),
+			[]schedulerRunner{first, second}, &blockingManualSync{},
+		)
+	}()
+
+	<-first.started
+	<-second.started
+	cancel()
+	<-first.cancelled
+	<-second.cancelled
+
+	// Releasing only one of them must not be enough to let serve return.
+	close(first.release)
+	select {
+	case err := <-result:
+		t.Fatalf("serve returned while a scheduler was still running: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	close(second.release)
 	require.NoError(t, <-result)
 }
 
@@ -54,7 +106,9 @@ func TestServeStopsBothListeners(t *testing.T) {
 	}
 	server, readinessServer := newTestServer(), newTestServer()
 	result := make(chan error, 1)
-	go func() { result <- serve(ctx, cancel, server, readinessServer, scheduler, &blockingManualSync{}) }()
+	go func() {
+		result <- serve(ctx, cancel, server, readinessServer, []schedulerRunner{scheduler}, &blockingManualSync{})
+	}()
 
 	<-scheduler.started
 	cancel()
@@ -94,7 +148,7 @@ func TestServeStopsWhenTheReadinessListenerCannotBind(t *testing.T) {
 	readinessServer.Addr = occupied.Addr().String()
 	result := make(chan error, 1)
 	go func() {
-		result <- serve(ctx, cancel, newTestServer(), readinessServer, scheduler, &blockingManualSync{})
+		result <- serve(ctx, cancel, newTestServer(), readinessServer, []schedulerRunner{scheduler}, &blockingManualSync{})
 	}()
 
 	<-scheduler.started
@@ -131,4 +185,89 @@ func (s *blockingScheduler) Run(ctx context.Context) {
 	<-ctx.Done()
 	close(s.cancelled)
 	<-s.release
+}
+
+// A restart has to serve classifications immediately rather than going blind
+// until the next rebuild lands, which is the whole reason the last build's file
+// is reopened here. These are the states a host can restart into: one that has
+// never built, and one whose state database remembers a build whose file is no
+// longer beside it. Neither is an error, and both have to end with a schedule.
+func TestStartSurfaceIndexOnAHostThatHasNeverBuilt(t *testing.T) {
+	t.Parallel()
+
+	directory := t.TempDir()
+	settings := surfaceSettings(directory, time.Hour)
+
+	current, scheduler, err := startSurfaceIndex(
+		t.Context(), settings, testStore(t, directory), testNotifier(t),
+	)
+	require.NoError(t, err, "startSurfaceIndex()")
+	t.Cleanup(func() { assert.NoError(t, current.Close(), "Close()") })
+
+	assert.NotNil(t, scheduler, "no rebuild was scheduled")
+	assert.Empty(t, current.Generation(), "an index was served by a host that has never built")
+}
+
+func TestStartSurfaceIndexWhenTheRememberedIndexIsGone(t *testing.T) {
+	t.Parallel()
+
+	directory := t.TempDir()
+	store := testStore(t, directory)
+	require.NoError(t, store.RecordSurfaceIndexBuild(t.Context(), time.Now().UTC(), "abcdef012345"))
+
+	current, scheduler, err := startSurfaceIndex(
+		t.Context(), surfaceSettings(directory, time.Hour), store, testNotifier(t),
+	)
+	require.NoError(t, err, "a remembered index that is no longer on disk is not an error")
+	t.Cleanup(func() { assert.NoError(t, current.Close(), "Close()") })
+
+	assert.NotNil(t, scheduler, "no rebuild was scheduled")
+	assert.Empty(t, current.Generation(), "a generation was served from a file that does not exist")
+}
+
+// The rebuild interval comes from configuration, so a value the scheduler will
+// not accept has to stop the process here rather than leave it running with
+// surface enrichment silently switched off.
+func TestStartSurfaceIndexRefusesAScheduleItCannotKeep(t *testing.T) {
+	t.Parallel()
+
+	directory := t.TempDir()
+	_, _, err := startSurfaceIndex(
+		t.Context(), surfaceSettings(directory, 0), testStore(t, directory), testNotifier(t),
+	)
+	require.Error(t, err, "an interval the scheduler cannot keep was accepted")
+	assert.Contains(t, err.Error(), "surface index scheduler", "which step failed")
+}
+
+func surfaceSettings(directory string, rebuildInterval time.Duration) *config.Settings {
+	return &config.Settings{
+		State:   config.State{DatabasePath: filepath.Join(directory, "state.db")},
+		Surface: config.Surface{Regions: []string{"europe/germany"}, RebuildInterval: rebuildInterval},
+	}
+}
+
+func testStore(t *testing.T, directory string) *sqlite.Store {
+	t.Helper()
+
+	var key [32]byte
+	for index := range key {
+		key[index] = byte(index)
+	}
+	store, err := sqlite.Open(t.Context(), filepath.Join(directory, "state.db"), key)
+	require.NoError(t, err, "sqlite.Open()")
+	t.Cleanup(func() { assert.NoError(t, store.Close(), "Close()") })
+
+	return store
+}
+
+func testNotifier(t *testing.T) *pushover.Client {
+	t.Helper()
+
+	notifier, err := pushover.New(&pushover.Options{
+		ApplicationToken: []byte("token"),
+		UserKey:          []byte("user"),
+	})
+	require.NoError(t, err, "pushover.New()")
+
+	return notifier
 }
