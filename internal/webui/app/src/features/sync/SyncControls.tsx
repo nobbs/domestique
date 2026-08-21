@@ -1,11 +1,11 @@
 /**
- * The operator's controls over synchronisation.
+ * What is happening now, and the controls over each half.
  *
  * A synchronisation has two halves — reading the VeloPlanner library, and
  * writing what was read onto the Wahoo accounts — and each has its own switch
- * and its own button. They are presented as one row per half rather than as a
- * settings list, because the question an operator actually has is about a half:
- * is it on, when did it last run, and can I run it now.
+ * and its own button. They are one row per half rather than a settings list,
+ * because the question an operator actually has is about a half: is it on, when
+ * did it last run, and can I run it now.
  *
  * A switch governs the timer only. The button beside it runs that half whether
  * the switch is on or off, which is why the button never disables itself for a
@@ -16,22 +16,16 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { setSyncSchedule, triggerSync } from "../../api/client";
 import { statusQuery } from "../../api/queries";
-import type { SyncActive, SyncPhase, SyncPhaseRun, SyncSchedule } from "../../api/types";
+import type { Status, SyncActive, SyncPhase, SyncPhaseRun, SyncSchedule } from "../../api/types";
 import { SYNC_PHASES } from "../../api/types";
 import { Button } from "../../components/Button";
-import { ErrorMessage } from "../../components/StatusMessage";
 import { formatTimestamp } from "../../lib/format";
-import { GUIDANCE_LABELS, syncGuidance } from "../../lib/syncGuidance";
+import { syncGuidance } from "../../lib/syncGuidance";
 
-const PHASE_LABELS: Record<SyncPhase, { title: string; detail: string }> = {
-  source: {
-    title: "Read from VeloPlanner",
-    detail: "Refreshes the stored library and the map. Touches no device.",
-  },
-  targets: {
-    title: "Write to Wahoo",
-    detail: "Reconciles the stored library onto every target account.",
-  },
+/** The name each half goes by, on this page and in the history below it. */
+export const PHASE_LABELS: Record<SyncPhase, string> = {
+  source: "Read from VeloPlanner",
+  targets: "Write to Wahoo",
 };
 
 /** What each half is doing while it is doing it, rather than what to press. */
@@ -60,7 +54,7 @@ function activeHeadline(state: string, active: SyncActive): string {
  *
  * The counts are the aggregate the service reports and nothing beyond it: how
  * much of what the accounts are owed they already hold. A run cannot say which
- * stage it is on without naming one, so it does not try, and an empty library
+ * route it is on without naming one, so it does not try, and an empty library
  * is left to the headline alone rather than told it is nought of nought.
  */
 export function activeSummary(state: string, active: SyncActive): string {
@@ -71,36 +65,70 @@ export function activeSummary(state: string, active: SyncActive): string {
   }
   const accounts = active.targets === 1 ? "account" : "accounts";
 
-  return `${headline} · ${active.stages.current} of ${total} stages across ${active.targets} ${accounts}`;
+  return `${headline} · ${active.stages.current} of ${total} routes across ${active.targets} ${accounts}`;
 }
 
 /**
- * What one half's last run amounts to, in a sentence.
+ * What the page says when nothing is running.
  *
- * A run that did not succeed reduces to how it ended and when. What it means and
- * what to do about it is the guidance line beside this one, because "blocked"
- * and "failed" ask opposite things of an operator and neither fits in a count.
+ * Two clauses: that nothing is running, and when each half last got somewhere.
+ * A half that was held says so instead of saying when it finished, because a
+ * gate that held is the one thing on this card an operator has to act on.
+ */
+export function idleSummary(status: Status): string {
+  const held = SYNC_PHASES.map((phase) => {
+    const run = status.sync.phases[phase];
+    const guidance = run ? syncGuidance(phase, run.lastResult, run.lastFailure) : undefined;
+
+    return guidance?.kind === "blocked" ? { phase, run } : null;
+  }).find(Boolean);
+  if (held?.run) {
+    const half = held.phase === "source" ? "read" : "write";
+
+    return `Nothing is running. The last ${half} was held at ${formatTimestamp(held.run.lastCompletedAt)}.`;
+  }
+
+  const read = status.sync.phases.source?.lastCompletedAt;
+  const write = status.sync.phases.targets?.lastCompletedAt;
+  if (!read && !write) {
+    return "Nothing is running, and nothing has run yet.";
+  }
+
+  return `Nothing is running. Last read ${formatTimestamp(read)}, last write ${formatTimestamp(write)}.`;
+}
+
+/**
+ * What one half's last run amounts to, in a line.
+ *
+ * A run that did not succeed reduces to how it ended and when. What it means
+ * and what to do about it is the guidance line beneath it, because "held" and
+ * "failed" ask opposite things of an operator and neither fits in a count.
  */
 export function runSummary(phase: SyncPhase, run: SyncPhaseRun | undefined): string {
   if (!run) {
-    return "Has not run yet.";
+    return "Has not run yet";
   }
   const when = formatTimestamp(run.lastCompletedAt);
   const guidance = syncGuidance(phase, run.lastResult, run.lastFailure);
   if (guidance) {
-    return `${GUIDANCE_LABELS[guidance.kind]} · ${when}`;
+    return `${when} · ${guidance.kind === "blocked" ? "held by a gate" : "did not finish"}`;
   }
   const counts =
     phase === "source"
-      ? `${run.sourceStages} stages`
-      : `${run.created} created · ${run.updated} updated · ${run.deleted} deleted`;
+      ? `${run.sourceStages} routes`
+      : [
+          `${run.created} created`,
+          `${run.updated} updated`,
+          ...(run.deleted > 0 ? [`${run.deleted} deleted`] : []),
+        ].join(", ");
 
-  return `${counts} · ${when}`;
+  return `${when} · ${counts}`;
 }
 
+/** The body of the "Now" card: one line, then one row per half. */
 export function SyncControls() {
   const queryClient = useQueryClient();
-  const { data, isPending, isError, error } = useQuery(statusQuery());
+  const { data, isPending, isError } = useQuery(statusQuery());
 
   const invalidateStatus = () =>
     queryClient.invalidateQueries({ queryKey: statusQuery().queryKey });
@@ -117,7 +145,7 @@ export function SyncControls() {
     return null;
   }
   if (isError) {
-    return <ErrorMessage what="the synchronisation controls" error={error} />;
+    return <p className="sync-card__error">The service did not say what it is doing.</p>;
   }
 
   // Both switches travel on every change: the service refuses a half-named
@@ -127,34 +155,29 @@ export function SyncControls() {
     schedule.mutate({ ...data.sync.schedule, [phase]: !data.sync.schedule[phase] });
 
   return (
-    <section className="sync-controls" aria-labelledby="sync-controls-heading">
-      <h2 className="sync-controls__heading" id="sync-controls-heading">
-        Synchronisation
-      </h2>
+    <>
       {/*
        * The one line here that changes while it is being read. It is announced
        * politely rather than assertively: the operator asked for this run, so
        * its progress is something to look at when they choose to, and the text
        * only changes when the run does.
        */}
-      {data.sync.active ? (
-        <p className="sync-controls__active" aria-live="polite">
-          {activeSummary(data.sync.state, data.sync.active)}
-        </p>
-      ) : null}
+      <p className="sync-card__line" aria-live="polite">
+        {data.sync.active ? activeSummary(data.sync.state, data.sync.active) : idleSummary(data)}
+      </p>
       {/*
-       * Classification is enrichment: it never fails a run, so a stage the
+       * Classification is enrichment: it never fails a run, so a route the
        * endpoint keeps refusing is otherwise indistinguishable from one that has
        * not come up yet. The count is the only place that difference shows.
        */}
       {data.sync.surface.total > 0 && data.sync.surface.classified < data.sync.surface.total ? (
-        <p className="sync-controls__coverage">
+        <p className="sync-card__line">
           Surface classified for {data.sync.surface.classified} of {data.sync.surface.total}{" "}
-          {data.sync.surface.total === 1 ? "stage" : "stages"}. Each unclassified stage is tried
+          {data.sync.surface.total === 1 ? "route" : "routes"}. Each unclassified route is tried
           again after every read.
         </p>
       ) : null}
-      <ul className="sync-controls__phases">
+      <ul className="sync-card__list">
         {SYNC_PHASES.map((phase) => {
           const enabled = data.sync.schedule[phase];
           const phaseRun = data.sync.phases[phase];
@@ -163,44 +186,43 @@ export function SyncControls() {
             : undefined;
 
           return (
-            <li className="sync-controls__phase" key={phase}>
-              <div className="sync-controls__text">
-                <span className="sync-controls__title">{PHASE_LABELS[phase].title}</span>
-                <span className="sync-controls__detail">{PHASE_LABELS[phase].detail}</span>
-                <span className="sync-controls__run">{runSummary(phase, phaseRun)}</span>
+            <li className="sync-row" key={phase}>
+              <div className="sync-row__text">
+                <span className="sync-row__title">{PHASE_LABELS[phase]}</span>
+                <span className="sync-row__detail">{runSummary(phase, phaseRun)}</span>
                 {/*
                  * A gate that held is not an error the operator caused, so it is
                  * stated rather than announced: the page is being read, not
                  * interrupted, and the run it describes finished some time ago.
                  */}
                 {guidance ? (
-                  <span className="sync-controls__guidance" data-kind={guidance.kind}>
-                    <span className="sync-controls__guidance-headline">{guidance.headline}</span>{" "}
-                    {guidance.remediation}
+                  <span className="sync-guidance" data-kind={guidance.kind}>
+                    <strong>{guidance.headline}</strong> {guidance.remediation}
                   </span>
                 ) : null}
               </div>
-              <div className="sync-controls__actions">
+              <div className="sync-row__actions">
                 {/*
                  * Both rows carry the same two words, so the visible text alone
                  * names neither half. The accessible name says which one, since
                  * a reader arriving at the second checkbox has no row above it
-                 * to tell them apart.
+                 * to tell them apart. The interval is the service's own and is
+                 * fixed at an hour, so the switch can say what it schedules.
                  */}
-                <label className="sync-controls__switch">
+                <label className="sync-row__switch">
                   <input
                     type="checkbox"
                     checked={enabled}
                     disabled={schedule.isPending}
                     onChange={() => toggle(phase)}
-                    aria-label={`Schedule: ${PHASE_LABELS[phase].title}`}
+                    aria-label={`Hourly: ${PHASE_LABELS[phase]}`}
                   />
-                  <span>{enabled ? "Scheduled" : "Paused"}</span>
+                  <span>Hourly</span>
                 </label>
                 <Button
                   disabled={run.isPending}
                   onClick={() => run.mutate(phase)}
-                  aria-label={`Run now: ${PHASE_LABELS[phase].title}`}
+                  aria-label={`Run now: ${PHASE_LABELS[phase]}`}
                 >
                   Run now
                 </Button>
@@ -215,17 +237,17 @@ export function SyncControls() {
        * is least suited to.
        */}
       {schedule.isError ? (
-        <p className="sync-controls__error" role="alert">
+        <p className="sync-card__error" role="alert">
           The schedule was not changed. It is still what it was.
         </p>
       ) : null}
       {run.isError ? (
-        <p className="sync-controls__error" role="alert">
+        <p className="sync-card__error" role="alert">
           {run.error instanceof Error && run.error.message
             ? run.error.message
             : "That run could not be started."}
         </p>
       ) : null}
-    </section>
+    </>
   );
 }

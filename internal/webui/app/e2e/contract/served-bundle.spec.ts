@@ -8,12 +8,12 @@
  * exist to catch, and it surfaces as the page failing to show what it fetched.
  */
 
-import { mapRegion, openLibrary, openStage, settleMap } from "../fixtures";
+import { mapRegion, openLibrary, openRoute, openSync, settleMap } from "../fixtures";
 import { callsTo, expect, test } from "./fixtures";
 
-const LOOP_STAGE = { routeId: 4102, stageOrder: 1 };
-/** A stage the seeded library does not contain. */
-const ABSENT_STAGE = { routeId: 9999, stageOrder: 1 };
+const LOOP_ROUTE = { routeId: 4102, stageOrder: 1 };
+/** A route the seeded library does not contain. */
+const ABSENT_ROUTE = { routeId: 9999, stageOrder: 1 };
 
 test("the service serves a bundle the browser can boot", async ({ bundlePage: page }) => {
   const document = await page.goto("/");
@@ -28,7 +28,7 @@ test("the service serves a bundle the browser can boot", async ({ bundlePage: pa
 
   // The application mounted, which means the hashed module the document names was
   // served, parsed and run by the embed handler's file server.
-  await expect(page.locator(".route-card").first()).toBeVisible();
+  await expect(page.getByRole("searchbox", { name: "Search the route library" })).toBeVisible();
   const asset = await page.locator("script[type='module']").first().getAttribute("src");
   expect(asset).toMatch(/^\/assets\/.+\.js$/);
 });
@@ -36,21 +36,29 @@ test("the service serves a bundle the browser can boot", async ({ bundlePage: pa
 test("the library is drawn from the routes view", async ({ bundlePage: page, apiCalls }) => {
   await openLibrary(page);
 
-  await expect(page.locator(".route-card")).toHaveCount(6);
+  // The listing is counted where the page states its size rather than in a
+  // column of cards: the entry page draws the library on the map, and nothing is
+  // listed until something is asked.
+  await expect(page.getByRole("searchbox", { name: "Search the route library" })).toHaveAttribute(
+    "placeholder",
+    "Search 6 routes",
+  );
+  await page.getByRole("searchbox", { name: "Search the route library" }).fill("kaiserstuhl");
+  await page.getByRole("button", { name: /Synthetic Kaiserstuhl Loop/ }).click();
   // Distances come from `distance_metres`, so a card with a figure on it is a
-  // stage view this client could read. A renamed field would leave the parser
+  // route view this client could read. A renamed field would leave the parser
   // throwing and the page showing its error state instead.
-  await expect(page.locator(".route-card__meta").first()).toContainText("km");
+  await expect(page.locator(".route-card__figures")).toContainText("km");
   expect(callsTo(apiCalls, "GET", "/v1/routes").map((call) => call.status)).toContain(200);
   expect(callsTo(apiCalls, "GET", "/v1/webui/config").map((call) => call.status)).toContain(200);
 });
 
-test("a stage's geometry and its surface reach the map", async ({ bundlePage: page, apiCalls }) => {
-  await openStage(page, LOOP_STAGE.routeId, LOOP_STAGE.stageOrder);
+test("a route's geometry and its surface reach the map", async ({ bundlePage: page, apiCalls }) => {
+  await openRoute(page, LOOP_ROUTE.routeId, LOOP_ROUTE.stageOrder);
 
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Synthetic Kaiserstuhl Loop");
   await expect(page.locator(".maplibregl-canvas")).toBeVisible();
-  await expect(page.locator(".stage-detail__facts")).toContainText("km");
+  await expect(page.locator(".route-page__facts")).toContainText("km");
   // The coordinates, the bounding box and the surface ranges all came out of the
   // geometry view; a map that fitted its camera and a key that lists classes are
   // the two halves of that having been read.
@@ -60,31 +68,34 @@ test("a stage's geometry and its surface reach the map", async ({ bundlePage: pa
   const geometry = callsTo(
     apiCalls,
     "GET",
-    `/v1/routes/${LOOP_STAGE.routeId}/stages/${LOOP_STAGE.stageOrder}/geometry`,
+    `/v1/routes/${LOOP_ROUTE.routeId}/stages/${LOOP_ROUTE.stageOrder}/geometry`,
   );
   expect(geometry.map((call) => call.status)).toContain(200);
   await settleMap(page);
 });
 
-test("the status view drives the synchronisation panel", async ({ bundlePage: page, apiCalls }) => {
-  await openLibrary(page);
+test("the status view drives the sync page", async ({ bundlePage: page, apiCalls }) => {
+  await openSync(page);
 
-  const panel = page.getByRole("region", { name: /synchronisation/i });
-  await expect(panel).toBeVisible();
   // Both configured slots, the schedule state of both halves, and a run summary:
   // the whole status view, rendered.
-  await expect(page.getByText("rider-b")).toBeVisible();
+  await expect(page.getByText("rider-b", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Run now: Read from VeloPlanner" })).toBeVisible();
-  await expect(page.getByLabel("Schedule: Read from VeloPlanner")).toBeVisible();
+  await expect(page.getByLabel("Hourly: Read from VeloPlanner")).toBeVisible();
+  await expect(page.getByRole("region", { name: "What the accounts hold" })).toBeVisible();
   expect(callsTo(apiCalls, "GET", "/v1/status").map((call) => call.status)).toContain(200);
+  // The history card is the third view the page reads, and it crosses the same
+  // boundary as the other two.
+  await expect(page.getByRole("region", { name: "What has happened" })).toBeVisible();
+  expect(callsTo(apiCalls, "GET", "/v1/sync/runs").map((call) => call.status)).toContain(200);
 });
 
-test("a stage the library does not hold is reported safely", async ({
+test("a route the library does not hold is reported safely", async ({
   bundlePage: page,
   apiCalls,
   identity,
 }) => {
-  await page.goto(`/routes/${ABSENT_STAGE.routeId}/${ABSENT_STAGE.stageOrder}`);
+  await page.goto(`/routes/${ABSENT_ROUTE.routeId}/${ABSENT_ROUTE.stageOrder}`);
 
   // The service answers 404 with its error envelope, and the page says what that
   // means for the reader rather than showing a code, a stack, or a blank map.
@@ -92,7 +103,7 @@ test("a stage the library does not hold is reported safely", async ({
   const geometry = callsTo(
     apiCalls,
     "GET",
-    `/v1/routes/${ABSENT_STAGE.routeId}/stages/${ABSENT_STAGE.stageOrder}/geometry`,
+    `/v1/routes/${ABSENT_ROUTE.routeId}/stages/${ABSENT_ROUTE.stageOrder}/geometry`,
   );
   expect(geometry.map((call) => call.status)).toContain(404);
 
@@ -100,7 +111,7 @@ test("a stage the library does not hold is reported safely", async ({
   // handled: an error envelope naming a code, and nothing about what went missing
   // inside the service.
   const envelope = await page.request.get(
-    `/v1/routes/${ABSENT_STAGE.routeId}/stages/${ABSENT_STAGE.stageOrder}/geometry`,
+    `/v1/routes/${ABSENT_ROUTE.routeId}/stages/${ABSENT_ROUTE.stageOrder}/geometry`,
     { headers: identity },
   );
   expect(envelope.status()).toBe(404);

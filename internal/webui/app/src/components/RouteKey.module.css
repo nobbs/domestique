@@ -7,9 +7,8 @@
  */
 
 /*
- * The key sits directly beneath the chart, indented to its plot area so the
- * swatches line up under the marks they name, and holds both halves on one line
- * wherever there is room for them.
+ * One line of text-and-swatch pairs, sitting under the chart it explains and
+ * holding both halves on one line wherever there is room for them.
  *
  * The gap between the halves is wider than the gap inside one, which is what
  * keeps them two keys rather than one long row of chips when they do share a
@@ -19,31 +18,20 @@
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 0.15rem 1.6rem;
-  margin: 0.1rem 0.75rem 0.55rem 2.9rem;
-}
-
-/*
- * The indent is the chart's axis room, and the chart gives it up on a narrow
- * screen — see the narrow-portrait block in index.css. The key follows it, or
- * it is left pointing at marks that have moved.
- */
-@media (max-width: 30rem) {
-  .key {
-    margin-left: 0.9rem;
-    margin-right: 0.9rem;
-  }
+  gap: var(--space-1) var(--space-5);
+  margin: 0 var(--space-4) var(--space-2);
 }
 
 .list {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.15rem 0.4rem;
+  gap: var(--space-1) var(--space-2);
   list-style: none;
   margin: 0;
   padding: 0;
-  color: var(--text-muted);
-  font-size: 0.72rem;
+  color: var(--ink-2);
+  font: var(--type-small);
+  letter-spacing: var(--track-small);
   font-variant-numeric: tabular-nums;
 }
 
@@ -58,7 +46,7 @@
 .chip {
   display: inline-flex;
   align-items: center;
-  gap: 0.3rem;
+  gap: var(--space-1);
   /*
    * The padding is pulled back out of the layout on both axes, so growing the
    * hit area to something a thumb can find does not push the key away from the
@@ -79,8 +67,8 @@
 }
 
 .chip:hover {
-  border-color: var(--border);
-  color: var(--text);
+  border-color: var(--rule);
+  color: var(--ink);
 }
 
 /*
@@ -95,8 +83,8 @@
 
 .chip[aria-pressed="true"] {
   border-color: var(--accent);
-  background: var(--accent-soft);
-  color: var(--text);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--ink);
 }
 
 /*
@@ -108,69 +96,65 @@
   opacity: 0.55;
 }
 
+/*
+ * A 16 px swatch, solid, with the one small radius. It repeats nothing but the
+ * colour, because colour is now the only channel the map and the chart use —
+ * see SURFACE_STYLES, and the `--surface-*` and `--grade-*` tokens they mirror.
+ */
 .swatch {
-  width: 14px;
-  height: 8px;
+  width: 16px;
+  height: 16px;
   flex: none;
-  border-radius: 2px;
+  border-radius: 4px;
 }
 
 .share {
-  color: var(--text);
+  color: var(--ink);
 }
 
 /* Where the surface key would be, saying why there is none. */
 .absent {
   margin: 0;
-  color: var(--text-muted);
-  font-size: 0.72rem;
+  color: var(--ink-2);
+  font: var(--type-small);
+  letter-spacing: var(--track-small);
 }
 
-/*
- * A gradient swatch repeats both channels the chart draws with: the band colour,
- * and — from the first steep band up — the texture over it. Approximated in CSS
- * rather than shared with the SVG patterns, which cannot be referenced from a
- * stylesheet; what has to match is the *sense* of the texture, coarse to fine
- * and plain to crossed, so a reader can find the band a swatch names on the
- * chart. The colours themselves are the theme's, so the swatch and the chart's
- * cursor cannot drift apart.
- */
+.swatch[data-surface="asphalt"] {
+  background: var(--surface-asphalt);
+}
+.swatch[data-surface="paving"] {
+  background: var(--surface-paving);
+}
+.swatch[data-surface="compacted"] {
+  background: var(--surface-compacted);
+}
+.swatch[data-surface="gravel"] {
+  background: var(--surface-gravel);
+}
+.swatch[data-surface="ground"] {
+  background: var(--surface-ground);
+}
+.swatch[data-surface="unknown"] {
+  background: var(--surface-unsurveyed);
+}
+
 .swatch[data-band="0"] {
-  background: var(--band-0);
+  background: var(--grade-0);
 }
-
 .swatch[data-band="1"] {
-  background:
-    repeating-linear-gradient(45deg, transparent 0 2px, var(--surface) 2px 3.5px),
-    var(--band-1);
+  background: var(--grade-1);
 }
-
 .swatch[data-band="2"] {
-  background:
-    repeating-linear-gradient(135deg, transparent 0 2px, var(--surface) 2px 3.5px),
-    var(--band-2);
+  background: var(--grade-2);
 }
-
 .swatch[data-band="3"] {
-  background:
-    repeating-linear-gradient(45deg, transparent 0 2px, var(--surface) 2px 3.5px),
-    repeating-linear-gradient(135deg, transparent 0 2px, var(--surface) 2px 3.5px),
-    var(--band-3);
+  background: var(--grade-3);
 }
-
 .swatch[data-band="4"] {
-  background:
-    repeating-linear-gradient(0deg, transparent 0 1.5px, var(--surface) 1.5px 3px),
-    repeating-linear-gradient(90deg, transparent 0 1.5px, var(--surface) 1.5px 3px),
-    var(--band-4);
+  background: var(--grade-4);
 }
 
-/*
- * A forced palette flattens the pressed chip into the resting one: the accent
- * border and the tinted background it is stated in are both authored colours.
- * The reader's own selection pair says it instead, which is what a forced
- * palette has for exactly this.
- */
 @media (forced-colors: active) {
   .chip[aria-pressed="true"] {
     background: Highlight;

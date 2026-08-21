@@ -10,9 +10,9 @@ import type {
   BoundingBox,
   BuildInfo,
   Position,
-  Stage,
-  StageGeometry,
-  StageSurface,
+  Route,
+  RouteGeometry,
+  RouteSurface,
   Status,
   SurfaceCoverage,
   SurfaceKind,
@@ -123,7 +123,7 @@ function flag(value: unknown, at: string): boolean {
   return value;
 }
 
-function stageFrom(source: Record<string, unknown>, at: string): Stage {
+function routeFrom(source: Record<string, unknown>, at: string): Route {
   return {
     routeId: count(source.route_id, `${at}.route_id`),
     stageOrder: count(source.stage, `${at}.stage`),
@@ -139,15 +139,15 @@ function stageFrom(source: Record<string, unknown>, at: string): Stage {
   };
 }
 
-export function parseStages(payload: unknown): Stage[] {
+export function parseRoutes(payload: unknown): Route[] {
   const body = record(payload, "body");
   return array(body.stages, "body.stages").map((entry, index) =>
-    stageFrom(record(entry, `stages[${index}]`), `stages[${index}]`),
+    routeFrom(record(entry, `stages[${index}]`), `stages[${index}]`),
   );
 }
 
-export function parseStage(payload: unknown): Stage {
-  return stageFrom(record(payload, "body"), "body");
+export function parseRoute(payload: unknown): Route {
+  return routeFrom(record(payload, "body"), "body");
 }
 
 function positionFrom(value: unknown, at: string): Position {
@@ -189,7 +189,7 @@ function surfaceRangeFrom(value: unknown, at: string): SurfaceRange {
  * classified. Absent is not the same as classified while nothing matched, so it
  * stays `undefined` rather than becoming a surface with no matched length.
  */
-function surfaceFrom(value: unknown, at: string): StageSurface | undefined {
+function surfaceFrom(value: unknown, at: string): RouteSurface | undefined {
   if (value === undefined || value === null) {
     return undefined;
   }
@@ -203,7 +203,7 @@ function surfaceFrom(value: unknown, at: string): StageSurface | undefined {
   };
 }
 
-export function parseStageGeometry(payload: unknown): StageGeometry {
+export function parseRouteGeometry(payload: unknown): RouteGeometry {
   const body = record(payload, "body");
   const geometry = record(body.geometry, "body.geometry");
   const properties = record(body.properties, "body.properties");
@@ -215,7 +215,7 @@ export function parseStageGeometry(payload: unknown): StageGeometry {
   }
 
   return {
-    stage: stageFrom(properties, "body.properties"),
+    stage: routeFrom(properties, "body.properties"),
     bbox: bboxValues as BoundingBox,
     coordinates: array(geometry.coordinates, "body.geometry.coordinates").map((entry, index) =>
       positionFrom(entry, `body.geometry.coordinates[${index}]`),

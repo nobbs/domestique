@@ -1,82 +1,150 @@
 /*
- * Theme tokens are defined once on :root for light, then overridden for dark.
- * The accent is the brand rust from docs/brand, which stays legible on both.
+ * The whole visual language of the application, in one file.
+ *
+ * Everything the design system decides lives in the token block below: ten
+ * surface and state colours per theme, one five-step gradient ramp, six surface
+ * classes, six type steps, six spacing steps, one radius and one shadow. A
+ * component that needs a colour, a size, or a gap takes it from here; nothing
+ * else in the UI is allowed to invent one.
+ *
+ * Colour carries meaning on its own, deliberately. This service has one
+ * operator, the grade bands and surface classes are told apart by hue, and the
+ * hatches and dash patterns that used to carry them as a second channel are
+ * gone. Body text still clears 4.5:1 against the surface it sits on, which is
+ * measured per token beside its value.
  */
 
+/* Karla, self-hosted from the package rather than fetched from a font CDN: this
+ * service is private to a Tailnet, and a stylesheet that phoned out for a face
+ * would be the one request on the page nobody asked for. */
+@import "@fontsource-variable/karla/wght.css";
+
 :root {
-  --accent: #c8502e;
-  --accent-soft: rgb(200 80 46 / 12%);
+  --font-sans:
+    "Karla Variable", Karla, system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  /* Surfaces and states. Contrast is measured against --panel, the surface
+   * these colours actually sit on. */
+  --ground: #e4e6e9; /* map ground */
+  --base: #f3f5f6; /* page and inset panels */
+  --panel: #fcfdff; /* floating panels, cards */
+  --rule: #d7d9dc; /* hairlines, dividers */
+  --ink: #1c2126; /* body and figures — 15.93:1 */
+  --ink-2: #60656b; /* secondary, labels — 5.78:1 */
+  --accent: #236fc7; /* selected route, primary button — 4.95:1 */
+  --alert: #b63132; /* needs you: failed, not connected — 5.94:1 */
+  --good: #317a45; /* in sync, succeeded — 5.16:1 */
   /*
-   * The accent as small text. The brand rust clears 4.5:1 on white and on
-   * nothing else the page has: on a raised panel it is 4.2:1, so a word set in
-   * it there is below the threshold on the surface it is actually set on. This
-   * is the same hue darkened until it clears 4.5:1 on the sunken surface, which
-   * is the darkest ground any of this text sits on.
+   * Darker than the #a86e00 the palette names. This one is read as text rather
+   * than painted as a mark, and that amber clears only 4.21:1 on the panel and
+   * 3.92:1 on the page beneath it — which axe is right to refuse.
    */
-  --accent-text: #b84325;
-
-  --surface: #ffffff;
-  --surface-raised: #f6f6f5;
-  --surface-sunken: #eeedec;
-  --border: #dedcd9;
-  --text: #1b1a19;
-  --text-muted: #6b6864;
-
-  --radius: 10px;
-  --header-height: 3.25rem;
+  --hold: #8f6100; /* a gate held — 5.32:1 */
 
   /*
-   * Gradient bands: a warm heat ramp, gold to deep red, running light to dark so
-   * steeper always reads as "more". Five steps rather than three, because a
-   * single band from eight percent upwards said "steep" about a drag and about a
-   * wall alike, and the difference between them is the whole question a profile
-   * is read to answer.
+   * The steepness ramp, gentlest first. It fills ground at 0.5 opacity under an
+   * ink ridge, and paints at full strength wherever it is a small mark: a 2 px
+   * route glyph, a 7 px mix bar.
    *
-   * Fitted against this surface, holding the two ends where they were: adjacent
-   * steps are 13-18 ΔE2000 apart in normal vision and 8-12 apart simulated under
-   * protanopia and deuteranopia. That is enough to tell neighbours apart and not
-   * enough to tell a band from the one two steps away at a glance, which is why
-   * the hatch textures below are now a carrying channel rather than an accent:
-   * five colours is past what hue alone can hold.
-   *
-   * Both ramps are repeated in `BAND_COLOURS` in `components/RouteMap.tsx`,
-   * which paints the same bands onto a canvas that cannot read them from here.
-   * Either ramp changed must be changed in both places.
+   * The same five values are duplicated as literals in BAND_COLOURS in
+   * components/RouteMap.tsx, because MapLibre paints on a canvas and cannot
+   * resolve a custom property. The two copies must stay in step.
    */
-  --band-0: #e0ac2c;
-  --band-1: #c87f41;
-  --band-2: #b15635;
-  --band-3: #952e2c;
-  --band-4: #63202b;
+  --grade-0: #8e979f; /* ≤ 4% */
+  --grade-1: #22a94e; /* 4–8% */
+  --grade-2: #e8b70a; /* 8–12% */
+  --grade-3: #f2811d; /* 12–16% */
+  --grade-4: #dc2b21; /* ≥ 16% */
 
-  color-scheme: light dark;
+  /*
+   * Surface classes: the same idea at lower chroma, ordered smooth to rough,
+   * with the six hues spread as far apart as six allow and separated in
+   * lightness as well — gravel, ground and paving read as neighbours otherwise.
+   * Solid, never dashed. Mirrored in SURFACE_STYLES in lib/surface.ts.
+   */
+  --surface-asphalt: #556b82;
+  --surface-paving: #7d3ab7;
+  --surface-compacted: #009c89;
+  --surface-gravel: #d4a21e;
+  --surface-ground: #b23a26;
+  --surface-unsurveyed: #bbbec1;
+
+  /*
+   * Six type steps, and no seventh. Each is a font shorthand plus its own
+   * tracking, because tracking cannot travel inside the shorthand and a step
+   * used without it is not that step.
+   */
+  --type-display: 600 26px/1.15 var(--font-sans);
+  --track-display: -0.02em;
+  --type-title: 600 19px/1.3 var(--font-sans);
+  --track-title: -0.015em;
+  --type-body: 400 15px/1.55 var(--font-sans);
+  --track-body: 0;
+  --type-row: 400 13.5px/1.4 var(--font-sans);
+  --track-row: 0;
+  --type-small: 400 12.5px/1.45 var(--font-sans);
+  --track-small: 0;
+  --type-micro: 600 11px/1.2 var(--font-sans);
+  --track-micro: 0.07em;
+
+  --space-1: 4px; /* inside a chip, label to value */
+  --space-2: 8px; /* panel padding, gap between rows in a stack */
+  --space-3: 12px; /* gap between panels in the overlay, card inner gaps */
+  --space-4: 16px; /* card padding, page gutter on the phone */
+  --space-5: 24px; /* page gutter on the desktop, gap between cards */
+  --space-6: 32px; /* page top padding, gap between page sections */
+
+  /* One radius. Nothing is a circle except the mark and the route endpoints. */
+  --radius: 8px;
+
+  /*
+   * Exactly one shadow. There is no second level: a thing either floats over the
+   * map or it does not.
+   */
+  --shadow:
+    0 1px 1px rgb(20 25 30 / 5%),
+    0 4px 12px rgb(20 25 30 / 6%);
+
+  /* The widest a floating panel is ever drawn. A longer results line is a longer
+   * line to read, not a better one. */
+  --panel-width: 436px;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --surface: #161514;
-    --surface-raised: #1f1e1c;
-    --surface-sunken: #2a2825;
-    --border: #35322e;
-    --text: #f2f0ee;
-    --text-muted: #a09b95;
-    --accent-soft: rgb(200 80 46 / 20%);
-    /* Lifted rather than darkened, for the same 4.5:1 against dark panels. */
-    --accent-text: #e8794f;
+    --ground: #171a1d;
+    --base: #101316;
+    --panel: #24282c;
+    --rule: #3c4247;
+    --ink: #eef0f3; /* 13.00:1 */
+    --ink-2: #a5aaaf; /* 6.34:1 */
+    --accent: #70adfb; /* 6.40:1 */
+    --alert: #f2857d; /* 5.96:1 */
+    --good: #82c38f; /* 7.17:1 */
+    --hold: #e5b562; /* 7.86:1 */
 
-    /*
-     * Stepped separately for the dark surface rather than flipped: the same
-     * gold-to-red order, lifted so every band clears 3:1 against it.
-     */
-    --band-0: #f3cb60;
-    --band-1: #ef9a55;
-    --band-2: #e07550;
-    --band-3: #cd554d;
-    --band-4: #b8354a;
+    --grade-0: #a9b3bc;
+    --grade-1: #3fd074;
+    --grade-2: #f7d13f;
+    --grade-3: #ff9e46;
+    --grade-4: #f95a4c;
+
+    --surface-asphalt: #8da8c3;
+    --surface-paving: #b77ff2;
+    --surface-compacted: #59ceba;
+    --surface-gravel: #fbc959;
+    --surface-ground: #f47d67;
+    --surface-unsurveyed: #dbdee2;
+
+    --shadow:
+      0 1px 1px rgb(20 25 30 / 14%),
+      0 4px 12px rgb(20 25 30 / 22%);
   }
 }
 
-* {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
 }
 
@@ -88,15 +156,10 @@ body,
 
 body {
   margin: 0;
-  background: var(--surface);
-  color: var(--text);
-  font-family:
-    system-ui,
-    -apple-system,
-    "Segoe UI",
-    sans-serif;
-  font-size: 15px;
-  line-height: 1.5;
+  background: var(--base);
+  color: var(--ink);
+  font: var(--type-body);
+  letter-spacing: var(--track-body);
 }
 
 /*
@@ -115,407 +178,596 @@ body {
   white-space: nowrap;
 }
 
-/* Layout ------------------------------------------------------------------ */
+/* Shell ------------------------------------------------------------------- */
 
-.layout {
+/*
+ * The map is the page. There is no header: the shell is a full-bleed pane with
+ * a slot for the panels that float over it, and every route decides for itself
+ * what goes in that slot.
+ *
+ * The overlay does not take the pointer — a click that lands between two panels
+ * is a click on the map — so each child takes it back for itself.
+ */
+.shell {
+  position: relative;
+  height: 100%;
+  background: var(--ground);
+}
+
+.shell__map {
+  position: absolute;
+  inset: 0;
+}
+
+.shell__overlay {
+  position: absolute;
+  inset: 0;
   display: flex;
   flex-direction: column;
-  height: 100%;
+  align-items: start;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  pointer-events: none;
+  overflow: hidden;
 }
 
-.layout__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  height: var(--header-height);
-  padding: 0 1.15rem;
-  border-bottom: 1px solid var(--border);
-  background: var(--surface-raised);
-  flex: 0 0 auto;
-}
-
-.layout__brand {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.6rem;
-  color: var(--accent);
-  text-decoration: none;
-}
-
-.layout__wordmark {
-  font-weight: 600;
-  font-size: 1.05rem;
-  letter-spacing: -0.01em;
-  color: var(--text);
+.shell__overlay > * {
+  pointer-events: auto;
+  width: 100%;
+  max-width: var(--panel-width);
 }
 
 /*
- * Everything on the right of the header, grouped so the space-between above
- * still puts the brand at one end and this at the other however many things
- * end up in it.
+ * A page that is a page rather than a map: the sync page, and every failure that
+ * has to be read rather than looked at. It scrolls; the map shell does not.
  */
-.layout__end {
+.shell--page {
+  height: auto;
+  min-height: 100%;
+  background: var(--base);
+}
+
+/* Panels ------------------------------------------------------------------ */
+
+/*
+ * The one floating surface. Everything that sits over the map is this: the
+ * wordmark, the search, the elevation panel, an empty state. Padding and gaps
+ * come from the spacing steps, so a panel is generous without deciding anything
+ * for itself.
+ */
+.panel {
+  border-radius: var(--radius);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+/* Wordmark ---------------------------------------------------------------- */
+
+/*
+ * The mark, the name, and one state line — and the whole panel is the link to
+ * the sync page. It replaces the header, so it is also the only thing on the
+ * entry page that says what this application is.
+ */
+.wordmark {
   display: flex;
   align-items: center;
-  gap: 0.9rem;
+  gap: var(--space-2);
+  width: auto;
+  padding: var(--space-2) var(--space-3);
+  color: inherit;
+  text-decoration: none;
 }
 
-/* Quiet by default: it is provenance, not a destination the page is urging. */
-.layout__source {
-  display: inline-flex;
-  align-items: center;
-  color: var(--text-muted);
-}
-
-.layout__source:hover,
-.layout__source:focus-visible {
+.wordmark:hover,
+.wordmark:focus-visible {
   color: var(--accent);
 }
 
-/* The running revision: monospace because it is an identifier to compare, not
-   prose to read, and small enough to sit under the header's own weight. */
-.layout__revision {
-  margin-left: 0.4rem;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.72rem;
-  letter-spacing: 0.02em;
-}
-
-.layout__main {
-  flex: 1 1 auto;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow-y: auto;
-}
-
-/* Route library grid ------------------------------------------------------ */
-
-.route-grid {
-  list-style: none;
-  margin: 0;
-  padding: 1.15rem;
-  display: grid;
-  gap: 1.15rem;
-  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
-  align-content: start;
-}
-
-.route-card {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  color: inherit;
-  text-decoration: none;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface-raised);
-  overflow: hidden;
-  transition:
-    border-color 120ms ease,
-    transform 120ms ease;
-}
-
-.route-card:hover,
-.route-card:focus-visible {
-  border-color: var(--accent);
-  transform: translateY(-2px);
-}
-
-.route-card:focus-visible {
+.wordmark:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
-.route-card__preview {
-  display: block;
-  position: relative;
-  aspect-ratio: 4 / 3;
-  background: var(--surface-sunken);
-  color: var(--accent);
+.wordmark__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.wordmark__name {
+  font: var(--type-title);
+  letter-spacing: var(--track-title);
+}
+
+/*
+ * One line, and the only place on the entry page that says anything about
+ * synchronisation. The tone is the state: quiet when the library is current,
+ * coloured only when a run needs the operator.
+ */
+.wordmark__state {
+  color: var(--ink-2);
+  font: var(--type-small);
+  letter-spacing: var(--track-small);
+  font-variant-numeric: tabular-nums;
+}
+
+.wordmark__state[data-tone="good"] {
+  color: var(--good);
+}
+
+.wordmark__state[data-tone="hold"] {
+  color: var(--hold);
+}
+
+.wordmark__state[data-tone="alert"] {
+  color: var(--alert);
+}
+
+/* Search ------------------------------------------------------------------ */
+
+/*
+ * At rest a pill; typed into, the same 8 px box with a results column grown
+ * beneath it. One panel, not two, so nothing moves when the results appear.
+ */
+.search {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   overflow: hidden;
 }
 
-/* The bare shape is inset; a basemap bleeds to the card edges. */
-.route-card__preview > .route-thumbnail {
-  padding: 0.5rem;
-}
-
-.route-minimap {
-  display: block;
-  position: relative;
-  width: 100%;
-  height: 100%;
-}
-
-/*
- * The shape sits above the basemap and fades out once it has drawn, so a card
- * shows its route immediately instead of a grey box waiting on the network.
- */
-.route-minimap__shape {
-  position: absolute;
-  inset: 0;
-  display: block;
-  padding: 0.5rem;
-  background: var(--surface-sunken);
-  transition: opacity 260ms ease;
-}
-
-.route-minimap[data-loaded="true"] .route-minimap__shape {
-  opacity: 0;
-}
-
-.grid-attribution {
-  padding: 0 1.15rem 1.15rem;
-  color: var(--text-muted);
-  font-size: 0.75rem;
-}
-
-.route-card__body {
+.search__pill {
   display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-  padding: 0.7rem 0.85rem 0.85rem;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
 }
 
-.route-card__title {
-  font-weight: 500;
-  /* Long route names must not push the card out of its grid column. */
-  overflow-wrap: anywhere;
+.search__icon {
+  flex: none;
+  color: var(--ink-2);
 }
 
-/*
- * Which stage of a split route this card is. Set apart from the title above it
- * and the figures below it, because it is neither: it says where the card sits
- * in a route, not what the route is or how hard it rides.
- */
-.route-card__stage {
-  color: var(--text-muted);
-  font-size: 0.78rem;
-  font-variant-numeric: tabular-nums;
-}
-
-.route-card__meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0 0.7rem;
-  color: var(--text-muted);
-  font-size: 0.85rem;
-  font-variant-numeric: tabular-nums;
-}
-
-.route-thumbnail {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
-
-.route-thumbnail--empty {
-  border-radius: calc(var(--radius) - 4px);
-  background: linear-gradient(
-    100deg,
-    transparent 30%,
-    rgb(128 128 128 / 12%) 50%,
-    transparent 70%
-  );
-  background-size: 300% 100%;
-  animation: route-thumbnail-shimmer 1.4s ease-in-out infinite;
-}
-
-.route-thumbnail--empty[data-state="error"] {
-  animation: none;
+.search__field {
+  flex: 1;
+  min-width: 0;
+  border: 0;
   background: none;
+  color: var(--ink);
+  font: var(--type-row);
+  letter-spacing: var(--track-row);
 }
 
-@keyframes route-thumbnail-shimmer {
-  from {
-    background-position: 150% 0;
-  }
-  to {
-    background-position: -150% 0;
-  }
+.search__field:focus {
+  outline: none;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .route-card,
-  .route-thumbnail--empty,
-  .route-minimap__shape,
-  .elevation-overview__summary,
-  .elevation-overview__caret {
-    transition: none;
-    animation: none;
-  }
+.search__field::placeholder {
+  color: var(--ink-2);
 }
 
-/* Route preview ----------------------------------------------------------- */
-
-.stage-detail {
-  display: flex;
-  flex-direction: column;
-  flex: 1 1 auto;
-  min-height: 0;
-}
-
-.stage-detail__back {
-  color: var(--text-muted);
-  text-decoration: none;
-  font-size: 0.9rem;
-}
-
-.stage-detail__back:hover,
-.stage-detail__back:focus-visible {
-  color: var(--accent);
-}
-
-.stage-detail__header {
-  padding: 0.85rem 1.15rem;
-  border-bottom: 1px solid var(--border);
-  flex: 0 0 auto;
-}
-
-.stage-detail__heading {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem 1rem;
-  align-items: baseline;
-  justify-content: space-between;
-}
-
-.stage-detail__title {
-  margin: 0 0 0.4rem;
-  font-size: 1.15rem;
-  font-weight: 600;
-}
-
-/*
- * Everything that sits opposite the title, so the space-between above keeps the
- * title at one end and this group at the other however many things are in it.
- */
-.stage-detail__heading-end {
-  display: flex;
-  align-items: baseline;
-  gap: 1.1rem;
-}
-
-/*
- * Quiet, like the provenance link in the header: it is a way out to the provider
- * rather than something this page is urging, and nothing here edits a route.
- */
-.stage-detail__source {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  margin-bottom: 0.4rem;
-  color: var(--text-muted);
-  text-decoration: none;
-  font-size: 0.8rem;
-  white-space: nowrap;
-}
-
-.stage-detail__source:hover,
-.stage-detail__source:focus-visible {
-  color: var(--accent);
-}
-
-/*
- * The reprocess control sits beside the title because it acts on this stage and
- * nothing else. It is quiet by default: it is rarely the reason anyone opened
- * the page, and its work happens in the background.
- */
-.stage-detail__reprocess {
-  display: flex;
-  gap: 0.6rem;
-  align-items: baseline;
-  margin-bottom: 0.4rem;
-}
-
-.stage-detail__reprocess-note {
-  font-size: 0.8rem;
-  color: var(--text-muted);
-  max-width: 22rem;
-}
-
-.stage-detail__facts {
-  display: flex;
-  gap: 1.75rem;
-  margin: 0;
-}
-
-.stage-detail__facts div {
-  display: flex;
-  flex-direction: column;
-}
-
-.stage-detail__facts dt {
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-muted);
-}
-
-.stage-detail__facts dd {
-  margin: 0;
+/* Derived from the filter, never written by hand. */
+.search__count {
+  flex: none;
+  color: var(--ink-2);
+  font: var(--type-small);
+  letter-spacing: var(--track-small);
   font-variant-numeric: tabular-nums;
 }
 
-.stage-detail__map {
-  flex: 1 1 auto;
-  min-height: 0;
-  background: var(--surface-sunken);
+.search__results {
+  margin: 0;
+  padding: 0 var(--space-2) var(--space-2);
+  border-top: 1px solid var(--rule);
+  list-style: none;
+  overflow-y: auto;
 }
 
-/* Elevation overview ------------------------------------------------------ */
-
-.elevation-overview {
-  flex: 0 0 auto;
-  border-top: 1px solid var(--border);
-  background: var(--surface);
+.search__empty {
+  margin: 0;
+  padding: var(--space-3);
+  border-top: 1px solid var(--rule);
+  color: var(--ink-2);
+  font: var(--type-row);
+  letter-spacing: var(--track-row);
 }
 
-.elevation-overview__summary {
+/* Result row -------------------------------------------------------------- */
+
+/*
+ * Glyph, name, and the three figures. No basemap in a row, ever: the map behind
+ * the panel already answers where, and forty-seven of them would answer nothing.
+ */
+.result {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.55rem 1.15rem;
+  gap: var(--space-2);
+  width: 100%;
+  height: 42px;
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: calc(var(--radius) - 2px);
+  background: none;
+  color: inherit;
+  font: var(--type-row);
+  letter-spacing: var(--track-row);
+  text-align: left;
   cursor: pointer;
-  color: var(--text);
-  font-size: 0.85rem;
-  font-weight: 500;
-  list-style: none;
-  transition: background 120ms ease;
 }
 
-.elevation-overview__summary::-webkit-details-marker {
-  display: none;
+.result:hover {
+  background: var(--base);
 }
 
-.elevation-overview__summary:hover {
-  background: var(--surface-raised);
-}
-
-.elevation-overview__summary:focus-visible {
+.result:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
 }
 
-.elevation-overview__caret {
-  width: 12px;
-  height: 12px;
-  flex: 0 0 auto;
-  color: var(--text-muted);
-  transition: transform 140ms ease;
+.result__glyph {
+  flex: none;
+  width: 30px;
+  height: 30px;
 }
 
-.elevation-overview[open] .elevation-overview__caret {
-  transform: rotate(90deg);
+.result__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.elevation-overview__hint {
+.result__figures {
+  flex: none;
+  display: flex;
+  gap: var(--space-2);
+  color: var(--ink-2);
+  font: var(--type-small);
+  letter-spacing: var(--track-small);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Route card -------------------------------------------------------------- */
+
+/*
+ * The expanded result. It replaces the row it grew from rather than opening
+ * beside it, so the list never says the same route twice.
+ */
+.route-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-radius: calc(var(--radius) - 2px);
+  background: var(--base);
+}
+
+.route-card__title {
+  margin: 0;
+  font: var(--type-body);
+  font-weight: 600;
+  letter-spacing: var(--track-body);
+}
+
+.route-card__where {
+  margin: 0;
+  color: var(--ink-2);
+  font: var(--type-small);
+  letter-spacing: var(--track-small);
+}
+
+.route-card__figures,
+.route-page__figures {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3) var(--space-5);
+  margin: 0;
+}
+
+.route-card__figures div,
+.route-page__figures div {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.route-card__figures dt,
+.route-page__figures dt {
+  color: var(--ink-2);
+  font: var(--type-micro);
+  letter-spacing: var(--track-micro);
+  text-transform: uppercase;
+}
+
+.route-card__figures dd,
+.route-page__figures dd {
+  margin: 0;
+  font: var(--type-body);
+  font-weight: 600;
+  letter-spacing: var(--track-body);
+  font-variant-numeric: tabular-nums;
+}
+
+.route-page__figures dd {
+  font: var(--type-title);
+  letter-spacing: var(--track-title);
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * The gradient mix, in the order it is ridden. It is a small mark, so the ramp
+ * paints at full strength here rather than at the 0.5 the chart fills with.
+ */
+.route-card__mix {
+  display: flex;
+  height: 7px;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.route-card__mix span {
+  display: block;
+}
+
+.route-card__mix span[data-band="0"] {
+  background: var(--grade-0);
+}
+.route-card__mix span[data-band="1"] {
+  background: var(--grade-1);
+}
+.route-card__mix span[data-band="2"] {
+  background: var(--grade-2);
+}
+.route-card__mix span[data-band="3"] {
+  background: var(--grade-3);
+}
+.route-card__mix span[data-band="4"] {
+  background: var(--grade-4);
+}
+
+.route-card__open {
+  align-self: start;
+}
+
+/* Route glyph ------------------------------------------------------------- */
+
+/*
+ * The route's own shape, stroked in its steepest band. Not a map: browsing the
+ * library sends nothing outside the Tailnet, and only the selected route's line
+ * is ever drawn on cartography.
+ */
+.route-glyph {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.route-glyph--empty {
+  border-radius: calc(var(--radius) - 4px);
+  background: var(--base);
+}
+
+.route-glyph polyline {
+  stroke: var(--grade-0);
+}
+
+.route-glyph polyline[data-band="1"] {
+  stroke: var(--grade-1);
+}
+.route-glyph polyline[data-band="2"] {
+  stroke: var(--grade-2);
+}
+.route-glyph polyline[data-band="3"] {
+  stroke: var(--grade-3);
+}
+.route-glyph polyline[data-band="4"] {
+  stroke: var(--grade-4);
+}
+
+/* Map --------------------------------------------------------------------- */
+
+/* MapLibre lays out against its container; give it the full pane. */
+.route-map,
+.maplibregl-map {
+  width: 100%;
+  height: 100%;
+}
+
+/*
+ * A drag over the map marks ground, not the words around it: the route can be
+ * dragged along to pick a stretch, and on iOS a long press over the page offers
+ * to select and copy what is under it.
+ */
+.route-map {
+  position: relative;
+  background: var(--ground);
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/*
+ * One control cluster, bottom-right. MapLibre puts a control in whichever of the
+ * four corners it was given, and four occupied corners is four things to look
+ * past; the zoom pair, the scale bar and the credit are one thing to look past.
+ */
+.maplibregl-ctrl-bottom-right {
+  display: flex;
+  flex-direction: column;
+  align-items: end;
+  gap: var(--space-1);
+  padding: var(--space-2);
+}
+
+.maplibregl-ctrl-bottom-right .maplibregl-ctrl {
+  margin: 0;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.maplibregl-ctrl-group button {
+  border-radius: var(--radius);
+}
+
+.maplibregl-ctrl-scale {
+  border-color: var(--rule);
+  background: var(--panel);
+  color: var(--ink-2);
+  font: var(--type-small);
+  letter-spacing: var(--track-small);
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * The tile and map-data credit, in the same cluster as the controls. It is text
+ * read out of the style document rather than the provider's own markup — see
+ * MapCredits — so it is styled here like anything else on the page.
+ */
+.map-credits {
+  position: absolute;
+  right: var(--space-2);
+  bottom: var(--space-2);
+  z-index: 1;
+  max-width: min(100%, 380px);
+  padding: 2px var(--space-2);
+  border-radius: calc(var(--radius) - 4px);
+  background: color-mix(in srgb, var(--panel) 82%, transparent);
+  color: var(--ink-2);
+  font: var(--type-small);
+  letter-spacing: var(--track-small);
+  text-align: right;
+}
+
+/* Route page -------------------------------------------------------------- */
+
+/*
+ * One route: the map above, the figures and the profile in panels below it. The
+ * profile is always there — there is no collapsing it and nothing remembered
+ * about whether it was open.
+ */
+.route-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  background: var(--base);
+}
+
+.route-page__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3) var(--space-4);
+  padding: var(--space-3) var(--space-5);
+}
+
+.route-page__back {
+  color: var(--ink-2);
+  font: var(--type-row);
+  letter-spacing: var(--track-row);
+  text-decoration: none;
+}
+
+.route-page__back:hover,
+.route-page__back:focus-visible {
+  color: var(--accent);
+}
+
+.route-page__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   margin-left: auto;
-  color: var(--text-muted);
-  font-weight: 400;
-  font-size: 0.8rem;
+}
+
+.route-page__source {
+  color: var(--ink-2);
+  font: var(--type-row);
+  letter-spacing: var(--track-row);
+  text-decoration: none;
+}
+
+.route-page__source:hover,
+.route-page__source:focus-visible {
+  color: var(--accent);
+}
+
+.route-page__reprocess {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.route-page__reprocess-note {
+  color: var(--ink-2);
+  font: var(--type-small);
+  letter-spacing: var(--track-small);
+}
+
+.route-page__body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-height: 0;
+  padding: 0 var(--space-5) var(--space-5);
+}
+
+/*
+ * Tall enough to be a map and short enough to leave the figures on the screen
+ * with it. It is a fraction of the window rather than a fixed height, because
+ * the thing it has to stay in proportion to is the window.
+ */
+.route-page__map {
+  flex: none;
+  height: min(52vh, 560px);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.route-page__facts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+}
+
+.route-page__title {
+  margin: 0;
+  font: var(--type-display);
+  letter-spacing: var(--track-display);
+}
+
+.route-page__subtitle {
+  margin: 0;
+  color: var(--ink-2);
+  font: var(--type-small);
+  letter-spacing: var(--track-small);
+}
+
+.route-page__panel {
+  padding: var(--space-4) 0 var(--space-2);
+}
+
+.route-page__panel-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+  margin: 0 var(--space-4) var(--space-2);
+}
+
+.route-page__panel-heading h2 {
+  margin: 0;
+  font: var(--type-body);
+  font-weight: 600;
+  letter-spacing: var(--track-body);
+}
+
+.route-page__panel-hint {
+  color: var(--ink-2);
+  font: var(--type-small);
+  letter-spacing: var(--track-small);
   font-variant-numeric: tabular-nums;
 }
 
@@ -523,7 +775,7 @@ body {
 
 .elevation-profile {
   position: relative;
-  padding: 0 1.15rem 0.75rem;
+  padding: 0 var(--space-4) var(--space-2);
 }
 
 /*
@@ -531,13 +783,11 @@ body {
  *
  * `touch-action: none` is what makes a finger drawn across the chart select a
  * stretch rather than scroll the page, and the crosshair is the standing offer
- * to do so. Selection is off because a drag over a chart should mark ground, not
- * highlight the readout underneath it — and on iOS a long press over a control
- * that owns the gesture should not offer to copy the text behind it.
+ * to do so.
  */
 .elevation-profile__scrub {
   position: absolute;
-  margin-left: 1.15rem;
+  margin-left: var(--space-4);
   touch-action: none;
   cursor: crosshair;
   user-select: none;
@@ -562,121 +812,46 @@ body {
 
 /* Recessive chrome: a hairline one step off the surface, never dashed. */
 .elevation-profile__grid {
-  stroke: var(--border);
+  stroke: var(--rule);
   stroke-width: 1;
 }
 
 .elevation-profile__tick {
-  fill: var(--text-muted);
-  font-size: 0.68rem;
+  fill: var(--ink-2);
+  font: var(--type-small);
+  letter-spacing: var(--track-small);
   font-variant-numeric: tabular-nums;
 }
 
-/* The wash, not a saturated block. */
 /*
  * The ground, banded by steepness. It is a backdrop for the silhouette rather
- * than a block of paint, so it sits at low opacity; the steeper bands carry a
- * hatch as well, which reads without relying on colour.
- *
- * Each column is outlined in its own band colour. The top edge is hidden under
- * the ridge drawn over it, so what shows is the vertical seam where one band
- * meets the next, and the ground line beneath — enough to bound a segment
- * without adding a second silhouette.
+ * than a block of paint, so it fills at half strength; the ridge over it is what
+ * carries the shape.
  */
 .elevation-profile__column {
-  fill-opacity: 0.32;
-  stroke-width: 1;
-  stroke-opacity: 0.8;
-  stroke-linejoin: round;
+  fill-opacity: 0.5;
+  stroke: none;
 }
 
-/*
- * Tuned so a hatched band carries about the same ink as the plain one: the
- * texture should distinguish the steep sections, not shout over the terrain.
- */
-.elevation-profile__hatch-line {
-  stroke-width: 2;
-  stroke-opacity: 0.85;
-}
-
-.elevation-profile__hatch-ground[data-band="1"] {
-  fill: var(--band-1);
-  fill-opacity: 0.15;
-}
-
-.elevation-profile__hatch-line[data-band="1"] {
-  stroke: var(--band-1);
-}
-
-.elevation-profile__hatch-ground[data-band="2"] {
-  fill: var(--band-2);
-  fill-opacity: 0.15;
-}
-
-.elevation-profile__hatch-line[data-band="2"] {
-  stroke: var(--band-2);
-}
-
-.elevation-profile__hatch-ground[data-band="3"] {
-  fill: var(--band-3);
-  fill-opacity: 0.15;
-}
-
-.elevation-profile__hatch-line[data-band="3"] {
-  stroke: var(--band-3);
-}
-
-.elevation-profile__hatch-ground[data-band="4"] {
-  fill: var(--band-4);
-  fill-opacity: 0.15;
-}
-
-.elevation-profile__hatch-line[data-band="4"] {
-  stroke: var(--band-4);
-}
-
-/*
- * The pattern is selected here rather than with a fill attribute on the path:
- * a presentation attribute loses to any CSS rule, so a flat colour set in CSS
- * silently replaced the hatch. The pattern carries its own opacity, so these
- * bands paint at full strength.
- */
 .elevation-profile__column[data-band="0"] {
-  fill: var(--band-0);
-  stroke: var(--band-0);
+  fill: var(--grade-0);
 }
-
 .elevation-profile__column[data-band="1"] {
-  fill: url("#elevation-hatch-1");
-  fill-opacity: 1;
-  stroke: var(--band-1);
+  fill: var(--grade-1);
 }
-
 .elevation-profile__column[data-band="2"] {
-  fill: url("#elevation-hatch-2");
-  fill-opacity: 1;
-  stroke: var(--band-2);
+  fill: var(--grade-2);
 }
-
 .elevation-profile__column[data-band="3"] {
-  fill: url("#elevation-hatch-3");
-  fill-opacity: 1;
-  stroke: var(--band-3);
+  fill: var(--grade-3);
 }
-
 .elevation-profile__column[data-band="4"] {
-  fill: url("#elevation-hatch-4");
-  fill-opacity: 1;
-  stroke: var(--band-4);
+  fill: var(--grade-4);
 }
 
-/*
- * The silhouette over the columns. It is ink rather than a band colour so the
- * terrain edge stays readable wherever the bands change.
- */
 .elevation-profile__ridge {
   fill: none;
-  stroke: var(--text);
+  stroke: var(--ink);
   stroke-opacity: 0.7;
   stroke-width: 1.5;
   stroke-linejoin: round;
@@ -685,130 +860,37 @@ body {
 
 /*
  * The cursor dot takes the band it is standing on. The key's swatches repeat the
- * same colours, from the same tokens, in components/StageKey.module.css.
+ * same tokens, in components/RouteKey.module.css.
  */
 .elevation-profile__cursor circle[data-band="0"] {
-  fill: var(--band-0);
+  fill: var(--grade-0);
 }
-
 .elevation-profile__cursor circle[data-band="1"] {
-  fill: var(--band-1);
+  fill: var(--grade-1);
 }
-
 .elevation-profile__cursor circle[data-band="2"] {
-  fill: var(--band-2);
+  fill: var(--grade-2);
 }
-
 .elevation-profile__cursor circle[data-band="3"] {
-  fill: var(--band-3);
+  fill: var(--grade-3);
 }
-
 .elevation-profile__cursor circle[data-band="4"] {
-  fill: var(--band-4);
+  fill: var(--grade-4);
 }
 
 .elevation-profile__cursor line {
-  stroke: var(--text-muted);
+  stroke: var(--ink-2);
   stroke-width: 1;
 }
 
-/* The marker keeps a surface ring so it stays legible over its own line. */
+/* The marker keeps a panel-coloured ring so it stays legible over its own line. */
 .elevation-profile__cursor circle {
-  stroke: var(--surface);
+  stroke: var(--panel);
   stroke-width: 2;
   paint-order: stroke;
 }
 
-/*
- * The readout and the way back, together: the window is what changes the meaning
- * of the numbers beside it, so the control that leaves it belongs in the same
- * line rather than up beside the title.
- */
-.elevation-profile__status {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0.35rem 0.6rem;
-  margin-top: 0.3rem;
-}
-
-.elevation-profile__reset-span {
-  font-variant-numeric: tabular-nums;
-}
-
-.elevation-profile__readout {
-  margin: 0;
-  color: var(--text-muted);
-  font-size: 0.78rem;
-  font-variant-numeric: tabular-nums;
-}
-
-.elevation-profile__readout strong {
-  color: var(--text);
-  font-weight: 600;
-}
-
-.elevation-profile__absent {
-  margin: 0;
-  padding: 0 1.15rem 0.75rem;
-  color: var(--text-muted);
-  font-size: 0.85rem;
-}
-
-/* Status ------------------------------------------------------------------ */
-
-.status-message {
-  margin: auto;
-  padding: 2rem;
-  text-align: center;
-  max-width: 30rem;
-}
-
-.status-message__title {
-  margin: 0;
-  font-weight: 500;
-}
-
-.status-message__detail {
-  margin: 0.35rem 0 0;
-  color: var(--text-muted);
-  font-size: 0.9rem;
-}
-
-.status-message[data-tone="error"] .status-message__title {
-  color: var(--accent);
-}
-
-.sync-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-  font-size: 0.82rem;
-  color: var(--text-muted);
-  font-variant-numeric: tabular-nums;
-}
-
-.sync-badge__dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--text-muted);
-}
-
-.sync-badge[data-state="succeeded"] .sync-badge__dot {
-  background: #3f8f5f;
-}
-
-.sync-badge[data-state="failed"] .sync-badge__dot,
-.sync-badge[data-state="blocked"] .sync-badge__dot {
-  background: var(--accent);
-}
-
-/*
- * The surface strip's stretches meet end to end, so a butt cap is what keeps a
- * class from bleeding into its neighbour — the same reason the map draws them
- * this way.
- */
+/* The surface strip: solid, at the strip's own width, no dashes. */
 .elevation-profile__surface {
   stroke-linecap: butt;
 }
@@ -816,12 +898,10 @@ body {
 /*
  * The stretch being chosen, with the rest veiled rather than hidden — the same
  * treatment the map gives the route outside the window, so both views say one
- * thing one way. The veil is the page's own surface colour, so it lightens the
- * ground beneath it instead of tinting it a second hue the bands would have to
- * compete with.
+ * thing one way.
  */
 .elevation-profile__veil {
-  fill: var(--surface);
+  fill: var(--panel);
   opacity: 0.62;
 }
 
@@ -831,456 +911,468 @@ body {
   stroke-dasharray: 3 3;
 }
 
-/* MapLibre lays out against its container; give it the full pane. */
-.route-map,
-.maplibregl-map {
-  width: 100%;
-  height: 100%;
+/*
+ * The readout and the way back, together: the window is what changes the meaning
+ * of the numbers beside it, so the control that leaves it belongs in the same
+ * line.
+ */
+.elevation-profile__status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+  margin: 0 var(--space-4);
 }
 
-/*
- * A drag over the map marks ground, not the words around it.
- *
- * The route can be dragged along to pick a stretch, and a drag that begins over
- * a map is never a request to highlight text — on iOS, where a long press or a
- * double tap over the page offers to select and copy what is under it, one that
- * ran on into the surrounding page was the visible half of the gesture being
- * read as something else entirely.
- *
- * It is also the frame the exploration control is placed against, in the one
- * corner MapLibre's own controls leave free.
- */
-.route-map {
-  position: relative;
-  user-select: none;
-  -webkit-user-select: none;
-  -webkit-touch-callout: none;
+.elevation-profile__reset-span {
+  font-variant-numeric: tabular-nums;
 }
 
+.elevation-profile__readout {
+  margin: 0;
+  color: var(--ink-2);
+  font: var(--type-small);
+  letter-spacing: var(--track-small);
+  font-variant-numeric: tabular-nums;
+}
+
+.elevation-profile__readout strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.elevation-profile__absent {
+  margin: 0;
+  padding: 0 var(--space-4) var(--space-2);
+  color: var(--ink-2);
+  font: var(--type-row);
+  letter-spacing: var(--track-row);
+}
+
+/* Status ------------------------------------------------------------------ */
+
 /*
- * Synchronisation controls: one row per half, each carrying its own switch, its
- * own button, and the plain-language result of its last run. The rows sit above
- * the library because what they change is what the library will next contain.
+ * Empty, loading and failure: one panel, one sentence, and the one action. Over
+ * the map it is centred on the ground rather than pinned to a corner, because
+ * there is nothing else on the page to read.
  */
-.sync-controls {
-  margin-bottom: 1.5rem;
-  padding: 1rem 1.15rem;
-  border: 1px solid var(--border);
+.status-message {
+  padding: var(--space-4);
   border-radius: var(--radius);
-  background: var(--surface-raised);
+  background: var(--panel);
+  box-shadow: var(--shadow);
 }
 
-.sync-controls__heading {
-  margin: 0 0 0.75rem;
-  font-size: 0.82rem;
+.status-message__title {
+  margin: 0;
+  font: var(--type-body);
   font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text-muted);
+  letter-spacing: var(--track-body);
 }
+
+.status-message__detail {
+  margin: var(--space-1) 0 0;
+  color: var(--ink-2);
+  font: var(--type-row);
+  letter-spacing: var(--track-row);
+}
+
+.status-message[data-tone="error"] .status-message__title {
+  color: var(--alert);
+}
+
+.status-message > .button,
+.status-message__detail + * {
+  margin-top: var(--space-3);
+}
+
+/* Sync page --------------------------------------------------------------- */
 
 /*
- * What the service is doing right now. It reads as a statement rather than an
- * alert — the run was asked for, and this is it proceeding — but it carries the
- * accent, because it is the only line on the page that is still changing.
+ * Three cards in one column: what is happening now, what the accounts hold, and
+ * what has happened. It is a page you read rather than press, which is why it
+ * has an address of its own instead of a banner over the map.
  */
-.sync-controls__active {
-  margin: -0.35rem 0 0.85rem;
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--accent-text);
+.sync-page {
+  width: 100%;
+  max-width: 940px;
+  margin: 0 auto;
+  padding: var(--space-6) var(--space-5) var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
 }
 
-.sync-controls__coverage {
-  margin: -0.35rem 0 0.85rem;
-  font-size: 0.85rem;
-  color: var(--text-muted);
+/* The way back sits above the title, the way it reads: leave, then arrive. */
+.sync-page__header {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
 }
 
-.sync-controls__phases {
-  display: grid;
-  gap: 0.85rem;
+.sync-page__back {
+  color: var(--ink-2);
+  font: var(--type-row);
+  letter-spacing: var(--track-row);
+  text-decoration: none;
+}
+
+.sync-page__back:hover,
+.sync-page__back:focus-visible {
+  color: var(--accent);
+}
+
+.sync-page__title {
+  margin: 0;
+  font: var(--type-display);
+  letter-spacing: var(--track-display);
+}
+
+.sync-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-radius: var(--radius);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.sync-card__heading {
+  margin: 0;
+  font: var(--type-title);
+  letter-spacing: var(--track-title);
+}
+
+.sync-card__line {
+  margin: 0;
+  color: var(--ink-2);
+  font: var(--type-row);
+  letter-spacing: var(--track-row);
+}
+
+.sync-card__error {
+  margin: 0;
+  color: var(--alert);
+  font: var(--type-row);
+  letter-spacing: var(--track-row);
+}
+
+.sync-card__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.sync-controls__phase {
+/*
+ * One row per half, and per account: what it is, what it last came to, and the
+ * controls that belong to it. The stack turns into a row wherever there is
+ * width for one.
+ */
+.sync-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.75rem 1.25rem;
   align-items: center;
-  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-3);
+  border-radius: calc(var(--radius) - 2px);
+  background: var(--base);
 }
 
-.sync-controls__text {
-  display: grid;
-  gap: 0.15rem;
-  min-width: 15rem;
-  flex: 1 1 22rem;
+.sync-row__text {
+  flex: 1;
+  min-width: 240px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
 }
 
-.sync-controls__title {
+.sync-row__title {
+  font: var(--type-body);
   font-weight: 600;
+  letter-spacing: var(--track-body);
 }
 
-.sync-controls__detail,
-.sync-controls__run {
-  font-size: 0.85rem;
-  color: var(--text-muted);
-}
-
-.sync-controls__run {
+.sync-row__detail {
+  color: var(--ink-2);
+  font: var(--type-small);
+  letter-spacing: var(--track-small);
   font-variant-numeric: tabular-nums;
 }
 
-/*
- * Why a run did not succeed, and what to do about it. A held gate is coloured
- * like the fault it is not, because both are states the operator has to act on —
- * what separates them is the sentence, which is why there is one.
- */
-.sync-controls__guidance,
-.convergence__guidance {
-  margin-top: 0.25rem;
-  font-size: 0.85rem;
-  color: var(--text-muted);
-  text-wrap: pretty;
-}
-
-.sync-controls__guidance-headline,
-.convergence__guidance-headline {
-  font-weight: 600;
-  color: var(--accent);
-}
-
-.sync-controls__guidance[data-kind="waiting"] .sync-controls__guidance-headline,
-.convergence__guidance[data-kind="waiting"] .convergence__guidance-headline {
-  color: var(--text-muted);
-}
-
-/*
- * What an account's authorisation state means, and the way to the flow that
- * ends it. It reads like the run guidance beside it, because it is the same
- * kind of sentence: a state the operator has to act on, and the act.
- */
-.convergence__authorisation {
-  margin-top: 0.25rem;
-  font-size: 0.85rem;
-  color: var(--text-muted);
-  text-wrap: pretty;
-}
-
-/*
- * The one link on this page that starts something. It is underlined rather than
- * made a button: it navigates away to Wahoo, which is what a link does and what
- * a button in this UI never does.
- */
-.convergence__connect {
-  /* The accent as small text: the plain accent is below 4.5:1 on this panel. */
-  color: var(--accent-text);
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.convergence__connect:hover,
-.convergence__connect:focus-visible {
-  color: var(--text);
-}
-
-.sync-controls__actions {
+.sync-row__actions {
   display: flex;
-  gap: 0.6rem;
   align-items: center;
+  gap: var(--space-3);
 }
 
-.sync-controls__switch {
+.sync-row__switch {
   display: inline-flex;
-  gap: 0.4rem;
   align-items: center;
-  font-size: 0.85rem;
-  color: var(--text-muted);
+  gap: var(--space-1);
+  color: var(--ink-2);
+  font: var(--type-row);
+  letter-spacing: var(--track-row);
   cursor: pointer;
 }
 
-.sync-controls__switch input {
-  accent-color: var(--accent);
-  cursor: pointer;
-}
-
-.sync-controls__switch input:disabled {
-  opacity: 0.55;
+.sync-row__switch input:disabled {
   cursor: default;
 }
 
-.sync-controls__error {
-  margin: 0.75rem 0 0;
-  font-size: 0.85rem;
+.sync-row__state {
+  flex: none;
+  font: var(--type-row);
+  letter-spacing: var(--track-row);
+}
+
+.sync-row__state[data-tone="good"] {
+  color: var(--good);
+}
+
+.sync-row__state[data-tone="hold"] {
+  color: var(--hold);
+}
+
+.sync-row__state[data-tone="alert"] {
+  color: var(--alert);
+}
+
+/*
+ * Guidance: what a run that did not succeed means, and the one thing to do about
+ * it. A held gate is stated rather than announced — the account is intact and
+ * the next move is a deliberate one.
+ */
+.sync-guidance {
+  color: var(--ink-2);
+  font: var(--type-small);
+  letter-spacing: var(--track-small);
+}
+
+.sync-guidance strong {
+  color: var(--alert);
+  font-weight: 600;
+}
+
+.sync-guidance[data-kind="blocked"] strong {
+  color: var(--hold);
+}
+
+.sync-guidance[data-kind="waiting"] strong {
+  color: var(--ink-2);
+}
+
+/* The one thing on a row that leaves this application. */
+.sync-row__connect {
+  color: var(--accent);
+  font: var(--type-row);
+  letter-spacing: var(--track-row);
+}
+
+/*
+ * What the card says about itself once its rows have said everything else: the
+ * scope of a claim, or how far back the history goes.
+ */
+.sync-card__foot {
+  margin: 0;
+  color: var(--ink-2);
+  font: var(--type-small);
+  letter-spacing: var(--track-small);
+}
+
+.sync-card__more {
+  align-self: flex-start;
+}
+
+/* Run row ----------------------------------------------------------------- */
+
+/*
+ * Time · half · what it moved · outcome and reference. The outcome is the only
+ * coloured thing in the list, which is the fix for a history where a held gate
+ * looked exactly like a success.
+ */
+.run-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: calc(var(--radius) - 2px);
+  background: var(--base);
+  font: var(--type-row);
+  letter-spacing: var(--track-row);
+}
+
+.run-row__when {
+  flex: none;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.run-row__phase {
+  flex: none;
+}
+
+.run-row__counts {
+  flex: 1;
+  min-width: 140px;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.run-row__result[data-tone="good"] {
+  color: var(--good);
+}
+
+.run-row__result[data-tone="hold"] {
+  color: var(--hold);
+}
+
+.run-row__result[data-tone="alert"] {
+  color: var(--alert);
+}
+
+.run-row__reference {
+  flex: none;
+  color: var(--ink-2);
+  font: var(--type-small);
+  letter-spacing: var(--track-small);
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * The outcome and its reference travel together at the end of the row: one says
+ * how it ended, the other says which run said so.
+ */
+.run-row__outcome {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+/*
+ * The card that names the run a notification was sent for. It carries a hairline
+ * in the tone of that run — the only card on the page that is about one thing
+ * rather than about a state, and the only one that is here because something
+ * asked for a person.
+ */
+.run-notice {
+  border-left: 3px solid var(--rule);
+}
+
+.run-notice[data-tone="hold"] {
+  border-left-color: var(--hold);
+}
+
+.run-notice[data-tone="alert"] {
+  border-left-color: var(--alert);
+}
+
+.run-notice[data-tone="good"] {
+  border-left-color: var(--good);
+}
+
+.run-notice__dismiss {
+  align-self: center;
+  color: var(--ink-2);
+  font: var(--type-row);
+  letter-spacing: var(--track-row);
+  text-decoration: none;
+}
+
+.run-notice__dismiss:hover,
+.run-notice__dismiss:focus-visible {
   color: var(--accent);
 }
 
-/*
- * Whether each Wahoo account holds the library. It sits under the sync controls
- * because it is the result of what those controls do, and it repeats the
- * account/device distinction in prose: "up to date" must not be read as a claim
- * about a head unit, which this service cannot see.
- */
-.convergence {
-  margin-bottom: 1.5rem;
-  padding: 1rem 1.15rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface-raised);
-}
-
-.convergence__heading {
-  margin: 0 0 0.75rem;
-  font-size: 0.82rem;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-}
-
-.convergence__scope {
-  margin: -0.35rem 0 0.85rem;
-  font-size: 0.85rem;
-  color: var(--text-muted);
-}
-
-.convergence__targets {
-  display: grid;
-  gap: 0.85rem;
+.run-notice__reference {
   margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.convergence__target {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem 1.25rem;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.convergence__text {
-  display: grid;
-  gap: 0.15rem;
-  min-width: 15rem;
-  flex: 1 1 22rem;
-}
-
-.convergence__id {
-  font-weight: 600;
-}
-
-.convergence__stages,
-.convergence__run {
-  font-size: 0.85rem;
-  color: var(--text-muted);
+  color: var(--ink-2);
+  font: var(--type-small);
+  letter-spacing: var(--track-small);
   font-variant-numeric: tabular-nums;
 }
 
-/*
- * The one word for an account. Only a state the operator has to act on is
- * coloured; an account that is merely catching up reads as ordinary.
- */
-.convergence__state {
-  font-size: 0.85rem;
-  font-weight: 600;
-}
-
-.convergence__target[data-convergence="failed"] .convergence__state,
-.convergence__target[data-convergence="unauthorized"] .convergence__state {
-  color: var(--accent-text);
-}
-
-/* A run that never started is not something to act on, so it reads as ordinary. */
-.convergence__target[data-run="waiting"] .convergence__state {
-  color: var(--text-muted);
-}
-
-/*
- * Recent runs. The same card as the sections above it, and deliberately quieter:
- * it is history, and nothing in it asks the operator to act.
- */
-.history {
-  margin-bottom: 1.5rem;
-  padding: 1rem 1.15rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface-raised);
-}
-
-.history__heading {
-  margin: 0 0 0.75rem;
-  font-size: 0.82rem;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-}
-
-.history__runs {
-  display: grid;
-  gap: 0.75rem;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.history__run {
+.run-notice__actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.35rem 1.25rem;
-  align-items: baseline;
-  justify-content: space-between;
+  gap: var(--space-2);
 }
 
-.history__text {
-  display: grid;
-  gap: 0.15rem;
-  min-width: 15rem;
-  flex: 1 1 22rem;
-}
-
-.history__phase {
-  font-weight: 600;
-}
-
-.history__counts,
-.history__when,
-.history__reference {
-  font-size: 0.85rem;
-  color: var(--text-muted);
-  font-variant-numeric: tabular-nums;
-}
-
-.history__outcome {
-  display: grid;
-  gap: 0.15rem;
-  justify-items: end;
-  text-align: right;
-}
-
-.history__result {
-  font-size: 0.85rem;
-  font-weight: 600;
-}
-
-.history__empty,
-.history__end {
+/* The build the running service was made from, at the foot of the page. */
+.sync-page__build {
   margin: 0;
-  font-size: 0.85rem;
-  color: var(--text-muted);
+  color: var(--ink-2);
+  font: var(--type-small);
+  letter-spacing: var(--track-small);
+  text-align: center;
 }
 
-.history__more {
-  margin-top: 0.85rem;
+.sync-page__build a {
+  color: inherit;
 }
 
-/* Narrow portrait ---------------------------------------------------------- */
+/* The phone ---------------------------------------------------------------- */
 
 /*
- * One breakpoint, at the width a phone held upright gives a page.
- *
- * Everything above lays out with wrapping flex boxes and an auto-filled grid,
- * so most of the page narrows without being told to. What does not are the four
- * places that were written as one line because they are one line on a desktop:
- * the header, the stage's facts, and the two indents that align the key with the
- * chart above it. A stage page at 375 points lost its figures off the right edge
- * and gave the map whatever height was left, which on a short screen was none.
+ * One breakpoint. Below it the overlay docks its pill to the bottom, the gutter
+ * narrows, and the route page gives the profile room the map would otherwise
+ * take. Nothing else is width-dependent, so there is no third case.
  */
-@media (max-width: 30rem) {
-  /*
-   * The header becomes as tall as it needs to be. Its height is a token because
-   * the desktop header is one line; here the sync badge is a sentence, and
-   * holding it to one line either clips it or pushes the build link off screen.
-   */
-  .layout__header {
-    height: auto;
-    min-height: var(--header-height);
-    flex-wrap: wrap;
-    gap: 0.35rem 0.75rem;
-    padding: 0.5rem 0.9rem;
+@media (max-width: 52rem) {
+  .shell__overlay {
+    padding: var(--space-4) 14px 18px;
+    justify-content: end;
   }
 
-  .layout__end {
-    flex-wrap: wrap;
-    gap: 0.5rem;
+  .shell__overlay > * {
+    max-width: none;
   }
 
-  .stage-detail__header {
-    padding: 0.7rem 0.9rem;
+  /* Expanded, the panel rises to the top: a results column that grew downward
+   * from a docked pill would grow straight off the screen. */
+  .shell__overlay[data-expanded="true"] {
+    justify-content: start;
   }
 
-  /* Four figures on one line is three too many at this width. */
-  .stage-detail__facts {
-    flex-wrap: wrap;
-    gap: 0.5rem 1.5rem;
+  .route-page__header,
+  .route-page__body {
+    padding-left: var(--space-4);
+    padding-right: var(--space-4);
   }
 
-  /*
-   * The map keeps a workable height rather than taking what is left, which with
-   * the header wrapped and the profile open was close to nothing. The main pane
-   * already scrolls, so the page grows instead of the map disappearing.
-   */
-  .stage-detail__map {
-    min-height: 15rem;
+  .route-page__map {
+    flex: none;
+    height: 300px;
+    min-height: 0;
   }
 
-  /*
-   * The chart's indent is the axis labels' room on a wide screen. Here that
-   * indent is a tenth of the viewport, so it goes: the key beneath it follows,
-   * in StageKey.module.css, which carries the matching rule.
-   */
-  .elevation-profile {
-    padding: 0 0.9rem 0.75rem;
-  }
-
-  .elevation-profile__scrub {
-    margin-left: 0.9rem;
-  }
-
-  .elevation-overview__summary {
-    padding: 0.55rem 0.9rem;
-  }
-
-  .route-grid,
-  .grid-attribution {
-    padding-left: 0.9rem;
-    padding-right: 0.9rem;
+  .sync-page {
+    padding: var(--space-6) var(--space-4);
   }
 }
 
-/* Forced colours ----------------------------------------------------------- */
-
 /*
- * What a forced palette must not take away.
- *
- * Forced-colours mode replaces every authored colour — including an SVG `fill`
- * and `stroke` — with one of a handful the reader chose. That is right for text
- * and chrome, and wrong for the two places on this page where the colour *is*
- * the information: the gradient ramp along the elevation chart, and the swatches
- * in the key that name it. Five bands forced to one ink is a chart that says a
- * stage is steep somewhere.
- *
- * So those marks, and only those, opt out. Everything else keeps the reader's
- * palette, and the opted-out marks are given the forced background to sit on so
- * they are not left on a surface that is no longer the one they were fitted
- * against.
+ * A forced palette repaints everything in the reader's own two colours, which
+ * for the gradient ramp and the surface classes would replace the encoding with
+ * a flat block: the colour of a column *is* which band it is. These are the only
+ * marks exempted, and every one of them is a mark whose colour carries the
+ * information rather than decorates it.
  */
 @media (forced-colors: active) {
-  .elevation-profile,
-  .elevation-overview {
+  .elevation-profile {
     background: Canvas;
   }
 
   .elevation-profile__column,
-  .elevation-profile__hatch-ground,
-  .elevation-profile__hatch-line,
   .elevation-profile__surface,
-  .elevation-profile__cursor circle {
+  .elevation-profile__cursor circle,
+  .route-card__mix > span {
     forced-color-adjust: none;
   }
 
@@ -1296,14 +1388,5 @@ body {
 
   .elevation-profile__veil {
     fill: Canvas;
-  }
-
-  /*
-   * The dot beside the sync state is decoration in both palettes — the state is
-   * the word next to it — but a forced palette makes every dot the same, so it
-   * says nothing rather than something wrong.
-   */
-  .sync-badge__dot {
-    background: CanvasText;
   }
 }

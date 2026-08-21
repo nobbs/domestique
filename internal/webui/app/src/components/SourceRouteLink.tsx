@@ -34,7 +34,7 @@ export function SourceRouteLink({ baseUrl, routeId }: SourceRouteLinkProps) {
 
   return (
     <a
-      className="stage-detail__source"
+      className="route-page__source"
       href={source.href}
       target="_blank"
       rel="noreferrer"

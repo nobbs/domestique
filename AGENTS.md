@@ -11,7 +11,8 @@ gives the command and what turns on it.
 accounts as device-ready FIT courses. It is a single-tenant, CGO-free Linux
 Docker workload for a Tailnet host, published for `linux/amd64` alone, with no
 CLI. It also serves a **read-only browser UI** that
-renders one stored route stage at a time on a map. Its only state-changing HTTP
+draws the whole stored library on one map and gives each route a page of its
+own. Its only state-changing HTTP
 surface is the Wahoo OAuth onboarding flow and the manual `POST /v1/sync`
 trigger.
 

@@ -1,10 +1,11 @@
 /**
- * Credits the tile source once for the whole library grid.
+ * The tile and map-data credit, in the map's own control cluster.
  *
- * The cards drop MapLibre's own attribution control, because one per card would
- * be unreadable, but the tile and map data licences still require visible
- * credit. Reading it out of the style document keeps it correct if the operator
- * points `webui.tile_style_url` at a different provider.
+ * MapLibre's attribution control is switched off everywhere in this UI: it puts
+ * a fourth thing in a fourth corner, and it renders the provider's own markup.
+ * The tile and map data licences still require visible credit, so the text is
+ * read out of the style document instead, which also keeps it correct if the
+ * operator points `webui.tile_style_url` at a different provider.
  *
  * The text is stripped of markup rather than rendered as HTML: the style comes
  * from a third-party origin, and no third-party markup is injected into this
@@ -12,8 +13,6 @@
  */
 
 import { useQuery } from "@tanstack/react-query";
-import { webUIConfigQuery } from "../../api/queries";
-import { basemapFor, usePrefersDarkScheme } from "../../lib/basemap";
 
 /**
  * Reduces an attribution string to plain text.
@@ -84,13 +83,19 @@ async function fetchAttribution(styleUrl: string): Promise<string> {
   return [...credits].join(" · ");
 }
 
-export function MapAttribution() {
-  const config = useQuery(webUIConfigQuery());
-  const prefersDark = usePrefersDarkScheme();
-  // The credit is read out of the style document, so it must be read out of the
-  // one actually on screen: two styles may well carry different attribution.
-  const styleUrl = config.data ? basemapFor(config.data, prefersDark).styleUrl : undefined;
+export interface MapCreditsProps {
+  /** The style document the credit is read out of. */
+  styleUrl: string | undefined;
+  /**
+   * A credit the style cannot know about, joined to the ones it declares.
+   *
+   * The surface classification is a separate derived database under the ODbL,
+   * whose share-alike terms oblige attribution wherever it is shown.
+   */
+  extra?: string;
+}
 
+export function MapCredits({ styleUrl, extra }: MapCreditsProps) {
   const attribution = useQuery({
     queryKey: ["tile-attribution", styleUrl] as const,
     queryFn: () => fetchAttribution(styleUrl ?? ""),
@@ -98,9 +103,10 @@ export function MapAttribution() {
     staleTime: Number.POSITIVE_INFINITY,
   });
 
-  if (!attribution.data) {
+  const credits = [attribution.data, extra].filter(Boolean).join(" · ");
+  if (credits === "") {
     return null;
   }
 
-  return <footer className="grid-attribution">{attribution.data}</footer>;
+  return <p className="map-credits">{credits}</p>;
 }

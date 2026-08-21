@@ -13,9 +13,9 @@
 
 import AxeBuilder from "@axe-core/playwright";
 import type { Page } from "@playwright/test";
-import { expect, openLibrary, openStage, test } from "./fixtures";
+import { expect, openLibrary, openRoute, openSync, test } from "./fixtures";
 
-const LOOP_STAGE = { routeId: 4102, stageOrder: 1 };
+const LOOP_ROUTE = { routeId: 4102, stageOrder: 1 };
 
 /**
  * Every violation axe can find in the page, as lines a failure can be read from.
@@ -44,21 +44,32 @@ function overflowsSideways(page: Page): Promise<boolean> {
   );
 }
 
-test("the library page has nothing for axe to report", async ({ offlinePage: page }) => {
+test("the entry page has nothing for axe to report", async ({ offlinePage: page }) => {
   await openLibrary(page);
 
   expect(await violations(page)).toEqual([]);
 });
 
-test("the library read as a table has nothing for axe to report", async ({ offlinePage: page }) => {
+/*
+ * The panel grown over the map is where most of the page's text lives, and it
+ * is drawn over cartography rather than over a background this suite chose.
+ */
+test("the search panel has nothing for axe to report, open", async ({ offlinePage: page }) => {
   await openLibrary(page);
-  await page.getByRole("radio", { name: "Table" }).click();
+  await page.getByRole("searchbox", { name: "Search the route library" }).fill("kaiserstuhl");
+  await page.getByRole("button", { name: /Synthetic Kaiserstuhl Loop/ }).click();
 
   expect(await violations(page)).toEqual([]);
 });
 
-test("a stage page has nothing for axe to report", async ({ offlinePage: page }) => {
-  await openStage(page, LOOP_STAGE.routeId, LOOP_STAGE.stageOrder);
+test("the sync page has nothing for axe to report", async ({ offlinePage: page }) => {
+  await openSync(page);
+
+  expect(await violations(page)).toEqual([]);
+});
+
+test("a route page has nothing for axe to report", async ({ offlinePage: page }) => {
+  await openRoute(page, LOOP_ROUTE.routeId, LOOP_ROUTE.stageOrder);
 
   expect(await violations(page)).toEqual([]);
 });
@@ -67,13 +78,13 @@ test.describe("in a forced-colours palette", () => {
   test.use({ contextOptions: { forcedColors: "active", reducedMotion: "reduce" } });
 
   test("the page is still readable and still passes its audit", async ({ offlinePage: page }) => {
-    await openStage(page, LOOP_STAGE.routeId, LOOP_STAGE.stageOrder);
+    await openRoute(page, LOOP_ROUTE.routeId, LOOP_ROUTE.stageOrder);
 
     expect(await violations(page)).toEqual([]);
   });
 
   test("the marks whose colour is the information keep it", async ({ offlinePage: page }) => {
-    await openStage(page, LOOP_STAGE.routeId, LOOP_STAGE.stageOrder);
+    await openRoute(page, LOOP_ROUTE.routeId, LOOP_ROUTE.stageOrder);
 
     // A forced palette repaints everything in two colours, which for the
     // gradient ramp would replace the encoding with a flat block: the colour of
@@ -97,22 +108,31 @@ test.describe("in a forced-colours palette", () => {
 test.describe("on a phone-sized portrait viewport", () => {
   test.use({ viewport: { width: 390, height: 844 } });
 
-  test("the library fits its width, as cards and as rows", async ({ offlinePage: page }) => {
+  test("the library fits its width, at rest and with the panel grown", async ({
+    offlinePage: page,
+  }) => {
     await openLibrary(page);
 
     expect(await overflowsSideways(page)).toBe(false);
 
-    // A table is the shape most likely to push a phone sideways: four columns
-    // that cannot wrap out of each other's way.
-    await page.getByRole("radio", { name: "Table" }).click();
+    // The panel is the shape most likely to push a phone sideways: it is a
+    // fixed width on the desktop, and a card of figures inside it.
+    await page.getByRole("searchbox", { name: "Search the route library" }).fill("kaiserstuhl");
+    await page.getByRole("button", { name: /Synthetic Kaiserstuhl Loop/ }).click();
 
     expect(await overflowsSideways(page)).toBe(false);
   });
 
-  test("a stage fits its width, key and exploration control included", async ({
+  test("the sync page fits its width, three cards deep", async ({ offlinePage: page }) => {
+    await openSync(page);
+
+    expect(await overflowsSideways(page)).toBe(false);
+  });
+
+  test("a route fits its width, key and exploration control included", async ({
     offlinePage: page,
   }) => {
-    await openStage(page, LOOP_STAGE.routeId, LOOP_STAGE.stageOrder);
+    await openRoute(page, LOOP_ROUTE.routeId, LOOP_ROUTE.stageOrder);
 
     // The exploration control is the way back out of exploring, and it sits over
     // the map: a row that ran off the side of a phone would take it with it.
@@ -121,9 +141,9 @@ test.describe("on a phone-sized portrait viewport", () => {
   });
 
   test("every key chip is big enough to hit with a finger", async ({ offlinePage: page }) => {
-    await openStage(page, LOOP_STAGE.routeId, LOOP_STAGE.stageOrder);
+    await openRoute(page, LOOP_ROUTE.routeId, LOOP_ROUTE.stageOrder);
 
-    const chips = page.locator('[aria-label="Stage key"] button');
+    const chips = page.locator('[aria-label="Route key"] button');
     const count = await chips.count();
     expect(count).toBeGreaterThan(1);
     for (let index = 0; index < count; index += 1) {

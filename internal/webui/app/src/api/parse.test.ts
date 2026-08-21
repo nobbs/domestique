@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   ContractError,
-  parseStageGeometry,
-  parseStages,
+  parseRouteGeometry,
+  parseRoutes,
   parseStatus,
   parseSyncRuns,
 } from "./parse";
@@ -19,9 +19,9 @@ const stagePayload = {
   point_count: 2,
 };
 
-describe("parseStages", () => {
+describe("parseRoutes", () => {
   it("maps the wire contract onto domain values", () => {
-    const stages = parseStages({ stages: [stagePayload] });
+    const stages = parseRoutes({ stages: [stagePayload] });
 
     expect(stages).toHaveLength(1);
     expect(stages[0]).toMatchObject({
@@ -34,19 +34,19 @@ describe("parseStages", () => {
   });
 
   it("accepts an empty library", () => {
-    expect(parseStages({ stages: [] })).toEqual([]);
+    expect(parseRoutes({ stages: [] })).toEqual([]);
   });
 
   it("rejects a payload that drifts from the contract", () => {
-    expect(() => parseStages({ stages: [{ ...stagePayload, route_id: "12" }] })).toThrow(
+    expect(() => parseRoutes({ stages: [{ ...stagePayload, route_id: "12" }] })).toThrow(
       ContractError,
     );
-    expect(() => parseStages({})).toThrow(ContractError);
-    expect(() => parseStages(null)).toThrow(ContractError);
+    expect(() => parseRoutes({})).toThrow(ContractError);
+    expect(() => parseRoutes(null)).toThrow(ContractError);
   });
 });
 
-describe("parseStageGeometry", () => {
+describe("parseRouteGeometry", () => {
   const payload = {
     type: "Feature",
     bbox: [8.4, 49, 8.5, 49.2],
@@ -61,7 +61,7 @@ describe("parseStageGeometry", () => {
   };
 
   it("reads coordinates with and without elevation", () => {
-    const geometry = parseStageGeometry(payload);
+    const geometry = parseRouteGeometry(payload);
 
     expect(geometry.bbox).toEqual([8.4, 49, 8.5, 49.2]);
     expect(geometry.coordinates).toEqual([
@@ -72,12 +72,12 @@ describe("parseStageGeometry", () => {
   });
 
   it("rejects a bounding box that is not four numbers", () => {
-    expect(() => parseStageGeometry({ ...payload, bbox: [8.4, 49] })).toThrow(ContractError);
+    expect(() => parseRouteGeometry({ ...payload, bbox: [8.4, 49] })).toThrow(ContractError);
   });
 
   it("rejects a position without a latitude", () => {
     expect(() =>
-      parseStageGeometry({
+      parseRouteGeometry({
         ...payload,
         geometry: { type: "LineString", coordinates: [[8.4]] },
       }),
@@ -85,7 +85,7 @@ describe("parseStageGeometry", () => {
   });
 
   it("reads a surface classification beside the geometry it describes", () => {
-    const geometry = parseStageGeometry({
+    const geometry = parseRouteGeometry({
       ...payload,
       properties: {
         ...stagePayload,
@@ -103,11 +103,11 @@ describe("parseStageGeometry", () => {
   });
 
   it("leaves the surface absent on a stage nothing has classified yet", () => {
-    expect(parseStageGeometry(payload).surface).toBeUndefined();
+    expect(parseRouteGeometry(payload).surface).toBeUndefined();
   });
 
   it("keeps a classification that matched nothing distinct from an absent one", () => {
-    const geometry = parseStageGeometry({
+    const geometry = parseRouteGeometry({
       ...payload,
       properties: { ...stagePayload, surface: { ranges: [], matched_metres: 0 } },
     });
@@ -116,7 +116,7 @@ describe("parseStageGeometry", () => {
   });
 
   it("degrades a class this build has never heard of to unknown", () => {
-    const geometry = parseStageGeometry({
+    const geometry = parseRouteGeometry({
       ...payload,
       properties: {
         ...stagePayload,
@@ -137,10 +137,10 @@ describe("parseStageGeometry", () => {
     });
 
     expect(() =>
-      parseStageGeometry(withRange({ kind: "asphalt", start_index: -1, end_index: 1 })),
+      parseRouteGeometry(withRange({ kind: "asphalt", start_index: -1, end_index: 1 })),
     ).toThrow(ContractError);
     expect(() =>
-      parseStageGeometry(withRange({ kind: "asphalt", start_index: 0, end_index: 1.5 })),
+      parseRouteGeometry(withRange({ kind: "asphalt", start_index: 0, end_index: 1.5 })),
     ).toThrow(ContractError);
   });
 
@@ -150,15 +150,15 @@ describe("parseStageGeometry", () => {
       properties: { ...stagePayload, surface },
     });
 
-    expect(() => parseStageGeometry(withSurface({ matched_metres: 10 }))).toThrow(ContractError);
-    expect(() => parseStageGeometry(withSurface({ ranges: [] }))).toThrow(ContractError);
+    expect(() => parseRouteGeometry(withSurface({ matched_metres: 10 }))).toThrow(ContractError);
+    expect(() => parseRouteGeometry(withSurface({ ranges: [] }))).toThrow(ContractError);
     expect(() =>
-      parseStageGeometry(
+      parseRouteGeometry(
         withSurface({ ranges: [{ kind: 3, start_index: 0, end_index: 1 }], matched_metres: 10 }),
       ),
     ).toThrow(ContractError);
     expect(() =>
-      parseStageGeometry(
+      parseRouteGeometry(
         withSurface({
           ranges: [{ kind: "asphalt", start_index: 4, end_index: 1 }],
           matched_metres: 10,

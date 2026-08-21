@@ -29,30 +29,22 @@ const EARTH_RADIUS_METRES = 6_371_000;
  * The steep end is where the resolution is worth spending, which is why the
  * steps stay even rather than widening as they climb.
  *
- * Steepness gets a warm heat ramp — gold through terracotta to deep red — the
- * multi-hue exception a sequential scale is allowed when it means severity and
- * carries a scale legend. Lightness falls with every step, so steeper reads as
- * "more" in greyscale as well as in colour.
+ * Steepness gets a warm ramp — grey, then green, gold, orange and red — which
+ * is a sequential scale's multi-hue exception: it means severity, and it carries
+ * a key wherever it is drawn. Lightness falls with every step, so steeper reads
+ * as "more" as well as "hotter".
  *
- * Five steps cannot be told apart by colour alone, and pretending otherwise is
- * what the three-band ramp was avoiding. The ramp was fitted for the widest
- * adjacent separation this surface allows and lands at ΔE00 13–18 for ordinary
- * vision and 8–12 under simulated protanopia and deuteranopia, where three
- * steps had room for 28 and 16. So texture stops being the backup channel and
- * becomes a carrying one: every band above the gentlest wears its own hatch —
- * angle, then crossing, then density — and the key spells out every band the
- * stage actually has.
- *
- * The green-amber-red scale cycling apps use was measured and rejected outright.
- * Making the amber yellow enough to read against the green collapses the pair to
- * ΔE 1.4–4.5 under protanopia: red-green colour blindness, which is common, makes
- * that scale unreadable exactly where it matters.
+ * Colour is the only channel. Five steps cannot be told apart by hue alone under
+ * red-green colour blindness, and the hatches that used to carry the difference
+ * are gone: this service has one operator, who has said which channel they want
+ * and that the ramp is theirs to read. Body text still clears 4.5:1 everywhere,
+ * which is a separate promise and one the tests keep.
  *
  * The bands use absolute steepness, so a fast descent is marked as clearly as
  * the climb it mirrors.
  */
 export const GRADIENT_BANDS = [
-  { limit: 4, label: "< 4%" },
+  { limit: 4, label: "≤ 4%" },
   { limit: 8, label: "4–8%" },
   { limit: 12, label: "8–12%" },
   { limit: 16, label: "12–16%" },
@@ -234,6 +226,44 @@ export function gradientRanges(coordinates: Position[]): BandedRange[] {
   }
 
   return bandedRanges(coordinates, cumulativeMetres(coordinates));
+}
+
+/** One band's share of a route, as a fraction from 0 to 1. */
+export interface BandShare {
+  band: number;
+  share: number;
+}
+
+/**
+ * The route's steepness as a strip, in the order it is ridden.
+ *
+ * One entry per run rather than one per band: a card's mix bar is read as a
+ * profile at a glance — where the gentle kilometres are, and how the hard ones
+ * are spread through them — which a total per band cannot say. Empty for
+ * geometry the profile refuses, so a partly surveyed route shows no bar rather
+ * than a flat one.
+ */
+export function gradientMix(coordinates: Position[]): BandShare[] {
+  const ranges = gradientRanges(coordinates);
+  if (ranges.length === 0) {
+    return [];
+  }
+  const distances = cumulativeMetres(coordinates);
+  const lastIndex = coordinates.length - 1;
+  const total = distances[lastIndex] ?? 0;
+  if (total <= 0) {
+    return [];
+  }
+
+  return ranges.flatMap((range) => {
+    // One point past the run, for the same reason the drawn lines take one: the
+    // last point of a run is the first point of the run that takes over.
+    const startMetres = distances[range.startIndex] ?? 0;
+    const endMetres = distances[Math.min(range.endIndex + 1, lastIndex)] ?? startMetres;
+    const share = (endMetres - startMetres) / total;
+
+    return share > 0 ? [{ band: range.band, share }] : [];
+  });
 }
 
 /** The classification proper, for a caller that has already measured the route. */

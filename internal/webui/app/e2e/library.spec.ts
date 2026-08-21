@@ -1,11 +1,11 @@
 /**
- * The library page: the grid, its previews, the table beside it, and the way
- * into a route.
+ * The entry page: the map of everything, the search over it, and the way into a
+ * route.
  *
- * These are the paths a component test cannot reach — a card's preview is a
- * MapLibre map, following a card or a row is a client-side navigation into a view
- * that fetches its own geometry, and what the two presentations agree on is only
- * worth asserting over the whole page they are both rendered on.
+ * These are the paths a component test cannot reach — the library is a MapLibre
+ * map with a line per route, picking one moves a real camera, and the panel and
+ * the cartography are only worth asserting against each other over the whole
+ * page they share.
  */
 
 import { expect, mapRegion, openLibrary, settleMap, test } from "./fixtures";
@@ -19,106 +19,109 @@ const DEMO_TITLES = [
   "Synthetic Summit Ascent",
 ];
 
-test("the library lists every stage in the demo", async ({ offlinePage: page }) => {
+/** The demo's loop, which the map is asked to fly to. */
+const LOOP = { routeId: 4102, stageOrder: 1, title: "Synthetic Kaiserstuhl Loop" };
+
+test("the entry page is the library, drawn", async ({ offlinePage: page }) => {
   await openLibrary(page);
 
-  const cards = page.locator(".route-card");
-  await expect(cards).toHaveCount(DEMO_TITLES.length);
-  for (const title of DEMO_TITLES) {
-    await expect(page.locator(".route-card__title", { hasText: title })).toBeVisible();
-  }
-  // The listing carries no geometry, so every card fetches its own: a card that
-  // rendered its facts is one whose figures came from the stage summary.
-  await expect(page.locator(".route-card__meta").first()).toContainText("km");
-});
-
-test("searching narrows the grid without leaving the page", async ({ offlinePage: page }) => {
-  await openLibrary(page);
-
-  await page.getByRole("searchbox", { name: "Search" }).fill("forest");
-
-  await expect(page.locator(".route-card")).toHaveCount(1);
-  await expect(page.locator(".route-card__title")).toHaveText(
-    "Synthetic Rhine Traverse — Forest ramps",
+  // The map is the page: no header over it, and the only panel at rest is the
+  // wordmark and the search pill.
+  await expect(mapRegion(page)).toBeVisible();
+  await expect(page.locator(".maplibregl-canvas")).toBeVisible();
+  await expect(page.getByRole("link", { name: /domestique/ })).toBeVisible();
+  await expect(page.getByRole("searchbox", { name: "Search the route library" })).toHaveAttribute(
+    "placeholder",
+    `Search ${DEMO_TITLES.length} routes`,
   );
-  // The stage keeps its place in the route it came from, even alone in the grid.
-  await expect(page.locator(".route-card__stage")).toHaveText("Stage 2 of 3");
-  await expect(page.getByText("Showing 1 of 6 stages")).toBeVisible();
-
-  await page.getByRole("searchbox", { name: "Search" }).fill("nothing matches this");
-
-  await expect(page.locator(".route-card")).toHaveCount(0);
-  await expect(page.getByRole("status")).toContainText("No stages match");
-  await page.getByRole("button", { name: "Clear search" }).click();
-  await expect(page.locator(".route-card")).toHaveCount(DEMO_TITLES.length);
+  // Nothing is listed until something is asked: the results column is what a
+  // search or a selection grows.
+  await expect(page.locator(".result")).toHaveCount(0);
+  // The scale control only has a distance to print once the camera has a zoom,
+  // so this is the map reporting that it framed the library rather than that its
+  // container exists.
+  await expect(page.locator(".maplibregl-ctrl-scale")).toContainText(/\d/);
 });
 
-test("the grid can be reordered by distance", async ({ offlinePage: page }) => {
+test("searching grows a column of what is left", async ({ offlinePage: page }) => {
   await openLibrary(page);
+  const search = page.getByRole("searchbox", { name: "Search the route library" });
 
-  await page.getByRole("combobox", { name: "Sort by" }).selectOption("distance");
+  await search.fill("rhine");
 
-  // Longest first, which is what the order is called.
-  const distances = await page.locator(".route-card__meta > span:first-child").allInnerTexts();
-  const kilometres = distances.map((text) => Number.parseFloat(text));
-  expect(kilometres).toEqual([...kilometres].sort((left, right) => right - left));
+  await expect(page.locator(".result")).toHaveCount(3);
+  await expect(page.getByText("3 of 6")).toBeVisible();
+
+  await search.fill("forest");
+
+  await expect(page.locator(".result__name")).toHaveText([
+    "Synthetic Rhine Traverse — Forest ramps",
+  ]);
+
+  await search.fill("nothing is called this");
+
+  await expect(page.locator(".result")).toHaveCount(0);
+  await expect(page.getByText("Nothing here is called that.")).toBeVisible();
 });
 
-test("the table reads the same stages, in the same order, as the grid", async ({
+test("nothing a reader types leaves the page", async ({ offlinePage: page }) => {
+  await openLibrary(page);
+  const asked: string[] = [];
+  page.on("request", (request) => asked.push(request.url()));
+
+  await page.getByRole("searchbox", { name: "Search the route library" }).fill("kaiserstuhl");
+  await expect(page.locator(".result")).toHaveCount(1);
+
+  // Narrowing happens in the browser over the listing the page already holds,
+  // which is what keeps route names out of an access log.
+  expect(asked.filter((url) => url.toLowerCase().includes("kaiserstuhl"))).toEqual([]);
+});
+
+test("picking a route lifts it out of the library and opens its card", async ({
   offlinePage: page,
 }) => {
   await openLibrary(page);
-  await page.getByRole("combobox", { name: "Sort by" }).selectOption("distance");
-  const cards = await page.locator(".route-card__title").allInnerTexts();
+  const before = await settleMap(page);
 
-  await page.getByRole("radio", { name: "Table" }).click();
+  await page.getByRole("searchbox", { name: "Search the route library" }).fill("kaiserstuhl");
+  await page.getByRole("button", { name: new RegExp(LOOP.title) }).click();
 
-  expect(await page.locator("tbody th a").allInnerTexts()).toEqual(cards);
-  await expect(page.locator(".route-card")).toHaveCount(0);
-  // Rows are figures rather than previews, so the table takes no WebGL context
-  // for a library the grid would have drawn a map per card for.
-  await expect(page.locator(".maplibregl-canvas")).toHaveCount(0);
+  // The row is replaced by the card, so the column never says the same route
+  // twice.
+  await expect(page.getByRole("heading", { name: LOOP.title })).toBeVisible();
+  await expect(page.getByRole("button", { name: new RegExp(LOOP.title) })).toHaveCount(0);
+  await expect(page.locator(".route-card__mix > span").first()).toBeVisible();
+
+  // The camera followed the selection and the accent went on: comparing the map
+  // against itself within the run is a visual assertion with no stored image to
+  // go stale.
+  const after = await settleMap(page);
+  expect(after.equals(before)).toBe(false);
 });
 
-test("following a row opens that stage", async ({ offlinePage: page }) => {
+test("the card is the way into a route", async ({ offlinePage: page }) => {
   await openLibrary(page);
-  await page.getByRole("radio", { name: "Table" }).click();
+  await page.getByRole("searchbox", { name: "Search the route library" }).fill("kaiserstuhl");
+  await page.getByRole("button", { name: new RegExp(LOOP.title) }).click();
 
-  await page.getByRole("link", { name: "Synthetic Kaiserstuhl Loop" }).click();
+  await page.getByRole("link", { name: "Open route" }).click();
 
-  await expect(page).toHaveURL(/\/routes\/4102\/1$/);
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Synthetic Kaiserstuhl Loop");
-});
-
-test("a card's preview becomes a map once it is in view", async ({ offlinePage: page }) => {
-  await openLibrary(page);
-
-  // The mini maps mount when a card nears the viewport, so the first row is
-  // enough: the point is that a preview upgrades from the traced shape to a real
-  // map, not that a long library mounts a WebGL context per card.
-  await expect(page.locator(".maplibregl-canvas").first()).toBeVisible();
-  const previews = await page.locator(".route-card .maplibregl-canvas").count();
-  expect(previews).toBeGreaterThan(0);
-});
-
-test("following a card opens that stage", async ({ offlinePage: page }) => {
-  await openLibrary(page);
-
-  await page.locator(".route-card", { hasText: "Synthetic Kaiserstuhl Loop" }).click();
-
-  await expect(page).toHaveURL(/\/routes\/4102\/1$/);
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Synthetic Kaiserstuhl Loop");
+  await expect(page).toHaveURL(new RegExp(`/routes/${LOOP.routeId}/${LOOP.stageOrder}$`));
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(LOOP.title);
   await settleMap(page);
-  await expect(mapRegion(page)).toBeVisible();
 });
 
-test("the page reports what the demo's two slots are doing", async ({ offlinePage: page }) => {
+test("the wordmark says what sync is doing and is the way to it", async ({ offlinePage: page }) => {
   await openLibrary(page);
 
-  // One slot holds the whole library and one has never completed onboarding,
-  // which is the pair `mise run demo` seeds and the state the onboarding path is
-  // demonstrated from.
-  await expect(page.getByRole("region", { name: /synchronisation/i })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Run now/ }).first()).toBeVisible();
-  await expect(page.getByText("rider-b")).toBeVisible();
+  const wordmark = page.getByRole("link", { name: /domestique/ });
+  await expect(wordmark).toHaveAttribute("href", "/sync");
+  // One line, never two: whether it wants the operator, and when it last
+  // finished. The demo has one connected slot and one that never onboarded.
+  await expect(page.locator(".wordmark__state")).toBeVisible();
+
+  await wordmark.click();
+
+  await expect(page).toHaveURL(/\/sync$/);
+  await expect(page.getByRole("heading", { level: 1, name: "Sync" })).toBeVisible();
 });

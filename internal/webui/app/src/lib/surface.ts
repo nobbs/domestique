@@ -1,10 +1,10 @@
 /**
  * Presentation of a stage's surface classification.
  *
- * The service reports which stretches of a stage are sealed, firm, loose, or
- * soft. This module decides how that reads: the palette and dash pattern each
- * class wears, and the measurements the map, the legend, and the elevation
- * readout all take from one place so they cannot disagree.
+ * The service reports which stretches of a route are sealed, firm, loose, or
+ * soft. This module decides how that reads: the colour each class wears, and
+ * the measurements the map, the key, and the elevation readout all take from
+ * one place so they cannot disagree.
  *
  * Lengths are measured here rather than taken from the API because a share needs
  * metres per class, and the API reports one total. They are measured with the
@@ -18,88 +18,88 @@ import type { CoordinateRange } from "./profile";
 import { cumulativeMetres } from "./profile";
 import { splitAtRanges } from "./routeLines";
 
+/** How one class is named, explained, and painted. */
 interface SurfaceStyle {
   label: string;
   /** What the class means, for a legend that has to explain "compacted". */
   description: string;
-  colour: string;
-  /**
-   * The MapLibre `line-dasharray`, in multiples of the line width. Empty is a
-   * solid line.
-   */
-  dashes: number[];
+  /** The class's colour in each theme. See `SurfaceColours`. */
+  colour: SurfaceColours;
+}
+
+/**
+ * A colour that has to work over both basemaps.
+ *
+ * MapLibre paints on a canvas and cannot resolve a custom property, and the
+ * elevation strip is drawn from the same values so the two cannot disagree — so
+ * the pair is carried here rather than left to CSS. The same six pairs are
+ * declared as `--surface-*` in index.css for the swatches in the key, which are
+ * ordinary DOM. Both copies must stay in step.
+ */
+interface SurfaceColours {
+  light: string;
+  dark: string;
 }
 
 /**
  * The width the classified route is drawn at, in pixels.
- *
- * It is the unit `dashes` are counted in, which is why a legend swatch scales its
- * pattern by the same number: the swatch is then the map at actual size rather
- * than an approximation of it.
  */
 export const SURFACE_LINE_WIDTH = 4;
 
 /**
  * How each class is drawn.
  *
- * Two channels carry the class, because either one alone fails somebody. Hue
- * separates sealed ground (cool) from unsealed (warm earth tones) and leaves
- * unsurveyed neutral, which is the distinction a rider cares about first. The
- * dash pattern then runs from solid to sparse dots as the ground gets looser: an
- * ordered channel for an ordered measure, and the one that survives colour
- * blindness, greyscale, and a basemap that happens to share a hue.
+ * Colour is the only channel. The dash patterns that used to run alongside it
+ * are gone: they were a second reading of the same fact that cost the map its
+ * legibility at every zoom where a dash was shorter than a bend, and this
+ * service has one operator, who has said which channel they want. The classes
+ * are ordered smooth to rough and the six hues are spread as far apart as six
+ * allow, separated in lightness as well so gravel, ground and paving do not read
+ * as neighbours.
  *
- * The colours are literals rather than the CSS custom properties the rest of the
- * UI uses, because MapLibre paints on a canvas and cannot resolve a variable.
- * They are mid-tone on purpose: the same value has to hold up over a pale
- * basemap and a dark one.
- *
- * Unsurveyed is deliberately the quietest thing on the map. Fine grey ticks on
- * the white casing say the route goes here and nobody has recorded what it is
- * made of, which is all that is actually known.
- *
- * The dashes are drawn with butt caps, so these lengths are what appears. Round
- * caps would extend every dash by a full line width, which closes the short
- * patterns up into each other and undoes the ordering.
+ * Unsurveyed is deliberately the quietest thing on the map. It says the route
+ * goes here and nobody has recorded what it is made of, which is all that is
+ * actually known.
  */
 export const SURFACE_STYLES: Record<SurfaceKind, SurfaceStyle> = {
   asphalt: {
     label: "Asphalt",
     description: "sealed and fast",
-    colour: "#1F5FA8",
-    dashes: [],
+    colour: { light: "#556b82", dark: "#8da8c3" },
   },
   paving: {
     label: "Paving",
     description: "sealed but rough: setts, bricks, paving stones",
-    colour: "#6C4FA0",
-    dashes: [3, 0.6],
+    colour: { light: "#7d3ab7", dark: "#b77ff2" },
   },
   compacted: {
     label: "Compacted",
     description: "unpaved, firm enough for road tyres",
-    colour: "#7E8B33",
-    dashes: [2.4, 1.2],
+    colour: { light: "#009c89", dark: "#59ceba" },
   },
   gravel: {
     label: "Gravel",
     description: "unpaved and loose",
-    colour: "#B5822E",
-    dashes: [1.4, 1.2],
+    colour: { light: "#d4a21e", dark: "#fbc959" },
   },
   ground: {
     label: "Ground",
     description: "unpaved and soft: earth, grass, sand, mud",
-    colour: "#6B4423",
-    dashes: [0.6, 1],
+    colour: { light: "#b23a26", dark: "#f47d67" },
   },
   unknown: {
     label: "Unsurveyed",
     description: "nobody has recorded this stretch — it does not mean smooth",
-    colour: "#8C8C94",
-    dashes: [0.5, 2.6],
+    colour: { light: "#bbbec1", dark: "#dbdee2" },
   },
 };
+
+/** One class's colour for the theme currently on screen. */
+export function surfaceColour(kind: SurfaceKind, dark: boolean): string {
+  const { light, dark: darkColour } = SURFACE_STYLES[kind].colour;
+
+  return dark ? darkColour : light;
+}
 
 /** One stretch of one class, placed along the stage. */
 export interface SurfaceBand {
@@ -301,27 +301,4 @@ export function surfaceLines(coordinates: Position[], ranges: SurfaceRange[]): S
     kind,
     lines: inside,
   }));
-}
-
-/**
- * A CSS background echoing how the class is drawn on the map, for a swatch.
- *
- * A legend of flat colour chips would teach half of what the map shows, and the
- * half that fails in greyscale at that. The gaps are the same colour at low
- * alpha rather than transparent, so the swatch keeps its shape against whatever
- * sits behind it.
- */
-export function swatchBackground(kind: SurfaceKind): string {
-  const style = SURFACE_STYLES[kind];
-  const [dash, gap] = style.dashes;
-  if (dash === undefined || gap === undefined) {
-    return style.colour;
-  }
-  const dashWidth = dash * SURFACE_LINE_WIDTH;
-  const period = dashWidth + gap * SURFACE_LINE_WIDTH;
-
-  return (
-    `repeating-linear-gradient(90deg, ${style.colour} 0 ${dashWidth}px, ` +
-    `${style.colour}33 ${dashWidth}px ${period}px)`
-  );
 }

@@ -35,7 +35,7 @@ function statements(data: ReturnType<typeof mergeCoverage>) {
 }
 
 describe("mergeCoverage", () => {
-  const file = `${APP}/src/features/routes/StageDetail.tsx`;
+  const file = `${APP}/src/features/routes/RouteDetail.tsx`;
 
   it("counts a statement both suites reached exactly once", () => {
     // Statement 1 is reached by both. Added rather than merged, the total would
@@ -163,11 +163,11 @@ describe("sourcePath", () => {
   });
 
   it("ignores the dev server's cache buster", () => {
-    const map = { version: 3, sources: ["StageDetail.tsx"], names: [], mappings: "" };
+    const map = { version: 3, sources: ["RouteDetail.tsx"], names: [], mappings: "" };
 
     expect(
-      sourcePath("http://localhost:5173/src/features/routes/StageDetail.tsx?t=1730000", map, APP),
-    ).toBe(`${APP}/src/features/routes/StageDetail.tsx`);
+      sourcePath("http://localhost:5173/src/features/routes/RouteDetail.tsx?t=1730000", map, APP),
+    ).toBe(`${APP}/src/features/routes/RouteDetail.tsx`);
   });
 
   it("has no answer for a map that names no source", () => {

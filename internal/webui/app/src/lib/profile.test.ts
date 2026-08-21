@@ -7,6 +7,7 @@ import {
   cumulativeMetres,
   GRADIENT_WINDOW_METRES,
   gradientBand,
+  gradientMix,
   gradientRanges,
   nearestSample,
   niceStep,
@@ -618,5 +619,38 @@ describe("presentBands", () => {
     }
 
     expect(sampleAt(zoomed, inTheClimb)?.band).toBe(sampleAt(whole, inTheClimb)?.band);
+  });
+});
+
+describe("gradientMix", () => {
+  it("gives each band the share of the route it covers", () => {
+    const mix = gradientMix(ramp([...Array(40).fill(0), ...Array(40).fill(10)]));
+
+    expect(mix.map((entry) => entry.band)).toEqual([0, 2]);
+    // Every metre of the route is accounted for exactly once: the bar is read
+    // as a whole, so a mix that does not sum to one is a bar with a gap in it.
+    expect(mix.reduce((total, entry) => total + entry.share, 0)).toBeCloseTo(1, 10);
+    expect(mix.every((entry) => entry.share > 0)).toBe(true);
+  });
+
+  it("carries a band that appears twice as two shares", () => {
+    const mix = gradientMix(
+      ramp([...Array(40).fill(10), ...Array(40).fill(0), ...Array(40).fill(10)]),
+    );
+
+    expect(mix.map((entry) => entry.band)).toEqual([2, 0, 2]);
+  });
+
+  // A listing row asks for this before the geometry has arrived, and a route
+  // with one point has no length to divide by.
+  it("has nothing to say about a route with no length", () => {
+    expect(gradientMix([])).toEqual([]);
+    expect(gradientMix([[8, 49, 100]])).toEqual([]);
+    expect(
+      gradientMix([
+        [8, 49, 100],
+        [8, 49, 140],
+      ]),
+    ).toEqual([]);
   });
 });

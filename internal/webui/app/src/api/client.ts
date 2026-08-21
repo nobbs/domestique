@@ -9,17 +9,17 @@
 
 import {
   ContractError,
-  parseStage,
-  parseStageGeometry,
-  parseStages,
+  parseRoute,
+  parseRouteGeometry,
+  parseRoutes,
   parseStatus,
   parseSyncRuns,
   parseSyncSchedule,
   parseWebUIConfig,
 } from "./parse";
 import type {
-  Stage,
-  StageGeometry,
+  Route,
+  RouteGeometry,
   Status,
   SyncPhase,
   SyncRunPage,
@@ -101,16 +101,16 @@ function errorMessage(payload: unknown, status: number): string {
     : `request failed with status ${status}`;
 }
 
-export function fetchStages(): Promise<Stage[]> {
-  return request("/v1/routes", parseStages);
+export function fetchRoutes(): Promise<Route[]> {
+  return request("/v1/routes", parseRoutes);
 }
 
-export function fetchStage(routeId: number, stageOrder: number): Promise<Stage> {
-  return request(`/v1/routes/${routeId}/stages/${stageOrder}`, parseStage);
+export function fetchRoute(routeId: number, stageOrder: number): Promise<Route> {
+  return request(`/v1/routes/${routeId}/stages/${stageOrder}`, parseRoute);
 }
 
-export function fetchStageGeometry(routeId: number, stageOrder: number): Promise<StageGeometry> {
-  return request(`/v1/routes/${routeId}/stages/${stageOrder}/geometry`, parseStageGeometry);
+export function fetchRouteGeometry(routeId: number, stageOrder: number): Promise<RouteGeometry> {
+  return request(`/v1/routes/${routeId}/stages/${stageOrder}/geometry`, parseRouteGeometry);
 }
 
 export function fetchStatus(): Promise<Status> {

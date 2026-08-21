@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatCount, formatDistance, formatTimestamp } from "./format";
+import { formatCount, formatDistance, formatElevation, formatTimestamp } from "./format";
 
 describe("formatDistance", () => {
   it.each([
@@ -37,5 +37,26 @@ describe("formatTimestamp", () => {
 
   it("renders a valid timestamp", () => {
     expect(formatTimestamp("2026-08-17T08:00:00Z")).not.toBe("unknown");
+  });
+});
+
+describe("formatElevation", () => {
+  /*
+   * Not `formatDistance`: nought there means a route with nothing to measure and
+   * reads as an em dash, but nought metres above sea level is the coast, and a
+   * route that drops below it is a real one.
+   */
+  it.each([
+    [0, "0 m"],
+    [-4, "-4 m"],
+    [960.4, "960 m"],
+    [960.6, "961 m"],
+  ])("formats %p as %p", (metres, expected) => {
+    expect(formatElevation(metres)).toBe(expected);
+  });
+
+  it("says nothing rather than NaN for a height it does not have", () => {
+    expect(formatElevation(Number.NaN)).toBe("—");
+    expect(formatElevation(Number.POSITIVE_INFINITY)).toBe("—");
   });
 });

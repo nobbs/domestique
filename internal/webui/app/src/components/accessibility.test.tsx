@@ -15,19 +15,18 @@
 import { render } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { describe, it } from "vitest";
-import type { Position, Stage } from "../api/types";
-import { LibraryControls } from "../features/routes/LibraryControls";
-import { StageTable } from "../features/routes/StageTable";
+import type { Position, Route } from "../api/types";
+import { routeKey } from "../api/types";
+import { SearchPanel } from "../features/routes/SearchPanel";
 import { gradientRanges, presentBands } from "../lib/profile";
 import { summariseSurface } from "../lib/surface";
 import { expectNoAxeViolations } from "../test/axe";
 import { Button } from "./Button";
 import { ExploreToggle } from "./ExploreToggle";
-import { RouteCard, RouteGrid } from "./RouteCard";
-import { StageKey } from "./StageKey";
+import { RouteKey } from "./RouteKey";
 import { StatusMessage } from "./StatusMessage";
 
-const STAGE: Stage = {
+const STAGE: Route = {
   routeId: 12,
   stageOrder: 2,
   title: "Alpine loop — Descent",
@@ -60,57 +59,52 @@ function surfaceSummary() {
 }
 
 describe("accessibility", () => {
-  it("holds for a library card in its grid", async () => {
+  it("holds for the search panel, collapsed and grown", async () => {
+    for (const query of ["", "alpine"]) {
+      const { container, unmount } = render(
+        <MemoryRouter>
+          <SearchPanel
+            shown={[STAGE]}
+            total={6}
+            query={query}
+            onQueryChange={() => {}}
+            selectedKey={null}
+            onSelect={() => {}}
+            shapes={new Map([[routeKey(STAGE), { coordinates: CLIMB }]])}
+            readAt="19:38"
+          />
+        </MemoryRouter>,
+      );
+
+      await expectNoAxeViolations(container);
+      unmount();
+    }
+  });
+
+  it("holds for the route card the selected row grew into", async () => {
     const { container } = render(
       <MemoryRouter>
-        <RouteGrid>
-          <li>
-            <RouteCard
-              stage={STAGE}
-              href="/routes/12/2"
-              preview={<span aria-hidden="true" />}
-              stageCount={3}
-            />
-          </li>
-        </RouteGrid>
+        <SearchPanel
+          shown={[STAGE]}
+          total={6}
+          query=""
+          onQueryChange={() => {}}
+          selectedKey={routeKey(STAGE)}
+          onSelect={() => {}}
+          shapes={new Map([[routeKey(STAGE), { coordinates: CLIMB }]])}
+          readAt="19:38"
+        />
       </MemoryRouter>,
     );
 
     await expectNoAxeViolations(container);
   });
 
-  it("holds for the library controls", async () => {
-    const { container } = render(
-      <LibraryControls
-        query="forest"
-        onQueryChange={() => {}}
-        sort="name"
-        onSortChange={() => {}}
-        view="grid"
-        onViewChange={() => {}}
-        shown={1}
-        total={6}
-      />,
-    );
-
-    await expectNoAxeViolations(container);
-  });
-
-  it("holds for the library read as a table", async () => {
-    const { container } = render(
-      <MemoryRouter>
-        <StageTable stages={[STAGE]} />
-      </MemoryRouter>,
-    );
-
-    await expectNoAxeViolations(container);
-  });
-
-  it("holds for the stage key, picked and unpicked", async () => {
+  it("holds for the route key, picked and unpicked", async () => {
     const bands = presentBands(gradientRanges(CLIMB));
     for (const highlight of [null, { type: "surface", kind: "gravel" } as const]) {
       const { container, unmount } = render(
-        <StageKey
+        <RouteKey
           surface={surfaceSummary()}
           surfaceAbsence="Surface not classified yet."
           bands={bands}
@@ -137,8 +131,8 @@ describe("accessibility", () => {
 
   it("holds for a status message carrying an action", async () => {
     const { container } = render(
-      <StatusMessage title="No stages match “forest”." detail="Search matches route names.">
-        <Button variant="quiet">Clear search</Button>
+      <StatusMessage title="Nothing here is called that." detail="Search matches route names.">
+        <Button variant="standard">Clear search</Button>
       </StatusMessage>,
     );
 
