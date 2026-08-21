@@ -370,6 +370,9 @@ func (h *Handler) routes() {
 
 	h.mux.Handle("GET /assets/", h.gated(h.staticAsset))
 	h.mux.Handle("GET /favicon.svg", h.gated(h.staticAsset))
+	h.mux.Handle("GET /icon-256.png", h.gated(h.staticAsset))
+	h.mux.Handle("GET /icon-512.png", h.gated(h.staticAsset))
+	h.mux.Handle("GET /manifest.webmanifest", h.gated(h.webManifest))
 	h.mux.Handle("GET /{$}", h.gated(h.index))
 	h.mux.Handle("GET /routes/{routeID}/{stage}", h.gated(h.index))
 	h.mux.Handle("GET /sync", h.gated(h.index))

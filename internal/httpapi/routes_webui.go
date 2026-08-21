@@ -29,6 +29,21 @@ func (h *Handler) index(writer http.ResponseWriter, request *http.Request, _ str
 	h.assets.Index(writer, request)
 }
 
+// webManifest serves the manifest that makes the UI installable, which is how
+// the map runs edge to edge on a phone: iOS 26 Safari lays a tab out between
+// its own chrome and reports no safe-area insets, while the same document added
+// to the Home Screen gets the whole screen.
+//
+// Unlike the bundler's output it carries no content hash and it decides how an
+// installed copy launches, so it revalidates instead of being cached for a
+// year. The type is set here because Go's table does not know .webmanifest and
+// the responses carry X-Content-Type-Options: nosniff.
+func (h *Handler) webManifest(writer http.ResponseWriter, request *http.Request, _ string) {
+	writer.Header().Set("Content-Type", "application/manifest+json")
+	writer.Header().Set("Cache-Control", cacheDocument)
+	h.assets.Static(writer, request)
+}
+
 // staticAsset serves a build artefact. Names are content-hashed by the bundler,
 // so they may be cached indefinitely.
 func (h *Handler) staticAsset(writer http.ResponseWriter, request *http.Request, _ string) {

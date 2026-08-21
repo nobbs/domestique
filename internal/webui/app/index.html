@@ -4,13 +4,32 @@
     <meta charset="UTF-8" />
     <!-- The map is the page, so the page takes the whole screen: the
          cartography runs under the notch and the home indicator, and the
-         panels floating over it are held off both by the safe-area insets. -->
+         panels floating over it are held off both by the safe-area insets.
+
+         iOS 26 Safari grants none of that inside a tab. It lays the document
+         out between the status bar and the floating toolbar — 714 pt of an
+         874 pt screen, 754 at most — and reports every safe-area inset as
+         0 px whatever this meta says, so the strips behind its own chrome are
+         painted by the document canvas and no element can reach them. Added to
+         the Home Screen the same document gets the entire screen, which is why
+         the two Apple meta tags and the manifest below are here: they are the
+         only way the map actually runs edge to edge on a phone today. -->
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0, viewport-fit=cover"
     />
     <meta name="color-scheme" content="light dark" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <!-- black-translucent is what puts the map under the status bar rather
+         than below it; without it the web app starts one status bar down. -->
+    <meta
+      name="apple-mobile-web-app-status-bar-style"
+      content="black-translucent"
+    />
+    <meta name="apple-mobile-web-app-title" content="domestique" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/icon-256.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
     <title>domestique</title>
   </head>
   <body>

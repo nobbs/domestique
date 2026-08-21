@@ -64,6 +64,8 @@ func TestHandlerGatesEveryNonHealthRoute(t *testing.T) {
 		"/oauth/wahoo/callback",
 		"/assets/app-abc123.js",
 		"/favicon.svg",
+		"/icon-256.png",
+		"/manifest.webmanifest",
 		"/",
 		"/routes/1/1",
 		"/unknown",
@@ -467,6 +469,14 @@ func TestHandlerSetsPolicyAndCacheHeaders(t *testing.T) {
 	document := httptest.NewRecorder()
 	handler.ServeHTTP(document, authenticatedRequest(http.MethodGet, "/"))
 	assert.Equal(t, cacheDocument, document.Header().Get("Cache-Control"), "document Cache-Control")
+
+	// The manifest carries no content hash and decides how an installed copy
+	// launches, so it revalidates; its type is set by hand because the responses
+	// forbid sniffing.
+	manifest := httptest.NewRecorder()
+	handler.ServeHTTP(manifest, authenticatedRequest(http.MethodGet, "/manifest.webmanifest"))
+	assert.Equal(t, cacheDocument, manifest.Header().Get("Cache-Control"), "manifest Cache-Control")
+	assert.Equal(t, "application/manifest+json", manifest.Header().Get("Content-Type"), "manifest Content-Type")
 }
 
 func TestHandlerServesTheApplicationDocumentForDeepLinks(t *testing.T) {
@@ -1154,7 +1164,12 @@ func (*fakeAssets) Index(writer http.ResponseWriter, _ *http.Request) {
 }
 
 func (*fakeAssets) Static(writer http.ResponseWriter, _ *http.Request) {
-	writer.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+	// http.ServeContent leaves a type the caller already chose alone, which is
+	// how the manifest keeps its own. The fake has to do the same or the test
+	// would be checking the fake rather than the route.
+	if writer.Header().Get("Content-Type") == "" {
+		writer.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+	}
 	if _, err := writer.Write([]byte("export default null;")); err != nil {
 		return
 	}
