@@ -811,6 +811,12 @@ func (s *Store) lastSyncRunID(ctx context.Context) (int64, error) {
 // hash is what makes it honest — a stage whose shape changed has a stored
 // classification that describes a line it no longer has, and is not classified
 // in any sense the map can use.
+//
+// It counts on the same terms StageSurface serves on, which is what keeps this
+// number and the map agreeing. The index generation is no more a condition here
+// than it is there: a stage measured against an earlier index is still shown a
+// surface, so counting it as unclassified would report nothing covered after
+// every rebuild while every route on the map still had its surfaces.
 func (s *Store) SurfaceCoverage(ctx context.Context) (classified, total int, err error) {
 	if err := s.database.QueryRowContext(ctx, `
 		SELECT
