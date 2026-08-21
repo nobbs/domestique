@@ -214,6 +214,33 @@ body {
 }
 
 /*
+ * And the title bar of a window, which is the same problem wearing a desktop.
+ *
+ * Added to the Dock on macOS, the library is a Safari web app in a window of its
+ * own, and that window keeps a title bar the map cannot run under: Safari
+ * implements no `window-controls-overlay`, so there is no way to ask for the
+ * frame and draw in it. What is left is its colour, and Safari takes that from
+ * the body — `theme_color` in the manifest and a `theme-color` meta tag are both
+ * ignored here, the same way they are ignored behind the chrome on a phone.
+ *
+ * So the same answer, for the same reason: a frame the UI does not paint on
+ * reads better as a letterbox than as a slab of page surface that stopped.
+ *
+ * It costs a page nothing, which is why this one is not held to the map the way
+ * the rule above is. `.shell--page` paints `--base` under its own content, so
+ * the sync page keeps its surface and the title bar keeps one colour across a
+ * navigation rather than changing with the route.
+ *
+ * The user has the last word regardless: a web app only tints its frame at all
+ * while "Show color in title bar" is on in its settings.
+ */
+@media (display-mode: standalone) {
+  body {
+    background: var(--letterbox);
+  }
+}
+
+/*
  * Text for anything that is not looking at the page: taken out of the layout
  * without being taken out of the document, which `display: none` would do.
  */
