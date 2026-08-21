@@ -20,6 +20,8 @@ interface Drawing {
   bounds: BoundingBox | null;
   /** Whether the selected route's own layers were handed to the map. */
   overlaid: boolean;
+  /** The line the map was told a pick would do nothing to. */
+  inertKey: string | null;
 }
 
 const drawn = vi.hoisted(() => ({ maps: [] as Drawing[] }));
@@ -30,15 +32,28 @@ vi.mock("./LibraryMap", () => ({
     selectedKey: string | null;
     bounds: BoundingBox | null;
     overlay?: unknown;
+    onPick?: (key: string) => void;
+    inertKey?: string | null;
   }) => {
     drawn.maps.push({
       keys: props.lines.map((line) => line.key),
       selectedKey: props.selectedKey,
       bounds: props.bounds,
       overlaid: Boolean(props.overlay),
+      inertKey: props.inertKey ?? null,
     });
 
-    return <div data-testid="library-map" />;
+    // Pointing at a line, without a line to point at: one control per route,
+    // calling exactly what the real map calls when a pointer lands on it.
+    return (
+      <div data-testid="library-map">
+        {props.lines.map((line) => (
+          <button key={line.key} type="button" onClick={() => props.onPick?.(line.key)}>
+            {`point at ${line.key}`}
+          </button>
+        ))}
+      </div>
+    );
   },
 }));
 
@@ -276,6 +291,90 @@ describe("RoutesPage", () => {
 
     expect(lastDrawing().selectedKey).toBe("2/1");
     expect(lastDrawing().bounds).toEqual([8.4, 49, 8.5, 49.1]);
+  });
+
+  /*
+   * The map is the library, so a line on it is the route itself: pointing at
+   * where a ride goes asks about that ride. It is the same two steps the column
+   * has — the card first, the route second — because the lines cross and the
+   * reader is panning across them.
+   */
+  it("shows the card of a route pointed at on the map", async () => {
+    renderPage();
+    await userEvent.click(screen.getByRole("button", { name: "point at 2/1" }));
+
+    expect(lastDrawing().selectedKey).toBe("2/1");
+    expect(lastDrawing().bounds).toEqual([8.8, 49, 8.9, 49.1]);
+    expect(screen.getByRole("button", { name: "Open route" })).toBeInTheDocument();
+    expect(screen.getByRole("searchbox")).toBeInTheDocument();
+  });
+
+  // The second step, on the same line: the card said which route was hit, and
+  // pointing at it again is the map's own way of saying yes.
+  it("opens a route pointed at a second time", async () => {
+    renderPage();
+    await userEvent.click(screen.getByRole("button", { name: "point at 2/1" }));
+
+    expect(screen.queryByRole("region", { name: "Kaiserstuhl Loop" })).toBeNull();
+
+    await userEvent.click(screen.getByRole("button", { name: "point at 2/1" }));
+
+    expect(screen.getByRole("region", { name: "Kaiserstuhl Loop" })).toBeInTheDocument();
+    expect(lastDrawing().overlaid).toBe(true);
+  });
+
+  /*
+   * The search is one way to a route and the map is another. A card that stayed
+   * hidden behind a query it does not match would be a selection the reader can
+   * see on the ground and nowhere else.
+   */
+  it("clears a search the route pointed at is not in", async () => {
+    renderPage();
+    await userEvent.type(screen.getByRole("searchbox"), "kaiserstuhl");
+    await userEvent.click(screen.getByRole("button", { name: "point at 1/2" }));
+
+    expect(screen.getByRole("searchbox")).toHaveValue("");
+    expect(lastDrawing().selectedKey).toBe("1/2");
+    expect(screen.getByRole("button", { name: "Open route" })).toBeInTheDocument();
+  });
+
+  // A search the route is already in is left alone: it is how the reader got
+  // here, and clearing it would throw away the column they were comparing in.
+  it("keeps a search the route pointed at is in", async () => {
+    renderPage();
+    await userEvent.type(screen.getByRole("searchbox"), "rhine");
+    await userEvent.click(screen.getByRole("button", { name: "point at 1/2" }));
+
+    expect(screen.getByRole("searchbox")).toHaveValue("rhine");
+    expect(lastDrawing().selectedKey).toBe("1/2");
+  });
+
+  // With a route open there is no column for a card to be in, so the map's own
+  // pick is the whole gesture.
+  it("swaps the open route for one pointed at on the map", async () => {
+    renderPage(LIBRARY, { at: "/?route=2%2F1" });
+    await userEvent.click(screen.getByRole("button", { name: "point at 1/1" }));
+
+    expect(
+      screen.getByRole("region", { name: "Rhine Traverse — Valley floor" }),
+    ).toBeInTheDocument();
+  });
+
+  /*
+   * The open route is already the answer, and reopening it would throw away
+   * everything asked of it since — the stretch the chart is zoomed into most of
+   * all, which is picked by dragging along that very line.
+   */
+  it("leaves the open route alone when its own line is pointed at", async () => {
+    renderPage(LIBRARY, { at: "/?route=2%2F1" });
+    const before = drawn.maps.length;
+    await userEvent.click(screen.getByRole("button", { name: "point at 2/1" }));
+
+    expect(screen.getByRole("region", { name: "Kaiserstuhl Loop" })).toBeInTheDocument();
+    expect(drawn.maps.length).toBe(before);
+    // And the map says as much before it is clicked, by giving that one line no
+    // pointer cursor.
+    expect(lastDrawing().inertKey).toBe("2/1");
   });
 
   // The map with nothing on it is the loading state; a panel saying so would

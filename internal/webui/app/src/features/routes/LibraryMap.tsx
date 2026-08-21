@@ -20,6 +20,7 @@
 
 import { useMemo, useState } from "react";
 import { createPortal } from "react-dom";
+import type { MapLayerMouseEvent } from "react-map-gl/maplibre";
 import {
   Layer,
   Map as MapLibre,
@@ -52,6 +53,9 @@ const LIBRARY_INK = { light: "#1c2126", dark: "#eef0f3" } as const;
  */
 const SELECTION_ACCENT = { light: "#236fc7", dark: "#70adfb" } as const;
 
+/** The invisible band along each route that a pointer is actually asked about. */
+const HIT_LAYER = "library-hit";
+
 /** Where MapLibre keeps the controls this map asked for. */
 const CLUSTER_SELECTOR = ".maplibregl-ctrl-bottom-left";
 
@@ -74,6 +78,16 @@ const LIBRARY_OPACITY = 0.68;
  * on the ground as context rather than being switched off.
  */
 const CONTEXT_OPACITY = 0.14;
+
+/**
+ * How wide the line a pointer actually has to hit is.
+ *
+ * The library is drawn at two pixels, and two pixels is not a target: a route is
+ * picked by pointing at where it goes, not by tracing it. The band is invisible
+ * and carries the same identity as the line inside it, so what is clicked and
+ * what lights up cannot disagree.
+ */
+const HIT_WIDTH = 18;
 
 /** How close the camera will go by default: enough for one route, not a street. */
 const DEFAULT_MAX_ZOOM = 14;
@@ -116,6 +130,28 @@ export interface LibraryMapProps {
   overlay?: React.ReactNode;
   /** A credit the style cannot know about, joined to the ones it declares. */
   extraCredit?: string | undefined;
+  /**
+   * Picks the route the pointer landed on, by `routeKey`.
+   *
+   * The map is the library, so a line on it is the route itself rather than a
+   * picture of one: pointing at where a ride goes is the most direct way of
+   * asking about it there is, and it needs no column at all. What picking means
+   * — expanding its card, or opening it — is the page's to decide; this map
+   * knows only which line was under the pointer.
+   *
+   * Left out where nothing is listening, which also leaves the map inert: no
+   * pointer cursor and no hover paint promising a click that does nothing.
+   */
+  onPick?: (key: string) => void;
+  /**
+   * The one line a pick would do nothing to: the route already opened.
+   *
+   * It gets no pointer cursor, because the cursor is a promise. Which route
+   * that is cannot be read off `selectedKey`, which is the route standing out
+   * whether it is merely picked — where a second click opens it — or open
+   * already, where there is nothing left for a click to do.
+   */
+  inertKey?: string | null;
 }
 
 /** The lines as one collection, which is all a single line layer can be given. */
@@ -144,9 +180,12 @@ export function LibraryMap({
   maxZoom = DEFAULT_MAX_ZOOM,
   overlay,
   extraCredit,
+  onPick,
+  inertKey = null,
 }: LibraryMapProps) {
   const theme = darkBasemap ? "dark" : "light";
   const [cluster, setCluster] = useState<HTMLElement | null>(null);
+  const [hoveredKey, setHoveredKey] = useState<string | null>(null);
 
   // The selected route stays in the collection rather than being cut out of it:
   // removing it would rebuild every line on every selection, and the overlay
@@ -170,6 +209,13 @@ export function LibraryMap({
     setCluster(event.target?.getContainer?.()?.querySelector(CLUSTER_SELECTOR) ?? null);
   };
 
+  /** Which route the pointer is over, out of the band it actually hit. */
+  const keyAt = (event: MapLayerMouseEvent): string | null => {
+    const key = event.features?.[0]?.properties?.key;
+
+    return typeof key === "string" ? key : null;
+  };
+
   /*
    * MapLibre's own attribution control is off. It renders the provider's own
    * markup into a corner of its own, and this map has one corner: the credit is
@@ -184,6 +230,21 @@ export function LibraryMap({
         style={{ width: "100%", height: "100%" }}
         aria-label="Map of the route library"
         attributionControl={false}
+        /*
+         * Only the invisible band is asked about. Querying the drawn line would
+         * make the answer depend on how wide the ink happens to be, and the
+         * overlay's own layers answer for themselves.
+         */
+        interactiveLayerIds={onPick ? [HIT_LAYER] : []}
+        cursor={hoveredKey !== null && hoveredKey !== inertKey ? "pointer" : ""}
+        onMouseMove={(event: MapLayerMouseEvent) => setHoveredKey(keyAt(event))}
+        onMouseOut={() => setHoveredKey(null)}
+        onClick={(event: MapLayerMouseEvent) => {
+          const key = keyAt(event);
+          if (key !== null) {
+            onPick?.(key);
+          }
+        }}
       >
         <MapViewport bounds={bounds} maxZoom={maxZoom} />
         {/*
@@ -224,6 +285,45 @@ export function LibraryMap({
                 "line-color": SELECTION_ACCENT[theme],
                 "line-width": 3,
                 "line-opacity": 1,
+              }}
+            />
+          ) : null}
+          {/*
+           * What a click would pick, while the pointer is over it.
+           *
+           * The line under the pointer is lit in the same accent the selection
+           * is drawn in, so the map answers "this one?" before it is asked to
+           * commit — and the route the reader is already looking at is left
+           * alone, because it is painted in that accent already.
+           */}
+          {hoveredKey !== null && hoveredKey !== selectedKey ? (
+            <Layer
+              id="library-hover-line"
+              type="line"
+              filter={["==", ["get", "key"], hoveredKey]}
+              layout={{ "line-cap": "round", "line-join": "round" }}
+              paint={{
+                "line-color": SELECTION_ACCENT[theme],
+                "line-width": 3,
+                "line-opacity": 0.75,
+              }}
+            />
+          ) : null}
+          {/*
+           * The target, over everything the source draws: a transparent band
+           * along each route, wide enough to point at. It is drawn rather than
+           * merely queried because MapLibre answers about what it rendered, and
+           * it is only mounted where a picked route has somewhere to go.
+           */}
+          {onPick ? (
+            <Layer
+              id={HIT_LAYER}
+              type="line"
+              layout={{ "line-cap": "round", "line-join": "round" }}
+              paint={{
+                "line-color": LIBRARY_INK[theme],
+                "line-width": HIT_WIDTH,
+                "line-opacity": 0,
               }}
             />
           ) : null}

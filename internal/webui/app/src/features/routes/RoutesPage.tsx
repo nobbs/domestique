@@ -246,6 +246,61 @@ export function RoutesPage() {
     [forget, setParams],
   );
 
+  /**
+   * The route standing out on the map: the one that is open, or the one picked.
+   *
+   * Keyed rather than indexed, because geometry arrives one request at a time
+   * and a position in a list of what has arrived is not a position in the
+   * library.
+   */
+  const focusKey = openKey ?? selectedKey;
+
+  /**
+   * A route picked off the map, by pointing at where it goes.
+   *
+   * The map is the library, so a line on it is the route itself rather than a
+   * picture of one: pointing at where a ride goes is the most direct way there
+   * is of asking about it, and it takes no column at all.
+   *
+   * The same two steps the column has, in the same order: the first click shows
+   * the route's card, the second opens it. The lines cross and the reader is
+   * panning across them, so a map where one click swapped the whole panel would
+   * be a minefield — the card is what says which route was hit before anything
+   * is committed to.
+   *
+   * With a route already open the step is skipped: there is no column for a card
+   * to be in, so a pick opens the line it landed on. The open route itself is
+   * left alone rather than reopened, which would throw away everything asked of
+   * it since — the stretch the chart is zoomed into most of all, picked by
+   * dragging along that very line. The map makes the same promise by giving that
+   * one line no pointer cursor.
+   */
+  const pick = useCallback(
+    (key: string) => {
+      if (openKey !== null) {
+        if (key !== openKey) {
+          open(key);
+        }
+
+        return;
+      }
+      if (key === selectedKey) {
+        open(key);
+
+        return;
+      }
+      // The search is one way to a route and the map is another, so a route
+      // picked off the map is the answer to whatever was typed: a card that
+      // stayed hidden behind a query it does not match would be a selection the
+      // reader can see on the ground and nowhere else.
+      if (!shown.some((route) => routeKey(route) === key)) {
+        setQuery("");
+      }
+      setSelectedKey(key);
+    },
+    [open, openKey, selectedKey, shown],
+  );
+
   const close = useCallback(() => {
     forget();
     setSelectedKey(null);
@@ -293,9 +348,6 @@ export function RoutesPage() {
 
     return range ? rangeBounds(openCoordinates, range) : null;
   }, [openCoordinates, shownWindow]);
-  // Keyed rather than indexed: geometry arrives one request at a time, so a
-  // position in a list of what has arrived is not a position in the library.
-  const focusKey = openKey ?? selectedKey;
   const focusBox = focusKey ? (drawn.boxes.get(focusKey) ?? null) : null;
   const libraryBounds = useMemo(() => unionOf([...drawn.boxes.values()]), [drawn.boxes]);
   const bounds = windowBounds ?? focusBox ?? libraryBounds;
@@ -334,6 +386,8 @@ export function RoutesPage() {
             bounds={bounds}
             maxZoom={windowBounds ? WINDOW_MAX_ZOOM : ROUTE_MAX_ZOOM}
             extraCredit={openRoute ? SURFACE_ATTRIBUTION : undefined}
+            onPick={pick}
+            inertKey={openKey}
             overlay={
               openRoute && openCoordinates.length > 1 ? (
                 <RouteOverlay

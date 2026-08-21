@@ -12,6 +12,7 @@
  * which keeps route names out of an access log.
  */
 
+import { useEffect, useRef } from "react";
 import type { Position, Route } from "../../api/types";
 import { routeKey } from "../../api/types";
 import { Button } from "../../components/Button";
@@ -124,6 +125,20 @@ function RouteCard({
   readAt: string | null;
   onOpen: () => void;
 }) {
+  /*
+   * The card brings itself into view when it appears.
+   *
+   * A route can now be picked by pointing at it on the map, and the column it
+   * expands in is not necessarily scrolled anywhere near it: without this, a
+   * click on the ground would answer somewhere the reader cannot see. `nearest`
+   * so a card picked out of the column, which is already on screen, does not
+   * make the column jump under the hand that picked it.
+   */
+  const card = useRef<HTMLLIElement>(null);
+  useEffect(() => {
+    card.current?.scrollIntoView({ block: "nearest" });
+  }, []);
+
   const where = route.routeName !== route.title ? route.routeName : null;
   const second = [where, readAt ? `read ${readAt}` : null].filter(Boolean).join(" · ");
   const mix = shape ? gradientMix(shape.coordinates) : [];
@@ -139,7 +154,7 @@ function RouteCard({
   });
 
   return (
-    <li className="route-card">
+    <li className="route-card" ref={card}>
       <h2 className="route-card__title">{route.title}</h2>
       {second === "" ? null : <p className="route-card__where">{second}</p>}
       <dl className="route-card__figures">

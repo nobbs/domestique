@@ -8,6 +8,7 @@
  * page they share.
  */
 
+import type { Page } from "@playwright/test";
 import { expect, mapRegion, openLibrary, settleMap, test } from "./fixtures";
 
 const DEMO_TITLES = [
@@ -124,6 +125,60 @@ test("a link to the old route page lands on the route", async ({ offlinePage: pa
 
   await expect(page.getByRole("region", { name: LOOP.title })).toBeVisible();
   await expect(page).toHaveURL(new RegExp(`/\\?route=${LOOP.routeId}%2F${LOOP.stageOrder}$`));
+});
+
+/**
+ * Points at a route on the map, wherever one happens to be.
+ *
+ * The framing decides where any one route falls, so the pointer is swept across
+ * the middle of the map until the cursor says it is over a line — which is the
+ * same promise the reader is given before they click. It leaves the pointer
+ * where it found one, ready to click.
+ */
+async function pointAtALine(page: Page): Promise<{ x: number; y: number }> {
+  const box = await mapRegion(page).boundingBox();
+  expect(box).not.toBeNull();
+  if (!box) {
+    throw new Error("expected the map to have been laid out");
+  }
+  const canvas = page.locator(".maplibregl-canvas");
+  const y = box.y + box.height / 2;
+  for (let step = 1; step < 40; step += 1) {
+    const x = box.x + (box.width * step) / 40;
+    await page.mouse.move(x, y);
+    await page.waitForTimeout(60);
+    if ((await canvas.evaluate((node) => node.style.cursor)) === "pointer") {
+      return { x, y };
+    }
+  }
+  throw new Error("expected a route somewhere across the middle of the map");
+}
+
+/*
+ * The map is the library, so a line on it is the route itself — and picking one
+ * off the ground takes the same two steps the column does. The first click says
+ * which route was hit, and the second is the map's own way of saying yes.
+ */
+test("pointing at a line on the map picks that route out, twice to open it", async ({
+  offlinePage: page,
+}) => {
+  await openLibrary(page);
+
+  const first = await pointAtALine(page);
+  await page.mouse.click(first.x, first.y);
+
+  // The card, in the column the search was in.
+  await expect(page.locator(".route-card")).toBeVisible();
+  const title = await page.locator(".route-card__title").innerText();
+
+  // The camera flew to the route it picked, so where that line is on the screen
+  // has to be asked again rather than assumed.
+  await settleMap(page);
+  const second = await pointAtALine(page);
+  await page.mouse.click(second.x, second.y);
+
+  await expect(page.getByRole("region", { name: title })).toBeVisible();
+  await expect(page.locator(".elevation-profile")).toBeVisible();
 });
 
 test("the wordmark says what sync is doing and is the way to it", async ({ offlinePage: page }) => {
