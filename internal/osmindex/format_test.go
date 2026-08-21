@@ -1,6 +1,7 @@
 package osmindex
 
 import (
+	"encoding/binary"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -128,4 +129,19 @@ func absolute(t *testing.T, degrees [][2]float64) (x, y []int32) {
 	}
 
 	return x, y
+}
+
+// A count is the one field acted on before anything reads against it, so a
+// corrupt one has to be rejected rather than allocated for. A count this large
+// cannot be a slice at all, and reaching make with it panics rather than
+// returning the error every other damaged record returns; smaller but still
+// impossible counts merely reserve memory nothing in the file justifies.
+func TestDecodeCellRejectsAnImpossiblePointCount(t *testing.T) {
+	blob := []byte{}
+	blob = binary.AppendUvarint(blob, 42)          // way identifier
+	blob = append(blob, byte(surface.KindAsphalt)) // class
+	blob = binary.AppendUvarint(blob, 1<<62)       // more points than a slice can hold
+
+	_, err := decodeCell(blob, cellKey{x: 830, y: 4990})
+	require.ErrorIs(t, err, errShortRecord, "a count the blob cannot support")
 }

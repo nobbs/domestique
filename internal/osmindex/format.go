@@ -147,6 +147,18 @@ func decodeCell(blob []byte, key cellKey) ([]surface.Way, error) {
 			return nil, errShortRecord
 		}
 		offset += size
+		// The count is preallocated, so it has to be believed only as far as the
+		// blob could actually carry: a point is two varints and so at least two
+		// bytes. Without this a corrupt count allocates against a number nothing
+		// in the file supports, which panics in make rather than returning the
+		// error every other damaged record here returns.
+		//
+		// The subtraction cannot go negative: Uvarint reported a positive size
+		// just above, so it read inside the blob and left offset within it.
+		remaining := len(blob) - offset
+		if count > uint64(remaining)/2 { //nolint:gosec // Non-negative, as above.
+			return nil, errShortRecord
+		}
 
 		line := make([]surface.Coordinate, 0, count)
 		currentX, currentY := baseX, baseY
