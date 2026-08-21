@@ -45,10 +45,10 @@ import {
 } from "../../lib/profile";
 import { summariseSurface } from "../../lib/surface";
 import { useEscapeKey } from "../../lib/useEscapeKey";
-import { ElevationPanel } from "./ElevationPanel";
 import type { LibraryLine } from "./LibraryMap";
 import { LibraryMap } from "./LibraryMap";
 import { RoutePanel } from "./RoutePanel";
+import { RouteProfile } from "./RouteProfile";
 import type { RouteShape } from "./SearchPanel";
 import { SearchPanel } from "./SearchPanel";
 
@@ -389,6 +389,9 @@ export function RoutesPage() {
   return (
     <Layout
       expanded={query.trim() !== "" || selectedKey !== null || openKey !== null}
+      // Only an open route: the results column is deliberately no wider than a
+      // line worth reading, and the extra width is the profile's, not the list's.
+      wide={openKey !== null}
       map={
         basemap ? (
           <LibraryMap
@@ -464,6 +467,21 @@ export function RoutesPage() {
       {shownRoute ? (
         <RoutePanel
           route={shownRoute}
+          profile={
+            <RouteProfile
+              profile={windowed ?? routeProfile}
+              title={shownRoute.title}
+              ascentMetres={shownRoute.ascentMetres}
+              surface={surfaceSummary}
+              activeMetres={activeMetres}
+              onActiveChange={setActiveMetres}
+              zoomWindow={shownWindow}
+              onZoomChange={onZoomChange}
+              highlight={highlight}
+              collapsed={chartCollapsed}
+              onCollapsedChange={setChartCollapsed}
+            />
+          }
           highestMetres={routeProfile ? routeProfile.maxElevationMetres : null}
           subtitle={subtitle}
           surface={surfaceSummary}
@@ -495,21 +513,6 @@ export function RoutesPage() {
           onOpen={open}
           shapes={drawn.shapes}
           readAt={readAt ? formatReadTime(readAt) : null}
-        />
-      ) : null}
-      {shownRoute ? (
-        <ElevationPanel
-          profile={windowed ?? routeProfile}
-          title={shownRoute.title}
-          ascentMetres={shownRoute.ascentMetres}
-          surface={surfaceSummary}
-          activeMetres={activeMetres}
-          onActiveChange={setActiveMetres}
-          zoomWindow={shownWindow}
-          onZoomChange={onZoomChange}
-          highlight={highlight}
-          collapsed={chartCollapsed}
-          onCollapsedChange={setChartCollapsed}
         />
       ) : null}
     </Layout>

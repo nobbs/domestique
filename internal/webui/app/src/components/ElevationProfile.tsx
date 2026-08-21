@@ -13,8 +13,7 @@
  * millimetres of ink, and the question a rider actually has is about one climb.
  */
 
-import { useCallback, useMemo, useRef, useState } from "react";
-import { usePrefersDarkScheme } from "../lib/basemap";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Highlight } from "../lib/highlight";
 import { gapsOutside, highlightLabel } from "../lib/highlight";
 import { useNarrowViewport } from "../lib/mediaQuery";
@@ -22,52 +21,54 @@ import type { DistanceWindow, Profile, ProfileSample } from "../lib/profile";
 import { niceStep, sampleAt, ticksFor } from "../lib/profile";
 import { MIN_DRAG_PIXELS, spanBetween, widened } from "../lib/selection";
 import type { SurfaceSummary } from "../lib/surface";
-import { SURFACE_STYLES, surfaceBandsWithin, surfaceColour, surfaceKindAt } from "../lib/surface";
+import { SURFACE_STYLES, surfaceBandsWithin, surfaceKindAt } from "../lib/surface";
 import { useElementWidth } from "../lib/useElementWidth";
 import { useEscapeKey } from "../lib/useEscapeKey";
 import { Button } from "./Button";
 
 /**
- * How tall the plot is, in the two layouts there are.
+ * How tall the drawn terrain is, in the two layouts there are.
  *
  * The chart is an SVG, so its height is also its coordinate system and cannot be
- * a rule in the stylesheet. Both numbers give the terrain enough vertical room
- * to be a shape rather than a smear; the narrow one gives it back to the map
- * above, which on a phone is the scarcer thing.
+ * a rule in the stylesheet. It is one row of a card now rather than a panel of
+ * its own, so both numbers are what a card can spare: enough for the ride to be
+ * a shape rather than a smear, and no more than the four figures above it and
+ * the two mixes below it can be read alongside.
  */
-const PLOT_HEIGHT = { wide: 200, narrow: 150 } as const;
+const PLOT_HEIGHT = { wide: 92, narrow: 74 } as const;
 
-const PADDING = { top: 12, right: 12, bottom: 33, left: 46 };
+/**
+ * The room around the terrain: the metre labels down the left, the kilometre
+ * labels along the foot, and enough at the top and right that a peak touching
+ * the ceiling is not clipped by it.
+ */
+const PADDING = { top: 8, right: 8, bottom: 22, left: 40 };
 const MIN_WIDTH = 240;
 
 /**
- * The surface lane at the foot of the plot.
+ * How long a finger has to stay put before the drag is armed.
  *
- * It is thin on purpose: it carries one categorical measure along an axis that
- * already belongs to the terrain above it, and a thick band would read as a
- * second chart competing with the first. The gap keeps it from touching the
- * ground of the profile, which would make the two look like one shape.
+ * A card that scrolls cannot give every downward swipe over the chart to the
+ * chart, and a finger that landed and moved on was scrolling. Long enough to be
+ * a deliberate hold, short enough that holding does not feel like waiting.
  */
-const SURFACE_STRIP_HEIGHT = 7;
-const SURFACE_STRIP_GAP = 12;
+export const LONG_PRESS_MS = 350;
 
 export interface ElevationProfileProps {
   /** Already restricted to the stretch on show, when there is a zoom. */
   profile: Profile | null;
   title: string;
   /**
-   * The ground under the route: drawn as a strip along the foot of the chart,
-   * and reported for the hovered position.
+   * The ground under the route: reported for the hovered position, and veiled
+   * around whichever class the reader picked out of the chips.
    *
-   * The chart's own paint is not touched by it. The bands mean gradient, and a
-   * second measure fighting for the same ground would make both unreadable — so
-   * the surface gets a lane of its own directly beneath the terrain, sharing the
-   * distance axis. Reading upwards from any point on the strip lands on the
-   * climb that is made of that surface, which is the question the two answer
-   * together and neither answers alone.
+   * Nothing of it is drawn along the chart. It used to have a lane of its own at
+   * the foot of the plot, back when the plot was a panel with room to spare;
+   * inside the card it would be a second chart on the same axis, two rows above
+   * the surface mix bar that already says the same thing at a glance.
    *
-   * This is the whole stage's classification, not the window's: the readout asks
-   * it about an absolute distance. Only the strip clips.
+   * This is the whole route's classification, not the window's: the readout asks
+   * it about an absolute distance.
    */
   surface?: SurfaceSummary | null;
   /** The position shared with the map, in metres from the start of the route. */
@@ -195,18 +196,22 @@ export function ElevationProfile({
 }: ElevationProfileProps) {
   const { ref, width } = useElementWidth<HTMLDivElement>();
 
-  const height = useNarrowViewport() ? PLOT_HEIGHT.narrow : PLOT_HEIGHT.wide;
-  // The strip sits on the page rather than on cartography, so its colours follow
-  // the page's own scheme — see `surfaceColour`.
-  const dark = usePrefersDarkScheme();
+  const plotHeight = useNarrowViewport() ? PLOT_HEIGHT.narrow : PLOT_HEIGHT.wide;
+  const height = plotHeight + PADDING.top + PADDING.bottom;
 
   const plotWidth = Math.max(width, MIN_WIDTH) - PADDING.left - PADDING.right;
-  const plotHeight = height - PADDING.top - PADDING.bottom;
-  // The plot and the strip beneath it, which the cursor, the scrub region and
-  // the veil all treat as one lane because they describe one position.
-  const laneHeight = surface ? plotHeight + SURFACE_STRIP_GAP + SURFACE_STRIP_HEIGHT : plotHeight;
 
   const drag = useRef<{ pointerId: number; originX: number; anchorMetres: number } | null>(null);
+  /*
+   * The hold that arms a finger's drag, and whether it has finished.
+   *
+   * The timer is a ref because clearing it is cleanup rather than rendering;
+   * the flag is state because the chart says out loud that it has the gesture —
+   * `touch-action` stops being `pan-y` and the plot stops handing downward
+   * movement back to the card it is scrolling in.
+   */
+  const armed = useRef<number | null>(null);
+  const [holding, setHolding] = useState(false);
   const [selection, setSelection] = useState<DistanceWindow | null>(null);
 
   const geometry = useMemo(() => {
@@ -277,13 +282,29 @@ export function ElevationProfile({
     [profile],
   );
 
-  const endDrag = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    drag.current = null;
-    setSelection(null);
-    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
+  /** Stands the pending hold down, whether or not it ever became a gesture. */
+  const disarm = useCallback(() => {
+    if (armed.current !== null) {
+      window.clearTimeout(armed.current);
+      armed.current = null;
     }
+    setHolding(false);
   }, []);
+
+  const endDrag = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      drag.current = null;
+      setSelection(null);
+      disarm();
+      if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+    },
+    [disarm],
+  );
+
+  // Nothing is left ticking when the chart is folded away mid-hold.
+  useEffect(() => disarm, [disarm]);
 
   const onPointerDown = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
@@ -296,14 +317,49 @@ export function ElevationProfile({
       if (metres === null) {
         return;
       }
-      drag.current = { pointerId: event.pointerId, originX: event.clientX, anchorMetres: metres };
+      const started = {
+        pointerId: event.pointerId,
+        originX: event.clientX,
+        anchorMetres: metres,
+      };
       setSelection(null);
+      /*
+       * Whatever the last press left ticking is dropped before this one arms.
+       * A press does not always arrive after the release of the one before it —
+       * a device with both a touchscreen and a trackpad can put a second
+       * primary pointer down while a hold is still counting — and a timer from
+       * an abandoned press would fire into this one, capturing a pointer for a
+       * position the reader has already moved away from.
+       */
+      disarm();
+      /*
+       * A mouse arms the drag by pressing; a finger arms it by holding.
+       *
+       * The chart is one row of a card the reader scrolls, and a finger that
+       * lands on the plot is far more often on its way past than asking about
+       * the climb under it. Claiming that first touch would make the card
+       * un-scrollable over its most interesting row. So the hold is the ask:
+       * until it completes, the touch belongs to the card.
+       */
+      if (event.pointerType === "touch") {
+        const element = event.currentTarget;
+        armed.current = window.setTimeout(() => {
+          armed.current = null;
+          drag.current = started;
+          setHolding(true);
+          capturePointer(element, started.pointerId);
+          onActiveChange(started.anchorMetres);
+        }, LONG_PRESS_MS);
+
+        return;
+      }
+      drag.current = started;
       capturePointer(event.currentTarget, event.pointerId);
       // Report the anchor, so the readout is already showing the value under
-      // the finger that is about to drag away from it.
+      // the pointer that is about to drag away from it.
       onActiveChange(metres);
     },
-    [metresAt, onActiveChange, onZoomChange],
+    [disarm, metresAt, onActiveChange, onZoomChange],
   );
 
   const onPointerMove = useCallback(
@@ -312,7 +368,21 @@ export function ElevationProfile({
       if (metres === null) {
         return;
       }
-      onActiveChange(metres);
+      /*
+       * A finger that moved before the hold completed was scrolling, so the
+       * hold is abandoned rather than made easier to hit: an armed gesture the
+       * reader did not ask for takes the card's scroll away mid-swipe.
+       */
+      if (armed.current !== null) {
+        disarm();
+
+        return;
+      }
+      // Only the pointer that can hover reports a position it is merely passing
+      // over. A finger reports one once it has asked for the chart.
+      if (event.pointerType !== "touch" || drag.current !== null) {
+        onActiveChange(metres);
+      }
 
       const started = drag.current;
       if (!started || started.pointerId !== event.pointerId) {
@@ -323,7 +393,7 @@ export function ElevationProfile({
       }
       setSelection(spanBetween(started.anchorMetres, metres));
     },
-    [metresAt, onActiveChange],
+    [disarm, metresAt, onActiveChange],
   );
 
   const onPointerUp = useCallback(
@@ -436,31 +506,12 @@ export function ElevationProfile({
               d={run.column}
             />
           ))}
-          {/*
-           * The ground the route is made of, in the order it is ridden, on the
-           * distance axis the terrain above already uses. Each stretch wears the
-           * colour it wears on the map, solid, at this strip's own width, so the
-           * same stretch reads the same way in both places.
-           */}
-          {geometry.surfaceBands.map((band) => (
-            <line
-              key={`${band.kind}-${band.startMetres}`}
-              className="elevation-profile__surface"
-              x1={geometry.x(band.startMetres)}
-              x2={geometry.x(band.endMetres)}
-              y1={plotHeight + SURFACE_STRIP_GAP + SURFACE_STRIP_HEIGHT / 2}
-              y2={plotHeight + SURFACE_STRIP_GAP + SURFACE_STRIP_HEIGHT / 2}
-              stroke={surfaceColour(band.kind, dark)}
-              strokeWidth={SURFACE_STRIP_HEIGHT}
-            />
-          ))}
-
           {geometry.distanceTicks.map((kilometres) => (
             <text
               key={kilometres}
               className="elevation-profile__tick"
               x={geometry.x(kilometres * 1000)}
-              y={plotHeight + SURFACE_STRIP_GAP + SURFACE_STRIP_HEIGHT + 15}
+              y={plotHeight + 15}
               textAnchor="middle"
             >
               {kilometreLabel(kilometres * 1000, geometry.distanceStep)}
@@ -483,7 +534,7 @@ export function ElevationProfile({
                 geometry.x(gap.endMetres) - Math.max(geometry.x(gap.startMetres), 0),
                 0,
               )}
-              height={laneHeight}
+              height={plotHeight}
             />
           ))}
 
@@ -501,14 +552,14 @@ export function ElevationProfile({
                 x={0}
                 y={0}
                 width={Math.max(geometry.x(selection.startMetres), 0)}
-                height={laneHeight}
+                height={plotHeight}
               />
               <rect
                 className="elevation-profile__veil"
                 x={geometry.x(selection.endMetres)}
                 y={0}
                 width={Math.max(plotWidth - geometry.x(selection.endMetres), 0)}
-                height={laneHeight}
+                height={plotHeight}
               />
               {[selection.startMetres, selection.endMetres].map((metres) => (
                 <line
@@ -517,7 +568,7 @@ export function ElevationProfile({
                   x1={geometry.x(metres)}
                   x2={geometry.x(metres)}
                   y1={0}
-                  y2={laneHeight}
+                  y2={plotHeight}
                 />
               ))}
             </g>
@@ -525,16 +576,11 @@ export function ElevationProfile({
 
           {active ? (
             <g className="elevation-profile__cursor">
-              {/*
-               * The cursor runs through the surface strip as well: the point on
-               * the climb and the ground under it are one position, and a line
-               * stopping at the axis would make them look like two.
-               */}
               <line
                 x1={geometry.x(active.distanceMetres)}
                 x2={geometry.x(active.distanceMetres)}
                 y1={0}
-                y2={laneHeight}
+                y2={plotHeight}
               />
               <circle
                 cx={geometry.x(active.distanceMetres)}
@@ -558,15 +604,15 @@ export function ElevationProfile({
       <div
         className="elevation-profile__scrub"
         data-dragging={selection ? "true" : undefined}
+        // Until a finger has asked for the chart, a swipe over it is the card's
+        // to scroll — which is a rule the stylesheet cannot write, because only
+        // the chart knows whether the hold completed.
+        data-holding={holding ? "true" : undefined}
         style={{
           left: PADDING.left,
           top: PADDING.top,
           width: plotWidth,
-          // Down to the foot of the surface strip when there is one. The cursor
-          // crosses both lanes because they describe one position, so a pointer
-          // that wandered onto the strip must not fall off the instrument and
-          // blank the readout it came to check.
-          height: laneHeight,
+          height: plotHeight,
         }}
         role="slider"
         tabIndex={0}

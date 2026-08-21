@@ -132,9 +132,9 @@ test.describe("on a phone-sized portrait viewport", () => {
   test("a route fits its width, key and profile included", async ({ offlinePage: page }) => {
     await openRoute(page, LOOP_ROUTE.routeId, LOOP_ROUTE.stageOrder);
 
-    // The profile is a panel across the foot of the map, and the control that
-    // puts it away is inside it: a header that ran off the side of a phone would
-    // take the way back with it.
+    // The profile is a row of the card, and the control that puts it away is at
+    // the end of that row: a header that ran off the side of a phone would take
+    // the way back with it.
     await expect(page.getByRole("button", { name: "Hide the profile" })).toBeInViewport();
     expect(await overflowsSideways(page)).toBe(false);
   });

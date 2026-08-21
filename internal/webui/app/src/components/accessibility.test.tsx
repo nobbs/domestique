@@ -19,8 +19,9 @@ import { describe, it } from "vitest";
 import type { Position, Route } from "../api/types";
 import { routeKey } from "../api/types";
 import { RoutePanel } from "../features/routes/RoutePanel";
+import { RouteProfile } from "../features/routes/RouteProfile";
 import { SearchPanel } from "../features/routes/SearchPanel";
-import { gradientShares } from "../lib/profile";
+import { buildProfile, gradientShares } from "../lib/profile";
 import { summariseSurface } from "../lib/surface";
 import { expectNoAxeViolations } from "../test/axe";
 import { Button } from "./Button";
@@ -127,6 +128,21 @@ describe("accessibility", () => {
         <MemoryRouter>
           <RoutePanel
             route={STAGE}
+            profile={
+              <RouteProfile
+                profile={buildProfile(CLIMB)}
+                title={STAGE.title}
+                ascentMetres={STAGE.ascentMetres}
+                surface={surfaceSummary()}
+                activeMetres={null}
+                onActiveChange={() => {}}
+                zoomWindow={null}
+                onZoomChange={() => {}}
+                highlight={null}
+                collapsed={false}
+                onCollapsedChange={() => {}}
+              />
+            }
             highestMetres={1840}
             subtitle="Alpine loop · read 19:38"
             surface={surfaceSummary()}
