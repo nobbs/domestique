@@ -32,7 +32,7 @@
 #   * Every credential is written here, by this script, as an obvious
 #     placeholder. Nothing in .local is read and no deployed secret is mounted.
 #   * VeloPlanner, Wahoo and Pushover point at an unroutable address, the
-#     Overpass lookup is switched off, and the first scheduled synchronisation
+#     surface index is switched off, and the first scheduled synchronisation
 #     is a year away, so no code path has anywhere to send anything.
 #   * Cloudflare's signing keys are fetched lazily, on the first request that
 #     presents an assertion. No request here presents one, so the identity gate
@@ -239,8 +239,8 @@ max_deletions_per_target = 5
 empty_source_deletion = "deny"
 
 [surface]
-# Off: no stage shape may leave this container.
-overpass_url = ""
+# Off: this container downloads no map extract and builds no surface index.
+regions = []
 
 [notifications.pushover]
 base_url = "${UNROUTABLE}"

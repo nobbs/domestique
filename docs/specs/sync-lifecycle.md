@@ -36,7 +36,8 @@ implementation detail.
 | target stage | source-stage key, target, external ID, Wahoo route ID, last applied revision | none |
 | trusted inventory | complete validated source-stage set and observed time | none |
 | stage geometry | cached titles, geometry, length, and extent for the map view | none |
-| stage surface | cached surface classification of one stored geometry, as index ranges plus matched length, against the content hash it was measured for | none |
+| stage surface | cached surface classification of one stored geometry, as index ranges plus matched length, against the content hash and the surface-index generation it was measured for | none |
+| surface index | when the last index build finished and which generation it produced | none |
 | sync run | opaque reference, half, start, end, terminal state, aggregate counts, safe failure category | none |
 | sync schedule | whether the timer may start each half | none |
 | reprocess request | one stage an operator has asked to have redone | none |
@@ -72,24 +73,27 @@ map until the next run and can never affect sync safety or authorise a deletion.
 
 The stage surface cache is filled by a separate pass, after every half a tick
 intended to run and only when the source half stored something new. Unlike the
-geometry, it needs data no run holds: a request per stage to the configured
-Overpass endpoint. It comes last because getting routes onto a device is what a
-synchronization is for, and enrichment must never delay that. It belongs to no
-half, cannot change any outcome, is bounded to a few stages per pass so a first
-sync of a large library neither stalls nor leans on a volunteer-run server, and
-skips any stage already classified against its current content hash.
+geometry, it needs data no run holds: the ways lying under each stage, read from
+the locally built surface index. It comes last because getting routes onto a
+device is what a synchronization is for, and enrichment must never delay that. It
+belongs to no half and cannot change any outcome.
 
-A stage that fails does not end the pass. A public endpoint refuses a share of
-queries under load, and a stage is classified only if every one of the queries
-covering it lands, so a long stage fails far more often than a short one. Ending
-the pass at the first failure let one such stage starve every stage after it, in
-that pass and in every pass after, because the inventory is always walked in the
-same order. Each stage gets its own attempt whatever happened to the one before.
+The whole inventory is walked in one pass. A local index answers a stage in a few
+milliseconds, so there is nothing to spread over several runs; a stage already
+classified against both its current content hash and the generation of the live
+index is skipped without reading anything. A rebuilt index therefore reclassifies
+the library rather than serving last month's reading of a resurfaced road, and it
+does so over the run or two after the build.
 
-Rate limiting is the exception and does end the pass: it is the endpoint saying
-it has no capacity, which is an answer about the server rather than about a
-stage. A refused query is retried a small number of times first, with a pause
-that grows after each refusal and honours any the endpoint asked for.
+A pass with no index behind it does nothing at all — no stage is recorded as
+unsurveyed on the strength of a map that has not been built yet. That is the
+normal state of a deployment with no regions configured, and the brief state of
+one whose first build has not landed.
+
+A stage that fails does not end the pass. Each stage gets its own attempt
+whatever happened to the one before, so one unreadable stage cannot starve every
+stage behind it — the inventory is always walked in the same order, and an early
+failure that stopped the pass would stop it at the same place forever.
 
 Because none of this may fail a run, a pass that leaves work undone writes one
 log line carrying the counts and whether it ran to the end — never a stage name,
@@ -421,7 +425,12 @@ Returns 200 while the service can read state. The minimum shape is:
     "updated":1,
     "deleted":0,
     "schedule":{"source":true,"targets":true},
-    "surface":{"classified":12,"total":12},
+    "surface":{
+      "generation":"9f2c41ab77de",
+      "built_at":"2026-08-17T03:41:00Z",
+      "classified":12,
+      "total":12
+    },
     "phases":{
       "source":{
         "last_completed_at":"2026-08-16T12:00:00Z",
@@ -483,6 +492,12 @@ it is counts only, so no route is named.
 `surface` counts how many stored stages carry a classification measured against
 the geometry they hold now; a classification of an earlier shape of a stage does
 not count, because it describes a line the map no longer draws.
+
+`generation` and `built_at` name the surface index those classifications were
+read from — the build that is live in this process, not merely the last one
+recorded, so a service whose index file did not survive a restart says so by
+omitting them. Both are absent when no region is configured and until a first
+build has landed.
 
 `converged` and the per-target `convergence`, `stages`, and `last_run` answer
 whether every stored stage at its current revision has been applied to every

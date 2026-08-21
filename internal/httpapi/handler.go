@@ -232,6 +232,15 @@ type Options struct {
 	// principal every authenticated request resolves to.
 	AccessEmail string
 
+	// SurfaceIndexFunc reports the map build classifications are currently being
+	// read from. It answers false when surface classification is switched off,
+	// and while a first index is still being built.
+	//
+	// It asks the live index rather than the state file on purpose: what the
+	// status page should say is what is loaded, and a recorded build whose file
+	// did not survive a restart is exactly the case where the two differ.
+	SurfaceIndexFunc func() (generation string, builtAt time.Time, ok bool)
+
 	// BrowserOriginURL is an absolute HTTPS URL on the hostname a browser
 	// reaches this service at. Only its scheme and host are read: together they
 	// are the one origin a state-changing request may come from. The Wahoo
@@ -258,6 +267,7 @@ type Handler struct {
 	tileOrigin       string
 	browserOrigin    string
 	allowedEmail     string
+	surfaceIndex     func() (string, time.Time, bool)
 	targetIDs        []string
 }
 
@@ -335,6 +345,7 @@ func New(
 		tileOrigin:       tileOrigin,
 		browserOrigin:    browserOrigin,
 		targetIDs:        append([]string(nil), options.TargetIDs...),
+		surfaceIndex:     options.SurfaceIndexFunc,
 
 		accessVerifier: options.AccessVerifier,
 		allowedEmail:   strings.TrimSpace(options.AccessEmail),

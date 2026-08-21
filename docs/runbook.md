@@ -253,19 +253,31 @@ never changes a run's outcome, never touches a Wahoo account, and cannot
 authorise a deletion. A stage without it is a stage the map draws without
 surface colouring.
 
-**Usually, nothing.** The pass runs after a read that stored something new, is
-bounded to a few stages each time, and skips stages already classified against
-their current content hash, so a first sync of a large library fills in over
-several runs. A stage is only classified if every query covering it lands, so
-long stages take longer to succeed than short ones.
+**Usually, nothing.** The pass runs after a read that stored something new and
+skips stages already classified against both their current content hash and the
+generation of the current index, so a library that has just been rebuilt against
+a new map reclassifies itself over the next run or two.
 
-**When a shortfall persists**, the endpoint is what to look at. It is named by
-`overpass_url` in the host's `[surface]` configuration, and the default is a
-public instance that refuses a share of queries under load. Point it at your own
-Overpass instance, or set it to `""` to switch the lookup off and leave stages
-unclassified on purpose. A single stage classified wrongly is a **Reprocess**
-away; re-planning a stage reclassifies it automatically, because the cached
-ranges describe coordinates that were replaced.
+**When a shortfall persists**, the index is what to look at. `sync.surface` on
+the status page names the `generation` and `built_at` of the build the
+classifications were read from; both are absent when no index is loaded. Compare
+that against the build log — the service writes one line when an index is
+rebuilt, one when it finds every region unchanged, and one when a build fails.
+A build that fails sends a single notification and then stays quiet for a week,
+so the log is where a run of failures is visible.
+
+An empty `sync.surface` generation on a service that has regions configured means
+no index is live yet: either the first build has not run (it waits a few minutes
+after start), or the last build's file did not survive. Either way the next
+scheduled build fills it in.
+
+**When nothing is classified on purpose**, `regions` in the host's `[surface]`
+configuration is empty. That is the default, and it switches the whole feature
+off: no extract is downloaded and no index is built.
+
+A single stage classified wrongly is a **Reprocess** away; re-planning a stage
+reclassifies it automatically, because the cached ranges describe coordinates
+that were replaced.
 
 ## What this runbook does not cover
 

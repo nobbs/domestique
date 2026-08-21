@@ -172,18 +172,20 @@ A second style may be configured for a dark system colour scheme, and must be on
 that same origin, so following the operator's colour scheme reveals nothing to
 anyone new.
 
-Surface classification introduces a second, larger exception, and it is the
-**service** that makes it: to learn whether a stage runs on asphalt, paving,
-gravel, or a forest track, it asks an OpenStreetMap Overpass endpoint which ways
-lie along that stage, sending a simplified form of the stage's own shape. The
-endpoint therefore learns where the operator's routes go — more than the tile
-origin learns from a viewport. It is accepted deliberately, because the
-alternative is hosting a routing engine beside the service. Only coordinates are
-sent: no title, no identity, no account reference. The endpoint is static
-configuration, so it can be pointed at a self-hosted Overpass instance, or
-cleared to switch the lookup off entirely and leave stages unclassified. Each
-stage is asked about once per geometry: the answer is cached and re-fetched only
-when the stage's content hash changes.
+Surface classification introduces **no** such exception. To learn whether a
+stage runs on asphalt, paving, gravel, or a forest track, the service reads a
+surface index it builds itself from OpenStreetMap regional extracts, and the
+whole classification then happens on the host with no request leaving it. No
+route shape is ever sent anywhere. The only outbound traffic is the scheduled
+rebuild: on its own cadence the service downloads the configured regions'
+published extracts from the extract host, which learns which regions this
+deployment is interested in and nothing about any route. An operator who
+configures no region downloads nothing at all and leaves stages unclassified.
+
+Each stage is classified once per geometry per index build: the answer is cached
+against both the stage's content hash and the generation of the index it was
+read from, so a stage is reclassified when its shape changes and when the map
+underneath it is rebuilt, and at no other time.
 
 The Wahoo OAuth redirect URI is the HTTPS URL a browser returns to. Without the
 public path that is the service's Tailnet URL:
@@ -252,7 +254,8 @@ The read-only JSON surface is deliberately small:
 - `GET /v1/status` reports current configuration readiness, last sync outcome,
   aggregate counts, target authorisation state, the two schedule switches, the
   last run of each half, and how much of the library carries a current surface
-  classification. It also reports whether every stored stage at its current
+  classification together with which map build it was read from. It also reports
+  whether every stored stage at its current
   revision has reached every configured target: one convergence word, safe
   aggregate current and pending counts, and the last reconciliation result per
   target, plus one overall answer that is true only when every target is
@@ -361,8 +364,12 @@ A SQLite database on a Docker volume stores:
   only when a stage's content hash changes and kept in its own table so it can
   be dropped without touching deletion-safety state;
 - a cache of the surface classification of that geometry, in its own table for
-  the same reason, recorded against the content hash it was measured for so a
-  re-planned stage is never described by an earlier plan's answer;
+  the same reason, recorded against both the content hash and the surface-index
+  generation it was measured for, so neither a re-planned stage nor a rebuilt map
+  is ever described by an earlier answer;
+- when the last surface index build finished and which generation it produced, so
+  the rebuild interval is time between builds rather than time since this process
+  started;
 - the corresponding remote Wahoo route identity where available;
 - last successful source inventory and last sync outcome; and
 - expiring OAuth states.

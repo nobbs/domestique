@@ -3,40 +3,35 @@ package surface
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 
 	"github.com/nobbs/domestique/internal/route"
 )
 
-// maximumStagesPerRun bounds how many stages one pass will fetch.
-//
-// Classifying a stage costs the endpoint tens of seconds of work, so a library
-// of fifty routes seen for the first time would otherwise hold a sync run open
-// for the better part of an hour and spend all of it on a volunteer-run server.
-// Filling the cache a few stages at a time spreads that over several runs, and
-// costs nothing once it is full: a stage is only fetched again when its geometry
-// changes.
-const maximumStagesPerRun = 10
-
-// Source supplies the candidate ways near a piece of geometry.
+// Source supplies the candidate ways near a piece of geometry, and says which
+// build of the map it is answering from.
 type Source interface {
 	Ways(ctx context.Context, points []route.Point) ([]Way, error)
+	// Generation identifies the data behind the answers. A classification is
+	// cached against it, so a source whose map has been rebuilt reclassifies
+	// everything rather than serving last week's reading of a resurfaced road.
+	// An empty generation means the source has nothing to answer from yet.
+	Generation() string
 }
 
 // Cache holds classifications between runs. It is described here rather than
 // taken as a concrete store so this package stays free of any storage concern,
 // and it deals in encoded bytes so the store stays free of this package's types.
 type Cache interface {
-	// StageSurfaceHash returns the content hash a stored classification was
-	// measured against.
-	StageSurfaceHash(ctx context.Context, routeID int64, stageOrder int) (string, bool, error)
+	// StageSurfaceHash returns what a stored classification was measured
+	// against: the stage's geometry, and the build of the map.
+	StageSurfaceHash(ctx context.Context, routeID int64, stageOrder int) (contentHash, generation string, found bool, err error)
 	// StoreStageSurface caches one stage's classification.
 	StoreStageSurface(
 		ctx context.Context,
 		routeID int64,
 		stageOrder int,
-		contentHash string,
+		contentHash, generation string,
 		ranges []byte,
 		matchedMetres float64,
 	) error
@@ -47,59 +42,57 @@ type Cache interface {
 type Annotator struct {
 	source Source
 	cache  Cache
-	limit  int
 }
 
 // NewAnnotator creates an annotator over a way source and a cache.
 func NewAnnotator(source Source, cache Cache) *Annotator {
-	return &Annotator{source: source, cache: cache, limit: maximumStagesPerRun}
+	return &Annotator{source: source, cache: cache}
 }
 
-// Annotate classifies the stages whose surface is not already known, up to this
-// pass's limit, and leaves the rest for a later run. It reports how many stages
-// it classified and how many it could not.
+// Annotate classifies every stage whose surface is not already known against
+// both its current geometry and the current map. It reports how many stages it
+// classified and how many it could not.
 //
-// A stage already classified against its current content hash is skipped without
-// contacting the endpoint, so a settled library costs nothing. A stage that
-// produced nothing is still recorded: knowing that the question has been asked
-// and answered with silence is what stops it being asked again every run.
+// The whole inventory is walked in one pass. Classification reads a local index
+// and costs a stage a few milliseconds, so there is nothing to spread over
+// several runs; an earlier version of this classified ten stages a run because
+// each one cost a remote server tens of seconds of work.
 //
-// A stage that fails does not end the pass. The endpoint refuses a share of
-// queries under load, and a long stage — classified only once every one of its
-// chunk queries lands — fails far more often than a short one. Stopping at the
-// first failure meant one such stage starved every stage behind it, in that run
-// and in every run after, because the inventory is always walked in the same
-// order. Each stage now gets its own attempt whatever happened to the last.
+// A stage already classified against its current hash and the current generation
+// is skipped without reading anything. A stage that produced nothing is still
+// recorded: knowing that the question has been asked and answered with silence
+// is what stops it being asked again every run.
 //
-// Rate limiting is the exception, and ends the pass. It is the endpoint saying
-// it has no capacity, which is an answer about the server rather than about a
-// stage: continuing would spend a volunteer's capacity to be refused again.
+// A stage that fails does not end the pass. Each stage gets its own attempt
+// whatever happened to the last, so one unreadable stage cannot starve every
+// stage behind it — the inventory is always walked in the same order, and an
+// early failure that stopped the pass would stop it at the same place forever.
 func (a *Annotator) Annotate(ctx context.Context, stages []route.Stage) (classified, failed int, err error) {
-	attempted := 0
+	// A source with no map behind it has nothing to say. Running anyway would
+	// record every stage as unsurveyed and then reclassify the lot as soon as
+	// the first index lands, which is worse than waiting.
+	generation := a.source.Generation()
+	if generation == "" {
+		return 0, 0, nil
+	}
+
 	for index := range stages {
-		if attempted >= a.limit {
-			return classified, failed, nil
-		}
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return classified, failed, fmt.Errorf("surface: annotating stages: %w", ctxErr)
 		}
 
 		stage := &stages[index]
 		key := stage.Key()
-		cachedHash, found, hashErr := a.cache.StageSurfaceHash(ctx, key.RouteID(), key.StageOrder())
+		cachedHash, cachedGeneration, found, hashErr := a.cache.StageSurfaceHash(ctx, key.RouteID(), key.StageOrder())
 		if hashErr != nil {
 			return classified, failed, fmt.Errorf("surface: reading cached classification: %w", hashErr)
 		}
-		if found && cachedHash == stage.ContentHash() {
+		if found && cachedHash == stage.ContentHash() && cachedGeneration == generation {
 			continue
 		}
 
-		attempted++
-		if stageErr := a.annotateStage(ctx, stage); stageErr != nil {
+		if stageErr := a.annotateStage(ctx, stage, generation); stageErr != nil {
 			failed++
-			if errors.Is(stageErr, ErrRateLimited) {
-				return classified, failed, stageErr
-			}
 
 			continue
 		}
@@ -110,7 +103,7 @@ func (a *Annotator) Annotate(ctx context.Context, stages []route.Stage) (classif
 }
 
 // annotateStage classifies one stage and caches the result.
-func (a *Annotator) annotateStage(ctx context.Context, stage *route.Stage) error {
+func (a *Annotator) annotateStage(ctx context.Context, stage *route.Stage, generation string) error {
 	geometry := stage.Geometry()
 	ways, err := a.source.Ways(ctx, geometry)
 	if err != nil {
@@ -129,6 +122,7 @@ func (a *Annotator) annotateStage(ctx context.Context, stage *route.Stage) error
 		key.RouteID(),
 		key.StageOrder(),
 		stage.ContentHash(),
+		generation,
 		ranges,
 		MatchedMetres(geometry, kinds),
 	); err != nil {
@@ -152,8 +146,8 @@ type storedRange struct {
 
 // EncodeRanges renders ranges as the JSON array the endpoint serves. It is
 // exported because the wire form of a classification has exactly one definition,
-// and a fixture that stores a classification without going through a live
-// Overpass query still has to store that one.
+// and a fixture that stores a classification without going through the matcher
+// still has to store that one.
 func EncodeRanges(ranges []Range) ([]byte, error) {
 	stored := make([]storedRange, 0, len(ranges))
 	for _, band := range ranges {

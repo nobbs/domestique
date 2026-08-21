@@ -86,7 +86,8 @@ tile_style_url = "https://tiles.openfreemap.org/styles/bright"
 tile_style_url_dark = "https://tiles.openfreemap.org/styles/dark"
 
 [surface]
-overpass_url = "https://overpass-api.de/api/interpreter"
+regions = ["europe/germany/rheinland-pfalz", "europe/germany/hessen"]
+rebuild_interval = "168h"
 ```
 
 The endpoint examples are illustrative. The deployed values must match the
@@ -126,21 +127,44 @@ Both styles are served to the page, which chooses between them; the service does
 not resolve the colour scheme, because the preference belongs to the browser and
 this response is cached for the session.
 
-`surface.overpass_url` is the OpenStreetMap Overpass endpoint the **service**
-asks which ways lie along a stage, in order to classify its ground as asphalt,
-paving, compacted, gravel, or unsurfaced. It must be an absolute HTTPS URL
-without credentials, query, or fragment, and the default is the public instance,
-which needs no account and no key.
+`surface.regions` names the OpenStreetMap extracts the **service** builds its
+surface index from, so it can classify a stage's ground as asphalt, paving,
+compacted, gravel, or unsurfaced. Each entry is a Geofabrik region path such as
+`europe/germany/rheinland-pfalz`: lowercase path segments of letters, digits, and
+single hyphens, and nothing else. The shape is validated at startup rather than
+trusted, because a region becomes a URL under a fixed host, and a validated slug
+can never introduce a host, a query, or a traversal.
 
-Unlike the tile style this is not a browser concern: the service itself sends a
-simplified form of each stage's shape to that endpoint, so the endpoint learns
-where the operator's routes go. Nothing else is sent — no title, no identity, no
-account reference — and each stage's geometry is asked about once, because the
-answer is cached until the stage's content hash changes.
+The default is **no regions**, which switches surface classification off: nothing
+is downloaded, no index is built, and stages carry no surface. An operator who
+wants classification names the regions they actually ride. Naming more costs disk
+and build time for map nobody will ever be matched against.
 
-Setting it to an empty string disables the lookup, and stages then carry no
-surface. Pointing it at a self-hosted Overpass instance keeps the shapes inside
-the operator's own infrastructure.
+Unlike the tile style this is not a browser concern, and unlike the endpoint it
+replaced it sends no route data anywhere: classification reads a local file. The
+only outbound traffic is the scheduled download of each region's published
+extract, which tells the extract host which regions this deployment cares about
+and nothing about any route.
+
+`surface.rebuild_interval` is how often the index is rebuilt. It must be a
+positive Go duration and defaults to `168h`, one week — roughly the pace at which
+a region's surface tagging changes enough to matter. A rebuild first fetches each
+region's published checksum and stops there when every one is unchanged, so a
+cadence faster than the upstream's own is cheap rather than wasteful.
+
+The interval is time **between builds**, not time since this process started: the
+service records when the last build finished and counts from there, so a
+deployment restarted several times a day still rebuilds weekly rather than on
+every start. A build that is already overdue when the process starts still waits
+a few minutes, so a restart puts the service on its feet before it puts a
+memory-hungry job behind it.
+
+The index is written beside the state database, which is the one directory a
+deployment is guaranteed to have made durable. It is named for the generation it
+was built from, so a new build is written and opened beside the live one and the
+superseded file is removed only once the new one is serving. A build holds
+roughly half a gigabyte of heap and stages an extract of a few hundred megabytes
+on disk, both of which are released when it finishes.
 
 ## Secret input
 

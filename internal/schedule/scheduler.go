@@ -6,14 +6,24 @@ import (
 	"errors"
 	"sync/atomic"
 	"time"
-
-	"github.com/nobbs/domestique/internal/sync"
 )
 
-// Runner executes one synchronization attempt.
+// Runner executes one scheduled attempt at whatever the scheduler drives.
+//
+// It reports nothing. What a run produced belongs to whoever ran it — the sync
+// reporter records and notifies on its own results, and the index builder
+// installs its own output — and a timer that took an outcome it could not act on
+// would only tie this package to one caller's vocabulary.
 type Runner interface {
-	Run(ctx context.Context) sync.Result
+	Run(ctx context.Context)
 }
+
+// RunnerFunc adapts a plain function to Runner, which is what lets a runner that
+// does report something be scheduled without changing its signature.
+type RunnerFunc func(ctx context.Context)
+
+// Run calls f.
+func (f RunnerFunc) Run(ctx context.Context) { f(ctx) }
 
 // Options configures delayed startup and periodic execution.
 type Options struct {

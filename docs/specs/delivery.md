@@ -690,8 +690,9 @@ really is — but a run can fail long before it reaches that assertion, includin
 while starting, so what a failure prints is filtered rather than trusted.
 
 The smoke test contacts nothing. Every credential it mounts is a placeholder it
-wrote itself, each provider points at an unroutable address, the surface lookup
-is switched off, the first scheduled synchronisation is a year away, and no
+wrote itself, each provider points at an unroutable address, no region is
+configured so no map extract is downloaded and no surface index is built, the
+first scheduled synchronisation is a year away, and no
 request presents an Access assertion — so the lazy fetch of Cloudflare's signing
 keys never happens either. Its state directory and published ports are its own,
 so a host already running the deployment is untouched.

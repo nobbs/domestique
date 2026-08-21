@@ -8,8 +8,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/nobbs/domestique/internal/sync"
 )
 
 func TestSchedulerRunsAfterDelayAndOnEachTick(t *testing.T) {
@@ -107,11 +105,9 @@ func newFakeRunner() *fakeRunner {
 	return &fakeRunner{called: make(chan struct{}, 4)}
 }
 
-func (r *fakeRunner) Run(context.Context) sync.Result {
+func (r *fakeRunner) Run(context.Context) {
 	r.calls.Add(1)
 	r.called <- struct{}{}
-
-	return sync.Result{}
 }
 
 type fakeTicker struct {

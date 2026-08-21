@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"sync"
 	"syscall"
 	"time"
 
@@ -19,6 +21,7 @@ import (
 	"github.com/nobbs/domestique/internal/fit"
 	"github.com/nobbs/domestique/internal/httpapi"
 	"github.com/nobbs/domestique/internal/oauth"
+	"github.com/nobbs/domestique/internal/osmindex"
 	"github.com/nobbs/domestique/internal/pushover"
 	"github.com/nobbs/domestique/internal/readiness"
 	"github.com/nobbs/domestique/internal/schedule"
@@ -83,30 +86,45 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("creating oauth service: %w", err)
 	}
-	// Surface enrichment is optional. An operator who clears the endpoint keeps
-	// stage shapes off a third-party server, and the annotator stays nil, which
-	// synchronization supports as a normal state.
-	var annotator syncservice.Annotator
-	if settings.Surface.OverpassURL != "" {
-		overpass, overpassErr := surface.NewOverpass(&surface.Options{Endpoint: settings.Surface.OverpassURL})
-		if overpassErr != nil {
-			return fmt.Errorf("creating Overpass client: %w", overpassErr)
+	notifier, err := pushover.New(&pushover.Options{BaseURL: settings.Notifications.Pushover.BaseURL, ApplicationToken: settings.Notifications.Pushover.ApplicationToken().Bytes(), UserKey: settings.Notifications.Pushover.UserKey().Bytes()})
+	if err != nil {
+		return fmt.Errorf("creating Pushover client: %w", err)
+	}
+
+	// Surface enrichment is optional. An operator who configures no region keeps
+	// this host from downloading map extracts at all, and the annotator stays
+	// nil, which synchronization supports as a normal state.
+	var (
+		annotator      syncservice.Annotator
+		surfaceIndex   *osmindex.Current
+		indexScheduler *schedule.Scheduler
+	)
+	if len(settings.Surface.Regions) > 0 {
+		surfaceIndex, indexScheduler, err = startSurfaceIndex(ctx, settings, store, notifier)
+		if err != nil {
+			return err
 		}
-		annotator = surface.NewAnnotator(overpass, store)
+		defer func() {
+			if closeErr := surfaceIndex.Close(); closeErr != nil {
+				slog.Error("closing the surface index", "error", closeErr)
+			}
+		}()
+		annotator = surface.NewAnnotator(surfaceIndex, store)
 	}
 	reconciler, err := syncservice.New(&syncservice.Options{TargetIDs: targetIDs, MaxDeletionsPerTarget: settings.Sync.MaxDeletionsPerTarget, AllowEmptySourceDeletion: settings.Sync.EmptySourceDeletion == config.EmptySourceDeletionAllow}, store, source, elevation.New(), fit.New(), destination, annotator)
 	if err != nil {
 		return fmt.Errorf("creating sync service: %w", err)
 	}
-	notifier, err := pushover.New(&pushover.Options{BaseURL: settings.Notifications.Pushover.BaseURL, ApplicationToken: settings.Notifications.Pushover.ApplicationToken().Bytes(), UserKey: settings.Notifications.Pushover.UserKey().Bytes()})
-	if err != nil {
-		return fmt.Errorf("creating Pushover client: %w", err)
-	}
 	reporter, err := syncservice.NewReporter(reconciler, store, notifier)
 	if err != nil {
 		return fmt.Errorf("creating sync reporter: %w", err)
 	}
-	scheduler, err := schedule.New(schedule.Options{InitialDelay: settings.Sync.InitialDelay, Interval: settings.Sync.Interval}, reporter)
+	// The reporter answers with a result nobody on this path consumes; the
+	// scheduler wants a runner that answers with nothing.
+	scheduler, err := schedule.New(
+		schedule.Options{InitialDelay: settings.Sync.InitialDelay, Interval: settings.Sync.Interval},
+		schedule.RunnerFunc(func(ctx context.Context) { _ = reporter.Run(ctx) }),
+	)
 	if err != nil {
 		return fmt.Errorf("creating scheduler: %w", err)
 	}
@@ -161,6 +179,18 @@ func run(ctx context.Context) error {
 			// service at, which is what makes it the origin a state-changing
 			// request has to come from.
 			BrowserOriginURL: settings.Wahoo.RedirectURL,
+			// What the page reports is the map build classifications are
+			// actually being read from, not the one the state database last
+			// wrote down — those differ exactly when a recorded build's file did
+			// not survive to this start, which is the case worth seeing.
+			SurfaceIndexFunc: func() (string, time.Time, bool) {
+				if surfaceIndex == nil {
+					return "", time.Time{}, false
+				}
+				metadata, ok := surfaceIndex.Metadata()
+
+				return metadata.Generation, metadata.BuiltAt, ok
+			},
 		},
 		oauthService,
 		store,
@@ -225,7 +255,70 @@ func run(ctx context.Context) error {
 		ReadTimeout:       httpReadTimeout,
 		WriteTimeout:      httpWriteTimeout,
 	}
-	return serve(runCtx, cancel, server, readinessServer, scheduler, reporter)
+	schedulers := []schedulerRunner{scheduler}
+	if indexScheduler != nil {
+		schedulers = append(schedulers, indexScheduler)
+	}
+
+	return serve(runCtx, cancel, server, readinessServer, schedulers, reporter)
+}
+
+// startSurfaceIndex prepares the surface index and the schedule that rebuilds
+// it.
+//
+// The last build's file is opened before anything else runs, so a restart serves
+// classifications immediately instead of going blind until the next rebuild
+// lands. A file the state database remembers but that is no longer on disk is
+// not an error: the holder simply starts empty and the first build fills it.
+//
+// The index lives beside the state database because that is the one directory a
+// deployment is guaranteed to have made durable. Giving it a setting of its own
+// would only invite an operator to point it at the container's /tmp, which is a
+// tmpfs — the exact memory this build works to stay out of.
+func startSurfaceIndex(
+	ctx context.Context,
+	settings *config.Settings,
+	store *sqlite.Store,
+	notifier *pushover.Client,
+) (*osmindex.Current, *schedule.Scheduler, error) {
+	directory := filepath.Dir(settings.State.DatabasePath)
+	lastBuiltAt, generation, err := store.SurfaceIndexBuild(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("reading the last surface index build: %w", err)
+	}
+
+	current := osmindex.NewCurrent()
+	switch index, found, loadErr := osmindex.Load(ctx, directory, generation); {
+	case loadErr != nil:
+		slog.Warn("the last surface index could not be reopened", "error", loadErr)
+	case found:
+		current.Swap(index)
+		slog.Info("surface index loaded",
+			"generation", index.Metadata().Generation,
+			"built_at", index.Metadata().BuiltAt.Format(time.RFC3339),
+		)
+	}
+
+	runner, err := osmindex.NewRunner(osmindex.Options{
+		Regions:     settings.Surface.Regions,
+		Directory:   directory,
+		MemoryLimit: osmindex.DefaultMemoryLimit,
+	}, current, store, notifier)
+	if err != nil {
+		return nil, nil, fmt.Errorf("creating the surface index builder: %w", err)
+	}
+
+	scheduler, err := schedule.New(schedule.Options{
+		InitialDelay: osmindex.InitialDelay(
+			lastBuiltAt, settings.Surface.RebuildInterval, osmindex.InitialBuildDelay, time.Now().UTC(),
+		),
+		Interval: settings.Surface.RebuildInterval,
+	}, runner)
+	if err != nil {
+		return nil, nil, fmt.Errorf("creating the surface index scheduler: %w", err)
+	}
+
+	return current, scheduler, nil
 }
 
 type schedulerRunner interface {
@@ -236,9 +329,9 @@ type manualSyncWaiter interface {
 	Wait()
 }
 
-// serve runs both HTTP listeners and scheduled synchronization under one
-// cancellation scope. It waits for a cancelled synchronization run before its
-// caller can close the durable state that the run may still be using.
+// serve runs both HTTP listeners and every scheduled job under one cancellation
+// scope. It waits for cancelled runs to finish before its caller can close the
+// durable state and the index files those runs may still be using.
 //
 // Either listener failing stops the process. A readiness probe that cannot bind
 // is a deployment whose health checking silently answers nothing, which is worse
@@ -247,18 +340,17 @@ func serve(
 	ctx context.Context,
 	cancel context.CancelFunc,
 	server, readinessServer *http.Server,
-	scheduler schedulerRunner,
+	schedulers []schedulerRunner,
 	manualSync manualSyncWaiter,
 ) error {
 	defer cancel()
 	serverErrors := make(chan error, 2)
 	go func() { serverErrors <- server.ListenAndServe() }()
 	go func() { serverErrors <- readinessServer.ListenAndServe() }()
-	schedulerDone := make(chan struct{})
-	go func() {
-		defer close(schedulerDone)
-		scheduler.Run(ctx)
-	}()
+	var scheduled sync.WaitGroup
+	for _, scheduler := range schedulers {
+		scheduled.Go(func() { scheduler.Run(ctx) })
+	}
 
 	var servingErr error
 	select {
@@ -272,7 +364,7 @@ func serve(
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer shutdownCancel()
 	shutdownErr := errors.Join(server.Shutdown(shutdownCtx), readinessServer.Shutdown(shutdownCtx))
-	<-schedulerDone
+	scheduled.Wait()
 	manualSync.Wait()
 	if shutdownErr != nil {
 		shutdownErr = fmt.Errorf("shutting down HTTP: %w", shutdownErr)

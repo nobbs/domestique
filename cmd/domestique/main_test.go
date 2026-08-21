@@ -24,7 +24,9 @@ func TestServeWaitsForCancelledSchedulerBeforeReturning(t *testing.T) {
 	server := newTestServer()
 	readinessServer := newTestServer()
 	result := make(chan error, 1)
-	go func() { result <- serve(ctx, cancel, server, readinessServer, scheduler, &blockingManualSync{}) }()
+	go func() {
+		result <- serve(ctx, cancel, server, readinessServer, []schedulerRunner{scheduler}, &blockingManualSync{})
+	}()
 
 	<-scheduler.started
 	cancel()
@@ -37,6 +39,51 @@ func TestServeWaitsForCancelledSchedulerBeforeReturning(t *testing.T) {
 	}
 
 	close(scheduler.release)
+	require.NoError(t, <-result)
+}
+
+// Synchronization and the surface index rebuild are two independent schedules,
+// and serve owns the shutdown of both. A serve that waited for only the first
+// would close the state database and the index files while the other was still
+// reading them.
+func TestServeWaitsForEverySchedulerBeforeReturning(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	first := &blockingScheduler{
+		started:   make(chan struct{}),
+		cancelled: make(chan struct{}),
+		release:   make(chan struct{}),
+	}
+	second := &blockingScheduler{
+		started:   make(chan struct{}),
+		cancelled: make(chan struct{}),
+		release:   make(chan struct{}),
+	}
+	result := make(chan error, 1)
+	go func() {
+		result <- serve(
+			ctx, cancel, newTestServer(), newTestServer(),
+			[]schedulerRunner{first, second}, &blockingManualSync{},
+		)
+	}()
+
+	<-first.started
+	<-second.started
+	cancel()
+	<-first.cancelled
+	<-second.cancelled
+
+	// Releasing only one of them must not be enough to let serve return.
+	close(first.release)
+	select {
+	case err := <-result:
+		t.Fatalf("serve returned while a scheduler was still running: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	close(second.release)
 	require.NoError(t, <-result)
 }
 
@@ -54,7 +101,9 @@ func TestServeStopsBothListeners(t *testing.T) {
 	}
 	server, readinessServer := newTestServer(), newTestServer()
 	result := make(chan error, 1)
-	go func() { result <- serve(ctx, cancel, server, readinessServer, scheduler, &blockingManualSync{}) }()
+	go func() {
+		result <- serve(ctx, cancel, server, readinessServer, []schedulerRunner{scheduler}, &blockingManualSync{})
+	}()
 
 	<-scheduler.started
 	cancel()
@@ -94,7 +143,7 @@ func TestServeStopsWhenTheReadinessListenerCannotBind(t *testing.T) {
 	readinessServer.Addr = occupied.Addr().String()
 	result := make(chan error, 1)
 	go func() {
-		result <- serve(ctx, cancel, newTestServer(), readinessServer, scheduler, &blockingManualSync{})
+		result <- serve(ctx, cancel, newTestServer(), readinessServer, []schedulerRunner{scheduler}, &blockingManualSync{})
 	}()
 
 	<-scheduler.started

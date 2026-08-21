@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -47,12 +48,12 @@ const (
 	// costs a default deployment no second tile origin.
 	defaultTileStyleURLDark = "https://tiles.openfreemap.org/styles/dark"
 
-	// defaultOverpassURL is the public Overpass instance, which needs no account
-	// and no key. It is spelled out here rather than taken from the surface
-	// package so this package keeps depending on nothing inside the service.
-	//
-	//nolint:gosec // G101 matches "pass" inside "Overpass"; this is a public endpoint.
-	defaultOverpassURL = "https://overpass-api.de/api/interpreter"
+	// defaultRebuildInterval is how often the surface index is rebuilt when an
+	// operator has named regions but not a cadence. OpenStreetMap extracts are
+	// republished daily and a road's surface changes on the timescale of
+	// resurfacing work, so a week is frequent enough to be current and rare
+	// enough that the cost of a build never matters.
+	defaultRebuildInterval = 7 * 24 * time.Hour
 
 	// defaultPushoverURL is Pushover's own origin. It is a default rather than a
 	// compiled-in constant so a development or demo environment can point it at
@@ -133,15 +134,22 @@ type WebUI struct {
 	TileStyleURLDark string
 }
 
-// Surface configures where the road surface of a stage is looked up.
+// Surface configures the local map the road surface of a stage is read from.
 type Surface struct {
-	// OverpassURL is the Overpass endpoint asked which OpenStreetMap ways lie
-	// along a stage. The service sends it the shape of every stage it syncs, so
-	// the endpoint learns where the operator's routes go — the same exposure the
-	// browser already accepts for tiles, and the reason this is a setting rather
-	// than a constant. An empty value disables the lookup entirely, and stages
-	// then simply carry no surface.
-	OverpassURL string
+	// Regions are the OpenStreetMap extracts to index, as Geofabrik slugs such
+	// as "europe/germany/rheinland-pfalz". They have to cover the ground the
+	// operator actually rides: a stage outside every configured region is served
+	// without a surface rather than wrongly.
+	//
+	// An empty list switches surface classification off entirely. Nothing is
+	// downloaded, nothing is built, and stages simply carry no surface — which
+	// is also what a deployment gets by default, because the right regions are
+	// a property of where somebody rides and cannot be guessed.
+	Regions []string
+	// RebuildInterval is how often the index is rebuilt from freshly published
+	// extracts. A rebuild that finds every extract unchanged costs one small
+	// request per region and stops there.
+	RebuildInterval time.Duration
 }
 
 // State configures durable service state.
@@ -278,7 +286,8 @@ type rawWebUI struct {
 }
 
 type rawSurface struct {
-	OverpassURL string `koanf:"overpass_url"`
+	Regions         []string      `koanf:"regions"`
+	RebuildInterval time.Duration `koanf:"rebuild_interval"`
 }
 
 type rawAccess struct {
@@ -546,7 +555,7 @@ func build(raw *rawSettings) (*Settings, error) {
 	if err := validateTileStyleURLDark(raw.WebUI.TileStyleURLDark, raw.WebUI.TileStyleURL); err != nil {
 		return nil, err
 	}
-	if err := validateOverpassURL(raw.Surface.OverpassURL); err != nil {
+	if err := validateSurface(raw.Surface); err != nil {
 		return nil, err
 	}
 	if err := validateHTTPSOrigin("notifications.pushover.base_url", raw.Notifications.Pushover.BaseURL); err != nil {
@@ -639,7 +648,8 @@ func build(raw *rawSettings) (*Settings, error) {
 			TileStyleURLDark: strings.TrimSpace(raw.WebUI.TileStyleURLDark),
 		},
 		Surface: Surface{
-			OverpassURL: strings.TrimSpace(raw.Surface.OverpassURL),
+			Regions:         trimmedRegions(raw.Surface.Regions),
+			RebuildInterval: raw.Surface.RebuildInterval,
 		},
 		State: State{
 			DatabasePath:  raw.State.DatabasePath,
@@ -763,15 +773,49 @@ func sameOrigin(left, right string) bool {
 	return first.Scheme == second.Scheme && strings.EqualFold(first.Host, second.Host)
 }
 
-// validateOverpassURL accepts an absolute HTTPS endpoint, or nothing at all. An
-// empty value is the operator's switch for keeping stage shapes off a third-party
-// server, so it is a valid setting rather than a missing one.
-func validateOverpassURL(value string) error {
-	if strings.TrimSpace(value) == "" {
+// regionSlug is one Geofabrik region path, such as
+// "europe/germany/rheinland-pfalz".
+//
+// A slug becomes a path under a fixed download host, so its shape is checked
+// here rather than trusted: lowercase segments of letters, digits, and single
+// hyphens can introduce neither a host nor a traversal. The index builder
+// applies the same rule again before it composes a URL — this one exists so a
+// mistyped region is a startup error the operator reads, rather than a download
+// that fails a week later.
+var regionSlug = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*(?:/[a-z0-9]+(?:-[a-z0-9]+)*)*$`)
+
+// validateSurface accepts a set of regions to index, or no regions at all. An
+// empty list is the operator's switch for leaving stages unclassified, so it is
+// a valid setting rather than a missing one.
+func validateSurface(surface rawSurface) error {
+	regions := trimmedRegions(surface.Regions)
+	for _, region := range regions {
+		if !regionSlug.MatchString(region) {
+			return fmt.Errorf(
+				"surface.regions entry %q must be a region path such as "+
+					"\"europe/germany/rheinland-pfalz\"", region,
+			)
+		}
+	}
+	if len(regions) > 0 && surface.RebuildInterval <= 0 {
+		return errors.New("surface.rebuild_interval must be positive")
+	}
+
+	return nil
+}
+
+func trimmedRegions(regions []string) []string {
+	trimmed := make([]string, 0, len(regions))
+	for _, region := range regions {
+		if region = strings.TrimSpace(region); region != "" {
+			trimmed = append(trimmed, region)
+		}
+	}
+	if len(trimmed) == 0 {
 		return nil
 	}
 
-	return validateHTTPSURL("surface.overpass_url", strings.TrimSpace(value))
+	return trimmed
 }
 
 func validateHTTPSURL(name, value string) error {
@@ -937,7 +981,7 @@ func configurationDefaults() map[string]any {
 			"tile_style_url_dark": defaultTileStyleURLDark,
 		},
 		"surface": map[string]any{
-			"overpass_url": defaultOverpassURL,
+			"rebuild_interval": defaultRebuildInterval.String(),
 		},
 		"notifications": map[string]any{
 			"pushover": map[string]any{

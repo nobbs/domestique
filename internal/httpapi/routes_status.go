@@ -167,6 +167,12 @@ func (h *Handler) status(writer http.ResponseWriter, request *http.Request, _ st
 		return
 	}
 	view.Sync.Surface = surfaceView{Classified: classified, Total: total}
+	if h.surfaceIndex != nil {
+		if generation, builtAt, ok := h.surfaceIndex(); ok {
+			view.Sync.Surface.Generation = generation
+			view.Sync.Surface.BuiltAt = builtAt.Format(time.RFC3339)
+		}
+	}
 	if phaseErr := h.state.ForEachPhaseRun(request.Context(), func(
 		phase string, completedAt time.Time, outcome, detail string,
 		sourceStages, created, updated, deleted int,
