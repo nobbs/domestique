@@ -24,7 +24,8 @@ small Linux cloud VM. It has no CLI.
 The service serves a read-only browser UI for route preview. Its HTTP surface is
 read-only JSON for status, route data, and route geometry, except for the
 protected Wahoo OAuth onboarding flow and the manual sync trigger. The UI is a
-view onto stored state: it renders one source route stage at a time on a map.
+view onto stored state: it draws the whole stored library on one map, gives each
+source route stage a page of its own, and reports synchronisation on a third.
 
 Where a stage's surface classification has been cached, that view draws it: the
 route is banded by ground class on the map, and the stage's split is summarised
@@ -548,13 +549,13 @@ secret files remain outside Git.
   switches, and the reprocess request, which discards derived answers so they are
   worked out again. Nothing on the surface edits route data, in this service or
   at the source.
-- The browser UI renders a stored source stage on a map, is reachable only by
+- The browser UI renders stored source stages on a map, is reachable only by
   the configured identity, and offers no editing affordance. Selecting a surface
   class or gradient band in its key only changes what the map and the chart
-  emphasise. Searching or reordering the library does the same for the listing
-  it already holds: both are decided in the browser, over the safe display names
-  the inventory listing already carries, and neither adds a query parameter or
-  any other server-side query surface.
+  emphasise. Searching the library does the same for the listing it already
+  holds: it is decided in the browser, over the safe display names the inventory
+  listing already carries, and it adds no query parameter or any other
+  server-side query surface.
 - The only outbound link the UI offers is to the public source repository, and
   following it discloses neither the origin nor anything about the route on
   screen.

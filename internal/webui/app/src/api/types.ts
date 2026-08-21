@@ -7,7 +7,7 @@
  * clear error rather than as `undefined` deep inside a component.
  */
 
-export interface Stage {
+export interface Route {
   routeId: number;
   stageOrder: number;
   title: string;
@@ -46,7 +46,7 @@ export type SurfaceKind = (typeof SURFACE_KINDS)[number];
 /**
  * One run of stage points sharing a class.
  *
- * Both indices are inclusive and address `StageGeometry.coordinates` directly,
+ * Both indices are inclusive and address `RouteGeometry.coordinates` directly,
  * which is why a classification is only ever served beside the geometry it was
  * measured against.
  */
@@ -56,7 +56,7 @@ export interface SurfaceRange {
   endIndex: number;
 }
 
-export interface StageSurface {
+export interface RouteSurface {
   ranges: SurfaceRange[];
   /**
    * The stage length that snapped to a classified way. The honest denominator
@@ -66,8 +66,8 @@ export interface StageSurface {
   matchedMetres: number;
 }
 
-export interface StageGeometry {
-  stage: Stage;
+export interface RouteGeometry {
+  stage: Route;
   bbox: BoundingBox;
   coordinates: Position[];
   /**
@@ -75,7 +75,7 @@ export interface StageGeometry {
    * is a different thing from a classification that matched nothing: that
    * arrives as a present group with no ranges.
    */
-  surface?: StageSurface | undefined;
+  surface?: RouteSurface | undefined;
 }
 
 /**
@@ -265,6 +265,6 @@ export interface WebUIConfig {
 }
 
 /** A stage's stable identity, used for routing and list keys. */
-export function stageKey(stage: Pick<Stage, "routeId" | "stageOrder">): string {
+export function routeKey(stage: Pick<Route, "routeId" | "stageOrder">): string {
   return `${stage.routeId}/${stage.stageOrder}`;
 }

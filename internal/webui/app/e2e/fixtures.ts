@@ -228,19 +228,27 @@ export const test = playwrightTest.extend<{
 
 export { expect };
 
-/** The library page, once it has stages to show. */
+/** The entry page, once the library has arrived and the map is drawn. */
 export async function openLibrary(page: Page): Promise<void> {
   await page.goto("/");
-  await expect(page.getByRole("link", { name: /Valley floor/ }).first()).toBeVisible();
+  await expect(page.getByRole("searchbox", { name: "Search the route library" })).toBeVisible();
+  await settleMap(page);
 }
 
-/** One stage's detail page, once its map and profile are on screen. */
-export async function openStage(page: Page, routeId: number, stageOrder: number): Promise<void> {
+/** One route's page, once its map and profile are on screen. */
+export async function openRoute(page: Page, routeId: number, stageOrder: number): Promise<void> {
   await page.goto(`/routes/${routeId}/${stageOrder}`);
   await settleMap(page);
 }
 
-/** The map's own element, which carries the accessible name of the stage. */
+/** The sync page, once the service has answered what it is doing. */
+export async function openSync(page: Page): Promise<void> {
+  await page.goto("/sync");
+  await expect(page.getByRole("heading", { level: 1, name: "Sync" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Now" })).toBeVisible();
+}
+
+/** The map's own element, which carries the map's accessible name. */
 export function mapRegion(page: Page): Locator {
   return page.locator(".route-map");
 }

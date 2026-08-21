@@ -21,8 +21,8 @@
  * the same figures twice, one of them in the wrong order.
  *
  * Every figure is text, so the split is readable without seeing a pixel of the
- * strip, and the swatches repeat the map's colour and dash pattern so the key
- * works for the map, the strip, and the chart at once.
+ * strip, and the swatches repeat the map's own colours so the key works for the
+ * map, the strip, and the chart at once.
  *
  * Proportions are of the whole stage, and unsurveyed ground is one of the
  * classes. A key that quietly renormalised over the surveyed part would report a
@@ -43,8 +43,8 @@ import type { SurfaceKind } from "../api/types";
 import type { Highlight } from "../lib/highlight";
 import { GRADIENT_BANDS } from "../lib/profile";
 import type { SurfaceSummary } from "../lib/surface";
-import { SURFACE_STYLES, swatchBackground } from "../lib/surface";
-import styles from "./StageKey.module.css";
+import { SURFACE_STYLES } from "../lib/surface";
+import styles from "./RouteKey.module.css";
 
 /**
  * A share as a percentage, never rounded into a contradiction.
@@ -77,8 +77,8 @@ function chipValue(highlight: Highlight): string {
   return highlight.type === "surface" ? `surface:${highlight.kind}` : `band:${highlight.band}`;
 }
 
-export interface StageKeyProps {
-  /** Null for a stage nobody has classified, which is said in words instead. */
+export interface RouteKeyProps {
+  /** Null for a route nobody has classified, which is said in words instead. */
   surface: SurfaceSummary | null;
   surfaceAbsence: string;
   /**
@@ -94,13 +94,13 @@ export interface StageKeyProps {
   onHighlightChange: (highlight: Highlight | null) => void;
 }
 
-export function StageKey({
+export function RouteKey({
   surface,
   surfaceAbsence,
   bands,
   highlight,
   onHighlightChange,
-}: StageKeyProps) {
+}: RouteKeyProps) {
   // What each chip in the group stands for, built from the classes actually
   // offered. Reading the selection back out of this rather than parsing the
   // string means a value the key never offered cannot become a highlight.
@@ -126,7 +126,7 @@ export function StageKey({
     <ToggleGroup.Root
       type="multiple"
       className={styles.key}
-      aria-label="Stage key"
+      aria-label="Route key"
       data-picked={highlight ? "true" : undefined}
       value={highlight ? [chipValue(highlight)] : []}
       onValueChange={pick}
@@ -146,13 +146,9 @@ export function StageKey({
                   // "compacted" — spoken as part of the name, because a tooltip
                   // is nothing to a keyboard or a finger.
                   title={style.description}
-                  aria-label={`${style.label}, ${style.description}, ${share} of the stage`}
+                  aria-label={`${style.label}, ${style.description}, ${share} of the route`}
                 >
-                  <span
-                    className={styles.swatch}
-                    style={{ background: swatchBackground(entry.kind) }}
-                    aria-hidden="true"
-                  />
+                  <span className={styles.swatch} data-surface={entry.kind} aria-hidden="true" />
                   <span>{style.label}</span>
                   <span className={styles.share}>{share}</span>
                 </ToggleGroup.Item>

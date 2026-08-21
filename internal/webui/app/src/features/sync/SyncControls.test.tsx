@@ -3,7 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Status } from "../../api/types";
-import { activeSummary, SyncControls } from "./SyncControls";
+import { activeSummary, idleSummary, SyncControls } from "./SyncControls";
 
 function status(overrides: Partial<Status["sync"]> = {}): Status {
   return {
@@ -58,7 +58,7 @@ describe("SyncControls", () => {
     );
 
     expect(
-      screen.getByText("Writing to Wahoo · 11 of 12 stages across 2 accounts"),
+      screen.getByText("Writing to Wahoo · 11 of 12 routes across 2 accounts"),
     ).toBeInTheDocument();
   });
 
@@ -87,7 +87,7 @@ describe("SyncControls", () => {
     );
 
     expect(
-      screen.getByText(/^First run at .* · 3 of 4 stages across 1 account$/),
+      screen.getByText(/^First run at .* · 3 of 4 routes across 1 account$/),
     ).toBeInTheDocument();
   });
 
@@ -105,9 +105,9 @@ describe("SyncControls", () => {
     // Each control names its own half: the visible words are the same in both
     // rows, so the accessible name is what tells them apart.
     expect(
-      screen.getByRole("checkbox", { name: "Schedule: Read from VeloPlanner" }),
+      screen.getByRole("checkbox", { name: "Hourly: Read from VeloPlanner" }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("checkbox", { name: "Schedule: Write to Wahoo" })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Hourly: Write to Wahoo" })).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Run now: Read from VeloPlanner" }),
     ).toBeInTheDocument();
@@ -124,7 +124,7 @@ describe("SyncControls", () => {
     vi.stubGlobal("fetch", fetchMock);
     renderControls(status({ schedule: { source: true, targets: true } }));
 
-    await userEvent.click(screen.getByRole("checkbox", { name: "Schedule: Write to Wahoo" }));
+    await userEvent.click(screen.getByRole("checkbox", { name: "Hourly: Write to Wahoo" }));
 
     await waitFor(() =>
       expect(fetchMock.mock.calls.some((call) => call[0] === "/v1/sync/schedule")).toBe(true),
@@ -155,11 +155,13 @@ describe("SyncControls", () => {
     );
   });
 
-  it("names the state of each switch", () => {
+  // Both switches carry the same two words, because the interval the service
+  // runs on is fixed at an hour. Which of them is on is the checkbox itself.
+  it("shows the state of each switch on the switch", () => {
     renderControls(status({ schedule: { source: true, targets: false } }));
 
-    expect(screen.getByText("Scheduled")).toBeInTheDocument();
-    expect(screen.getByText("Paused")).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Hourly: Read from VeloPlanner" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Hourly: Write to Wahoo" })).not.toBeChecked();
   });
 
   it("summarises each half's last run in its own terms", () => {
@@ -187,9 +189,9 @@ describe("SyncControls", () => {
       }),
     );
 
-    expect(screen.getByText(/12 stages/)).toBeInTheDocument();
+    expect(screen.getByText(/12 routes/)).toBeInTheDocument();
     expect(screen.queryByText(/failed \(destination\)/)).not.toBeInTheDocument();
-    expect(screen.getByText(/Did not finish/)).toBeInTheDocument();
+    expect(screen.getByText(/did not finish$/)).toBeInTheDocument();
     expect(screen.getByText(/Writing to Wahoo could not finish/)).toBeInTheDocument();
   });
 
@@ -219,7 +221,7 @@ describe("SyncControls", () => {
       }),
     );
 
-    expect(screen.getByText(/Held by a safety gate/)).toBeInTheDocument();
+    expect(screen.getByText(/held by a gate$/)).toBeInTheDocument();
     expect(screen.getByText(/Writing to Wahoo stopped/)).toBeInTheDocument();
     expect(screen.getByText(remediation)).toBeInTheDocument();
   });
@@ -250,7 +252,7 @@ describe("SyncControls", () => {
   it("says a half has not run rather than showing an empty result", () => {
     renderControls();
 
-    expect(screen.getAllByText("Has not run yet.")).toHaveLength(2);
+    expect(screen.getAllByText("Has not run yet")).toHaveLength(2);
   });
 
   // A refused run is worth showing: the operator pressed a button and nothing
@@ -284,13 +286,13 @@ describe("SyncControls", () => {
   it("says how much of the library is still unclassified", () => {
     renderControls(status({ surface: { classified: 1, total: 3 } }));
 
-    expect(screen.getByText(/classified for 1 of 3 stages/)).toBeInTheDocument();
+    expect(screen.getByText(/classified for 1 of 3 routes/)).toBeInTheDocument();
   });
 
-  it("counts one stage as a stage", () => {
+  it("counts one route as a route", () => {
     renderControls(status({ surface: { classified: 0, total: 1 } }));
 
-    expect(screen.getByText(/classified for 0 of 1 stage\./)).toBeInTheDocument();
+    expect(screen.getByText(/classified for 0 of 1 route\./)).toBeInTheDocument();
   });
 
   it("says nothing about surfaces once the whole library is classified", () => {
@@ -305,7 +307,54 @@ describe("activeSummary", () => {
   // not give one is still waiting rather than idle.
   it("says a held-back run is waiting when nothing said until when", () => {
     expect(activeSummary("delayed", { targets: 1, stages: { current: 1, pending: 1 } })).toBe(
-      "Waiting to start · 1 of 2 stages across 1 account",
+      "Waiting to start · 1 of 2 routes across 1 account",
     );
+  });
+});
+
+describe("idleSummary", () => {
+  it("says when each half last got somewhere", () => {
+    expect(
+      idleSummary(
+        status({
+          phases: {
+            source: {
+              lastCompletedAt: "2026-08-18T06:00:00Z",
+              lastResult: "succeeded",
+              sourceStages: 12,
+              created: 0,
+              updated: 0,
+              deleted: 0,
+            },
+          },
+        }),
+      ),
+    ).toMatch(/^Nothing is running\. Last read .*, last write .*\.$/);
+  });
+
+  // A gate that held is the one thing on the card an operator has to act on, so
+  // it replaces the ordinary two clauses rather than sitting beside them.
+  it("says a held gate instead of when the half finished", () => {
+    expect(
+      idleSummary(
+        status({
+          phases: {
+            targets: {
+              lastCompletedAt: "2026-08-18T06:00:04Z",
+              lastResult: "blocked",
+              lastFailure: "deletion_limit",
+              sourceStages: 12,
+              created: 0,
+              updated: 0,
+              deleted: 0,
+            },
+          },
+        }),
+      ),
+    ).toMatch(/^Nothing is running\. The last write was held at .*\.$/);
+  });
+
+  it("says nothing has run rather than naming two absent times", () => {
+    expect(idleSummary(status())).toBe("Nothing is running, and nothing has run yet.");
   });
 });

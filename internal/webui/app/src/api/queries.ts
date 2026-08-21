@@ -5,9 +5,9 @@
 
 import { infiniteQueryOptions, queryOptions } from "@tanstack/react-query";
 import {
-  fetchStage,
-  fetchStageGeometry,
-  fetchStages,
+  fetchRoute,
+  fetchRouteGeometry,
+  fetchRoutes,
   fetchStatus,
   fetchSyncRuns,
   fetchWebUIConfig,
@@ -19,22 +19,22 @@ const ACTIVE_POLL_MS = 2000;
 /** How many recorded runs one page of the history holds. */
 const HISTORY_PAGE_SIZE = 10;
 
-export const stagesQuery = () =>
+export const routesQuery = () =>
   queryOptions({
     queryKey: ["stages"] as const,
-    queryFn: fetchStages,
+    queryFn: fetchRoutes,
   });
 
-export const stageQuery = (routeId: number, stageOrder: number) =>
+export const routeQuery = (routeId: number, stageOrder: number) =>
   queryOptions({
     queryKey: ["stage", routeId, stageOrder] as const,
-    queryFn: () => fetchStage(routeId, stageOrder),
+    queryFn: () => fetchRoute(routeId, stageOrder),
   });
 
-export const stageGeometryQuery = (routeId: number, stageOrder: number) =>
+export const routeGeometryQuery = (routeId: number, stageOrder: number) =>
   queryOptions({
     queryKey: ["stage-geometry", routeId, stageOrder] as const,
-    queryFn: () => fetchStageGeometry(routeId, stageOrder),
+    queryFn: () => fetchRouteGeometry(routeId, stageOrder),
     // Geometry only changes when a sync rewrites it, so it is worth holding.
     staleTime: 5 * 60 * 1000,
   });

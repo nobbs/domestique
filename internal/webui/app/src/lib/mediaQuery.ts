@@ -2,15 +2,24 @@
  * Reading a CSS media query from React.
  *
  * Most of what the page does about a display preference it does in CSS, at the
- * queries in `index.css`. Two things cannot: the basemap is a style document
- * fetched over the network, and the map's camera is animated by MapLibre in
- * JavaScript. Both have to ask the same questions a stylesheet asks, so the
- * asking lives here rather than twice over in the modules that need it.
+ * queries in `index.css`. A few things cannot: the basemap is a style document
+ * fetched over the network, the map's camera is animated by MapLibre in
+ * JavaScript, and the elevation chart's height is a coordinate system rather
+ * than a rule. All of them have to ask the same questions a stylesheet asks, so
+ * the asking lives here rather than several times over.
  */
 
 import { useCallback, useSyncExternalStore } from "react";
 
 const REDUCED_MOTION = "(prefers-reduced-motion: reduce)";
+
+/**
+ * The one breakpoint, and the same value the `@media` block in `index.css` uses.
+ *
+ * There is exactly one, at 832 px: above it the panels float beside the map,
+ * below it they dock to the bottom of it. Both copies must stay in step.
+ */
+const NARROW = "(max-width: 52rem)";
 
 /**
  * Whether a media query matches, re-rendering when that changes.
@@ -49,4 +58,15 @@ export function useMediaQuery(query: string): boolean {
  */
 export function usePrefersReducedMotion(): boolean {
   return useMediaQuery(REDUCED_MOTION);
+}
+
+/**
+ * Whether the page is at its narrow layout.
+ *
+ * The layout itself is CSS. This is for the one thing a stylesheet cannot set:
+ * the elevation chart is an SVG whose height is also its coordinate system, so
+ * the shorter phone plot has to be a number rather than a rule.
+ */
+export function useNarrowViewport(): boolean {
+  return useMediaQuery(NARROW);
 }

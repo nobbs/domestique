@@ -69,14 +69,14 @@ describe("SyncHistory", () => {
     });
 
     expect(screen.getByText("Write to Wahoo")).toBeInTheDocument();
-    expect(screen.getByText("1 created · 2 updated · 0 deleted")).toBeInTheDocument();
+    expect(screen.getByText("1 created · 2 updated")).toBeInTheDocument();
     expect(screen.getByText("Read from VeloPlanner")).toBeInTheDocument();
-    expect(screen.getByText("12 stages")).toBeInTheDocument();
+    expect(screen.getByText("12 routes")).toBeInTheDocument();
     expect(screen.getAllByText("Succeeded")).toHaveLength(2);
     // The reference is what a Pushover message carries, so it must be here to
     // be matched against; nothing else on the row identifies the run.
-    expect(screen.getByText("Run aaaaaaaaaaaa")).toBeInTheDocument();
-    expect(screen.getByText("Run bbbbbbbbbbbb")).toBeInTheDocument();
+    expect(screen.getByText("aaaaaaaaaaaa")).toBeInTheDocument();
+    expect(screen.getByText("bbbbbbbbbbbb")).toBeInTheDocument();
   });
 
   // A binary rolled back past the migration that named runs records rows with
@@ -89,8 +89,8 @@ describe("SyncHistory", () => {
       ],
     });
 
-    expect(screen.getAllByText("1 created · 2 updated · 0 deleted")).toHaveLength(2);
-    expect(screen.queryByText(/^Run/)).not.toBeInTheDocument();
+    expect(screen.getAllByText("1 created · 2 updated")).toHaveLength(2);
+    expect(document.querySelectorAll(".run-row__reference")).toHaveLength(0);
   });
 
   // A gate that held and a run that broke are opposite events, and the raw
@@ -133,13 +133,13 @@ describe("SyncHistory", () => {
     vi.stubGlobal("fetch", fetchMock);
     renderHistory({ runs: [run({ reference: "aaaaaaaaaaaa" })], next: "412" });
 
-    await userEvent.click(screen.getByRole("button", { name: "Show earlier runs" }));
+    await userEvent.click(screen.getByRole("button", { name: "Earlier runs" }));
 
-    await waitFor(() => expect(screen.getByText("Run cccccccccccc")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("cccccccccccc")).toBeInTheDocument());
     expect(fetchMock).toHaveBeenCalledWith("/v1/sync/runs?limit=10&after=412", expect.anything());
     // The page that came back ends the history, so there is nothing left to ask
     // for and the control that would ask goes away.
-    expect(screen.queryByRole("button", { name: "Show earlier runs" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Earlier runs" })).not.toBeInTheDocument();
   });
 
   // The list is one row behind the moment a run finishes, and the status beside
@@ -165,6 +165,6 @@ describe("SyncHistory", () => {
     renderHistory({ runs: [] });
 
     expect(screen.getByText("Nothing has run yet.")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Show earlier runs" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Earlier runs" })).not.toBeInTheDocument();
   });
 });

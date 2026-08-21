@@ -14,42 +14,29 @@
  */
 
 import { useCallback, useMemo, useRef, useState } from "react";
+import { usePrefersDarkScheme } from "../lib/basemap";
 import type { Highlight } from "../lib/highlight";
 import { gapsOutside, highlightLabel } from "../lib/highlight";
+import { useNarrowViewport } from "../lib/mediaQuery";
 import type { DistanceWindow, Profile, ProfileSample } from "../lib/profile";
 import { niceStep, sampleAt, ticksFor } from "../lib/profile";
 import { MIN_DRAG_PIXELS, spanBetween, widened } from "../lib/selection";
 import type { SurfaceSummary } from "../lib/surface";
-import { SURFACE_STYLES, surfaceBandsWithin, surfaceKindAt } from "../lib/surface";
+import { SURFACE_STYLES, surfaceBandsWithin, surfaceColour, surfaceKindAt } from "../lib/surface";
 import { useElementWidth } from "../lib/useElementWidth";
 import { useEscapeKey } from "../lib/useEscapeKey";
 import { Button } from "./Button";
 
 /**
- * Hatch patterns for the steeper bands.
+ * How tall the plot is, in the two layouts there are.
  *
- * With five classes, texture stops being the backup channel for identity and
- * becomes one that carries: the ramp cannot separate five steps by hue alone, so
- * every band above the gentlest wears a pattern of its own — one diagonal, then
- * the other, then the two crossed, then a tighter grid. Angle is what separates
- * the neighbours a colour-blind reader finds closest, and density is what is
- * left when the angles run out.
- *
- * It also survives greyscale print and forced-colours mode, where hue alone does
- * not, and it lets the ground sit at low opacity — the terrain is a backdrop for
- * the silhouette, not a block of paint — while the steep sections still read.
- *
- * The tiles are fine enough that a short pitch still shows several strokes; a
- * coarse hatch in a twelve-pixel column is indistinguishable from a solid block.
+ * The chart is an SVG, so its height is also its coordinate system and cannot be
+ * a rule in the stylesheet. Both numbers give the terrain enough vertical room
+ * to be a shape rather than a smear; the narrow one gives it back to the map
+ * above, which on a phone is the scarcer thing.
  */
-const HATCHES: Record<number, { angle: number; crossed: boolean; size: number }> = {
-  1: { angle: 45, crossed: false, size: 6 },
-  2: { angle: 135, crossed: false, size: 6 },
-  3: { angle: 45, crossed: true, size: 6 },
-  4: { angle: 0, crossed: true, size: 4 },
-};
+const PLOT_HEIGHT = { wide: 200, narrow: 150 } as const;
 
-const HEIGHT = 159;
 const PADDING = { top: 12, right: 12, bottom: 33, left: 46 };
 const MIN_WIDTH = 240;
 
@@ -62,7 +49,7 @@ const MIN_WIDTH = 240;
  * ground of the profile, which would make the two look like one shape.
  */
 const SURFACE_STRIP_HEIGHT = 7;
-const SURFACE_STRIP_GAP = 4;
+const SURFACE_STRIP_GAP = 12;
 
 export interface ElevationProfileProps {
   /** Already restricted to the stretch on show, when there is a zoom. */
@@ -208,8 +195,13 @@ export function ElevationProfile({
 }: ElevationProfileProps) {
   const { ref, width } = useElementWidth<HTMLDivElement>();
 
+  const height = useNarrowViewport() ? PLOT_HEIGHT.narrow : PLOT_HEIGHT.wide;
+  // The strip sits on the page rather than on cartography, so its colours follow
+  // the page's own scheme — see `surfaceColour`.
+  const dark = usePrefersDarkScheme();
+
   const plotWidth = Math.max(width, MIN_WIDTH) - PADDING.left - PADDING.right;
-  const plotHeight = HEIGHT - PADDING.top - PADDING.bottom;
+  const plotHeight = height - PADDING.top - PADDING.bottom;
   // The plot and the strip beneath it, which the cursor, the scrub region and
   // the veil all treat as one lane because they describe one position.
   const laneHeight = surface ? plotHeight + SURFACE_STRIP_GAP + SURFACE_STRIP_HEIGHT : plotHeight;
@@ -414,53 +406,12 @@ export function ElevationProfile({
     <div className="elevation-profile" ref={ref} data-zoomed={zoomed ? "true" : undefined}>
       <svg
         width="100%"
-        height={HEIGHT}
-        viewBox={`0 0 ${plotWidth + PADDING.left + PADDING.right} ${HEIGHT}`}
+        height={height}
+        viewBox={`0 0 ${plotWidth + PADDING.left + PADDING.right} ${height}`}
         role="img"
         aria-label={summary}
       >
         <title>{summary}</title>
-        <defs>
-          {Object.entries(HATCHES).map(([band, hatch]) => (
-            <pattern
-              key={band}
-              id={`elevation-hatch-${band}`}
-              width={hatch.size}
-              height={hatch.size}
-              patternUnits="userSpaceOnUse"
-              patternTransform={`rotate(${hatch.angle})`}
-            >
-              <rect
-                className="elevation-profile__hatch-ground"
-                data-band={band}
-                width={hatch.size}
-                height={hatch.size}
-              />
-              {/*
-               * Centred in the tile, not on its edge: a stroke on the edge is
-               * clipped in half, so half the intended width simply vanishes.
-               */}
-              <line
-                className="elevation-profile__hatch-line"
-                data-band={band}
-                x1={hatch.size / 2}
-                y1={0}
-                x2={hatch.size / 2}
-                y2={hatch.size}
-              />
-              {hatch.crossed ? (
-                <line
-                  className="elevation-profile__hatch-line"
-                  data-band={band}
-                  x1={0}
-                  y1={hatch.size / 2}
-                  x2={hatch.size}
-                  y2={hatch.size / 2}
-                />
-              ) : null}
-            </pattern>
-          ))}
-        </defs>
         <g transform={`translate(${PADDING.left} ${PADDING.top})`}>
           {geometry.elevationTicks.map((metres) => (
             <g key={metres}>
@@ -498,34 +449,22 @@ export function ElevationProfile({
 
           {/*
            * The ground the route is made of, in the order it is ridden, on the
-           * distance axis the terrain above already uses. Each stretch is drawn
-           * with the colour and the dash pattern it wears on the map, at this
-           * strip's own width, so the same stretch reads the same way in both
-           * places.
+           * distance axis the terrain above already uses. Each stretch wears the
+           * colour it wears on the map, solid, at this strip's own width, so the
+           * same stretch reads the same way in both places.
            */}
-          {geometry.surfaceBands.map((band) => {
-            const style = SURFACE_STYLES[band.kind];
-
-            return (
-              <line
-                key={`${band.kind}-${band.startMetres}`}
-                className="elevation-profile__surface"
-                x1={geometry.x(band.startMetres)}
-                x2={geometry.x(band.endMetres)}
-                y1={plotHeight + SURFACE_STRIP_GAP + SURFACE_STRIP_HEIGHT / 2}
-                y2={plotHeight + SURFACE_STRIP_GAP + SURFACE_STRIP_HEIGHT / 2}
-                stroke={style.colour}
-                strokeWidth={SURFACE_STRIP_HEIGHT}
-                {...(style.dashes.length > 0
-                  ? {
-                      strokeDasharray: style.dashes
-                        .map((dash) => dash * SURFACE_STRIP_HEIGHT)
-                        .join(" "),
-                    }
-                  : {})}
-              />
-            );
-          })}
+          {geometry.surfaceBands.map((band) => (
+            <line
+              key={`${band.kind}-${band.startMetres}`}
+              className="elevation-profile__surface"
+              x1={geometry.x(band.startMetres)}
+              x2={geometry.x(band.endMetres)}
+              y1={plotHeight + SURFACE_STRIP_GAP + SURFACE_STRIP_HEIGHT / 2}
+              y2={plotHeight + SURFACE_STRIP_GAP + SURFACE_STRIP_HEIGHT / 2}
+              stroke={surfaceColour(band.kind, dark)}
+              strokeWidth={SURFACE_STRIP_HEIGHT}
+            />
+          ))}
 
           {geometry.distanceTicks.map((kilometres) => (
             <text
@@ -691,7 +630,7 @@ export function ElevationProfile({
          * being left as well as where it goes.
          */}
         {zoomed && onZoomChange ? (
-          <Button variant="quiet" aria-keyshortcuts="Escape" onClick={() => onZoomChange(null)}>
+          <Button variant="standard" aria-keyshortcuts="Escape" onClick={() => onZoomChange(null)}>
             Whole route
             <span className="elevation-profile__reset-span"> · showing {shownLabel}</span>
           </Button>

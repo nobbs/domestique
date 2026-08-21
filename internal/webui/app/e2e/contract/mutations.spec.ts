@@ -8,14 +8,14 @@
  * would: from the page.
  */
 
-import { openLibrary, openStage } from "../fixtures";
+import { openRoute, openSync } from "../fixtures";
 import { callsTo, expect, test } from "./fixtures";
 
-const LINE_STAGE = { routeId: 4101, stageOrder: 1 };
-const SOURCE_SWITCH = "Schedule: Read from VeloPlanner";
+const LINE_ROUTE = { routeId: 4101, stageOrder: 1 };
+const SOURCE_SWITCH = "Hourly: Read from VeloPlanner";
 
 test("changing the schedule is stored and read back", async ({ bundlePage: page, apiCalls }) => {
-  await openLibrary(page);
+  await openSync(page);
 
   const switchControl = page.getByLabel(SOURCE_SWITCH);
   await expect(switchControl).toBeVisible();
@@ -38,7 +38,7 @@ test("changing the schedule is stored and read back", async ({ bundlePage: page,
 });
 
 test("asking for a run now is accepted", async ({ bundlePage: page, apiCalls }) => {
-  await openLibrary(page);
+  await openSync(page);
 
   await page.getByRole("button", { name: "Run now: Read from VeloPlanner" }).click();
 
@@ -48,14 +48,14 @@ test("asking for a run now is accepted", async ({ bundlePage: page, apiCalls }) 
   await expect(async () => {
     expect(callsTo(apiCalls, "POST", "/v1/sync/source").map((call) => call.status)).toEqual([202]);
   }).toPass();
-  // The panel is still the one the status view drives, and it did not fall into an
+  // The card is still the one the status view drives, and it did not fall into an
   // error state over a response with nothing in it to parse.
-  await expect(page.locator(".sync-controls__error")).toHaveCount(0);
-  await expect(page.getByRole("region", { name: /synchronisation/i })).toBeVisible();
+  await expect(page.locator(".sync-card__error")).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Now" })).toBeVisible();
 });
 
-test("asking for one stage to be redone is accepted", async ({ bundlePage: page, apiCalls }) => {
-  await openStage(page, LINE_STAGE.routeId, LINE_STAGE.stageOrder);
+test("asking for one route to be redone is accepted", async ({ bundlePage: page, apiCalls }) => {
+  await openRoute(page, LINE_ROUTE.routeId, LINE_ROUTE.stageOrder);
 
   await page.getByRole("button", { name: "Reprocess" }).click();
 
@@ -64,7 +64,7 @@ test("asking for one stage to be redone is accepted", async ({ bundlePage: page,
     callsTo(
       apiCalls,
       "POST",
-      `/v1/routes/${LINE_STAGE.routeId}/stages/${LINE_STAGE.stageOrder}/reprocess`,
+      `/v1/routes/${LINE_ROUTE.routeId}/stages/${LINE_ROUTE.stageOrder}/reprocess`,
     ).map((call) => call.status),
   ).toEqual([202]);
 });

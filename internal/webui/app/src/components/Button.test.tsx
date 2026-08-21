@@ -1,7 +1,8 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router";
 import { describe, expect, it, vi } from "vitest";
-import { Button } from "./Button";
+import { Button, ButtonLink } from "./Button";
 
 /** The base class first, then the variant, as the component composes them. */
 function classesOf(element: HTMLElement): string[] {
@@ -17,18 +18,37 @@ describe("Button", () => {
     expect(screen.getByRole("button", { name: "Run now" })).toHaveAttribute("type", "button");
   });
 
-  it("dresses a quiet action differently from a standard one, on the same base", () => {
+  it("dresses the one primary differently from a standard one, on the same base", () => {
     render(
       <>
-        <Button>Run now</Button>
-        <Button variant="quiet">Reprocess</Button>
+        <Button variant="primary">Open route</Button>
+        <Button>Reprocess</Button>
       </>,
     );
-    const standard = classesOf(screen.getByRole("button", { name: "Run now" }));
-    const quiet = classesOf(screen.getByRole("button", { name: "Reprocess" }));
+    const primary = classesOf(screen.getByRole("button", { name: "Open route" }));
+    const standard = classesOf(screen.getByRole("button", { name: "Reprocess" }));
 
-    expect(standard[0]).toBe(quiet[0]);
-    expect(standard[1]).not.toBe(quiet[1]);
+    expect(primary[0]).toBe(standard[0]);
+    expect(primary[1]).not.toBe(standard[1]);
+  });
+
+  // A navigation that looks like an action is still a link: middle-click, copy
+  // the address, and open in a new tab all have to keep working.
+  it("renders a link when the action goes somewhere", () => {
+    render(
+      <MemoryRouter>
+        <ButtonLink variant="primary" to="/routes/12/2">
+          Open route
+        </ButtonLink>
+        <Button variant="primary">Run now</Button>
+      </MemoryRouter>,
+    );
+
+    const link = screen.getByRole("link", { name: "Open route" });
+    expect(link).toHaveAttribute("href", "/routes/12/2");
+    // The appearance is shared with the button of the same weight, and only the
+    // appearance: the element is what makes it a link.
+    expect(classesOf(link)).toEqual(classesOf(screen.getByRole("button", { name: "Run now" })));
   });
 
   it("keeps the class the feature placing it asked for", () => {

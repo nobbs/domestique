@@ -9,6 +9,7 @@
  * draws anything.
  */
 
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
@@ -148,15 +149,23 @@ function show(
   } = {},
 ) {
   const onZoomChange = vi.fn();
+  // The credits under the map ask the style document what it wants attributed,
+  // which is a query like any other. Nothing here is about that request, so the
+  // client is left to fail it quietly rather than stubbed.
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
   render(
-    <RouteMap
-      styleUrl="https://tiles.example/style.json"
-      coordinates={props.coordinates ?? COORDINATES}
-      bbox={BBOX}
-      title="Stage 1"
-      zoomWindow={props.zoomWindow ?? null}
-      onZoomChange={onZoomChange}
-    />,
+    <QueryClientProvider client={client}>
+      <RouteMap
+        styleUrl="https://tiles.example/style.json"
+        coordinates={props.coordinates ?? COORDINATES}
+        bbox={BBOX}
+        title="Route 1"
+        zoomWindow={props.zoomWindow ?? null}
+        onZoomChange={onZoomChange}
+      />
+    </QueryClientProvider>,
   );
 
   return {

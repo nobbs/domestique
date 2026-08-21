@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ApiError,
-  fetchStageGeometry,
-  fetchStages,
+  fetchRouteGeometry,
+  fetchRoutes,
   fetchSyncRuns,
   setSyncSchedule,
   triggerSync,
@@ -27,7 +27,7 @@ describe("the API client", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    await fetchStages();
+    await fetchRoutes();
 
     expect(fetchMock).toHaveBeenCalledWith("/v1/routes", expect.anything());
   });
@@ -52,7 +52,7 @@ describe("the API client", () => {
   it("surfaces the service's safe error envelope", async () => {
     respondWith(404, { error: { code: "not_found", message: "resource was not found" } });
 
-    const failure = await fetchStageGeometry(12, 1).catch((error: unknown) => error);
+    const failure = await fetchRouteGeometry(12, 1).catch((error: unknown) => error);
 
     expect(failure).toBeInstanceOf(ApiError);
     const apiError = failure as ApiError;
@@ -64,7 +64,7 @@ describe("the API client", () => {
   it("reports an unauthenticated caller rather than parsing the body", async () => {
     respondWith(401, { error: { code: "unauthorized", message: "tailnet identity is required" } });
 
-    const failure = await fetchStages().catch((error: unknown) => error);
+    const failure = await fetchRoutes().catch((error: unknown) => error);
 
     expect(failure).toBeInstanceOf(ApiError);
     expect((failure as ApiError).status).toBe(401);
@@ -76,7 +76,7 @@ describe("the API client", () => {
       vi.fn(async () => new Response("gateway exploded", { status: 502 })),
     );
 
-    const failure = await fetchStages().catch((error: unknown) => error);
+    const failure = await fetchRoutes().catch((error: unknown) => error);
 
     expect(failure).toBeInstanceOf(ApiError);
     expect((failure as ApiError).status).toBe(502);
@@ -85,13 +85,13 @@ describe("the API client", () => {
   it("rejects a success payload that does not match the contract", async () => {
     respondWith(200, { stages: [{ route_id: "not-a-number" }] });
 
-    await expect(fetchStages()).rejects.toBeInstanceOf(ContractError);
+    await expect(fetchRoutes()).rejects.toBeInstanceOf(ContractError);
   });
 
   it("names the request a contract failure came back from", async () => {
     respondWith(200, { stages: [{ route_id: "not-a-number" }] });
 
-    const failure = (await fetchStages().catch((error: unknown) => error)) as ContractError;
+    const failure = (await fetchRoutes().catch((error: unknown) => error)) as ContractError;
 
     // The endpoint is the half the parsers cannot know, and it is what turns a
     // drift report into something a reader can go and look at.

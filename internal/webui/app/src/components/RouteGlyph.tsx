@@ -1,18 +1,28 @@
 /**
  * A route's shape drawn as a plain SVG polyline.
  *
- * This is deliberately not a map. The library grid renders dozens of these, and
- * a basemap behind each one would be unreadable at this size, slow to load, and
- * would tell the tile provider about every route in the library merely because
- * the operator opened the index. Browsing therefore sends nothing outside the
- * Tailnet; only opening a route loads a basemap.
+ * This is deliberately not a map. The results column renders one of these per
+ * row, and a basemap behind each would be unreadable at thirty pixels, slow to
+ * load, and would tell the tile provider about every route in the library merely
+ * because the operator opened the index. Browsing therefore sends nothing
+ * outside the Tailnet; the cartography on the page is one map, drawn once.
+ *
+ * The glyph is stroked in the route's steepest gradient band, so a row says how
+ * hard the ride is before its figures are read — the same ramp the chart and the
+ * map band with, at full strength because this is a small mark.
  */
 
 import { useMemo } from "react";
 import type { Position } from "../api/types";
 
-const VIEWBOX = 100;
-const PADDING = 8;
+/**
+ * The viewBox, in the units the stroke is measured against.
+ *
+ * Small on purpose: the glyph is drawn at 30 px in a row, and a coarse box keeps
+ * the shape from resolving into detail nobody can see at that size.
+ */
+const VIEWBOX = 48;
+const PADDING = 4;
 
 /**
  * Projects longitude and latitude onto the viewBox.
@@ -21,7 +31,7 @@ const PADDING = 8;
  * real proportions rather than being stretched east-west, and the aspect ratio
  * is preserved by using one scale for both axes.
  */
-export function thumbnailPoints(coordinates: Position[]): string {
+export function glyphPoints(coordinates: Position[]): string {
   if (coordinates.length < 2) {
     return "";
   }
@@ -58,31 +68,36 @@ export function thumbnailPoints(coordinates: Position[]): string {
     .join(" ");
 }
 
-export interface RouteThumbnailProps {
+export interface RouteGlyphProps {
   coordinates: Position[];
   title: string;
+  /** The route's steepest gradient band, which the shape is stroked in. */
+  band: number;
 }
 
-export function RouteThumbnail({ coordinates, title }: RouteThumbnailProps) {
-  const points = useMemo(() => thumbnailPoints(coordinates), [coordinates]);
+export function RouteGlyph({ coordinates, title, band }: RouteGlyphProps) {
+  const points = useMemo(() => glyphPoints(coordinates), [coordinates]);
 
   if (points === "") {
-    return <div className="route-thumbnail route-thumbnail--empty" aria-hidden="true" />;
+    return <div className="route-glyph route-glyph--empty" aria-hidden="true" />;
   }
 
   return (
     <svg
-      className="route-thumbnail"
+      className="route-glyph"
       viewBox={`0 0 ${VIEWBOX} ${VIEWBOX}`}
       role="img"
       aria-label={`Shape of ${title}`}
       preserveAspectRatio="xMidYMid meet"
     >
       <polyline
+        // The band is carried as data rather than as a stroke, because the ramp
+        // is a set of custom properties and a presentation attribute cannot
+        // resolve one — see the `.route-glyph` rules in index.css.
+        data-band={band}
         points={points}
         fill="none"
-        stroke="currentColor"
-        strokeWidth={3}
+        strokeWidth={2}
         strokeLinecap="round"
         strokeLinejoin="round"
         vectorEffect="non-scaling-stroke"

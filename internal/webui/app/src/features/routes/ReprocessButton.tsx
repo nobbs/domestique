@@ -13,7 +13,7 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { reprocessStage } from "../../api/client";
-import { stageGeometryQuery, statusQuery } from "../../api/queries";
+import { routeGeometryQuery, statusQuery } from "../../api/queries";
 import { Button } from "../../components/Button";
 
 export function ReprocessButton({ routeId, stageOrder }: { routeId: number; stageOrder: number }) {
@@ -32,7 +32,7 @@ export function ReprocessButton({ routeId, stageOrder }: { routeId: number; stag
         // instead means the next visit or focus fetches whatever has landed by
         // then.
         queryClient.invalidateQueries({
-          queryKey: stageGeometryQuery(routeId, stageOrder).queryKey,
+          queryKey: routeGeometryQuery(routeId, stageOrder).queryKey,
           refetchType: "none",
         }),
       ]);
@@ -40,17 +40,17 @@ export function ReprocessButton({ routeId, stageOrder }: { routeId: number; stag
   });
 
   return (
-    <div className="stage-detail__reprocess">
-      <Button variant="quiet" disabled={reprocess.isPending} onClick={() => reprocess.mutate()}>
+    <div className="route-page__reprocess">
+      <Button variant="standard" disabled={reprocess.isPending} onClick={() => reprocess.mutate()}>
         {reprocess.isPending ? "Requesting…" : "Reprocess"}
       </Button>
       {reprocess.isSuccess ? (
-        <span className="stage-detail__reprocess-note" role="status">
+        <span className="route-page__reprocess-note" role="status">
           Queued. This stage is read, derived, and pushed again on the next pass.
         </span>
       ) : null}
       {reprocess.isError ? (
-        <span className="stage-detail__reprocess-note" role="status">
+        <span className="route-page__reprocess-note" role="status">
           {reprocess.error instanceof Error && reprocess.error.message
             ? reprocess.error.message
             : "That request could not be made."}

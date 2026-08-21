@@ -1,15 +1,10 @@
 /*
- * The one ordinary action control.
+ * The one action control, in two weights.
  *
- * Three places ask the service to do something in a single press — reprocess a
- * stage, leave a zoomed stretch, run one half of a synchronisation — and each
- * had written out the same border, radius, surface, and inherited font for
- * itself. They are the same control; only their weight differs, which is what
- * the two variants below say and all they say.
- *
- * Native `<button>` throughout. The platform already gives this control its
- * role, its keyboard handling, and its disabled semantics, so there is nothing
- * here for a component library to supply.
+ * Native `<button>` for an action and a native link for a navigation. The
+ * platform already gives each of them its role, its keyboard handling, and its
+ * disabled semantics, so there is nothing here for a component library to
+ * supply — only the two weights they share.
  */
 
 /*
@@ -19,16 +14,14 @@
  * in front of it.
  */
 .button {
-  border: 1px solid var(--border);
-  border-radius: calc(var(--radius) - 4px);
-  background: var(--surface);
-  font: inherit;
+  padding: 6px 12px;
+  /* A link wears this too, and a link is underlined until it is told not to. */
+  text-decoration: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  font: var(--type-row);
+  letter-spacing: var(--track-row);
   cursor: pointer;
-}
-
-.button:hover:not(:disabled) {
-  border-color: var(--accent);
-  color: var(--accent);
 }
 
 .button:focus-visible {
@@ -46,19 +39,25 @@
   cursor: default;
 }
 
-/*
- * The weight an action carries in its own row. `standard` is a control someone
- * came to the page to press; `quiet` is one that is merely available while they
- * are there — a way back, or a repair for the rare case the page is wrong.
- */
-.standard {
-  padding: 0.35rem 0.8rem;
-  color: var(--text);
-  font-size: 0.85rem;
+/* The one thing this view is for: accent fill, at the weight of a card title. */
+.primary {
+  background: var(--accent);
+  color: var(--panel);
+  font-weight: 600;
 }
 
-.quiet {
-  padding: 0.25rem 0.7rem;
-  color: var(--text-muted);
-  font-size: 0.8rem;
+.primary:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+/* Everything else: a hairline on the page's own surface. */
+.standard {
+  border-color: var(--rule);
+  background: var(--base);
+  color: var(--ink);
+}
+
+.standard:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
 }

@@ -7,7 +7,7 @@ import type { Highlight } from "../lib/highlight";
 import { gradientRanges, presentBands } from "../lib/profile";
 import type { SurfaceSummary } from "../lib/surface";
 import { summariseSurface } from "../lib/surface";
-import { StageKey } from "./StageKey";
+import { RouteKey } from "./RouteKey";
 
 function route(pointCount: number): Position[] {
   return Array.from({ length: pointCount }, (_, index) => [8, 49 + index * 0.001] as Position);
@@ -25,10 +25,10 @@ function halfGravel(): SurfaceSummary {
   return summary;
 }
 
-describe("StageKey", () => {
+describe("RouteKey", () => {
   it("names every class present and the share it covers", () => {
     render(
-      <StageKey
+      <RouteKey
         surface={halfGravel()}
         surfaceAbsence="none"
         bands={[]}
@@ -52,7 +52,7 @@ describe("StageKey", () => {
     }
 
     render(
-      <StageKey
+      <RouteKey
         surface={summary}
         surfaceAbsence="none"
         bands={[]}
@@ -74,7 +74,7 @@ describe("StageKey", () => {
     }
 
     render(
-      <StageKey
+      <RouteKey
         surface={summary}
         surfaceAbsence="none"
         bands={[]}
@@ -88,7 +88,7 @@ describe("StageKey", () => {
 
   it("says why there is no surface key rather than leaving a gap", () => {
     render(
-      <StageKey
+      <RouteKey
         surface={null}
         surfaceAbsence="Surface not classified yet."
         bands={[0, 2]}
@@ -104,7 +104,7 @@ describe("StageKey", () => {
   // lights nothing.
   it("lists only the bands it was told the stage has", () => {
     render(
-      <StageKey
+      <RouteKey
         surface={null}
         surfaceAbsence="none"
         bands={[0, 3]}
@@ -113,7 +113,7 @@ describe("StageKey", () => {
       />,
     );
 
-    expect(screen.getByRole("button", { name: "< 4%" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "≤ 4%" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "12–16%" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "4–8%" })).toBeNull();
   });
@@ -136,7 +136,7 @@ describe("StageKey", () => {
     expect(bands).toEqual([0, 1, 3]);
 
     render(
-      <StageKey
+      <RouteKey
         surface={null}
         surfaceAbsence="none"
         bands={bands}
@@ -146,7 +146,7 @@ describe("StageKey", () => {
     );
 
     expect(screen.getAllByRole("button")).toHaveLength(3);
-    expect(screen.getByRole("button", { name: "< 4%" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "≤ 4%" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "4–8%" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "12–16%" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "8–12%" })).toBeNull();
@@ -157,7 +157,7 @@ describe("StageKey", () => {
     const user = userEvent.setup();
     const onHighlightChange = vi.fn();
     render(
-      <StageKey
+      <RouteKey
         surface={halfGravel()}
         surfaceAbsence="none"
         bands={[2]}
@@ -178,7 +178,7 @@ describe("StageKey", () => {
     const user = userEvent.setup();
     const onHighlightChange = vi.fn();
     render(
-      <StageKey
+      <RouteKey
         surface={halfGravel()}
         surfaceAbsence="none"
         bands={[]}
@@ -199,7 +199,7 @@ describe("StageKey", () => {
   it("holds the whole key on one tab stop and moves inside it with the arrows", async () => {
     const user = userEvent.setup();
     render(
-      <StageKey
+      <RouteKey
         surface={halfGravel()}
         surfaceAbsence="none"
         bands={[2]}
@@ -234,7 +234,7 @@ describe("StageKey", () => {
     const user = userEvent.setup();
     const onHighlightChange = vi.fn();
     render(
-      <StageKey
+      <RouteKey
         surface={halfGravel()}
         surfaceAbsence="none"
         bands={[2]}
@@ -265,7 +265,7 @@ describe("StageKey", () => {
       });
 
       return (
-        <StageKey
+        <RouteKey
           surface={halfGravel()}
           surfaceAbsence="none"
           bands={[2]}
@@ -299,7 +299,7 @@ describe("StageKey", () => {
 
   it("explains what a class name means, in the name a screen reader hears", () => {
     render(
-      <StageKey
+      <RouteKey
         surface={halfGravel()}
         surfaceAbsence="none"
         bands={[]}
@@ -309,7 +309,7 @@ describe("StageKey", () => {
     );
 
     expect(screen.getByRole("button", { name: /Gravel/ })).toHaveAccessibleName(
-      "Gravel, unpaved and loose, 50% of the stage",
+      "Gravel, unpaved and loose, 50% of the route",
     );
   });
 });

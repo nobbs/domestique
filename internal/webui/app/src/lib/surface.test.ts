@@ -5,10 +5,10 @@ import {
   SURFACE_STYLES,
   summariseSurface,
   surfaceBandsWithin,
+  surfaceColour,
   surfaceKindAt,
   surfaceLines,
   surfaceLinesWithin,
-  swatchBackground,
 } from "./surface";
 
 /** Points spaced evenly by latitude, so every stretch is the same length. */
@@ -235,27 +235,26 @@ describe("surfaceLines", () => {
 });
 
 describe("SURFACE_STYLES", () => {
-  it("styles every class the service can report", () => {
+  it("styles every class the service can report, in both themes", () => {
     for (const kind of SURFACE_KINDS) {
-      expect(SURFACE_STYLES[kind].colour).toMatch(/^#[0-9A-Fa-f]{6}$/);
+      expect(SURFACE_STYLES[kind].colour.light).toMatch(/^#[0-9A-Fa-f]{6}$/);
+      expect(SURFACE_STYLES[kind].colour.dark).toMatch(/^#[0-9A-Fa-f]{6}$/);
       expect(SURFACE_STYLES[kind].label).not.toBe("");
     }
   });
 
   it("gives every class its own colour, so none is mistaken for another", () => {
-    const colours = SURFACE_KINDS.map((kind) => SURFACE_STYLES[kind].colour);
+    for (const theme of ["light", "dark"] as const) {
+      const colours = SURFACE_KINDS.map((kind) => SURFACE_STYLES[kind].colour[theme]);
 
-    expect(new Set(colours).size).toBe(SURFACE_KINDS.length);
+      expect(new Set(colours).size).toBe(SURFACE_KINDS.length);
+    }
   });
 });
 
-describe("swatchBackground", () => {
-  it("echoes a dashed line as a dashed swatch, not a flat chip", () => {
-    expect(swatchBackground("gravel")).toContain("repeating-linear-gradient");
-    expect(swatchBackground("gravel")).toContain(SURFACE_STYLES.gravel.colour);
-  });
-
-  it("leaves a solid class solid", () => {
-    expect(swatchBackground("asphalt")).toBe(SURFACE_STYLES.asphalt.colour);
+describe("surfaceColour", () => {
+  it("answers with the colour of the theme it is asked about", () => {
+    expect(surfaceColour("gravel", false)).toBe(SURFACE_STYLES.gravel.colour.light);
+    expect(surfaceColour("gravel", true)).toBe(SURFACE_STYLES.gravel.colour.dark);
   });
 });

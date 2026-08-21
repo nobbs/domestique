@@ -1,5 +1,5 @@
 /**
- * One stage's page: the map, the chart, and the two of them as one instrument.
+ * One route's page: the map, the chart, and the two of them as one instrument.
  *
  * The interactions here are the reason this suite exists. Each of them spans a
  * real map, a real chart and the state they share, and each one ends in paint —
@@ -7,20 +7,20 @@
  * can see.
  */
 
-import { expect, mapRegion, openStage, profileScrubber, settleMap, test } from "./fixtures";
+import { expect, mapRegion, openRoute, profileScrubber, settleMap, test } from "./fixtures";
 
-/** A straight three-band stage: the simplest ground to point at. */
-const LINE_STAGE = { routeId: 4101, stageOrder: 3 };
+/** A straight three-band route: the simplest ground to point at. */
+const LINE_ROUTE = { routeId: 4101, stageOrder: 3 };
 /** The loop, whose classification covers all six surface classes. */
-const LOOP_STAGE = { routeId: 4102, stageOrder: 1 };
+const LOOP_ROUTE = { routeId: 4102, stageOrder: 1 };
 /** The short link, which was never classified and has no profile at all. */
-const UNCLASSIFIED_STAGE = { routeId: 4103, stageOrder: 1 };
+const UNCLASSIFIED_ROUTE = { routeId: 4103, stageOrder: 1 };
 
-test("the stage draws its map, its facts and its profile", async ({ offlinePage: page }) => {
-  await openStage(page, LINE_STAGE.routeId, LINE_STAGE.stageOrder);
+test("the route draws its map, its facts and its profile", async ({ offlinePage: page }) => {
+  await openRoute(page, LINE_ROUTE.routeId, LINE_ROUTE.stageOrder);
 
   await expect(page.locator(".maplibregl-canvas")).toBeVisible();
-  await expect(page.locator(".stage-detail__facts")).toContainText("km");
+  await expect(page.locator(".route-page__facts")).toContainText("km");
   // What the map says to a reader who cannot see it: the same start, finish and
   // direction the markers and chevrons draw.
   await expect(mapRegion(page)).toContainText("Starts and finishes");
@@ -32,7 +32,7 @@ test("the stage draws its map, its facts and its profile", async ({ offlinePage:
 });
 
 test("the chart answers the arrow keys and says where it is", async ({ offlinePage: page }) => {
-  await openStage(page, LINE_STAGE.routeId, LINE_STAGE.stageOrder);
+  await openRoute(page, LINE_ROUTE.routeId, LINE_ROUTE.stageOrder);
 
   const scrubber = profileScrubber(page);
   await scrubber.focus();
@@ -56,7 +56,7 @@ test("the chart answers the arrow keys and says where it is", async ({ offlinePa
 test("dragging across the chart zooms into that stretch, and Escape leaves it", async ({
   offlinePage: page,
 }) => {
-  await openStage(page, LINE_STAGE.routeId, LINE_STAGE.stageOrder);
+  await openRoute(page, LINE_ROUTE.routeId, LINE_ROUTE.stageOrder);
 
   const chart = page.locator(".elevation-profile");
   const box = await chart.boundingBox();
@@ -74,19 +74,19 @@ test("dragging across the chart zooms into that stretch, and Escape leaves it", 
   // The overview's summary keeps the stretch visible even when the chart holding
   // the way back is folded away, so it is the honest place to read the window
   // from.
-  await expect(page.locator(".elevation-overview__hint")).toContainText("km shown");
+  await expect(page.locator(".route-page__panel-hint")).toContainText("km shown");
 
   await page.keyboard.press("Escape");
   await expect(chart).not.toHaveAttribute("data-zoomed", "true");
-  await expect(page.locator(".elevation-overview__hint")).not.toContainText("km shown");
+  await expect(page.locator(".route-page__panel-hint")).not.toContainText("km shown");
 });
 
 test("dragging along the route picks the same stretch off the map", async ({
   offlinePage: page,
 }) => {
-  await openStage(page, LINE_STAGE.routeId, LINE_STAGE.stageOrder);
+  await openRoute(page, LINE_ROUTE.routeId, LINE_ROUTE.stageOrder);
 
-  // A straight stage's midpoint is the centre of the bounds the map fitted, so
+  // A straight route's midpoint is the centre of the bounds the map fitted, so
   // the centre of the canvas is on the line — which is what tells a selection
   // from a pan. A drag that began off the line would pan the map instead, and
   // this assertion is what would catch that distinction being lost.
@@ -103,17 +103,17 @@ test("dragging along the route picks the same stretch off the map", async ({
   await page.mouse.move(centreX + 120, centreY + 40, { steps: 10 });
   await page.mouse.up();
 
-  await expect(page.locator(".elevation-overview__hint")).toContainText("km shown");
+  await expect(page.locator(".route-page__panel-hint")).toContainText("km shown");
   await expect(page.locator(".elevation-profile")).toHaveAttribute("data-zoomed", "true");
 
   // Escape over the map returns the whole route, the same way out the chart's own
   // control offers.
   await page.keyboard.press("Escape");
-  await expect(page.locator(".elevation-overview__hint")).not.toContainText("km shown");
+  await expect(page.locator(".route-page__panel-hint")).not.toContainText("km shown");
 });
 
 test("picking a surface class out of the key repaints the map", async ({ offlinePage: page }) => {
-  await openStage(page, LOOP_STAGE.routeId, LOOP_STAGE.stageOrder);
+  await openRoute(page, LOOP_ROUTE.routeId, LOOP_ROUTE.stageOrder);
   const before = await settleMap(page);
 
   const key = page.getByRole("list", { name: "Surface classes" });
@@ -121,7 +121,7 @@ test("picking a surface class out of the key repaints the map", async ({ offline
   const gravel = key.getByRole("button", { name: /^Gravel/ });
   await gravel.click();
 
-  await expect(page.locator(".elevation-overview__hint")).toContainText("only");
+  await expect(page.locator(".route-page__panel-hint")).toContainText("only");
   const after = await settleMap(page);
   // The map dims everything but the chosen class, so the canvas has to differ.
   // Comparing the map against itself within the run is what makes this a visual
@@ -129,16 +129,16 @@ test("picking a surface class out of the key repaints the map", async ({ offline
   expect(after.equals(before)).toBe(false);
 
   await gravel.click();
-  await expect(page.locator(".elevation-overview__hint")).not.toContainText("only");
+  await expect(page.locator(".route-page__panel-hint")).not.toContainText("only");
 });
 
-test("a stage nobody classified says so rather than showing an empty key", async ({
+test("a route nobody classified says so rather than showing an empty key", async ({
   offlinePage: page,
 }) => {
-  await openStage(page, UNCLASSIFIED_STAGE.routeId, UNCLASSIFIED_STAGE.stageOrder);
+  await openRoute(page, UNCLASSIFIED_ROUTE.routeId, UNCLASSIFIED_ROUTE.stageOrder);
 
   await expect(page.getByText("Surface not classified yet.")).toBeVisible();
-  // The same stage has no elevation either, which is a second absence the page
+  // The same route has no elevation either, which is a second absence the page
   // has to state instead of drawing a flat line through it.
   await expect(page.locator(".elevation-profile__absent")).toContainText("no elevation data");
 });
@@ -146,7 +146,7 @@ test("a stage nobody classified says so rather than showing an empty key", async
 test("the way back to the library is reachable from the keyboard", async ({
   offlinePage: page,
 }) => {
-  await openStage(page, LINE_STAGE.routeId, LINE_STAGE.stageOrder);
+  await openRoute(page, LINE_ROUTE.routeId, LINE_ROUTE.stageOrder);
 
   const back = page.getByRole("link", { name: /All routes/ });
   await back.focus();
@@ -154,5 +154,7 @@ test("the way back to the library is reachable from the keyboard", async ({
   await back.press("Enter");
 
   await expect(page).toHaveURL(/\/$/);
-  await expect(page.locator(".route-card")).not.toHaveCount(0);
+  // The library is a map, not a list: what proves the way back arrived is the
+  // search over everything rather than a column of cards.
+  await expect(page.getByRole("searchbox", { name: "Search the route library" })).toBeVisible();
 });

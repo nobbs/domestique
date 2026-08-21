@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { Stage } from "../api/types";
-import { arrangeStages, matchesQuery, stageCounts } from "./library";
+import type { Route } from "../api/types";
+import { matchesQuery, matchingRoutes } from "./library";
 
-function stage(overrides: Partial<Stage> = {}): Stage {
+function stage(overrides: Partial<Route> = {}): Route {
   return {
     routeId: 12,
     stageOrder: 1,
@@ -19,7 +19,7 @@ function stage(overrides: Partial<Stage> = {}): Stage {
   };
 }
 
-function named(routeId: number, stageOrder: number, routeName: string, stageName: string): Stage {
+function named(routeId: number, stageOrder: number, routeName: string, stageName: string): Route {
   return stage({
     routeId,
     stageOrder,
@@ -52,32 +52,18 @@ describe("matchesQuery", () => {
   });
 });
 
-describe("arrangeStages", () => {
+describe("matchingRoutes", () => {
   const library = [
     named(3, 1, "Rhine Traverse", "Valley floor"),
     named(1, 2, "Alpine loop", "Descent"),
     named(1, 1, "Alpine loop", "Climb"),
-  ].map((entry, index) =>
-    stage({ ...entry, distanceMetres: 10_000 * (index + 1), ascentMetres: 100 * (3 - index) }),
-  );
+  ];
 
-  it("sorts by name, then by the stage's own identity", () => {
-    expect(arrangeStages(library, "", "name").map((entry) => entry.title)).toEqual([
+  it("puts what a search leaves in one order, by name", () => {
+    expect(matchingRoutes(library, "").map((entry) => entry.title)).toEqual([
       "Alpine loop — Climb",
       "Alpine loop — Descent",
       "Rhine Traverse — Valley floor",
-    ]);
-  });
-
-  it("sorts by distance, longest first", () => {
-    expect(arrangeStages(library, "", "distance").map((entry) => entry.distanceMetres)).toEqual([
-      30_000, 20_000, 10_000,
-    ]);
-  });
-
-  it("sorts by ascent, most climbing first", () => {
-    expect(arrangeStages(library, "", "ascent").map((entry) => entry.ascentMetres)).toEqual([
-      300, 200, 100,
     ]);
   });
 
@@ -86,15 +72,15 @@ describe("arrangeStages", () => {
       named(2, 2, "Second", "Late"),
       named(1, 1, "First", "Early"),
       named(2, 1, "Second", "Early"),
-    ].map((entry) => stage({ ...entry, distanceMetres: 5_000 }));
-    const keys = (stages: Stage[]) => stages.map((entry) => `${entry.routeId}/${entry.stageOrder}`);
+    ].map((entry) => stage({ ...entry, title: "Same" }));
+    const keys = (routes: Route[]) => routes.map((entry) => `${entry.routeId}/${entry.stageOrder}`);
 
-    expect(keys(arrangeStages(tied, "", "distance"))).toEqual(["1/1", "2/1", "2/2"]);
-    expect(keys(arrangeStages([...tied].reverse(), "", "distance"))).toEqual(["1/1", "2/1", "2/2"]);
+    expect(keys(matchingRoutes(tied, ""))).toEqual(["1/1", "2/1", "2/2"]);
+    expect(keys(matchingRoutes([...tied].reverse(), ""))).toEqual(["1/1", "2/1", "2/2"]);
   });
 
   it("filters and orders together", () => {
-    expect(arrangeStages(library, "alpine", "name").map((entry) => entry.title)).toEqual([
+    expect(matchingRoutes(library, "alpine").map((entry) => entry.title)).toEqual([
       "Alpine loop — Climb",
       "Alpine loop — Descent",
     ]);
@@ -102,21 +88,8 @@ describe("arrangeStages", () => {
 
   it("leaves the listing it was given untouched", () => {
     const given = [...library];
-    arrangeStages(given, "", "name");
+    matchingRoutes(given, "");
 
     expect(given).toEqual(library);
-  });
-});
-
-describe("stageCounts", () => {
-  it("counts the stages each source route contributes", () => {
-    const counts = stageCounts([
-      named(1, 1, "Alpine loop", "Climb"),
-      named(1, 2, "Alpine loop", "Descent"),
-      named(3, 1, "Rhine Traverse", ""),
-    ]);
-
-    expect(counts.get(1)).toBe(2);
-    expect(counts.get(3)).toBe(1);
   });
 });

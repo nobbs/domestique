@@ -214,8 +214,8 @@ describe("ElevationProfile", () => {
     const stretches = [...container.querySelectorAll(".elevation-profile__surface")];
     expect(stretches).toHaveLength(2);
     expect(stretches.map((line) => line.getAttribute("stroke"))).toEqual([
-      SURFACE_STYLES.asphalt.colour,
-      SURFACE_STYLES.gravel.colour,
+      SURFACE_STYLES.asphalt.colour.light,
+      SURFACE_STYLES.gravel.colour.light,
     ]);
 
     // In route order, and meeting where one class hands over to the next.
@@ -225,9 +225,10 @@ describe("ElevationProfile", () => {
     expect(Number(second.getAttribute("x2"))).toBeGreaterThan(Number(second.getAttribute("x1")));
   });
 
-  // The dash pattern is the channel that survives greyscale and colour
-  // blindness, and it has to mean the same thing here as it does on the map.
-  it("wears the same dash pattern a class wears on the map", () => {
+  // The strip is a solid band of the class's own colour, and it is the same
+  // colour the class wears on the map: one hue per class, told apart by hue
+  // alone, in both places.
+  it("draws the strip solid, in the colour the class wears on the map", () => {
     const coordinates = climb();
     const surface = summariseSurface(coordinates, [
       { kind: "gravel", startIndex: 0, endIndex: coordinates.length - 1 },
@@ -235,9 +236,8 @@ describe("ElevationProfile", () => {
     const { container } = render(<Harness surface={surface} />);
 
     const stretch = container.querySelector(".elevation-profile__surface");
-    expect(stretch?.getAttribute("stroke-dasharray")).toBe(
-      SURFACE_STYLES.gravel.dashes.map((dash) => dash * 7).join(" "),
-    );
+    expect(stretch?.getAttribute("stroke")).toBe(SURFACE_STYLES.gravel.colour.light);
+    expect(stretch?.getAttribute("stroke-dasharray")).toBeNull();
   });
 
   // The two lanes are one instrument: a pointer moving onto the strip must not
@@ -570,7 +570,7 @@ describe("ElevationProfile zooming", () => {
 
     const stretches = [...container.querySelectorAll(".elevation-profile__surface")];
     expect(stretches.map((line) => line.getAttribute("stroke"))).toEqual([
-      SURFACE_STYLES.gravel.colour,
+      SURFACE_STYLES.gravel.colour.light,
     ]);
     // Cut at the window's edge, not drawn from where the class actually starts.
     expect(Number(stretches[0]?.getAttribute("x1"))).toBe(0);

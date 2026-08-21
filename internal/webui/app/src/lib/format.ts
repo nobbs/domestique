@@ -50,3 +50,18 @@ export function formatTimestamp(value: string | undefined): string {
     timeStyle: "short",
   });
 }
+
+/**
+ * A height above sea level.
+ *
+ * Not `formatAscent`: a climb of nought metres is a route with no usable
+ * profile, but an altitude of nought metres is the coast, and a route that
+ * drops below sea level is a real one.
+ */
+export function formatElevation(metres: number): string {
+  if (!Number.isFinite(metres)) {
+    return "—";
+  }
+
+  return `${Math.round(metres).toLocaleString()} m`;
+}

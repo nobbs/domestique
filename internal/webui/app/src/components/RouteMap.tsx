@@ -28,20 +28,27 @@ import type { Highlight } from "../lib/highlight";
 import { highlightRanges, litRanges } from "../lib/highlight";
 import { mapExploration } from "../lib/mapExploration";
 import { routeMetresAt, routeSelection } from "../lib/mapSelection";
-import { usePrefersReducedMotion } from "../lib/mediaQuery";
 import type { DistanceWindow, Profile } from "../lib/profile";
 import { coordinateRange, nearestSample, rangeBounds, sampleAt } from "../lib/profile";
 import { cuesDescription, directionChevrons, metresPerPixel, routeCues } from "../lib/routeCues";
 import { gradientSlices, routeLinesWithin } from "../lib/routeLines";
 import { NEAR_ROUTE_PIXELS, NEAR_ROUTE_TOUCH_PIXELS } from "../lib/selection";
-import { SURFACE_LINE_WIDTH, SURFACE_STYLES, surfaceLinesWithin } from "../lib/surface";
+import { SURFACE_LINE_WIDTH, surfaceColour, surfaceLinesWithin } from "../lib/surface";
 import { useEscapeKey } from "../lib/useEscapeKey";
 import { ExploreToggle } from "./ExploreToggle";
+import { MapCredits } from "./MapCredits";
+import { MapViewport } from "./MapViewport";
 // Configures the shared worker pool; without it this map renders no tiles.
 import "../lib/maplibre";
 
-/** The brand accent, chosen to stay legible over both light and dark basemaps. */
-const ROUTE_ACCENT = "#C8502E";
+/**
+ * The accent the route itself is drawn in, per basemap.
+ *
+ * Keyed on which basemap is loaded rather than on the system scheme, because
+ * this sits on the cartography rather than on the page — see `Basemap.dark`.
+ * The same pair is `--accent` in index.css; both copies must stay in step.
+ */
+const ROUTE_ACCENT = { light: "#236fc7", dark: "#70adfb" } as const;
 const SOURCE_ID = "stage-geometry";
 
 /**
@@ -92,8 +99,8 @@ const TERMINAL_RING_WIDTH = 3;
  * Only the steeper four are ever drawn — see `GRADIENT_BANDS_DRAWN`.
  */
 const BAND_COLOURS = {
-  light: ["#e0ac2c", "#c87f41", "#b15635", "#952e2c", "#63202b"],
-  dark: ["#f3cb60", "#ef9a55", "#e07550", "#cd554d", "#b8354a"],
+  light: ["#8e979f", "#22a94e", "#e8b70a", "#f2811d", "#dc2b21"],
+  dark: ["#a9b3bc", "#3fd074", "#f7d13f", "#ff9e46", "#f95a4c"],
 } as const;
 
 /**
@@ -187,57 +194,6 @@ const ROUTE_MAX_ZOOM = 15;
  * the basemap has anything left to add.
  */
 const WINDOW_MAX_ZOOM = 17;
-
-/**
- * Keeps the camera framed on the ground on show and the canvas sized to its
- * pane.
- *
- * This is a child of the map rather than a ref on it: `useMap` is the supported
- * way to reach the instance, and it resolves once the map is actually ready,
- * whereas a ref on the map component is not populated.
- */
-function MapViewport({ bounds, maxZoom }: { bounds: BoundingBox; maxZoom: number }) {
-  const { current: map } = useMap();
-  // The camera is animated by MapLibre rather than by a transition, so the
-  // stylesheet's reduced-motion block cannot reach it. A reader who asked for
-  // less movement gets the new framing outright instead of a flight to it.
-  const reducedMotion = usePrefersReducedMotion();
-
-  useEffect(() => {
-    if (!map) {
-      return;
-    }
-    // The map mounts inside a flex pane whose height is not resolved on the
-    // first paint. Observing the container also keeps the canvas correct when
-    // the sidebar reflows at narrow widths.
-    const container = map.getContainer();
-    const observer = new ResizeObserver(() => map.resize());
-    observer.observe(container);
-    map.resize();
-
-    return () => observer.disconnect();
-  }, [map]);
-
-  useEffect(() => {
-    if (!map) {
-      return;
-    }
-    // Re-frame when a different stage is selected, rather than remounting the
-    // map and re-downloading the style — and when a stretch is chosen, so the
-    // map shows the ground the chart is showing however the stretch was asked
-    // for. Only a window moves the camera: panning away to look at the
-    // surrounding roads costs nothing and needs no way back.
-    map.fitBounds(
-      [
-        [bounds[0], bounds[1]],
-        [bounds[2], bounds[3]],
-      ],
-      { padding: 56, duration: reducedMotion ? 0 : 600, maxZoom },
-    );
-  }, [map, bounds, maxZoom, reducedMotion]);
-
-  return null;
-}
 
 /**
  * Reports the position under the pointer, so the elevation chart can mark it.
@@ -603,9 +559,9 @@ export function RouteMap({
   const routeSlices = useMemo(() => routeLinesWithin(coordinates, lit), [coordinates, lit]);
   const route = useMemo(() => taggedCollection(routeSlices), [routeSlices]);
 
-  // One feature per class rather than one with a data-driven colour, because
-  // `line-dasharray` cannot be driven by a property: the pattern belongs to the
-  // layer, so each class needs its own.
+  // One feature per class rather than one with a data-driven colour, so the
+  // classes stack in a fixed order and a stretch that carries two of them draws
+  // the same way every render.
   const surfaceFeatures = useMemo(
     () =>
       surfaceLinesWithin(coordinates, surface ?? [], lit).map(({ kind, ...slices }) => ({
@@ -702,6 +658,16 @@ export function RouteMap({
     onZoomChange?.(null);
   });
 
+  // The route sits on the cartography, so it follows the basemap rather than the
+  // page: a dark route on a light basemap under a dark system scheme would be a
+  // line chosen for a background it is not on.
+  const accent = ROUTE_ACCENT[darkBasemap ? "dark" : "light"];
+
+  /*
+   * MapLibre's own attribution control is off. It renders the provider's own
+   * markup into a corner of its own, and this map has one corner: the credit is
+   * drawn by MapCredits below, under the zoom pair and the scale bar.
+   */
   return (
     <div className="route-map">
       <MapLibre
@@ -710,7 +676,7 @@ export function RouteMap({
         initialViewState={{ bounds: bbox, fitBoundsOptions: { padding: 56 } }}
         style={{ width: "100%", height: "100%" }}
         aria-label={`Map of ${title}`}
-        attributionControl={{ customAttribution: SURFACE_ATTRIBUTION }}
+        attributionControl={false}
       >
         <MapViewport
           bounds={windowBounds ?? bbox}
@@ -723,8 +689,9 @@ export function RouteMap({
           profile={profile}
           selectable={onZoomChange !== undefined}
         />
-        <NavigationControl position="top-right" showCompass={false} />
-        <ScaleControl position="bottom-left" unit="metric" />
+        {/* One cluster, bottom-right: the zoom pair, the scale bar, the credit. */}
+        <NavigationControl position="bottom-right" showCompass={false} />
+        <ScaleControl position="bottom-right" unit="metric" />
         <Source id={SOURCE_ID} type="geojson" data={route}>
           {/*
            * The casing is drawn from the whole route and stays solid under the
@@ -747,7 +714,7 @@ export function RouteMap({
               type="line"
               layout={{ "line-cap": "round", "line-join": "round" }}
               paint={{
-                "line-color": ROUTE_ACCENT,
+                "line-color": accent,
                 "line-width": SURFACE_LINE_WIDTH,
                 "line-opacity": dimmedOutside(1, dimmed),
               }}
@@ -777,7 +744,7 @@ export function RouteMap({
               // than half a line width into the band that follows it.
               layout={{ "line-cap": "butt", "line-join": "round" }}
               paint={{
-                "line-color": BAND_COLOURS[darkBasemap ? "dark" : "light"][band] ?? ROUTE_ACCENT,
+                "line-color": BAND_COLOURS[darkBasemap ? "dark" : "light"][band] ?? accent,
                 "line-width": BAND_EDGE_WIDTH,
                 "line-opacity": dimmedOutside(1, dimmed),
               }}
@@ -798,7 +765,7 @@ export function RouteMap({
             beforeId={`stage-gradient-${LOWEST_BAND_DRAWN}-line`}
             layout={{ "line-cap": "round", "line-join": "round" }}
             paint={{
-              "line-color": ROUTE_ACCENT,
+              "line-color": accent,
               // Wider than the edging it sits under, so the glow shows either
               // side of it rather than only through it.
               "line-width": BAND_EDGE_WIDTH + 6,
@@ -812,15 +779,11 @@ export function RouteMap({
             <Layer
               id={`stage-surface-${kind}-line`}
               type="line"
-              // Butt caps, so a dash is the length the palette says it is.
-              layout={{ "line-cap": "butt", "line-join": "round" }}
+              layout={{ "line-cap": "round", "line-join": "round" }}
               paint={{
-                "line-color": SURFACE_STYLES[kind].colour,
+                "line-color": surfaceColour(kind, darkBasemap),
                 "line-width": SURFACE_LINE_WIDTH,
                 "line-opacity": dimmedOutside(1, dimmed),
-                ...(SURFACE_STYLES[kind].dashes.length > 0
-                  ? { "line-dasharray": SURFACE_STYLES[kind].dashes }
-                  : {}),
               }}
             />
           </Source>
@@ -838,7 +801,7 @@ export function RouteMap({
             type="circle"
             paint={{
               "circle-radius": TERMINAL_RADIUS,
-              "circle-color": ROUTE_ACCENT,
+              "circle-color": accent,
               "circle-stroke-color": "#ffffff",
               "circle-stroke-width": 2.5,
               "circle-translate": [-nudge, 0],
@@ -852,7 +815,7 @@ export function RouteMap({
             paint={{
               "circle-radius": TERMINAL_RADIUS - TERMINAL_RING_WIDTH / 2,
               "circle-color": "#ffffff",
-              "circle-stroke-color": ROUTE_ACCENT,
+              "circle-stroke-color": accent,
               "circle-stroke-width": TERMINAL_RING_WIDTH,
               "circle-translate": [nudge, 0],
             }}
@@ -867,10 +830,11 @@ export function RouteMap({
           <Layer
             id="stage-position-dot"
             type="circle"
-            paint={{ "circle-radius": 5, "circle-color": ROUTE_ACCENT }}
+            paint={{ "circle-radius": 5, "circle-color": accent }}
           />
         </Source>
       </MapLibre>
+      <MapCredits styleUrl={styleUrl} extra={SURFACE_ATTRIBUTION} />
       {/*
        * The cues in words. Markers and chevrons are drawn into a WebGL surface
        * that carries no text at all, so this is not a caption repeating what is

@@ -13,18 +13,18 @@ import {
   installOfflineBasemap,
   mapRegion,
   openLibrary,
-  openStage,
+  openRoute,
   pinRendering,
   settleMap,
   test,
 } from "./fixtures";
 
-const LOOP_STAGE = { routeId: 4102, stageOrder: 1 };
+const LOOP_ROUTE = { routeId: 4102, stageOrder: 1 };
 
-/** The light palette, from the custom properties in index.css. */
-const LIGHT_SURFACE = "rgb(255, 255, 255)";
+/** `--base` in the light palette, from the custom properties in index.css. */
+const LIGHT_SURFACE = "rgb(243, 245, 246)";
 /** The dark one, which the same file switches to at the media query. */
-const DARK_SURFACE = "rgb(22, 21, 20)";
+const DARK_SURFACE = "rgb(16, 19, 22)";
 
 function backgroundOfBody(page: Page): Promise<string> {
   return page.evaluate(() => getComputedStyle(document.body).backgroundColor);
@@ -37,7 +37,7 @@ test.describe("in a light colour scheme", () => {
     offlinePage: page,
     basemapRequests,
   }) => {
-    await openStage(page, LOOP_STAGE.routeId, LOOP_STAGE.stageOrder);
+    await openRoute(page, LOOP_ROUTE.routeId, LOOP_ROUTE.stageOrder);
 
     expect(await backgroundOfBody(page)).toBe(LIGHT_SURFACE);
     expect(basemapRequests.length).toBeGreaterThan(0);
@@ -52,7 +52,7 @@ test.describe("in a dark colour scheme", () => {
     offlinePage: page,
     basemapRequests,
   }) => {
-    await openStage(page, LOOP_STAGE.routeId, LOOP_STAGE.stageOrder);
+    await openRoute(page, LOOP_ROUTE.routeId, LOOP_ROUTE.stageOrder);
 
     expect(await backgroundOfBody(page)).toBe(DARK_SURFACE);
     // The basemap cannot follow the media query in CSS: it is a document fetched
@@ -79,7 +79,7 @@ test("the two schemes do not render the same map", async ({ browser, baseURL }) 
     const leaks = await installOfflineBasemap(page, served);
     await pinRendering(page);
 
-    await page.goto(`${served}/routes/${LOOP_STAGE.routeId}/${LOOP_STAGE.stageOrder}`);
+    await page.goto(`${served}/routes/${LOOP_ROUTE.routeId}/${LOOP_ROUTE.stageOrder}`);
     shots.push(await settleMap(page));
 
     expect(leaks, "no request left the page for a third-party server").toEqual([]);
@@ -93,27 +93,28 @@ test("the two schemes do not render the same map", async ({ browser, baseURL }) 
 test.describe("on a narrow viewport", () => {
   test.use({ viewport: { width: 375, height: 667 } });
 
-  test("the library stacks into one column", async ({ offlinePage: page }) => {
+  test("the panel gives up its fixed width and the map keeps the page", async ({
+    offlinePage: page,
+  }) => {
     await openLibrary(page);
+    await page.getByRole("searchbox", { name: "Search the route library" }).fill("rhine");
 
-    const cards = page.locator(".route-card");
-    const count = await cards.count();
-    expect(count).toBeGreaterThan(1);
-    const first = await cards.nth(0).boundingBox();
-    const second = await cards.nth(1).boundingBox();
-    expect(first).not.toBeNull();
-    expect(second).not.toBeNull();
-    if (!first || !second) {
+    const panel = await page.locator(".search").boundingBox();
+    const map = await mapRegion(page).boundingBox();
+    expect(panel).not.toBeNull();
+    expect(map).not.toBeNull();
+    if (!panel || !map) {
       return;
     }
-    // One column: the second card sits below the first rather than beside it, and
-    // neither of them overflows the viewport.
-    expect(second.y).toBeGreaterThan(first.y + first.height - 1);
-    expect(first.x + first.width).toBeLessThanOrEqual(375);
+    // Below the one breakpoint the panel is no longer the 436 px column it is on
+    // a desktop, and neither it nor the map runs off the side.
+    expect(panel.width).toBeLessThan(436);
+    expect(panel.x + panel.width).toBeLessThanOrEqual(375);
+    expect(map.width).toBeLessThanOrEqual(375);
   });
 
-  test("a stage still shows its map and its chart", async ({ offlinePage: page }) => {
-    await openStage(page, LOOP_STAGE.routeId, LOOP_STAGE.stageOrder);
+  test("a route still shows its map and its chart", async ({ offlinePage: page }) => {
+    await openRoute(page, LOOP_ROUTE.routeId, LOOP_ROUTE.stageOrder);
 
     const box = await mapRegion(page).boundingBox();
     expect(box).not.toBeNull();

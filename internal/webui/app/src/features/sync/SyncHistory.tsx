@@ -1,8 +1,8 @@
 /**
  * The runs the service has recorded, newest first.
  *
- * The controls above this say what each half last came to; this says what the
- * halves have been doing. It is the section that answers "was that failure the
+ * The card above this says what each half last came to; this says what the
+ * halves have been doing. It is the card that answers "was that failure the
  * first one, or the fifth this week", which no single last result can.
  *
  * It is recent history rather than a record: the service prunes old runs, so a
@@ -17,11 +17,10 @@ import { useEffect, useRef } from "react";
 import { statusQuery, syncRunsQuery } from "../../api/queries";
 import type { SyncPhase, SyncRun } from "../../api/types";
 import { Button } from "../../components/Button";
-import { ErrorMessage } from "../../components/StatusMessage";
 import { formatTimestamp } from "../../lib/format";
 import { GUIDANCE_LABELS, syncGuidance } from "../../lib/syncGuidance";
 
-/** Which half a row was, in the words the controls above it use. */
+/** Which half a row was, in the words the card above it uses. */
 const PHASE_LABELS: Record<SyncPhase, string> = {
   source: "Read from VeloPlanner",
   targets: "Write to Wahoo",
@@ -35,16 +34,40 @@ export function runResult(run: SyncRun): string {
 }
 
 /**
+ * What colour the outcome carries — the only colour on the row.
+ *
+ * A gate that held is not a failure and is not a success: it is a decision
+ * waiting for the operator, so it gets its own word and its own colour rather
+ * than borrowing the red of a run that broke.
+ */
+export function runTone(run: SyncRun): "good" | "hold" | "alert" {
+  const guidance = syncGuidance(run.phase, run.result, run.failure);
+  if (!guidance) {
+    return "good";
+  }
+
+  return guidance.kind === "blocked" ? "hold" : "alert";
+}
+
+/**
  * What a recorded run moved.
  *
  * A read is measured by what it found and a write by what it changed, which is
- * the same split the controls above use — the other half's counts are nought on
- * every row and would read as work that did not happen.
+ * the same split the card above uses — the other half's counts are nought on
+ * every row and would read as work that did not happen. A write that deleted
+ * nothing says so by omission, because nought deleted is the ordinary case and
+ * a zero on every row makes the one that is not zero harder to see.
  */
 export function runCounts(run: SyncRun): string {
-  return run.phase === "source"
-    ? `${run.sourceStages} stages`
-    : `${run.created} created · ${run.updated} updated · ${run.deleted} deleted`;
+  if (run.phase === "source") {
+    return `${run.sourceStages} routes`;
+  }
+
+  return [
+    `${run.created} created`,
+    `${run.updated} updated`,
+    ...(run.deleted > 0 ? [`${run.deleted} deleted`] : []),
+  ].join(" · ");
 }
 
 /** What names one row apart from the others; see where it is used. */
@@ -52,10 +75,11 @@ function runKey(run: SyncRun): string {
   return `${run.phase}-${run.completedAt}-${run.reference}`;
 }
 
+/** The body of the "What has happened" card: one row per recorded run. */
 export function SyncHistory() {
   const queryClient = useQueryClient();
   const { data: status } = useQuery(statusQuery());
-  const { data, isPending, isError, error, fetchNextPage, hasNextPage, isFetchingNextPage } =
+  const { data, isPending, isError, fetchNextPage, hasNextPage, isFetchingNextPage } =
     useInfiniteQuery(syncRunsQuery());
 
   // A run that finishes writes a row this list does not know about. The status
@@ -79,66 +103,57 @@ export function SyncHistory() {
     return null;
   }
   if (isError) {
-    return <ErrorMessage what="the run history" error={error} />;
+    return <p className="sync-card__error">The service did not say what has happened.</p>;
   }
 
   const runs = data.pages.flatMap((page) => page.runs);
+  if (runs.length === 0) {
+    return <p className="sync-card__line">Nothing has run yet.</p>;
+  }
 
   return (
-    <section className="history" aria-labelledby="history-heading">
-      <h2 className="history__heading" id="history-heading">
-        Recent runs
-      </h2>
-      {runs.length === 0 ? (
-        <p className="history__empty">Nothing has run yet.</p>
+    <>
+      <ul className="sync-card__list">
+        {runs.map((run) => (
+          /*
+           * A run recorded by a binary rolled back past the migration that named
+           * runs has no reference, so the reference alone does not name a row.
+           * Which half finished when is the rest of the name: the two halves
+           * never run at once, so no two rows share both.
+           */
+          <li className="run-row" data-phase={run.phase} key={runKey(run)}>
+            <span className="run-row__when">{formatTimestamp(run.completedAt)}</span>
+            <span className="run-row__phase">{PHASE_LABELS[run.phase]}</span>
+            <span className="run-row__counts">{runCounts(run)}</span>
+            <span className="run-row__outcome">
+              <span className="run-row__result" data-tone={runTone(run)}>
+                {runResult(run)}
+              </span>
+              {/*
+               * The reference is the only thing on the row that is not about
+               * what happened. It is here so a notification can be traced to the
+               * run it was sent for, and it is presented as the opaque string it
+               * is rather than dressed up as an identifier. A run recorded before
+               * runs were named has none to show.
+               */}
+              {run.reference === "" ? null : (
+                <span className="run-row__reference">{run.reference}</span>
+              )}
+            </span>
+          </li>
+        ))}
+      </ul>
+      {hasNextPage ? (
+        <Button
+          className="sync-card__more"
+          disabled={isFetchingNextPage}
+          onClick={() => void fetchNextPage()}
+        >
+          Earlier runs
+        </Button>
       ) : (
-        <>
-          <ul className="history__runs">
-            {runs.map((run) => (
-              /*
-               * A run recorded by a binary rolled back past the migration that
-               * named runs has no reference, so the reference alone does not
-               * name a row. Which half finished when is the rest of the name:
-               * the two halves never run at once, so no two rows share both.
-               */
-              <li className="history__run" data-phase={run.phase} key={runKey(run)}>
-                <div className="history__text">
-                  <span className="history__phase">{PHASE_LABELS[run.phase]}</span>
-                  <span className="history__counts">{runCounts(run)}</span>
-                  {/*
-                   * The reference is the only thing on the row that is not about
-                   * what happened. It is here so a notification can be traced to
-                   * the run it was sent for, and it is presented as the opaque
-                   * string it is rather than dressed up as an identifier. A run
-                   * recorded before runs were named has none to show.
-                   */}
-                  {run.reference === "" ? null : (
-                    <span className="history__reference">Run {run.reference}</span>
-                  )}
-                </div>
-                <div className="history__outcome">
-                  <span className="history__result">{runResult(run)}</span>
-                  <span className="history__when">{formatTimestamp(run.completedAt)}</span>
-                </div>
-              </li>
-            ))}
-          </ul>
-          {hasNextPage ? (
-            <Button
-              variant="quiet"
-              className="history__more"
-              disabled={isFetchingNextPage}
-              onClick={() => void fetchNextPage()}
-            >
-              Show earlier runs
-            </Button>
-          ) : (
-            <p className="history__end">
-              That is every run still kept. Older ones are pruned as new runs are recorded.
-            </p>
-          )}
-        </>
+        <p className="sync-card__foot">Older runs are pruned as new ones are recorded.</p>
       )}
-    </section>
+    </>
   );
 }

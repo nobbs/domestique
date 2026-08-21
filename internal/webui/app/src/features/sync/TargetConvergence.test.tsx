@@ -65,10 +65,8 @@ describe("TargetConvergence", () => {
     );
 
     expect(screen.getByText("rider-a")).toBeInTheDocument();
-    expect(screen.getByText("Up to date")).toBeInTheDocument();
-    expect(screen.getByText("All 4 stages written.")).toBeInTheDocument();
-    expect(screen.getByText("Last write failed")).toBeInTheDocument();
-    expect(screen.getByText("3 written · 1 outstanding")).toBeInTheDocument();
+    expect(screen.getByText(/^All 4 routes · written /)).toBeInTheDocument();
+    expect(screen.getByText(/^3 of 4 routes · written /)).toBeInTheDocument();
     // The wire words are gone: an operator is told what happened and what to do,
     // not handed the category the notification would have carried.
     expect(screen.queryByText(/failed \(destination\)/)).not.toBeInTheDocument();
@@ -76,14 +74,13 @@ describe("TargetConvergence", () => {
     expect(screen.getByText(/a Wahoo operation did not complete/)).toBeInTheDocument();
   });
 
-  // "Up to date" is a claim about the Wahoo account. Whether a head unit has
-  // fetched those routes is not something the service can see, and the section
+  // "All 4 routes" is a claim about the Wahoo account. Whether a head unit has
+  // fetched those routes is not something the service can see, and the card
   // must not be readable as though it were.
   it("says this is the account and not the device", () => {
     renderConvergence(status(true, [target()]));
 
     expect(screen.getByText(/not what a head unit has downloaded/)).toBeInTheDocument();
-    expect(screen.getByText(/Every stored stage is on every account/)).toBeInTheDocument();
   });
 
   it("says an account is waiting to be connected rather than merely behind", () => {
@@ -100,8 +97,9 @@ describe("TargetConvergence", () => {
 
     expect(screen.getByText("Not connected")).toBeInTheDocument();
     expect(screen.getByText(/has never been connected to Wahoo/)).toBeInTheDocument();
-    expect(screen.getByText("Has not been written to yet.")).toBeInTheDocument();
-    expect(screen.getByText(/Some stored stages are not yet on every account/)).toBeInTheDocument();
+    // The counts are not repeated beside it: an account that cannot be written
+    // to at all has nothing to say about how far behind it is.
+    expect(screen.queryByText(/routes/)).not.toBeInTheDocument();
   });
 
   /*
@@ -110,8 +108,8 @@ describe("TargetConvergence", () => {
    * page named no way to it at all.
    */
   it.each([
-    ["not_authorized", "Connect rider-a to Wahoo"],
-    ["needs_reauthorization", "Reconnect rider-a to Wahoo"],
+    ["not_authorized", "Connect rider-a"],
+    ["needs_reauthorization", "Reconnect rider-a"],
   ])("offers the protected flow for a %s account", (authorisation, name) => {
     renderConvergence(
       status(false, [
@@ -119,7 +117,7 @@ describe("TargetConvergence", () => {
       ]),
     );
 
-    // The slot is in the accessible name because two accounts sit in this list.
+    // The slot is in the link text because two accounts sit in this list.
     const connect = screen.getByRole("link", { name });
     // The service's own protected route, reached by leaving the application:
     // the flow goes to Wahoo and comes back, so it cannot be a client-side one.
@@ -206,8 +204,8 @@ describe("TargetConvergence", () => {
       ]),
     );
 
-    expect(screen.getByText("Held by a safety gate")).toBeInTheDocument();
-    expect(screen.queryByText("Last write failed")).not.toBeInTheDocument();
+    expect(screen.getByText(/^Held by a safety gate · /)).toBeInTheDocument();
+    expect(screen.queryByText(/^Did not finish · /)).not.toBeInTheDocument();
     expect(screen.getByText(explanation)).toBeInTheDocument();
     expect(screen.getByText(/Nothing was deleted/)).toBeInTheDocument();
   });
@@ -222,7 +220,7 @@ describe("TargetConvergence", () => {
       ]),
     );
 
-    expect(screen.getByText("Last write failed")).toBeInTheDocument();
-    expect(screen.queryByText("Held by a safety gate")).not.toBeInTheDocument();
+    expect(screen.getByText(/^Did not finish · /)).toBeInTheDocument();
+    expect(screen.queryByText(/^Held by a safety gate · /)).not.toBeInTheDocument();
   });
 });
