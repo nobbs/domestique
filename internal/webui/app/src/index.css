@@ -105,9 +105,13 @@
     0 1px 1px rgb(20 25 30 / 5%),
     0 4px 12px rgb(20 25 30 / 6%);
 
-  /* The widest a floating panel is ever drawn. A longer results line is a longer
-   * line to read, not a better one. */
+  /* The widest the column is drawn while it is a search. A longer results line
+   * is a longer line to read, not a better one. */
   --panel-width: 404px;
+
+  /* And with a route in it. The one thing that earns the extra width is the
+   * elevation profile, which is inside the card. */
+  --panel-width-route: 560px;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -215,6 +219,26 @@ body {
   pointer-events: auto;
   width: 100%;
   max-width: var(--panel-width);
+  /*
+   * The column widens while the map flies to the route, and settles as it
+   * arrives: one movement, so opening a route reads as the page turning its
+   * attention rather than as two things happening at once.
+   */
+  transition: max-width 180ms ease;
+}
+
+/*
+ * The wordmark shares the column, so it follows: a panel that stayed 404 wide
+ * over a 560 card would read as two columns that failed to line up.
+ */
+.shell__overlay[data-wide="true"] > * {
+  max-width: var(--panel-width-route);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell__overlay > * {
+    transition: none;
+  }
 }
 
 /*
@@ -231,7 +255,7 @@ body {
 
 /*
  * The one floating surface. Everything that sits over the map is this: the
- * wordmark, the search, the elevation panel, an empty state. Padding and gaps
+ * wordmark, the search, the route card, an empty state. Padding and gaps
  * come from the spacing steps, so a panel is generous without deciding anything
  * for itself.
  */
@@ -606,11 +630,10 @@ body {
  * credit, in that order. MapLibre puts a control in whichever of the four
  * corners it was given, and four occupied corners is four things to look past.
  *
- * The one corner nothing else wants. The panels take the head of the map and the
- * elevation profile takes the foot of it from the panel column rightward, so the
- * strip below that column is the only ground no floating thing is ever drawn on
- * — which is why the cluster can simply sit there rather than being lifted clear
- * of a panel whose height it would have to know.
+ * The one corner nothing else wants. Nothing crosses the foot of the map any
+ * more — the profile is inside the route card — so the cluster sits on the page
+ * gutter rather than being lifted clear of a panel whose height it would have
+ * to know.
  */
 .maplibregl-ctrl-bottom-left {
   display: flex;
@@ -801,59 +824,37 @@ body {
   letter-spacing: var(--track-small);
 }
 
-/* Elevation panel --------------------------------------------------------- */
+/* Elevation, in the card ------------------------------------------------- */
 
 /*
- * The profile floats across the foot of the map, starting where the left-hand
- * panel ends: the two never overlap, and the ground between them stays map.
- *
- * It is positioned rather than laid out, because the overlay it sits in is a
- * column for the panels on the left and this one belongs to the whole width.
+ * The profile is a row of the route's card, between the four figures it
+ * elaborates and the gradient bar it explains. It used to float across the foot
+ * of the map on a panel of its own; a reader should not have to look in two
+ * places to read one route.
  */
-.elevation-panel {
-  position: absolute;
-  right: var(--space-5);
-  bottom: var(--space-5);
-  left: calc(var(--panel-width) + var(--space-5) * 2);
-  width: auto;
-  max-width: none;
-  padding: var(--space-3) 0 var(--space-2);
+.route-profile {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
 }
 
 /*
- * Collapsed, it is a pill: it keeps the left edge it had and gives up the right
- * one, so the panel reads as having folded up in place rather than as having
- * crossed the map to a corner it was never in.
- *
- * Fully round rather than the one radius the panels share, because at this size
- * that radius would make it a small panel — and a small panel is a thing that
- * lost its contents, where a pill is a thing that put them away.
+ * The label, what the chart is showing, and the chevron that folds it away.
+ * Folded, this row is all that is left, and the summary is what it keeps.
  */
-.elevation-panel[data-collapsed="true"] {
-  right: auto;
-  padding: 0;
-  border-radius: 999px;
-}
-
-.elevation-panel__header {
+.route-profile__header {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
   gap: var(--space-1) var(--space-3);
-  margin: 0 var(--space-4) var(--space-2);
-}
-
-.elevation-panel[data-collapsed="true"] .elevation-panel__header {
-  margin: 0;
-  padding: var(--space-2) var(--space-4);
 }
 
 /*
- * The same mark every other section label in the panels wears — SURFACE,
- * DISTANCE, CLIMBING. It was the one heading set as a sentence, which read as
- * emphasis nobody had asked for rather than as the label it is.
+ * The same mark every other section label in the card wears — DISTANCE,
+ * CLIMBING, GRADIENT, SURFACE. It is a label, not a heading anybody reads as a
+ * sentence, and it is set like one.
  */
-.elevation-panel__header h2 {
+.route-profile__header h3 {
   margin: 0;
   color: var(--ink-2);
   font: var(--type-micro);
@@ -861,31 +862,15 @@ body {
   text-transform: uppercase;
 }
 
-.elevation-panel__summary {
+.route-profile__summary {
   color: var(--ink-2);
   font: var(--type-small);
   letter-spacing: var(--track-small);
   font-variant-numeric: tabular-nums;
 }
 
-/*
- * A hairline between the label and the figures, but only in the pill. Open, the
- * two sit on their own line above a chart and the gap alone separates them;
- * closed, they are one strip of text a hand's width long, and the rule is what
- * keeps "ELEVATION" from reading as the first word of the summary.
- */
-.elevation-panel[data-collapsed="true"] .elevation-panel__summary::before {
-  content: "";
-  display: inline-block;
-  width: 1px;
-  height: 14px;
-  margin-right: var(--space-3);
-  vertical-align: -3px;
-  background: var(--rule);
-}
-
-/* Pushed to the far end: it governs the panel rather than describing it. */
-.elevation-panel__collapse {
+/* Pushed to the far end: it governs the section rather than describing it. */
+.route-profile__collapse {
   display: inline-flex;
   align-items: center;
   margin-left: auto;
@@ -896,53 +881,58 @@ body {
   cursor: pointer;
 }
 
-.elevation-panel__collapse:hover,
-.elevation-panel__collapse:focus-visible {
+.route-profile__collapse:hover,
+.route-profile__collapse:focus-visible {
   color: var(--accent);
 }
 
 /*
- * Down while the chart is open, up while it is a pill — the same mark turned
- * through the change rather than two marks cut between, so the movement itself
- * says which way the panel just went.
+ * Down while the chart is open, up while the row is all there is — the same
+ * mark turned through the change rather than two marks cut between, so the
+ * movement itself says which way the chart just went.
  */
-.elevation-panel__chevron {
+.route-profile__chevron {
   transition: transform 120ms ease;
 }
 
-.elevation-panel[data-collapsed="true"] .elevation-panel__chevron {
+.route-profile__collapse[aria-expanded="false"] .route-profile__chevron {
   transform: rotate(180deg);
 }
 
 /* The turn is the flourish; the direction it ends up pointing is the message. */
 @media (prefers-reduced-motion: reduce) {
-  .elevation-panel__chevron {
+  .route-profile__chevron {
     transition: none;
   }
 }
 
 /* Elevation profile ------------------------------------------------------- */
 
+/* The card supplies the padding now, so the chart adds none of its own. */
 .elevation-profile {
   position: relative;
-  padding: 0 var(--space-4) var(--space-2);
 }
 
 /*
- * Sits over the plot area and carries the pointer and keyboard interaction.
+ * Sits over the plot area and carries the pointer and keyboard interaction. The
+ * crosshair is the standing offer to draw across it.
  *
- * `touch-action: none` is what makes a finger drawn across the chart select a
- * stretch rather than scroll the page, and the crosshair is the standing offer
- * to do so.
+ * `pan-y` rather than `none`: the chart is a row of a card that scrolls, and a
+ * plot that swallowed every downward swipe would make the card unscrollable
+ * over its most interesting row. A finger asks for the chart by holding, and
+ * only then does the gesture become the chart's.
  */
 .elevation-profile__scrub {
   position: absolute;
-  margin-left: var(--space-4);
-  touch-action: none;
+  touch-action: pan-y;
   cursor: crosshair;
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
+}
+
+.elevation-profile__scrub[data-holding="true"] {
+  touch-action: none;
 }
 
 .elevation-profile__scrub[data-dragging="true"] {
@@ -1039,11 +1029,6 @@ body {
   paint-order: stroke;
 }
 
-/* The surface strip: solid, at the strip's own width, no dashes. */
-.elevation-profile__surface {
-  stroke-linecap: butt;
-}
-
 /*
  * The stretch being chosen, with the rest veiled rather than hidden — the same
  * treatment the map gives the route outside the window, so both views say one
@@ -1070,7 +1055,7 @@ body {
   flex-wrap: wrap;
   align-items: baseline;
   gap: var(--space-1) var(--space-2);
-  margin: 0 var(--space-4);
+  margin: 0;
 }
 
 .elevation-profile__reset-span {
@@ -1092,7 +1077,6 @@ body {
 
 .elevation-profile__absent {
   margin: 0;
-  padding: 0 var(--space-4) var(--space-2);
   color: var(--ink-2);
   font: var(--type-row);
   letter-spacing: var(--track-row);
@@ -1470,8 +1454,8 @@ body {
 
 /*
  * One breakpoint. Below it the overlay docks its pill to the bottom, the gutter
- * narrows, and the route page gives the profile room the map would otherwise
- * take. Nothing else is width-dependent, so there is no third case.
+ * narrows, and the panel spans the width as a sheet holding the whole route
+ * card. Nothing else is width-dependent, so there is no third case.
  */
 @media (max-width: 52rem) {
   .shell__overlay {
@@ -1502,22 +1486,6 @@ body {
     padding: var(--space-4);
   }
 
-  /*
-   * There is no room beside the panel on a phone, so the profile docks under it
-   * rather than beside it: the sheet holds the route and its plot in one column
-   * across the width, and collapses to the same pill.
-   */
-  .elevation-panel {
-    position: static;
-    width: 100%;
-  }
-
-  /* Folds up against the same edge it does on the desktop, for the same reason. */
-  .elevation-panel[data-collapsed="true"] {
-    align-self: start;
-    width: auto;
-  }
-
   .sync-page {
     padding: var(--space-6) var(--space-4);
   }
@@ -1536,7 +1504,6 @@ body {
   }
 
   .elevation-profile__column,
-  .elevation-profile__surface,
   .elevation-profile__cursor circle,
   .route-card__mix > span {
     forced-color-adjust: none;

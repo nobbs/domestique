@@ -71,14 +71,13 @@ test("dragging across the chart zooms into that stretch, and Escape leaves it", 
   await page.mouse.up();
 
   await expect(chart).toHaveAttribute("data-zoomed", "true");
-  // The overview's summary keeps the stretch visible even when the chart holding
-  // the way back is folded away, so it is the honest place to read the window
-  // from.
-  await expect(page.locator(".elevation-panel__summary")).toContainText("km shown");
+  // The header row keeps the stretch visible even when the chart holding the way
+  // back is folded away, so it is the honest place to read the window from.
+  await expect(page.locator(".route-profile__summary")).toContainText("km shown");
 
   await page.keyboard.press("Escape");
   await expect(chart).not.toHaveAttribute("data-zoomed", "true");
-  await expect(page.locator(".elevation-panel__summary")).not.toContainText("km shown");
+  await expect(page.locator(".route-profile__summary")).not.toContainText("km shown");
 });
 
 test("dragging along the route picks the same stretch off the map", async ({
@@ -93,8 +92,8 @@ test("dragging along the route picks the same stretch off the map", async ({
    * is what would catch that distinction being lost.
    *
    * Not the centre of the canvas: the camera frames a route in the part of the
-   * map no panel is standing on, so the midpoint sits at the centre of what is
-   * left between the column and the chart.
+   * map no panel is standing on, so the midpoint sits at the centre of what the
+   * column leaves.
    */
   const region = mapRegion(page);
   const box = await region.boundingBox();
@@ -103,21 +102,20 @@ test("dragging along the route picks the same stretch off the map", async ({
     return;
   }
   const column = await page.locator(".route-panel").boundingBox();
-  const chart = await page.locator(".elevation-panel").boundingBox();
   const centreX = ((column ? column.x + column.width : box.x) + box.x + box.width) / 2;
-  const centreY = (box.y + (chart ? chart.y : box.y + box.height)) / 2;
+  const centreY = box.y + box.height / 2;
   await page.mouse.move(centreX, centreY);
   await page.mouse.down();
   await page.mouse.move(centreX + 120, centreY + 40, { steps: 10 });
   await page.mouse.up();
 
-  await expect(page.locator(".elevation-panel__summary")).toContainText("km shown");
+  await expect(page.locator(".route-profile__summary")).toContainText("km shown");
   await expect(page.locator(".elevation-profile")).toHaveAttribute("data-zoomed", "true");
 
   // Escape over the map returns the whole route, the same way out the chart's own
   // control offers.
   await page.keyboard.press("Escape");
-  await expect(page.locator(".elevation-panel__summary")).not.toContainText("km shown");
+  await expect(page.locator(".route-profile__summary")).not.toContainText("km shown");
 });
 
 test("picking a surface class out of the key repaints the map", async ({ offlinePage: page }) => {
@@ -152,24 +150,21 @@ test("a route nobody classified says so rather than showing an empty key", async
 });
 
 /*
- * The chart is a panel over the map rather than a column beside it, so putting
- * it away is how a reader gets the ground back — and the two figures it existed
- * to give at a glance have to survive that.
+ * The chart is a row of the route's card, so putting it away is how a reader
+ * gets the rest of the card and the map back — and the two figures it existed to
+ * give at a glance have to survive that.
  */
-test("the profile folds into a pill that still carries its figures", async ({
-  offlinePage: page,
-}) => {
+test("the profile folds to a row that still carries its figures", async ({ offlinePage: page }) => {
   await openRoute(page, LINE_ROUTE.routeId, LINE_ROUTE.stageOrder);
 
-  const panel = page.locator(".elevation-panel");
+  const section = page.locator(".route-profile");
   await expect(page.getByRole("img", { name: /^Elevation profile of / })).toBeVisible();
 
   await page.getByRole("button", { name: "Hide the profile" }).click();
 
-  await expect(panel).toHaveAttribute("data-collapsed", "true");
   await expect(page.getByRole("img", { name: /^Elevation profile of / })).toBeHidden();
-  await expect(panel.locator(".elevation-panel__summary")).toContainText("m");
-  // The route is still open behind it: the chart was put away, not the route.
+  await expect(section.locator(".route-profile__summary")).toContainText("m");
+  // The route is still open around it: the chart was put away, not the route.
   await expect(page.locator(".route-panel__figures")).toContainText("km");
 
   await page.getByRole("button", { name: "Show the profile" }).click();

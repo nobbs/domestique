@@ -24,6 +24,16 @@ import { ReprocessButton } from "./ReprocessButton";
 
 export interface RoutePanelProps {
   route: Route;
+  /**
+   * The elevation profile, which sits inside this card between the figures it
+   * elaborates and the gradient bar it explains.
+   *
+   * Handed in rather than built here, because every question the chart answers
+   * — the stretch on show, the position under the pointer, the class picked out
+   * of the chips — is also asked of the map, and the page is the one place both
+   * views can be answered from.
+   */
+  profile: React.ReactNode;
   /** The whole route's highest point, or null where there is no usable profile. */
   highestMetres: number | null;
   /**
@@ -57,6 +67,7 @@ export interface RoutePanelProps {
 
 export function RoutePanel({
   route,
+  profile,
   highestMetres,
   subtitle,
   surface,
@@ -124,12 +135,13 @@ export function RoutePanel({
           <dd>{highestMetres === null ? "—" : formatElevation(highestMetres)}</dd>
         </div>
       </dl>
+      {profile}
       {/*
        * The two mixes, as a bar and a row of chips each, and pressing a chip
-       * lights that ground on both the map and the chart. They sit here rather
-       * than under the plot because the plot is a panel of its own now, and a
-       * key that travelled with it would disappear whenever the reader collapsed
-       * the chart to look at the map.
+       * lights that ground on both the map and the chart. They sit under the
+       * plot rather than inside it: the chart folds away, and a key that
+       * travelled with it would take the surface mix — which the chart does not
+       * draw at all — away with it.
        */}
       <RouteKey
         surface={surface}

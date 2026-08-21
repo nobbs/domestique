@@ -3,14 +3,14 @@
  *
  * The panels float over the map rather than beside it, so the camera and the
  * furniture disagree about what "the map" is: framing a route against the whole
- * pane puts the first kilometres of it under the route panel and the last of it
- * under the elevation chart. What the reader can actually see is the pane minus
- * whatever is standing on it, and that is what the camera should frame.
+ * pane puts the first kilometres of it under the route card. What the reader can
+ * actually see is the pane minus whatever is standing on it, and that is what
+ * the camera should frame.
  *
  * The panels are measured rather than assumed. Their sizes come from their
- * content — a search column grows with its results, the chart is a pill or a
- * panel depending on what was asked of it — so a table of widths kept here
- * would be a second, quietly wrong copy of the stylesheet.
+ * content — a search column grows with its results, a route card grows and
+ * shrinks as its profile is unfolded and put away — so a table of widths kept
+ * here would be a second, quietly wrong copy of the stylesheet.
  */
 
 import { useEffect, useState } from "react";
@@ -63,8 +63,8 @@ const LEAST_PANEL = 4;
  *
  * A panel is assigned to the edge it eats the least of, which is the edge it is
  * docked against: a column down the left takes its own width from the left
- * rather than its own height from the top, and the chart across the foot takes
- * its height from the bottom rather than most of the pane from the right.
+ * rather than its own height from the top, and a strip across the foot would
+ * take its height from the bottom rather than most of the pane from the right.
  */
 export function insetsFrom(frame: Box, panels: Box[]): Insets {
   const insets = { ...NO_INSETS };

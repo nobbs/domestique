@@ -24,9 +24,18 @@ export interface LayoutProps {
    * an expanded overlay rises to the top instead.
    */
   expanded?: boolean;
+  /**
+   * Whether the column is holding a route rather than the search.
+   *
+   * The panels are 404 px at rest, which is as wide as a list of results should
+   * ever be read at. A route earns more — 560 px — and earns it for one reason:
+   * the elevation profile is in the card now, and a plot narrower than that
+   * turns a ride's shape into a smear.
+   */
+  wide?: boolean;
 }
 
-export function Layout({ map, children, expanded = false }: LayoutProps) {
+export function Layout({ map, children, expanded = false, wide = false }: LayoutProps) {
   return (
     /*
      * The shell is the page's one main landmark. The map is content rather than
@@ -35,7 +44,7 @@ export function Layout({ map, children, expanded = false }: LayoutProps) {
      */
     <main className="shell">
       <div className="shell__map">{map}</div>
-      <div className="shell__overlay" data-expanded={expanded}>
+      <div className="shell__overlay" data-expanded={expanded} data-wide={wide}>
         {children}
       </div>
     </main>

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import type { UserEvent } from "@testing-library/user-event";
 import userEvent from "@testing-library/user-event";
 import { useMemo, useState } from "react";
@@ -8,8 +8,8 @@ import type { Highlight } from "../lib/highlight";
 import type { DistanceWindow } from "../lib/profile";
 import { buildProfile, buildWindowedProfile } from "../lib/profile";
 import type { SurfaceSummary } from "../lib/surface";
-import { SURFACE_STYLES, summariseSurface } from "../lib/surface";
-import { ElevationProfile } from "./ElevationProfile";
+import { summariseSurface } from "../lib/surface";
+import { ElevationProfile, LONG_PRESS_MS } from "./ElevationProfile";
 
 function climb(): Position[] {
   return Array.from(
@@ -25,7 +25,7 @@ const ROUTE_METRES = buildProfile(climb())?.totalDistanceMetres ?? 0;
  * The plot's width in jsdom, where every element measures zero and the chart
  * falls back to MIN_WIDTH: 240 less the left and right padding.
  */
-const PLOT_WIDTH = 182;
+const PLOT_WIDTH = 192;
 
 /**
  * Gives an element a box, because jsdom gives everything a box of nothing and
@@ -201,65 +201,24 @@ describe("ElevationProfile", () => {
     ).toMatch(/gravel$/);
   });
 
-  // The strip is the reason the surface bar left the page header: it says which
-  // part of the climb is made of what, which a summary bar cannot.
-  it("draws the ground along the distance axis, in the order it is ridden", () => {
+  /*
+   * The strip the chart used to draw along its foot is gone with the panel it
+   * had room on. Inside the card the surface mix is a bar with chips two rows
+   * below the plot, and a second chart on the same axis saying the same thing
+   * would be the row that made the card too tall to read.
+   */
+  it("draws no ground along the chart, whether or not the route is classified", () => {
     const coordinates = climb();
     const surface = summariseSurface(coordinates, [
       { kind: "asphalt", startIndex: 0, endIndex: 19 },
       { kind: "gravel", startIndex: 20, endIndex: coordinates.length - 1 },
     ]);
-    const { container } = render(<Harness surface={surface} />);
 
-    const stretches = [...container.querySelectorAll(".elevation-profile__surface")];
-    expect(stretches).toHaveLength(2);
-    expect(stretches.map((line) => line.getAttribute("stroke"))).toEqual([
-      SURFACE_STYLES.asphalt.colour.light,
-      SURFACE_STYLES.gravel.colour.light,
-    ]);
+    const classified = render(<Harness surface={surface} />);
+    expect(classified.container.querySelector(".elevation-profile__surface")).toBeNull();
+    classified.unmount();
 
-    // In route order, and meeting where one class hands over to the next.
-    const [first, second] = stretches as [SVGLineElement, SVGLineElement];
-    expect(Number(first.getAttribute("x1"))).toBe(0);
-    expect(Number(first.getAttribute("x2"))).toBeCloseTo(Number(second.getAttribute("x1")), 5);
-    expect(Number(second.getAttribute("x2"))).toBeGreaterThan(Number(second.getAttribute("x1")));
-  });
-
-  // The strip is a solid band of the class's own colour, and it is the same
-  // colour the class wears on the map: one hue per class, told apart by hue
-  // alone, in both places.
-  it("draws the strip solid, in the colour the class wears on the map", () => {
-    const coordinates = climb();
-    const surface = summariseSurface(coordinates, [
-      { kind: "gravel", startIndex: 0, endIndex: coordinates.length - 1 },
-    ]);
-    const { container } = render(<Harness surface={surface} />);
-
-    const stretch = container.querySelector(".elevation-profile__surface");
-    expect(stretch?.getAttribute("stroke")).toBe(SURFACE_STYLES.gravel.colour.light);
-    expect(stretch?.getAttribute("stroke-dasharray")).toBeNull();
-  });
-
-  // The two lanes are one instrument: a pointer moving onto the strip must not
-  // leave the scrub region and blank the readout it came to read.
-  it("keeps the strip inside the region the pointer can scrub", () => {
-    const coordinates = climb();
-    const surface = summariseSurface(coordinates, [
-      { kind: "gravel", startIndex: 0, endIndex: coordinates.length - 1 },
-    ]);
-    const withSurface = render(<Harness surface={surface} />);
-    const scrubbed = withSurface.getByRole("slider").style.height;
-    withSurface.unmount();
-
-    const withoutSurface = render(<Harness />);
-    const plotOnly = withoutSurface.getByRole("slider").style.height;
-
-    expect(Number.parseFloat(scrubbed)).toBeGreaterThan(Number.parseFloat(plotOnly));
-  });
-
-  it("draws no strip on a stage nothing has classified", () => {
     const { container } = render(<Harness />);
-
     expect(container.querySelector(".elevation-profile__surface")).toBeNull();
   });
 
@@ -344,21 +303,73 @@ describe("ElevationProfile zooming", () => {
     expect(screen.queryByRole("button", { name: /Whole route/ })).not.toBeInTheDocument();
   });
 
-  it("zooms by touch as well as by mouse", async () => {
-    const user = userEvent.setup();
-    const onZoom = vi.fn();
-    render(<ZoomHarness onZoom={onZoom} />);
+  /*
+   * A finger gets the same two gestures, but has to ask for them first: the
+   * chart is a row of a card that scrolls, so a touch belongs to the card until
+   * it has been held long enough to be a question about the climb.
+   */
+  it("zooms by touch, once the hold has armed the gesture", () => {
+    vi.useFakeTimers();
+    try {
+      const onZoom = vi.fn();
+      const { container } = render(<ZoomHarness onZoom={onZoom} />);
+      const scrub = measured(screen.getByRole("slider"));
 
-    const scrub = measured(screen.getByRole("slider"));
-    await user.pointer([
-      { keys: "[TouchA>]", target: scrub, coords: { clientX: 30, clientY: 20 } },
-      { pointerName: "TouchA", target: scrub, coords: { clientX: 140, clientY: 20 } },
-      { keys: "[/TouchA]", target: scrub, coords: { clientX: 140, clientY: 20 } },
-    ]);
+      fireEvent.pointerDown(scrub, {
+        pointerId: 3,
+        pointerType: "touch",
+        isPrimary: true,
+        button: 0,
+        clientX: 30,
+      });
+      // Still the card's, and the chart says so: a swipe from here scrolls.
+      expect(scrub.getAttribute("data-holding")).toBeNull();
 
-    const window = onZoom.mock.calls[0]?.[0] as DistanceWindow;
-    expect(window.startMetres).toBeCloseTo(metresAt(30), 0);
-    expect(window.endMetres).toBeCloseTo(metresAt(140), 0);
+      act(() => {
+        vi.advanceTimersByTime(LONG_PRESS_MS);
+      });
+      expect(scrub.getAttribute("data-holding")).toBe("true");
+
+      fireEvent.pointerMove(scrub, { pointerId: 3, pointerType: "touch", clientX: 140 });
+      fireEvent.pointerUp(scrub, { pointerId: 3, pointerType: "touch", clientX: 140 });
+
+      const window = onZoom.mock.calls[0]?.[0] as DistanceWindow;
+      expect(window.startMetres).toBeCloseTo(metresAt(30), 0);
+      expect(window.endMetres).toBeCloseTo(metresAt(140), 0);
+      expect(container.querySelector(".elevation-profile__veil")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // A finger that moved before the hold completed was scrolling past, and a
+  // gesture armed under it would take the card's scroll away mid-swipe.
+  it("gives a touch that moved on back to the card", () => {
+    vi.useFakeTimers();
+    try {
+      const onZoom = vi.fn();
+      render(<ZoomHarness onZoom={onZoom} />);
+      const scrub = measured(screen.getByRole("slider"));
+
+      fireEvent.pointerDown(scrub, {
+        pointerId: 4,
+        pointerType: "touch",
+        isPrimary: true,
+        button: 0,
+        clientX: 30,
+      });
+      fireEvent.pointerMove(scrub, { pointerId: 4, pointerType: "touch", clientX: 60 });
+      act(() => {
+        vi.advanceTimersByTime(LONG_PRESS_MS * 2);
+      });
+      fireEvent.pointerMove(scrub, { pointerId: 4, pointerType: "touch", clientX: 140 });
+      fireEvent.pointerUp(scrub, { pointerId: 4, pointerType: "touch", clientX: 140 });
+
+      expect(scrub.getAttribute("data-holding")).toBeNull();
+      expect(onZoom).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("shows the stretch under the pointer while it is still being chosen", async () => {
@@ -430,7 +441,7 @@ describe("ElevationProfile zooming", () => {
 
     await dragAcross(user, measured(screen.getByRole("slider")), 20, 120);
 
-    const shown = /0\.5–2\.9 km/;
+    const shown = /0\.5–2\.7 km/;
     expect(screen.getByRole("button", { name: /Whole route/ })).toHaveAccessibleName(shown);
     expect(screen.getByRole("slider")).toHaveAccessibleName(shown);
     expect(screen.getByRole("img")).toHaveAccessibleName(shown);
@@ -547,33 +558,6 @@ describe("ElevationProfile zooming", () => {
 
     expect(Math.min(...positions)).toBeGreaterThanOrEqual(1000);
     expect(Math.max(...positions)).toBeLessThanOrEqual(3000);
-  });
-
-  it("clips the surface strip to the stretch on show", () => {
-    const coordinates = climb();
-    const surface = summariseSurface(coordinates, [
-      { kind: "asphalt", startIndex: 0, endIndex: 19 },
-      { kind: "gravel", startIndex: 20, endIndex: coordinates.length - 1 },
-    ]);
-    const window = { startMetres: 3000, endMetres: 4000 };
-    const { container } = render(
-      <ElevationProfile
-        profile={buildWindowedProfile(coordinates, window)}
-        title="Eich Rundkurs 90"
-        surface={surface}
-        activeMetres={null}
-        onActiveChange={() => {}}
-        zoomWindow={window}
-        onZoomChange={() => {}}
-      />,
-    );
-
-    const stretches = [...container.querySelectorAll(".elevation-profile__surface")];
-    expect(stretches.map((line) => line.getAttribute("stroke"))).toEqual([
-      SURFACE_STYLES.gravel.colour.light,
-    ]);
-    // Cut at the window's edge, not drawn from where the class actually starts.
-    expect(Number(stretches[0]?.getAttribute("x1"))).toBe(0);
   });
 
   // Zooming answers a question about the terrain; it must not also resize the

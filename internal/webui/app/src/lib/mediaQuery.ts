@@ -22,6 +22,15 @@ const REDUCED_MOTION = "(prefers-reduced-motion: reduce)";
 const NARROW = "(max-width: 52rem)";
 
 /**
+ * A pointer that cannot hover and cannot be put down precisely: a finger.
+ *
+ * The chart offers the same two gestures to both kinds of pointer, but not in
+ * the same way — a mouse arms a drag by pressing, a finger by holding — so the
+ * hint above the plot has to say which of the two it is talking to.
+ */
+const COARSE_POINTER = "(pointer: coarse)";
+
+/**
  * Whether a media query matches, re-rendering when that changes.
  *
  * `useSyncExternalStore` rather than an effect that seeds state: an effect runs
@@ -69,4 +78,16 @@ export function usePrefersReducedMotion(): boolean {
  */
 export function useNarrowViewport(): boolean {
   return useMediaQuery(NARROW);
+}
+
+/**
+ * Whether the reader is pointing with a finger rather than with a mouse.
+ *
+ * Only for what is said, never for what is done: the chart decides how to treat
+ * a gesture from the pointer that actually made it, because a laptop with a
+ * touchscreen answers this yes and is still driven by its trackpad most of the
+ * time.
+ */
+export function useCoarsePointer(): boolean {
+  return useMediaQuery(COARSE_POINTER);
 }
