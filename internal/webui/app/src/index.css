@@ -42,6 +42,13 @@
   --hold: #8f6100; /* a gate held — 5.32:1 */
 
   /*
+   * The strips a phone browser keeps for its own chrome. Not a surface the UI
+   * paints on and nothing is ever read against it, so it is the one token that
+   * is the same value in both themes: black is what a letterbox is.
+   */
+  --letterbox: #000;
+
+  /*
    * The steepness ramp, gentlest first. It fills ground at 0.5 opacity and
    * strokes that ground's own edge at full strength, and paints at full
    * strength wherever it is a small mark: a 2 px route glyph, a 7 px mix bar.
@@ -179,6 +186,24 @@ body {
 }
 
 /*
+ * The strips behind a phone browser's status bar and floating toolbar.
+ *
+ * The map cannot continue into them. iOS 26 Safari lays a tab out between its
+ * own chrome — 714 pt of an 874 pt screen — and reports every safe-area inset as
+ * 0 px whatever `viewport-fit` says, so no element of the page reaches them
+ * however it is positioned. The one thing that paints there is the document
+ * canvas, which takes its colour from the body; `theme-color` is ignored.
+ *
+ * So: black, and the map reads as letterboxed rather than as cartography that
+ * stopped short of a slab of page background. Only where the map is — the pages
+ * that scroll keep the page colour behind their own overscroll — and only in a
+ * tab, since an installed copy has no strips left to fill.
+ */
+body:has(.shell:not(.shell--page)) {
+  background: var(--letterbox);
+}
+
+/*
  * Text for anything that is not looking at the page: taken out of the layout
  * without being taken out of the document, which `display: none` would do.
  */
@@ -213,6 +238,34 @@ body {
 .shell__map {
   position: absolute;
   inset: 0;
+}
+
+/*
+ * The one place the page deliberately reaches past what it was handed.
+ *
+ * iOS starts a Home Screen web app in a viewport one status bar short of the
+ * screen — 812 pt of 874 — and reports every safe-area inset as 0 px while it
+ * does, which leaves a strip of page background along the bottom edge under a
+ * map that should reach it. A map layer as tall as the large viewport pushes the
+ * document past that short viewport, and the system answers by giving the web
+ * app the whole screen and the real insets with it: 874 pt, top 62, bottom 34.
+ * The cartography then runs under the notch and the home indicator, and the
+ * overlay's `env()` paddings above hold the panels off both.
+ *
+ * It has to be the absolutely positioned layer that does this. A fixed layer is
+ * clipped to the viewport iOS started with, so it can never be the thing that
+ * grows past it.
+ *
+ * Deliberately not applied in a browser tab. iOS 26 Safari lays a tab out
+ * between its own chrome — 714 pt of 874 — and reports every inset as 0 px
+ * whatever `viewport-fit` says, so nothing a page does can paint the strips
+ * behind the status bar and the floating toolbar. Growing the document there
+ * would buy 40 pt of scroll and no map.
+ */
+@media (display-mode: standalone) {
+  .shell__map {
+    height: 100vh;
+  }
 }
 
 .shell__overlay {
