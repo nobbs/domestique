@@ -1,45 +1,31 @@
 /**
- * The route map.
+ * The selected route, drawn over the library map.
  *
- * The basemap style is loaded from the operator-configured tile origin — the
- * one thing this otherwise Tailnet-private service fetches from outside. The
- * route itself is drawn from geometry the service already holds locally and is
- * never sent anywhere.
+ * Not a map of its own. The entry page has one MapLibre instance for the whole
+ * library, and this is the stack of sources and layers that appears over it when
+ * a route is picked: the casing, the steepness edging, the surface classes, the
+ * direction cues, the two ends, and the position the elevation chart shares with
+ * it. Mounting a second map for the selected route would download the style
+ * again and throw away the ground the reader was already looking at.
  *
- * It reads as part of the page until it is asked to be a map: the wheel scrolls
- * past it, a finger scrolls past it, and only a drag along the painted route is
- * taken as a question about the ride. The control in its corner is what hands it
- * the gestures, and Escape is what gives them back — see `mapExploration`.
+ * Everything here is drawn from geometry the service already holds locally and
+ * is never sent anywhere; only the basemap underneath comes from outside.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  Layer,
-  Map as MapLibre,
-  NavigationControl,
-  ScaleControl,
-  Source,
-  useMap,
-} from "react-map-gl/maplibre";
-import "maplibre-gl/dist/maplibre-gl.css";
 import type { DataDrivenPropertyValueSpecification } from "maplibre-gl";
-import type { BoundingBox, Position, SurfaceRange } from "../api/types";
+import { useEffect, useMemo, useState } from "react";
+import { Layer, Source, useMap } from "react-map-gl/maplibre";
+import type { Position, SurfaceRange } from "../api/types";
 import type { Highlight } from "../lib/highlight";
 import { highlightRanges, litRanges } from "../lib/highlight";
-import { mapExploration } from "../lib/mapExploration";
-import { routeMetresAt, routeSelection } from "../lib/mapSelection";
+import { routeSelection } from "../lib/mapSelection";
 import type { DistanceWindow, Profile } from "../lib/profile";
-import { coordinateRange, nearestSample, rangeBounds, sampleAt } from "../lib/profile";
+import { coordinateRange, nearestSample, sampleAt } from "../lib/profile";
 import { cuesDescription, directionChevrons, metresPerPixel, routeCues } from "../lib/routeCues";
 import { gradientSlices, routeLinesWithin } from "../lib/routeLines";
-import { NEAR_ROUTE_PIXELS, NEAR_ROUTE_TOUCH_PIXELS } from "../lib/selection";
+import { NEAR_ROUTE_PIXELS } from "../lib/selection";
 import { SURFACE_LINE_WIDTH, surfaceColour, surfaceLinesWithin } from "../lib/surface";
 import { useEscapeKey } from "../lib/useEscapeKey";
-import { ExploreToggle } from "./ExploreToggle";
-import { MapCredits } from "./MapCredits";
-import { MapViewport } from "./MapViewport";
-// Configures the shared worker pool; without it this map renders no tiles.
-import "../lib/maplibre";
 
 /**
  * The accent the route itself is drawn in, per basemap.
@@ -49,19 +35,27 @@ import "../lib/maplibre";
  * The same pair is `--accent` in index.css; both copies must stay in step.
  */
 const ROUTE_ACCENT = { light: "#236fc7", dark: "#70adfb" } as const;
-const SOURCE_ID = "stage-geometry";
+
+/**
+ * The casing under the route: the panel colour, so the line reads as lifted off
+ * the ground rather than merely recoloured. The same pair is `--panel` in
+ * index.css; both copies must stay in step.
+ */
+const ROUTE_CASING = { light: "#fcfdff", dark: "#24282c" } as const;
+
+const SOURCE_ID = "route-geometry";
 
 /**
  * Credit for the surface classification, which is derived from OpenStreetMap.
  *
  * The basemap's own credit arrives from the style document and covers the tiles
  * only. The classification is a separate derived database under the ODbL, whose
- * share-alike terms oblige this attribution wherever it is shown. It is stated
- * unconditionally: MapLibre fixes a control's options when the map is built, so
- * a credit made conditional on the open stage having been classified would be
- * the stale one by the time it mattered.
+ * share-alike terms oblige this attribution wherever it is shown. Exported
+ * because the credit is drawn by the map this stack sits on rather than by the
+ * stack itself: it is one line in one corner, and the classification is the
+ * reason for half of it.
  */
-const SURFACE_ATTRIBUTION = "Surface data © OpenStreetMap contributors (ODbL)";
+export const SURFACE_ATTRIBUTION = "Surface data © OpenStreetMap contributors (ODbL)";
 
 /** The casing's normal opacity, kept in one place so the dimmed one follows it. */
 const CASING_OPACITY = 0.85;
@@ -177,25 +171,6 @@ function taggedCollection(slices: { inside: Position[][]; outside: Position[][] 
 }
 
 /**
- * How close the camera may come when it frames the whole stage.
- *
- * A short stage would otherwise open at street level, which says nothing about
- * where the ride goes.
- */
-const ROUTE_MAX_ZOOM = 15;
-
-/**
- * How close it may come when it frames the stretch the chart is showing.
- *
- * Higher, because that framing was asked for: the shortest window the chart
- * allows is 200 m, and holding it to the whole-stage cap would answer a request
- * to look closer by barely moving. The cap still only bites on the very
- * shortest selections, and it stops the map from diving past the point where
- * the basemap has anything left to add.
- */
-const WINDOW_MAX_ZOOM = 17;
-
-/**
  * Reports the position under the pointer, so the elevation chart can mark it.
  *
  * This is a child of the map because `useMap` is what resolves the instance,
@@ -280,69 +255,6 @@ function SelectionLink({
 }
 
 /**
- * Gives the map the wheel, the fingers, and the arrow keys, or leaves them to
- * the page.
- *
- * A child of the map for the same reason its neighbours are: `useMap` is what
- * resolves the instance, and the mode is a handful of MapLibre handlers rather
- * than anything React can render.
- *
- * The one touch reading mode still hands over is a finger drawing along the
- * route, which is why the whole profile comes down here: the same measurement
- * that tells a selection from a pan tells a gesture for the route from a scroll
- * of the page.
- */
-function ExplorationLink({
-  exploring,
-  profile,
-  selectable,
-}: {
-  exploring: boolean;
-  profile: Profile | null;
-  selectable: boolean;
-}) {
-  const { current: map } = useMap();
-
-  const claimsTouch = useCallback(
-    (point: { clientX: number; clientY: number }) => {
-      if (!map || !profile || !selectable) {
-        return false;
-      }
-
-      return (
-        routeMetresAt(
-          map.getMap(),
-          profile,
-          point.clientX,
-          point.clientY,
-          NEAR_ROUTE_TOUCH_PIXELS,
-        ) !== null
-      );
-    },
-    [map, profile, selectable],
-  );
-  // Held in a ref so that a fresh profile — a different stage, say — does not
-  // re-apply the mode underneath a reader who is in the middle of using it.
-  const latest = useRef(claimsTouch);
-  useEffect(() => {
-    latest.current = claimsTouch;
-  }, [claimsTouch]);
-
-  useEffect(() => {
-    if (!map) {
-      return;
-    }
-
-    return mapExploration(map.getMap(), {
-      exploring,
-      claimsTouch: (point) => latest.current(point),
-    });
-  }, [map, exploring]);
-
-  return null;
-}
-
-/**
  * Chevrons along the route, pointing the way it is ridden.
  *
  * A child of the map because the cues are sized and spaced in screen pixels, and
@@ -395,14 +307,14 @@ function DirectionCues({ coordinates }: { coordinates: Position[] }) {
   );
 
   return (
-    <Source id="stage-direction" type="geojson" data={data}>
+    <Source id="route-direction" type="geojson" data={data}>
       {/*
        * White, and over the route rather than beside it: every class and band
        * beneath is a mid-to-dark colour, so the same cue reads on all of them,
        * and a cue drawn alongside the line would be a second thing to follow.
        */}
       <Layer
-        id="stage-direction-chevrons"
+        id="route-direction-chevrons"
         type="line"
         layout={{ "line-cap": "round", "line-join": "round" }}
         paint={{ "line-color": "#ffffff", "line-width": 2.4, "line-opacity": 0.95 }}
@@ -427,8 +339,7 @@ function terminalCollection(position: Position | undefined) {
   };
 }
 
-export interface RouteMapProps {
-  styleUrl: string;
+export interface RouteOverlayProps {
   /**
    * Whether `styleUrl` is the dark cartography, which picks the steepness ramp.
    *
@@ -438,8 +349,6 @@ export interface RouteMapProps {
    */
   darkBasemap?: boolean;
   coordinates: Position[];
-  bbox: BoundingBox;
-  title: string;
   /**
    * The ground under the route, addressing `coordinates` by index. Absent leaves
    * the route drawn in the accent, which is what an unclassified stage gets.
@@ -487,12 +396,9 @@ export interface RouteMapProps {
   highlight?: Highlight | null;
 }
 
-export function RouteMap({
-  styleUrl,
+export function RouteOverlay({
   darkBasemap = false,
   coordinates,
-  bbox,
-  title,
   surface,
   profile = null,
   activeMetres = null,
@@ -500,7 +406,7 @@ export function RouteMap({
   zoomWindow = null,
   onZoomChange,
   highlight = null,
-}: RouteMapProps) {
+}: RouteOverlayProps) {
   /**
    * The stretch being drawn on the route right now, which is not a window yet.
    *
@@ -509,14 +415,7 @@ export function RouteMap({
    * answer to a question half asked is to light the ground it covers so far.
    */
   const [pending, setPending] = useState<DistanceWindow | null>(null);
-  /**
-   * Whether the map has been handed the gestures the page otherwise keeps.
-   *
-   * Held here rather than by the page, because it is a property of this view of
-   * this map: a reader who went looking around one stage's roads has not said
-   * anything about how they want to read the rest of the page.
-   */
-  const [exploring, setExploring] = useState(false);
+
   // Rounded outwards, so the lit stretch covers every metre the chart draws.
   const windowRange = useMemo(
     () =>
@@ -525,15 +424,6 @@ export function RouteMap({
         : null,
     [coordinates, zoomWindow],
   );
-  // Memoised so the camera effect fires when the stretch changes rather than on
-  // every render: a fresh box each time would re-fly the map on a hover. The
-  // camera follows the window alone: a highlight is scattered along the ride,
-  // and framing every stretch of it is the whole route with extra travel.
-  const windowBounds = useMemo(
-    () => (windowRange ? rangeBounds(coordinates, windowRange) : null),
-    [coordinates, windowRange],
-  );
-
   // The ground a drag along the route has covered so far, lit exactly as a
   // settled window is. The camera is deliberately left out of it: flying after a
   // hand that is still moving would drag the ground out from under the gesture
@@ -625,216 +515,171 @@ export function RouteMap({
   // it both leaves and returns to.
   const nudge = cues?.sharedTerminal ? TERMINAL_NUDGE_PIXELS : 0;
 
-  // A basemap that fails to load must not fail silently: the route itself is
-  // still drawn, but the operator should be able to see why the background is
-  // empty.
-  const onError = useCallback((event: { error?: Error }) => {
-    console.error("map error:", event.error?.message ?? event);
-  }, []);
-
   /**
-   * Escape leaves whatever the map is currently holding.
+   * Escape leaves the stretch on show.
    *
-   * Two things can be left, so they are answered by one listener in a stated
-   * order rather than by two racing to claim the key. Exploration goes first: it
-   * is the one that has taken something away from the page, and a reader
-   * pressing Escape over a map that has stopped scrolling is asking for the
-   * scrolling back. The stretch goes second, which is the same way back the
-   * chart's own control offers — carried here as well because the chart is
-   * unmounted whenever the overview is collapsed, and a stretch chosen with the
-   * overview closed would otherwise be a view with no way out of it.
+   * The same way back the chart's own control offers, carried here as well
+   * because the chart can be collapsed to its pill: a stretch chosen and then
+   * put away would otherwise be a view with no way out of it. The page answers
+   * Escape too, by dropping the selection — but only when there is no stretch
+   * to leave first, so one press never undoes two things.
    *
    * A stretch still being drawn is neither: `mapSelection` takes Escape in the
    * capture phase and marks it handled, so abandoning a half-drawn window never
    * also throws away the view it was being drawn on.
    */
-  const zoomable = zoomWindow !== null && onZoomChange !== undefined;
-  useEscapeKey(exploring || zoomable, () => {
-    if (exploring) {
-      setExploring(false);
-
-      return;
-    }
-    onZoomChange?.(null);
-  });
+  useEscapeKey(zoomWindow !== null && onZoomChange !== undefined, () => onZoomChange?.(null));
 
   // The route sits on the cartography, so it follows the basemap rather than the
   // page: a dark route on a light basemap under a dark system scheme would be a
   // line chosen for a background it is not on.
   const accent = ROUTE_ACCENT[darkBasemap ? "dark" : "light"];
 
-  /*
-   * MapLibre's own attribution control is off. It renders the provider's own
-   * markup into a corner of its own, and this map has one corner: the credit is
-   * drawn by MapCredits below, under the zoom pair and the scale bar.
-   */
   return (
-    <div className="route-map">
-      <MapLibre
-        mapStyle={styleUrl}
-        onError={onError}
-        initialViewState={{ bounds: bbox, fitBoundsOptions: { padding: 56 } }}
-        style={{ width: "100%", height: "100%" }}
-        aria-label={`Map of ${title}`}
-        attributionControl={false}
-      >
-        <MapViewport
-          bounds={windowBounds ?? bbox}
-          maxZoom={windowBounds ? WINDOW_MAX_ZOOM : ROUTE_MAX_ZOOM}
-        />
-        <HoverLink profile={profile} onActiveChange={onActiveChange} />
-        <SelectionLink profile={profile} onPending={setPending} onZoomChange={onZoomChange} />
-        <ExplorationLink
-          exploring={exploring}
-          profile={profile}
-          selectable={onZoomChange !== undefined}
-        />
-        {/* One cluster, bottom-right: the zoom pair, the scale bar, the credit. */}
-        <NavigationControl position="bottom-right" showCompass={false} />
-        <ScaleControl position="bottom-right" unit="metric" />
-        <Source id={SOURCE_ID} type="geojson" data={route}>
-          {/*
-           * The casing is drawn from the whole route and stays solid under the
-           * classes, so the line the rider follows is continuous even where the
-           * class above it is a row of dots.
-           */}
-          <Layer
-            id="stage-casing"
-            type="line"
-            layout={{ "line-cap": "round", "line-join": "round" }}
-            paint={{
-              "line-color": "#ffffff",
-              "line-opacity": dimmedOutside(CASING_OPACITY, dimmed),
-              "line-width": 7,
-            }}
-          />
-          {surfaceFeatures.length === 0 ? (
-            <Layer
-              id="stage-line"
-              type="line"
-              layout={{ "line-cap": "round", "line-join": "round" }}
-              paint={{
-                "line-color": accent,
-                "line-width": SURFACE_LINE_WIDTH,
-                "line-opacity": dimmedOutside(1, dimmed),
-              }}
-            />
-          ) : null}
-        </Source>
+    <>
+      <HoverLink profile={profile} onActiveChange={onActiveChange} />
+      <SelectionLink profile={profile} onPending={setPending} onZoomChange={onZoomChange} />
+      <Source id={SOURCE_ID} type="geojson" data={route}>
         {/*
-         * Steepness, as an edging under the casing: over it, it would be a
-         * second line to read along the route, and the point of putting it
-         * underneath is that the eye picks up the colour at the edges without
-         * ever losing the route itself.
-         *
-         * Mounted after the casing it names and kept mounted whether or not the
-         * band has any ground — an empty collection draws nothing. MapLibre
-         * refuses to add a layer before one that does not exist yet, and a band
-         * that came and went with the window would be re-added at whatever
-         * height the stack happened to have then. Mounting every layer once
-         * fixes the order for the life of the map.
+         * The casing is drawn from the whole route and stays solid under the
+         * classes, so the line the rider follows is continuous even where the
+         * class above it is a row of dots.
          */}
-        {gradientFeatures.map(({ band, data }) => (
-          <Source key={band} id={`stage-gradient-${band}`} type="geojson" data={data}>
-            <Layer
-              id={`stage-gradient-${band}-line`}
-              type="line"
-              beforeId="stage-casing"
-              // Butt caps, so a band ends on the point it hands over at rather
-              // than half a line width into the band that follows it.
-              layout={{ "line-cap": "butt", "line-join": "round" }}
-              paint={{
-                "line-color": BAND_COLOURS[darkBasemap ? "dark" : "light"][band] ?? accent,
-                "line-width": BAND_EDGE_WIDTH,
-                "line-opacity": dimmedOutside(1, dimmed),
-              }}
-            />
-          </Source>
-        ))}
-        {/*
-         * A soft halo under the stretch on show, at the bottom of the stack:
-         * it is a pointer, and a pointer that tints the two things it points at
-         * has changed what they say. Named against the lowest band rather than
-         * against the casing for that reason, and mounted last so that layer is
-         * there to name.
-         */}
-        <Source id="stage-window" type="geojson" data={haloRoute}>
+        <Layer
+          id="route-casing"
+          type="line"
+          layout={{ "line-cap": "round", "line-join": "round" }}
+          paint={{
+            "line-color": ROUTE_CASING[darkBasemap ? "dark" : "light"],
+            "line-opacity": dimmedOutside(CASING_OPACITY, dimmed),
+            "line-width": 7,
+          }}
+        />
+        {surfaceFeatures.length === 0 ? (
           <Layer
-            id="stage-window-halo"
+            id="route-line"
             type="line"
-            beforeId={`stage-gradient-${LOWEST_BAND_DRAWN}-line`}
             layout={{ "line-cap": "round", "line-join": "round" }}
             paint={{
               "line-color": accent,
-              // Wider than the edging it sits under, so the glow shows either
-              // side of it rather than only through it.
-              "line-width": BAND_EDGE_WIDTH + 6,
-              "line-opacity": 0.22,
-              "line-blur": 3,
+              "line-width": SURFACE_LINE_WIDTH,
+              "line-opacity": dimmedOutside(1, dimmed),
             }}
           />
-        </Source>
-        {surfaceFeatures.map(({ kind, data }) => (
-          <Source key={kind} id={`stage-surface-${kind}`} type="geojson" data={data}>
-            <Layer
-              id={`stage-surface-${kind}-line`}
-              type="line"
-              layout={{ "line-cap": "round", "line-join": "round" }}
-              paint={{
-                "line-color": surfaceColour(kind, darkBasemap),
-                "line-width": SURFACE_LINE_WIDTH,
-                "line-opacity": dimmedOutside(1, dimmed),
-              }}
-            />
-          </Source>
-        ))}
-        <DirectionCues coordinates={coordinates} />
-        {/*
-         * The two ends, mounted above the route and the cues so neither is lost
-         * under a line. They are told apart by shape as well as by fill — a disc
-         * for the start, a ring for the finish — because a reader who cannot
-         * separate the two colours still has to be able to separate the two ends.
-         */}
-        <Source id="stage-start" type="geojson" data={startPoint}>
+        ) : null}
+      </Source>
+      {/*
+       * Steepness, as an edging under the casing: over it, it would be a
+       * second line to read along the route, and the point of putting it
+       * underneath is that the eye picks up the colour at the edges without
+       * ever losing the route itself.
+       *
+       * Mounted after the casing it names and kept mounted whether or not the
+       * band has any ground — an empty collection draws nothing. MapLibre
+       * refuses to add a layer before one that does not exist yet, and a band
+       * that came and went with the window would be re-added at whatever
+       * height the stack happened to have then. Mounting every layer once
+       * fixes the order for the life of the map.
+       */}
+      {gradientFeatures.map(({ band, data }) => (
+        <Source key={band} id={`route-gradient-${band}`} type="geojson" data={data}>
           <Layer
-            id="stage-start-point"
-            type="circle"
+            id={`route-gradient-${band}-line`}
+            type="line"
+            beforeId="route-casing"
+            // Butt caps, so a band ends on the point it hands over at rather
+            // than half a line width into the band that follows it.
+            layout={{ "line-cap": "butt", "line-join": "round" }}
             paint={{
-              "circle-radius": TERMINAL_RADIUS,
-              "circle-color": accent,
-              "circle-stroke-color": "#ffffff",
-              "circle-stroke-width": 2.5,
-              "circle-translate": [-nudge, 0],
+              "line-color": BAND_COLOURS[darkBasemap ? "dark" : "light"][band] ?? accent,
+              "line-width": BAND_EDGE_WIDTH,
+              "line-opacity": dimmedOutside(1, dimmed),
             }}
           />
         </Source>
-        <Source id="stage-finish" type="geojson" data={finishPoint}>
+      ))}
+      {/*
+       * A soft halo under the stretch on show, at the bottom of the stack:
+       * it is a pointer, and a pointer that tints the two things it points at
+       * has changed what they say. Named against the lowest band rather than
+       * against the casing for that reason, and mounted last so that layer is
+       * there to name.
+       */}
+      <Source id="route-window" type="geojson" data={haloRoute}>
+        <Layer
+          id="route-window-halo"
+          type="line"
+          beforeId={`route-gradient-${LOWEST_BAND_DRAWN}-line`}
+          layout={{ "line-cap": "round", "line-join": "round" }}
+          paint={{
+            "line-color": accent,
+            // Wider than the edging it sits under, so the glow shows either
+            // side of it rather than only through it.
+            "line-width": BAND_EDGE_WIDTH + 6,
+            "line-opacity": 0.22,
+            "line-blur": 3,
+          }}
+        />
+      </Source>
+      {surfaceFeatures.map(({ kind, data }) => (
+        <Source key={kind} id={`route-surface-${kind}`} type="geojson" data={data}>
           <Layer
-            id="stage-finish-point"
-            type="circle"
+            id={`route-surface-${kind}-line`}
+            type="line"
+            layout={{ "line-cap": "round", "line-join": "round" }}
             paint={{
-              "circle-radius": TERMINAL_RADIUS - TERMINAL_RING_WIDTH / 2,
-              "circle-color": "#ffffff",
-              "circle-stroke-color": accent,
-              "circle-stroke-width": TERMINAL_RING_WIDTH,
-              "circle-translate": [nudge, 0],
+              "line-color": surfaceColour(kind, darkBasemap),
+              "line-width": SURFACE_LINE_WIDTH,
+              "line-opacity": dimmedOutside(1, dimmed),
             }}
           />
         </Source>
-        <Source id="stage-position" type="geojson" data={marker}>
-          <Layer
-            id="stage-position-halo"
-            type="circle"
-            paint={{ "circle-radius": 8, "circle-color": "#ffffff", "circle-opacity": 0.9 }}
-          />
-          <Layer
-            id="stage-position-dot"
-            type="circle"
-            paint={{ "circle-radius": 5, "circle-color": accent }}
-          />
-        </Source>
-      </MapLibre>
-      <MapCredits styleUrl={styleUrl} extra={SURFACE_ATTRIBUTION} />
+      ))}
+      <DirectionCues coordinates={coordinates} />
+      {/*
+       * The two ends, mounted above the route and the cues so neither is lost
+       * under a line. They are told apart by shape as well as by fill — a disc
+       * for the start, a ring for the finish — because a reader who cannot
+       * separate the two colours still has to be able to separate the two ends.
+       */}
+      <Source id="route-start" type="geojson" data={startPoint}>
+        <Layer
+          id="route-start-point"
+          type="circle"
+          paint={{
+            "circle-radius": TERMINAL_RADIUS,
+            "circle-color": accent,
+            "circle-stroke-color": "#ffffff",
+            "circle-stroke-width": 2.5,
+            "circle-translate": [-nudge, 0],
+          }}
+        />
+      </Source>
+      <Source id="route-finish" type="geojson" data={finishPoint}>
+        <Layer
+          id="route-finish-point"
+          type="circle"
+          paint={{
+            "circle-radius": TERMINAL_RADIUS - TERMINAL_RING_WIDTH / 2,
+            "circle-color": "#ffffff",
+            "circle-stroke-color": accent,
+            "circle-stroke-width": TERMINAL_RING_WIDTH,
+            "circle-translate": [nudge, 0],
+          }}
+        />
+      </Source>
+      <Source id="route-position" type="geojson" data={marker}>
+        <Layer
+          id="route-position-halo"
+          type="circle"
+          paint={{ "circle-radius": 8, "circle-color": "#ffffff", "circle-opacity": 0.9 }}
+        />
+        <Layer
+          id="route-position-dot"
+          type="circle"
+          paint={{ "circle-radius": 5, "circle-color": accent }}
+        />
+      </Source>
       {/*
        * The cues in words. Markers and chevrons are drawn into a WebGL surface
        * that carries no text at all, so this is not a caption repeating what is
@@ -842,7 +687,6 @@ export function RouteMap({
        * of what the cues say.
        */}
       {cues ? <p className="visually-hidden">{cuesDescription(cues)}</p> : null}
-      <ExploreToggle exploring={exploring} onExploringChange={setExploring} />
-    </div>
+    </>
   );
 }

@@ -175,23 +175,37 @@ function renderWordmark(value?: Status) {
 }
 
 describe("Wordmark", () => {
-  it("is itself the way to the sync page", () => {
+  it("carries one quiet way to the sync page", () => {
     renderWordmark(status({ lastCompletedAt: "2026-08-18T06:30:00Z" }));
 
-    const link = screen.getByRole("link", { name: /domestique/ });
+    const link = screen.getByRole("link", { name: /^Sync/ });
     expect(link).toHaveAttribute("href", "/sync");
-    expect(link).toHaveTextContent(/In sync · /);
+    expect(link).toHaveTextContent("Sync");
+    expect(screen.getByText("domestique")).toBeInTheDocument();
+  });
+
+  /*
+   * The row has room for one word, so the state is the link's colour — and a
+   * colour is nothing to a screen reader or to anyone who cannot tell these two
+   * apart. The name says what the colour meant.
+   */
+  it("says in the link's name what its colour means", () => {
+    renderWordmark(status({ lastCompletedAt: "2026-08-18T06:30:00Z" }, [unauthorized()]));
+
+    const link = screen.getByRole("link", { name: "Sync \u00b7 An account is not connected" });
+    expect(link).toHaveAttribute("data-tone", "alert");
   });
 
   /*
    * The map behind this panel is what the reader came for. A status request
-   * still in flight — or one that never arrives — must not put a line about
-   * synchronisation over the corner of it.
+   * still in flight — or one that never arrives — must not paint the corner of
+   * it in a state nobody has.
    */
   it("says nothing about a state it does not have", () => {
     renderWordmark();
 
-    expect(screen.getByText("domestique")).toBeInTheDocument();
-    expect(document.querySelector(".wordmark__state")).toBeNull();
+    const link = screen.getByRole("link", { name: "Sync" });
+    expect(link).not.toHaveAttribute("data-tone");
+    expect(link).not.toHaveAttribute("title");
   });
 });

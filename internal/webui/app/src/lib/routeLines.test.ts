@@ -60,7 +60,7 @@ describe("gradientSlices", () => {
   const steps = ramp([...Array(40).fill(0), ...Array(40).fill(6), ...Array(40).fill(14)]);
 
   it("groups the route by band, gentlest first", () => {
-    expect(gradientSlices(steps, null).map((slices) => slices.band)).toEqual([0, 1, 3]);
+    expect(gradientSlices(steps, null).map((slices) => slices.band)).toEqual([0, 1, 4]);
   });
 
   it("runs each band one point on, so neighbours meet on the shared point", () => {
@@ -74,7 +74,7 @@ describe("gradientSlices", () => {
   it("separates what a window is showing from what it is not", () => {
     const slices = gradientSlices(steps, [{ startIndex: 0, endIndex: 20 }]);
     const gentle = slices.find((entry) => entry.band === 0);
-    const steep = slices.find((entry) => entry.band === 3);
+    const steep = slices.find((entry) => entry.band === 4);
 
     expect(gentle?.inside).not.toHaveLength(0);
     expect(gentle?.outside).not.toHaveLength(0);

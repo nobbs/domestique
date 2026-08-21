@@ -634,6 +634,6 @@ describe("a picked class", () => {
   it("names the picked class in the spoken summary", () => {
     render(<Harness highlight={{ type: "band", band: 1 }} />);
 
-    expect(screen.getByRole("img")).toHaveAccessibleName(/Only the 4–8% stretches are lit\./);
+    expect(screen.getByRole("img")).toHaveAccessibleName(/Only the 3 to 6% stretches are lit\./);
   });
 });

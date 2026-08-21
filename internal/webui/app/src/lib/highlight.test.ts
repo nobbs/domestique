@@ -55,7 +55,7 @@ describe("sameHighlight", () => {
 describe("highlightLabel", () => {
   it("names a class the way the palette that draws it does", () => {
     expect(highlightLabel({ type: "surface", kind: "gravel" })).toBe("Gravel");
-    expect(highlightLabel({ type: "band", band: 4 })).toBe("≥ 16%");
+    expect(highlightLabel({ type: "band", band: 4 })).toBe("12% and steeper");
   });
 });
 
@@ -129,7 +129,7 @@ describe("highlightRanges", () => {
 
   it("finds the stretches of one gradient band", () => {
     const steps = ramp([...Array(40).fill(0), ...Array(40).fill(14)]);
-    const ranges = highlightRanges(steps, [], { type: "band", band: 3 });
+    const ranges = highlightRanges(steps, [], { type: "band", band: 4 });
 
     expect(ranges).not.toHaveLength(0);
     expect(ranges.every((range) => range.endIndex > range.startIndex)).toBe(true);

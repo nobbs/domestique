@@ -50,11 +50,11 @@
    * components/RouteMap.tsx, because MapLibre paints on a canvas and cannot
    * resolve a custom property. The two copies must stay in step.
    */
-  --grade-0: #8e979f; /* < 4% */
-  --grade-1: #22a94e; /* 4–8% */
-  --grade-2: #e8b70a; /* 8–12% */
-  --grade-3: #f2811d; /* 12–16% */
-  --grade-4: #dc2b21; /* ≥ 16% */
+  --grade-0: #8e979f; /* under 3% */
+  --grade-1: #22a94e; /* 3–6% */
+  --grade-2: #e8b70a; /* 6–9% */
+  --grade-3: #f2811d; /* 9–12% */
+  --grade-4: #dc2b21; /* 12% and steeper */
 
   /*
    * Surface classes: the same idea at lower chroma, ordered smooth to rough,
@@ -107,7 +107,7 @@
 
   /* The widest a floating panel is ever drawn. A longer results line is a longer
    * line to read, not a better one. */
-  --panel-width: 436px;
+  --panel-width: 404px;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -244,62 +244,57 @@ body {
 /* Wordmark ---------------------------------------------------------------- */
 
 /*
- * The mark, the name, and one state line — and the whole panel is the link to
- * the sync page. It replaces the header, so it is also the only thing on the
- * entry page that says what this application is.
+ * The mark, the name, and one quiet link to the sync page at the far end of the
+ * row. It replaces the header, so it is also the only thing on the entry page
+ * that says what this application is.
  */
 .wordmark {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  width: auto;
   padding: var(--space-2) var(--space-3);
-  color: inherit;
-  text-decoration: none;
 }
 
-.wordmark:hover,
-.wordmark:focus-visible {
-  color: var(--accent);
-}
-
-.wordmark:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
-.wordmark__text {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
+/* Takes the slack, which is what holds the link against the far edge. */
 .wordmark__name {
+  margin-right: auto;
   font: var(--type-title);
   letter-spacing: var(--track-title);
 }
 
 /*
- * One line, and the only place on the entry page that says anything about
- * synchronisation. The tone is the state: quiet when the library is current,
- * coloured only when a run needs the operator.
+ * The only thing the entry page says about synchronisation, and it says it in
+ * one word. The tone is the state: quiet when the library is current, coloured
+ * only when a run needs the operator — and whatever the colour cannot say is
+ * said by the link's own name.
  */
-.wordmark__state {
+.wordmark__sync {
   color: var(--ink-2);
   font: var(--type-small);
   letter-spacing: var(--track-small);
-  font-variant-numeric: tabular-nums;
+  text-decoration: none;
 }
 
-.wordmark__state[data-tone="good"] {
+.wordmark__sync:hover,
+.wordmark__sync:focus-visible {
+  color: var(--accent);
+}
+
+.wordmark__sync:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: calc(var(--radius) - 6px);
+}
+
+.wordmark__sync[data-tone="good"] {
   color: var(--good);
 }
 
-.wordmark__state[data-tone="hold"] {
+.wordmark__sync[data-tone="hold"] {
   color: var(--hold);
 }
 
-.wordmark__state[data-tone="alert"] {
+.wordmark__sync[data-tone="alert"] {
   color: var(--alert);
 }
 
@@ -458,7 +453,7 @@ body {
 }
 
 .route-card__figures,
-.route-page__figures {
+.route-panel__figures {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-3) var(--space-5);
@@ -466,14 +461,14 @@ body {
 }
 
 .route-card__figures div,
-.route-page__figures div {
+.route-panel__figures div {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
 }
 
 .route-card__figures dt,
-.route-page__figures dt {
+.route-panel__figures dt {
   color: var(--ink-2);
   font: var(--type-micro);
   letter-spacing: var(--track-micro);
@@ -481,7 +476,7 @@ body {
 }
 
 .route-card__figures dd,
-.route-page__figures dd {
+.route-panel__figures dd {
   margin: 0;
   font: var(--type-body);
   font-weight: 600;
@@ -489,7 +484,7 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-.route-page__figures dd {
+.route-panel__figures dd {
   font: var(--type-title);
   letter-spacing: var(--track-title);
   font-variant-numeric: tabular-nums;
@@ -588,19 +583,25 @@ body {
 }
 
 /*
- * One control cluster, bottom-right. MapLibre puts a control in whichever of the
- * four corners it was given, and four occupied corners is four things to look
- * past; the zoom pair, the scale bar and the credit are one thing to look past.
+ * One control cluster, bottom-left: the zoom pair, then the scale bar, then the
+ * credit, in that order. MapLibre puts a control in whichever of the four
+ * corners it was given, and four occupied corners is four things to look past.
+ *
+ * The one corner nothing else wants. The panels take the head of the map and the
+ * elevation profile takes the foot of it from the panel column rightward, so the
+ * strip below that column is the only ground no floating thing is ever drawn on
+ * — which is why the cluster can simply sit there rather than being lifted clear
+ * of a panel whose height it would have to know.
  */
-.maplibregl-ctrl-bottom-right {
+.maplibregl-ctrl-bottom-left {
   display: flex;
   flex-direction: column;
-  align-items: end;
-  gap: var(--space-1);
-  padding: var(--space-2);
+  align-items: start;
+  gap: var(--space-3);
+  padding: var(--space-5);
 }
 
-.maplibregl-ctrl-bottom-right .maplibregl-ctrl {
+.maplibregl-ctrl-bottom-left .maplibregl-ctrl {
   margin: 0;
   border-radius: var(--radius);
   box-shadow: var(--shadow);
@@ -620,155 +621,233 @@ body {
 }
 
 /*
- * The tile and map-data credit, in the same cluster as the controls. It is text
- * read out of the style document rather than the provider's own markup — see
- * MapCredits — so it is styled here like anything else on the page.
+ * The tile and map-data credit, the last thing in the control cluster. It is
+ * text read out of the style document rather than the provider's own markup —
+ * see MapCredits — so it is styled here like anything else on the page.
+ *
+ * A chip of its own rather than a strip across the corner: it is the same kind
+ * of floating thing as the zoom pair above it, and sized to what it says, so a
+ * one-line credit does not reserve the width a three-provider one would need.
  */
 .map-credits {
-  position: absolute;
-  right: var(--space-2);
-  bottom: var(--space-2);
-  z-index: 1;
+  margin: 0;
   max-width: min(100%, 380px);
-  padding: 2px var(--space-2);
+  padding: 3px var(--space-2);
   border-radius: calc(var(--radius) - 4px);
-  background: color-mix(in srgb, var(--panel) 82%, transparent);
-  color: var(--ink-2);
-  font: var(--type-small);
-  letter-spacing: var(--track-small);
-  text-align: right;
-}
-
-/* Route page -------------------------------------------------------------- */
-
-/*
- * One route: the map above, the figures and the profile in panels below it. The
- * profile is always there — there is no collapsing it and nothing remembered
- * about whether it was open.
- */
-.route-page {
-  display: flex;
-  flex-direction: column;
-  min-height: 100%;
-  background: var(--base);
-}
-
-.route-page__header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-3) var(--space-4);
-  padding: var(--space-3) var(--space-5);
-}
-
-.route-page__back {
-  color: var(--ink-2);
-  font: var(--type-row);
-  letter-spacing: var(--track-row);
-  text-decoration: none;
-}
-
-.route-page__back:hover,
-.route-page__back:focus-visible {
-  color: var(--accent);
-}
-
-.route-page__actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin-left: auto;
-}
-
-.route-page__source {
-  color: var(--ink-2);
-  font: var(--type-row);
-  letter-spacing: var(--track-row);
-  text-decoration: none;
-}
-
-.route-page__source:hover,
-.route-page__source:focus-visible {
-  color: var(--accent);
-}
-
-.route-page__reprocess {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.route-page__reprocess-note {
+  background: var(--panel);
+  box-shadow: var(--shadow);
   color: var(--ink-2);
   font: var(--type-small);
   letter-spacing: var(--track-small);
 }
 
-.route-page__body {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  min-height: 0;
-  padding: 0 var(--space-5) var(--space-5);
+/*
+ * The credit is drawn into the cluster, and this is where it lands if the map
+ * never reported one — the corner it would have been in. A licence obliges the
+ * credit to be visible, so it has somewhere to go whatever MapLibre does.
+ */
+.route-map > .map-credits {
+  position: absolute;
+  bottom: var(--space-5);
+  left: var(--space-5);
+  z-index: 1;
 }
+
+/* Route panel ------------------------------------------------------------- */
 
 /*
- * Tall enough to be a map and short enough to leave the figures on the screen
- * with it. It is a fraction of the window rather than a fixed height, because
- * the thing it has to stay in proportion to is the window.
+ * One route, in the panel the search was in. It is the same floating surface at
+ * the same width — the route did not become a different kind of thing by being
+ * opened, and a panel that changed shape underneath the reader would say it had.
  */
-.route-page__map {
-  flex: none;
-  height: min(52vh, 560px);
-  border-radius: var(--radius);
-  overflow: hidden;
-}
-
-.route-page__facts {
+.route-panel {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
   padding: var(--space-4);
 }
 
-.route-page__title {
+/* The way back and the way out, at either end of one line above the name. */
+.route-panel__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+/* The name and the line under it are one thing, so they sit closer than the
+ * card's own rhythm would put them. */
+.route-panel__name {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+/*
+ * The way back, above the name. It is quiet: leaving is always available and
+ * never the thing to do, so it is a line of text rather than a control competing
+ * with the route it sits over.
+ */
+.route-panel__back {
+  align-self: start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink-2);
+  font: var(--type-row);
+  letter-spacing: var(--track-row);
+  cursor: pointer;
+}
+
+.route-panel__back:hover,
+.route-panel__back:focus-visible {
+  color: var(--accent);
+}
+
+/*
+ * The cross. It says the same thing the sentence beside it says, for the reader
+ * who dismisses a panel without reading it — so it is the quieter of the two,
+ * and it grows a hit area a thumb can find without taking any room from the
+ * line.
+ */
+.route-panel__close {
+  margin: calc(var(--space-2) * -1) calc(var(--space-2) * -1) calc(var(--space-2) * -1) auto;
+  padding: var(--space-2);
+  border: 0;
+  background: none;
+  color: var(--ink-2);
+  font: var(--type-body);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.route-panel__close:hover,
+.route-panel__close:focus-visible {
+  color: var(--accent);
+}
+
+.route-panel__title {
   margin: 0;
   font: var(--type-display);
   letter-spacing: var(--track-display);
 }
 
-.route-page__subtitle {
+.route-panel__subtitle {
   margin: 0;
   color: var(--ink-2);
   font: var(--type-small);
   letter-spacing: var(--track-small);
 }
 
-.route-page__panel {
-  padding: var(--space-4) 0 var(--space-2);
+/*
+ * The two quiet actions, at the foot and above a hairline: neither is what this
+ * panel is for, and both leave — one for the provider, one for a fresh pass over
+ * the same route.
+ */
+.route-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--rule);
 }
 
-.route-page__panel-heading {
+.route-panel__source {
+  color: var(--ink-2);
+  font: var(--type-row);
+  letter-spacing: var(--track-row);
+  text-decoration: none;
+}
+
+.route-panel__source:hover,
+.route-panel__source:focus-visible {
+  color: var(--accent);
+}
+
+.route-panel__reprocess {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.route-panel__reprocess-note {
+  color: var(--ink-2);
+  font: var(--type-small);
+  letter-spacing: var(--track-small);
+}
+
+/* Elevation panel --------------------------------------------------------- */
+
+/*
+ * The profile floats across the foot of the map, starting where the left-hand
+ * panel ends: the two never overlap, and the ground between them stays map.
+ *
+ * It is positioned rather than laid out, because the overlay it sits in is a
+ * column for the panels on the left and this one belongs to the whole width.
+ */
+.elevation-panel {
+  position: absolute;
+  right: var(--space-5);
+  bottom: var(--space-5);
+  left: calc(var(--panel-width) + var(--space-5) * 2);
+  width: auto;
+  max-width: none;
+  padding: var(--space-3) 0 var(--space-2);
+}
+
+/*
+ * Collapsed, it is a pill in the same corner rather than a panel that shrank:
+ * it keeps the right edge it had, so the thing the reader put away is plainly
+ * still there and plainly still theirs to open.
+ */
+.elevation-panel[data-collapsed="true"] {
+  left: auto;
+  padding: 0;
+  border-radius: var(--radius);
+}
+
+.elevation-panel__header {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: var(--space-1) var(--space-2);
+  gap: var(--space-1) var(--space-3);
   margin: 0 var(--space-4) var(--space-2);
 }
 
-.route-page__panel-heading h2 {
+.elevation-panel[data-collapsed="true"] .elevation-panel__header {
+  margin: 0;
+  padding: var(--space-2) var(--space-4);
+}
+
+.elevation-panel__header h2 {
   margin: 0;
   font: var(--type-body);
   font-weight: 600;
   letter-spacing: var(--track-body);
 }
 
-.route-page__panel-hint {
+.elevation-panel__summary {
   color: var(--ink-2);
   font: var(--type-small);
   letter-spacing: var(--track-small);
   font-variant-numeric: tabular-nums;
+}
+
+/* Pushed to the far end: it governs the panel rather than describing it. */
+.elevation-panel__collapse {
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink-2);
+  font: var(--type-row);
+  letter-spacing: var(--track-row);
+  cursor: pointer;
+}
+
+.elevation-panel__collapse:hover,
+.elevation-panel__collapse:focus-visible {
+  color: var(--accent);
 }
 
 /* Elevation profile ------------------------------------------------------- */
@@ -1340,16 +1419,32 @@ body {
     justify-content: start;
   }
 
-  .route-page__header,
-  .route-page__body {
-    padding-left: var(--space-4);
-    padding-right: var(--space-4);
+  /*
+   * The overlay docks across the foot of the screen here, so the cluster gives
+   * the corner back and takes the head of the map instead: the furniture stays
+   * out from under the panels rather than being lifted over a sheet that runs
+   * the whole width.
+   */
+  .maplibregl-ctrl-bottom-left {
+    top: 0;
+    bottom: auto;
+    gap: var(--space-2);
+    padding: var(--space-4);
   }
 
-  .route-page__map {
-    flex: none;
-    height: 300px;
-    min-height: 0;
+  /*
+   * There is no room beside the panel on a phone, so the profile docks under it
+   * rather than beside it: the sheet holds the route and its plot in one column
+   * across the width, and collapses to the same pill.
+   */
+  .elevation-panel {
+    position: static;
+    width: 100%;
+  }
+
+  .elevation-panel[data-collapsed="true"] {
+    align-self: end;
+    width: auto;
   }
 
   .sync-page {

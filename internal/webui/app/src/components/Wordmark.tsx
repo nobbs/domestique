@@ -1,15 +1,15 @@
 /**
- * The mark, the name, and one line about synchronisation.
+ * The mark, the name, and the way to synchronisation.
  *
  * It replaces the header: the entry page is a map, and a bar across the top of a
  * map is a bar across the map. So the one thing that has to be said everywhere —
- * what this application is, and whether it is doing its job — is said by a small
- * panel floating over the corner of the cartography, and the whole panel is the
- * link to the page where synchronisation can actually be read and operated.
+ * what this application is — is said by a small panel floating over the corner
+ * of the cartography, with one quiet link at the far end of the row for the page
+ * where synchronisation can be read and operated.
  *
- * One line, never two. Everything a run has to say about itself is on the sync
- * page; here there is room for whether it wants the operator, and when it last
- * finished.
+ * One row, never two. Everything a run has to say about itself is on the sync
+ * page; what is left here is whether that page wants the operator, which the
+ * link carries as its own colour rather than as a line of prose under the name.
  */
 
 import { useQuery } from "@tanstack/react-query";
@@ -21,7 +21,7 @@ import { formatTimestamp } from "../lib/format";
 import { syncGuidance } from "../lib/syncGuidance";
 import { Logo } from "./Logo";
 
-/** How urgently the line is painted: quiet unless it is one of the three states. */
+/** How urgently the link is painted: quiet unless it is one of the three states. */
 export type StateTone = "good" | "hold" | "alert" | undefined;
 
 export interface WordmarkState {
@@ -36,7 +36,7 @@ const RUNNING_LABELS: Record<SyncPhase, string> = {
 };
 
 /**
- * The one line, derived from the service's own state.
+ * The state of synchronisation, derived from the service's own.
  *
  * The order is the order an operator would want it in: what is happening now
  * outranks what happened last, a run that needs them outranks a run that does
@@ -78,26 +78,35 @@ export function wordmarkState(status: Status): WordmarkState {
 /**
  * The wordmark panel.
  *
- * The state line is absent rather than guessed at while the status is still on
- * its way, and absent rather than alarming if it never arrives: the map behind
- * this panel is what the reader came for, and a request that failed in the
- * corner of it is not their problem until they ask about synchronisation.
+ * The state is carried by the link rather than written out beside the name: the
+ * map behind this panel is what the reader came for, and a paragraph about
+ * synchronisation over the corner of it is a second thing to read before the
+ * first one has been looked at. What the tone cannot say in colour, the link
+ * says in its own name, so `Sync, An account is not connected` is what a screen
+ * reader and a hovering pointer both get.
+ *
+ * A state that has not arrived — or never arrives — leaves the link plain. The
+ * request failing in the corner of a map is not the reader's problem until they
+ * ask about synchronisation.
  */
 export function Wordmark() {
   const { data } = useQuery(statusQuery());
   const state = data ? wordmarkState(data) : null;
+  const described = state ? `Sync · ${state.label}` : undefined;
 
   return (
-    <Link className="panel wordmark" to="/sync">
+    <div className="panel wordmark">
       <Logo size={26} />
-      <span className="wordmark__text">
-        <span className="wordmark__name">domestique</span>
-        {state ? (
-          <span className="wordmark__state" data-tone={state.tone}>
-            {state.label}
-          </span>
-        ) : null}
-      </span>
-    </Link>
+      <span className="wordmark__name">domestique</span>
+      <Link
+        className="wordmark__sync"
+        to="/sync"
+        data-tone={state?.tone}
+        aria-label={described}
+        title={described}
+      >
+        Sync
+      </Link>
+    </div>
   );
 }

@@ -40,17 +40,17 @@ export function ReprocessButton({ routeId, stageOrder }: { routeId: number; stag
   });
 
   return (
-    <div className="route-page__reprocess">
+    <div className="route-panel__reprocess">
       <Button variant="standard" disabled={reprocess.isPending} onClick={() => reprocess.mutate()}>
         {reprocess.isPending ? "Requesting…" : "Reprocess"}
       </Button>
       {reprocess.isSuccess ? (
-        <span className="route-page__reprocess-note" role="status">
+        <span className="route-panel__reprocess-note" role="status">
           Queued. This stage is read, derived, and pushed again on the next pass.
         </span>
       ) : null}
       {reprocess.isError ? (
-        <span className="route-page__reprocess-note" role="status">
+        <span className="route-panel__reprocess-note" role="status">
           {reprocess.error instanceof Error && reprocess.error.message
             ? reprocess.error.message
             : "That request could not be made."}

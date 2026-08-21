@@ -56,9 +56,9 @@ test("the library is drawn from the routes view", async ({ bundlePage: page, api
 test("a route's geometry and its surface reach the map", async ({ bundlePage: page, apiCalls }) => {
   await openRoute(page, LOOP_ROUTE.routeId, LOOP_ROUTE.stageOrder);
 
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Synthetic Kaiserstuhl Loop");
+  await expect(page.getByRole("region", { name: "Synthetic Kaiserstuhl Loop" })).toBeVisible();
   await expect(page.locator(".maplibregl-canvas")).toBeVisible();
-  await expect(page.locator(".route-page__facts")).toContainText("km");
+  await expect(page.locator(".route-panel__figures")).toContainText("km");
   // The coordinates, the bounding box and the surface ranges all came out of the
   // geometry view; a map that fitted its camera and a key that lists classes are
   // the two halves of that having been read.
@@ -95,17 +95,20 @@ test("a route the library does not hold is reported safely", async ({
   apiCalls,
   identity,
 }) => {
-  await page.goto(`/routes/${ABSENT_ROUTE.routeId}/${ABSENT_ROUTE.stageOrder}`);
+  await page.goto(`/?route=${ABSENT_ROUTE.routeId}%2F${ABSENT_ROUTE.stageOrder}`);
 
-  // The service answers 404 with its error envelope, and the page says what that
-  // means for the reader rather than showing a code, a stack, or a blank map.
-  await expect(page.getByText("No geometry for this route yet.")).toBeVisible();
-  const geometry = callsTo(
-    apiCalls,
-    "GET",
-    `/v1/routes/${ABSENT_ROUTE.routeId}/stages/${ABSENT_ROUTE.stageOrder}/geometry`,
-  );
-  expect(geometry.map((call) => call.status)).toContain(404);
+  // The library is one listing, so an address naming a route that is not in it is
+  // answered from what the page already has — with a sentence saying so, rather
+  // than a code, a stack, or a blank map.
+  await expect(page.getByText("No route at that address.")).toBeVisible();
+  expect(
+    callsTo(
+      apiCalls,
+      "GET",
+      `/v1/routes/${ABSENT_ROUTE.routeId}/stages/${ABSENT_ROUTE.stageOrder}/geometry`,
+    ),
+    "no request went out for a route the listing does not hold",
+  ).toEqual([]);
 
   // The same request again, from outside the page, to state the shape the UI just
   // handled: an error envelope naming a code, and nothing about what went missing

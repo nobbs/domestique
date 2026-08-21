@@ -1,5 +1,5 @@
 /*
- * The key beneath the chart, and the chips that make it a control.
+ * The key in the route's card, and the chips that make it a control.
  *
  * Scoped to this component: the marks it explains are drawn by the chart and the
  * map, but the chips themselves are the key's own, and nothing else in the page
@@ -7,19 +7,55 @@
  */
 
 /*
- * One line of text-and-swatch pairs, sitting under the chart it explains and
- * holding both halves on one line wherever there is room for them.
+ * The two keys, stacked, each one a heading over a bar over its chips.
  *
- * The gap between the halves is wider than the gap inside one, which is what
- * keeps them two keys rather than one long row of chips when they do share a
- * line.
+ * Stacked rather than side by side: each half now carries a bar of its own that
+ * has to span the panel to be read as a proportion, and two full-width bars
+ * cannot share a line. The gap between the halves is wider than anything inside
+ * one, which is what keeps them two keys rather than one long column.
  */
 .key {
   display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: var(--space-1) var(--space-5);
-  margin: 0 var(--space-4) var(--space-2);
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+/*
+ * What the section is a key to. It is set like the figures' own labels above it,
+ * because it is doing the same job: naming the number underneath it.
+ */
+.heading {
+  margin: 0;
+  color: var(--ink-2);
+  font: var(--type-micro);
+  letter-spacing: var(--track-micro);
+  text-transform: uppercase;
+}
+
+/*
+ * The proportion bar: one segment per class, in class order, together spanning
+ * the whole stage. Thin enough to read as a measure rather than as a picture,
+ * and rounded at the ends so it reads as one bar rather than as its first and
+ * last segments.
+ */
+.bar {
+  display: flex;
+  width: 100%;
+  height: 7px;
+  margin-bottom: var(--space-1);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.fill {
+  display: block;
+  min-width: 1px;
 }
 
 .list {
@@ -41,7 +77,7 @@
  * buttons — the hit area is there the whole time, only the invitation is not.
  *
  * The negative margin pulls the padding back out of the layout, which is what
- * keeps the first swatch on the chart's left edge where it belongs.
+ * keeps the first swatch on the bar's left edge where it belongs.
  */
 .chip {
   display: inline-flex;
@@ -49,10 +85,10 @@
   gap: var(--space-1);
   /*
    * The padding is pulled back out of the layout on both axes, so growing the
-   * hit area to something a thumb can find does not push the key away from the
-   * chart it sits under. Vertically it is what takes the chip past the minimum
-   * target size; horizontally it is what keeps the first swatch on the chart's
-   * left edge.
+   * hit area to something a thumb can find does not push the chips away from the
+   * bar they name. Vertically it is what takes the chip past the minimum target
+   * size; horizontally it is what lines the first swatch up with the bar's left
+   * edge.
    */
   margin: -0.15rem -0.35rem;
   padding: 0.25rem 0.35rem;
@@ -100,6 +136,10 @@
  * A 16 px swatch, solid, with the one small radius. It repeats nothing but the
  * colour, because colour is now the only channel the map and the chart use —
  * see SURFACE_STYLES, and the `--surface-*` and `--grade-*` tokens they mirror.
+ *
+ * The colour itself is carried by `.paint`, which the bar's segments wear too:
+ * a swatch and the segment it names must be the same colour by construction,
+ * not by two lists that have to be kept in step.
  */
 .swatch {
   width: 16px;
@@ -120,38 +160,38 @@
   letter-spacing: var(--track-small);
 }
 
-.swatch[data-surface="asphalt"] {
+.paint[data-surface="asphalt"] {
   background: var(--surface-asphalt);
 }
-.swatch[data-surface="paving"] {
+.paint[data-surface="paving"] {
   background: var(--surface-paving);
 }
-.swatch[data-surface="compacted"] {
+.paint[data-surface="compacted"] {
   background: var(--surface-compacted);
 }
-.swatch[data-surface="gravel"] {
+.paint[data-surface="gravel"] {
   background: var(--surface-gravel);
 }
-.swatch[data-surface="ground"] {
+.paint[data-surface="ground"] {
   background: var(--surface-ground);
 }
-.swatch[data-surface="unknown"] {
+.paint[data-surface="unknown"] {
   background: var(--surface-unsurveyed);
 }
 
-.swatch[data-band="0"] {
+.paint[data-band="0"] {
   background: var(--grade-0);
 }
-.swatch[data-band="1"] {
+.paint[data-band="1"] {
   background: var(--grade-1);
 }
-.swatch[data-band="2"] {
+.paint[data-band="2"] {
   background: var(--grade-2);
 }
-.swatch[data-band="3"] {
+.paint[data-band="3"] {
   background: var(--grade-3);
 }
-.swatch[data-band="4"] {
+.paint[data-band="4"] {
   background: var(--grade-4);
 }
 
@@ -163,12 +203,16 @@
   }
 
   /*
-   * The swatches are the key to a ramp whose colour is its meaning, so they opt
-   * out with the marks they name — see the forced-colours block in index.css.
-   * The border keeps them visible where a band is close to the forced surface.
+   * The swatches and the bars they name are the key to a ramp whose colour is
+   * its meaning, so they opt out with the marks they name — see the
+   * forced-colours block in index.css. The border keeps a swatch visible where a
+   * band is close to the forced surface.
    */
-  .swatch {
+  .paint {
     forced-color-adjust: none;
+  }
+
+  .swatch {
     border: 1px solid CanvasText;
   }
 }

@@ -92,7 +92,7 @@ export interface MapCreditsProps {
    * The surface classification is a separate derived database under the ODbL,
    * whose share-alike terms oblige attribution wherever it is shown.
    */
-  extra?: string;
+  extra?: string | undefined;
 }
 
 export function MapCredits({ styleUrl, extra }: MapCreditsProps) {

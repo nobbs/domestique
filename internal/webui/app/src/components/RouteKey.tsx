@@ -2,27 +2,27 @@
  * The key to the two encodings drawn along a stage: the ground it is made of,
  * and how steeply it climbs.
  *
- * One row, both keys, sharing a line wherever the pane is wide enough for them.
- * They explain marks that share an axis — the surface strip runs along the foot
- * of the elevation chart, directly under the terrain it belongs to — and keys
- * for one instrument stacked on separate lines read as two instruments. Short of
- * room the steepness key drops beneath the surface key rather than shrinking
- * either, because a key that wraps is still read and a key set in six-point type
- * is not.
+ * Two named sections, gradient first, each a proportion bar with the classes
+ * that make it up listed underneath. The heading is what makes a row of
+ * swatches answer the question it is the answer to: `6% 22%` under nothing at
+ * all is a figure, and under `Gradient` it is a fact about the ride. Steepness
+ * comes first because it is the thing a rider chooses a route by; the ground it
+ * is made of decides which bike, which is the second question.
  *
  * Every entry is a control, not a caption. Clicking one asks where that class
  * is: its stretches stay lit on the map and in the chart while the rest of the
  * ride fades, which is the question a key has always implied and never answered.
  * Clicking it again gives the whole route back.
  *
- * The surface key carries no bar of its own. The proportions are drawn along the
- * foot of the chart, in the order they are ridden, which says everything a
- * summary bar said and also says *where* — so a second bar beside it would be
- * the same figures twice, one of them in the wrong order.
+ * Each section carries a bar of its own, one segment per class, in class order
+ * rather than in ride order. It is deliberately not the strip along the foot of
+ * the chart: that strip says *where*, this bar says *how much*, and the two
+ * cannot be read for each other's question. The bar also survives the chart
+ * being collapsed to a pill, which is when a reader has only this panel left.
  *
- * Every figure is text, so the split is readable without seeing a pixel of the
- * strip, and the swatches repeat the map's own colours so the key works for the
- * map, the strip, and the chart at once.
+ * Every figure is text as well, so the split is readable without seeing a pixel
+ * of either bar, and the swatches repeat the map's own colours so the key works
+ * for the map, the strip, and the chart at once.
  *
  * Proportions are of the whole stage, and unsurveyed ground is one of the
  * classes. A key that quietly renormalised over the surveyed part would report a
@@ -39,8 +39,10 @@
  */
 
 import { ToggleGroup } from "radix-ui";
+import type { ReactNode } from "react";
 import type { SurfaceKind } from "../api/types";
 import type { Highlight } from "../lib/highlight";
+import type { BandShare } from "../lib/profile";
 import { GRADIENT_BANDS } from "../lib/profile";
 import type { SurfaceSummary } from "../lib/surface";
 import { SURFACE_STYLES } from "../lib/surface";
@@ -54,6 +56,16 @@ import styles from "./RouteKey.module.css";
  * number. The same holds at the other end: rounding the rest to "100%" while
  * another class is still listed beside it makes the key argue with itself.
  */
+/**
+ * A share as a bar segment's width.
+ *
+ * A tenth of a percent is finer than any bar this size can draw, and rounding
+ * there keeps a segment from arriving in the DOM as `49.999999999911175%`.
+ */
+function segmentWidth(share: number): string {
+  return `${(share * 100).toFixed(1)}%`;
+}
+
 function formatShare(share: number): string {
   const percent = share * 100;
   if (percent > 0 && percent < 1) {
@@ -77,19 +89,34 @@ function chipValue(highlight: Highlight): string {
   return highlight.type === "surface" ? `surface:${highlight.kind}` : `band:${highlight.band}`;
 }
 
+/**
+ * One proportion bar.
+ *
+ * Hidden from assistive technology: every segment in it is a chip below it with
+ * its own figure spoken in full, and a bar is a picture of figures that have
+ * already been said.
+ */
+function MixBar({ children }: { children: ReactNode }) {
+  return (
+    <span className={styles.bar} aria-hidden="true">
+      {children}
+    </span>
+  );
+}
+
 export interface RouteKeyProps {
   /** Null for a route nobody has classified, which is said in words instead. */
   surface: SurfaceSummary | null;
   surfaceAbsence: string;
   /**
-   * The bands this stage actually has, gentlest first.
+   * The bands this stage actually has and their shares of it, gentlest first.
    *
    * Of the whole stage rather than of the stretch on show, so zooming does not
    * reshuffle the key underneath the reader's hand — and taken from the stage's
    * one classification, so the key offers no class the chart has nothing to
    * light, and lists every class the chart can paint at any zoom level.
    */
-  bands: number[];
+  bands: BandShare[];
   highlight: Highlight | null;
   onHighlightChange: (highlight: Highlight | null) => void;
 }
@@ -107,11 +134,11 @@ export function RouteKey({
   const offered = new Map<string, Highlight>();
   const surfaceHighlight = (kind: SurfaceKind): Highlight => ({ type: "surface", kind });
   const bandHighlight = (band: number): Highlight => ({ type: "band", band });
+  for (const entry of bands) {
+    offered.set(chipValue(bandHighlight(entry.band)), bandHighlight(entry.band));
+  }
   for (const entry of surface?.shares ?? []) {
     offered.set(chipValue(surfaceHighlight(entry.kind)), surfaceHighlight(entry.kind));
-  }
-  for (const band of bands) {
-    offered.set(chipValue(bandHighlight(band)), bandHighlight(band));
   }
 
   // At most one value travels in, and the group hands back the pressed chip
@@ -131,47 +158,97 @@ export function RouteKey({
       value={highlight ? [chipValue(highlight)] : []}
       onValueChange={pick}
     >
-      {surface ? (
-        <ul className={styles.list} aria-label="Surface classes">
-          {surface.shares.map((entry) => {
-            const style = SURFACE_STYLES[entry.kind];
-            const share = formatShare(entry.share);
-
-            return (
-              <li key={entry.kind}>
-                <ToggleGroup.Item
-                  className={styles.chip}
-                  value={chipValue(surfaceHighlight(entry.kind))}
-                  // What the class means, for a key that has to explain
-                  // "compacted" — spoken as part of the name, because a tooltip
-                  // is nothing to a keyboard or a finger.
-                  title={style.description}
-                  aria-label={`${style.label}, ${style.description}, ${share} of the route`}
-                >
-                  <span className={styles.swatch} data-surface={entry.kind} aria-hidden="true" />
-                  <span>{style.label}</span>
-                  <span className={styles.share}>{share}</span>
-                </ToggleGroup.Item>
-              </li>
-            );
-          })}
-        </ul>
-      ) : (
-        <p className={styles.absent}>{surfaceAbsence}</p>
-      )}
-
       {bands.length > 0 ? (
-        <ul className={styles.list} aria-label="Gradient bands">
-          {bands.map((band) => (
-            <li key={band}>
-              <ToggleGroup.Item className={styles.chip} value={chipValue(bandHighlight(band))}>
-                <span className={styles.swatch} data-band={band} aria-hidden="true" />
-                <span>{GRADIENT_BANDS[band]?.label}</span>
-              </ToggleGroup.Item>
-            </li>
-          ))}
-        </ul>
+        <div className={styles.section}>
+          <h3 className={styles.heading}>Gradient</h3>
+          <MixBar>
+            {bands.map((entry) => (
+              <span
+                key={entry.band}
+                className={`${styles.paint} ${styles.fill}`}
+                data-band={entry.band}
+                style={{ width: segmentWidth(entry.share) }}
+              />
+            ))}
+          </MixBar>
+          <ul className={styles.list} aria-label="Gradient bands">
+            {bands.map((entry) => {
+              const band = GRADIENT_BANDS[entry.band];
+              const share = formatShare(entry.share);
+
+              return (
+                <li key={entry.band}>
+                  <ToggleGroup.Item
+                    className={styles.chip}
+                    value={chipValue(bandHighlight(entry.band))}
+                    // The chips are read as a row of five and are terse about
+                    // it, so the span each one covers is spoken rather than
+                    // written: "6%" on the chip, "6 to 9%" in the name.
+                    title={band?.description}
+                    aria-label={`${band?.label}, ${band?.description}, ${share} of the route`}
+                  >
+                    <span
+                      className={`${styles.paint} ${styles.swatch}`}
+                      data-band={entry.band}
+                      aria-hidden="true"
+                    />
+                    <span>{band?.label}</span>
+                    <span className={styles.share}>{share}</span>
+                  </ToggleGroup.Item>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
       ) : null}
+
+      <div className={styles.section}>
+        <h3 className={styles.heading}>Surface</h3>
+        {surface ? (
+          <>
+            <MixBar>
+              {surface.shares.map((entry) => (
+                <span
+                  key={entry.kind}
+                  className={`${styles.paint} ${styles.fill}`}
+                  data-surface={entry.kind}
+                  style={{ width: segmentWidth(entry.share) }}
+                />
+              ))}
+            </MixBar>
+            <ul className={styles.list} aria-label="Surface classes">
+              {surface.shares.map((entry) => {
+                const style = SURFACE_STYLES[entry.kind];
+                const share = formatShare(entry.share);
+
+                return (
+                  <li key={entry.kind}>
+                    <ToggleGroup.Item
+                      className={styles.chip}
+                      value={chipValue(surfaceHighlight(entry.kind))}
+                      // What the class means, for a key that has to explain
+                      // "compacted" — spoken as part of the name, because a
+                      // tooltip is nothing to a keyboard or a finger.
+                      title={style.description}
+                      aria-label={`${style.label}, ${style.description}, ${share} of the route`}
+                    >
+                      <span
+                        className={`${styles.paint} ${styles.swatch}`}
+                        data-surface={entry.kind}
+                        aria-hidden="true"
+                      />
+                      <span>{style.label}</span>
+                      <span className={styles.share}>{share}</span>
+                    </ToggleGroup.Item>
+                  </li>
+                );
+              })}
+            </ul>
+          </>
+        ) : (
+          <p className={styles.absent}>{surfaceAbsence}</p>
+        )}
+      </div>
     </ToggleGroup.Root>
   );
 }

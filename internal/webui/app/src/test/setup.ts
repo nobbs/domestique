@@ -25,6 +25,15 @@ beforeEach(() => {
     }) as MediaQueryList;
 });
 
+/**
+ * And a `scrollIntoView`, which jsdom has none of either.
+ *
+ * It lays nothing out, so it implements none of the scrolling API. A component
+ * that brings itself into view is asking the platform to do something with a
+ * geometry this environment does not have; doing nothing is the right answer.
+ */
+Element.prototype.scrollIntoView = () => {};
+
 // Testing Library only registers its own cleanup when Vitest globals are on.
 // This suite imports its helpers explicitly, so unmount between tests here or
 // each render leaks into the next one's queries.
