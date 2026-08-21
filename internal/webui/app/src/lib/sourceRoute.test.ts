@@ -30,6 +30,18 @@ describe("sourceRoute", () => {
     expect(moved?.host).toBe("elsewhere.example.test");
   });
 
+  // The affordance shows the name and announces the address, so the name has to
+  // be a part of the address or the control is calling itself two things.
+  it("names the provider without the parts of an address that are not a name", () => {
+    expect(sourceRoute("https://www.source.example.test:8443", 7)?.name).toBe(
+      "source.example.test",
+    );
+    expect(sourceRoute("https://www.source.example.test:8443", 7)?.host).toBe(
+      "www.source.example.test:8443",
+    );
+    expect(sourceRoute(BASE, 7)?.name).toBe("source.example.test");
+  });
+
   it("offers nothing at all when the service names no provider", () => {
     expect(sourceRoute(undefined, 4212)).toBeNull();
     expect(sourceRoute("", 4212)).toBeNull();

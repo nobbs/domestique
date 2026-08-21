@@ -11,7 +11,7 @@
  * submit button is a trap rather than a convenience.
  */
 
-import type { ButtonHTMLAttributes } from "react";
+import type { AnchorHTMLAttributes, ButtonHTMLAttributes } from "react";
 import { Link, type LinkProps } from "react-router";
 import styles from "./Button.module.css";
 
@@ -50,4 +50,30 @@ export function ButtonLink({ variant = "standard", className, ...props }: Button
   const classes = [styles.button, styles[variant], className].filter(Boolean).join(" ");
 
   return <Link className={classes} {...props} />;
+}
+
+export interface ExternalButtonLinkProps extends AnchorHTMLAttributes<HTMLAnchorElement> {
+  variant?: ButtonVariant;
+}
+
+/**
+ * The same, for a destination that is not this application.
+ *
+ * A plain anchor rather than the router's link, because the router has no route
+ * to match and nothing to do with an address it does not own — and because the
+ * attributes an outbound link needs, `target` and `rel`, belong to the element
+ * itself rather than to a component pretending to navigate.
+ *
+ * It shares the two weights so that a control which leaves and a control which
+ * acts are not two different-looking things sitting in one row. Where it goes
+ * is said by its own label, not by dressing it down.
+ */
+export function ExternalButtonLink({
+  variant = "standard",
+  className,
+  ...props
+}: ExternalButtonLinkProps) {
+  const classes = [styles.button, styles[variant], className].filter(Boolean).join(" ");
+
+  return <a className={classes} {...props} />;
 }

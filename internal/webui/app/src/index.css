@@ -771,21 +771,22 @@ body {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-2) var(--space-4);
+  /* One gap on both axes: matched controls sitting as a pair, not as two asides. */
+  gap: var(--space-2);
   padding-top: var(--space-3);
   border-top: 1px solid var(--rule);
 }
 
-.route-panel__source {
-  color: var(--ink-2);
-  font: var(--type-row);
-  letter-spacing: var(--track-row);
-  text-decoration: none;
-}
-
-.route-panel__source:hover,
-.route-panel__source:focus-visible {
-  color: var(--accent);
+/*
+ * The link out wears the shared control, so the row reads as two controls
+ * rather than as a button with a sentence next to it. Everything that makes it
+ * look like one comes from Button.module.css; what is left here is the arrow,
+ * which no other control has.
+ */
+.route-panel__source svg {
+  /* Sat on the baseline it reads as a superscript, which it is not. */
+  vertical-align: -2px;
+  margin-left: 3px;
 }
 
 .route-panel__reprocess {

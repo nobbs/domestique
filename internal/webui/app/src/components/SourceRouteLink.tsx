@@ -7,10 +7,12 @@
  * keeps the private origin the operator is reading on out of the request, which
  * is the same bargain the repository link in the header makes.
  *
- * It names the route, because a route is what the provider can address. A stage
- * is not addressable there — the fragment on one of its URLs is a map viewport,
- * not a stage selector — so an affordance promising stage-level precision would
- * be promising something the destination cannot keep.
+ * The label is the provider, because that is what a reader cannot work out from
+ * the row it sits in. The spoken name is the one that promises precision, and
+ * it promises route-level precision only: a stage is not addressable at the
+ * provider — the fragment on one of its URLs is a map viewport, not a stage
+ * selector — so an affordance offering more would be offering something the
+ * destination cannot keep.
  *
  * Nothing at all when there is no link to give, rather than a disabled control
  * or a dead anchor: a deployment with no configured provider base URL has no way
@@ -18,6 +20,7 @@
  */
 
 import { sourceRoute } from "../lib/sourceRoute";
+import { ExternalButtonLink } from "./Button";
 
 export interface SourceRouteLinkProps {
   /** The provider's web application, as configured. Undefined offers no link. */
@@ -33,7 +36,7 @@ export function SourceRouteLink({ baseUrl, routeId }: SourceRouteLinkProps) {
   }
 
   return (
-    <a
+    <ExternalButtonLink
       className="route-panel__source"
       href={source.href}
       target="_blank"
@@ -45,10 +48,15 @@ export function SourceRouteLink({ baseUrl, routeId }: SourceRouteLinkProps) {
       aria-label={`Open source route ${routeId} on ${source.host} in a new tab`}
     >
       {/*
-       * The label is real text, not decoration: it is what a reader sees, and
-       * it is also what remains if the arrow beside it fails to paint.
+       * The provider names itself. "Source route" described the link's job,
+       * which the row it sits in already says; the destination is the thing a
+       * reader cannot work out from context, and it is also the thing that
+       * tells them whether following it is worth the tab.
+       *
+       * Real text, not decoration: it is what remains if the arrow beside it
+       * fails to paint.
        */}
-      <span>Source route</span>
+      <span>{source.name}</span>
       <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" focusable="false">
         <path
           fill="none"
@@ -59,6 +67,6 @@ export function SourceRouteLink({ baseUrl, routeId }: SourceRouteLinkProps) {
           d="M6.5 3H3.8A.8.8 0 0 0 3 3.8v8.4a.8.8 0 0 0 .8.8h8.4a.8.8 0 0 0 .8-.8V9.5M9.5 2.5H13.5V6.5M13 3 7.5 8.5"
         />
       </svg>
-    </a>
+    </ExternalButtonLink>
   );
 }
