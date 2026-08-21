@@ -14,8 +14,9 @@
  * cache means the route page later opens on geometry that is already here.
  */
 
+import type { UseQueryResult } from "@tanstack/react-query";
 import { useQueries, useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { routeGeometryQuery, routesQuery, statusQuery, webUIConfigQuery } from "../../api/queries";
 import type { BoundingBox, Position, RouteGeometry } from "../../api/types";
 import { routeKey } from "../../api/types";
@@ -66,30 +67,39 @@ export function RoutesPage() {
    * has no bounding box to draw from, and adding one would be a change to the
    * service's wire contract for the sake of a first paint.
    */
-  const geometries = useQueries({
+  /*
+   * Combined here rather than in a memo over the results, because `useQueries`
+   * hands back a new array on every render and a memo keyed on it would rebuild
+   * the collection every time — and the map would be given new lines to upload
+   * every time with it. `combine` is memoised against the results themselves,
+   * so the map is handed the same lines until a geometry actually arrives.
+   */
+  const combine = useCallback(
+    (results: Array<UseQueryResult<RouteGeometry>>) => {
+      const lines: LibraryLine[] = [];
+      const shapes = new Map<string, RouteShape>();
+      const boxes = new Map<string, BoundingBox>();
+      library.forEach((route, index) => {
+        const geometry = results[index]?.data;
+        if (!geometry) {
+          return;
+        }
+        const key = routeKey(route);
+        const coordinates: Position[] = geometry.coordinates;
+        lines.push({ key, coordinates });
+        shapes.set(key, { coordinates });
+        boxes.set(key, geometry.bbox);
+      });
+
+      return { lines, shapes, boxes };
+    },
+    [library],
+  );
+
+  const drawn = useQueries({
     queries: library.map((route) => routeGeometryQuery(route.routeId, route.stageOrder)),
+    combine,
   });
-
-  const drawn = useMemo(() => {
-    const lines: LibraryLine[] = [];
-    const shapes = new Map<string, RouteShape>();
-    const boxes = new Map<string, BoundingBox>();
-    library.forEach((route, index) => {
-      const geometry = geometries[index]?.data as RouteGeometry | undefined;
-      if (!geometry) {
-        return;
-      }
-      const key = routeKey(route);
-      const coordinates: Position[] = geometry.coordinates;
-      lines.push({ key, coordinates });
-      shapes.set(key, { coordinates });
-      boxes.set(key, geometry.bbox);
-    });
-
-    return { lines, shapes, boxes };
-    // The queries array is a new array on every render; its data is not, so the
-    // dependency is what actually changes — how many have arrived, and which.
-  }, [library, geometries]);
 
   // The camera follows the selection when there is one, because a route picked
   // out of the column is a route the reader now wants to see the shape of.
