@@ -32,7 +32,7 @@ const EARTH_RADIUS_METRES = 6_371_000;
  * Steepness gets a warm ramp — grey, then green, gold, orange and red — which
  * is a sequential scale's multi-hue exception: it means severity, and it carries
  * a key wherever it is drawn. Lightness falls with every step, so steeper reads
- * as "more" as well as as "hotter".
+ * as "more" as well as "hotter".
  *
  * Colour is the only channel. Five steps cannot be told apart by hue alone under
  * red-green colour blindness, and the hatches that used to carry the difference
