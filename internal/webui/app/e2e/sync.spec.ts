@@ -81,7 +81,7 @@ test("the foot of the page names the running build", async ({ offlinePage: page 
 test("the map's wordmark is the only way in that a reader needs", async ({ offlinePage: page }) => {
   await openLibrary(page);
 
-  await page.getByRole("link", { name: /domestique/ }).click();
+  await page.getByRole("link", { name: /^Sync/ }).click();
 
   await expect(page).toHaveURL(/\/sync$/);
   await expect(page.getByRole("region", { name: "Now" })).toBeVisible();

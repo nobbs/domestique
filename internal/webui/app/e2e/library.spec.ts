@@ -29,7 +29,8 @@ test("the entry page is the library, drawn", async ({ offlinePage: page }) => {
   // wordmark and the search pill.
   await expect(mapRegion(page)).toBeVisible();
   await expect(page.locator(".maplibregl-canvas")).toBeVisible();
-  await expect(page.getByRole("link", { name: /domestique/ })).toBeVisible();
+  await expect(page.getByText("domestique")).toBeVisible();
+  await expect(page.getByRole("link", { name: /^Sync/ })).toBeVisible();
   await expect(page.getByRole("searchbox", { name: "Search the route library" })).toHaveAttribute(
     "placeholder",
     `Search ${DEMO_TITLES.length} routes`,
@@ -128,13 +129,15 @@ test("a link to the old route page lands on the route", async ({ offlinePage: pa
 test("the wordmark says what sync is doing and is the way to it", async ({ offlinePage: page }) => {
   await openLibrary(page);
 
-  const wordmark = page.getByRole("link", { name: /domestique/ });
-  await expect(wordmark).toHaveAttribute("href", "/sync");
-  // One line, never two: whether it wants the operator, and when it last
-  // finished. The demo has one connected slot and one that never onboarded.
-  await expect(page.locator(".wordmark__state")).toBeVisible();
+  await expect(page.getByText("domestique")).toBeVisible();
+  const sync = page.getByRole("link", { name: /^Sync/ });
+  await expect(sync).toHaveAttribute("href", "/sync");
+  // One word, and the state is its colour. The demo has one connected slot and
+  // one that never onboarded, so the link is painted and says why.
+  await expect(sync).toHaveAttribute("data-tone", "alert");
+  await expect(sync).toHaveAccessibleName("Sync \u00b7 An account is not connected");
 
-  await wordmark.click();
+  await sync.click();
 
   await expect(page).toHaveURL(/\/sync$/);
   await expect(page.getByRole("heading", { level: 1, name: "Sync" })).toBeVisible();
