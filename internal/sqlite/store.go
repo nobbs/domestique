@@ -1534,6 +1534,108 @@ func (s *Store) RecordFailureNotification(ctx context.Context, category string, 
 	return nil
 }
 
+// digestNotificationKind is the single row the success digest keeps its clock
+// in. Failure notifications key a row per category because each category is its
+// own alert; the digest is one periodic message and needs one.
+const digestNotificationKind = "digest:success"
+
+// LastPhaseOutcome returns the outcome of the most recent run recorded for one
+// phase.
+//
+// Runs recorded before phases existed carry no phase and are not attributed to
+// one, which is the same rule ForEachPhaseRun applies.
+func (s *Store) LastPhaseOutcome(ctx context.Context, phase string) (outcome string, found bool, err error) {
+	if phase == "" {
+		return "", false, errors.New("phase is required")
+	}
+	if err := s.database.QueryRowContext(ctx, `
+		SELECT outcome FROM sync_runs WHERE phase = ? ORDER BY id DESC LIMIT 1
+	`, phase).Scan(&outcome); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", false, nil
+		}
+
+		return "", false, fmt.Errorf("reading the last outcome of a phase: %w", err)
+	}
+
+	return outcome, true, nil
+}
+
+// LastDigestNotification returns when the last success digest was delivered.
+// Absent, the caller has not started its clock yet.
+func (s *Store) LastDigestNotification(ctx context.Context) (time.Time, bool, error) {
+	var sentAt int64
+	err := s.database.QueryRowContext(ctx, `
+		SELECT last_sent_at_unix FROM notification_state WHERE kind = ?
+	`, digestNotificationKind).Scan(&sentAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return time.Time{}, false, nil
+	}
+	if err != nil {
+		return time.Time{}, false, fmt.Errorf("reading digest notification state: %w", err)
+	}
+
+	return time.Unix(sentAt, 0).UTC(), true, nil
+}
+
+// RecordDigestNotification moves the digest clock forward, after Pushover
+// accepted the message or when the clock is first started.
+func (s *Store) RecordDigestNotification(ctx context.Context, sentAt time.Time) error {
+	if sentAt.IsZero() {
+		return errors.New("notification time is required")
+	}
+	if _, err := s.database.ExecContext(ctx, `
+		INSERT INTO notification_state (kind, last_sent_at_unix) VALUES (?, ?)
+		ON CONFLICT(kind) DO UPDATE SET last_sent_at_unix = excluded.last_sent_at_unix
+	`, digestNotificationKind, sentAt.Unix()); err != nil {
+		return fmt.Errorf("recording digest notification: %w", err)
+	}
+
+	return nil
+}
+
+// ForEachSuccessfulRunSince visits the successful runs that finished after the
+// given time, oldest first.
+//
+// It selects the counts a digest totals and nothing else. The detail column is
+// deliberately not read: a digest is aggregate, and the failure category it
+// holds belongs to the runs this query excludes anyway.
+func (s *Store) ForEachSuccessfulRunSince(
+	ctx context.Context,
+	since time.Time,
+	visit func(phase string, created, updated, deleted int) error,
+) error {
+	if visit == nil {
+		return errors.New("successful run visitor is required")
+	}
+	rows, err := s.database.QueryContext(ctx, `
+		SELECT phase, created, updated, deleted
+		FROM sync_runs
+		WHERE phase <> '' AND outcome = ? AND finished_at_unix > ?
+		ORDER BY id
+	`, "succeeded", since.Unix())
+	if err != nil {
+		return fmt.Errorf("reading successful runs: %w", err)
+	}
+	defer closeRows(rows)
+
+	for rows.Next() {
+		var phase string
+		var created, updated, deleted int
+		if err := rows.Scan(&phase, &created, &updated, &deleted); err != nil {
+			return fmt.Errorf("reading a successful run: %w", err)
+		}
+		if err := visit(phase, created, updated, deleted); err != nil {
+			return err
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("reading the successful runs: %w", err)
+	}
+
+	return nil
+}
+
 // MarkNeedsReauthorization clears a target's refresh token after a permanent
 // OAuth failure and leaves it ready for a fresh interactive authorization.
 func (s *Store) MarkNeedsReauthorization(ctx context.Context, targetID string) error {

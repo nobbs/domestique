@@ -60,6 +60,11 @@ const (
 	// an address that goes nowhere instead of reaching the real service with a
 	// placeholder token.
 	defaultPushoverURL = "https://api.pushover.net"
+	// defaultDigestInterval is the period a success digest covers when the
+	// operator selects one without naming a period. A day is the cadence a
+	// digest exists for: short enough to still describe a run, long enough that
+	// it is not the per-run push it replaces.
+	defaultDigestInterval = 24 * time.Hour
 )
 
 // Settings is the validated, startup-only configuration for one service
@@ -226,10 +231,35 @@ const (
 	EmptySourceDeletionAllow EmptySourceDeletion = "allow"
 )
 
-// Notifications configures supported notification destinations.
+// Notifications configures supported notification destinations and how much
+// routine success reaches them.
 type Notifications struct {
 	Pushover Pushover
+	Success  SuccessNotifications
 }
+
+// SuccessNotifications controls routine-success delivery. It never governs a
+// failure, a blocked run, or the first success that ends one: those are the
+// signals the operator installed notifications for.
+type SuccessNotifications struct {
+	Policy SuccessPolicy
+	// DigestInterval is how much time separates two digests. It is read only by
+	// SuccessPolicyDigest.
+	DigestInterval time.Duration
+}
+
+// SuccessPolicy names what a routine successful run notifies.
+type SuccessPolicy string
+
+const (
+	// SuccessPolicyEvery pushes one message per successful run.
+	SuccessPolicyEvery SuccessPolicy = "every"
+	// SuccessPolicyQuiet pushes nothing for a routine success.
+	SuccessPolicyQuiet SuccessPolicy = "quiet"
+	// SuccessPolicyDigest replaces routine success pushes with one aggregate
+	// message per interval.
+	SuccessPolicyDigest SuccessPolicy = "digest"
+)
 
 // Pushover holds the credentials needed to send a notification, and the origin
 // they are sent to. The origin is configurable for the same reason every other
@@ -336,7 +366,9 @@ type rawSync struct {
 }
 
 type rawNotifications struct {
-	Pushover rawPushover `koanf:"pushover"`
+	Pushover       rawPushover   `koanf:"pushover"`
+	SuccessPolicy  string        `koanf:"success_policy"`
+	DigestInterval time.Duration `koanf:"digest_interval"`
 }
 
 type rawPushover struct {
@@ -561,6 +593,9 @@ func build(raw *rawSettings) (*Settings, error) {
 	if err := validateHTTPSOrigin("notifications.pushover.base_url", raw.Notifications.Pushover.BaseURL); err != nil {
 		return nil, err
 	}
+	if err := validateNotifications(&raw.Notifications); err != nil {
+		return nil, err
+	}
 
 	targets, err := validateTargets(raw.Wahoo.Targets)
 	if err != nil {
@@ -675,6 +710,10 @@ func build(raw *rawSettings) (*Settings, error) {
 			EmptySourceDeletion:   EmptySourceDeletion(raw.Sync.EmptySourceDeletion),
 		},
 		Notifications: Notifications{
+			Success: SuccessNotifications{
+				Policy:         SuccessPolicy(raw.Notifications.SuccessPolicy),
+				DigestInterval: raw.Notifications.DigestInterval,
+			},
 			Pushover: Pushover{
 				BaseURL:          raw.Notifications.Pushover.BaseURL,
 				applicationToken: applicationToken,
@@ -891,6 +930,24 @@ func validateTargets(raw []rawTarget) ([]Target, error) {
 	return targets, nil
 }
 
+// validateNotifications checks the success policy and the period a digest
+// covers. A digest with no positive interval would either never be sent or be
+// sent on every run, and neither is what the setting means.
+func validateNotifications(notifications *rawNotifications) error {
+	switch SuccessPolicy(notifications.SuccessPolicy) {
+	case SuccessPolicyEvery, SuccessPolicyQuiet:
+		return nil
+	case SuccessPolicyDigest:
+		if notifications.DigestInterval <= 0 {
+			return errors.New("notifications.digest_interval must be positive for the digest success policy")
+		}
+
+		return nil
+	default:
+		return errors.New("notifications.success_policy must be every, quiet, or digest")
+	}
+}
+
 func validateSync(sync rawSync) error {
 	if sync.InitialDelay <= 0 {
 		return errors.New("sync.initial_delay must be positive")
@@ -994,6 +1051,8 @@ func configurationDefaults() map[string]any {
 			"rebuild_interval": defaultRebuildInterval.String(),
 		},
 		"notifications": map[string]any{
+			"success_policy":  string(SuccessPolicyEvery),
+			"digest_interval": defaultDigestInterval.String(),
 			"pushover": map[string]any{
 				"base_url": defaultPushoverURL,
 			},

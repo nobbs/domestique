@@ -1479,3 +1479,85 @@ func TestTheDeployScriptRecognisesTheSchemaAheadRefusal(t *testing.T) {
 
 	assert.Contains(t, string(script), schemaAheadMessage)
 }
+
+func TestStoreReadsTheLastOutcomeOfEachPhase(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	startedAt := time.Date(2026, time.August, 17, 8, 0, 0, 0, time.UTC)
+	recordRun := func(phase, outcome string, at time.Time) {
+		t.Helper()
+		_, err := store.RecordSyncRun(t.Context(), phase, at, at.Add(time.Minute), outcome, "", 0, 0, 0, 0)
+		require.NoError(t, err, "RecordSyncRun()")
+	}
+
+	_, found, err := store.LastPhaseOutcome(t.Context(), "targets")
+	require.NoError(t, err, "LastPhaseOutcome()")
+	assert.False(t, found, "a phase reported an outcome before it had run")
+
+	recordRun("targets", "failed", startedAt)
+	recordRun("source", "succeeded", startedAt.Add(time.Hour))
+	recordRun("targets", "succeeded", startedAt.Add(2*time.Hour))
+
+	// The phases are answered independently, and each answers with its own most
+	// recent run rather than the most recent run overall.
+	outcome, found, err := store.LastPhaseOutcome(t.Context(), "targets")
+	require.NoError(t, err, "LastPhaseOutcome()")
+	require.True(t, found, "the recorded targets run is not readable")
+	assert.Equal(t, "succeeded", outcome, "LastPhaseOutcome(targets)")
+
+	outcome, _, err = store.LastPhaseOutcome(t.Context(), "source")
+	require.NoError(t, err, "LastPhaseOutcome()")
+	assert.Equal(t, "succeeded", outcome, "LastPhaseOutcome(source)")
+}
+
+func TestStoreTotalsSuccessfulRunsForADigest(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	anchor := time.Date(2026, time.August, 17, 8, 0, 0, 0, time.UTC)
+	recordRun := func(phase, outcome string, at time.Time, created, updated, deleted int) {
+		t.Helper()
+		_, err := store.RecordSyncRun(t.Context(), phase, at, at, outcome, "", 0, created, updated, deleted)
+		require.NoError(t, err, "RecordSyncRun()")
+	}
+
+	// Before the window, inside it, and a failure inside it that a digest of
+	// successes must not count.
+	recordRun("targets", "succeeded", anchor.Add(-time.Hour), 9, 9, 9)
+	recordRun("source", "succeeded", anchor.Add(time.Hour), 0, 0, 0)
+	recordRun("targets", "succeeded", anchor.Add(2*time.Hour), 2, 1, 1)
+	recordRun("targets", "failed", anchor.Add(3*time.Hour), 7, 7, 7)
+
+	var phases []string
+	var created, updated, deleted int
+	require.NoError(t, store.ForEachSuccessfulRunSince(t.Context(), anchor,
+		func(phase string, runCreated, runUpdated, runDeleted int) error {
+			phases = append(phases, phase)
+			created += runCreated
+			updated += runUpdated
+			deleted += runDeleted
+
+			return nil
+		}), "ForEachSuccessfulRunSince()")
+	assert.Equal(t, []string{"source", "targets"}, phases, "visited runs")
+	assert.Equal(t, "2/1/1", fmt.Sprintf("%d/%d/%d", created, updated, deleted), "digest totals")
+}
+
+func TestStoreRecordsDigestNotificationState(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	sentAt := time.Date(2026, time.August, 17, 8, 0, 0, 0, time.UTC)
+
+	_, found, err := store.LastDigestNotification(t.Context())
+	require.NoError(t, err, "LastDigestNotification()")
+	assert.False(t, found, "a digest was recorded before one was sent")
+
+	require.NoError(t, store.RecordDigestNotification(t.Context(), sentAt), "RecordDigestNotification()")
+	readBack, found, err := store.LastDigestNotification(t.Context())
+	require.NoError(t, err, "LastDigestNotification()")
+	require.True(t, found, "the digest that was recorded is not readable")
+	assert.WithinDuration(t, sentAt, readBack, 0, "LastDigestNotification()")
+
+	// The clock moves forward in place: a digest keeps one row, not one per send.
+	later := sentAt.Add(24 * time.Hour)
+	require.NoError(t, store.RecordDigestNotification(t.Context(), later), "second RecordDigestNotification()")
+	readBack, _, err = store.LastDigestNotification(t.Context())
+	require.NoError(t, err, "LastDigestNotification()")
+	assert.WithinDuration(t, later, readBack, 0, "LastDigestNotification() after the second send")
+}

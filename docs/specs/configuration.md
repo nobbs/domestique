@@ -76,6 +76,10 @@ interval = "1h"
 max_deletions_per_target = 5
 empty_source_deletion = "deny"
 
+[notifications]
+success_policy = "every"
+digest_interval = "24h"
+
 [notifications.pushover]
 base_url = "https://api.pushover.net"
 application_token_file = "/run/secrets/pushover_application_token"
@@ -250,6 +254,15 @@ application dependency.
 - `sync.empty_source_deletion` is `deny` or `allow`, defaulting to `deny`.
   The operator sets `allow` only for a deliberate final-library deletion and
   returns it to `deny` immediately afterward.
+- `notifications.success_policy` is `every`, `quiet`, or `digest`, defaulting to
+  `every`, so a deployment that says nothing about it keeps the per-run message
+  it has always sent. It governs routine success alone; it can never suppress a
+  failure, a blocked run, or the first success that ends one.
+  [The sync lifecycle specification](sync-lifecycle.md#notifications) states what
+  each policy delivers.
+- `notifications.digest_interval` is a positive duration and is read only by the
+  `digest` policy, which is rejected at startup without one. It defaults to
+  `24h`.
 
 The decoder rejects unknown fields, invalid URLs or durations, duplicate target
 IDs, a target count outside one through two, invalid callback paths, unreadable secret files,
