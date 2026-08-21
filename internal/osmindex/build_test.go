@@ -157,7 +157,15 @@ func TestBuildProducesAnIndexTheRegionsCover(t *testing.T) {
 	}, kinds, "the ways the index serves")
 
 	// The extract is the largest thing on disk and is of no use once packed.
-	assert.NoFileExists(t, filepath.Join(directory, "europe-germany-rheinland-pfalz-latest.osm.pbf"))
+	// Asserting on the whole directory rather than one composed name keeps this
+	// honest if the staged file is ever named differently.
+	entries, err := os.ReadDir(directory)
+	require.NoError(t, err, "reading the index directory")
+	names := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		names = append(names, entry.Name())
+	}
+	assert.Equal(t, []string{filepath.Base(result.Path)}, names, "what the build left behind")
 }
 
 // An extract nobody has republished produces the same generation, and the build

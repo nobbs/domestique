@@ -178,6 +178,24 @@ func TestLoadKeepsConfiguredRegions(t *testing.T) {
 	assert.Equal(t, 72*time.Hour, settings.Surface.RebuildInterval, "Surface.RebuildInterval")
 }
 
+// A region named twice is a typo that would otherwise be paid for twice, in
+// download, decode, and index size, for an index that answers identically.
+func TestLoadNamesEachRegionOnce(t *testing.T) {
+	configPath, _ := writeValidConfiguration(t, t.TempDir())
+	appendToFile(t, configPath,
+		"\n[surface]\nregions = [\"europe/germany/rheinland-pfalz\", \"europe/germany/hessen\", "+
+			"\" europe/germany/rheinland-pfalz \"]\nrebuild_interval = \"72h\"\n")
+	t.Setenv(configFileEnv, configPath)
+
+	settings, err := Load()
+	require.NoError(t, err)
+	assert.Equal(t,
+		[]string{"europe/germany/rheinland-pfalz", "europe/germany/hessen"},
+		settings.Surface.Regions,
+		"a repeat is dropped and the first position kept",
+	)
+}
+
 // An empty list is how an operator declines the whole feature, so it must load
 // rather than fail as a missing setting.
 func TestLoadTreatsNoRegionsAsDisabled(t *testing.T) {

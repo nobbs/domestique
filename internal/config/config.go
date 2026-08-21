@@ -804,10 +804,20 @@ func validateSurface(surface rawSurface) error {
 	return nil
 }
 
+// trimmedRegions drops blank entries and repeats, keeping the order they were
+// written in.
+//
+// A repeat is dropped rather than rejected because it asks for nothing that is
+// not already being done: the second copy of a region downloads the same
+// extract and appends the same ways a second time, which cannot change what the
+// index answers but does pay for that region twice in build time, memory, and
+// size. Silently doing the work once is the useful reading of a typo.
 func trimmedRegions(regions []string) []string {
 	trimmed := make([]string, 0, len(regions))
+	seen := make(map[string]bool, len(regions))
 	for _, region := range regions {
-		if region = strings.TrimSpace(region); region != "" {
+		if region = strings.TrimSpace(region); region != "" && !seen[region] {
+			seen[region] = true
 			trimmed = append(trimmed, region)
 		}
 	}
