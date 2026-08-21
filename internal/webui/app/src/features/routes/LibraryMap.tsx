@@ -32,6 +32,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import type { BoundingBox, Position } from "../../api/types";
 import { MapCredits } from "../../components/MapCredits";
 import { MapViewport } from "../../components/MapViewport";
+import type { Insets } from "../../lib/overlayInsets";
 // Configures the shared worker pool; without it this map renders no tiles.
 import "../../lib/maplibre";
 
@@ -113,6 +114,8 @@ export interface LibraryMapProps {
    * to that question would be one too many.
    */
   bounds: BoundingBox | null;
+  /** How much of the map the panels over it are covering, if anything is. */
+  insets?: Insets;
   /**
    * How close the camera may come to `bounds`.
    *
@@ -177,6 +180,7 @@ export function LibraryMap({
   lines,
   selectedKey,
   bounds,
+  insets,
   maxZoom = DEFAULT_MAX_ZOOM,
   overlay,
   extraCredit,
@@ -246,7 +250,7 @@ export function LibraryMap({
           }
         }}
       >
-        <MapViewport bounds={bounds} maxZoom={maxZoom} />
+        <MapViewport bounds={bounds} maxZoom={maxZoom} {...(insets ? { insets } : {})} />
         {/*
          * One cluster, bottom-left: the zoom pair, the scale bar, the credit,
          * top to bottom. They are asked for in the other order because MapLibre

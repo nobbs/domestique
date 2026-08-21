@@ -34,6 +34,7 @@ import { basemapFor, usePrefersDarkScheme } from "../../lib/basemap";
 import { formatReadTime } from "../../lib/format";
 import type { Highlight } from "../../lib/highlight";
 import { matchingRoutes } from "../../lib/library";
+import { useOverlayInsets } from "../../lib/overlayInsets";
 import type { DistanceWindow } from "../../lib/profile";
 import {
   buildProfile,
@@ -125,6 +126,9 @@ export function RoutesPage() {
   const config = useQuery(webUIConfigQuery());
   const status = useQuery(statusQuery());
   const prefersDark = usePrefersDarkScheme();
+  // What the panels are standing on, so the camera frames a route in the part
+  // of the map the reader can actually see.
+  const insets = useOverlayInsets();
 
   const [query, setQuery] = useState("");
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
@@ -393,6 +397,7 @@ export function RoutesPage() {
             lines={drawn.lines}
             selectedKey={focusKey}
             bounds={bounds}
+            insets={insets}
             maxZoom={windowBounds ? WINDOW_MAX_ZOOM : ROUTE_MAX_ZOOM}
             extraCredit={shownRoute ? SURFACE_ATTRIBUTION : undefined}
             onPick={pick}
