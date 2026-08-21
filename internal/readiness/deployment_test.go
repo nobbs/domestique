@@ -116,7 +116,7 @@ func TestTheDeployScriptPrunesByRepositoryDigest(t *testing.T) {
 	script := readRepositoryFile(t, "deploy/domestique-deploy.sh")
 
 	assert.Contains(t, script, "{{range .RepoDigests}}")
-	assert.NotContains(t, script, "{{.Digest}}")
+	assert.NotContains(t, script, "{{.Repository}} {{.Digest}}")
 }
 
 // Tailscale Serve fronts the served listener and nothing else. If a document

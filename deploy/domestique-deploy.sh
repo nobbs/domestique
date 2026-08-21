@@ -234,18 +234,25 @@ notify() {
 # `docker images` fills its digest column only for an image that still holds the
 # tag it was pulled under. Every image this prunes has lost that tag to a later
 # deployment, so a prune reading the column saw an empty digest for all of them
-# and removed nothing at all. An image carrying no repository digest was built
-# on this host rather than deployed to it, and is left alone.
+# and removed nothing at all.
+#
+# What is removed is the superseded reference, never the image by its ID: an
+# image may carry more than one, and this owns only the ones under IMAGE_REPO.
+# Docker deletes the image once its last reference goes, so the disk is still
+# reclaimed. A reference outside this repository is somebody else's, and an
+# image with no repository digest at all was built on this host rather than
+# deployed to it.
 prune_images() {
-  local keep_a="$1" keep_b="$2" id digests
+  local keep_a="$1" keep_b="$2" id reference
   while read -r id; do
-    digests="$(docker image inspect "${id}" --format '{{range .RepoDigests}}{{.}} {{end}}' 2> /dev/null)" || continue
-    [[ -n "${digests// /}" ]] || continue
-    if [[ "${digests}" == *"${IMAGE_REPO}@${keep_a}"* || "${digests}" == *"${IMAGE_REPO}@${keep_b}"* ]]; then
-      continue
-    fi
-    docker image rm "${id}" > /dev/null 2>&1 ||
-      log "kept ${id} (still in use)"
+    while read -r reference; do
+      [[ "${reference}" == "${IMAGE_REPO}@"* ]] || continue
+      if [[ "${reference}" == "${IMAGE_REPO}@${keep_a}" || "${reference}" == "${IMAGE_REPO}@${keep_b}" ]]; then
+        continue
+      fi
+      docker image rm "${reference}" > /dev/null 2>&1 ||
+        log "kept ${reference} (still in use)"
+    done < <(docker image inspect "${id}" --format '{{range .RepoDigests}}{{println .}}{{end}}' 2> /dev/null)
   done < <(docker images --quiet "${IMAGE_REPO}" | sort --unique)
 }
 
