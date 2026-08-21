@@ -10,6 +10,8 @@
 import { render } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BoundingBox } from "../api/types";
+import type { Insets } from "../lib/overlayInsets";
+import { NO_INSETS } from "../lib/overlayInsets";
 
 const stub = vi.hoisted(() => ({ current: null as ReturnType<typeof fakeMap> | null }));
 
@@ -21,12 +23,16 @@ const { MapViewport } = await import("./MapViewport");
 
 interface Framing {
   bounds: unknown;
-  options: { padding: number; duration: number; maxZoom: number };
+  options: { padding: Insets; duration: number; maxZoom: number };
 }
 
 function fakeMap() {
   const framings: Framing[] = [];
   const container = document.createElement("div");
+  // jsdom lays nothing out, so the pane says how big it is itself: the padding
+  // is held against the frame it is padding.
+  Object.defineProperty(container, "clientWidth", { value: 1280 });
+  Object.defineProperty(container, "clientHeight", { value: 800 });
   let resizes = 0;
 
   return {
@@ -69,10 +75,20 @@ beforeEach(() => {
   );
 });
 
-function show(bounds: BoundingBox | null, padding?: number) {
+function show(bounds: BoundingBox | null, padding?: number, insets?: Insets) {
   return render(
-    <MapViewport bounds={bounds} maxZoom={14} {...(padding === undefined ? {} : { padding })} />,
+    <MapViewport
+      bounds={bounds}
+      maxZoom={14}
+      {...(padding === undefined ? {} : { padding })}
+      {...(insets === undefined ? {} : { insets })}
+    />,
   );
+}
+
+/** The gutter alone, on every side: what an empty pane is framed with. */
+function evenly(gutter: number): Insets {
+  return { top: gutter, right: gutter, bottom: gutter, left: gutter };
 }
 
 function map() {
@@ -94,7 +110,7 @@ describe("MapViewport", () => {
           [7.9, 48.9],
           [8.2, 49.1],
         ],
-        options: { padding: 56, duration: 600, maxZoom: 14 },
+        options: { padding: evenly(56), duration: 600, maxZoom: 14 },
       },
     ]);
   });
@@ -120,7 +136,41 @@ describe("MapViewport", () => {
   it("takes the room to leave around the bounds from its caller", () => {
     show(BOUNDS, 24);
 
-    expect(map().framings()[0]?.options.padding).toBe(24);
+    expect(map().framings()[0]?.options.padding).toEqual(evenly(24));
+  });
+
+  /*
+   * The panels float over the map rather than beside it, so a route framed
+   * against the whole pane opens half under the column beside it. The camera
+   * frames it in what the reader can actually see instead.
+   */
+  it("holds the framing out from under the panels standing on the map", () => {
+    show(BOUNDS, 56, { ...NO_INSETS, left: 424, bottom: 180 });
+
+    expect(map().framings()[0]?.options.padding).toEqual({
+      top: 56,
+      right: 56,
+      bottom: 236,
+      left: 480,
+    });
+  });
+
+  // A panel opening is a change of subject as much as a different route is: the
+  // ground the reader was looking at has just gone under it.
+  it("re-frames when a panel takes a side of the map", () => {
+    const { rerender } = show(BOUNDS);
+    rerender(<MapViewport bounds={BOUNDS} maxZoom={14} insets={{ ...NO_INSETS, left: 424 }} />);
+
+    expect(map().framings()).toHaveLength(2);
+  });
+
+  // Measured on every layout, so the same measurement must not be a new one.
+  it("does not re-frame for a fresh measurement that says the same thing", () => {
+    const insets = { ...NO_INSETS, left: 424 };
+    const { rerender } = show(BOUNDS, 56, insets);
+    rerender(<MapViewport bounds={BOUNDS} maxZoom={14} padding={56} insets={{ ...insets }} />);
+
+    expect(map().framings()).toHaveLength(1);
   });
 
   // The map mounts inside a pane whose height is not resolved on the first

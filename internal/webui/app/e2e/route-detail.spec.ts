@@ -86,18 +86,26 @@ test("dragging along the route picks the same stretch off the map", async ({
 }) => {
   await openRoute(page, LINE_ROUTE.routeId, LINE_ROUTE.stageOrder);
 
-  // A straight route's midpoint is the centre of the bounds the map fitted, so
-  // the centre of the canvas is on the line — which is what tells a selection
-  // from a pan. A drag that began off the line would pan the map instead, and
-  // this assertion is what would catch that distinction being lost.
+  /*
+   * A straight route's midpoint is the centre of the bounds the map fitted, so
+   * that point is on the line — which is what tells a selection from a pan. A
+   * drag that began off the line would pan the map instead, and this assertion
+   * is what would catch that distinction being lost.
+   *
+   * Not the centre of the canvas: the camera frames a route in the part of the
+   * map no panel is standing on, so the midpoint sits at the centre of what is
+   * left between the column and the chart.
+   */
   const region = mapRegion(page);
   const box = await region.boundingBox();
   expect(box).not.toBeNull();
   if (!box) {
     return;
   }
-  const centreX = box.x + box.width / 2;
-  const centreY = box.y + box.height / 2;
+  const column = await page.locator(".route-panel").boundingBox();
+  const chart = await page.locator(".elevation-panel").boundingBox();
+  const centreX = ((column ? column.x + column.width : box.x) + box.x + box.width) / 2;
+  const centreY = (box.y + (chart ? chart.y : box.y + box.height)) / 2;
   await page.mouse.move(centreX, centreY);
   await page.mouse.down();
   await page.mouse.move(centreX + 120, centreY + 40, { steps: 10 });
