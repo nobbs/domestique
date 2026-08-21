@@ -245,6 +245,22 @@ describe("RoutesPage", () => {
   });
 
   /*
+   * Framing is an imperative call on the map, so the camera moves whenever the
+   * bounds it is given are a different object. A union rebuilt on every render
+   * would snap the map back from wherever the reader had panned it, once per
+   * keystroke.
+   */
+  it("hands the camera the same framing until the framing changes", async () => {
+    renderPage();
+    const before = lastDrawing().bounds;
+
+    await userEvent.type(screen.getByRole("searchbox"), "rhine");
+
+    expect(drawn.maps.length).toBeGreaterThan(1);
+    expect(lastDrawing().bounds).toBe(before);
+  });
+
+  /*
    * Geometry arrives one request at a time, so what has come back is a shorter
    * list than the library. The camera has to find the selected route's box by
    * its key: by position it would frame whichever route happened to be there.

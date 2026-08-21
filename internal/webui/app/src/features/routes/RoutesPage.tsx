@@ -106,7 +106,11 @@ export function RoutesPage() {
   // Keyed rather than indexed: geometry arrives one request at a time, so a
   // position in a list of what has arrived is not a position in the library.
   const selectedBox = selectedKey ? (drawn.boxes.get(selectedKey) ?? null) : null;
-  const bounds = selectedBox ?? unionOf([...drawn.boxes.values()]);
+  // Held still deliberately: the camera moves when the framing changes, and a
+  // fresh union on every render would be a new frame every keystroke — the map
+  // snapping back from wherever the reader had panned it.
+  const libraryBounds = useMemo(() => unionOf([...drawn.boxes.values()]), [drawn.boxes]);
+  const bounds = selectedBox ?? libraryBounds;
 
   const basemap = config.data ? basemapFor(config.data, prefersDark) : null;
   const readAt = status.data?.sync.phases.source?.lastCompletedAt;
