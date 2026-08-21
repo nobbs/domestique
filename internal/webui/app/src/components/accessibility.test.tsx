@@ -13,7 +13,8 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { describe, it } from "vitest";
 import type { Position, Route } from "../api/types";
@@ -25,6 +26,7 @@ import { buildProfile, gradientShares } from "../lib/profile";
 import { summariseSurface } from "../lib/surface";
 import { expectNoAxeViolations } from "../test/axe";
 import { Button } from "./Button";
+import { MapCredits } from "./MapCredits";
 import { RouteKey } from "./RouteKey";
 import { StatusMessage } from "./StatusMessage";
 
@@ -159,6 +161,24 @@ describe("accessibility", () => {
     );
 
     await expectNoAxeViolations(container);
+  });
+
+  it("holds for the map credit, folded and unfolded", async () => {
+    for (const expanded of [true, false]) {
+      const { container, unmount } = render(
+        <QueryClientProvider client={new QueryClient()}>
+          <MapCredits styleUrl={undefined} extra="Surface data © OpenStreetMap contributors" />
+        </QueryClientProvider>,
+      );
+
+      // It opens with the room the shared setup reports, which is the wide
+      // layout, so the folded half is reached through the button.
+      if (!expanded) {
+        await userEvent.click(screen.getByRole("button", { name: "Hide the map credit" }));
+      }
+      await expectNoAxeViolations(container);
+      unmount();
+    }
   });
 
   it("holds for a status message carrying an action", async () => {

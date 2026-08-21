@@ -367,10 +367,12 @@ directly by a request that presents the wrong one and is refused.
 
 It is hermetic. The only third-party request the application makes is the basemap
 style the service names, and the suite answers both the light and the dark
-document from memory with a background-only style that causes MapLibre to issue no
-further request. Every other cross-origin request is refused and reported, and a
-test that let one out fails — so the suite cannot quietly start depending on a
-provider being reachable.
+document from memory with a style that paints a background and causes MapLibre to
+issue no further request: its one source carries an attribution and no features,
+because the credit the page is obliged to show is read out of the style document
+and a fixture declaring none could not exercise it. Every other cross-origin
+request is refused and reported, and a test that let one out fails — so the suite
+cannot quietly start depending on a provider being reachable.
 
 No reference image is committed. A visual assertion compares the map region
 against itself within the run, after waiting for two consecutive identical frames,

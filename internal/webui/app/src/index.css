@@ -791,15 +791,53 @@ body {
  * A chip of its own rather than a strip across the corner: it is the same kind
  * of floating thing as the zoom pair above it, and sized to what it says, so a
  * one-line credit does not reserve the width a three-provider one would need.
+ *
+ * The chip is the whole control, button and text together, so folding the text
+ * away leaves one small mark in the cluster rather than a second floating thing
+ * beside an empty one.
  */
 .map-credits {
-  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  /*
+   * The cluster passes pointer events through to the map and each control MapLibre
+   * owns takes them back. This one is not one of MapLibre's, so it has to take
+   * them back itself, or the button would be a button the map swallowed every
+   * press of.
+   */
+  pointer-events: auto;
   max-width: min(100%, 380px);
   padding: 3px var(--space-2);
   border-radius: calc(var(--radius) - 4px);
   background: var(--panel);
   box-shadow: var(--shadow);
   color: var(--ink-2);
+}
+
+/*
+ * The affordance, sized to the mark inside it. It borrows the header chevron's
+ * manners — no chrome of its own, the accent under a pointer or a focus ring —
+ * because it is the same kind of quiet control sitting on a surface that
+ * already has an edge.
+ */
+.map-credits__toggle {
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+.map-credits__toggle:hover,
+.map-credits__toggle:focus-visible {
+  color: var(--accent);
+}
+
+.map-credits__text {
+  margin: 0;
   font: var(--type-small);
   letter-spacing: var(--track-small);
 }
