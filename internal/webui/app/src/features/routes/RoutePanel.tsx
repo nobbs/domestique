@@ -18,6 +18,7 @@ import { RouteKey } from "../../components/RouteKey";
 import { SourceRouteLink } from "../../components/SourceRouteLink";
 import { formatAscent, formatDistance, formatElevation, formatGradient } from "../../lib/format";
 import type { Highlight } from "../../lib/highlight";
+import type { BandShare } from "../../lib/profile";
 import type { SurfaceSummary } from "../../lib/surface";
 import { ReprocessButton } from "./ReprocessButton";
 
@@ -36,10 +37,18 @@ export interface RoutePanelProps {
   /** Null for a route nobody has classified, which the key says in words. */
   surface: SurfaceSummary | null;
   surfaceAbsence: string;
-  /** The bands this route actually has, gentlest first. */
-  bands: number[];
+  /** The bands this route actually has and their shares of it, gentlest first. */
+  bands: BandShare[];
   highlight: Highlight | null;
   onHighlightChange: (highlight: Highlight | null) => void;
+  /**
+   * How many routes the search goes back to, which the way back says.
+   *
+   * The count is what makes leaving a described action rather than an undo: a
+   * reader who opened a route by accident is told what is behind it. Zero is a
+   * library that has not arrived yet, and the control says so in words instead.
+   */
+  libraryCount: number;
   /** Puts the route away and gives the search pill back. */
   onClose: () => void;
   /** The provider's web application, for the way back to the source route. */
@@ -55,21 +64,43 @@ export function RoutePanel({
   bands,
   highlight,
   onHighlightChange,
+  libraryCount,
   onClose,
   sourceBaseUrl,
 }: RoutePanelProps) {
+  const back =
+    libraryCount > 0
+      ? `← Search ${libraryCount} ${libraryCount === 1 ? "route" : "routes"}`
+      : "← Back to search";
+
   return (
     <section className="panel route-panel" aria-label={route.title}>
       {/*
        * The way back, and the only thing above the name: this panel replaced
        * the search, so a reader who opened a route by accident has to be able
        * to see how to get the search back without reading the route first.
+       *
+       * Twice, at either end of the line. The sentence is the one that says
+       * where leaving goes; the cross is the one a reader looks for without
+       * reading anything, and it sits where every dismissable thing keeps it.
        */}
-      <button className="route-panel__back" type="button" onClick={onClose}>
-        ← Back to search
-      </button>
-      <h2 className="route-panel__title">{route.title}</h2>
-      {subtitle === "" ? null : <p className="route-panel__subtitle">{subtitle}</p>}
+      <div className="route-panel__header">
+        <button className="route-panel__back" type="button" onClick={onClose}>
+          {back}
+        </button>
+        <button
+          className="route-panel__close"
+          type="button"
+          onClick={onClose}
+          aria-label="Close the route"
+        >
+          ×
+        </button>
+      </div>
+      <div className="route-panel__name">
+        <h2 className="route-panel__title">{route.title}</h2>
+        {subtitle === "" ? null : <p className="route-panel__subtitle">{subtitle}</p>}
+      </div>
       <dl className="route-panel__figures">
         <div>
           <dt>Distance</dt>
@@ -94,10 +125,11 @@ export function RoutePanel({
         </div>
       </dl>
       {/*
-       * The two mixes as chips, and pressing one lights that ground on both the
-       * map and the chart. They sit here rather than under the plot because the
-       * plot is a panel of its own now, and a key that travelled with it would
-       * disappear whenever the reader collapsed the chart to look at the map.
+       * The two mixes, as a bar and a row of chips each, and pressing a chip
+       * lights that ground on both the map and the chart. They sit here rather
+       * than under the plot because the plot is a panel of its own now, and a
+       * key that travelled with it would disappear whenever the reader collapsed
+       * the chart to look at the map.
        */}
       <RouteKey
         surface={surface}

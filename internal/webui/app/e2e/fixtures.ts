@@ -244,7 +244,7 @@ export async function openLibrary(page: Page): Promise<void> {
  */
 export async function openRoute(page: Page, routeId: number, stageOrder: number): Promise<void> {
   await page.goto(`/?route=${routeId}%2F${stageOrder}`);
-  await expect(page.getByRole("button", { name: "← Back to search" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^← Search \d+ routes?$/ })).toBeVisible();
   await settleMap(page);
 }
 

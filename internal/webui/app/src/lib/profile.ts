@@ -21,13 +21,20 @@ import type { BoundingBox, Position } from "../api/types";
 const EARTH_RADIUS_METRES = 6_371_000;
 
 /**
- * Gradient classes, gentlest first, in steps of four percent.
+ * Gradient classes, gentlest first, in steps of three percent.
  *
- * Five, where there were three. Under four percent is ground a rider simply
+ * Five, where there were three. Under three percent is ground a rider simply
  * rides over; above it the question is how hard, and one class for everything
- * from a steady eight percent to a sixteen percent wall refused to answer it.
- * The steep end is where the resolution is worth spending, which is why the
- * steps stay even rather than widening as they climb.
+ * from a steady six percent to a twelve percent wall refused to answer it. The
+ * steps stay even rather than widening as they climb, and they stop at twelve:
+ * past that a rider is out of the saddle whatever the number says, so the
+ * resolution is spent on the range where the number still changes the ride.
+ *
+ * A class is named by the gradient it opens at rather than by the span it
+ * covers — `6%` for six up to nine — because these labels are read as a row of
+ * five chips, where five spelled-out ranges are five things to parse and five
+ * opening numbers are a ramp. The span is still said in full wherever the class
+ * is named in prose or to a screen reader, which is what `description` is for.
  *
  * Steepness gets a warm ramp — grey, then green, gold, orange and red — which
  * is a sequential scale's multi-hue exception: it means severity, and it carries
@@ -44,11 +51,11 @@ const EARTH_RADIUS_METRES = 6_371_000;
  * the climb it mirrors.
  */
 export const GRADIENT_BANDS = [
-  { limit: 4, label: "< 4%" },
-  { limit: 8, label: "4–8%" },
-  { limit: 12, label: "8–12%" },
-  { limit: 16, label: "12–16%" },
-  { limit: Number.POSITIVE_INFINITY, label: "≥ 16%" },
+  { limit: 3, label: "flat", description: "under 3%" },
+  { limit: 6, label: "3%", description: "3 to 6%" },
+  { limit: 9, label: "6%", description: "6 to 9%" },
+  { limit: 12, label: "9%", description: "9 to 12%" },
+  { limit: Number.POSITIVE_INFINITY, label: "12%+", description: "12% and steeper" },
 ] as const;
 
 /** The shortest span a gradient is measured over, matching the service. */
@@ -264,6 +271,32 @@ export function gradientMix(coordinates: Position[]): BandShare[] {
 
     return share > 0 ? [{ band: range.band, share }] : [];
   });
+}
+
+/**
+ * The bands a stage has and how much of it each covers, gentlest first.
+ *
+ * What the key offers to pick out, and the figure it puts on every chip. It is
+ * read off the stage's one classification, so the key offers no class the chart
+ * has nothing to light and does not reshuffle underneath the reader's hand when
+ * the chart is zoomed. A run too narrow to come out as a visible column at
+ * whole-route zoom still counts: the stage has that ground whether or not this
+ * many pixels can show it.
+ *
+ * Totalled per band rather than left as runs, which is the difference between
+ * this and `gradientMix`. A key answers "how much of this ride is steep", and it
+ * answers it once per class; the strip on a listing row answers "where", and has
+ * to stay in the order the ground is ridden to do it.
+ */
+export function gradientShares(coordinates: Position[]): BandShare[] {
+  const totals = new Map<number, number>();
+  for (const entry of gradientMix(coordinates)) {
+    totals.set(entry.band, (totals.get(entry.band) ?? 0) + entry.share);
+  }
+
+  return GRADIENT_BANDS.map((_, band) => band)
+    .filter((band) => totals.has(band))
+    .map((band) => ({ band, share: totals.get(band) ?? 0 }));
 }
 
 /** The classification proper, for a caller that has already measured the route. */
@@ -575,21 +608,6 @@ export function sampleAt(profile: Profile, metres: number): ProfileSample | null
     gradientPercent: nearer.gradientPercent,
     band: nearer.band,
   };
-}
-
-/**
- * The bands a stage has, gentlest first.
- *
- * What the key offers to pick out, read off the stage's one classification, so
- * it offers no class the chart has nothing to light and does not reshuffle
- * underneath the reader's hand when the chart is zoomed. A run too narrow to
- * come out as a visible column at whole-route zoom still counts: the stage has
- * that ground whether or not this many pixels can show it.
- */
-export function presentBands(ranges: readonly BandedRange[]): number[] {
-  const present = new Set(ranges.map((range) => range.band));
-
-  return GRADIENT_BANDS.map((_, index) => index).filter((band) => present.has(band));
 }
 
 /**

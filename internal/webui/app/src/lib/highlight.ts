@@ -41,11 +41,16 @@ export function sameHighlight(left: Highlight | null, right: Highlight | null): 
  * One name, taken from the palette that draws it, so the chart's spoken summary,
  * the collapsed overview's hint, and the pressed chip in the key cannot come to
  * call the same selection three different things.
+ *
+ * A band is named here by the span it covers rather than by the chip's own
+ * label: the chips are read as a row and can be terse about it, but "the 3%
+ * stretches are lit" in the middle of a sentence would be a different claim
+ * from the one the key is making.
  */
 export function highlightLabel(highlight: Highlight): string {
   return highlight.type === "surface"
     ? SURFACE_STYLES[highlight.kind].label
-    : (GRADIENT_BANDS[highlight.band]?.label ?? "");
+    : (GRADIENT_BANDS[highlight.band]?.description ?? "");
 }
 
 /** A stretch of the route measured in metres, as the chart's marks carry it. */

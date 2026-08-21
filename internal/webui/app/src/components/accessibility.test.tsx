@@ -20,7 +20,7 @@ import type { Position, Route } from "../api/types";
 import { routeKey } from "../api/types";
 import { RoutePanel } from "../features/routes/RoutePanel";
 import { SearchPanel } from "../features/routes/SearchPanel";
-import { gradientRanges, presentBands } from "../lib/profile";
+import { gradientShares } from "../lib/profile";
 import { summariseSurface } from "../lib/surface";
 import { expectNoAxeViolations } from "../test/axe";
 import { Button } from "./Button";
@@ -104,7 +104,7 @@ describe("accessibility", () => {
   });
 
   it("holds for the route key, picked and unpicked", async () => {
-    const bands = presentBands(gradientRanges(CLIMB));
+    const bands = gradientShares(CLIMB);
     for (const highlight of [null, { type: "surface", kind: "gravel" } as const]) {
       const { container, unmount } = render(
         <RouteKey
@@ -131,9 +131,10 @@ describe("accessibility", () => {
             subtitle="Alpine loop · read 19:38"
             surface={surfaceSummary()}
             surfaceAbsence="Surface not classified yet."
-            bands={presentBands(gradientRanges(CLIMB))}
+            bands={gradientShares(CLIMB)}
             highlight={null}
             onHighlightChange={() => {}}
+            libraryCount={47}
             onClose={() => {}}
             sourceBaseUrl="https://veloplanner.example"
           />

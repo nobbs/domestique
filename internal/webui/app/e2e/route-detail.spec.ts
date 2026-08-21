@@ -173,7 +173,7 @@ test("the way back to the library is reachable from the keyboard", async ({
 }) => {
   await openRoute(page, LINE_ROUTE.routeId, LINE_ROUTE.stageOrder);
 
-  const back = page.getByRole("button", { name: "← Back to search" });
+  const back = page.getByRole("button", { name: /^← Search \d+ routes?$/ });
   await back.focus();
   await expect(back).toBeFocused();
   await back.press("Enter");

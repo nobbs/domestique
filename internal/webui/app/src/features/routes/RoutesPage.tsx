@@ -31,7 +31,7 @@ import { RouteOverlay, SURFACE_ATTRIBUTION } from "../../components/RouteOverlay
 import { ErrorMessage, StatusMessage } from "../../components/StatusMessage";
 import { Wordmark } from "../../components/Wordmark";
 import { basemapFor, usePrefersDarkScheme } from "../../lib/basemap";
-import { formatTimestamp } from "../../lib/format";
+import { formatReadTime } from "../../lib/format";
 import type { Highlight } from "../../lib/highlight";
 import { matchingRoutes } from "../../lib/library";
 import type { DistanceWindow } from "../../lib/profile";
@@ -39,8 +39,7 @@ import {
   buildProfile,
   buildWindowedProfile,
   coordinateRange,
-  gradientRanges,
-  presentBands,
+  gradientShares,
   rangeBounds,
 } from "../../lib/profile";
 import { summariseSurface } from "../../lib/surface";
@@ -104,6 +103,21 @@ function parseRouteKey(value: string | null): { routeId: number; stageOrder: num
   const stageOrder = Number.parseInt(right, 10);
 
   return routeId > 0 && stageOrder > 0 ? { routeId, stageOrder } : null;
+}
+
+/**
+ * How the card says every account holds the library.
+ *
+ * Counted, because an operator with two Wahoo accounts reads "on both accounts"
+ * as a statement about their own setup, and "on every account" as a statement
+ * about a set they have to remember the size of.
+ */
+function convergedPhrase(targetCount: number): string {
+  if (targetCount === 1) {
+    return "on the account";
+  }
+
+  return targetCount === 2 ? "on both accounts" : "on every account";
 }
 
 export function RoutesPage() {
@@ -249,9 +263,9 @@ export function RoutesPage() {
   useEscapeKey(openKey !== null && shownWindow === null, close);
 
   // The route's steepness, classified from the coordinates the service stored
-  // rather than from any resampling of them. Held here so the chips do not
-  // re-run the classification on every hover.
-  const gradient = useMemo(() => gradientRanges(openCoordinates), [openCoordinates]);
+  // rather than from any resampling of them, and totalled per band. Held here so
+  // the chips do not re-run the classification on every hover.
+  const gradient = useMemo(() => gradientShares(openCoordinates), [openCoordinates]);
 
   // A classification that snapped to nothing is left unpainted rather than drawn
   // as unsurveyed from end to end: greying out the whole route to say nothing is
@@ -301,8 +315,8 @@ export function RoutesPage() {
    */
   const subtitle = [
     openRoute && openRoute.routeName !== openRoute.title ? openRoute.routeName : null,
-    readAt ? `read ${formatTimestamp(readAt)}` : null,
-    status.data?.converged ? "on every account" : null,
+    readAt ? `read ${formatReadTime(readAt)}` : null,
+    status.data?.converged ? convergedPhrase(status.data.targets.length) : null,
   ]
     .filter(Boolean)
     .join(" · ");
@@ -383,9 +397,10 @@ export function RoutesPage() {
               ? "No OpenStreetMap surface data along this route."
               : "Surface not classified yet."
           }
-          bands={presentBands(gradient)}
+          bands={gradient}
           highlight={highlight}
           onHighlightChange={setHighlight}
+          libraryCount={library.length}
           onClose={close}
           sourceBaseUrl={config.data?.sourceBaseUrl}
         />
@@ -404,7 +419,7 @@ export function RoutesPage() {
           onSelect={setSelectedKey}
           onOpen={open}
           shapes={drawn.shapes}
-          readAt={readAt ? formatTimestamp(readAt) : null}
+          readAt={readAt ? formatReadTime(readAt) : null}
         />
       ) : null}
       {openRoute ? (

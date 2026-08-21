@@ -327,7 +327,7 @@ describe("RoutesPage", () => {
 
   it("goes back to the search it came from", async () => {
     renderPage(LIBRARY, { at: "/?route=2%2F1" });
-    await userEvent.click(screen.getByRole("button", { name: "← Back to search" }));
+    await userEvent.click(screen.getByRole("button", { name: /^← Search \d+ routes?$/ }));
 
     expect(screen.getByRole("searchbox")).toBeInTheDocument();
     expect(lastDrawing().overlaid).toBe(false);

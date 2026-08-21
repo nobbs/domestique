@@ -52,6 +52,31 @@ export function formatTimestamp(value: string | undefined): string {
 }
 
 /**
+ * When the library was last read, as a card says it.
+ *
+ * The clock alone for a read that happened today, which is nearly every read a
+ * reader will ever see: the service reads hourly, and a full date beside it is
+ * three quarters punctuation. Anything older keeps the date, because "19:38" on
+ * a stale library is the one case where the short form would mislead — and the
+ * page has no way to say "the sync has been down for two days" other than by
+ * showing the day.
+ */
+export function formatReadTime(value: string | undefined, now = new Date()): string {
+  if (!value) {
+    return "never";
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return "unknown";
+  }
+  if (parsed.toDateString() !== now.toDateString()) {
+    return formatTimestamp(value);
+  }
+
+  return parsed.toLocaleTimeString(undefined, { timeStyle: "short" });
+}
+
+/**
  * A height above sea level.
  *
  * Not `formatAscent`: a climb of nought metres is a route with no usable

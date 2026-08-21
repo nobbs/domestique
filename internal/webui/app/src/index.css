@@ -50,11 +50,11 @@
    * components/RouteMap.tsx, because MapLibre paints on a canvas and cannot
    * resolve a custom property. The two copies must stay in step.
    */
-  --grade-0: #8e979f; /* < 4% */
-  --grade-1: #22a94e; /* 4–8% */
-  --grade-2: #e8b70a; /* 8–12% */
-  --grade-3: #f2811d; /* 12–16% */
-  --grade-4: #dc2b21; /* ≥ 16% */
+  --grade-0: #8e979f; /* under 3% */
+  --grade-1: #22a94e; /* 3–6% */
+  --grade-2: #e8b70a; /* 6–9% */
+  --grade-3: #f2811d; /* 9–12% */
+  --grade-4: #dc2b21; /* 12% and steeper */
 
   /*
    * Surface classes: the same idea at lower chroma, ordered smooth to rough,
@@ -671,6 +671,21 @@ body {
   padding: var(--space-4);
 }
 
+/* The way back and the way out, at either end of one line above the name. */
+.route-panel__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+/* The name and the line under it are one thing, so they sit closer than the
+ * card's own rhythm would put them. */
+.route-panel__name {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
 /*
  * The way back, above the name. It is quiet: leaving is always available and
  * never the thing to do, so it is a line of text rather than a control competing
@@ -689,6 +704,28 @@ body {
 
 .route-panel__back:hover,
 .route-panel__back:focus-visible {
+  color: var(--accent);
+}
+
+/*
+ * The cross. It says the same thing the sentence beside it says, for the reader
+ * who dismisses a panel without reading it — so it is the quieter of the two,
+ * and it grows a hit area a thumb can find without taking any room from the
+ * line.
+ */
+.route-panel__close {
+  margin: calc(var(--space-2) * -1) calc(var(--space-2) * -1) calc(var(--space-2) * -1) auto;
+  padding: var(--space-2);
+  border: 0;
+  background: none;
+  color: var(--ink-2);
+  font: var(--type-body);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.route-panel__close:hover,
+.route-panel__close:focus-visible {
   color: var(--accent);
 }
 

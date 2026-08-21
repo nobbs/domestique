@@ -10,13 +10,18 @@ import {
   gradientBand,
   gradientMix,
   gradientRanges,
+  gradientShares,
   nearestSample,
   niceStep,
-  presentBands,
   rangeBounds,
   sampleAt,
   ticksFor,
 } from "./profile";
+
+/** The bands a stage has, gentlest first: what the key offers as chips. */
+function bandsOf(coordinates: Position[]): number[] {
+  return gradientShares(coordinates).map((entry) => entry.band);
+}
 
 /** Points spaced by latitude, so distance grows predictably along the route. */
 function route(elevations: Array<number | undefined>, latitudeStep = 0.001): Position[] {
@@ -451,13 +456,16 @@ describe("gradientBand", () => {
    * reader's own number does not fall into.
    */
   it("puts a gradient on a boundary in the band that boundary opens", () => {
-    expect([0, 4, 8, 12, 16, 30].map(gradientBand)).toEqual([0, 1, 2, 3, 4, 4]);
-    expect(GRADIENT_BANDS.map((band) => band.label)).toEqual([
-      "< 4%",
-      "4–8%",
-      "8–12%",
-      "12–16%",
-      "≥ 16%",
+    expect([0, 3, 6, 9, 12, 30].map(gradientBand)).toEqual([0, 1, 2, 3, 4, 4]);
+    expect(GRADIENT_BANDS.map((band) => band.label)).toEqual(["flat", "3%", "6%", "9%", "12%+"]);
+    // A chip is named by the gradient its band opens at, so the spoken form is
+    // the one that has to carry the span the band actually covers.
+    expect(GRADIENT_BANDS.map((band) => band.description)).toEqual([
+      "under 3%",
+      "3 to 6%",
+      "6 to 9%",
+      "9 to 12%",
+      "12% and steeper",
     ]);
   });
 });
@@ -465,22 +473,22 @@ describe("gradientBand", () => {
 describe("gradientRanges", () => {
   it("bands a steady climb as one run from its first metre", () => {
     expect(gradientRanges(ramp(Array(40).fill(10)))).toEqual([
-      { band: 2, startIndex: 0, endIndex: 39 },
+      { band: 3, startIndex: 0, endIndex: 39 },
     ]);
   });
 
   it("reads a descent as steeply as the climb it mirrors", () => {
     expect(gradientRanges(ramp(Array(40).fill(-10)))).toEqual([
-      { band: 2, startIndex: 0, endIndex: 39 },
+      { band: 3, startIndex: 0, endIndex: 39 },
     ]);
   });
 
   it("hands the steep ground its own run once the flat ends", () => {
     const ranges = gradientRanges(ramp([...Array(40).fill(0), ...Array(40).fill(10)]));
 
-    // Two runs, not three: the climb passes through the middle band in well
+    // Two runs, not four: the climb passes through the bands between in well
     // under a hundred metres, and a colour that brief is a smear, not a stretch.
-    expect(ranges.map((range) => range.band)).toEqual([0, 2]);
+    expect(ranges.map((range) => range.band)).toEqual([0, 3]);
     // The gradient is measured backwards, so the climb is reported a little way
     // into itself — the same lag the chart shows for the same stretch.
     const steep = ranges[1]?.startIndex ?? 0;
@@ -511,7 +519,7 @@ describe("gradientRanges", () => {
     ]);
 
     expect(SHORT_STEP * (POINT_SPACING_METRES / 0.001)).toBeLessThan(GRADIENT_WINDOW_METRES);
-    expect(presentBands(gradientRanges(pitch))).toEqual([0]);
+    expect(bandsOf(pitch)).toEqual([0]);
   });
 
   it("keeps a pitch longer than the gradient window", () => {
@@ -525,12 +533,12 @@ describe("gradientRanges", () => {
     ]);
 
     expect(LONG_STEP * (POINT_SPACING_METRES / 0.001)).toBeGreaterThan(GRADIENT_WINDOW_METRES);
-    expect(presentBands(gradientRanges(pitch))).toEqual([0, 3]);
+    expect(bandsOf(pitch)).toEqual([0, 4]);
   });
 
   it("classifies the same ground however finely the chart samples it", () => {
     const coordinates = flatThenSteep();
-    const offered = presentBands(gradientRanges(coordinates));
+    const offered = bandsOf(coordinates);
 
     for (const sampleCount of [16, 40, 320, 1000]) {
       const profile = buildProfile(coordinates, sampleCount);
@@ -579,12 +587,29 @@ describe("gradientRanges", () => {
   });
 });
 
-describe("presentBands", () => {
+describe("gradientShares", () => {
   // Flat ground and the climb itself, and nothing between them: the transition
   // is over in one segment, which is the half of the answer that keeps unusable
   // classes out of the key.
   it("offers only the bands the stage actually has, gentlest first", () => {
-    expect(presentBands(gradientRanges(flatThenSteep()))).toEqual([0, 2]);
+    expect(bandsOf(flatThenSteep())).toEqual([0, 3]);
+  });
+
+  /*
+   * Totalled per band, where `gradientMix` leaves one entry per run. A chip says
+   * how much of the ride is this steep once, however many times the ride comes
+   * back to it — a key that listed the same band three times would be a strip in
+   * the wrong order rather than a key.
+   */
+  it("totals a band the route arrives at more than once", () => {
+    const shares = gradientShares(
+      ramp([...Array(40).fill(10), ...Array(40).fill(0), ...Array(40).fill(10)]),
+    );
+
+    expect(shares.map((entry) => entry.band)).toEqual([0, 3]);
+    expect(shares.reduce((total, entry) => total + entry.share, 0)).toBeCloseTo(1, 10);
+    // Two of the three stretches are the climb, so it is about two thirds of it.
+    expect(shares.find((entry) => entry.band === 3)?.share ?? 0).toBeGreaterThan(0.6);
   });
 
   // The same fixture the Go MaxGradientPercent test uses: steps of about two
@@ -594,14 +619,14 @@ describe("presentBands", () => {
   it("offers the band the reported max gradient falls in", () => {
     const stage = route([100, 102, 122], LONG_STEP);
 
-    expect(presentBands(gradientRanges(stage))).toContain(gradientBand(10));
+    expect(bandsOf(stage)).toContain(gradientBand(10));
   });
 
   // What the key offers is a fact about the ground, so a reader zooming in and
   // out must not watch the chips reshuffle underneath their hand.
   it("offers the same bands whatever stretch the chart is showing", () => {
     const coordinates = flatThenSteep();
-    const offered = presentBands(gradientRanges(coordinates));
+    const offered = bandsOf(coordinates);
     const windows = [
       { startMetres: 0, endMetres: 39 * POINT_SPACING_METRES },
       { startMetres: CLIMB_STARTS_METRES - 200, endMetres: CLIMB_STARTS_METRES + 400 },
@@ -639,7 +664,7 @@ describe("gradientMix", () => {
   it("gives each band the share of the route it covers", () => {
     const mix = gradientMix(ramp([...Array(40).fill(0), ...Array(40).fill(10)]));
 
-    expect(mix.map((entry) => entry.band)).toEqual([0, 2]);
+    expect(mix.map((entry) => entry.band)).toEqual([0, 3]);
     // Every metre of the route is accounted for exactly once: the bar is read
     // as a whole, so a mix that does not sum to one is a bar with a gap in it.
     expect(mix.reduce((total, entry) => total + entry.share, 0)).toBeCloseTo(1, 10);
@@ -651,7 +676,7 @@ describe("gradientMix", () => {
       ramp([...Array(40).fill(10), ...Array(40).fill(0), ...Array(40).fill(10)]),
     );
 
-    expect(mix.map((entry) => entry.band)).toEqual([2, 0, 2]);
+    expect(mix.map((entry) => entry.band)).toEqual([3, 0, 3]);
   });
 
   // A listing row asks for this before the geometry has arrived, and a route
