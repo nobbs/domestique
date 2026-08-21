@@ -22,11 +22,14 @@ const REDUCED_MOTION = "(prefers-reduced-motion: reduce)";
 const NARROW = "(max-width: 52rem)";
 
 /**
- * A pointer that cannot hover and cannot be put down precisely: a finger.
+ * A pointer that cannot be put down precisely: a finger rather than a cursor.
  *
- * The chart offers the same two gestures to both kinds of pointer, but not in
- * the same way — a mouse arms a drag by pressing, a finger by holding — so the
- * hint above the plot has to say which of the two it is talking to.
+ * Precision is all this asks about — whether the pointer can also hover is a
+ * separate question, and `(hover: none)` is where it would be asked. Coarse is
+ * the half that matters here: the chart offers the same two gestures to both
+ * kinds of pointer but not in the same way — a mouse arms a drag by pressing, a
+ * finger by holding — so the hint above the plot has to say which of the two it
+ * is talking to.
  */
 const COARSE_POINTER = "(pointer: coarse)";
 
