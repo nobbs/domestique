@@ -372,6 +372,53 @@ describe("ElevationProfile zooming", () => {
     }
   });
 
+  /*
+   * A press does not always arrive after the release of the one before it. A
+   * device with both a touchscreen and a trackpad can put a second primary
+   * pointer down mid-hold, and a timer left over from the first would fire into
+   * the second: the chart would capture a pointer and anchor a drag at a
+   * position the reader had already left.
+   */
+  it("drops a hold still counting when a fresh press lands on the plot", () => {
+    vi.useFakeTimers();
+    try {
+      const onZoom = vi.fn();
+      render(<ZoomHarness onZoom={onZoom} />);
+      const scrub = measured(screen.getByRole("slider"));
+
+      fireEvent.pointerDown(scrub, {
+        pointerId: 5,
+        pointerType: "touch",
+        isPrimary: true,
+        button: 0,
+        clientX: 30,
+      });
+      fireEvent.pointerDown(scrub, {
+        pointerId: 6,
+        pointerType: "mouse",
+        isPrimary: true,
+        button: 0,
+        clientX: 140,
+      });
+      act(() => {
+        vi.advanceTimersByTime(LONG_PRESS_MS * 2);
+      });
+
+      // The abandoned touch never arms, so the mouse's own drag is the only one
+      // in play and it is anchored where the mouse actually went down.
+      expect(scrub.getAttribute("data-holding")).toBeNull();
+
+      fireEvent.pointerMove(scrub, { pointerId: 6, pointerType: "mouse", clientX: 60 });
+      fireEvent.pointerUp(scrub, { pointerId: 6, pointerType: "mouse", clientX: 60 });
+
+      const window = onZoom.mock.calls[0]?.[0] as DistanceWindow;
+      expect(window.startMetres).toBeCloseTo(metresAt(60), 0);
+      expect(window.endMetres).toBeCloseTo(metresAt(140), 0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("shows the stretch under the pointer while it is still being chosen", async () => {
     const user = userEvent.setup();
     const { container } = render(<ZoomHarness />);

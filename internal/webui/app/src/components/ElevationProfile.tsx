@@ -324,6 +324,15 @@ export function ElevationProfile({
       };
       setSelection(null);
       /*
+       * Whatever the last press left ticking is dropped before this one arms.
+       * A press does not always arrive after the release of the one before it —
+       * a device with both a touchscreen and a trackpad can put a second
+       * primary pointer down while a hold is still counting — and a timer from
+       * an abandoned press would fire into this one, capturing a pointer for a
+       * position the reader has already moved away from.
+       */
+      disarm();
+      /*
        * A mouse arms the drag by pressing; a finger arms it by holding.
        *
        * The chart is one row of a card the reader scrolls, and a finger that
@@ -350,7 +359,7 @@ export function ElevationProfile({
       // the pointer that is about to drag away from it.
       onActiveChange(metres);
     },
-    [metresAt, onActiveChange, onZoomChange],
+    [disarm, metresAt, onActiveChange, onZoomChange],
   );
 
   const onPointerMove = useCallback(

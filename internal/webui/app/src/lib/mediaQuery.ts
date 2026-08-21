@@ -83,10 +83,12 @@ export function useNarrowViewport(): boolean {
 /**
  * Whether the reader is pointing with a finger rather than with a mouse.
  *
- * Only for what is said, never for what is done: the chart decides how to treat
- * a gesture from the pointer that actually made it, because a laptop with a
- * touchscreen answers this yes and is still driven by its trackpad most of the
- * time.
+ * Only for what is said, never for what is done. The query reports the primary
+ * pointer, and a device with more than one is answered for whichever that is: a
+ * laptop with a touchscreen answers no and is still sometimes touched, a tablet
+ * with a keyboard case answers yes and is often driven by its trackpad. So the
+ * chart decides how to treat a gesture from the pointer that actually made it,
+ * and this only picks which sentence to put above the plot.
  */
 export function useCoarsePointer(): boolean {
   return useMediaQuery(COARSE_POINTER);
