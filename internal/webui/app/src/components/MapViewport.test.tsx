@@ -132,6 +132,19 @@ describe("MapViewport", () => {
   });
 
   /*
+   * The observer is an optimisation over the one sizing that has to happen, so a
+   * runtime without it gets a map that never reflows rather than no map: throwing
+   * here would take the whole canvas down with it.
+   */
+  it("still sizes the canvas where nothing can be observed", () => {
+    vi.stubGlobal("ResizeObserver", undefined);
+
+    expect(() => show(BOUNDS)).not.toThrow();
+    expect(map().resizes()).toBeGreaterThan(0);
+    expect(map().framings()).toHaveLength(1);
+  });
+
+  /*
    * Panning away to look at the surrounding roads costs nothing and needs no way
    * back: only a change of subject moves the camera.
    */
