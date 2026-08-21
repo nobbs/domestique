@@ -37,6 +37,7 @@ function renderPanel(overrides: Partial<SearchPanelProps> = {}) {
     onQueryChange: () => {},
     selectedKey: null,
     onSelect: () => {},
+    onOpen: () => {},
     shapes: new Map([[routeKey(route()), { coordinates: CLIMB }]]),
     readAt: "19:38",
     ...overrides,
@@ -114,11 +115,22 @@ describe("SearchPanel", () => {
 
     expect(screen.getByRole("heading", { name: "Alpine loop — Descent" })).toBeInTheDocument();
     expect(screen.getByText("42.5 km")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Open route" })).toHaveAttribute(
-      "href",
-      "/routes/12/2",
-    );
     expect(screen.queryByRole("button", { name: /Alpine loop — Descent/ })).toBeNull();
+  });
+
+  /*
+   * The card's one button opens the route in place. There is no route page to
+   * leave for: it swaps this panel for the route's own, which is a thing the
+   * page does rather than a thing the address does on its way somewhere else.
+   */
+  it("opens the route in place rather than linking away to a page", async () => {
+    const onOpen = vi.fn();
+    renderPanel({ query: "alpine", selectedKey: routeKey(route()), onOpen });
+
+    expect(screen.queryByRole("link", { name: "Open route" })).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Open route" }));
+
+    expect(onOpen).toHaveBeenCalledWith(routeKey(route()));
   });
 
   // Picking a route opens the card whether or not anything was typed, so the

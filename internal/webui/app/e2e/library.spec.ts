@@ -99,16 +99,30 @@ test("picking a route lifts it out of the library and opens its card", async ({
   expect(after.equals(before)).toBe(false);
 });
 
-test("the card is the way into a route", async ({ offlinePage: page }) => {
+test("the card is the way into a route, and the route takes the same column", async ({
+  offlinePage: page,
+}) => {
   await openLibrary(page);
   await page.getByRole("searchbox", { name: "Search the route library" }).fill("kaiserstuhl");
   await page.getByRole("button", { name: new RegExp(LOOP.title) }).click();
 
-  await page.getByRole("link", { name: "Open route" }).click();
+  await page.getByRole("button", { name: "Open route" }).click();
 
-  await expect(page).toHaveURL(new RegExp(`/routes/${LOOP.routeId}/${LOOP.stageOrder}$`));
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText(LOOP.title);
+  // The route is a panel over the same map, not a page of its own — but it is in
+  // the address, so it is still a view that can be sent to someone else.
+  await expect(page).toHaveURL(new RegExp(`/\\?route=${LOOP.routeId}%2F${LOOP.stageOrder}$`));
+  await expect(page.getByRole("region", { name: LOOP.title })).toBeVisible();
+  await expect(page.getByRole("searchbox", { name: "Search the route library" })).toBeHidden();
   await settleMap(page);
+});
+
+// The address routes were linked by before they became a panel. Old links and
+// bookmarks have to land on the route rather than on the library.
+test("a link to the old route page lands on the route", async ({ offlinePage: page }) => {
+  await page.goto(`/routes/${LOOP.routeId}/${LOOP.stageOrder}`);
+
+  await expect(page.getByRole("region", { name: LOOP.title })).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`/\\?route=${LOOP.routeId}%2F${LOOP.stageOrder}$`));
 });
 
 test("the wordmark says what sync is doing and is the way to it", async ({ offlinePage: page }) => {

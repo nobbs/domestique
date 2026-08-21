@@ -18,6 +18,8 @@ interface Drawing {
   keys: string[];
   selectedKey: string | null;
   bounds: BoundingBox | null;
+  /** Whether the selected route's own layers were handed to the map. */
+  overlaid: boolean;
 }
 
 const drawn = vi.hoisted(() => ({ maps: [] as Drawing[] }));
@@ -27,11 +29,13 @@ vi.mock("./LibraryMap", () => ({
     lines: Array<{ key: string }>;
     selectedKey: string | null;
     bounds: BoundingBox | null;
+    overlay?: unknown;
   }) => {
     drawn.maps.push({
       keys: props.lines.map((line) => line.key),
       selectedKey: props.selectedKey,
       bounds: props.bounds,
+      overlaid: Boolean(props.overlay),
     });
 
     return <div data-testid="library-map" />;
@@ -83,7 +87,7 @@ function geometry(stage: Route, offset: number): RouteGeometry {
  */
 function renderPage(
   library: Route[] = LIBRARY,
-  options: { geometryFor?: Route[]; readAt?: string } = {},
+  options: { geometryFor?: Route[]; readAt?: string; at?: string } = {},
 ) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
@@ -125,7 +129,7 @@ function renderPage(
 
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter>
+      <MemoryRouter initialEntries={[options.at ?? "/"]}>
         <RoutesPage />
       </MemoryRouter>
     </QueryClientProvider>,
@@ -207,7 +211,7 @@ describe("RoutesPage", () => {
 
     expect(lastDrawing().selectedKey).toBe("2/1");
     expect(lastDrawing().bounds).toEqual([8.8, 49, 8.9, 49.1]);
-    expect(screen.getByRole("link", { name: "Open route" })).toHaveAttribute("href", "/routes/2/1");
+    expect(screen.getByRole("button", { name: "Open route" })).toBeInTheDocument();
   });
 
   // A search that no longer holds the open route would leave its card expanded
@@ -219,7 +223,7 @@ describe("RoutesPage", () => {
     await userEvent.clear(screen.getByRole("searchbox"));
 
     expect(lastDrawing().selectedKey).toBeNull();
-    expect(screen.queryByRole("link", { name: "Open route" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Open route" })).toBeNull();
   });
 
   // One timestamp for the whole library: the service reads it in a single pass,
@@ -288,5 +292,57 @@ describe("RoutesPage", () => {
 
     expect(screen.getByText("No routes yet.")).toBeInTheDocument();
     expect(screen.queryByRole("searchbox")).toBeNull();
+  });
+
+  /*
+   * The route is not a page of its own: it takes over the column the search was
+   * in, over the map the reader was already looking at, and the map keeps its
+   * camera and gains the route's own layers rather than being mounted again.
+   */
+  it("swaps the search for the route in the same column", async () => {
+    renderPage();
+    await userEvent.type(screen.getByRole("searchbox"), "kaiserstuhl");
+    await userEvent.click(screen.getByRole("button", { name: /Kaiserstuhl Loop/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Open route" }));
+
+    expect(screen.getByRole("region", { name: "Kaiserstuhl Loop" })).toBeInTheDocument();
+    expect(screen.queryByRole("searchbox")).toBeNull();
+    expect(lastDrawing().overlaid).toBe(true);
+  });
+
+  // The open route is in the address rather than in component state, so the view
+  // a reader is looking at is a view they can send to someone else.
+  it("opens the route the address names", () => {
+    renderPage(LIBRARY, { at: "/?route=2%2F1" });
+
+    expect(screen.getByRole("region", { name: "Kaiserstuhl Loop" })).toBeInTheDocument();
+    expect(lastDrawing().overlaid).toBe(true);
+  });
+
+  it("says so when the address names a route the library does not have", () => {
+    renderPage(LIBRARY, { at: "/?route=99%2F1" });
+
+    expect(screen.getByText("No route at that address.")).toBeInTheDocument();
+  });
+
+  it("goes back to the search it came from", async () => {
+    renderPage(LIBRARY, { at: "/?route=2%2F1" });
+    await userEvent.click(screen.getByRole("button", { name: "← Back to search" }));
+
+    expect(screen.getByRole("searchbox")).toBeInTheDocument();
+    expect(lastDrawing().overlaid).toBe(false);
+  });
+
+  /*
+   * The profile is a panel across the bottom of the map, and the map is the
+   * point: a reader who wants the ground back can put the chart away without
+   * closing the route.
+   */
+  it("puts the profile away and leaves the route open", async () => {
+    renderPage(LIBRARY, { at: "/?route=2%2F1" });
+    await userEvent.click(screen.getByRole("button", { name: "Hide the profile" }));
+
+    expect(screen.getByRole("button", { name: "Show the profile" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Kaiserstuhl Loop" })).toBeInTheDocument();
   });
 });

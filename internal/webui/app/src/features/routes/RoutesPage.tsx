@@ -1,35 +1,73 @@
 /**
- * The entry page: a map of everything, and one control over it.
+ * The entry page: a map of everything, and one panel over it.
  *
- * The page owns the three things the map and the panel have to agree on — what
- * the library is, what the search left of it, and which route is selected — so
- * neither of them holds a copy. There is no sort and no second presentation:
- * the column is read from the top while the map beside it answers where, and a
- * second arrangement of the same rows would be a second answer to a question the
- * figures in each row already answer.
+ * The page owns everything the map and the panel have to agree on — what the
+ * library is, what the search left of it, which route is selected, which one is
+ * open, and every question asked of an open route. Neither the map nor the
+ * panel holds a copy, because they are two views of one answer: pointing at the
+ * route marks the chart, scrubbing the chart marks the route, and a chip pressed
+ * in the panel lights the same ground on both.
+ *
+ * There is one MapLibre instance for the life of the page. Opening a route adds
+ * a stack of layers over the library rather than mounting a second map, so the
+ * ground the reader was already looking at is never thrown away and the style is
+ * never downloaded twice.
  *
  * Geometry is fetched per route rather than taken from the listing, because the
  * listing carries no bounding box: the entry map needs a line for every route
- * and the glyphs need the same points, so one query serves both and the shared
- * cache means the route page later opens on geometry that is already here.
+ * and the glyphs need the same points, so one query serves both — and the route
+ * that is opened is served from the same cache, with no second request.
  */
 
 import type { UseQueryResult } from "@tanstack/react-query";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
+import { useSearchParams } from "react-router";
 import { routeGeometryQuery, routesQuery, statusQuery, webUIConfigQuery } from "../../api/queries";
 import type { BoundingBox, Position, RouteGeometry } from "../../api/types";
 import { routeKey } from "../../api/types";
 import { Layout } from "../../components/Layout";
+import { RouteOverlay, SURFACE_ATTRIBUTION } from "../../components/RouteOverlay";
 import { ErrorMessage, StatusMessage } from "../../components/StatusMessage";
 import { Wordmark } from "../../components/Wordmark";
 import { basemapFor, usePrefersDarkScheme } from "../../lib/basemap";
 import { formatTimestamp } from "../../lib/format";
+import type { Highlight } from "../../lib/highlight";
 import { matchingRoutes } from "../../lib/library";
+import type { DistanceWindow } from "../../lib/profile";
+import {
+  buildProfile,
+  buildWindowedProfile,
+  coordinateRange,
+  gradientRanges,
+  presentBands,
+  rangeBounds,
+} from "../../lib/profile";
+import { summariseSurface } from "../../lib/surface";
+import { useEscapeKey } from "../../lib/useEscapeKey";
+import { ElevationPanel } from "./ElevationPanel";
 import type { LibraryLine } from "./LibraryMap";
 import { LibraryMap } from "./LibraryMap";
+import { RoutePanel } from "./RoutePanel";
 import type { RouteShape } from "./SearchPanel";
 import { SearchPanel } from "./SearchPanel";
+
+/**
+ * How close the camera will go to the library, or to one whole route.
+ *
+ * A short route would otherwise open at street level, which says nothing about
+ * where the ride goes.
+ */
+const ROUTE_MAX_ZOOM = 14;
+
+/**
+ * And how close it may come to the stretch the chart is showing.
+ *
+ * Higher, because that framing was asked for: the shortest window the chart
+ * allows is 200 m, and holding it to the whole-route cap would answer a request
+ * to look closer by barely moving.
+ */
+const WINDOW_MAX_ZOOM = 17;
 
 /** The smallest box every drawn route fits inside, or null for no geometry yet. */
 function unionOf(boxes: BoundingBox[]): BoundingBox | null {
@@ -49,6 +87,25 @@ function unionOf(boxes: BoundingBox[]): BoundingBox | null {
   );
 }
 
+/**
+ * The pair a `routeKey` is made of, or null for anything that is not one.
+ *
+ * The address carries both halves of the identity the service serves a route
+ * under even though nothing on the page ever shows the second: a library with
+ * more than one stage under a route would otherwise have routes that cannot be
+ * linked to.
+ */
+function parseRouteKey(value: string | null): { routeId: number; stageOrder: number } | null {
+  const [left, right, ...rest] = (value ?? "").split("/");
+  if (rest.length > 0 || !left || !right || !/^\d+$/.test(left) || !/^\d+$/.test(right)) {
+    return null;
+  }
+  const routeId = Number.parseInt(left, 10);
+  const stageOrder = Number.parseInt(right, 10);
+
+  return routeId > 0 && stageOrder > 0 ? { routeId, stageOrder } : null;
+}
+
 export function RoutesPage() {
   const routes = useQuery(routesQuery());
   const config = useQuery(webUIConfigQuery());
@@ -57,6 +114,16 @@ export function RoutesPage() {
 
   const [query, setQuery] = useState("");
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
+
+  /*
+   * The open route lives in the address rather than in state, so one is still a
+   * link somebody can send: everything else on this page — what was typed, which
+   * row is expanded, whether the chart is up — is a way of getting to a route
+   * rather than a thing worth linking to.
+   */
+  const [params, setParams] = useSearchParams();
+  const opened = parseRouteKey(params.get("route"));
+  const openKey = opened ? `${opened.routeId}/${opened.stageOrder}` : null;
 
   const library = useMemo(() => routes.data ?? [], [routes.data]);
   const shown = useMemo(() => matchingRoutes(library, query), [library, query]);
@@ -101,31 +168,173 @@ export function RoutesPage() {
     combine,
   });
 
-  // The camera follows the selection when there is one, because a route picked
-  // out of the column is a route the reader now wants to see the shape of.
+  // The open route's geometry, which the library pass has already fetched under
+  // exactly this key: asking for it by name is a read of the cache rather than
+  // a second request, and it is how the surface classification — which the
+  // library map has no use for — reaches the panel.
+  const openRoute = library.find((route) => routeKey(route) === openKey) ?? null;
+  const openGeometry = useQuery({
+    ...routeGeometryQuery(opened?.routeId ?? 0, opened?.stageOrder ?? 0),
+    // Only for a route the library actually holds: an address naming one it does
+    // not is answered by saying so, not by asking the service about it.
+    enabled: openRoute !== null,
+  });
+  const openCoordinates = useMemo(
+    () => (openKey ? (drawn.shapes.get(openKey)?.coordinates ?? []) : []),
+    [drawn.shapes, openKey],
+  );
+
+  /*
+   * Everything asked of the open route. It lives here rather than in either
+   * view because both views answer it: the hovered position marks the chart and
+   * the map, the stretch on show dims one and frames the other, and a class
+   * picked out of the chips lights the same ground on both.
+   */
+  const [activeMetres, setActiveMetres] = useState<number | null>(null);
+  const [zoomWindow, setZoomWindow] = useState<DistanceWindow | null>(null);
+  const [highlight, setHighlight] = useState<Highlight | null>(null);
+  const [chartCollapsed, setChartCollapsed] = useState(false);
+
+  const routeProfile = useMemo(() => buildProfile(openCoordinates), [openCoordinates]);
+  // Rebuilt from the original geometry rather than from the last window, so
+  // zooming inside a zoom compounds no rounding error and needs no stack.
+  const windowed = useMemo(
+    () => (zoomWindow ? buildWindowedProfile(openCoordinates, zoomWindow) : null),
+    [openCoordinates, zoomWindow],
+  );
+  // A window that built nothing is a slip, not a view: the map must not dim
+  // around a stretch the chart is not showing.
+  const shownWindow = windowed ? zoomWindow : null;
+
+  // The position was chosen against the view being left, so it goes with it.
+  const onZoomChange = useCallback((next: DistanceWindow | null) => {
+    setZoomWindow(next);
+    setActiveMetres(null);
+  }, []);
+
+  /** Puts every question asked of a route away with the route itself. */
+  const forget = useCallback(() => {
+    setActiveMetres(null);
+    setZoomWindow(null);
+    setHighlight(null);
+  }, []);
+
+  const open = useCallback(
+    (key: string) => {
+      forget();
+      setParams((current) => {
+        const next = new URLSearchParams(current);
+        next.set("route", key);
+
+        return next;
+      });
+    },
+    [forget, setParams],
+  );
+
+  const close = useCallback(() => {
+    forget();
+    setSelectedKey(null);
+    setParams((current) => {
+      const next = new URLSearchParams(current);
+      next.delete("route");
+
+      return next;
+    });
+  }, [forget, setParams]);
+
+  // Escape leaves one thing at a time, and the stretch on show is the innermost:
+  // the overlay answers that one, so this only fires once there is nothing left
+  // between the reader and the library.
+  useEscapeKey(openKey !== null && shownWindow === null, close);
+
+  // The route's steepness, classified from the coordinates the service stored
+  // rather than from any resampling of them. Held here so the chips do not
+  // re-run the classification on every hover.
+  const gradient = useMemo(() => gradientRanges(openCoordinates), [openCoordinates]);
+
+  // A classification that snapped to nothing is left unpainted rather than drawn
+  // as unsurveyed from end to end: greying out the whole route to say nothing is
+  // known says it less clearly than one sentence does.
+  const surface = openGeometry.data?.surface;
+  const surfaceSummary = useMemo(
+    () =>
+      surface && surface.matchedMetres > 0
+        ? summariseSurface(openCoordinates, surface.ranges)
+        : null,
+    [openCoordinates, surface],
+  );
+
+  /*
+   * What the camera frames, in the order the reader asked for it: the stretch
+   * on show, then the route they opened or picked out of the column, then the
+   * whole library. Each of them is memoised, because the camera moves when the
+   * framing changes and a fresh box every render would be a new flight every
+   * keystroke — the map snapping back from wherever it had been panned.
+   */
+  const windowBounds = useMemo(() => {
+    const range = shownWindow
+      ? coordinateRange(openCoordinates, shownWindow.startMetres, shownWindow.endMetres)
+      : null;
+
+    return range ? rangeBounds(openCoordinates, range) : null;
+  }, [openCoordinates, shownWindow]);
   // Keyed rather than indexed: geometry arrives one request at a time, so a
   // position in a list of what has arrived is not a position in the library.
-  const selectedBox = selectedKey ? (drawn.boxes.get(selectedKey) ?? null) : null;
-  // Held still deliberately: the camera moves when the framing changes, and a
-  // fresh union on every render would be a new frame every keystroke — the map
-  // snapping back from wherever the reader had panned it.
+  const focusKey = openKey ?? selectedKey;
+  const focusBox = focusKey ? (drawn.boxes.get(focusKey) ?? null) : null;
   const libraryBounds = useMemo(() => unionOf([...drawn.boxes.values()]), [drawn.boxes]);
-  const bounds = selectedBox ?? libraryBounds;
+  const bounds = windowBounds ?? focusBox ?? libraryBounds;
 
   const basemap = config.data ? basemapFor(config.data, prefersDark) : null;
   const readAt = status.data?.sync.phases.source?.lastCompletedAt;
 
+  /*
+   * Where the route is, when it was read, and whether the accounts have it.
+   *
+   * The service stores no locality, so "where" is the operator's own name for
+   * the route wherever that is not already the title — asking a geocoder would
+   * send the library's coordinates outside the Tailnet to answer a question the
+   * naming already answers. The accounts are only mentioned when every one of
+   * them holds the whole library, because anything short of that is a statement
+   * about the library rather than about this route.
+   */
+  const subtitle = [
+    openRoute && openRoute.routeName !== openRoute.title ? openRoute.routeName : null,
+    readAt ? `read ${formatTimestamp(readAt)}` : null,
+    status.data?.converged ? "on every account" : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
   return (
     <Layout
-      expanded={query.trim() !== "" || selectedKey !== null}
+      expanded={query.trim() !== "" || selectedKey !== null || openKey !== null}
       map={
         basemap ? (
           <LibraryMap
             styleUrl={basemap.styleUrl}
             darkBasemap={basemap.dark}
             lines={drawn.lines}
-            selectedKey={selectedKey}
+            selectedKey={focusKey}
             bounds={bounds}
+            maxZoom={windowBounds ? WINDOW_MAX_ZOOM : ROUTE_MAX_ZOOM}
+            extraCredit={openRoute ? SURFACE_ATTRIBUTION : undefined}
+            overlay={
+              openRoute && openCoordinates.length > 1 ? (
+                <RouteOverlay
+                  darkBasemap={basemap.dark}
+                  coordinates={openCoordinates}
+                  surface={surfaceSummary ? surface?.ranges : undefined}
+                  profile={routeProfile}
+                  activeMetres={activeMetres}
+                  onActiveChange={setActiveMetres}
+                  zoomWindow={shownWindow}
+                  onZoomChange={onZoomChange}
+                  highlight={highlight}
+                />
+              ) : null
+            }
           />
         ) : null
       }
@@ -151,7 +360,36 @@ export function RoutesPage() {
           detail="Routes appear here after the first successful read of the library."
         />
       ) : null}
-      {library.length > 0 ? (
+      {/*
+       * An address naming a route this library does not have. It is the one
+       * failure this page can arrive in rather than fall into, so it says what
+       * happened instead of silently showing the library.
+       */}
+      {routes.isSuccess && library.length > 0 && openKey !== null && openRoute === null ? (
+        <StatusMessage
+          tone="error"
+          title="No route at that address."
+          detail="It may have been removed from the library since the link was made."
+        />
+      ) : null}
+      {openRoute ? (
+        <RoutePanel
+          route={openRoute}
+          highestMetres={routeProfile ? routeProfile.maxElevationMetres : null}
+          subtitle={subtitle}
+          surface={surfaceSummary}
+          surfaceAbsence={
+            surface
+              ? "No OpenStreetMap surface data along this route."
+              : "Surface not classified yet."
+          }
+          bands={presentBands(gradient)}
+          highlight={highlight}
+          onHighlightChange={setHighlight}
+          onClose={close}
+          sourceBaseUrl={config.data?.sourceBaseUrl}
+        />
+      ) : library.length > 0 ? (
         <SearchPanel
           shown={shown}
           total={library.length}
@@ -164,8 +402,24 @@ export function RoutesPage() {
           }}
           selectedKey={selectedKey}
           onSelect={setSelectedKey}
+          onOpen={open}
           shapes={drawn.shapes}
           readAt={readAt ? formatTimestamp(readAt) : null}
+        />
+      ) : null}
+      {openRoute ? (
+        <ElevationPanel
+          profile={windowed ?? routeProfile}
+          title={openRoute.title}
+          ascentMetres={openRoute.ascentMetres}
+          surface={surfaceSummary}
+          activeMetres={activeMetres}
+          onActiveChange={setActiveMetres}
+          zoomWindow={shownWindow}
+          onZoomChange={onZoomChange}
+          highlight={highlight}
+          collapsed={chartCollapsed}
+          onCollapsedChange={setChartCollapsed}
         />
       ) : null}
     </Layout>

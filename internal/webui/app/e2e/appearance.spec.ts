@@ -79,7 +79,7 @@ test("the two schemes do not render the same map", async ({ browser, baseURL }) 
     const leaks = await installOfflineBasemap(page, served);
     await pinRendering(page);
 
-    await page.goto(`${served}/routes/${LOOP_ROUTE.routeId}/${LOOP_ROUTE.stageOrder}`);
+    await page.goto(`${served}/?route=${LOOP_ROUTE.routeId}%2F${LOOP_ROUTE.stageOrder}`);
     shots.push(await settleMap(page));
 
     expect(leaks, "no request left the page for a third-party server").toEqual([]);

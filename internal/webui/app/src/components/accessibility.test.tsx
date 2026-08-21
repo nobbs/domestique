@@ -12,17 +12,18 @@
  * rest, over the whole page, with the stylesheet loaded.
  */
 
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { describe, it } from "vitest";
 import type { Position, Route } from "../api/types";
 import { routeKey } from "../api/types";
+import { RoutePanel } from "../features/routes/RoutePanel";
 import { SearchPanel } from "../features/routes/SearchPanel";
 import { gradientRanges, presentBands } from "../lib/profile";
 import { summariseSurface } from "../lib/surface";
 import { expectNoAxeViolations } from "../test/axe";
 import { Button } from "./Button";
-import { ExploreToggle } from "./ExploreToggle";
 import { RouteKey } from "./RouteKey";
 import { StatusMessage } from "./StatusMessage";
 
@@ -70,6 +71,7 @@ describe("accessibility", () => {
             onQueryChange={() => {}}
             selectedKey={null}
             onSelect={() => {}}
+            onOpen={() => {}}
             shapes={new Map([[routeKey(STAGE), { coordinates: CLIMB }]])}
             readAt="19:38"
           />
@@ -91,6 +93,7 @@ describe("accessibility", () => {
           onQueryChange={() => {}}
           selectedKey={routeKey(STAGE)}
           onSelect={() => {}}
+          onOpen={() => {}}
           shapes={new Map([[routeKey(STAGE), { coordinates: CLIMB }]])}
           readAt="19:38"
         />
@@ -118,15 +121,27 @@ describe("accessibility", () => {
     }
   });
 
-  it("holds for the exploration control in both states", async () => {
-    for (const exploring of [false, true]) {
-      const { container, unmount } = render(
-        <ExploreToggle exploring={exploring} onExploringChange={() => {}} />,
-      );
+  it("holds for the route panel the search swaps to", async () => {
+    const { container } = render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter>
+          <RoutePanel
+            route={STAGE}
+            highestMetres={1840}
+            subtitle="Alpine loop · read 19:38"
+            surface={surfaceSummary()}
+            surfaceAbsence="Surface not classified yet."
+            bands={presentBands(gradientRanges(CLIMB))}
+            highlight={null}
+            onHighlightChange={() => {}}
+            onClose={() => {}}
+            sourceBaseUrl="https://veloplanner.example"
+          />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
 
-      await expectNoAxeViolations(container);
-      unmount();
-    }
+    await expectNoAxeViolations(container);
   });
 
   it("holds for a status message carrying an action", async () => {

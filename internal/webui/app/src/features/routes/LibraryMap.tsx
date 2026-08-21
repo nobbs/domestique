@@ -8,6 +8,11 @@
  * stands out, and it stands out because it is the only thing painted in the
  * accent.
  *
+ * There is one instance of it for the life of the page. The selected route is
+ * drawn over the library by `RouteOverlay`, handed in as `overlay` and rendered
+ * inside this map rather than beside it: a second map for the route would
+ * download the style again and throw away the ground the reader was looking at.
+ *
  * Every line comes from geometry the service already holds; only the basemap is
  * fetched from outside, and the tile provider is never told which routes are on
  * the screen.
@@ -36,9 +41,6 @@ import "../../lib/maplibre";
  * index.css, and the accent below is `--accent`; all of them must stay in step.
  */
 const LIBRARY_INK = { light: "#1c2126", dark: "#eef0f3" } as const;
-const ROUTE_ACCENT = { light: "#236fc7", dark: "#70adfb" } as const;
-/** The casing under the selected route: the panel colour, so it reads as lifted. */
-const SELECTED_CASING = { light: "#fcfdff", dark: "#24282c" } as const;
 
 /**
  * How strongly the library is drawn.
@@ -50,8 +52,18 @@ const SELECTED_CASING = { light: "#fcfdff", dark: "#24282c" } as const;
  */
 const LIBRARY_OPACITY = 0.68;
 
-/** How close the camera will go when it has only one route to frame. */
-const ROUTE_MAX_ZOOM = 14;
+/**
+ * And how faintly, once one of them is the answer.
+ *
+ * Far enough down that the selected route is plainly the only route being read,
+ * and far enough up that the others are still there: the reader asked where one
+ * route goes, and the rest of the library is the answer to *where* — so it stays
+ * on the ground as context rather than being switched off.
+ */
+const CONTEXT_OPACITY = 0.14;
+
+/** How close the camera will go by default: enough for one route, not a street. */
+const DEFAULT_MAX_ZOOM = 14;
 
 /** One drawable route: its identity, and the line itself. */
 export interface LibraryLine {
@@ -74,6 +86,23 @@ export interface LibraryMapProps {
    * to that question would be one too many.
    */
   bounds: BoundingBox | null;
+  /**
+   * How close the camera may come to `bounds`.
+   *
+   * The library and one route are both framed at the default; a stretch of one
+   * route was asked for, so it is allowed closer — see the callers.
+   */
+  maxZoom?: number;
+  /**
+   * The stack drawn over the library: the selected route, in full.
+   *
+   * A child rather than a prop this map draws itself, because everything in it
+   * is about one route — the steepness, the surface, the position shared with
+   * the chart — and none of that is this map's business.
+   */
+  overlay?: React.ReactNode;
+  /** A credit the style cannot know about, joined to the ones it declares. */
+  extraCredit?: string | undefined;
 }
 
 /** The lines as one collection, which is all a single line layer can be given. */
@@ -96,17 +125,16 @@ export function LibraryMap({
   lines,
   selectedKey,
   bounds,
+  maxZoom = DEFAULT_MAX_ZOOM,
+  overlay,
+  extraCredit,
 }: LibraryMapProps) {
   const theme = darkBasemap ? "dark" : "light";
 
-  // The selected route is drawn twice — once with the library, once on top —
-  // rather than cut out of it. Removing it would rebuild the whole collection
-  // on every selection, and the line underneath is exactly covered anyway.
+  // The selected route stays in the collection rather than being cut out of it:
+  // removing it would rebuild every line on every selection, and the overlay
+  // covers the one underneath exactly.
   const library = useMemo(() => collectionOf(lines), [lines]);
-  const selected = useMemo(
-    () => collectionOf(selectedKey ? lines.filter((line) => line.key === selectedKey) : []),
-    [lines, selectedKey],
-  );
 
   // A basemap that fails to load must not fail silently: the library is still
   // drawn, but the operator should be able to see why the ground is empty.
@@ -128,10 +156,10 @@ export function LibraryMap({
         aria-label="Map of the route library"
         attributionControl={false}
       >
-        <MapViewport bounds={bounds} maxZoom={ROUTE_MAX_ZOOM} />
-        {/* One cluster, bottom-right: the zoom pair, the scale bar, the credit. */}
-        <NavigationControl position="bottom-right" showCompass={false} />
-        <ScaleControl position="bottom-right" unit="metric" />
+        <MapViewport bounds={bounds} maxZoom={maxZoom} />
+        {/* One cluster, top-right: the credit, the zoom pair, the scale bar. */}
+        <NavigationControl position="top-right" showCompass={false} />
+        <ScaleControl position="top-right" unit="metric" />
         <Source id="library-lines" type="geojson" data={library}>
           <Layer
             id="library-line"
@@ -140,33 +168,19 @@ export function LibraryMap({
             paint={{
               "line-color": LIBRARY_INK[theme],
               "line-width": 2,
-              "line-opacity": LIBRARY_OPACITY,
+              "line-opacity": selectedKey === null ? LIBRARY_OPACITY : CONTEXT_OPACITY,
             }}
           />
         </Source>
         {/*
-         * The selection, over the library: a casing in the panel colour so the
-         * line reads as lifted off the ground rather than merely recoloured,
-         * and the accent over it. Both layers stay mounted with nothing in them
-         * when there is no selection, so picking a route repaints rather than
-         * rebuilding the style.
+         * The selection, over the library. It is mounted and unmounted with the
+         * selection rather than kept empty, because it is a stack of a dozen
+         * layers built from one route's geometry — there is nothing to keep
+         * mounted when there is no route.
          */}
-        <Source id="library-selected" type="geojson" data={selected}>
-          <Layer
-            id="library-selected-casing"
-            type="line"
-            layout={{ "line-cap": "round", "line-join": "round" }}
-            paint={{ "line-color": SELECTED_CASING[theme], "line-width": 7 }}
-          />
-          <Layer
-            id="library-selected-line"
-            type="line"
-            layout={{ "line-cap": "round", "line-join": "round" }}
-            paint={{ "line-color": ROUTE_ACCENT[theme], "line-width": 4 }}
-          />
-        </Source>
+        {overlay}
       </MapLibre>
-      <MapCredits styleUrl={styleUrl} />
+      <MapCredits styleUrl={styleUrl} extra={extraCredit} />
     </div>
   );
 }

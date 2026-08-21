@@ -68,7 +68,7 @@ test("the sync page has nothing for axe to report", async ({ offlinePage: page }
   expect(await violations(page)).toEqual([]);
 });
 
-test("a route page has nothing for axe to report", async ({ offlinePage: page }) => {
+test("a route has nothing for axe to report", async ({ offlinePage: page }) => {
   await openRoute(page, LOOP_ROUTE.routeId, LOOP_ROUTE.stageOrder);
 
   expect(await violations(page)).toEqual([]);
@@ -129,14 +129,13 @@ test.describe("on a phone-sized portrait viewport", () => {
     expect(await overflowsSideways(page)).toBe(false);
   });
 
-  test("a route fits its width, key and exploration control included", async ({
-    offlinePage: page,
-  }) => {
+  test("a route fits its width, key and profile included", async ({ offlinePage: page }) => {
     await openRoute(page, LOOP_ROUTE.routeId, LOOP_ROUTE.stageOrder);
 
-    // The exploration control is the way back out of exploring, and it sits over
-    // the map: a row that ran off the side of a phone would take it with it.
-    await expect(page.getByRole("button", { name: "Explore map" })).toBeInViewport();
+    // The profile is a panel across the foot of the map, and the control that
+    // puts it away is inside it: a header that ran off the side of a phone would
+    // take the way back with it.
+    await expect(page.getByRole("button", { name: "Hide the profile" })).toBeInViewport();
     expect(await overflowsSideways(page)).toBe(false);
   });
 

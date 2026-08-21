@@ -4,7 +4,8 @@
  * At rest it is a pill saying how many routes there are. Typed into, it grows a
  * results column beneath itself; picking a result replaces that row with the
  * route's card, so the column never says the same route twice and nothing opens
- * beside anything else.
+ * beside anything else. The card's one button opens the route, which swaps this
+ * panel for the route's own — there is no route page to leave for.
  *
  * Narrowing happens here in the browser, over the listing the page already
  * holds — see `lib/library.ts`. Nothing a reader types is sent to the service,
@@ -13,7 +14,7 @@
 
 import type { Position, Route } from "../../api/types";
 import { routeKey } from "../../api/types";
-import { ButtonLink } from "../../components/Button";
+import { Button } from "../../components/Button";
 import { RouteGlyph } from "../../components/RouteGlyph";
 import { formatAscent, formatDistance, formatGradient } from "../../lib/format";
 import { gradientBand, gradientMix } from "../../lib/profile";
@@ -33,6 +34,15 @@ export interface SearchPanelProps {
   /** The expanded route, by `routeKey`. */
   selectedKey: string | null;
   onSelect: (key: string | null) => void;
+  /**
+   * Opens a route, which swaps this whole panel for the route's own.
+   *
+   * Two steps rather than one: a row picked out of the column is a route the
+   * reader is looking at on the map, and swapping the search away the moment
+   * they touch a row would take the column with it — including the rows they
+   * were comparing this one against.
+   */
+  onOpen: (key: string) => void;
   /** Route shapes by `routeKey`, for the glyphs and the mix bar. */
   shapes: Map<string, RouteShape>;
   /**
@@ -107,10 +117,12 @@ function RouteCard({
   route,
   shape,
   readAt,
+  onOpen,
 }: {
   route: Route;
   shape: RouteShape | undefined;
   readAt: string | null;
+  onOpen: () => void;
 }) {
   const where = route.routeName !== route.title ? route.routeName : null;
   const second = [where, readAt ? `read ${readAt}` : null].filter(Boolean).join(" · ");
@@ -158,13 +170,14 @@ function RouteCard({
           ))}
         </div>
       ) : null}
-      <ButtonLink
-        className="route-card__open"
-        variant="primary"
-        to={`/routes/${route.routeId}/${route.stageOrder}`}
-      >
+      {/*
+       * The one primary control in this view. It opens the route in place —
+       * there is no route page to go to — so it says what it will show rather
+       * than where it will take anybody.
+       */}
+      <Button className="route-card__open" variant="primary" onClick={onOpen}>
         Open route
-      </ButtonLink>
+      </Button>
     </li>
   );
 }
@@ -176,6 +189,7 @@ export function SearchPanel({
   onQueryChange,
   selectedKey,
   onSelect,
+  onOpen,
   shapes,
   readAt,
 }: SearchPanelProps) {
@@ -215,7 +229,13 @@ export function SearchPanel({
             const shape = shapes.get(key);
 
             return key === selectedKey ? (
-              <RouteCard key={key} route={route} shape={shape} readAt={readAt} />
+              <RouteCard
+                key={key}
+                route={route}
+                shape={shape}
+                readAt={readAt}
+                onOpen={() => onOpen(key)}
+              />
             ) : (
               <ResultRow key={key} route={route} shape={shape} onSelect={() => onSelect(key)} />
             );

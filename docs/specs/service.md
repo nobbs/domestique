@@ -24,8 +24,11 @@ small Linux cloud VM. It has no CLI.
 The service serves a read-only browser UI for route preview. Its HTTP surface is
 read-only JSON for status, route data, and route geometry, except for the
 protected Wahoo OAuth onboarding flow and the manual sync trigger. The UI is a
-view onto stored state: it draws the whole stored library on one map, gives each
-source route stage a page of its own, and reports synchronisation on a third.
+view onto stored state: it draws the whole stored library on one map, opens any
+one source route stage over that same map, and reports synchronisation on a
+second view. A route is not a page of its own — it takes over the panel the
+search occupies and adds its own layers to the map already on screen — but the
+route being read is carried in the address, so the view stays linkable.
 
 Where a stage's surface classification has been cached, that view draws it: the
 route is banded by ground class on the map, and the stage's split is summarised
@@ -60,14 +63,17 @@ instead, and moving the map selects nothing. Selecting a stretch by keyboard
 remains the elevation chart's. Like the class selection, this changes what is
 shown, never what is stored.
 
-The map is read as part of the page until it is asked to be a map. The wheel,
-the arrow keys, and a finger that begins away from the painted route belong to
-the page and scroll it, and nothing is printed over the cartography in answer to
-them. A visible control on the map hands it those gestures; that control pressed
-again, or Escape, hands them back. While the map holds them it zooms to an
-unmodified wheel, pans and zooms to the fingers, and answers the arrow keys. A
-drag along the painted route picks a stretch in either state, because that
-gesture is a question about the ride rather than about the view.
+The map is the view rather than something embedded in one, so it holds its own
+gestures throughout: the wheel zooms, fingers pan and zoom, and the arrow keys
+answer. Nothing is printed over the cartography to ask for them. A drag that
+begins on the painted route picks a stretch of the ride instead of moving the
+camera, because that gesture is a question about the ride rather than about the
+view.
+
+The elevation chart floats across the foot of the map rather than sitting in a
+column beside it, and it can be folded away to a pill that still states the
+route's total climbing and the heights it runs between. That choice lasts as
+long as the tab and is deliberately not stored.
 
 The UI carries one outbound link, to this service's public source repository. It
 is the only navigation that leaves the authenticated origin, it opens in a new

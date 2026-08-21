@@ -8,7 +8,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BoundingBox, Position } from "../../api/types";
@@ -131,41 +131,45 @@ describe("LibraryMap", () => {
    * classified. Forty-seven routes in five colours is a pattern rather than an
    * answer, and selection is the only thing that is allowed to stand out.
    */
-  it("draws the library in one ink and the selection in the accent", () => {
-    show({ selectedKey: "2/1" });
+  it("draws the library in one ink", () => {
+    show({ selectedKey: null });
 
     expect(layer("library-line").paint["line-color"]).toBe("#1c2126");
-    expect(layer("library-selected-line").paint["line-color"]).toBe("#236fc7");
-    expect(source("library-selected").data.features).toHaveLength(1);
-    expect(source("library-selected").data.features[0]?.geometry.coordinates[0]).toEqual([8.4, 49]);
+    expect(layer("library-line").paint["line-opacity"]).toBe(0.68);
   });
 
-  // The selected line is drawn over the library rather than cut out of it: the
-  // line underneath is exactly covered, and cutting would rebuild the whole
-  // collection on every selection.
+  /*
+   * The reader asked where one route goes, and the rest of the library is the
+   * answer to *where* — so it drops back to context rather than being switched
+   * off.
+   */
+  it("drops the rest of the library back once one route is the answer", () => {
+    show({ selectedKey: "2/1" });
+
+    expect(layer("library-line").paint["line-opacity"]).toBe(0.14);
+  });
+
+  // The selection is drawn over the library rather than cut out of it: the line
+  // underneath is exactly covered by the overlay, and cutting would rebuild the
+  // whole collection on every selection.
   it("leaves the selected route in the library beneath it", () => {
     show({ selectedKey: "2/1" });
 
     expect(source("library-lines").data.features).toHaveLength(2);
   });
 
-  // Both layers stay mounted with nothing in them, so picking a route repaints
-  // rather than rebuilding the style.
-  it("keeps the selection layers empty rather than absent", () => {
-    show();
+  // The route itself is a stack of a dozen layers built from one route's
+  // geometry, so it is the page's to hand over rather than this map's to draw.
+  it("draws the selected route from the stack it was handed", () => {
+    show({ selectedKey: "2/1", overlay: <div data-testid="overlay" /> });
 
-    expect(source("library-selected").data.features).toEqual([]);
-    expect(layer("library-selected-casing")).toBeDefined();
+    expect(screen.getByTestId("overlay")).toBeInTheDocument();
   });
 
   it("takes its ink from the basemap that is actually loaded", () => {
-    show({ darkBasemap: true, selectedKey: "1/1" });
+    show({ darkBasemap: true, selectedKey: null });
 
     expect(layer("library-line").paint["line-color"]).toBe("#eef0f3");
-    expect(layer("library-selected-line").paint["line-color"]).toBe("#70adfb");
-    // The casing is the panel colour, so the selection reads as lifted off the
-    // ground rather than merely recoloured.
-    expect(layer("library-selected-casing").paint["line-color"]).toBe("#24282c");
   });
 
   // A route whose geometry has one point is a point, and a line layer given one
@@ -180,6 +184,14 @@ describe("LibraryMap", () => {
     show();
 
     expect(drawn.viewports.at(-1)).toEqual({ bounds: BOUNDS, maxZoom: 14 });
+  });
+
+  // A stretch of one route was asked for, so the camera is allowed closer than
+  // it goes for the library or for a whole route.
+  it("lets the camera go as close as it was told it may", () => {
+    show({ maxZoom: 17 });
+
+    expect(drawn.viewports.at(-1)).toEqual({ bounds: BOUNDS, maxZoom: 17 });
   });
 
   /*
