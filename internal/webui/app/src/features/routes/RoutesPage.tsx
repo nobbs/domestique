@@ -73,7 +73,7 @@ export function RoutesPage() {
   const drawn = useMemo(() => {
     const lines: LibraryLine[] = [];
     const shapes = new Map<string, RouteShape>();
-    const boxes: BoundingBox[] = [];
+    const boxes = new Map<string, BoundingBox>();
     library.forEach((route, index) => {
       const geometry = geometries[index]?.data as RouteGeometry | undefined;
       if (!geometry) {
@@ -83,7 +83,7 @@ export function RoutesPage() {
       const coordinates: Position[] = geometry.coordinates;
       lines.push({ key, coordinates });
       shapes.set(key, { coordinates });
-      boxes.push(geometry.bbox);
+      boxes.set(key, geometry.bbox);
     });
 
     return { lines, shapes, boxes };
@@ -93,10 +93,10 @@ export function RoutesPage() {
 
   // The camera follows the selection when there is one, because a route picked
   // out of the column is a route the reader now wants to see the shape of.
-  const selectedBox = selectedKey
-    ? (drawn.boxes[library.findIndex((route) => routeKey(route) === selectedKey)] ?? null)
-    : null;
-  const bounds = selectedBox ?? unionOf(drawn.boxes);
+  // Keyed rather than indexed: geometry arrives one request at a time, so a
+  // position in a list of what has arrived is not a position in the library.
+  const selectedBox = selectedKey ? (drawn.boxes.get(selectedKey) ?? null) : null;
+  const bounds = selectedBox ?? unionOf([...drawn.boxes.values()]);
 
   const basemap = config.data ? basemapFor(config.data, prefersDark) : null;
   const readAt = status.data?.sync.phases.source?.lastCompletedAt;

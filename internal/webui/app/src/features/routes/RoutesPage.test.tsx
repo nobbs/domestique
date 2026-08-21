@@ -244,6 +244,20 @@ describe("RoutesPage", () => {
     expect(lastDrawing().bounds).toEqual([8, 49, 8.1, 49.1]);
   });
 
+  /*
+   * Geometry arrives one request at a time, so what has come back is a shorter
+   * list than the library. The camera has to find the selected route's box by
+   * its key: by position it would frame whichever route happened to be there.
+   */
+  it("frames the selected route even when routes above it are still in flight", async () => {
+    renderPage(LIBRARY, { geometryFor: [LIBRARY[1] as Route, LIBRARY[2] as Route] });
+    await userEvent.type(screen.getByRole("searchbox"), "kaiserstuhl");
+    await userEvent.click(screen.getByRole("button", { name: /Kaiserstuhl Loop/ }));
+
+    expect(lastDrawing().selectedKey).toBe("2/1");
+    expect(lastDrawing().bounds).toEqual([8.4, 49, 8.5, 49.1]);
+  });
+
   // The map with nothing on it is the loading state; a panel saying so would
   // cover the ground it is waiting to draw.
   it("frames nothing and says nothing while the library is on its way", () => {
