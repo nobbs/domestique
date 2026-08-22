@@ -840,6 +840,23 @@ func TestServiceBlocksOnlyTheSourceThatBecameEmpty(t *testing.T) {
 	assert.ElementsMatch(t, []route.Stage{staleVelo, freshSecond}, state.trusted, "the blocked source's stages must be kept as last known")
 }
 
+// A real failure always outranks an empty-source block in the aggregate
+// failure category: the guard describes no fault, so recording it once a
+// later source has genuinely failed would report and alert on the wrong
+// category, even though the run's outcome is correctly "failed" either way.
+func TestServiceReportsARealFailureOverAnEarlierEmptySourceBlock(t *testing.T) {
+	staleVelo := testStage(t, 1, 1, "old", "old-hash")
+	state := newFakeState("a")
+	state.trusted = []route.Stage{staleVelo}
+	emptied := &fakeSource{provider: route.ProviderVeloPlanner}
+	failing := &fakeSource{provider: testProviderStage2, err: errors.New("source unavailable")}
+	service := newMultiSourceService(t, state, []Source{emptied, failing}, newFakeTarget(), false)
+
+	result := service.RunSource(t.Context())
+	assert.Equal(t, OutcomeFailed, result.Outcome, "RunSource() outcome")
+	assert.Equal(t, FailureSource, result.Failure, "RunSource() failure")
+}
+
 // The empty-source acknowledgement releases exactly the source it is set for.
 func TestServiceEmptySourceAcknowledgementReleasesTheBlockedSource(t *testing.T) {
 	staleVelo := testStage(t, 1, 1, "old", "old-hash")
