@@ -381,9 +381,14 @@ func (h *Handler) trustedInventoryFreshness(ctx context.Context) (*trustedInvent
 	// backwards, or a recorded success that races ahead of it, is a clock
 	// problem elsewhere and must not be read here as a claim about the future.
 	age := max(h.now().Sub(lastSuccess), 0)
+	ageSeconds := int64(age / time.Second)
 	view.LastSuccessAt = lastSuccess.Format(time.RFC3339)
-	view.AgeSeconds = int64(age / time.Second)
-	view.Fresh = age < h.sourceStaleAfter
+	view.AgeSeconds = ageSeconds
+	// Fresh is derived from the same truncated seconds the response reports,
+	// not the untruncated duration: a sub-second sync.stale_after would
+	// otherwise let fresh disagree with what age_seconds and max_age_seconds
+	// themselves say.
+	view.Fresh = ageSeconds < view.MaxAgeSeconds
 
 	return view, nil
 }

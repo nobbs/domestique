@@ -1112,6 +1112,26 @@ func TestHandlerClampsANegativeAgeToZero(t *testing.T) {
 	assert.True(t, view.Sync.TrustedInventory.Fresh, "a clamped age was reported stale")
 }
 
+// fresh must agree with age_seconds < max_age_seconds even when
+// sync.stale_after carries sub-second precision: both are derived from the
+// same truncated seconds rather than fresh comparing the untruncated duration.
+func TestHandlerKeepsFreshConsistentWithASubSecondStaleAfter(t *testing.T) {
+	lastSuccess := time.Date(2026, time.August, 17, 8, 29, 58, 600_000_000, time.UTC)
+	now := time.Date(2026, time.August, 17, 8, 30, 0, 0, time.UTC)
+	state := &fakeState{lastSuccessAt: map[string]time.Time{"source": lastSuccess}}
+	handler := newHandlerWithStaleAfter(t, state, 1500*time.Millisecond, now)
+
+	view := statusOf(t, handler)
+	require.NotNil(t, view.Sync.TrustedInventory, "want a freshness claim")
+	// A 1.4s age against a 1.5s bound truncates to equal integer seconds on
+	// both sides: the untruncated duration comparison (1.4s < 1.5s) says
+	// fresh, but the documented contract compares the reported seconds
+	// (1 < 1), which says stale. fresh must follow the documented contract.
+	assert.Equal(t, int64(1), view.Sync.TrustedInventory.MaxAgeSeconds, "max_age_seconds")
+	assert.Equal(t, int64(1), view.Sync.TrustedInventory.AgeSeconds, "age_seconds")
+	assert.False(t, view.Sync.TrustedInventory.Fresh, "fresh disagreed with age_seconds < max_age_seconds")
+}
+
 // A run that has not finished must not be reported as the last one that did.
 // An operator who has just pressed a button would read "succeeded" as their
 // answer, and nothing in the response would say otherwise.
