@@ -2100,7 +2100,10 @@ func schemaMigrations() [][]string {
 			//
 			// This is where the append-only rollback-compatibility rule the rest
 			// of this file follows cannot be kept in full, and it is kept here
-			// rather than silently weakened. TestNewMigrationsStayReadableByThePreviousRelease
+			// rather than silently weakened. The service specification records
+			// it as an accepted exception licensing this one migration; a later
+			// migration carries the additive obligation
+			// unchanged. TestNewMigrationsStayReadableByThePreviousRelease
 			// only compares column and index shape, so it passes: every carried
 			// column keeps its type, nullability, and default, and the new
 			// provider column is NOT NULL with a default. What it cannot see is
