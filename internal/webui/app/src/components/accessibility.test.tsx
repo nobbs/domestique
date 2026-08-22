@@ -25,6 +25,7 @@ import { buildProfile, gradientShares } from "../lib/profile";
 import { summariseSurface } from "../lib/surface";
 import { expectNoAxeViolations } from "../test/axe";
 import { Button } from "./Button";
+import { MapCredits } from "./MapCredits";
 import { RouteKey } from "./RouteKey";
 import { StatusMessage } from "./StatusMessage";
 
@@ -159,6 +160,26 @@ describe("accessibility", () => {
     );
 
     await expectNoAxeViolations(container);
+  });
+
+  it("holds for the map credit, folded and unfolded", async () => {
+    // Both halves, because the folded one is a button standing on its own with
+    // the text it names no longer in the document.
+    for (const expanded of [true, false]) {
+      const { container, unmount } = render(
+        <QueryClientProvider client={new QueryClient()}>
+          <MapCredits
+            styleUrl={undefined}
+            extra="Surface data © OpenStreetMap contributors"
+            choice={expanded}
+            onChoiceChange={() => {}}
+          />
+        </QueryClientProvider>,
+      );
+
+      await expectNoAxeViolations(container);
+      unmount();
+    }
   });
 
   it("holds for a status message carrying an action", async () => {

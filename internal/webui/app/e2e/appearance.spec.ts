@@ -8,6 +8,7 @@
  */
 
 import type { Page } from "@playwright/test";
+import { BASEMAP_ATTRIBUTION_TEXT } from "./basemap";
 import {
   expect,
   installOfflineBasemap,
@@ -111,6 +112,40 @@ test.describe("on a narrow viewport", () => {
     expect(panel.width).toBeLessThan(436);
     expect(panel.x + panel.width).toBeLessThanOrEqual(375);
     expect(map.width).toBeLessThanOrEqual(375);
+  });
+
+  /*
+   * The credit is obliged to be visible and is therefore never removed, only
+   * folded — so what this asserts is that folding it buys the room it was folded
+   * for, and that one press buys the words back. Neither is answerable in jsdom:
+   * the cluster has a width only once a stylesheet and a real map have given it
+   * one, and the words are read out of a style document the page fetched.
+   */
+  test("the credit folds into the cluster and comes back in one press", async ({
+    offlinePage: page,
+  }) => {
+    await openLibrary(page);
+
+    const cluster = page.locator(".maplibregl-ctrl-bottom-left");
+    const show = page.getByRole("button", { name: "Show the map credit" });
+    await expect(show).toBeVisible();
+    const folded = await cluster.boundingBox();
+
+    await show.click();
+    await expect(page.getByRole("button", { name: "Hide the map credit" })).toBeVisible();
+    const credit = page.locator(".map-credits__text");
+    await expect(credit).toHaveText(BASEMAP_ATTRIBUTION_TEXT);
+    // The provider wrapped that in a link. The page took the words and left the
+    // markup, which is the rule the credit is read out of the document under.
+    await expect(credit.locator("a")).toHaveCount(0);
+    const open = await cluster.boundingBox();
+
+    expect(folded).not.toBeNull();
+    expect(open).not.toBeNull();
+    if (!folded || !open) {
+      return;
+    }
+    expect(folded.width).toBeLessThan(open.width);
   });
 
   test("a route still shows its map and its chart", async ({ offlinePage: page }) => {

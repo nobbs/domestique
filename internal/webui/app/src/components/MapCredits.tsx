@@ -10,9 +10,27 @@
  * The text is stripped of markup rather than rendered as HTML: the style comes
  * from a third-party origin, and no third-party markup is injected into this
  * page.
+ *
+ * It folds behind a button rather than always standing open, because on a phone
+ * the line is a strip of small text across the whole map. It cannot simply go
+ * away — the licences oblige the credit to be visible — but attribution
+ * guidance accepts a credit collapsed behind an affordance on a constrained
+ * display, provided it is there and one interaction away, which is the same
+ * bargain MapLibre's own `compact` attribution strikes. So the fold follows the
+ * room available: open where there is space for the line, away where there is
+ * not, and the reader's own choice wins over both.
+ *
+ * That choice is the caller's to hold. The credit is moved into MapLibre's own
+ * cluster by a portal once the map reports having one, and that move remounts
+ * this component — so a choice kept here would be reset by the map finishing
+ * loading, silently undoing a press the reader had already made.
  */
 
 import { useQuery } from "@tanstack/react-query";
+import { useNarrowViewport } from "../lib/mediaQuery";
+
+/** What the button expands, named so the button can point at it. */
+const CREDIT_TEXT_ID = "map-credit-text";
 
 /**
  * Reduces an attribution string to plain text.
@@ -93,20 +111,76 @@ export interface MapCreditsProps {
    * whose share-alike terms oblige attribution wherever it is shown.
    */
   extra?: string | undefined;
+  /**
+   * Whether the reader folded the credit open or away, or `null` while they
+   * have said nothing and the viewport decides.
+   *
+   * Three states rather than two, because "not yet asked" is not the same
+   * answer as "asked for it folded": only the first should give way when the
+   * room available changes.
+   */
+  choice: boolean | null;
+  onChoiceChange: (choice: boolean) => void;
 }
 
-export function MapCredits({ styleUrl, extra }: MapCreditsProps) {
+export function MapCredits({ styleUrl, extra, choice, onChoiceChange }: MapCreditsProps) {
   const attribution = useQuery({
     queryKey: ["tile-attribution", styleUrl] as const,
     queryFn: () => fetchAttribution(styleUrl ?? ""),
     enabled: styleUrl !== undefined,
     staleTime: Number.POSITIVE_INFINITY,
   });
+  /*
+   * No choice yet means the viewport decides, and a choice outranks it from
+   * then on. Reading the width once into a stored answer instead would freeze
+   * whichever width the map first loaded at, and a phone that turns landscape
+   * would keep hiding a line it now has room for.
+   */
+  const narrow = useNarrowViewport();
+  const expanded = choice ?? !narrow;
 
   const credits = [attribution.data, extra].filter(Boolean).join(" · ");
   if (credits === "") {
     return null;
   }
 
-  return <p className="map-credits">{credits}</p>;
+  return (
+    <div className="map-credits">
+      <button
+        className="map-credits__toggle"
+        type="button"
+        aria-expanded={expanded}
+        // The mark says "there is something to read here" to anyone who can see
+        // it; the name says what, for anyone who cannot. `aria-expanded` is what
+        // reports the state — the glyph does not change and must not be the only
+        // thing carrying it.
+        aria-label={expanded ? "Hide the map credit" : "Show the map credit"}
+        // Only while there is text to point at, because the credit is unmounted
+        // rather than hidden when folded and a control naming an element outside
+        // the document is a reference a screen reader cannot follow.
+        {...(expanded ? { "aria-controls": CREDIT_TEXT_ID } : {})}
+        onClick={() => onChoiceChange(!expanded)}
+      >
+        <svg
+          viewBox="0 0 12 12"
+          width="12"
+          height="12"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.2"
+          aria-hidden="true"
+          focusable="false"
+        >
+          <circle cx="6" cy="6" r="5" />
+          <path d="M6 5.4v3" strokeLinecap="round" />
+          <path d="M6 3.4v0.01" strokeLinecap="round" strokeWidth="1.6" />
+        </svg>
+      </button>
+      {expanded ? (
+        <p className="map-credits__text" id={CREDIT_TEXT_ID}>
+          {credits}
+        </p>
+      ) : null}
+    </div>
+  );
 }

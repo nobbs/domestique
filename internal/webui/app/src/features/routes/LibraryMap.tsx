@@ -190,6 +190,13 @@ export function LibraryMap({
   const theme = darkBasemap ? "dark" : "light";
   const [cluster, setCluster] = useState<HTMLElement | null>(null);
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
+  /*
+   * Whether the reader folded the credit away, held here rather than inside it.
+   * Finding the cluster moves the credit into it through a portal, which
+   * remounts the credit — so a choice it held itself would be undone by the map
+   * finishing loading. `null` until the reader says, so the viewport decides.
+   */
+  const [creditChoice, setCreditChoice] = useState<boolean | null>(null);
 
   // The selected route stays in the collection rather than being cut out of it:
   // removing it would rebuild every line on every selection, and the overlay
@@ -219,6 +226,17 @@ export function LibraryMap({
 
     return typeof key === "string" ? key : null;
   };
+
+  // One element, rendered in one of two places below, so that moving it does not
+  // give it a different set of props.
+  const credits = (
+    <MapCredits
+      styleUrl={styleUrl}
+      extra={extraCredit}
+      choice={creditChoice}
+      onChoiceChange={setCreditChoice}
+    />
+  );
 
   /*
    * MapLibre's own attribution control is off. It renders the provider's own
@@ -348,11 +366,7 @@ export function LibraryMap({
        * whatever number did that clearing would be wrong for the next provider
        * whose attribution runs to a second line.
        */}
-      {cluster === null ? (
-        <MapCredits styleUrl={styleUrl} extra={extraCredit} />
-      ) : (
-        createPortal(<MapCredits styleUrl={styleUrl} extra={extraCredit} />, cluster)
-      )}
+      {cluster === null ? credits : createPortal(credits, cluster)}
     </div>
   );
 }
