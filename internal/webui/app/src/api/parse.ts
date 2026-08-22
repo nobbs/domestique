@@ -7,6 +7,7 @@
  */
 
 import type {
+  Basemap,
   BoundingBox,
   BuildInfo,
   Position,
@@ -121,6 +122,10 @@ function flag(value: unknown, at: string): boolean {
     throw new ContractError(`${at} is not a boolean`);
   }
   return value;
+}
+
+function optionalFlag(value: unknown, at: string): boolean | undefined {
+  return value === undefined ? undefined : flag(value, at);
 }
 
 function routeFrom(source: Record<string, unknown>, at: string): Route {
@@ -448,11 +453,30 @@ function syncRunFrom(run: Record<string, unknown>, at: string): SyncRun {
   };
 }
 
+function basemapFrom(value: unknown, at: string): Basemap {
+  const entry = record(value, at);
+  return {
+    name: text(entry.name, `${at}.name`),
+    styleUrl: text(entry.style_url, `${at}.style_url`),
+    styleUrlDark: optionalText(entry.style_url_dark, `${at}.style_url_dark`),
+    darkCartography: optionalFlag(entry.dark_cartography, `${at}.dark_cartography`) ?? false,
+  };
+}
+
 export function parseWebUIConfig(payload: unknown): WebUIConfig {
   const body = record(payload, "body");
+  const basemaps = array(body.basemaps, "body.basemaps").map((entry, index) =>
+    basemapFrom(entry, `body.basemaps[${index}]`),
+  );
+  // An empty list would leave the map with nothing to load, and the service
+  // refuses that at startup. Caught here too, so the failure is one contract
+  // error rather than a blank canvas the page cannot explain.
+  if (basemaps.length === 0) {
+    throw new ContractError("body.basemaps is empty");
+  }
+
   return {
-    tileStyleUrl: text(body.tile_style_url, "body.tile_style_url"),
-    tileStyleUrlDark: optionalText(body.tile_style_url_dark, "body.tile_style_url_dark"),
+    basemaps,
     sourceBaseUrl: optionalText(body.source_base_url, "body.source_base_url"),
   };
 }

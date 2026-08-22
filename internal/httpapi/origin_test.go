@@ -188,7 +188,7 @@ func TestNewRequiresABrowserOrigin(t *testing.T) {
 	_, err := New(
 		&Options{
 			TargetIDs:      []string{"rider-a"},
-			TileStyleURL:   testTileStyleURL,
+			Basemaps:       testBasemaps(),
 			AccessVerifier: &recordingVerifier{email: testAccessEmail},
 			AccessEmail:    testAccessEmail,
 		},

@@ -60,7 +60,7 @@ func newAccessHandler(t *testing.T, verifier AccessVerifier, oauthService OAuth)
 	handler, err := New(
 		&Options{
 			TargetIDs:        []string{"rider-a"},
-			TileStyleURL:     testTileStyleURL,
+			Basemaps:         testBasemaps(),
 			AccessVerifier:   verifier,
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
@@ -228,13 +228,13 @@ func TestNewRequiresAccessConfiguration(t *testing.T) {
 	cases := map[string]*Options{
 		"no verifier": {
 			TargetIDs:        []string{"rider-a"},
-			TileStyleURL:     testTileStyleURL,
+			Basemaps:         testBasemaps(),
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
 		},
 		"no email": {
 			TargetIDs:        []string{"rider-a"},
-			TileStyleURL:     testTileStyleURL,
+			Basemaps:         testBasemaps(),
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			BrowserOriginURL: testBrowserOriginURL,
 		},

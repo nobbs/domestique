@@ -213,12 +213,6 @@ type buildView struct {
 }
 
 type webUIConfigView struct {
-	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	TileStyleURL string `json:"tile_style_url"`
-	// Omitted when unconfigured, which is how the page knows to keep the one
-	// style in both colour schemes.
-	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	TileStyleURLDark string `json:"tile_style_url_dark,omitempty"`
 	// The provider's own web application, from which the page builds an outbound
 	// link to the source route a stage was made from. Omitted when unconfigured,
 	// which is how the page knows to offer no link rather than a broken one.
@@ -228,6 +222,29 @@ type webUIConfigView struct {
 	// here.
 	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
 	SourceBaseURL string `json:"source_base_url,omitempty"`
+	// The cartographies the page may switch between, in the configured order.
+	// Never empty: the first entry is what a browser that has not chosen loads.
+	Basemaps []basemapView `json:"basemaps"`
+}
+
+// basemapView is one cartography offered to the page. Every field is operator
+// configuration the browser must know to render and label a map; none is a
+// secret, for the reason webUIConfig gives.
+type basemapView struct {
+	// The label the picker shows, and the identity a browser remembers its
+	// choice by.
+	Name string `json:"name"`
+	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
+	StyleURL string `json:"style_url"`
+	// Omitted when unconfigured, which is how the page knows to keep this
+	// entry's one style in both colour schemes.
+	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
+	StyleURLDark string `json:"style_url_dark,omitempty"`
+	// Omitted when false. True marks ground that is dark in either colour
+	// scheme, so the page inks routes over it to match the map rather than the
+	// system.
+	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
+	DarkCartography bool `json:"dark_cartography,omitempty"`
 }
 
 // geometryView is a GeoJSON Feature carrying one stage's stored geometry. The

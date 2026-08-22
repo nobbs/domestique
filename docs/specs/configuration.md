@@ -85,9 +85,15 @@ base_url = "https://api.pushover.net"
 application_token_file = "/run/secrets/pushover_application_token"
 user_key_file = "/run/secrets/pushover_user_key"
 
-[webui]
-tile_style_url = "https://tiles.openfreemap.org/styles/bright"
-tile_style_url_dark = "https://tiles.openfreemap.org/styles/dark"
+[[webui.basemaps]]
+name = "Streets"
+style_url = "https://tiles.openfreemap.org/styles/bright"
+style_url_dark = "https://tiles.openfreemap.org/styles/dark"
+
+[[webui.basemaps]]
+name = "Satellite"
+style_url = "https://api.maptiler.com/maps/hybrid/style.json?key=…"
+dark_cartography = true
 
 [surface]
 regions = ["europe/germany/rheinland-pfalz", "europe/germany/hessen"]
@@ -97,39 +103,62 @@ rebuild_interval = "168h"
 The endpoint examples are illustrative. The deployed values must match the
 chosen Wahoo environment and the redirect URI registered for the application.
 
-`webui.tile_style_url` is the MapLibre style the route map view loads. It must
-be an absolute HTTPS URL. Unlike the service's own endpoints it may carry a
-query string, because providers that require an API key put it there.
+`webui.basemaps` is the list of cartographies the route map view offers, in the
+order they are offered. **At least one entry is required**, and the default is a
+single keyless one, so a deployment that configures nothing still gets a map.
+The first entry is what a browser that has never chosen one loads. The page
+shows a picker only when the list holds more than one, because one cartography
+is not a choice.
 
-It is deliberately **not** a secret and is never handled as one: the browser must
-know it, so it is served to the page and is visible to anyone who can reach the
-UI. The default is a keyless provider, so a default deployment publishes no
-credential and sends no account identity to the tile origin. An operator who
-chooses a keyed provider is accepting that the key becomes visible to the UI's
-single authorised user; self-hosted tiles avoid both that and the fact that the
-browser reveals the area of a viewed route to the tile origin.
+Each entry carries:
 
-Changing this value changes the Content-Security-Policy the service sends, which
-permits exactly the service's own origin and this one tile origin. A provider
-that serves its style, tiles, sprites, and glyphs from more than one host is not
-supported without widening that policy.
+- `name` — the label the picker shows, and the identity a browser remembers a
+  reader's choice by. Required, non-empty after trimming, and unique across the
+  list; two entries sharing a name would make label and identity disagree.
+  Renaming an entry therefore forgets any choice remembered under the old name.
+- `style_url` — the MapLibre style to load. It must be an absolute HTTPS URL.
+  Unlike the service's own endpoints it may carry a query string, because
+  providers that require an API key put it there.
+- `style_url_dark` — optional; the style the browser loads instead when it
+  reports a dark system colour scheme, so the map follows the same preference the
+  rest of the UI already follows in CSS. Omitting it leaves one style in force
+  under both schemes, which is what a provider publishing only one requires. When
+  set it must be an absolute HTTPS URL **on the same origin** as that entry's
+  `style_url`, and configuration is rejected at startup when it is not.
+- `dark_cartography` — optional; `true` marks ground that is dark whatever the
+  system asks for, which is what satellite imagery is. Anything the page paints
+  over the map reads this rather than the colour scheme, because a route drawn in
+  the dark-ground ink over light cartography — or the reverse — is the one that
+  cannot be seen. It contradicts `style_url_dark`: a provider publishing a dark
+  twin has light cartography to switch away from, and setting both is refused.
 
-`webui.tile_style_url_dark` is the style the browser loads instead when it
-reports a dark system colour scheme, so the map follows the same preference the
-rest of the UI already follows in CSS. It is optional: an empty value leaves one
-style in force under both schemes, which is what a provider publishing only one
-requires.
+A style URL is deliberately **not** a secret and is never handled as one: the
+browser must know it, so it is served to the page and is visible to anyone who
+can reach the UI. The default is a keyless provider, so a default deployment
+publishes no credential and sends no account identity to the tile origin. An
+operator who chooses a keyed provider is accepting that the key becomes visible
+to the UI's single authorised user; self-hosted tiles avoid both that and the
+fact that the browser reveals the area of a viewed route to the tile origin.
 
-When it is set it must be an absolute HTTPS URL **on the same origin** as
-`webui.tile_style_url`, and configuration is rejected at startup when it is not.
-That constraint keeps the guarantee above intact — one tile origin in the
-Content-Security-Policy, and one third-party origin learning the area of a viewed
-route. A dark style on a second origin would widen both, and is therefore a
-deliberate revision of this contract rather than a setting.
+The list changes the Content-Security-Policy the service sends, which permits
+the service's own origin plus **the origin of every configured entry**, sorted
+and deduplicated. Because an entry's dark style is held to that entry's own
+origin, the list of origins is as long as the number of distinct providers
+offered and no longer.
 
-Both styles are served to the page, which chooses between them; the service does
-not resolve the colour scheme, because the preference belongs to the browser and
-this response is cached for the session.
+Naming a second provider is a deliberate widening, and it is worth being exact
+about what it costs. The policy says which origins the page *may* reach; it does
+not make the page reach them. Only the basemap on screen is ever requested, so
+what a single provider learns — the area of a viewed route — is unchanged. What
+grew is the set of providers that could be asked, and that set is exactly the one
+the operator wrote down.
+
+A provider that serves its style, tiles, sprites, and glyphs from more than one
+host is still not supported, because one entry admits one origin.
+
+The whole list is served to the page, which chooses within it; the service
+resolves neither the reader's choice nor the colour scheme, because both belong
+to the browser and this response is cached for the session.
 
 `surface.regions` names the OpenStreetMap extracts the **service** builds its
 surface index from, so it can classify a stage's ground as asphalt, paving,

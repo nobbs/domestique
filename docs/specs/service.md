@@ -162,15 +162,20 @@ configured one is rejected at startup.
 The map view introduces one deliberate, documented exception to the otherwise
 Tailnet-only posture: the operator's **browser** fetches basemap tiles from a
 configured third-party tile origin, which reveals the viewport of a viewed route
-to that origin. The service itself never contacts the tile origin, and no route
-data is sent to it. The default is a keyless provider, so no credential is
-exposed to the browser and the requests carry no account identity. The tile
-style URL is static configuration so the origin can be changed, or pointed at a
-self-hosted tile source, without a code change. A Content-Security-Policy
-restricts the browser to the service's own origin plus that single tile origin.
-A second style may be configured for a dark system colour scheme, and must be on
-that same origin, so following the operator's colour scheme reveals nothing to
-anyone new.
+to that origin. The service itself never contacts a tile origin, and no route
+data is sent to one. The default is a single keyless provider, so no credential
+is exposed to the browser and the requests carry no account identity. The
+basemaps are static configuration so an origin can be changed, or pointed at a
+self-hosted tile source, without a code change.
+
+An operator may configure more than one basemap so the reader can switch
+between them, and a Content-Security-Policy restricts the browser to the
+service's own origin plus the origin of each configured basemap. That policy
+says which origins the page *may* reach; only the basemap on screen is ever
+requested, so what any one provider learns is unchanged by the presence of
+another in the list. A second style may be configured for a dark system colour
+scheme, and must be on **its own basemap's** origin, so following the operator's
+colour scheme reveals nothing to anyone new.
 
 Surface classification introduces **no** such exception. To learn whether a
 stage runs on asphalt, paving, gravel, or a forest track, the service reads a
@@ -284,8 +289,11 @@ The read-only JSON surface is deliberately small:
   geometry of one stage for map rendering, together with the surface
   classification of that geometry when one has been cached.
 - `GET /v1/webui/config` returns the settings the browser UI needs at runtime so
-  the built assets stay static: the map tile style URLs, and the source
-  provider's base URL. The base URL is the whole of what is sent about the
+  the built assets stay static: the list of basemaps the map may be switched
+  between — each with its name, style URL, optional dark style URL, and whether
+  its cartography is dark in either colour scheme — and the source provider's
+  base URL. The list is never empty, and its first entry is what a browser that
+  has chosen nothing loads. The base URL is the whole of what is sent about the
   provider — the page builds a stage's link back to its source route from it,
   rather than the service repeating a route URL on every stage it serves. It is
   omitted when unconfigured, so the page shows no such link rather than a broken

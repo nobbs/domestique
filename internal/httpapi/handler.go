@@ -199,11 +199,10 @@ type Options struct {
 	// It is required: without it the service has no gate at all.
 	AccessVerifier AccessVerifier
 
-	TileStyleURL string
-
-	// TileStyleURLDark is the style the page loads instead under a dark system
-	// colour scheme. It is optional, and must be on TileStyleURL's origin.
-	TileStyleURLDark string
+	// Basemaps are the cartographies the page may switch the map between, in
+	// the order they are offered. At least one is required. Each entry's dark
+	// style, where it has one, must be on that entry's own origin.
+	Basemaps []Basemap
 
 	// SourceBaseURL is the provider's own web application, as the operator
 	// configured it. The page builds an outbound link to a stage's source route
@@ -251,6 +250,25 @@ type Options struct {
 	TargetIDs []string
 }
 
+// Basemap is one cartography the page may load, as the operator configured it.
+type Basemap struct {
+	// Name labels the entry in the page's picker and is the identity a browser
+	// remembers its choice by. Required, and unique across the list.
+	Name string
+
+	// StyleURL is the MapLibre style document. Absolute HTTPS; its origin joins
+	// the Content-Security-Policy.
+	StyleURL string
+
+	// StyleURLDark is loaded instead under a dark system colour scheme.
+	// Optional, and on StyleURL's origin when set.
+	StyleURLDark string
+
+	// DarkCartography marks ground that is dark in either colour scheme, such
+	// as satellite imagery. The page paints its route ink to match.
+	DarkCartography bool
+}
+
 // Handler enforces Cloudflare Access identity and exposes the v1 HTTP surface.
 type Handler struct {
 	mux              *http.ServeMux
@@ -259,12 +277,11 @@ type Handler struct {
 	state            State
 	assets           Assets
 	accessVerifier   AccessVerifier
-	tileStyleURL     string
-	tileStyleURLDark string
+	basemaps         []Basemap
 	sourceBaseURL    string
 	buildRevision    string
 	buildImageDigest string
-	tileOrigin       string
+	tileOrigins      []string
 	browserOrigin    string
 	allowedEmail     string
 	surfaceIndex     func() (string, time.Time, bool)
@@ -304,18 +321,9 @@ func New(
 	if err != nil {
 		return nil, err
 	}
-	tileOrigin, err := originOf(options.TileStyleURL)
+	tileOrigins, err := tileOriginsOf(options.Basemaps)
 	if err != nil {
 		return nil, err
-	}
-	// The dark style is admitted by the same Content-Security-Policy source as
-	// the light one, so a style on another origin would be served to the page
-	// and then blocked by the header it was served with. Refuse it here instead.
-	if options.TileStyleURLDark != "" {
-		darkOrigin, darkErr := originOf(options.TileStyleURLDark)
-		if darkErr != nil || darkOrigin != tileOrigin {
-			return nil, errors.New("dark tile style URL must be on the tile style URL's origin")
-		}
 	}
 
 	// Validated here rather than trusted, because it leaves the service as a
@@ -337,12 +345,11 @@ func New(
 		state:            state,
 		syncRuns:         syncRuns,
 		assets:           assets,
-		tileStyleURL:     options.TileStyleURL,
-		tileStyleURLDark: options.TileStyleURLDark,
+		basemaps:         append([]Basemap(nil), options.Basemaps...),
 		sourceBaseURL:    sourceBaseURL,
 		buildRevision:    publishableRevision(options.BuildRevision),
 		buildImageDigest: publishableDigest(options.BuildImageDigest),
-		tileOrigin:       tileOrigin,
+		tileOrigins:      tileOrigins,
 		browserOrigin:    browserOrigin,
 		targetIDs:        append([]string(nil), options.TargetIDs...),
 		surfaceIndex:     options.SurfaceIndexFunc,
@@ -499,8 +506,16 @@ func (h *Handler) sameOrigin(next gatedFunc) gatedFunc {
 }
 
 // contentSecurityPolicy confines the page to this service's own origin plus the
-// single configured tile origin. Both basemap styles share that origin, so a
-// page that follows the system colour scheme still reaches exactly one.
+// origin of every configured basemap. An entry's light and dark styles share an
+// origin, so the list is as long as the number of distinct providers offered and
+// no longer.
+//
+// Naming more than one is what makes a switchable map possible, and it is worth
+// being exact about what it costs. The policy says which origins the page may
+// reach; it does not make the page reach them. Only the basemap on screen is
+// ever requested, so what a single provider learns — the area of a viewed route
+// — is unchanged. What grew is the set of providers that could be asked, and
+// that set is exactly the one the operator wrote down.
 //
 // Three allowances are deliberate, and each was confirmed against a real
 // MapLibre render rather than assumed:
@@ -508,7 +523,7 @@ func (h *Handler) sameOrigin(next gatedFunc) gatedFunc {
 //     same-origin module, and blob: because it also spawns blob workers;
 //   - style-src needs 'unsafe-inline' because MapLibre styles its own controls
 //     inline;
-//   - img-src and connect-src need the tile origin for sprites, glyphs, and
+//   - img-src and connect-src need the tile origins for sprites, glyphs, and
 //     tiles.
 func (h *Handler) contentSecurityPolicy() string {
 	return strings.Join([]string{
@@ -522,8 +537,8 @@ func (h *Handler) contentSecurityPolicy() string {
 		"font-src 'self'",
 		"worker-src 'self' blob:",
 		"child-src 'self' blob:",
-		"img-src 'self' data: blob: " + h.tileOrigin,
-		"connect-src 'self' " + h.tileOrigin,
+		"img-src 'self' data: blob: " + strings.Join(h.tileOrigins, " "),
+		"connect-src 'self' " + strings.Join(h.tileOrigins, " "),
 	}, "; ")
 }
 
@@ -619,6 +634,39 @@ func validateSourceBaseURL(value string) error {
 	}
 
 	return nil
+}
+
+// tileOriginsOf reduces the configured basemaps to the distinct origins the page
+// is allowed to reach, sorted so the header a deployment sends does not depend
+// on the order the entries happen to be written in.
+//
+// A dark style is held to its own entry's origin here as well as in the
+// configuration, because a style admitted by neither the light entry's source
+// nor its own would be served to the page and then blocked by the header it was
+// served with. Refusing it at construction makes that a startup error rather
+// than a map that goes blank after dark.
+func tileOriginsOf(basemaps []Basemap) ([]string, error) {
+	if len(basemaps) == 0 {
+		return nil, errors.New("at least one basemap is required")
+	}
+
+	origins := make([]string, 0, len(basemaps))
+	for _, basemap := range basemaps {
+		origin, err := originOf(basemap.StyleURL)
+		if err != nil {
+			return nil, err
+		}
+		if basemap.StyleURLDark != "" {
+			darkOrigin, darkErr := originOf(basemap.StyleURLDark)
+			if darkErr != nil || darkOrigin != origin {
+				return nil, errors.New("dark tile style URL must be on its basemap's style URL origin")
+			}
+		}
+		origins = append(origins, origin)
+	}
+	slices.Sort(origins)
+
+	return slices.Compact(origins), nil
 }
 
 // originOf reduces a URL to its scheme and host for use in a CSP source list.

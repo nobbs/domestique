@@ -31,7 +31,7 @@ import { useEscapeKey } from "../lib/useEscapeKey";
  * The accent the route itself is drawn in, per basemap.
  *
  * Keyed on which basemap is loaded rather than on the system scheme, because
- * this sits on the cartography rather than on the page — see `Basemap.dark`.
+ * this sits on the cartography rather than on the page — see `LoadedBasemap.dark`.
  * The same pair is `--accent` in index.css; both copies must stay in step.
  */
 const ROUTE_ACCENT = { light: "#236fc7", dark: "#70adfb" } as const;
@@ -88,7 +88,7 @@ const TERMINAL_RING_WIDTH = 3;
  * encoding.
  *
  * Keyed on which basemap is loaded rather than on the system scheme, because
- * these sit on the cartography rather than on the page — see `Basemap.dark`.
+ * these sit on the cartography rather than on the page — see `LoadedBasemap.dark`.
  *
  * Only the steeper four are ever drawn — see `GRADIENT_BANDS_DRAWN`.
  */

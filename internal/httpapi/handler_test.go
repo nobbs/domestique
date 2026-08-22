@@ -21,12 +21,38 @@ import (
 const (
 	testTileStyleURL     = "https://tiles.example.test/styles/liberty"
 	testTileStyleURLDark = "https://tiles.example.test/styles/liberty-dark"
+	testImageryStyleURL  = "https://imagery.example.test/maps/hybrid/style.json?key=abc"
 	testSourceBaseURL    = "https://source.example.test"
 	// The Wahoo redirect URL the composition root passes, and the origin a
 	// browser derives from it for the requests it sends this service.
 	testBrowserOriginURL = "https://domestique.example.test/oauth/wahoo/callback"
 	testBrowserOrigin    = "https://domestique.example.test"
 )
+
+// testBasemaps is the one-entry list most of these tests configure: a map to
+// paint on, and no choice to make about it.
+func testBasemaps() []Basemap {
+	return []Basemap{{Name: "Streets", StyleURL: testTileStyleURL}}
+}
+
+// twoProviderBasemaps is the shape this change exists for: two cartographies
+// from two providers, which is also two origins in the policy.
+func twoProviderBasemaps() []Basemap {
+	return []Basemap{
+		{Name: "Streets", StyleURL: testTileStyleURL, StyleURLDark: testTileStyleURLDark},
+		{Name: "Satellite", StyleURL: testImageryStyleURL, DarkCartography: true},
+	}
+}
+
+// testBasemapsWithDark adds the provider's dark twin, which is the shape that
+// exercises the colour scheme without adding a second origin.
+func testBasemapsWithDark() []Basemap {
+	return []Basemap{{
+		Name:         "Streets",
+		StyleURL:     testTileStyleURL,
+		StyleURLDark: testTileStyleURLDark,
+	}}
+}
 
 func TestHandlerGatesStateAndKeepsHealthLocal(t *testing.T) {
 	handler := newTestHandler(t)
@@ -236,18 +262,57 @@ func TestHandlerServesTileStyleConfiguration(t *testing.T) {
 	body := response.Body.String()
 	// Both styles, because the page picks between them: the colour scheme is a
 	// property of the browser, and this response is cached for the session. The
-	// provider base URL rides along, because the link back to a stage's source
-	// route is built from it.
-	for _, want := range []string{testTileStyleURL, testTileStyleURLDark, testSourceBaseURL} {
+	// name goes with them, because it is what a reader picks by and what their
+	// browser remembers. The provider base URL rides along, because the link
+	// back to a stage's source route is built from it.
+	for _, want := range []string{"Streets", testTileStyleURL, testTileStyleURLDark, testSourceBaseURL} {
 		assert.Contains(t, body, want, "the config body omits a value the page is built from")
 	}
+}
+
+func TestHandlerServesEveryConfiguredBasemapInOrder(t *testing.T) {
+	handler, err := New(
+		&Options{
+			TargetIDs:        []string{"rider-a"},
+			Basemaps:         twoProviderBasemaps(),
+			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
+			AccessEmail:      testAccessEmail,
+			BrowserOriginURL: testBrowserOriginURL,
+		},
+		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{},
+	)
+	require.NoError(t, err, "New()")
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/webui/config"))
+	require.Equal(t, http.StatusOK, response.Code, "config status")
+
+	var body struct {
+		Basemaps []struct {
+			Name string `json:"name"`
+			//nolint:tagliatelle // This v1 JSON contract uses snake_case.
+			StyleURL string `json:"style_url"`
+			//nolint:tagliatelle // This v1 JSON contract uses snake_case.
+			DarkCartography bool `json:"dark_cartography"`
+		} `json:"basemaps"`
+	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body), "decoding the config body")
+
+	// The configured order is the order offered, because the first entry is what
+	// a browser that has never chosen one loads.
+	require.Len(t, body.Basemaps, 2, "basemaps")
+	assert.Equal(t, "Streets", body.Basemaps[0].Name)
+	assert.False(t, body.Basemaps[0].DarkCartography, "street cartography follows the colour scheme")
+	assert.Equal(t, "Satellite", body.Basemaps[1].Name)
+	assert.Equal(t, testImageryStyleURL, body.Basemaps[1].StyleURL)
+	assert.True(t, body.Basemaps[1].DarkCartography, "imagery is dark ground in either scheme")
 }
 
 func TestHandlerOmitsAnUnconfiguredDarkTileStyle(t *testing.T) {
 	handler, err := New(
 		&Options{
 			TargetIDs:        []string{"rider-a"},
-			TileStyleURL:     testTileStyleURL,
+			Basemaps:         testBasemaps(),
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
@@ -260,14 +325,14 @@ func TestHandlerOmitsAnUnconfiguredDarkTileStyle(t *testing.T) {
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/webui/config"))
 	// Absent rather than empty: that is how the page knows to keep one style in
 	// both colour schemes.
-	assert.NotContains(t, response.Body.String(), "tile_style_url_dark", "the config body carries a dark style key")
+	assert.NotContains(t, response.Body.String(), "style_url_dark", "the config body carries a dark style key")
 }
 
 func TestHandlerOmitsAnUnconfiguredSourceBaseURL(t *testing.T) {
 	handler, err := New(
 		&Options{
 			TargetIDs:        []string{"rider-a"},
-			TileStyleURL:     testTileStyleURL,
+			Basemaps:         testBasemaps(),
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
@@ -299,7 +364,7 @@ func TestHandlerRefusesASourceBaseURLThatIsNotOne(t *testing.T) {
 		_, err := New(
 			&Options{
 				TargetIDs:        []string{"rider-a"},
-				TileStyleURL:     testTileStyleURL,
+				Basemaps:         testBasemaps(),
 				SourceBaseURL:    value,
 				AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 				AccessEmail:      testAccessEmail,
@@ -315,7 +380,7 @@ func TestHandlerSendsASourceBaseURLWithoutSurroundingWhitespace(t *testing.T) {
 	handler, err := New(
 		&Options{
 			TargetIDs:        []string{"rider-a"},
-			TileStyleURL:     testTileStyleURL,
+			Basemaps:         testBasemaps(),
 			SourceBaseURL:    "  " + testSourceBaseURL + "\n",
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
@@ -344,7 +409,7 @@ func TestHandlerAcceptsASourceBaseURLHostedUnderAPath(t *testing.T) {
 	handler, err := New(
 		&Options{
 			TargetIDs:        []string{"rider-a"},
-			TileStyleURL:     testTileStyleURL,
+			Basemaps:         testBasemaps(),
 			SourceBaseURL:    testSourceBaseURL + "/planner",
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
@@ -431,7 +496,7 @@ func newHandlerWithBuild(t *testing.T, revision, imageDigest string) *Handler {
 	handler, err := New(
 		&Options{
 			TargetIDs:        []string{"rider-a"},
-			TileStyleURL:     testTileStyleURL,
+			Basemaps:         testBasemaps(),
 			BuildRevision:    revision,
 			BuildImageDigest: imageDigest,
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
@@ -443,6 +508,64 @@ func newHandlerWithBuild(t *testing.T, revision, imageDigest string) *Handler {
 	require.NoError(t, err, "New()")
 
 	return handler
+}
+
+// TestHandlerNamesEveryBasemapOriginInThePolicy is the counterpart of the
+// single-origin assertion above: the policy has to admit each provider offered,
+// or a reader who switches gets a blank map and a console full of refusals.
+func TestHandlerNamesEveryBasemapOriginInThePolicy(t *testing.T) {
+	handler, err := New(
+		&Options{
+			TargetIDs:        []string{"rider-a"},
+			Basemaps:         twoProviderBasemaps(),
+			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
+			AccessEmail:      testAccessEmail,
+			BrowserOriginURL: testBrowserOriginURL,
+		},
+		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{},
+	)
+	require.NoError(t, err, "New()")
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/status"))
+	policy := response.Header().Get("Content-Security-Policy")
+
+	// Origins, not style URLs: a query string carrying an API key has no place
+	// in a CSP source list, and would not match there anyway.
+	for _, want := range []string{
+		"img-src 'self' data: blob: https://imagery.example.test https://tiles.example.test",
+		"connect-src 'self' https://imagery.example.test https://tiles.example.test",
+	} {
+		assert.Contains(t, policy, want, "the CSP omits a directive the page needs")
+	}
+	assert.NotContains(t, policy, "key=abc", "the CSP carries a style URL rather than its origin")
+	// Two providers, each named once per directive. Sorted, so the header a
+	// deployment sends does not depend on the order the entries were written in.
+	assert.Equalf(t, 4, strings.Count(policy, "https://"),
+		"the CSP names the wrong number of external origins: %q", policy)
+}
+
+func TestHandlerNamesOneOriginOnceForTwoBasemapsSharingIt(t *testing.T) {
+	handler, err := New(
+		&Options{
+			TargetIDs: []string{"rider-a"},
+			Basemaps: []Basemap{
+				{Name: "Streets", StyleURL: testTileStyleURL},
+				{Name: "Outdoors", StyleURL: "https://tiles.example.test/styles/outdoors"},
+			},
+			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
+			AccessEmail:      testAccessEmail,
+			BrowserOriginURL: testBrowserOriginURL,
+		},
+		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{},
+	)
+	require.NoError(t, err, "New()")
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/status"))
+	policy := response.Header().Get("Content-Security-Policy")
+	assert.Equalf(t, 2, strings.Count(policy, "https://"),
+		"one origin serving two cartographies must be named once per directive: %q", policy)
 }
 
 func TestHandlerSetsPolicyAndCacheHeaders(t *testing.T) {
@@ -462,7 +585,7 @@ func TestHandlerSetsPolicyAndCacheHeaders(t *testing.T) {
 		assert.Contains(t, policy, want, "the CSP omits a directive the page needs")
 	}
 	// Exactly one third-party origin, named once for img-src and once for
-	// connect-src. Two configured basemap styles must not become two origins.
+	// connect-src. One basemap's two styles must not become two origins.
 	assert.Equalf(t, 2, strings.Count(policy, "https://"), "the CSP names the wrong number of external origins: %q", policy)
 	assert.Equal(t, cacheAPI, api.Header().Get("Cache-Control"), "API Cache-Control")
 
@@ -1076,37 +1199,49 @@ func TestNewRejectsIncompleteOptions(t *testing.T) {
 	}{
 		{name: "nil options"},
 		{name: "no targets", options: &Options{
-			TileStyleURL:     testTileStyleURL,
+			Basemaps:         testBasemaps(),
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
 		}},
 		{name: "duplicate targets", options: &Options{
 			TargetIDs:        []string{"rider-a", "rider-a"},
-			TileStyleURL:     testTileStyleURL,
+			Basemaps:         testBasemaps(),
+			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
+			AccessEmail:      testAccessEmail,
+			BrowserOriginURL: testBrowserOriginURL,
+		}},
+		{name: "no basemap at all", options: &Options{
+			TargetIDs:        []string{"rider-a"},
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
 		}},
 		{name: "plaintext tile style", options: &Options{
 			TargetIDs:        []string{"rider-a"},
-			TileStyleURL:     "http://tiles.example.test/style.json",
+			Basemaps:         []Basemap{{Name: "Streets", StyleURL: "http://tiles.example.test/style.json"}},
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
 		}},
 		{name: "dark tile style on another origin", options: &Options{
-			TargetIDs:        []string{"rider-a"},
-			TileStyleURL:     testTileStyleURL,
-			TileStyleURLDark: "https://dark.example.test/styles/dark",
+			TargetIDs: []string{"rider-a"},
+			Basemaps: []Basemap{{
+				Name:         "Streets",
+				StyleURL:     testTileStyleURL,
+				StyleURLDark: "https://dark.example.test/styles/dark",
+			}},
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
 		}},
 		{name: "plaintext dark tile style", options: &Options{
-			TargetIDs:        []string{"rider-a"},
-			TileStyleURL:     testTileStyleURL,
-			TileStyleURLDark: "http://tiles.example.test/styles/dark",
+			TargetIDs: []string{"rider-a"},
+			Basemaps: []Basemap{{
+				Name:         "Streets",
+				StyleURL:     testTileStyleURL,
+				StyleURLDark: "http://tiles.example.test/styles/dark",
+			}},
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
@@ -1130,7 +1265,7 @@ func newHandlerWithVerifier(t *testing.T, verifier AccessVerifier) *Handler {
 	handler, err := New(
 		&Options{
 			TargetIDs:        []string{"rider-a"},
-			TileStyleURL:     testTileStyleURL,
+			Basemaps:         testBasemaps(),
 			AccessVerifier:   verifier,
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
@@ -1149,7 +1284,7 @@ func newHandlerWithSurfaceIndex(t *testing.T, index func() (string, time.Time, b
 	handler, err := New(
 		&Options{
 			TargetIDs:        []string{"rider-a"},
-			TileStyleURL:     testTileStyleURL,
+			Basemaps:         testBasemaps(),
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
@@ -1173,7 +1308,7 @@ func newHandlerWithTargets(t *testing.T, state State, targetIDs ...string) *Hand
 	handler, err := New(
 		&Options{
 			TargetIDs:        targetIDs,
-			TileStyleURL:     testTileStyleURL,
+			Basemaps:         testBasemaps(),
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
@@ -1192,7 +1327,7 @@ func newHandlerWithLiveSync(t *testing.T, state State, activity SyncActivityStat
 	handler, err := New(
 		&Options{
 			TargetIDs:        []string{"rider-a", "rider-b"},
-			TileStyleURL:     testTileStyleURL,
+			Basemaps:         testBasemaps(),
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
@@ -1209,8 +1344,7 @@ func newHandlerWithSync(t *testing.T, oauthService OAuth, state State, syncRuns 
 	handler, err := New(
 		&Options{
 			TargetIDs:        []string{"rider-a"},
-			TileStyleURL:     testTileStyleURL,
-			TileStyleURLDark: testTileStyleURLDark,
+			Basemaps:         testBasemapsWithDark(),
 			SourceBaseURL:    testSourceBaseURL,
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,

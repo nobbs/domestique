@@ -91,22 +91,48 @@ digest_interval = "24h"
 application_token_file = "/run/secrets/pushover_application_token"
 user_key_file = "/run/secrets/pushover_user_key"
 
-[webui]
-# The MapLibre style the route map view loads in your browser. The default is a
-# keyless provider, so nothing identifies you to it and no credential reaches the
-# page. Your browser still requests tiles for the area of a route you open, which
-# is the one thing this service sends outside the Tailnet.
+# The cartographies the route map view offers, in the order you want them. The
+# first is what a browser that has never chosen one loads; list only one and the
+# map shows it with no picker, which is what every deployment did before this
+# setting was a list.
+#
+# Each entry's host is added to the page's Content-Security-Policy, so listing a
+# second provider is a deliberate widening: the page still requests only the map
+# on screen, but it is now allowed to reach either. Your browser requests tiles
+# for the area of a route you open, and that is the one thing this service sends
+# outside the Tailnet.
+[[webui.basemaps]]
+# The label the picker shows, and what your browser remembers your choice by.
+# Renaming an entry forgets that choice, which is a fair price for a clear name.
+name = "Streets"
+
+# The MapLibre style to load. The default is a keyless provider, so nothing
+# identifies you to it and no credential reaches the page.
 #
 # A provider requiring an API key would carry it in this URL's query, where it is
 # visible to anyone who can load the UI. Self-hosted tiles avoid both concerns.
-tile_style_url = "https://tiles.openfreemap.org/styles/bright"
+style_url = "https://tiles.openfreemap.org/styles/bright"
 
 # The style loaded instead when your system asks for a dark colour scheme, which
 # is how the map follows the rest of the UI after dark. It must be on the same
-# host as the style above: the page is confined to one tile origin, and that is
-# also the only origin a route's viewport is revealed to. Leave it empty for a
-# provider that publishes one style, and the map keeps that style in both schemes.
-tile_style_url_dark = "https://tiles.openfreemap.org/styles/dark"
+# host as this entry's style_url. Leave it out for a provider that publishes one
+# style, and the map keeps that style in both schemes.
+style_url_dark = "https://tiles.openfreemap.org/styles/dark"
+
+# A second entry adds satellite imagery with roads and labels drawn over it.
+# Commented out because it needs an account: MapTiler's free plan covers a
+# personal deployment, and the key goes in this URL's query, where anyone who can
+# load the UI can read it. Their terms also ask for their logo on the map, which
+# this service does not draw — worth knowing before you use a free key.
+#
+# [[webui.basemaps]]
+# name = "Satellite"
+# style_url = "https://api.maptiler.com/maps/hybrid/style.json?key=YOUR_KEY"
+#
+# Imagery is dark ground whatever your system asks for, so routes drawn over it
+# have to be inked for the dark. That is what this says; it is not a dark twin of
+# a light style, and setting both is refused.
+# dark_cartography = true
 
 [surface]
 # The OpenStreetMap regions the service builds its own surface index from, so it

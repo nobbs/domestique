@@ -26,28 +26,41 @@ export function usePrefersDarkScheme(): boolean {
 }
 
 /** The basemap on screen, and what it looks like. */
-export interface Basemap {
+export interface LoadedBasemap {
   /** The style document to load. */
   styleUrl: string;
 
   /**
-   * Whether that document is the dark one.
+   * Whether the ground that document paints is dark.
    *
    * Not the same question as `usePrefersDarkScheme`, and the difference is the
-   * reason this is reported rather than inferred: with no dark style configured
-   * the light cartography stays on screen under a dark system scheme. Anything
-   * painted over the map has to match the ground actually loaded, not the scheme
-   * the system asked for.
+   * reason this is reported rather than inferred. It is true two ways: a dark
+   * style loaded because the system asked for one, or a cartography the operator
+   * marked dark in either scheme, which is what satellite imagery is. It is
+   * false where a provider publishes no dark style and its light cartography
+   * therefore stays on screen after dark. Anything painted over the map has to
+   * match the ground actually loaded, not the scheme the system asked for.
    */
   dark: boolean;
 }
 
 /** The basemap for the scheme in force. */
-export function basemapFor(config: WebUIConfig, prefersDark: boolean): Basemap {
-  const darkStyleUrl = config.tileStyleUrlDark;
+export function basemapFor(config: WebUIConfig, prefersDark: boolean): LoadedBasemap {
+  // The service refuses an empty list at startup and the parser refuses one on
+  // the wire, so the first entry is there. The fallback is a total function
+  // rather than a claim about the data.
+  const entry = config.basemaps[0];
+  if (entry === undefined) {
+    return { styleUrl: "", dark: false };
+  }
+  if (entry.darkCartography) {
+    return { styleUrl: entry.styleUrl, dark: true };
+  }
+
+  const darkStyleUrl = entry.styleUrlDark;
   if (prefersDark && darkStyleUrl) {
     return { styleUrl: darkStyleUrl, dark: true };
   }
 
-  return { styleUrl: config.tileStyleUrl, dark: false };
+  return { styleUrl: entry.styleUrl, dark: false };
 }

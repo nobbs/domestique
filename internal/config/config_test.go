@@ -61,22 +61,149 @@ func TestLoadDefaultsToAKeylessTileStyle(t *testing.T) {
 
 	settings, err := Load()
 	require.NoError(t, err)
-	assert.Equal(t, defaultTileStyleURL, settings.WebUI.TileStyleURL, "WebUI.TileStyleURL")
+	// One entry: a deployment that configured no basemap gets a map, and the
+	// page offers no choice because there is nothing to choose between.
+	require.Len(t, settings.WebUI.Basemaps, 1, "WebUI.Basemaps")
+	basemap := settings.WebUI.Basemaps[0]
+	assert.Equal(t, defaultBasemapName, basemap.Name, "Basemap.Name")
+	assert.Equal(t, defaultBasemapStyleURL, basemap.StyleURL, "Basemap.StyleURL")
 	// The dark default is the same provider's other style, so a default
 	// deployment follows the colour scheme without reaching a second origin.
-	assert.Equal(t, defaultTileStyleURLDark, settings.WebUI.TileStyleURLDark, "WebUI.TileStyleURLDark")
-	assert.Truef(t, sameOrigin(settings.WebUI.TileStyleURL, settings.WebUI.TileStyleURLDark),
-		"default styles are on different origins: %q and %q",
-		settings.WebUI.TileStyleURL, settings.WebUI.TileStyleURLDark)
+	assert.Equal(t, defaultBasemapStyleURLDark, basemap.StyleURLDark, "Basemap.StyleURLDark")
+	assert.Truef(t, sameOrigin(basemap.StyleURL, basemap.StyleURLDark),
+		"default styles are on different origins: %q and %q", basemap.StyleURL, basemap.StyleURLDark)
+	assert.False(t, basemap.DarkCartography, "the default cartography follows the colour scheme")
 }
 
-func TestValidateTileStyleURL(t *testing.T) {
+func TestLoadReadsAListOfBasemaps(t *testing.T) {
+	configPath, _ := writeValidConfiguration(t, t.TempDir())
+	appendToFile(t, configPath, `
+[[webui.basemaps]]
+name = "Streets"
+style_url = "https://tiles.example.test/styles/bright"
+style_url_dark = "https://tiles.example.test/styles/dark"
+
+[[webui.basemaps]]
+name = "Satellite"
+style_url = "https://imagery.example.test/maps/hybrid/style.json?key=abc"
+dark_cartography = true
+`)
+	t.Setenv(configFileEnv, configPath)
+
+	settings, err := Load()
+	require.NoError(t, err)
+	// The configured list replaces the default outright rather than extending
+	// it, so what an operator wrote down is the whole of what the page offers.
+	require.Len(t, settings.WebUI.Basemaps, 2, "WebUI.Basemaps")
+	assert.Equal(t, "Streets", settings.WebUI.Basemaps[0].Name, "the first entry keeps its place")
+	assert.Equal(t, "Satellite", settings.WebUI.Basemaps[1].Name, "the second entry keeps its place")
+	assert.True(t, settings.WebUI.Basemaps[1].DarkCartography, "imagery is dark ground in either scheme")
+}
+
+// The old two-key shape is refused rather than quietly ignored: a deployment
+// that upgrades without editing its file would otherwise keep the default map
+// and never learn that its configured style went unread.
+func TestLoadRefusesTheReplacedTileStyleKeys(t *testing.T) {
+	configPath, _ := writeValidConfiguration(t, t.TempDir())
+	appendToFile(t, configPath, "\n[webui]\ntile_style_url = \"https://tiles.example.test/styles/bright\"\n")
+	t.Setenv(configFileEnv, configPath)
+
+	_, err := Load()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "tile_style_url", "the error names the key that is no longer read")
+}
+
+func TestValidateBasemaps(t *testing.T) {
+	const light = "https://tiles.example.test/styles/liberty"
+
+	tests := []struct {
+		name    string
+		wantErr string
+		raw     []rawBasemap
+	}{
+		{
+			name:    "an empty list leaves the map nothing to paint",
+			raw:     nil,
+			wantErr: "at least one entry",
+		},
+		{
+			name:    "a nameless entry cannot be picked",
+			raw:     []rawBasemap{{Name: "  ", StyleURL: light}},
+			wantErr: "name is required",
+		},
+		{
+			name: "a repeated name is two entries with one identity",
+			raw: []rawBasemap{
+				{Name: "Streets", StyleURL: light},
+				{Name: "Streets", StyleURL: "https://other.example.test/style.json"},
+			},
+			wantErr: "duplicated",
+		},
+		{
+			name:    "a style that is not an absolute HTTPS URL",
+			raw:     []rawBasemap{{Name: "Streets", StyleURL: "http://tiles.example.test/style.json"}},
+			wantErr: "webui.basemaps[0].style_url",
+		},
+		{
+			name: "a dark twin on a second origin widens the policy",
+			raw: []rawBasemap{
+				{Name: "Streets", StyleURL: light, StyleURLDark: "https://dark.example.test/styles/dark"},
+			},
+			wantErr: "same origin",
+		},
+		{
+			name: "dark cartography and a dark twin contradict each other",
+			raw: []rawBasemap{
+				{
+					Name:            "Streets",
+					StyleURL:        light,
+					StyleURLDark:    "https://tiles.example.test/styles/dark",
+					DarkCartography: true,
+				},
+			},
+			wantErr: "must not set both",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := validateBasemaps(test.raw)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), test.wantErr)
+		})
+	}
+}
+
+func TestValidateBasemapsAcceptsAMixedList(t *testing.T) {
+	basemaps, err := validateBasemaps([]rawBasemap{
+		{
+			Name:         "  Streets  ",
+			StyleURL:     "  https://tiles.example.test/styles/bright  ",
+			StyleURLDark: "  https://TILES.example.test/styles/dark  ",
+		},
+		{
+			Name:            "Satellite",
+			StyleURL:        "https://imagery.example.test/maps/hybrid/style.json?key=abc",
+			DarkCartography: true,
+		},
+	})
+
+	require.NoError(t, err)
+	// Trimmed on the way in, because a hand-edited file carries whitespace and
+	// what the page receives has to be the value that was checked.
+	assert.Equal(t, "Streets", basemaps[0].Name)
+	assert.Equal(t, "https://tiles.example.test/styles/bright", basemaps[0].StyleURL)
+	assert.Equal(t, "https://TILES.example.test/styles/dark", basemaps[0].StyleURLDark)
+	assert.True(t, basemaps[1].DarkCartography)
+}
+
+func TestValidateStyleURL(t *testing.T) {
 	tests := []struct {
 		name    string
 		value   string
 		wantErr bool
 	}{
-		{name: "keyless default", value: defaultTileStyleURL},
+		{name: "keyless default", value: defaultBasemapStyleURL},
 		{name: "keyed provider query is permitted", value: "https://tiles.example.test/style.json?key=abc"},
 		{name: "plaintext is rejected", value: "http://tiles.example.test/style.json", wantErr: true},
 		//nolint:gosec // A rejection fixture for URL userinfo, not a real credential.
@@ -87,43 +214,13 @@ func TestValidateTileStyleURL(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			err := validateTileStyleURL("webui.tile_style_url", test.value)
+			err := validateStyleURL("webui.basemaps[0].style_url", test.value)
 			if test.wantErr {
-				require.Errorf(t, err, "validateTileStyleURL(%q)", test.value)
+				require.Errorf(t, err, "validateStyleURL(%q)", test.value)
 
 				return
 			}
-			require.NoErrorf(t, err, "validateTileStyleURL(%q)", test.value)
-		})
-	}
-}
-
-func TestValidateTileStyleURLDark(t *testing.T) {
-	const light = "https://tiles.example.test/styles/liberty"
-
-	tests := []struct {
-		name    string
-		value   string
-		wantErr bool
-	}{
-		{name: "empty leaves one style in both schemes", value: ""},
-		{name: "same origin", value: "https://tiles.example.test/styles/liberty-dark"},
-		{name: "host case is not an origin difference", value: "https://TILES.example.test/styles/dark"},
-		{name: "another host is rejected", value: "https://dark.example.test/styles/dark", wantErr: true},
-		{name: "another port is rejected", value: "https://tiles.example.test:8443/styles/dark", wantErr: true},
-		{name: "plaintext is rejected", value: "http://tiles.example.test/styles/dark", wantErr: true},
-		{name: "relative is rejected", value: "/styles/dark", wantErr: true},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			err := validateTileStyleURLDark(test.value, light)
-			if test.wantErr {
-				require.Errorf(t, err, "validateTileStyleURLDark(%q)", test.value)
-
-				return
-			}
-			require.NoErrorf(t, err, "validateTileStyleURLDark(%q)", test.value)
+			require.NoErrorf(t, err, "validateStyleURL(%q)", test.value)
 		})
 	}
 }
@@ -366,7 +463,9 @@ func TestLoadRejectsInvalidConfiguration(t *testing.T) {
 			name: "dark tile style on another origin",
 			mutate: func(t *testing.T, path string) {
 				t.Helper()
-				appendToFile(t, path, "\n[webui]\ntile_style_url_dark = \"https://dark.example.test/styles/dark\"\n")
+				appendToFile(t, path, "\n[[webui.basemaps]]\nname = \"Streets\"\n"+
+					"style_url = \"https://tiles.example.test/styles/bright\"\n"+
+					"style_url_dark = \"https://dark.example.test/styles/dark\"\n")
 			},
 			want: "same origin",
 		},
