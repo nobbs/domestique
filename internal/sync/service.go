@@ -297,7 +297,10 @@ func (s *Service) RunSource(ctx context.Context) Result {
 		} else {
 			result.Outcome = OutcomeFailed
 		}
-		if result.Failure == FailureNone {
+		// A real failure always replaces a recorded empty-source block: the guard
+		// category describes no fault, and reporting it once a source has actually
+		// failed would record and alert on the wrong category.
+		if result.Failure == FailureNone || (result.Failure == FailureEmptySource && failure != FailureEmptySource) {
 			result.Failure = failure
 		}
 	}
