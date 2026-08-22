@@ -99,11 +99,11 @@ user_key_file = "/run/secrets/pushover_user_key"
 # Each entry's host is added to the page's Content-Security-Policy, so listing a
 # second provider is a deliberate widening: the page still requests only the map
 # on screen, but it is now allowed to reach either. Your browser requests tiles
-# for the area of a route you open, or for your own live position if you press
-# the map's locate button, and that is the one thing this service sends outside
-# the Tailnet. That position stays in the browser: it is never sent to this
-# service, logged, or stored — only handed to the tile provider as the area the
-# next batch of tiles has to cover.
+# for the area of a route you open, or for an area centred on your own live
+# position if you press the map's locate button — the one thing your browser
+# sends outside the Tailnet on this service's behalf. Your raw position never
+# leaves the browser: it is never sent to this service, logged, or stored, only
+# used to work out which area the next batch of tiles has to cover.
 [[webui.basemaps]]
 # The label the picker shows, and what your browser remembers your choice by.
 # Renaming an entry forgets that choice, which is a fair price for a clear name.
