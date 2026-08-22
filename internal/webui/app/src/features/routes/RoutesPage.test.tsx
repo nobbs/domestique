@@ -419,6 +419,16 @@ describe("RoutesPage", () => {
     expect(lastDrawing().overlaid).toBe(true);
   });
 
+  // The address the app handed out before a second provider existed. A link
+  // bookmarked or shared then names the provider it always meant, and still
+  // opens the route it always did.
+  it("opens the route a two-part address names", () => {
+    renderPage(LIBRARY, { at: "/?route=2%2F1" });
+
+    expect(screen.getByRole("region", { name: "Kaiserstuhl Loop" })).toBeInTheDocument();
+    expect(lastDrawing().overlaid).toBe(true);
+  });
+
   it("says so when the address names a route the library does not have", () => {
     renderPage(LIBRARY, { at: "/?route=veloplanner%2F99%2F1" });
 

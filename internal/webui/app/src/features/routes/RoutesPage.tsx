@@ -94,13 +94,21 @@ function unionOf(boxes: BoundingBox[]): BoundingBox | null {
  * under even though nothing on the page ever shows the last two: a library
  * with more than one provider or more than one stage under a route would
  * otherwise have routes that cannot be linked to.
+ *
+ * The two-part form this address had before a second provider existed is still
+ * read, and means the provider it always meant. This is the address the app
+ * itself handed out — a bookmarked or shared `?route=12%2F1` predates the
+ * provider entirely — so refusing it here would strand exactly the links this
+ * change is supposed to keep working, the same way the Go handler keeps the
+ * two-segment paths resolving.
  */
 function parseRouteKey(
   value: string | null,
 ): { provider: string; routeId: number; stageOrder: number } | null {
-  const [provider, left, right, ...rest] = (value ?? "").split("/");
+  const parts = (value ?? "").split("/");
+  const [provider, left, right] = parts.length === 2 ? ["veloplanner", ...parts] : parts;
   if (
-    rest.length > 0 ||
+    parts.length > 3 ||
     !provider ||
     !left ||
     !right ||

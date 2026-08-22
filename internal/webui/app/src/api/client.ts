@@ -106,7 +106,10 @@ export function fetchRoutes(): Promise<Route[]> {
 }
 
 export function fetchRoute(provider: string, routeId: number, stageOrder: number): Promise<Route> {
-  return request(`/v1/providers/${provider}/routes/${routeId}/stages/${stageOrder}`, parseRoute);
+  return request(
+    `/v1/providers/${encodeURIComponent(provider)}/routes/${routeId}/stages/${stageOrder}`,
+    parseRoute,
+  );
 }
 
 export function fetchRouteGeometry(
@@ -115,7 +118,7 @@ export function fetchRouteGeometry(
   stageOrder: number,
 ): Promise<RouteGeometry> {
   return request(
-    `/v1/providers/${provider}/routes/${routeId}/stages/${stageOrder}/geometry`,
+    `/v1/providers/${encodeURIComponent(provider)}/routes/${routeId}/stages/${stageOrder}/geometry`,
     parseRouteGeometry,
   );
 }
@@ -174,7 +177,7 @@ export function reprocessStage(
   stageOrder: number,
 ): Promise<null> {
   return request(
-    `/v1/providers/${provider}/routes/${routeId}/stages/${stageOrder}/reprocess`,
+    `/v1/providers/${encodeURIComponent(provider)}/routes/${routeId}/stages/${stageOrder}/reprocess`,
     () => null,
     { method: "POST" },
   );
