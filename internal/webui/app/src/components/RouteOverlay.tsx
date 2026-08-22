@@ -422,12 +422,22 @@ function tooltipDistance(metres: number): string {
  * position it labels the moment the cursor drifted under it.
  */
 function PositionTooltip({
-  sample,
+  position,
+  content,
   endMetres,
   surfaceSummary,
   announce,
 }: {
-  sample: ProfileSample;
+  /**
+   * Where the marker sits: always the whole-route sample, the same one the
+   * dot itself is drawn from. A windowed profile interpolates its own
+   * coordinates independently, and on a bend those can differ from the
+   * whole route's by enough to put the tooltip beside the dot it is meant
+   * to label rather than on it.
+   */
+  position: ProfileSample;
+  /** What the marker says: see `activeProfile` for which profile this comes from. */
+  content: ProfileSample;
   /** The whole route's length, for the distance still left to ride. */
   endMetres: number;
   surfaceSummary: SurfaceSummary | null | undefined;
@@ -442,7 +452,7 @@ function PositionTooltip({
   const [, bumpOnCameraMove] = useState(0);
 
   const anchor = map
-    ? tooltipAnchor(map.project([sample.longitude, sample.latitude]), map.getContainer(), size)
+    ? tooltipAnchor(map.project([position.longitude, position.latitude]), map.getContainer(), size)
     : null;
 
   // Re-attached whenever the anchor changes rather than only once: the marker
@@ -480,7 +490,7 @@ function PositionTooltip({
     return null;
   }
 
-  const kind = surfaceSummary ? surfaceKindAt(surfaceSummary, sample.distanceMetres) : null;
+  const kind = surfaceSummary ? surfaceKindAt(surfaceSummary, content.distanceMetres) : null;
 
   return (
     <Marker
@@ -491,8 +501,8 @@ function PositionTooltip({
       // corner it opens from changes, rather than silently keeping the first
       // one it was ever given.
       key={anchor}
-      longitude={sample.longitude}
-      latitude={sample.latitude}
+      longitude={position.longitude}
+      latitude={position.latitude}
       anchor={anchor}
       offset={tooltipOffset(anchor)}
       className="route-position-tooltip-marker"
@@ -503,10 +513,10 @@ function PositionTooltip({
         aria-hidden={announce ? undefined : true}
         aria-live={announce ? "polite" : undefined}
       >
-        <span>{tooltipDistance(sample.distanceMetres)} from start</span>
-        <span>{tooltipDistance(Math.max(endMetres - sample.distanceMetres, 0))} to end</span>
-        <span>{formatElevation(sample.elevationMetres)}</span>
-        <span>{sample.gradientPercent.toFixed(1)}%</span>
+        <span>{tooltipDistance(content.distanceMetres)} from start</span>
+        <span>{tooltipDistance(Math.max(endMetres - content.distanceMetres, 0))} to end</span>
+        <span>{formatElevation(content.elevationMetres)}</span>
+        <span>{content.gradientPercent.toFixed(1)}%</span>
         {kind ? <span>{SURFACE_STYLES[kind].label}</span> : null}
       </p>
     </Marker>
@@ -726,19 +736,22 @@ export function RouteOverlay({
     [profile, activeMetres],
   );
 
-  // The tooltip's own sample: whichever profile the chart is actually
-  // showing, read when the position falls inside it — this is what lets the
+  // Whatever the chart's own readout would compute for this position: null
+  // outside a zoom window, since a windowed profile has no sample to give
+  // there at all, in which case the readout's live region announces nothing.
+  const windowedSample = useMemo(
+    () => (activeProfile && activeMetres !== null ? sampleAt(activeProfile, activeMetres) : null),
+    [activeProfile, activeMetres],
+  );
+
+  // The tooltip's own content: whichever profile the chart is actually
+  // showing, when the position falls inside it — this is what lets the
   // tooltip agree with the readout exactly rather than merely approximately,
   // since a windowed profile resamples its stretch at a different density
   // than the whole route does. Outside a zoom window the chart has nothing to
   // say either, so this falls back to the whole-route sample above, which is
   // still an honest answer for ground the chart is not currently showing.
-  const contentSample = useMemo(
-    () =>
-      (activeProfile && activeMetres !== null ? sampleAt(activeProfile, activeMetres) : null) ??
-      activeSample,
-    [activeProfile, activeMetres, activeSample],
-  );
+  const contentSample = windowedSample ?? activeSample;
 
   // The position shared with the elevation chart. An empty collection keeps the
   // source mounted, so the marker appears without rebuilding the layer.
@@ -938,10 +951,14 @@ export function RouteOverlay({
       </Source>
       {activeSample && contentSample && profile ? (
         <PositionTooltip
-          sample={contentSample}
+          position={activeSample}
+          content={contentSample}
           endMetres={profile.endMetres}
           surfaceSummary={surfaceSummary}
-          announce={profileCollapsed}
+          // The readout is silent whenever this tooltip is standing in for
+          // it: the profile card is folded away, or — even open — a windowed
+          // chart has no sample to announce for a hover outside its window.
+          announce={profileCollapsed || windowedSample === null}
         />
       ) : null}
       {/*

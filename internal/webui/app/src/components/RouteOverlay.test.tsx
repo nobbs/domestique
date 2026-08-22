@@ -26,6 +26,8 @@ interface LayerRecord {
 interface MarkerRecord {
   anchor: string;
   offset: [number, number];
+  longitude: number;
+  latitude: number;
 }
 
 const drawn = vi.hoisted(() => ({
@@ -54,7 +56,12 @@ vi.mock("react-map-gl/maplibre", () => ({
   // corner it opens from, which this records so that can be asked about here
   // rather than left to the browser test alone.
   Marker: (props: MarkerRecord & { children?: ReactNode }) => {
-    drawn.markers.push({ anchor: props.anchor, offset: props.offset });
+    drawn.markers.push({
+      anchor: props.anchor,
+      offset: props.offset,
+      longitude: props.longitude,
+      latitude: props.latitude,
+    });
 
     return <>{props.children}</>;
   },
@@ -134,7 +141,7 @@ function show(
       surfaceSummary={surfaceSummary}
       darkBasemap={props.darkBasemap ?? false}
       profile={profile}
-      activeProfile={props.activeProfile ?? null}
+      activeProfile={props.activeProfile ?? profile}
       activeMetres={activeMetres}
       profileCollapsed={props.profileCollapsed ?? false}
       zoomWindow={props.zoomWindow ?? null}
@@ -401,18 +408,71 @@ describe("the position tooltip", () => {
     expect(screen.getByText(formatElevation(wholeSample.elevationMetres))).toBeInTheDocument();
   });
 
+  /*
+   * The readout is silent in exactly this state — a zoomed chart has no
+   * sample for ground outside its own window — so this is the one place
+   * besides a folded card where the tooltip has to speak for itself.
+   */
+  it("announces itself when a hover outside the zoom window leaves the readout silent", () => {
+    const zoomed = buildWindowedProfile(COORDINATES, { startMetres: 1000, endMetres: 1400 });
+    expect(zoomed).not.toBeNull();
+    if (!zoomed) {
+      return;
+    }
+
+    show({ activeMetres: 200, activeProfile: zoomed, profileCollapsed: false });
+
+    const tooltip = document.querySelector(".route-position-tooltip");
+    expect(tooltip).toHaveAttribute("aria-live", "polite");
+    expect(tooltip).not.toHaveAttribute("aria-hidden");
+  });
+
+  /*
+   * A windowed profile interpolates its own coordinates independently of the
+   * whole route's, so the two can disagree by enough to put the tooltip
+   * beside the dot rather than on it. `activeProfile` is built here from a
+   * geometry shifted a whole degree east of `COORDINATES`, so any mix-up
+   * between the two samples is unmistakable rather than a rounding error.
+   */
+  it("positions its marker on the whole-route sample, not the one it is displaying", () => {
+    const whole = buildProfile(COORDINATES);
+    expect(whole).not.toBeNull();
+    if (!whole) {
+      return;
+    }
+    const wholeSample = sampleAt(whole, ACTIVE_METRES);
+    expect(wholeSample).not.toBeNull();
+    if (!wholeSample) {
+      return;
+    }
+    const shifted = buildProfile(
+      COORDINATES.map(
+        ([longitude, latitude, elevation]): Position => [longitude + 1, latitude, elevation ?? 0],
+      ),
+    );
+    expect(shifted).not.toBeNull();
+    if (!shifted) {
+      return;
+    }
+
+    const view = show({ activeMetres: ACTIVE_METRES, activeProfile: shifted });
+
+    expect(view.marker()?.longitude).toBeCloseTo(wholeSample.longitude);
+    expect(view.marker()?.longitude).not.toBeCloseTo(wholeSample.longitude + 1);
+  });
+
   it("opens down and to the right from a point with room on every side", () => {
     drawn.projected = { x: 100, y: 100 };
     const view = show({ activeMetres: ACTIVE_METRES });
 
-    expect(view.marker()).toEqual({ anchor: "top-left", offset: [14, 14] });
+    expect(view.marker()).toMatchObject({ anchor: "top-left", offset: [14, 14] });
   });
 
   it("opens up and to the left once neither side near the bottom-right corner has room", () => {
     drawn.projected = { x: 780, y: 580 };
     const view = show({ activeMetres: ACTIVE_METRES });
 
-    expect(view.marker()).toEqual({ anchor: "bottom-right", offset: [-14, -14] });
+    expect(view.marker()).toMatchObject({ anchor: "bottom-right", offset: [-14, -14] });
   });
 
   it("draws nothing before the map instance has resolved", () => {
