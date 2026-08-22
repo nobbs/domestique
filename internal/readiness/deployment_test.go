@@ -164,9 +164,11 @@ func TestTheDeployJobInstallsTheScriptBeforeDeploying(t *testing.T) {
 	assert.Less(t, install, deploy, "the script is installed before the deploy it applies to")
 }
 
-// The deploy job on its own. Read from the whole workflow, the assertions above
-// are satisfied by an install in any job at all, in any order relative to the
-// deploy it is supposed to precede — which is the thing they exist to pin.
+// The deploy job on its own, comments dropped. Read from the whole workflow, the
+// assertions above are satisfied by an install in any job at all, in any order
+// relative to the deploy it is supposed to precede — which is the thing they
+// exist to pin. Read with its comments, they are satisfied by a comment that
+// merely names the flag, which the comment above the step does.
 func deployJob(t *testing.T) string {
 	t.Helper()
 	workflow := readRepositoryFile(t, ".github/workflows/ci.yml")
@@ -179,7 +181,14 @@ func deployJob(t *testing.T) string {
 		job = job[:next[0]]
 	}
 
-	return job
+	var steps []string
+	for _, line := range strings.Split(job, "\n") {
+		if !strings.HasPrefix(strings.TrimSpace(line), "#") {
+			steps = append(steps, line)
+		}
+	}
+
+	return strings.Join(steps, "\n")
 }
 
 // The install path is the one input to the script that is not a digest, so what
