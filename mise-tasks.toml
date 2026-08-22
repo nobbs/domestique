@@ -183,13 +183,10 @@ description = "Scan the working tree for secrets"
 run = "gitleaks dir . --redact --no-banner"
 
 # Coverage is measured on demand and is deliberately not part of `quick`,
-# `check`, or the CI gate: instrumenting the tree makes the suite slower, and
-# nothing here fails on a number. It reports what a change leaves untested; it
-# does not judge it.
-#
-# The two halves are ordered rather than run together: each drives a full test
-# suite, and reading one report while the other is still writing its own is not
-# worth the wall-clock it saves.
+# `check`, or the CI gate: instrumenting the tree makes the suite slower. This
+# task reports what a change leaves untested; it does not judge it. The task
+# that does judge is `patch-coverage`, further down, which reads these same two
+# reports and answers the one coverage question that blocks a merge.
 [coverage]
 description = "Measure Go and UI coverage"
 depends = ["coverage-go", "coverage-ui"]
@@ -214,30 +211,48 @@ run = [
   "go run ./dev/coveragesummary <.coverage/go.out",
 ]
 
-# Both browser UI suites, in the order the merge needs them — which is why this
-# is one ordered `run` list rather than two tasks.
+# The jsdom suite, instrumented. Vitest writes its LCOV and a terminal summary
+# under .coverage; see the coverage block in internal/webui/app/vite.config.ts
+# for what it measures.
 #
-# Vitest writes its LCOV, its JSON report and a terminal summary under
-# .coverage; see the coverage block in internal/webui/app/vite.config.ts for what
-# it measures. The second step drives the browser suite over the demo stack,
-# attributes what it reached back to internal/webui/app/src, and rewrites the LCOV
-# file as the two suites merged — so one file describes one language, rather than
-# the map and the page-level components reading untested because only jsdom was
-# asked.
-#
-# The second step needs the browser and the Go toolchain, and says so and stops
-# rather than failing when the browser is not installed: the first half is still
-# a report, and downloading a browser is not something a coverage run should do
-# on someone's behalf. Run `mise run ui-browser-install` once to measure both
-# halves.
+# The browser suite used to be merged in here, so that the map and the
+# page-level components were not reported untested merely because only jsdom was
+# asked. That merge cost around three minutes on every pull request — it drove a
+# real Chromium over the demo stack — to move a status that no longer gates; see
+# the ui block in codecov.yml. What the browser suite is for it still does, in
+# `ui-browser-test`; it is no longer part of a number.
 [coverage-ui]
-description = "Measure UI coverage across the jsdom and browser suites"
+description = "Measure UI coverage across the jsdom suite"
 depends = ["ui-install"]
-wait_for = ["coverage-go"]
-run = [
-  "pnpm --dir internal/webui/app run test:coverage",
-  "pnpm --dir internal/webui/app run test:coverage:browser",
-]
+run = "pnpm --dir internal/webui/app run test:coverage"
+
+# The one coverage verdict that blocks a merge, answered here rather than five
+# minutes and one push later. It reads the reports the tasks above write and
+# grades them by the rules in codecov.yml; see dev/patchcoverage for why that
+# needs no base measurement and no network. Run it before the first push of a
+# change, which is when a shortfall is cheapest to fix.
+#
+# Deliberately outside `quick` and `check`, as `coverage` is: it measures the
+# tree, which the routine loop should not pay for. `dev/gatecheck` walks from
+# those two roots, so nothing there needs to know about these.
+[patch-coverage]
+description = "Judge the coverage of what this change adds, as Codecov will"
+depends = ["patch-coverage-go", "patch-coverage-ui"]
+
+# Each half depends on its own measurement rather than reading whatever report
+# a previous run left behind. No `sources`: the verdict is a function of the
+# working tree against a merge base, which is not a list of files mise can watch.
+[patch-coverage-go]
+description = "Judge the Go coverage of what this change adds"
+depends = ["coverage-go"]
+run = "go run ./dev/patchcoverage -flag go"
+
+# Reports and does not fail, because codecov.yml's ui patch status does not
+# either: the browser suite reaches code the LCOV file cannot see.
+[patch-coverage-ui]
+description = "Report the UI coverage of what this change adds"
+depends = ["coverage-ui"]
+run = "go run ./dev/patchcoverage -flag ui"
 
 # Snapshots the deployed SQLite state and writes a development configuration
 # that reads real VeloPlanner data but cannot reach Wahoo. See dev/setup.sh.
@@ -293,7 +308,6 @@ description = "Type-check the UI"
 sources = [
   "internal/webui/app/src/**",
   "internal/webui/app/e2e/**",
-  "internal/webui/app/scripts/**",
   "internal/webui/app/public/**",
   "internal/webui/app/index.html",
   "internal/webui/app/*.ts",
@@ -308,7 +322,6 @@ description = "Lint the UI"
 sources = [
   "internal/webui/app/src/**",
   "internal/webui/app/e2e/**",
-  "internal/webui/app/scripts/**",
   "internal/webui/app/public/**",
   "internal/webui/app/index.html",
   "internal/webui/app/*.ts",
@@ -328,7 +341,6 @@ description = "Run the jsdom UI suite"
 sources = [
   "internal/webui/app/src/**",
   "internal/webui/app/e2e/**",
-  "internal/webui/app/scripts/**",
   "internal/webui/app/public/**",
   "internal/webui/app/index.html",
   "internal/webui/app/*.ts",
@@ -388,7 +400,6 @@ description = "Build the UI bundle"
 sources = [
   "internal/webui/app/src/**",
   "internal/webui/app/e2e/**",
-  "internal/webui/app/scripts/**",
   "internal/webui/app/public/**",
   "internal/webui/app/index.html",
   "internal/webui/app/*.ts",

@@ -17,13 +17,10 @@
     "exactOptionalPropertyTypes": true,
 
     "isolatedModules": true,
-    // scripts/ is run by Node directly, which resolves the extension it is given
-    // and does not guess, so its imports name the .ts file they mean.
-    "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
     "resolveJsonModule": true,
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["src", "e2e", "scripts", "vite.config.ts", "playwright.config.ts"]
+  "include": ["src", "e2e", "vite.config.ts", "playwright.config.ts"]
 }

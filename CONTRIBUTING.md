@@ -62,6 +62,10 @@ Install the optional local Git hook with:
 mise exec -- prek install
 ~~~
 
+The installed hook hardcodes the path of the `prek` it was installed with, so
+run that again after a toolchain bump moves the pinned version; otherwise the
+hook silently falls back to whatever `prek` is on your `PATH`.
+
 `mise run fmt` applies Go formatting. The Git hook may also make safe whitespace
 repairs and exits non-zero so they can be reviewed and staged deliberately.
 
@@ -75,9 +79,8 @@ worth leaving installed.
 
 ## Coverage
 
-Nothing local fails on a percentage: neither `quick` nor `check` measures
-coverage, and `mise run coverage` is something you run to read a change with its
-untested parts visible.
+Neither `quick` nor `check` measures coverage. `mise run coverage` is what you
+run to read a change with its untested parts visible.
 
 ~~~sh
 mise run coverage
@@ -86,11 +89,8 @@ mise run coverage
 That writes a Go coverage profile to `.coverage/go.out` and the browser UI's
 LCOV report to `.coverage/ui/lcov.info`, and prints a summary for each. Nothing
 is committed — `/.coverage/` is gitignored. `mise run coverage-go` and
-`mise run coverage-ui` run one side alone. `coverage-ui` is the slow one,
-because after the unit suites it runs the whole-page suite in a real browser and
-merges what that reached into the same report; with no browser installed it says
-so, keeps the unit half, and still succeeds — run `mise run ui-browser-install`
-once if you want the whole number locally.
+`mise run coverage-ui` run one side alone. Both are unit suites, so the pair
+takes seconds and needs no browser.
 
 The Go profile is collected with `-coverpkg` over `./cmd/...` and
 `./internal/...`, which makes the percentage `go test` prints on each of its own
@@ -98,14 +98,34 @@ lines meaningless: that one is the fraction of the whole service one package's
 tests reached. Read the per-package summary printed after the run, which
 `dev/coveragesummary` produces from the merged profile.
 
-**On a pull request, two statuses decide the merge.** `codecov/patch/go` and
-`codecov/patch/ui` each require the lines your change adds or alters in that
-language to be covered at least as well as the base commit's already are; both
-are required by the branch ruleset and neither is informational. There is no
-fixed percentage to clear, deleting well-covered code cannot fail a status, and
-a change with no measurable Go or no measurable UI passes that flag.
+**On a pull request, one status decides the merge.** `codecov/patch/go`
+requires the lines your change adds or alters in Go to be covered at least as
+well as the base commit's already are. There is no fixed percentage to clear,
+deleting well-covered code cannot fail it, and a change with no measurable Go
+passes it. The other three statuses — `codecov/patch/ui` and the two project
+totals — report and block nothing; the UI one cannot judge because the number
+is Vitest alone and the browser suite's reach does not enter it.
 [The delivery specification](docs/specs/delivery.md#coverage) states what is
 measured, what is deliberately not, and why the statuses are shaped this way.
+
+Ask that question locally before you push, rather than spending a CI run on it:
+
+~~~sh
+mise run patch-coverage
+~~~
+
+That measures both languages, then grades the lines your change adds against the
+same rule Codecov applies, comparing against the merge base with `main` and
+reading your working tree rather than only what you have committed. It prints
+each uncovered added line as `file:line`. A Go shortfall fails the task; the UI
+half only reports, as its status does.
+
+It errs toward telling you to look. Where your patch sits within a point below
+the project total it says **too close to call** and fails anyway: deciding that
+band needs the base commit's own report, which is the one thing this does not
+read. So it can be stricter than CI by under a point, and never looser. The UI
+number reproduces Codecov's exactly; the Go one is an estimate, because a
+profile describes blocks rather than lines, and reads a couple of tenths low.
 
 One edge worth knowing. A branch forked from before coverage was published has a
 base commit with no report, so the patch status has nothing to compare against;
@@ -173,11 +193,11 @@ annotates the pull request's Files-changed view at the file and line the
 assertion failed on. Locally it reports through `list`, unchanged.
 
 Everything else it leaves goes under the gitignored `.playwright/` directory: a
-trace per failed test under `.playwright/results/`, the failure screenshot beside
-it, and the HTML report under `.playwright/report/`. Both jobs that drive the
-browser upload that directory as an artifact when they fail, as `playwright-ui`
-and `playwright-coverage`, kept for seven days — long enough to look at a failure,
-not long enough to accumulate. A green run uploads nothing.
+trace per failed test under `.playwright/results/`, the failure screenshot
+beside it, and the HTML report under `.playwright/report/`. The job that drives
+the browser uploads that directory as an artifact when it fails, as
+`playwright-ui`, kept for seven days — long enough to look at a failure, not
+long enough to accumulate. A green run uploads nothing.
 
 Open a downloaded trace at [trace.playwright.dev](https://trace.playwright.dev),
 which runs in the browser and uploads nothing, or with

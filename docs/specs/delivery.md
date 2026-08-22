@@ -43,6 +43,7 @@ The repository provides these stable tasks:
 | `mise run quick` | Runs the routine local loop: every check in `mise run check` except the six it defers. |
 | `mise run check` | Runs the full gate locally, on demand. |
 | `mise run coverage` | Writes a Go coverage profile and the browser UI's LCOV report to a gitignored directory and summarises both. |
+| `mise run patch-coverage` | Measures both, then judges what the change adds the way the merge gate will, failing on a Go shortfall. |
 
 `mise run check` is the full gate. It includes `prek run --all-files`, linting,
 tests, the same tests under the race detector, TypeScript type checking, the
@@ -159,9 +160,12 @@ run: the merge gate does not use it.
 
 ## Coverage
 
-Coverage is measured on demand locally, where it reports rather than judges:
-`mise run coverage` is not part of `mise run check`, and no local check fails on
-a percentage. On a pull request one number is a merge condition, stated below.
+Coverage is measured on demand locally. `mise run coverage` is not part of
+`mise run check`, because instrumenting the tree makes the suite slower, and
+what it prints reports rather than judges. One local task does judge:
+`mise run patch-coverage`, described at the end of this section. It exists
+because one coverage number is a merge condition, and learning that from CI
+costs a push and a five-minute wait.
 
 The Go profile is collected across the service as a whole rather than per
 package under test, so that a function exercised only through another package's
@@ -173,30 +177,17 @@ set, and nothing else is:
 | `dev/` | Repository tooling rather than the service. It has its own tests, and they run in the normal suite. |
 | `src/**/*.test.{ts,tsx}` and `src/test/` | The tests and their harness are the measurement, not its subject. |
 | `src/**/*.d.ts` | Type-only declarations emit no runtime statement to reach. |
-| `src/main.tsx` | It mounts React onto a real document and does nothing else, so a test of it would assert the framework rather than this UI. The browser does load it, and the merge drops it there too, so that the total does not depend on which collector ran. |
+| `src/main.tsx` | It mounts React onto a real document and does nothing else, so a test of it would assert the framework rather than this UI. |
 
-Code that only a browser-level test can reach is measured by a browser-level
-test: the UI number is the unit suites and the whole-page suite merged. A
-component the whole page exercises therefore reads as exercised rather than as a
-gap the report cannot see. Both halves are V8 coverage over the same source
-files, so a statement both reach counts once and the total stays a count of the
-tree rather than of the collectors.
-
-The measured half of the whole-page suite is the one that runs against the
-development server, which serves every module with a source map back to the file
-under `src/` it was built from. The half that runs against the embedded
-production bundle is not measured: that bundle is minified and ships without a
-source map, and measuring both would pay twice to learn the same thing.
-
-The unit report is the subject of the merge on both axes: the files it contains,
-and the statements it records for each of them. The browser's counts are carried
-onto those, matched by source location, and what has no counterpart there is
-dropped — so the merge moves the numerator and never the denominator, and the
-two collectors cannot come to disagree about what is being measured. The result
-is one report, merged before upload rather than uploaded as two, so that the
-number a status compares is assembled the same way on every commit. Where no
-browser is installed the unit half is still produced, and the run says what it
-left out.
+The UI number is the jsdom suites alone. Code only a browser-level test reaches
+therefore reads as a gap the report cannot see, which is why the UI status
+reports and does not judge: a gate whose ordinary outcome is an override is not
+a gate. The whole-page suite was instrumented and merged into the same report
+for a while, and that merge is what let the status judge — at the cost of around
+three minutes of CI on every pull request, including ones that touch no UI, on
+the job that sets the critical path. That is the trade the repository has taken
+back. The suite itself is unchanged and still runs for what it is actually for;
+see "The browser suite" below.
 
 Both reports are written to one gitignored directory, so that the upload step
 has a single place to look. No coverage report is committed, and none enters an
@@ -205,29 +196,49 @@ image context.
 GitHub Actions measures both languages on every run it performs, under no path
 filter, and publishes them to Codecov under separate flags, so that a shortfall
 names the language it came from and the two are never averaged into a single
-number. The browser half is collected there rather than handed over from the
-path-filtered job that runs the same suite for its own sake, because a flag
-assembled by a filtered job would mean one thing on the commits that job ran on
-and another on the commits it skipped, and a patch status compares two commits.
-The cost is that a change touching no UI still drives a browser.
+number. Both halves are unit suites, so the job that carries no path filter is
+also a cheap one.
 
-Both per-flag patch statuses are required by the branch ruleset, and both judge.
-Each must show that the lines a change adds or alters in its own language are
-covered at least as well as the base commit's already are; beyond a rounding
-threshold, a shortfall fails the check and the change does not merge. The bar is
-the base rather than a chosen percentage, so no number has to be invented or
-maintained and the requirement rises with the tree. A status reads only the
-diff, so deleting well-covered code or moving statements between packages cannot
-fail a change — the property a project-total ratchet cannot offer. A change
-carrying nothing measurable in a language passes that language's status. A
+The Go patch status is required by the branch ruleset and judges. It must show
+that the lines a change adds or alters in Go are covered at least as well as the
+base commit's already are; beyond a rounding threshold, a shortfall fails the
+check and the change does not merge. The bar is the base rather than a chosen
+percentage, so no number has to be invented or maintained and the requirement
+rises with the tree. A status reads only the diff, so deleting well-covered code
+or moving statements between packages cannot fail a change — the property a
+project-total ratchet cannot offer. A change carrying nothing measurable in a
+language passes that language's status. A
 change whose base commit carries no report is outside what this contract relies
 on: it is rebased onto a default-branch commit that carries one, and nothing
 here asserts what the status would otherwise report.
 
-The UI status can judge because the measurement includes what the browser-level
-suite reaches: a gate that failed changes to code that is in fact exercised
-would have its ordinary outcome be an override. The two project statuses report
-trend and block nothing.
+The UI patch status reports and blocks nothing, for the reason given above, as
+do the two project statuses. It still posts a result, so a branch ruleset that
+names it stays satisfiable.
+
+`mise run patch-coverage` answers the enforced question before a push. It reads
+the same two reports the upload sends and grades them by the same rules, against
+the merge base with the default branch, and it reads the working tree rather
+than only what is committed. It needs no base measurement and no network:
+Codecov compares the patch against the base commit's project coverage, and
+because project coverage is the weighted average of the untouched tree and the
+patch, comparing against the head's own project coverage always has the same
+sign.
+
+That equivalence covers the bare comparison and not the threshold, so the
+threshold is not spent blindly. A patch at or above the head's project coverage
+passes the status. A patch more than a point below it fails, the base being
+higher still. A patch inside that point cannot be decided from one report — the
+answer turns on how far the base sits above the head — and is reported as
+undecided and counted as a shortfall. The task is therefore stricter than the
+status within a band under a point wide, and never looser: it does not report a
+pass the status will contradict.
+
+The UI half reproduces the service exactly, LCOV already being a statement
+about lines. The Go half is an estimate rather than a reproduction, because a
+profile describes blocks where Codecov reports lines, and it is expected to
+land a couple of tenths of a point low. The Go verdict fails the task; the UI
+one only prints, exactly as the two statuses behave.
 
 The measurement carries no path filter because a required context has to arrive:
 Codecov reports only on a commit it received a report for, so a run that
@@ -381,8 +392,9 @@ screenshot that goes stale on a renderer or font change. Everything about the
 environment that a pixel depends on — viewport, device scale factor, colour
 scheme, locale, time zone, motion and font stack — is pinned by the configuration
 and the fixtures. Traces, failure screenshots and the HTML report are written to
-the gitignored `.playwright/` directory, which both browser-driving CI jobs
-upload as a short-lived artifact when they fail, and never when they pass. The
+the gitignored `.playwright/` directory, which the CI job that drives the
+browser uploads as a short-lived artifact when it fails, and never when it
+passes. The
 suite also reports through Playwright's `github` reporter on a runner, so a
 failure annotates the pull request at the line it failed on rather than only in
 the job log.
@@ -544,7 +556,8 @@ workflow, and the images the example compose files name.
 
 Updates arrive as they are released rather than in a scheduled batch. What
 bounds them is concurrency — at most two pull requests an hour and five open at
-a time — because every one of them runs the browser suite and the coverage job.
+a time — because every one of them runs the full gate, the browser suite
+included.
 
 The configuration is `config:best-practices` plus a short list of rules. The
 preset supplies the mechanics — digests pinned for Docker and for actions,
