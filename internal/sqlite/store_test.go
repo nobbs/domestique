@@ -284,6 +284,36 @@ func TestStoreRecordsRunsAndFailureNotificationState(t *testing.T) {
 	assert.WithinDuration(t, finishedAt, sentAt, 0, "LastFailureNotification()")
 }
 
+// A zero sentAt clears the record instead of recording one: recording and
+// clearing are complements of the same row.
+func TestStoreRecordFailureNotificationClearsOnAZeroTime(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	sentAt := time.Date(2026, time.August, 17, 8, 0, 0, 0, time.UTC)
+
+	require.NoError(t, store.RecordFailureNotification(t.Context(), "source:stale", sentAt), "RecordFailureNotification()")
+	_, found, err := store.LastFailureNotification(t.Context(), "source:stale")
+	require.NoError(t, err, "LastFailureNotification()")
+	require.True(t, found, "the notification that was recorded is not readable")
+
+	require.NoError(t, store.RecordFailureNotification(t.Context(), "source:stale", time.Time{}), "RecordFailureNotification() clear")
+	_, found, err = store.LastFailureNotification(t.Context(), "source:stale")
+	require.NoError(t, err, "LastFailureNotification()")
+	assert.False(t, found, "the cleared notification is still readable")
+}
+
+func TestStoreRecordFailureNotificationRequiresACategory(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+
+	require.Error(t, store.RecordFailureNotification(t.Context(), "", time.Time{}), "RecordFailureNotification() accepted an empty category")
+}
+
+func TestStoreRecordFailureNotificationReportsAnUnreadableDatabaseWhenClearing(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.Close(), "Close()")
+
+	require.Error(t, store.RecordFailureNotification(t.Context(), "source:stale", time.Time{}), "RecordFailureNotification() clear on a closed database")
+}
+
 func TestStoreMigrationsAreIdempotent(t *testing.T) {
 	databasePath := filepath.Join(t.TempDir(), "state.db")
 	first, firstOpenErr := Open(t.Context(), databasePath, testKey(1))
@@ -1600,6 +1630,44 @@ func TestStoreTotalsSuccessfulRunsForADigest(t *testing.T) {
 	// Moving the window to that run leaves nothing behind to count twice.
 	phases, _, _, _, _ = totalAfter(latest)
 	assert.Empty(t, phases, "a run was counted in two windows")
+}
+
+func TestStoreLastSuccessfulPhaseCompletionIgnoresFailuresAndOtherPhases(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+
+	_, found, err := store.LastSuccessfulPhaseCompletion(t.Context(), "source")
+	require.NoError(t, err, "LastSuccessfulPhaseCompletion()")
+	assert.False(t, found, "a completion was reported before any run")
+
+	firstSuccess := time.Date(2026, time.August, 17, 8, 0, 0, 0, time.UTC)
+	_, err = store.RecordSyncRun(t.Context(), "source", firstSuccess, firstSuccess, "succeeded", "", 3, 0, 0, 0)
+	require.NoError(t, err, "RecordSyncRun()")
+	_, err = store.RecordSyncRun(t.Context(), "targets", firstSuccess, firstSuccess, "succeeded", "", 3, 0, 1, 0)
+	require.NoError(t, err, "RecordSyncRun()")
+
+	laterFailure := firstSuccess.Add(time.Hour)
+	_, err = store.RecordSyncRun(t.Context(), "source", laterFailure, laterFailure, "failed", "state", 0, 0, 0, 0)
+	require.NoError(t, err, "RecordSyncRun()")
+
+	completedAt, found, err := store.LastSuccessfulPhaseCompletion(t.Context(), "source")
+	require.NoError(t, err, "LastSuccessfulPhaseCompletion()")
+	require.True(t, found, "the recorded success was not reported")
+	assert.WithinDuration(t, firstSuccess, completedAt, 0, "LastSuccessfulPhaseCompletion() kept the failed run's time")
+}
+
+func TestStoreLastSuccessfulPhaseCompletionRequiresAPhase(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+
+	_, _, err := store.LastSuccessfulPhaseCompletion(t.Context(), "")
+	require.Error(t, err, "LastSuccessfulPhaseCompletion() accepted an empty phase")
+}
+
+func TestStoreLastSuccessfulPhaseCompletionReportsAnUnreadableDatabase(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.Close(), "Close()")
+
+	_, _, err := store.LastSuccessfulPhaseCompletion(t.Context(), "source")
+	require.Error(t, err, "LastSuccessfulPhaseCompletion() on a closed database")
 }
 
 func TestStoreRecordsDigestNotificationState(t *testing.T) {

@@ -79,6 +79,13 @@ const (
 	// it would quietly report a total missing every run already pruned from
 	// under it, which is worse than refusing the setting.
 	maxDigestInterval = 7 * 24 * time.Hour
+
+	// defaultStaleAfter is how long the trusted source inventory may go without
+	// a successful refresh before it is reported and notified as stale, when the
+	// operator names no bound of their own. A day tolerates a bad run or two at
+	// the hourly cadence while still catching a source that has quietly stopped
+	// refreshing.
+	defaultStaleAfter = 24 * time.Hour
 )
 
 // Settings is the validated, startup-only configuration for one service
@@ -253,6 +260,10 @@ type Sync struct {
 	InitialDelay          time.Duration
 	Interval              time.Duration
 	MaxDeletionsPerTarget int
+	// StaleAfter bounds how long the trusted source inventory may go without a
+	// successful refresh before it is reported as stale and notified. Defaults
+	// to 24h.
+	StaleAfter time.Duration
 }
 
 // EmptySourceDeletion controls whether a trusted empty source can delete the
@@ -406,6 +417,7 @@ type rawSync struct {
 	InitialDelay          time.Duration `koanf:"initial_delay"`
 	Interval              time.Duration `koanf:"interval"`
 	MaxDeletionsPerTarget int           `koanf:"max_deletions_per_target"`
+	StaleAfter            time.Duration `koanf:"stale_after"`
 }
 
 type rawNotifications struct {
@@ -749,6 +761,7 @@ func build(raw *rawSettings) (*Settings, error) {
 			Interval:              raw.Sync.Interval,
 			MaxDeletionsPerTarget: raw.Sync.MaxDeletionsPerTarget,
 			EmptySourceDeletion:   EmptySourceDeletion(raw.Sync.EmptySourceDeletion),
+			StaleAfter:            raw.Sync.StaleAfter,
 		},
 		Notifications: Notifications{
 			Success: SuccessNotifications{
@@ -1045,6 +1058,9 @@ func validateSync(sync rawSync) error {
 		sync.EmptySourceDeletion != string(EmptySourceDeletionAllow) {
 		return errors.New("sync.empty_source_deletion must be deny or allow")
 	}
+	if sync.StaleAfter < time.Second {
+		return errors.New("sync.stale_after must be at least 1s")
+	}
 
 	return nil
 }
@@ -1125,6 +1141,7 @@ func configurationDefaults() map[string]any {
 		},
 		"sync": map[string]any{
 			"empty_source_deletion": string(EmptySourceDeletionDeny),
+			"stale_after":           defaultStaleAfter.String(),
 		},
 		"webui": map[string]any{
 			"basemaps": []any{

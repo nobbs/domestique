@@ -118,7 +118,7 @@ func run(ctx context.Context) error {
 	reporter, err := syncservice.NewReporter(reconciler, store, notifier, syncservice.SuccessNotification{
 		Policy:   syncservice.SuccessPolicy(settings.Notifications.Success.Policy),
 		Interval: settings.Notifications.Success.DigestInterval,
-	})
+	}, settings.Sync.StaleAfter)
 	if err != nil {
 		return fmt.Errorf("creating sync reporter: %w", err)
 	}
@@ -193,6 +193,7 @@ func run(ctx context.Context) error {
 
 				return metadata.Generation, metadata.BuiltAt, ok
 			},
+			SourceStaleAfter: settings.Sync.StaleAfter,
 		},
 		oauthService,
 		store,

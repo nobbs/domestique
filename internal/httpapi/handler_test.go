@@ -1039,6 +1039,99 @@ func TestHandlerNamesNoMapBuildBeforeOneIsLoaded(t *testing.T) {
 	assert.Empty(t, view.Sync.Surface.BuiltAt, "built_at")
 }
 
+// A deployment that names no staleness bound gets no freshness claim at all,
+// rather than one derived from a bound nobody configured.
+func TestHandlerOmitsTrustedInventoryFreshnessWithNoConfiguredBound(t *testing.T) {
+	handler := newHandler(t, &fakeOAuth{}, &fakeState{})
+
+	view := statusOf(t, handler)
+	assert.Nil(t, view.Sync.TrustedInventory, "a service with no stale-after bound reported a freshness claim")
+}
+
+// A service that has never completed a source run has no trusted inventory
+// yet, which is not the same claim as a stale one.
+func TestHandlerReportsFreshBeforeAnySuccessfulSourceRun(t *testing.T) {
+	now := time.Date(2026, time.August, 17, 8, 0, 0, 0, time.UTC)
+	handler := newHandlerWithStaleAfter(t, &fakeState{}, 24*time.Hour, now)
+
+	view := statusOf(t, handler)
+	require.NotNil(t, view.Sync.TrustedInventory, "a configured bound reported no freshness claim")
+	assert.True(t, view.Sync.TrustedInventory.Fresh, "a service with no successful source run was reported stale")
+	assert.Empty(t, view.Sync.TrustedInventory.LastSuccessAt, "a service with no successful source run named one")
+}
+
+// An unreadable trusted-inventory record must fail the whole status request
+// rather than silently omitting freshness or guessing it.
+func TestHandlerReportsUnavailableWhenTrustedInventoryStateCannotBeRead(t *testing.T) {
+	state := &fakeState{lastSuccessErr: errors.New("state unavailable")}
+	handler := newHandlerWithStaleAfter(t, state, 24*time.Hour, time.Now())
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/status"))
+	assert.Equal(t, http.StatusInternalServerError, response.Code, "status")
+}
+
+// The reported age and freshness are read from local state alone, against the
+// configured bound.
+func TestHandlerReportsTrustedInventoryAgeAndFreshness(t *testing.T) {
+	lastSuccess := time.Date(2026, time.August, 16, 8, 0, 0, 0, time.UTC)
+	now := time.Date(2026, time.August, 17, 8, 30, 0, 0, time.UTC)
+	state := &fakeState{lastSuccessAt: map[string]time.Time{"source": lastSuccess}}
+	handler := newHandlerWithStaleAfter(t, state, 24*time.Hour, now)
+
+	view := statusOf(t, handler)
+	require.NotNil(t, view.Sync.TrustedInventory, "want a freshness claim")
+	assert.False(t, view.Sync.TrustedInventory.Fresh, "a 24h30m-old inventory against a 24h bound was reported fresh")
+	assert.Equal(t, "2026-08-16T08:00:00Z", view.Sync.TrustedInventory.LastSuccessAt, "last_success_at")
+	assert.Equal(t, int64(24*time.Hour/time.Second), view.Sync.TrustedInventory.MaxAgeSeconds, "max_age_seconds")
+	assert.Equal(t, int64((24*time.Hour+30*time.Minute)/time.Second), view.Sync.TrustedInventory.AgeSeconds, "age_seconds")
+}
+
+// An age of exactly zero, read immediately after a successful refresh, is
+// still reported rather than omitted alongside an omitempty int's zero value.
+func TestHandlerReportsAZeroAgeRatherThanOmittingIt(t *testing.T) {
+	now := time.Date(2026, time.August, 17, 8, 30, 0, 0, time.UTC)
+	state := &fakeState{lastSuccessAt: map[string]time.Time{"source": now}}
+	handler := newHandlerWithStaleAfter(t, state, 24*time.Hour, now)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/status"))
+	assert.Contains(t, response.Body.String(), `"age_seconds":0`, "a zero age was omitted from the response")
+}
+
+// A recorded success later than now — a clock that has moved backwards, or a
+// success that races ahead of it — must never be reported as a negative age.
+func TestHandlerClampsANegativeAgeToZero(t *testing.T) {
+	now := time.Date(2026, time.August, 17, 8, 30, 0, 0, time.UTC)
+	state := &fakeState{lastSuccessAt: map[string]time.Time{"source": now.Add(time.Hour)}}
+	handler := newHandlerWithStaleAfter(t, state, 24*time.Hour, now)
+
+	view := statusOf(t, handler)
+	require.NotNil(t, view.Sync.TrustedInventory, "want a freshness claim")
+	assert.Zero(t, view.Sync.TrustedInventory.AgeSeconds, "a negative age was not clamped to zero")
+	assert.True(t, view.Sync.TrustedInventory.Fresh, "a clamped age was reported stale")
+}
+
+// fresh must agree with age_seconds < max_age_seconds even when
+// sync.stale_after carries sub-second precision: both are derived from the
+// same truncated seconds rather than fresh comparing the untruncated duration.
+func TestHandlerKeepsFreshConsistentWithASubSecondStaleAfter(t *testing.T) {
+	lastSuccess := time.Date(2026, time.August, 17, 8, 29, 58, 600_000_000, time.UTC)
+	now := time.Date(2026, time.August, 17, 8, 30, 0, 0, time.UTC)
+	state := &fakeState{lastSuccessAt: map[string]time.Time{"source": lastSuccess}}
+	handler := newHandlerWithStaleAfter(t, state, 1500*time.Millisecond, now)
+
+	view := statusOf(t, handler)
+	require.NotNil(t, view.Sync.TrustedInventory, "want a freshness claim")
+	// A 1.4s age against a 1.5s bound truncates to equal integer seconds on
+	// both sides: the untruncated duration comparison (1.4s < 1.5s) says
+	// fresh, but the documented contract compares the reported seconds
+	// (1 < 1), which says stale. fresh must follow the documented contract.
+	assert.Equal(t, int64(1), view.Sync.TrustedInventory.MaxAgeSeconds, "max_age_seconds")
+	assert.Equal(t, int64(1), view.Sync.TrustedInventory.AgeSeconds, "age_seconds")
+	assert.False(t, view.Sync.TrustedInventory.Fresh, "fresh disagreed with age_seconds < max_age_seconds")
+}
+
 // A run that has not finished must not be reported as the last one that did.
 // An operator who has just pressed a button would read "succeeded" as their
 // answer, and nothing in the response would say otherwise.
@@ -1376,6 +1469,27 @@ func newHandler(t *testing.T, oauthService OAuth, state State) *Handler {
 	return newHandlerWithSync(t, oauthService, state, &fakeSync{accepted: true})
 }
 
+// newHandlerWithStaleAfter builds a handler that reports trusted-inventory
+// freshness, with now fixed so the reported age is deterministic.
+func newHandlerWithStaleAfter(t *testing.T, state State, staleAfter time.Duration, now time.Time) *Handler {
+	t.Helper()
+	handler, err := New(
+		&Options{
+			TargetIDs:        []string{"rider-a"},
+			Basemaps:         testBasemaps(),
+			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
+			AccessEmail:      testAccessEmail,
+			BrowserOriginURL: testBrowserOriginURL,
+			SourceStaleAfter: staleAfter,
+		},
+		&fakeOAuth{}, state, &fakeSync{accepted: true}, &fakeAssets{},
+	)
+	require.NoError(t, err, "New()")
+	handler.now = func() time.Time { return now }
+
+	return handler
+}
+
 // newHandlerWithTargets builds a handler configured for more than one slot, which
 // is what a partial target failure needs to be visible at all.
 func newHandlerWithTargets(t *testing.T, state State, targetIDs ...string) *Handler {
@@ -1534,6 +1648,8 @@ type fakeState struct {
 	targetStageErr    error
 	targetRunErr      error
 	pendingAuthErr    error
+	lastSuccessErr    error
+	lastSuccessAt     map[string]time.Time
 	targetStages      map[string][]storedStage
 	reprocessed       [][2]int64
 	targets           []fakeTarget
@@ -1722,6 +1838,17 @@ func (s *fakeState) LastSyncRun(context.Context) (time.Time, string, string, int
 
 	return run.completedAt, run.outcome, run.detail,
 		run.sourceStages, run.created, run.updated, run.deleted, true, nil
+}
+
+func (s *fakeState) LastSuccessfulPhaseCompletion(
+	_ context.Context, phase string,
+) (completedAt time.Time, found bool, err error) {
+	if s.lastSuccessErr != nil {
+		return time.Time{}, false, s.lastSuccessErr
+	}
+	completedAt, found = s.lastSuccessAt[phase]
+
+	return completedAt, found, nil
 }
 
 func (s *fakeState) ForEachPhaseRun(

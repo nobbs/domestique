@@ -468,6 +468,12 @@ Returns 200 while the service can read state. The minimum shape is:
     "updated":1,
     "deleted":0,
     "schedule":{"source":true,"targets":true},
+    "trusted_inventory":{
+      "fresh":true,
+      "last_success_at":"2026-08-16T12:00:00Z",
+      "age_seconds":14400,
+      "max_age_seconds":86400
+    },
     "surface":{
       "generation":"9f2c41ab77de",
       "built_at":"2026-08-17T03:41:00Z",
@@ -578,6 +584,30 @@ half has finished a run, and carries `last_failure` with the safe failure
 category when its last run did not succeed. The fields outside `phases` describe
 the most recent run of either half and are kept so an existing reader does not
 break.
+
+#### Trusted inventory freshness
+
+`trusted_inventory` is present only when `sync.stale_after` is configured. It
+reports the age of the trusted source inventory — the stored stages the source
+phase last replaced wholesale — against that bound, derived from local state
+alone: the last source-phase run that recorded a success, compared to the
+current instant. Reading it starts no provider work and is evaluated on every
+scheduled tick, whether or not the source phase ran on that tick, because the
+inventory can go stale while the schedule has that half switched off.
+
+`last_success_at` is absent until a source phase has ever succeeded: a service
+with no trusted inventory yet has nothing to call stale, which is a different
+claim from a stale one. `fresh` is `true` in that case. `age_seconds` is
+always present, including an age of exactly zero read immediately after a
+successful refresh, and is never negative: a recorded success later than the
+reporting instant is clamped to zero rather than read as a claim about the
+future. `age_seconds` reads `0` before any success too, which `last_success_at`
+being absent is what tells apart from a true zero age. `fresh` is
+`age_seconds < max_age_seconds`.
+
+A stale reading here never relaxes a deletion gate or implies that any target
+holds current state; convergence and the deletion gates are unaffected and are
+read exactly as described above.
 
 ### PUT /v1/sync/schedule
 
@@ -693,6 +723,26 @@ half are suppressed for six hours. The first following success is the recovery
 signal. Suppression is keyed by half and category together: the same category
 failing in both halves is two problems, and each is worth one alert.
 
+### Trusted inventory staleness
+
+A source phase can stop producing a trusted inventory without a newly visible
+incident once its own failure category is already suppressed — a schedule left
+switched off, or a source failing the same way every tick, both look identical
+to an operator after the first alert. Trusted-inventory staleness is a second,
+independent check for exactly that: every tick compares how long it has been
+since the source phase last succeeded against `sync.stale_after`, regardless of
+what that tick's phases did, and this check starts no provider work.
+
+The first tick the age crosses `sync.stale_after` sends one message; a further
+stale tick is suppressed for six hours, the same window and the same
+`notification_state` category an ordinary phase failure uses, kept apart from
+any real phase-and-failure pair. A source phase that then succeeds sends the
+recovery signal unconditionally — never held back by the success policy — the
+same way an ordinary recovery is, and closes the suppression record so the
+recovery is a one-shot signal: a later success with no new stale incident in
+between sends nothing further. A service whose source phase has never once
+succeeded has no trusted inventory to call stale, and is never notified as one.
+
 ### The success policy
 
 `notifications.success_policy` decides what a *routine* success sends. A routine
@@ -796,4 +846,8 @@ The implementation test suite must cover at least:
 - a digest totalling one interval of successful runs, carrying no run reference
   or target identity, starting its clock without reporting prior history, and
   passing over an interval that nothing succeeded in without leaving its runs to
-  be counted twice.
+  be counted twice; and
+- trusted-inventory staleness: no alert before any successful source run, one
+  alert once the age crosses `sync.stale_after`, that alert suppressed for six
+  hours, an unconditional recovery message on the next source success, and
+  `GET /v1/status` reporting the same age and freshness from local state alone.

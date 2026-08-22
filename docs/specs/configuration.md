@@ -75,6 +75,7 @@ initial_delay = "1m"
 interval = "1h"
 max_deletions_per_target = 5
 empty_source_deletion = "deny"
+stale_after = "24h"
 
 [notifications]
 success_policy = "every"
@@ -286,6 +287,14 @@ application dependency.
 - `sync.empty_source_deletion` is `deny` or `allow`, defaulting to `deny`.
   The operator sets `allow` only for a deliberate final-library deletion and
   returns it to `deny` immediately afterward.
+- `sync.stale_after` is a duration of at least one second, defaulting to
+  `24h`. It bounds how long the trusted source inventory may go without a
+  successful refresh before `GET /v1/status` reports it as stale and a
+  notification goes out. The response reports age in whole seconds, so a
+  sub-second bound is rejected rather than silently truncating to a zero
+  maximum age that would flag every service as permanently stale.
+  [The sync lifecycle specification](sync-lifecycle.md#trusted-inventory-freshness)
+  states what is measured and how the notification is rate-limited.
 - `notifications.success_policy` is `every`, `quiet`, or `digest`, defaulting to
   `every`, so a deployment that says nothing about it keeps the per-run message
   it has always sent. It governs routine success alone; it can never suppress a

@@ -1532,10 +1532,22 @@ func (s *Store) LastFailureNotification(ctx context.Context, category string) (t
 }
 
 // RecordFailureNotification records a delivered notification after Pushover
-// accepted it, so failed delivery attempts are retried on the next run.
+// accepted it, so failed delivery attempts are retried on the next run. A zero
+// sentAt clears the category's suppression record entirely instead: recording
+// and clearing are complements of the same row, not separate concerns, and a
+// category never notified is a no-op to clear.
 func (s *Store) RecordFailureNotification(ctx context.Context, category string, sentAt time.Time) error {
-	if category == "" || sentAt.IsZero() {
-		return errors.New("failure category and notification time are required")
+	if category == "" {
+		return errors.New("failure category is required")
+	}
+	if sentAt.IsZero() {
+		if _, err := s.database.ExecContext(ctx, `
+			DELETE FROM notification_state WHERE kind = ?
+		`, "failure:"+category); err != nil {
+			return fmt.Errorf("clearing failure notification: %w", err)
+		}
+
+		return nil
 	}
 	if _, err := s.database.ExecContext(ctx, `
 		INSERT INTO notification_state (kind, last_sent_at_unix) VALUES (?, ?)
@@ -1572,6 +1584,27 @@ func (s *Store) LastPhaseOutcome(ctx context.Context, phase string) (outcome str
 	}
 
 	return outcome, true, nil
+}
+
+// LastSuccessfulPhaseCompletion returns when a phase last recorded a success,
+// which is what its trusted inventory age is measured against: a failed or
+// skipped run leaves that inventory exactly as an earlier success left it.
+func (s *Store) LastSuccessfulPhaseCompletion(ctx context.Context, phase string) (completedAt time.Time, found bool, err error) {
+	if phase == "" {
+		return time.Time{}, false, errors.New("phase is required")
+	}
+	var completedUnix int64
+	if err := s.database.QueryRowContext(ctx, `
+		SELECT finished_at_unix FROM sync_runs WHERE phase = ? AND outcome = ? ORDER BY id DESC LIMIT 1
+	`, phase, "succeeded").Scan(&completedUnix); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return time.Time{}, false, nil
+		}
+
+		return time.Time{}, false, fmt.Errorf("reading the last successful completion of a phase: %w", err)
+	}
+
+	return time.Unix(completedUnix, 0).UTC(), true, nil
 }
 
 // LastDigestNotification returns when the last success digest was delivered and
