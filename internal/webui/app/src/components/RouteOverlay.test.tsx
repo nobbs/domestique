@@ -15,7 +15,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Position, SurfaceRange } from "../api/types";
 import { formatDistance, formatElevation } from "../lib/format";
 import type { Profile } from "../lib/profile";
-import { buildProfile, sampleAt } from "../lib/profile";
+import { buildProfile, buildWindowedProfile, sampleAt } from "../lib/profile";
 import { summariseSurface } from "../lib/surface";
 
 interface LayerRecord {
@@ -127,7 +127,7 @@ function show(
   const profile = props.activeMetres != null ? buildProfile(coordinates) : null;
   const surfaceSummary =
     props.withSurfaceSummary && props.surface ? summariseSurface(coordinates, props.surface) : null;
-  render(
+  const jsx = (activeMetres: number | null) => (
     <RouteOverlay
       coordinates={coordinates}
       surface={props.surface}
@@ -135,12 +135,13 @@ function show(
       darkBasemap={props.darkBasemap ?? false}
       profile={profile}
       activeProfile={props.activeProfile ?? null}
-      activeMetres={props.activeMetres ?? null}
+      activeMetres={activeMetres}
       profileCollapsed={props.profileCollapsed ?? false}
       zoomWindow={props.zoomWindow ?? null}
       onZoomChange={onZoomChange}
-    />,
+    />
   );
+  const { rerender } = render(jsx(props.activeMetres ?? null));
 
   return {
     onZoomChange,
@@ -148,6 +149,8 @@ function show(
     layer: (id: string) => drawn.layers.find((entry) => entry.id === id),
     ids: () => drawn.layers.map((entry) => entry.id),
     marker: () => drawn.markers[0],
+    /** Re-renders the same tree with a different position, for a transition a fresh render cannot prove. */
+    setActiveMetres: (metres: number | null) => rerender(jsx(metres)),
   };
 }
 
@@ -308,8 +311,17 @@ describe("the position tooltip", () => {
     expect(tooltip).not.toHaveAttribute("aria-hidden");
   });
 
-  it("disappears once the position is cleared", () => {
+  it("is absent when there is no position to begin with", () => {
     show({ activeMetres: null });
+
+    expect(document.querySelector(".route-position-tooltip")).not.toBeInTheDocument();
+  });
+
+  it("disappears once a shown position is cleared", () => {
+    const view = show({ activeMetres: ACTIVE_METRES });
+    expect(document.querySelector(".route-position-tooltip")).toBeInTheDocument();
+
+    view.setActiveMetres(null);
 
     expect(document.querySelector(".route-position-tooltip")).not.toBeInTheDocument();
   });
@@ -355,6 +367,38 @@ describe("the position tooltip", () => {
 
     expect(screen.getByText(formatElevation(active.elevationMetres))).toBeInTheDocument();
     expect(screen.getByText(`${active.gradientPercent.toFixed(1)}%`)).toBeInTheDocument();
+  });
+
+  /*
+   * A zoomed chart's own profile covers only the stretch it is showing, so a
+   * hover on the dimmed route outside that stretch has no windowed sample to
+   * give at all — the dot still has to move there, and the tooltip still has
+   * to say something, both from the whole route rather than from a profile
+   * that stops short of the position.
+   */
+  it("keeps the dot and the tooltip when the hover falls outside a zoom window", () => {
+    const zoomed = buildWindowedProfile(COORDINATES, { startMetres: 1000, endMetres: 1400 });
+    expect(zoomed).not.toBeNull();
+    if (!zoomed) {
+      return;
+    }
+    const OUTSIDE_WINDOW_METRES = 200;
+    expect(sampleAt(zoomed, OUTSIDE_WINDOW_METRES)).toBeNull();
+    const whole = buildProfile(COORDINATES);
+    expect(whole).not.toBeNull();
+    if (!whole) {
+      return;
+    }
+    const wholeSample = sampleAt(whole, OUTSIDE_WINDOW_METRES);
+    expect(wholeSample).not.toBeNull();
+    if (!wholeSample) {
+      return;
+    }
+
+    show({ activeMetres: OUTSIDE_WINDOW_METRES, activeProfile: zoomed });
+
+    expect(document.querySelector(".route-position-tooltip")).toBeInTheDocument();
+    expect(screen.getByText(formatElevation(wholeSample.elevationMetres))).toBeInTheDocument();
   });
 
   it("opens down and to the right from a point with room on every side", () => {

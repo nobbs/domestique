@@ -441,6 +441,14 @@ function PositionTooltip({
   // hover event.
   const [, bumpOnCameraMove] = useState(0);
 
+  const anchor = map
+    ? tooltipAnchor(map.project([sample.longitude, sample.latitude]), map.getContainer(), size)
+    : null;
+
+  // Re-attached whenever the anchor changes rather than only once: the marker
+  // below is keyed on it and remounts its whole subtree when it does, which
+  // leaves this observing a `<p>` that just left the document.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: anchor is read nowhere in the body; it is the remount signal, not a value the effect needs.
   useEffect(() => {
     const element = boxRef.current;
     if (!element || typeof ResizeObserver === "undefined") {
@@ -452,7 +460,7 @@ function PositionTooltip({
     observer.observe(element);
 
     return () => observer.disconnect();
-  }, []);
+  }, [anchor]);
 
   useEffect(() => {
     if (!map) {
@@ -468,16 +476,21 @@ function PositionTooltip({
     };
   }, [map]);
 
-  if (!map) {
+  if (!map || !anchor) {
     return null;
   }
 
-  const container = map.getContainer();
-  const anchor = tooltipAnchor(map.project([sample.longitude, sample.latitude]), container, size);
   const kind = surfaceSummary ? surfaceKindAt(surfaceSummary, sample.distanceMetres) : null;
 
   return (
     <Marker
+      // MapLibre's `Marker` has no way to change an existing instance's
+      // anchor — `react-map-gl` re-applies position and offset on every
+      // render but constructs the anchor once and never revisits it. Keying
+      // on it forces React to tear down and rebuild the marker whenever the
+      // corner it opens from changes, rather than silently keeping the first
+      // one it was ever given.
+      key={anchor}
       longitude={sample.longitude}
       latitude={sample.latitude}
       anchor={anchor}
@@ -553,14 +566,19 @@ export interface RouteOverlayProps {
    * object `RouteProfile` receives: windowed while the chart is zoomed into a
    * stretch, the whole route otherwise.
    *
-   * The tooltip's sample (elevation, gradient, band, and this position's own
-   * coordinates) is read from this rather than from `profile` above, because a
-   * windowed profile resamples the stretch on show at the same count `profile`
-   * samples the whole route at — finer near a short climb, coarser near a long
-   * one — so the two can report a different gradient at the same distance.
-   * Reading whichever one the chart is reading is what keeps the tooltip from
-   * disagreeing with the readout it stands in for. Absent falls back to
-   * `profile`, which is what an unzoomed chart already reads too.
+   * The tooltip's content (elevation, gradient, band) is read from this in
+   * preference to `profile` above, because a windowed profile resamples the
+   * stretch on show at the same count `profile` samples the whole route at —
+   * finer near a short climb, coarser near a long one — so the two can report
+   * a different gradient at the same distance. Reading whichever one the
+   * chart is reading is what keeps the tooltip from disagreeing with the
+   * readout it stands in for.
+   *
+   * The position dot never reads this: it tracks `profile` regardless, so
+   * hovering the dimmed route outside the zoomed stretch still moves it — a
+   * windowed profile has no sample to give there at all. The tooltip falls
+   * back to that same whole-route sample outside the window, which the chart
+   * has nothing to disagree with in the first place.
    */
   activeProfile?: Profile | null;
   /** Shared with the elevation chart, in metres from the start of the route. */
@@ -699,15 +717,27 @@ export function RouteOverlay({
     [routeSlices, dimmed],
   );
 
-  // The one sample the map, the halo and dot, and the tooltip all read the
-  // position from, so none of them can disagree about where it is. Read from
-  // whichever profile the chart itself is showing — see `activeProfile` — so a
-  // zoomed chart's finer resampling is what the tooltip agrees with, not the
-  // whole route's coarser one.
-  const sampleSource = activeProfile ?? profile;
+  // The dot's own sample: the whole route, in or out of any zoom window. The
+  // map keeps drawing the rest of the route, dimmed, outside the window, and
+  // a hover there still has ground to answer for — the same reason `profile`
+  // (never the windowed one) is what `HoverLink` reads from.
   const activeSample = useMemo(
-    () => (sampleSource && activeMetres !== null ? sampleAt(sampleSource, activeMetres) : null),
-    [sampleSource, activeMetres],
+    () => (profile && activeMetres !== null ? sampleAt(profile, activeMetres) : null),
+    [profile, activeMetres],
+  );
+
+  // The tooltip's own sample: whichever profile the chart is actually
+  // showing, read when the position falls inside it — this is what lets the
+  // tooltip agree with the readout exactly rather than merely approximately,
+  // since a windowed profile resamples its stretch at a different density
+  // than the whole route does. Outside a zoom window the chart has nothing to
+  // say either, so this falls back to the whole-route sample above, which is
+  // still an honest answer for ground the chart is not currently showing.
+  const contentSample = useMemo(
+    () =>
+      (activeProfile && activeMetres !== null ? sampleAt(activeProfile, activeMetres) : null) ??
+      activeSample,
+    [activeProfile, activeMetres, activeSample],
   );
 
   // The position shared with the elevation chart. An empty collection keeps the
@@ -906,9 +936,9 @@ export function RouteOverlay({
           paint={{ "circle-radius": 5, "circle-color": accent }}
         />
       </Source>
-      {activeSample && profile ? (
+      {activeSample && contentSample && profile ? (
         <PositionTooltip
-          sample={activeSample}
+          sample={contentSample}
           endMetres={profile.endMetres}
           surfaceSummary={surfaceSummary}
           announce={profileCollapsed}
