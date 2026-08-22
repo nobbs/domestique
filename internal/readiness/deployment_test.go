@@ -171,12 +171,15 @@ func TestTheDeployJobInstallsTheScriptBeforeDeploying(t *testing.T) {
 func TestTheDeployScriptRefusesAnUninstallableScript(t *testing.T) {
 	script := readRepositoryFile(t, "deploy/domestique-deploy.sh")
 
-	install := script[strings.Index(script, "install_self() {"):]
+	start := strings.Index(script, "install_self() {")
+	require.NotEqual(t, -1, start, "the script must have an install_self to constrain")
+	install := script[start:]
 
 	assert.Contains(t, install, `[[ ! -s "${incoming}" ]]`, "an empty script is refused")
 	assert.Contains(t, install, `grep -q $'\r'`, "a terminal-mangled script is refused")
 	assert.Contains(t, install, `bash -n "${incoming}"`, "a script that does not parse is refused")
 	assert.Contains(t, install, `mv "${incoming}" "${self}"`, "the running file is renamed over, not truncated")
+	assert.Contains(t, install, `trap 'rm -f "${incoming}"' EXIT`, "no path leaves a temporary file on the host")
 }
 
 // Superseded images are pruned by the digest each image carries, not by the one

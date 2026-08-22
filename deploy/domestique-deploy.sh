@@ -117,9 +117,16 @@ esac
 # Answered before the checks below, because replacing the script is about the
 # script and not about whether this host currently runs the service.
 install_self() {
-  local self incoming reason="" before after
+  local self reason="" before after
   self="$(readlink -f "${BASH_SOURCE[0]}")"
+  # Deliberately not local: the trap below runs once this function's scope is
+  # gone, and it has to name a file that still exists then. Everything under
+  # `set -e` here exits the script rather than returning, so the trap is what
+  # keeps a failure from leaving a domestique-deploy.sh.XXXXXX beside the real
+  # one for an operator to puzzle over. After the rename there is nothing left
+  # at that name and the trap is a no-op.
   incoming="$(mktemp "${self}.XXXXXX")"
+  trap 'rm -f "${incoming}"' EXIT
   cat > "${incoming}"
 
   if [[ ! -s "${incoming}" ]]; then
@@ -133,13 +140,9 @@ install_self() {
   elif ! bash -n "${incoming}" 2> /dev/null; then
     reason="it does not parse"
   fi
-  if [[ -n "${reason}" ]]; then
-    rm -f "${incoming}"
-    die "refusing the script on stdin: ${reason}"
-  fi
+  [[ -z "${reason}" ]] || die "refusing the script on stdin: ${reason}"
 
   if cmp -s "${incoming}" "${self}"; then
-    rm -f "${incoming}"
     log "deploy script is already current"
     return 0
   fi
