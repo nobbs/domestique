@@ -25,7 +25,7 @@ func TestAnnotateClassifiesTheStagesAfterOneThatFailed(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 2, classified)
 	assert.Equal(t, 1, failed)
-	assert.Contains(t, cache.stored, int64(3), "the stage after the failure was never classified")
+	assert.Contains(t, cache.stored, testKey(3), "the stage after the failure was never classified")
 }
 
 // Until a first index has been built there is nothing to read, and recording
@@ -46,8 +46,8 @@ func TestAnnotateDoesNothingWithoutAnIndex(t *testing.T) {
 func TestAnnotateSkipsAStageAlreadyClassifiedAgainstItsGeometry(t *testing.T) {
 	source := &fakeSource{generation: "abc123"}
 	cache := newFakeCache()
-	cache.hashes[1] = "hash-1"
-	cache.generations[1] = "abc123"
+	cache.hashes[testKey(1)] = "hash-1"
+	cache.generations[testKey(1)] = "abc123"
 	annotator := NewAnnotator(source, cache)
 
 	classified, failed, err := annotator.Annotate(t.Context(), testStages(t, 1, 2))
@@ -63,8 +63,8 @@ func TestAnnotateSkipsAStageAlreadyClassifiedAgainstItsGeometry(t *testing.T) {
 func TestAnnotateReclassifiesAStageMeasuredAgainstAnOlderIndex(t *testing.T) {
 	source := &fakeSource{generation: "def456"}
 	cache := newFakeCache()
-	cache.hashes[1] = "hash-1"
-	cache.generations[1] = "abc123"
+	cache.hashes[testKey(1)] = "hash-1"
+	cache.generations[testKey(1)] = "abc123"
 	annotator := NewAnnotator(source, cache)
 
 	classified, failed, err := annotator.Annotate(t.Context(), testStages(t, 1))
@@ -72,7 +72,7 @@ func TestAnnotateReclassifiesAStageMeasuredAgainstAnOlderIndex(t *testing.T) {
 	assert.Equal(t, 1, classified)
 	assert.Zero(t, failed)
 	assert.True(t, source.asked[1], "kept a classification measured against a retired index")
-	assert.Equal(t, "def456", cache.generations[1], "the cached generation was not moved forward")
+	assert.Equal(t, "def456", cache.generations[testKey(1)], "the cached generation was not moved forward")
 }
 
 func testStages(t *testing.T, routeIDs ...int64) []route.Stage {
@@ -121,34 +121,46 @@ func (s *fakeSource) Ways(_ context.Context, points []route.Point) ([]Way, error
 	return []Way{{ID: routeID, Kind: KindAsphalt, Line: line}}, nil
 }
 
+// fakeCache keys on the whole stage identity rather than the route ID alone.
+// The cache it stands in for is addressed by provider, route, and stage order,
+// so a fake that dropped any of the three would answer for a stage it was never
+// asked about — two providers sharing a route ID, or two stages under one
+// route, would read each other's classification and the test would not notice.
 type fakeCache struct {
-	hashes      map[int64]string
-	generations map[int64]string
-	stored      map[int64][]byte
+	hashes      map[route.Key]string
+	generations map[route.Key]string
+	stored      map[route.Key][]byte
 }
 
 func newFakeCache() *fakeCache {
 	return &fakeCache{
-		hashes:      make(map[int64]string),
-		generations: make(map[int64]string),
-		stored:      make(map[int64][]byte),
+		hashes:      make(map[route.Key]string),
+		generations: make(map[route.Key]string),
+		stored:      make(map[route.Key][]byte),
 	}
 }
 
 func (c *fakeCache) StageSurfaceHash(
-	_ context.Context, _ route.Provider, routeID int64, _ int,
+	_ context.Context, provider route.Provider, routeID int64, stageOrder int,
 ) (contentHash, generation string, found bool, err error) {
-	hash, cached := c.hashes[routeID]
+	key := route.NewKey(provider, routeID, stageOrder)
+	hash, cached := c.hashes[key]
 
-	return hash, c.generations[routeID], cached, nil
+	return hash, c.generations[key], cached, nil
 }
 
 func (c *fakeCache) StoreStageSurface(
-	_ context.Context, _ route.Provider, routeID int64, _ int, contentHash, generation string, ranges []byte, _ float64,
+	_ context.Context, provider route.Provider, routeID int64, stageOrder int, contentHash, generation string, ranges []byte, _ float64,
 ) error {
-	c.hashes[routeID] = contentHash
-	c.generations[routeID] = generation
-	c.stored[routeID] = ranges
+	key := route.NewKey(provider, routeID, stageOrder)
+	c.hashes[key] = contentHash
+	c.generations[key] = generation
+	c.stored[key] = ranges
 
 	return nil
+}
+
+// testKey is the identity testStages gives a stage built from a route ID.
+func testKey(routeID int64) route.Key {
+	return route.NewKey(route.ProviderVeloPlanner, routeID, 1)
 }
