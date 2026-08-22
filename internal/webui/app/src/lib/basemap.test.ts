@@ -89,6 +89,15 @@ describe("basemapFor", () => {
   it("loads the first entry, whatever else is offered", () => {
     expect(basemapFor(configOf(satellite, streets), true).styleUrl).toBe(IMAGERY);
   });
+
+  // Unreachable through the service, which refuses an empty list at startup, and
+  // unreachable through the parser, which refuses one on the wire. Asserted all
+  // the same, because "there is always an entry" is a claim about two other
+  // files rather than about this one, and a total function is what keeps a map
+  // that lost its list from becoming a page that throws.
+  it("names nothing where nothing is offered", () => {
+    expect(basemapFor(configOf(), false)).toEqual({ styleUrl: "", dark: false });
+  });
 });
 
 describe("usePrefersDarkScheme", () => {
