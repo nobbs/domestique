@@ -48,15 +48,6 @@ const DEV_SERVER_URL = "http://localhost:5173";
 const SERVICE_URL = `http://127.0.0.1:${process.env.DOMESTIQUE_DEMO_PORT ?? "8082"}`;
 
 /**
- * Whether this run is being measured, which `scripts/coverage.ts` decides.
- *
- * A measured run is the `dev-server` project alone — the `bundle` project drives
- * minified build output that cannot be attributed back to `src/**` — so it does
- * not need the production bundle the demo would otherwise build first.
- */
-const measuringCoverage = process.env.WEBUI_COVERAGE_DIR !== undefined;
-
-/**
  * What narrates the run: `list` in a terminal, `github` on a runner.
  *
  * `github` is the only built-in reporter that emits `::error` workflow commands,
@@ -137,9 +128,8 @@ export default defineConfig({
   webServer: {
     // --with-bundle builds the browser UI before the demo API is compiled, so the
     // bundle the bundle project drives is the current one rather than whatever a
-    // previous build left embedded. A coverage run drives only the dev server, so
-    // it skips a production build it would never look at.
-    command: measuringCoverage ? "./dev/demo.sh" : "./dev/demo.sh --with-bundle",
+    // previous build left embedded.
+    command: "./dev/demo.sh --with-bundle",
     cwd: "../../..",
     // The dev server is the last thing `dev/demo.sh` starts, and it starts it only
     // after the API answers its own health check, so waiting here waits for both.

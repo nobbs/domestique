@@ -323,10 +323,7 @@ jobs:
   coverage:
     name: Coverage
     runs-on: ubuntu-24.04
-    # Measuring the UI means running the browser suite, so this job carries the
-    # same cost the UI job does: a Chromium download, a demo stack to build, and
-    # a software-rendered map to drive serially.
-    timeout-minutes: 25
+    timeout-minutes: 10
     needs: changes
     # Deliberately unfiltered: this job runs for every pull request and every
     # push, including one that touches only documentation.
@@ -343,15 +340,12 @@ jobs:
     # forward, so a report that arrived with only one of them would leave the
     # other's status describing a commit that is no longer the one under review.
     #
-    # The browser half of the UI number is collected here rather than handed over
-    # from the UI job, and that is a correctness decision rather than a tidiness
-    # one. The UI job is path-filtered; this one is not. A `ui` flag assembled
-    # from a filtered job would mean different things on different commits — the
-    # tree as Vitest alone sees it where that job did not run, and both suites
-    # where it did — and `patch.ui` compares a head report against a base one. It
-    # cannot tolerate the two having been measured by different sets of jobs: the
-    # comparison would pass or fail on which jobs ran rather than on the change.
-    # The cost is that a documentation-only pull request pays for the browser too.
+    # Both halves are unit suites: `go test` and Vitest, no browser and no demo
+    # stack. The UI number used to include the browser suite, measured here
+    # rather than in the path-filtered UI job so that the `ui` flag meant the
+    # same thing on every commit — but that cost around three minutes on every
+    # pull request, this one included, and it is what set the critical path. The
+    # browser suite still runs, in the UI job, for what it is actually for.
 
     permissions:
       contents: read
@@ -394,10 +388,6 @@ jobs:
           restore-keys: |
             pnpm-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-
             pnpm-${{ runner.os }}-
-      - name: Install the browser
-        # The UI half of the measurement drives the whole page in real Chromium.
-        # Without --with-deps, for the reason the UI job gives.
-        run: mise run --force ui-browser-install
       - name: Measure coverage
         run: mise run --force coverage
       # Each upload names exactly the one file it may send. disable_search and
@@ -430,17 +420,6 @@ jobs:
           disable_search: true
           plugins: noop
           fail_ci_if_error: false
-      # This job drives the browser too, through `coverage-ui`, so it leaves the
-      # same trail behind the same kind of failure. See the UI job's upload for
-      # why it is worth keeping; the name is what tells the two apart.
-      - name: Upload the browser suite's failure artefacts
-        if: failure()
-        # v7.0.1
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: playwright-coverage
-          path: .playwright/
-          retention-days: 7
 
   build:
     name: Build
