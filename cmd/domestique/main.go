@@ -115,7 +115,10 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("creating sync service: %w", err)
 	}
-	reporter, err := syncservice.NewReporter(reconciler, store, notifier)
+	reporter, err := syncservice.NewReporter(reconciler, store, notifier, syncservice.SuccessNotification{
+		Policy:   syncservice.SuccessPolicy(settings.Notifications.Success.Policy),
+		Interval: settings.Notifications.Success.DigestInterval,
+	})
 	if err != nil {
 		return fmt.Errorf("creating sync reporter: %w", err)
 	}

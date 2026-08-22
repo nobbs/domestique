@@ -20,6 +20,17 @@ type RunState interface {
 	RecordTargetRun(ctx context.Context, targetID string, finishedAt time.Time, outcome, detail string) error
 	LastFailureNotification(ctx context.Context, category string) (sentAt time.Time, found bool, err error)
 	RecordFailureNotification(ctx context.Context, category string, sentAt time.Time) error
+	// LastPhaseOutcome returns the outcome of the phase's most recent recorded
+	// run, which is what tells a success that ends a failure apart from a
+	// routine one.
+	LastPhaseOutcome(ctx context.Context, phase string) (outcome string, found bool, err error)
+	// LastDigestNotification returns when the last digest was sent and the
+	// highest run it covered, which together bound the next one.
+	LastDigestNotification(ctx context.Context) (sentAt time.Time, lastRunID int64, found bool, err error)
+	RecordDigestNotification(ctx context.Context, sentAt time.Time, lastRunID int64) error
+	// ForEachSuccessfulRunAfter visits every successful run recorded after the
+	// given one, carrying the counts a digest totals and nothing else.
+	ForEachSuccessfulRunAfter(ctx context.Context, runID int64, visit func(id int64, phase string, created, updated, deleted int) error) error
 	SyncSchedule(ctx context.Context) (source, targets bool, err error)
 }
 
@@ -38,6 +49,7 @@ type Reporter struct {
 	// phase names the half being run right now, and is nil between the moment a
 	// run is accepted and the moment its first half starts.
 	phase     atomic.Pointer[Phase]
+	success   SuccessNotification
 	running   atomic.Bool
 	triggered stdsync.WaitGroup
 }
@@ -54,12 +66,15 @@ type Runner interface {
 }
 
 // NewReporter creates a reporting runner with explicit dependencies.
-func NewReporter(runner Runner, state RunState, notifier Notifier) (*Reporter, error) {
+func NewReporter(runner Runner, state RunState, notifier Notifier, success SuccessNotification) (*Reporter, error) {
 	if runner == nil || state == nil || notifier == nil {
 		return nil, errors.New("sync runner, run state, and notifier are required")
 	}
+	if err := success.validate(); err != nil {
+		return nil, err
+	}
 
-	return &Reporter{runner: runner, state: state, notifier: notifier, now: time.Now}, nil
+	return &Reporter{runner: runner, state: state, notifier: notifier, success: success, now: time.Now}, nil
 }
 
 // Run performs the scheduled synchronization: whichever phases the operator has
@@ -163,6 +178,11 @@ func (r *Reporter) runPhases(ctx context.Context, source, targets bool) Result {
 		r.enter(PhaseTargets)
 		result = r.run(ctx, r.runner.RunTargets)
 	}
+	// The digest is considered once the pass has recorded everything it did, so
+	// its window closes on a whole pass rather than between two halves.
+	if r.success.Policy == SuccessDigest {
+		r.notifyDigest(ctx, r.now().UTC())
+	}
 	// Enrichment comes after everything a rider is waiting for, and only when
 	// this pass stored something new to enrich.
 	if sourceStored {
@@ -191,6 +211,9 @@ func (r *Reporter) run(ctx context.Context, phase func(context.Context) Result) 
 // state-delivery failures never rewrite the outcome they describe.
 func (r *Reporter) record(ctx context.Context, startedAt time.Time, result *Result) Result {
 	finishedAt := r.now().UTC()
+	// Ask before recording. The question is what the phase did last, and this
+	// run is about to become the answer to it.
+	recovered := result.Outcome == OutcomeSucceeded && r.recovered(ctx, result.Phase)
 	reference, err := r.state.RecordSyncRun(
 		ctx,
 		string(result.Phase),
@@ -210,9 +233,7 @@ func (r *Reporter) record(ctx context.Context, startedAt time.Time, result *Resu
 
 	switch result.Outcome {
 	case OutcomeSucceeded:
-		if err := r.notifier.Send(ctx, "Domestique sync", successMessage(result, reference)); err != nil {
-			return *result
-		}
+		r.notifySuccess(ctx, result, reference, recovered)
 	case OutcomeFailed, OutcomeBlocked:
 		r.notifyFailure(ctx, result, reference, finishedAt)
 	}

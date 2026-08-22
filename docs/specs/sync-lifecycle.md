@@ -56,7 +56,8 @@ implementation detail.
 
 Every recorded run carries an opaque reference: random bytes, meaningless on
 their own, and the one thing about a run that may be said out loud. It is what a
-notification names and what an operator matches a served record against.
+notification about a single run names and what an operator matches a served
+record against. A message that is about no single run — a digest — names none.
 
 Run records are the only history this service keeps, and a service that runs
 every hour would otherwise grow them forever. They are bounded to a fixed number
@@ -655,19 +656,75 @@ one-time, identity-bound, expiring state is what protects it.
 
 ## Notifications
 
-Every terminal run updates the stored run record. A success sends one Pushover
-message carrying the counts its half actually produced. The first occurrence of a
+Every terminal run updates the stored run record. The first occurrence of a
 failure category in a half sends one failure message; matching failures in that
 half are suppressed for six hours. The first following success is the recovery
 signal. Suppression is keyed by half and category together: the same category
 failing in both halves is two problems, and each is worth one alert.
 
+### The success policy
+
+`notifications.success_policy` decides what a *routine* success sends. A routine
+success is one whose half's previous recorded run also succeeded; the recovery
+signal is not routine, and neither is a failure or a blocked run. No policy can
+suppress those three, which is the point of separating them.
+
+| Policy | A routine success sends |
+| --- | --- |
+| `every` | one message carrying the counts that half actually produced |
+| `quiet` | nothing |
+| `digest` | nothing directly; it is totalled into the next digest |
+
+Whether a success is a recovery is read from the half's own previous recorded
+run, so the answer survives a restart and cannot drift from the history an
+operator reads back in `GET /v1/sync/runs`. Any recorded outcome other than a
+success makes the next one a recovery, not only a failure or a blocked run: a
+half left needing onboarding records that it is not ready and notifies nothing,
+so the alert that preceded it is still open and the success that follows is what
+closes it. A history that cannot be read is treated as a recovery: one message
+too many costs an operator a line, and a withheld recovery costs them the end of
+an alert they were sent.
+
+### The digest
+
+Under `digest`, one aggregate message covers each `notifications.digest_interval`.
+It carries how many runs of each half succeeded in the period and the totals of
+the routes they created, updated, and deleted. It names no route, no target, no
+run reference, and no failure category — a digest is counts and the period they
+cover, and nothing that identifies what was touched.
+
+The digest is sent by the first pass to finish after the interval elapses,
+rather than by a timer of its own, so a service that is not running sends no
+empty messages. It is considered once per pass, after both halves are recorded,
+so a window never closes between the two halves of one pass and leaves the
+second reported in no digest at all.
+
+An interval that no run succeeded in sends nothing and still moves the window
+on. Leaving it where it was would report two intervals of work under one
+interval's heading, and an all-zero message would defeat the policy the operator
+chose it for.
+
+The first digest of a newly configured policy sends nothing and starts the
+clock. The alternative is an opening message covering however much history the
+database happens to hold, which is not the period the operator asked for. The
+window it starts is durable and belongs to the digest, not to the policy in
+force: switching away from `digest` and back resumes from the last window this
+service closed rather than starting a new one, so the runs in between are
+reported in the first digest that follows — as far back as the retained run
+history reaches. A digest totals recorded runs and can report no run that
+pruning has already removed, which is what the upper bound on the period is for
+and what a long spell under another policy can still outrun.
+
+That window is bounded by run identity rather than by the clock, because two
+runs of one pass are recorded within the same second and a timestamp cannot say
+which of them a digest already covered.
+
 Notification content contains only the run result, target count, aggregate
-counts, a safe failure category, and the recorded run's opaque reference. It
-never contains a route title, source identity, Wahoo identity, credential,
-token, secret path, or upstream body. The reference says which run the message
-is about without saying anything about it, and resolves to that run's record in
-`GET /v1/sync/runs`.
+counts, a safe failure category, and — for a message about a single run — that
+run's opaque reference. It never contains a route title, source identity, Wahoo
+identity, credential, token, secret path, or upstream body. The reference says
+which run the message is about without saying anything about it, and resolves to
+that run's record in `GET /v1/sync/runs`.
 
 ## Required tests
 
@@ -696,4 +753,11 @@ The implementation test suite must cover at least:
   did not issue, staying bounded as runs accumulate while keeping the newest run
   of each half, and naming runs recorded before references existed; and
 - JSON responses and Pushover messages containing no secret or raw upstream
-  data.
+  data;
+- each success policy delivering what it states for a routine success, while
+  `quiet` and `digest` still deliver failures, blocked runs, and the first
+  success that ends one — including across a half left needing onboarding; and
+- a digest totalling one interval of successful runs, carrying no run reference
+  or target identity, starting its clock without reporting prior history, and
+  passing over an interval that nothing succeeded in without leaving its runs to
+  be counted twice.

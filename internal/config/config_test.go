@@ -147,6 +147,30 @@ func TestLoadDefaultsToPushoversOwnOrigin(t *testing.T) {
 	assert.Equal(t, defaultPushoverURL, settings.Notifications.Pushover.BaseURL, "Notifications.Pushover.BaseURL")
 }
 
+// An operator who says nothing about notification volume keeps the per-run
+// message this service has always sent. A quiet default would silently change
+// how much a running deployment reports.
+func TestLoadDefaultsToNotifyingEverySuccess(t *testing.T) {
+	configPath, _ := writeValidConfiguration(t, t.TempDir())
+	t.Setenv(configFileEnv, configPath)
+
+	settings, err := Load()
+	require.NoError(t, err)
+	assert.Equal(t, SuccessPolicyEvery, settings.Notifications.Success.Policy, "Notifications.Success.Policy")
+	assert.Equal(t, defaultDigestInterval, settings.Notifications.Success.DigestInterval, "Notifications.Success.DigestInterval")
+}
+
+func TestLoadReadsAConfiguredSuccessPolicy(t *testing.T) {
+	configPath, _ := writeValidConfiguration(t, t.TempDir())
+	appendToFile(t, configPath, "\n[notifications]\nsuccess_policy = \"digest\"\ndigest_interval = \"12h\"\n")
+	t.Setenv(configFileEnv, configPath)
+
+	settings, err := Load()
+	require.NoError(t, err)
+	assert.Equal(t, SuccessPolicyDigest, settings.Notifications.Success.Policy, "Notifications.Success.Policy")
+	assert.Equal(t, 12*time.Hour, settings.Notifications.Success.DigestInterval, "Notifications.Success.DigestInterval")
+}
+
 // A development environment overrides the origin to keep a placeholder token off
 // the real service, so an override has to survive loading intact.
 func TestLoadKeepsAnOverriddenPushoverOrigin(t *testing.T) {
@@ -377,6 +401,32 @@ func TestLoadRejectsInvalidConfiguration(t *testing.T) {
 				replaceInFile(t, path, "interval = \"1h\"", "interval = \"2h\"")
 			},
 			want: "must equal 1h",
+		},
+		{
+			name: "unknown success policy",
+			mutate: func(t *testing.T, path string) {
+				t.Helper()
+				appendToFile(t, path, "\n[notifications]\nsuccess_policy = \"silent\"\n")
+			},
+			want: "notifications.success_policy must be every, quiet, or digest",
+		},
+		{
+			name: "digest policy without a period",
+			mutate: func(t *testing.T, path string) {
+				t.Helper()
+				appendToFile(t, path, "\n[notifications]\nsuccess_policy = \"digest\"\ndigest_interval = \"0s\"\n")
+			},
+			want: "notifications.digest_interval must be positive",
+		},
+		{
+			// A period the recorded run history does not reach back over would
+			// report a total missing every run already pruned from under it.
+			name: "digest period beyond the recorded history",
+			mutate: func(t *testing.T, path string) {
+				t.Helper()
+				appendToFile(t, path, "\n[notifications]\nsuccess_policy = \"digest\"\ndigest_interval = \"169h\"\n")
+			},
+			want: "notifications.digest_interval must not exceed 168h0m0s",
 		},
 	}
 

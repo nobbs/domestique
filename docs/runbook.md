@@ -26,9 +26,13 @@ does not distinguish two situations that need different answers. Fetching it
 needs the same Cloudflare Access assertion the page carries, so it is read most
 easily from the browser at `/v1/status`.
 
-**Pushover.** Every terminal run notifies. A success carries its counts. A
-failure arrives titled `Domestique sync failed` with a body naming the half and
-one stable category:
+**Pushover.** A new failure notifies — the same one again is suppressed for the
+six hours described below — and a success notifies as far as
+`notifications.success_policy` allows: `every` sends one message per successful
+run, `quiet` sends none while the service is healthy, and `digest` replaces them
+with one aggregate message per `notifications.digest_interval`. A success
+carries its counts. A failure arrives titled `Domestique sync failed` with a
+body naming the half and one stable category:
 
 ```text
 targets failed: deletion_limit
@@ -36,8 +40,11 @@ targets failed: deletion_limit
 
 The first occurrence of a category in a half is sent; matching failures in that
 half are then suppressed for six hours, and the first following success is the
-recovery signal. **Silence is not health** — after a first alert, the status
-page's timestamps are the only thing that tells you whether anything has run.
+recovery signal. The recovery signal is sent under every success policy, so a
+quiet deployment still tells you when an alert is over. **Silence is not
+health** — after a first alert, the status page's timestamps are the only thing
+that tells you whether anything has run, and under `quiet` or `digest` silence
+is also what a healthy service sounds like.
 
 **The readiness probe**, on the host, over loopback:
 

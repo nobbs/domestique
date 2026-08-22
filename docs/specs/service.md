@@ -505,7 +505,12 @@ delete Wahoo routes.
 
 Every run records a terminal outcome. Pushover receives:
 
-- a concise aggregate success notification after every successful sync; and
+- a concise aggregate success notification after a successful sync, as much of
+  it as the configured success policy delivers — every run, none while healthy,
+  or one aggregate digest per period;
+- the first success following any run that did not succeed — a failure, a
+  blocked run, or a half left needing onboarding — whatever that policy says;
+  and
 - the first failure notification immediately, followed by suppression of
   identical failures for six hours.
 
