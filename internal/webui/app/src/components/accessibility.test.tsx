@@ -13,8 +13,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { render } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { describe, it } from "vitest";
 import type { Position, Route } from "../api/types";
@@ -164,18 +163,20 @@ describe("accessibility", () => {
   });
 
   it("holds for the map credit, folded and unfolded", async () => {
+    // Both halves, because the folded one is a button standing on its own with
+    // the text it names no longer in the document.
     for (const expanded of [true, false]) {
       const { container, unmount } = render(
         <QueryClientProvider client={new QueryClient()}>
-          <MapCredits styleUrl={undefined} extra="Surface data © OpenStreetMap contributors" />
+          <MapCredits
+            styleUrl={undefined}
+            extra="Surface data © OpenStreetMap contributors"
+            choice={expanded}
+            onChoiceChange={() => {}}
+          />
         </QueryClientProvider>,
       );
 
-      // It opens with the room the shared setup reports, which is the wide
-      // layout, so the folded half is reached through the button.
-      if (!expanded) {
-        await userEvent.click(screen.getByRole("button", { name: "Hide the map credit" }));
-      }
       await expectNoAxeViolations(container);
       unmount();
     }

@@ -19,10 +19,14 @@
  * bargain MapLibre's own `compact` attribution strikes. So the fold follows the
  * room available: open where there is space for the line, away where there is
  * not, and the reader's own choice wins over both.
+ *
+ * That choice is the caller's to hold. The credit is moved into MapLibre's own
+ * cluster by a portal once the map reports having one, and that move remounts
+ * this component — so a choice kept here would be reset by the map finishing
+ * loading, silently undoing a press the reader had already made.
  */
 
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
 import { useNarrowViewport } from "../lib/mediaQuery";
 
 /** What the button expands, named so the button can point at it. */
@@ -107,9 +111,19 @@ export interface MapCreditsProps {
    * whose share-alike terms oblige attribution wherever it is shown.
    */
   extra?: string | undefined;
+  /**
+   * Whether the reader folded the credit open or away, or `null` while they
+   * have said nothing and the viewport decides.
+   *
+   * Three states rather than two, because "not yet asked" is not the same
+   * answer as "asked for it folded": only the first should give way when the
+   * room available changes.
+   */
+  choice: boolean | null;
+  onChoiceChange: (choice: boolean) => void;
 }
 
-export function MapCredits({ styleUrl, extra }: MapCreditsProps) {
+export function MapCredits({ styleUrl, extra, choice, onChoiceChange }: MapCreditsProps) {
   const attribution = useQuery({
     queryKey: ["tile-attribution", styleUrl] as const,
     queryFn: () => fetchAttribution(styleUrl ?? ""),
@@ -118,13 +132,12 @@ export function MapCredits({ styleUrl, extra }: MapCreditsProps) {
   });
   /*
    * No choice yet means the viewport decides, and a choice outranks it from
-   * then on. Seeding state from the viewport instead would freeze whichever
-   * width the map first loaded at, and a phone that turns landscape would keep
-   * hiding a line it now has room for.
+   * then on. Reading the width once into a stored answer instead would freeze
+   * whichever width the map first loaded at, and a phone that turns landscape
+   * would keep hiding a line it now has room for.
    */
   const narrow = useNarrowViewport();
-  const [chosen, setChosen] = useState<boolean | null>(null);
-  const expanded = chosen ?? !narrow;
+  const expanded = choice ?? !narrow;
 
   const credits = [attribution.data, extra].filter(Boolean).join(" · ");
   if (credits === "") {
@@ -146,7 +159,7 @@ export function MapCredits({ styleUrl, extra }: MapCreditsProps) {
         // rather than hidden when folded and a control naming an element outside
         // the document is a reference a screen reader cannot follow.
         {...(expanded ? { "aria-controls": CREDIT_TEXT_ID } : {})}
-        onClick={() => setChosen(!expanded)}
+        onClick={() => onChoiceChange(!expanded)}
       >
         <svg
           viewBox="0 0 12 12"

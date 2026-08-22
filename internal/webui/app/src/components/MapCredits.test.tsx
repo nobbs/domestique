@@ -10,19 +10,47 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { type ReactNode, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MapCredits, type MapCreditsProps } from "./MapCredits";
 
 const SURFACE_CREDIT = "Surface data © OpenStreetMap contributors";
 
-function show(props: Partial<MapCreditsProps> = {}) {
-  return render(
+/** What a caller supplies, the fold choice aside: that one is the caller's. */
+type CreditProps = Omit<MapCreditsProps, "choice" | "onChoiceChange">;
+
+/**
+ * Holds the fold choice, as the map does.
+ *
+ * The component reports a press rather than remembering it, so a test that
+ * presses the button needs somebody to report it to.
+ */
+function Held(props: Partial<CreditProps>) {
+  const [choice, setChoice] = useState<boolean | null>(null);
+
+  return (
+    <MapCredits
+      styleUrl={undefined}
+      extra={SURFACE_CREDIT}
+      {...props}
+      choice={choice}
+      onChoiceChange={setChoice}
+    />
+  );
+}
+
+function provided(children: ReactNode) {
+  return (
     <QueryClientProvider
       client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
     >
-      <MapCredits styleUrl={undefined} extra={SURFACE_CREDIT} {...props} />
-    </QueryClientProvider>,
+      {children}
+    </QueryClientProvider>
   );
+}
+
+function show(props: Partial<CreditProps> = {}) {
+  return render(provided(<Held {...props} />));
 }
 
 /**
@@ -92,6 +120,46 @@ describe("MapCredits", () => {
     await userEvent.click(screen.getByRole("button", { name: "Hide the map credit" }));
 
     expect(screen.queryByText(SURFACE_CREDIT)).not.toBeInTheDocument();
+  });
+
+  it("keeps the reader's choice when the map moves the credit into its cluster", async () => {
+    stubNarrowViewport();
+    /*
+     * The map draws the credit where it stands until the map reports having a
+     * control cluster, and into that cluster afterwards. React unmounts and
+     * remounts it across that switch, so a press made while the map was still
+     * loading would be undone by the map finishing — unless the choice is held
+     * outside, which is what this asserts.
+     */
+    function Moving() {
+      const [choice, setChoice] = useState<boolean | null>(null);
+      const [moved, setMoved] = useState(false);
+      const credit = (
+        <MapCredits
+          styleUrl={undefined}
+          extra={SURFACE_CREDIT}
+          choice={choice}
+          onChoiceChange={setChoice}
+        />
+      );
+
+      return (
+        <>
+          <button type="button" onClick={() => setMoved(true)}>
+            The map found its cluster
+          </button>
+          {moved ? <section>{credit}</section> : credit}
+        </>
+      );
+    }
+    render(provided(<Moving />));
+
+    await userEvent.click(screen.getByRole("button", { name: "Show the map credit" }));
+    expect(screen.getByText(SURFACE_CREDIT)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "The map found its cluster" }));
+
+    expect(screen.getByText(SURFACE_CREDIT)).toBeInTheDocument();
   });
 
   it("reads the credit out of the style document, as text, beside the surface one", async () => {
