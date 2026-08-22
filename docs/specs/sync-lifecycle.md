@@ -258,15 +258,14 @@ stops reporting that it can no longer be written to.
 ~~~mermaid
 flowchart TD
     Start["scheduled tick"] --> SourceOn{"source half switched on?"}
-    SourceOn -- yes --> Login["fresh VeloPlanner login"]
-    Login --> Inventory["fetch complete source inventory"]
-    Inventory --> Guard{"trusted and safe?"}
-    Guard -- no --> Block["record blocked source run and notify"]
-    Guard -- yes --> Store["store trusted inventory and geometry"]
+    SourceOn -- yes --> Inventory["read each configured source, independently"]
+    Inventory --> Guard{"a source trusted and safe?"}
+    Guard -- no --> Block["record that source blocked or failed, keep its last-known stages"]
+    Guard -- yes --> Store["store that source's inventory and geometry"]
     Store --> TargetsOn{"target half switched on?"}
-    SourceOn -- no --> TargetsOn
     Block --> TargetsOn
-    TargetsOn -- yes --> Read["read stored inventory"]
+    SourceOn -- no --> TargetsOn
+    TargetsOn -- yes --> Read["read the merged stored inventory"]
     Read --> Readable{"readable whole?"}
     Readable -- no --> StateFail["record failed target run and notify"]
     Readable -- yes --> A["reconcile target A"]
@@ -289,6 +288,38 @@ An inventory that cannot be read back whole fails the target half as a state
 failure and deletes nothing. A partial library is indistinguishable from a
 library whose missing stages are meant to be deleted, and the difference is not
 one a reconciler may guess at.
+
+### Multiple sources
+
+The source half reads every configured source in order, one at a time, and
+each source is its own attempt: one source's failure does not stop the others
+from being read, and never widens into a deletion of another source's stages.
+
+A source that is read and validated successfully has its own share of the
+stored inventory replaced wholesale, exactly as a single source always has. A
+source that fails — an unreachable or invalid read, or an empty result blocked
+by the gate below — keeps the stages it was last known to have, and those
+stages remain part of the merged inventory the target half reconciles from,
+authoritative-as-last-known rather than absent. Writing a failing source's
+successful half as though it were the whole run is exactly the destructive read
+[the safety rules](../../AGENTS.md) forbid, arriving through a second source.
+
+The empty-source deletion gate is evaluated per source, against that source's
+own prior stage count: a source that previously had stages and now reports
+none is blocked for that source alone unless the operator's empty-source
+acknowledgement is set, and every other configured source proceeds
+independently of it.
+
+A stage's identity already carries the provider that issued it, so two sources
+reporting the same route ID and stage order store as two distinct stages, not
+one — there is no cross-source collision to guard against.
+
+The run's result names which sources were read and which failed or were
+blocked, each against its own provider, plus the count of stages each
+contributed when it was read successfully. The run's own outcome and failure
+category are the worst of what its sources reported, in the same vocabulary a
+run has always used, and no per-stage detail crosses this boundary: a source
+result is a provider name, an outcome, a failure category, and a count.
 
 A source inventory is trusted only when the service has a fresh successful login,
 all listing pages complete, every new or changed route detail is valid, and each
@@ -735,6 +766,11 @@ The implementation test suite must cover at least:
 - missing or malformed source inventory causing zero Wahoo deletions;
 - an update failure causing zero deletions for its target;
 - a source removal of up to five owned stages and a sixth deletion being blocked;
+- one configured source failing while another succeeds, without the failing
+  source's last-known stages being deleted or the healthy source's read being
+  stopped;
+- the empty-source deletion gate blocking only the source that emptied out,
+  independently of a sibling source that still has stages;
 - manual Wahoo route preservation;
 - state loss adopting matching desired external IDs without deleting unknown
   routes;

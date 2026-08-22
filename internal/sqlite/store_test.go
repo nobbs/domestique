@@ -218,8 +218,8 @@ func TestStorePersistsTrustedInventoryAndTargetStages(t *testing.T) {
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.EnsureTargets(t.Context(), []string{"rider-a"}), "EnsureTargets()")
 	stage := storeTestStage(t, 1, 1, "revision", "content-hash")
-	require.NoError(t, store.StoreTrustedInventory(t.Context(), []route.Stage{stage}), "StoreTrustedInventory()")
-	count, err := store.TrustedInventoryCount(t.Context())
+	require.NoError(t, store.StoreTrustedInventory(t.Context(), route.ProviderVeloPlanner, []route.Stage{stage}), "StoreTrustedInventory()")
+	count, err := store.TrustedInventoryCount(t.Context(), route.ProviderVeloPlanner)
 	require.NoError(t, err, "TrustedInventoryCount()")
 	assert.Equal(t, 1, count, "TrustedInventoryCount()")
 	require.NoError(t, store.UpsertTargetStage(t.Context(), "rider-a", route.ProviderVeloPlanner, 1, 1, "revision", "content-hash", 42), "UpsertTargetStage()")
@@ -440,7 +440,7 @@ func TestStoreReadsTheTrustedInventoryBackAsStages(t *testing.T) {
 		{Longitude: 8.4, Latitude: 49.0, Elevation: &elevation},
 		{Longitude: 8.5, Latitude: 49.2},
 	})
-	require.NoError(t, store.StoreTrustedInventory(t.Context(), []route.Stage{stage}), "StoreTrustedInventory()")
+	require.NoError(t, store.StoreTrustedInventory(t.Context(), route.ProviderVeloPlanner, []route.Stage{stage}), "StoreTrustedInventory()")
 
 	stages, err := store.TrustedInventory(t.Context())
 	require.NoError(t, err, "TrustedInventory()")
@@ -457,6 +457,56 @@ func TestStoreReadsTheTrustedInventoryBackAsStages(t *testing.T) {
 	assert.Nil(t, points[1].Elevation, "the second point gained an elevation")
 }
 
+// Storing one provider's inventory must never disturb another's: a source
+// phase that reads several sources replaces each one's stored stages on its
+// own, so a source that failed to read this run keeps what it last had.
+func TestStoreTrustedInventoryIsScopedToItsProvider(t *testing.T) {
+	const secondProvider route.Provider = "second-provider"
+	store := openTestStore(t, testKey(1))
+	first := storeTestStage(t, 1, 1, "revision", "content-hash")
+	second, err := route.NewStage(
+		secondProvider, 1, 1, "revision", "Route", "",
+		[]route.Point{{Longitude: 8.4, Latitude: 49.0}, {Longitude: 8.401, Latitude: 49.001}},
+		"content-hash",
+	)
+	require.NoError(t, err, "NewStage()")
+	require.NoError(t, store.StoreTrustedInventory(t.Context(), route.ProviderVeloPlanner, []route.Stage{first}), "StoreTrustedInventory() first provider")
+	require.NoError(t, store.StoreTrustedInventory(t.Context(), secondProvider, []route.Stage{second}), "StoreTrustedInventory() second provider")
+
+	firstCount, err := store.TrustedInventoryCount(t.Context(), route.ProviderVeloPlanner)
+	require.NoError(t, err, "TrustedInventoryCount() first provider")
+	assert.Equal(t, 1, firstCount, "first provider count")
+	secondCount, err := store.TrustedInventoryCount(t.Context(), secondProvider)
+	require.NoError(t, err, "TrustedInventoryCount() second provider")
+	assert.Equal(t, 1, secondCount, "second provider count")
+
+	stages, err := store.TrustedInventory(t.Context())
+	require.NoError(t, err, "TrustedInventory()")
+	assert.ElementsMatch(t, []route.Key{first.Key(), second.Key()}, []route.Key{stages[0].Key(), stages[1].Key()}, "union of both providers")
+
+	// Replacing the first provider's inventory must not touch the second's.
+	replacement := storeTestStage(t, 2, 1, "replacement", "replacement-hash")
+	require.NoError(t, store.StoreTrustedInventory(t.Context(), route.ProviderVeloPlanner, []route.Stage{replacement}), "StoreTrustedInventory() replacing first provider")
+
+	secondCountAfter, err := store.TrustedInventoryCount(t.Context(), secondProvider)
+	require.NoError(t, err, "TrustedInventoryCount() second provider after replacement")
+	assert.Equal(t, 1, secondCountAfter, "second provider count is unaffected by the first provider's replacement")
+	_, _, secondGeometryFound, err := store.StageGeometry(t.Context(), secondProvider, 1, 1)
+	require.NoError(t, err, "StageGeometry() second provider")
+	assert.True(t, secondGeometryFound, "the second provider's geometry cache must survive the first provider's replacement")
+}
+
+// A stage claiming a provider other than the one it is being stored under
+// would let one source's write corrupt another's scoped share.
+func TestStoreRefusesATrustedInventoryStageUnderTheWrongProvider(t *testing.T) {
+	const secondProvider route.Provider = "second-provider"
+	store := openTestStore(t, testKey(1))
+	mismatched := storeTestStage(t, 1, 1, "revision", "content-hash")
+
+	err := store.StoreTrustedInventory(t.Context(), secondProvider, []route.Stage{mismatched})
+	require.Error(t, err, "StoreTrustedInventory() with a stage under the wrong provider")
+}
+
 // A partial library reads as a library whose missing stages should be deleted,
 // so a stage without geometry for its current hash fails the whole read.
 func TestStoreRefusesATrustedInventoryMissingGeometry(t *testing.T) {
@@ -465,7 +515,7 @@ func TestStoreRefusesATrustedInventoryMissingGeometry(t *testing.T) {
 		{Longitude: 8.4, Latitude: 49.0},
 		{Longitude: 8.5, Latitude: 49.2},
 	})
-	require.NoError(t, store.StoreTrustedInventory(t.Context(), []route.Stage{stage}), "StoreTrustedInventory()")
+	require.NoError(t, store.StoreTrustedInventory(t.Context(), route.ProviderVeloPlanner, []route.Stage{stage}), "StoreTrustedInventory()")
 	_, err := store.database.ExecContext(t.Context(), "DELETE FROM stage_geometry")
 	require.NoError(t, err, "clearing geometry cache")
 
@@ -482,7 +532,7 @@ func TestStoreReprocessesOneStageWithoutLosingItsRouteIdentity(t *testing.T) {
 		{Longitude: 8.4, Latitude: 49.0},
 		{Longitude: 8.5, Latitude: 49.2},
 	})
-	require.NoError(t, store.StoreTrustedInventory(t.Context(), []route.Stage{stage}), "StoreTrustedInventory()")
+	require.NoError(t, store.StoreTrustedInventory(t.Context(), route.ProviderVeloPlanner, []route.Stage{stage}), "StoreTrustedInventory()")
 	require.NoError(t, store.UpsertTargetStage(t.Context(), "rider-a", route.ProviderVeloPlanner, 7, 2, "revision", "encoded-hash", 4242), "UpsertTargetStage()")
 	require.NoError(t, store.StoreStageSurface(
 		t.Context(), route.ProviderVeloPlanner, 7, 2, "content-hash", "index-gen", []byte(`[{"kind":"asphalt","start_index":0,"end_index":1}]`), 100,
@@ -520,14 +570,14 @@ func TestStoreRewritesGeometryOfAReprocessedStage(t *testing.T) {
 		{Longitude: 8.4, Latitude: 49.0},
 		{Longitude: 8.5, Latitude: 49.2},
 	})
-	require.NoError(t, store.StoreTrustedInventory(t.Context(), []route.Stage{stage}), "StoreTrustedInventory()")
+	require.NoError(t, store.StoreTrustedInventory(t.Context(), route.ProviderVeloPlanner, []route.Stage{stage}), "StoreTrustedInventory()")
 	_, err := store.database.ExecContext(t.Context(), `
 		UPDATE stage_geometry SET route_name = 'stale name' WHERE route_id = 7 AND stage_order = 2
 	`)
 	require.NoError(t, err, "ageing the cached geometry")
 
 	// Without a request, an unchanged stage is left alone.
-	require.NoError(t, store.StoreTrustedInventory(t.Context(), []route.Stage{stage}), "StoreTrustedInventory()")
+	require.NoError(t, store.StoreTrustedInventory(t.Context(), route.ProviderVeloPlanner, []route.Stage{stage}), "StoreTrustedInventory()")
 	summary, _, _, err := store.StageGeometry(t.Context(), route.ProviderVeloPlanner, 7, 2)
 	require.NoError(t, err, "StageGeometry()")
 	// An unchanged stage is not rewritten, so the aged name is still there.
@@ -535,7 +585,7 @@ func TestStoreRewritesGeometryOfAReprocessedStage(t *testing.T) {
 
 	_, requestErr := store.RequestStageReprocess(t.Context(), route.ProviderVeloPlanner, 7, 2)
 	require.NoError(t, requestErr, "RequestStageReprocess()")
-	require.NoError(t, store.StoreTrustedInventory(t.Context(), []route.Stage{stage}), "StoreTrustedInventory() after request")
+	require.NoError(t, store.StoreTrustedInventory(t.Context(), route.ProviderVeloPlanner, []route.Stage{stage}), "StoreTrustedInventory() after request")
 	summary, _, _, err = store.StageGeometry(t.Context(), route.ProviderVeloPlanner, 7, 2)
 	require.NoError(t, err, "StageGeometry()")
 	assert.Equal(t, "Alpine loop", summary.RouteName, "the request did not rewrite the route name")
@@ -563,7 +613,7 @@ func TestStoreCountsOnlyClassificationsOfTheCurrentGeometry(t *testing.T) {
 	geometry := []route.Point{{Longitude: 8.4, Latitude: 49.0}, {Longitude: 8.5, Latitude: 49.2}}
 	first := storeTestStageWithGeometry(t, 7, 1, "revision", "hash-a", "Alpine loop", "Descent", geometry)
 	second := storeTestStageWithGeometry(t, 8, 1, "revision", "hash-b", "Coast road", "Return", geometry)
-	require.NoError(t, store.StoreTrustedInventory(t.Context(), []route.Stage{first, second}), "StoreTrustedInventory()")
+	require.NoError(t, store.StoreTrustedInventory(t.Context(), route.ProviderVeloPlanner, []route.Stage{first, second}), "StoreTrustedInventory()")
 
 	classified, total, err := store.SurfaceCoverage(t.Context())
 	require.NoError(t, err, "SurfaceCoverage()")
@@ -827,7 +877,7 @@ func TestStoreCachesStageGeometryForTheMapView(t *testing.T) {
 		{Longitude: 8.4, Latitude: 49.0, Elevation: &elevation},
 		{Longitude: 8.5, Latitude: 49.2},
 	})
-	require.NoError(t, store.StoreTrustedInventory(t.Context(), []route.Stage{stage}), "StoreTrustedInventory()")
+	require.NoError(t, store.StoreTrustedInventory(t.Context(), route.ProviderVeloPlanner, []route.Stage{stage}), "StoreTrustedInventory()")
 
 	summary, coordinates, found, err := store.StageGeometry(t.Context(), route.ProviderVeloPlanner, 7, 2)
 	require.NoError(t, err, "StageGeometry()")
@@ -853,7 +903,7 @@ func TestStoreCachesElevationStatistics(t *testing.T) {
 		})
 	}
 	stage := storeTestStageWithGeometry(t, 5, 1, "revision", "hash", "Climb", "", geometry)
-	require.NoError(t, store.StoreTrustedInventory(t.Context(), []route.Stage{stage}), "StoreTrustedInventory()")
+	require.NoError(t, store.StoreTrustedInventory(t.Context(), route.ProviderVeloPlanner, []route.Stage{stage}), "StoreTrustedInventory()")
 
 	summary, _, found, err := store.StageGeometry(t.Context(), route.ProviderVeloPlanner, 5, 1)
 	require.NoError(t, err, "StageGeometry()")
@@ -875,7 +925,7 @@ func TestStoreCachesElevationStatistics(t *testing.T) {
 func TestStoreReadsGeometryCachedBeforeElevationStatistics(t *testing.T) {
 	store := openTestStore(t, testKey(1))
 	stage := storeTestStage(t, 1, 1, "revision", "hash")
-	require.NoError(t, store.StoreTrustedInventory(t.Context(), []route.Stage{stage}), "StoreTrustedInventory()")
+	require.NoError(t, store.StoreTrustedInventory(t.Context(), route.ProviderVeloPlanner, []route.Stage{stage}), "StoreTrustedInventory()")
 	_, err := store.database.ExecContext(t.Context(),
 		`UPDATE stage_geometry SET ascent_metres = 0, max_gradient_percent = 0`)
 	require.NoError(t, err, "clearing statistics")
@@ -890,7 +940,7 @@ func TestStoreReadsGeometryCachedBeforeElevationStatistics(t *testing.T) {
 func TestStoreDoesNotRewriteUnchangedStageGeometry(t *testing.T) {
 	store := openTestStore(t, testKey(1))
 	stage := storeTestStage(t, 1, 1, "revision", "content-hash")
-	require.NoError(t, store.StoreTrustedInventory(t.Context(), []route.Stage{stage}), "StoreTrustedInventory()")
+	require.NoError(t, store.StoreTrustedInventory(t.Context(), route.ProviderVeloPlanner, []route.Stage{stage}), "StoreTrustedInventory()")
 	// A sentinel that a rewrite would necessarily overwrite. This is the
 	// write-amplification guarantee: an unchanged library must not rewrite the
 	// geometry cache on every scheduled run.
@@ -899,12 +949,12 @@ func TestStoreDoesNotRewriteUnchangedStageGeometry(t *testing.T) {
 		`UPDATE stage_geometry SET updated_at_unix = ?`, sentinel)
 	require.NoError(t, err, "seeding sentinel")
 
-	require.NoError(t, store.StoreTrustedInventory(t.Context(), []route.Stage{stage}), "second StoreTrustedInventory()")
+	require.NoError(t, store.StoreTrustedInventory(t.Context(), route.ProviderVeloPlanner, []route.Stage{stage}), "second StoreTrustedInventory()")
 	assert.EqualValues(t, sentinel, stageGeometryUpdatedAt(t, store, 1, 1),
 		"an unchanged sync rewrote the geometry cache")
 
 	changed := storeTestStage(t, 1, 1, "revision", "different-content-hash")
-	require.NoError(t, store.StoreTrustedInventory(t.Context(), []route.Stage{changed}), "changed StoreTrustedInventory()")
+	require.NoError(t, store.StoreTrustedInventory(t.Context(), route.ProviderVeloPlanner, []route.Stage{changed}), "changed StoreTrustedInventory()")
 	assert.NotEqualValues(t, sentinel, stageGeometryUpdatedAt(t, store, 1, 1),
 		"a changed content hash left the geometry cache untouched")
 }
@@ -913,8 +963,8 @@ func TestStorePrunesGeometryForStagesLeavingTheInventory(t *testing.T) {
 	store := openTestStore(t, testKey(1))
 	first := storeTestStage(t, 1, 1, "revision", "hash-one")
 	second := storeTestStage(t, 2, 1, "revision", "hash-two")
-	require.NoError(t, store.StoreTrustedInventory(t.Context(), []route.Stage{first, second}), "StoreTrustedInventory()")
-	require.NoError(t, store.StoreTrustedInventory(t.Context(), []route.Stage{first}), "second StoreTrustedInventory()")
+	require.NoError(t, store.StoreTrustedInventory(t.Context(), route.ProviderVeloPlanner, []route.Stage{first, second}), "StoreTrustedInventory()")
+	require.NoError(t, store.StoreTrustedInventory(t.Context(), route.ProviderVeloPlanner, []route.Stage{first}), "second StoreTrustedInventory()")
 
 	_, _, removedFound, removedErr := store.StageGeometry(t.Context(), route.ProviderVeloPlanner, 2, 1)
 	require.NoError(t, removedErr, "StageGeometry() for a removed stage")
@@ -931,7 +981,7 @@ func TestStoreListsStageSummaries(t *testing.T) {
 		{Longitude: 8.4, Latitude: 49.0},
 		{Longitude: 8.5, Latitude: 49.1},
 	})
-	require.NoError(t, store.StoreTrustedInventory(t.Context(), []route.Stage{stage}), "StoreTrustedInventory()")
+	require.NoError(t, store.StoreTrustedInventory(t.Context(), route.ProviderVeloPlanner, []route.Stage{stage}), "StoreTrustedInventory()")
 
 	var summaries []route.Summary
 	require.NoError(t, store.ForEachStageSummary(t.Context(), func(summary route.Summary) error {
@@ -948,7 +998,7 @@ func TestStoreListsStageSummaries(t *testing.T) {
 func TestStoreCachesStageSurfaceAgainstTheGeometryItDescribes(t *testing.T) {
 	store := openTestStore(t, testKey(1))
 	stage := storeTestStage(t, 7, 2, "revision", "content-hash")
-	require.NoError(t, store.StoreTrustedInventory(t.Context(), []route.Stage{stage}), "StoreTrustedInventory()")
+	require.NoError(t, store.StoreTrustedInventory(t.Context(), route.ProviderVeloPlanner, []route.Stage{stage}), "StoreTrustedInventory()")
 
 	_, _, found, err := store.StageSurfaceHash(t.Context(), route.ProviderVeloPlanner, 7, 2)
 	require.NoError(t, err, "StageSurfaceHash() before enrichment")
@@ -976,7 +1026,7 @@ func TestStoreCachesStageSurfaceAgainstTheGeometryItDescribes(t *testing.T) {
 func TestStoreHidesASurfaceMeasuredAgainstOtherGeometry(t *testing.T) {
 	store := openTestStore(t, testKey(1))
 	stage := storeTestStage(t, 1, 1, "revision", "current-hash")
-	require.NoError(t, store.StoreTrustedInventory(t.Context(), []route.Stage{stage}), "StoreTrustedInventory()")
+	require.NoError(t, store.StoreTrustedInventory(t.Context(), route.ProviderVeloPlanner, []route.Stage{stage}), "StoreTrustedInventory()")
 	require.NoError(t, store.StoreStageSurface(
 		t.Context(), route.ProviderVeloPlanner, 1, 1, "earlier-hash", "index-gen", []byte(testSurfaceRanges), 10,
 	), "StoreStageSurface()")
@@ -1003,7 +1053,7 @@ func TestStoreHidesASurfaceMeasuredAgainstOtherGeometry(t *testing.T) {
 func TestStoreKeepsASurfaceMeasuredAgainstAnEarlierIndex(t *testing.T) {
 	store := openTestStore(t, testKey(1))
 	stage := storeTestStage(t, 1, 1, "revision", "content-hash")
-	require.NoError(t, store.StoreTrustedInventory(t.Context(), []route.Stage{stage}), "StoreTrustedInventory()")
+	require.NoError(t, store.StoreTrustedInventory(t.Context(), route.ProviderVeloPlanner, []route.Stage{stage}), "StoreTrustedInventory()")
 	require.NoError(t, store.StoreStageSurface(
 		t.Context(), route.ProviderVeloPlanner, 1, 1, "content-hash", "earlier-generation", []byte(testSurfaceRanges), 10,
 	), "StoreStageSurface()")
@@ -1027,7 +1077,7 @@ func TestStoreKeepsASurfaceMeasuredAgainstAnEarlierIndex(t *testing.T) {
 func TestStoreReplacesAStageSurfaceRatherThanAccumulatingOne(t *testing.T) {
 	store := openTestStore(t, testKey(1))
 	stage := storeTestStage(t, 1, 1, "revision", "second-hash")
-	require.NoError(t, store.StoreTrustedInventory(t.Context(), []route.Stage{stage}), "StoreTrustedInventory()")
+	require.NoError(t, store.StoreTrustedInventory(t.Context(), route.ProviderVeloPlanner, []route.Stage{stage}), "StoreTrustedInventory()")
 	require.NoError(t, store.StoreStageSurface(t.Context(), route.ProviderVeloPlanner, 1, 1, "first-hash", "index-gen", []byte(`[]`), 1), "first StoreStageSurface()")
 	require.NoError(t, store.StoreStageSurface(
 		t.Context(), route.ProviderVeloPlanner, 1, 1, "second-hash", "index-gen", []byte(testSurfaceRanges), 2,
@@ -1046,7 +1096,7 @@ func TestStorePrunesSurfaceForStagesLeavingTheInventory(t *testing.T) {
 	store := openTestStore(t, testKey(1))
 	first := storeTestStage(t, 1, 1, "revision", "hash-one")
 	second := storeTestStage(t, 2, 1, "revision", "hash-two")
-	require.NoError(t, store.StoreTrustedInventory(t.Context(), []route.Stage{first, second}), "StoreTrustedInventory()")
+	require.NoError(t, store.StoreTrustedInventory(t.Context(), route.ProviderVeloPlanner, []route.Stage{first, second}), "StoreTrustedInventory()")
 	require.NoError(t, store.StoreStageSurface(
 		t.Context(), route.ProviderVeloPlanner, 1, 1, "hash-one", "index-gen", []byte(testSurfaceRanges), 10,
 	), "StoreStageSurface()")
@@ -1054,7 +1104,7 @@ func TestStorePrunesSurfaceForStagesLeavingTheInventory(t *testing.T) {
 		t.Context(), route.ProviderVeloPlanner, 2, 1, "hash-two", "index-gen", []byte(testSurfaceRanges), 10,
 	), "StoreStageSurface()")
 
-	require.NoError(t, store.StoreTrustedInventory(t.Context(), []route.Stage{first}), "second StoreTrustedInventory()")
+	require.NoError(t, store.StoreTrustedInventory(t.Context(), route.ProviderVeloPlanner, []route.Stage{first}), "second StoreTrustedInventory()")
 
 	_, _, removedFound, err := store.StageSurfaceHash(t.Context(), route.ProviderVeloPlanner, 2, 1)
 	require.NoError(t, err, "StageSurfaceHash() for a removed stage")
@@ -1068,13 +1118,13 @@ func TestStorePrunesSurfaceForStagesLeavingTheInventory(t *testing.T) {
 func TestStorePrunesSurfaceMeasuredAgainstReplacedGeometry(t *testing.T) {
 	store := openTestStore(t, testKey(1))
 	stage := storeTestStage(t, 1, 1, "revision", "hash-one")
-	require.NoError(t, store.StoreTrustedInventory(t.Context(), []route.Stage{stage}), "StoreTrustedInventory()")
+	require.NoError(t, store.StoreTrustedInventory(t.Context(), route.ProviderVeloPlanner, []route.Stage{stage}), "StoreTrustedInventory()")
 	require.NoError(t, store.StoreStageSurface(
 		t.Context(), route.ProviderVeloPlanner, 1, 1, "hash-one", "index-gen", []byte(testSurfaceRanges), 10,
 	), "StoreStageSurface()")
 
 	replanned := storeTestStage(t, 1, 1, "revision", "hash-two")
-	require.NoError(t, store.StoreTrustedInventory(t.Context(), []route.Stage{replanned}), "second StoreTrustedInventory()")
+	require.NoError(t, store.StoreTrustedInventory(t.Context(), route.ProviderVeloPlanner, []route.Stage{replanned}), "second StoreTrustedInventory()")
 
 	// The row goes rather than lingering as something to be matched around: the
 	// coordinate array its ranges address has been replaced.

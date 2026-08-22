@@ -97,6 +97,12 @@ func New(options *Options) (*Client, error) {
 	}, nil
 }
 
+// Provider names the upstream this client reads from, for the sync package's
+// set of configured sources.
+func (c *Client) Provider() route.Provider {
+	return route.ProviderVeloPlanner
+}
+
 // Inventory logs in with a new session and returns every non-empty source
 // route stage in stable source order.
 func (c *Client) Inventory(ctx context.Context) ([]route.Stage, error) {

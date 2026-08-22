@@ -85,6 +85,20 @@ type TargetResult struct {
 	Failure FailureCategory
 }
 
+// SourceResult is one configured source's own share of a source-phase read.
+//
+// One source's failure must not read as a claim about another: a run that
+// read one library and could not read the other is a partial failure, and
+// naming which source is which is what lets an operator tell them apart.
+type SourceResult struct {
+	Provider route.Provider
+	Outcome  Outcome
+	Failure  FailureCategory
+	// StageCount is how many stages this source contributed when it was read
+	// successfully. It stays zero for a source that failed or was blocked.
+	StageCount int
+}
+
 // Result contains aggregate, non-sensitive counts for one synchronization run.
 type Result struct {
 	// Phase names the half of a synchronization this result describes. The
@@ -94,7 +108,10 @@ type Result struct {
 	Failure FailureCategory
 	// Targets carries each slot's own outcome, in configured order. Only the
 	// target phase produces it, and only for the slots it actually attempted.
-	Targets      []TargetResult
+	Targets []TargetResult
+	// Sources carries each configured source's own outcome, in configured
+	// order. Only the source phase produces it.
+	Sources      []SourceResult
 	SourceStages int
 	Created      int
 	Updated      int
@@ -109,8 +126,11 @@ type Options struct {
 	AllowEmptySourceDeletion bool
 }
 
-// Source provides a complete, validated VeloPlanner inventory.
+// Source provides a complete, validated inventory of one provider's stages.
 type Source interface {
+	// Provider names the upstream this source reads. Every stage Inventory
+	// returns must carry this same provider.
+	Provider() route.Provider
 	Inventory(ctx context.Context) ([]route.Stage, error)
 }
 
@@ -153,8 +173,8 @@ type State interface {
 	RefreshToken(ctx context.Context, targetID string) (string, error)
 	ReplaceRefreshToken(ctx context.Context, targetID, refreshToken string) error
 	MarkNeedsReauthorization(ctx context.Context, targetID string) error
-	TrustedInventoryCount(ctx context.Context) (int, error)
-	StoreTrustedInventory(ctx context.Context, stages []route.Stage) error
+	TrustedInventoryCount(ctx context.Context, provider route.Provider) (int, error)
+	StoreTrustedInventory(ctx context.Context, provider route.Provider, stages []route.Stage) error
 	TrustedInventory(ctx context.Context) ([]route.Stage, error)
 	ForEachTargetStage(ctx context.Context, targetID string, visit func(provider route.Provider, routeID int64, stageOrder int, sourceRevision, contentHash string, wahooRouteID int64) error) error
 	UpsertTargetStage(ctx context.Context, targetID string, provider route.Provider, routeID int64, stageOrder int, sourceRevision, contentHash string, wahooRouteID int64) error
@@ -165,7 +185,7 @@ type State interface {
 // It has no dependency on HTTP, static configuration, or concrete adapters.
 type Service struct {
 	state                    State
-	source                   Source
+	sources                  []Source
 	processor                Processor
 	encoder                  Encoder
 	target                   Target
@@ -182,13 +202,13 @@ type Service struct {
 func New(
 	options *Options,
 	state State,
-	source Source,
+	sources []Source,
 	processor Processor,
 	encoder Encoder,
 	target Target,
 	annotator Annotator,
 ) (*Service, error) {
-	if options == nil || state == nil || source == nil || processor == nil || encoder == nil || target == nil {
+	if options == nil || state == nil || len(sources) == 0 || processor == nil || encoder == nil || target == nil {
 		return nil, errors.New("sync options and dependencies are required")
 	}
 	if len(options.TargetIDs) < 1 || len(options.TargetIDs) > 2 || options.MaxDeletionsPerTarget <= 0 || options.MaxDeletionsPerTarget > 5 {
@@ -207,9 +227,25 @@ func New(
 		seenTargetIDs[targetID] = struct{}{}
 	}
 
+	sourcesCopy := append([]Source(nil), sources...)
+	seenProviders := make(map[route.Provider]struct{}, len(sourcesCopy))
+	for _, source := range sourcesCopy {
+		if source == nil {
+			return nil, errors.New("sync sources must not be nil")
+		}
+		provider := source.Provider()
+		if provider == "" {
+			return nil, errors.New("sync source providers are required")
+		}
+		if _, found := seenProviders[provider]; found {
+			return nil, errors.New("sync source providers must be unique")
+		}
+		seenProviders[provider] = struct{}{}
+	}
+
 	return &Service{
 		state:                    state,
-		source:                   source,
+		sources:                  sourcesCopy,
 		processor:                processor,
 		encoder:                  encoder,
 		target:                   target,
@@ -220,13 +256,17 @@ func New(
 	}, nil
 }
 
-// RunSource reads the VeloPlanner library into stored state.
+// RunSource reads every configured source into stored state, one at a time.
 //
 // It contacts no target and needs no authorisation, so a library refresh keeps
-// working while a target waits to be reauthorised. What it stores is what the
-// target phase later reconciles, which is why the empty-source gate lives here:
-// refusing to overwrite a populated inventory with an empty one is what stops
-// the deletion before anything downstream can be told to perform it.
+// working while a target waits to be reauthorised. Each source is read and
+// stored independently: one source's failure does not stop the others from
+// being read, and only a source that was read successfully has its own stored
+// stages replaced. A source that failed keeps the stages it was last known to
+// have, which is why the empty-source gate is evaluated per source, against
+// that source's own prior count — refusing to overwrite a populated source
+// with an empty one is what stops the deletion before anything downstream can
+// be told to perform it.
 //
 // A concurrent run performs no work and returns OutcomeSkipped without altering
 // durable state.
@@ -236,35 +276,69 @@ func (s *Service) RunSource(ctx context.Context) Result {
 	}
 	defer s.running.Store(false)
 
-	trustedCount, err := s.state.TrustedInventoryCount(ctx)
-	if err != nil {
-		return Result{Phase: PhaseSource, Outcome: OutcomeFailed, Failure: FailureState}
+	result := Result{Phase: PhaseSource, Sources: make([]SourceResult, 0, len(s.sources))}
+	for _, source := range s.sources {
+		provider := source.Provider()
+		outcome, failure, stageCount := s.runOneSource(ctx, source, provider)
+		result.Sources = append(result.Sources, SourceResult{
+			Provider:   provider,
+			Outcome:    outcome,
+			Failure:    failure,
+			StageCount: stageCount,
+		})
+		result.SourceStages += stageCount
+		if failure == FailureNone {
+			continue
+		}
+		// An empty-source block is a guard doing its job, not a fault: it only
+		// overrides an outcome no source has failed yet.
+		if failure == FailureEmptySource && (result.Outcome == "" || result.Outcome == OutcomeBlocked) {
+			result.Outcome = OutcomeBlocked
+		} else {
+			result.Outcome = OutcomeFailed
+		}
+		if result.Failure == FailureNone {
+			result.Failure = failure
+		}
 	}
-	stages, err := s.source.Inventory(ctx)
+	if result.Outcome == "" {
+		result.Outcome = OutcomeSucceeded
+	}
+
+	return result
+}
+
+// runOneSource reads and stores one configured source's own share of the
+// trusted inventory, leaving every other source's stored stages untouched.
+func (s *Service) runOneSource(
+	ctx context.Context, source Source, provider route.Provider,
+) (Outcome, FailureCategory, int) {
+	trustedCount, err := s.state.TrustedInventoryCount(ctx, provider)
 	if err != nil {
-		return Result{Phase: PhaseSource, Outcome: OutcomeFailed, Failure: FailureSource}
+		return OutcomeFailed, FailureState, 0
+	}
+	stages, err := source.Inventory(ctx)
+	if err != nil {
+		return OutcomeFailed, FailureSource, 0
+	}
+	for _, stage := range stages {
+		if stage.Key().Provider() != provider {
+			return OutcomeFailed, FailureSource, 0
+		}
 	}
 	_, ordered, err := normalizeInventory(stages)
 	if err != nil {
-		return Result{Phase: PhaseSource, Outcome: OutcomeFailed, Failure: FailureSource}
+		return OutcomeFailed, FailureSource, 0
 	}
-	result := Result{Phase: PhaseSource, SourceStages: len(ordered)}
 	if len(ordered) == 0 && trustedCount > 0 && !s.allowEmptySourceDeletion {
-		result.Outcome = OutcomeBlocked
-		result.Failure = FailureEmptySource
-
-		return result
+		return OutcomeBlocked, FailureEmptySource, 0
 	}
 	exported := s.exportProfiles(ordered)
-	if err := s.state.StoreTrustedInventory(ctx, exported); err != nil {
-		result.Outcome = OutcomeFailed
-		result.Failure = FailureState
-
-		return result
+	if err := s.state.StoreTrustedInventory(ctx, provider, exported); err != nil {
+		return OutcomeFailed, FailureState, 0
 	}
-	result.Outcome = OutcomeSucceeded
 
-	return result
+	return OutcomeSucceeded, FailureNone, len(ordered)
 }
 
 // RunTargets reconciles the stored inventory onto every configured target.

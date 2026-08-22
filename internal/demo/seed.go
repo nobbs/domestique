@@ -13,7 +13,7 @@ import (
 // the package that consumes it, so a test can seed a fake and the demo does not
 // drag the SQLite adapter into anything that only wants the fixtures.
 type State interface {
-	StoreTrustedInventory(ctx context.Context, stages []route.Stage) error
+	StoreTrustedInventory(ctx context.Context, provider route.Provider, stages []route.Stage) error
 	StoreStageSurface(ctx context.Context, provider route.Provider, routeID int64, stageOrder int, contentHash, indexGeneration string, ranges []byte, matchedMetres float64) error
 	EnsureTargets(ctx context.Context, targetIDs []string) error
 	AuthorizeTarget(ctx context.Context, targetID, wahooUserID, refreshToken string) error
@@ -74,7 +74,7 @@ func Seed(ctx context.Context, state State, slots []Slot, now time.Time) error {
 	if err != nil {
 		return err
 	}
-	if storeErr := state.StoreTrustedInventory(ctx, stages); storeErr != nil {
+	if storeErr := state.StoreTrustedInventory(ctx, route.ProviderVeloPlanner, stages); storeErr != nil {
 		return fmt.Errorf("demo: storing inventory: %w", storeErr)
 	}
 

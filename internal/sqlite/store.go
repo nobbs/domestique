@@ -1048,22 +1048,33 @@ func (s *Store) ReplaceRefreshToken(ctx context.Context, targetID, refreshToken 
 }
 
 // TrustedInventoryCount returns the number of stages in the last fully
-// validated source inventory. Zero means there is no prior trusted stage.
-func (s *Store) TrustedInventoryCount(ctx context.Context) (int, error) {
+// validated inventory for one source. Zero means there is no prior trusted
+// stage for that provider.
+func (s *Store) TrustedInventoryCount(ctx context.Context, provider route.Provider) (int, error) {
 	var count int
-	if err := s.database.QueryRowContext(ctx, "SELECT COUNT(*) FROM source_stages").Scan(&count); err != nil {
+	if err := s.database.QueryRowContext(
+		ctx, "SELECT COUNT(*) FROM source_stages WHERE provider = ?", provider,
+	).Scan(&count); err != nil {
 		return 0, fmt.Errorf("counting trusted source inventory: %w", err)
 	}
 
 	return count, nil
 }
 
-// StoreTrustedInventory atomically replaces the last fully validated source
-// inventory. It stores metadata only, never geometry or FIT bytes.
-func (s *Store) StoreTrustedInventory(ctx context.Context, stages []route.Stage) error {
+// StoreTrustedInventory atomically replaces one source's share of the trusted
+// inventory, leaving every other provider's stored stages untouched. It stores
+// metadata only, never geometry or FIT bytes.
+//
+// Scoping the replacement to one provider is what lets a source that failed to
+// read this run keep the stages it was last known to have: only a source that
+// was read successfully reaches this call at all.
+func (s *Store) StoreTrustedInventory(ctx context.Context, provider route.Provider, stages []route.Stage) error {
 	seen := make(map[route.Key]struct{}, len(stages))
 	for _, stage := range stages {
 		key := stage.Key()
+		if key.Provider() != provider {
+			return errors.New("trusted source inventory stage does not match its provider")
+		}
 		if _, exists := seen[key]; exists {
 			return errors.New("trusted source inventory contains a duplicate stage")
 		}
@@ -1076,7 +1087,7 @@ func (s *Store) StoreTrustedInventory(ctx context.Context, stages []route.Stage)
 	}
 	defer rollback(transaction)
 
-	if _, err := transaction.ExecContext(ctx, "DELETE FROM source_stages"); err != nil {
+	if _, err := transaction.ExecContext(ctx, "DELETE FROM source_stages WHERE provider = ?", provider); err != nil {
 		return fmt.Errorf("clearing trusted source inventory: %w", err)
 	}
 	for _, stage := range stages {
@@ -1088,7 +1099,7 @@ func (s *Store) StoreTrustedInventory(ctx context.Context, stages []route.Stage)
 			return fmt.Errorf("storing trusted source stage: %w", err)
 		}
 	}
-	if err := storeStageGeometry(ctx, transaction, stages); err != nil {
+	if err := storeStageGeometry(ctx, transaction, provider, stages); err != nil {
 		return err
 	}
 	if err := pruneStageSurface(ctx, transaction); err != nil {
@@ -1105,7 +1116,7 @@ func (s *Store) StoreTrustedInventory(ctx context.Context, stages []route.Stage)
 // transaction. A stage whose content hash is unchanged is left untouched, so an
 // unchanged library does not rewrite the whole cache on every scheduled run.
 // Rows whose stage has left the inventory are pruned.
-func storeStageGeometry(ctx context.Context, transaction *sql.Tx, stages []route.Stage) error {
+func storeStageGeometry(ctx context.Context, transaction *sql.Tx, provider route.Provider, stages []route.Stage) error {
 	updatedAt := time.Now().UTC().Unix()
 	requested, err := requestedReprocessing(ctx, transaction)
 	if err != nil {
@@ -1178,7 +1189,9 @@ func storeStageGeometry(ctx context.Context, transaction *sql.Tx, stages []route
 	}
 	// The marks are consumed here, in the transaction that acted on them, so a
 	// request is honoured exactly once and never outlives the pass that met it.
-	if _, err := transaction.ExecContext(ctx, "DELETE FROM stage_reprocess"); err != nil {
+	// Scoped to this provider: a request for another source's stage belongs to a
+	// pass that has not stored anything for it yet, and must still be waiting.
+	if _, err := transaction.ExecContext(ctx, "DELETE FROM stage_reprocess WHERE provider = ?", provider); err != nil {
 		return fmt.Errorf("clearing reprocess requests: %w", err)
 	}
 
