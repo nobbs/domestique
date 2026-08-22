@@ -181,16 +181,16 @@ func newStageView(summary *route.Summary) stageView {
 }
 
 // stageKey reads the provider and the positive route and stage identifiers
-// from the path. The only provider this service has ever served is
-// VeloPlanner's, so any other value is refused here rather than passed to
-// state as a lookup that could never find anything.
+// from the path. The provider is not checked against a known set here: state
+// is keyed by provider, routeID and stageOrder together, so a provider naming
+// nothing stored is already refused downstream as not found, the same way a
+// well-formed but absent routeID is.
 func stageKey(request *http.Request) (provider route.Provider, routeID int64, stageOrder int, ok bool) {
 	provider = route.Provider(request.PathValue("provider"))
 	routeID, routeErr := strconv.ParseInt(request.PathValue("routeID"), 10, 64)
 	stageOrder, stageErr := strconv.Atoi(request.PathValue("stage"))
 
-	return provider, routeID, stageOrder,
-		provider == route.ProviderVeloPlanner && routeErr == nil && stageErr == nil && routeID > 0 && stageOrder > 0
+	return provider, routeID, stageOrder, provider != "" && routeErr == nil && stageErr == nil && routeID > 0 && stageOrder > 0
 }
 
 func (h *Handler) notFound(writer http.ResponseWriter) {

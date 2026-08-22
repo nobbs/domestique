@@ -14,17 +14,12 @@
 
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
-import { statusQuery, syncRunsQuery } from "../../api/queries";
-import type { SyncPhase, SyncRun } from "../../api/types";
+import { statusQuery, syncRunsQuery, webUIConfigQuery } from "../../api/queries";
+import type { SyncRun } from "../../api/types";
 import { Button } from "../../components/Button";
 import { formatTimestamp } from "../../lib/format";
 import { GUIDANCE_LABELS, syncGuidance } from "../../lib/syncGuidance";
-
-/** Which half a row was, in the words the card above it uses. */
-const PHASE_LABELS: Record<SyncPhase, string> = {
-  source: "Read from VeloPlanner",
-  targets: "Write to Wahoo",
-};
+import { phaseLabels } from "../../lib/syncLabels";
 
 /** How a recorded run ended, in one phrase. */
 export function runResult(run: SyncRun): string {
@@ -79,6 +74,8 @@ function runKey(run: SyncRun): string {
 export function SyncHistory() {
   const queryClient = useQueryClient();
   const { data: status } = useQuery(statusQuery());
+  const config = useQuery(webUIConfigQuery());
+  const labels = phaseLabels(Object.keys(config.data?.sourceBaseUrls ?? {}));
   const { data, isPending, isError, fetchNextPage, hasNextPage, isFetchingNextPage } =
     useInfiniteQuery(syncRunsQuery());
 
@@ -123,7 +120,7 @@ export function SyncHistory() {
            */
           <li className="run-row" data-phase={run.phase} key={runKey(run)}>
             <span className="run-row__when">{formatTimestamp(run.completedAt)}</span>
-            <span className="run-row__phase">{PHASE_LABELS[run.phase]}</span>
+            <span className="run-row__phase">{labels[run.phase]}</span>
             <span className="run-row__counts">{runCounts(run)}</span>
             <span className="run-row__outcome">
               <span className="run-row__result" data-tone={runTone(run)}>

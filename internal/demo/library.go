@@ -88,6 +88,7 @@ type band struct {
 type stageSpec struct {
 	routeName      string
 	stageName      string
+	provider       route.Provider
 	bands          []band
 	routeID        int64
 	spanMetres     float64
@@ -99,6 +100,17 @@ type stageSpec struct {
 	climbCycles    float64
 	shape          shape
 	elevation      elevationCoverage
+}
+
+// provider is the spec's provider, defaulting to VeloPlanner: every spec
+// before a second provider existed leaves the field unset, and this is the
+// one place that default lives.
+func (s *stageSpec) sourceProvider() route.Provider {
+	if s.provider == "" {
+		return route.ProviderVeloPlanner
+	}
+
+	return s.provider
 }
 
 // specs is the library. Between them the stages carry a multi-stage route, a
@@ -177,6 +189,23 @@ func specs() []stageSpec {
 				{untilFraction: 1, kind: surface.KindCompacted},
 			},
 		},
+		// The one stage from a second source, so a library with more than one
+		// provider in it is not only a case the code has to allow but one the
+		// demo and the browser suite actually exercise. Centred inside the
+		// ground the other stages already cover rather than beside it, so
+		// adding it does not itself widen the map the entry page frames.
+		{
+			provider: route.ProviderKomoot,
+			routeID:  4201, stageOrder: 1,
+			routeName: "Synthetic Foothill Circuit", stageName: "",
+			shape: shapeLoop, spanMetres: 20_000,
+			startEastwards: 40_700, startNorthward: -8_500,
+			climbMetres: 430, climbCycles: 1.5, elevation: elevationEverywhere,
+			bands: []band{
+				{untilFraction: 0.5, kind: surface.KindAsphalt},
+				{untilFraction: 1, kind: surface.KindGravel},
+			},
+		},
 	}
 }
 
@@ -188,7 +217,7 @@ func Stages() ([]route.Stage, error) {
 		spec := &specs[index]
 		geometry := spec.geometry()
 		stage, err := route.NewStage(
-			route.ProviderVeloPlanner,
+			spec.sourceProvider(),
 			spec.routeID,
 			spec.stageOrder,
 			Revision(spec.routeID, spec.stageOrder),
@@ -210,6 +239,7 @@ func Stages() ([]route.Stage, error) {
 // holds and the geometry endpoint serves.
 type Classification struct {
 	ContentHash   string
+	Provider      route.Provider
 	Ranges        []byte
 	MatchedMetres float64
 	RouteID       int64
@@ -239,6 +269,7 @@ func Classifications(stages []route.Stage) ([]Classification, error) {
 		classifications = append(classifications, Classification{
 			ContentHash:   stage.ContentHash(),
 			Ranges:        encoded,
+			Provider:      stage.Key().Provider(),
 			MatchedMetres: surface.MatchedMetres(geometry, kinds),
 			RouteID:       spec.routeID,
 			StageOrder:    spec.stageOrder,

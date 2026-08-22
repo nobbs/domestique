@@ -1,6 +1,10 @@
 package httpapi
 
-import "encoding/json"
+import (
+	"encoding/json"
+
+	"github.com/nobbs/domestique/internal/route"
+)
 
 // The v1 JSON contract uses snake_case throughout. These view types are
 // deliberately separate from persistence and adapter structs so a storage
@@ -213,15 +217,18 @@ type buildView struct {
 }
 
 type webUIConfigView struct {
-	// The provider's own web application, from which the page builds an outbound
-	// link to the source route a stage was made from. Omitted when unconfigured,
-	// which is how the page knows to offer no link rather than a broken one.
+	// Each configured source's own web application, keyed by provider, from
+	// which the page builds an outbound link to the source route a stage was
+	// made from. A provider it cannot build a link for is omitted from the map
+	// entirely, which is how the page knows to offer no link for that source
+	// rather than a broken one. The whole field is omitted when no source names
+	// one.
 	//
 	// A base URL only: the route identifier the link needs is already in the
 	// stage the page is showing, and no route name, URL, or geometry is added
 	// here.
 	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	SourceBaseURL string `json:"source_base_url,omitempty"`
+	SourceBaseURLs map[route.Provider]string `json:"source_base_urls,omitempty"`
 	// The cartographies the page may switch between, in the configured order.
 	// Never empty: the first entry is what a browser that has not chosen loads.
 	Basemaps []basemapView `json:"basemaps"`

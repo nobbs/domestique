@@ -13,15 +13,19 @@
  */
 
 import type { Route } from "../api/types";
+import { providerLabel } from "./provider";
 
 /**
  * The text a route is matched on: everything a reader can see it called.
  *
  * All three names are matched, not just the composed title, so a search finds a
- * route by whichever of its names the reader happens to remember.
+ * route by whichever of its names the reader happens to remember. The source
+ * label rides along too, which is the one filter this reuses rather than
+ * building a picker of its own: typing "komoot" is how a reader narrows the
+ * library to one source.
  */
 function haystack(route: Route): string {
-  return `${route.title} ${route.routeName} ${route.stageName}`;
+  return `${route.title} ${route.routeName} ${route.stageName} ${providerLabel(route.provider)}`;
 }
 
 /**

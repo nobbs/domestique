@@ -19,6 +19,7 @@ import { Button } from "../../components/Button";
 import { RouteGlyph } from "../../components/RouteGlyph";
 import { formatAscent, formatDistance, formatGradient } from "../../lib/format";
 import { gradientBand, gradientMix } from "../../lib/profile";
+import { providerLabel } from "../../lib/provider";
 
 /** The geometry a row needs, when it has arrived. Rows render without it. */
 export interface RouteShape {
@@ -96,6 +97,11 @@ function ResultRow({
           />
         </span>
         <span className="result__name">{route.title}</span>
+        {/*
+         * Which source this row came from. A quiet label, not a logo wall: two
+         * sources is what a private tool has, not a marketplace.
+         */}
+        <span className="source-label">{providerLabel(route.provider)}</span>
         <span className="result__figures">
           <span>{formatDistance(route.distanceMetres)}</span>
           <span>{formatAscent(route.ascentMetres)}</span>
@@ -156,6 +162,7 @@ function RouteCard({
   return (
     <li className="route-card" ref={card}>
       <h2 className="route-card__title">{route.title}</h2>
+      <span className="source-label">{providerLabel(route.provider)}</span>
       {second === "" ? null : <p className="route-card__where">{second}</p>}
       <dl className="route-card__figures">
         <div>

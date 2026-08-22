@@ -21,8 +21,17 @@
  * as somebody else, it resolves to nothing they can read.
  */
 
-/** The provider's canonical web path for one of an account's own routes. */
-const SOURCE_ROUTE_PATH = "user-routes";
+/**
+ * Each known provider's canonical web path for one of an account's own routes.
+ *
+ * Only VeloPlanner's is known. A second source's own path is a decision for
+ * that source's own delivery, not a guess made here — so a provider absent
+ * from this map offers no link, the same as an absent base URL, rather than a
+ * path that might be wrong.
+ */
+const SOURCE_ROUTE_PATHS: Record<string, string> = {
+  veloplanner: "user-routes",
+};
 
 export interface SourceRoute {
   /** Where the route lives, absolute, for an anchor to point at. */
@@ -57,9 +66,18 @@ export interface SourceRoute {
  * A base URL that ends in a slash, or that carries a path of its own, is
  * honoured as written: the route path is appended to it rather than replacing
  * it, so a provider hosted under a prefix keeps that prefix.
+ *
+ * `provider` picks which canonical path to append. A provider this function
+ * does not know the path convention for is answered the same way an
+ * unconfigured base URL is: null, not a guess.
  */
-export function sourceRoute(baseUrl: string | undefined, routeId: number): SourceRoute | null {
-  if (!baseUrl || !Number.isInteger(routeId) || routeId <= 0) {
+export function sourceRoute(
+  provider: string,
+  baseUrl: string | undefined,
+  routeId: number,
+): SourceRoute | null {
+  const path = SOURCE_ROUTE_PATHS[provider];
+  if (!path || !baseUrl || !Number.isInteger(routeId) || routeId <= 0) {
     return null;
   }
   let base: URL;
@@ -75,7 +93,7 @@ export function sourceRoute(baseUrl: string | undefined, routeId: number): Sourc
     return null;
   }
   const url = new URL(base.origin);
-  url.pathname = `${base.pathname.replace(/\/+$/, "")}/${SOURCE_ROUTE_PATH}/${routeId}`;
+  url.pathname = `${base.pathname.replace(/\/+$/, "")}/${path}/${routeId}`;
 
   return {
     href: url.toString(),

@@ -155,7 +155,7 @@ describe("accessibility", () => {
             onHighlightChange={() => {}}
             libraryCount={47}
             onClose={() => {}}
-            sourceBaseUrl="https://veloplanner.example"
+            sourceBaseUrls={{ veloplanner: "https://veloplanner.example" }}
           />
         </MemoryRouter>
       </QueryClientProvider>,

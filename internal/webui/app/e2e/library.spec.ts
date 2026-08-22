@@ -18,6 +18,7 @@ const DEMO_TITLES = [
   "Synthetic Kaiserstuhl Loop",
   "Synthetic Station Link",
   "Synthetic Summit Ascent",
+  "Synthetic Foothill Circuit",
 ];
 
 /** The demo's loop, which the map is asked to fly to. */
@@ -50,6 +51,22 @@ test("the entry page is the library, drawn", async ({ offlinePage: page }) => {
   await expect(page.locator(".maplibregl-ctrl-scale")).toContainText(/\d/);
 });
 
+// The mixed case: a library assembled from more than one source, and a reader
+// telling its stages apart by more than the row they happen to sit in.
+test("a stage names its source, and a search can narrow to one", async ({ offlinePage: page }) => {
+  await openLibrary(page);
+  const search = page.getByRole("searchbox", { name: "Search the route library" });
+
+  await search.fill("komoot");
+
+  await expect(page.locator(".result")).toHaveCount(1);
+  await expect(page.locator(".result__name")).toHaveText(["Synthetic Foothill Circuit"]);
+  await expect(page.locator(".result .source-label")).toHaveText(["Komoot"]);
+
+  await search.fill("kaiserstuhl");
+  await expect(page.locator(".result .source-label")).toHaveText(["VeloPlanner"]);
+});
+
 test("searching grows a column of what is left", async ({ offlinePage: page }) => {
   await openLibrary(page);
   const search = page.getByRole("searchbox", { name: "Search the route library" });
@@ -57,7 +74,7 @@ test("searching grows a column of what is left", async ({ offlinePage: page }) =
   await search.fill("rhine");
 
   await expect(page.locator(".result")).toHaveCount(3);
-  await expect(page.getByText("3 of 6")).toBeVisible();
+  await expect(page.getByText("3 of 7")).toBeVisible();
 
   await search.fill("forest");
 

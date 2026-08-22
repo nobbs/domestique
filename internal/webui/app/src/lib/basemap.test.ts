@@ -68,7 +68,7 @@ afterEach(() => {
 });
 
 function configOf(...basemaps: Basemap[]): WebUIConfig {
-  return { basemaps };
+  return { basemaps, sourceBaseUrls: {} };
 }
 
 const streets: Basemap = {

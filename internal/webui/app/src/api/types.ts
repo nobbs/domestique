@@ -276,11 +276,12 @@ export interface WebUIConfig {
    */
   basemaps: Basemap[];
   /**
-   * The provider's own web application, from which a link back to a stage's
-   * source route is built. Absent when the service cannot name one, and then no
-   * such link is offered.
+   * Each configured source's own web application, keyed by provider, from
+   * which a link back to a stage's source route is built. A provider missing
+   * from this map has no such link offered for its stages, whether because the
+   * service cannot name one or because it is not configured at all.
    */
-  sourceBaseUrl?: string | undefined;
+  sourceBaseUrls: Record<string, string>;
 }
 
 /** A route's stable identity, used for routing and list keys. */

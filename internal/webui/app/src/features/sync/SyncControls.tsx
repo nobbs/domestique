@@ -15,33 +15,26 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { setSyncSchedule, triggerSync } from "../../api/client";
-import { statusQuery } from "../../api/queries";
+import { statusQuery, webUIConfigQuery } from "../../api/queries";
 import type { Status, SyncActive, SyncPhase, SyncPhaseRun, SyncSchedule } from "../../api/types";
 import { SYNC_PHASES } from "../../api/types";
 import { Button } from "../../components/Button";
 import { formatTimestamp } from "../../lib/format";
 import { syncGuidance } from "../../lib/syncGuidance";
+import { phaseLabels, runningPhaseLabels } from "../../lib/syncLabels";
 
-/** The name each half goes by, on this page and in the history below it. */
-export const PHASE_LABELS: Record<SyncPhase, string> = {
-  source: "Read from VeloPlanner",
-  targets: "Write to Wahoo",
-};
-
-/** What each half is doing while it is doing it, rather than what to press. */
-const RUNNING_LABELS: Record<SyncPhase, string> = {
-  source: "Reading from VeloPlanner",
-  targets: "Writing to Wahoo",
-};
-
-function activeHeadline(state: string, active: SyncActive): string {
+function activeHeadline(
+  state: string,
+  active: SyncActive,
+  runningLabels: Record<SyncPhase, string>,
+): string {
   if (state === "delayed") {
     return active.startsAt
       ? `First run at ${formatTimestamp(active.startsAt)}`
       : "Waiting to start";
   }
   if (active.phase) {
-    return RUNNING_LABELS[active.phase];
+    return runningLabels[active.phase];
   }
 
   // Accepted, and not yet in either half. It is a moment long, and it is the
@@ -57,8 +50,12 @@ function activeHeadline(state: string, active: SyncActive): string {
  * route it is on without naming one, so it does not try, and an empty library
  * is left to the headline alone rather than told it is nought of nought.
  */
-export function activeSummary(state: string, active: SyncActive): string {
-  const headline = activeHeadline(state, active);
+export function activeSummary(
+  state: string,
+  active: SyncActive,
+  runningLabels: Record<SyncPhase, string> = runningPhaseLabels([]),
+): string {
+  const headline = activeHeadline(state, active, runningLabels);
   const total = active.stages.current + active.stages.pending;
   if (total === 0) {
     return headline;
@@ -129,6 +126,13 @@ export function runSummary(phase: SyncPhase, run: SyncPhaseRun | undefined): str
 export function SyncControls() {
   const queryClient = useQueryClient();
   const { data, isPending, isError } = useQuery(statusQuery());
+  const config = useQuery(webUIConfigQuery());
+  // The sources this build can name, which is every provider a base URL is
+  // configured for. Unresolved while the config is still loading, which reads
+  // as the generic phrase below rather than blocking on a second query.
+  const sourceProviders = Object.keys(config.data?.sourceBaseUrls ?? {});
+  const labels = phaseLabels(sourceProviders);
+  const runningLabels = runningPhaseLabels(sourceProviders);
 
   const invalidateStatus = () =>
     queryClient.invalidateQueries({ queryKey: statusQuery().queryKey });
@@ -163,7 +167,9 @@ export function SyncControls() {
        * only changes when the run does.
        */}
       <p className="sync-card__line" aria-live="polite">
-        {data.sync.active ? activeSummary(data.sync.state, data.sync.active) : idleSummary(data)}
+        {data.sync.active
+          ? activeSummary(data.sync.state, data.sync.active, runningLabels)
+          : idleSummary(data)}
       </p>
       {/*
        * Classification is enrichment: it never fails a run, so a route the
@@ -188,7 +194,7 @@ export function SyncControls() {
           return (
             <li className="sync-row" key={phase}>
               <div className="sync-row__text">
-                <span className="sync-row__title">{PHASE_LABELS[phase]}</span>
+                <span className="sync-row__title">{labels[phase]}</span>
                 <span className="sync-row__detail">{runSummary(phase, phaseRun)}</span>
                 {/*
                  * A gate that held is not an error the operator caused, so it is
@@ -215,14 +221,14 @@ export function SyncControls() {
                     checked={enabled}
                     disabled={schedule.isPending}
                     onChange={() => toggle(phase)}
-                    aria-label={`Hourly: ${PHASE_LABELS[phase]}`}
+                    aria-label={`Hourly: ${labels[phase]}`}
                   />
                   <span>Hourly</span>
                 </label>
                 <Button
                   disabled={run.isPending}
                   onClick={() => run.mutate(phase)}
-                  aria-label={`Run now: ${PHASE_LABELS[phase]}`}
+                  aria-label={`Run now: ${labels[phase]}`}
                 >
                   Run now
                 </Button>

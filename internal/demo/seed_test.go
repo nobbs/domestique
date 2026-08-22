@@ -43,9 +43,14 @@ func TestSeedFillsAStoreWithTheWholeLibrary(t *testing.T) {
 
 	stages, err := demo.Stages()
 	require.NoError(t, err)
-	count, err := store.TrustedInventoryCount(t.Context(), route.ProviderVeloPlanner)
+	// Counted per source and summed, because the store now isolates one
+	// source's trusted inventory from another's — the whole library is the two
+	// counts together, not either alone.
+	veloplanner, err := store.TrustedInventoryCount(t.Context(), route.ProviderVeloPlanner)
 	require.NoError(t, err)
-	assert.Equal(t, len(stages), count)
+	komoot, err := store.TrustedInventoryCount(t.Context(), route.ProviderKomoot)
+	require.NoError(t, err)
+	assert.Equal(t, len(stages), veloplanner+komoot)
 
 	summaries := 0
 	require.NoError(t, store.ForEachStageSummary(t.Context(), func(_ route.Summary) error {

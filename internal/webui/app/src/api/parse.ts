@@ -94,6 +94,26 @@ function optionalText(value: unknown, at: string): string | undefined {
   return value === undefined ? undefined : text(value, at);
 }
 
+/**
+ * A JSON object of string values, or an empty one when the field is absent.
+ *
+ * Built with no prototype of its own: a key such as `__proto__` from the wire
+ * is otherwise a live setter rather than a plain property, and this response
+ * is exactly the kind an operator does not control the far end of.
+ */
+function textRecord(value: unknown, at: string): Record<string, string> {
+  if (value === undefined) {
+    return {};
+  }
+  const source = record(value, at);
+  const result: Record<string, string> = Object.create(null) as Record<string, string>;
+  for (const [key, entry] of Object.entries(source)) {
+    result[key] = text(entry, `${at}.${key}`);
+  }
+
+  return result;
+}
+
 function count(value: unknown, at: string): number {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     throw new ContractError(`${at} is not a finite number`);
@@ -499,6 +519,6 @@ export function parseWebUIConfig(payload: unknown): WebUIConfig {
 
   return {
     basemaps,
-    sourceBaseUrl: optionalText(body.source_base_url, "body.source_base_url"),
+    sourceBaseUrls: textRecord(body.source_base_urls, "body.source_base_urls"),
   };
 }

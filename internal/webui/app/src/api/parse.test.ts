@@ -661,7 +661,22 @@ describe("parseWebUIConfig", () => {
   });
 
   it("reads a deployment that names no source provider", () => {
-    expect(parseWebUIConfig({ basemaps: [streets] }).sourceBaseUrl).toBeUndefined();
+    expect(parseWebUIConfig({ basemaps: [streets] }).sourceBaseUrls).toEqual({});
+  });
+
+  it("reads a base URL per configured source, keyed by provider", () => {
+    const config = parseWebUIConfig({
+      basemaps: [streets],
+      source_base_urls: { veloplanner: "https://veloplanner.example" },
+    });
+
+    expect(config.sourceBaseUrls).toEqual({ veloplanner: "https://veloplanner.example" });
+  });
+
+  it("refuses a source base URL entry that is not a string", () => {
+    expect(() =>
+      parseWebUIConfig({ basemaps: [streets], source_base_urls: { veloplanner: 4 } }),
+    ).toThrow(ContractError);
   });
 
   // The service refuses an empty list at startup, so one on the wire is a build

@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { Status, SyncRun, SyncRunPage } from "../../api/types";
+import type { Status, SyncRun, SyncRunPage, WebUIConfig } from "../../api/types";
 import { SyncHistory } from "./SyncHistory";
 
 function status(lastCompletedAt: string): Status {
@@ -38,7 +38,18 @@ function run(overrides: Partial<SyncRun> = {}): SyncRun {
   };
 }
 
-function renderHistory(page: SyncRunPage) {
+function config(sourceBaseUrls: Record<string, string> = { veloplanner: "https://v.example" }) {
+  const value: WebUIConfig = {
+    basemaps: [
+      { name: "Streets", styleUrl: "https://tiles.example/style", darkCartography: false },
+    ],
+    sourceBaseUrls,
+  };
+
+  return value;
+}
+
+function renderHistory(page: SyncRunPage, configValue: WebUIConfig = config()) {
   // The seeded page is the whole fixture: without it the query fetches on mount
   // and every assertion below would have to step over a /v1/sync/runs call.
   const client = new QueryClient({
@@ -46,6 +57,7 @@ function renderHistory(page: SyncRunPage) {
   });
   client.setQueryData(["sync-runs"], { pages: [page], pageParams: [undefined] });
   client.setQueryData(["status"], status("2026-08-18T06:30:00Z"));
+  client.setQueryData(["webui-config"], configValue);
   render(
     <QueryClientProvider client={client}>
       <SyncHistory />
@@ -77,6 +89,17 @@ describe("SyncHistory", () => {
     // be matched against; nothing else on the row identifies the run.
     expect(screen.getByText("aaaaaaaaaaaa")).toBeInTheDocument();
     expect(screen.getByText("bbbbbbbbbbbb")).toBeInTheDocument();
+  });
+
+  // Naming one of several configured sources would say less than the truth, so
+  // more than one reads as the library instead.
+  it("reads a source row as the library when more than one source is configured", () => {
+    renderHistory(
+      { runs: [run({ reference: "bbbbbbbbbbbb", phase: "source", sourceStages: 12 })] },
+      config({ veloplanner: "https://v.example", komoot: "https://k.example" }),
+    );
+
+    expect(screen.getByText("Read from the source library")).toBeInTheDocument();
   });
 
   // A binary rolled back past the migration that named runs records rows with
