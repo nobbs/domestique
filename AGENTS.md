@@ -47,6 +47,13 @@ mise install
 mise run quick
 ~~~
 
+A green run still emits several kilobytes of task output. When iterating, keep
+success to one line and read the log only when it is not:
+
+~~~sh
+mise run -q quick > .local/quick.log 2>&1 && echo OK || tail -40 .local/quick.log
+~~~
+
 **GitHub Actions is the authoritative gate.** It runs the complete validation
 for every changed path on every pull request, and its aggregate check is what a
 merge must satisfy. Running a gate locally buys an earlier answer, not a
@@ -81,12 +88,20 @@ the shipped artefact.
 
 `mise run coverage` writes a Go coverage profile to `.coverage/go.out` and the
 UI's LCOV report to `.coverage/ui/lcov.info`, and prints a summary for each.
-Nothing local fails on a percentage, but CI publishes both to Codecov under the
-`go` and `ui` flags, where each language's patch status requires the lines a
-change adds or alters to be covered at least as well as the base commit's
-already are — so an uncovered change does not merge. `mise run coverage-ui`
-drives a browser and is correspondingly slow; with none installed it keeps the
-unit half, says what it left out, and still succeeds.
+Both halves are unit suites, so it takes seconds and needs no browser. CI
+publishes both to Codecov under the `go` and `ui` flags, where `patch/go` — the
+one enforced status — requires the Go lines a change adds or alters to be
+covered at least as well as the base commit's already are. An uncovered Go
+change does not merge.
+
+**Run `mise run patch-coverage` before the first push of a change.** It measures
+both halves and then grades the patch the way that status will, against the
+merge base with `main` and including the working tree, naming each uncovered
+added line as `file:line`. A Go shortfall fails the task. Learning the same
+thing from CI costs a push, a five-minute run and a round of polling, which is
+where deliveries in this repository have historically lost the most time. Its
+arithmetic approximates Codecov's rather than reproducing it, so read a verdict
+within a few tenths of a point as close rather than as settled.
 [The delivery specification](docs/specs/delivery.md#coverage) states what is
 measured, what is deliberately not, and why the statuses are shaped that way.
 

@@ -89,7 +89,11 @@ holds it, report that and stop rather than working the issue in parallel.
 4. Add deterministic regression coverage. Run the current required validation
    from the repository instructions; report any unrun map visual inspection or
    blocked external acceptance check plainly.
-5. When the user asked for end-to-end delivery, create a focused branch, commit
+5. Run `mise run patch-coverage` before the first push. `codecov/patch/go` is
+   the one coverage verdict that blocks a merge, and it is the one that has
+   historically cost several push-and-wait rounds per delivery. Answer it
+   locally, where it costs seconds.
+6. When the user asked for end-to-end delivery, create a focused branch, commit
    and pull request following `AGENTS.md`, link the issue with `Closes #<n>`,
    request formal Copilot review, and verify the requested-reviewer state. Do
    not merge unless the user explicitly authorises it.
@@ -106,6 +110,14 @@ holds it, report that and stop rather than working the issue in parallel.
 - After a rebase or conflict resolution, repeat the validation affected by the
   changed code before pushing. When rewriting an authorised delivery branch,
   use `--force-with-lease`, never an unguarded force push.
+- Watch CI with a single poll-to-terminal-state loop per pull request head, not
+  a wake-up per check transition: each wake-up replays the whole context to
+  answer "still running". Wait for the run to conclude, then read the result
+  once.
+- Read Codecov's own pull request comment for a coverage shortfall rather than
+  re-measuring the tree by hand. It names the flag, the patch percentage and the
+  uncovered lines; a hand-rolled count that omits partial branches reports a
+  number the gate does not use.
 - Treat material follow-up commits as a new review request: re-request formal
   review through GitHub's requested-reviewer mechanism and verify it actually
   registered. Report unavailable review automation rather than substituting a
