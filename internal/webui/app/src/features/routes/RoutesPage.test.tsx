@@ -435,6 +435,16 @@ describe("RoutesPage", () => {
     expect(screen.getByText("No route at that address.")).toBeInTheDocument();
   });
 
+  // An identifier made of digits that still numbers nothing. Reading it as a
+  // route would send the page looking for stage zero of route zero; it is not a
+  // route the library is missing, it is not an address at all.
+  it("ignores an address whose numbers name no route", () => {
+    renderPage(LIBRARY, { at: "/?route=veloplanner%2F0%2F1" });
+
+    expect(screen.queryByText("No route at that address.")).not.toBeInTheDocument();
+    expect(screen.getByRole("searchbox", { name: "Search the route library" })).toBeInTheDocument();
+  });
+
   /*
    * The listing has the route and the geometry endpoint does not. A panel built
    * from no points is a title over an empty page, so the page says what happened
