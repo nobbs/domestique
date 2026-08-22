@@ -80,7 +80,8 @@ empty_source_deletion = "deny"
 success_policy = "every"
 
 # The period one digest covers, read only by the digest policy. It is sent by
-# the first run to finish after the period elapses, so a service that is not
+# the first pass to finish after the period elapses — a whole pass, so a window
+# never closes between the two halves of one — and so a service that is not
 # running sends nothing rather than an empty message. At most seven days: a
 # digest totals the recorded run history, and a longer period would report a
 # total missing every run already pruned from under it.
