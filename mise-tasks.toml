@@ -184,7 +184,9 @@ run = "gitleaks dir . --redact --no-banner"
 
 # Coverage is measured on demand and is deliberately not part of `quick`,
 # `check`, or the CI gate: instrumenting the tree makes the suite slower. This
-# task reports what a change leaves untested; it does not judge it.
+# task reports what a change leaves untested; it does not judge it. The task
+# that does judge is `patch-coverage`, further down, which reads these same two
+# reports and answers the one coverage question that blocks a merge.
 [coverage]
 description = "Measure Go and UI coverage"
 depends = ["coverage-go", "coverage-ui"]
@@ -223,6 +225,34 @@ run = [
 description = "Measure UI coverage across the jsdom suite"
 depends = ["ui-install"]
 run = "pnpm --dir internal/webui/app run test:coverage"
+
+# The one coverage verdict that blocks a merge, answered here rather than five
+# minutes and one push later. It reads the reports the tasks above write and
+# grades them by the rules in codecov.yml; see dev/patchcoverage for why that
+# needs no base measurement and no network. Run it before the first push of a
+# change, which is when a shortfall is cheapest to fix.
+#
+# Deliberately outside `quick` and `check`, as `coverage` is: it measures the
+# tree, which the routine loop should not pay for. `dev/gatecheck` walks from
+# those two roots, so nothing there needs to know about these.
+[patch-coverage]
+description = "Judge the coverage of what this change adds, as Codecov will"
+depends = ["patch-coverage-go", "patch-coverage-ui"]
+
+# Each half depends on its own measurement rather than reading whatever report
+# a previous run left behind. No `sources`: the verdict is a function of the
+# working tree against a merge base, which is not a list of files mise can watch.
+[patch-coverage-go]
+description = "Judge the Go coverage of what this change adds"
+depends = ["coverage-go"]
+run = "go run ./dev/patchcoverage -flag go"
+
+# Reports and does not fail, because codecov.yml's ui patch status does not
+# either: the browser suite reaches code the LCOV file cannot see.
+[patch-coverage-ui]
+description = "Report the UI coverage of what this change adds"
+depends = ["coverage-ui"]
+run = "go run ./dev/patchcoverage -flag ui"
 
 # Snapshots the deployed SQLite state and writes a development configuration
 # that reads real VeloPlanner data but cannot reach Wahoo. See dev/setup.sh.
