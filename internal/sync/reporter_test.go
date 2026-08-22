@@ -238,20 +238,23 @@ func (r *blockingReportingRunner) AnnotateStored(context.Context) {}
 const recordedRunReference = "1a2b3c4d5e6f"
 
 type fakeRunState struct {
-	scheduleErr     error
-	targetRunErr    error
-	phaseOutcomeErr error
-	lastFailure     map[string]time.Time
-	lastPhase       map[string]string
-	lastDigest      time.Time
-	successfulRuns  []successfulRun
-	phases          []string
-	recordedRuns    []recordedTargetRun
-	runs            int
-	lastDigestRunID int64
-	digestFound     bool
-	source          bool
-	targets         bool
+	scheduleErr       error
+	targetRunErr      error
+	phaseOutcomeErr   error
+	digestReadErr     error
+	digestRecordErr   error
+	successfulRunsErr error
+	lastFailure       map[string]time.Time
+	lastPhase         map[string]string
+	lastDigest        time.Time
+	successfulRuns    []successfulRun
+	phases            []string
+	recordedRuns      []recordedTargetRun
+	runs              int
+	lastDigestRunID   int64
+	digestFound       bool
+	source            bool
+	targets           bool
 }
 
 // successfulRun is one recorded success as a digest reads it back.
@@ -322,10 +325,17 @@ func (s *fakeRunState) LastPhaseOutcome(_ context.Context, phase string) (outcom
 }
 
 func (s *fakeRunState) LastDigestNotification(context.Context) (sentAt time.Time, lastRunID int64, found bool, err error) {
+	if s.digestReadErr != nil {
+		return time.Time{}, 0, false, s.digestReadErr
+	}
+
 	return s.lastDigest, s.lastDigestRunID, s.digestFound, nil
 }
 
 func (s *fakeRunState) RecordDigestNotification(_ context.Context, sentAt time.Time, lastRunID int64) error {
+	if s.digestRecordErr != nil {
+		return s.digestRecordErr
+	}
 	s.lastDigest = sentAt
 	s.lastDigestRunID = lastRunID
 	s.digestFound = true
@@ -338,6 +348,9 @@ func (s *fakeRunState) ForEachSuccessfulRunAfter(
 	runID int64,
 	visit func(id int64, phase string, created, updated, deleted int) error,
 ) error {
+	if s.successfulRunsErr != nil {
+		return s.successfulRunsErr
+	}
 	for _, run := range s.successfulRuns {
 		if run.id <= runID {
 			continue
@@ -379,13 +392,14 @@ type notification struct {
 }
 
 type fakeNotifier struct {
+	sendErr  error
 	messages []notification
 }
 
 func (n *fakeNotifier) Send(_ context.Context, title, message string) error {
 	n.messages = append(n.messages, notification{title: title, message: message})
 
-	return nil
+	return n.sendErr
 }
 
 func newReporter(t *testing.T, runner Runner, state RunState, notifier Notifier) *Reporter {
@@ -716,4 +730,117 @@ func TestReporterDigestPassesOverAnIntervalWithNothingToReport(t *testing.T) {
 		title:   "Domestique sync digest",
 		message: "since 2026-08-18T09:00:00Z: source_runs=0 target_runs=2 created=2 updated=0 deleted=0",
 	}, notifier.messages[0], "digest notification")
+}
+
+// A digest is a convenience over history that is already recorded. State that
+// cannot be read holds the message back rather than sending a total that is
+// wrong, and the window stays where it was so the next pass reports the period
+// in full.
+func TestReporterDigestStaysSilentWhenItsHistoryCannotBeRead(t *testing.T) {
+	for _, testCase := range []struct {
+		apply func(state *fakeRunState)
+		name  string
+	}{
+		{
+			name:  "the window cannot be read",
+			apply: func(state *fakeRunState) { state.digestReadErr = errors.New("state unavailable") },
+		},
+		{
+			name:  "the runs in it cannot be totalled",
+			apply: func(state *fakeRunState) { state.successfulRunsErr = errors.New("state unavailable") },
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			runner := &reportingRunner{targets: Result{Phase: PhaseTargets, Outcome: OutcomeSucceeded, SourceStages: 2}}
+			state := &fakeRunState{targets: true}
+			notifier := &fakeNotifier{}
+			reporter := newPolicyReporter(t, runner, state, notifier, SuccessNotification{
+				Policy: SuccessDigest, Interval: time.Hour,
+			})
+			start := time.Date(2026, time.August, 17, 8, 0, 0, 0, time.UTC)
+			now := start
+			reporter.now = func() time.Time { return now }
+
+			reporter.Run(t.Context())
+			testCase.apply(state)
+			now = start.Add(2 * time.Hour)
+			reporter.Run(t.Context())
+
+			assert.Empty(t, notifier.messages, "a digest was sent over unreadable history")
+			assert.Equal(t, start, state.lastDigest, "the window moved without a digest being sent")
+		})
+	}
+}
+
+// The window is anchored after Pushover accepts the digest, so an anchor that
+// cannot be written leaves the period open: the next pass says it again rather
+// than the service losing it. Neither outcome may stop the run.
+func TestReporterDigestSurvivesAnAnchorItCannotWrite(t *testing.T) {
+	runner := &reportingRunner{targets: Result{
+		Phase: PhaseTargets, Outcome: OutcomeSucceeded, SourceStages: 2, Created: 1,
+	}}
+	state := &fakeRunState{targets: true, digestRecordErr: errors.New("state unavailable")}
+	notifier := &fakeNotifier{}
+	reporter := newPolicyReporter(t, runner, state, notifier, SuccessNotification{
+		Policy: SuccessDigest, Interval: time.Hour,
+	})
+	start := time.Date(2026, time.August, 17, 8, 0, 0, 0, time.UTC)
+	now := start
+	reporter.now = func() time.Time { return now }
+
+	// The opening pass cannot anchor either, so the digest never leaves its
+	// unstarted state and every later pass is still the first one.
+	result := reporter.Run(t.Context())
+	require.Equal(t, OutcomeSucceeded, result.Outcome, "an unwritable anchor changed the run's outcome")
+	now = start.Add(2 * time.Hour)
+	result = reporter.Run(t.Context())
+	assert.Equal(t, OutcomeSucceeded, result.Outcome, "an unwritable anchor changed the run's outcome")
+	assert.Empty(t, notifier.messages, "a digest was sent from a window that was never anchored")
+}
+
+// A notification Pushover refuses is one an operator does not have, and the run
+// it describes still happened. Reporting is never allowed to rewrite it.
+func TestReporterKeepsTheOutcomeWhenANotificationIsRefused(t *testing.T) {
+	runner := &reportingRunner{targets: Result{Phase: PhaseTargets, Outcome: OutcomeSucceeded, SourceStages: 2}}
+	state := &fakeRunState{targets: true}
+	notifier := &fakeNotifier{sendErr: errors.New("pushover unavailable")}
+	reporter := newReporter(t, runner, state, notifier)
+
+	result := reporter.Run(t.Context())
+	assert.Equal(t, OutcomeSucceeded, result.Outcome, "a refused notification changed the run's outcome")
+	assert.Len(t, notifier.messages, 1, "the notification was not attempted")
+}
+
+// A digest Pushover refused was never delivered, so the window it covered stays
+// open and the next pass offers the same period again.
+func TestReporterHoldsTheDigestWindowOpenWhenTheMessageIsRefused(t *testing.T) {
+	runner := &reportingRunner{targets: Result{
+		Phase: PhaseTargets, Outcome: OutcomeSucceeded, SourceStages: 2, Created: 1,
+	}}
+	state := &fakeRunState{targets: true}
+	notifier := &fakeNotifier{}
+	reporter := newPolicyReporter(t, runner, state, notifier, SuccessNotification{
+		Policy: SuccessDigest, Interval: time.Hour,
+	})
+	start := time.Date(2026, time.August, 17, 8, 0, 0, 0, time.UTC)
+	now := start
+	reporter.now = func() time.Time { return now }
+
+	reporter.Run(t.Context())
+	notifier.sendErr = errors.New("pushover unavailable")
+	now = start.Add(2 * time.Hour)
+	reporter.Run(t.Context())
+	require.Len(t, notifier.messages, 1, "want the refused digest to have been attempted")
+	require.Equal(t, start, state.lastDigest, "a refused digest moved the window past its own period")
+
+	// The period is offered again, now also carrying the run that finished while
+	// it was being retried. The opening run is behind the anchor and in neither.
+	notifier.sendErr = nil
+	now = start.Add(3 * time.Hour)
+	reporter.Run(t.Context())
+	require.Len(t, notifier.messages, 2, "the refused period was never offered again")
+	assert.Equal(t, notification{
+		title:   "Domestique sync digest",
+		message: "since 2026-08-17T08:00:00Z: source_runs=0 target_runs=2 created=2 updated=0 deleted=0",
+	}, notifier.messages[1], "digest notification")
 }

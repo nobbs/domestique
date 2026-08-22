@@ -418,6 +418,16 @@ func TestLoadRejectsInvalidConfiguration(t *testing.T) {
 			},
 			want: "notifications.digest_interval must be positive",
 		},
+		{
+			// A period the recorded run history does not reach back over would
+			// report a total missing every run already pruned from under it.
+			name: "digest period beyond the recorded history",
+			mutate: func(t *testing.T, path string) {
+				t.Helper()
+				appendToFile(t, path, "\n[notifications]\nsuccess_policy = \"digest\"\ndigest_interval = \"169h\"\n")
+			},
+			want: "notifications.digest_interval must not exceed 168h0m0s",
+		},
 	}
 
 	for _, test := range tests {

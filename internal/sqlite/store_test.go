@@ -1575,3 +1575,26 @@ func TestStoreRecordsDigestNotificationState(t *testing.T) {
 	assert.WithinDuration(t, later, readBack, 0, "LastDigestNotification() after the second send")
 	assert.Equal(t, int64(19), runID, "the run boundary after the second send")
 }
+
+// The digest reads are argument-guarded like every other store method, and the
+// visitor's own error stops the walk rather than being counted as the end of it.
+func TestStoreRejectsUnusableDigestArguments(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	at := time.Date(2026, time.August, 17, 8, 0, 0, 0, time.UTC)
+	_, err := store.RecordSyncRun(t.Context(), "targets", at, at, "succeeded", "", 0, 1, 0, 0)
+	require.NoError(t, err, "RecordSyncRun()")
+
+	_, _, err = store.LastPhaseOutcome(t.Context(), "")
+	require.Error(t, err, "LastPhaseOutcome() accepted no phase")
+
+	require.Error(t, store.RecordDigestNotification(t.Context(), time.Time{}, 0),
+		"RecordDigestNotification() accepted no time")
+
+	require.Error(t, store.ForEachSuccessfulRunAfter(t.Context(), 0, nil),
+		"ForEachSuccessfulRunAfter() accepted no visitor")
+
+	stop := errors.New("stop")
+	require.ErrorIs(t, store.ForEachSuccessfulRunAfter(t.Context(), 0,
+		func(int64, string, int, int, int) error { return stop }), stop,
+		"the visitor's error did not stop the walk")
+}
