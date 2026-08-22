@@ -125,6 +125,18 @@ test("the card is the way into a route, and the route takes the same column", as
   await settleMap(page);
 });
 
+// The address a route page has now that a stage's identity names its provider.
+// This is the link the service itself hands out, so it is the one that has to
+// land before any of the older spellings below do.
+test("a link to the route page lands on the route", async ({ offlinePage: page }) => {
+  await page.goto(`/routes/${LOOP.provider}/${LOOP.routeId}/${LOOP.stageOrder}`);
+
+  await expect(page.getByRole("region", { name: LOOP.title })).toBeVisible();
+  await expect(page).toHaveURL(
+    new RegExp(`/\\?route=${LOOP.provider}%2F${LOOP.routeId}%2F${LOOP.stageOrder}$`),
+  );
+});
+
 // The address routes were linked by before they became a panel. Old links and
 // bookmarks have to land on the route rather than on the library.
 test("a link to the old route page lands on the route", async ({ offlinePage: page }) => {
@@ -134,6 +146,14 @@ test("a link to the old route page lands on the route", async ({ offlinePage: pa
   await expect(page).toHaveURL(
     new RegExp(`/\\?route=${LOOP.provider}%2F${LOOP.routeId}%2F${LOOP.stageOrder}$`),
   );
+});
+
+// The query form that address redirects into, as a link of its own — the shape
+// a bookmark actually holds, in the two-part spelling it held before providers.
+test("a bookmarked two-part address lands on the route", async ({ offlinePage: page }) => {
+  await page.goto(`/?route=${LOOP.routeId}%2F${LOOP.stageOrder}`);
+
+  await expect(page.getByRole("region", { name: LOOP.title })).toBeVisible();
 });
 
 /**

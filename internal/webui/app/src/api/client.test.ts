@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ApiError,
+  fetchRoute,
   fetchRouteGeometry,
   fetchRoutes,
   fetchSyncRuns,
@@ -47,6 +48,34 @@ describe("the API client", () => {
       "/v1/sync/runs?limit=10&after=412",
       expect.anything(),
     );
+  });
+
+  it("addresses one stage by the provider that issued it", async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            provider: "veloplanner",
+            route_id: 12,
+            stage: 1,
+            title: "Kaiserstuhl Loop",
+            route_name: "Kaiserstuhl Loop",
+            stage_name: "",
+            distance_metres: 1000,
+            point_count: 2,
+          }),
+          { status: 200 },
+        ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const stage = await fetchRoute("veloplanner", 12, 1);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/v1/providers/veloplanner/routes/12/stages/1",
+      expect.anything(),
+    );
+    expect(stage.provider).toBe("veloplanner");
   });
 
   it("surfaces the service's safe error envelope", async () => {
