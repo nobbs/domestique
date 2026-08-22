@@ -5,6 +5,7 @@ import {
   parseRoutes,
   parseStatus,
   parseSyncRuns,
+  parseWebUIConfig,
 } from "./parse";
 
 const stagePayload = {
@@ -625,5 +626,86 @@ describe("parseSyncRuns", () => {
     const { created: _created, ...withoutCreated } = runPayload;
 
     expect(() => parseSyncRuns({ runs: [withoutCreated] })).toThrow(ContractError);
+  });
+});
+
+describe("parseWebUIConfig", () => {
+  const streets = {
+    name: "Streets",
+    style_url: "https://tiles.example.test/styles/bright",
+    style_url_dark: "https://tiles.example.test/styles/dark",
+  };
+  const satellite = {
+    name: "Satellite",
+    style_url: "https://imagery.example.test/maps/hybrid/style.json",
+    dark_cartography: true,
+  };
+
+  it("reads the basemaps in the order they are offered", () => {
+    const config = parseWebUIConfig({ basemaps: [streets, satellite] });
+
+    expect(config.basemaps).toEqual([
+      {
+        name: "Streets",
+        styleUrl: "https://tiles.example.test/styles/bright",
+        styleUrlDark: "https://tiles.example.test/styles/dark",
+        darkCartography: false,
+      },
+      {
+        name: "Satellite",
+        styleUrl: "https://imagery.example.test/maps/hybrid/style.json",
+        styleUrlDark: undefined,
+        darkCartography: true,
+      },
+    ]);
+  });
+
+  it("reads a deployment that names no source provider", () => {
+    expect(parseWebUIConfig({ basemaps: [streets] }).sourceBaseUrl).toBeUndefined();
+  });
+
+  // The service refuses an empty list at startup, so one on the wire is a build
+  // talking to something that is not this service. Better a named contract
+  // error than a map that silently loads nothing.
+  it("refuses a configuration offering no basemap", () => {
+    expect(() => parseWebUIConfig({ basemaps: [] })).toThrow(ContractError);
+  });
+
+  it("refuses a basemap with no name to pick it by", () => {
+    const { name: _name, ...unnamed } = streets;
+
+    expect(() => parseWebUIConfig({ basemaps: [unnamed] })).toThrow(ContractError);
+  });
+
+  it("refuses a basemap with no style to load", () => {
+    expect(() => parseWebUIConfig({ basemaps: [{ name: "Streets" }] })).toThrow(ContractError);
+  });
+
+  it("refuses a darkness marker that is not a boolean", () => {
+    expect(() =>
+      parseWebUIConfig({ basemaps: [{ ...satellite, dark_cartography: "yes" }] }),
+    ).toThrow(ContractError);
+  });
+
+  it("refuses a basemap named only blank space", () => {
+    expect(() => parseWebUIConfig({ basemaps: [{ ...streets, name: "  " }] })).toThrow(
+      ContractError,
+    );
+  });
+
+  it("refuses two basemaps sharing one name", () => {
+    expect(() =>
+      parseWebUIConfig({ basemaps: [streets, { ...satellite, name: streets.name }] }),
+    ).toThrow(ContractError);
+  });
+
+  it("refuses a basemap that is dark cartography with a dark style of its own", () => {
+    expect(() =>
+      parseWebUIConfig({
+        basemaps: [
+          { ...satellite, style_url_dark: "https://imagery.example.test/maps/hybrid/dark.json" },
+        ],
+      }),
+    ).toThrow(ContractError);
   });
 });

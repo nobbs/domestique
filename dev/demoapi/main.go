@@ -190,8 +190,7 @@ func newHandler(
 	handler, err := httpapi.New(
 		&httpapi.Options{
 			TargetIDs:        targetIDs,
-			TileStyleURL:     settings.WebUI.TileStyleURL,
-			TileStyleURLDark: settings.WebUI.TileStyleURLDark,
+			Basemaps:         basemapOptions(settings.WebUI.Basemaps),
 			SourceBaseURL:    settings.VeloPlanner.BaseURL,
 			BuildRevision:    "demo",
 			AccessVerifier:   team,
@@ -463,4 +462,20 @@ func (t *team) mint() (string, error) {
 	}
 
 	return signingInput + "." + base64.RawURLEncoding.EncodeToString(signature), nil
+}
+
+// basemapOptions restates the configured basemaps in the HTTP surface's own
+// type, so that package keeps depending on nothing but its options.
+func basemapOptions(basemaps []config.Basemap) []httpapi.Basemap {
+	options := make([]httpapi.Basemap, len(basemaps))
+	for index, basemap := range basemaps {
+		options[index] = httpapi.Basemap{
+			Name:            basemap.Name,
+			StyleURL:        basemap.StyleURL,
+			StyleURLDark:    basemap.StyleURLDark,
+			DarkCartography: basemap.DarkCartography,
+		}
+	}
+
+	return options
 }

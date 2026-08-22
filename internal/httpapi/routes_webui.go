@@ -6,19 +6,30 @@ import "net/http"
 // static and fully cacheable. It exposes no secret: the tile style URLs are
 // operator-chosen configuration that the browser must know to render a map.
 //
-// Both styles are sent rather than the service picking one, because the colour
-// scheme is a property of the browser the operator is sitting at and this
-// response is cached across every page in the session.
+// The whole list is sent rather than the service picking one, for two reasons
+// that are really the same reason. Which cartography to show is the reader's
+// choice, remembered in their browser; and which of an entry's two styles to
+// load is their system's colour scheme. Both are properties of the browser the
+// operator is sitting at, and this response is cached across every page in the
+// session, so neither can be resolved here.
 //
 // The provider base URL rides along for the same reason: the page builds the
 // link back to a stage's source route from it, and the alternative — the service
 // putting a route URL on every stage it serves — would be the same fact repeated
 // once per stage.
 func (h *Handler) webUIConfig(writer http.ResponseWriter, _ *http.Request, _ string) {
+	// The view is the configured entry with JSON tags on it, so the conversion
+	// is the whole of the mapping. It compiles only while the two stay
+	// field-for-field identical, which is the point: a field added to one and
+	// forgotten in the other is a build error rather than a silent omission.
+	basemaps := make([]basemapView, len(h.basemaps))
+	for index, basemap := range h.basemaps {
+		basemaps[index] = basemapView(basemap)
+	}
+
 	h.writeJSON(writer, http.StatusOK, webUIConfigView{
-		TileStyleURL:     h.tileStyleURL,
-		TileStyleURLDark: h.tileStyleURLDark,
-		SourceBaseURL:    h.sourceBaseURL,
+		Basemaps:      basemaps,
+		SourceBaseURL: h.sourceBaseURL,
 	})
 }
 

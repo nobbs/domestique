@@ -253,10 +253,28 @@ export interface Status {
   sync: SyncStatus;
 }
 
+/** One cartography the map can be switched to. */
+export interface Basemap {
+  /** The label the picker shows, and what a remembered choice names. */
+  name: string;
+  /** The MapLibre style document to load. */
+  styleUrl: string;
+  /** Loaded in place of styleUrl under a dark system colour scheme. */
+  styleUrlDark?: string | undefined;
+  /**
+   * Whether this entry's ground is dark whatever the system asks for, which is
+   * what satellite imagery is. Anything painted over the map reads this rather
+   * than the colour scheme.
+   */
+  darkCartography: boolean;
+}
+
 export interface WebUIConfig {
-  tileStyleUrl: string;
-  /** Loaded in place of tileStyleUrl under a dark system colour scheme. */
-  tileStyleUrlDark?: string | undefined;
+  /**
+   * The cartographies on offer, in the configured order. Never empty; the first
+   * is what a browser that has not chosen loads.
+   */
+  basemaps: Basemap[];
   /**
    * The provider's own web application, from which a link back to a stage's
    * source route is built. Absent when the service cannot name one, and then no

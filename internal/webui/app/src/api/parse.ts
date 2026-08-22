@@ -7,6 +7,7 @@
  */
 
 import type {
+  Basemap,
   BoundingBox,
   BuildInfo,
   Position,
@@ -121,6 +122,10 @@ function flag(value: unknown, at: string): boolean {
     throw new ContractError(`${at} is not a boolean`);
   }
   return value;
+}
+
+function optionalFlag(value: unknown, at: string): boolean | undefined {
+  return value === undefined ? undefined : flag(value, at);
 }
 
 function routeFrom(source: Record<string, unknown>, at: string): Route {
@@ -448,11 +453,52 @@ function syncRunFrom(run: Record<string, unknown>, at: string): SyncRun {
   };
 }
 
+function basemapFrom(value: unknown, at: string): Basemap {
+  const entry = record(value, at);
+  const name = text(entry.name, `${at}.name`);
+  if (name.trim() === "") {
+    throw new ContractError(`${at}.name is empty`);
+  }
+  const styleUrlDark = optionalText(entry.style_url_dark, `${at}.style_url_dark`);
+  const darkCartography = optionalFlag(entry.dark_cartography, `${at}.dark_cartography`) ?? false;
+  // The service refuses this combination for the same reason: a provider
+  // publishing a dark twin has light cartography to switch away from, so a
+  // basemap cannot need both a switch and a colour scheme of its own.
+  if (darkCartography && styleUrlDark !== undefined) {
+    throw new ContractError(`${at} sets both dark_cartography and style_url_dark`);
+  }
+  return {
+    name,
+    styleUrl: text(entry.style_url, `${at}.style_url`),
+    styleUrlDark,
+    darkCartography,
+  };
+}
+
 export function parseWebUIConfig(payload: unknown): WebUIConfig {
   const body = record(payload, "body");
+  const basemaps = array(body.basemaps, "body.basemaps").map((entry, index) =>
+    basemapFrom(entry, `body.basemaps[${index}]`),
+  );
+  // An empty list would leave the map with nothing to load, and the service
+  // refuses that at startup. Caught here too, so the failure is one contract
+  // error rather than a blank canvas the page cannot explain.
+  if (basemaps.length === 0) {
+    throw new ContractError("body.basemaps is empty");
+  }
+  // A basemap's name is the identity a remembered choice is matched against;
+  // two basemaps sharing one would make that match ambiguous, the same reason
+  // the service itself refuses it.
+  const seenNames = new Set<string>();
+  for (const basemap of basemaps) {
+    if (seenNames.has(basemap.name)) {
+      throw new ContractError(`body.basemaps has more than one basemap named "${basemap.name}"`);
+    }
+    seenNames.add(basemap.name);
+  }
+
   return {
-    tileStyleUrl: text(body.tile_style_url, "body.tile_style_url"),
-    tileStyleUrlDark: optionalText(body.tile_style_url_dark, "body.tile_style_url_dark"),
+    basemaps,
     sourceBaseUrl: optionalText(body.source_base_url, "body.source_base_url"),
   };
 }

@@ -38,15 +38,21 @@ const (
 	// it, so the compose passthrough needs no translation table.
 	imageReferenceEnv = envPrefix + "IMAGE"
 
-	// defaultTileStyleURL is a keyless MapLibre style, so the default deployment
-	// exposes no credential to the browser and sends no account identity to the
-	// tile origin.
-	defaultTileStyleURL = "https://tiles.openfreemap.org/styles/bright"
+	// defaultBasemapName labels the one basemap a deployment gets without
+	// configuring any. It is never shown on its own — the picker appears only
+	// where there is something to pick between — but it is still the entry's
+	// identity, so it is a word an operator would recognise rather than a slug.
+	defaultBasemapName = "Streets"
 
-	// defaultTileStyleURLDark is the same provider's dark style. It shares the
+	// defaultBasemapStyleURL is a keyless MapLibre style, so the default
+	// deployment exposes no credential to the browser and sends no account
+	// identity to the tile origin.
+	defaultBasemapStyleURL = "https://tiles.openfreemap.org/styles/bright"
+
+	// defaultBasemapStyleURLDark is the same provider's dark style. It shares the
 	// light default's origin, so following the operator's system colour scheme
 	// costs a default deployment no second tile origin.
-	defaultTileStyleURLDark = "https://tiles.openfreemap.org/styles/dark"
+	defaultBasemapStyleURLDark = "https://tiles.openfreemap.org/styles/dark"
 
 	// defaultRebuildInterval is how often the surface index is rebuilt when an
 	// operator has named regions but not a cadence. OpenStreetMap extracts are
@@ -134,17 +140,40 @@ type CloudflareAccess struct {
 
 // WebUI configures the read-only browser route map view.
 type WebUI struct {
-	// TileStyleURL is the MapLibre style document the operator's browser loads.
-	// It is deliberately not a secret: it is served to the page and is visible
-	// to anyone who can reach the UI. The default is a keyless provider, so no
+	// Basemaps are the cartographies the reader may switch the map between, in
+	// the order they are offered. The first is what a browser that has never
+	// chosen one loads. At least one is required, because the map has to paint
+	// on something.
+	Basemaps []Basemap
+}
+
+// Basemap is one cartography the map can load.
+type Basemap struct {
+	// Name labels the entry in the picker and is the identity a browser
+	// remembers its choice by, so it is required and unique across the list.
+	Name string
+
+	// StyleURL is the MapLibre style document the operator's browser loads. It
+	// is deliberately not a secret: it is served to the page and is visible to
+	// anyone who can reach the UI. The default is a keyless provider, so no
 	// credential is exposed. A provider that requires an API key would place it
 	// in this URL's query and thereby publish it to the browser.
-	TileStyleURL string
+	StyleURL string
 
-	// TileStyleURLDark is loaded in place of TileStyleURL when the browser
-	// reports a dark system colour scheme. It must share TileStyleURL's origin.
-	// An empty value keeps one style in both schemes.
-	TileStyleURLDark string
+	// StyleURLDark is loaded in place of StyleURL when the browser reports a
+	// dark system colour scheme. It must share this entry's StyleURL origin. An
+	// empty value keeps one style in both schemes.
+	StyleURLDark string
+
+	// DarkCartography says this entry's ground is dark whatever the system
+	// colour scheme is, which is what satellite imagery is. Anything the page
+	// paints over the map reads this rather than the scheme, because a route
+	// drawn in the dark-ground ink over light cartography — or the reverse —
+	// is the one that cannot be seen.
+	//
+	// It contradicts StyleURLDark: a provider publishing a dark twin has light
+	// cartography to switch away from. Configuring both is refused.
+	DarkCartography bool
 }
 
 // Surface configures the local map the road surface of a stage is read from.
@@ -319,8 +348,14 @@ type rawHTTP struct {
 }
 
 type rawWebUI struct {
-	TileStyleURL     string `koanf:"tile_style_url"`
-	TileStyleURLDark string `koanf:"tile_style_url_dark"`
+	Basemaps []rawBasemap `koanf:"basemaps"`
+}
+
+type rawBasemap struct {
+	Name            string `koanf:"name"`
+	StyleURL        string `koanf:"style_url"`
+	StyleURLDark    string `koanf:"style_url_dark"`
+	DarkCartography bool   `koanf:"dark_cartography"`
 }
 
 type rawSurface struct {
@@ -589,12 +624,6 @@ func build(raw *rawSettings) (*Settings, error) {
 	if err := validateRedirectURL(raw.Wahoo.RedirectURL); err != nil {
 		return nil, err
 	}
-	if err := validateTileStyleURL("webui.tile_style_url", raw.WebUI.TileStyleURL); err != nil {
-		return nil, err
-	}
-	if err := validateTileStyleURLDark(raw.WebUI.TileStyleURLDark, raw.WebUI.TileStyleURL); err != nil {
-		return nil, err
-	}
 	if err := validateSurface(raw.Surface); err != nil {
 		return nil, err
 	}
@@ -602,6 +631,11 @@ func build(raw *rawSettings) (*Settings, error) {
 		return nil, err
 	}
 	if err := validateNotifications(&raw.Notifications); err != nil {
+		return nil, err
+	}
+
+	basemaps, err := validateBasemaps(raw.WebUI.Basemaps)
+	if err != nil {
 		return nil, err
 	}
 
@@ -687,8 +721,7 @@ func build(raw *rawSettings) (*Settings, error) {
 			},
 		},
 		WebUI: WebUI{
-			TileStyleURL:     strings.TrimSpace(raw.WebUI.TileStyleURL),
-			TileStyleURLDark: strings.TrimSpace(raw.WebUI.TileStyleURLDark),
+			Basemaps: basemaps,
 		},
 		Surface: Surface{
 			Regions:         trimmedRegions(raw.Surface.Regions),
@@ -765,11 +798,11 @@ func validateReadinessAddress(address, listenAddress string) error {
 	return nil
 }
 
-// validateTileStyleURL accepts an absolute HTTPS style document URL. Unlike the
+// validateStyleURL accepts an absolute HTTPS style document URL. Unlike the
 // service's own endpoints it permits a query string, because providers that
 // require an API key carry it there; such a key is published to the browser and
 // is the operator's deliberate choice, not a managed secret.
-func validateTileStyleURL(name, value string) error {
+func validateStyleURL(name, value string) error {
 	parsed, err := url.ParseRequestURI(strings.TrimSpace(value))
 	if err != nil || parsed.Scheme != "https" || parsed.Host == "" ||
 		parsed.User != nil || parsed.Fragment != "" {
@@ -779,28 +812,63 @@ func validateTileStyleURL(name, value string) error {
 	return nil
 }
 
-// validateTileStyleURLDark accepts nothing at all, or a style on the same origin
-// as the light one. An empty value is the setting for a provider that publishes
-// only one style, and leaves the map unchanged in both colour schemes.
+// validateBasemaps checks the list the map may be switched between. At least one
+// entry is required, because a map with no cartography paints nothing; each is
+// named, because the name is both the label the reader picks by and the identity
+// a browser remembers its choice by, and a repeated name would make those two
+// disagree.
 //
-// The shared origin is a requirement rather than a nicety. The map view's whole
-// privacy cost is one third-party origin learning the area of a viewed route,
-// and the Content-Security-Policy is what holds the page to that one origin. A
-// dark style elsewhere would widen both, which is a decision about the service's
-// posture rather than about how the map looks after dark.
-func validateTileStyleURLDark(value, light string) error {
-	trimmed := strings.TrimSpace(value)
-	if trimmed == "" {
-		return nil
-	}
-	if err := validateTileStyleURL("webui.tile_style_url_dark", trimmed); err != nil {
-		return err
-	}
-	if !sameOrigin(trimmed, strings.TrimSpace(light)) {
-		return errors.New("webui.tile_style_url_dark must be on the same origin as webui.tile_style_url")
+// The same-origin rule on a dark twin holds per entry rather than across the
+// list, and that is the whole of what this change widened. One entry still
+// reaches one third-party origin, and the page still requests only the entry
+// currently on screen; what grew is the set of providers the operator has
+// offered, which is the point of the setting.
+func validateBasemaps(raw []rawBasemap) ([]Basemap, error) {
+	if len(raw) == 0 {
+		return nil, errors.New("webui.basemaps must contain at least one entry")
 	}
 
-	return nil
+	basemaps := make([]Basemap, len(raw))
+	seen := make(map[string]struct{}, len(raw))
+	for index, entry := range raw {
+		name := strings.TrimSpace(entry.Name)
+		if name == "" {
+			return nil, fmt.Errorf("webui.basemaps[%d].name is required", index)
+		}
+		if _, duplicate := seen[name]; duplicate {
+			return nil, fmt.Errorf("webui.basemaps[%d].name is duplicated", index)
+		}
+		seen[name] = struct{}{}
+
+		styleURL := strings.TrimSpace(entry.StyleURL)
+		if err := validateStyleURL(fmt.Sprintf("webui.basemaps[%d].style_url", index), styleURL); err != nil {
+			return nil, err
+		}
+
+		styleURLDark := strings.TrimSpace(entry.StyleURLDark)
+		if styleURLDark != "" {
+			if entry.DarkCartography {
+				return nil, fmt.Errorf(
+					"webui.basemaps[%d] must not set both style_url_dark and dark_cartography", index)
+			}
+			darkName := fmt.Sprintf("webui.basemaps[%d].style_url_dark", index)
+			if err := validateStyleURL(darkName, styleURLDark); err != nil {
+				return nil, err
+			}
+			if !sameOrigin(styleURLDark, styleURL) {
+				return nil, fmt.Errorf("%s must be on the same origin as webui.basemaps[%d].style_url", darkName, index)
+			}
+		}
+
+		basemaps[index] = Basemap{
+			Name:            name,
+			StyleURL:        styleURL,
+			StyleURLDark:    styleURLDark,
+			DarkCartography: entry.DarkCartography,
+		}
+	}
+
+	return basemaps, nil
 }
 
 // sameOrigin reports whether two URLs share a scheme and host. Hosts are
@@ -1059,8 +1127,13 @@ func configurationDefaults() map[string]any {
 			"empty_source_deletion": string(EmptySourceDeletionDeny),
 		},
 		"webui": map[string]any{
-			"tile_style_url":      defaultTileStyleURL,
-			"tile_style_url_dark": defaultTileStyleURLDark,
+			"basemaps": []any{
+				map[string]any{
+					"name":           defaultBasemapName,
+					"style_url":      defaultBasemapStyleURL,
+					"style_url_dark": defaultBasemapStyleURLDark,
+				},
+			},
 		},
 		"surface": map[string]any{
 			"rebuild_interval": defaultRebuildInterval.String(),

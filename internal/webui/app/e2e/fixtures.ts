@@ -64,12 +64,14 @@ async function styleUrls(
   const response = await page.request.get(`${baseUrl}/v1/webui/config`, { headers });
   expect(response.ok(), "the demo API serves its browser configuration").toBeTruthy();
   const payload = (await response.json()) as {
-    tile_style_url?: string;
-    tile_style_url_dark?: string;
+    basemaps?: { style_url?: string; style_url_dark?: string }[];
   };
-  expect(payload.tile_style_url, "the service names a basemap style").toBeTruthy();
+  // The first entry is the one a browser that has chosen nothing loads, which is
+  // every browser this harness starts.
+  const first = payload.basemaps?.[0];
+  expect(first?.style_url, "the service names a basemap style").toBeTruthy();
 
-  return { light: payload.tile_style_url ?? "", dark: payload.tile_style_url_dark };
+  return { light: first?.style_url ?? "", dark: first?.style_url_dark };
 }
 
 /** What an offline page may be given beyond the defaults. */

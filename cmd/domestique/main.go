@@ -168,9 +168,8 @@ func run(ctx context.Context) error {
 
 	handler, err := httpapi.New(
 		&httpapi.Options{
-			TargetIDs:        targetIDs,
-			TileStyleURL:     settings.WebUI.TileStyleURL,
-			TileStyleURLDark: settings.WebUI.TileStyleURLDark,
+			TargetIDs: targetIDs,
+			Basemaps:  basemapOptions(settings.WebUI.Basemaps),
 			// The page links a stage back to the source route it was made from,
 			// which is on the provider the library is read from.
 			SourceBaseURL:    settings.VeloPlanner.BaseURL,
@@ -374,4 +373,20 @@ func serve(
 	}
 
 	return errors.Join(servingErr, shutdownErr)
+}
+
+// basemapOptions restates the configured basemaps in the HTTP surface's own
+// type, so that package keeps depending on nothing but its options.
+func basemapOptions(basemaps []config.Basemap) []httpapi.Basemap {
+	options := make([]httpapi.Basemap, len(basemaps))
+	for index, basemap := range basemaps {
+		options[index] = httpapi.Basemap{
+			Name:            basemap.Name,
+			StyleURL:        basemap.StyleURL,
+			StyleURLDark:    basemap.StyleURLDark,
+			DarkCartography: basemap.DarkCartography,
+		}
+	}
+
+	return options
 }

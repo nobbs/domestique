@@ -1,10 +1,11 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { WebUIConfig } from "../api/types";
+import type { Basemap, WebUIConfig } from "../api/types";
 import { basemapFor, usePrefersDarkScheme } from "./basemap";
 
 const LIGHT = "https://tiles.example.test/styles/liberty";
 const DARK = "https://tiles.example.test/styles/liberty-dark";
+const IMAGERY = "https://imagery.example.test/styles/hybrid";
 
 /**
  * A `matchMedia` that answers one query and can change its mind.
@@ -45,8 +46,21 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+function configOf(...basemaps: Basemap[]): WebUIConfig {
+  return { basemaps };
+}
+
+const streets: Basemap = {
+  name: "Streets",
+  styleUrl: LIGHT,
+  styleUrlDark: DARK,
+  darkCartography: false,
+};
+const oneStyle: Basemap = { name: "Streets", styleUrl: LIGHT, darkCartography: false };
+const satellite: Basemap = { name: "Satellite", styleUrl: IMAGERY, darkCartography: true };
+
 describe("basemapFor", () => {
-  const config: WebUIConfig = { tileStyleUrl: LIGHT, tileStyleUrlDark: DARK };
+  const config = configOf(streets);
 
   it("uses the light style under a light scheme", () => {
     expect(basemapFor(config, false)).toEqual({ styleUrl: LIGHT, dark: false });
@@ -57,14 +71,32 @@ describe("basemapFor", () => {
   });
 
   it("keeps the one style when no dark one is configured", () => {
-    expect(basemapFor({ tileStyleUrl: LIGHT }, true)).toEqual({ styleUrl: LIGHT, dark: false });
+    expect(basemapFor(configOf(oneStyle), true)).toEqual({ styleUrl: LIGHT, dark: false });
   });
 
   // The whole point of reporting darkness alongside the style rather than
   // letting a caller re-read the system scheme: here the two disagree, and
   // anything drawn over the map has to follow the style.
   it("does not report darkness for a light style under a dark scheme", () => {
-    expect(basemapFor({ tileStyleUrl: LIGHT }, true).dark).toBe(false);
+    expect(basemapFor(configOf(oneStyle), true).dark).toBe(false);
+  });
+
+  // The other way the two disagree: imagery is dark ground at noon.
+  it("reports darkness for dark cartography under a light scheme", () => {
+    expect(basemapFor(configOf(satellite), false)).toEqual({ styleUrl: IMAGERY, dark: true });
+  });
+
+  it("loads the first entry, whatever else is offered", () => {
+    expect(basemapFor(configOf(satellite, streets), true).styleUrl).toBe(IMAGERY);
+  });
+
+  // Unreachable through the service, which refuses an empty list at startup, and
+  // unreachable through the parser, which refuses one on the wire. Asserted all
+  // the same, because "there is always an entry" is a claim about two other
+  // files rather than about this one, and a total function is what keeps a map
+  // that lost its list from becoming a page that throws.
+  it("names nothing where nothing is offered", () => {
+    expect(basemapFor(configOf(), false)).toEqual({ styleUrl: "", dark: false });
   });
 });
 

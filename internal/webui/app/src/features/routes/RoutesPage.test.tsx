@@ -109,7 +109,11 @@ function renderPage(
     defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
   });
   client.setQueryData(["stages"], library);
-  client.setQueryData(["webui-config"], { tileStyleUrl: "https://tiles.example/style.json" });
+  client.setQueryData(["webui-config"], {
+    basemaps: [
+      { name: "Streets", styleUrl: "https://tiles.example/style.json", darkCartography: false },
+    ],
+  });
   client.setQueryData(["status"], {
     ready: true,
     converged: true,
