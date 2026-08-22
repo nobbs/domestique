@@ -12,6 +12,11 @@ import (
 
 const failureNotificationSuppression = 6 * time.Hour
 
+// staleCategory names the notification suppression bucket for a stale trusted
+// source inventory. It shares the same suppression window and store as an
+// ordinary phase failure, keyed apart from any real phase-and-failure pair.
+const staleCategory = "source:stale"
+
 // RunState records terminal run data and failure-notification delivery state.
 type RunState interface {
 	// RecordSyncRun writes one terminal run down and returns the reference it
@@ -20,6 +25,9 @@ type RunState interface {
 	RecordTargetRun(ctx context.Context, targetID string, finishedAt time.Time, outcome, detail string) error
 	LastFailureNotification(ctx context.Context, category string) (sentAt time.Time, found bool, err error)
 	RecordFailureNotification(ctx context.Context, category string, sentAt time.Time) error
+	// LastSuccessfulPhaseCompletion returns when a phase last recorded a
+	// success, which is what its trusted inventory age is measured against.
+	LastSuccessfulPhaseCompletion(ctx context.Context, phase string) (completedAt time.Time, found bool, err error)
 	// LastPhaseOutcome returns the outcome of the phase's most recent recorded
 	// run, which is what tells a success that ends a failure apart from a
 	// routine one.
@@ -48,10 +56,11 @@ type Reporter struct {
 	now      func() time.Time
 	// phase names the half being run right now, and is nil between the moment a
 	// run is accepted and the moment its first half starts.
-	phase     atomic.Pointer[Phase]
-	success   SuccessNotification
-	running   atomic.Bool
-	triggered stdsync.WaitGroup
+	phase      atomic.Pointer[Phase]
+	success    SuccessNotification
+	running    atomic.Bool
+	triggered  stdsync.WaitGroup
+	staleAfter time.Duration
 }
 
 // Runner is the application service seam consumed by the reporter and
@@ -65,16 +74,25 @@ type Runner interface {
 	AnnotateStored(ctx context.Context)
 }
 
-// NewReporter creates a reporting runner with explicit dependencies.
-func NewReporter(runner Runner, state RunState, notifier Notifier, success SuccessNotification) (*Reporter, error) {
+// NewReporter creates a reporting runner with explicit dependencies. staleAfter
+// bounds how long the trusted source inventory may go without a successful
+// refresh before it is reported and notified as stale.
+func NewReporter(
+	runner Runner, state RunState, notifier Notifier, success SuccessNotification, staleAfter time.Duration,
+) (*Reporter, error) {
 	if runner == nil || state == nil || notifier == nil {
 		return nil, errors.New("sync runner, run state, and notifier are required")
 	}
 	if err := success.validate(); err != nil {
 		return nil, err
 	}
+	if staleAfter <= 0 {
+		return nil, errors.New("a stale-inventory bound must be positive")
+	}
 
-	return &Reporter{runner: runner, state: state, notifier: notifier, success: success, now: time.Now}, nil
+	return &Reporter{
+		runner: runner, state: state, notifier: notifier, success: success, staleAfter: staleAfter, now: time.Now,
+	}, nil
 }
 
 // Run performs the scheduled synchronization: whichever phases the operator has
@@ -183,6 +201,10 @@ func (r *Reporter) runPhases(ctx context.Context, source, targets bool) Result {
 	if r.success.Policy == SuccessDigest {
 		r.notifyDigest(ctx, r.now().UTC())
 	}
+	// Checked every pass, whether or not the source phase ran this tick: the
+	// inventory can go stale while the schedule has it switched off, and this
+	// reads only local state, so it costs no provider call either way.
+	r.checkStaleness(ctx, r.now().UTC(), sourceStored)
 	// Enrichment comes after everything a rider is waiting for, and only when
 	// this pass stored something new to enrich.
 	if sourceStored {
@@ -283,6 +305,52 @@ func (r *Reporter) notifyFailure(ctx context.Context, result *Result, reference 
 	if err := r.state.RecordFailureNotification(ctx, category, now); err != nil {
 		return
 	}
+}
+
+// checkStaleness reports and notifies on the age of the trusted source
+// inventory, independently of whatever this tick's phases did — a source that
+// has stopped succeeding leaves no new failure to notify on once its failure
+// category is already suppressed, and this is what still catches that.
+//
+// sourceStored is this tick's own source-phase outcome. A source that just
+// succeeded ends any outstanding stale alert unconditionally, the same way an
+// ordinary recovery is never held back by policy; a source that did not
+// succeed this tick is checked against how long it has been since one did.
+func (r *Reporter) checkStaleness(ctx context.Context, now time.Time, sourceStored bool) {
+	lastSentAt, notified, err := r.state.LastFailureNotification(ctx, staleCategory)
+	if err != nil {
+		return
+	}
+	if sourceStored {
+		if notified {
+			if sendErr := r.notifier.Send(
+				ctx, "Domestique sync", "source recovered: trusted inventory is fresh again",
+			); sendErr != nil {
+				return
+			}
+		}
+
+		return
+	}
+
+	lastSuccess, found, err := r.state.LastSuccessfulPhaseCompletion(ctx, string(PhaseSource))
+	if err != nil || !found {
+		return
+	}
+	age := now.Sub(lastSuccess)
+	if age < r.staleAfter || (notified && now.Sub(lastSentAt) < failureNotificationSuppression) {
+		return
+	}
+	if err := r.notifier.Send(ctx, "Domestique sync failed", staleMessage(age)); err != nil {
+		return
+	}
+	if err := r.state.RecordFailureNotification(ctx, staleCategory, now); err != nil {
+		return
+	}
+}
+
+func staleMessage(age time.Duration) string {
+	return fmt.Sprintf("source stale: trusted inventory age=%s", age.Round(time.Minute))
 }
 
 // successMessage reports the counts the finished phase actually produced. A

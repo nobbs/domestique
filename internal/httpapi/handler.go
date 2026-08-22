@@ -170,6 +170,10 @@ type RunState interface {
 	LastSyncRun(ctx context.Context) (completedAt time.Time, outcome, detail string, sourceStages, created, updated, deleted int, found bool, err error)
 	ForEachPhaseRun(ctx context.Context, visit func(phase string, completedAt time.Time, outcome, detail string, sourceStages, created, updated, deleted int) error) error
 	ForEachSyncRun(ctx context.Context, after string, limit int, visit func(reference, phase string, completedAt time.Time, outcome, detail string, sourceStages, created, updated, deleted int) error) (next string, usable bool, err error)
+	// LastSuccessfulPhaseCompletion returns when a phase last recorded a
+	// success, which is what the trusted inventory's reported age is measured
+	// against.
+	LastSuccessfulPhaseCompletion(ctx context.Context, phase string) (completedAt time.Time, found bool, err error)
 }
 
 // ScheduleState is the pair of switches governing unattended runs.
@@ -199,10 +203,14 @@ type Options struct {
 	// It is required: without it the service has no gate at all.
 	AccessVerifier AccessVerifier
 
-	// Basemaps are the cartographies the page may switch the map between, in
-	// the order they are offered. At least one is required. Each entry's dark
-	// style, where it has one, must be on that entry's own origin.
-	Basemaps []Basemap
+	// SurfaceIndexFunc reports the map build classifications are currently being
+	// read from. It answers false when surface classification is switched off,
+	// and while a first index is still being built.
+	//
+	// It asks the live index rather than the state file on purpose: what the
+	// status page should say is what is loaded, and a recorded build whose file
+	// did not survive a restart is exactly the case where the two differ.
+	SurfaceIndexFunc func() (generation string, builtAt time.Time, ok bool)
 
 	// SourceBaseURL is the provider's own web application, as the operator
 	// configured it. The page builds an outbound link to a stage's source route
@@ -231,15 +239,6 @@ type Options struct {
 	// principal every authenticated request resolves to.
 	AccessEmail string
 
-	// SurfaceIndexFunc reports the map build classifications are currently being
-	// read from. It answers false when surface classification is switched off,
-	// and while a first index is still being built.
-	//
-	// It asks the live index rather than the state file on purpose: what the
-	// status page should say is what is loaded, and a recorded build whose file
-	// did not survive a restart is exactly the case where the two differ.
-	SurfaceIndexFunc func() (generation string, builtAt time.Time, ok bool)
-
 	// BrowserOriginURL is an absolute HTTPS URL on the hostname a browser
 	// reaches this service at. Only its scheme and host are read: together they
 	// are the one origin a state-changing request may come from. The Wahoo
@@ -247,7 +246,18 @@ type Options struct {
 	// returns from Wahoo — which is why it is what the composition root passes.
 	BrowserOriginURL string
 
+	// Basemaps are the cartographies the page may switch the map between, in
+	// the order they are offered. At least one is required. Each entry's dark
+	// style, where it has one, must be on that entry's own origin.
+	Basemaps []Basemap
+
 	TargetIDs []string
+
+	// SourceStaleAfter bounds how long the trusted source inventory may go
+	// without a successful refresh before the status response reports it as
+	// stale. Optional: zero omits trusted-inventory freshness from the response
+	// entirely, which is what a caller supplying no bound gets.
+	SourceStaleAfter time.Duration
 }
 
 // Basemap is one cartography the page may load, as the operator configured it.
@@ -274,21 +284,23 @@ type Basemap struct {
 
 // Handler enforces Cloudflare Access identity and exposes the v1 HTTP surface.
 type Handler struct {
-	mux              *http.ServeMux
 	oauth            OAuth
 	syncRuns         Sync
 	state            State
 	assets           Assets
 	accessVerifier   AccessVerifier
-	basemaps         []Basemap
-	sourceBaseURL    string
+	mux              *http.ServeMux
+	now              func() time.Time
+	surfaceIndex     func() (string, time.Time, bool)
 	buildRevision    string
 	buildImageDigest string
-	tileOrigins      []string
 	browserOrigin    string
 	allowedEmail     string
-	surfaceIndex     func() (string, time.Time, bool)
+	sourceBaseURL    string
+	tileOrigins      []string
 	targetIDs        []string
+	basemaps         []Basemap
+	sourceStaleAfter time.Duration
 }
 
 // New creates a handler. Health checks are intentionally unauthenticated;
@@ -373,6 +385,8 @@ func New(
 		browserOrigin:    browserOrigin,
 		targetIDs:        append([]string(nil), options.TargetIDs...),
 		surfaceIndex:     options.SurfaceIndexFunc,
+		sourceStaleAfter: options.SourceStaleAfter,
+		now:              time.Now,
 
 		accessVerifier: options.AccessVerifier,
 		allowedEmail:   strings.TrimSpace(options.AccessEmail),

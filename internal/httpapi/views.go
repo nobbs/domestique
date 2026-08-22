@@ -158,7 +158,12 @@ type syncView struct {
 	// Active is present only while a run is queued, running, or held back —
 	// the states in which no terminal result may be claimed.
 	Active *activeView `json:"active,omitempty"`
-	State  string      `json:"state"`
+	// TrustedInventory reports the age of the trusted source inventory against
+	// the configured staleness bound. Absent when the deployment named no
+	// bound.
+	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
+	TrustedInventory *trustedInventoryView `json:"trusted_inventory,omitempty"`
+	State            string                `json:"state"`
 	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
 	LastCompletedAt string `json:"last_completed_at,omitempty"`
 	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
@@ -170,6 +175,20 @@ type syncView struct {
 	Updated      int              `json:"updated"`
 	Deleted      int              `json:"deleted"`
 	Schedule     syncScheduleView `json:"schedule"`
+}
+
+// trustedInventoryView reports the trusted source inventory's freshness. It is
+// derived from local state alone — the last successful source phase completion
+// against the configured bound — so reading it costs no provider call.
+type trustedInventoryView struct {
+	// LastSuccessAt is absent until a source phase has ever succeeded.
+	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
+	LastSuccessAt string `json:"last_success_at,omitempty"`
+	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
+	MaxAgeSeconds int64 `json:"max_age_seconds"`
+	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
+	AgeSeconds int64 `json:"age_seconds,omitempty"`
+	Fresh      bool  `json:"fresh"`
 }
 
 // surfaceView reports how much of the library carries a usable classification.

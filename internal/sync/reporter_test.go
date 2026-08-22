@@ -123,6 +123,141 @@ func TestReporterAlertsOnEachPhaseFailingTheSameWay(t *testing.T) {
 	}, notifier.messages)
 }
 
+// A source that never succeeded has no trusted inventory to be stale, and
+// staleness must never be the reason one is claimed to exist.
+func TestReporterReportsNoStalenessBeforeAnySuccessfulSourceRun(t *testing.T) {
+	state := &fakeRunState{}
+	notifier := &fakeNotifier{}
+	reporter := newReporter(t, &reportingRunner{}, state, notifier)
+	reporter.now = func() time.Time { return time.Date(2026, time.August, 17, 8, 0, 0, 0, time.UTC) }
+
+	reporter.Run(t.Context())
+	assert.Empty(t, notifier.messages, "a service with no successful source run was called stale")
+}
+
+// A source phase can stop succeeding without a newly visible incident once its
+// own failure category is suppressed; this is the deterministic, provider-free
+// check that still catches it.
+func TestReporterAlertsWhenTheTrustedInventoryGoesStale(t *testing.T) {
+	state := &fakeRunState{lastSuccessAt: map[string]time.Time{
+		"source": time.Date(2026, time.August, 16, 8, 0, 0, 0, time.UTC),
+	}}
+	notifier := &fakeNotifier{}
+	reporter := newReporter(t, &reportingRunner{}, state, notifier)
+	reporter.now = func() time.Time { return time.Date(2026, time.August, 17, 8, 30, 0, 0, time.UTC) }
+
+	reporter.Run(t.Context())
+	require.Len(t, notifier.messages, 1, "want one stale alert")
+	assert.Equal(t, "Domestique sync failed", notifier.messages[0].title)
+	assert.Contains(t, notifier.messages[0].message, "source stale:")
+}
+
+// The stale alert is rate-limited the same way an ordinary failure is, so a
+// schedule left off for days does not repeat it every tick.
+func TestReporterSuppressesRepeatedStaleAlertsForSixHours(t *testing.T) {
+	state := &fakeRunState{lastSuccessAt: map[string]time.Time{
+		"source": time.Date(2026, time.August, 16, 8, 0, 0, 0, time.UTC),
+	}}
+	notifier := &fakeNotifier{}
+	reporter := newReporter(t, &reportingRunner{}, state, notifier)
+	now := time.Date(2026, time.August, 17, 8, 30, 0, 0, time.UTC)
+	reporter.now = func() time.Time { return now }
+
+	reporter.Run(t.Context())
+	now = now.Add(5 * time.Hour)
+	reporter.Run(t.Context())
+	now = now.Add(time.Hour + time.Minute)
+	reporter.Run(t.Context())
+	assert.Len(t, notifier.messages, 2, "want the second alert suppressed and the third let through")
+}
+
+// A successful refresh ends an outstanding stale alert unconditionally, the
+// same way an ordinary recovery is never held back by policy.
+func TestReporterSendsRecoveryWhenSourceSucceedsAfterBeingStale(t *testing.T) {
+	state := &fakeRunState{
+		source: true,
+		lastFailure: map[string]time.Time{
+			staleCategory: time.Date(2026, time.August, 17, 8, 30, 0, 0, time.UTC),
+		},
+	}
+	runner := &reportingRunner{source: Result{Phase: PhaseSource, Outcome: OutcomeSucceeded, SourceStages: 5}}
+	notifier := &fakeNotifier{}
+	reporter := newReporter(t, runner, state, notifier)
+	reporter.now = func() time.Time { return time.Date(2026, time.August, 18, 9, 0, 0, 0, time.UTC) }
+
+	reporter.Run(t.Context())
+	require.Len(t, notifier.messages, 2, "want the routine success and the recovery")
+	assert.Equal(t, "source recovered: trusted inventory is fresh again", notifier.messages[1].message)
+}
+
+// An unreadable suppression record must not be treated as "nothing to
+// recover from" or "nothing yet alerted" — it holds the staleness check back
+// entirely rather than guessing.
+func TestReporterStalenessCheckDeclinesWhenSuppressionStateCannotBeRead(t *testing.T) {
+	state := &fakeRunState{
+		lastFailureErr: errors.New("state unavailable"),
+		lastSuccessAt: map[string]time.Time{
+			"source": time.Date(2026, time.August, 16, 8, 0, 0, 0, time.UTC),
+		},
+	}
+	notifier := &fakeNotifier{}
+	reporter := newReporter(t, &reportingRunner{}, state, notifier)
+	reporter.now = func() time.Time { return time.Date(2026, time.August, 17, 8, 30, 0, 0, time.UTC) }
+
+	reporter.Run(t.Context())
+	assert.Empty(t, notifier.messages, "a staleness check with no readable suppression state sent something")
+}
+
+// A recovery message Pushover refuses is not retried from here; the next
+// success carries the same signal again.
+func TestReporterStaleRecoveryKeepsGoingWhenTheNotificationCannotBeSent(t *testing.T) {
+	state := &fakeRunState{
+		source: true,
+		lastFailure: map[string]time.Time{
+			staleCategory: time.Date(2026, time.August, 17, 8, 30, 0, 0, time.UTC),
+		},
+	}
+	runner := &reportingRunner{source: Result{Phase: PhaseSource, Outcome: OutcomeSucceeded}}
+	notifier := &fakeNotifier{sendErr: errors.New("pushover unavailable")}
+	reporter := newReporter(t, runner, state, notifier)
+	reporter.now = func() time.Time { return time.Date(2026, time.August, 18, 9, 0, 0, 0, time.UTC) }
+
+	assert.NotPanics(t, func() { reporter.Run(t.Context()) }, "a refused recovery notification must not stop the run")
+}
+
+// A stale alert Pushover refuses is not recorded as sent, so the next tick
+// still has a suppression window to try again.
+func TestReporterDoesNotRecordAStaleAlertPushoverRefused(t *testing.T) {
+	state := &fakeRunState{lastSuccessAt: map[string]time.Time{
+		"source": time.Date(2026, time.August, 16, 8, 0, 0, 0, time.UTC),
+	}}
+	notifier := &fakeNotifier{sendErr: errors.New("pushover unavailable")}
+	reporter := newReporter(t, &reportingRunner{}, state, notifier)
+	reporter.now = func() time.Time { return time.Date(2026, time.August, 17, 8, 30, 0, 0, time.UTC) }
+
+	reporter.Run(t.Context())
+	_, notified, err := state.LastFailureNotification(t.Context(), staleCategory)
+	require.NoError(t, err, "LastFailureNotification()")
+	assert.False(t, notified, "a stale alert Pushover refused was recorded as delivered")
+}
+
+// A stale alert whose suppression record cannot be written must still have
+// gone out; losing the record only costs a repeated alert, not a missed one.
+func TestReporterSendsAStaleAlertItCannotRecordTheSuppressionOf(t *testing.T) {
+	state := &fakeRunState{
+		recordFailureErr: errors.New("state unavailable"),
+		lastSuccessAt: map[string]time.Time{
+			"source": time.Date(2026, time.August, 16, 8, 0, 0, 0, time.UTC),
+		},
+	}
+	notifier := &fakeNotifier{}
+	reporter := newReporter(t, &reportingRunner{}, state, notifier)
+	reporter.now = func() time.Time { return time.Date(2026, time.August, 17, 8, 30, 0, 0, time.UTC) }
+
+	reporter.Run(t.Context())
+	assert.Len(t, notifier.messages, 1, "want one stale alert sent despite the suppression record failing to write")
+}
+
 // Enrichment follows the work a rider is waiting for, and only happens when a
 // pass stored something new to enrich.
 func TestReporterEnrichesOnlyAfterStoringANewInventory(t *testing.T) {
@@ -244,8 +379,12 @@ type fakeRunState struct {
 	digestReadErr     error
 	digestRecordErr   error
 	successfulRunsErr error
+	lastFailureErr    error
+	recordFailureErr  error
 	lastFailure       map[string]time.Time
 	lastPhase         map[string]string
+	lastSuccessAt     map[string]time.Time
+	lastSuccessErr    error
 	lastDigest        time.Time
 	successfulRuns    []successfulRun
 	phases            []string
@@ -294,7 +433,7 @@ func (s *fakeRunState) RecordTargetRun(
 func (s *fakeRunState) RecordSyncRun(
 	_ context.Context,
 	phase string,
-	_, _ time.Time,
+	_, finishedAt time.Time,
 	outcome, _ string,
 	_, created, updated, deleted int,
 ) (string, error) {
@@ -310,9 +449,24 @@ func (s *fakeRunState) RecordSyncRun(
 		s.successfulRuns = append(s.successfulRuns, successfulRun{
 			id: int64(s.runs), phase: phase, created: created, updated: updated, deleted: deleted,
 		})
+		if s.lastSuccessAt == nil {
+			s.lastSuccessAt = make(map[string]time.Time)
+		}
+		s.lastSuccessAt[phase] = finishedAt
 	}
 
 	return recordedRunReference, nil
+}
+
+func (s *fakeRunState) LastSuccessfulPhaseCompletion(
+	_ context.Context, phase string,
+) (completedAt time.Time, found bool, err error) {
+	if s.lastSuccessErr != nil {
+		return time.Time{}, false, s.lastSuccessErr
+	}
+	completedAt, found = s.lastSuccessAt[phase]
+
+	return completedAt, found, nil
 }
 
 func (s *fakeRunState) LastPhaseOutcome(_ context.Context, phase string) (outcome string, found bool, err error) {
@@ -372,12 +526,18 @@ func (s *fakeRunState) SyncSchedule(context.Context) (source, targets bool, err 
 }
 
 func (s *fakeRunState) LastFailureNotification(_ context.Context, category string) (time.Time, bool, error) {
+	if s.lastFailureErr != nil {
+		return time.Time{}, false, s.lastFailureErr
+	}
 	sentAt, found := s.lastFailure[category]
 
 	return sentAt, found, nil
 }
 
 func (s *fakeRunState) RecordFailureNotification(_ context.Context, category string, sentAt time.Time) error {
+	if s.recordFailureErr != nil {
+		return s.recordFailureErr
+	}
 	if s.lastFailure == nil {
 		s.lastFailure = make(map[string]time.Time)
 	}
@@ -416,7 +576,7 @@ func newPolicyReporter(
 	success SuccessNotification,
 ) *Reporter {
 	t.Helper()
-	reporter, err := NewReporter(runner, state, notifier, success)
+	reporter, err := NewReporter(runner, state, notifier, success, 24*time.Hour)
 	require.NoError(t, err, "NewReporter()")
 
 	return reporter
@@ -680,9 +840,20 @@ func TestNewReporterRejectsAnUnusablePolicy(t *testing.T) {
 		{name: "digest without an interval", success: SuccessNotification{Policy: SuccessDigest}},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
-			_, err := NewReporter(&reportingRunner{}, &fakeRunState{}, &fakeNotifier{}, testCase.success)
+			_, err := NewReporter(&reportingRunner{}, &fakeRunState{}, &fakeNotifier{}, testCase.success, 24*time.Hour)
 			require.Error(t, err, "NewReporter() accepted %s", testCase.name)
 		})
+	}
+}
+
+// A stale-inventory bound of zero would flag every service as stale on its
+// very first tick, so startup must refuse it rather than silently notifying.
+func TestNewReporterRejectsANonPositiveStaleAfter(t *testing.T) {
+	for _, staleAfter := range []time.Duration{0, -time.Hour} {
+		_, err := NewReporter(
+			&reportingRunner{}, &fakeRunState{}, &fakeNotifier{}, SuccessNotification{Policy: SuccessEvery}, staleAfter,
+		)
+		require.Error(t, err, "NewReporter() accepted a stale-after bound of %s", staleAfter)
 	}
 }
 

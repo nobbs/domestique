@@ -1,7 +1,9 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"slices"
 	"strconv"
@@ -199,6 +201,15 @@ func (h *Handler) status(writer http.ResponseWriter, request *http.Request, _ st
 
 		return
 	}
+	if h.sourceStaleAfter > 0 {
+		trustedInventory, inventoryErr := h.trustedInventoryFreshness(request.Context())
+		if inventoryErr != nil {
+			h.unavailable(writer)
+
+			return
+		}
+		view.Sync.TrustedInventory = trustedInventory
+	}
 	completedAt, outcome, _, sourceStages, created, updated, deleted, found, err := h.state.LastSyncRun(request.Context())
 	if err != nil {
 		h.unavailable(writer)
@@ -351,6 +362,27 @@ func (h *Handler) trigger(writer http.ResponseWriter, phase SyncPhase) {
 		return
 	}
 	h.writeJSON(writer, http.StatusAccepted, map[string]string{"status": "accepted"})
+}
+
+// trustedInventoryFreshness reports the trusted source inventory's age against
+// the configured bound, derived from local state alone. Absent last success is
+// reported as fresh: a service that has never completed a source run has no
+// trusted inventory yet, which is not the same claim as a stale one.
+func (h *Handler) trustedInventoryFreshness(ctx context.Context) (*trustedInventoryView, error) {
+	view := &trustedInventoryView{Fresh: true, MaxAgeSeconds: int64(h.sourceStaleAfter.Seconds())}
+	lastSuccess, found, err := h.state.LastSuccessfulPhaseCompletion(ctx, string(SyncPhaseSource))
+	if err != nil {
+		return nil, fmt.Errorf("reading the trusted inventory's last success: %w", err)
+	}
+	if !found {
+		return view, nil
+	}
+	age := h.now().Sub(lastSuccess)
+	view.LastSuccessAt = lastSuccess.Format(time.RFC3339)
+	view.AgeSeconds = int64(age.Seconds())
+	view.Fresh = age < h.sourceStaleAfter
+
+	return view, nil
 }
 
 func (h *Handler) unavailable(writer http.ResponseWriter) {

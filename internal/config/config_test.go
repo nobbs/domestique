@@ -502,6 +502,14 @@ func TestLoadRejectsInvalidConfiguration(t *testing.T) {
 			want: "must equal 1h",
 		},
 		{
+			name: "non-positive stale-after bound",
+			mutate: func(t *testing.T, path string) {
+				t.Helper()
+				replaceInFile(t, path, "max_deletions_per_target = 5", "max_deletions_per_target = 5\nstale_after = \"0s\"")
+			},
+			want: "sync.stale_after must be positive",
+		},
+		{
 			name: "unknown success policy",
 			mutate: func(t *testing.T, path string) {
 				t.Helper()

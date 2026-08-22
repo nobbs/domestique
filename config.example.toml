@@ -63,6 +63,7 @@ initial_delay = "1m"
 interval = "1h"
 max_deletions_per_target = 5
 empty_source_deletion = "deny"
+stale_after = "24h"
 
 [notifications]
 # How much a routine successful run tells you. A failure, a blocked run, and the
