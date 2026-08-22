@@ -12,7 +12,7 @@ require (
 	github.com/muktihari/fit v0.28.3
 	github.com/paulmach/osm v0.9.0
 	github.com/stretchr/testify v1.12.0
-	modernc.org/sqlite v1.56.0
+	modernc.org/sqlite v1.57.0
 )
 
 require (
