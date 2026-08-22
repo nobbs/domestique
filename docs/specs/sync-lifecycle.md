@@ -677,9 +677,13 @@ suppress those three, which is the point of separating them.
 
 Whether a success is a recovery is read from the half's own previous recorded
 run, so the answer survives a restart and cannot drift from the history an
-operator reads back in `GET /v1/sync/runs`. A history that cannot be read is
-treated as a recovery: one message too many costs an operator a line, and a
-withheld recovery costs them the end of an alert they were sent.
+operator reads back in `GET /v1/sync/runs`. Any recorded outcome other than a
+success makes the next one a recovery, not only a failure or a blocked run: a
+half left needing onboarding records that it is not ready and notifies nothing,
+so the alert that preceded it is still open and the success that follows is what
+closes it. A history that cannot be read is treated as a recovery: one message
+too many costs an operator a line, and a withheld recovery costs them the end of
+an alert they were sent.
 
 ### The digest
 
@@ -706,7 +710,10 @@ database happens to hold, which is not the period the operator asked for. The
 window it starts is durable and belongs to the digest, not to the policy in
 force: switching away from `digest` and back resumes from the last window this
 service closed rather than starting a new one, so the runs in between are
-reported in the first digest that follows.
+reported in the first digest that follows — as far back as the retained run
+history reaches. A digest totals recorded runs and can report no run that
+pruning has already removed, which is what the upper bound on the period is for
+and what a long spell under another policy can still outrun.
 
 That window is bounded by run identity rather than by the clock, because two
 runs of one pass are recorded within the same second and a timestamp cannot say
@@ -749,7 +756,7 @@ The implementation test suite must cover at least:
   data;
 - each success policy delivering what it states for a routine success, while
   `quiet` and `digest` still deliver failures, blocked runs, and the first
-  success that ends one; and
+  success that ends one — including across a half left needing onboarding; and
 - a digest totalling one interval of successful runs, carrying no run reference
   or target identity, starting its clock without reporting prior history, and
   passing over an interval that nothing succeeded in without leaving its runs to

@@ -844,3 +844,25 @@ func TestReporterHoldsTheDigestWindowOpenWhenTheMessageIsRefused(t *testing.T) {
 		message: "since 2026-08-17T08:00:00Z: source_runs=0 target_runs=2 created=2 updated=0 deleted=0",
 	}, notifier.messages[1], "digest notification")
 }
+
+// A target left awaiting OAuth records `not_ready` and notifies nothing, so the
+// failure alert before it is still open. The success that follows is what closes
+// it, whatever was recorded in between.
+func TestReporterRecoveryOutlastsAPhaseLeftAwaitingOnboarding(t *testing.T) {
+	runner := &reportingRunner{targets: Result{Phase: PhaseTargets, Outcome: OutcomeFailed, Failure: FailureDestination}}
+	state := &fakeRunState{targets: true}
+	notifier := &fakeNotifier{}
+	reporter := newPolicyReporter(t, runner, state, notifier, SuccessNotification{Policy: SuccessQuiet})
+
+	reporter.Run(t.Context())
+	require.Len(t, notifier.messages, 1, "want the failure alert")
+
+	runner.targets = Result{Phase: PhaseTargets, Outcome: OutcomeNotReady}
+	reporter.Run(t.Context())
+	require.Len(t, notifier.messages, 1, "a run awaiting onboarding notified")
+
+	runner.targets = Result{Phase: PhaseTargets, Outcome: OutcomeSucceeded, SourceStages: 3}
+	reporter.Run(t.Context())
+	require.Len(t, notifier.messages, 2, "the alert was left open with nothing to close it")
+	assert.Equal(t, "Domestique sync", notifier.messages[1].title, "recovery notification title")
+}

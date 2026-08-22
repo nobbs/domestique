@@ -96,8 +96,14 @@ func (r *Reporter) notifySuccess(ctx context.Context, result *Result, reference 
 	}
 }
 
-// recovered reports whether this success ends a run of failures, which is what
-// makes it the recovery signal rather than a routine success.
+// recovered reports whether this success ends a run of unhealthy passes, which
+// is what makes it the recovery signal rather than a routine success.
+//
+// Anything the phase recorded other than a success counts. A target awaiting
+// OAuth records `not_ready` and notifies nothing, so a phase that failed, was
+// left needing onboarding, and then came good would otherwise leave the failure
+// alert open with no message ever closing it — the one thing the recovery signal
+// exists to prevent.
 //
 // It reads the phase's own previous run, so the answer survives a restart and
 // cannot drift from the record an operator reads back. It is asked only when a
@@ -115,7 +121,7 @@ func (r *Reporter) recovered(ctx context.Context, phase Phase) bool {
 		return err != nil
 	}
 
-	return outcome == string(OutcomeFailed) || outcome == string(OutcomeBlocked)
+	return outcome != string(OutcomeSucceeded)
 }
 
 // notifyDigest sends one aggregate message per interval, covering the
