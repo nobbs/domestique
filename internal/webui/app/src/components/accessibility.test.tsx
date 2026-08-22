@@ -30,6 +30,7 @@ import { RouteKey } from "./RouteKey";
 import { StatusMessage } from "./StatusMessage";
 
 const STAGE: Route = {
+  provider: "veloplanner",
   routeId: 12,
   stageOrder: 2,
   title: "Alpine loop — Descent",

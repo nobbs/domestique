@@ -11,7 +11,7 @@
 import { openRoute, openSync } from "../fixtures";
 import { callsTo, expect, test } from "./fixtures";
 
-const LINE_ROUTE = { routeId: 4101, stageOrder: 1 };
+const LINE_ROUTE = { provider: "veloplanner", routeId: 4101, stageOrder: 1 };
 const SOURCE_SWITCH = "Hourly: Read from VeloPlanner";
 
 test("changing the schedule is stored and read back", async ({ bundlePage: page, apiCalls }) => {
@@ -55,7 +55,7 @@ test("asking for a run now is accepted", async ({ bundlePage: page, apiCalls }) 
 });
 
 test("asking for one route to be redone is accepted", async ({ bundlePage: page, apiCalls }) => {
-  await openRoute(page, LINE_ROUTE.routeId, LINE_ROUTE.stageOrder);
+  await openRoute(page, LINE_ROUTE.provider, LINE_ROUTE.routeId, LINE_ROUTE.stageOrder);
 
   await page.getByRole("button", { name: "Reprocess" }).click();
 
@@ -64,7 +64,7 @@ test("asking for one route to be redone is accepted", async ({ bundlePage: page,
     callsTo(
       apiCalls,
       "POST",
-      `/v1/routes/${LINE_ROUTE.routeId}/stages/${LINE_ROUTE.stageOrder}/reprocess`,
+      `/v1/providers/${LINE_ROUTE.provider}/routes/${LINE_ROUTE.routeId}/stages/${LINE_ROUTE.stageOrder}/reprocess`,
     ).map((call) => call.status),
   ).toEqual([202]);
 });

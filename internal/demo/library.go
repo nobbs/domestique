@@ -188,6 +188,7 @@ func Stages() ([]route.Stage, error) {
 		spec := &specs[index]
 		geometry := spec.geometry()
 		stage, err := route.NewStage(
+			route.ProviderVeloPlanner,
 			spec.routeID,
 			spec.stageOrder,
 			Revision(spec.routeID, spec.stageOrder),

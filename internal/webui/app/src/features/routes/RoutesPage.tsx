@@ -88,22 +88,39 @@ function unionOf(boxes: BoundingBox[]): BoundingBox | null {
 }
 
 /**
- * The pair a `routeKey` is made of, or null for anything that is not one.
+ * The three parts a `routeKey` is made of, or null for anything that is not one.
  *
- * The address carries both halves of the identity the service serves a route
- * under even though nothing on the page ever shows the second: a library with
- * more than one stage under a route would otherwise have routes that cannot be
- * linked to.
+ * The address carries every part of the identity the service serves a route
+ * under even though nothing on the page ever shows the last two: a library
+ * with more than one provider or more than one stage under a route would
+ * otherwise have routes that cannot be linked to.
+ *
+ * The two-part form this address had before a second provider existed is still
+ * read, and means the provider it always meant. This is the address the app
+ * itself handed out — a bookmarked or shared `?route=12%2F1` predates the
+ * provider entirely — so refusing it here would strand exactly the links this
+ * change is supposed to keep working, the same way the Go handler keeps the
+ * two-segment paths resolving.
  */
-function parseRouteKey(value: string | null): { routeId: number; stageOrder: number } | null {
-  const [left, right, ...rest] = (value ?? "").split("/");
-  if (rest.length > 0 || !left || !right || !/^\d+$/.test(left) || !/^\d+$/.test(right)) {
+function parseRouteKey(
+  value: string | null,
+): { provider: string; routeId: number; stageOrder: number } | null {
+  const parts = (value ?? "").split("/");
+  const [provider, left, right] = parts.length === 2 ? ["veloplanner", ...parts] : parts;
+  if (
+    parts.length > 3 ||
+    !provider ||
+    !left ||
+    !right ||
+    !/^\d+$/.test(left) ||
+    !/^\d+$/.test(right)
+  ) {
     return null;
   }
   const routeId = Number.parseInt(left, 10);
   const stageOrder = Number.parseInt(right, 10);
 
-  return routeId > 0 && stageOrder > 0 ? { routeId, stageOrder } : null;
+  return routeId > 0 && stageOrder > 0 ? { provider, routeId, stageOrder } : null;
 }
 
 /**
@@ -141,7 +158,7 @@ export function RoutesPage() {
    */
   const [params, setParams] = useSearchParams();
   const opened = parseRouteKey(params.get("route"));
-  const openKey = opened ? `${opened.routeId}/${opened.stageOrder}` : null;
+  const openKey = opened ? `${opened.provider}/${opened.routeId}/${opened.stageOrder}` : null;
 
   const library = useMemo(() => routes.data ?? [], [routes.data]);
   const shown = useMemo(() => matchingRoutes(library, query), [library, query]);
@@ -182,7 +199,9 @@ export function RoutesPage() {
   );
 
   const drawn = useQueries({
-    queries: library.map((route) => routeGeometryQuery(route.routeId, route.stageOrder)),
+    queries: library.map((route) =>
+      routeGeometryQuery(route.provider, route.routeId, route.stageOrder),
+    ),
     combine,
   });
 
@@ -192,7 +211,7 @@ export function RoutesPage() {
   // library map has no use for — reaches the panel.
   const openRoute = library.find((route) => routeKey(route) === openKey) ?? null;
   const openGeometry = useQuery({
-    ...routeGeometryQuery(opened?.routeId ?? 0, opened?.stageOrder ?? 0),
+    ...routeGeometryQuery(opened?.provider ?? "", opened?.routeId ?? 0, opened?.stageOrder ?? 0),
     // Only for a route the library actually holds: an address naming one it does
     // not is answered by saying so, not by asking the service about it.
     enabled: openRoute !== null,

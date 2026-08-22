@@ -8,6 +8,7 @@
  */
 
 export interface Route {
+  provider: string;
   routeId: number;
   stageOrder: number;
   title: string;
@@ -265,6 +266,6 @@ export interface WebUIConfig {
 }
 
 /** A route's stable identity, used for routing and list keys. */
-export function routeKey(route: Pick<Route, "routeId" | "stageOrder">): string {
-  return `${route.routeId}/${route.stageOrder}`;
+export function routeKey(route: Pick<Route, "provider" | "routeId" | "stageOrder">): string {
+  return `${route.provider}/${route.routeId}/${route.stageOrder}`;
 }

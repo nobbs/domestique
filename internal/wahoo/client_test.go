@@ -163,6 +163,7 @@ func testStage(t *testing.T) route.Stage {
 	t.Helper()
 	elevation := 100.0
 	stage, err := route.NewStage(
+		route.ProviderVeloPlanner,
 		100,
 		1,
 		"2026-08-17T07:00:00Z",

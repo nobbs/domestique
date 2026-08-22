@@ -15,7 +15,7 @@ func TestNewStageCreatesImmutableStage(t *testing.T) {
 		{Longitude: 8.5, Latitude: 49.1},
 	}
 
-	stage, err := NewStage(17, 2, "2026-08-16", "Morning ride", "Climb", geometry, "hash")
+	stage, err := NewStage(ProviderVeloPlanner, 17, 2, "2026-08-16", "Morning ride", "Climb", geometry, "hash")
 	require.NoError(t, err)
 
 	assert.Equal(t, "domestique:veloplanner:17:stage:2", stage.Key().ExternalID())
@@ -66,7 +66,7 @@ func TestStageDistanceMetres(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			stage, err := NewStage(1, 1, "revision", "route", "", test.geometry, "hash")
+			stage, err := NewStage(ProviderVeloPlanner, 1, 1, "revision", "route", "", test.geometry, "hash")
 			require.NoError(t, err)
 
 			assert.InDelta(t, test.want, stage.DistanceMetres(), test.tolerance)
@@ -75,7 +75,7 @@ func TestStageDistanceMetres(t *testing.T) {
 }
 
 func TestStageBounds(t *testing.T) {
-	stage, err := NewStage(1, 1, "revision", "route", "", []Point{
+	stage, err := NewStage(ProviderVeloPlanner, 1, 1, "revision", "route", "", []Point{
 		{Longitude: 8.5, Latitude: 49.2},
 		{Longitude: 8.1, Latitude: 49.9},
 		{Longitude: 8.9, Latitude: 49.0},
@@ -100,7 +100,7 @@ func elevationTestStage(t *testing.T, elevations []float64, latitudeStep float64
 			Elevation: &metres,
 		})
 	}
-	stage, err := NewStage(1, 1, "revision", "route", "", geometry, "hash")
+	stage, err := NewStage(ProviderVeloPlanner, 1, 1, "revision", "route", "", geometry, "hash")
 	require.NoError(t, err)
 
 	return stage
@@ -166,7 +166,7 @@ func TestStageMaxGradientPercent(t *testing.T) {
 
 func TestStageElevationStatisticsNeedACompleteProfile(t *testing.T) {
 	summit := 200.0
-	partial, err := NewStage(1, 1, "revision", "route", "", []Point{
+	partial, err := NewStage(ProviderVeloPlanner, 1, 1, "revision", "route", "", []Point{
 		{Longitude: 8.0, Latitude: 49.0},
 		{Longitude: 8.0, Latitude: 49.01, Elevation: &summit},
 	}, "hash")
@@ -188,20 +188,22 @@ func TestNewStageRejectsInvalidIdentityAndGeometry(t *testing.T) {
 	tests := []struct {
 		name     string
 		want     string
+		provider Provider
 		geometry []Point
 		routeID  int64
 		order    int
 	}{
-		{name: "route ID", routeID: 0, order: 1, geometry: validGeometry, want: "route ID"},
-		{name: "stage order", routeID: 1, order: 0, geometry: validGeometry, want: "stage order"},
-		{name: "short geometry", routeID: 1, order: 1, geometry: validGeometry[:1], want: "at least two"},
-		{name: "longitude", routeID: 1, order: 1, geometry: []Point{{Longitude: 181, Latitude: 49}, {Longitude: 8, Latitude: 49}}, want: "longitude"},
-		{name: "latitude", routeID: 1, order: 1, geometry: []Point{{Longitude: 8, Latitude: math.NaN()}, {Longitude: 8, Latitude: 49}}, want: "latitude"},
+		{name: "provider", provider: "", routeID: 1, order: 1, geometry: validGeometry, want: "provider"},
+		{name: "route ID", provider: ProviderVeloPlanner, routeID: 0, order: 1, geometry: validGeometry, want: "route ID"},
+		{name: "stage order", provider: ProviderVeloPlanner, routeID: 1, order: 0, geometry: validGeometry, want: "stage order"},
+		{name: "short geometry", provider: ProviderVeloPlanner, routeID: 1, order: 1, geometry: validGeometry[:1], want: "at least two"},
+		{name: "longitude", provider: ProviderVeloPlanner, routeID: 1, order: 1, geometry: []Point{{Longitude: 181, Latitude: 49}, {Longitude: 8, Latitude: 49}}, want: "longitude"},
+		{name: "latitude", provider: ProviderVeloPlanner, routeID: 1, order: 1, geometry: []Point{{Longitude: 8, Latitude: math.NaN()}, {Longitude: 8, Latitude: 49}}, want: "latitude"},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := NewStage(test.routeID, test.order, "revision", "route", "stage", test.geometry, "hash")
+			_, err := NewStage(test.provider, test.routeID, test.order, "revision", "route", "stage", test.geometry, "hash")
 
 			require.ErrorContains(t, err, test.want)
 		})

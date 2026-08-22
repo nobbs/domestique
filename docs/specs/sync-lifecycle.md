@@ -8,13 +8,24 @@ read-only HTTP JSON surface.
 
 ## Stable identities
 
-A source stage is identified by the pair:
+A source stage is identified by the triple:
 
 ~~~text
-VeloPlanner route ID + stage order
+provider + source route ID + stage order
 ~~~
 
+The provider is the upstream a stage's route ID was issued by. VeloPlanner is
+the only provider a stage has ever come from; naming it explicitly is what lets
+a second provider issue its own route IDs later without colliding with
+VeloPlanner's.
+
 Its deterministic Wahoo external ID is:
+
+~~~text
+domestique:<provider>:<route-id>:stage:<stage-order>
+~~~
+
+A VeloPlanner stage's external ID renders exactly as it always has:
 
 ~~~text
 domestique:veloplanner:<route-id>:stage:<stage-order>
@@ -589,15 +600,32 @@ geometry, no Wahoo identity, and nothing a provider said.
 
 ### GET /v1/routes
 
-Returns known source metadata in stable source-stage order. It may include a
-route title, stage title, source revision, last synchronised time, and per-target
-state. It does not include a FIT payload, unbounded source geometry, OAuth
+Returns known source metadata in stable source-stage order. Each entry names its
+provider. It may include a route title, stage title, source revision, last
+synchronised time, and per-target state. It does not include a FIT payload,
+unbounded source geometry, OAuth
 state, Wahoo IDs, route URLs, or edit controls.
 
-### GET /v1/routes/{source-route-id}/stages/{stage}
+### GET /v1/providers/{provider}/routes/{source-route-id}/stages/{stage}
 
 Returns one route-stage metadata object using the same safe field set. Unknown
-stages return 404 with the standard error shape.
+stages return 404 with the standard error shape. `GET .../geometry` and
+`POST .../reprocess` are addressed the same way.
+
+A request naming a provider this service has never served — anything but
+`veloplanner` today — is answered 404 rather than passed to state as a lookup
+that could never find anything.
+
+### Legacy two-segment stage routes
+
+`GET /v1/routes/{source-route-id}/stages/{stage}`,
+`GET /v1/routes/{source-route-id}/stages/{stage}/geometry`, and
+`POST /v1/routes/{source-route-id}/stages/{stage}/reprocess` — the shape
+every route had before a second provider existed — redirect with 308 to the
+same stage under `veloplanner`, preserving method and body. 308 rather than
+301 or 302 is what keeps the reprocess request's `POST` and body intact across
+the redirect. The browser address `GET /routes/{source-route-id}/{stage}`
+redirects the same way, to `GET /routes/veloplanner/{source-route-id}/{stage}`.
 
 ### Errors
 
@@ -615,9 +643,9 @@ also uses 403; malformed client input uses 400.
 
 The OAuth start, callback, the protected `POST /v1/sync` triggers, the protected
 `PUT /v1/sync/schedule` switch, and the protected
-`POST /v1/routes/{source-route-id}/stages/{stage}/reprocess` request are the only
-state-changing endpoints. There is no HTTP or CLI endpoint for route deletion,
-configuration mutation, or Wahoo target removal.
+`POST /v1/providers/{provider}/routes/{source-route-id}/stages/{stage}/reprocess`
+request are the only state-changing endpoints. There is no HTTP or CLI endpoint
+for route deletion, configuration mutation, or Wahoo target removal.
 
 Every one of them except the OAuth start and callback is refused with 403 unless
 its `Origin` header equals the browser UI's origin. Identity is settled first, so

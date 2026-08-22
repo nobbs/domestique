@@ -13,7 +13,7 @@ function renderButton() {
     client,
     ...render(
       <QueryClientProvider client={client}>
-        <ReprocessButton routeId={12} stageOrder={1} />
+        <ReprocessButton provider="veloplanner" routeId={12} stageOrder={1} />
       </QueryClientProvider>,
     ),
   };
@@ -35,7 +35,7 @@ describe("ReprocessButton", () => {
     await userEvent.click(screen.getByRole("button", { name: "Reprocess" }));
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "/v1/routes/12/stages/1/reprocess",
+      "/v1/providers/veloplanner/routes/12/stages/1/reprocess",
       expect.objectContaining({ method: "POST" }),
     );
     expect(await screen.findByRole("status")).toHaveTextContent(/Queued/);
@@ -69,12 +69,14 @@ describe("ReprocessButton", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
     const { client } = renderButton();
-    client.setQueryData(["stage-geometry", 12, 1], { stage: "old" });
+    client.setQueryData(["stage-geometry", "veloplanner", 12, 1], { stage: "old" });
 
     await userEvent.click(screen.getByRole("button", { name: "Reprocess" }));
     await screen.findByRole("status");
 
-    expect(client.getQueryState(["stage-geometry", 12, 1])?.isInvalidated).toBe(true);
+    expect(client.getQueryState(["stage-geometry", "veloplanner", 12, 1])?.isInvalidated).toBe(
+      true,
+    );
     expect(fetchMock.mock.calls.some((call) => String(call[0]).includes("/geometry"))).toBe(false);
   });
 });

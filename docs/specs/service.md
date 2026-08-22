@@ -399,6 +399,22 @@ image, so:
 The rollback path never restores or replaces state; the tolerance is what makes
 the previous image usable against a state file the failed deploy migrated.
 
+One migration is a deliberate exception to the first rule, and it is recorded
+here rather than left to be discovered during an incident. The migration that
+gave a stage's identity its provider widened the primary key of
+`target_stages`, `stage_geometry`, `stage_surface`, and `stage_reprocess` to
+include the new column. A previous release's binary writes those four tables
+through `ON CONFLICT (route_id, stage_order)`, and SQLite requires that column
+list to name an existing unique constraint exactly, so those statements no
+longer prepare against the widened key. A rollback onto that binary can still
+**read** all four tables — no state is lost or rewritten — but cannot write
+them, which leaves synchronisation failing until the deployment rolls forward
+again. The narrower alternative, leaving provider out of those keys, would stop
+four of the six stage-keyed tables from holding two providers' stages at once
+and so defeat the migration's purpose. A future migration carries the same
+obligation to be additive; this exception licenses that one change, not a
+general relaxation.
+
 It does hold the operator's route geometry in plaintext as a rendering cache.
 That is personal data rather than a credential, and losing it is harmless — the
 next sync refills it from the source — but it raises the sensitivity of the

@@ -17,13 +17,36 @@ const earthRadiusMetres = 6_371_000.0
 // describes the same scale of terrain the exported profile preserves.
 const gradientWindowMetres = 100.0
 
-// Key is the stable identity of one VeloPlanner route stage.
+// Provider names which upstream source issued a stage's route ID. It is the
+// shared vocabulary a stage identity is named against: two providers may issue
+// the same numeric route ID, so the pair alone is not unique once a second
+// provider exists.
+type Provider string
+
+// ProviderVeloPlanner is the only provider a stage has ever come from until a
+// second one exists. Naming it does not change what a VeloPlanner stage's
+// ExternalID renders as.
+const ProviderVeloPlanner Provider = "veloplanner"
+
+// Key is the stable identity of one source route stage.
 type Key struct {
+	provider   Provider
 	routeID    int64
 	stageOrder int
 }
 
-// RouteID returns the immutable VeloPlanner route identifier.
+// NewKey builds a stage identity from its parts, for a caller that has not
+// constructed a Stage — a stored mapping row, or a served address.
+func NewKey(provider Provider, routeID int64, stageOrder int) Key {
+	return Key{provider: provider, routeID: routeID, stageOrder: stageOrder}
+}
+
+// Provider returns which upstream source issued the stage's route ID.
+func (k Key) Provider() Provider {
+	return k.provider
+}
+
+// RouteID returns the immutable source route identifier.
 func (k Key) RouteID() int64 {
 	return k.routeID
 }
@@ -33,9 +56,13 @@ func (k Key) StageOrder() int {
 	return k.stageOrder
 }
 
-// ExternalID returns the deterministic Wahoo external identifier for the stage.
+// ExternalID returns the deterministic Wahoo external identifier for the
+// stage. A VeloPlanner stage renders exactly as it always has; a later
+// provider gets its own segment in the same grammar. This is the only place
+// that renders an external ID — the string that proves ownership before a
+// delete, so nothing else may format it independently.
 func (k Key) ExternalID() string {
-	return fmt.Sprintf("domestique:veloplanner:%d:stage:%d", k.routeID, k.stageOrder)
+	return fmt.Sprintf("domestique:%s:%d:stage:%d", k.provider, k.routeID, k.stageOrder)
 }
 
 // Point is one geographic point in a route-stage geometry.
@@ -58,6 +85,7 @@ type Bounds struct {
 // neither has to know the other's types, and it deliberately carries no
 // geometry.
 type Summary struct {
+	Provider           Provider
 	RouteName          string
 	StageName          string
 	SourceRevision     string
@@ -92,6 +120,7 @@ type Stage struct {
 
 // NewStage validates and copies a source route stage.
 func NewStage(
+	provider Provider,
 	routeID int64,
 	stageOrder int,
 	revision string,
@@ -100,6 +129,9 @@ func NewStage(
 	geometry []Point,
 	contentHash string,
 ) (Stage, error) {
+	if provider == "" {
+		return Stage{}, errors.New("provider is required")
+	}
 	if routeID <= 0 {
 		return Stage{}, errors.New("route ID must be positive")
 	}
@@ -128,7 +160,7 @@ func NewStage(
 	}
 
 	return Stage{
-		key:         Key{routeID: routeID, stageOrder: stageOrder},
+		key:         Key{provider: provider, routeID: routeID, stageOrder: stageOrder},
 		revision:    revision,
 		routeName:   routeName,
 		stageName:   stageName,

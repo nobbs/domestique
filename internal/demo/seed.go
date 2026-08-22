@@ -14,10 +14,10 @@ import (
 // drag the SQLite adapter into anything that only wants the fixtures.
 type State interface {
 	StoreTrustedInventory(ctx context.Context, stages []route.Stage) error
-	StoreStageSurface(ctx context.Context, routeID int64, stageOrder int, contentHash, indexGeneration string, ranges []byte, matchedMetres float64) error
+	StoreStageSurface(ctx context.Context, provider route.Provider, routeID int64, stageOrder int, contentHash, indexGeneration string, ranges []byte, matchedMetres float64) error
 	EnsureTargets(ctx context.Context, targetIDs []string) error
 	AuthorizeTarget(ctx context.Context, targetID, wahooUserID, refreshToken string) error
-	UpsertTargetStage(ctx context.Context, targetID string, routeID int64, stageOrder int, sourceRevision, contentHash string, wahooRouteID int64) error
+	UpsertTargetStage(ctx context.Context, targetID string, provider route.Provider, routeID int64, stageOrder int, sourceRevision, contentHash string, wahooRouteID int64) error
 	RecordSyncRun(ctx context.Context, phase string, startedAt, finishedAt time.Time, outcome, detail string, sourceStages, created, updated, deleted int) (string, error)
 	RecordTargetRun(ctx context.Context, targetID string, finishedAt time.Time, outcome, detail string) error
 	SetSyncSchedule(ctx context.Context, source, targets bool) error
@@ -85,6 +85,7 @@ func Seed(ctx context.Context, state State, slots []Slot, now time.Time) error {
 	for _, classification := range classifications {
 		if err := state.StoreStageSurface(
 			ctx,
+			route.ProviderVeloPlanner,
 			classification.RouteID,
 			classification.StageOrder,
 			classification.ContentHash,
@@ -147,7 +148,7 @@ func seedSlot(ctx context.Context, state State, slot Slot, stages []route.Stage,
 			revision = EarlierRevision(key.RouteID(), key.StageOrder())
 		}
 		if err := state.UpsertTargetStage(
-			ctx, slot.ID, key.RouteID(), key.StageOrder(), revision,
+			ctx, slot.ID, key.Provider(), key.RouteID(), key.StageOrder(), revision,
 			"demo-encoded-"+revision, wahooRouteID(key.RouteID(), key.StageOrder()),
 		); err != nil {
 			return fmt.Errorf("demo: applying stage to %s: %w", slot.ID, err)
@@ -160,7 +161,7 @@ func seedSlot(ctx context.Context, state State, slot Slot, stages []route.Stage,
 		// A stage the library has dropped and this slot still holds, so the
 		// outstanding count covers a deletion as well as a write.
 		if err := state.UpsertTargetStage(
-			ctx, slot.ID, orphanRouteID, 1, Revision(orphanRouteID, 1),
+			ctx, slot.ID, route.ProviderVeloPlanner, orphanRouteID, 1, Revision(orphanRouteID, 1),
 			"demo-encoded-orphan", wahooRouteID(orphanRouteID, 1),
 		); err != nil {
 			return fmt.Errorf("demo: applying orphan to %s: %w", slot.ID, err)

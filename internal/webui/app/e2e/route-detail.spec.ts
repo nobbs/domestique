@@ -10,14 +10,14 @@
 import { expect, mapRegion, openRoute, profileScrubber, settleMap, test } from "./fixtures";
 
 /** A straight three-band route: the simplest ground to point at. */
-const LINE_ROUTE = { routeId: 4101, stageOrder: 3 };
+const LINE_ROUTE = { provider: "veloplanner", routeId: 4101, stageOrder: 3 };
 /** The loop, whose classification covers all six surface classes. */
-const LOOP_ROUTE = { routeId: 4102, stageOrder: 1 };
+const LOOP_ROUTE = { provider: "veloplanner", routeId: 4102, stageOrder: 1 };
 /** The short link, which was never classified and has no profile at all. */
-const UNCLASSIFIED_ROUTE = { routeId: 4103, stageOrder: 1 };
+const UNCLASSIFIED_ROUTE = { provider: "veloplanner", routeId: 4103, stageOrder: 1 };
 
 test("the route draws its map, its facts and its profile", async ({ offlinePage: page }) => {
-  await openRoute(page, LINE_ROUTE.routeId, LINE_ROUTE.stageOrder);
+  await openRoute(page, LINE_ROUTE.provider, LINE_ROUTE.routeId, LINE_ROUTE.stageOrder);
 
   await expect(page.locator(".maplibregl-canvas")).toBeVisible();
   await expect(page.locator(".route-panel__figures")).toContainText("km");
@@ -32,7 +32,7 @@ test("the route draws its map, its facts and its profile", async ({ offlinePage:
 });
 
 test("the chart answers the arrow keys and says where it is", async ({ offlinePage: page }) => {
-  await openRoute(page, LINE_ROUTE.routeId, LINE_ROUTE.stageOrder);
+  await openRoute(page, LINE_ROUTE.provider, LINE_ROUTE.routeId, LINE_ROUTE.stageOrder);
 
   const scrubber = profileScrubber(page);
   await scrubber.focus();
@@ -56,7 +56,7 @@ test("the chart answers the arrow keys and says where it is", async ({ offlinePa
 test("dragging across the chart zooms into that stretch, and Escape leaves it", async ({
   offlinePage: page,
 }) => {
-  await openRoute(page, LINE_ROUTE.routeId, LINE_ROUTE.stageOrder);
+  await openRoute(page, LINE_ROUTE.provider, LINE_ROUTE.routeId, LINE_ROUTE.stageOrder);
 
   const chart = page.locator(".elevation-profile");
   const box = await chart.boundingBox();
@@ -83,7 +83,7 @@ test("dragging across the chart zooms into that stretch, and Escape leaves it", 
 test("dragging along the route picks the same stretch off the map", async ({
   offlinePage: page,
 }) => {
-  await openRoute(page, LINE_ROUTE.routeId, LINE_ROUTE.stageOrder);
+  await openRoute(page, LINE_ROUTE.provider, LINE_ROUTE.routeId, LINE_ROUTE.stageOrder);
 
   /*
    * A straight route's midpoint is the centre of the bounds the map fitted, so
@@ -119,7 +119,7 @@ test("dragging along the route picks the same stretch off the map", async ({
 });
 
 test("picking a surface class out of the key repaints the map", async ({ offlinePage: page }) => {
-  await openRoute(page, LOOP_ROUTE.routeId, LOOP_ROUTE.stageOrder);
+  await openRoute(page, LOOP_ROUTE.provider, LOOP_ROUTE.routeId, LOOP_ROUTE.stageOrder);
   const before = await settleMap(page);
 
   const key = page.getByRole("list", { name: "Surface classes" });
@@ -141,7 +141,12 @@ test("picking a surface class out of the key repaints the map", async ({ offline
 test("a route nobody classified says so rather than showing an empty key", async ({
   offlinePage: page,
 }) => {
-  await openRoute(page, UNCLASSIFIED_ROUTE.routeId, UNCLASSIFIED_ROUTE.stageOrder);
+  await openRoute(
+    page,
+    UNCLASSIFIED_ROUTE.provider,
+    UNCLASSIFIED_ROUTE.routeId,
+    UNCLASSIFIED_ROUTE.stageOrder,
+  );
 
   await expect(page.getByText("Surface not classified yet.")).toBeVisible();
   // The same route has no elevation either, which is a second absence the page
@@ -155,7 +160,7 @@ test("a route nobody classified says so rather than showing an empty key", async
  * give at a glance have to survive that.
  */
 test("the profile folds to a row that still carries its figures", async ({ offlinePage: page }) => {
-  await openRoute(page, LINE_ROUTE.routeId, LINE_ROUTE.stageOrder);
+  await openRoute(page, LINE_ROUTE.provider, LINE_ROUTE.routeId, LINE_ROUTE.stageOrder);
 
   const section = page.locator(".route-profile");
   await expect(page.getByRole("img", { name: /^Elevation profile of / })).toBeVisible();
@@ -174,7 +179,7 @@ test("the profile folds to a row that still carries its figures", async ({ offli
 test("the way back to the library is reachable from the keyboard", async ({
   offlinePage: page,
 }) => {
-  await openRoute(page, LINE_ROUTE.routeId, LINE_ROUTE.stageOrder);
+  await openRoute(page, LINE_ROUTE.provider, LINE_ROUTE.routeId, LINE_ROUTE.stageOrder);
 
   const back = page.getByRole("button", { name: /^← Search \d+ routes?$/ });
   await back.focus();

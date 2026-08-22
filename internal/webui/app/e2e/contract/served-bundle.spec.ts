@@ -11,9 +11,9 @@
 import { mapRegion, openLibrary, openRoute, openSync, settleMap } from "../fixtures";
 import { callsTo, expect, test } from "./fixtures";
 
-const LOOP_ROUTE = { routeId: 4102, stageOrder: 1 };
+const LOOP_ROUTE = { provider: "veloplanner", routeId: 4102, stageOrder: 1 };
 /** A route the seeded library does not contain. */
-const ABSENT_ROUTE = { routeId: 9999, stageOrder: 1 };
+const ABSENT_ROUTE = { provider: "veloplanner", routeId: 9999, stageOrder: 1 };
 
 test("the service serves a bundle the browser can boot", async ({ bundlePage: page }) => {
   const document = await page.goto("/");
@@ -54,7 +54,7 @@ test("the library is drawn from the routes view", async ({ bundlePage: page, api
 });
 
 test("a route's geometry and its surface reach the map", async ({ bundlePage: page, apiCalls }) => {
-  await openRoute(page, LOOP_ROUTE.routeId, LOOP_ROUTE.stageOrder);
+  await openRoute(page, LOOP_ROUTE.provider, LOOP_ROUTE.routeId, LOOP_ROUTE.stageOrder);
 
   await expect(page.getByRole("region", { name: "Synthetic Kaiserstuhl Loop" })).toBeVisible();
   await expect(page.locator(".maplibregl-canvas")).toBeVisible();
@@ -68,7 +68,7 @@ test("a route's geometry and its surface reach the map", async ({ bundlePage: pa
   const geometry = callsTo(
     apiCalls,
     "GET",
-    `/v1/routes/${LOOP_ROUTE.routeId}/stages/${LOOP_ROUTE.stageOrder}/geometry`,
+    `/v1/providers/${LOOP_ROUTE.provider}/routes/${LOOP_ROUTE.routeId}/stages/${LOOP_ROUTE.stageOrder}/geometry`,
   );
   expect(geometry.map((call) => call.status)).toContain(200);
   await settleMap(page);
@@ -95,7 +95,9 @@ test("a route the library does not hold is reported safely", async ({
   apiCalls,
   identity,
 }) => {
-  await page.goto(`/?route=${ABSENT_ROUTE.routeId}%2F${ABSENT_ROUTE.stageOrder}`);
+  await page.goto(
+    `/?route=${ABSENT_ROUTE.provider}%2F${ABSENT_ROUTE.routeId}%2F${ABSENT_ROUTE.stageOrder}`,
+  );
 
   // The library is one listing, so an address naming a route that is not in it is
   // answered from what the page already has — with a sentence saying so, rather
@@ -105,7 +107,7 @@ test("a route the library does not hold is reported safely", async ({
     callsTo(
       apiCalls,
       "GET",
-      `/v1/routes/${ABSENT_ROUTE.routeId}/stages/${ABSENT_ROUTE.stageOrder}/geometry`,
+      `/v1/providers/${ABSENT_ROUTE.provider}/routes/${ABSENT_ROUTE.routeId}/stages/${ABSENT_ROUTE.stageOrder}/geometry`,
     ),
     "no request went out for a route the listing does not hold",
   ).toEqual([]);
@@ -114,7 +116,7 @@ test("a route the library does not hold is reported safely", async ({
   // handled: an error envelope naming a code, and nothing about what went missing
   // inside the service.
   const envelope = await page.request.get(
-    `/v1/routes/${ABSENT_ROUTE.routeId}/stages/${ABSENT_ROUTE.stageOrder}/geometry`,
+    `/v1/providers/${ABSENT_ROUTE.provider}/routes/${ABSENT_ROUTE.routeId}/stages/${ABSENT_ROUTE.stageOrder}/geometry`,
     { headers: identity },
   );
   expect(envelope.status()).toBe(404);

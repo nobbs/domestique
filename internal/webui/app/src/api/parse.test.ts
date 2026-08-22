@@ -8,6 +8,7 @@ import {
 } from "./parse";
 
 const stagePayload = {
+  provider: "veloplanner",
   route_id: 12,
   stage: 1,
   title: "Alpine loop — Descent",

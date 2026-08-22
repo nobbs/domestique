@@ -124,8 +124,8 @@ func TestReadOnlyRoutesDoNotRequireAnOrigin(t *testing.T) {
 	for _, target := range []string{
 		"/v1/status",
 		"/v1/routes",
-		"/v1/routes/12/stages/1",
-		"/v1/routes/12/stages/1/geometry",
+		"/v1/providers/veloplanner/routes/12/stages/1",
+		"/v1/providers/veloplanner/routes/12/stages/1/geometry",
 		"/v1/webui/config",
 	} {
 		handler := newHandler(t, &fakeOAuth{}, surfaceState())

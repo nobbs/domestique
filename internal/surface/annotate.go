@@ -25,10 +25,11 @@ type Source interface {
 type Cache interface {
 	// StageSurfaceHash returns what a stored classification was measured
 	// against: the stage's geometry, and the build of the map.
-	StageSurfaceHash(ctx context.Context, routeID int64, stageOrder int) (contentHash, generation string, found bool, err error)
+	StageSurfaceHash(ctx context.Context, provider route.Provider, routeID int64, stageOrder int) (contentHash, generation string, found bool, err error)
 	// StoreStageSurface caches one stage's classification.
 	StoreStageSurface(
 		ctx context.Context,
+		provider route.Provider,
 		routeID int64,
 		stageOrder int,
 		contentHash, generation string,
@@ -83,7 +84,7 @@ func (a *Annotator) Annotate(ctx context.Context, stages []route.Stage) (classif
 
 		stage := &stages[index]
 		key := stage.Key()
-		cachedHash, cachedGeneration, found, hashErr := a.cache.StageSurfaceHash(ctx, key.RouteID(), key.StageOrder())
+		cachedHash, cachedGeneration, found, hashErr := a.cache.StageSurfaceHash(ctx, key.Provider(), key.RouteID(), key.StageOrder())
 		if hashErr != nil {
 			return classified, failed, fmt.Errorf("surface: reading cached classification: %w", hashErr)
 		}
@@ -119,6 +120,7 @@ func (a *Annotator) annotateStage(ctx context.Context, stage *route.Stage, gener
 	key := stage.Key()
 	if err := a.cache.StoreStageSurface(
 		ctx,
+		key.Provider(),
 		key.RouteID(),
 		key.StageOrder(),
 		stage.ContentHash(),

@@ -50,6 +50,7 @@ type targetRunView struct {
 }
 
 type stageView struct {
+	Provider string `json:"provider"`
 	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
 	RouteName string `json:"route_name"`
 	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
@@ -262,8 +263,9 @@ type geometrySurfaceView struct {
 }
 
 type geometryPropertyView struct {
-	Surface *geometrySurfaceView `json:"surface,omitempty"`
-	Title   string               `json:"title"`
+	Surface  *geometrySurfaceView `json:"surface,omitempty"`
+	Provider string               `json:"provider"`
+	Title    string               `json:"title"`
 	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
 	RouteName string `json:"route_name"`
 	//nolint:tagliatelle // This v1 JSON contract uses snake_case.

@@ -25,7 +25,7 @@ func (h *Handler) stages(writer http.ResponseWriter, request *http.Request, _ st
 
 // stage returns one stage's stored metadata, not edit controls.
 func (h *Handler) stage(writer http.ResponseWriter, request *http.Request, _ string) {
-	routeID, stageOrder, ok := stageKey(request)
+	provider, routeID, stageOrder, ok := stageKey(request)
 	if !ok {
 		h.notFound(writer)
 
@@ -34,7 +34,7 @@ func (h *Handler) stage(writer http.ResponseWriter, request *http.Request, _ str
 
 	var found *stageView
 	if err := h.state.ForEachStageSummary(request.Context(), func(summary route.Summary) error {
-		if summary.RouteID == routeID && summary.StageOrder == stageOrder {
+		if summary.Provider == provider && summary.RouteID == routeID && summary.StageOrder == stageOrder {
 			view := newStageView(&summary)
 			found = &view
 		}
@@ -56,14 +56,14 @@ func (h *Handler) stage(writer http.ResponseWriter, request *http.Request, _ str
 // stageGeometry returns one stage's cached geometry as a GeoJSON Feature. This
 // is the only endpoint that serves geometry, and only to the gated identity.
 func (h *Handler) stageGeometry(writer http.ResponseWriter, request *http.Request, _ string) {
-	routeID, stageOrder, ok := stageKey(request)
+	provider, routeID, stageOrder, ok := stageKey(request)
 	if !ok {
 		h.notFound(writer)
 
 		return
 	}
 
-	summary, coordinates, found, err := h.state.StageGeometry(request.Context(), routeID, stageOrder)
+	summary, coordinates, found, err := h.state.StageGeometry(request.Context(), provider, routeID, stageOrder)
 	if err != nil {
 		h.unavailable(writer)
 
@@ -89,6 +89,7 @@ func (h *Handler) stageGeometry(writer http.ResponseWriter, request *http.Reques
 			summary.Bounds.MaxLongitude, summary.Bounds.MaxLatitude,
 		},
 		Properties: geometryPropertyView{
+			Provider:           string(summary.Provider),
 			RouteID:            summary.RouteID,
 			StageOrder:         summary.StageOrder,
 			Title:              summary.Title(),
@@ -112,14 +113,14 @@ func (h *Handler) stageGeometry(writer http.ResponseWriter, request *http.Reques
 // than being dropped on the floor. That is why a busy service still answers
 // `202` here — the operator's request has been taken either way.
 func (h *Handler) reprocessStage(writer http.ResponseWriter, request *http.Request, _ string) {
-	routeID, stageOrder, ok := stageKey(request)
+	provider, routeID, stageOrder, ok := stageKey(request)
 	if !ok {
 		h.notFound(writer)
 
 		return
 	}
 
-	found, err := h.state.RequestStageReprocess(request.Context(), routeID, stageOrder)
+	found, err := h.state.RequestStageReprocess(request.Context(), provider, routeID, stageOrder)
 	if err != nil {
 		h.unavailable(writer)
 
@@ -147,6 +148,7 @@ func (h *Handler) reprocessStage(writer http.ResponseWriter, request *http.Reque
 func (h *Handler) stageSurface(request *http.Request, summary *route.Summary) (view *geometrySurfaceView, readable bool) {
 	ranges, matchedMetres, found, err := h.state.StageSurface(
 		request.Context(),
+		summary.Provider,
 		summary.RouteID,
 		summary.StageOrder,
 		summary.ContentHash,
@@ -163,6 +165,7 @@ func (h *Handler) stageSurface(request *http.Request, summary *route.Summary) (v
 
 func newStageView(summary *route.Summary) stageView {
 	return stageView{
+		Provider:           string(summary.Provider),
 		RouteID:            summary.RouteID,
 		StageOrder:         summary.StageOrder,
 		Title:              summary.Title(),
@@ -177,14 +180,67 @@ func newStageView(summary *route.Summary) stageView {
 	}
 }
 
-// stageKey reads the positive route and stage identifiers from the path.
-func stageKey(request *http.Request) (routeID int64, stageOrder int, ok bool) {
+// stageKey reads the provider and the positive route and stage identifiers
+// from the path. The only provider this service has ever served is
+// VeloPlanner's, so any other value is refused here rather than passed to
+// state as a lookup that could never find anything.
+func stageKey(request *http.Request) (provider route.Provider, routeID int64, stageOrder int, ok bool) {
+	provider = route.Provider(request.PathValue("provider"))
 	routeID, routeErr := strconv.ParseInt(request.PathValue("routeID"), 10, 64)
 	stageOrder, stageErr := strconv.Atoi(request.PathValue("stage"))
 
-	return routeID, stageOrder, routeErr == nil && stageErr == nil && routeID > 0 && stageOrder > 0
+	return provider, routeID, stageOrder,
+		provider == route.ProviderVeloPlanner && routeErr == nil && stageErr == nil && routeID > 0 && stageOrder > 0
 }
 
 func (h *Handler) notFound(writer http.ResponseWriter) {
 	h.error(writer, http.StatusNotFound, "not_found", "resource was not found")
+}
+
+// redirectLegacyStagePath sends a stage URL from before a second provider
+// existed to its provider-qualified equivalent, preserving suffix and method.
+// A 308 is used rather than a 301 or 302 because the reprocess route is a
+// POST, and only a 308 is defined to keep a redirected request's method and
+// body intact. The route and stage identifiers are re-rendered from parsed
+// integers, rather than carried over as raw path text, so the redirect target
+// is never built from unvalidated request input.
+func (h *Handler) redirectLegacyStagePath(suffix string) gatedFunc {
+	return func(writer http.ResponseWriter, request *http.Request, _ string) {
+		routeID, stageOrder, ok := legacyStagePathValues(request)
+		if !ok {
+			h.notFound(writer)
+
+			return
+		}
+
+		target := "/v1/providers/" + string(route.ProviderVeloPlanner) + "/routes/" +
+			strconv.FormatInt(routeID, 10) + "/stages/" + strconv.Itoa(stageOrder) + suffix
+		http.Redirect(writer, request, target, http.StatusPermanentRedirect)
+	}
+}
+
+// redirectLegacyBrowserRoute sends a browser address from before a second
+// provider existed to its provider-qualified equivalent, so a bookmark or
+// share link keeps resolving.
+func (h *Handler) redirectLegacyBrowserRoute(writer http.ResponseWriter, request *http.Request, _ string) {
+	routeID, stageOrder, ok := legacyStagePathValues(request)
+	if !ok {
+		h.notFound(writer)
+
+		return
+	}
+
+	target := "/routes/" + string(route.ProviderVeloPlanner) +
+		"/" + strconv.FormatInt(routeID, 10) + "/" + strconv.Itoa(stageOrder)
+	http.Redirect(writer, request, target, http.StatusPermanentRedirect)
+}
+
+// legacyStagePathValues parses and validates the route and stage identifiers
+// from a legacy, provider-less path, the same way stageKey does for the
+// provider-qualified one.
+func legacyStagePathValues(request *http.Request) (routeID int64, stageOrder int, ok bool) {
+	routeID, routeErr := strconv.ParseInt(request.PathValue("routeID"), 10, 64)
+	stageOrder, stageErr := strconv.Atoi(request.PathValue("stage"))
+
+	return routeID, stageOrder, routeErr == nil && stageErr == nil && routeID > 0 && stageOrder > 0
 }

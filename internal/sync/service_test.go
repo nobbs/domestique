@@ -393,6 +393,7 @@ func (exportProcessor) Process(stage *route.Stage) (route.Stage, error) {
 	}
 	key := stage.Key()
 	exported, err := route.NewStage(
+		key.Provider(),
 		key.RouteID(),
 		key.StageOrder(),
 		stage.Revision(),
@@ -467,7 +468,7 @@ type fakeState struct {
 	trustedErr          error
 	authorizations      map[string]string
 	refreshTokens       map[string]string
-	mappings            map[string]map[stageKey]targetStage
+	mappings            map[string]map[route.Key]targetStage
 	trusted             []route.Stage
 	storeInventoryCalls int
 }
@@ -476,12 +477,12 @@ func newFakeState(targetIDs ...string) *fakeState {
 	state := &fakeState{
 		authorizations: make(map[string]string, len(targetIDs)),
 		refreshTokens:  make(map[string]string, len(targetIDs)),
-		mappings:       make(map[string]map[stageKey]targetStage, len(targetIDs)),
+		mappings:       make(map[string]map[route.Key]targetStage, len(targetIDs)),
 	}
 	for _, targetID := range targetIDs {
 		state.authorizations[targetID] = authorizedState
 		state.refreshTokens[targetID] = targetID
-		state.mappings[targetID] = make(map[stageKey]targetStage)
+		state.mappings[targetID] = make(map[route.Key]targetStage)
 	}
 
 	return state
@@ -544,22 +545,25 @@ func (s *fakeState) TrustedInventory(_ context.Context) ([]route.Stage, error) {
 func (s *fakeState) ForEachTargetStage(
 	_ context.Context,
 	targetID string,
-	visit func(routeID int64, stageOrder int, sourceRevision, contentHash string, wahooRouteID int64) error,
+	visit func(provider route.Provider, routeID int64, stageOrder int, sourceRevision, contentHash string, wahooRouteID int64) error,
 ) error {
-	keys := make([]stageKey, 0, len(s.mappings[targetID]))
+	keys := make([]route.Key, 0, len(s.mappings[targetID]))
 	for key := range s.mappings[targetID] {
 		keys = append(keys, key)
 	}
 	sort.Slice(keys, func(left, right int) bool {
-		if keys[left].routeID != keys[right].routeID {
-			return keys[left].routeID < keys[right].routeID
+		if keys[left].Provider() != keys[right].Provider() {
+			return keys[left].Provider() < keys[right].Provider()
+		}
+		if keys[left].RouteID() != keys[right].RouteID() {
+			return keys[left].RouteID() < keys[right].RouteID()
 		}
 
-		return keys[left].stageOrder < keys[right].stageOrder
+		return keys[left].StageOrder() < keys[right].StageOrder()
 	})
 	for _, key := range keys {
 		mapping := s.mappings[targetID][key]
-		if err := visit(key.routeID, key.stageOrder, mapping.sourceRevision, mapping.contentHash, mapping.wahooRouteID); err != nil {
+		if err := visit(key.Provider(), key.RouteID(), key.StageOrder(), mapping.sourceRevision, mapping.contentHash, mapping.wahooRouteID); err != nil {
 			return err
 		}
 	}
@@ -570,12 +574,13 @@ func (s *fakeState) ForEachTargetStage(
 func (s *fakeState) UpsertTargetStage(
 	_ context.Context,
 	targetID string,
+	provider route.Provider,
 	routeID int64,
 	stageOrder int,
 	sourceRevision, contentHash string,
 	wahooRouteID int64,
 ) error {
-	s.mappings[targetID][stageKey{routeID: routeID, stageOrder: stageOrder}] = targetStage{
+	s.mappings[targetID][route.NewKey(provider, routeID, stageOrder)] = targetStage{
 		sourceRevision: sourceRevision,
 		contentHash:    contentHash,
 		wahooRouteID:   wahooRouteID,
@@ -584,8 +589,8 @@ func (s *fakeState) UpsertTargetStage(
 	return nil
 }
 
-func (s *fakeState) DeleteTargetStage(_ context.Context, targetID string, routeID int64, stageOrder int) error {
-	delete(s.mappings[targetID], stageKey{routeID: routeID, stageOrder: stageOrder})
+func (s *fakeState) DeleteTargetStage(_ context.Context, targetID string, provider route.Provider, routeID int64, stageOrder int) error {
+	delete(s.mappings[targetID], route.NewKey(provider, routeID, stageOrder))
 
 	return nil
 }
@@ -679,10 +684,8 @@ func seedMapping(state *fakeState, targetID string, stage *route.Stage, wahooRou
 	}
 }
 
-func keyFor(stage *route.Stage) stageKey {
-	key := stage.Key()
-
-	return stageKey{routeID: key.RouteID(), stageOrder: key.StageOrder()}
+func keyFor(stage *route.Stage) route.Key {
+	return stage.Key()
 }
 
 func accessFor(refreshToken string) string {
@@ -700,6 +703,7 @@ func remoteID(targetID string, routeID int64) int64 {
 func testStage(t *testing.T, routeID int64, stageOrder int, revision, contentHash string) route.Stage {
 	t.Helper()
 	stage, err := route.NewStage(
+		route.ProviderVeloPlanner,
 		routeID,
 		stageOrder,
 		revision,

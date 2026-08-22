@@ -242,8 +242,13 @@ export async function openLibrary(page: Page): Promise<void> {
  * panel carries. Going there directly is what a shared link does, and it is the
  * shortest way into the state every test in this suite starts from.
  */
-export async function openRoute(page: Page, routeId: number, stageOrder: number): Promise<void> {
-  await page.goto(`/?route=${routeId}%2F${stageOrder}`);
+export async function openRoute(
+  page: Page,
+  provider: string,
+  routeId: number,
+  stageOrder: number,
+): Promise<void> {
+  await page.goto(`/?route=${provider}%2F${routeId}%2F${stageOrder}`);
   await expect(page.getByRole("button", { name: /^← Search \d+ routes?$/ })).toBeVisible();
   await settleMap(page);
 }

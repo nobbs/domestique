@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ApiError,
+  fetchRoute,
   fetchRouteGeometry,
   fetchRoutes,
   fetchSyncRuns,
@@ -49,10 +50,38 @@ describe("the API client", () => {
     );
   });
 
+  it("addresses one stage by the provider that issued it", async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            provider: "veloplanner",
+            route_id: 12,
+            stage: 1,
+            title: "Kaiserstuhl Loop",
+            route_name: "Kaiserstuhl Loop",
+            stage_name: "",
+            distance_metres: 1000,
+            point_count: 2,
+          }),
+          { status: 200 },
+        ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const stage = await fetchRoute("veloplanner", 12, 1);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/v1/providers/veloplanner/routes/12/stages/1",
+      expect.anything(),
+    );
+    expect(stage.provider).toBe("veloplanner");
+  });
+
   it("surfaces the service's safe error envelope", async () => {
     respondWith(404, { error: { code: "not_found", message: "resource was not found" } });
 
-    const failure = await fetchRouteGeometry(12, 1).catch((error: unknown) => error);
+    const failure = await fetchRouteGeometry("veloplanner", 12, 1).catch((error: unknown) => error);
 
     expect(failure).toBeInstanceOf(ApiError);
     const apiError = failure as ApiError;
@@ -89,7 +118,7 @@ describe("the API client", () => {
   });
 
   it("names the request a contract failure came back from", async () => {
-    respondWith(200, { stages: [{ route_id: "not-a-number" }] });
+    respondWith(200, { stages: [{ provider: "veloplanner", route_id: "not-a-number" }] });
 
     const failure = (await fetchRoutes().catch((error: unknown) => error)) as ContractError;
 

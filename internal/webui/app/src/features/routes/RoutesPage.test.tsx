@@ -61,6 +61,7 @@ const { RoutesPage } = await import("./RoutesPage");
 
 function route(routeId: number, stageOrder: number, routeName: string, stageName: string): Route {
   return {
+    provider: "veloplanner",
     routeId,
     stageOrder,
     routeName,
@@ -137,7 +138,7 @@ function renderPage(
   });
   (options.geometryFor ?? library).forEach((entry, index) => {
     client.setQueryData(
-      ["stage-geometry", entry.routeId, entry.stageOrder],
+      ["stage-geometry", entry.provider, entry.routeId, entry.stageOrder],
       geometry(entry, index * 0.4),
     );
   });
@@ -177,7 +178,7 @@ describe("RoutesPage", () => {
   it("draws every route in the library on one map", () => {
     renderPage();
 
-    expect(lastDrawing().keys).toEqual(["1/1", "1/2", "2/1"]);
+    expect(lastDrawing().keys).toEqual(["veloplanner/1/1", "veloplanner/1/2", "veloplanner/2/1"]);
     // Framed around the whole library, which is the union of what was drawn.
     expect(lastDrawing().bounds).toEqual([8, 49, 8.9, 49.1]);
   });
@@ -211,7 +212,7 @@ describe("RoutesPage", () => {
 
     expect(screen.getByRole("button", { name: /Kaiserstuhl Loop/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Rhine Traverse/ })).toBeNull();
-    expect(lastDrawing().keys).toEqual(["1/1", "1/2", "2/1"]);
+    expect(lastDrawing().keys).toEqual(["veloplanner/1/1", "veloplanner/1/2", "veloplanner/2/1"]);
   });
 
   /*
@@ -224,7 +225,7 @@ describe("RoutesPage", () => {
     await userEvent.type(screen.getByRole("searchbox"), "kaiserstuhl");
     await userEvent.click(screen.getByRole("button", { name: /Kaiserstuhl Loop/ }));
 
-    expect(lastDrawing().selectedKey).toBe("2/1");
+    expect(lastDrawing().selectedKey).toBe("veloplanner/2/1");
     expect(lastDrawing().bounds).toEqual([8.8, 49, 8.9, 49.1]);
     expect(screen.getByRole("button", { name: "Open route" })).toBeInTheDocument();
   });
@@ -259,7 +260,7 @@ describe("RoutesPage", () => {
   it("draws the geometry that has arrived rather than waiting for all of it", () => {
     renderPage(LIBRARY, { geometryFor: [LIBRARY[0] as Route] });
 
-    expect(lastDrawing().keys).toEqual(["1/1"]);
+    expect(lastDrawing().keys).toEqual(["veloplanner/1/1"]);
     expect(lastDrawing().bounds).toEqual([8, 49, 8.1, 49.1]);
   });
 
@@ -289,7 +290,7 @@ describe("RoutesPage", () => {
     await userEvent.type(screen.getByRole("searchbox"), "kaiserstuhl");
     await userEvent.click(screen.getByRole("button", { name: /Kaiserstuhl Loop/ }));
 
-    expect(lastDrawing().selectedKey).toBe("2/1");
+    expect(lastDrawing().selectedKey).toBe("veloplanner/2/1");
     expect(lastDrawing().bounds).toEqual([8.4, 49, 8.5, 49.1]);
   });
 
@@ -301,9 +302,9 @@ describe("RoutesPage", () => {
    */
   it("shows the card of a route pointed at on the map", async () => {
     renderPage();
-    await userEvent.click(screen.getByRole("button", { name: "point at 2/1" }));
+    await userEvent.click(screen.getByRole("button", { name: "point at veloplanner/2/1" }));
 
-    expect(lastDrawing().selectedKey).toBe("2/1");
+    expect(lastDrawing().selectedKey).toBe("veloplanner/2/1");
     expect(lastDrawing().bounds).toEqual([8.8, 49, 8.9, 49.1]);
     expect(screen.getByRole("button", { name: "Open route" })).toBeInTheDocument();
     expect(screen.getByRole("searchbox")).toBeInTheDocument();
@@ -313,11 +314,11 @@ describe("RoutesPage", () => {
   // pointing at it again is the map's own way of saying yes.
   it("opens a route pointed at a second time", async () => {
     renderPage();
-    await userEvent.click(screen.getByRole("button", { name: "point at 2/1" }));
+    await userEvent.click(screen.getByRole("button", { name: "point at veloplanner/2/1" }));
 
     expect(screen.queryByRole("region", { name: "Kaiserstuhl Loop" })).toBeNull();
 
-    await userEvent.click(screen.getByRole("button", { name: "point at 2/1" }));
+    await userEvent.click(screen.getByRole("button", { name: "point at veloplanner/2/1" }));
 
     expect(screen.getByRole("region", { name: "Kaiserstuhl Loop" })).toBeInTheDocument();
     expect(lastDrawing().overlaid).toBe(true);
@@ -331,10 +332,10 @@ describe("RoutesPage", () => {
   it("clears a search the route pointed at is not in", async () => {
     renderPage();
     await userEvent.type(screen.getByRole("searchbox"), "kaiserstuhl");
-    await userEvent.click(screen.getByRole("button", { name: "point at 1/2" }));
+    await userEvent.click(screen.getByRole("button", { name: "point at veloplanner/1/2" }));
 
     expect(screen.getByRole("searchbox")).toHaveValue("");
-    expect(lastDrawing().selectedKey).toBe("1/2");
+    expect(lastDrawing().selectedKey).toBe("veloplanner/1/2");
     expect(screen.getByRole("button", { name: "Open route" })).toBeInTheDocument();
   });
 
@@ -343,17 +344,17 @@ describe("RoutesPage", () => {
   it("keeps a search the route pointed at is in", async () => {
     renderPage();
     await userEvent.type(screen.getByRole("searchbox"), "rhine");
-    await userEvent.click(screen.getByRole("button", { name: "point at 1/2" }));
+    await userEvent.click(screen.getByRole("button", { name: "point at veloplanner/1/2" }));
 
     expect(screen.getByRole("searchbox")).toHaveValue("rhine");
-    expect(lastDrawing().selectedKey).toBe("1/2");
+    expect(lastDrawing().selectedKey).toBe("veloplanner/1/2");
   });
 
   // With a route open there is no column for a card to be in, so the map's own
   // pick is the whole gesture.
   it("swaps the open route for one pointed at on the map", async () => {
-    renderPage(LIBRARY, { at: "/?route=2%2F1" });
-    await userEvent.click(screen.getByRole("button", { name: "point at 1/1" }));
+    renderPage(LIBRARY, { at: "/?route=veloplanner%2F2%2F1" });
+    await userEvent.click(screen.getByRole("button", { name: "point at veloplanner/1/1" }));
 
     expect(
       screen.getByRole("region", { name: "Rhine Traverse — Valley floor" }),
@@ -366,15 +367,15 @@ describe("RoutesPage", () => {
    * all, which is picked by dragging along that very line.
    */
   it("leaves the open route alone when its own line is pointed at", async () => {
-    renderPage(LIBRARY, { at: "/?route=2%2F1" });
+    renderPage(LIBRARY, { at: "/?route=veloplanner%2F2%2F1" });
     const before = drawn.maps.length;
-    await userEvent.click(screen.getByRole("button", { name: "point at 2/1" }));
+    await userEvent.click(screen.getByRole("button", { name: "point at veloplanner/2/1" }));
 
     expect(screen.getByRole("region", { name: "Kaiserstuhl Loop" })).toBeInTheDocument();
     expect(drawn.maps.length).toBe(before);
     // And the map says as much before it is clicked, by giving that one line no
     // pointer cursor.
-    expect(lastDrawing().inertKey).toBe("2/1");
+    expect(lastDrawing().inertKey).toBe("veloplanner/2/1");
   });
 
   // The map with nothing on it is the loading state; a panel saying so would
@@ -412,6 +413,16 @@ describe("RoutesPage", () => {
   // The open route is in the address rather than in component state, so the view
   // a reader is looking at is a view they can send to someone else.
   it("opens the route the address names", () => {
+    renderPage(LIBRARY, { at: "/?route=veloplanner%2F2%2F1" });
+
+    expect(screen.getByRole("region", { name: "Kaiserstuhl Loop" })).toBeInTheDocument();
+    expect(lastDrawing().overlaid).toBe(true);
+  });
+
+  // The address the app handed out before a second provider existed. A link
+  // bookmarked or shared then names the provider it always meant, and still
+  // opens the route it always did.
+  it("opens the route a two-part address names", () => {
     renderPage(LIBRARY, { at: "/?route=2%2F1" });
 
     expect(screen.getByRole("region", { name: "Kaiserstuhl Loop" })).toBeInTheDocument();
@@ -419,9 +430,19 @@ describe("RoutesPage", () => {
   });
 
   it("says so when the address names a route the library does not have", () => {
-    renderPage(LIBRARY, { at: "/?route=99%2F1" });
+    renderPage(LIBRARY, { at: "/?route=veloplanner%2F99%2F1" });
 
     expect(screen.getByText("No route at that address.")).toBeInTheDocument();
+  });
+
+  // An identifier made of digits that still numbers nothing. Reading it as a
+  // route would send the page looking for stage zero of route zero; it is not a
+  // route the library is missing, it is not an address at all.
+  it("ignores an address whose numbers name no route", () => {
+    renderPage(LIBRARY, { at: "/?route=veloplanner%2F0%2F1" });
+
+    expect(screen.queryByText("No route at that address.")).not.toBeInTheDocument();
+    expect(screen.getByRole("searchbox", { name: "Search the route library" })).toBeInTheDocument();
   });
 
   /*
@@ -432,7 +453,7 @@ describe("RoutesPage", () => {
   it("says so when the open route's geometry never arrives", async () => {
     renderPage(LIBRARY, {
       geometryFor: [LIBRARY[0] as Route, LIBRARY[1] as Route],
-      at: "/?route=2%2F1",
+      at: "/?route=veloplanner%2F2%2F1",
     });
 
     expect(await screen.findByText("Could not load that route's geometry.")).toBeInTheDocument();
@@ -442,7 +463,7 @@ describe("RoutesPage", () => {
   });
 
   it("goes back to the search it came from", async () => {
-    renderPage(LIBRARY, { at: "/?route=2%2F1" });
+    renderPage(LIBRARY, { at: "/?route=veloplanner%2F2%2F1" });
     await userEvent.click(screen.getByRole("button", { name: /^← Search \d+ routes?$/ }));
 
     expect(screen.getByRole("searchbox")).toBeInTheDocument();
@@ -455,7 +476,7 @@ describe("RoutesPage", () => {
    * closing the route.
    */
   it("puts the profile away and leaves the route open", async () => {
-    renderPage(LIBRARY, { at: "/?route=2%2F1" });
+    renderPage(LIBRARY, { at: "/?route=veloplanner%2F2%2F1" });
     await userEvent.click(screen.getByRole("button", { name: "Hide the profile" }));
 
     expect(screen.getByRole("button", { name: "Show the profile" })).toBeInTheDocument();
