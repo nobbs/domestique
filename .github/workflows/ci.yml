@@ -787,7 +787,12 @@ jobs:
       # The host runs its own copy of the script, so a copy left behind is a
       # deployment whose gates exist only in this repository. Sending it is what
       # keeps the two the same file; the host refuses anything that does not
-      # arrive as a bash script that parses, and says nothing when they match.
+      # arrive as a bash script that parses, and logs that it is already current
+      # when they match.
+      #
+      # A host whose copy predates `--install-self` fails this step, and fails it
+      # before the service is touched. Install the script by hand once; from then
+      # on this step is what keeps it current.
       #
       # Before the deploy rather than after it, so the deploy that follows is
       # already the behaviour this commit describes.

@@ -281,6 +281,10 @@ because the copy here fell three changes behind the
 repository — including a readiness gate and a rollback guard that read as
 present in the tree and were absent where they ran.
 
+A host whose copy predates `--install-self` does not understand the flag, so the
+step fails and the deploy behind it never runs. Install the script by hand once,
+as below; from then on CI keeps it current.
+
 **It also means a merge to the default branch runs code as root on this host,**
 not only as the unprivileged container the image starts. The deploy account
 still cannot write the script itself, and cannot run anything else through
