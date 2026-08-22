@@ -275,8 +275,9 @@ sudo /usr/local/lib/domestique/domestique-deploy.sh --install-self \
 ```
 
 The host refuses anything that is not a bash script that parses, replaces its
-copy by renaming a temporary file over it, and says nothing when the two already
-match. This exists because the copy here fell three changes behind the
+copy by renaming a temporary file over it, and logs `deploy script is already
+current` without touching anything when the two already match. This exists
+because the copy here fell three changes behind the
 repository — including a readiness gate and a rollback guard that read as
 present in the tree and were absent where they ran.
 

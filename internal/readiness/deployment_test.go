@@ -153,15 +153,33 @@ func TestTheDeployScriptChecksEveryPublishedMapping(t *testing.T) {
 // started sending its copy over. These tests are only worth their assertions
 // while that step is there, and while it runs before the deploy it applies to.
 func TestTheDeployJobInstallsTheScriptBeforeDeploying(t *testing.T) {
-	workflow := readRepositoryFile(t, ".github/workflows/ci.yml")
+	job := deployJob(t)
 
-	install := strings.Index(workflow, "--install-self")
+	install := strings.Index(job, "--install-self")
 	require.NotEqual(t, -1, install, "the deploy job must send the repository's copy of the script")
-	assert.Contains(t, workflow, "< deploy/domestique-deploy.sh", "the copy sent must be this repository's")
+	assert.Contains(t, job, "< deploy/domestique-deploy.sh", "the copy sent must be this repository's")
 
-	deploy := strings.Index(workflow, `domestique-deploy.sh "${DIGEST}"`)
+	deploy := strings.Index(job, `domestique-deploy.sh "${DIGEST}"`)
 	require.NotEqual(t, -1, deploy, "the deploy job must still deploy the published digest")
 	assert.Less(t, install, deploy, "the script is installed before the deploy it applies to")
+}
+
+// The deploy job on its own. Read from the whole workflow, the assertions above
+// are satisfied by an install in any job at all, in any order relative to the
+// deploy it is supposed to precede — which is the thing they exist to pin.
+func deployJob(t *testing.T) string {
+	t.Helper()
+	workflow := readRepositoryFile(t, ".github/workflows/ci.yml")
+
+	start := regexp.MustCompile(`(?m)^  deploy:$`).FindStringIndex(workflow)
+	require.NotNil(t, start, "ci.yml must have a deploy job")
+
+	job := workflow[start[1]:]
+	if next := regexp.MustCompile(`(?m)^  \S`).FindStringIndex(job); next != nil {
+		job = job[:next[0]]
+	}
+
+	return job
 }
 
 // The install path is the one input to the script that is not a digest, so what
