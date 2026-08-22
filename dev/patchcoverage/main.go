@@ -775,7 +775,7 @@ func render(lang language, base string, found *result) string {
 
 	fmt.Fprintf(&out, "  project  %s  (%d/%d lines)\n", percentage(found.project), found.project.covered, found.project.total)
 	fmt.Fprintf(&out, "  needed   %s, or %s to be certain\n",
-		tenthsString(tenths(found.project)-threshold), tenthsString(tenths(found.project)))
+		tenthsString(max(tenths(found.project)-threshold, 0)), tenthsString(tenths(found.project)))
 	fmt.Fprintf(&out, "  verdict  %s\n", verdictOf(lang, found))
 
 	if len(found.uncovered) > 0 {

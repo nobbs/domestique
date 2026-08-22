@@ -468,6 +468,30 @@ func TestRenderSaysAShortfallBlocksNothingWhereTheStatusIsInformational(t *testi
 	assert.Contains(t, out, "blocks nothing")
 }
 
+// Spending the threshold on a project percentage below it would leave a negative
+// number, which reads as nonsense rather than as the floor it stands for.
+func TestRenderNeverAsksForANegativePercentage(t *testing.T) {
+	t.Parallel()
+
+	for name, project := range map[string]counts{
+		"an empty report":    {},
+		"a report under one": {covered: 5, total: 1000},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			out := render(goLanguage(t), "abc1234", &result{
+				patch:   counts{covered: 1, total: 2},
+				project: project,
+				stands:  breaks,
+			})
+
+			assert.Contains(t, out, "needed   0.0%")
+			assert.NotContains(t, out, "-")
+		})
+	}
+}
+
 func TestLanguageNamedRejectsAnUnknownFlag(t *testing.T) {
 	t.Parallel()
 
