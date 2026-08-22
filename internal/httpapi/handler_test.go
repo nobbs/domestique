@@ -360,9 +360,9 @@ func TestHandlerOmitsAnUnconfiguredSourceBaseURL(t *testing.T) {
 
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/webui/config"))
-	// Absent rather than empty: that is how the page knows to offer no source
-	// link at all rather than one pointing at nowhere.
-	assert.NotContains(t, response.Body.String(), "source_base_url", "the config body carries a source base URL key")
+	// Absent rather than an empty map: that is how the page knows to offer no
+	// source link at all rather than one pointing at nowhere.
+	assert.NotContains(t, response.Body.String(), "source_base_urls", "the config body carries a source base URLs key")
 }
 
 func TestHandlerRefusesASourceBaseURLThatIsNotOne(t *testing.T) {
