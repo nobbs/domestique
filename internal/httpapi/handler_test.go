@@ -1292,6 +1292,18 @@ func TestNewRejectsIncompleteOptions(t *testing.T) {
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
 		}},
+		{name: "dark cartography with a dark style of its own", options: &Options{
+			TargetIDs: []string{"rider-a"},
+			Basemaps: []Basemap{{
+				Name:            "Satellite",
+				StyleURL:        testTileStyleURL,
+				StyleURLDark:    "https://tiles.example.test/styles/dark",
+				DarkCartography: true,
+			}},
+			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
+			AccessEmail:      testAccessEmail,
+			BrowserOriginURL: testBrowserOriginURL,
+		}},
 	}
 
 	for _, test := range tests {

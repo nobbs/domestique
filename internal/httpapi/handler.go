@@ -266,6 +266,9 @@ type Basemap struct {
 
 	// DarkCartography marks ground that is dark in either colour scheme, such
 	// as satellite imagery. The page paints its route ink to match.
+	//
+	// It contradicts StyleURLDark: a provider publishing a dark twin has light
+	// cartography to switch away from. Configuring both is refused.
 	DarkCartography bool
 }
 
@@ -333,6 +336,9 @@ func New(
 			return earlier.Name == basemap.Name
 		}) {
 			return nil, errors.New("basemap names must be unique")
+		}
+		if basemap.DarkCartography && basemap.StyleURLDark != "" {
+			return nil, errors.New("a basemap must not set both dark cartography and a dark style")
 		}
 	}
 	tileOrigins, err := tileOriginsOf(options.Basemaps)

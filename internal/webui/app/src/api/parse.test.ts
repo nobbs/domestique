@@ -686,4 +686,26 @@ describe("parseWebUIConfig", () => {
       parseWebUIConfig({ basemaps: [{ ...satellite, dark_cartography: "yes" }] }),
     ).toThrow(ContractError);
   });
+
+  it("refuses a basemap named only blank space", () => {
+    expect(() => parseWebUIConfig({ basemaps: [{ ...streets, name: "  " }] })).toThrow(
+      ContractError,
+    );
+  });
+
+  it("refuses two basemaps sharing one name", () => {
+    expect(() =>
+      parseWebUIConfig({ basemaps: [streets, { ...satellite, name: streets.name }] }),
+    ).toThrow(ContractError);
+  });
+
+  it("refuses a basemap that is dark cartography with a dark style of its own", () => {
+    expect(() =>
+      parseWebUIConfig({
+        basemaps: [
+          { ...satellite, style_url_dark: "https://imagery.example.test/maps/hybrid/dark.json" },
+        ],
+      }),
+    ).toThrow(ContractError);
+  });
 });
