@@ -164,10 +164,17 @@ wait_healthy() {
 # the readiness port. The script deploys images, not compose files, so it has to
 # work against a host that has not added that publication yet — and a missing
 # publication must not roll back an image that is otherwise healthy.
+#
+# Compose does not spell an unpublished port the same way in every version: v2
+# prints nothing, and v5 prints `invalid IP:0` on stdout and still exits 0. So a
+# published port is one that reads as an address, and everything else is the
+# absence of one. Tested for emptiness instead, v5's answer counted as a
+# publication that is not loopback, and the gate rolled a healthy deploy back on
+# exactly the host this was written to tolerate.
 wait_ready() {
   local published deadline
   published="$(compose port "${COMPOSE_SERVICE}" "${READINESS_PORT}" 2>/dev/null || true)"
-  if [[ -z "${published}" ]]; then
+  if [[ ! "${published}" =~ ^(\[[0-9a-fA-F:]+\]|[0-9.]+):[0-9]+$ ]]; then
     log "readiness port ${READINESS_PORT} is not published; readiness gate skipped"
     return 0
   fi
