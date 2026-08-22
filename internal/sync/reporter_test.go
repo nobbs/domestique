@@ -595,11 +595,6 @@ func TestReporterDigestStartsItsClockWithoutSending(t *testing.T) {
 
 // A digest replaces the per-run push with one aggregate message per interval,
 // and totals only the counts.
-//
-// Both halves of the pass that carries the window past the interval are counted
-// in it. A window closing between them would leave the second half after the
-// new anchor and before the next window's lower bound, which is a successful
-// run no digest ever reports.
 func TestReporterDigestAggregatesOneIntervalOfSuccesses(t *testing.T) {
 	runner := &reportingRunner{
 		source:  Result{Phase: PhaseSource, Outcome: OutcomeSucceeded, SourceStages: 6},
@@ -849,20 +844,134 @@ func TestReporterHoldsTheDigestWindowOpenWhenTheMessageIsRefused(t *testing.T) {
 // failure alert before it is still open. The success that follows is what closes
 // it, whatever was recorded in between.
 func TestReporterRecoveryOutlastsAPhaseLeftAwaitingOnboarding(t *testing.T) {
-	runner := &reportingRunner{targets: Result{Phase: PhaseTargets, Outcome: OutcomeFailed, Failure: FailureDestination}}
+	for _, testCase := range []struct {
+		name   string
+		alert  Result
+		alerts int
+	}{
+		{
+			name:   "after a failure",
+			alert:  Result{Phase: PhaseTargets, Outcome: OutcomeFailed, Failure: FailureDestination},
+			alerts: 1,
+		},
+		{
+			name:   "after a blocked run",
+			alert:  Result{Phase: PhaseTargets, Outcome: OutcomeBlocked, Failure: FailureDeletionLimit},
+			alerts: 1,
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			runner := &reportingRunner{targets: testCase.alert}
+			state := &fakeRunState{targets: true}
+			notifier := &fakeNotifier{}
+			reporter := newPolicyReporter(t, runner, state, notifier, SuccessNotification{Policy: SuccessQuiet})
+
+			reporter.Run(t.Context())
+			require.Len(t, notifier.messages, testCase.alerts, "want the alert")
+
+			runner.targets = Result{Phase: PhaseTargets, Outcome: OutcomeNotReady}
+			reporter.Run(t.Context())
+			require.Len(t, notifier.messages, testCase.alerts, "a run awaiting onboarding notified")
+
+			runner.targets = Result{Phase: PhaseTargets, Outcome: OutcomeSucceeded, SourceStages: 3}
+			reporter.Run(t.Context())
+			require.Len(t, notifier.messages, testCase.alerts+1,
+				"the alert was left open with nothing to close it")
+			assert.Equal(t, "Domestique sync", notifier.messages[testCase.alerts].title,
+				"recovery notification title")
+		})
+	}
+}
+
+// A blocked run is an alert like any other, so the success that follows it
+// closes that alert even with no failure in between.
+func TestReporterQuietPolicySendsTheRecoveryAfterABlockedRun(t *testing.T) {
+	runner := &reportingRunner{targets: Result{
+		Phase: PhaseTargets, Outcome: OutcomeBlocked, Failure: FailureDeletionLimit,
+	}}
 	state := &fakeRunState{targets: true}
 	notifier := &fakeNotifier{}
 	reporter := newPolicyReporter(t, runner, state, notifier, SuccessNotification{Policy: SuccessQuiet})
 
 	reporter.Run(t.Context())
-	require.Len(t, notifier.messages, 1, "want the failure alert")
-
-	runner.targets = Result{Phase: PhaseTargets, Outcome: OutcomeNotReady}
-	reporter.Run(t.Context())
-	require.Len(t, notifier.messages, 1, "a run awaiting onboarding notified")
+	require.Len(t, notifier.messages, 1, "want the blocked alert")
 
 	runner.targets = Result{Phase: PhaseTargets, Outcome: OutcomeSucceeded, SourceStages: 3}
 	reporter.Run(t.Context())
-	require.Len(t, notifier.messages, 2, "the alert was left open with nothing to close it")
+	require.Len(t, notifier.messages, 2, "the success after a blocked run was suppressed")
 	assert.Equal(t, "Domestique sync", notifier.messages[1].title, "recovery notification title")
+
+	// And only the first: the phase is healthy now, so its next success is
+	// routine and a quiet policy holds it back.
+	reporter.Run(t.Context())
+	assert.Len(t, notifier.messages, 2, "a routine success followed the recovery out")
+}
+
+// pacedRunner takes time to run each half, so a pass occupies a span rather than
+// an instant and a digest interval can elapse partway through one.
+type pacedRunner struct {
+	clock   *time.Time
+	source  Result
+	targets Result
+	step    time.Duration
+}
+
+func (r *pacedRunner) RunSource(context.Context) Result {
+	*r.clock = r.clock.Add(r.step)
+
+	return r.source
+}
+
+func (r *pacedRunner) RunTargets(context.Context) Result {
+	*r.clock = r.clock.Add(r.step)
+
+	return r.targets
+}
+
+func (r *pacedRunner) AnnotateStored(context.Context) {}
+
+// Both halves of the pass that carries the window past the interval are counted
+// in the same digest.
+//
+// A window closing between them would pair each pass's targets half with the
+// next pass's source half instead — no run is lost, but every digest then
+// reports a period that never happened. The counts below differ per pass so
+// that regrouping is visible: pairing them the wrong way reports the previous
+// pass's writes under this pass's heading.
+func TestReporterDigestCountsAWholePassInOneInterval(t *testing.T) {
+	start := time.Date(2026, time.August, 17, 8, 0, 0, 0, time.UTC)
+	now := start
+	runner := &pacedRunner{
+		clock:   &now,
+		step:    time.Hour,
+		source:  Result{Phase: PhaseSource, Outcome: OutcomeSucceeded, SourceStages: 6},
+		targets: Result{Phase: PhaseTargets, Outcome: OutcomeSucceeded, SourceStages: 6, Created: 1},
+	}
+	state := &fakeRunState{source: true, targets: true}
+	notifier := &fakeNotifier{}
+	reporter := newPolicyReporter(t, runner, state, notifier, SuccessNotification{
+		Policy: SuccessDigest, Interval: 2 * time.Hour,
+	})
+	reporter.now = func() time.Time { return now }
+
+	// The opening pass ends at 10:00 and anchors the window there.
+	reporter.Run(t.Context())
+	require.Empty(t, notifier.messages, "the first digest reported history it was not asked for")
+
+	runner.targets.Created = 2
+	reporter.Run(t.Context())
+	runner.targets.Created = 7
+	reporter.Run(t.Context())
+
+	require.Len(t, notifier.messages, 2, "want one digest per elapsed interval")
+	assert.Equal(t, []notification{
+		{
+			title:   "Domestique sync digest",
+			message: "since 2026-08-17T10:00:00Z: source_runs=1 target_runs=1 created=2 updated=0 deleted=0",
+		},
+		{
+			title:   "Domestique sync digest",
+			message: "since 2026-08-17T12:00:00Z: source_runs=1 target_runs=1 created=7 updated=0 deleted=0",
+		},
+	}, notifier.messages, "digest notifications")
 }
