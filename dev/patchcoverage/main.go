@@ -35,15 +35,20 @@
 // prints — that is statement coverage over the same profile, and it reads
 // several points higher. Neither is wrong; only one of them gates.
 //
-// Going from a Go profile to lines takes one judgement call, because a profile
-// describes blocks. A block covers every line it spans, minus the lines
-// Codecov's uploader marks ignorable from the source — blank ones, comment-only
-// ones, and ones holding nothing but a closing brace. That last rule is the
-// uploader's rather than a guess, but the exact set it computes is not published
-// and is reimplemented here approximately: measured against Codecov's own
-// figures for this repository, the project percentage lands a couple of tenths
-// of a point low. That is well inside the threshold below, and it moves both
-// percentages the same way, which is the only thing the comparison reads.
+// The UI half reproduces Codecov exactly, because LCOV already describes lines:
+// against this repository's own report it agrees on all four figures — lines,
+// hits, misses and partials.
+//
+// The Go half does not, because a profile describes blocks rather than lines,
+// and going from one to the other takes a judgement call. A block covers every
+// line it spans, minus the lines Codecov's uploader marks ignorable from the
+// source — blank ones, comment-only ones, and ones holding nothing but a closing
+// brace. That last rule is the uploader's rather than a guess, but the exact set
+// it computes is not published and is reimplemented here approximately: measured
+// against Codecov's own figures for this repository, the Go project percentage
+// lands a couple of tenths of a point low. That is well inside the threshold
+// below, and it moves both percentages the same way, which is the only thing the
+// comparison reads.
 //
 // The diff runs against the working tree, so this is usable while writing rather
 // than only before a push. A file git does not track yet appears in no diff at
@@ -400,6 +405,11 @@ func lineOf(pair string) (int, error) {
 // branch on a line and how often that branch was taken, with "-" for a branch
 // under an expression that never evaluated. A line that ran but holds a branch
 // nobody took is a partial, which is exactly how Codecov reads the same file.
+//
+// A BRDA line with no DA record beside it is measured all the same, which is
+// easy to miss and worth 160 of this repository's 1739 UI lines: Codecov reads
+// its status from the branches alone — every one untaken is a miss, some taken
+// is a partial, all taken is a hit.
 func parseLCOV(in io.Reader) (lines, error) {
 	const root = "internal/webui/app/"
 
@@ -408,7 +418,7 @@ func parseLCOV(in io.Reader) (lines, error) {
 	var (
 		file      string
 		hits      = make(map[int]int)
-		unbranch  = make(map[int]bool)
+		branches  = make(map[int]*branchCounts)
 		endRecord = func() {
 			if file == "" {
 				return
@@ -416,17 +426,16 @@ func parseLCOV(in io.Reader) (lines, error) {
 
 			measured[file] = make(map[int]status, len(hits))
 			for line, count := range hits {
-				switch {
-				case count == 0:
-					measured[file][line] = missed
-				case unbranch[line]:
-					measured[file][line] = partial
-				default:
-					measured[file][line] = covered
+				measured[file][line] = ranLine(count, branches[line])
+			}
+
+			for line, taken := range branches {
+				if _, held := hits[line]; !held {
+					measured[file][line] = branchOnlyLine(taken)
 				}
 			}
 
-			file, hits, unbranch = "", make(map[int]int), make(map[int]bool)
+			file, hits, branches = "", make(map[int]int), make(map[int]*branchCounts)
 		}
 	)
 
@@ -456,8 +465,14 @@ func parseLCOV(in io.Reader) (lines, error) {
 				return nil, fmt.Errorf("line %d: %w", number, err)
 			}
 
-			if !taken {
-				unbranch[line] = true
+			if branches[line] == nil {
+				branches[line] = &branchCounts{}
+			}
+
+			if taken {
+				branches[line].taken++
+			} else {
+				branches[line].untaken++
 			}
 		case text == "end_of_record":
 			endRecord()
@@ -471,6 +486,37 @@ func parseLCOV(in io.Reader) (lines, error) {
 	endRecord()
 
 	return measured, nil
+}
+
+// branchCounts is how the branches on one line came out.
+type branchCounts struct {
+	taken   int
+	untaken int
+}
+
+// ranLine reads the status of a line a DA record measured.
+func ranLine(count int, taken *branchCounts) status {
+	switch {
+	case count == 0:
+		return missed
+	case taken != nil && taken.untaken > 0:
+		return partial
+	default:
+		return covered
+	}
+}
+
+// branchOnlyLine reads the status of a line that carries branches and no DA
+// record. Codecov measures it, so leaving it out understates the denominator.
+func branchOnlyLine(taken *branchCounts) status {
+	switch {
+	case taken.taken == 0:
+		return missed
+	case taken.untaken > 0:
+		return partial
+	default:
+		return covered
+	}
 }
 
 // parseDA reads one "line,hits" record.

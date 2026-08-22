@@ -100,8 +100,9 @@ merge base with `main` and including the working tree, naming each uncovered
 added line as `file:line`. A Go shortfall fails the task. Learning the same
 thing from CI costs a push, a five-minute run and a round of polling, which is
 where deliveries in this repository have historically lost the most time. Its
-arithmetic approximates Codecov's rather than reproducing it, so read a verdict
-within a few tenths of a point as close rather than as settled.
+UI number reproduces Codecov's exactly; its Go one is an estimate that reads a
+couple of tenths of a point low, so read a Go verdict inside that margin as
+close rather than as settled.
 [The delivery specification](docs/specs/delivery.md#coverage) states what is
 measured, what is deliberately not, and why the statuses are shaped that way.
 

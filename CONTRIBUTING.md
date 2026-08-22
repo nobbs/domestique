@@ -118,9 +118,10 @@ That measures both languages, then grades the lines your change adds against the
 same rule Codecov applies, comparing against the merge base with `main` and
 reading your working tree rather than only what you have committed. It prints
 each uncovered added line as `file:line`. A Go shortfall fails the task; the UI
-half only reports, as its status does. Its arithmetic approximates Codecov's
-rather than reproducing it — expect a few tenths of a point either way, so treat
-a verdict inside that margin as worth a second look rather than as settled.
+half only reports, as its status does. The UI number reproduces Codecov's
+exactly; the Go one is an estimate, because a profile describes blocks rather
+than lines, and reads a couple of tenths of a point low. Treat a Go verdict
+inside that margin as worth a second look rather than as settled.
 
 One edge worth knowing. A branch forked from before coverage was published has a
 base commit with no report, so the patch status has nothing to compare against;

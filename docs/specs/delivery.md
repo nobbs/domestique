@@ -223,10 +223,11 @@ than only what is committed. It needs no base measurement and no network:
 Codecov compares the patch against the base commit's project coverage, and
 because project coverage is the weighted average of the untouched tree and the
 patch, comparing against the head's own project coverage always has the same
-sign. It is an estimate of Codecov's arithmetic rather than a reproduction of
-it — a Go profile describes blocks where Codecov reports lines — and it is
-expected to land within a few tenths of a point. The Go verdict fails the task;
-the UI one only prints, exactly as the two statuses behave.
+sign. The UI half reproduces the service exactly, LCOV already being a
+statement about lines. The Go half is an estimate rather than a reproduction,
+because a profile describes blocks where Codecov reports lines, and it is
+expected to land a couple of tenths of a point low. The Go verdict fails the
+task; the UI one only prints, exactly as the two statuses behave.
 
 The measurement carries no path filter because a required context has to arrive:
 Codecov reports only on a commit it received a report for, so a run that

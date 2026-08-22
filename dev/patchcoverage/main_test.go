@@ -204,6 +204,36 @@ end_of_record
 	}}, measured)
 }
 
+// A BRDA line with no DA record beside it is still a measured line, and reading
+// it from the branches alone is worth about a point of this repository's UI
+// total. Dropping it would understate the denominator and flatter the number.
+func TestParseLCOVMeasuresALineThatOnlyBranchesReport(t *testing.T) {
+	t.Parallel()
+
+	report := `TN:
+SF:src/lib/surface.ts
+DA:4,2
+BRDA:4,0,0,2
+BRDA:11,0,0,-
+BRDA:11,0,1,-
+BRDA:14,0,0,3
+BRDA:14,0,1,0
+BRDA:17,0,0,3
+BRDA:17,0,1,1
+end_of_record
+`
+
+	measured, err := parseLCOV(strings.NewReader(report))
+	require.NoError(t, err)
+
+	assert.Equal(t, lines{"internal/webui/app/src/lib/surface.ts": {
+		4:  covered,
+		11: missed,
+		14: partial,
+		17: covered,
+	}}, measured)
+}
+
 func TestParseLCOVRejectsAMalformedReport(t *testing.T) {
 	t.Parallel()
 
