@@ -14,7 +14,13 @@
  */
 
 import { expect, type Locator, type Page, test as playwrightTest } from "@playwright/test";
-import { darkBasemapStyle, lightBasemapStyle } from "./basemap";
+import {
+  darkBasemapStyle,
+  lightBasemapStyle,
+  SECOND_BASEMAP_NAME,
+  secondBasemapStyle,
+  secondBasemapStyleUrl,
+} from "./basemap";
 
 /**
  * Which style documents the service tells the browser to load.
@@ -102,6 +108,18 @@ export interface OfflineOptions {
    * the shipped client parses.
    */
   headers?: Record<string, string>;
+  /**
+   * Offers a second basemap, by rewriting the configuration the page reads.
+   *
+   * The demo is configured with one, and one basemap is not a choice — the
+   * chooser is not rendered at all — so a test that wants to press it has to be
+   * given something to choose between. The entry is added here rather than to
+   * the demo's own configuration because everything else about that
+   * configuration is what a deployment really looks like, and a second provider
+   * in it would be a provider every other test in this suite then had to know
+   * about.
+   */
+  secondBasemap?: boolean;
 }
 
 /**
@@ -126,10 +144,34 @@ export async function installOfflineBasemap(
   );
   const origin = new URL(baseUrl).origin;
   const styles = await styleUrls(page, baseUrl, headers);
+  const secondStyle = options.secondBasemap ? secondBasemapStyleUrl(styles.light) : null;
   const leaks: string[] = [];
 
   await page.route("**/*", async (route) => {
     const url = route.request().url();
+    if (secondStyle !== null && url === `${origin}/v1/webui/config`) {
+      const answered = await route.fetch({ headers: { ...route.request().headers(), ...headers } });
+      const payload = (await answered.json()) as { basemaps: unknown[] };
+      // Appended rather than substituted, so the first entry stays the one every
+      // other test loads and the added one is what a press has to reach for.
+      payload.basemaps.push({
+        name: SECOND_BASEMAP_NAME,
+        style_url: secondStyle,
+        dark_cartography: true,
+      });
+      await route.fulfill({ contentType: "application/json", body: JSON.stringify(payload) });
+
+      return;
+    }
+    if (url === secondStyle) {
+      requested.push(url);
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify(secondBasemapStyle),
+      });
+
+      return;
+    }
     if (url.startsWith(origin) || url.startsWith("data:") || url.startsWith("blob:")) {
       const forwarded = { ...route.request().headers(), ...headers };
       // A browser attaches Origin to everything that is not a GET or a HEAD, and

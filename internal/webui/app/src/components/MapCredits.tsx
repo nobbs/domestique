@@ -4,8 +4,9 @@
  * MapLibre's attribution control is switched off everywhere in this UI: it puts
  * a fourth thing in a fourth corner, and it renders the provider's own markup.
  * The tile and map data licences still require visible credit, so the text is
- * read out of the style document instead, which also keeps it correct if the
- * operator points `webui.tile_style_url` at a different provider.
+ * read out of the style document instead, which keeps it correct whichever of
+ * the configured basemaps is on screen — the query below is keyed on the style
+ * URL, so switching provider refetches that provider's own attribution.
  *
  * The text is stripped of markup rather than rendered as HTML: the style comes
  * from a third-party origin, and no third-party markup is injected into this
@@ -56,10 +57,10 @@ async function readJSON(url: string): Promise<unknown> {
  *
  * A style may reference its TileJSON relatively, and such a reference is
  * relative to the style, not to this page. Resolving it against the app origin
- * would request the wrong host whenever the operator points
- * `webui.tile_style_url` at a third-party provider. A value that will not parse
- * is passed through unchanged, so a malformed style degrades to no attribution
- * rather than an exception.
+ * would request the wrong host whenever a configured basemap points at a
+ * third-party provider. A value that will not parse is passed through
+ * unchanged, so a malformed style degrades to no attribution rather than an
+ * exception.
  */
 function resolveAgainstStyle(styleUrl: string, url: string): string {
   try {

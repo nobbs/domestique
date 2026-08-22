@@ -30,7 +30,7 @@ import { Layout } from "../../components/Layout";
 import { RouteOverlay, SURFACE_ATTRIBUTION } from "../../components/RouteOverlay";
 import { ErrorMessage, StatusMessage } from "../../components/StatusMessage";
 import { Wordmark } from "../../components/Wordmark";
-import { basemapFor, usePrefersDarkScheme } from "../../lib/basemap";
+import { basemapFor, useBasemapChoice, usePrefersDarkScheme } from "../../lib/basemap";
 import { formatReadTime } from "../../lib/format";
 import type { Highlight } from "../../lib/highlight";
 import { matchingRoutes } from "../../lib/library";
@@ -143,6 +143,12 @@ export function RoutesPage() {
   const config = useQuery(webUIConfigQuery());
   const status = useQuery(statusQuery());
   const prefersDark = usePrefersDarkScheme();
+  /*
+   * Which ground the reader asked for, and where it is remembered. Held here
+   * rather than in the map, because the style URL is worked out here and the
+   * map is handed a style rather than a choice.
+   */
+  const [basemapChoice, chooseBasemap] = useBasemapChoice();
   // What the panels are standing on, so the camera frames a route in the part
   // of the map the reader can actually see.
   const insets = useOverlayInsets();
@@ -384,7 +390,7 @@ export function RoutesPage() {
   const libraryBounds = useMemo(() => unionOf([...drawn.boxes.values()]), [drawn.boxes]);
   const bounds = windowBounds ?? focusBox ?? libraryBounds;
 
-  const basemap = config.data ? basemapFor(config.data, prefersDark) : null;
+  const basemap = config.data ? basemapFor(config.data, prefersDark, basemapChoice) : null;
   const readAt = status.data?.sync.phases.source?.lastCompletedAt;
 
   /*
@@ -416,6 +422,9 @@ export function RoutesPage() {
           <LibraryMap
             styleUrl={basemap.styleUrl}
             darkBasemap={basemap.dark}
+            basemaps={config.data?.basemaps ?? []}
+            selectedBasemap={basemap.name}
+            onBasemapChange={chooseBasemap}
             lines={drawn.lines}
             selectedKey={focusKey}
             bounds={bounds}

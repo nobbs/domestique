@@ -854,6 +854,99 @@ body {
   z-index: 1;
 }
 
+/*
+ * The basemap chooser, immediately above the credit and built to the same
+ * pattern: one chip, a mark that folds it open, and what it says unmounted
+ * rather than hidden when it is folded away. The two are neighbours in one
+ * corner and must read as one family, so everything about the surface — the
+ * radius, the shadow, the padding, the way the mark answers a pointer — is the
+ * credit's, and only what is inside differs.
+ */
+.basemap-picker {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  /* The cluster passes presses through to the map; see .map-credits. */
+  pointer-events: auto;
+  align-self: flex-start;
+  /* The credit's bound, for the reason the credit has one: the chip sits over
+     the map and a long list must not run off the side of a phone. */
+  max-width: min(100%, 380px);
+  padding: 3px var(--space-2);
+  border-radius: calc(var(--radius) - 4px);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  color: var(--ink-2);
+}
+
+.basemap-picker__toggle {
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+.basemap-picker__toggle:hover,
+.basemap-picker__toggle:focus-visible {
+  color: var(--accent);
+}
+
+/*
+ * The names, in a row. A row rather than a column because the chip sits in a
+ * corner of the map and a column would grow upward over the ground the reader
+ * is looking at; two or three short names cost less width than the credit
+ * beside them already takes. More than that, or longer ones, wrap onto a
+ * second line rather than off the edge.
+ */
+.basemap-picker__list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px var(--space-2);
+}
+
+.basemap-picker__option {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font: var(--type-small);
+  letter-spacing: var(--track-small);
+  cursor: pointer;
+}
+
+/*
+ * The radio itself stays: it is what a keyboard moves between and what a screen
+ * reader announces as checked, and painting a substitute would mean rebuilding
+ * both. It is only shrunk to the size of the text it labels.
+ */
+.basemap-picker__option input {
+  margin: 0;
+  accent-color: var(--accent);
+  width: 11px;
+  height: 11px;
+  cursor: pointer;
+}
+
+/* The one on screen, said in weight as well as in the mark, so the answer is
+ * legible without tracing which small circle is filled. */
+.basemap-picker__option:has(input:checked) {
+  color: var(--ink);
+}
+
+/*
+ * Where the chip lands if the map reported no cluster to draw it into — above
+ * the credit in the same corner, which is the order it has inside the cluster.
+ */
+.route-map > .basemap-picker {
+  position: absolute;
+  bottom: calc(var(--space-5) + 30px);
+  left: var(--space-5);
+  z-index: 1;
+}
+
 /* Route panel ------------------------------------------------------------- */
 
 /*

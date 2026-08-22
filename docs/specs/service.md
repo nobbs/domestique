@@ -177,6 +177,13 @@ another in the list. A second style may be configured for a dark system colour
 scheme, and must be on **its own basemap's** origin, so following the operator's
 colour scheme reveals nothing to anyone new.
 
+The reader's pick is remembered in the browser's own storage, under one key
+holding the chosen basemap's name and nothing else. It is never sent anywhere:
+the service is not told which basemap a browser loads, and the choice is kept
+out of the address so a shared link to a route does not carry it. A browser that
+refuses storage still switches; it simply starts again from the first entry on
+the next visit.
+
 Surface classification introduces **no** such exception. To learn whether a
 stage runs on asphalt, paving, gravel, or a forest track, the service reads a
 surface index it builds itself from OpenStreetMap regional extracts, and the

@@ -29,7 +29,8 @@ import {
   Source,
 } from "react-map-gl/maplibre";
 import "maplibre-gl/dist/maplibre-gl.css";
-import type { BoundingBox, Position } from "../../api/types";
+import type { Basemap, BoundingBox, Position } from "../../api/types";
+import { BasemapPicker } from "../../components/BasemapPicker";
 import { MapCredits } from "../../components/MapCredits";
 import { MapViewport } from "../../components/MapViewport";
 import type { Insets } from "../../lib/overlayInsets";
@@ -103,6 +104,16 @@ export interface LibraryMapProps {
   styleUrl: string;
   /** Whether `styleUrl` is the dark cartography, which picks the ink. */
   darkBasemap?: boolean;
+  /**
+   * The basemaps on offer, and which of them `styleUrl` came from.
+   *
+   * The map does not choose: it is handed a style and told what the ground
+   * looks like. These are here so the chooser can sit in the same cluster as
+   * the credit, which is the only corner this map has.
+   */
+  basemaps?: Basemap[];
+  selectedBasemap?: string;
+  onBasemapChange?: (name: string) => void;
   lines: LibraryLine[];
   /** The route standing out, by `routeKey`. Null draws the library flat. */
   selectedKey: string | null;
@@ -177,6 +188,9 @@ function collectionOf(lines: LibraryLine[]) {
 export function LibraryMap({
   styleUrl,
   darkBasemap = false,
+  basemaps = [],
+  selectedBasemap = "",
+  onBasemapChange,
   lines,
   selectedKey,
   bounds,
@@ -197,6 +211,14 @@ export function LibraryMap({
    * finishing loading. `null` until the reader says, so the viewport decides.
    */
   const [creditChoice, setCreditChoice] = useState<boolean | null>(null);
+  /*
+   * And whether the basemap list is unfolded, held here for the same reason:
+   * the portal that moves the cluster's contents remounts them, so a list the
+   * picker opened for itself would fold shut when the map finished loading.
+   * Closed until asked for — the ground on screen is the answer most of the
+   * time, and the names are only worth room while somebody is changing it.
+   */
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   // The selected route stays in the collection rather than being cut out of it:
   // removing it would rebuild every line on every selection, and the overlay
@@ -227,15 +249,30 @@ export function LibraryMap({
     return typeof key === "string" ? key : null;
   };
 
-  // One element, rendered in one of two places below, so that moving it does not
-  // give it a different set of props.
-  const credits = (
-    <MapCredits
-      styleUrl={styleUrl}
-      extra={extraCredit}
-      choice={creditChoice}
-      onChoiceChange={setCreditChoice}
-    />
+  /*
+   * One fragment, rendered in one of two places below, so that moving it does
+   * not give either piece a different set of props — and so the picker sits
+   * above the credit either way, rather than in whichever order the two places
+   * happen to produce.
+   */
+  const furniture = (
+    <>
+      {onBasemapChange ? (
+        <BasemapPicker
+          basemaps={basemaps}
+          selectedName={selectedBasemap}
+          onSelect={onBasemapChange}
+          expanded={pickerOpen}
+          onExpandedChange={setPickerOpen}
+        />
+      ) : null}
+      <MapCredits
+        styleUrl={styleUrl}
+        extra={extraCredit}
+        choice={creditChoice}
+        onChoiceChange={setCreditChoice}
+      />
+    </>
   );
 
   /*
@@ -270,10 +307,11 @@ export function LibraryMap({
       >
         <MapViewport bounds={bounds} maxZoom={maxZoom} {...(insets ? { insets } : {})} />
         {/*
-         * One cluster, bottom-left: the zoom pair, the scale bar, the credit,
-         * top to bottom. They are asked for in the other order because MapLibre
-         * adds to a bottom corner by prepending, so that a control added later
-         * stacks above the corner rather than under the ones already there.
+         * One cluster, bottom-left: the zoom pair, the scale bar, then the
+         * basemap chip and the credit, top to bottom. The two MapLibre owns are
+         * asked for in the other order because it adds to a bottom corner by
+         * prepending, so that a control added later stacks above the corner
+         * rather than under the ones already there.
          */}
         <ScaleControl position="bottom-left" unit="metric" />
         <NavigationControl position="bottom-left" showCompass={false} />
@@ -361,12 +399,12 @@ export function LibraryMap({
       {/*
        * Into the cluster if the map has one, and into the corner itself if it
        * has not. Drawn into MapLibre's own container rather than beside it so
-       * the three pieces of furniture are one column with one gap: a credit
+       * every piece of furniture is one column with one gap: a credit
        * positioned alongside the cluster would have to be cleared by it, and
        * whatever number did that clearing would be wrong for the next provider
        * whose attribution runs to a second line.
        */}
-      {cluster === null ? credits : createPortal(credits, cluster)}
+      {cluster === null ? furniture : createPortal(furniture, cluster)}
     </div>
   );
 }

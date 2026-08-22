@@ -12,7 +12,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { BoundingBox, Position } from "../../api/types";
+import type { Basemap, BoundingBox, Position } from "../../api/types";
 
 interface SourceRecord {
   id: string;
@@ -45,6 +45,16 @@ vi.mock("../../lib/maplibre", () => ({}));
  */
 vi.mock("../../components/MapCredits", () => ({
   MapCredits: () => <p data-testid="credits">© somebody</p>,
+}));
+
+/*
+ * And the chooser decides nothing here either: what is asked of it in this file
+ * is whether it is offered at all, and where it lands.
+ */
+vi.mock("../../components/BasemapPicker", () => ({
+  BasemapPicker: ({ selectedName }: { selectedName: string }) => (
+    <p data-testid="picker">{selectedName}</p>
+  ),
 }));
 
 vi.mock("../../components/MapViewport", () => ({
@@ -135,6 +145,15 @@ function over(key: string | null): PointerEventStub {
 }
 
 const BOUNDS: BoundingBox = [7.9, 48.9, 8.2, 49.1];
+
+// The picker is mocked in this file, so its own gating on the list's length is
+// untested here — that lives in BasemapPicker.test.tsx. What is real is the
+// invariant the fixture should still honour: a chooser is only ever offered
+// where there is a choice, so the tests below use a list of more than one.
+const TWO_BASEMAPS: Basemap[] = [
+  { name: "Streets", styleUrl: "https://tiles.example/style.json", darkCartography: false },
+  { name: "Satellite", styleUrl: "https://imagery.example/style.json", darkCartography: true },
+];
 
 function line(key: string, offset = 0) {
   return {
@@ -362,6 +381,28 @@ describe("LibraryMap", () => {
   });
 
   /*
+   * The chooser goes into the cluster above the credit, and the two travel as
+   * one fragment so that order holds wherever they land. Above rather than
+   * below because the credit is the bottom of the column by obligation: it must
+   * be the thing that is always there, and a control that appears and
+   * disappears with the number of configured basemaps must not push it around.
+   */
+  it("puts the basemap chooser in the cluster, above the credit", () => {
+    show({ basemaps: TWO_BASEMAPS, selectedBasemap: "Satellite", onBasemapChange: () => {} });
+
+    const cluster = drawn.container?.querySelector(".maplibregl-ctrl-bottom-left");
+    expect(cluster?.textContent).toBe("Satellite© somebody");
+  });
+
+  // Nothing is listening for a pick, so nothing is offered — the same bargain
+  // the hit band strikes above.
+  it("offers no chooser where no one is listening for one", () => {
+    show();
+
+    expect(screen.queryByTestId("picker")).not.toBeInTheDocument();
+  });
+
+  /*
    * Two pixels of ink is not a target. The band that is actually asked about is
    * far wider and invisible, and it carries the same identity as the line inside
    * it, so what is clicked and what lights up cannot disagree.
@@ -443,8 +484,13 @@ describe("LibraryMap", () => {
    */
   it("keeps the credit on the page when the map reports no cluster", () => {
     drawn.container = document.createElement("div");
-    show();
+    show({ basemaps: TWO_BASEMAPS, selectedBasemap: "Streets", onBasemapChange: () => {} });
 
     expect(screen.getByTestId("credits")).toBeInTheDocument();
+    // And in the same order, because the fragment is what moved rather than
+    // each piece finding its own way into the corner.
+    expect(
+      screen.getByTestId("picker").compareDocumentPosition(screen.getByTestId("credits")),
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 });
