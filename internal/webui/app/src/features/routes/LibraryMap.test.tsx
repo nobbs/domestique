@@ -115,6 +115,11 @@ vi.mock("react-map-gl/maplibre", () => ({
 
     return null;
   },
+  GeolocateControl: ({ position }: { position: string }) => {
+    drawn.furniture.push({ control: "geolocate", position });
+
+    return null;
+  },
   NavigationControl: ({ position }: { position: string }) => {
     drawn.furniture.push({ control: "navigation", position });
 
@@ -358,17 +363,19 @@ describe("LibraryMap", () => {
 
   /*
    * One corner rather than four. The scale bar is asked for first because
-   * MapLibre adds to a bottom corner by prepending, so the zoom pair asked for
-   * after it ends up above it: the cluster reads zoom, scale, credit downward.
+   * MapLibre adds to a bottom corner by prepending, so each control asked for
+   * after it stacks above it: the cluster reads locate, zoom, scale, credit
+   * downward.
    */
-  it("asks for every control in the one corner, zoom pair uppermost", () => {
+  it("asks for every control in the one corner, locate button uppermost", () => {
     show();
 
     // The first pass: finding the cluster to draw the credit into renders the
     // map a second time, and MapLibre keeps a control it has already been given.
-    expect(drawn.furniture.slice(0, 2)).toEqual([
+    expect(drawn.furniture.slice(0, 3)).toEqual([
       { control: "scale", position: "bottom-left" },
       { control: "navigation", position: "bottom-left" },
+      { control: "geolocate", position: "bottom-left" },
     ]);
   });
 

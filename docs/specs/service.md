@@ -161,12 +161,16 @@ configured one is rejected at startup.
 
 The map view introduces one deliberate, documented exception to the otherwise
 Tailnet-only posture: the operator's **browser** fetches basemap tiles from a
-configured third-party tile origin, which reveals the viewport of a viewed route
-to that origin. The service itself never contacts a tile origin, and no route
-data is sent to one. The default is a single keyless provider, so no credential
-is exposed to the browser and the requests carry no account identity. The
-basemaps are static configuration so an origin can be changed, or pointed at a
-self-hosted tile source, without a code change.
+configured third-party tile origin, which reveals the viewport on screen to
+that origin — a viewed route's, or the reader's own live position once they
+press the map's locate button. The service itself never contacts a tile
+origin, and neither route data nor the reader's position is sent to one: the
+position is read by the browser's Geolocation API, used only to move the
+camera, and never reaches this service, a log, or storage. The default is a
+single keyless provider, so no credential is exposed to the browser and the
+requests carry no account identity. The basemaps are static configuration so
+an origin can be changed, or pointed at a self-hosted tile source, without a
+code change.
 
 An operator may configure more than one basemap so the reader can switch
 between them, and a Content-Security-Policy restricts the browser to the
