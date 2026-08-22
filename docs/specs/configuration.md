@@ -138,7 +138,10 @@ can reach the UI. The default is a keyless provider, so a default deployment
 publishes no credential and sends no account identity to the tile origin. An
 operator who chooses a keyed provider is accepting that the key becomes visible
 to the UI's single authorised user; self-hosted tiles avoid both that and the
-fact that the browser reveals the area of a viewed route to the tile origin.
+fact that the browser reveals the area of a viewed route — or, once the map's
+locate button is pressed, the area around the reader's own live position — to
+the tile origin. The raw position itself is never one of the values revealed:
+it moves the camera and goes no further.
 
 The list changes the Content-Security-Policy the service sends, which permits
 the service's own origin plus **the origin of every configured entry**, sorted

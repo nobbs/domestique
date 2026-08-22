@@ -22,6 +22,7 @@ import { useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import type { MapLayerMouseEvent } from "react-map-gl/maplibre";
 import {
+  GeolocateControl,
   Layer,
   Map as MapLibre,
   NavigationControl,
@@ -278,7 +279,8 @@ export function LibraryMap({
   /*
    * MapLibre's own attribution control is off. It renders the provider's own
    * markup into a corner of its own, and this map has one corner: the credit is
-   * drawn by MapCredits, under the zoom pair and the scale bar.
+   * drawn by MapCredits, under the locate button, the zoom pair and the scale
+   * bar.
    */
   return (
     <div className="route-map">
@@ -307,14 +309,24 @@ export function LibraryMap({
       >
         <MapViewport bounds={bounds} maxZoom={maxZoom} {...(insets ? { insets } : {})} />
         {/*
-         * One cluster, bottom-left: the zoom pair, the scale bar, then the
-         * basemap chip and the credit, top to bottom. The two MapLibre owns are
-         * asked for in the other order because it adds to a bottom corner by
-         * prepending, so that a control added later stacks above the corner
-         * rather than under the ones already there.
+         * One cluster, bottom-left: the locate button, the zoom pair, the scale
+         * bar, then the basemap chip and the credit, top to bottom. The three
+         * MapLibre owns are asked for in the reverse of that order because it
+         * adds to a bottom corner by prepending, so that a control added later
+         * stacks above the corner rather than under the ones already there.
          */}
         <ScaleControl position="bottom-left" unit="metric" />
         <NavigationControl position="bottom-left" showCompass={false} />
+        {/*
+         * One-shot: it flies to where the reader is, once, rather than
+         * `trackUserLocation`'s continuous watch — that costs battery on the
+         * device this is most likely used on, and keeps a position live for as
+         * long as the tab stays open. `trackUserLocation` defaults to off, so
+         * this is a choice left alone rather than a prop set. The position never
+         * leaves the browser: nothing here hands it to the service, a log, or
+         * storage.
+         */}
+        <GeolocateControl position="bottom-left" />
         <Source id="library-lines" type="geojson" data={library}>
           <Layer
             id="library-line"
