@@ -1235,6 +1235,23 @@ func TestNewRejectsIncompleteOptions(t *testing.T) {
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
 		}},
+		{name: "unnamed basemap", options: &Options{
+			TargetIDs:        []string{"rider-a"},
+			Basemaps:         []Basemap{{Name: "  ", StyleURL: testTileStyleURL}},
+			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
+			AccessEmail:      testAccessEmail,
+			BrowserOriginURL: testBrowserOriginURL,
+		}},
+		{name: "two basemaps under one name", options: &Options{
+			TargetIDs: []string{"rider-a"},
+			Basemaps: []Basemap{
+				{Name: "Streets", StyleURL: testTileStyleURL},
+				{Name: "Streets", StyleURL: "https://imagery.example.test/styles/hybrid"},
+			},
+			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
+			AccessEmail:      testAccessEmail,
+			BrowserOriginURL: testBrowserOriginURL,
+		}},
 		{name: "plaintext dark tile style", options: &Options{
 			TargetIDs: []string{"rider-a"},
 			Basemaps: []Basemap{{

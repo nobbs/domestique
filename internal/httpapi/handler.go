@@ -321,6 +321,20 @@ func New(
 	if err != nil {
 		return nil, err
 	}
+	// Checked here as well as in the configuration, for the reason the target
+	// IDs above are: this struct's own documentation promises it, and the name
+	// is the identity a browser remembers a reader's choice by. Two entries
+	// sharing one would make that memory ambiguous.
+	for index, basemap := range options.Basemaps {
+		if strings.TrimSpace(basemap.Name) == "" {
+			return nil, errors.New("basemap names must not be empty")
+		}
+		if slices.ContainsFunc(options.Basemaps[:index], func(earlier Basemap) bool {
+			return earlier.Name == basemap.Name
+		}) {
+			return nil, errors.New("basemap names must be unique")
+		}
+	}
 	tileOrigins, err := tileOriginsOf(options.Basemaps)
 	if err != nil {
 		return nil, err
