@@ -86,7 +86,7 @@ func testStages(t *testing.T, routeIDs ...int64) []route.Stage {
 			{Longitude: 8.001, Latitude: float64(routeID)},
 		}
 		stage, err := route.NewStage(
-			routeID, 1, "revision", "Route", "Stage", geometry, "hash-"+strconv.FormatInt(routeID, 10),
+			route.ProviderVeloPlanner, routeID, 1, "revision", "Route", "Stage", geometry, "hash-"+strconv.FormatInt(routeID, 10),
 		)
 		require.NoError(t, err)
 		stages = append(stages, stage)
@@ -136,7 +136,7 @@ func newFakeCache() *fakeCache {
 }
 
 func (c *fakeCache) StageSurfaceHash(
-	_ context.Context, routeID int64, _ int,
+	_ context.Context, _ route.Provider, routeID int64, _ int,
 ) (contentHash, generation string, found bool, err error) {
 	hash, cached := c.hashes[routeID]
 
@@ -144,7 +144,7 @@ func (c *fakeCache) StageSurfaceHash(
 }
 
 func (c *fakeCache) StoreStageSurface(
-	_ context.Context, routeID int64, _ int, contentHash, generation string, ranges []byte, _ float64,
+	_ context.Context, _ route.Provider, routeID int64, _ int, contentHash, generation string, ranges []byte, _ float64,
 ) error {
 	c.hashes[routeID] = contentHash
 	c.generations[routeID] = generation

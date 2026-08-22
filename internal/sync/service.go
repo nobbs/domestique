@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"log/slog"
 	"sort"
-	"strconv"
 	"sync/atomic"
 
 	"github.com/nobbs/domestique/internal/route"
@@ -157,9 +156,9 @@ type State interface {
 	TrustedInventoryCount(ctx context.Context) (int, error)
 	StoreTrustedInventory(ctx context.Context, stages []route.Stage) error
 	TrustedInventory(ctx context.Context) ([]route.Stage, error)
-	ForEachTargetStage(ctx context.Context, targetID string, visit func(routeID int64, stageOrder int, sourceRevision, contentHash string, wahooRouteID int64) error) error
-	UpsertTargetStage(ctx context.Context, targetID string, routeID int64, stageOrder int, sourceRevision, contentHash string, wahooRouteID int64) error
-	DeleteTargetStage(ctx context.Context, targetID string, routeID int64, stageOrder int) error
+	ForEachTargetStage(ctx context.Context, targetID string, visit func(provider route.Provider, routeID int64, stageOrder int, sourceRevision, contentHash string, wahooRouteID int64) error) error
+	UpsertTargetStage(ctx context.Context, targetID string, provider route.Provider, routeID int64, stageOrder int, sourceRevision, contentHash string, wahooRouteID int64) error
+	DeleteTargetStage(ctx context.Context, targetID string, provider route.Provider, routeID int64, stageOrder int) error
 }
 
 // Service reconciles a complete source inventory to each configured target.
@@ -427,11 +426,6 @@ func (s *Service) exportProfiles(ordered []route.Stage) []route.Stage {
 	return stages
 }
 
-type stageKey struct {
-	routeID    int64
-	stageOrder int
-}
-
 type targetStage struct {
 	sourceRevision string
 	contentHash    string
@@ -444,11 +438,14 @@ type counts struct {
 	deleted int
 }
 
-func normalizeInventory(stages []route.Stage) (map[stageKey]route.Stage, []route.Stage, error) {
+func normalizeInventory(stages []route.Stage) (map[route.Key]route.Stage, []route.Stage, error) {
 	ordered := append([]route.Stage(nil), stages...)
 	sort.Slice(ordered, func(left, right int) bool {
 		leftKey := ordered[left].Key()
 		rightKey := ordered[right].Key()
+		if leftKey.Provider() != rightKey.Provider() {
+			return leftKey.Provider() < rightKey.Provider()
+		}
 		if leftKey.RouteID() != rightKey.RouteID() {
 			return leftKey.RouteID() < rightKey.RouteID()
 		}
@@ -456,14 +453,13 @@ func normalizeInventory(stages []route.Stage) (map[stageKey]route.Stage, []route
 		return leftKey.StageOrder() < rightKey.StageOrder()
 	})
 
-	desired := make(map[stageKey]route.Stage, len(ordered))
+	desired := make(map[route.Key]route.Stage, len(ordered))
 	for _, stage := range ordered {
 		key := stage.Key()
-		sourceKey := stageKey{routeID: key.RouteID(), stageOrder: key.StageOrder()}
-		if _, exists := desired[sourceKey]; exists {
+		if _, exists := desired[key]; exists {
 			return nil, nil, errors.New("source inventory contains a duplicate stage")
 		}
-		desired[sourceKey] = stage
+		desired[key] = stage
 	}
 
 	return desired, ordered, nil
@@ -479,7 +475,7 @@ func normalizeInventory(stages []route.Stage) (map[stageKey]route.Stage, []route
 func (s *Service) reconcileTarget(
 	ctx context.Context,
 	targetID string,
-	desired map[stageKey]route.Stage,
+	desired map[route.Key]route.Stage,
 	ordered []route.Stage,
 ) (counts, FailureCategory) {
 	refreshToken, refreshErr := s.state.RefreshToken(ctx, targetID)
@@ -507,8 +503,7 @@ func (s *Service) reconcileTarget(
 	for index := range ordered {
 		stage := &ordered[index]
 		key := stage.Key()
-		sourceKey := stageKey{routeID: key.RouteID(), stageOrder: key.StageOrder()}
-		recorded, tracked := mappings[sourceKey]
+		recorded, tracked := mappings[key]
 		wahooRouteID, found, lookupErr := s.target.RouteByExternalID(ctx, accessToken, key.ExternalID())
 		if lookupErr != nil {
 			return result, s.handleTargetError(ctx, targetID, lookupErr)
@@ -561,7 +556,7 @@ func (s *Service) reconcileTarget(
 	}
 
 	for _, key := range deletions {
-		wahooRouteID, found, err := s.target.RouteByExternalID(ctx, accessToken, externalID(key))
+		wahooRouteID, found, err := s.target.RouteByExternalID(ctx, accessToken, key.ExternalID())
 		if err != nil {
 			return result, s.handleTargetError(ctx, targetID, err)
 		}
@@ -571,7 +566,7 @@ func (s *Service) reconcileTarget(
 			}
 			result.deleted++
 		}
-		if err := s.state.DeleteTargetStage(ctx, targetID, key.routeID, key.stageOrder); err != nil {
+		if err := s.state.DeleteTargetStage(ctx, targetID, key.Provider(), key.RouteID(), key.StageOrder()); err != nil {
 			return result, FailureState
 		}
 	}
@@ -590,16 +585,16 @@ func (s *Service) handleTargetError(ctx context.Context, targetID string, err er
 	return FailureAuthorization
 }
 
-func (s *Service) targetStages(ctx context.Context, targetID string) (map[stageKey]targetStage, error) {
-	mappings := make(map[stageKey]targetStage)
+func (s *Service) targetStages(ctx context.Context, targetID string) (map[route.Key]targetStage, error) {
+	mappings := make(map[route.Key]targetStage)
 	err := s.state.ForEachTargetStage(
 		ctx,
 		targetID,
-		func(routeID int64, stageOrder int, sourceRevision, contentHash string, wahooRouteID int64) error {
-			if routeID <= 0 || stageOrder <= 0 || sourceRevision == "" || contentHash == "" || wahooRouteID <= 0 {
+		func(provider route.Provider, routeID int64, stageOrder int, sourceRevision, contentHash string, wahooRouteID int64) error {
+			if provider == "" || routeID <= 0 || stageOrder <= 0 || sourceRevision == "" || contentHash == "" || wahooRouteID <= 0 {
 				return errors.New("target stage mapping is invalid")
 			}
-			key := stageKey{routeID: routeID, stageOrder: stageOrder}
+			key := route.NewKey(provider, routeID, stageOrder)
 			if _, exists := mappings[key]; exists {
 				return errors.New("target stage mapping is duplicated")
 			}
@@ -619,19 +614,22 @@ func (s *Service) targetStages(ctx context.Context, targetID string) (map[stageK
 	return mappings, nil
 }
 
-func missingStages(mappings map[stageKey]targetStage, desired map[stageKey]route.Stage) []stageKey {
-	missing := make([]stageKey, 0)
+func missingStages(mappings map[route.Key]targetStage, desired map[route.Key]route.Stage) []route.Key {
+	missing := make([]route.Key, 0)
 	for key := range mappings {
 		if _, exists := desired[key]; !exists {
 			missing = append(missing, key)
 		}
 	}
 	sort.Slice(missing, func(left, right int) bool {
-		if missing[left].routeID != missing[right].routeID {
-			return missing[left].routeID < missing[right].routeID
+		if missing[left].Provider() != missing[right].Provider() {
+			return missing[left].Provider() < missing[right].Provider()
+		}
+		if missing[left].RouteID() != missing[right].RouteID() {
+			return missing[left].RouteID() < missing[right].RouteID()
 		}
 
-		return missing[left].stageOrder < missing[right].stageOrder
+		return missing[left].StageOrder() < missing[right].StageOrder()
 	})
 
 	return missing
@@ -642,6 +640,7 @@ func (s *Service) storeTargetStage(ctx context.Context, targetID string, stage *
 	if err := s.state.UpsertTargetStage(
 		ctx,
 		targetID,
+		key.Provider(),
 		key.RouteID(),
 		key.StageOrder(),
 		stage.Revision(),
@@ -658,8 +657,4 @@ func encodedContentHash(stage *route.Stage) string {
 	sum := sha256.Sum256([]byte(encoderContentVersion + "\x00" + stage.ContentHash()))
 
 	return hex.EncodeToString(sum[:])
-}
-
-func externalID(key stageKey) string {
-	return "domestique:veloplanner:" + strconv.FormatInt(key.routeID, 10) + ":stage:" + strconv.Itoa(key.stageOrder)
 }

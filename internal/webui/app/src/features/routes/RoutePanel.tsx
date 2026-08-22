@@ -152,7 +152,11 @@ export function RoutePanel({
       />
       <div className="route-panel__actions">
         <SourceRouteLink baseUrl={sourceBaseUrl} routeId={route.routeId} />
-        <ReprocessButton routeId={route.routeId} stageOrder={route.stageOrder} />
+        <ReprocessButton
+          provider={route.provider}
+          routeId={route.routeId}
+          stageOrder={route.stageOrder}
+        />
       </div>
     </section>
   );

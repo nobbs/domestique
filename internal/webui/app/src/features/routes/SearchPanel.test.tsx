@@ -8,6 +8,7 @@ import { SearchPanel, type SearchPanelProps } from "./SearchPanel";
 
 function route(overrides: Partial<Route> = {}): Route {
   return {
+    provider: "veloplanner",
     routeId: 12,
     stageOrder: 2,
     title: "Alpine loop — Descent",

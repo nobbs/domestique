@@ -4,6 +4,7 @@ import { matchesQuery, matchingRoutes } from "./library";
 
 function stage(overrides: Partial<Route> = {}): Route {
   return {
+    provider: "veloplanner",
     routeId: 12,
     stageOrder: 1,
     title: "Alpine loop — Descent",

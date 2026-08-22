@@ -16,10 +16,18 @@ import { reprocessStage } from "../../api/client";
 import { routeGeometryQuery, statusQuery } from "../../api/queries";
 import { Button } from "../../components/Button";
 
-export function ReprocessButton({ routeId, stageOrder }: { routeId: number; stageOrder: number }) {
+export function ReprocessButton({
+  provider,
+  routeId,
+  stageOrder,
+}: {
+  provider: string;
+  routeId: number;
+  stageOrder: number;
+}) {
   const queryClient = useQueryClient();
   const reprocess = useMutation({
-    mutationFn: () => reprocessStage(routeId, stageOrder),
+    mutationFn: () => reprocessStage(provider, routeId, stageOrder),
     onSuccess: async () => {
       await Promise.all([
         // The status is polled anyway, and refetching it now is how the run this
@@ -32,7 +40,7 @@ export function ReprocessButton({ routeId, stageOrder }: { routeId: number; stag
         // instead means the next visit or focus fetches whatever has landed by
         // then.
         queryClient.invalidateQueries({
-          queryKey: routeGeometryQuery(routeId, stageOrder).queryKey,
+          queryKey: routeGeometryQuery(provider, routeId, stageOrder).queryKey,
           refetchType: "none",
         }),
       ]);

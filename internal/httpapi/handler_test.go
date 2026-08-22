@@ -57,8 +57,8 @@ func TestHandlerGatesEveryNonHealthRoute(t *testing.T) {
 		"/v1/status",
 		"/v1/sync/runs",
 		"/v1/routes",
-		"/v1/routes/1/stages/1",
-		"/v1/routes/1/stages/1/geometry",
+		"/v1/providers/veloplanner/routes/1/stages/1",
+		"/v1/providers/veloplanner/routes/1/stages/1/geometry",
 		"/v1/webui/config",
 		"/oauth/wahoo/start/rider-a",
 		"/oauth/wahoo/callback",
@@ -68,7 +68,7 @@ func TestHandlerGatesEveryNonHealthRoute(t *testing.T) {
 		"/icon-512.png",
 		"/manifest.webmanifest",
 		"/",
-		"/routes/1/1",
+		"/routes/veloplanner/1/1",
 		"/unknown",
 	}
 
@@ -89,7 +89,8 @@ func TestHandlerGatesEveryNonHealthRoute(t *testing.T) {
 func TestHandlerServesStageGeometryAsGeoJSON(t *testing.T) {
 	state := &fakeState{
 		summaries: []route.Summary{{
-			RouteID: 12, StageOrder: 1, RouteName: "Alpine loop", StageName: "Descent",
+			Provider: route.ProviderVeloPlanner,
+			RouteID:  12, StageOrder: 1, RouteName: "Alpine loop", StageName: "Descent",
 			SourceRevision: "revision", ContentHash: "hash", PointCount: 2, DistanceMetres: 1234.5,
 			Bounds: route.Bounds{MinLongitude: 8.4, MinLatitude: 49.0, MaxLongitude: 8.5, MaxLatitude: 49.2},
 		}},
@@ -98,7 +99,7 @@ func TestHandlerServesStageGeometryAsGeoJSON(t *testing.T) {
 	handler := newHandler(t, &fakeOAuth{}, state)
 
 	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/routes/12/stages/1/geometry"))
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/providers/veloplanner/routes/12/stages/1/geometry"))
 	require.Equal(t, http.StatusOK, response.Code, "geometry status")
 
 	var view geometryView
@@ -117,7 +118,7 @@ func TestHandlerServesTheStoredSurfaceWithGeometry(t *testing.T) {
 	handler := newHandler(t, &fakeOAuth{}, state)
 
 	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/routes/12/stages/1/geometry"))
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/providers/veloplanner/routes/12/stages/1/geometry"))
 	require.Equal(t, http.StatusOK, response.Code, "geometry status")
 
 	var view geometryView
@@ -138,7 +139,7 @@ func TestHandlerServesAnUnsurveyedSurfaceAsClassified(t *testing.T) {
 	handler := newHandler(t, &fakeOAuth{}, state)
 
 	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/routes/12/stages/1/geometry"))
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/providers/veloplanner/routes/12/stages/1/geometry"))
 	require.Equal(t, http.StatusOK, response.Code, "geometry status")
 
 	var view geometryView
@@ -157,7 +158,7 @@ func TestHandlerOmitsASurfaceMeasuredAgainstOtherGeometry(t *testing.T) {
 	handler := newHandler(t, &fakeOAuth{}, state)
 
 	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/routes/12/stages/1/geometry"))
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/providers/veloplanner/routes/12/stages/1/geometry"))
 	require.Equal(t, http.StatusOK, response.Code, "geometry status")
 	assert.NotContains(t, response.Body.String(), "surface", "the geometry carried a stale surface")
 }
@@ -168,7 +169,7 @@ func TestHandlerReportsUnreadableSurfaceStateAsUnavailable(t *testing.T) {
 	handler := newHandler(t, &fakeOAuth{}, state)
 
 	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/routes/12/stages/1/geometry"))
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/providers/veloplanner/routes/12/stages/1/geometry"))
 	assert.Equal(t, http.StatusInternalServerError, response.Code, "geometry status")
 }
 
@@ -177,7 +178,8 @@ func TestHandlerReportsUnreadableSurfaceStateAsUnavailable(t *testing.T) {
 func surfaceState() *fakeState {
 	return &fakeState{
 		summaries: []route.Summary{{
-			RouteID: 12, StageOrder: 1, RouteName: "Alpine loop", StageName: "Descent",
+			Provider: route.ProviderVeloPlanner,
+			RouteID:  12, StageOrder: 1, RouteName: "Alpine loop", StageName: "Descent",
 			SourceRevision: "revision", ContentHash: "hash", PointCount: 2,
 			Bounds: route.Bounds{MinLongitude: 8.4, MinLatitude: 49.0, MaxLongitude: 8.5, MaxLatitude: 49.2},
 		}},
@@ -191,17 +193,18 @@ func surfaceState() *fakeState {
 func TestHandlerReportsMissingGeometryAsNotFound(t *testing.T) {
 	handler := newHandler(t, &fakeOAuth{}, &fakeState{})
 	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/routes/99/stages/1/geometry"))
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/providers/veloplanner/routes/99/stages/1/geometry"))
 	assert.Equal(t, http.StatusNotFound, response.Code, "geometry status")
 }
 
 func TestHandlerRejectsMalformedStageIdentifiers(t *testing.T) {
 	handler := newTestHandler(t)
 	for _, path := range []string{
-		"/v1/routes/0/stages/1",
-		"/v1/routes/-1/stages/1/geometry",
-		"/v1/routes/abc/stages/1",
-		"/v1/routes/1/stages/0/geometry",
+		"/v1/providers/veloplanner/routes/0/stages/1",
+		"/v1/providers/veloplanner/routes/-1/stages/1/geometry",
+		"/v1/providers/veloplanner/routes/abc/stages/1",
+		"/v1/providers/veloplanner/routes/1/stages/0/geometry",
+		"/v1/providers/komoot/routes/1/stages/1",
 	} {
 		t.Run(path, func(t *testing.T) {
 			response := httptest.NewRecorder()
@@ -489,7 +492,7 @@ func TestHandlerSetsPolicyAndCacheHeaders(t *testing.T) {
 
 func TestHandlerServesTheApplicationDocumentForDeepLinks(t *testing.T) {
 	handler := newTestHandler(t)
-	for _, path := range []string{"/", "/routes/12/1"} {
+	for _, path := range []string{"/", "/routes/veloplanner/12/1"} {
 		t.Run(path, func(t *testing.T) {
 			response := httptest.NewRecorder()
 			handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, path))
@@ -534,7 +537,7 @@ func TestHandlerReprocessesOneStageAndStartsARun(t *testing.T) {
 	handler := newHandlerWithSync(t, &fakeOAuth{}, state, trigger)
 
 	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/routes/12/stages/1/reprocess"))
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/providers/veloplanner/routes/12/stages/1/reprocess"))
 	require.Equal(t, http.StatusAccepted, response.Code, "reprocess status")
 	assert.Equal(t, [][2]int64{{12, 1}}, state.reprocessed, "reprocessed stages")
 	assert.Equal(t, []SyncPhase{SyncPhaseAll}, trigger.phases, "triggered phases")
@@ -547,7 +550,7 @@ func TestHandlerKeepsAReprocessRequestWhenARunIsAlreadyActive(t *testing.T) {
 	handler := newHandlerWithSync(t, &fakeOAuth{}, state, &fakeSync{})
 
 	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/routes/12/stages/1/reprocess"))
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/providers/veloplanner/routes/12/stages/1/reprocess"))
 	assert.Equal(t, http.StatusAccepted, response.Code, "reprocess status")
 	assert.Len(t, state.reprocessed, 1, "the request was not recorded")
 }
@@ -557,9 +560,71 @@ func TestHandlerReportsAnUnknownStageForReprocessingAsNotFound(t *testing.T) {
 	handler := newHandlerWithSync(t, &fakeOAuth{}, &fakeState{}, trigger)
 
 	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/routes/99/stages/1/reprocess"))
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/providers/veloplanner/routes/99/stages/1/reprocess"))
 	assert.Equal(t, http.StatusNotFound, response.Code, "reprocess status")
 	assert.Empty(t, trigger.phases, "a stage that is not stored triggered a run")
+}
+
+// A stage URL from before a second provider existed still resolves, redirected
+// to the same stage under veloplanner, preserving suffix and method.
+func TestHandlerRedirectsLegacyStagePaths(t *testing.T) {
+	trigger := &fakeSync{accepted: true}
+	handler := newHandlerWithSync(t, &fakeOAuth{}, &fakeState{}, trigger)
+
+	for _, test := range []struct {
+		method string
+		target string
+		want   string
+	}{
+		{
+			method: http.MethodGet,
+			target: "/v1/routes/12/stages/1",
+			want:   "/v1/providers/veloplanner/routes/12/stages/1",
+		},
+		{
+			method: http.MethodGet,
+			target: "/v1/routes/12/stages/1/geometry",
+			want:   "/v1/providers/veloplanner/routes/12/stages/1/geometry",
+		},
+		{
+			method: http.MethodPost,
+			target: "/v1/routes/12/stages/1/reprocess",
+			want:   "/v1/providers/veloplanner/routes/12/stages/1/reprocess",
+		},
+	} {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, authenticatedRequest(test.method, test.target))
+		assert.Equalf(t, http.StatusPermanentRedirect, response.Code, "%s %s status", test.method, test.target)
+		assert.Equalf(t, test.want, response.Header().Get("Location"), "%s %s location", test.method, test.target)
+	}
+}
+
+// The legacy browser address redirects the same way, to the address a link
+// shared after a second provider existed would have used.
+func TestHandlerRedirectsLegacyBrowserRoute(t *testing.T) {
+	handler := newTestHandler(t)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/routes/12/1"))
+	assert.Equal(t, http.StatusPermanentRedirect, response.Code, "browser route status")
+	assert.Equal(t, "/routes/veloplanner/12/1", response.Header().Get("Location"), "browser route location")
+}
+
+// A malformed legacy path is refused rather than redirected to a target that
+// could never resolve.
+func TestHandlerRejectsMalformedLegacyStagePaths(t *testing.T) {
+	handler := newTestHandler(t)
+
+	for _, target := range []string{
+		"/v1/routes/not-a-number/stages/1",
+		"/v1/routes/12/stages/not-a-number",
+		"/v1/routes/0/stages/1",
+		"/routes/not-a-number/1",
+	} {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, target))
+		assert.Equalf(t, http.StatusNotFound, response.Code, "GET %s status", target)
+	}
 }
 
 // Each half is triggerable on its own, because each is separately switched off
@@ -1339,13 +1404,13 @@ func (s *fakeState) ForEachPendingAuthorization(_ context.Context, visit func(st
 
 func (s *fakeState) ForEachSourceStage(
 	_ context.Context,
-	visit func(routeID int64, stageOrder int, sourceRevision, contentHash string) error,
+	visit func(provider route.Provider, routeID int64, stageOrder int, sourceRevision, contentHash string) error,
 ) error {
 	if s.sourceStageErr != nil {
 		return s.sourceStageErr
 	}
 	for _, stage := range s.sourceStages {
-		if err := visit(stage.routeID, stage.stageOrder, stage.revision, "hash"); err != nil {
+		if err := visit(route.ProviderVeloPlanner, stage.routeID, stage.stageOrder, stage.revision, "hash"); err != nil {
 			return err
 		}
 	}
@@ -1356,13 +1421,13 @@ func (s *fakeState) ForEachSourceStage(
 func (s *fakeState) ForEachTargetStage(
 	_ context.Context,
 	targetID string,
-	visit func(routeID int64, stageOrder int, sourceRevision, contentHash string, wahooRouteID int64) error,
+	visit func(provider route.Provider, routeID int64, stageOrder int, sourceRevision, contentHash string, wahooRouteID int64) error,
 ) error {
 	if s.targetStageErr != nil {
 		return s.targetStageErr
 	}
 	for _, stage := range s.targetStages[targetID] {
-		if err := visit(stage.routeID, stage.stageOrder, stage.revision, "encoded-hash", 900+stage.routeID); err != nil {
+		if err := visit(route.ProviderVeloPlanner, stage.routeID, stage.stageOrder, stage.revision, "encoded-hash", 900+stage.routeID); err != nil {
 			return err
 		}
 	}
@@ -1398,12 +1463,13 @@ func (s *fakeState) ForEachStageSummary(_ context.Context, visit func(route.Summ
 
 func (s *fakeState) StageGeometry(
 	_ context.Context,
+	provider route.Provider,
 	routeID int64,
 	stageOrder int,
 ) (route.Summary, json.RawMessage, bool, error) {
 	for index := range s.summaries {
 		summary := s.summaries[index]
-		if summary.RouteID == routeID && summary.StageOrder == stageOrder {
+		if summary.Provider == provider && summary.RouteID == routeID && summary.StageOrder == stageOrder {
 			return summary, s.coordinates, true, nil
 		}
 	}
@@ -1415,6 +1481,7 @@ func (s *fakeState) StageGeometry(
 // against, exactly as the store does.
 func (s *fakeState) StageSurface(
 	_ context.Context,
+	provider route.Provider,
 	routeID int64,
 	stageOrder int,
 	contentHash string,
@@ -1424,7 +1491,7 @@ func (s *fakeState) StageSurface(
 	}
 	for index := range s.summaries {
 		summary := s.summaries[index]
-		if summary.RouteID != routeID || summary.StageOrder != stageOrder {
+		if summary.Provider != provider || summary.RouteID != routeID || summary.StageOrder != stageOrder {
 			continue
 		}
 		if s.surfaceRanges == nil || contentHash != s.surfaceHash {
@@ -1504,12 +1571,12 @@ func (s *fakeState) ForEachSyncRun(
 	return strconv.Itoa(start + limit), true, nil
 }
 
-func (s *fakeState) RequestStageReprocess(_ context.Context, routeID int64, stageOrder int) (bool, error) {
+func (s *fakeState) RequestStageReprocess(_ context.Context, provider route.Provider, routeID int64, stageOrder int) (bool, error) {
 	if s.reprocessErr != nil {
 		return false, s.reprocessErr
 	}
 	for index := range s.summaries {
-		if s.summaries[index].RouteID == routeID && s.summaries[index].StageOrder == stageOrder {
+		if s.summaries[index].Provider == provider && s.summaries[index].RouteID == routeID && s.summaries[index].StageOrder == stageOrder {
 			s.reprocessed = append(s.reprocessed, [2]int64{routeID, int64(stageOrder)})
 
 			return true, nil

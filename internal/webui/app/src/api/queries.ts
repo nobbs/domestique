@@ -35,16 +35,16 @@ export const routesQuery = () =>
     queryFn: fetchRoutes,
   });
 
-export const routeQuery = (routeId: number, stageOrder: number) =>
+export const routeQuery = (provider: string, routeId: number, stageOrder: number) =>
   queryOptions({
-    queryKey: ["stage", routeId, stageOrder] as const,
-    queryFn: () => fetchRoute(routeId, stageOrder),
+    queryKey: ["stage", provider, routeId, stageOrder] as const,
+    queryFn: () => fetchRoute(provider, routeId, stageOrder),
   });
 
-export const routeGeometryQuery = (routeId: number, stageOrder: number) =>
+export const routeGeometryQuery = (provider: string, routeId: number, stageOrder: number) =>
   queryOptions({
-    queryKey: ["stage-geometry", routeId, stageOrder] as const,
-    queryFn: () => fetchRouteGeometry(routeId, stageOrder),
+    queryKey: ["stage-geometry", provider, routeId, stageOrder] as const,
+    queryFn: () => fetchRouteGeometry(provider, routeId, stageOrder),
     // Geometry only changes when a sync rewrites it, so it is worth holding.
     staleTime: 5 * 60 * 1000,
   });

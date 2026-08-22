@@ -41,6 +41,7 @@ func (n *Normalizer) Process(stage *route.Stage) (route.Stage, error) {
 	applyElevations(geometry, profile)
 
 	processed, err := route.NewStage(
+		stage.Key().Provider(),
 		stage.Key().RouteID(),
 		stage.Key().StageOrder(),
 		stage.Revision(),

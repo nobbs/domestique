@@ -30,7 +30,7 @@ func TestNormalizerProcessResamplesAndRemovesIsolatedSpike(t *testing.T) {
 
 func TestNormalizerProcessPreservesIncompleteElevation(t *testing.T) {
 	elevation := 100.0
-	stage, err := route.NewStage(1, 1, "revision", "Route", "", []route.Point{
+	stage, err := route.NewStage(route.ProviderVeloPlanner, 1, 1, "revision", "Route", "", []route.Point{
 		{Latitude: 49, Longitude: 8, Elevation: &elevation},
 		{Latitude: 49.001, Longitude: 8.001},
 	}, "hash")
@@ -48,7 +48,7 @@ func elevatedStage(t *testing.T, elevations []float64) route.Stage {
 	for index, elevation := range elevations {
 		points = append(points, route.Point{Latitude: 49 + float64(index)*25/earthRadiusMetres*180/math.Pi, Longitude: 8, Elevation: &elevation})
 	}
-	stage, err := route.NewStage(1, 1, "revision", "Route", "", points, "hash")
+	stage, err := route.NewStage(route.ProviderVeloPlanner, 1, 1, "revision", "Route", "", points, "hash")
 	require.NoError(t, err)
 
 	return stage

@@ -15,7 +15,7 @@ import AxeBuilder from "@axe-core/playwright";
 import type { Page } from "@playwright/test";
 import { expect, openLibrary, openRoute, openSync, test } from "./fixtures";
 
-const LOOP_ROUTE = { routeId: 4102, stageOrder: 1 };
+const LOOP_ROUTE = { provider: "veloplanner", routeId: 4102, stageOrder: 1 };
 
 /**
  * Every violation axe can find in the page, as lines a failure can be read from.
@@ -69,7 +69,7 @@ test("the sync page has nothing for axe to report", async ({ offlinePage: page }
 });
 
 test("a route has nothing for axe to report", async ({ offlinePage: page }) => {
-  await openRoute(page, LOOP_ROUTE.routeId, LOOP_ROUTE.stageOrder);
+  await openRoute(page, LOOP_ROUTE.provider, LOOP_ROUTE.routeId, LOOP_ROUTE.stageOrder);
 
   expect(await violations(page)).toEqual([]);
 });
@@ -78,13 +78,13 @@ test.describe("in a forced-colours palette", () => {
   test.use({ contextOptions: { forcedColors: "active", reducedMotion: "reduce" } });
 
   test("the page is still readable and still passes its audit", async ({ offlinePage: page }) => {
-    await openRoute(page, LOOP_ROUTE.routeId, LOOP_ROUTE.stageOrder);
+    await openRoute(page, LOOP_ROUTE.provider, LOOP_ROUTE.routeId, LOOP_ROUTE.stageOrder);
 
     expect(await violations(page)).toEqual([]);
   });
 
   test("the marks whose colour is the information keep it", async ({ offlinePage: page }) => {
-    await openRoute(page, LOOP_ROUTE.routeId, LOOP_ROUTE.stageOrder);
+    await openRoute(page, LOOP_ROUTE.provider, LOOP_ROUTE.routeId, LOOP_ROUTE.stageOrder);
 
     // A forced palette repaints everything in two colours, which for the
     // gradient ramp would replace the encoding with a flat block: the colour of
@@ -130,7 +130,7 @@ test.describe("on a phone-sized portrait viewport", () => {
   });
 
   test("a route fits its width, key and profile included", async ({ offlinePage: page }) => {
-    await openRoute(page, LOOP_ROUTE.routeId, LOOP_ROUTE.stageOrder);
+    await openRoute(page, LOOP_ROUTE.provider, LOOP_ROUTE.routeId, LOOP_ROUTE.stageOrder);
 
     // The profile is a row of the card, and the control that puts it away is at
     // the end of that row: a header that ran off the side of a phone would take
@@ -140,7 +140,7 @@ test.describe("on a phone-sized portrait viewport", () => {
   });
 
   test("every key chip is big enough to hit with a finger", async ({ offlinePage: page }) => {
-    await openRoute(page, LOOP_ROUTE.routeId, LOOP_ROUTE.stageOrder);
+    await openRoute(page, LOOP_ROUTE.provider, LOOP_ROUTE.routeId, LOOP_ROUTE.stageOrder);
 
     const chips = page.locator('[aria-label="Route key"] button');
     const count = await chips.count();

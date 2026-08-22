@@ -105,12 +105,19 @@ export function fetchRoutes(): Promise<Route[]> {
   return request("/v1/routes", parseRoutes);
 }
 
-export function fetchRoute(routeId: number, stageOrder: number): Promise<Route> {
-  return request(`/v1/routes/${routeId}/stages/${stageOrder}`, parseRoute);
+export function fetchRoute(provider: string, routeId: number, stageOrder: number): Promise<Route> {
+  return request(`/v1/providers/${provider}/routes/${routeId}/stages/${stageOrder}`, parseRoute);
 }
 
-export function fetchRouteGeometry(routeId: number, stageOrder: number): Promise<RouteGeometry> {
-  return request(`/v1/routes/${routeId}/stages/${stageOrder}/geometry`, parseRouteGeometry);
+export function fetchRouteGeometry(
+  provider: string,
+  routeId: number,
+  stageOrder: number,
+): Promise<RouteGeometry> {
+  return request(
+    `/v1/providers/${provider}/routes/${routeId}/stages/${stageOrder}/geometry`,
+    parseRouteGeometry,
+  );
 }
 
 export function fetchStatus(): Promise<Status> {
@@ -161,10 +168,16 @@ export function triggerSync(phase: SyncPhase | "all"): Promise<null> {
  * while a run is already in flight is honoured by the next pass rather than
  * refused. There is nothing to parse: the work happens in the background.
  */
-export function reprocessStage(routeId: number, stageOrder: number): Promise<null> {
-  return request(`/v1/routes/${routeId}/stages/${stageOrder}/reprocess`, () => null, {
-    method: "POST",
-  });
+export function reprocessStage(
+  provider: string,
+  routeId: number,
+  stageOrder: number,
+): Promise<null> {
+  return request(
+    `/v1/providers/${provider}/routes/${routeId}/stages/${stageOrder}/reprocess`,
+    () => null,
+    { method: "POST" },
+  );
 }
 
 /**

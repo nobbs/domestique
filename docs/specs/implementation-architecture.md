@@ -69,7 +69,7 @@ owns a distinct responsibility in this tree.
 | Package | Owns | Must not own |
 | --- | --- | --- |
 | config | TOML and environment layering, file-secret resolution, validation, immutable runtime settings | HTTP clients, business decisions, provider-specific secret syntax |
-| route | source-stage identity, geometry, revision, and validation types | SQL, HTTP, FIT, Wahoo details |
+| route | source-stage identity — including which provider issued it — geometry, revision, and validation types | SQL, HTTP, FIT, Wahoo details |
 | sync | inventory reconciliation, deletion gates, target progress, aggregate run result, per-target run result | HTTP handlers, SQL queries, Wahoo URLs |
 | oauth | one-time callback state, target onboarding, duplicate-account rejection | HTTP routing, SQL queries, Wahoo URL formatting |
 | schedule | startup delay, hourly cadence, no-overlap guard, cancellation | sync decisions or notification content |
@@ -125,6 +125,11 @@ the enrichment pass, rather than one method taking a phase argument. The halves
 differ in what they contact and what they may not do, so the type system, not a
 switch statement, is what keeps a caller from asking for a half that does not
 exist.
+
+`Source.Inventory` returns stages already carrying their own `route.Provider`,
+so a second provider is a new adapter satisfying this same interface with its
+own provider value — not a change to the interface, the identity type, or any
+package that consumes a `route.Key`.
 
 The schedule package is unchanged by the split: it still starts one run per tick
 through a one-method interface. Which halves that run performs is a policy the

@@ -208,6 +208,7 @@ func sandboxExternalID() (string, error) {
 func sandboxStage(t *testing.T) route.Stage {
 	t.Helper()
 	stage, err := route.NewStage(
+		route.ProviderVeloPlanner,
 		999_999_999,
 		1,
 		"2026-08-17T00:00:00Z",

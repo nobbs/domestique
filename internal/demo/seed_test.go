@@ -72,7 +72,7 @@ func TestSeedStoresGeometryTheEndpointCanServe(t *testing.T) {
 	stage := &stages[0]
 	key := stage.Key()
 
-	summary, geometry, found, err := store.StageGeometry(t.Context(), key.RouteID(), key.StageOrder())
+	summary, geometry, found, err := store.StageGeometry(t.Context(), key.Provider(), key.RouteID(), key.StageOrder())
 	require.NoError(t, err)
 	require.True(t, found)
 	assert.Equal(t, len(stage.Geometry()), summary.PointCount)
@@ -83,7 +83,7 @@ func TestSeedStoresGeometryTheEndpointCanServe(t *testing.T) {
 		"the endpoint serves the stored coordinates, so the fixture has to store them all")
 
 	ranges, matched, found, err := store.StageSurface(
-		t.Context(), key.RouteID(), key.StageOrder(), stage.ContentHash(),
+		t.Context(), key.Provider(), key.RouteID(), key.StageOrder(), stage.ContentHash(),
 	)
 	require.NoError(t, err)
 	require.True(t, found, "a surface stored under another hash would be pruned, not served")
@@ -116,7 +116,7 @@ func TestSeedLeavesEachSlotInTheStateItWasAskedFor(t *testing.T) {
 
 	behind, orphans, current := 0, 0, 0
 	require.NoError(t, store.ForEachTargetStage(t.Context(), "rider-b",
-		func(routeID int64, stageOrder int, sourceRevision, _ string, _ int64) error {
+		func(_ route.Provider, routeID int64, stageOrder int, sourceRevision, _ string, _ int64) error {
 			switch {
 			case routeID == 4199:
 				orphans++

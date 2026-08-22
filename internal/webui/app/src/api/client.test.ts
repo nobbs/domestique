@@ -52,7 +52,7 @@ describe("the API client", () => {
   it("surfaces the service's safe error envelope", async () => {
     respondWith(404, { error: { code: "not_found", message: "resource was not found" } });
 
-    const failure = await fetchRouteGeometry(12, 1).catch((error: unknown) => error);
+    const failure = await fetchRouteGeometry("veloplanner", 12, 1).catch((error: unknown) => error);
 
     expect(failure).toBeInstanceOf(ApiError);
     const apiError = failure as ApiError;
@@ -89,7 +89,7 @@ describe("the API client", () => {
   });
 
   it("names the request a contract failure came back from", async () => {
-    respondWith(200, { stages: [{ route_id: "not-a-number" }] });
+    respondWith(200, { stages: [{ provider: "veloplanner", route_id: "not-a-number" }] });
 
     const failure = (await fetchRoutes().catch((error: unknown) => error)) as ContractError;
 

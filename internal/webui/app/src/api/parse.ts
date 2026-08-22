@@ -125,6 +125,7 @@ function flag(value: unknown, at: string): boolean {
 
 function routeFrom(source: Record<string, unknown>, at: string): Route {
   return {
+    provider: text(source.provider, `${at}.provider`),
     routeId: count(source.route_id, `${at}.route_id`),
     stageOrder: count(source.stage, `${at}.stage`),
     title: text(source.title, `${at}.title`),

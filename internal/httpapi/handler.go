@@ -148,7 +148,7 @@ type TargetState interface {
 	// and being midway through the browser flow is not that — so the status view
 	// reads the two together.
 	ForEachPendingAuthorization(ctx context.Context, visit func(targetID string) error) error
-	ForEachTargetStage(ctx context.Context, targetID string, visit func(routeID int64, stageOrder int, sourceRevision, contentHash string, wahooRouteID int64) error) error
+	ForEachTargetStage(ctx context.Context, targetID string, visit func(provider route.Provider, routeID int64, stageOrder int, sourceRevision, contentHash string, wahooRouteID int64) error) error
 	ForEachTargetRun(ctx context.Context, visit func(targetID string, finishedAt time.Time, outcome, detail string) error) error
 }
 
@@ -156,12 +156,12 @@ type TargetState interface {
 // at, and the geometry and classification derived from it. The revision here,
 // against the one in TargetState, is all convergence is derived from.
 type StageState interface {
-	ForEachSourceStage(ctx context.Context, visit func(routeID int64, stageOrder int, sourceRevision, contentHash string) error) error
+	ForEachSourceStage(ctx context.Context, visit func(provider route.Provider, routeID int64, stageOrder int, sourceRevision, contentHash string) error) error
 	ForEachStageSummary(ctx context.Context, visit func(summary route.Summary) error) error
-	StageGeometry(ctx context.Context, routeID int64, stageOrder int) (route.Summary, json.RawMessage, bool, error)
-	StageSurface(ctx context.Context, routeID int64, stageOrder int, contentHash string) (json.RawMessage, float64, bool, error)
+	StageGeometry(ctx context.Context, provider route.Provider, routeID int64, stageOrder int) (route.Summary, json.RawMessage, bool, error)
+	StageSurface(ctx context.Context, provider route.Provider, routeID int64, stageOrder int, contentHash string) (json.RawMessage, float64, bool, error)
 	SurfaceCoverage(ctx context.Context) (classified, total int, err error)
-	RequestStageReprocess(ctx context.Context, routeID int64, stageOrder int) (found bool, err error)
+	RequestStageReprocess(ctx context.Context, provider route.Provider, routeID int64, stageOrder int) (found bool, err error)
 }
 
 // RunState is what the last synchronization runs recorded, in aggregate and per
@@ -368,11 +368,27 @@ func (h *Handler) routes() {
 	h.mux.Handle("PUT /v1/sync/schedule", h.gated(h.sameOrigin(h.setSyncSchedule)))
 	h.mux.Handle("GET /v1/sync/runs", h.gated(h.syncHistory))
 	h.mux.Handle("GET /v1/routes", h.gated(h.stages))
-	h.mux.Handle("GET /v1/routes/{routeID}/stages/{stage}", h.gated(h.stage))
-	h.mux.Handle("GET /v1/routes/{routeID}/stages/{stage}/geometry", h.gated(h.stageGeometry))
+	// The provider-qualified surface is nested under its own "providers" literal
+	// rather than under "/v1/routes/{provider}/...": a same-length pattern there
+	// would collide with the legacy "/v1/routes/{routeID}/stages/{stage}/geometry"
+	// route, since a Go ServeMux pattern conflict is decided purely by whether
+	// some path could satisfy both patterns' shapes, not by what a caller would
+	// plausibly send. A literal that differs at the same position rules that out
+	// unconditionally.
+	h.mux.Handle("GET /v1/providers/{provider}/routes/{routeID}/stages/{stage}", h.gated(h.stage))
+	h.mux.Handle("GET /v1/providers/{provider}/routes/{routeID}/stages/{stage}/geometry", h.gated(h.stageGeometry))
+	h.mux.Handle(
+		"POST /v1/providers/{provider}/routes/{routeID}/stages/{stage}/reprocess",
+		h.gated(h.sameOrigin(h.reprocessStage)),
+	)
+	// A URL from before a second provider existed names no provider at all. It
+	// keeps resolving by redirecting to the same stage under the only provider
+	// it could ever have meant, rather than breaking a bookmark or share link.
+	h.mux.Handle("GET /v1/routes/{routeID}/stages/{stage}", h.gated(h.redirectLegacyStagePath("")))
+	h.mux.Handle("GET /v1/routes/{routeID}/stages/{stage}/geometry", h.gated(h.redirectLegacyStagePath("/geometry")))
 	h.mux.Handle(
 		"POST /v1/routes/{routeID}/stages/{stage}/reprocess",
-		h.gated(h.sameOrigin(h.reprocessStage)),
+		h.gated(h.sameOrigin(h.redirectLegacyStagePath("/reprocess"))),
 	)
 	h.mux.Handle("GET /v1/webui/config", h.gated(h.webUIConfig))
 
@@ -385,7 +401,8 @@ func (h *Handler) routes() {
 	h.mux.Handle("GET /icon-512.png", h.gated(h.stableAsset))
 	h.mux.Handle("GET /manifest.webmanifest", h.gated(h.webManifest))
 	h.mux.Handle("GET /{$}", h.gated(h.index))
-	h.mux.Handle("GET /routes/{routeID}/{stage}", h.gated(h.index))
+	h.mux.Handle("GET /routes/{provider}/{routeID}/{stage}", h.gated(h.index))
+	h.mux.Handle("GET /routes/{routeID}/{stage}", h.gated(h.redirectLegacyBrowserRoute))
 	h.mux.Handle("GET /sync", h.gated(h.index))
 
 	// Unknown paths still answer as JSON, and still require the identity, so an

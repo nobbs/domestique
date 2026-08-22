@@ -56,6 +56,7 @@ func convertRoute(source sourceRoute) ([]route.Stage, error) {
 		}
 
 		stage, err := route.NewStage(
+			route.ProviderVeloPlanner,
 			source.ID,
 			sourceStage.Order,
 			revision,
@@ -72,6 +73,7 @@ func convertRoute(source sourceRoute) ([]route.Stage, error) {
 			return nil, fmt.Errorf("veloplanner: route %d stage %d: calculating content hash: %w", source.ID, sourceStage.Order, err)
 		}
 		stage, err = route.NewStage(
+			route.ProviderVeloPlanner,
 			source.ID,
 			sourceStage.Order,
 			revision,

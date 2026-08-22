@@ -57,6 +57,7 @@ func TestEncoderEncodeRespectsCanceledContext(t *testing.T) {
 func TestEncoderEncodeRejectsUnsupportedElevation(t *testing.T) {
 	elevation := 13_000.0
 	stage, err := route.NewStage(
+		route.ProviderVeloPlanner,
 		1,
 		1,
 		"2026-08-17T07:00:00",
@@ -75,6 +76,7 @@ func testStage(t *testing.T) route.Stage {
 	t.Helper()
 	elevation := 321.4
 	stage, err := route.NewStage(
+		route.ProviderVeloPlanner,
 		100,
 		2,
 		"2026-08-17T07:00:00",

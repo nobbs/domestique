@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"slices"
 	"time"
+
+	"github.com/nobbs/domestique/internal/route"
 )
 
 // The one word each target gets, in decreasing order of what an operator has to
@@ -35,6 +37,7 @@ const succeededOutcome = "succeeded"
 // sourceStageKey identifies one stored stage. It is the join key between the
 // library and what a target was last written at.
 type sourceStageKey struct {
+	provider   route.Provider
 	routeID    int64
 	stageOrder int
 }
@@ -56,8 +59,8 @@ func (h *Handler) targetStageCounts(ctx context.Context) (map[string]targetStage
 	revisions := make(map[sourceStageKey]string)
 	if err := h.state.ForEachSourceStage(
 		ctx,
-		func(routeID int64, stageOrder int, sourceRevision, _ string) error {
-			revisions[sourceStageKey{routeID: routeID, stageOrder: stageOrder}] = sourceRevision
+		func(provider route.Provider, routeID int64, stageOrder int, sourceRevision, _ string) error {
+			revisions[sourceStageKey{provider: provider, routeID: routeID, stageOrder: stageOrder}] = sourceRevision
 
 			return nil
 		},
@@ -71,8 +74,8 @@ func (h *Handler) targetStageCounts(ctx context.Context) (map[string]targetStage
 		if err := h.state.ForEachTargetStage(
 			ctx,
 			targetID,
-			func(routeID int64, stageOrder int, sourceRevision, _ string, _ int64) error {
-				stored, tracked := revisions[sourceStageKey{routeID: routeID, stageOrder: stageOrder}]
+			func(provider route.Provider, routeID int64, stageOrder int, sourceRevision, _ string, _ int64) error {
+				stored, tracked := revisions[sourceStageKey{provider: provider, routeID: routeID, stageOrder: stageOrder}]
 				if !tracked {
 					// The library no longer has this stage, so the target is
 					// carrying a route the next reconciliation will remove. That

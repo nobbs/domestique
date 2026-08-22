@@ -21,7 +21,12 @@ const DEMO_TITLES = [
 ];
 
 /** The demo's loop, which the map is asked to fly to. */
-const LOOP = { routeId: 4102, stageOrder: 1, title: "Synthetic Kaiserstuhl Loop" };
+const LOOP = {
+  provider: "veloplanner",
+  routeId: 4102,
+  stageOrder: 1,
+  title: "Synthetic Kaiserstuhl Loop",
+};
 
 test("the entry page is the library, drawn", async ({ offlinePage: page }) => {
   await openLibrary(page);
@@ -112,7 +117,9 @@ test("the card is the way into a route, and the route takes the same column", as
 
   // The route is a panel over the same map, not a page of its own — but it is in
   // the address, so it is still a view that can be sent to someone else.
-  await expect(page).toHaveURL(new RegExp(`/\\?route=${LOOP.routeId}%2F${LOOP.stageOrder}$`));
+  await expect(page).toHaveURL(
+    new RegExp(`/\\?route=${LOOP.provider}%2F${LOOP.routeId}%2F${LOOP.stageOrder}$`),
+  );
   await expect(page.getByRole("region", { name: LOOP.title })).toBeVisible();
   await expect(page.getByRole("searchbox", { name: "Search the route library" })).toBeHidden();
   await settleMap(page);
@@ -124,7 +131,9 @@ test("a link to the old route page lands on the route", async ({ offlinePage: pa
   await page.goto(`/routes/${LOOP.routeId}/${LOOP.stageOrder}`);
 
   await expect(page.getByRole("region", { name: LOOP.title })).toBeVisible();
-  await expect(page).toHaveURL(new RegExp(`/\\?route=${LOOP.routeId}%2F${LOOP.stageOrder}$`));
+  await expect(page).toHaveURL(
+    new RegExp(`/\\?route=${LOOP.provider}%2F${LOOP.routeId}%2F${LOOP.stageOrder}$`),
+  );
 });
 
 /**

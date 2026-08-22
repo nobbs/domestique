@@ -238,26 +238,27 @@ func (s *Store) ForEachTarget(ctx context.Context, visit func(id, authorization 
 }
 
 // ForEachSourceStage visits trusted source-stage metadata in stable order.
-func (s *Store) ForEachSourceStage(ctx context.Context, visit func(routeID int64, stageOrder int, sourceRevision, contentHash string) error) error {
+func (s *Store) ForEachSourceStage(ctx context.Context, visit func(provider route.Provider, routeID int64, stageOrder int, sourceRevision, contentHash string) error) error {
 	if visit == nil {
 		return errors.New("source stage visitor is required")
 	}
 	rows, err := s.database.QueryContext(ctx, `
-		SELECT route_id, stage_order, source_revision, content_hash
-		FROM source_stages ORDER BY route_id, stage_order
+		SELECT provider, route_id, stage_order, source_revision, content_hash
+		FROM source_stages ORDER BY provider, route_id, stage_order
 	`)
 	if err != nil {
 		return fmt.Errorf("listing source stages: %w", err)
 	}
 	defer closeRows(rows)
 	for rows.Next() {
+		var provider route.Provider
 		var routeID int64
 		var stageOrder int
 		var sourceRevision, contentHash string
-		if err := rows.Scan(&routeID, &stageOrder, &sourceRevision, &contentHash); err != nil {
+		if err := rows.Scan(&provider, &routeID, &stageOrder, &sourceRevision, &contentHash); err != nil {
 			return fmt.Errorf("reading source stage: %w", err)
 		}
-		if err := visit(routeID, stageOrder, sourceRevision, contentHash); err != nil {
+		if err := visit(provider, routeID, stageOrder, sourceRevision, contentHash); err != nil {
 			return fmt.Errorf("visiting source stage: %w", err)
 		}
 	}
@@ -278,6 +279,7 @@ func (s *Store) ForEachStageSummary(ctx context.Context, visit func(summary rout
 	}
 	rows, err := s.database.QueryContext(ctx, `
 		SELECT
+			source_stages.provider,
 			source_stages.route_id,
 			source_stages.stage_order,
 			source_stages.source_revision,
@@ -294,9 +296,10 @@ func (s *Store) ForEachStageSummary(ctx context.Context, visit func(summary rout
 			COALESCE(stage_geometry.max_latitude, 0)
 		FROM source_stages
 		LEFT JOIN stage_geometry
-			ON stage_geometry.route_id = source_stages.route_id
+			ON stage_geometry.provider = source_stages.provider
+			AND stage_geometry.route_id = source_stages.route_id
 			AND stage_geometry.stage_order = source_stages.stage_order
-		ORDER BY source_stages.route_id, source_stages.stage_order
+		ORDER BY source_stages.provider, source_stages.route_id, source_stages.stage_order
 	`)
 	if err != nil {
 		return fmt.Errorf("listing stage summaries: %w", err)
@@ -305,7 +308,7 @@ func (s *Store) ForEachStageSummary(ctx context.Context, visit func(summary rout
 	for rows.Next() {
 		var summary route.Summary
 		if err := rows.Scan(
-			&summary.RouteID, &summary.StageOrder, &summary.SourceRevision, &summary.ContentHash,
+			&summary.Provider, &summary.RouteID, &summary.StageOrder, &summary.SourceRevision, &summary.ContentHash,
 			&summary.RouteName, &summary.StageName, &summary.PointCount, &summary.DistanceMetres,
 			&summary.AscentMetres, &summary.MaxGradientPercent,
 			&summary.Bounds.MinLongitude, &summary.Bounds.MinLatitude,
@@ -329,6 +332,7 @@ func (s *Store) ForEachStageSummary(ctx context.Context, visit func(summary rout
 // positions, ready to serve as a GeoJSON coordinate list without re-encoding.
 func (s *Store) StageGeometry(
 	ctx context.Context,
+	provider route.Provider,
 	routeID int64,
 	stageOrder int,
 ) (route.Summary, json.RawMessage, bool, error) {
@@ -336,6 +340,7 @@ func (s *Store) StageGeometry(
 	var coordinates []byte
 	err := s.database.QueryRowContext(ctx, `
 		SELECT
+			stage_geometry.provider,
 			stage_geometry.route_id,
 			stage_geometry.stage_order,
 			COALESCE(source_stages.source_revision, ''),
@@ -353,11 +358,12 @@ func (s *Store) StageGeometry(
 			stage_geometry.coordinates
 		FROM stage_geometry
 		LEFT JOIN source_stages
-			ON source_stages.route_id = stage_geometry.route_id
+			ON source_stages.provider = stage_geometry.provider
+			AND source_stages.route_id = stage_geometry.route_id
 			AND source_stages.stage_order = stage_geometry.stage_order
-		WHERE stage_geometry.route_id = ? AND stage_geometry.stage_order = ?
-	`, routeID, stageOrder).Scan(
-		&summary.RouteID, &summary.StageOrder, &summary.SourceRevision, &summary.ContentHash,
+		WHERE stage_geometry.provider = ? AND stage_geometry.route_id = ? AND stage_geometry.stage_order = ?
+	`, provider, routeID, stageOrder).Scan(
+		&summary.Provider, &summary.RouteID, &summary.StageOrder, &summary.SourceRevision, &summary.ContentHash,
 		&summary.RouteName, &summary.StageName, &summary.PointCount, &summary.DistanceMetres,
 		&summary.AscentMetres, &summary.MaxGradientPercent,
 		&summary.Bounds.MinLongitude, &summary.Bounds.MinLatitude,
@@ -396,6 +402,7 @@ func (s *Store) StageGeometry(
 // The ranges are returned as stored, ready to serve without re-encoding.
 func (s *Store) StageSurface(
 	ctx context.Context,
+	provider route.Provider,
 	routeID int64,
 	stageOrder int,
 	contentHash string,
@@ -404,8 +411,8 @@ func (s *Store) StageSurface(
 	err = s.database.QueryRowContext(ctx, `
 		SELECT ranges, matched_metres
 		FROM stage_surface
-		WHERE route_id = ? AND stage_order = ? AND content_hash = ?
-	`, routeID, stageOrder, contentHash).Scan(&stored, &matchedMetres)
+		WHERE provider = ? AND route_id = ? AND stage_order = ? AND content_hash = ?
+	`, provider, routeID, stageOrder, contentHash).Scan(&stored, &matchedMetres)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, 0, false, nil
 	}
@@ -426,13 +433,14 @@ func (s *Store) StageSurface(
 // index is a weekly opportunity for a road to have been resurfaced.
 func (s *Store) StageSurfaceHash(
 	ctx context.Context,
+	provider route.Provider,
 	routeID int64,
 	stageOrder int,
 ) (contentHash, indexGeneration string, found bool, err error) {
 	err = s.database.QueryRowContext(ctx, `
 		SELECT content_hash, index_generation
-		FROM stage_surface WHERE route_id = ? AND stage_order = ?
-	`, routeID, stageOrder).Scan(&contentHash, &indexGeneration)
+		FROM stage_surface WHERE provider = ? AND route_id = ? AND stage_order = ?
+	`, provider, routeID, stageOrder).Scan(&contentHash, &indexGeneration)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", "", false, nil
 	}
@@ -448,6 +456,7 @@ func (s *Store) StageSurfaceHash(
 // exactly the JSON the geometry endpoint serves.
 func (s *Store) StoreStageSurface(
 	ctx context.Context,
+	provider route.Provider,
 	routeID int64,
 	stageOrder int,
 	contentHash, indexGeneration string,
@@ -456,15 +465,15 @@ func (s *Store) StoreStageSurface(
 ) error {
 	if _, err := s.database.ExecContext(ctx, `
 		INSERT INTO stage_surface (
-			route_id, stage_order, content_hash, index_generation, ranges, matched_metres, updated_at_unix
-		) VALUES (?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT (route_id, stage_order) DO UPDATE SET
+			provider, route_id, stage_order, content_hash, index_generation, ranges, matched_metres, updated_at_unix
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT (provider, route_id, stage_order) DO UPDATE SET
 			content_hash = excluded.content_hash,
 			index_generation = excluded.index_generation,
 			ranges = excluded.ranges,
 			matched_metres = excluded.matched_metres,
 			updated_at_unix = excluded.updated_at_unix
-	`, routeID, stageOrder, contentHash, indexGeneration, ranges, matchedMetres, time.Now().UTC().Unix()); err != nil {
+	`, provider, routeID, stageOrder, contentHash, indexGeneration, ranges, matchedMetres, time.Now().UTC().Unix()); err != nil {
 		return fmt.Errorf("storing stage surface: %w", err)
 	}
 
@@ -483,7 +492,8 @@ func pruneStageSurface(ctx context.Context, transaction *sql.Tx) error {
 		DELETE FROM stage_surface
 		WHERE NOT EXISTS (
 			SELECT 1 FROM stage_geometry
-			WHERE stage_geometry.route_id = stage_surface.route_id
+			WHERE stage_geometry.provider = stage_surface.provider
+			  AND stage_geometry.route_id = stage_surface.route_id
 			  AND stage_geometry.stage_order = stage_surface.stage_order
 			  AND stage_geometry.content_hash = stage_surface.content_hash
 		)
@@ -529,6 +539,7 @@ func (s *Store) LastSyncRun(ctx context.Context) (completedAt time.Time, outcome
 func (s *Store) TrustedInventory(ctx context.Context) ([]route.Stage, error) {
 	rows, err := s.database.QueryContext(ctx, `
 		SELECT
+			source_stages.provider,
 			source_stages.route_id,
 			source_stages.stage_order,
 			source_stages.source_revision,
@@ -539,9 +550,10 @@ func (s *Store) TrustedInventory(ctx context.Context) ([]route.Stage, error) {
 			stage_geometry.coordinates
 		FROM source_stages
 		LEFT JOIN stage_geometry
-			ON stage_geometry.route_id = source_stages.route_id
+			ON stage_geometry.provider = source_stages.provider
+			AND stage_geometry.route_id = source_stages.route_id
 			AND stage_geometry.stage_order = source_stages.stage_order
-		ORDER BY source_stages.route_id, source_stages.stage_order
+		ORDER BY source_stages.provider, source_stages.route_id, source_stages.stage_order
 	`)
 	if err != nil {
 		return nil, fmt.Errorf("reading the trusted inventory: %w", err)
@@ -550,13 +562,14 @@ func (s *Store) TrustedInventory(ctx context.Context) ([]route.Stage, error) {
 
 	stages := make([]route.Stage, 0)
 	for rows.Next() {
+		var provider route.Provider
 		var routeID int64
 		var stageOrder int
 		var revision, contentHash string
 		var geometryHash, routeName, stageName sql.NullString
 		var coordinates []byte
 		if err := rows.Scan(
-			&routeID, &stageOrder, &revision, &contentHash,
+			&provider, &routeID, &stageOrder, &revision, &contentHash,
 			&geometryHash, &routeName, &stageName, &coordinates,
 		); err != nil {
 			return nil, fmt.Errorf("reading a trusted inventory stage: %w", err)
@@ -571,7 +584,7 @@ func (s *Store) TrustedInventory(ctx context.Context) ([]route.Stage, error) {
 			return nil, err
 		}
 		stage, err := route.NewStage(
-			routeID, stageOrder, revision, routeName.String, stageName.String, points, contentHash,
+			provider, routeID, stageOrder, revision, routeName.String, stageName.String, points, contentHash,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("rebuilding trusted inventory stage %d/%d: %w", routeID, stageOrder, err)
@@ -614,7 +627,7 @@ const reprocessSentinel = "reprocess-requested"
 // Reports whether the stage is in the stored inventory. A stage that is not
 // cannot be redone, and saying so is better than leaving a mark that nothing
 // will ever consume.
-func (s *Store) RequestStageReprocess(ctx context.Context, routeID int64, stageOrder int) (bool, error) {
+func (s *Store) RequestStageReprocess(ctx context.Context, provider route.Provider, routeID int64, stageOrder int) (bool, error) {
 	transaction, err := s.database.BeginTx(ctx, nil)
 	if err != nil {
 		return false, fmt.Errorf("starting reprocess request: %w", err)
@@ -623,8 +636,8 @@ func (s *Store) RequestStageReprocess(ctx context.Context, routeID int64, stageO
 
 	var exists int
 	err = transaction.QueryRowContext(ctx, `
-		SELECT 1 FROM source_stages WHERE route_id = ? AND stage_order = ?
-	`, routeID, stageOrder).Scan(&exists)
+		SELECT 1 FROM source_stages WHERE provider = ? AND route_id = ? AND stage_order = ?
+	`, provider, routeID, stageOrder).Scan(&exists)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}
@@ -633,21 +646,21 @@ func (s *Store) RequestStageReprocess(ctx context.Context, routeID int64, stageO
 	}
 
 	if _, err := transaction.ExecContext(ctx, `
-		INSERT INTO stage_reprocess (route_id, stage_order, requested_at_unix)
-		VALUES (?, ?, ?)
-		ON CONFLICT (route_id, stage_order) DO UPDATE SET requested_at_unix = excluded.requested_at_unix
-	`, routeID, stageOrder, time.Now().UTC().Unix()); err != nil {
+		INSERT INTO stage_reprocess (provider, route_id, stage_order, requested_at_unix)
+		VALUES (?, ?, ?, ?)
+		ON CONFLICT (provider, route_id, stage_order) DO UPDATE SET requested_at_unix = excluded.requested_at_unix
+	`, provider, routeID, stageOrder, time.Now().UTC().Unix()); err != nil {
 		return false, fmt.Errorf("recording the reprocess request: %w", err)
 	}
 	if _, err := transaction.ExecContext(ctx, `
 		UPDATE target_stages SET source_revision = ?, content_hash = ?
-		WHERE route_id = ? AND stage_order = ?
-	`, reprocessSentinel, reprocessSentinel, routeID, stageOrder); err != nil {
+		WHERE provider = ? AND route_id = ? AND stage_order = ?
+	`, reprocessSentinel, reprocessSentinel, provider, routeID, stageOrder); err != nil {
 		return false, fmt.Errorf("forgetting the pushed revision: %w", err)
 	}
 	if _, err := transaction.ExecContext(ctx, `
-		DELETE FROM stage_surface WHERE route_id = ? AND stage_order = ?
-	`, routeID, stageOrder); err != nil {
+		DELETE FROM stage_surface WHERE provider = ? AND route_id = ? AND stage_order = ?
+	`, provider, routeID, stageOrder); err != nil {
 		return false, fmt.Errorf("dropping the stage surface: %w", err)
 	}
 	if err := transaction.Commit(); err != nil {
@@ -824,7 +837,8 @@ func (s *Store) SurfaceCoverage(ctx context.Context) (classified, total int, err
 			(SELECT COUNT(*)
 				FROM stage_surface
 				JOIN source_stages
-					ON source_stages.route_id = stage_surface.route_id
+					ON source_stages.provider = stage_surface.provider
+					AND source_stages.route_id = stage_surface.route_id
 					AND source_stages.stage_order = stage_surface.stage_order
 				WHERE stage_surface.content_hash = source_stages.content_hash)
 	`).Scan(&total, &classified); err != nil {
@@ -1068,9 +1082,9 @@ func (s *Store) StoreTrustedInventory(ctx context.Context, stages []route.Stage)
 	for _, stage := range stages {
 		key := stage.Key()
 		if _, err := transaction.ExecContext(ctx, `
-			INSERT INTO source_stages (route_id, stage_order, source_revision, content_hash)
-			VALUES (?, ?, ?, ?)
-		`, key.RouteID(), key.StageOrder(), stage.Revision(), stage.ContentHash()); err != nil {
+			INSERT INTO source_stages (provider, route_id, stage_order, source_revision, content_hash)
+			VALUES (?, ?, ?, ?, ?)
+		`, key.Provider(), key.RouteID(), key.StageOrder(), stage.Revision(), stage.ContentHash()); err != nil {
 			return fmt.Errorf("storing trusted source stage: %w", err)
 		}
 	}
@@ -1100,12 +1114,12 @@ func storeStageGeometry(ctx context.Context, transaction *sql.Tx, stages []route
 	for index := range stages {
 		stage := &stages[index]
 		key := stage.Key()
-		_, reprocess := requested[stageIdentity{routeID: key.RouteID(), stageOrder: key.StageOrder()}]
+		_, reprocess := requested[key]
 
 		var storedHash string
 		err := transaction.QueryRowContext(ctx, `
-			SELECT content_hash FROM stage_geometry WHERE route_id = ? AND stage_order = ?
-		`, key.RouteID(), key.StageOrder()).Scan(&storedHash)
+			SELECT content_hash FROM stage_geometry WHERE provider = ? AND route_id = ? AND stage_order = ?
+		`, key.Provider(), key.RouteID(), key.StageOrder()).Scan(&storedHash)
 		switch {
 		case errors.Is(err, sql.ErrNoRows):
 		case err != nil:
@@ -1122,12 +1136,12 @@ func storeStageGeometry(ctx context.Context, transaction *sql.Tx, stages []route
 		bounds := stage.Bounds()
 		if _, err := transaction.ExecContext(ctx, `
 			INSERT INTO stage_geometry (
-				route_id, stage_order, content_hash, route_name, stage_name,
+				provider, route_id, stage_order, content_hash, route_name, stage_name,
 				point_count, distance_metres, ascent_metres, max_gradient_percent,
 				min_longitude, min_latitude, max_longitude, max_latitude,
 				coordinates, updated_at_unix
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-			ON CONFLICT (route_id, stage_order) DO UPDATE SET
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT (provider, route_id, stage_order) DO UPDATE SET
 				content_hash = excluded.content_hash,
 				route_name = excluded.route_name,
 				stage_name = excluded.stage_name,
@@ -1142,7 +1156,7 @@ func storeStageGeometry(ctx context.Context, transaction *sql.Tx, stages []route
 				coordinates = excluded.coordinates,
 				updated_at_unix = excluded.updated_at_unix
 		`,
-			key.RouteID(), key.StageOrder(), stage.ContentHash(), stage.RouteName(), stage.StageName(),
+			key.Provider(), key.RouteID(), key.StageOrder(), stage.ContentHash(), stage.RouteName(), stage.StageName(),
 			len(geometry), stage.DistanceMetres(), stage.ElevationGainMetres(), stage.MaxGradientPercent(),
 			bounds.MinLongitude, bounds.MinLatitude, bounds.MaxLongitude, bounds.MaxLatitude,
 			coordinates, updatedAt,
@@ -1155,7 +1169,8 @@ func storeStageGeometry(ctx context.Context, transaction *sql.Tx, stages []route
 		DELETE FROM stage_geometry
 		WHERE NOT EXISTS (
 			SELECT 1 FROM source_stages
-			WHERE source_stages.route_id = stage_geometry.route_id
+			WHERE source_stages.provider = stage_geometry.provider
+			  AND source_stages.route_id = stage_geometry.route_id
 			  AND source_stages.stage_order = stage_geometry.stage_order
 		)
 	`); err != nil {
@@ -1170,27 +1185,23 @@ func storeStageGeometry(ctx context.Context, transaction *sql.Tx, stages []route
 	return nil
 }
 
-// stageIdentity is one stage, for lookups that carry nothing else about it.
-type stageIdentity struct {
-	routeID    int64
-	stageOrder int
-}
-
 // requestedReprocessing reads the stages an operator has asked to have redone.
-func requestedReprocessing(ctx context.Context, transaction *sql.Tx) (map[stageIdentity]struct{}, error) {
-	rows, err := transaction.QueryContext(ctx, "SELECT route_id, stage_order FROM stage_reprocess")
+func requestedReprocessing(ctx context.Context, transaction *sql.Tx) (map[route.Key]struct{}, error) {
+	rows, err := transaction.QueryContext(ctx, "SELECT provider, route_id, stage_order FROM stage_reprocess")
 	if err != nil {
 		return nil, fmt.Errorf("reading reprocess requests: %w", err)
 	}
 	defer closeRows(rows)
 
-	requested := make(map[stageIdentity]struct{})
+	requested := make(map[route.Key]struct{})
 	for rows.Next() {
-		var identity stageIdentity
-		if err := rows.Scan(&identity.routeID, &identity.stageOrder); err != nil {
+		var provider route.Provider
+		var routeID int64
+		var stageOrder int
+		if err := rows.Scan(&provider, &routeID, &stageOrder); err != nil {
 			return nil, fmt.Errorf("reading a reprocess request: %w", err)
 		}
-		requested[identity] = struct{}{}
+		requested[route.NewKey(provider, routeID, stageOrder)] = struct{}{}
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("reading reprocess requests: %w", err)
@@ -1249,17 +1260,17 @@ func encodeCoordinates(points []route.Point) ([]byte, error) {
 func (s *Store) ForEachTargetStage(
 	ctx context.Context,
 	targetID string,
-	visit func(routeID int64, stageOrder int, sourceRevision, contentHash string, wahooRouteID int64) error,
+	visit func(provider route.Provider, routeID int64, stageOrder int, sourceRevision, contentHash string, wahooRouteID int64) error,
 ) error {
 	if strings.TrimSpace(targetID) == "" || visit == nil {
 		return errors.New("target ID and target stage visitor are required")
 	}
 
 	rows, err := s.database.QueryContext(ctx, `
-		SELECT route_id, stage_order, source_revision, content_hash, wahoo_route_id
+		SELECT provider, route_id, stage_order, source_revision, content_hash, wahoo_route_id
 		FROM target_stages
 		WHERE target_slot = ?
-		ORDER BY route_id, stage_order
+		ORDER BY provider, route_id, stage_order
 	`, targetID)
 	if err != nil {
 		return fmt.Errorf("listing target stages: %w", err)
@@ -1268,16 +1279,17 @@ func (s *Store) ForEachTargetStage(
 
 	for rows.Next() {
 		var (
+			provider       route.Provider
 			routeID        int64
 			stageOrder     int
 			sourceRevision string
 			contentHash    string
 			wahooRouteID   int64
 		)
-		if err := rows.Scan(&routeID, &stageOrder, &sourceRevision, &contentHash, &wahooRouteID); err != nil {
+		if err := rows.Scan(&provider, &routeID, &stageOrder, &sourceRevision, &contentHash, &wahooRouteID); err != nil {
 			return fmt.Errorf("reading target stage: %w", err)
 		}
-		if err := visit(routeID, stageOrder, sourceRevision, contentHash, wahooRouteID); err != nil {
+		if err := visit(provider, routeID, stageOrder, sourceRevision, contentHash, wahooRouteID); err != nil {
 			return fmt.Errorf("visiting target stage: %w", err)
 		}
 	}
@@ -1294,25 +1306,26 @@ func (s *Store) ForEachTargetStage(
 func (s *Store) UpsertTargetStage(
 	ctx context.Context,
 	targetID string,
+	provider route.Provider,
 	routeID int64,
 	stageOrder int,
 	sourceRevision, contentHash string,
 	wahooRouteID int64,
 ) error {
-	if strings.TrimSpace(targetID) == "" || routeID <= 0 || stageOrder <= 0 ||
+	if strings.TrimSpace(targetID) == "" || provider == "" || routeID <= 0 || stageOrder <= 0 ||
 		sourceRevision == "" || contentHash == "" || wahooRouteID <= 0 {
 		return errors.New("complete target stage metadata is required")
 	}
 
 	if _, err := s.database.ExecContext(ctx, `
 		INSERT INTO target_stages (
-			target_slot, route_id, stage_order, wahoo_route_id, content_hash, source_revision
-		) VALUES (?, ?, ?, ?, ?, ?)
-		ON CONFLICT(target_slot, route_id, stage_order) DO UPDATE SET
+			target_slot, provider, route_id, stage_order, wahoo_route_id, content_hash, source_revision
+		) VALUES (?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(target_slot, provider, route_id, stage_order) DO UPDATE SET
 			wahoo_route_id = excluded.wahoo_route_id,
 			content_hash = excluded.content_hash,
 			source_revision = excluded.source_revision
-	`, targetID, routeID, stageOrder, wahooRouteID, contentHash, sourceRevision); err != nil {
+	`, targetID, provider, routeID, stageOrder, wahooRouteID, contentHash, sourceRevision); err != nil {
 		return fmt.Errorf("storing target stage: %w", err)
 	}
 
@@ -1321,15 +1334,15 @@ func (s *Store) UpsertTargetStage(
 
 // DeleteTargetStage removes the durable mapping after the owned remote Wahoo
 // route was deleted successfully.
-func (s *Store) DeleteTargetStage(ctx context.Context, targetID string, routeID int64, stageOrder int) error {
-	if strings.TrimSpace(targetID) == "" || routeID <= 0 || stageOrder <= 0 {
+func (s *Store) DeleteTargetStage(ctx context.Context, targetID string, provider route.Provider, routeID int64, stageOrder int) error {
+	if strings.TrimSpace(targetID) == "" || provider == "" || routeID <= 0 || stageOrder <= 0 {
 		return errors.New("target ID and source stage key are required")
 	}
 
 	result, err := s.database.ExecContext(ctx, `
 		DELETE FROM target_stages
-		WHERE target_slot = ? AND route_id = ? AND stage_order = ?
-	`, targetID, routeID, stageOrder)
+		WHERE target_slot = ? AND provider = ? AND route_id = ? AND stage_order = ?
+	`, targetID, provider, routeID, stageOrder)
 	if err != nil {
 		return fmt.Errorf("deleting target stage: %w", err)
 	}
@@ -2070,6 +2083,143 @@ func schemaMigrations() [][]string {
 				generation    TEXT    NOT NULL
 			)`,
 			`INSERT INTO surface_index (id, built_at_unix, generation) VALUES (1, 0, '')`,
+		},
+		{
+			// A stage identity now names which upstream source issued its route
+			// ID, because a second provider will one day issue the same numeric
+			// route ID as VeloPlanner. Every table that keys a stage by
+			// (route_id, stage_order) gets a provider column, defaulted to the
+			// only provider that has ever existed, and that column joins the key
+			// so two providers' stages can occupy the same table without
+			// colliding.
+			//
+			// SQLite cannot widen a PRIMARY KEY in place, so each table is
+			// rebuilt: a new table is created with the wider key, the existing
+			// rows are copied into it as 'veloplanner', and the old table is
+			// dropped in favour of the rebuilt one.
+			//
+			// This is where the append-only rollback-compatibility rule the rest
+			// of this file follows cannot be kept in full, and it is kept here
+			// rather than silently weakened. TestNewMigrationsStayReadableByThePreviousRelease
+			// only compares column and index shape, so it passes: every carried
+			// column keeps its type, nullability, and default, and the new
+			// provider column is NOT NULL with a default. What it cannot see is
+			// that source_stages and trusted_inventory_stages were never written
+			// through an ON CONFLICT clause and so stay genuinely readable by the
+			// previous release, while target_stages, stage_geometry,
+			// stage_surface, and stage_reprocess were: a previous release's
+			// binary still issues `ON CONFLICT (route_id, stage_order)`, and
+			// SQLite requires that column list to name an existing unique
+			// constraint exactly. Once the primary key on those four tables
+			// widens to include provider, that old statement fails to prepare.
+			// A deployment rolled back onto this schema would need the previous
+			// release's binary to write to those four tables, which it could not
+			// do. Reading them still works. This is accepted because the
+			// alternative — leaving provider out of those tables' keys — would
+			// leave four of the six tables unable to hold two providers' stages
+			// at once, defeating the reason this migration exists.
+			`CREATE TABLE source_stages_v13 (
+				provider TEXT NOT NULL DEFAULT 'veloplanner',
+				route_id INTEGER NOT NULL,
+				stage_order INTEGER NOT NULL,
+				source_revision TEXT NOT NULL,
+				content_hash TEXT NOT NULL,
+				PRIMARY KEY (provider, route_id, stage_order)
+			)`,
+			`INSERT INTO source_stages_v13 (provider, route_id, stage_order, source_revision, content_hash)
+				SELECT 'veloplanner', route_id, stage_order, source_revision, content_hash FROM source_stages`,
+			`DROP TABLE source_stages`,
+			`ALTER TABLE source_stages_v13 RENAME TO source_stages`,
+			`CREATE TABLE target_stages_v13 (
+				target_slot TEXT NOT NULL REFERENCES targets(slot),
+				provider TEXT NOT NULL DEFAULT 'veloplanner',
+				route_id INTEGER NOT NULL,
+				stage_order INTEGER NOT NULL,
+				wahoo_route_id INTEGER NOT NULL,
+				content_hash TEXT NOT NULL,
+				source_revision TEXT NOT NULL DEFAULT '',
+				PRIMARY KEY (target_slot, provider, route_id, stage_order)
+			)`,
+			`INSERT INTO target_stages_v13 (
+				target_slot, provider, route_id, stage_order, wahoo_route_id, content_hash, source_revision
+			)
+				SELECT target_slot, 'veloplanner', route_id, stage_order, wahoo_route_id, content_hash, source_revision
+				FROM target_stages`,
+			`DROP TABLE target_stages`,
+			`ALTER TABLE target_stages_v13 RENAME TO target_stages`,
+			`CREATE TABLE trusted_inventory_stages_v13 (
+				target_slot TEXT NOT NULL REFERENCES trusted_inventory(target_slot),
+				provider TEXT NOT NULL DEFAULT 'veloplanner',
+				route_id INTEGER NOT NULL,
+				stage_order INTEGER NOT NULL,
+				wahoo_route_id INTEGER NOT NULL,
+				PRIMARY KEY (target_slot, provider, route_id, stage_order)
+			)`,
+			`INSERT INTO trusted_inventory_stages_v13 (target_slot, provider, route_id, stage_order, wahoo_route_id)
+				SELECT target_slot, 'veloplanner', route_id, stage_order, wahoo_route_id FROM trusted_inventory_stages`,
+			`DROP TABLE trusted_inventory_stages`,
+			`ALTER TABLE trusted_inventory_stages_v13 RENAME TO trusted_inventory_stages`,
+			`CREATE TABLE stage_geometry_v13 (
+				provider        TEXT    NOT NULL DEFAULT 'veloplanner',
+				route_id        INTEGER NOT NULL,
+				stage_order     INTEGER NOT NULL,
+				content_hash    TEXT    NOT NULL,
+				route_name      TEXT    NOT NULL,
+				stage_name      TEXT    NOT NULL,
+				point_count     INTEGER NOT NULL,
+				distance_metres REAL    NOT NULL,
+				ascent_metres   REAL    NOT NULL DEFAULT 0,
+				max_gradient_percent REAL NOT NULL DEFAULT 0,
+				min_longitude   REAL    NOT NULL,
+				min_latitude    REAL    NOT NULL,
+				max_longitude   REAL    NOT NULL,
+				max_latitude    REAL    NOT NULL,
+				coordinates     BLOB    NOT NULL,
+				updated_at_unix INTEGER NOT NULL,
+				PRIMARY KEY (provider, route_id, stage_order)
+			)`,
+			`INSERT INTO stage_geometry_v13 (
+				provider, route_id, stage_order, content_hash, route_name, stage_name,
+				point_count, distance_metres, ascent_metres, max_gradient_percent,
+				min_longitude, min_latitude, max_longitude, max_latitude,
+				coordinates, updated_at_unix
+			)
+				SELECT 'veloplanner', route_id, stage_order, content_hash, route_name, stage_name,
+					point_count, distance_metres, ascent_metres, max_gradient_percent,
+					min_longitude, min_latitude, max_longitude, max_latitude,
+					coordinates, updated_at_unix
+				FROM stage_geometry`,
+			`DROP TABLE stage_geometry`,
+			`ALTER TABLE stage_geometry_v13 RENAME TO stage_geometry`,
+			`CREATE TABLE stage_surface_v13 (
+				provider         TEXT    NOT NULL DEFAULT 'veloplanner',
+				route_id         INTEGER NOT NULL,
+				stage_order      INTEGER NOT NULL,
+				content_hash     TEXT    NOT NULL,
+				ranges           BLOB    NOT NULL,
+				matched_metres   REAL    NOT NULL,
+				updated_at_unix  INTEGER NOT NULL,
+				index_generation TEXT    NOT NULL DEFAULT '',
+				PRIMARY KEY (provider, route_id, stage_order)
+			)`,
+			`INSERT INTO stage_surface_v13 (
+				provider, route_id, stage_order, content_hash, ranges, matched_metres, updated_at_unix, index_generation
+			)
+				SELECT 'veloplanner', route_id, stage_order, content_hash, ranges, matched_metres, updated_at_unix, index_generation
+				FROM stage_surface`,
+			`DROP TABLE stage_surface`,
+			`ALTER TABLE stage_surface_v13 RENAME TO stage_surface`,
+			`CREATE TABLE stage_reprocess_v13 (
+				provider          TEXT    NOT NULL DEFAULT 'veloplanner',
+				route_id          INTEGER NOT NULL,
+				stage_order       INTEGER NOT NULL,
+				requested_at_unix INTEGER NOT NULL,
+				PRIMARY KEY (provider, route_id, stage_order)
+			)`,
+			`INSERT INTO stage_reprocess_v13 (provider, route_id, stage_order, requested_at_unix)
+				SELECT 'veloplanner', route_id, stage_order, requested_at_unix FROM stage_reprocess`,
+			`DROP TABLE stage_reprocess`,
+			`ALTER TABLE stage_reprocess_v13 RENAME TO stage_reprocess`,
 		},
 	}
 }

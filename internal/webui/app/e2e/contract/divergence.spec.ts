@@ -20,6 +20,7 @@ test("a diverged response names the endpoint and the field", async ({ bundlePage
       body: JSON.stringify({
         stages: [
           {
+            provider: "veloplanner",
             route_id: "4101",
             stage: 1,
             title: "Synthetic Rhine Traverse — Valley floor",
