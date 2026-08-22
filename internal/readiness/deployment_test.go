@@ -171,11 +171,11 @@ func deployJob(t *testing.T) string {
 	t.Helper()
 	workflow := readRepositoryFile(t, ".github/workflows/ci.yml")
 
-	start := regexp.MustCompile(`(?m)^  deploy:$`).FindStringIndex(workflow)
+	start := regexp.MustCompile(`(?m)^ {2}deploy:$`).FindStringIndex(workflow)
 	require.NotNil(t, start, "ci.yml must have a deploy job")
 
 	job := workflow[start[1]:]
-	if next := regexp.MustCompile(`(?m)^  \S`).FindStringIndex(job); next != nil {
+	if next := regexp.MustCompile(`(?m)^ {2}\S`).FindStringIndex(job); next != nil {
 		job = job[:next[0]]
 	}
 
