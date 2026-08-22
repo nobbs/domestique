@@ -107,6 +107,18 @@ func TestTheDeployScriptGatesOnReadiness(t *testing.T) {
 	assert.Contains(t, script, "wait_healthy && wait_ready && loopback_only")
 }
 
+// Superseded images are pruned by the digest each image carries, not by the one
+// the listing prints. `docker images` leaves that column empty for an image
+// whose tag has moved on, which is every image the prune is for, so a prune
+// reading the column removed nothing and the host accumulated a deployment's
+// image on every deploy.
+func TestTheDeployScriptPrunesByRepositoryDigest(t *testing.T) {
+	script := readRepositoryFile(t, "deploy/domestique-deploy.sh")
+
+	assert.Contains(t, script, "{{range .RepoDigests}}")
+	assert.NotContains(t, script, "{{.Repository}} {{.Digest}}")
+}
+
 // Tailscale Serve fronts the served listener and nothing else. If a document
 // ever tells an operator to serve the readiness port, the probe is on the
 // authenticated public surface and this stops being a loopback-only probe.
