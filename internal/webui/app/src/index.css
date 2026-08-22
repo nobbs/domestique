@@ -961,6 +961,39 @@ body {
   z-index: 1;
 }
 
+/*
+ * The position tooltip's marker. Pointer events are off on the wrapper
+ * MapLibre draws, not only on the text inside it: it sits directly over the
+ * line the pointer is following, and a marker that intercepted the mouse
+ * would freeze the position it labels the moment the cursor drifted under it.
+ */
+.route-position-tooltip-marker {
+  pointer-events: none;
+}
+
+/*
+ * The numbers themselves, styled like the other chips that float over this
+ * map — the credit and the basemap chooser — so the map has one family of
+ * floating surfaces rather than one more shape to learn.
+ */
+.route-position-tooltip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+  margin: 0;
+  padding: 3px var(--space-2);
+  max-width: 220px;
+  border-radius: calc(var(--radius) - 4px);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  color: var(--ink);
+  font: var(--type-small);
+  letter-spacing: var(--track-small);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 /* Route panel ------------------------------------------------------------- */
 
 /*

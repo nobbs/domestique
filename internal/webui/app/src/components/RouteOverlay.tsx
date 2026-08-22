@@ -14,17 +14,25 @@
 
 import type { DataDrivenPropertyValueSpecification } from "maplibre-gl";
 import { useEffect, useMemo, useState } from "react";
-import { Layer, Source, useMap } from "react-map-gl/maplibre";
+import { Layer, Marker, Source, useMap } from "react-map-gl/maplibre";
 import type { Position, SurfaceRange } from "../api/types";
+import { formatDistance, formatElevation } from "../lib/format";
 import type { Highlight } from "../lib/highlight";
 import { highlightRanges, litRanges } from "../lib/highlight";
 import { routeSelection } from "../lib/mapSelection";
-import type { DistanceWindow, Profile } from "../lib/profile";
+import type { DistanceWindow, Profile, ProfileSample } from "../lib/profile";
 import { coordinateRange, nearestSample, sampleAt } from "../lib/profile";
 import { cuesDescription, directionChevrons, metresPerPixel, routeCues } from "../lib/routeCues";
 import { gradientSlices, routeLinesWithin } from "../lib/routeLines";
 import { NEAR_ROUTE_PIXELS } from "../lib/selection";
-import { SURFACE_LINE_WIDTH, surfaceColour, surfaceLinesWithin } from "../lib/surface";
+import type { SurfaceSummary } from "../lib/surface";
+import {
+  SURFACE_LINE_WIDTH,
+  SURFACE_STYLES,
+  surfaceColour,
+  surfaceKindAt,
+  surfaceLinesWithin,
+} from "../lib/surface";
 import { useEscapeKey } from "../lib/useEscapeKey";
 
 /**
@@ -323,6 +331,86 @@ function DirectionCues({ coordinates }: { coordinates: Position[] }) {
   );
 }
 
+type TooltipAnchor = "top-left" | "top-right" | "bottom-left" | "bottom-right";
+
+/** The gap kept between the position dot and the tooltip that labels it. */
+const TOOLTIP_GAP_PIXELS = 14;
+
+/**
+ * Which corner of the tooltip sits on the point, chosen so the box always
+ * opens toward the middle of the map rather than off whichever edge the point
+ * is nearest.
+ */
+function tooltipAnchor(
+  point: { x: number; y: number },
+  container: { clientWidth: number; clientHeight: number },
+): TooltipAnchor {
+  const vertical = point.y < container.clientHeight / 2 ? "top" : "bottom";
+  const horizontal = point.x < container.clientWidth / 2 ? "left" : "right";
+
+  return `${vertical}-${horizontal}`;
+}
+
+/** Nudges the tooltip further along the direction its anchor already opens in. */
+function tooltipOffset(anchor: TooltipAnchor): [number, number] {
+  return [
+    anchor.endsWith("left") ? TOOLTIP_GAP_PIXELS : -TOOLTIP_GAP_PIXELS,
+    anchor.startsWith("top") ? TOOLTIP_GAP_PIXELS : -TOOLTIP_GAP_PIXELS,
+  ];
+}
+
+/**
+ * The numbers for the position under the pointer, on the dot itself.
+ *
+ * The profile readout below the map says the same thing, but it is inside the
+ * `<details>` a reader can and does collapse to give the map the whole pane —
+ * and even open, reading it means looking away from the point being asked
+ * about. This is presentational only: `aria-hidden` keeps a hover from being a
+ * second announcement of what the readout's live region already says.
+ *
+ * A child of the map because placement is judged in screen pixels against the
+ * live camera, the same reason `HoverLink` is one. Pointer events are switched
+ * off on the marker itself: it floats over the very line the pointer is
+ * following, and a tooltip that intercepted the mouse would freeze the
+ * position it labels the moment the cursor drifted under it.
+ */
+function PositionTooltip({
+  sample,
+  profile,
+  surfaceSummary,
+}: {
+  sample: ProfileSample;
+  profile: Profile;
+  surfaceSummary: SurfaceSummary | null | undefined;
+}) {
+  const { current: map } = useMap();
+  if (!map) {
+    return null;
+  }
+
+  const container = map.getContainer();
+  const anchor = tooltipAnchor(map.project([sample.longitude, sample.latitude]), container);
+  const kind = surfaceSummary ? surfaceKindAt(surfaceSummary, sample.distanceMetres) : null;
+
+  return (
+    <Marker
+      longitude={sample.longitude}
+      latitude={sample.latitude}
+      anchor={anchor}
+      offset={tooltipOffset(anchor)}
+      className="route-position-tooltip-marker"
+    >
+      <p className="route-position-tooltip" aria-hidden="true">
+        <span>{formatDistance(sample.distanceMetres)} from start</span>
+        <span>{formatDistance(profile.endMetres - sample.distanceMetres)} to end</span>
+        <span>{formatElevation(sample.elevationMetres)}</span>
+        <span>{sample.gradientPercent.toFixed(1)}%</span>
+        {kind ? <span>{SURFACE_STYLES[kind].label}</span> : null}
+      </p>
+    </Marker>
+  );
+}
+
 /** One terminal as a point collection, empty when the stage has no cues. */
 function terminalCollection(position: Position | undefined) {
   return {
@@ -354,6 +442,16 @@ export interface RouteOverlayProps {
    * the route drawn in the accent, which is what an unclassified stage gets.
    */
   surface?: SurfaceRange[] | undefined;
+  /**
+   * The same classification, already summarised for naming a position.
+   *
+   * `surface` above stays index-addressed geometry, which is all painting the
+   * line needs; naming the class under the hovered position needs the bands and
+   * lookup `summariseSurface` builds. `StageDetail` (the page) has already built
+   * exactly that for the profile readout, so it is handed here rather than
+   * walked a second time.
+   */
+  surfaceSummary?: SurfaceSummary | null;
   /**
    * The whole route's profile, never a zoomed one: it is what turns a point on
    * this map into a distance, and it has to answer for the whole route however
@@ -400,6 +498,7 @@ export function RouteOverlay({
   darkBasemap = false,
   coordinates,
   surface,
+  surfaceSummary = null,
   profile = null,
   activeMetres = null,
   onActiveChange,
@@ -483,27 +582,33 @@ export function RouteOverlay({
     [routeSlices, dimmed],
   );
 
+  // The one sample the map, the halo and dot, and the tooltip all read the
+  // position from, so none of them can disagree about where it is.
+  const activeSample = useMemo(
+    () => (profile && activeMetres !== null ? sampleAt(profile, activeMetres) : null),
+    [profile, activeMetres],
+  );
+
   // The position shared with the elevation chart. An empty collection keeps the
   // source mounted, so the marker appears without rebuilding the layer.
-  const marker = useMemo(() => {
-    const sample = profile && activeMetres !== null ? sampleAt(profile, activeMetres) : null;
-
-    return {
+  const marker = useMemo(
+    () => ({
       type: "FeatureCollection" as const,
-      features: sample
+      features: activeSample
         ? [
             {
               type: "Feature" as const,
               geometry: {
                 type: "Point" as const,
-                coordinates: [sample.longitude, sample.latitude],
+                coordinates: [activeSample.longitude, activeSample.latitude],
               },
               properties: {},
             },
           ]
         : [],
-    };
-  }, [profile, activeMetres]);
+    }),
+    [activeSample],
+  );
 
   // The terminals and the direction they are ridden in, from the same stored
   // coordinates already drawn. Null for anything that is not a ride — a single
@@ -680,6 +785,9 @@ export function RouteOverlay({
           paint={{ "circle-radius": 5, "circle-color": accent }}
         />
       </Source>
+      {activeSample && profile ? (
+        <PositionTooltip sample={activeSample} profile={profile} surfaceSummary={surfaceSummary} />
+      ) : null}
       {/*
        * The cues in words. Markers and chevrons are drawn into a WebGL surface
        * that carries no text at all, so this is not a caption repeating what is

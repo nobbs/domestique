@@ -176,6 +176,63 @@ test("the profile folds to a row that still carries its figures", async ({ offli
   await expect(page.getByRole("img", { name: /^Elevation profile of / })).toBeVisible();
 });
 
+/*
+ * The reason the tooltip exists: folding the profile away is exactly when a
+ * reader wants the map to itself, and before this it left a hover with a dot
+ * and no numbers at all.
+ */
+test("hovering the route labels the position while the profile is folded away", async ({
+  offlinePage: page,
+}) => {
+  await openRoute(page, LINE_ROUTE.provider, LINE_ROUTE.routeId, LINE_ROUTE.stageOrder);
+
+  /*
+   * Landed on the route while the profile is still open, at the same point
+   * "dragging along the route picks the same stretch off the map" uses. The
+   * card is folded from the keyboard rather than by clicking it, so the mouse
+   * itself never leaves the map — a real click would move the pointer to the
+   * button first and report the very `mouseout` this is checking survives.
+   */
+  const region = mapRegion(page);
+  const box = await region.boundingBox();
+  const panel = await page.locator(".route-panel").boundingBox();
+  expect(box).not.toBeNull();
+  if (!box) {
+    return;
+  }
+  const x = ((panel ? panel.x + panel.width : box.x) + box.x + box.width) / 2;
+  const y = box.y + box.height / 2;
+  await page.mouse.move(x, y);
+  // Proof the point really is on the line, before the readout it would have
+  // shown this on is folded away.
+  await expect(page.locator(".elevation-profile__readout")).toContainText("%");
+
+  const collapse = page.getByRole("button", { name: "Hide the profile" });
+  await collapse.focus();
+  await collapse.press("Enter");
+  await expect(page.getByRole("img", { name: /^Elevation profile of / })).toBeHidden();
+
+  const tooltip = page.locator(".route-position-tooltip");
+  await expect(tooltip).toBeVisible();
+  await expect(tooltip).toContainText("from start");
+  await expect(tooltip).toContainText("to end");
+  await expect(tooltip).toContainText("%");
+  // The stage's one classified band, named from the same styles the key uses.
+  await expect(tooltip).toContainText("Asphalt");
+
+  // Moving onto the panel takes the pointer off the map, the same way leaving
+  // the canvas through `mouseout` does.
+  const foldedPanel = await page.locator(".route-panel").boundingBox();
+  expect(foldedPanel).not.toBeNull();
+  if (foldedPanel) {
+    await page.mouse.move(
+      foldedPanel.x + foldedPanel.width / 2,
+      foldedPanel.y + foldedPanel.height / 2,
+    );
+  }
+  await expect(tooltip).toBeHidden();
+});
+
 test("the way back to the library is reachable from the keyboard", async ({
   offlinePage: page,
 }) => {
