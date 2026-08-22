@@ -188,6 +188,11 @@ func TestReporterSendsRecoveryWhenSourceSucceedsAfterBeingStale(t *testing.T) {
 	reporter.Run(t.Context())
 	require.Len(t, notifier.messages, 2, "want the routine success and the recovery")
 	assert.Equal(t, "source recovered: trusted inventory is fresh again", notifier.messages[1].message)
+
+	// The incident the recovery closed must not still be open on the books: a
+	// second successful tick is routine, not a second recovery.
+	reporter.Run(t.Context())
+	assert.Len(t, notifier.messages, 3, "a second success after recovery sent a second recovery message")
 }
 
 // An unreadable suppression record must not be treated as "nothing to
@@ -222,7 +227,33 @@ func TestReporterStaleRecoveryKeepsGoingWhenTheNotificationCannotBeSent(t *testi
 	reporter := newReporter(t, runner, state, notifier)
 	reporter.now = func() time.Time { return time.Date(2026, time.August, 18, 9, 0, 0, 0, time.UTC) }
 
-	assert.NotPanics(t, func() { reporter.Run(t.Context()) }, "a refused recovery notification must not stop the run")
+	reporter.Run(t.Context())
+	_, notified, err := state.LastFailureNotification(t.Context(), staleCategory)
+	require.NoError(t, err, "LastFailureNotification()")
+	assert.True(t, notified, "a recovery Pushover refused still closed the incident")
+}
+
+// A cleared suppression record that cannot be written leaves the incident
+// open on the books rather than silently losing it: the next success tries
+// the same recovery again.
+func TestReporterKeepsTheStaleRecordWhenItCannotClearAfterRecovery(t *testing.T) {
+	state := &fakeRunState{
+		source:          true,
+		clearFailureErr: errors.New("state unavailable"),
+		lastFailure: map[string]time.Time{
+			staleCategory: time.Date(2026, time.August, 17, 8, 30, 0, 0, time.UTC),
+		},
+	}
+	runner := &reportingRunner{source: Result{Phase: PhaseSource, Outcome: OutcomeSucceeded}}
+	notifier := &fakeNotifier{}
+	reporter := newReporter(t, runner, state, notifier)
+	reporter.now = func() time.Time { return time.Date(2026, time.August, 18, 9, 0, 0, 0, time.UTC) }
+
+	reporter.Run(t.Context())
+	require.Len(t, notifier.messages, 2, "want the routine success and the recovery attempt")
+	_, notified, err := state.LastFailureNotification(t.Context(), staleCategory)
+	require.NoError(t, err, "LastFailureNotification()")
+	assert.True(t, notified, "the stale record was cleared despite the clear failing")
 }
 
 // A stale alert Pushover refuses is not recorded as sent, so the next tick
@@ -381,6 +412,7 @@ type fakeRunState struct {
 	successfulRunsErr error
 	lastFailureErr    error
 	recordFailureErr  error
+	clearFailureErr   error
 	lastFailure       map[string]time.Time
 	lastPhase         map[string]string
 	lastSuccessAt     map[string]time.Time
@@ -535,6 +567,14 @@ func (s *fakeRunState) LastFailureNotification(_ context.Context, category strin
 }
 
 func (s *fakeRunState) RecordFailureNotification(_ context.Context, category string, sentAt time.Time) error {
+	if sentAt.IsZero() {
+		if s.clearFailureErr != nil {
+			return s.clearFailureErr
+		}
+		delete(s.lastFailure, category)
+
+		return nil
+	}
 	if s.recordFailureErr != nil {
 		return s.recordFailureErr
 	}

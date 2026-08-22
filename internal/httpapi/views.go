@@ -181,14 +181,18 @@ type syncView struct {
 // derived from local state alone — the last successful source phase completion
 // against the configured bound — so reading it costs no provider call.
 type trustedInventoryView struct {
-	// LastSuccessAt is absent until a source phase has ever succeeded.
+	// LastSuccessAt is absent until a source phase has ever succeeded, which is
+	// what distinguishes that case from a true age of zero: AgeSeconds is
+	// always present and reads 0 in both, and cannot carry the distinction on
+	// its own without the ",omitempty" on a plain int also dropping a
+	// perfectly valid zero age read immediately after a successful refresh.
 	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
 	LastSuccessAt string `json:"last_success_at,omitempty"`
 	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	MaxAgeSeconds int64 `json:"max_age_seconds"`
+	AgeSeconds int64 `json:"age_seconds"`
 	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	AgeSeconds int64 `json:"age_seconds,omitempty"`
-	Fresh      bool  `json:"fresh"`
+	MaxAgeSeconds int64 `json:"max_age_seconds"`
+	Fresh         bool  `json:"fresh"`
 }
 
 // surfaceView reports how much of the library carries a usable classification.

@@ -24,6 +24,10 @@ type RunState interface {
 	RecordSyncRun(ctx context.Context, phase string, startedAt, finishedAt time.Time, outcome, detail string, sourceStages, created, updated, deleted int) (string, error)
 	RecordTargetRun(ctx context.Context, targetID string, finishedAt time.Time, outcome, detail string) error
 	LastFailureNotification(ctx context.Context, category string) (sentAt time.Time, found bool, err error)
+	// RecordFailureNotification records a delivered notification at sentAt, or
+	// clears the category's suppression record entirely when sentAt is the
+	// zero value — the two are complements of the same record, not separate
+	// concerns.
 	RecordFailureNotification(ctx context.Context, category string, sentAt time.Time) error
 	// LastSuccessfulPhaseCompletion returns when a phase last recorded a
 	// success, which is what its trusted inventory age is measured against.
@@ -326,6 +330,13 @@ func (r *Reporter) checkStaleness(ctx context.Context, now time.Time, sourceStor
 			if sendErr := r.notifier.Send(
 				ctx, "Domestique sync", "source recovered: trusted inventory is fresh again",
 			); sendErr != nil {
+				return
+			}
+			// Cleared only once the recovery has actually gone out: a clear that
+			// ran regardless would end the incident on a message the operator
+			// never received. Left uncleared on a write failure, the next success
+			// tries the same recovery again rather than losing it.
+			if clearErr := r.state.RecordFailureNotification(ctx, staleCategory, time.Time{}); clearErr != nil {
 				return
 			}
 		}

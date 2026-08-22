@@ -1087,6 +1087,31 @@ func TestHandlerReportsTrustedInventoryAgeAndFreshness(t *testing.T) {
 	assert.Equal(t, int64((24*time.Hour+30*time.Minute)/time.Second), view.Sync.TrustedInventory.AgeSeconds, "age_seconds")
 }
 
+// An age of exactly zero, read immediately after a successful refresh, is
+// still reported rather than omitted alongside an omitempty int's zero value.
+func TestHandlerReportsAZeroAgeRatherThanOmittingIt(t *testing.T) {
+	now := time.Date(2026, time.August, 17, 8, 30, 0, 0, time.UTC)
+	state := &fakeState{lastSuccessAt: map[string]time.Time{"source": now}}
+	handler := newHandlerWithStaleAfter(t, state, 24*time.Hour, now)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/status"))
+	assert.Contains(t, response.Body.String(), `"age_seconds":0`, "a zero age was omitted from the response")
+}
+
+// A recorded success later than now — a clock that has moved backwards, or a
+// success that races ahead of it — must never be reported as a negative age.
+func TestHandlerClampsANegativeAgeToZero(t *testing.T) {
+	now := time.Date(2026, time.August, 17, 8, 30, 0, 0, time.UTC)
+	state := &fakeState{lastSuccessAt: map[string]time.Time{"source": now.Add(time.Hour)}}
+	handler := newHandlerWithStaleAfter(t, state, 24*time.Hour, now)
+
+	view := statusOf(t, handler)
+	require.NotNil(t, view.Sync.TrustedInventory, "want a freshness claim")
+	assert.Zero(t, view.Sync.TrustedInventory.AgeSeconds, "a negative age was not clamped to zero")
+	assert.True(t, view.Sync.TrustedInventory.Fresh, "a clamped age was reported stale")
+}
+
 // A run that has not finished must not be reported as the last one that did.
 // An operator who has just pressed a button would read "succeeded" as their
 // answer, and nothing in the response would say otherwise.

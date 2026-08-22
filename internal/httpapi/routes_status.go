@@ -369,7 +369,7 @@ func (h *Handler) trigger(writer http.ResponseWriter, phase SyncPhase) {
 // reported as fresh: a service that has never completed a source run has no
 // trusted inventory yet, which is not the same claim as a stale one.
 func (h *Handler) trustedInventoryFreshness(ctx context.Context) (*trustedInventoryView, error) {
-	view := &trustedInventoryView{Fresh: true, MaxAgeSeconds: int64(h.sourceStaleAfter.Seconds())}
+	view := &trustedInventoryView{Fresh: true, MaxAgeSeconds: int64(h.sourceStaleAfter / time.Second)}
 	lastSuccess, found, err := h.state.LastSuccessfulPhaseCompletion(ctx, string(SyncPhaseSource))
 	if err != nil {
 		return nil, fmt.Errorf("reading the trusted inventory's last success: %w", err)
@@ -377,9 +377,12 @@ func (h *Handler) trustedInventoryFreshness(ctx context.Context) (*trustedInvent
 	if !found {
 		return view, nil
 	}
-	age := h.now().Sub(lastSuccess)
+	// Clamped rather than reported negative: a wall clock that has moved
+	// backwards, or a recorded success that races ahead of it, is a clock
+	// problem elsewhere and must not be read here as a claim about the future.
+	age := max(h.now().Sub(lastSuccess), 0)
 	view.LastSuccessAt = lastSuccess.Format(time.RFC3339)
-	view.AgeSeconds = int64(age.Seconds())
+	view.AgeSeconds = int64(age / time.Second)
 	view.Fresh = age < h.sourceStaleAfter
 
 	return view, nil

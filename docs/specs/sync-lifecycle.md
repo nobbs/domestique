@@ -595,10 +595,15 @@ current instant. Reading it starts no provider work and is evaluated on every
 scheduled tick, whether or not the source phase ran on that tick, because the
 inventory can go stale while the schedule has that half switched off.
 
-`last_success_at` and `age_seconds` are both absent until a source phase has
-ever succeeded: a service with no trusted inventory yet has nothing to call
-stale, which is a different claim from a stale one. `fresh` is `true` in that
-case. Once a success is recorded, `fresh` is `age_seconds < max_age_seconds`.
+`last_success_at` is absent until a source phase has ever succeeded: a service
+with no trusted inventory yet has nothing to call stale, which is a different
+claim from a stale one. `fresh` is `true` in that case. `age_seconds` is
+always present, including an age of exactly zero read immediately after a
+successful refresh, and is never negative: a recorded success later than the
+reporting instant is clamped to zero rather than read as a claim about the
+future. `age_seconds` reads `0` before any success too, which `last_success_at`
+being absent is what tells apart from a true zero age. `fresh` is
+`age_seconds < max_age_seconds`.
 
 A stale reading here never relaxes a deletion gate or implies that any target
 holds current state; convergence and the deletion gates are unaffected and are
@@ -733,7 +738,9 @@ stale tick is suppressed for six hours, the same window and the same
 `notification_state` category an ordinary phase failure uses, kept apart from
 any real phase-and-failure pair. A source phase that then succeeds sends the
 recovery signal unconditionally — never held back by the success policy — the
-same way an ordinary recovery is. A service whose source phase has never once
+same way an ordinary recovery is, and closes the suppression record so the
+recovery is a one-shot signal: a later success with no new stale incident in
+between sends nothing further. A service whose source phase has never once
 succeeded has no trusted inventory to call stale, and is never notified as one.
 
 ### The success policy
