@@ -3,10 +3,11 @@
  * history.
  *
  * Writing is always to Wahoo, so that half is fixed. Reading is from whichever
- * sources are configured, so that half's name follows them: a single configured
- * source is named, because that is still the friendlier answer while it stays
- * simple; more than one, or none the page can name yet, reads as the library
- * itself rather than naming any one source.
+ * sources are configured, so that half's name follows them: exactly one
+ * configured source is named — even one this build does not recognise,
+ * `providerLabel` falls back to the wire value itself — because that stays the
+ * friendlier answer while it is simple. Zero configured sources, or more than
+ * one, reads as the library itself rather than naming any single source.
  */
 
 import type { SyncPhase } from "../api/types";

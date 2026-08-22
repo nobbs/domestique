@@ -269,7 +269,7 @@ func Classifications(stages []route.Stage) ([]Classification, error) {
 		classifications = append(classifications, Classification{
 			ContentHash:   stage.ContentHash(),
 			Ranges:        encoded,
-			Provider:      spec.sourceProvider(),
+			Provider:      stage.Key().Provider(),
 			MatchedMetres: surface.MatchedMetres(geometry, kinds),
 			RouteID:       spec.routeID,
 			StageOrder:    spec.stageOrder,
