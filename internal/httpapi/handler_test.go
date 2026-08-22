@@ -568,6 +568,35 @@ func TestHandlerNamesOneOriginOnceForTwoBasemapsSharingIt(t *testing.T) {
 		"one origin serving two cartographies must be named once per directive: %q", policy)
 }
 
+// TestHandlerAcceptsADarkStyleOnItsOriginRegardlessOfHostCase mirrors the
+// configuration layer's sameOrigin, which treats host case as insignificant.
+// A dark style differing from its light counterpart only by host case is on
+// the origin a browser would use, and must not fail startup here after
+// passing that same check in the configuration.
+func TestHandlerAcceptsADarkStyleOnItsOriginRegardlessOfHostCase(t *testing.T) {
+	handler, err := New(
+		&Options{
+			TargetIDs: []string{"rider-a"},
+			Basemaps: []Basemap{{
+				Name:         "Streets",
+				StyleURL:     testTileStyleURL,
+				StyleURLDark: "https://TILES.example.test/styles/dark",
+			}},
+			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
+			AccessEmail:      testAccessEmail,
+			BrowserOriginURL: testBrowserOriginURL,
+		},
+		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{},
+	)
+	require.NoError(t, err, "New()")
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/status"))
+	policy := response.Header().Get("Content-Security-Policy")
+	assert.Equalf(t, 2, strings.Count(policy, "https://"),
+		"a host differing only by case must not be named as a second origin: %q", policy)
+}
+
 func TestHandlerSetsPolicyAndCacheHeaders(t *testing.T) {
 	handler := newTestHandler(t)
 

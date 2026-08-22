@@ -690,5 +690,9 @@ func originOf(value string) (string, error) {
 		return "", errors.New("tile style URL must be an absolute HTTPS URL")
 	}
 
-	return parsed.Scheme + "://" + parsed.Host, nil
+	// Lowercased because a host is not case-sensitive, matching sameOrigin's
+	// comparison in the configuration layer: a dark style differing from its
+	// light counterpart only by host case is the same origin a browser would
+	// use, and must not fail here after passing validation there.
+	return parsed.Scheme + "://" + strings.ToLower(parsed.Host), nil
 }
