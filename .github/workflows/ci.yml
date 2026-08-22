@@ -758,12 +758,22 @@ jobs:
       cancel-in-progress: false
 
     # Workload identity federation, so the tailnet credential is a short-lived
-    # token GitHub mints for this repository rather than a stored secret. No
-    # checkout happens here, so nothing else is needed.
+    # token GitHub mints for this repository rather than a stored secret. The
+    # read is for the deploy script this job hands to the host.
     permissions:
+      contents: read
       id-token: write
 
     steps:
+      # One file, and no credentials left behind in the checkout: the next steps
+      # of this job reach a production host.
+      - name: Check out the deploy script
+        # v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          sparse-checkout: deploy/domestique-deploy.sh
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
       # The runner joins as an ephemeral tag:github node. Policy lets that tag
       # reach exactly port 22 of tag:domestique, as one named account.
       - name: Join the tailnet
@@ -774,6 +784,23 @@ jobs:
           audience: ${{ vars.TS_DEPLOY_AUDIENCE }}
           tags: tag:github
           ping: ${{ vars.DOMESTIQUE_HOST }}
+      # The host runs its own copy of the script, so a copy left behind is a
+      # deployment whose gates exist only in this repository. Sending it is what
+      # keeps the two the same file; the host refuses anything that does not
+      # arrive as a bash script that parses, and says nothing when they match.
+      #
+      # Before the deploy rather than after it, so the deploy that follows is
+      # already the behaviour this commit describes.
+      - name: Install the deploy script
+        env:
+          DEPLOY_HOST: ${{ vars.DOMESTIQUE_HOST }}
+          DEPLOY_USER: ${{ vars.DOMESTIQUE_DEPLOY_USER }}
+        run: |
+          set -eu
+
+          tailscale ssh "${DEPLOY_USER}@${DEPLOY_HOST}" \
+            sudo /usr/local/lib/domestique/domestique-deploy.sh --install-self \
+            < deploy/domestique-deploy.sh
       # Only the digest crosses the boundary. The host composes the reference
       # from its own configured repository, pins it, restarts the service, and
       # rolls back if the health gate fails; this job is green only if that

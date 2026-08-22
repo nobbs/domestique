@@ -148,6 +148,37 @@ func TestTheDeployScriptChecksEveryPublishedMapping(t *testing.T) {
 	assert.Contains(t, script, `done <<< "${published}"`)
 }
 
+// Every gate above is a property of the script the host runs, not of the script
+// in this repository, and the two were three changes apart before the deploy job
+// started sending its copy over. These tests are only worth their assertions
+// while that step is there, and while it runs before the deploy it applies to.
+func TestTheDeployJobInstallsTheScriptBeforeDeploying(t *testing.T) {
+	workflow := readRepositoryFile(t, ".github/workflows/ci.yml")
+
+	install := strings.Index(workflow, "--install-self")
+	require.NotEqual(t, -1, install, "the deploy job must send the repository's copy of the script")
+	assert.Contains(t, workflow, "< deploy/domestique-deploy.sh", "the copy sent must be this repository's")
+
+	deploy := strings.Index(workflow, `domestique-deploy.sh "${DIGEST}"`)
+	require.NotEqual(t, -1, deploy, "the deploy job must still deploy the published digest")
+	assert.Less(t, install, deploy, "the script is installed before the deploy it applies to")
+}
+
+// The install path is the one input to the script that is not a digest, so what
+// it accepts is a contract of its own: a script that arrives empty, mangled by a
+// terminal, or unparsable is refused rather than installed and discovered at the
+// next deploy — when the copy that would report the problem is the broken one.
+func TestTheDeployScriptRefusesAnUninstallableScript(t *testing.T) {
+	script := readRepositoryFile(t, "deploy/domestique-deploy.sh")
+
+	install := script[strings.Index(script, "install_self() {"):]
+
+	assert.Contains(t, install, `[[ ! -s "${incoming}" ]]`, "an empty script is refused")
+	assert.Contains(t, install, `grep -q $'\r'`, "a terminal-mangled script is refused")
+	assert.Contains(t, install, `bash -n "${incoming}"`, "a script that does not parse is refused")
+	assert.Contains(t, install, `mv "${incoming}" "${self}"`, "the running file is renamed over, not truncated")
+}
+
 // Superseded images are pruned by the digest each image carries, not by the one
 // the listing prints. `docker images` leaves that column empty for an image
 // whose tag has moved on, which is every image the prune is for, so a prune
