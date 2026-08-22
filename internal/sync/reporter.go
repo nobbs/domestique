@@ -200,15 +200,19 @@ func (r *Reporter) runPhases(ctx context.Context, source, targets bool) Result {
 		r.enter(PhaseTargets)
 		result = r.run(ctx, r.runner.RunTargets)
 	}
+	// One instant for everything this pass settles below, so a tick landing on
+	// a second boundary cannot make the digest window and the whole-second
+	// staleness comparison disagree about what time it ran at.
+	now := r.now().UTC()
 	// The digest is considered once the pass has recorded everything it did, so
 	// its window closes on a whole pass rather than between two halves.
 	if r.success.Policy == SuccessDigest {
-		r.notifyDigest(ctx, r.now().UTC())
+		r.notifyDigest(ctx, now)
 	}
 	// Checked every pass, whether or not the source phase ran this tick: the
 	// inventory can go stale while the schedule has it switched off, and this
 	// reads only local state, so it costs no provider call either way.
-	r.checkStaleness(ctx, r.now().UTC(), sourceStored)
+	r.checkStaleness(ctx, now, sourceStored)
 	// Enrichment comes after everything a rider is waiting for, and only when
 	// this pass stored something new to enrich.
 	if sourceStored {
