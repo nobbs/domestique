@@ -182,7 +182,7 @@ func deployJob(t *testing.T) string {
 	}
 
 	var steps []string
-	for _, line := range strings.Split(job, "\n") {
+	for line := range strings.SplitSeq(job, "\n") {
 		if !strings.HasPrefix(strings.TrimSpace(line), "#") {
 			steps = append(steps, line)
 		}
