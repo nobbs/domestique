@@ -14,6 +14,7 @@ import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Position, SurfaceRange } from "../api/types";
 import { formatDistance, formatElevation } from "../lib/format";
+import type { Profile } from "../lib/profile";
 import { buildProfile, sampleAt } from "../lib/profile";
 import { summariseSurface } from "../lib/surface";
 
@@ -33,6 +34,9 @@ const drawn = vi.hoisted(() => ({
   // Where the tooltip's own hover point projects to on screen, so a test can
   // move it into whichever quadrant it wants to check the anchor flips into.
   projected: { x: 400, y: 300 },
+  // The pane's own size, so a test can ask about a point with no room to
+  // either side of it — a pane narrower than the tooltip itself, say.
+  containerSize: { clientWidth: 800, clientHeight: 600 },
   // Whether the map instance has resolved yet, for the moment before it has.
   mapReady: true,
 }));
@@ -61,7 +65,7 @@ vi.mock("react-map-gl/maplibre", () => ({
       ? {
           getZoom: () => 13,
           getCenter: () => ({ lat: 49, lng: 8 }),
-          getContainer: () => ({ clientWidth: 800, clientHeight: 600 }),
+          getContainer: () => drawn.containerSize,
           project: () => drawn.projected,
           on: () => {},
           off: () => {},
@@ -98,6 +102,7 @@ beforeEach(() => {
   drawn.layers = [];
   drawn.markers = [];
   drawn.projected = { x: 400, y: 300 };
+  drawn.containerSize = { clientWidth: 800, clientHeight: 600 };
   drawn.mapReady = true;
 });
 
@@ -109,6 +114,9 @@ function show(
     darkBasemap?: boolean;
     activeMetres?: number | null;
     withSurfaceSummary?: boolean;
+    /** Defaults to the same whole-route profile `profile` builds, as an unzoomed chart would. */
+    activeProfile?: Profile | null;
+    profileCollapsed?: boolean;
   } = {},
 ) {
   const onZoomChange = vi.fn();
@@ -126,7 +134,9 @@ function show(
       surfaceSummary={surfaceSummary}
       darkBasemap={props.darkBasemap ?? false}
       profile={profile}
+      activeProfile={props.activeProfile ?? null}
       activeMetres={props.activeMetres ?? null}
+      profileCollapsed={props.profileCollapsed ?? false}
       zoomWindow={props.zoomWindow ?? null}
       onZoomChange={onZoomChange}
     />,
@@ -282,13 +292,20 @@ describe("the position tooltip", () => {
     }
   });
 
-  it("is hidden from assistive technology, since the readout already announces it", () => {
+  it("is hidden from assistive technology while the profile's own readout is mounted", () => {
     show({ activeMetres: ACTIVE_METRES });
 
-    expect(document.querySelector(".route-position-tooltip")).toHaveAttribute(
-      "aria-hidden",
-      "true",
-    );
+    const tooltip = document.querySelector(".route-position-tooltip");
+    expect(tooltip).toHaveAttribute("aria-hidden", "true");
+    expect(tooltip).not.toHaveAttribute("aria-live");
+  });
+
+  it("carries its own live announcement once the profile card is folded away", () => {
+    show({ activeMetres: ACTIVE_METRES, profileCollapsed: true });
+
+    const tooltip = document.querySelector(".route-position-tooltip");
+    expect(tooltip).toHaveAttribute("aria-live", "polite");
+    expect(tooltip).not.toHaveAttribute("aria-hidden");
   });
 
   it("disappears once the position is cleared", () => {
@@ -297,15 +314,58 @@ describe("the position tooltip", () => {
     expect(document.querySelector(".route-position-tooltip")).not.toBeInTheDocument();
   });
 
-  it("opens down and to the right from a point near the top-left of the pane", () => {
+  it("shows zero, not an em dash, for ground already ridden at the very start", () => {
+    show({ activeMetres: 0 });
+
+    expect(screen.getByText("0 m from start")).toBeInTheDocument();
+  });
+
+  it("shows zero, not an em dash, for ground left to ride at the very finish", () => {
+    const whole = buildProfile(COORDINATES);
+    expect(whole).not.toBeNull();
+    if (!whole) {
+      return;
+    }
+
+    show({ activeMetres: whole.endMetres });
+
+    expect(screen.getByText("0 m to end")).toBeInTheDocument();
+  });
+
+  it("reads its sample from the profile the chart is displaying, not the whole route's", () => {
+    // Elevation climbs steadily along the same geometry `COORDINATES` draws, so
+    // its gradient and elevation at ACTIVE_METRES plainly differ from the flat
+    // whole-route profile `show()` otherwise builds.
+    const climbing = buildProfile(
+      COORDINATES.map(
+        ([longitude, latitude], index): Position => [longitude, latitude, index * 20],
+      ),
+    );
+    expect(climbing).not.toBeNull();
+    if (!climbing) {
+      return;
+    }
+    const active = sampleAt(climbing, ACTIVE_METRES);
+    expect(active).not.toBeNull();
+    if (!active) {
+      return;
+    }
+
+    show({ activeMetres: ACTIVE_METRES, activeProfile: climbing });
+
+    expect(screen.getByText(formatElevation(active.elevationMetres))).toBeInTheDocument();
+    expect(screen.getByText(`${active.gradientPercent.toFixed(1)}%`)).toBeInTheDocument();
+  });
+
+  it("opens down and to the right from a point with room on every side", () => {
     drawn.projected = { x: 100, y: 100 };
     const view = show({ activeMetres: ACTIVE_METRES });
 
     expect(view.marker()).toEqual({ anchor: "top-left", offset: [14, 14] });
   });
 
-  it("opens up and to the left from a point near the bottom-right of the pane", () => {
-    drawn.projected = { x: 700, y: 500 };
+  it("opens up and to the left once neither side near the bottom-right corner has room", () => {
+    drawn.projected = { x: 780, y: 580 };
     const view = show({ activeMetres: ACTIVE_METRES });
 
     expect(view.marker()).toEqual({ anchor: "bottom-right", offset: [-14, -14] });
@@ -316,5 +376,48 @@ describe("the position tooltip", () => {
 
     expect(() => show({ activeMetres: ACTIVE_METRES })).not.toThrow();
     expect(document.querySelector(".route-position-tooltip")).not.toBeInTheDocument();
+  });
+
+  /*
+   * A pane narrower than the tooltip itself, so neither side has the room the
+   * box asks for. Both points sit in the same pane; only which one has more
+   * room changes, which is what decides the side chosen.
+   */
+  it("opens toward whichever side has more room, when neither side fully fits", () => {
+    drawn.containerSize = { clientWidth: 100, clientHeight: 600 };
+    drawn.projected = { x: 60, y: 100 };
+    const view = show({ activeMetres: ACTIVE_METRES });
+
+    expect(view.marker()?.anchor).toBe("top-right");
+  });
+
+  it("opens toward the other side with more room, the other way round", () => {
+    drawn.containerSize = { clientWidth: 100, clientHeight: 600 };
+    drawn.projected = { x: 30, y: 100 };
+    const view = show({ activeMetres: ACTIVE_METRES });
+
+    expect(view.marker()?.anchor).toBe("top-left");
+  });
+
+  it("measures its own rendered box once mounted, replacing the default guess", () => {
+    // jsdom lays nothing out, so the observed size is not asserted here — this
+    // is the wiring proof that the effect subscribes, fires, and cleans up
+    // without a real browser, which the anchor tests above cannot exercise.
+    class StubResizeObserver {
+      constructor(private readonly callback: ResizeObserverCallback) {}
+      observe() {
+        this.callback([], this as unknown as ResizeObserver);
+      }
+      unobserve() {}
+      disconnect() {}
+    }
+    const original = globalThis.ResizeObserver;
+    globalThis.ResizeObserver = StubResizeObserver as unknown as typeof ResizeObserver;
+
+    try {
+      expect(() => show({ activeMetres: ACTIVE_METRES })).not.toThrow();
+    } finally {
+      globalThis.ResizeObserver = original;
+    }
   });
 });

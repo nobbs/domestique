@@ -441,8 +441,10 @@ export function RoutesPage() {
                   surface={surfaceSummary ? surface?.ranges : undefined}
                   surfaceSummary={surfaceSummary}
                   profile={routeProfile}
+                  activeProfile={windowed ?? routeProfile}
                   activeMetres={activeMetres}
                   onActiveChange={setActiveMetres}
+                  profileCollapsed={chartCollapsed}
                   zoomWindow={shownWindow}
                   onZoomChange={onZoomChange}
                   highlight={highlight}
