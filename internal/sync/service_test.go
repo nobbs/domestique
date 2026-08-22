@@ -232,7 +232,7 @@ func TestServiceRewritesAStageWhosePushedRevisionWasForgotten(t *testing.T) {
 	}
 	service, err := New(
 		&Options{TargetIDs: []string{"a"}, MaxDeletionsPerTarget: 5},
-		state, &fakeSource{}, identityProcessor{}, &fakeEncoder{}, target, nil,
+		state, []Source{&fakeSource{}}, identityProcessor{}, &fakeEncoder{}, target, nil,
 	)
 	require.NoError(t, err, "New()")
 
@@ -255,7 +255,7 @@ func TestServiceSupportsOneTarget(t *testing.T) {
 	desired := testStage(t, 1, 1, "current", "current-hash")
 	state := newFakeState("a")
 	target := newFakeTarget()
-	service, err := New(&Options{TargetIDs: []string{"a"}, MaxDeletionsPerTarget: 5}, state, &fakeSource{stages: []route.Stage{desired}}, identityProcessor{}, &fakeEncoder{}, target, nil)
+	service, err := New(&Options{TargetIDs: []string{"a"}, MaxDeletionsPerTarget: 5}, state, []Source{&fakeSource{stages: []route.Stage{desired}}}, identityProcessor{}, &fakeEncoder{}, target, nil)
 	require.NoError(t, err, "New()")
 
 	result := runBoth(t.Context(), service)
@@ -273,7 +273,7 @@ func TestServiceUpdatesLegacyEncoderOutput(t *testing.T) {
 		contentHash:    desired.ContentHash(),
 		wahooRouteID:   101,
 	}
-	service, err := New(&Options{TargetIDs: []string{"a"}, MaxDeletionsPerTarget: 5}, state, &fakeSource{stages: []route.Stage{desired}}, identityProcessor{}, &fakeEncoder{}, target, nil)
+	service, err := New(&Options{TargetIDs: []string{"a"}, MaxDeletionsPerTarget: 5}, state, []Source{&fakeSource{stages: []route.Stage{desired}}}, identityProcessor{}, &fakeEncoder{}, target, nil)
 	require.NoError(t, err, "New()")
 
 	result := runBoth(t.Context(), service)
@@ -343,7 +343,7 @@ func newAnnotatedService(
 	service, err := New(
 		&Options{TargetIDs: []string{"a"}, MaxDeletionsPerTarget: 5},
 		state,
-		source,
+		[]Source{source},
 		exportProcessor{},
 		&fakeEncoder{},
 		target,
@@ -424,16 +424,25 @@ func newService(t *testing.T, state *fakeState, source *fakeSource, encoder *fak
 		TargetIDs:                []string{"a", "b"},
 		MaxDeletionsPerTarget:    5,
 		AllowEmptySourceDeletion: allowEmpty,
-	}, state, source, identityProcessor{}, encoder, target, nil)
+	}, state, []Source{source}, identityProcessor{}, encoder, target, nil)
 	require.NoError(t, err, "New()")
 
 	return service
 }
 
 type fakeSource struct {
-	err    error
-	stages []route.Stage
-	calls  int
+	provider route.Provider
+	err      error
+	stages   []route.Stage
+	calls    int
+}
+
+func (s *fakeSource) Provider() route.Provider {
+	if s.provider == "" {
+		return route.ProviderVeloPlanner
+	}
+
+	return s.provider
 }
 
 func (s *fakeSource) Inventory(_ context.Context) ([]route.Stage, error) {
@@ -466,6 +475,8 @@ func (e *fakeEncoder) Encode(_ context.Context, _ route.Stage) ([]byte, error) {
 
 type fakeState struct {
 	trustedErr          error
+	trustedCountErr     error
+	storeErr            error
 	authorizations      map[string]string
 	refreshTokens       map[string]string
 	mappings            map[string]map[route.Key]targetStage
@@ -523,13 +534,33 @@ func (s *fakeState) MarkNeedsReauthorization(_ context.Context, targetID string)
 	return nil
 }
 
-func (s *fakeState) TrustedInventoryCount(_ context.Context) (int, error) {
-	return len(s.trusted), nil
+func (s *fakeState) TrustedInventoryCount(_ context.Context, provider route.Provider) (int, error) {
+	if s.trustedCountErr != nil {
+		return 0, s.trustedCountErr
+	}
+	count := 0
+	for _, stage := range s.trusted {
+		if stage.Key().Provider() == provider {
+			count++
+		}
+	}
+
+	return count, nil
 }
 
-func (s *fakeState) StoreTrustedInventory(_ context.Context, stages []route.Stage) error {
+func (s *fakeState) StoreTrustedInventory(_ context.Context, provider route.Provider, stages []route.Stage) error {
+	if s.storeErr != nil {
+		return s.storeErr
+	}
 	s.storeInventoryCalls++
-	s.trusted = append([]route.Stage(nil), stages...)
+	kept := make([]route.Stage, 0, len(s.trusted))
+	for _, stage := range s.trusted {
+		if stage.Key().Provider() != provider {
+			kept = append(kept, stage)
+		}
+	}
+	kept = append(kept, stages...)
+	s.trusted = kept
 
 	return nil
 }
@@ -702,8 +733,18 @@ func remoteID(targetID string, routeID int64) int64 {
 
 func testStage(t *testing.T, routeID int64, stageOrder int, revision, contentHash string) route.Stage {
 	t.Helper()
+
+	return testProviderStage(t, route.ProviderVeloPlanner, routeID, stageOrder, revision, contentHash)
+}
+
+// testProviderStage2 is a second provider distinct from route.ProviderVeloPlanner,
+// used to exercise multi-source behavior without a second real provider existing.
+const testProviderStage2 route.Provider = "second-provider"
+
+func testProviderStage(t *testing.T, provider route.Provider, routeID int64, stageOrder int, revision, contentHash string) route.Stage {
+	t.Helper()
 	stage, err := route.NewStage(
-		route.ProviderVeloPlanner,
+		provider,
 		routeID,
 		stageOrder,
 		revision,
@@ -716,6 +757,189 @@ func testStage(t *testing.T, routeID int64, stageOrder int, revision, contentHas
 
 	return stage
 }
+
+func newMultiSourceService(t *testing.T, state *fakeState, sources []Source, target *fakeTarget, allowEmpty bool) *Service {
+	t.Helper()
+	service, err := New(&Options{
+		TargetIDs:                []string{"a"},
+		MaxDeletionsPerTarget:    5,
+		AllowEmptySourceDeletion: allowEmpty,
+	}, state, sources, identityProcessor{}, &fakeEncoder{}, target, nil)
+	require.NoError(t, err, "New()")
+
+	return service
+}
+
+// One source failing must not stop the other from being read, and must not
+// widen into a target deletion for the stages the failing source last had.
+func TestServiceIsolatesOneSourceFailureFromTheOthers(t *testing.T) {
+	stale := testStage(t, 1, 1, "old", "old-hash")
+	fresh := testProviderStage(t, testProviderStage2, 1, 1, "new", "new-hash")
+	state := newFakeState("a")
+	state.trusted = []route.Stage{stale}
+	seedMapping(state, "a", &stale, 101)
+	target := newFakeTarget()
+	target.seedRoute("a", &stale, 101)
+	failing := &fakeSource{provider: route.ProviderVeloPlanner, err: errors.New("source unavailable")}
+	healthy := &fakeSource{provider: testProviderStage2, stages: []route.Stage{fresh}}
+	service := newMultiSourceService(t, state, []Source{failing, healthy}, target, false)
+
+	result := service.RunSource(t.Context())
+	assert.Equal(t, OutcomeFailed, result.Outcome, "RunSource() outcome")
+	assert.Equal(t, FailureSource, result.Failure, "RunSource() failure")
+	assert.Equal(t, []SourceResult{
+		{Provider: route.ProviderVeloPlanner, Outcome: OutcomeFailed, Failure: FailureSource},
+		{Provider: testProviderStage2, Outcome: OutcomeSucceeded, StageCount: 1},
+	}, result.Sources, "RunSource() sources")
+	assert.ElementsMatch(t, []route.Stage{stale, fresh}, state.trusted, "the failing source's stages must be kept as last known")
+
+	// The target phase reads the merged inventory back regardless of the source
+	// outcome, exactly as it does when a single source fails outright.
+	targets := service.RunTargets(t.Context())
+	assert.Equal(t, OutcomeSucceeded, targets.Outcome, "RunTargets() outcome")
+	assert.Empty(t, target.deletedRouteIDs, "the failing source's stage must not be deleted from the target")
+	assert.Equal(t, 1, targets.Created, "the healthy source's new stage must be created")
+}
+
+// Two sources at the same route ID and stage order are still two stages, not
+// one, because their identity carries the provider that issued it.
+func TestServiceStoresTheUnionOfMultipleSuccessfulSources(t *testing.T) {
+	first := testStage(t, 1, 1, "current", "current-hash")
+	second := testProviderStage(t, testProviderStage2, 1, 1, "current", "current-hash")
+	state := newFakeState("a")
+	target := newFakeTarget()
+	sourceOne := &fakeSource{provider: route.ProviderVeloPlanner, stages: []route.Stage{first}}
+	sourceTwo := &fakeSource{provider: testProviderStage2, stages: []route.Stage{second}}
+	service := newMultiSourceService(t, state, []Source{sourceOne, sourceTwo}, target, false)
+
+	result := service.RunSource(t.Context())
+	assert.Equal(t, OutcomeSucceeded, result.Outcome, "RunSource() outcome")
+	assert.Equal(t, 2, result.SourceStages, "RunSource() aggregate stage count")
+	assert.ElementsMatch(t, []route.Stage{first, second}, state.trusted, "stored inventory must be the union of both sources")
+}
+
+// The empty-source deletion gate blocks the source that emptied out, but a
+// sibling source that still has stages proceeds normally.
+func TestServiceBlocksOnlyTheSourceThatBecameEmpty(t *testing.T) {
+	staleVelo := testStage(t, 1, 1, "old", "old-hash")
+	freshSecond := testProviderStage(t, testProviderStage2, 2, 1, "current", "current-hash")
+	state := newFakeState("a")
+	state.trusted = []route.Stage{staleVelo}
+	target := newFakeTarget()
+	emptied := &fakeSource{provider: route.ProviderVeloPlanner}
+	healthy := &fakeSource{provider: testProviderStage2, stages: []route.Stage{freshSecond}}
+	service := newMultiSourceService(t, state, []Source{emptied, healthy}, target, false)
+
+	result := service.RunSource(t.Context())
+	assert.Equal(t, OutcomeBlocked, result.Outcome, "RunSource() outcome")
+	assert.Equal(t, FailureEmptySource, result.Failure, "RunSource() failure")
+	assert.Equal(t, []SourceResult{
+		{Provider: route.ProviderVeloPlanner, Outcome: OutcomeBlocked, Failure: FailureEmptySource},
+		{Provider: testProviderStage2, Outcome: OutcomeSucceeded, StageCount: 1},
+	}, result.Sources, "RunSource() sources")
+	assert.ElementsMatch(t, []route.Stage{staleVelo, freshSecond}, state.trusted, "the blocked source's stages must be kept as last known")
+}
+
+// The empty-source acknowledgement releases exactly the source it is set for.
+func TestServiceEmptySourceAcknowledgementReleasesTheBlockedSource(t *testing.T) {
+	staleVelo := testStage(t, 1, 1, "old", "old-hash")
+	state := newFakeState("a")
+	state.trusted = []route.Stage{staleVelo}
+	target := newFakeTarget()
+	emptied := &fakeSource{provider: route.ProviderVeloPlanner}
+	service := newMultiSourceService(t, state, []Source{emptied}, target, true)
+
+	result := service.RunSource(t.Context())
+	assert.Equal(t, OutcomeSucceeded, result.Outcome, "RunSource() outcome")
+	assert.Empty(t, state.trusted, "the acknowledged source's inventory must be allowed to empty out")
+}
+
+func TestServiceFailsASourceWhenItsPriorCountCannotBeRead(t *testing.T) {
+	state := newFakeState("a")
+	state.trustedCountErr = errors.New("state unavailable")
+	service := newMultiSourceService(t, state, []Source{&fakeSource{}}, newFakeTarget(), false)
+
+	result := service.RunSource(t.Context())
+	assert.Equal(t, OutcomeFailed, result.Outcome, "RunSource() outcome")
+	assert.Equal(t, FailureState, result.Failure, "RunSource() failure")
+	assert.Equal(t, []SourceResult{
+		{Provider: route.ProviderVeloPlanner, Outcome: OutcomeFailed, Failure: FailureState},
+	}, result.Sources, "RunSource() sources")
+}
+
+// A source reporting a stage under a provider other than its own would let one
+// source's read corrupt another's stored share, so it is refused outright.
+func TestServiceFailsASourceThatReportsAnotherProvidersStage(t *testing.T) {
+	mismatched := testProviderStage(t, testProviderStage2, 1, 1, "current", "current-hash")
+	source := &fakeSource{provider: route.ProviderVeloPlanner, stages: []route.Stage{mismatched}}
+	service := newMultiSourceService(t, newFakeState("a"), []Source{source}, newFakeTarget(), false)
+
+	result := service.RunSource(t.Context())
+	assert.Equal(t, OutcomeFailed, result.Outcome, "RunSource() outcome")
+	assert.Equal(t, FailureSource, result.Failure, "RunSource() failure")
+}
+
+func TestServiceFailsASourceReportingADuplicateStage(t *testing.T) {
+	one := testStage(t, 1, 1, "current", "current-hash")
+	duplicate := testStage(t, 1, 1, "other", "other-hash")
+	source := &fakeSource{stages: []route.Stage{one, duplicate}}
+	service := newMultiSourceService(t, newFakeState("a"), []Source{source}, newFakeTarget(), false)
+
+	result := service.RunSource(t.Context())
+	assert.Equal(t, OutcomeFailed, result.Outcome, "RunSource() outcome")
+	assert.Equal(t, FailureSource, result.Failure, "RunSource() failure")
+}
+
+func TestServiceFailsASourceWhenItsShareCannotBeStored(t *testing.T) {
+	state := newFakeState("a")
+	state.storeErr = errors.New("state unavailable")
+	source := &fakeSource{stages: []route.Stage{testStage(t, 1, 1, "current", "current-hash")}}
+	service := newMultiSourceService(t, state, []Source{source}, newFakeTarget(), false)
+
+	result := service.RunSource(t.Context())
+	assert.Equal(t, OutcomeFailed, result.Outcome, "RunSource() outcome")
+	assert.Equal(t, FailureState, result.Failure, "RunSource() failure")
+}
+
+func TestNewRejectsAnEmptySourceSet(t *testing.T) {
+	_, err := New(
+		&Options{TargetIDs: []string{"a"}, MaxDeletionsPerTarget: 5},
+		newFakeState("a"), nil, identityProcessor{}, &fakeEncoder{}, newFakeTarget(), nil,
+	)
+	assert.Error(t, err, "New() with no configured sources")
+}
+
+func TestNewRejectsANilSource(t *testing.T) {
+	_, err := New(
+		&Options{TargetIDs: []string{"a"}, MaxDeletionsPerTarget: 5},
+		newFakeState("a"), []Source{nil}, identityProcessor{}, &fakeEncoder{}, newFakeTarget(), nil,
+	)
+	assert.Error(t, err, "New() with a nil source")
+}
+
+func TestNewRejectsASourceWithNoProvider(t *testing.T) {
+	_, err := New(
+		&Options{TargetIDs: []string{"a"}, MaxDeletionsPerTarget: 5},
+		newFakeState("a"), []Source{unnamedSource{}}, identityProcessor{}, &fakeEncoder{}, newFakeTarget(), nil,
+	)
+	assert.Error(t, err, "New() with a source that names no provider")
+}
+
+func TestNewRejectsDuplicateSourceProviders(t *testing.T) {
+	_, err := New(
+		&Options{TargetIDs: []string{"a"}, MaxDeletionsPerTarget: 5},
+		newFakeState("a"), []Source{&fakeSource{}, &fakeSource{}}, identityProcessor{}, &fakeEncoder{}, newFakeTarget(), nil,
+	)
+	assert.Error(t, err, "New() with two sources naming the same provider")
+}
+
+// unnamedSource is a minimal Source whose Provider is deliberately empty,
+// which fakeSource cannot express since it defaults an unset provider.
+type unnamedSource struct{}
+
+func (unnamedSource) Provider() route.Provider { return "" }
+
+func (unnamedSource) Inventory(_ context.Context) ([]route.Stage, error) { return nil, nil }
 
 // A run is recorded once, so its outcome is the worst of what happened. The
 // operator's question is about one Wahoo account, and a run that wrote one slot

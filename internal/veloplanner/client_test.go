@@ -10,7 +10,16 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/nobbs/domestique/internal/route"
 )
+
+func TestClientProviderIsVeloPlanner(t *testing.T) {
+	client, err := New(&Options{BaseURL: "https://example.invalid", Email: []byte("rider@example.invalid"), Password: []byte("secret")})
+	require.NoError(t, err, "New()")
+
+	assert.Equal(t, route.ProviderVeloPlanner, client.Provider(), "Provider()")
+}
 
 func TestClientInventoryUsesFreshAuthenticatedSession(t *testing.T) {
 	var loginCount atomic.Int32

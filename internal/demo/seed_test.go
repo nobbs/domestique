@@ -43,7 +43,7 @@ func TestSeedFillsAStoreWithTheWholeLibrary(t *testing.T) {
 
 	stages, err := demo.Stages()
 	require.NoError(t, err)
-	count, err := store.TrustedInventoryCount(t.Context())
+	count, err := store.TrustedInventoryCount(t.Context(), route.ProviderVeloPlanner)
 	require.NoError(t, err)
 	assert.Equal(t, len(stages), count)
 

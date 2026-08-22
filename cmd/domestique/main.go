@@ -111,7 +111,7 @@ func run(ctx context.Context) error {
 		}()
 		annotator = surface.NewAnnotator(surfaceIndex, store)
 	}
-	reconciler, err := syncservice.New(&syncservice.Options{TargetIDs: targetIDs, MaxDeletionsPerTarget: settings.Sync.MaxDeletionsPerTarget, AllowEmptySourceDeletion: settings.Sync.EmptySourceDeletion == config.EmptySourceDeletionAllow}, store, source, elevation.New(), fit.New(), destination, annotator)
+	reconciler, err := syncservice.New(&syncservice.Options{TargetIDs: targetIDs, MaxDeletionsPerTarget: settings.Sync.MaxDeletionsPerTarget, AllowEmptySourceDeletion: settings.Sync.EmptySourceDeletion == config.EmptySourceDeletionAllow}, store, []syncservice.Source{source}, elevation.New(), fit.New(), destination, annotator)
 	if err != nil {
 		return fmt.Errorf("creating sync service: %w", err)
 	}
