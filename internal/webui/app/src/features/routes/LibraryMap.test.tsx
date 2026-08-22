@@ -47,6 +47,16 @@ vi.mock("../../components/MapCredits", () => ({
   MapCredits: () => <p data-testid="credits">© somebody</p>,
 }));
 
+/*
+ * And the chooser decides nothing here either: what is asked of it in this file
+ * is whether it is offered at all, and where it lands.
+ */
+vi.mock("../../components/BasemapPicker", () => ({
+  BasemapPicker: ({ selectedName }: { selectedName: string }) => (
+    <p data-testid="picker">{selectedName}</p>
+  ),
+}));
+
 vi.mock("../../components/MapViewport", () => ({
   MapViewport: (props: { bounds: unknown; maxZoom: number }) => {
     drawn.viewports.push({ bounds: props.bounds, maxZoom: props.maxZoom });
@@ -362,6 +372,28 @@ describe("LibraryMap", () => {
   });
 
   /*
+   * The chooser goes into the cluster above the credit, and the two travel as
+   * one fragment so that order holds wherever they land. Above rather than
+   * below because the credit is the bottom of the column by obligation: it must
+   * be the thing that is always there, and a control that appears and
+   * disappears with the number of configured basemaps must not push it around.
+   */
+  it("puts the basemap chooser in the cluster, above the credit", () => {
+    show({ basemaps: [], selectedBasemap: "Satellite", onBasemapChange: () => {} });
+
+    const cluster = drawn.container?.querySelector(".maplibregl-ctrl-bottom-left");
+    expect(cluster?.textContent).toBe("Satellite© somebody");
+  });
+
+  // Nothing is listening for a pick, so nothing is offered — the same bargain
+  // the hit band strikes above.
+  it("offers no chooser where no one is listening for one", () => {
+    show();
+
+    expect(screen.queryByTestId("picker")).not.toBeInTheDocument();
+  });
+
+  /*
    * Two pixels of ink is not a target. The band that is actually asked about is
    * far wider and invisible, and it carries the same identity as the line inside
    * it, so what is clicked and what lights up cannot disagree.
@@ -443,8 +475,13 @@ describe("LibraryMap", () => {
    */
   it("keeps the credit on the page when the map reports no cluster", () => {
     drawn.container = document.createElement("div");
-    show();
+    show({ basemaps: [], selectedBasemap: "Streets", onBasemapChange: () => {} });
 
     expect(screen.getByTestId("credits")).toBeInTheDocument();
+    // And in the same order, because the fragment is what moved rather than
+    // each piece finding its own way into the corner.
+    expect(
+      screen.getByTestId("picker").compareDocumentPosition(screen.getByTestId("credits")),
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 });

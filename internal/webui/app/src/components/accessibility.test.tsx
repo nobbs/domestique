@@ -24,6 +24,7 @@ import { SearchPanel } from "../features/routes/SearchPanel";
 import { buildProfile, gradientShares } from "../lib/profile";
 import { summariseSurface } from "../lib/surface";
 import { expectNoAxeViolations } from "../test/axe";
+import { BasemapPicker } from "./BasemapPicker";
 import { Button } from "./Button";
 import { MapCredits } from "./MapCredits";
 import { RouteKey } from "./RouteKey";
@@ -176,6 +177,36 @@ describe("accessibility", () => {
             onChoiceChange={() => {}}
           />
         </QueryClientProvider>,
+      );
+
+      await expectNoAxeViolations(container);
+      unmount();
+    }
+  });
+
+  it("holds for the basemap chooser, folded and unfolded", async () => {
+    // Both halves, for the same reason the credit is checked both ways: folded
+    // it is a button on its own, and the group it names is not in the document.
+    for (const expanded of [true, false]) {
+      const { container, unmount } = render(
+        <BasemapPicker
+          basemaps={[
+            {
+              name: "Streets",
+              styleUrl: "https://tiles.example.test/bright",
+              darkCartography: false,
+            },
+            {
+              name: "Satellite",
+              styleUrl: "https://imagery.example.test/hybrid",
+              darkCartography: true,
+            },
+          ]}
+          selectedName="Streets"
+          onSelect={() => {}}
+          expanded={expanded}
+          onExpandedChange={() => {}}
+        />,
       );
 
       await expectNoAxeViolations(container);

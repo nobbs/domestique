@@ -20,12 +20,41 @@
  * how the suite can tell that the words arrive and the markup does not.
  */
 
+/**
+ * A second provider's name, offered by the harness rather than by the service.
+ *
+ * The demo is configured with one basemap, and one basemap is not a choice — so
+ * a suite that wanted to press the chooser had nothing to press. The harness
+ * rewrites the configuration to offer this one as well; see
+ * `installOfflineBasemap`.
+ */
+export const SECOND_BASEMAP_NAME = "Imagery";
+
+/**
+ * What marks the second provider's style document on the wire.
+ *
+ * A query on the first one's URL rather than a host of its own, because the
+ * service names the origins the page may reach in its Content-Security-Policy
+ * and a second host would be refused by the browser before the harness ever saw
+ * the request — correctly, and for reasons this suite has no business
+ * loosening.
+ */
+export const SECOND_BASEMAP_MARKER = "harness-basemap=imagery";
+
+/** That same style, as a URL the harness answers from memory. */
+export function secondBasemapStyleUrl(styleUrl: string): string {
+  return `${styleUrl}${styleUrl.includes("?") ? "&" : "?"}${SECOND_BASEMAP_MARKER}`;
+}
+
 /** What the fixture style declares, as a provider would: markup and all. */
 export const BASEMAP_ATTRIBUTION_HTML =
   '<a href="https://example.test/">&copy; Demo Cartography</a>';
 
 /** The same credit as the page is obliged to show it: words, no markup. */
 export const BASEMAP_ATTRIBUTION_TEXT = "© Demo Cartography";
+
+/** The second provider's credit, which is how a test knows the map changed hands. */
+export const SECOND_BASEMAP_ATTRIBUTION_TEXT = "© Demo Imagery";
 
 /** A MapLibre style document, as far as this suite needs to describe one. */
 export interface BasemapStyle {
@@ -45,14 +74,18 @@ export interface BasemapStyle {
   }>;
 }
 
-function styleWithBackground(name: string, colour: string): BasemapStyle {
+function styleWithBackground(
+  name: string,
+  colour: string,
+  attribution = BASEMAP_ATTRIBUTION_HTML,
+): BasemapStyle {
   return {
     version: 8,
     name,
     sources: {
       credit: {
         type: "geojson",
-        attribution: BASEMAP_ATTRIBUTION_HTML,
+        attribution,
         data: { type: "FeatureCollection", features: [] },
       },
     },
@@ -65,3 +98,16 @@ export const lightBasemapStyle = styleWithBackground("demo-light", "#f2efe9");
 
 /** Stands in for the operator's dark style. */
 export const darkBasemapStyle = styleWithBackground("demo-dark", "#12161c");
+
+/**
+ * And for a second provider's, which the reader can switch to.
+ *
+ * Its own background and its own credit, because both are how a test can tell
+ * that switching changed the ground rather than merely the name under a radio.
+ * Dark cartography in both schemes, as imagery is.
+ */
+export const secondBasemapStyle = styleWithBackground(
+  "demo-imagery",
+  "#241c14",
+  '<a href="https://imagery.example.test/">&copy; Demo Imagery</a>',
+);
