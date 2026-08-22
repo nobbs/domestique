@@ -12,13 +12,29 @@
 //
 // codecov.yml leaves the patch statuses' target unset, so each compares the
 // patch against the base commit's project coverage for the same flag. This
-// compares it against the head's instead, and that is not an approximation:
-// project coverage is the weighted average of the lines the patch did not touch
-// and the patch itself, so the head's number always lies between the base's and
-// the patch's. A patch that clears the head's number therefore clears the base's,
-// and one that falls short of either falls short of both — the two comparisons
-// have the same sign, which is all a verdict reads. That is why nothing here
-// needs a second report, and so why nothing here goes to the network.
+// compares it against the head's instead, and for the bare comparison that is
+// not an approximation: project coverage is the weighted average of the lines
+// the patch did not touch and the patch itself, so the head's number always
+// lies between the base's and the patch's. A patch that clears the head's
+// number therefore clears the base's, and one that falls short of either falls
+// short of both. That is why nothing here needs a second report, and so why
+// nothing here goes to the network.
+//
+// The threshold is where that stops holding, and the failure would be a false
+// pass. codecov.yml allows the patch to sit 1% under the base, and the head's
+// number is not the base's — a large patch pulls it toward the patch's own,
+// which would let this report a pass where the base is more than a point
+// higher and the status fails. So the slack is not spent blindly. Three
+// verdicts come out of the one measurement:
+//
+//   - patch at or above the head's project coverage: the status passes, with
+//     the threshold untouched and nothing resting on it.
+//   - patch more than a point below it: the base is higher still, so the status
+//     fails.
+//   - patch inside that point: undecidable from this report alone, because the
+//     answer turns on how far the base sits above the head. It is reported as
+//     such and counted as a shortfall, which makes this stricter than the
+//     status within a band under a point wide and never looser.
 //
 // # Partials count against
 //
@@ -111,7 +127,7 @@ func main() {
 
 	fmt.Print(render(lang, against, &result))
 
-	if lang.enforced && !result.passed {
+	if lang.enforced && result.stands != holds {
 		os.Exit(1)
 	}
 }
@@ -141,6 +157,19 @@ func fail(err error) {
 	fmt.Fprintf(os.Stderr, "patchcoverage: %v\n", err)
 	os.Exit(1)
 }
+
+// verdict is what this makes of a patch: the status passes, the status fails,
+// or the answer turns on the base's report and this cannot see it.
+type verdict int
+
+const (
+	holds verdict = iota
+	undecided
+	breaks
+)
+
+// threshold is codecov.yml's 1%, in tenths of a point.
+const threshold = 10
 
 // status is what Codecov calls one measured line. A partial is its own thing
 // rather than a covered line, because the ratio counts it as a miss.
@@ -648,7 +677,7 @@ type result struct {
 	untracked  []string
 	patch      counts
 	project    counts
-	passed     bool
+	stands     verdict
 }
 
 // judge measures the patch against the report, and the report against itself.
@@ -697,12 +726,28 @@ func judge(lang language, measured lines, changed map[string][]int, untracked []
 		}
 	}
 
-	// The threshold codecov.yml sets: room for rounding against a base a fraction
-	// of a point higher, not room for an untested function. A patch that measures
-	// nothing clears the gate, which is what Codecov does with one too.
-	found.passed = found.patch.total == 0 || tenths(found.patch) >= tenths(found.project)-10
+	found.stands = stands(found.patch, found.project)
 
 	return found
+}
+
+// stands reads the three-way verdict off the one measurement. See the package
+// comment for why the middle case cannot be decided without the base's report.
+func stands(patch, project counts) verdict {
+	// A patch that measures nothing clears the gate, which is what Codecov does
+	// with one too.
+	if patch.total == 0 {
+		return holds
+	}
+
+	switch measured := tenths(patch); {
+	case measured >= tenths(project):
+		return holds
+	case measured < tenths(project)-threshold:
+		return breaks
+	default:
+		return undecided
+	}
 }
 
 // tenths is a coverage ratio in tenths of a percent, truncated — codecov.yml's
@@ -729,7 +774,8 @@ func render(lang language, base string, found *result) string {
 	}
 
 	fmt.Fprintf(&out, "  project  %s  (%d/%d lines)\n", percentage(found.project), found.project.covered, found.project.total)
-	fmt.Fprintf(&out, "  needed   %s\n", tenthsString(tenths(found.project)-10))
+	fmt.Fprintf(&out, "  needed   %s, or %s to be certain\n",
+		tenthsString(tenths(found.project)-threshold), tenthsString(tenths(found.project)))
 	fmt.Fprintf(&out, "  verdict  %s\n", verdictOf(lang, found))
 
 	if len(found.uncovered) > 0 {
@@ -761,8 +807,12 @@ func render(lang language, base string, found *result) string {
 
 func verdictOf(lang language, found *result) string {
 	switch {
-	case found.passed:
+	case found.stands == holds:
 		return "pass"
+	case found.stands == undecided && lang.enforced:
+		return "too close to call — under the base by less than the threshold, so\n           this fails where codecov/patch/go may not"
+	case found.stands == undecided:
+		return "too close to call — informational, and blocks nothing"
 	case lang.enforced:
 		return "fail — this is what codecov/patch/go will say"
 	default:

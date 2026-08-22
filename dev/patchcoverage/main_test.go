@@ -327,37 +327,48 @@ func TestJudgeIgnoresAChangedLineTheReportDoesNotHold(t *testing.T) {
 	assert.Equal(t, counts{covered: 1, total: 1}, found.patch)
 }
 
-func TestJudgeComparesThePatchAgainstTheProjectWithinTheThreshold(t *testing.T) {
+// The head's project coverage decides the bare comparison outright, and the
+// threshold is the part it cannot decide: inside that band the answer turns on
+// how far the base sits above the head, which this report does not hold.
+func TestStandsSpendsTheThresholdOnlyWhereItIsSafe(t *testing.T) {
 	t.Parallel()
 
+	project := counts{covered: 800, total: 1000}
+
 	tests := map[string]struct {
-		patch  map[int]status
-		passes bool
+		patch counts
+		want  verdict
 	}{
-		"above the project's own coverage": {
-			patch:  map[int]status{1: covered, 2: covered, 3: covered, 4: covered},
-			passes: true,
-		},
-		"below it by more than the threshold": {
-			patch:  map[int]status{1: covered, 2: missed, 3: missed, 4: missed},
-			passes: false,
-		},
+		"above the project's own coverage":    {patch: counts{covered: 90, total: 100}, want: holds},
+		"exactly the project's own coverage":  {patch: counts{covered: 80, total: 100}, want: holds},
+		"inside the threshold below it":       {patch: counts{covered: 795, total: 1000}, want: undecided},
+		"exactly the threshold below it":      {patch: counts{covered: 790, total: 1000}, want: undecided},
+		"further below than the threshold":    {patch: counts{covered: 789, total: 1000}, want: breaks},
+		"nothing measured, so nothing to owe": {patch: counts{}, want: holds},
 	}
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			measured := lines{"internal/route/patch.go": test.patch, "internal/route/rest.go": {}}
-			for line := range 10 {
-				measured["internal/route/rest.go"][line+1] = covered
-			}
-
-			changed := map[string][]int{"internal/route/patch.go": {1, 2, 3, 4}}
-
-			assert.Equal(t, test.passes, judge(goLanguage(t), measured, changed, nil).passed)
+			assert.Equal(t, test.want, stands(test.patch, project))
 		})
 	}
+}
+
+func TestJudgeReadsTheVerdictOffWhatItMeasured(t *testing.T) {
+	t.Parallel()
+
+	measured := lines{"internal/route/patch.go": {
+		1: covered, 2: missed, 3: missed, 4: missed,
+	}, "internal/route/rest.go": {}}
+	for line := range 10 {
+		measured["internal/route/rest.go"][line+1] = covered
+	}
+
+	changed := map[string][]int{"internal/route/patch.go": {1, 2, 3, 4}}
+
+	assert.Equal(t, breaks, judge(goLanguage(t), measured, changed, nil).stands)
 }
 
 // Nothing measured is nothing to fall short of. Codecov passes a patch with no
@@ -371,7 +382,7 @@ func TestJudgePassesAPatchTheReportMeasuresNothingOf(t *testing.T) {
 	found := judge(goLanguage(t), measured, changed, nil)
 
 	assert.Equal(t, counts{}, found.patch)
-	assert.True(t, found.passed)
+	assert.Equal(t, holds, found.stands)
 }
 
 // An accidental gap in the measured set would otherwise read as a pass, because
@@ -422,6 +433,7 @@ func TestRenderNamesTheUncoveredLinesAndTheVerdict(t *testing.T) {
 	found := result{
 		patch:      counts{covered: 1, total: 2},
 		project:    counts{covered: 9, total: 10},
+		stands:     breaks,
 		uncovered:  []location{{file: "internal/route/stage.go", line: 11}},
 		unmeasured: []string{"internal/httpapi/views.go"},
 		untracked:  []string{"internal/route/new.go"},
@@ -447,7 +459,11 @@ func TestRenderSaysAShortfallBlocksNothingWhereTheStatusIsInformational(t *testi
 	ui, err := languageNamed("ui")
 	require.NoError(t, err)
 
-	out := render(ui, "abc1234", &result{patch: counts{total: 2}, project: counts{covered: 1, total: 1}})
+	out := render(ui, "abc1234", &result{
+		patch:   counts{total: 2},
+		project: counts{covered: 1, total: 1},
+		stands:  breaks,
+	})
 
 	assert.Contains(t, out, "blocks nothing")
 }

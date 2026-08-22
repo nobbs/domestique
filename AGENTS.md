@@ -101,8 +101,10 @@ added line as `file:line`. A Go shortfall fails the task. Learning the same
 thing from CI costs a push, a five-minute run and a round of polling, which is
 where deliveries in this repository have historically lost the most time. Its
 UI number reproduces Codecov's exactly; its Go one is an estimate that reads a
-couple of tenths of a point low, so read a Go verdict inside that margin as
-close rather than as settled.
+couple of tenths of a point low. A patch within a point below the project total
+is reported as too close to call and fails the task, because deciding that band
+needs the base's own report — so it is stricter than the status by under a
+point and never looser.
 [The delivery specification](docs/specs/delivery.md#coverage) states what is
 measured, what is deliberately not, and why the statuses are shaped that way.
 
