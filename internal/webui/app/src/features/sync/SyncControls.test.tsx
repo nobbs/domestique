@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { Status } from "../../api/types";
+import type { Status, WebUIConfig } from "../../api/types";
 import { activeSummary, idleSummary, SyncControls } from "./SyncControls";
 
 function status(overrides: Partial<Status["sync"]> = {}): Status {
@@ -24,9 +24,21 @@ function status(overrides: Partial<Status["sync"]> = {}): Status {
   };
 }
 
-function renderControls(value: Status = status()) {
-  // The seeded status is the whole fixture: without this the query refetches on
-  // mount and every assertion below would have to step over a /v1/status call.
+function config(sourceBaseUrls: Record<string, string> = { veloplanner: "https://v.example" }) {
+  const value: WebUIConfig = {
+    basemaps: [
+      { name: "Streets", styleUrl: "https://tiles.example/style", darkCartography: false },
+    ],
+    sourceBaseUrls,
+  };
+
+  return value;
+}
+
+function renderControls(value: Status = status(), configValue: WebUIConfig = config()) {
+  // The seeded status and config are the whole fixture: without this the
+  // queries refetch on mount and every assertion below would have to step
+  // over a /v1/status or /v1/webui/config call.
   const client = new QueryClient({
     defaultOptions: {
       queries: { retry: false, staleTime: Number.POSITIVE_INFINITY },
@@ -34,6 +46,7 @@ function renderControls(value: Status = status()) {
     },
   });
   client.setQueryData(["status"], value);
+  client.setQueryData(["webui-config"], configValue);
 
   return render(
     <QueryClientProvider client={client}>
@@ -112,6 +125,25 @@ describe("SyncControls", () => {
       screen.getByRole("button", { name: "Run now: Read from VeloPlanner" }),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Run now: Write to Wahoo" })).toBeInTheDocument();
+  });
+
+  // A single configured source is still named, because that stays the
+  // friendlier answer while it is simple.
+  it("reads as the library rather than naming any source when none is configured", () => {
+    renderControls(status(), config({}));
+
+    expect(screen.getByText("Read from the source library")).toBeInTheDocument();
+  });
+
+  // More than one source configured reads the same generic way: naming one of
+  // two would say less than the truth.
+  it("reads as the library rather than naming one source when more than one is configured", () => {
+    renderControls(
+      status(),
+      config({ veloplanner: "https://v.example", komoot: "https://k.example" }),
+    );
+
+    expect(screen.getByText("Read from the source library")).toBeInTheDocument();
   });
 
   // The service refuses a half-named schedule, so a change to one switch has to

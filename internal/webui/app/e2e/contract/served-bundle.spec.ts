@@ -41,7 +41,7 @@ test("the library is drawn from the routes view", async ({ bundlePage: page, api
   // listed until something is asked.
   await expect(page.getByRole("searchbox", { name: "Search the route library" })).toHaveAttribute(
     "placeholder",
-    "Search 6 routes",
+    "Search 7 routes",
   );
   await page.getByRole("searchbox", { name: "Search the route library" }).fill("kaiserstuhl");
   await page.getByRole("button", { name: /Synthetic Kaiserstuhl Loop/ }).click();

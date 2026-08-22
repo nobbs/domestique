@@ -523,7 +523,7 @@ export function RoutesPage() {
           onHighlightChange={setHighlight}
           libraryCount={library.length}
           onClose={close}
-          sourceBaseUrl={config.data?.sourceBaseUrl}
+          sourceBaseUrls={config.data?.sourceBaseUrls ?? {}}
         />
       ) : library.length > 0 ? (
         <SearchPanel

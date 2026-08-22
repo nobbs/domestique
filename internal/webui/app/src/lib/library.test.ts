@@ -51,6 +51,14 @@ describe("matchesQuery", () => {
     expect(matchesQuery(stage(), "descent alpine")).toBe(true);
     expect(matchesQuery(stage(), "alpine summit")).toBe(false);
   });
+
+  // The one filter by source this reuses rather than building a picker of its
+  // own: typing the source's name narrows the library to it.
+  it("matches a stage by its source's display name", () => {
+    expect(matchesQuery(stage({ provider: "veloplanner" }), "veloplanner")).toBe(true);
+    expect(matchesQuery(stage({ provider: "komoot" }), "komoot")).toBe(true);
+    expect(matchesQuery(stage({ provider: "veloplanner" }), "komoot")).toBe(false);
+  });
 });
 
 describe("matchingRoutes", () => {

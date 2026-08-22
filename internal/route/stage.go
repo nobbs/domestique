@@ -28,6 +28,12 @@ type Provider string
 // ExternalID renders as.
 const ProviderVeloPlanner Provider = "veloplanner"
 
+// ProviderKomoot names the second source the webui and its demo library are
+// built to distinguish. No adapter reads Komoot yet — that is a second
+// source's own delivery — so today this value only ever reaches a stage
+// through the synthetic demo library.
+const ProviderKomoot Provider = "komoot"
+
 // Key is the stable identity of one source route stage.
 type Key struct {
 	provider   Provider

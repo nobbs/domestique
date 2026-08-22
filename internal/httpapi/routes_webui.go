@@ -1,6 +1,10 @@
 package httpapi
 
-import "net/http"
+import (
+	"net/http"
+
+	"github.com/nobbs/domestique/internal/route"
+)
 
 // webUIConfig hands the page its runtime settings so the built assets stay
 // static and fully cacheable. It exposes no secret: the tile style URLs are
@@ -13,10 +17,11 @@ import "net/http"
 // operator is sitting at, and this response is cached across every page in the
 // session, so neither can be resolved here.
 //
-// The provider base URL rides along for the same reason: the page builds the
-// link back to a stage's source route from it, and the alternative — the service
-// putting a route URL on every stage it serves — would be the same fact repeated
-// once per stage.
+// Each configured source's base URL rides along for the same reason: the page
+// builds the link back to a stage's source route from it, keyed by the
+// provider that stage names, and the alternative — the service putting a route
+// URL on every stage it serves — would be the same fact repeated once per
+// stage.
 func (h *Handler) webUIConfig(writer http.ResponseWriter, _ *http.Request, _ string) {
 	// The view is the configured entry with JSON tags on it, so the conversion
 	// is the whole of the mapping. It compiles only while the two stay
@@ -27,9 +32,17 @@ func (h *Handler) webUIConfig(writer http.ResponseWriter, _ *http.Request, _ str
 		basemaps[index] = basemapView(basemap)
 	}
 
+	// Only one source is ever configured today, so this map holds at most the
+	// one entry. It is keyed by provider rather than sent as a single value so
+	// the page stays correct once a second source exists to configure.
+	sourceBaseURLs := make(map[route.Provider]string, 1)
+	if h.sourceBaseURL != "" {
+		sourceBaseURLs[route.ProviderVeloPlanner] = h.sourceBaseURL
+	}
+
 	h.writeJSON(writer, http.StatusOK, webUIConfigView{
-		Basemaps:      basemaps,
-		SourceBaseURL: h.sourceBaseURL,
+		Basemaps:       basemaps,
+		SourceBaseURLs: sourceBaseURLs,
 	})
 }
 

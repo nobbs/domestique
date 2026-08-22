@@ -579,6 +579,20 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/*
+ * Which source a stage came from — in the library row, on the expanded card,
+ * and on the stage's own panel. Real text, real enough to be its own
+ * accessible name: two sources is what this tool has, not a set to tell apart
+ * by colour.
+ */
+.source-label {
+  flex: none;
+  color: var(--ink-2);
+  font: var(--type-micro);
+  letter-spacing: var(--track-micro);
+  text-transform: uppercase;
+}
+
 /* Route card -------------------------------------------------------------- */
 
 /*

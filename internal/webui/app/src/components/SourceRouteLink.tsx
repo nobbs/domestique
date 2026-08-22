@@ -23,14 +23,16 @@ import { sourceRoute } from "../lib/sourceRoute";
 import { ExternalButtonLink } from "./Button";
 
 export interface SourceRouteLinkProps {
-  /** The provider's web application, as configured. Undefined offers no link. */
+  /** The stage's own source, as its stage identity names it. */
+  provider: string;
+  /** That provider's web application, as configured. Undefined offers no link. */
   baseUrl: string | undefined;
   /** The provider's own identifier for the route, as stored with the stage. */
   routeId: number;
 }
 
-export function SourceRouteLink({ baseUrl, routeId }: SourceRouteLinkProps) {
-  const source = sourceRoute(baseUrl, routeId);
+export function SourceRouteLink({ provider, baseUrl, routeId }: SourceRouteLinkProps) {
+  const source = sourceRoute(provider, baseUrl, routeId);
   if (!source) {
     return null;
   }

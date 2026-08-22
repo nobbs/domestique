@@ -74,8 +74,14 @@ func Seed(ctx context.Context, state State, slots []Slot, now time.Time) error {
 	if err != nil {
 		return err
 	}
-	if storeErr := state.StoreTrustedInventory(ctx, route.ProviderVeloPlanner, stages); storeErr != nil {
-		return fmt.Errorf("demo: storing inventory: %w", storeErr)
+	// One call per source, each replacing only that source's own slice of the
+	// inventory — the same isolation a real read gives each configured source,
+	// so the fixture cannot hide a bug that only shows up once there is more
+	// than one.
+	for _, group := range stagesByProvider(stages) {
+		if storeErr := state.StoreTrustedInventory(ctx, group.provider, group.stages); storeErr != nil {
+			return fmt.Errorf("demo: storing inventory for %s: %w", group.provider, storeErr)
+		}
 	}
 
 	classifications, err := Classifications(stages)
@@ -85,7 +91,7 @@ func Seed(ctx context.Context, state State, slots []Slot, now time.Time) error {
 	for _, classification := range classifications {
 		if err := state.StoreStageSurface(
 			ctx,
-			route.ProviderVeloPlanner,
+			classification.Provider,
 			classification.RouteID,
 			classification.StageOrder,
 			classification.ContentHash,
@@ -174,6 +180,33 @@ func seedSlot(ctx context.Context, state State, slot Slot, stages []route.Stage,
 	}
 
 	return nil
+}
+
+// providerStages is one source's own slice of the synthetic inventory.
+type providerStages struct {
+	provider route.Provider
+	stages   []route.Stage
+}
+
+// stagesByProvider splits the library by source, in the order each source's
+// first stage appears. StoreTrustedInventory now isolates one source's write
+// from another's, so seeding has to call it once per source rather than once
+// for stages of more than one.
+func stagesByProvider(stages []route.Stage) []providerStages {
+	var groups []providerStages
+	index := make(map[route.Provider]int, 2)
+	for _, stage := range stages {
+		provider := stage.Key().Provider()
+		if position, seen := index[provider]; seen {
+			groups[position].stages = append(groups[position].stages, stage)
+
+			continue
+		}
+		index[provider] = len(groups)
+		groups = append(groups, providerStages{provider: provider, stages: []route.Stage{stage}})
+	}
+
+	return groups
 }
 
 // wahooRouteID is the identifier a target pretends Wahoo gave a written stage.

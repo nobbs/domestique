@@ -19,6 +19,7 @@ import { SourceRouteLink } from "../../components/SourceRouteLink";
 import { formatAscent, formatDistance, formatElevation, formatGradient } from "../../lib/format";
 import type { Highlight } from "../../lib/highlight";
 import type { BandShare } from "../../lib/profile";
+import { providerLabel } from "../../lib/provider";
 import type { SurfaceSummary } from "../../lib/surface";
 import { ReprocessButton } from "./ReprocessButton";
 
@@ -61,8 +62,8 @@ export interface RoutePanelProps {
   libraryCount: number;
   /** Puts the route away and gives the search pill back. */
   onClose: () => void;
-  /** The provider's web application, for the way back to the source route. */
-  sourceBaseUrl: string | undefined;
+  /** Each configured source's web application, keyed by provider. */
+  sourceBaseUrls: Record<string, string>;
 }
 
 export function RoutePanel({
@@ -77,7 +78,7 @@ export function RoutePanel({
   onHighlightChange,
   libraryCount,
   onClose,
-  sourceBaseUrl,
+  sourceBaseUrls,
 }: RoutePanelProps) {
   const back =
     libraryCount > 0
@@ -110,6 +111,12 @@ export function RoutePanel({
       </div>
       <div className="route-panel__name">
         <h2 className="route-panel__title">{route.title}</h2>
+        {/*
+         * Which source this stage came from. A quiet label rather than a logo:
+         * this is a private tool with two sources, not a marketplace, and real
+         * text is what makes it distinguishable by accessible name alone.
+         */}
+        <span className="source-label">{providerLabel(route.provider)}</span>
         {subtitle === "" ? null : <p className="route-panel__subtitle">{subtitle}</p>}
       </div>
       <dl className="route-panel__figures">
@@ -151,7 +158,11 @@ export function RoutePanel({
         onHighlightChange={onHighlightChange}
       />
       <div className="route-panel__actions">
-        <SourceRouteLink baseUrl={sourceBaseUrl} routeId={route.routeId} />
+        <SourceRouteLink
+          provider={route.provider}
+          baseUrl={sourceBaseUrls[route.provider]}
+          routeId={route.routeId}
+        />
         <ReprocessButton
           provider={route.provider}
           routeId={route.routeId}

@@ -223,6 +223,23 @@ func TestHandlerReportsMissingGeometryAsNotFound(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, response.Code, "geometry status")
 }
 
+// A second provider's own stage resolves the same way VeloPlanner's always
+// has: state is keyed by provider, routeID and stageOrder together, so a
+// stage stored under a different provider is found rather than refused for
+// naming one the handler has not special-cased.
+func TestHandlerServesAStageStoredUnderAnyProvider(t *testing.T) {
+	state := &fakeState{summaries: []route.Summary{{
+		Provider: route.ProviderKomoot,
+		RouteID:  7, StageOrder: 1, RouteName: "Trail", PointCount: 2,
+	}}}
+	handler := newHandler(t, &fakeOAuth{}, state)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/providers/komoot/routes/7/stages/1"))
+	assert.Equal(t, http.StatusOK, response.Code, "stage status")
+	assert.Contains(t, response.Body.String(), `"provider":"komoot"`, "the stage names its provider")
+}
+
 func TestHandlerRejectsMalformedStageIdentifiers(t *testing.T) {
 	handler := newTestHandler(t)
 	for _, path := range []string{
@@ -397,10 +414,10 @@ func TestHandlerSendsASourceBaseURLWithoutSurroundingWhitespace(t *testing.T) {
 	// configuration would silently produce no link.
 	var payload struct {
 		//nolint:tagliatelle // Mirrors the wire field the page reads.
-		SourceBaseURL string `json:"source_base_url"`
+		SourceBaseURLs map[string]string `json:"source_base_urls"`
 	}
 	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &payload), "decoding config body")
-	assert.Equal(t, testSourceBaseURL, payload.SourceBaseURL, "source base URL")
+	assert.Equal(t, testSourceBaseURL, payload.SourceBaseURLs["veloplanner"], "source base URL")
 }
 
 func TestHandlerAcceptsASourceBaseURLHostedUnderAPath(t *testing.T) {
