@@ -1058,8 +1058,8 @@ func validateSync(sync rawSync) error {
 		sync.EmptySourceDeletion != string(EmptySourceDeletionAllow) {
 		return errors.New("sync.empty_source_deletion must be deny or allow")
 	}
-	if sync.StaleAfter <= 0 {
-		return errors.New("sync.stale_after must be positive")
+	if sync.StaleAfter < time.Second {
+		return errors.New("sync.stale_after must be at least 1s")
 	}
 
 	return nil

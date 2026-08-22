@@ -152,6 +152,27 @@ func TestReporterAlertsWhenTheTrustedInventoryGoesStale(t *testing.T) {
 	assert.Contains(t, notifier.messages[0].message, "source stale:")
 }
 
+// The alert threshold is compared in whole seconds, the same precision
+// GET /v1/status reports age against, so a sub-second remainder cannot leave
+// the two disagreeing about whether the inventory is stale.
+func TestReporterComparesStalenessInWholeSecondsLikeStatusDoes(t *testing.T) {
+	lastSuccess := time.Date(2026, time.August, 17, 8, 29, 58, 600_000_000, time.UTC)
+	now := time.Date(2026, time.August, 17, 8, 30, 0, 0, time.UTC)
+	state := &fakeRunState{lastSuccessAt: map[string]time.Time{"source": lastSuccess}}
+	notifier := &fakeNotifier{}
+	reporter, err := NewReporter(
+		&reportingRunner{}, state, notifier, SuccessNotification{Policy: SuccessEvery}, 1500*time.Millisecond,
+	)
+	require.NoError(t, err, "NewReporter()")
+	reporter.now = func() time.Time { return now }
+
+	// A 1.4s age against a 1.5s bound: age_seconds (1) < max_age_seconds (1) is
+	// false, the same "stale" answer GET /v1/status would give — even though
+	// the untruncated durations (1.4s < 1.5s) say fresh.
+	reporter.Run(t.Context())
+	require.Len(t, notifier.messages, 1, "want the alert the status contract's truncation also calls for")
+}
+
 // The stale alert is rate-limited the same way an ordinary failure is, so a
 // schedule left off for days does not repeat it every tick.
 func TestReporterSuppressesRepeatedStaleAlertsForSixHours(t *testing.T) {

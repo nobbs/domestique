@@ -349,7 +349,10 @@ func (r *Reporter) checkStaleness(ctx context.Context, now time.Time, sourceStor
 		return
 	}
 	age := now.Sub(lastSuccess)
-	if age < r.staleAfter || (notified && now.Sub(lastSentAt) < failureNotificationSuppression) {
+	// Compared in whole seconds, the same precision GET /v1/status reports
+	// age_seconds and max_age_seconds in: a sub-second remainder must not let
+	// this alert and that response disagree on whether the inventory is stale.
+	if age/time.Second < r.staleAfter/time.Second || (notified && now.Sub(lastSentAt) < failureNotificationSuppression) {
 		return
 	}
 	if err := r.notifier.Send(ctx, "Domestique sync failed", staleMessage(age)); err != nil {

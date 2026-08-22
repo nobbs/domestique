@@ -507,7 +507,17 @@ func TestLoadRejectsInvalidConfiguration(t *testing.T) {
 				t.Helper()
 				replaceInFile(t, path, "max_deletions_per_target = 5", "max_deletions_per_target = 5\nstale_after = \"0s\"")
 			},
-			want: "sync.stale_after must be positive",
+			want: "sync.stale_after must be at least 1s",
+		},
+		{
+			// Sub-second truncates to a zero max_age_seconds in the status
+			// response, which would flag every service as permanently stale.
+			name: "sub-second stale-after bound",
+			mutate: func(t *testing.T, path string) {
+				t.Helper()
+				replaceInFile(t, path, "max_deletions_per_target = 5", "max_deletions_per_target = 5\nstale_after = \"500ms\"")
+			},
+			want: "sync.stale_after must be at least 1s",
 		},
 		{
 			name: "unknown success policy",
