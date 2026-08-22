@@ -12,7 +12,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { BoundingBox, Position } from "../../api/types";
+import type { Basemap, BoundingBox, Position } from "../../api/types";
 
 interface SourceRecord {
   id: string;
@@ -145,6 +145,15 @@ function over(key: string | null): PointerEventStub {
 }
 
 const BOUNDS: BoundingBox = [7.9, 48.9, 8.2, 49.1];
+
+// The picker is mocked in this file, so its own gating on the list's length is
+// untested here — that lives in BasemapPicker.test.tsx. What is real is the
+// invariant the fixture should still honour: a chooser is only ever offered
+// where there is a choice, so the tests below use a list of more than one.
+const TWO_BASEMAPS: Basemap[] = [
+  { name: "Streets", styleUrl: "https://tiles.example/style.json", darkCartography: false },
+  { name: "Satellite", styleUrl: "https://imagery.example/style.json", darkCartography: true },
+];
 
 function line(key: string, offset = 0) {
   return {
@@ -379,7 +388,7 @@ describe("LibraryMap", () => {
    * disappears with the number of configured basemaps must not push it around.
    */
   it("puts the basemap chooser in the cluster, above the credit", () => {
-    show({ basemaps: [], selectedBasemap: "Satellite", onBasemapChange: () => {} });
+    show({ basemaps: TWO_BASEMAPS, selectedBasemap: "Satellite", onBasemapChange: () => {} });
 
     const cluster = drawn.container?.querySelector(".maplibregl-ctrl-bottom-left");
     expect(cluster?.textContent).toBe("Satellite© somebody");
@@ -475,7 +484,7 @@ describe("LibraryMap", () => {
    */
   it("keeps the credit on the page when the map reports no cluster", () => {
     drawn.container = document.createElement("div");
-    show({ basemaps: [], selectedBasemap: "Streets", onBasemapChange: () => {} });
+    show({ basemaps: TWO_BASEMAPS, selectedBasemap: "Streets", onBasemapChange: () => {} });
 
     expect(screen.getByTestId("credits")).toBeInTheDocument();
     // And in the same order, because the fragment is what moved rather than
