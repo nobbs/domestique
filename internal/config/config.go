@@ -65,6 +65,14 @@ const (
 	// digest exists for: short enough to still describe a run, long enough that
 	// it is not the per-run push it replaces.
 	defaultDigestInterval = 24 * time.Hour
+	// maxDigestInterval bounds the period one digest may cover.
+	//
+	// A digest totals the recorded run history, and that history is a bounded
+	// window: the store keeps the last few hundred runs, which an hourly
+	// deployment fills in a little over a week. A longer period would not fail —
+	// it would quietly report a total missing every run already pruned from
+	// under it, which is worse than refusing the setting.
+	maxDigestInterval = 7 * 24 * time.Hour
 )
 
 // Settings is the validated, startup-only configuration for one service
@@ -935,17 +943,24 @@ func validateTargets(raw []rawTarget) ([]Target, error) {
 // sent on every run, and neither is what the setting means.
 func validateNotifications(notifications *rawNotifications) error {
 	switch SuccessPolicy(notifications.SuccessPolicy) {
-	case SuccessPolicyEvery, SuccessPolicyQuiet:
-		return nil
-	case SuccessPolicyDigest:
-		if notifications.DigestInterval <= 0 {
-			return errors.New("notifications.digest_interval must be positive for the digest success policy")
-		}
-
-		return nil
+	case SuccessPolicyEvery, SuccessPolicyQuiet, SuccessPolicyDigest:
 	default:
 		return errors.New("notifications.success_policy must be every, quiet, or digest")
 	}
+	// The period is checked whatever the policy reads it. A setting that is only
+	// consulted by one policy is still a setting an operator will switch to, and
+	// finding out then that it was never valid is the wrong moment.
+	if notifications.DigestInterval <= 0 {
+		return errors.New("notifications.digest_interval must be positive")
+	}
+	if notifications.DigestInterval > maxDigestInterval {
+		return fmt.Errorf(
+			"notifications.digest_interval must not exceed %s, which is as far back as the recorded run history reaches",
+			maxDigestInterval,
+		)
+	}
+
+	return nil
 }
 
 func validateSync(sync rawSync) error {

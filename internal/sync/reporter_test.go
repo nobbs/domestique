@@ -248,6 +248,7 @@ type fakeRunState struct {
 	phases          []string
 	recordedRuns    []recordedTargetRun
 	runs            int
+	lastDigestRunID int64
 	digestFound     bool
 	source          bool
 	targets         bool
@@ -255,8 +256,8 @@ type fakeRunState struct {
 
 // successfulRun is one recorded success as a digest reads it back.
 type successfulRun struct {
-	finishedAt                time.Time
 	phase                     string
+	id                        int64
 	created, updated, deleted int
 }
 
@@ -290,7 +291,7 @@ func (s *fakeRunState) RecordTargetRun(
 func (s *fakeRunState) RecordSyncRun(
 	_ context.Context,
 	phase string,
-	_, finishedAt time.Time,
+	_, _ time.Time,
 	outcome, _ string,
 	_, created, updated, deleted int,
 ) (string, error) {
@@ -301,8 +302,10 @@ func (s *fakeRunState) RecordSyncRun(
 	}
 	s.lastPhase[phase] = outcome
 	if outcome == string(OutcomeSucceeded) {
+		// The store's run ids are monotonic, which is what the digest window is
+		// bounded by; the row count stands in for them here.
 		s.successfulRuns = append(s.successfulRuns, successfulRun{
-			phase: phase, finishedAt: finishedAt, created: created, updated: updated, deleted: deleted,
+			id: int64(s.runs), phase: phase, created: created, updated: updated, deleted: deleted,
 		})
 	}
 
@@ -318,27 +321,28 @@ func (s *fakeRunState) LastPhaseOutcome(_ context.Context, phase string) (outcom
 	return outcome, found, nil
 }
 
-func (s *fakeRunState) LastDigestNotification(context.Context) (time.Time, bool, error) {
-	return s.lastDigest, s.digestFound, nil
+func (s *fakeRunState) LastDigestNotification(context.Context) (sentAt time.Time, lastRunID int64, found bool, err error) {
+	return s.lastDigest, s.lastDigestRunID, s.digestFound, nil
 }
 
-func (s *fakeRunState) RecordDigestNotification(_ context.Context, sentAt time.Time) error {
+func (s *fakeRunState) RecordDigestNotification(_ context.Context, sentAt time.Time, lastRunID int64) error {
 	s.lastDigest = sentAt
+	s.lastDigestRunID = lastRunID
 	s.digestFound = true
 
 	return nil
 }
 
-func (s *fakeRunState) ForEachSuccessfulRunSince(
+func (s *fakeRunState) ForEachSuccessfulRunAfter(
 	_ context.Context,
-	since time.Time,
-	visit func(phase string, created, updated, deleted int) error,
+	runID int64,
+	visit func(id int64, phase string, created, updated, deleted int) error,
 ) error {
 	for _, run := range s.successfulRuns {
-		if !run.finishedAt.After(since) {
+		if run.id <= runID {
 			continue
 		}
-		if err := visit(run.phase, run.created, run.updated, run.deleted); err != nil {
+		if err := visit(run.id, run.phase, run.created, run.updated, run.deleted); err != nil {
 			return err
 		}
 	}
@@ -671,4 +675,45 @@ func TestNewReporterRejectsAnUnusablePolicy(t *testing.T) {
 			require.Error(t, err, "NewReporter() accepted %s", testCase.name)
 		})
 	}
+}
+
+// An interval nothing succeeded in is silent, and it still moves the window.
+//
+// Leaving the window where it was would make the next digest report two
+// intervals of work under one interval's heading; sending an all-zero message
+// would defeat the policy an operator chose it for.
+func TestReporterDigestPassesOverAnIntervalWithNothingToReport(t *testing.T) {
+	runner := &reportingRunner{targets: Result{
+		Phase: PhaseTargets, Outcome: OutcomeSucceeded, SourceStages: 3, Created: 1,
+	}}
+	state := &fakeRunState{targets: true}
+	notifier := &fakeNotifier{}
+	reporter := newPolicyReporter(t, runner, state, notifier, SuccessNotification{
+		Policy: SuccessDigest, Interval: 24 * time.Hour,
+	})
+	start := time.Date(2026, time.August, 17, 8, 0, 0, 0, time.UTC)
+	now := start
+	reporter.now = func() time.Time { return now }
+
+	reporter.Run(t.Context())
+
+	// Both halves switched off: the interval elapses over a service that ran
+	// nothing at all.
+	state.targets = false
+	now = start.Add(25 * time.Hour)
+	reporter.Run(t.Context())
+	require.Empty(t, notifier.messages, "an interval with nothing in it still sent a digest")
+	require.Equal(t, now, state.lastDigest, "the empty interval did not move the window")
+
+	state.targets = true
+	now = start.Add(26 * time.Hour)
+	reporter.Run(t.Context())
+	now = start.Add(50 * time.Hour)
+	reporter.Run(t.Context())
+
+	require.Len(t, notifier.messages, 1, "want one digest for the interval that had runs in it")
+	assert.Equal(t, notification{
+		title:   "Domestique sync digest",
+		message: "since 2026-08-18T09:00:00Z: source_runs=0 target_runs=2 created=2 updated=0 deleted=0",
+	}, notifier.messages[0], "digest notification")
 }

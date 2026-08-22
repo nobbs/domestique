@@ -24,11 +24,13 @@ type RunState interface {
 	// run, which is what tells a success that ends a failure apart from a
 	// routine one.
 	LastPhaseOutcome(ctx context.Context, phase string) (outcome string, found bool, err error)
-	LastDigestNotification(ctx context.Context) (sentAt time.Time, found bool, err error)
-	RecordDigestNotification(ctx context.Context, sentAt time.Time) error
-	// ForEachSuccessfulRunSince visits every successful run recorded after the
-	// given time, carrying the counts a digest totals and nothing else.
-	ForEachSuccessfulRunSince(ctx context.Context, since time.Time, visit func(phase string, created, updated, deleted int) error) error
+	// LastDigestNotification returns when the last digest was sent and the
+	// highest run it covered, which together bound the next one.
+	LastDigestNotification(ctx context.Context) (sentAt time.Time, lastRunID int64, found bool, err error)
+	RecordDigestNotification(ctx context.Context, sentAt time.Time, lastRunID int64) error
+	// ForEachSuccessfulRunAfter visits every successful run recorded after the
+	// given one, carrying the counts a digest totals and nothing else.
+	ForEachSuccessfulRunAfter(ctx context.Context, runID int64, visit func(id int64, phase string, created, updated, deleted int) error) error
 	SyncSchedule(ctx context.Context) (source, targets bool, err error)
 }
 

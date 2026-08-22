@@ -56,7 +56,8 @@ implementation detail.
 
 Every recorded run carries an opaque reference: random bytes, meaningless on
 their own, and the one thing about a run that may be said out loud. It is what a
-notification names and what an operator matches a served record against.
+notification about a single run names and what an operator matches a served
+record against. A message that is about no single run — a digest — names none.
 
 Run records are the only history this service keeps, and a service that runs
 every hour would otherwise grow them forever. They are bounded to a fixed number
@@ -694,16 +695,29 @@ empty messages. It is considered once per pass, after both halves are recorded,
 so a window never closes between the two halves of one pass and leaves the
 second reported in no digest at all.
 
+An interval that no run succeeded in sends nothing and still moves the window
+on. Leaving it where it was would report two intervals of work under one
+interval's heading, and an all-zero message would defeat the policy the operator
+chose it for.
+
 The first digest of a newly configured policy sends nothing and starts the
 clock. The alternative is an opening message covering however much history the
-database happens to hold, which is not the period the operator asked for.
+database happens to hold, which is not the period the operator asked for. The
+window it starts is durable and belongs to the digest, not to the policy in
+force: switching away from `digest` and back resumes from the last window this
+service closed rather than starting a new one, so the runs in between are
+reported in the first digest that follows.
+
+That window is bounded by run identity rather than by the clock, because two
+runs of one pass are recorded within the same second and a timestamp cannot say
+which of them a digest already covered.
 
 Notification content contains only the run result, target count, aggregate
-counts, a safe failure category, and the recorded run's opaque reference. It
-never contains a route title, source identity, Wahoo identity, credential,
-token, secret path, or upstream body. The reference says which run the message
-is about without saying anything about it, and resolves to that run's record in
-`GET /v1/sync/runs`.
+counts, a safe failure category, and — for a message about a single run — that
+run's opaque reference. It never contains a route title, source identity, Wahoo
+identity, credential, token, secret path, or upstream body. The reference says
+which run the message is about without saying anything about it, and resolves to
+that run's record in `GET /v1/sync/runs`.
 
 ## Required tests
 
@@ -737,4 +751,6 @@ The implementation test suite must cover at least:
   `quiet` and `digest` still deliver failures, blocked runs, and the first
   success that ends one; and
 - a digest totalling one interval of successful runs, carrying no run reference
-  or target identity, and starting its clock without reporting prior history.
+  or target identity, starting its clock without reporting prior history, and
+  passing over an interval that nothing succeeded in without leaving its runs to
+  be counted twice.

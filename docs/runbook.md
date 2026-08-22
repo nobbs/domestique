@@ -26,7 +26,8 @@ does not distinguish two situations that need different answers. Fetching it
 needs the same Cloudflare Access assertion the page carries, so it is read most
 easily from the browser at `/v1/status`.
 
-**Pushover.** Every failure notifies, and a success notifies as far as
+**Pushover.** A new failure notifies — the same one again is suppressed for the
+six hours described below — and a success notifies as far as
 `notifications.success_policy` allows: `every` sends one message per successful
 run, `quiet` sends none while the service is healthy, and `digest` replaces them
 with one aggregate message per `notifications.digest_interval`. A success

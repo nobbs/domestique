@@ -130,56 +130,68 @@ func (r *Reporter) recovered(ctx context.Context, phase Phase) bool {
 // the alternative is an opening message covering however much history the
 // database happens to hold, which is not the period the operator asked for.
 func (r *Reporter) notifyDigest(ctx context.Context, now time.Time) {
-	since, found, err := r.state.LastDigestNotification(ctx)
+	since, after, found, err := r.state.LastDigestNotification(ctx)
 	if err != nil {
 		return
 	}
-	if !found {
-		r.anchorDigest(ctx, now)
+	if found && now.Sub(since) < r.success.Interval {
+		return
+	}
+	totals, latest, err := r.totalSuccessesAfter(ctx, after)
+	if err != nil {
+		return
+	}
+	// Two silent cases move the window without a message: the first digest of a
+	// new configuration, and a period that nothing succeeded in. Leaving the
+	// second where it was would make the next digest claim every quiet period
+	// before it as part of its own.
+	if !found || totals.empty() {
+		r.anchorDigest(ctx, now, latest)
 
-		return
-	}
-	if now.Sub(since) < r.success.Interval {
-		return
-	}
-	totals, err := r.totalSuccessesSince(ctx, since)
-	if err != nil || totals.empty() {
 		return
 	}
 	if err := r.notifier.Send(ctx, "Domestique sync digest", totals.message(since)); err != nil {
 		return
 	}
-	r.anchorDigest(ctx, now)
+	r.anchorDigest(ctx, now, latest)
 }
 
-// anchorDigest moves the window's lower bound to the moment just reported.
+// anchorDigest moves the window past the runs just reported.
 //
 // An anchor that cannot be written leaves the next pass to place it. That
 // repeats a period rather than losing one, which is the right way round for a
 // message whose only job is to summarise.
-func (r *Reporter) anchorDigest(ctx context.Context, now time.Time) {
-	if err := r.state.RecordDigestNotification(ctx, now); err != nil {
+func (r *Reporter) anchorDigest(ctx context.Context, now time.Time, lastRunID int64) {
+	if err := r.state.RecordDigestNotification(ctx, now, lastRunID); err != nil {
 		slog.Warn("success digest window not anchored", "reason", "state")
 	}
 }
 
-// totalSuccessesSince adds up the successful runs of one window.
-func (r *Reporter) totalSuccessesSince(ctx context.Context, since time.Time) (digest, error) {
+// totalSuccessesAfter adds up the successful runs of one window and reports the
+// last run it saw, which becomes the next window's lower bound.
+//
+// Bounding by run rather than by time is what keeps a run from falling between
+// two windows: recorded times are whole seconds, so a run finishing in the same
+// second as a digest cannot be placed on one side of it reliably.
+func (r *Reporter) totalSuccessesAfter(ctx context.Context, after int64) (digest, int64, error) {
 	var totals digest
-	if err := r.state.ForEachSuccessfulRunSince(ctx, since, func(phase string, created, updated, deleted int) error {
-		if phase == string(PhaseSource) {
-			totals.sourceRuns++
-		} else {
-			totals.targetRuns++
-		}
-		totals.created += created
-		totals.updated += updated
-		totals.deleted += deleted
+	latest := after
+	if err := r.state.ForEachSuccessfulRunAfter(ctx, after,
+		func(id int64, phase string, created, updated, deleted int) error {
+			if phase == string(PhaseSource) {
+				totals.sourceRuns++
+			} else {
+				totals.targetRuns++
+			}
+			totals.created += created
+			totals.updated += updated
+			totals.deleted += deleted
+			latest = id
 
-		return nil
-	}); err != nil {
-		return digest{}, fmt.Errorf("totalling successful runs: %w", err)
+			return nil
+		}); err != nil {
+		return digest{}, after, fmt.Errorf("totalling successful runs: %w", err)
 	}
 
-	return totals, nil
+	return totals, latest, nil
 }

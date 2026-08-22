@@ -1511,53 +1511,67 @@ func TestStoreReadsTheLastOutcomeOfEachPhase(t *testing.T) {
 
 func TestStoreTotalsSuccessfulRunsForADigest(t *testing.T) {
 	store := openTestStore(t, testKey(1))
-	anchor := time.Date(2026, time.August, 17, 8, 0, 0, 0, time.UTC)
-	recordRun := func(phase, outcome string, at time.Time, created, updated, deleted int) {
+	at := time.Date(2026, time.August, 17, 8, 0, 0, 0, time.UTC)
+	recordRun := func(phase, outcome string, created, updated, deleted int) {
 		t.Helper()
 		_, err := store.RecordSyncRun(t.Context(), phase, at, at, outcome, "", 0, created, updated, deleted)
 		require.NoError(t, err, "RecordSyncRun()")
 	}
+	totalAfter := func(runID int64) (phases []string, created, updated, deleted int, latest int64) {
+		t.Helper()
+		require.NoError(t, store.ForEachSuccessfulRunAfter(t.Context(), runID,
+			func(id int64, phase string, runCreated, runUpdated, runDeleted int) error {
+				phases = append(phases, phase)
+				created += runCreated
+				updated += runUpdated
+				deleted += runDeleted
+				latest = id
 
-	// Before the window, inside it, and a failure inside it that a digest of
-	// successes must not count.
-	recordRun("targets", "succeeded", anchor.Add(-time.Hour), 9, 9, 9)
-	recordRun("source", "succeeded", anchor.Add(time.Hour), 0, 0, 0)
-	recordRun("targets", "succeeded", anchor.Add(2*time.Hour), 2, 1, 1)
-	recordRun("targets", "failed", anchor.Add(3*time.Hour), 7, 7, 7)
+				return nil
+			}), "ForEachSuccessfulRunAfter()")
 
-	var phases []string
-	var created, updated, deleted int
-	require.NoError(t, store.ForEachSuccessfulRunSince(t.Context(), anchor,
-		func(phase string, runCreated, runUpdated, runDeleted int) error {
-			phases = append(phases, phase)
-			created += runCreated
-			updated += runUpdated
-			deleted += runDeleted
+		return phases, created, updated, deleted, latest
+	}
 
-			return nil
-		}), "ForEachSuccessfulRunSince()")
+	// Every run shares one finished-at second, which is the case a timestamp
+	// boundary cannot separate: run 1 is behind the window and runs 2 and 3 are
+	// inside it, all indistinguishable by clock. The failure is inside it too and
+	// must not be counted.
+	recordRun("targets", "succeeded", 9, 9, 9)
+	recordRun("source", "succeeded", 0, 0, 0)
+	recordRun("targets", "succeeded", 2, 1, 1)
+	recordRun("targets", "failed", 7, 7, 7)
+
+	phases, created, updated, deleted, latest := totalAfter(1)
 	assert.Equal(t, []string{"source", "targets"}, phases, "visited runs")
 	assert.Equal(t, "2/1/1", fmt.Sprintf("%d/%d/%d", created, updated, deleted), "digest totals")
+	assert.Equal(t, int64(3), latest, "the last run the window saw")
+
+	// Moving the window to that run leaves nothing behind to count twice.
+	phases, _, _, _, _ = totalAfter(latest)
+	assert.Empty(t, phases, "a run was counted in two windows")
 }
 
 func TestStoreRecordsDigestNotificationState(t *testing.T) {
 	store := openTestStore(t, testKey(1))
 	sentAt := time.Date(2026, time.August, 17, 8, 0, 0, 0, time.UTC)
 
-	_, found, err := store.LastDigestNotification(t.Context())
+	_, _, found, err := store.LastDigestNotification(t.Context())
 	require.NoError(t, err, "LastDigestNotification()")
 	assert.False(t, found, "a digest was recorded before one was sent")
 
-	require.NoError(t, store.RecordDigestNotification(t.Context(), sentAt), "RecordDigestNotification()")
-	readBack, found, err := store.LastDigestNotification(t.Context())
+	require.NoError(t, store.RecordDigestNotification(t.Context(), sentAt, 7), "RecordDigestNotification()")
+	readBack, runID, found, err := store.LastDigestNotification(t.Context())
 	require.NoError(t, err, "LastDigestNotification()")
 	require.True(t, found, "the digest that was recorded is not readable")
 	assert.WithinDuration(t, sentAt, readBack, 0, "LastDigestNotification()")
+	assert.Equal(t, int64(7), runID, "the run the digest covered up to")
 
-	// The clock moves forward in place: a digest keeps one row, not one per send.
+	// The window moves forward in place: a digest keeps one row, not one per send.
 	later := sentAt.Add(24 * time.Hour)
-	require.NoError(t, store.RecordDigestNotification(t.Context(), later), "second RecordDigestNotification()")
-	readBack, _, err = store.LastDigestNotification(t.Context())
+	require.NoError(t, store.RecordDigestNotification(t.Context(), later, 19), "second RecordDigestNotification()")
+	readBack, runID, _, err = store.LastDigestNotification(t.Context())
 	require.NoError(t, err, "LastDigestNotification()")
 	assert.WithinDuration(t, later, readBack, 0, "LastDigestNotification() after the second send")
+	assert.Equal(t, int64(19), runID, "the run boundary after the second send")
 }

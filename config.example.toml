@@ -81,7 +81,9 @@ success_policy = "every"
 
 # The period one digest covers, read only by the digest policy. It is sent by
 # the first run to finish after the period elapses, so a service that is not
-# running sends nothing rather than an empty message.
+# running sends nothing rather than an empty message. At most seven days: a
+# digest totals the recorded run history, and a longer period would report a
+# total missing every run already pruned from under it.
 digest_interval = "24h"
 
 [notifications.pushover]

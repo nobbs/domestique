@@ -260,9 +260,10 @@ application dependency.
   failure, a blocked run, or the first success that ends one.
   [The sync lifecycle specification](sync-lifecycle.md#notifications) states what
   each policy delivers.
-- `notifications.digest_interval` is a positive duration and is read only by the
-  `digest` policy, which is rejected at startup without one. It defaults to
-  `24h`.
+- `notifications.digest_interval` is a positive duration of at most seven days
+  and is read only by the `digest` policy. It defaults to `24h`. The upper bound
+  is the reach of the recorded run history: a longer period would silently total
+  a window whose earliest runs have already been pruned.
 
 The decoder rejects unknown fields, invalid URLs or durations, duplicate target
 IDs, a target count outside one through two, invalid callback paths, unreadable secret files,
