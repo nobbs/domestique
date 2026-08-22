@@ -167,20 +167,32 @@ wait_healthy() {
 #
 # Compose does not spell an unpublished port the same way in every version: v2
 # prints nothing, and v5 prints `invalid IP:0` on stdout and still exits 0. So a
-# published port is one that reads as an address, and everything else is the
+# line that reads as an address is a publication, and everything else is the
 # absence of one. Tested for emptiness instead, v5's answer counted as a
 # publication that is not loopback, and the gate rolled a healthy deploy back on
 # exactly the host this was written to tolerate.
+#
+# Every line is examined rather than the first, because a port published on
+# loopback and on a public address at once is still published on the public one,
+# and skipping a mapping this could not read would skip the check that refuses
+# it — the one direction this must not get wrong.
 wait_ready() {
-  local published deadline
+  # An address as any of the three spellings Docker prints: dotted quad,
+  # bracketed IPv6, and the bare `:::8081` it uses for the IPv6 wildcard.
+  local address='^(\[[0-9a-fA-F:]+\]|[0-9a-fA-F.:]+):[0-9]+$'
+  local published deadline line mappings=0
   published="$(compose port "${COMPOSE_SERVICE}" "${READINESS_PORT}" 2>/dev/null || true)"
-  if [[ ! "${published}" =~ ^(\[[0-9a-fA-F:]+\]|[0-9.]+):[0-9]+$ ]]; then
+  while read -r line; do
+    [[ "${line}" =~ ${address} ]] || continue
+    mappings=$((mappings + 1))
+    if [[ "${line}" != 127.0.0.1:* ]]; then
+      log "readiness port is published on ${line}, which is not loopback"
+      return 1
+    fi
+  done <<< "${published}"
+  if [[ "${mappings}" -eq 0 ]]; then
     log "readiness port ${READINESS_PORT} is not published; readiness gate skipped"
     return 0
-  fi
-  if [[ "${published}" != 127.0.0.1:* ]]; then
-    log "readiness port is published on ${published}, which is not loopback"
-    return 1
   fi
   deadline=$(($(date +%s) + HEALTH_TIMEOUT))
   while true; do

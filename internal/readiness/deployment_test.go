@@ -108,21 +108,44 @@ func TestTheDeployScriptGatesOnReadiness(t *testing.T) {
 }
 
 // An unpublished port is not reported the same way by every Compose: v2 prints
-// nothing, v5 prints `invalid IP:0` on stdout and still exits 0. The gate has to
-// recognise a publication by its shape, because the alternative — treating any
-// output at all as one — reads v5's answer as a port published off loopback and
-// rolls a healthy deploy back on the very host the skip exists for.
+// nothing, v5 prints `invalid IP:0` on stdout and still exits 0. The gate reads a
+// publication by its shape, because the alternative — treating any output at all
+// as one — takes v5's answer for a port published off loopback and rolls a
+// healthy deploy back on the very host the skip exists for.
+//
+// Read the other way, a spelling the pattern does not know is taken for no
+// publication at all and skips the loopback check silently, so every address
+// Docker prints has to be one it recognises.
 func TestTheDeployScriptReadsAnUnpublishedPortByShape(t *testing.T) {
 	script := readRepositoryFile(t, "deploy/domestique-deploy.sh")
 
-	match := regexp.MustCompile(`\n\s*if \[\[ ! "\$\{published\}" =~ (\S+) \]\]; then`).FindStringSubmatch(script)
-	require.Len(t, match, 2, "wait_ready must match the published port against a pattern")
-	published := regexp.MustCompile(match[1])
+	match := regexp.MustCompile(`(?m)^\s*local address='([^']+)'`).FindStringSubmatch(script)
+	require.Len(t, match, 2, "wait_ready must match a published port against a pattern")
+	address := regexp.MustCompile(match[1])
 
-	assert.False(t, published.MatchString(""), "no output means no publication")
-	assert.False(t, published.MatchString("invalid IP:0"), "Compose v5 says this when nothing is published")
-	assert.True(t, published.MatchString("127.0.0.1:"+readinessPort))
-	assert.True(t, published.MatchString("0.0.0.0:"+readinessPort), "a publication off loopback is still one, and fails the check below")
+	assert.False(t, address.MatchString(""), "no output means no publication")
+	assert.False(t, address.MatchString("invalid IP:0"), "Compose v5 says this when nothing is published")
+
+	// Every one of these is a publication, and each has to reach the loopback
+	// check below rather than be mistaken for the absence of one.
+	for _, published := range []string{
+		"127.0.0.1:" + readinessPort,
+		"0.0.0.0:" + readinessPort,
+		"[::1]:" + readinessPort,
+		"[::]:" + readinessPort,
+		":::" + readinessPort,
+	} {
+		assert.True(t, address.MatchString(published), "%q is a published port", published)
+	}
+}
+
+// Compose prints one line per mapping. A port published on loopback and on a
+// public address at once is still published on the public one, so the check runs
+// over every line rather than over the first.
+func TestTheDeployScriptChecksEveryPublishedMapping(t *testing.T) {
+	script := readRepositoryFile(t, "deploy/domestique-deploy.sh")
+
+	assert.Contains(t, script, `done <<< "${published}"`)
 }
 
 // Superseded images are pruned by the digest each image carries, not by the one
