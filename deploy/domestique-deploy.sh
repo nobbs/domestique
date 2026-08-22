@@ -17,10 +17,17 @@
 #     running rather than a service that is down.
 #   * The state volume is never touched. Every path here is `up -d` on one
 #     service; nothing removes a volume, and nothing runs `down`.
+#   * The caller can replace this script, and nothing else on this host. The
+#     deploy job installs its own copy before every deploy, because a host left
+#     to be updated by hand ran gates that only looked present in the tree. That
+#     does put the default branch here as root, so the first contract above is
+#     about the image rather than the code: the digest is what an untrusted
+#     caller cannot choose, and a merge is what this host already trusts.
 #
 # Usage:
 #   domestique-deploy.sh sha256:<64 hex>   deploy that published digest
 #   domestique-deploy.sh --rollback        return to the previously deployed one
+#   domestique-deploy.sh --install-self    replace this script with stdin
 #
 set -euo pipefail
 
@@ -54,6 +61,7 @@ usage() {
   cat <<'USAGE'
 usage: domestique-deploy.sh sha256:<64 hex>   deploy that published digest
        domestique-deploy.sh --rollback        return to the previously deployed one
+       domestique-deploy.sh --install-self    replace this script with stdin
 USAGE
 }
 
@@ -84,6 +92,7 @@ mode=""
 requested=""
 case "${1:-}" in
   --rollback) mode="rollback" ;;
+  --install-self) mode="install-self" ;;
   sha256:*)
     mode="digest"
     requested="$1"
@@ -94,6 +103,62 @@ case "${1:-}" in
     ;;
 esac
 [[ "$#" -le 1 ]] || die "too many arguments"
+
+# The copy on the host is what CI actually runs, and nothing kept it level with
+# the repository: it sat three changes behind for days, two of them gates that
+# read as present in the tree and were absent where they ran.
+#
+# This is the one input that is not a digest, so it is narrow. A script that
+# arrived empty, mangled, or truncated is refused here rather than installed and
+# discovered at the next deploy, and the replacement goes through a temporary
+# file in the same directory: the file this very process is being read from is
+# renamed over, never truncated under it.
+#
+# Answered before the checks below, because replacing the script is about the
+# script and not about whether this host currently runs the service.
+install_self() {
+  local self reason="" before after
+  self="$(readlink -f "${BASH_SOURCE[0]}")"
+  # Deliberately not local: the trap below runs once this function's scope is
+  # gone, and it has to name a file that still exists then. Everything under
+  # `set -e` here exits the script rather than returning, so the trap is what
+  # keeps a failure from leaving a domestique-deploy.sh.XXXXXX beside the real
+  # one for an operator to puzzle over. After the rename there is nothing left
+  # at that name and the trap is a no-op.
+  incoming="$(mktemp "${self}.XXXXXX")"
+  trap 'rm -f "${incoming}"' EXIT
+  cat > "${incoming}"
+
+  if [[ ! -s "${incoming}" ]]; then
+    reason="it is empty"
+  elif grep -q $'\r' "${incoming}"; then
+    # Ahead of the shebang check, which a terminal-mangled script also fails:
+    # this says which of the two it is, and the answer is not the obvious one.
+    reason="it has carriage returns, so it came through a terminal rather than a pipe"
+  elif [[ "$(head -n 1 "${incoming}")" != '#!/usr/bin/env bash' ]]; then
+    reason="it is not a bash script"
+  elif ! bash -n "${incoming}" 2> /dev/null; then
+    reason="it does not parse"
+  fi
+  [[ -z "${reason}" ]] || die "refusing the script on stdin: ${reason}"
+
+  if cmp -s "${incoming}" "${self}"; then
+    log "deploy script is already current"
+    return 0
+  fi
+
+  before="$(sha256sum "${self}" | cut -c 1-12)"
+  after="$(sha256sum "${incoming}" | cut -c 1-12)"
+  chown root:root "${incoming}"
+  chmod 0755 "${incoming}"
+  mv "${incoming}" "${self}"
+  log "deploy script updated ${before} -> ${after}"
+}
+
+if [[ "${mode}" == "install-self" ]]; then
+  install_self
+  exit 0
+fi
 
 for path in "${ENV_FILE}" "${COMPOSE_FILE}"; do
   [[ -f "${path}" ]] || die "${path} is missing; this host is not a deployment"

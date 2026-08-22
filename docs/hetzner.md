@@ -260,11 +260,37 @@ script restores the previous digest,
 restarts, and sends a Pushover alert; the CI job fails either way. Nothing in
 any path removes the state volume.
 
-**The digest is the only thing CI supplies.** The image reference is composed on
-the host from its own configured repository, so the workflow cannot point this
-host at another registry, another repository, or a mutable tag — `latest` is
-still never deployed. The account CI logs in as is unprivileged, is not in the
-`docker` group, and may run exactly this one command as root.
+**The digest is the only thing CI supplies about the image.** The reference is
+composed on the host from its own configured repository, so the workflow cannot
+point this host at another registry, another repository, or a mutable tag —
+`latest` is still never deployed. The account CI logs in as is unprivileged, is
+not in the `docker` group, and may run exactly this one script as root.
+
+That script is also what CI updates. The job sends the repository's copy over
+the same connection first:
+
+```sh
+sudo /usr/local/lib/domestique/domestique-deploy.sh --install-self \
+  < deploy/domestique-deploy.sh
+```
+
+The host refuses anything that is not a bash script that parses, replaces its
+copy by renaming a temporary file over it, and logs `deploy script is already
+current` without touching anything when the two already match. This exists
+because the copy here fell three changes behind the
+repository — including a readiness gate and a rollback guard that read as
+present in the tree and were absent where they ran.
+
+A host whose copy predates `--install-self` does not understand the flag, so the
+step fails and the deploy behind it never runs. Install the script by hand once,
+as below; from then on CI keeps it current.
+
+**It also means a merge to the default branch runs code as root on this host,**
+not only as the unprivileged container the image starts. The deploy account
+still cannot write the script itself, and cannot run anything else through
+`sudo`; what it can do is hand the script a replacement, which is the same
+trust as merging. If that trade is not wanted, drop the install step from the
+`deploy` job and reinstall by hand — the rest of this page still applies.
 
 Prepare the host once:
 
@@ -281,11 +307,11 @@ chmod 600 .env   # it carries the tunnel's Tailscale auth key
 tailscale set --ssh
 ```
 
-The script must stay owned by root and unwritable by `domestique-deploy`.
-Otherwise that account could rewrite what its own sudoers entry runs as root,
-and the boundary the previous paragraph describes would not exist. Reinstall it
-with the same `install` command whenever the repository copy changes; nothing
-updates it automatically.
+The script must stay owned by root and unwritable by `domestique-deploy`, so
+that the only way that account can change it is the `--install-self` path above,
+where the content is checked before it lands. After this one install, CI keeps
+the copy current; the `install` command above is still how an operator repairs a
+host whose script no longer runs.
 
 The tailnet side lives in the `nobbs/infrastructure` repository, in
 `stacks/tailscale`: policy rules letting `tag:github` reach `tag:domestique` on

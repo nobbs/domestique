@@ -148,6 +148,67 @@ func TestTheDeployScriptChecksEveryPublishedMapping(t *testing.T) {
 	assert.Contains(t, script, `done <<< "${published}"`)
 }
 
+// Every gate above is a property of the script the host runs, not of the script
+// in this repository, and the two were three changes apart before the deploy job
+// started sending its copy over. These tests are only worth their assertions
+// while that step is there, and while it runs before the deploy it applies to.
+func TestTheDeployJobInstallsTheScriptBeforeDeploying(t *testing.T) {
+	job := deployJob(t)
+
+	install := strings.Index(job, "--install-self")
+	require.NotEqual(t, -1, install, "the deploy job must send the repository's copy of the script")
+	assert.Contains(t, job, "< deploy/domestique-deploy.sh", "the copy sent must be this repository's")
+
+	deploy := strings.Index(job, `domestique-deploy.sh "${DIGEST}"`)
+	require.NotEqual(t, -1, deploy, "the deploy job must still deploy the published digest")
+	assert.Less(t, install, deploy, "the script is installed before the deploy it applies to")
+}
+
+// The deploy job on its own, comments dropped. Read from the whole workflow, the
+// assertions above are satisfied by an install in any job at all, in any order
+// relative to the deploy it is supposed to precede — which is the thing they
+// exist to pin. Read with its comments, they are satisfied by a comment that
+// merely names the flag, which the comment above the step does.
+func deployJob(t *testing.T) string {
+	t.Helper()
+	workflow := readRepositoryFile(t, ".github/workflows/ci.yml")
+
+	start := regexp.MustCompile(`(?m)^ {2}deploy:$`).FindStringIndex(workflow)
+	require.NotNil(t, start, "ci.yml must have a deploy job")
+
+	job := workflow[start[1]:]
+	if next := regexp.MustCompile(`(?m)^ {2}\S`).FindStringIndex(job); next != nil {
+		job = job[:next[0]]
+	}
+
+	var steps []string
+	for line := range strings.SplitSeq(job, "\n") {
+		if !strings.HasPrefix(strings.TrimSpace(line), "#") {
+			steps = append(steps, line)
+		}
+	}
+
+	return strings.Join(steps, "\n")
+}
+
+// The install path is the one input to the script that is not a digest, so what
+// it accepts is a contract of its own: a script that arrives empty, mangled by a
+// terminal, or unparsable is refused rather than installed and discovered at the
+// next deploy — when the copy that would report the problem is the broken one.
+func TestTheDeployScriptRefusesAnUninstallableScript(t *testing.T) {
+	script := readRepositoryFile(t, "deploy/domestique-deploy.sh")
+
+	start := strings.Index(script, "install_self() {")
+	require.NotEqual(t, -1, start, "the script must have an install_self to constrain")
+	install := script[start:]
+
+	assert.Contains(t, install, `[[ ! -s "${incoming}" ]]`, "an empty script is refused")
+	assert.Contains(t, install, `grep -q $'\r'`, "a terminal-mangled script is refused")
+	assert.Contains(t, install, `bash -n "${incoming}"`, "a script that does not parse is refused")
+	assert.Contains(t, install, `mv "${incoming}" "${self}"`, "the running file is renamed over, not truncated")
+	assert.Contains(t, install, `trap 'rm -f "${incoming}"' EXIT`, "no path leaves a temporary file on the host")
+}
+
 // Superseded images are pruned by the digest each image carries, not by the one
 // the listing prints. `docker images` leaves that column empty for an image
 // whose tag has moved on, which is every image the prune is for, so a prune
