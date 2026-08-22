@@ -169,9 +169,17 @@ requirement of every state-changing route.
 
 The configured Tailnet user can request `POST /v1/sync` to start an immediate
 synchronization of both halves, or `POST /v1/sync/source` and
-`POST /v1/sync/targets` to start one. Each uses the same reconciliation, durable
-run record, and Pushover notification path as scheduled work. The service returns
-`202` only when no scheduled or manual run is active; otherwise it returns `409`
+`POST /v1/sync/targets` to start one. `POST /v1/sync/targets/{target}`
+reconciles exactly one configured target slot, catching up or diagnosing that
+Wahoo account without touching the source read or any other target; `{target}`
+must name a configured slot or the request is refused as not found, exactly as
+the OAuth start route refuses one. Each uses the same reconciliation, durable
+run record, and Pushover notification path as scheduled work — a single-target
+request keeps the same ownership, ordering, update-before-delete, and
+deletion-limit rules the target phase always applies to that slot. The service
+returns `202` only when no scheduled or manual run is active — a full
+synchronization and a single-target one share the same mutual exclusion, so
+neither may start while the other is in flight; otherwise it returns `409`
 without starting duplicate provider work. A refused trigger changes nothing at
 all, the status included: the run already in flight stays the one described, and
 no second run state comes into being.
@@ -825,6 +833,12 @@ The implementation test suite must cover at least:
 - state loss adopting matching desired external IDs without deleting unknown
   routes;
 - each half running, and being triggered, without the other;
+- a single-target trigger reconciling only the named slot — keeping the same
+  ownership, ordering, update-before-delete, and deletion-limit rules — while
+  every other configured target is left completely untouched; an unconfigured
+  target name being refused as not found; and a single-target trigger sharing
+  the same mutual-exclusion, run recording, and notification path as a full
+  target phase;
 - a stored inventory that cannot be read back whole causing zero deletions;
 - a switched-off half being skipped by the timer and still run by a manual
   trigger;

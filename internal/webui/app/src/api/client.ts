@@ -165,6 +165,17 @@ export function triggerSync(phase: SyncPhase | "all"): Promise<null> {
 }
 
 /**
+ * Asks for one immediate reconciliation of exactly one configured Wahoo
+ * account, on the same terms as {@link triggerSync}: `202` and nothing to
+ * wait for, `409` when a synchronisation is already running.
+ */
+export function triggerTargetSync(targetId: string): Promise<null> {
+  return request(`/v1/sync/targets/${encodeURIComponent(targetId)}`, () => null, {
+    method: "POST",
+  });
+}
+
+/**
  * Asks for one stage to be redone from scratch, and for the run that will do it.
  *
  * The service records the request before starting anything, so a request made

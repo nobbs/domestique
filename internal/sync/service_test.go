@@ -251,6 +251,126 @@ func TestServiceSkipsOverlappingRun(t *testing.T) {
 	assert.Equal(t, OutcomeSkipped, runBoth(t.Context(), service).Outcome, "runBoth() outcome")
 }
 
+// RunTarget must mutate exactly the slot it was asked for, and nothing about
+// the other configured target: it reads the same stored inventory, but the
+// account never contacted is proof no other slot's routes were even read.
+func TestServiceRunTargetReconcilesOnlyTheNamedTarget(t *testing.T) {
+	previous := testStage(t, 1, 1, "old", "old-hash")
+	desired := testStage(t, 1, 1, "new", "new-hash")
+	state := newFakeState("a", "b")
+	target := newFakeTarget()
+	for _, targetID := range []string{"a", "b"} {
+		seedMapping(state, targetID, &previous, remoteID(targetID, 1))
+		target.seedRoute(targetID, &previous, remoteID(targetID, 1))
+	}
+	state.trusted = []route.Stage{desired}
+	service := newService(t, state, &fakeSource{}, &fakeEncoder{}, target, false)
+
+	result := service.RunTarget(t.Context(), "a")
+	assert.Equal(t, OutcomeSucceeded, result.Outcome, "RunTarget() outcome")
+	assert.Equal(t, 1, result.Updated, "RunTarget() updated")
+	assert.Equal(t, []TargetResult{{ID: "a", Outcome: OutcomeSucceeded}}, result.Targets)
+	assert.Equal(t, []int64{remoteID("a", 1)}, target.updatedRouteIDs, "updated routes")
+	assert.Equal(t, []string{"a"}, target.refreshTokens, "a target other than the one asked for was contacted")
+}
+
+// A target-specific request keeps the same deletion-limit gate a full target
+// phase applies to that slot.
+func TestServiceRunTargetKeepsTheDeletionLimit(t *testing.T) {
+	desired := testStage(t, 1, 1, "current", "current-hash")
+	state := newFakeState("a", "b")
+	target := newFakeTarget()
+	for routeID := int64(2); routeID <= 7; routeID++ {
+		stale := testStage(t, routeID, 1, "old", "old-hash")
+		seedMapping(state, "a", &stale, remoteID("a", routeID))
+		target.seedRoute("a", &stale, remoteID("a", routeID))
+	}
+	state.trusted = []route.Stage{desired}
+	service := newService(t, state, &fakeSource{}, &fakeEncoder{}, target, false)
+
+	result := service.RunTarget(t.Context(), "a")
+	assert.Equal(t, OutcomeBlocked, result.Outcome, "RunTarget() outcome")
+	assert.Equal(t, FailureDeletionLimit, result.Failure, "RunTarget() failure")
+	assert.Empty(t, target.deletedRouteIDs, "deleted routes")
+}
+
+// A target this service was never configured with performs no work, the same
+// defensive answer a concurrent run gives: the caller is expected to have
+// already refused the slot.
+func TestServiceRunTargetSkipsAnUnconfiguredTarget(t *testing.T) {
+	state := newFakeState("a", "b")
+	target := newFakeTarget()
+	service := newService(t, state, &fakeSource{}, &fakeEncoder{}, target, false)
+
+	result := service.RunTarget(t.Context(), "unknown")
+	assert.Equal(t, OutcomeSkipped, result.Outcome, "RunTarget() outcome")
+	assert.Empty(t, target.refreshTokens, "an unconfigured target was contacted")
+}
+
+// A slot awaiting onboarding reconciles nothing rather than failing: onboarding
+// is the operator's next move, not a fault the run caused.
+func TestServiceRunTargetReportsNotReadyWhenTheSlotNeedsOnboarding(t *testing.T) {
+	state := newFakeState("a", "b")
+	state.authorizations["a"] = "needs_reauthorization"
+	target := newFakeTarget()
+	service := newService(t, state, &fakeSource{}, &fakeEncoder{}, target, false)
+
+	result := service.RunTarget(t.Context(), "a")
+	assert.Equal(t, OutcomeNotReady, result.Outcome, "RunTarget() outcome")
+	assert.Empty(t, target.refreshTokens, "a not-ready target was contacted")
+}
+
+// An authorization read that fails is a state failure, the same as it is for
+// a full target phase.
+func TestServiceRunTargetFailsWhenAuthorizationCannotBeRead(t *testing.T) {
+	state := newFakeState("a", "b")
+	state.authorizationErr = errors.New("state unavailable")
+	target := newFakeTarget()
+	service := newService(t, state, &fakeSource{}, &fakeEncoder{}, target, false)
+
+	result := service.RunTarget(t.Context(), "a")
+	assert.Equal(t, OutcomeFailed, result.Outcome, "RunTarget() outcome")
+	assert.Equal(t, FailureState, result.Failure, "RunTarget() failure")
+	assert.Empty(t, target.refreshTokens, "a target was contacted despite an unreadable authorization")
+}
+
+// A stored inventory that cannot be read back whole must not be reconciled,
+// the same as it must not for a full target phase.
+func TestServiceRunTargetFailsWhenTheStoredInventoryCannotBeRead(t *testing.T) {
+	state := newFakeState("a", "b")
+	state.trustedErr = errors.New("state unavailable")
+	target := newFakeTarget()
+	service := newService(t, state, &fakeSource{}, &fakeEncoder{}, target, false)
+
+	result := service.RunTarget(t.Context(), "a")
+	assert.Equal(t, OutcomeFailed, result.Outcome, "RunTarget() outcome")
+	assert.Equal(t, FailureState, result.Failure, "RunTarget() failure")
+	assert.Empty(t, target.deletedRouteIDs, "deleted routes")
+}
+
+// A stored inventory that somehow holds a duplicate stage cannot be
+// reconciled either: the reconciler has no way to say which copy is desired.
+func TestServiceRunTargetFailsOnADuplicateStoredStage(t *testing.T) {
+	desired := testStage(t, 1, 1, "current", "current-hash")
+	state := newFakeState("a", "b")
+	state.trusted = []route.Stage{desired, desired}
+	target := newFakeTarget()
+	service := newService(t, state, &fakeSource{}, &fakeEncoder{}, target, false)
+
+	result := service.RunTarget(t.Context(), "a")
+	assert.Equal(t, OutcomeFailed, result.Outcome, "RunTarget() outcome")
+	assert.Equal(t, FailureState, result.Failure, "RunTarget() failure")
+}
+
+// RunTarget shares the same mutual exclusion as a full synchronization: it
+// must not race a run in flight over the same stored state.
+func TestServiceRunTargetSkipsOverlappingRun(t *testing.T) {
+	service := newService(t, newFakeState("a", "b"), &fakeSource{}, &fakeEncoder{}, newFakeTarget(), false)
+	service.running.Store(true)
+
+	assert.Equal(t, OutcomeSkipped, service.RunTarget(t.Context(), "a").Outcome, "RunTarget() outcome")
+}
+
 func TestServiceSupportsOneTarget(t *testing.T) {
 	desired := testStage(t, 1, 1, "current", "current-hash")
 	state := newFakeState("a")
@@ -477,6 +597,7 @@ type fakeState struct {
 	trustedErr          error
 	trustedCountErr     error
 	storeErr            error
+	authorizationErr    error
 	authorizations      map[string]string
 	refreshTokens       map[string]string
 	mappings            map[string]map[route.Key]targetStage
@@ -515,6 +636,10 @@ func runBoth(ctx context.Context, service *Service) Result {
 }
 
 func (s *fakeState) TargetAuthorization(_ context.Context, targetID string) (string, error) {
+	if s.authorizationErr != nil {
+		return "", s.authorizationErr
+	}
+
 	return s.authorizations[targetID], nil
 }
 

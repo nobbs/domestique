@@ -84,6 +84,33 @@ func TestReporterTriggersAPhaseTheScheduleHasSwitchedOff(t *testing.T) {
 	assert.Zero(t, runner.sourceRuns, "the source phase ran for a target trigger")
 }
 
+// A target-specific trigger reconciles exactly the slot asked for, through
+// RunTarget rather than RunTargets, and touches the source phase not at all.
+func TestReporterTriggersOneTargetAlone(t *testing.T) {
+	runner := &reportingRunner{targets: Result{Phase: PhaseTargets, Outcome: OutcomeSucceeded, Updated: 1}}
+	state := &fakeRunState{}
+	reporter := newReporter(t, runner, state, &fakeNotifier{})
+
+	require.True(t, reporter.TriggerTarget(t.Context(), "rider-a"), "TriggerTarget() rejected the run")
+	reporter.Wait()
+	assert.Equal(t, []string{"rider-a"}, runner.targetRunIDs, "target reconciled")
+	assert.Zero(t, runner.sourceRuns, "the source phase ran for a single-target trigger")
+	assert.Equal(t, []string{"targets"}, state.phases, "recorded phases")
+}
+
+// A single-target trigger shares the same mutual exclusion as any other run:
+// it must not start while one is already in flight, full or scoped.
+func TestReporterTriggerTargetRejectsOverlappingRun(t *testing.T) {
+	runner := &blockingReportingRunner{started: make(chan struct{}), release: make(chan struct{})}
+	state := &fakeRunState{}
+	reporter := newReporter(t, runner, state, &fakeNotifier{})
+	require.True(t, reporter.Trigger(t.Context()), "Trigger() rejected the first run")
+	<-runner.started
+	assert.False(t, reporter.TriggerTarget(t.Context(), "rider-a"), "TriggerTarget() accepted a run while one was active")
+	close(runner.release)
+	reporter.Wait()
+}
+
 func TestReporterSuppressesMatchingFailureForSixHours(t *testing.T) {
 	runner := &reportingRunner{targets: Result{Phase: PhaseTargets, Outcome: OutcomeFailed, Failure: FailureDestination}}
 	state := &fakeRunState{targets: true}
@@ -378,11 +405,12 @@ func TestReporterReportsThePhaseInFlight(t *testing.T) {
 }
 
 type reportingRunner struct {
-	source      Result
-	targets     Result
-	sourceRuns  int
-	targetRuns  int
-	annotations int
+	targetRunIDs []string
+	source       Result
+	targets      Result
+	sourceRuns   int
+	targetRuns   int
+	annotations  int
 }
 
 func (r *reportingRunner) RunSource(context.Context) Result {
@@ -393,6 +421,13 @@ func (r *reportingRunner) RunSource(context.Context) Result {
 
 func (r *reportingRunner) RunTargets(context.Context) Result {
 	r.targetRuns++
+
+	return r.targets
+}
+
+func (r *reportingRunner) RunTarget(_ context.Context, targetID string) Result {
+	r.targetRuns++
+	r.targetRunIDs = append(r.targetRunIDs, targetID)
 
 	return r.targets
 }
@@ -414,6 +449,10 @@ func (r *blockingReportingRunner) RunSource(context.Context) Result {
 }
 
 func (r *blockingReportingRunner) RunTargets(context.Context) Result {
+	return Result{Phase: PhaseTargets, Outcome: OutcomeSucceeded}
+}
+
+func (r *blockingReportingRunner) RunTarget(context.Context, string) Result {
 	return Result{Phase: PhaseTargets, Outcome: OutcomeSucceeded}
 }
 
@@ -1155,6 +1194,12 @@ func (r *pacedRunner) RunSource(context.Context) Result {
 }
 
 func (r *pacedRunner) RunTargets(context.Context) Result {
+	*r.clock = r.clock.Add(r.step)
+
+	return r.targets
+}
+
+func (r *pacedRunner) RunTarget(context.Context, string) Result {
 	*r.clock = r.clock.Add(r.step)
 
 	return r.targets

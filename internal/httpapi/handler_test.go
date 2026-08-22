@@ -813,6 +813,41 @@ func TestHandlerTriggersEachPhaseOnItsOwn(t *testing.T) {
 	}
 }
 
+// A configured slot is triggered by name and mutates no other target: the
+// handler validates the path value before the sync process ever sees it.
+func TestHandlerTriggersOneConfiguredTarget(t *testing.T) {
+	trigger := &fakeSync{accepted: true}
+	handler := newHandlerWithSync(t, &fakeOAuth{}, &fakeState{}, trigger)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/sync/targets/rider-a"))
+	assert.Equal(t, http.StatusAccepted, response.Code, "POST /v1/sync/targets/rider-a status")
+	assert.Equal(t, []string{"rider-a"}, trigger.targetTriggers, "triggered target")
+}
+
+// A target this build was never configured with is refused outright, the same
+// way the OAuth start route refuses one: there is no slot to reconcile.
+func TestHandlerRejectsAnUnconfiguredTargetTrigger(t *testing.T) {
+	trigger := &fakeSync{accepted: true}
+	handler := newHandlerWithSync(t, &fakeOAuth{}, &fakeState{}, trigger)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/sync/targets/unknown"))
+	assert.Equal(t, http.StatusNotFound, response.Code, "POST /v1/sync/targets/unknown status")
+	assert.Empty(t, trigger.targetTriggers, "an unconfigured target was triggered")
+}
+
+// A single-target trigger refuses the same way a full one does when a
+// synchronization is already running.
+func TestHandlerRefusesADuplicateTargetTrigger(t *testing.T) {
+	trigger := &fakeSync{accepted: false}
+	handler := newHandlerWithSync(t, &fakeOAuth{}, &fakeState{}, trigger)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/sync/targets/rider-a"))
+	assert.Equal(t, http.StatusConflict, response.Code, "POST /v1/sync/targets/rider-a status")
+}
+
 func TestHandlerSwitchesEitherHalfOfTheSchedule(t *testing.T) {
 	state := &fakeState{scheduleSource: true, scheduleTargets: true}
 	handler := newHandler(t, &fakeOAuth{}, state)
@@ -1226,9 +1261,16 @@ func TestSyncFuncsAdaptAPairOfFunctions(t *testing.T) {
 
 	var asked SyncPhase
 
+	var askedTarget string
+
 	funcs := SyncFuncs{
 		TriggerFunc: func(phase SyncPhase) bool {
 			asked = phase
+
+			return true
+		},
+		TriggerTargetFunc: func(targetID string) bool {
+			askedTarget = targetID
 
 			return true
 		},
@@ -1237,13 +1279,18 @@ func TestSyncFuncsAdaptAPairOfFunctions(t *testing.T) {
 
 	assert.True(t, funcs.Trigger(SyncPhaseTargets), "trigger")
 	assert.Equal(t, SyncPhaseTargets, asked, "the phase the trigger was asked for")
+	assert.True(t, funcs.TriggerTarget("rider-a"), "trigger target")
+	assert.Equal(t, "rider-a", askedTarget, "the target the trigger was asked for")
 	assert.Equal(t, activity, funcs.Activity(), "activity")
 }
 
 // A process whose runs begin and end inside the request that asked for one has
 // no in-flight window to describe, so it wires no ActivityFunc at all.
 func TestSyncFuncsReportNothingUnderWayWithoutAnActivityFunc(t *testing.T) {
-	funcs := SyncFuncs{TriggerFunc: func(SyncPhase) bool { return false }}
+	funcs := SyncFuncs{
+		TriggerFunc:       func(SyncPhase) bool { return false },
+		TriggerTargetFunc: func(string) bool { return false },
+	}
 
 	assert.Equal(t, SyncActivityState{}, funcs.Activity(), "activity")
 }
@@ -1584,15 +1631,23 @@ func (o *fakeOAuth) Start(_ context.Context, _, targetID string) (string, error)
 func (o *fakeOAuth) Complete(context.Context, string, string, string) error { return o.completeErr }
 
 type fakeSync struct {
-	activity SyncActivityState
-	phases   []SyncPhase
-	calls    int
-	accepted bool
+	activity       SyncActivityState
+	phases         []SyncPhase
+	targetTriggers []string
+	calls          int
+	accepted       bool
 }
 
 func (t *fakeSync) Trigger(phase SyncPhase) bool {
 	t.calls++
 	t.phases = append(t.phases, phase)
+
+	return t.accepted
+}
+
+func (t *fakeSync) TriggerTarget(targetID string) bool {
+	t.calls++
+	t.targetTriggers = append(t.targetTriggers, targetID)
 
 	return t.accepted
 }

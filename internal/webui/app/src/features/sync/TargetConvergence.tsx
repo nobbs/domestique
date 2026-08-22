@@ -12,9 +12,11 @@
  * as "on the device".
  */
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { triggerTargetSync } from "../../api/client";
 import { statusQuery } from "../../api/queries";
 import type { TargetStatus } from "../../api/types";
+import { Button } from "../../components/Button";
 import { formatTimestamp } from "../../lib/format";
 import { GUIDANCE_LABELS, syncGuidance } from "../../lib/syncGuidance";
 import { authorisationGuidance, authorisationStartHref } from "../../lib/targetAuthorisation";
@@ -68,7 +70,12 @@ function targetGuidance(target: TargetStatus) {
 
 /** The body of the "What the accounts hold" card: one row per account. */
 export function TargetConvergence() {
+  const queryClient = useQueryClient();
   const { data, isPending, isError } = useQuery(statusQuery());
+  const reconcile = useMutation({
+    mutationFn: (targetId: string) => triggerTargetSync(targetId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: statusQuery().queryKey }),
+  });
 
   if (isPending) {
     return null;
@@ -120,6 +127,22 @@ export function TargetConvergence() {
                     {authorisation.action} {target.id}
                   </a>
                 </div>
+              ) : !authorisation ? (
+                <div className="sync-row__actions">
+                  {/*
+                   * "This account", not "this device": the button reconciles the
+                   * Wahoo account the row is about, and says so, because what it
+                   * presses is not the same thing as a head unit fetching routes
+                   * from it on its own schedule.
+                   */}
+                  <Button
+                    disabled={reconcile.isPending}
+                    onClick={() => reconcile.mutate(target.id)}
+                    aria-label={`Reconcile now: ${target.id}`}
+                  >
+                    Reconcile this account
+                  </Button>
+                </div>
               ) : null}
             </li>
           );
@@ -128,6 +151,13 @@ export function TargetConvergence() {
       <p className="sync-card__foot">
         This is what the accounts hold, not what a head unit has downloaded.
       </p>
+      {reconcile.isError ? (
+        <p className="sync-card__error" role="alert">
+          {reconcile.error instanceof Error && reconcile.error.message
+            ? reconcile.error.message
+            : "That account could not be reconciled."}
+        </p>
+      ) : null}
     </>
   );
 }

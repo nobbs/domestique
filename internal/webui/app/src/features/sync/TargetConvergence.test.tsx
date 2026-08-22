@@ -1,8 +1,13 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Status, TargetStatus } from "../../api/types";
 import { TargetConvergence } from "./TargetConvergence";
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 function target(overrides: Partial<TargetStatus> = {}): TargetStatus {
   return {
@@ -35,7 +40,10 @@ function status(converged: boolean, targets: TargetStatus[]): Status {
 
 function renderConvergence(value: Status) {
   const client = new QueryClient({
-    defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
+    defaultOptions: {
+      queries: { retry: false, staleTime: Number.POSITIVE_INFINITY },
+      mutations: { retry: false },
+    },
   });
   client.setQueryData(["status"], value);
 
@@ -222,5 +230,72 @@ describe("TargetConvergence", () => {
 
     expect(screen.getByText(/^Did not finish · /)).toBeInTheDocument();
     expect(screen.queryByText(/^Held by a safety gate · /)).not.toBeInTheDocument();
+  });
+
+  // The action names the account it reconciles, not a physical device: an
+  // operator reading two rows must be able to tell which one a press affects.
+  it("offers to reconcile a connected account by name", () => {
+    renderConvergence(status(true, [target(), target({ id: "rider-b" })]));
+
+    expect(screen.getByRole("button", { name: "Reconcile now: rider-a" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Reconcile now: rider-b" })).toBeInTheDocument();
+  });
+
+  // An account that cannot be written to has nothing here worth reconciling:
+  // the connect or reconnect flow is the only action offered instead.
+  it.each(["not_authorized", "pending", "needs_reauthorization"])(
+    "offers no reconcile action for a %s account",
+    (authorisation) => {
+      renderConvergence(status(false, [target({ authorisation, convergence: "unauthorized" })]));
+
+      expect(screen.queryByRole("button", { name: /^Reconcile now/ })).not.toBeInTheDocument();
+    },
+  );
+
+  it("triggers exactly the pressed account's reconciliation", async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        return new Response(JSON.stringify({ status: "accepted" }), { status: 202 });
+      }
+
+      return new Response(JSON.stringify(status(true, [target(), target({ id: "rider-b" })])), {
+        status: 200,
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderConvergence(status(true, [target(), target({ id: "rider-b" })]));
+
+    await userEvent.click(screen.getByRole("button", { name: "Reconcile now: rider-b" }));
+
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some((call) => call[0] === "/v1/sync/targets/rider-b")).toBe(
+        true,
+      ),
+    );
+    expect(fetchMock.mock.calls.some((call) => call[0] === "/v1/sync/targets/rider-a")).toBe(false);
+  });
+
+  // A refused reconciliation is worth showing: the operator pressed something
+  // and nothing happened.
+  it("reports a rejected reconciliation", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              error: { code: "sync_in_progress", message: "a synchronization is already running" },
+            }),
+            { status: 409 },
+          ),
+      ),
+    );
+    renderConvergence(status(true, [target()]));
+
+    await userEvent.click(screen.getByRole("button", { name: "Reconcile now: rider-a" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "a synchronization is already running",
+    );
   });
 });

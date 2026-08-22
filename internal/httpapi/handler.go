@@ -75,6 +75,9 @@ type Sync interface {
 	// Trigger starts one manual synchronization and reports whether it was
 	// accepted. An accepted run continues independently of the HTTP request.
 	Trigger(phase SyncPhase) bool
+	// TriggerTarget starts a manual reconciliation of exactly one configured
+	// target, on the same terms as Trigger scoped to that slot alone.
+	TriggerTarget(targetID string) bool
 	// Activity reports the run that has not finished, if there is one.
 	Activity() SyncActivityState
 }
@@ -98,13 +101,19 @@ type SyncActivityState struct {
 // ActivityFunc reports no work under way, which is the honest answer from a
 // process whose runs begin and end inside the request that asked for one.
 type SyncFuncs struct {
-	TriggerFunc  func(phase SyncPhase) bool
-	ActivityFunc func() SyncActivityState
+	TriggerFunc       func(phase SyncPhase) bool
+	TriggerTargetFunc func(targetID string) bool
+	ActivityFunc      func() SyncActivityState
 }
 
 // Trigger starts the adapted manual synchronization.
 func (f SyncFuncs) Trigger(phase SyncPhase) bool {
 	return f.TriggerFunc(phase)
+}
+
+// TriggerTarget starts the adapted manual single-target reconciliation.
+func (f SyncFuncs) TriggerTarget(targetID string) bool {
+	return f.TriggerTargetFunc(targetID)
 }
 
 // Activity reports the adapted process state.
@@ -406,6 +415,7 @@ func (h *Handler) routes() {
 	h.mux.Handle("POST /v1/sync", h.gated(h.sameOrigin(h.sync)))
 	h.mux.Handle("POST /v1/sync/source", h.gated(h.sameOrigin(h.syncSource)))
 	h.mux.Handle("POST /v1/sync/targets", h.gated(h.sameOrigin(h.syncTargets)))
+	h.mux.Handle("POST /v1/sync/targets/{target}", h.gated(h.sameOrigin(h.syncTarget)))
 	h.mux.Handle("PUT /v1/sync/schedule", h.gated(h.sameOrigin(h.setSyncSchedule)))
 	h.mux.Handle("GET /v1/sync/runs", h.gated(h.syncHistory))
 	h.mux.Handle("GET /v1/routes", h.gated(h.stages))
