@@ -415,6 +415,14 @@ appearance checks compare a page against itself within one run rather than
 against a stored image. `PLAYWRIGHT_INSTALL_FLAGS` remains the way to pass the
 flag on a host that does need it, such as a bare container.
 
+The CI UI job caches `~/.cache/ms-playwright`, keyed on the exact
+`@playwright/test` version pinned in `internal/webui/app/package.json`, with no
+fallback key. `ui-browser-install` is already a no-op once the browser sits at
+that path, so a hit turns the step into a check rather than a download; a
+version bump misses the cache outright rather than reusing the old browser.
+Only this job downloads the browser at all — coverage measures the UI half
+through the jsdom suite alone.
+
 The suite renders the map but does not judge it. Looking at a map change remains
 a human act, and a change handed over without one is reported as such.
 

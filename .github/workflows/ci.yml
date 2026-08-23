@@ -279,6 +279,28 @@ jobs:
           restore-keys: |
             pnpm-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-
             pnpm-${{ runner.os }}-
+      # `ui-browser-install` is a no-op once the browser is already at this path,
+      # so a cache hit turns it into a check rather than a 184MB download. Keyed
+      # on the pinned `@playwright/test` version, read straight out of
+      # package.json since it is an exact pin rather than a range, so a version
+      # bump misses the cache and installs the new browser instead of running it
+      # against the old one. No restore-keys: an exact-match-only cache cannot
+      # fall back to a stale browser on a miss.
+      - name: Resolve the Playwright version
+        run: |
+          set -euo pipefail
+          VERSION=$(grep -m1 '"@playwright/test"' internal/webui/app/package.json | sed -E 's/.*: *"([^"]+)".*/\1/')
+          if [ -z "${VERSION}" ]; then
+            echo "::error::could not resolve the @playwright/test version from internal/webui/app/package.json" >&2
+            exit 1
+          fi
+          echo "PLAYWRIGHT_VERSION=${VERSION}" >> "${GITHUB_ENV}"
+      - name: Restore the Playwright browser cache
+        # v6.1.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ env.PLAYWRIGHT_VERSION }}
       - name: Typecheck, lint and test the UI
         # Deliberately without --with-deps: the runner image already carries every
         # shared library Chromium links, so the flag only adds CJK, Thai, and
