@@ -78,6 +78,7 @@ describe("accessibility", () => {
             onOpen={() => {}}
             shapes={new Map([[routeKey(STAGE), { coordinates: CLIMB }]])}
             readAt="19:38"
+            changeOf={() => "new"}
           />
         </MemoryRouter>,
       );
@@ -100,6 +101,7 @@ describe("accessibility", () => {
           onOpen={() => {}}
           shapes={new Map([[routeKey(STAGE), { coordinates: CLIMB }]])}
           readAt="19:38"
+          changeOf={() => "updated"}
         />
       </MemoryRouter>,
     );
