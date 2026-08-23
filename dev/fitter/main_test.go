@@ -51,6 +51,32 @@ func TestRunConfigValidateIgnoresTyreToleranceOrderingWhenTheGateIsOff(t *testin
 	assert.NoError(t, cfg.validate())
 }
 
+func TestCheckTOMLStemCollisionsRejectsTwoGearsThatNormalizeTheSame(t *testing.T) {
+	groups := []rideGroup{
+		{Gear: "Bike A"},
+		{Gear: "Bike-A"}, // normalizes to the same stem as "Bike A"
+	}
+
+	err := checkTOMLStemCollisions(groups)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "Bike A")
+	assert.Contains(t, err.Error(), "Bike-A")
+}
+
+func TestCheckTOMLStemCollisionsIgnoresASkippedGroup(t *testing.T) {
+	groups := []rideGroup{
+		{Gear: "Bike A"},
+		{Gear: "Bike-A", Skipped: true}, // never reaches the write step
+	}
+
+	assert.NoError(t, checkTOMLStemCollisions(groups))
+}
+
+func TestCheckTOMLStemCollisionsAcceptsDistinctGearNames(t *testing.T) {
+	groups := []rideGroup{{Gear: "Bike A"}, {Gear: "Bike B"}}
+	assert.NoError(t, checkTOMLStemCollisions(groups))
+}
+
 // syntheticRide builds one ride's worth of samples: a coasting section
 // consistent with the given crr/cda at massKG, followed by a sustained climb
 // at the given grade and speed — enough for both stage A and stage B to have

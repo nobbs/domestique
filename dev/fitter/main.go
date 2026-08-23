@@ -126,9 +126,14 @@ func run(cfg *runConfig) error {
 		return fmt.Errorf("creating output directory: %w", err)
 	}
 
+	groups := groupRidesByGear(ridesWithSamples)
+	if err := checkTOMLStemCollisions(groups); err != nil {
+		return err
+	}
+
 	anyRejected := false
 	var results []fitResult
-	for _, group := range groupRidesByGear(ridesWithSamples) {
+	for _, group := range groups {
 		result := fitGroup(group, ridesWithSamples, samplesByRide, relations, cfg)
 		results = append(results, result)
 		if result.RejectedCrrBounds || result.IllConditioned {
@@ -152,6 +157,30 @@ func run(cfg *runConfig) error {
 	fmt.Print(renderReport(results))
 	if anyRejected {
 		return errors.New("one or more groups failed the plausibility check; see the report above")
+	}
+
+	return nil
+}
+
+// checkTOMLStemCollisions fails fast when two distinct gear names would
+// normalize to the same output file — "Bike A" and "Bike-A" both become
+// "Bike-A" — rather than letting the second group's write silently
+// overwrite the first's. Only groups that will actually reach the write
+// step are checked; a skipped group never claims a file name.
+func checkTOMLStemCollisions(groups []rideGroup) error {
+	gearByStem := make(map[string]string)
+	for _, group := range groups {
+		if group.Skipped {
+			continue
+		}
+		stem := tomlFileStem(group.Gear)
+		if existing, ok := gearByStem[stem]; ok && existing != group.Gear {
+			return fmt.Errorf(
+				"gear %q and %q both normalize to the output file name %q; rename one in the export to avoid overwriting the other's coefficients",
+				existing, group.Gear, stem,
+			)
+		}
+		gearByStem[stem] = group.Gear
 	}
 
 	return nil

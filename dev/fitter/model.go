@@ -17,12 +17,13 @@ import (
 // constant every stage of this fit shares.
 const gravityMetresPerSecondSquared = 9.80665
 
-// sampleRow is one row of samples.csv, joined against its ride's gear and
-// type from rides.csv. Only the columns this package reads.
+// sampleRow is one row of samples.csv, holding only the columns this
+// package reads. It carries no gear or ride type — those live on rideRow,
+// and gear partitioning (groupRidesByGear) works from rides.csv directly
+// rather than joining them onto every sample.
 type sampleRow struct {
 	Time             time.Time
 	RideID           string
-	Gear             string
 	TemperatureC     float64
 	AltitudeM        float64
 	Latitude         float64
