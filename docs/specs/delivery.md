@@ -463,6 +463,13 @@ Vulnerability analysis uses the Go vulnerability database through
 `govulncheck`. A finding is triaged before a release; it is not silently
 suppressed in CI.
 
+Semgrep runs a small, hand-written, committed rule set — never a fetched
+registry pack — over Go, TypeScript, and GitHub Actions workflow files, for
+patterns none of the above catch: cross-package architecture invariants that
+need an import graph rather than a single file, browser-side injection sinks,
+and workflow script injection. See [`.semgrep/README.md`](../../.semgrep/README.md)
+for what each rule covers and how to add one.
+
 ## GitHub Actions
 
 GitHub Actions runs for pull requests **targeting** the default branch and for

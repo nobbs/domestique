@@ -182,6 +182,22 @@ run = "govulncheck ./..."
 description = "Scan the working tree for secrets"
 run = "gitleaks dir . --redact --no-banner"
 
+# The rules under .semgrep/rules are hand-written and committed, not a remote
+# registry pack (`--config auto` or `p/...`) fetched at scan time. See
+# .semgrep/README.md for what they cover and how to add one. --error is
+# required: semgrep's own exit code ignores findings unless asked.
+[semgrep]
+description = "Run the committed Semgrep rules over Go, TypeScript, and workflow files"
+sources = [
+  ".semgrep/rules/**",
+  "**/*.go",
+  "internal/webui/app/src/**/*.ts",
+  "internal/webui/app/src/**/*.tsx",
+  ".github/workflows/*.yml",
+]
+outputs = { auto = true }
+run = "semgrep scan --config .semgrep/rules/ --error ."
+
 # Coverage is measured on demand and is deliberately not part of `quick`,
 # `check`, or the CI gate: instrumenting the tree makes the suite slower. This
 # task reports what a change leaves untested; it does not judge it. The task
@@ -503,7 +519,7 @@ depends = ["vet", "test", "test-race"]
 
 [ci-security]
 description = "The security half of the gate, as CI groups it"
-depends = ["mod-check", "vulncheck", "ui-audit", "secret-scan"]
+depends = ["mod-check", "vulncheck", "ui-audit", "secret-scan", "semgrep"]
 
 # Every UI task reads node_modules, so this group installs before it runs
 # anything — `ui-install` is a step here, and the checks that follow it wait for
@@ -557,6 +573,7 @@ depends = [
   "test",
   "mod-check",
   "secret-scan",
+  "semgrep",
   "ui-typecheck",
   "ui-lint",
   "ui-test",

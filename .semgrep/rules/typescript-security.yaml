@@ -1,0 +1,37 @@
+# Nothing in the current tooling (Biome, tsc, npm audit) does source-level
+# security pattern matching for the browser UI: Biome's recommended preset
+# does not enable its security domain, and npm audit only sees dependency
+# advisories. These rules cover the classic client-side injection sinks the
+# UI code must never reach, none of which is in use today.
+rules:
+  - id: ts-no-dangerously-set-inner-html
+    languages: [typescript]
+    severity: ERROR
+    message: >-
+      dangerouslySetInnerHTML injects a string as raw HTML and is a stored or
+      reflected XSS sink whenever any part of it is not a fixed literal. Use
+      text content or a sanitizer that produces a safe, reviewed subset.
+    pattern: <$EL dangerouslySetInnerHTML={$X} />
+
+  - id: ts-no-eval
+    languages: [typescript]
+    severity: ERROR
+    message: >-
+      eval and the Function constructor run a string as code. Neither has a
+      legitimate use in this browser UI; both are classic injection sinks.
+    patterns:
+      - pattern-either:
+          - pattern: eval(...)
+          - pattern: new Function(...)
+
+  - id: ts-no-document-write
+    languages: [typescript]
+    severity: ERROR
+    message: >-
+      document.write and document.writeln inject markup outside React's
+      rendering path, bypassing whatever escaping the rest of the UI relies
+      on, and block the parser besides. Render through a component instead.
+    patterns:
+      - pattern-either:
+          - pattern: document.write(...)
+          - pattern: document.writeln(...)

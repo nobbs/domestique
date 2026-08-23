@@ -1,0 +1,162 @@
+# Enforces two architectural invariants from AGENTS.md and
+# docs/specs/implementation-architecture.md that no existing linter checks:
+# only a main.go decides the process exit code, and adapters stay
+# one-way-dependent with no adapter-to-adapter or adapter-to-application-layer
+# coupling. Import-graph and call-site rules like these are exactly what
+# gosec/staticcheck (a single-file, syntax-level view) do not attempt.
+rules:
+  - id: go-no-fatal-outside-main
+    languages: [go]
+    severity: ERROR
+    message: >-
+      os.Exit and log.Fatal* belong only in a package main's main.go.
+      AGENTS.md requires that constructors and internal packages return
+      errors to their caller so main alone decides the exit code; calling
+      one directly skips graceful shutdown and cannot be tested.
+    patterns:
+      - pattern-either:
+          - pattern: log.Fatal(...)
+          - pattern: log.Fatalf(...)
+          - pattern: log.Fatalln(...)
+          - pattern: os.Exit(...)
+    paths:
+      exclude:
+        - "**/main.go"
+
+  - id: go-adapter-boundary-veloplanner
+    languages: [go]
+    severity: ERROR
+    paths:
+      include:
+        - "**/internal/veloplanner/**"
+    message: >-
+      An adapter package must not import another adapter or an
+      application-layer package (sync, oauth, schedule, httpapi).
+      docs/specs/implementation-architecture.md: dependency arrows stay
+      one-way, and only main composes adapters together.
+    patterns:
+      - pattern-either:
+          - pattern: import "github.com/nobbs/domestique/internal/komoot"
+          - pattern: import "github.com/nobbs/domestique/internal/fit"
+          - pattern: import "github.com/nobbs/domestique/internal/wahoo"
+          - pattern: import "github.com/nobbs/domestique/internal/sqlite"
+          - pattern: import "github.com/nobbs/domestique/internal/pushover"
+          - pattern: import "github.com/nobbs/domestique/internal/sync"
+          - pattern: import "github.com/nobbs/domestique/internal/oauth"
+          - pattern: import "github.com/nobbs/domestique/internal/schedule"
+          - pattern: import "github.com/nobbs/domestique/internal/httpapi"
+
+  - id: go-adapter-boundary-komoot
+    languages: [go]
+    severity: ERROR
+    paths:
+      include:
+        - "**/internal/komoot/**"
+    message: >-
+      An adapter package must not import another adapter or an
+      application-layer package (sync, oauth, schedule, httpapi).
+      docs/specs/implementation-architecture.md: dependency arrows stay
+      one-way, and only main composes adapters together.
+    patterns:
+      - pattern-either:
+          - pattern: import "github.com/nobbs/domestique/internal/veloplanner"
+          - pattern: import "github.com/nobbs/domestique/internal/fit"
+          - pattern: import "github.com/nobbs/domestique/internal/wahoo"
+          - pattern: import "github.com/nobbs/domestique/internal/sqlite"
+          - pattern: import "github.com/nobbs/domestique/internal/pushover"
+          - pattern: import "github.com/nobbs/domestique/internal/sync"
+          - pattern: import "github.com/nobbs/domestique/internal/oauth"
+          - pattern: import "github.com/nobbs/domestique/internal/schedule"
+          - pattern: import "github.com/nobbs/domestique/internal/httpapi"
+
+  - id: go-adapter-boundary-fit
+    languages: [go]
+    severity: ERROR
+    paths:
+      include:
+        - "**/internal/fit/**"
+    message: >-
+      An adapter package must not import another adapter or an
+      application-layer package (sync, oauth, schedule, httpapi).
+      docs/specs/implementation-architecture.md: dependency arrows stay
+      one-way, and only main composes adapters together.
+    patterns:
+      - pattern-either:
+          - pattern: import "github.com/nobbs/domestique/internal/veloplanner"
+          - pattern: import "github.com/nobbs/domestique/internal/komoot"
+          - pattern: import "github.com/nobbs/domestique/internal/wahoo"
+          - pattern: import "github.com/nobbs/domestique/internal/sqlite"
+          - pattern: import "github.com/nobbs/domestique/internal/pushover"
+          - pattern: import "github.com/nobbs/domestique/internal/sync"
+          - pattern: import "github.com/nobbs/domestique/internal/oauth"
+          - pattern: import "github.com/nobbs/domestique/internal/schedule"
+          - pattern: import "github.com/nobbs/domestique/internal/httpapi"
+
+  - id: go-adapter-boundary-wahoo
+    languages: [go]
+    severity: ERROR
+    paths:
+      include:
+        - "**/internal/wahoo/**"
+    message: >-
+      An adapter package must not import another adapter or an
+      application-layer package (sync, oauth, schedule, httpapi).
+      docs/specs/implementation-architecture.md: dependency arrows stay
+      one-way, and only main composes adapters together.
+    patterns:
+      - pattern-either:
+          - pattern: import "github.com/nobbs/domestique/internal/veloplanner"
+          - pattern: import "github.com/nobbs/domestique/internal/komoot"
+          - pattern: import "github.com/nobbs/domestique/internal/fit"
+          - pattern: import "github.com/nobbs/domestique/internal/sqlite"
+          - pattern: import "github.com/nobbs/domestique/internal/pushover"
+          - pattern: import "github.com/nobbs/domestique/internal/sync"
+          - pattern: import "github.com/nobbs/domestique/internal/oauth"
+          - pattern: import "github.com/nobbs/domestique/internal/schedule"
+          - pattern: import "github.com/nobbs/domestique/internal/httpapi"
+
+  - id: go-adapter-boundary-sqlite
+    languages: [go]
+    severity: ERROR
+    paths:
+      include:
+        - "**/internal/sqlite/**"
+    message: >-
+      An adapter package must not import another adapter or an
+      application-layer package (sync, oauth, schedule, httpapi).
+      docs/specs/implementation-architecture.md: dependency arrows stay
+      one-way, and only main composes adapters together.
+    patterns:
+      - pattern-either:
+          - pattern: import "github.com/nobbs/domestique/internal/veloplanner"
+          - pattern: import "github.com/nobbs/domestique/internal/komoot"
+          - pattern: import "github.com/nobbs/domestique/internal/fit"
+          - pattern: import "github.com/nobbs/domestique/internal/wahoo"
+          - pattern: import "github.com/nobbs/domestique/internal/pushover"
+          - pattern: import "github.com/nobbs/domestique/internal/sync"
+          - pattern: import "github.com/nobbs/domestique/internal/oauth"
+          - pattern: import "github.com/nobbs/domestique/internal/schedule"
+          - pattern: import "github.com/nobbs/domestique/internal/httpapi"
+
+  - id: go-adapter-boundary-pushover
+    languages: [go]
+    severity: ERROR
+    paths:
+      include:
+        - "**/internal/pushover/**"
+    message: >-
+      An adapter package must not import another adapter or an
+      application-layer package (sync, oauth, schedule, httpapi).
+      docs/specs/implementation-architecture.md: dependency arrows stay
+      one-way, and only main composes adapters together.
+    patterns:
+      - pattern-either:
+          - pattern: import "github.com/nobbs/domestique/internal/veloplanner"
+          - pattern: import "github.com/nobbs/domestique/internal/komoot"
+          - pattern: import "github.com/nobbs/domestique/internal/fit"
+          - pattern: import "github.com/nobbs/domestique/internal/wahoo"
+          - pattern: import "github.com/nobbs/domestique/internal/sqlite"
+          - pattern: import "github.com/nobbs/domestique/internal/sync"
+          - pattern: import "github.com/nobbs/domestique/internal/oauth"
+          - pattern: import "github.com/nobbs/domestique/internal/schedule"
+          - pattern: import "github.com/nobbs/domestique/internal/httpapi"

@@ -1,0 +1,27 @@
+# actionlint checks workflow syntax and shells out to shellcheck for `run:`
+# blocks, but neither tool flags a script-injection sink: an attacker-
+# controlled GitHub context value template-interpolated straight into a shell
+# command, rather than passed through an intermediate `env:` variable. GitHub
+# itself documents this as the standard mitigation for untrusted input in
+# workflows (fork PR titles, branch names, commit messages, issue/PR/comment
+# bodies).
+rules:
+  - id: gha-script-injection
+    languages: [yaml]
+    severity: ERROR
+    message: >-
+      An attacker-controlled GitHub context value is template-interpolated
+      directly into a shell run block, letting a PR title, branch name, or
+      issue/comment body break out of its string and execute arbitrary shell.
+      Pass it through env: instead and reference the environment variable in
+      the script, which the shell cannot reinterpret as command syntax.
+    paths:
+      include:
+        - "**/.github/workflows/*.yml"
+        - "**/.github/workflows/*.yaml"
+    patterns:
+      - pattern: |
+          run: $CMD
+      - metavariable-regex:
+          metavariable: $CMD
+          regex: '(?s).*\$\{\{\s*(github\.event\.(issue|pull_request|comment|review|discussion)\.(title|body)|github\.event\.pull_request\.head\.(ref|label)|github\.event\.pull_request\.head\.repo\.(full_name|name)|github\.event\.workflow_run\.head_branch|github\.event\.head_commit\.(message|author\.(name|email))|github\.event\.commits\[.*\]\.message|github\.head_ref).*'

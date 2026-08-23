@@ -38,6 +38,7 @@ go:
   - ".github/workflows/ci.yml"
   - ".golangci.yml"
   - ".mise.toml"
+  - ".semgrep/rules/**"
   - "Dockerfile"
   - "mise-tasks.toml"
   - "docs/compose.example.yml"
