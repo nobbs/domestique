@@ -224,14 +224,16 @@ func validateHeldOut(
 			continue
 		}
 
+		// Scored only when both predictors produce a value for this ride: the
+		// two MAEs are meant to be directly comparable, over the same rides,
+		// not each over whatever subset happened to have a prediction.
 		predicted := predictedMovingSeconds(samples, result, config, config.DriveEfficiency, result.PowerWatts)
-		if predicted > 0 {
-			modelErrors = append(modelErrors, absPercentError(predicted, actual))
-		}
 		baseline := baselineMovingSeconds(samples, flatSpeedMPS, vamMetresPerHour, climbThresholdPercent)
-		if baseline > 0 {
-			baselineErrors = append(baselineErrors, absPercentError(baseline, actual))
+		if predicted <= 0 || baseline <= 0 {
+			continue
 		}
+		modelErrors = append(modelErrors, absPercentError(predicted, actual))
+		baselineErrors = append(baselineErrors, absPercentError(baseline, actual))
 	}
 
 	return heldOutValidation{

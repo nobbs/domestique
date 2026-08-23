@@ -16,7 +16,7 @@ func TestHRPowerRelationByYearRecoversAKnownLinearRelation(t *testing.T) {
 		power := 2.5*hr - 150 // known relation: slope 2.5, intercept -150
 		rows = append(rows, indoorRow{
 			Time: start.Add(time.Duration(i) * time.Second), HeartRateBPM: hr, HasHeartRate: true,
-			PowerWatts: power, HasPower: true,
+			PowerWatts: power, HasPower: true, DeltaSeconds: 1,
 		})
 	}
 
@@ -29,13 +29,51 @@ func TestHRPowerRelationByYearRecoversAKnownLinearRelation(t *testing.T) {
 func TestHRPowerRelationByYearFlagsAThinYear(t *testing.T) {
 	start := time.Date(2026, 3, 1, 6, 0, 0, 0, time.UTC)
 	rows := []indoorRow{
-		{Time: start, HeartRateBPM: 130, HasHeartRate: true, PowerWatts: 150, HasPower: true},
-		{Time: start.Add(time.Second), HeartRateBPM: 140, HasHeartRate: true, PowerWatts: 170, HasPower: true},
+		{Time: start, HeartRateBPM: 130, HasHeartRate: true, PowerWatts: 150, HasPower: true, DeltaSeconds: 1},
+		{Time: start.Add(time.Second), HeartRateBPM: 140, HasHeartRate: true, PowerWatts: 170, HasPower: true, DeltaSeconds: 1},
 	}
 
 	relations := hrPowerRelationByYear(rows)
 	require.Contains(t, relations, 2026)
 	assert.True(t, relations[2026].Thin)
+}
+
+// A single long-interval row must count for as much as the seconds it
+// covers, not as one vote among many rows: indoor.csv is not strictly
+// 1 Hz, and #214's own Δt-weighting invariant is what this test checks
+// survived the port. Proven by an invariance a per-row OLS would not have:
+// one 50 s row at a given (HR, power) must move the fit exactly as much as
+// fifty separate 1 s rows at that same (HR, power) would.
+func TestHRPowerRelationByYearWeightsByDeltaSecondsNotRowCount(t *testing.T) {
+	start := time.Date(2026, 3, 1, 6, 0, 0, 0, time.UTC)
+	background := func() []indoorRow {
+		var rows []indoorRow
+		for i := range 60 {
+			hr := 120.0 + float64(i%40)
+			rows = append(rows, indoorRow{
+				Time: start.Add(time.Duration(i) * time.Second), HeartRateBPM: hr, HasHeartRate: true,
+				PowerWatts: 2.0*hr - 100, HasPower: true, DeltaSeconds: 1,
+			})
+		}
+
+		return rows
+	}
+
+	oneLongRow := append(background(), indoorRow{
+		Time: start.Add(time.Hour), HeartRateBPM: 200, HasHeartRate: true, PowerWatts: 500, HasPower: true, DeltaSeconds: 50,
+	})
+	manyShortRows := background()
+	for i := range 50 {
+		manyShortRows = append(manyShortRows, indoorRow{
+			Time:         start.Add(time.Hour).Add(time.Duration(i) * time.Second),
+			HeartRateBPM: 200, HasHeartRate: true, PowerWatts: 500, HasPower: true, DeltaSeconds: 1,
+		})
+	}
+
+	fromOneLongRow := hrPowerRelationByYear(oneLongRow)[2026]
+	fromManyShortRows := hrPowerRelationByYear(manyShortRows)[2026]
+	assert.InDelta(t, fromManyShortRows.Slope, fromOneLongRow.Slope, 1e-9)
+	assert.InDelta(t, fromManyShortRows.Intercept, fromOneLongRow.Intercept, 1e-6)
 }
 
 func TestCrossCheckRideNeedsBothChannelsToProduceAResult(t *testing.T) {

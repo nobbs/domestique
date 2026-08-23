@@ -131,6 +131,7 @@ func readIndoorCSV(path string) ([]indoorRow, error) {
 		return indoorRow{
 			RideID:       c.str(record, "ride_id"),
 			Time:         c.time(record, "time"),
+			DeltaSeconds: c.float(record, "delta_seconds"),
 			PowerWatts:   c.float(record, "power_w"),
 			HasPower:     c.boolean(record, "has_power"),
 			HeartRateBPM: c.float(record, "heart_rate_bpm"),

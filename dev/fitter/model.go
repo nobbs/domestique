@@ -59,6 +59,7 @@ type indoorRow struct {
 	RideID       string
 	PowerWatts   float64
 	HeartRateBPM float64
+	DeltaSeconds float64
 	HasPower     bool
 	HasHeartRate bool
 }

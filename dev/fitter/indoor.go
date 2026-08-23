@@ -35,13 +35,15 @@ func hrPowerRelationByYear(indoor []indoorRow) map[int]hrPowerRelation {
 	for year, rows := range byYear {
 		hrs := make([]float64, len(rows))
 		powers := make([]float64, len(rows))
+		weights := make([]float64, len(rows))
 		hours := 0.0
 		for i, r := range rows {
 			hrs[i] = r.HeartRateBPM
 			powers[i] = r.PowerWatts
-			hours += 1.0 / 3600 // 1 Hz indoor sampling: one row is one second
+			weights[i] = r.DeltaSeconds
+			hours += r.DeltaSeconds / 3600
 		}
-		slope, intercept := linearRegression(hrs, powers)
+		slope, intercept := linearRegression(hrs, powers, weights)
 		relations[year] = hrPowerRelation{Slope: slope, Intercept: intercept, Hours: hours, Thin: hours < minIndoorHoursPerYear}
 	}
 

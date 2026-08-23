@@ -140,31 +140,33 @@ func irlsFit(observations []coastingObservation) (crr, cda, conditionRatio float
 	return crr, cda, conditionRatio
 }
 
-// linearRegression fits y = intercept + slope*x by ordinary least squares.
+// linearRegression fits y = intercept + slope*x by weighted least squares.
 // Used for the indoor heart-rate-to-power relation, where — unlike the
 // coasting fit — there is exactly one regressor and no physical plausibility
-// bound to defend, so the plain OLS the coasting fit deliberately avoids is
-// the right amount of machinery here.
-func linearRegression(xs, ys []float64) (slope, intercept float64) {
-	n := float64(len(xs))
-	if n == 0 {
+// bound to defend, so this is the only extra machinery plain OLS needs: a
+// weight per row, so an indoor row spanning several seconds (indoor.csv is
+// not strictly 1 Hz) counts for as much as the seconds it actually covers,
+// the same Δt-weighting invariant #214 established for the outdoor corpus.
+func linearRegression(xs, ys, weights []float64) (slope, intercept float64) {
+	var sumW, sumX, sumY, sumXY, sumXX float64
+	for i := range xs {
+		w := weights[i]
+		sumW += w
+		sumX += w * xs[i]
+		sumY += w * ys[i]
+		sumXY += w * xs[i] * ys[i]
+		sumXX += w * xs[i] * xs[i]
+	}
+	if sumW == 0 {
 		return 0, 0
 	}
 
-	var sumX, sumY, sumXY, sumXX float64
-	for i := range xs {
-		sumX += xs[i]
-		sumY += ys[i]
-		sumXY += xs[i] * ys[i]
-		sumXX += xs[i] * xs[i]
-	}
-
-	denominator := n*sumXX - sumX*sumX
+	denominator := sumW*sumXX - sumX*sumX
 	if denominator == 0 {
-		return 0, sumY / n
+		return 0, sumY / sumW
 	}
-	slope = (n*sumXY - sumX*sumY) / denominator
-	intercept = (sumY - slope*sumX) / n
+	slope = (sumW*sumXY - sumX*sumY) / denominator
+	intercept = (sumY - slope*sumX) / sumW
 
 	return slope, intercept
 }
