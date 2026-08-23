@@ -149,7 +149,11 @@ type Processor interface {
 // Target performs serial Wahoo OAuth refresh and route operations.
 type Target interface {
 	RefreshAccessToken(ctx context.Context, refreshToken string) (accessToken, replacementRefreshToken string, err error)
-	RouteByExternalID(ctx context.Context, accessToken, externalID string) (routeID int64, found bool, err error)
+	// ListOwnedRoutes returns every route the target holds that carries an
+	// external ID, keyed by it. Reconciliation asks once per run and answers
+	// every stage from the result, so an unchanged library costs one request
+	// per target rather than one per stage.
+	ListOwnedRoutes(ctx context.Context, accessToken string) (map[string]int64, error)
 	CreateRoute(ctx context.Context, accessToken string, stage *route.Stage, fitData []byte) (routeID int64, err error)
 	UpdateRoute(ctx context.Context, routeID int64, accessToken string, stage *route.Stage, fitData []byte) (updatedRouteID int64, err error)
 	DeleteRoute(ctx context.Context, routeID int64, accessToken string) error
@@ -634,15 +638,22 @@ func (s *Service) reconcileTarget(
 		return counts{}, FailureDeletionLimit
 	}
 
+	// One listing answers ownership for every stage below, including the ones
+	// nothing changed about. It is the same evidence a per-stage lookup gave —
+	// what the target actually holds right now, by external ID — gathered once
+	// instead of once per stage, so an unchanged library costs a single
+	// request rather than one per stage against a quota every target shares.
+	owned, listErr := s.target.ListOwnedRoutes(ctx, accessToken)
+	if listErr != nil {
+		return counts{}, s.handleTargetError(ctx, targetID, listErr)
+	}
+
 	var result counts
 	for index := range ordered {
 		stage := &ordered[index]
 		key := stage.Key()
 		recorded, tracked := mappings[key]
-		wahooRouteID, found, lookupErr := s.target.RouteByExternalID(ctx, accessToken, key.ExternalID())
-		if lookupErr != nil {
-			return result, s.handleTargetError(ctx, targetID, lookupErr)
-		}
+		wahooRouteID, found := owned[key.ExternalID()]
 		if !found {
 			fitData, encodeErr := s.encoder.Encode(ctx, *stage)
 			if encodeErr != nil {
@@ -691,10 +702,9 @@ func (s *Service) reconcileTarget(
 	}
 
 	for _, key := range deletions {
-		wahooRouteID, found, err := s.target.RouteByExternalID(ctx, accessToken, key.ExternalID())
-		if err != nil {
-			return result, s.handleTargetError(ctx, targetID, err)
-		}
+		// Ownership is still established by external ID before anything is
+		// removed; the listing above is where that answer now comes from.
+		wahooRouteID, found := owned[key.ExternalID()]
 		if found {
 			if err := s.target.DeleteRoute(ctx, wahooRouteID, accessToken); err != nil {
 				return result, s.handleTargetError(ctx, targetID, err)
@@ -711,6 +721,15 @@ func (s *Service) reconcileTarget(
 
 func (s *Service) handleTargetError(ctx context.Context, targetID string, err error) FailureCategory {
 	if !s.target.IsUnauthorized(err) {
+		// FailureDestination alone does not distinguish a rate limit an operator
+		// should just wait out from a genuine, unexpected Wahoo failure. The
+		// wahoo package's own errors are already protocol-level — an HTTP status,
+		// a rate-limit sentinel, a transport failure — never a route name, a
+		// stage, or a credential, so logging the message here stays inside the
+		// same "aggregate facts only" rule every other log line in this package
+		// follows.
+		slog.Warn("wahoo target reconciliation failed", "target", targetID, "error", err)
+
 		return FailureDestination
 	}
 	if markErr := s.state.MarkNeedsReauthorization(ctx, targetID); markErr != nil {

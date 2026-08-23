@@ -274,6 +274,15 @@ advertised limits and request-response boundaries before the next target call
 begins.
 rate limits and waits or ends the run safely; it never issues parallel retries.
 
+An advertised quota that reaches zero holds the next request back until it
+refills, whether or not the destination said when that will be — a reported
+reset of zero means the responding request was not itself limited, not that the
+quota is already back. When the wait would exceed what one run holds itself
+open for, the run ends and reports the limit rather than sleeping through it.
+Each stage is recorded as its own write succeeds, so the next scheduled run
+resumes from stored state and the library converges over successive runs
+instead of one run stalling for hours.
+
 ## Sync lifecycle
 
 A healthy process schedules one delayed startup run, then one hourly run. A
@@ -358,13 +367,25 @@ have usable geometry. State-loss recovery fetches every route detail afresh. A
 malformed route or incomplete pagination invalidates the whole inventory; it
 produces no destination mutation.
 
-For each target, Domestique processes desired stages in stable source-ID and
-stage-order sequence:
+For each target, Domestique first reads that target's routes once, keyed by
+external ID, and answers every question below from that one reading. It
+establishes the same fact a per-stage lookup did — what the target actually
+holds right now, by external ID — for every stage at once, so a library where
+nothing changed costs one request per target rather than one per stage. The
+destination's request quota is shared across every configured target, and a
+per-stage lookup spent it in proportion to library size.
+
+A route the reading returns without an external ID was not created here, and is
+left out entirely: it can therefore never be matched, updated, or deleted.
+
+Working from that reading, Domestique processes desired stages in stable
+source-ID and stage-order sequence:
 
 1. Create a missing Wahoo route with its external ID, FIT data, and source
    revision.
 2. Update an owned Wahoo route when its source revision changed.
-3. Recreate an unchanged desired stage if its recorded Wahoo route vanished.
+3. Recreate an unchanged desired stage if its recorded Wahoo route vanished —
+   a vanished route is one the reading did not return.
 4. Delete an owned target stage only after all required creates and updates for
    that target succeeded.
 
