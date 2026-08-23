@@ -27,6 +27,110 @@ func TestLoadUsesFileSecretsAndDefaults(t *testing.T) {
 	assert.Equal(t, "rider@example.test", string(settings.VeloPlanner.Email().Bytes()), "VeloPlanner.Email()")
 }
 
+func TestLoadConfiguresBothSourcesAsDistinctClients(t *testing.T) {
+	directory := t.TempDir()
+	configPath, _ := writeValidConfiguration(t, directory)
+	appendValidKomootSection(t, directory, configPath)
+	t.Setenv(configFileEnv, configPath)
+
+	settings, err := Load()
+	require.NoError(t, err)
+
+	require.NotNil(t, settings.VeloPlanner, "VeloPlanner")
+	require.NotNil(t, settings.Komoot, "Komoot")
+	assert.Equal(t, "https://veloplanner.example.test", settings.VeloPlanner.BaseURL, "VeloPlanner.BaseURL")
+	assert.Equal(t, "https://komoot.example.test", settings.Komoot.BaseURL, "Komoot.BaseURL")
+	assert.Equal(t, "rider@example.test", string(settings.VeloPlanner.Email().Bytes()), "VeloPlanner.Email()")
+	assert.Equal(t, "komoot-rider@example.test", string(settings.Komoot.Email().Bytes()), "Komoot.Email()")
+	assert.Equal(t, "komoot-password", string(settings.Komoot.Password().Bytes()), "Komoot.Password()")
+	assert.NotEqual(t, settings.VeloPlanner.Email().Bytes(), settings.Komoot.Email().Bytes(),
+		"the two sources must not share a credential")
+}
+
+func TestLoadConfiguresKomootAlone(t *testing.T) {
+	directory := t.TempDir()
+	configPath, _ := writeValidConfiguration(t, directory)
+	removeConfigurationLine(t, configPath, "[veloplanner]")
+	removeConfigurationLine(t, configPath, "base_url = \"https://veloplanner.example.test\"")
+	removeConfigurationLine(t, configPath, "email_file = ")
+	removeConfigurationLine(t, configPath, "password_file = ")
+	appendValidKomootSection(t, directory, configPath)
+	t.Setenv(configFileEnv, configPath)
+
+	settings, err := Load()
+	require.NoError(t, err)
+
+	assert.Nil(t, settings.VeloPlanner, "VeloPlanner")
+	require.NotNil(t, settings.Komoot, "Komoot")
+	assert.Equal(t, "https://komoot.example.test", settings.Komoot.BaseURL, "Komoot.BaseURL")
+}
+
+func TestLoadTreatsAnEnvironmentOnlySourceAsConfigured(t *testing.T) {
+	// Presence is asked of the fully merged configuration, not the TOML file
+	// alone, so a source named only through environment variables — no
+	// matching section in the file at all — must still count as configured.
+	configPath, _ := writeValidConfiguration(t, t.TempDir())
+	removeConfigurationLine(t, configPath, "[veloplanner]")
+	removeConfigurationLine(t, configPath, "base_url = \"https://veloplanner.example.test\"")
+	removeConfigurationLine(t, configPath, "email_file = ")
+	removeConfigurationLine(t, configPath, "password_file = ")
+	t.Setenv(configFileEnv, configPath)
+	t.Setenv(envPrefix+"KOMOOT__BASE_URL", "https://komoot.example.test")
+	t.Setenv(envPrefix+"KOMOOT__EMAIL", "komoot-rider@example.test")
+	t.Setenv(envPrefix+"KOMOOT__PASSWORD", "komoot-password")
+
+	settings, err := Load()
+	require.NoError(t, err)
+
+	assert.Nil(t, settings.VeloPlanner, "VeloPlanner")
+	require.NotNil(t, settings.Komoot, "Komoot")
+	assert.Equal(t, "https://komoot.example.test", settings.Komoot.BaseURL, "Komoot.BaseURL")
+}
+
+func TestLoadRefusesZeroSources(t *testing.T) {
+	configPath, _ := writeValidConfiguration(t, t.TempDir())
+	removeConfigurationLine(t, configPath, "[veloplanner]")
+	removeConfigurationLine(t, configPath, "base_url = \"https://veloplanner.example.test\"")
+	removeConfigurationLine(t, configPath, "email_file = ")
+	removeConfigurationLine(t, configPath, "password_file = ")
+	t.Setenv(configFileEnv, configPath)
+
+	_, err := Load()
+	require.ErrorContains(t, err, "at least one source")
+}
+
+func TestLoadRefusesADuplicateSourceSection(t *testing.T) {
+	// TOML itself rejects a redefined table as a parse error, before any of
+	// this package's own validation runs — this is a regression test for that
+	// guarantee, not a Go-level duplicate check, since there is no such check
+	// to exercise.
+	configPath, _ := writeValidConfiguration(t, t.TempDir())
+	appendToFile(t, configPath, "\n[veloplanner]\nbase_url = \"https://veloplanner-2.example.test\"\n")
+	t.Setenv(configFileEnv, configPath)
+
+	_, err := Load()
+	// The exact wording is the TOML library's own and could change with a
+	// dependency bump; assert this package's stable wrapper and the name of
+	// the duplicated table, not the library's precise phrasing.
+	require.ErrorContains(t, err, "parsing configuration")
+	require.ErrorContains(t, err, "veloplanner")
+}
+
+// appendValidKomootSection writes Komoot's two secret files into directory and
+// appends a matching, valid [komoot] section to the configuration at path.
+func appendValidKomootSection(t *testing.T, directory, path string) {
+	t.Helper()
+
+	emailPath := writeSecretFile(t, directory, "komoot-email", "komoot-rider@example.test")
+	passwordPath := writeSecretFile(t, directory, "komoot-password", "komoot-password")
+	appendToFile(t, path, fmt.Sprintf(`
+[komoot]
+base_url = "https://komoot.example.test"
+email_file = %q
+password_file = %q
+`, emailPath, passwordPath))
+}
+
 func TestLoadCarriesThePinnedImageReferenceWithoutTreatingItAsASetting(t *testing.T) {
 	configPath, _ := writeValidConfiguration(t, t.TempDir())
 	t.Setenv(configFileEnv, configPath)
@@ -544,6 +648,71 @@ func TestLoadRejectsInvalidConfiguration(t *testing.T) {
 				appendToFile(t, path, "\n[notifications]\nsuccess_policy = \"digest\"\ndigest_interval = \"169h\"\n")
 			},
 			want: "notifications.digest_interval must not exceed 168h0m0s",
+		},
+		{
+			name: "komoot missing email",
+			mutate: func(t *testing.T, path string) {
+				t.Helper()
+				passwordPath := writeSecretFile(t, filepath.Dir(path), "komoot-password", "komoot-password")
+				appendToFile(t, path, fmt.Sprintf("\n[komoot]\nbase_url = \"https://komoot.example.test\"\npassword_file = %q\n", passwordPath))
+			},
+			want: "Komoot email is not configured",
+		},
+		{
+			name: "komoot missing password",
+			mutate: func(t *testing.T, path string) {
+				t.Helper()
+				emailPath := writeSecretFile(t, filepath.Dir(path), "komoot-email", "komoot-rider@example.test")
+				appendToFile(t, path, fmt.Sprintf("\n[komoot]\nbase_url = \"https://komoot.example.test\"\nemail_file = %q\n", emailPath))
+			},
+			want: "Komoot password is not configured",
+		},
+		{
+			name: "komoot base_url not https",
+			mutate: func(t *testing.T, path string) {
+				t.Helper()
+				emailPath := writeSecretFile(t, filepath.Dir(path), "komoot-email", "komoot-rider@example.test")
+				passwordPath := writeSecretFile(t, filepath.Dir(path), "komoot-password", "komoot-password")
+				appendToFile(t, path, fmt.Sprintf("\n[komoot]\nbase_url = \"http://komoot.example.test\"\nemail_file = %q\npassword_file = %q\n", emailPath, passwordPath))
+			},
+			want: "komoot.base_url",
+		},
+		{
+			name: "veloplanner base_url not https",
+			mutate: func(t *testing.T, path string) {
+				t.Helper()
+				replaceInFile(t, path, `base_url = "https://veloplanner.example.test"`, `base_url = "http://veloplanner.example.test"`)
+			},
+			want: "veloplanner.base_url",
+		},
+		{
+			// The adapter itself requires an origin with no path; a value that
+			// merely parses as an absolute HTTPS URL must still be refused here,
+			// or the failure would surface later at client construction instead.
+			name: "veloplanner base_url carrying a path",
+			mutate: func(t *testing.T, path string) {
+				t.Helper()
+				replaceInFile(t, path, `base_url = "https://veloplanner.example.test"`, `base_url = "https://veloplanner.example.test/user_routes"`)
+			},
+			want: "must be an origin",
+		},
+		{
+			name: "komoot base_url carrying a path",
+			mutate: func(t *testing.T, path string) {
+				t.Helper()
+				emailPath := writeSecretFile(t, filepath.Dir(path), "komoot-email", "komoot-rider@example.test")
+				passwordPath := writeSecretFile(t, filepath.Dir(path), "komoot-password", "komoot-password")
+				appendToFile(t, path, fmt.Sprintf("\n[komoot]\nbase_url = \"https://komoot.example.test/v007\"\nemail_file = %q\npassword_file = %q\n", emailPath, passwordPath))
+			},
+			want: "must be an origin",
+		},
+		{
+			name: "veloplanner missing password",
+			mutate: func(t *testing.T, path string) {
+				t.Helper()
+				removeConfigurationLine(t, path, "password_file = ")
+			},
+			want: "VeloPlanner password is not configured",
 		},
 	}
 

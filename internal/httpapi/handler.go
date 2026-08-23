@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"slices"
@@ -251,13 +252,17 @@ type Options struct {
 	// did not survive a restart is exactly the case where the two differ.
 	SurfaceIndexFunc func() (generation string, builtAt time.Time, ok bool)
 
-	// SourceBaseURL is the provider's own web application, as the operator
-	// configured it. The page builds an outbound link to a stage's source route
-	// from it, so an operator can open the route this stage was made from
-	// without hunting for it by name.
+	// SourceBaseURLs are each configured source's own web application, as the
+	// operator configured it, keyed by the provider it belongs to. Where the
+	// page also knows that provider's route path, it builds an outbound link
+	// to a stage's source route from the matching entry, so an operator can
+	// open the route a stage was made from without hunting for it by name —
+	// today that is VeloPlanner alone; a provider whose path the page does not
+	// yet know offers no link even though its base URL is here.
 	//
-	// Optional: without it the page shows no such link rather than a broken one.
-	SourceBaseURL string
+	// A provider with nothing configured for it is simply absent from the
+	// map, rather than present with an empty value.
+	SourceBaseURLs map[route.Provider]string
 
 	// BuildRevision is the public source commit this binary was built from, and
 	// BuildImageDigest the immutable digest of the image running it. Both are
@@ -335,7 +340,7 @@ type Handler struct {
 	buildImageDigest string
 	browserOrigin    string
 	allowedEmail     string
-	sourceBaseURL    string
+	sourceBaseURLs   map[route.Provider]string
 	tileOrigins      []string
 	targetIDs        []string
 	basemaps         []Basemap
@@ -403,11 +408,16 @@ func New(
 	// Trimmed before validating and then stored trimmed, so the value the page
 	// receives is the one that was checked: surrounding whitespace survives a
 	// hand-edited config file, and a browser will not parse it back into a URL.
-	sourceBaseURL := strings.TrimSpace(options.SourceBaseURL)
-	if sourceBaseURL != "" {
-		if err := validateSourceBaseURL(sourceBaseURL); err != nil {
-			return nil, err
+	sourceBaseURLs := make(map[route.Provider]string, len(options.SourceBaseURLs))
+	for provider, value := range options.SourceBaseURLs {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
 		}
+		if err := validateSourceBaseURL(trimmed); err != nil {
+			return nil, fmt.Errorf("source base URL for %s: %w", provider, err)
+		}
+		sourceBaseURLs[provider] = trimmed
 	}
 
 	handler := &Handler{
@@ -417,7 +427,7 @@ func New(
 		syncRuns:         syncRuns,
 		assets:           assets,
 		basemaps:         append([]Basemap(nil), options.Basemaps...),
-		sourceBaseURL:    sourceBaseURL,
+		sourceBaseURLs:   sourceBaseURLs,
 		buildRevision:    publishableRevision(options.BuildRevision),
 		buildImageDigest: publishableDigest(options.BuildImageDigest),
 		tileOrigins:      tileOrigins,

@@ -30,10 +30,23 @@ allowed_email = "you@example.com"
 database_path = "/var/lib/domestique/state.db"
 encryption_key_file = "/run/secrets/state_encryption_key"
 
+# At least one source must be configured below: [veloplanner], [komoot], or
+# both. Each is independent — configuring one does not require the other, and
+# neither is a special case of the other in this file's schema.
+
 [veloplanner]
 base_url = "https://veloplanner.com"
 email_file = "/run/secrets/veloplanner_email"
 password_file = "/run/secrets/veloplanner_password"
+
+# Komoot reads the operator's own account through the unofficial
+# api.komoot.de interface, exchanging email and password for a session token
+# at runtime — the partner OAuth2 interface needs credentials issued only
+# under a partner contract, so it is not what this reads.
+[komoot]
+base_url = "https://api.komoot.de"
+email_file = "/run/secrets/komoot_email"
+password_file = "/run/secrets/komoot_password"
 
 [wahoo]
 api_base_url = "https://api.sandbox.wahooligan.com"

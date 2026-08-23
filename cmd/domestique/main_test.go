@@ -13,8 +13,32 @@ import (
 
 	"github.com/nobbs/domestique/internal/config"
 	"github.com/nobbs/domestique/internal/pushover"
+	"github.com/nobbs/domestique/internal/route"
 	"github.com/nobbs/domestique/internal/sqlite"
 )
+
+func TestSourceBaseURLsIncludesOnlyConfiguredSources(t *testing.T) {
+	t.Parallel()
+
+	both := sourceBaseURLs(&config.Settings{
+		VeloPlanner: &config.VeloPlanner{BaseURL: "https://veloplanner.example.test"},
+		Komoot:      &config.Komoot{BaseURL: "https://komoot.example.test"},
+	})
+	assert.Equal(t, map[route.Provider]string{
+		route.ProviderVeloPlanner: "https://veloplanner.example.test",
+		route.ProviderKomoot:      "https://komoot.example.test",
+	}, both)
+
+	veloPlannerOnly := sourceBaseURLs(&config.Settings{
+		VeloPlanner: &config.VeloPlanner{BaseURL: "https://veloplanner.example.test"},
+	})
+	assert.Equal(t, map[route.Provider]string{route.ProviderVeloPlanner: "https://veloplanner.example.test"}, veloPlannerOnly)
+
+	komootOnly := sourceBaseURLs(&config.Settings{
+		Komoot: &config.Komoot{BaseURL: "https://komoot.example.test"},
+	})
+	assert.Equal(t, map[route.Provider]string{route.ProviderKomoot: "https://komoot.example.test"}, komootOnly)
+}
 
 func TestServeWaitsForCancelledSchedulerBeforeReturning(t *testing.T) {
 	t.Parallel()

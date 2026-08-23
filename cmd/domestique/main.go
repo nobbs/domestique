@@ -20,10 +20,12 @@ import (
 	"github.com/nobbs/domestique/internal/elevation"
 	"github.com/nobbs/domestique/internal/fit"
 	"github.com/nobbs/domestique/internal/httpapi"
+	"github.com/nobbs/domestique/internal/komoot"
 	"github.com/nobbs/domestique/internal/oauth"
 	"github.com/nobbs/domestique/internal/osmindex"
 	"github.com/nobbs/domestique/internal/pushover"
 	"github.com/nobbs/domestique/internal/readiness"
+	"github.com/nobbs/domestique/internal/route"
 	"github.com/nobbs/domestique/internal/schedule"
 	"github.com/nobbs/domestique/internal/sqlite"
 	"github.com/nobbs/domestique/internal/surface"
@@ -74,10 +76,24 @@ func run(ctx context.Context) error {
 		return fmt.Errorf("initializing targets: %w", ensureErr)
 	}
 
-	source, err := veloplanner.New(&veloplanner.Options{BaseURL: settings.VeloPlanner.BaseURL, Email: settings.VeloPlanner.Email().Bytes(), Password: settings.VeloPlanner.Password().Bytes()})
-	if err != nil {
-		return fmt.Errorf("creating VeloPlanner client: %w", err)
+	// config.Load guarantees at least one source is configured; each client
+	// built here is appended only when its own section is present.
+	sources := make([]syncservice.Source, 0, 2)
+	if settings.VeloPlanner != nil {
+		veloPlannerSource, sourceErr := veloplanner.New(&veloplanner.Options{BaseURL: settings.VeloPlanner.BaseURL, Email: settings.VeloPlanner.Email().Bytes(), Password: settings.VeloPlanner.Password().Bytes()})
+		if sourceErr != nil {
+			return fmt.Errorf("creating VeloPlanner client: %w", sourceErr)
+		}
+		sources = append(sources, veloPlannerSource)
 	}
+	if settings.Komoot != nil {
+		komootSource, sourceErr := komoot.New(&komoot.Options{BaseURL: settings.Komoot.BaseURL, Email: settings.Komoot.Email().Bytes(), Password: settings.Komoot.Password().Bytes()})
+		if sourceErr != nil {
+			return fmt.Errorf("creating Komoot client: %w", sourceErr)
+		}
+		sources = append(sources, komootSource)
+	}
+
 	destination, err := wahoo.New(&wahoo.Options{APIBaseURL: settings.Wahoo.APIBaseURL, OAuthBaseURL: settings.Wahoo.OAuthBaseURL, ClientID: settings.Wahoo.ClientID, RedirectURL: settings.Wahoo.RedirectURL, ClientSecret: settings.Wahoo.ClientSecret().Bytes()})
 	if err != nil {
 		return fmt.Errorf("creating Wahoo client: %w", err)
@@ -111,7 +127,7 @@ func run(ctx context.Context) error {
 		}()
 		annotator = surface.NewAnnotator(surfaceIndex, store)
 	}
-	reconciler, err := syncservice.New(&syncservice.Options{TargetIDs: targetIDs, MaxDeletionsPerTarget: settings.Sync.MaxDeletionsPerTarget, AllowEmptySourceDeletion: settings.Sync.EmptySourceDeletion == config.EmptySourceDeletionAllow}, store, []syncservice.Source{source}, elevation.New(), fit.New(), destination, annotator)
+	reconciler, err := syncservice.New(&syncservice.Options{TargetIDs: targetIDs, MaxDeletionsPerTarget: settings.Sync.MaxDeletionsPerTarget, AllowEmptySourceDeletion: settings.Sync.EmptySourceDeletion == config.EmptySourceDeletionAllow}, store, sources, elevation.New(), fit.New(), destination, annotator)
 	if err != nil {
 		return fmt.Errorf("creating sync service: %w", err)
 	}
@@ -172,7 +188,7 @@ func run(ctx context.Context) error {
 			Basemaps:  basemapOptions(settings.WebUI.Basemaps),
 			// The page links a stage back to the source route it was made from,
 			// which is on the provider the library is read from.
-			SourceBaseURL:    settings.VeloPlanner.BaseURL,
+			SourceBaseURLs:   sourceBaseURLs(settings),
 			BuildRevision:    buildInfo.Revision,
 			BuildImageDigest: buildInfo.ImageDigest,
 			AccessVerifier:   accessVerifier,
@@ -395,4 +411,18 @@ func basemapOptions(basemaps []config.Basemap) []httpapi.Basemap {
 	}
 
 	return options
+}
+
+// sourceBaseURLs restates each configured source's base URL keyed by
+// provider, for the same reason basemapOptions restates the basemaps.
+func sourceBaseURLs(settings *config.Settings) map[route.Provider]string {
+	urls := make(map[route.Provider]string, 2)
+	if settings.VeloPlanner != nil {
+		urls[route.ProviderVeloPlanner] = settings.VeloPlanner.BaseURL
+	}
+	if settings.Komoot != nil {
+		urls[route.ProviderKomoot] = settings.Komoot.BaseURL
+	}
+
+	return urls
 }
