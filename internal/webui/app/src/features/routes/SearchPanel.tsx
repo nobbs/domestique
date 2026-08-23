@@ -252,9 +252,10 @@ export function SearchPanel({
   changeOf,
 }: SearchPanelProps) {
   const filtersActive = hasActiveFilters(filters);
+  const hasQuery = query.trim() !== "";
   // A filter narrows the library exactly as a typed word does, so it opens the
   // same results column and counts against the same total.
-  const expanded = query.trim() !== "" || selectedKey !== null || filtersActive;
+  const expanded = hasQuery || selectedKey !== null || filtersActive;
 
   return (
     <div className="panel search">
@@ -289,11 +290,16 @@ export function SearchPanel({
       {expanded && shown.length === 0 ? (
         <p className="search__empty">
           {/*
-           * A filter that excludes everything is not the same claim as a name
-           * nobody used: the reader typed nothing wrong, so the message must
-           * not imply they did.
+           * Whichever of the two actually narrowed the library to nothing —
+           * or, typed and filtered at once, both. Blaming a filter for what a
+           * misremembered name caused, or the reverse, points the reader
+           * at the wrong control to relax.
            */}
-          {filtersActive ? "Nothing here matches these filters." : "Nothing here is called that."}
+          {hasQuery && filtersActive
+            ? "Nothing here matches this search and these filters."
+            : filtersActive
+              ? "Nothing here matches these filters."
+              : "Nothing here is called that."}
         </p>
       ) : null}
       {expanded && shown.length > 0 ? (

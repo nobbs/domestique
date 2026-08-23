@@ -104,6 +104,27 @@ describe("SearchPanel", () => {
     expect(screen.getByText("Nothing here is called that.")).toBeInTheDocument();
   });
 
+  it("blames a filter alone for an empty result when no name was typed", () => {
+    renderPanel({ query: "", filters: { ...EMPTY_FILTERS, surfaces: ["gravel"] }, shown: [] });
+
+    expect(screen.getByText("Nothing here matches these filters.")).toBeInTheDocument();
+  });
+
+  // Neither a name nor a filter alone is the honest cause when both narrowed
+  // the library to nothing: blaming one over the other points the reader at
+  // the wrong control to relax.
+  it("names both when a search and a filter are narrowing at once", () => {
+    renderPanel({
+      query: "kaiserstuhl",
+      filters: { ...EMPTY_FILTERS, surfaces: ["gravel"] },
+      shown: [],
+    });
+
+    expect(
+      screen.getByText("Nothing here matches this search and these filters."),
+    ).toBeInTheDocument();
+  });
+
   it("offers each result as the thing that opens it", async () => {
     const onSelect = vi.fn();
     renderPanel({ query: "alpine", onSelect });

@@ -136,6 +136,7 @@ describe("accessibility", () => {
           onOpen={() => {}}
           shapes={new Map([[routeKey(STAGE), { coordinates: CLIMB }]])}
           readAt="19:38"
+          changeOf={() => null}
         />
       </MemoryRouter>,
     );

@@ -231,12 +231,16 @@ export function RoutesPage() {
     combine,
   });
 
+  // Matched and sorted on its own memo, so adjusting a filter — which leaves
+  // the query untouched — does not repeat a sort over the whole library for
+  // every keystroke in the filter panel.
+  const queried = useMemo(() => matchingRoutes(library, query), [library, query]);
   const shown = useMemo(
     () =>
-      matchingRoutes(library, query).filter((route) =>
+      queried.filter((route) =>
         matchesFilters(route, filters, drawn.surfaces.get(routeKey(route))),
       ),
-    [library, query, filters, drawn.surfaces],
+    [queried, filters, drawn.surfaces],
   );
 
   // The open route's geometry, which the library pass has already fetched under
