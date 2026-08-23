@@ -206,6 +206,16 @@ against both the stage's content hash and the generation of the index it was
 read from, so a stage is reclassified when its shape changes and when the map
 underneath it is rebuilt, and at no other time.
 
+Open-Meteo is the second service the deployment itself reaches outbound, after
+the OpenStreetMap extract download above — and unlike the tile origin, which
+only the operator's **browser** reaches. The service asks Open-Meteo for an
+hourly forecast at the coordinates and times `GET /v1/weather` was given; a
+viewed route's shape and timing are what leaves, and nothing about the
+account viewing it, because the request carries no identity. Operating the
+service requires attributing Open-Meteo under its [CC BY 4.0
+licence](https://open-meteo.com/en/licence) wherever its data is shown, the
+same way surface classification carries the ODbL attribution above.
+
 The Wahoo OAuth redirect URI is the HTTPS URL a browser returns to. Without the
 public path that is the service's Tailnet URL:
 
@@ -317,6 +327,16 @@ The read-only JSON surface is deliberately small:
   one. That link is only useful to the operator whose account holds the route:
   the source route is private to that account, and following it as anyone else
   reaches the provider's own refusal, not the route.
+- `GET /v1/weather` returns an hourly forecast for up to 48 repeated `point`
+  values, so the page can show a ride's weather without reaching Open-Meteo
+  itself. Each `point` is `latitude,longitude,time`: decimal-degree latitude
+  and longitude, and a full RFC3339 timestamp with an offset (or `Z`) and
+  seconds. Each point is answered with the single hour of its own
+  coordinate's series nearest its own requested time — never Open-Meteo's
+  field names or its raw payload. A malformed point, more than 48 of them, or
+  a window Open-Meteo could not answer is refused as `400` before any
+  outbound call; a provider failure is `502`, carrying no upstream response
+  text.
 The seven endpoints below that change state — the four sync triggers, the
 schedule switch, the reprocess request, and the enrichment retry — additionally
 require the browser origin described above, and answer 403 without it.

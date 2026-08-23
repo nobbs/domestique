@@ -12,6 +12,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/nobbs/domestique/internal/config"
+	"github.com/nobbs/domestique/internal/httpapi"
+	"github.com/nobbs/domestique/internal/openmeteo"
 	"github.com/nobbs/domestique/internal/pushover"
 	"github.com/nobbs/domestique/internal/route"
 	"github.com/nobbs/domestique/internal/sqlite"
@@ -38,6 +40,45 @@ func TestSourceBaseURLsIncludesOnlyConfiguredSources(t *testing.T) {
 		Komoot: &config.Komoot{BaseURL: "https://komoot.example.test"},
 	})
 	assert.Equal(t, map[route.Provider]string{route.ProviderKomoot: "https://komoot.example.test"}, komootOnly)
+}
+
+func TestWeatherCoordinatesPairsParallelSlices(t *testing.T) {
+	t.Parallel()
+
+	at := weatherCoordinates([]float64{50.11, 50.25}, []float64{8.68, 8.51})
+	assert.Equal(t, []openmeteo.Coordinate{
+		{Latitude: 50.11, Longitude: 8.68},
+		{Latitude: 50.25, Longitude: 8.51},
+	}, at)
+}
+
+func TestWeatherSeriesOfConvertsEveryField(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 8, 24, 6, 0, 0, 0, time.UTC)
+	series := weatherSeriesOf([]openmeteo.Hourly{
+		{
+			Time:                            []time.Time{now},
+			TemperatureCelsius:              []float64{18.4},
+			ApparentTemperatureCelsius:      []float64{17.1},
+			PrecipitationMillimetres:        []float64{0.2},
+			PrecipitationProbabilityPercent: []float64{10},
+			WindSpeedKMH:                    []float64{12.3},
+			WindDirectionDegrees:            []float64{240},
+			WeatherCode:                     []int{1},
+		},
+	})
+	require.Len(t, series, 1)
+	assert.Equal(t, httpapi.WeatherSeries{
+		Time:                            []time.Time{now},
+		TemperatureCelsius:              []float64{18.4},
+		ApparentTemperatureCelsius:      []float64{17.1},
+		PrecipitationMillimetres:        []float64{0.2},
+		PrecipitationProbabilityPercent: []float64{10},
+		WindSpeedKMH:                    []float64{12.3},
+		WindDirectionDegrees:            []float64{240},
+		WeatherCode:                     []int{1},
+	}, series[0])
 }
 
 func TestServeWaitsForCancelledSchedulerBeforeReturning(t *testing.T) {

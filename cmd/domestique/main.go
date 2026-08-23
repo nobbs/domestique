@@ -22,6 +22,7 @@ import (
 	"github.com/nobbs/domestique/internal/httpapi"
 	"github.com/nobbs/domestique/internal/komoot"
 	"github.com/nobbs/domestique/internal/oauth"
+	"github.com/nobbs/domestique/internal/openmeteo"
 	"github.com/nobbs/domestique/internal/osmindex"
 	"github.com/nobbs/domestique/internal/pushover"
 	"github.com/nobbs/domestique/internal/readiness"
@@ -106,6 +107,23 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("creating Pushover client: %w", err)
 	}
+	// There is no API key to configure: the free forecast endpoint needs none.
+	weatherProvider, err := openmeteo.New(&openmeteo.Options{})
+	if err != nil {
+		return fmt.Errorf("creating Open-Meteo client: %w", err)
+	}
+	// Adapted rather than passed directly: httpapi.Weather is kept to
+	// primitive types so that package never imports this adapter.
+	weather := httpapi.WeatherFunc(func(
+		ctx context.Context, latitudes, longitudes []float64, from, to time.Time,
+	) ([]httpapi.WeatherSeries, error) {
+		hourlies, forecastErr := weatherProvider.Forecast(ctx, weatherCoordinates(latitudes, longitudes), from, to)
+		if forecastErr != nil {
+			return nil, forecastErr //nolint:wrapcheck // the httpapi boundary discards the detail rather than reflecting it
+		}
+
+		return weatherSeriesOf(hourlies), nil
+	})
 
 	// Surface enrichment is optional. An operator who configures no region keeps
 	// this host from downloading map extracts at all, and the annotator stays
@@ -251,6 +269,7 @@ func run(ctx context.Context) error {
 			RateLimitFunc:         destination.RateLimit,
 		},
 		assets,
+		weather,
 	)
 	if err != nil {
 		return fmt.Errorf("creating HTTP handler: %w", err)
@@ -429,4 +448,35 @@ func sourceBaseURLs(settings *config.Settings) map[route.Provider]string {
 	}
 
 	return urls
+}
+
+// weatherCoordinates pairs the httpapi boundary's parallel latitude/longitude
+// slices into the coordinate type openmeteo.Client.Forecast expects.
+func weatherCoordinates(latitudes, longitudes []float64) []openmeteo.Coordinate {
+	at := make([]openmeteo.Coordinate, len(latitudes))
+	for i := range latitudes {
+		at[i] = openmeteo.Coordinate{Latitude: latitudes[i], Longitude: longitudes[i]}
+	}
+
+	return at
+}
+
+// weatherSeriesOf converts openmeteo's hourly series into httpapi's own
+// vocabulary, so that package never imports this adapter.
+func weatherSeriesOf(hourlies []openmeteo.Hourly) []httpapi.WeatherSeries {
+	series := make([]httpapi.WeatherSeries, len(hourlies))
+	for i := range hourlies {
+		series[i] = httpapi.WeatherSeries{
+			Time:                            hourlies[i].Time,
+			TemperatureCelsius:              hourlies[i].TemperatureCelsius,
+			ApparentTemperatureCelsius:      hourlies[i].ApparentTemperatureCelsius,
+			PrecipitationMillimetres:        hourlies[i].PrecipitationMillimetres,
+			PrecipitationProbabilityPercent: hourlies[i].PrecipitationProbabilityPercent,
+			WindSpeedKMH:                    hourlies[i].WindSpeedKMH,
+			WindDirectionDegrees:            hourlies[i].WindDirectionDegrees,
+			WeatherCode:                     hourlies[i].WeatherCode,
+		}
+	}
+
+	return series
 }

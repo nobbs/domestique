@@ -268,6 +268,37 @@ func (f AccessVerifierFunc) Verify(ctx context.Context, assertion string) (strin
 	return f(ctx, assertion)
 }
 
+// WeatherSeries is one coordinate's hourly forecast, column-oriented: index i
+// across every slice describes the same hour.
+type WeatherSeries struct {
+	Time                            []time.Time
+	TemperatureCelsius              []float64
+	ApparentTemperatureCelsius      []float64
+	PrecipitationMillimetres        []float64
+	PrecipitationProbabilityPercent []float64
+	WindSpeedKMH                    []float64
+	WindDirectionDegrees            []float64
+	WeatherCode                     []int
+}
+
+// Weather asks a forecast provider for an hourly series at each of a set of
+// coordinates, over one shared time window. It is satisfied by
+// internal/openmeteo through WeatherFunc, kept to primitive parameter and
+// return types so this package never imports that adapter.
+type Weather interface {
+	// Forecast returns one hourly series per coordinate, in the order the
+	// coordinates are given.
+	Forecast(ctx context.Context, latitudes, longitudes []float64, from, to time.Time) ([]WeatherSeries, error)
+}
+
+// WeatherFunc adapts a function to Weather.
+type WeatherFunc func(ctx context.Context, latitudes, longitudes []float64, from, to time.Time) ([]WeatherSeries, error)
+
+// Forecast calls f.
+func (f WeatherFunc) Forecast(ctx context.Context, latitudes, longitudes []float64, from, to time.Time) ([]WeatherSeries, error) {
+	return f(ctx, latitudes, longitudes, from, to)
+}
+
 // Options carries the non-secret settings the HTTP surface needs.
 type Options struct {
 	// AccessVerifier checks the Cloudflare Access assertion on every request.
@@ -363,6 +394,7 @@ type Handler struct {
 	syncRuns         Sync
 	state            State
 	assets           Assets
+	weather          Weather
 	accessVerifier   AccessVerifier
 	mux              *http.ServeMux
 	now              func() time.Time
@@ -386,9 +418,10 @@ func New(
 	state State,
 	syncRuns Sync,
 	assets Assets,
+	weather Weather,
 ) (*Handler, error) {
-	if options == nil || oauthService == nil || state == nil || syncRuns == nil || assets == nil {
-		return nil, errors.New("http options, oauth service, state, sync process, and assets are required")
+	if options == nil || oauthService == nil || state == nil || syncRuns == nil || assets == nil || weather == nil {
+		return nil, errors.New("http options, oauth service, state, sync process, assets, and weather are required")
 	}
 	if len(options.TargetIDs) < 1 || len(options.TargetIDs) > 2 {
 		return nil, errors.New("between one and two target IDs are required")
@@ -457,6 +490,7 @@ func New(
 		state:            state,
 		syncRuns:         syncRuns,
 		assets:           assets,
+		weather:          weather,
 		basemaps:         append([]Basemap(nil), options.Basemaps...),
 		sourceBaseURLs:   sourceBaseURLs,
 		buildRevision:    publishableRevision(options.BuildRevision),
@@ -515,6 +549,7 @@ func (h *Handler) routes() {
 		h.gated(h.sameOrigin(h.redirectLegacyStagePath("/reprocess"))),
 	)
 	h.mux.Handle("GET /v1/webui/config", h.gated(h.webUIConfig))
+	h.mux.Handle("GET /v1/weather", h.gated(h.weatherForecast))
 
 	h.mux.Handle("GET /oauth/wahoo/start/{target}", h.gated(h.start))
 	h.mux.Handle("GET /oauth/wahoo/callback", h.gated(h.callback))
