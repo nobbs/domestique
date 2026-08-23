@@ -214,6 +214,20 @@ export interface SyncActive {
   stages: TargetStages;
 }
 
+/**
+ * Wahoo's own most recently advertised request quota.
+ *
+ * This is a live reading of Wahoo's last response, not a count the service
+ * keeps itself — the quota is shared across every configured account, so
+ * nothing local could total it correctly on its own. Absent until a request
+ * has actually reached Wahoo and carried a quota header back.
+ */
+export interface WahooRateLimit {
+  remaining: number;
+  /** Absent when Wahoo's own last response did not carry a usable reset. */
+  resetsAt?: string | undefined;
+}
+
 export interface SyncStatus {
   state: string;
   /** Absent whenever nothing is queued, running, or being held back. */
@@ -229,6 +243,7 @@ export interface SyncStatus {
   /** A half is absent here until it has finished a run of its own. */
   phases: Partial<Record<SyncPhase, SyncPhaseRun>>;
   surface: SurfaceCoverage;
+  wahooRateLimit?: WahooRateLimit | undefined;
 }
 
 /**

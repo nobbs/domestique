@@ -248,6 +248,7 @@ func run(ctx context.Context) error {
 			},
 			TriggerAnnotateFunc:   func() bool { return reporter.TriggerAnnotate(runCtx) },
 			SurfaceIncompleteFunc: reporter.SurfaceIncomplete,
+			RateLimitFunc:         destination.RateLimit,
 		},
 		assets,
 	)

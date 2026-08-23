@@ -91,6 +91,25 @@ describe("TargetConvergence", () => {
     expect(screen.getByText(/not what a head unit has downloaded/)).toBeInTheDocument();
   });
 
+  // The quota is Wahoo's own live reading, not a guess this page fabricates
+  // before the service has ever spoken to Wahoo.
+  it("says nothing about the Wahoo quota until one has been observed", () => {
+    renderConvergence(status(true, [target()]));
+
+    expect(screen.queryByText(/requests left/)).not.toBeInTheDocument();
+  });
+
+  it("reports the live Wahoo quota once observed", () => {
+    const value = status(true, [target()]);
+    value.sync.wahooRateLimit = { remaining: 187, resetsAt: "2026-08-23T12:00:00Z" };
+    renderConvergence(value);
+
+    expect(
+      screen.getByText(/Wahoo has 187 requests left, shared by every account here\./),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Resets /)).toBeInTheDocument();
+  });
+
   it("says an account is waiting to be connected rather than merely behind", () => {
     renderConvergence(
       status(false, [
