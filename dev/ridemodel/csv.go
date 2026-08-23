@@ -24,8 +24,10 @@ type activitiesCSVColumns struct {
 }
 
 // readActivitiesCSV reads activities.csv, tolerant of extra or reordered
-// columns. A row missing its ID or Filename is skipped: it names no file to
-// decode and cannot be reported against.
+// columns. Only a row missing its ID is skipped here: an ID names the
+// activity a report can name back, even when its Filename is empty —
+// ingestActivity is what turns a missing Filename into a reported
+// exclusionNoSourceFile rather than a row silently absent from every count.
 func readActivitiesCSV(path string) ([]activityRow, error) {
 	file, err := os.Open(path) //nolint:gosec // The path is the operator's own -export flag, joined with the fixed activities.csv name.
 	if err != nil {

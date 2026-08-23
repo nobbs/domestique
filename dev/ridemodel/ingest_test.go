@@ -93,6 +93,24 @@ func TestBuildSamplesMarksBelowThresholdAsNotMoving(t *testing.T) {
 }
 
 // The window is a physical distance, so doubling how densely a ride is
+// A point less than gradientWindowMetres into the ride has no full window
+// behind it yet, and must report no gradient rather than one measured over
+// whatever short span happens to be available — the same rule
+// internal/route.Stage.MaxGradientPercent applies.
+func TestWindowedGradientsReportsNoneBeforeAFullWindowIsAvailable(t *testing.T) {
+	start := time.Date(2026, 8, 1, 6, 0, 0, 0, time.UTC)
+	// A steep, unmistakable grade, but only 40 m into the ride — well short
+	// of the 100 m window.
+	records := []point{
+		pointAt(start, 50, 8, 0, 0),
+		pointAt(start.Add(5*time.Second), 50, 8, 4, 20),
+		pointAt(start.Add(10*time.Second), 50, 8, 8, 40),
+	}
+	gradients := windowedGradients(records, cumulativeDistances(records))
+	assert.InDelta(t, 0, gradients[1], 1e-9)
+	assert.InDelta(t, 0, gradients[2], 1e-9)
+}
+
 // sampled — inserting a point halfway between each original pair — must
 // leave the gradient reported at each original point materially unchanged.
 func TestWindowedGradientsAreInvariantToSampleDensity(t *testing.T) {
@@ -167,6 +185,7 @@ func TestIngestActivityDetectsIndoorByPositionAsWellAsType(t *testing.T) {
 	assert.Equal(t, exclusionIndoor, summary.Reason)
 	assert.Nil(t, samples)
 	assert.NotEmpty(t, indoorRows)
+	assert.InDelta(t, 1.0, summary.ElapsedSeconds, 0.001, "an indoor ride's elapsed time must still be reported")
 
 	outdoorRide := buildFITActivity(t, []testRecord{
 		{at: start, lat: 50, lon: 8, altitudeMetres: 100, distanceMetres: 0},

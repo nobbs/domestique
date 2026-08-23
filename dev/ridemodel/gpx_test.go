@@ -12,7 +12,8 @@ import (
 )
 
 const sampleGPX = `<?xml version="1.0" encoding="UTF-8"?>
-<gpx creator="StravaGPX" version="1.1" xmlns="http://www.topografix.com/GPX/1/1">
+<gpx creator="StravaGPX" version="1.1" xmlns="http://www.topografix.com/GPX/1/1"
+  xmlns:gpxtpx="http://www.garmin.com/xmlschemas/TrackPointExtension/v1">
  <trk>
   <name>Morning Ride</name>
   <trkseg>

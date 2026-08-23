@@ -60,6 +60,10 @@ func ingestActivity(exportDir string, row *activityRow) (rideSummary, []sample, 
 		summary.DeviceTimerTime = decoded.TotalTimerTime
 	}
 
+	if len(decoded.Records) >= 2 {
+		summary.ElapsedSeconds = decoded.Records[len(decoded.Records)-1].Time.Sub(decoded.Records[0].Time).Seconds()
+	}
+
 	summary.Indoor = isIndoorType(row.Type) || allRecordsLackPosition(decoded.Records)
 	if summary.Indoor {
 		indoorRows := buildIndoorSamples(row.ID, decoded.Records)
@@ -79,9 +83,6 @@ func ingestActivity(exportDir string, row *activityRow) (rideSummary, []sample, 
 
 	samples := buildSamples(row.ID, decoded.Records, decoded.Derived)
 	summary.SampleCount = len(samples)
-	if len(decoded.Records) >= 2 {
-		summary.ElapsedSeconds = decoded.Records[len(decoded.Records)-1].Time.Sub(decoded.Records[0].Time).Seconds()
-	}
 	for i := range samples {
 		summary.TotalDistanceMetres += samples[i].IntervalDistanceMetres
 		if samples[i].MovingFilter {
@@ -318,7 +319,7 @@ func windowedGradients(records []point, cumulative []float64) []float64 {
 			continue
 		}
 		span := cumulative[leading] - cumulative[trailing]
-		if span <= 0 {
+		if span < gradientWindowMetres {
 			continue
 		}
 		rise := records[leading].AltitudeMetres - records[trailing].AltitudeMetres

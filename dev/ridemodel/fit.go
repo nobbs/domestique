@@ -69,10 +69,12 @@ func readGzip(path string) ([]byte, error) {
 
 func decodeFIT(raw []byte, opts ...decoder.Option) (decodedActivity, error) {
 	listener := filedef.NewListener()
+	// File() also closes the listener, on the path that reaches it; deferred
+	// here too so every path does, the way internal/fit's own tests always
+	// defer their listener's Close. A second Close is a no-op.
+	defer listener.Close()
 	dec := decoder.New(bytes.NewReader(raw), append([]decoder.Option{decoder.WithMesgListener(listener)}, opts...)...)
 	if _, err := dec.Decode(); err != nil {
-		listener.Close()
-
 		return decodedActivity{}, fmt.Errorf("decoding: %w", err)
 	}
 
