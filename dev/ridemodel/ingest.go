@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"math"
 	"path/filepath"
 	"strings"
@@ -43,7 +44,15 @@ func ingestActivity(exportDir string, row *activityRow) (rideSummary, []sample, 
 		return summary, nil, nil
 	}
 
-	decoded, device, err := decodeActivityFile(filepath.Join(exportDir, row.Filename))
+	path, pathErr := resolveActivityFile(exportDir, row.Filename)
+	if pathErr != nil {
+		summary.Excluded = true
+		summary.Reason = exclusionUnsafeFilename
+
+		return summary, nil, nil
+	}
+
+	decoded, device, err := decodeActivityFile(path)
 	summary.Device = device
 	if err != nil {
 		summary.Excluded = true
@@ -104,6 +113,25 @@ func ingestActivity(exportDir string, row *activityRow) (rideSummary, []sample, 
 	}
 
 	return summary, samples, nil
+}
+
+// resolveActivityFile joins exportDir with the Filename column, and refuses
+// the result if it does not stay inside exportDir. Filename is data this
+// tool did not write — an absolute path, or one built from "..", would let a
+// malformed or tampered export point this tool at an arbitrary local file;
+// this is what stops that regardless of whether Filename could also just be
+// an honest mistake.
+func resolveActivityFile(exportDir, filename string) (string, error) {
+	if filepath.IsAbs(filename) {
+		return "", fmt.Errorf("filename %q must be relative", filename)
+	}
+	joined := filepath.Join(exportDir, filename)
+	rel, err := filepath.Rel(exportDir, joined)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("filename %q escapes the export directory", filename)
+	}
+
+	return joined, nil
 }
 
 // decodeActivityFile picks the decoder by file extension and reports which

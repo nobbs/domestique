@@ -227,6 +227,33 @@ func TestIngestActivityExcludesANonCyclingRow(t *testing.T) {
 	assert.Nil(t, indoor)
 }
 
+// A Filename this tool did not write — an absolute path, or one built from
+// ".." — must never be opened, whether the export is malformed or tampered
+// with.
+func TestIngestActivityRejectsAFilenameThatEscapesTheExportDirectory(t *testing.T) {
+	for name, filename := range map[string]string{
+		"absolute path":    "/etc/passwd",
+		"parent traversal": "../../../etc/passwd",
+		"embedded parent":  "activities/../../secret.fit.gz",
+	} {
+		t.Run(name, func(t *testing.T) {
+			summary, samples, indoor := ingestActivity(t.TempDir(), &activityRow{
+				ID: "1", Type: "Ride", Filename: filename,
+			})
+			assert.True(t, summary.Excluded)
+			assert.Equal(t, exclusionUnsafeFilename, summary.Reason)
+			assert.Nil(t, samples)
+			assert.Nil(t, indoor)
+		})
+	}
+}
+
+func TestResolveActivityFileAcceptsAnOrdinaryRelativePath(t *testing.T) {
+	path, err := resolveActivityFile("/export", "activities/123.fit.gz")
+	require.NoError(t, err)
+	assert.Equal(t, "/export/activities/123.fit.gz", path)
+}
+
 func TestIngestActivityReportsAltitudeQualityAgainstTheDevicesOwnAscent(t *testing.T) {
 	start := time.Date(2026, 8, 1, 6, 0, 0, 0, time.UTC)
 	ride := buildFITActivity(t, []testRecord{

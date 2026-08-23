@@ -59,6 +59,7 @@ const (
 	exclusionUnreadable      exclusionReason = "unreadable"
 	exclusionUnsupportedFile exclusionReason = "unsupported_file_format"
 	exclusionNoSourceFile    exclusionReason = "no_source_file"
+	exclusionUnsafeFilename  exclusionReason = "unsafe_filename"
 	exclusionNoAltitude      exclusionReason = "no_altitude_channel"
 )
 

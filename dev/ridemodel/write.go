@@ -96,7 +96,10 @@ func writeRideSummaries(path string, rides []rideSummary) error {
 // indoor rides in an export, say — still leaves a file the fitter's tooling
 // can open rather than one it has to first check for.
 func writeCSVFile(path string, header []string, n int, row func(i int) []string) (err error) {
-	file, err := os.Create(path) //nolint:gosec // The path is composed from the operator's own -out flag and this package's own fixed table names.
+	// The corpus carries a raw GPS position and time series, so it is written
+	// readable to the operator alone rather than at os.Create's umask-subject
+	// default.
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600) //nolint:gosec // The path is composed from the operator's own -out flag and this package's own fixed table names.
 	if err != nil {
 		return fmt.Errorf("creating %s: %w", path, err)
 	}
