@@ -170,11 +170,29 @@ func (c *Client) newSession() *session {
 // a session token, both returned under misleading field names. It is the only
 // call that authenticates with the account password; every later call
 // authenticates with the returned token instead.
+//
+// It builds its own request rather than going through newRequest: the email
+// is untrusted-shaped data embedded directly in a path segment, and
+// newRequest's endpoint strings are otherwise plain constants and validated
+// numeric ids, so keeping the one call site that needs path escaping separate
+// keeps that escaping in exactly one place. The email is assigned to Path,
+// left decoded, with RawPath empty, so url.URL escapes it exactly once when
+// the request is built; the earlier version pre-escaped it and assigned that
+// to Path too, which made url.URL escape the already-escaped percent signs a
+// second time and broke login for any email containing a character that
+// needs escaping.
 func (s *session) login(ctx context.Context) (userID, token string, err error) {
-	request, err := s.newRequest(ctx, fmt.Sprintf("/v006/account/email/%s/", url.PathEscape(string(s.parent.email))))
+	loginURL := *s.baseURL
+	loginURL.Path = "/v006/account/email/" + string(s.parent.email) + "/"
+	loginURL.RawPath = ""
+	loginURL.RawQuery = ""
+
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, loginURL.String(), http.NoBody)
 	if err != nil {
-		return "", "", err
+		return "", "", fmt.Errorf("creating login request: %w", err)
 	}
+	request.Header.Set("Accept", "application/json")
+	request.Header.Set("User-Agent", userAgent)
 	request.SetBasicAuth(string(s.parent.email), string(s.parent.password))
 
 	body, status, err := s.doRequest(request)
@@ -189,17 +207,18 @@ func (s *session) login(ctx context.Context) (userID, token string, err error) {
 	}
 
 	var payload accountResponse
-	if err := json.Unmarshal(body, &payload); err != nil {
+	if unmarshalErr := json.Unmarshal(body, &payload); unmarshalErr != nil {
 		return "", "", errors.New("komoot: login response was not valid JSON")
 	}
 	if payload.Username == "" || payload.Password == "" {
 		return "", "", ErrAuthentication
 	}
 	// username is documented as carrying the numeric user id. It is about to be
-	// interpolated into every later request's path, so a non-numeric value is
-	// treated the same as any other unusable login response rather than trusted
-	// verbatim.
-	if _, err := strconv.ParseUint(payload.Username, 10, 64); err != nil {
+	// interpolated into every later request's path, so a non-numeric or zero
+	// value is treated the same as any other unusable login response rather
+	// than trusted verbatim.
+	parsedUserID, err := strconv.ParseUint(payload.Username, 10, 64)
+	if err != nil || parsedUserID == 0 {
 		return "", "", ErrAuthentication
 	}
 
@@ -208,7 +227,7 @@ func (s *session) login(ctx context.Context) (userID, token string, err error) {
 
 func (s *session) listTours(ctx context.Context, userID, token string) ([]tourSummary, error) {
 	var tours []tourSummary
-	wantTotal := -1
+	wantTotal, wantPages := -1, -1
 
 	for page := 0; ; page++ {
 		if err := ctx.Err(); err != nil {
@@ -223,14 +242,18 @@ func (s *session) listTours(ctx context.Context, userID, token string) ([]tourSu
 		if err := s.getJSON(ctx, userID, token, endpoint, &payload); err != nil {
 			return nil, fmt.Errorf("komoot: listing tours: %w", err)
 		}
+		if payload.Page == nil {
+			return nil, errors.New("komoot: tour listing response had no page metadata")
+		}
 		if payload.Page.Number != page || payload.Page.TotalElements < 0 ||
 			payload.Page.TotalPages < 0 || payload.Page.TotalPages > maximumPages ||
 			payload.Page.TotalElements > maximumTours ||
 			(payload.Page.TotalPages == 0 && payload.Page.TotalElements != 0) ||
-			(wantTotal >= 0 && payload.Page.TotalElements != wantTotal) {
+			(wantTotal >= 0 && payload.Page.TotalElements != wantTotal) ||
+			(wantPages >= 0 && payload.Page.TotalPages != wantPages) {
 			return nil, errors.New("komoot: invalid tour library pagination")
 		}
-		wantTotal = payload.Page.TotalElements
+		wantTotal, wantPages = payload.Page.TotalElements, payload.Page.TotalPages
 
 		tours = append(tours, payload.Embedded.Tours...)
 		if len(tours) > maximumTours {
@@ -308,6 +331,17 @@ func (s *session) url(endpoint string) *url.URL {
 func (s *session) doRequest(request *http.Request) (body []byte, statusCode int, err error) {
 	response, err := s.client.Do(request)
 	if err != nil {
+		// http.Client wraps a transport, TLS, or timeout failure in a *url.Error
+		// whose Error() text includes the request URL — for login, a URL that
+		// embeds the account's email. Unwrap to the underlying cause so a
+		// caller that logs this failure never has the operator's email to log,
+		// while errors.Is against context.Canceled or a deadline still works
+		// against the unwrapped cause.
+		var urlErr *url.Error
+		if errors.As(err, &urlErr) { //nolint:modernize // errors.As is unambiguous to every tool reviewing this code.
+			err = urlErr.Err
+		}
+
 		return nil, 0, fmt.Errorf("sending request: %w", err)
 	}
 	defer func() {

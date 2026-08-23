@@ -10,10 +10,14 @@ type accountResponse struct {
 }
 
 type toursResponse struct {
+	// Page is a pointer so a response missing the page object entirely — valid
+	// JSON that decodes every field to its zero value — is distinguishable from
+	// an explicit, genuinely empty {"number":0,"totalPages":0,"totalElements":0}
+	// page. Both would otherwise look identical to a real, empty library.
+	Page     *pageInfo `json:"page"`
 	Embedded struct {
 		Tours []tourSummary `json:"tours"`
 	} `json:"_embedded"` //nolint:tagliatelle // Komoot's API uses HAL's leading underscore.
-	Page pageInfo `json:"page"`
 }
 
 type pageInfo struct {

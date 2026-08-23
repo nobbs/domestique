@@ -315,6 +315,93 @@ func TestClientInventoryRejectsInconsistentEmptyPagination(t *testing.T) {
 	require.ErrorContains(t, err, "invalid tour library pagination")
 }
 
+func TestClientInventoryRejectsMissingPageObject(t *testing.T) {
+	server := authenticatedListingServer(t, `{"_embedded":{"tours":[]}}`)
+	defer server.Close()
+
+	_, err := newTestClient(t, server).Inventory(t.Context())
+	require.ErrorContains(t, err, "no page metadata")
+}
+
+func TestClientInventoryRejectsInconsistentTotalPages(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/v006/account/email/rider@example.test/":
+			writeJSON(t, writer, `{"username":"42","password":"session-token"}`)
+		case "/v007/users/42/tours/":
+			switch request.URL.Query().Get("page") {
+			case "0":
+				writeJSON(t, writer, `{"_embedded":{"tours":[{"id":100}]},"page":{"size":1,"totalElements":2,"totalPages":2,"number":0}}`)
+			case "1":
+				writeJSON(t, writer, `{"_embedded":{"tours":[{"id":101}]},"page":{"size":1,"totalElements":2,"totalPages":1,"number":1}}`)
+			default:
+				writer.WriteHeader(http.StatusNotFound)
+			}
+		default:
+			writer.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	_, err := newTestClient(t, server).Inventory(t.Context())
+	require.ErrorContains(t, err, "invalid tour library pagination")
+}
+
+func TestClientInventoryRejectsZeroUsername(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writeJSON(t, writer, `{"username":"0","password":"session-token"}`)
+	}))
+	defer server.Close()
+
+	_, err := newTestClient(t, server).Inventory(t.Context())
+	require.ErrorIs(t, err, ErrAuthentication)
+}
+
+func TestClientInventoryEscapesEmailExactlyOnce(t *testing.T) {
+	const email = "ridér@example.test"
+	var gotPath string
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if gotPath == "" {
+			gotPath = request.URL.Path
+		}
+		writeJSON(t, writer, `{"username":"42","password":"session-token"}`)
+	}))
+	defer server.Close()
+
+	client, err := New(&Options{
+		BaseURL:   server.URL,
+		Email:     []byte(email),
+		Password:  []byte("test-password"),
+		Timeout:   time.Second,
+		Transport: server.Client().Transport,
+	})
+	require.NoError(t, err)
+
+	_, err = client.Inventory(t.Context())
+	require.ErrorContains(t, err, "no page metadata", "the stub server has no listing shape; only the captured login path matters here")
+	assert.Equal(t, "/v006/account/email/"+email+"/", gotPath,
+		"the earlier version pre-escaped the email and then let url.URL escape it a second time")
+}
+
+func TestClientInventoryTransportFailureDoesNotLeakEmail(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	unreachableURL := server.URL
+	server.Close()
+
+	client, err := New(&Options{
+		BaseURL:  unreachableURL,
+		Email:    []byte("secret-rider@example.test"),
+		Password: []byte("test-password"),
+		Timeout:  time.Second,
+	})
+	require.NoError(t, err)
+
+	_, err = client.Inventory(t.Context())
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "secret-rider@example.test",
+		"http.Client wraps a dial failure in a *url.Error that embeds the request URL")
+}
+
 func TestNewRejectsNilOptions(t *testing.T) {
 	_, err := New(nil)
 	require.Error(t, err)

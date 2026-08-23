@@ -15,11 +15,21 @@ func exampleTour(id int64) *tourDetail {
 		ChangedAt: "2026-08-17T07:00:00.000Z",
 	}
 	tour.Embedded.Coordinates.Items = []coordinate{
-		{Latitude: new(49.0), Longitude: new(8.4), Elevation: new(100.0)},
-		{Latitude: new(49.1), Longitude: new(8.5), Elevation: new(110.0)},
+		{Latitude: floatPtr(49.0), Longitude: floatPtr(8.4), Elevation: floatPtr(100)}, //nolint:modernize // see floatPtr's doc comment
+		{Latitude: floatPtr(49.1), Longitude: floatPtr(8.5), Elevation: floatPtr(110)}, //nolint:modernize // see floatPtr's doc comment
 	}
 
 	return tour
+}
+
+// floatPtr is a plain pointer-to-literal helper rather than Go's newer
+// new(expr) form: this repository's toolchain accepts it, but tooling that
+// reviews this code may not recognise it yet, and a helper needs no reader to
+// know which Go release added it.
+//
+//nolint:modernize // deliberately not new(expr); see comment above.
+func floatPtr(v float64) *float64 {
+	return &v
 }
 
 func TestConvertTourProducesOneStageWithTrimmedTitle(t *testing.T) {
@@ -61,7 +71,7 @@ func TestConvertTourDiffersOnChangedGeometry(t *testing.T) {
 	require.NoError(t, err)
 
 	changed := exampleTour(45)
-	changed.Embedded.Coordinates.Items[0].Elevation = new(999.0)
+	changed.Embedded.Coordinates.Items[0].Elevation = floatPtr(999)
 
 	second, err := convertTour(changed)
 	require.NoError(t, err)
