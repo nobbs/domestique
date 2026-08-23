@@ -41,6 +41,7 @@ function renderPanel(overrides: Partial<SearchPanelProps> = {}) {
     onOpen: () => {},
     shapes: new Map([[routeKey(route()), { coordinates: CLIMB }]]),
     readAt: "19:38",
+    changeOf: () => null,
     ...overrides,
   };
 
@@ -105,6 +106,34 @@ describe("SearchPanel", () => {
     await userEvent.click(screen.getByRole("button", { name: /Alpine loop — Descent/ }));
 
     expect(onSelect).toHaveBeenCalledWith(routeKey(route()));
+  });
+
+  // The word is what a reader without colour actually reads; the badge is
+  // never rendered on a route changeOf calls unchanged.
+  it("marks a new or changed row with a text badge", () => {
+    renderPanel({ query: "alpine", changeOf: () => "new" });
+
+    expect(screen.getByText("New")).toBeInTheDocument();
+  });
+
+  it("marks a row whose revision moved on as updated rather than new", () => {
+    renderPanel({ query: "alpine", changeOf: () => "updated" });
+
+    expect(screen.getByText("Updated")).toBeInTheDocument();
+  });
+
+  it("shows no badge on a row changeOf calls unchanged", () => {
+    renderPanel({ query: "alpine", changeOf: () => null });
+
+    expect(screen.queryByText("New")).toBeNull();
+    expect(screen.queryByText("Updated")).toBeNull();
+  });
+
+  it("carries the badge onto the route's own card once it is opened", () => {
+    renderPanel({ query: "alpine", selectedKey: routeKey(route()), changeOf: () => "new" });
+
+    expect(screen.getByRole("heading", { name: "Alpine loop — Descent" })).toBeInTheDocument();
+    expect(screen.getByText("New")).toBeInTheDocument();
   });
 
   /*

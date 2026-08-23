@@ -20,6 +20,7 @@ import { RouteGlyph } from "../../components/RouteGlyph";
 import { formatAscent, formatDistance, formatGradient } from "../../lib/format";
 import { gradientBand, gradientMix } from "../../lib/profile";
 import { providerLabel } from "../../lib/provider";
+import type { StageChange } from "../../lib/seenStages";
 
 /** The geometry a row needs, when it has arrived. Rows render without it. */
 export interface RouteShape {
@@ -55,6 +56,21 @@ export interface SearchPanelProps {
    * same moment and a per-route time would be the same time repeated.
    */
   readAt: string | null;
+  /** Whether a route is new or changed since this reader last opened it. */
+  changeOf: (route: Route) => StageChange;
+}
+
+/** New or changed since this reader last opened it. Text, never colour alone. */
+function StageChangeBadge({ change }: { change: StageChange }) {
+  if (!change) {
+    return null;
+  }
+
+  return (
+    <span className="stage-badge" data-change={change}>
+      {change === "new" ? "New" : "Updated"}
+    </span>
+  );
 }
 
 /** The magnifier. Decorative: the field beside it carries the accessible name. */
@@ -80,10 +96,12 @@ function SearchIcon() {
 function ResultRow({
   route,
   shape,
+  change,
   onSelect,
 }: {
   route: Route;
   shape: RouteShape | undefined;
+  change: StageChange;
   onSelect: () => void;
 }) {
   return (
@@ -97,6 +115,7 @@ function ResultRow({
           />
         </span>
         <span className="result__name">{route.title}</span>
+        <StageChangeBadge change={change} />
         {/*
          * Which source this row came from. A quiet label, not a logo wall: two
          * sources is what a private tool has, not a marketplace.
@@ -124,11 +143,13 @@ function RouteCard({
   route,
   shape,
   readAt,
+  change,
   onOpen,
 }: {
   route: Route;
   shape: RouteShape | undefined;
   readAt: string | null;
+  change: StageChange;
   onOpen: () => void;
 }) {
   /*
@@ -162,6 +183,7 @@ function RouteCard({
   return (
     <li className="route-card" ref={card}>
       <h2 className="route-card__title">{route.title}</h2>
+      <StageChangeBadge change={change} />
       <span className="source-label">{providerLabel(route.provider)}</span>
       {second === "" ? null : <p className="route-card__where">{second}</p>}
       <dl className="route-card__figures">
@@ -214,6 +236,7 @@ export function SearchPanel({
   onOpen,
   shapes,
   readAt,
+  changeOf,
 }: SearchPanelProps) {
   const expanded = query.trim() !== "" || selectedKey !== null;
 
@@ -256,10 +279,17 @@ export function SearchPanel({
                 route={route}
                 shape={shape}
                 readAt={readAt}
+                change={changeOf(route)}
                 onOpen={() => onOpen(key)}
               />
             ) : (
-              <ResultRow key={key} route={route} shape={shape} onSelect={() => onSelect(key)} />
+              <ResultRow
+                key={key}
+                route={route}
+                shape={shape}
+                change={changeOf(route)}
+                onSelect={() => onSelect(key)}
+              />
             );
           })}
         </ul>

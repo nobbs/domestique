@@ -166,6 +166,20 @@ function lastDrawing(): Drawing {
   return last;
 }
 
+/**
+ * A `localStorage` for jsdom, which has none. See `basemap.test.ts` for why a
+ * `Map` behind the two methods the hook uses is enough.
+ */
+function stubStorage(): void {
+  const entries = new Map<string, string>();
+  vi.stubGlobal("localStorage", {
+    getItem: (key: string) => entries.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      entries.set(key, value);
+    },
+  });
+}
+
 beforeEach(() => {
   drawn.maps = [];
   vi.stubGlobal(
@@ -485,5 +499,38 @@ describe("RoutesPage", () => {
 
     expect(screen.getByRole("button", { name: "Show the profile" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Kaiserstuhl Loop" })).toBeInTheDocument();
+  });
+
+  // A route nobody has opened yet is new, in the reader's own browser only —
+  // nothing about this reaches the service.
+  it("marks a route new until it has been opened", async () => {
+    stubStorage();
+    renderPage();
+    await userEvent.type(screen.getByRole("searchbox"), "kaiserstuhl");
+
+    expect(screen.getByText("New")).toBeInTheDocument();
+  });
+
+  it("stops marking a route new once its own panel has been opened", async () => {
+    stubStorage();
+    renderPage(LIBRARY, { at: "/?route=veloplanner%2F2%2F1" });
+    await userEvent.click(screen.getByRole("button", { name: /^← Search \d+ routes?$/ }));
+    await userEvent.type(screen.getByRole("searchbox"), "kaiserstuhl");
+
+    expect(screen.queryByText("New")).toBeNull();
+  });
+
+  // Opening it by pressing "Open route" is the same trigger as opening it by
+  // address, so it must leave the same mark behind. The search query outlives
+  // the round trip, so it is not retyped on the way back.
+  it("stops marking a route new once it is opened by hand", async () => {
+    stubStorage();
+    renderPage();
+    await userEvent.type(screen.getByRole("searchbox"), "kaiserstuhl");
+    await userEvent.click(screen.getByRole("button", { name: /Kaiserstuhl Loop/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Open route" }));
+    await userEvent.click(screen.getByRole("button", { name: /^← Search \d+ routes?$/ }));
+
+    expect(screen.queryByText("New")).toBeNull();
   });
 });

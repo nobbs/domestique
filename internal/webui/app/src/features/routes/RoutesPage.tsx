@@ -21,7 +21,7 @@
 
 import type { UseQueryResult } from "@tanstack/react-query";
 import { useQueries, useQuery } from "@tanstack/react-query";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
 import { routeGeometryQuery, routesQuery, statusQuery, webUIConfigQuery } from "../../api/queries";
 import type { BoundingBox, Position, RouteGeometry } from "../../api/types";
@@ -43,6 +43,7 @@ import {
   gradientShares,
   rangeBounds,
 } from "../../lib/profile";
+import { useSeenStages } from "../../lib/seenStages";
 import { summariseSurface } from "../../lib/surface";
 import { useEscapeKey } from "../../lib/useEscapeKey";
 import type { LibraryLine } from "./LibraryMap";
@@ -149,6 +150,7 @@ export function RoutesPage() {
    * map is handed a style rather than a choice.
    */
   const [basemapChoice, chooseBasemap] = useBasemapChoice();
+  const { changeOf, markSeen } = useSeenStages();
   // What the panels are standing on, so the camera frames a route in the part
   // of the map the reader can actually see.
   const insets = useOverlayInsets();
@@ -235,6 +237,17 @@ export function RoutesPage() {
    */
   const openFailed = openRoute !== null && openGeometry.isError;
   const shownRoute = openFailed ? null : openRoute;
+
+  // The deterministic trigger for "seen": the stage's own panel is actually
+  // shown, whether that came from pressing "Open route", picking it off the
+  // map, or opening a link straight to it. Never from rendering it in the
+  // list, and never a network call — it only ever writes to this reader's own
+  // browser.
+  useEffect(() => {
+    if (shownRoute) {
+      markSeen(shownRoute);
+    }
+  }, [shownRoute, markSeen]);
 
   /*
    * Everything asked of the open route. It lives here rather than in either
@@ -544,6 +557,7 @@ export function RoutesPage() {
           onOpen={open}
           shapes={drawn.shapes}
           readAt={readAt ? formatReadTime(readAt) : null}
+          changeOf={changeOf}
         />
       ) : null}
     </Layout>

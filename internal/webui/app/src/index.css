@@ -593,6 +593,20 @@ body {
   text-transform: uppercase;
 }
 
+/*
+ * A stage whose safe source revision differs from the one this reader last
+ * opened it at — "new" for one never opened, "updated" for one that has
+ * moved on since. The word is what a reader without colour actually reads;
+ * the accent is only ever a second signal beside it.
+ */
+.stage-badge {
+  flex: none;
+  color: var(--accent);
+  font: var(--type-micro);
+  letter-spacing: var(--track-micro);
+  text-transform: uppercase;
+}
+
 /* Route card -------------------------------------------------------------- */
 
 /*
