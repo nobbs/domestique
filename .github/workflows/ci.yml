@@ -288,7 +288,12 @@ jobs:
       # fall back to a stale browser on a miss.
       - name: Resolve the Playwright version
         run: |
+          set -euo pipefail
           VERSION=$(grep -m1 '"@playwright/test"' internal/webui/app/package.json | sed -E 's/.*: *"([^"]+)".*/\1/')
+          if [ -z "${VERSION}" ]; then
+            echo "::error::could not resolve the @playwright/test version from internal/webui/app/package.json" >&2
+            exit 1
+          fi
           echo "PLAYWRIGHT_VERSION=${VERSION}" >> "${GITHUB_ENV}"
       - name: Restore the Playwright browser cache
         # v6.1.0
