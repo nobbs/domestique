@@ -274,6 +274,17 @@ description = "Run the whole stack against a synthetic library"
 depends = ["ui-install"]
 run = "./dev/demo.sh"
 
+# Turns a Strava bulk export into a flat ride sample corpus for the drag and
+# power fitter (#215) to regress over. Never built into the image — see
+# dev/ridemodel — and always outside quick and check: it needs an export
+# directory only the operator has, and its own unit suite runs entirely on
+# in-module synthetic fixtures. The export path is required and has no
+# default; pass it and where to write the corpus with
+# `mise run ridemodel -- -export /path/to/export -out .local/ridemodel`.
+[ridemodel]
+description = "Turn a Strava bulk export into a ride sample corpus"
+run = "go run ./dev/ridemodel"
+
 # The only thing that installs node_modules. It declares the lockfile as its
 # source and the state file pnpm writes beside the installed tree as its output,
 # so it reinstalls when a dependency changes or the tree is gone, and costs a few
