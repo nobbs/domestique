@@ -77,16 +77,19 @@ type Options struct {
 
 // Client is a serial Wahoo API client with shared rate-limit handling.
 type Client struct {
-	notBefore    time.Time
-	client       *http.Client
-	apiBaseURL   *url.URL
-	oauthBaseURL *url.URL
-	now          func() time.Time
-	wait         func(context.Context, time.Duration) error
-	clientID     string
-	redirectURL  string
-	clientSecret []byte
-	mutex        sync.Mutex
+	rateLimitResetAt   time.Time
+	notBefore          time.Time
+	client             *http.Client
+	apiBaseURL         *url.URL
+	oauthBaseURL       *url.URL
+	now                func() time.Time
+	wait               func(context.Context, time.Duration) error
+	clientID           string
+	redirectURL        string
+	clientSecret       []byte
+	rateLimitRemaining int
+	mutex              sync.Mutex
+	rateLimitKnown     bool
 }
 
 // New creates a Wahoo client without contacting the API.
@@ -508,7 +511,18 @@ func (c *Client) doJSON(request *http.Request, output any) (err error) {
 
 func (c *Client) observeRateLimit(response *http.Response) {
 	remaining, reset, ok := rateLimit(response.Header)
-	if !ok || remaining > 0 {
+	if !ok {
+		return
+	}
+	c.rateLimitKnown = true
+	c.rateLimitRemaining = remaining
+	// Reset stays whatever it last usefully was when this response carries an
+	// unknown one, rather than jumping to zero: this field is read for display,
+	// where a reset that briefly disappears must not read as "already reset".
+	if reset > 0 {
+		c.rateLimitResetAt = c.now().Add(reset)
+	}
+	if remaining > 0 {
 		return
 	}
 	// A spent quota with no usable reset still has to be waited out. Treating
@@ -520,6 +534,18 @@ func (c *Client) observeRateLimit(response *http.Response) {
 		reset = defaultRateLimitReset
 	}
 	c.notBefore = c.now().Add(reset)
+}
+
+// RateLimit reports the lowest request quota Wahoo advertised across the
+// windows on its most recent response, and when that quota is next expected to
+// refill. ok is false until the client has made a request that carried a
+// quota header, which is the honest state for a service that has not spoken to
+// Wahoo yet.
+func (c *Client) RateLimit() (remaining int, resetAt time.Time, ok bool) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	return c.rateLimitRemaining, c.rateLimitResetAt, c.rateLimitKnown
 }
 
 func parseOrigin(value string) (*url.URL, error) {

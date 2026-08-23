@@ -132,6 +132,30 @@ func TestClientWaitsForAdvertisedRateLimit(t *testing.T) {
 	assert.Equal(t, 5*time.Second, waited, "the advertised reset was not waited out")
 }
 
+func TestClientReportsRateLimitObservedFromResponse(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("X-RateLimit-Remaining", "187, 90, 20")
+		writer.Header().Set("X-RateLimit-Reset", "120")
+		writeJSON(t, writer, map[string]int64{"id": 42})
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	now := time.Date(2026, time.August, 17, 7, 0, 0, 0, time.UTC)
+	client.now = func() time.Time { return now }
+
+	_, _, before := client.RateLimit()
+	assert.False(t, before, "a client that has not made a request should report no known quota")
+
+	_, err := client.AuthenticatedUser(t.Context(), "access-token")
+	require.NoError(t, err)
+
+	remaining, resetAt, ok := client.RateLimit()
+	assert.True(t, ok, "quota should be known after a response carried one")
+	assert.Equal(t, 20, remaining, "the lowest advertised window")
+	assert.Equal(t, now.Add(120*time.Second), resetAt)
+}
+
 func TestClientListsOnlyRoutesCarryingAnExternalID(t *testing.T) {
 	// A route with no external ID was created by hand in the Wahoo account.
 	// Leaving it out of the map is what keeps it unmatchable, and so

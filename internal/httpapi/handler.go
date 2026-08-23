@@ -93,6 +93,9 @@ type Sync interface {
 	// SurfaceIncomplete reports how many stages the most recently completed
 	// classification pass could not classify.
 	SurfaceIncomplete() int
+	// RateLimit reports Wahoo's most recently advertised request quota and when
+	// it next refills. ok is false until a request has carried a quota header.
+	RateLimit() (remaining int, resetAt time.Time, ok bool)
 }
 
 // SyncActivityState is what the process knows about a run that has not
@@ -120,6 +123,7 @@ type SyncFuncs struct {
 	ActivityFunc          func() SyncActivityState
 	TriggerAnnotateFunc   func() bool
 	SurfaceIncompleteFunc func() int
+	RateLimitFunc         func() (remaining int, resetAt time.Time, ok bool)
 }
 
 // Trigger starts the adapted manual synchronization.
@@ -171,6 +175,16 @@ func (f SyncFuncs) SurfaceIncomplete() int {
 	}
 
 	return f.SurfaceIncompleteFunc()
+}
+
+// RateLimit reports the adapted quota. Unknown when unset, the honest answer
+// from a wiring with no Wahoo client behind it.
+func (f SyncFuncs) RateLimit() (remaining int, resetAt time.Time, ok bool) {
+	if f.RateLimitFunc == nil {
+		return 0, time.Time{}, false
+	}
+
+	return f.RateLimitFunc()
 }
 
 // Assets serves the embedded browser UI. It is declared here so this package

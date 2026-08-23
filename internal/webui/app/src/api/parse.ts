@@ -27,6 +27,7 @@ import type {
   TargetConvergence,
   TargetRun,
   TargetStatus,
+  WahooRateLimit,
   WebUIConfig,
 } from "./types";
 import { SURFACE_KINDS, SYNC_PHASES, TARGET_CONVERGENCES } from "./types";
@@ -310,7 +311,21 @@ export function parseStatus(payload: unknown): Status {
       schedule: parseSyncSchedule(sync.schedule, "body.sync.schedule"),
       phases: syncPhasesFrom(sync.phases, "body.sync.phases"),
       surface: surfaceCoverageFrom(sync.surface, "body.sync.surface"),
+      wahooRateLimit: wahooRateLimitFrom(sync.wahoo_rate_limit, "body.sync.wahoo_rate_limit"),
     },
+  };
+}
+
+/** Reads the observed Wahoo quota, absent until a request has reported one. */
+function wahooRateLimitFrom(value: unknown, at: string): WahooRateLimit | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  const rateLimit = record(value, at);
+
+  return {
+    remaining: count(rateLimit.remaining, `${at}.remaining`),
+    resetsAt: optionalText(rateLimit.resets_at, `${at}.resets_at`),
   };
 }
 

@@ -153,11 +153,25 @@ type activeView struct {
 	Stages  targetStagesView `json:"stages"`
 }
 
+// wahooRateLimitView reports Wahoo's own most recently advertised request
+// quota. It is a live reading of that response, not a count this service
+// keeps itself — Wahoo's quota is shared across every configured target, so
+// nothing local could total it correctly on its own.
+type wahooRateLimitView struct {
+	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
+	ResetsAt  string `json:"resets_at,omitempty"`
+	Remaining int    `json:"remaining"`
+}
+
 type syncView struct {
 	Phases syncPhasesView `json:"phases"`
 	// Active is present only while a run is queued, running, or held back —
 	// the states in which no terminal result may be claimed.
 	Active *activeView `json:"active,omitempty"`
+	// WahooRateLimit is absent until a request has actually reached Wahoo and
+	// carried a quota header back.
+	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
+	WahooRateLimit *wahooRateLimitView `json:"wahoo_rate_limit,omitempty"`
 	// TrustedInventory reports the age of the trusted source inventory against
 	// the configured staleness bound. Absent when the deployment named no
 	// bound.

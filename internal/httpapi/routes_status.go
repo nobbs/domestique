@@ -169,6 +169,13 @@ func (h *Handler) status(writer http.ResponseWriter, request *http.Request, _ st
 		return
 	}
 	view.Sync.Surface = surfaceView{Classified: classified, Total: total, Incomplete: h.syncRuns.SurfaceIncomplete()}
+	if remaining, resetAt, known := h.syncRuns.RateLimit(); known {
+		rateLimit := wahooRateLimitView{Remaining: remaining}
+		if !resetAt.IsZero() {
+			rateLimit.ResetsAt = resetAt.UTC().Format(time.RFC3339)
+		}
+		view.Sync.WahooRateLimit = &rateLimit
+	}
 	if h.surfaceIndex != nil {
 		if generation, builtAt, ok := h.surfaceIndex(); ok {
 			view.Sync.Surface.Generation = generation

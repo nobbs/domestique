@@ -202,6 +202,33 @@ describe("parseStatus", () => {
     expect(status.targets[0]?.id).toBe("rider-a");
     expect(status.sync.sourceStages).toBe(4);
     expect(status.sync.lastCompletedAt).toBe("2026-08-17T08:00:00Z");
+    // Absent until the service has actually talked to Wahoo.
+    expect(status.sync.wahooRateLimit).toBeUndefined();
+  });
+
+  // Wahoo's own live reading, not a count this service totals itself.
+  it("reads the observed Wahoo quota", () => {
+    const status = parseStatus({
+      ready: true,
+      converged: false,
+      targets: [],
+      sync: {
+        state: "idle",
+        source_stages: 0,
+        created: 0,
+        updated: 0,
+        deleted: 0,
+        schedule: { source: true, targets: true },
+        phases: {},
+        surface: { classified: 0, total: 0, incomplete: 0 },
+        wahoo_rate_limit: { remaining: 187, resets_at: "2026-08-23T12:00:00Z" },
+      },
+    });
+
+    expect(status.sync.wahooRateLimit).toEqual({
+      remaining: 187,
+      resetsAt: "2026-08-23T12:00:00Z",
+    });
   });
 
   it("reads each account's convergence, counts, and last write", () => {

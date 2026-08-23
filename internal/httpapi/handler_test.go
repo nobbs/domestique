@@ -1178,6 +1178,35 @@ func TestHandlerReportsHowMuchOfTheLibraryCouldNotBeClassified(t *testing.T) {
 	assert.Equal(t, 1, view.Sync.Surface.Incomplete, "incomplete")
 }
 
+// The quota is Wahoo's own live reading, not something this service keeps a
+// running total of, so it is absent until a request has actually reached
+// Wahoo and reported one.
+func TestHandlerOmitsWahooRateLimitUntilOneIsObserved(t *testing.T) {
+	handler := newHandlerWithSync(t, &fakeOAuth{}, &fakeState{}, &fakeSync{})
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/status"))
+	require.Equal(t, http.StatusOK, response.Code, "status")
+	var view statusView
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &view), "decoding status")
+	assert.Nil(t, view.Sync.WahooRateLimit, "no quota has been observed yet")
+}
+
+func TestHandlerReportsTheObservedWahooRateLimit(t *testing.T) {
+	resetAt := time.Date(2026, time.August, 23, 12, 0, 0, 0, time.UTC)
+	trigger := &fakeSync{rateLimitKnown: true, rateLimitRemaining: 187, rateLimitResetAt: resetAt}
+	handler := newHandlerWithSync(t, &fakeOAuth{}, &fakeState{}, trigger)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/status"))
+	require.Equal(t, http.StatusOK, response.Code, "status")
+	var view statusView
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &view), "decoding status")
+	require.NotNil(t, view.Sync.WahooRateLimit, "an observed quota should be reported")
+	assert.Equal(t, 187, view.Sync.WahooRateLimit.Remaining, "remaining")
+	assert.Equal(t, resetAt.Format(time.RFC3339), view.Sync.WahooRateLimit.ResetsAt, "resets_at")
+}
+
 // The counts alone cannot say whether a full library is classified against a map
 // from this week or from last spring. The generation is what makes a rebuild that
 // has silently stopped happening visible.
@@ -1804,15 +1833,18 @@ func (o *fakeOAuth) Start(_ context.Context, _, targetID string) (string, error)
 func (o *fakeOAuth) Complete(context.Context, string, string, string) error { return o.completeErr }
 
 type fakeSync struct {
-	activity          SyncActivityState
-	phases            []SyncPhase
-	targetTriggers    []string
-	clearTriggers     []string
-	calls             int
-	annotateCalls     int
-	surfaceIncomplete int
-	accepted          bool
-	annotateAccepted  bool
+	rateLimitResetAt   time.Time
+	activity           SyncActivityState
+	phases             []SyncPhase
+	targetTriggers     []string
+	clearTriggers      []string
+	calls              int
+	annotateCalls      int
+	surfaceIncomplete  int
+	rateLimitRemaining int
+	accepted           bool
+	annotateAccepted   bool
+	rateLimitKnown     bool
 }
 
 func (t *fakeSync) Trigger(phase SyncPhase) bool {
@@ -1845,6 +1877,10 @@ func (t *fakeSync) TriggerAnnotate() bool {
 }
 
 func (t *fakeSync) SurfaceIncomplete() int { return t.surfaceIncomplete }
+
+func (t *fakeSync) RateLimit() (int, time.Time, bool) {
+	return t.rateLimitRemaining, t.rateLimitResetAt, t.rateLimitKnown
+}
 
 type fakeAssets struct{}
 

@@ -18,7 +18,7 @@ import { clearTarget, triggerTargetSync } from "../../api/client";
 import { statusQuery } from "../../api/queries";
 import type { TargetStatus } from "../../api/types";
 import { Button } from "../../components/Button";
-import { formatTimestamp } from "../../lib/format";
+import { formatCount, formatTimestamp } from "../../lib/format";
 import { GUIDANCE_LABELS, syncGuidance } from "../../lib/syncGuidance";
 import { authorisationGuidance, authorisationStartHref } from "../../lib/targetAuthorisation";
 
@@ -225,6 +225,21 @@ export function TargetConvergence() {
       <p className="sync-card__foot">
         This is what the accounts hold, not what a head unit has downloaded.
       </p>
+      {/*
+       * Wahoo's own live reading, not a count this service keeps itself: the
+       * quota is shared across every configured account, so nothing local
+       * could total it correctly on its own. Absent until a request has
+       * actually reached Wahoo and reported one.
+       */}
+      {data.sync.wahooRateLimit ? (
+        <p className="sync-card__foot">
+          Wahoo has {formatCount(data.sync.wahooRateLimit.remaining, "request")} left, shared by
+          every account here.
+          {data.sync.wahooRateLimit.resetsAt
+            ? ` Resets ${formatTimestamp(data.sync.wahooRateLimit.resetsAt)}.`
+            : null}
+        </p>
+      ) : null}
       {reconcile.isError ? (
         <p className="sync-card__error" role="alert">
           {reconcile.error instanceof Error && reconcile.error.message
