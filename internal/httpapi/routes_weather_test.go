@@ -166,6 +166,42 @@ func TestWeatherReturnsBadGatewayOnCoordinateCountMismatch(t *testing.T) {
 	assert.Equal(t, http.StatusBadGateway, response.Code)
 }
 
+func TestWeatherReturnsBadGatewayWhenAPointsSeriesHasNoHours(t *testing.T) {
+	handler := newHandlerWithWeather(t, &fakeWeather{
+		ForecastFunc: func(_ context.Context, latitudes, _ []float64, _, _ time.Time) ([]WeatherSeries, error) {
+			return make([]WeatherSeries, len(latitudes)), nil
+		},
+	})
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/weather?point=50.11,8.68,2026-08-24T06:00:00Z"))
+
+	assert.Equal(t, http.StatusBadGateway, response.Code)
+}
+
+// A later point naming an earlier time than an already-seen one must still
+// widen the window backwards, not just forwards.
+func TestWeatherDerivesFromAsTheEarliestPointEvenOutOfOrder(t *testing.T) {
+	var gotFrom time.Time
+	weather := &fakeWeather{
+		ForecastFunc: func(_ context.Context, latitudes, _ []float64, from, _ time.Time) ([]WeatherSeries, error) {
+			gotFrom = from
+
+			return make([]WeatherSeries, len(latitudes)), nil
+		},
+	}
+	handler := newHandlerWithWeather(t, weather)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet,
+		"/v1/weather?point=50.11,8.68,2026-08-24T07:00:00Z&point=50.25,8.51,2026-08-24T06:00:00Z"))
+
+	// The response is a 502 because the fake returns no hours; what this test
+	// checks is the window the fake was called with.
+	require.Equal(t, http.StatusBadGateway, response.Code)
+	assert.True(t, gotFrom.Equal(time.Date(2026, 8, 24, 6, 0, 0, 0, time.UTC)), "from")
+}
+
 func TestWeatherIsNotSameOriginWrapped(t *testing.T) {
 	handler := newHandlerWithWeather(t, &fakeWeather{})
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -98,6 +99,87 @@ func TestClientRejectsResponseCoordinateCountMismatch(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestClientRejectsAnUndecodableResponse(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		writeResponse(t, writer, http.StatusOK, `not json at all`)
+	}))
+	defer server.Close()
+
+	from := time.Date(2026, 8, 24, 6, 0, 0, 0, time.UTC)
+	_, err := newTestClient(t, server).Forecast(t.Context(), []Coordinate{{Latitude: 50.11, Longitude: 8.68}}, from, from)
+	require.Error(t, err)
+}
+
+func TestClientRejectsAnOversizedResponse(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		writeResponse(t, writer, http.StatusOK, `{"hourly":{"time":`+strings.Repeat(" ", maximumBodyBytes)+`}}`)
+	}))
+	defer server.Close()
+
+	from := time.Date(2026, 8, 24, 6, 0, 0, 0, time.UTC)
+	_, err := newTestClient(t, server).Forecast(t.Context(), []Coordinate{{Latitude: 50.11, Longitude: 8.68}}, from, from)
+	require.Error(t, err)
+}
+
+func TestClientRejectsMismatchedHourlySeriesLengths(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		writeResponse(t, writer, http.StatusOK, `{"hourly":{"time":["2026-08-24T06:00","2026-08-24T07:00"],
+			"temperature_2m":[18.4],
+			"apparent_temperature":[17.1],
+			"precipitation":[0],
+			"precipitation_probability":[10],
+			"wind_speed_10m":[12.3],
+			"wind_direction_10m":[240],
+			"weather_code":[1]}}`)
+	}))
+	defer server.Close()
+
+	from := time.Date(2026, 8, 24, 6, 0, 0, 0, time.UTC)
+	_, err := newTestClient(t, server).Forecast(t.Context(), []Coordinate{{Latitude: 50.11, Longitude: 8.68}}, from, from)
+	require.Error(t, err)
+}
+
+func TestClientRejectsAMismatchedWeatherCodeLength(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		writeResponse(t, writer, http.StatusOK, `{"hourly":{"time":["2026-08-24T06:00"],
+			"temperature_2m":[18.4],
+			"apparent_temperature":[17.1],
+			"precipitation":[0],
+			"precipitation_probability":[10],
+			"wind_speed_10m":[12.3],
+			"wind_direction_10m":[240],
+			"weather_code":[]}}`)
+	}))
+	defer server.Close()
+
+	from := time.Date(2026, 8, 24, 6, 0, 0, 0, time.UTC)
+	_, err := newTestClient(t, server).Forecast(t.Context(), []Coordinate{{Latitude: 50.11, Longitude: 8.68}}, from, from)
+	require.Error(t, err)
+}
+
+func TestClientRejectsAMalformedHourlyTimestamp(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		writeResponse(t, writer, http.StatusOK, `{"hourly":{"time":["not-a-timestamp"],
+			"temperature_2m":[18.4],
+			"apparent_temperature":[17.1],
+			"precipitation":[0],
+			"precipitation_probability":[10],
+			"wind_speed_10m":[12.3],
+			"wind_direction_10m":[240],
+			"weather_code":[1]}}`)
+	}))
+	defer server.Close()
+
+	from := time.Date(2026, 8, 24, 6, 0, 0, 0, time.UTC)
+	_, err := newTestClient(t, server).Forecast(t.Context(), []Coordinate{{Latitude: 50.11, Longitude: 8.68}}, from, from)
+	require.Error(t, err)
+}
+
 func TestClientHidesProviderFailureDetails(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		writeResponse(t, writer, http.StatusBadRequest, "private provider failure detail")
@@ -144,6 +226,40 @@ func TestClientAbortsOnExceededTimeout(t *testing.T) {
 	from := time.Date(2026, 8, 24, 6, 0, 0, 0, time.UTC)
 	_, err = client.Forecast(t.Context(), []Coordinate{{Latitude: 50.11, Longitude: 8.68}}, from, from)
 	require.Error(t, err)
+}
+
+func TestNewRejectsNilOptions(t *testing.T) {
+	_, err := New(nil)
+	require.Error(t, err)
+}
+
+func TestNewUsesTheDefaultBaseURLWhenNoneIsGiven(t *testing.T) {
+	client, err := New(&Options{})
+	require.NoError(t, err)
+	assert.Equal(t, defaultBaseURL, client.baseURL.String())
+}
+
+func TestNewRejectsANegativeTimeout(t *testing.T) {
+	_, err := New(&Options{BaseURL: "https://example.test", Timeout: -time.Second})
+	require.Error(t, err)
+}
+
+//nolint:gosec // A rejection fixture for URL userinfo, not a real credential.
+func TestParseOriginRejectsEveryMalformedShape(t *testing.T) {
+	for name, value := range map[string]string{
+		"not a URL at all":  "://not-a-url",
+		"non-https scheme":  "http://example.test",
+		"no host":           "https://",
+		"embedded userinfo": "https://user:pass@example.test",
+		"query string":      "https://example.test?key=value",
+		"fragment":          "https://example.test#section",
+		"non-root path":     "https://example.test/v1",
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := parseOrigin(value)
+			assert.Error(t, err)
+		})
+	}
 }
 
 func TestClientRejectsEmptyCoordinateList(t *testing.T) {
