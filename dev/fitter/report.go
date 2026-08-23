@@ -52,6 +52,12 @@ func renderGroup(b *strings.Builder, r *fitResult) {
 	fmt.Fprintf(b, "  Crr (overall): %.5f\n", r.CrrOverall)
 	renderCrrBySurface(b, r)
 	fmt.Fprintf(b, "  climb threshold: %.1f%% (%.1f h of the corpus above it)\n", r.ClimbThresholdPct, r.ClimbHoursAbove)
+
+	if r.NoClimbingData {
+		fmt.Fprintln(b, "  REJECTED: no sustained climbing windows above the threshold — remedy: lower -climb-threshold-percent, or gather riding with sustained climbs")
+
+		return
+	}
 	fmt.Fprintf(b, "  sustained power: %.0f W (partly a surface distribution, not purely a fitness one — see the corpus's own surface labelling)\n", r.PowerWatts)
 
 	renderQuarterlyIntercept(b, r.QuarterlyIntercept)

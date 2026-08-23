@@ -67,6 +67,13 @@ func (cfg *runConfig) validate() error {
 	if cfg.driveEfficiency <= 0 || cfg.driveEfficiency > 1 {
 		return errors.New("-drive-efficiency must be greater than 0 and at most 1")
 	}
+	// Matches internal/ridemodel/coefficients.go's own validation of the
+	// same field (PR #232): a positive cutoff would make predictedSpeed
+	// treat flat or uphill grades as a descent to coast, returning 0 for
+	// most of a ride's samples.
+	if cfg.descentCutoffPercent > 0 {
+		return errors.New("-descent-cutoff-percent must not be positive")
+	}
 	if cfg.descentCapMPS <= 0 {
 		return errors.New("-descent-cap-mps must be positive")
 	}
@@ -136,7 +143,7 @@ func run(cfg *runConfig) error {
 	for _, group := range groups {
 		result := fitGroup(group, ridesWithSamples, samplesByRide, relations, cfg)
 		results = append(results, result)
-		if result.RejectedCrrBounds || result.IllConditioned {
+		if result.RejectedCrrBounds || result.IllConditioned || result.NoClimbingData {
 			anyRejected = true
 
 			continue
@@ -269,6 +276,11 @@ func fitGroup(
 	result.RejectedCrrBounds = !result.TyrePlausible
 
 	if result.IllConditioned || result.RejectedCrrBounds {
+		return result
+	}
+
+	result.NoClimbingData = len(allClimbs) == 0
+	if result.NoClimbingData {
 		return result
 	}
 

@@ -115,4 +115,5 @@ type fitResult struct {
 	TyrePlausible      bool
 	IllConditioned     bool
 	RejectedCrrBounds  bool
+	NoClimbingData     bool
 }
