@@ -156,6 +156,46 @@ func TestClientReportsRateLimitObservedFromResponse(t *testing.T) {
 	assert.Equal(t, now.Add(120*time.Second), resetAt)
 }
 
+// A response that is not itself limited can report no usable reset at all —
+// Wahoo answers seconds_until_reset as 0 on every such response — so the last
+// advertised reset stays in place internally rather than being discarded. Once
+// that time has actually passed, though, reporting it to a caller would be a
+// refill time that has already gone by, which RateLimit clears rather than
+// hands out.
+func TestClientDoesNotReportAResetThatHasAlreadyPassed(t *testing.T) {
+	var requests int
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		requests++
+		if requests == 1 {
+			writer.Header().Set("X-RateLimit-Remaining", "50")
+			writer.Header().Set("X-RateLimit-Reset", "1")
+		} else {
+			writer.Header().Set("X-RateLimit-Remaining", "49")
+			writer.Header().Set("X-RateLimit-Reset", "0")
+		}
+		writeJSON(t, writer, map[string]int64{"id": 42})
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	now := time.Date(2026, time.August, 17, 7, 0, 0, 0, time.UTC)
+	client.now = func() time.Time { return now }
+
+	_, err := client.AuthenticatedUser(t.Context(), "access-token")
+	require.NoError(t, err, "first request")
+	_, resetAt, _ := client.RateLimit()
+	assert.Equal(t, now.Add(time.Second), resetAt, "the advertised reset")
+
+	now = now.Add(2 * time.Second)
+	_, err = client.AuthenticatedUser(t.Context(), "access-token")
+	require.NoError(t, err, "second request, past the first reset, carrying no reset of its own")
+
+	remaining, resetAt, ok := client.RateLimit()
+	assert.True(t, ok)
+	assert.Equal(t, 49, remaining)
+	assert.True(t, resetAt.IsZero(), "a reset already in the past must not be reported as due")
+}
+
 func TestClientListsOnlyRoutesCarryingAnExternalID(t *testing.T) {
 	// A route with no external ID was created by hand in the Wahoo account.
 	// Leaving it out of the map is what keeps it unmatchable, and so

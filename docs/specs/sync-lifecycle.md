@@ -591,10 +591,21 @@ Returns 200 while the service can read state. The minimum shape is:
         "updated":1,
         "deleted":0
       }
+    },
+    "wahoo_rate_limit":{
+      "remaining":187,
+      "resets_at":"2026-08-16T12:05:00Z"
     }
   }
 }
 ~~~
+
+`wahoo_rate_limit` is Wahoo's own most recently advertised request quota — a
+live reading of its last response, not a count this service totals itself.
+It is absent until a request has actually reached Wahoo and carried a quota
+header back, and shared across every configured target rather than reported
+per target. `resets_at` is itself absent whenever Wahoo's last response
+carried no usable reset, or the last one it did carry has already passed.
 
 Authorisation is one of "not_authorized", "pending", "authorized", or
 "needs_reauthorization"; "pending" is derived at read time as the OAuth

@@ -541,11 +541,21 @@ func (c *Client) observeRateLimit(response *http.Response) {
 // refill. ok is false until the client has made a request that carried a
 // quota header, which is the honest state for a service that has not spoken to
 // Wahoo yet.
+//
+// resetAt is zero whenever it would already be in the past: a response that
+// was not itself limited can leave a stale reset in place (see
+// observeRateLimit), and this is where that staleness stops rather than
+// reaching a caller as a refill time that has already gone by.
 func (c *Client) RateLimit() (remaining int, resetAt time.Time, ok bool) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
-	return c.rateLimitRemaining, c.rateLimitResetAt, c.rateLimitKnown
+	resetAt = c.rateLimitResetAt
+	if !resetAt.IsZero() && !resetAt.After(c.now()) {
+		resetAt = time.Time{}
+	}
+
+	return c.rateLimitRemaining, resetAt, c.rateLimitKnown
 }
 
 func parseOrigin(value string) (*url.URL, error) {
