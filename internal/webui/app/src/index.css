@@ -125,14 +125,15 @@
  * The dark palette, reachable two ways: the system asking for it, or the
  * reader saying so explicitly through the theme picker.
  *
- * `data-theme` is set on the root element by `lib/theme.ts` whenever the
- * reader has picked "light" or "dark" rather than "system", and removed for
- * "system" — so the media query below is the *default*, and the attribute is
- * the override. The media block is guarded against `[data-theme="light"]` so
- * an explicit light pick wins even while the system itself prefers dark; the
- * attribute block below repeats the same values unconditionally, so an
- * explicit dark pick wins even while the system prefers light. Both blocks
- * are kept in step by hand — there is no build step here to share them.
+ * `data-theme` is set on the root element by `App.tsx`, from the choice
+ * `lib/theme.ts` holds, whenever the reader has picked "light" or "dark"
+ * rather than "system", and removed for "system" — so the media query below
+ * is the *default*, and the attribute is the override. The media block is
+ * guarded against `[data-theme="light"]` so an explicit light pick wins even
+ * while the system itself prefers dark; the attribute block below repeats the
+ * same values unconditionally, so an explicit dark pick wins even while the
+ * system prefers light. Both blocks are kept in step by hand — there is no
+ * build step here to share them.
  */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
