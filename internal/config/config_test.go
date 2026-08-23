@@ -65,6 +65,28 @@ func TestLoadConfiguresKomootAlone(t *testing.T) {
 	assert.Equal(t, "https://komoot.example.test", settings.Komoot.BaseURL, "Komoot.BaseURL")
 }
 
+func TestLoadTreatsAnEnvironmentOnlySourceAsConfigured(t *testing.T) {
+	// Presence is asked of the fully merged configuration, not the TOML file
+	// alone, so a source named only through environment variables — no
+	// matching section in the file at all — must still count as configured.
+	configPath, _ := writeValidConfiguration(t, t.TempDir())
+	removeConfigurationLine(t, configPath, "[veloplanner]")
+	removeConfigurationLine(t, configPath, "base_url = \"https://veloplanner.example.test\"")
+	removeConfigurationLine(t, configPath, "email_file = ")
+	removeConfigurationLine(t, configPath, "password_file = ")
+	t.Setenv(configFileEnv, configPath)
+	t.Setenv(envPrefix+"KOMOOT__BASE_URL", "https://komoot.example.test")
+	t.Setenv(envPrefix+"KOMOOT__EMAIL", "komoot-rider@example.test")
+	t.Setenv(envPrefix+"KOMOOT__PASSWORD", "komoot-password")
+
+	settings, err := Load()
+	require.NoError(t, err)
+
+	assert.Nil(t, settings.VeloPlanner, "VeloPlanner")
+	require.NotNil(t, settings.Komoot, "Komoot")
+	assert.Equal(t, "https://komoot.example.test", settings.Komoot.BaseURL, "Komoot.BaseURL")
+}
+
 func TestLoadRefusesZeroSources(t *testing.T) {
 	configPath, _ := writeValidConfiguration(t, t.TempDir())
 	removeConfigurationLine(t, configPath, "[veloplanner]")

@@ -244,9 +244,13 @@ application dependency.
 
 ## Static fields
 
-At least one of `[veloplanner]` and `[komoot]` must be configured; a file with
-neither is refused at startup. Each is an independent named section rather
-than an array entry, because each provider's credential shape belongs to that
+At least one of `[veloplanner]` and `[komoot]` must be configured; a
+configuration with neither is refused at startup. Presence is asked of the
+fully merged configuration, TOML file and environment overrides alike, so a
+source named only through its `DOMESTIQUE_VELOPLANNER__*` or
+`DOMESTIQUE_KOMOOT__*` environment variables — with no matching section in the
+file at all — still counts. Each is an independent named section rather than
+an array entry, because each provider's credential shape belongs to that
 provider — VeloPlanner and Komoot happen to need the same base URL plus email
 and password today, but nothing in this schema assumes a third source would.
 A configuration file cannot define the same section twice: TOML itself
