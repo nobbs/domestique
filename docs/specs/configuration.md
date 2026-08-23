@@ -280,15 +280,17 @@ own validation runs.
 - `state.database_path` is required and must reside on the persistent Docker
   volume.
 - When `[veloplanner]` is configured, `veloplanner.base_url` is a required
-  absolute HTTPS URL. The authenticated VeloPlanner user ID is discovered, not
-  configured. It also reaches the browser through `GET /v1/webui/config`, keyed
-  by provider, as the base of a stage's link back to its source route, so
-  pointing it at a different deployment moves both the inventory it reads and
-  the link it offers.
-- When `[komoot]` is configured, `komoot.base_url` is a required absolute
-  HTTPS URL, on the same terms as `veloplanner.base_url`. The authenticated
-  Komoot user ID is discovered from the account's email and password, not
-  configured.
+  HTTPS origin without a path, matching what the adapter itself requires — a
+  value with a path is refused here, at config load, rather than later when
+  the client is constructed. The authenticated VeloPlanner user ID is
+  discovered, not configured. It also reaches the browser through
+  `GET /v1/webui/config`, keyed by provider, as the base of a stage's link
+  back to its source route, so pointing it at a different deployment moves
+  both the inventory it reads and the link it offers.
+- When `[komoot]` is configured, `komoot.base_url` is a required HTTPS origin
+  without a path, on the same terms as `veloplanner.base_url`. The
+  authenticated Komoot user ID is discovered from the account's email and
+  password, not configured.
 - `wahoo.api_base_url` and `wahoo.oauth_base_url` are required absolute HTTPS
   URLs. `wahoo.client_id` is non-secret.
 - `wahoo.redirect_url` is required HTTPS and must exactly match Wahoo's

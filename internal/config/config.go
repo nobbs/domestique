@@ -716,7 +716,11 @@ func build(raw *rawSettings, veloPlannerConfigured, komootConfigured bool) (*Set
 
 	var veloPlanner *VeloPlanner
 	if veloPlannerConfigured {
-		if urlErr := validateHTTPSURL("veloplanner.base_url", raw.VeloPlanner.BaseURL); urlErr != nil {
+		// An origin, not merely an absolute HTTPS URL: the adapter itself
+		// requires no path (or exactly "/"), and rejecting the mismatch here
+		// means a bad value fails at config load with a name and a reason,
+		// rather than later at client construction with neither.
+		if urlErr := validateHTTPSOrigin("veloplanner.base_url", raw.VeloPlanner.BaseURL); urlErr != nil {
 			return nil, urlErr
 		}
 		email, emailErr := resolveSecret(secretInput{
@@ -742,7 +746,8 @@ func build(raw *rawSettings, veloPlannerConfigured, komootConfigured bool) (*Set
 
 	var komoot *Komoot
 	if komootConfigured {
-		if urlErr := validateHTTPSURL("komoot.base_url", raw.Komoot.BaseURL); urlErr != nil {
+		// Same reasoning as veloplanner.base_url above.
+		if urlErr := validateHTTPSOrigin("komoot.base_url", raw.Komoot.BaseURL); urlErr != nil {
 			return nil, urlErr
 		}
 		email, emailErr := resolveSecret(secretInput{

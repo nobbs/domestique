@@ -660,6 +660,27 @@ func TestLoadRejectsInvalidConfiguration(t *testing.T) {
 			want: "veloplanner.base_url",
 		},
 		{
+			// The adapter itself requires an origin with no path; a value that
+			// merely parses as an absolute HTTPS URL must still be refused here,
+			// or the failure would surface later at client construction instead.
+			name: "veloplanner base_url carrying a path",
+			mutate: func(t *testing.T, path string) {
+				t.Helper()
+				replaceInFile(t, path, `base_url = "https://veloplanner.example.test"`, `base_url = "https://veloplanner.example.test/user_routes"`)
+			},
+			want: "must be an origin",
+		},
+		{
+			name: "komoot base_url carrying a path",
+			mutate: func(t *testing.T, path string) {
+				t.Helper()
+				emailPath := writeSecretFile(t, filepath.Dir(path), "komoot-email", "komoot-rider@example.test")
+				passwordPath := writeSecretFile(t, filepath.Dir(path), "komoot-password", "komoot-password")
+				appendToFile(t, path, fmt.Sprintf("\n[komoot]\nbase_url = \"https://komoot.example.test/v007\"\nemail_file = %q\npassword_file = %q\n", emailPath, passwordPath))
+			},
+			want: "must be an origin",
+		},
+		{
 			name: "veloplanner missing password",
 			mutate: func(t *testing.T, path string) {
 				t.Helper()
