@@ -57,6 +57,11 @@ base_url = "https://veloplanner.com"
 email_file = "/run/secrets/veloplanner_email"
 password_file = "/run/secrets/veloplanner_password"
 
+[komoot]
+base_url = "https://api.komoot.de"
+email_file = "/run/secrets/komoot_email"
+password_file = "/run/secrets/komoot_password"
+
 [wahoo]
 api_base_url = "https://api.sandbox.wahooligan.com"
 oauth_base_url = "https://api.sandbox.wahooligan.com"
@@ -215,6 +220,8 @@ a simple local setup.
 | state encryption key | `state.encryption_key_file` | `DOMESTIQUE_STATE__ENCRYPTION_KEY` | `DOMESTIQUE_STATE__ENCRYPTION_KEY_FILE` |
 | VeloPlanner email | `veloplanner.email_file` | `DOMESTIQUE_VELOPLANNER__EMAIL` | `DOMESTIQUE_VELOPLANNER__EMAIL_FILE` |
 | VeloPlanner password | `veloplanner.password_file` | `DOMESTIQUE_VELOPLANNER__PASSWORD` | `DOMESTIQUE_VELOPLANNER__PASSWORD_FILE` |
+| Komoot email | `komoot.email_file` | `DOMESTIQUE_KOMOOT__EMAIL` | `DOMESTIQUE_KOMOOT__EMAIL_FILE` |
+| Komoot password | `komoot.password_file` | `DOMESTIQUE_KOMOOT__PASSWORD` | `DOMESTIQUE_KOMOOT__PASSWORD_FILE` |
 | Wahoo client secret | `wahoo.client_secret_file` | `DOMESTIQUE_WAHOO__CLIENT_SECRET` | `DOMESTIQUE_WAHOO__CLIENT_SECRET_FILE` |
 | Pushover application token | `notifications.pushover.application_token_file` | `DOMESTIQUE_NOTIFICATIONS__PUSHOVER__APPLICATION_TOKEN` | `DOMESTIQUE_NOTIFICATIONS__PUSHOVER__APPLICATION_TOKEN_FILE` |
 | Pushover user key | `notifications.pushover.user_key_file` | `DOMESTIQUE_NOTIFICATIONS__PUSHOVER__USER_KEY` | `DOMESTIQUE_NOTIFICATIONS__PUSHOVER__USER_KEY_FILE` |
@@ -236,6 +243,15 @@ A deployment tool such as `fnox` may provision files, but is not a runtime or
 application dependency.
 
 ## Static fields
+
+At least one of `[veloplanner]` and `[komoot]` must be configured; a file with
+neither is refused at startup. Each is an independent named section rather
+than an array entry, because each provider's credential shape belongs to that
+provider — VeloPlanner and Komoot happen to need the same base URL plus email
+and password today, but nothing in this schema assumes a third source would.
+A configuration file cannot define the same section twice: TOML itself
+rejects a redefined table as a parse error naming it, before this package's
+own validation runs.
 
 - `http.listen_address` is required. Docker maps the container port to the
   Tailnet host's `127.0.0.1` only; the application must not use the address itself as
@@ -263,11 +279,16 @@ application dependency.
   team would verify against the same key.
 - `state.database_path` is required and must reside on the persistent Docker
   volume.
-- `veloplanner.base_url` is a required absolute HTTPS URL. The authenticated
-  VeloPlanner user ID is discovered, not configured. It also reaches the browser
-  through `GET /v1/webui/config`, keyed by provider, as the base of a stage's
-  link back to its source route, so pointing it at a different deployment moves
-  both the inventory it reads and the link it offers.
+- When `[veloplanner]` is configured, `veloplanner.base_url` is a required
+  absolute HTTPS URL. The authenticated VeloPlanner user ID is discovered, not
+  configured. It also reaches the browser through `GET /v1/webui/config`, keyed
+  by provider, as the base of a stage's link back to its source route, so
+  pointing it at a different deployment moves both the inventory it reads and
+  the link it offers.
+- When `[komoot]` is configured, `komoot.base_url` is a required absolute
+  HTTPS URL, on the same terms as `veloplanner.base_url`. The authenticated
+  Komoot user ID is discovered from the account's email and password, not
+  configured.
 - `wahoo.api_base_url` and `wahoo.oauth_base_url` are required absolute HTTPS
   URLs. `wahoo.client_id` is non-secret.
 - `wahoo.redirect_url` is required HTTPS and must exactly match Wahoo's
@@ -310,6 +331,16 @@ The decoder rejects unknown fields, invalid URLs or durations, duplicate target
 IDs, a target count outside one through two, invalid callback paths, unreadable secret files,
 and ambiguous secret inputs before it opens an HTTP listener.
 
+## Migrating an existing deployment
+
+A deployment already running today's single-source `[veloplanner]` section
+needs no change: it continues to be read exactly as before, and the service
+keeps configuring VeloPlanner alone if that remains the only section present.
+Enabling Komoot on a running deployment is purely additive — write a new
+`[komoot]` section and provision its two secret files, and the matching
+Docker secret entries in the deployment's compose file, without touching the
+existing `[veloplanner]` section or its secrets.
+
 ## Runtime state
 
 Dynamic Wahoo refresh tokens are not configuration. They are encrypted in
@@ -322,8 +353,8 @@ existing encrypted state unreadable, and key rotation is not a feature.
 Startup and `GET /v1/status` may report non-sensitive configuration facts:
 the selected Wahoo endpoint, target slot labels, database readiness, configured
 sync interval, and whether a target needs OAuth authorisation. They must not
-report secret paths, secret values, client-secret material, tokens, or
-VeloPlanner account identifiers.
+report secret paths, secret values, client-secret material, tokens, or any
+configured source's account identifiers.
 
 Outside the contract:
 

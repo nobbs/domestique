@@ -40,6 +40,7 @@ import (
 	"github.com/nobbs/domestique/internal/demo"
 	"github.com/nobbs/domestique/internal/httpapi"
 	"github.com/nobbs/domestique/internal/oauth"
+	"github.com/nobbs/domestique/internal/route"
 	"github.com/nobbs/domestique/internal/sqlite"
 	"github.com/nobbs/domestique/internal/wahoo"
 	"github.com/nobbs/domestique/internal/webui"
@@ -211,7 +212,7 @@ func newHandler(
 		&httpapi.Options{
 			TargetIDs:        targetIDs,
 			Basemaps:         basemapOptions(settings.WebUI.Basemaps),
-			SourceBaseURL:    settings.VeloPlanner.BaseURL,
+			SourceBaseURLs:   sourceBaseURLs(settings),
 			BuildRevision:    "demo",
 			AccessVerifier:   team,
 			AccessEmail:      settings.Access.Cloudflare.AllowedEmail,
@@ -493,4 +494,18 @@ func basemapOptions(basemaps []config.Basemap) []httpapi.Basemap {
 	}
 
 	return options
+}
+
+// sourceBaseURLs restates each configured source's base URL keyed by
+// provider, for the same reason basemapOptions restates the basemaps.
+func sourceBaseURLs(settings *config.Settings) map[route.Provider]string {
+	urls := make(map[route.Provider]string, 2)
+	if settings.VeloPlanner != nil {
+		urls[route.ProviderVeloPlanner] = settings.VeloPlanner.BaseURL
+	}
+	if settings.Komoot != nil {
+		urls[route.ProviderKomoot] = settings.Komoot.BaseURL
+	}
+
+	return urls
 }

@@ -98,8 +98,12 @@ type Settings struct {
 	// the environment would fail startup. Empty when the host said nothing.
 	ImageReference string
 
-	Wahoo         Wahoo
-	VeloPlanner   VeloPlanner
+	Wahoo Wahoo
+	// VeloPlanner and Komoot are nil when their section is not configured. At
+	// least one is always non-nil in a Settings a caller actually receives:
+	// build refuses a configuration naming neither.
+	VeloPlanner   *VeloPlanner
+	Komoot        *Komoot
 	Notifications Notifications
 	HTTP          HTTP
 	Access        Access
@@ -229,6 +233,27 @@ func (v VeloPlanner) Password() Secret {
 	return v.password
 }
 
+// Komoot configures the source account. Its shape coincides with
+// VeloPlanner's today because both providers settled on the same
+// email-and-password account-credential model; that coincidence is not a
+// reason to share a type between them, since a future source's credentials
+// need not look like either.
+type Komoot struct {
+	BaseURL  string
+	email    Secret
+	password Secret
+}
+
+// Email returns the Komoot account email as a dedicated secret value.
+func (k Komoot) Email() Secret {
+	return k.email
+}
+
+// Password returns the Komoot account password as a dedicated secret value.
+func (k Komoot) Password() Secret {
+	return k.password
+}
+
 // Wahoo configures the OAuth application and destination target slots.
 type Wahoo struct {
 	APIBaseURL   string
@@ -344,6 +369,7 @@ func (s Secret) Bytes() []byte {
 type rawSettings struct {
 	Wahoo         rawWahoo         `koanf:"wahoo"`
 	VeloPlanner   rawVeloPlanner   `koanf:"veloplanner"`
+	Komoot        rawKomoot        `koanf:"komoot"`
 	Notifications rawNotifications `koanf:"notifications"`
 	HTTP          rawHTTP          `koanf:"http"`
 	Access        rawAccess        `koanf:"access"`
@@ -391,6 +417,14 @@ type rawState struct {
 }
 
 type rawVeloPlanner struct {
+	BaseURL      string `koanf:"base_url"`
+	EmailFile    string `koanf:"email_file"`
+	Email        string `koanf:"email"`
+	PasswordFile string `koanf:"password_file"`
+	Password     string `koanf:"password"`
+}
+
+type rawKomoot struct {
 	BaseURL      string `koanf:"base_url"`
 	EmailFile    string `koanf:"email_file"`
 	Email        string `koanf:"email"`
@@ -513,7 +547,13 @@ func Load() (settings *Settings, err error) {
 		return nil, fmt.Errorf("decoding configuration: %w", err)
 	}
 
-	built, buildErr := build(&raw)
+	// A section's fields decode to their zero value whether the section was
+	// written or not, so presence has to be asked of Koanf directly, before
+	// build turns the raw zero values into "not configured".
+	veloPlannerConfigured := k.Exists("veloplanner")
+	komootConfigured := k.Exists("komoot")
+
+	built, buildErr := build(&raw, veloPlannerConfigured, komootConfigured)
 	if buildErr != nil {
 		return nil, buildErr
 	}
@@ -608,7 +648,7 @@ func validateCloudflareAccess(raw *rawCloudflareAccess) error {
 	return fmt.Errorf("access.cloudflare is required; missing %s", strings.Join(missing, ", "))
 }
 
-func build(raw *rawSettings) (*Settings, error) {
+func build(raw *rawSettings, veloPlannerConfigured, komootConfigured bool) (*Settings, error) {
 	if err := validateListenAddress(raw.HTTP.ListenAddress); err != nil {
 		return nil, err
 	}
@@ -621,8 +661,8 @@ func build(raw *rawSettings) (*Settings, error) {
 	if !filepath.IsAbs(raw.State.DatabasePath) {
 		return nil, errors.New("state.database_path must be an absolute path")
 	}
-	if err := validateHTTPSURL("veloplanner.base_url", raw.VeloPlanner.BaseURL); err != nil {
-		return nil, err
+	if !veloPlannerConfigured && !komootConfigured {
+		return nil, errors.New("at least one source must be configured: add a [veloplanner] or [komoot] section")
 	}
 	if err := validateHTTPSURL("wahoo.api_base_url", raw.Wahoo.APIBaseURL); err != nil {
 		return nil, err
@@ -674,23 +714,56 @@ func build(raw *rawSettings) (*Settings, error) {
 		return nil, err
 	}
 
-	email, err := resolveSecret(secretInput{
-		name:      "VeloPlanner email",
-		directEnv: envPrefix + "VELOPLANNER__EMAIL",
-		fileEnv:   envPrefix + "VELOPLANNER__EMAIL_FILE",
-		filePath:  raw.VeloPlanner.EmailFile,
-	})
-	if err != nil {
-		return nil, err
+	var veloPlanner *VeloPlanner
+	if veloPlannerConfigured {
+		if urlErr := validateHTTPSURL("veloplanner.base_url", raw.VeloPlanner.BaseURL); urlErr != nil {
+			return nil, urlErr
+		}
+		email, emailErr := resolveSecret(secretInput{
+			name:      "VeloPlanner email",
+			directEnv: envPrefix + "VELOPLANNER__EMAIL",
+			fileEnv:   envPrefix + "VELOPLANNER__EMAIL_FILE",
+			filePath:  raw.VeloPlanner.EmailFile,
+		})
+		if emailErr != nil {
+			return nil, emailErr
+		}
+		password, passwordErr := resolveSecret(secretInput{
+			name:      "VeloPlanner password",
+			directEnv: envPrefix + "VELOPLANNER__PASSWORD",
+			fileEnv:   envPrefix + "VELOPLANNER__PASSWORD_FILE",
+			filePath:  raw.VeloPlanner.PasswordFile,
+		})
+		if passwordErr != nil {
+			return nil, passwordErr
+		}
+		veloPlanner = &VeloPlanner{BaseURL: raw.VeloPlanner.BaseURL, email: email, password: password}
 	}
-	password, err := resolveSecret(secretInput{
-		name:      "VeloPlanner password",
-		directEnv: envPrefix + "VELOPLANNER__PASSWORD",
-		fileEnv:   envPrefix + "VELOPLANNER__PASSWORD_FILE",
-		filePath:  raw.VeloPlanner.PasswordFile,
-	})
-	if err != nil {
-		return nil, err
+
+	var komoot *Komoot
+	if komootConfigured {
+		if urlErr := validateHTTPSURL("komoot.base_url", raw.Komoot.BaseURL); urlErr != nil {
+			return nil, urlErr
+		}
+		email, emailErr := resolveSecret(secretInput{
+			name:      "Komoot email",
+			directEnv: envPrefix + "KOMOOT__EMAIL",
+			fileEnv:   envPrefix + "KOMOOT__EMAIL_FILE",
+			filePath:  raw.Komoot.EmailFile,
+		})
+		if emailErr != nil {
+			return nil, emailErr
+		}
+		password, passwordErr := resolveSecret(secretInput{
+			name:      "Komoot password",
+			directEnv: envPrefix + "KOMOOT__PASSWORD",
+			fileEnv:   envPrefix + "KOMOOT__PASSWORD_FILE",
+			filePath:  raw.Komoot.PasswordFile,
+		})
+		if passwordErr != nil {
+			return nil, passwordErr
+		}
+		komoot = &Komoot{BaseURL: raw.Komoot.BaseURL, email: email, password: password}
 	}
 	clientSecret, err := resolveSecret(secretInput{
 		name:      "Wahoo client secret",
@@ -743,11 +816,8 @@ func build(raw *rawSettings) (*Settings, error) {
 			DatabasePath:  raw.State.DatabasePath,
 			encryptionKey: key,
 		},
-		VeloPlanner: VeloPlanner{
-			BaseURL:  raw.VeloPlanner.BaseURL,
-			email:    email,
-			password: password,
-		},
+		VeloPlanner: veloPlanner,
+		Komoot:      komoot,
 		Wahoo: Wahoo{
 			APIBaseURL:   raw.Wahoo.APIBaseURL,
 			OAuthBaseURL: raw.Wahoo.OAuthBaseURL,
@@ -1170,6 +1240,8 @@ func secretLiteralPaths() [][]string {
 		{"state", "encryption_key"},
 		{"veloplanner", "email"},
 		{"veloplanner", "password"},
+		{"komoot", "email"},
+		{"komoot", "password"},
 		{"wahoo", "client_secret"},
 		{"notifications", "pushover", "application_token"},
 		{"notifications", "pushover", "user_key"},
@@ -1191,6 +1263,8 @@ func directSecretEnvironmentNames() []string {
 		envPrefix + "STATE__ENCRYPTION_KEY",
 		envPrefix + "VELOPLANNER__EMAIL",
 		envPrefix + "VELOPLANNER__PASSWORD",
+		envPrefix + "KOMOOT__EMAIL",
+		envPrefix + "KOMOOT__PASSWORD",
 		envPrefix + "WAHOO__CLIENT_SECRET",
 		envPrefix + "NOTIFICATIONS__PUSHOVER__APPLICATION_TOKEN",
 		envPrefix + "NOTIFICATIONS__PUSHOVER__USER_KEY",

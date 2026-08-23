@@ -23,6 +23,7 @@ const (
 	testTileStyleURLDark = "https://tiles.example.test/styles/liberty-dark"
 	testImageryStyleURL  = "https://imagery.example.test/maps/hybrid/style.json?key=abc"
 	testSourceBaseURL    = "https://source.example.test"
+	testKomootBaseURL    = "https://komoot.example.test"
 	// The Wahoo redirect URL the composition root passes, and the origin a
 	// browser derives from it for the requests it sends this service.
 	testBrowserOriginURL = "https://domestique.example.test/oauth/wahoo/callback"
@@ -365,6 +366,38 @@ func TestHandlerOmitsAnUnconfiguredSourceBaseURL(t *testing.T) {
 	assert.NotContains(t, response.Body.String(), "source_base_urls", "the config body carries a source base URLs key")
 }
 
+func TestHandlerOmitsAProviderConfiguredWithABlankSourceBaseURL(t *testing.T) {
+	// A provider present in the map with a blank value is the same "not
+	// configured" case as a provider absent from the map entirely — it must
+	// not reach the page as an empty, unusable entry.
+	handler, err := New(
+		&Options{
+			TargetIDs: []string{"rider-a"},
+			Basemaps:  testBasemaps(),
+			SourceBaseURLs: map[route.Provider]string{
+				route.ProviderVeloPlanner: testSourceBaseURL,
+				route.ProviderKomoot:      "   ",
+			},
+			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
+			AccessEmail:      testAccessEmail,
+			BrowserOriginURL: testBrowserOriginURL,
+		},
+		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{},
+	)
+	require.NoError(t, err, "New()")
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/webui/config"))
+	var payload struct {
+		//nolint:tagliatelle // Mirrors the wire field the page reads.
+		SourceBaseURLs map[string]string `json:"source_base_urls"`
+	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &payload), "decoding config body")
+	assert.Equal(t, testSourceBaseURL, payload.SourceBaseURLs["veloplanner"], "veloplanner source base URL")
+	_, hasKomoot := payload.SourceBaseURLs["komoot"]
+	assert.False(t, hasKomoot, "a blank source base URL must not reach the page")
+}
+
 func TestHandlerRefusesASourceBaseURLThatIsNotOne(t *testing.T) {
 	// The value is echoed to the browser rather than only compared, so anything
 	// riding on it is observable: credentials would be a secret in a JSON body,
@@ -382,7 +415,7 @@ func TestHandlerRefusesASourceBaseURLThatIsNotOne(t *testing.T) {
 			&Options{
 				TargetIDs:        []string{"rider-a"},
 				Basemaps:         testBasemaps(),
-				SourceBaseURL:    value,
+				SourceBaseURLs:   map[route.Provider]string{route.ProviderVeloPlanner: value},
 				AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 				AccessEmail:      testAccessEmail,
 				BrowserOriginURL: testBrowserOriginURL,
@@ -398,7 +431,7 @@ func TestHandlerSendsASourceBaseURLWithoutSurroundingWhitespace(t *testing.T) {
 		&Options{
 			TargetIDs:        []string{"rider-a"},
 			Basemaps:         testBasemaps(),
-			SourceBaseURL:    "  " + testSourceBaseURL + "\n",
+			SourceBaseURLs:   map[route.Provider]string{route.ProviderVeloPlanner: "  " + testSourceBaseURL + "\n"},
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
@@ -427,7 +460,7 @@ func TestHandlerAcceptsASourceBaseURLHostedUnderAPath(t *testing.T) {
 		&Options{
 			TargetIDs:        []string{"rider-a"},
 			Basemaps:         testBasemaps(),
-			SourceBaseURL:    testSourceBaseURL + "/planner",
+			SourceBaseURLs:   map[route.Provider]string{route.ProviderVeloPlanner: testSourceBaseURL + "/planner"},
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
@@ -439,6 +472,34 @@ func TestHandlerAcceptsASourceBaseURLHostedUnderAPath(t *testing.T) {
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/webui/config"))
 	assert.Contains(t, response.Body.String(), testSourceBaseURL+"/planner", "the config body omits the planner link")
+}
+
+func TestHandlerServesEveryConfiguredSourceKeyedByProvider(t *testing.T) {
+	handler, err := New(
+		&Options{
+			TargetIDs: []string{"rider-a"},
+			Basemaps:  testBasemaps(),
+			SourceBaseURLs: map[route.Provider]string{
+				route.ProviderVeloPlanner: testSourceBaseURL,
+				route.ProviderKomoot:      testKomootBaseURL,
+			},
+			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
+			AccessEmail:      testAccessEmail,
+			BrowserOriginURL: testBrowserOriginURL,
+		},
+		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{},
+	)
+	require.NoError(t, err, "New()")
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/webui/config"))
+	var payload struct {
+		//nolint:tagliatelle // Mirrors the wire field the page reads.
+		SourceBaseURLs map[string]string `json:"source_base_urls"`
+	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &payload), "decoding config body")
+	assert.Equal(t, testSourceBaseURL, payload.SourceBaseURLs["veloplanner"], "veloplanner source base URL")
+	assert.Equal(t, testKomootBaseURL, payload.SourceBaseURLs["komoot"], "komoot source base URL")
 }
 
 func TestHandlerNamesTheBuildItIsRunning(t *testing.T) {
@@ -1644,7 +1705,7 @@ func newHandlerWithSync(t *testing.T, oauthService OAuth, state State, syncRuns 
 		&Options{
 			TargetIDs:        []string{"rider-a"},
 			Basemaps:         testBasemapsWithDark(),
-			SourceBaseURL:    testSourceBaseURL,
+			SourceBaseURLs:   map[route.Provider]string{route.ProviderVeloPlanner: testSourceBaseURL},
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,

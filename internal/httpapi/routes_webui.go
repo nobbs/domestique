@@ -2,8 +2,6 @@ package httpapi
 
 import (
 	"net/http"
-
-	"github.com/nobbs/domestique/internal/route"
 )
 
 // webUIConfig hands the page its runtime settings so the built assets stay
@@ -32,17 +30,9 @@ func (h *Handler) webUIConfig(writer http.ResponseWriter, _ *http.Request, _ str
 		basemaps[index] = basemapView(basemap)
 	}
 
-	// Only one source is ever configured today, so this map holds at most the
-	// one entry. It is keyed by provider rather than sent as a single value so
-	// the page stays correct once a second source exists to configure.
-	sourceBaseURLs := make(map[route.Provider]string, 1)
-	if h.sourceBaseURL != "" {
-		sourceBaseURLs[route.ProviderVeloPlanner] = h.sourceBaseURL
-	}
-
 	h.writeJSON(writer, http.StatusOK, webUIConfigView{
 		Basemaps:       basemaps,
-		SourceBaseURLs: sourceBaseURLs,
+		SourceBaseURLs: h.sourceBaseURLs,
 	})
 }
 
