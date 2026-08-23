@@ -15,9 +15,12 @@ export function formatDistance(metres: number, system: UnitSystem): string {
     return "—";
   }
   if (system === "imperial") {
-    const feet = metresToFeet(metres);
+    // Rounded before the cutover is judged, or a value just under it — one
+    // that only reaches 5280 once rounded — reads as "5280 ft" instead of
+    // crossing into miles.
+    const feet = Math.round(metresToFeet(metres));
     if (feet < FEET_DISPLAY_LIMIT) {
-      return `${Math.round(feet)} ft`;
+      return `${feet} ft`;
     }
     const miles = metresToMiles(metres);
     return `${miles.toFixed(miles < 100 ? 1 : 0)} mi`;

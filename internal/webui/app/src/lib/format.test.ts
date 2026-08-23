@@ -33,6 +33,13 @@ describe("formatDistance", () => {
   ])("formats %p as %p in imperial", (metres, expected) => {
     expect(formatDistance(metres, "imperial")).toBe(expected);
   });
+
+  // A metre count whose feet fall just short of 5280 but round up to it must
+  // not print "5280 ft" — the cutover is judged on the rounded value, the same
+  // one the string prints, so the two can never disagree.
+  it("crosses over to miles once the rounded foot count reaches the mile, not before", () => {
+    expect(formatDistance(1609.2, "imperial")).toBe("1.0 mi");
+  });
 });
 
 describe("formatCount", () => {
