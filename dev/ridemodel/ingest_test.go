@@ -219,6 +219,28 @@ func TestIngestActivityExcludesARideWithNoAltitudeUnderItsOwnReason(t *testing.T
 	assert.Nil(t, samples)
 }
 
+// A file that decodes but yields fewer than two usable record intervals must
+// not count as ingested: buildSamples has nothing to emit for it, and a ride
+// left non-excluded with zero rows in samples.csv would make the corpus's own
+// ride count inconsistent with what it actually holds.
+func TestIngestActivityExcludesARideWithFewerThanTwoRecords(t *testing.T) {
+	start := time.Date(2026, 8, 1, 6, 0, 0, 0, time.UTC)
+	ride := buildFITActivity(t, []testRecord{
+		{at: start, lat: 50, lon: 8, altitudeMetres: 100, distanceMetres: 0},
+	})
+	exportDir := t.TempDir()
+	require.NoError(t, os.MkdirAll(exportDir+"/activities", 0o750))
+	writeGzippedFile(t, exportDir+"/activities", "one-record.fit.gz", encodeFIT(t, ride))
+
+	summary, samples, indoor := ingestActivity(exportDir, &activityRow{
+		ID: "1", Type: "Ride", Filename: "activities/one-record.fit.gz",
+	})
+	assert.True(t, summary.Excluded)
+	assert.Equal(t, exclusionNoSamples, summary.Reason)
+	assert.Nil(t, samples)
+	assert.Nil(t, indoor)
+}
+
 func TestIngestActivityExcludesANonCyclingRow(t *testing.T) {
 	summary, samples, indoor := ingestActivity(t.TempDir(), &activityRow{ID: "1", Type: "Run", Filename: "activities/x.fit.gz"})
 	assert.True(t, summary.Excluded)

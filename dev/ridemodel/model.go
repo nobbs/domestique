@@ -61,6 +61,13 @@ const (
 	exclusionNoSourceFile    exclusionReason = "no_source_file"
 	exclusionUnsafeFilename  exclusionReason = "unsafe_filename"
 	exclusionNoAltitude      exclusionReason = "no_altitude_channel"
+	// exclusionNoSamples marks a decoded file that yielded fewer than two
+	// usable record intervals — under two records, or every consecutive pair
+	// sharing a non-positive Δt — so buildSamples has nothing to emit. Without
+	// this, such a ride would count as ingested while contributing zero rows
+	// to samples.csv, leaving the corpus's own ride count inconsistent with
+	// what it actually holds.
+	exclusionNoSamples exclusionReason = "no_samples"
 )
 
 // activityRow is one row of activities.csv, holding only the columns this

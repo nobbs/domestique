@@ -91,6 +91,12 @@ func ingestActivity(exportDir string, row *activityRow) (rideSummary, []sample, 
 	}
 
 	samples := buildSamples(row.ID, decoded.Records, decoded.Derived)
+	if len(samples) == 0 {
+		summary.Excluded = true
+		summary.Reason = exclusionNoSamples
+
+		return summary, nil, nil
+	}
 	summary.SampleCount = len(samples)
 	for i := range samples {
 		summary.TotalDistanceMetres += samples[i].IntervalDistanceMetres
