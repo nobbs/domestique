@@ -203,6 +203,35 @@ func TestCompressFoldsRunsIntoRanges(t *testing.T) {
 	}
 }
 
+func TestExpandIsCompressesInverse(t *testing.T) {
+	kinds := []Kind{KindAsphalt, KindAsphalt, KindGravel, KindGravel, KindGravel}
+	assert.Equal(t, kinds, Expand(Compress(kinds), len(kinds)))
+}
+
+func TestExpandLeavesUncoveredPositionsUnknown(t *testing.T) {
+	ranges := []Range{{StartIndex: 1, EndIndex: 1, Kind: KindAsphalt}}
+	assert.Equal(t, []Kind{KindUnknown, KindAsphalt, KindUnknown}, Expand(ranges, 3))
+}
+
+// A negative StartIndex cannot come from Compress, but Expand reads whatever a
+// caller decoded — a corrupted stored row, in the worst case — and must
+// degrade the position to KindUnknown rather than panic on a negative index.
+func TestExpandDoesNotPanicOnANegativeStartIndex(t *testing.T) {
+	ranges := []Range{{StartIndex: -5, EndIndex: 1, Kind: KindGravel}}
+	assert.NotPanics(t, func() {
+		assert.Equal(t, []Kind{KindGravel, KindGravel, KindUnknown}, Expand(ranges, 3))
+	})
+}
+
+// Equally, an EndIndex beyond the current geometry — stale ranges from a
+// longer, since-replaced stage — must not run past the slice it is filling.
+func TestExpandDoesNotPanicOnAnEndIndexPastPointCount(t *testing.T) {
+	ranges := []Range{{StartIndex: 0, EndIndex: 100, Kind: KindGravel}}
+	assert.NotPanics(t, func() {
+		assert.Equal(t, []Kind{KindGravel, KindGravel}, Expand(ranges, 2))
+	})
+}
+
 func TestMatchedMetresCountsOnlyClassifiedLength(t *testing.T) {
 	points := metreRoute(0, 300, 100)
 

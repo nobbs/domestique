@@ -69,13 +69,14 @@ func TestLoadRejectsMalformedTOML(t *testing.T) {
 
 func TestLoadRejectsPhysicallyImplausibleValues(t *testing.T) {
 	testCases := map[string]struct{ old, replacement string }{
-		"mass too low":            {"mass_kg = 90.0", "mass_kg = 1.0"},
-		"mass too high":           {"mass_kg = 90.0", "mass_kg = 1000.0"},
-		"power too low":           {"power_watts = 155.0", "power_watts = 1.0"},
-		"power too high":          {"power_watts = 155.0", "power_watts = 5000.0"},
-		"efficiency zero":         {"drive_efficiency = 0.975", "drive_efficiency = 0"},
-		"efficiency over one":     {"drive_efficiency = 0.975", "drive_efficiency = 1.5"},
-		"cda zero":                {"cda_m2 = 0.487", "cda_m2 = 0"},
+		"mass too low":        {"mass_kg = 90.0", "mass_kg = 1.0"},
+		"mass too high":       {"mass_kg = 90.0", "mass_kg = 1000.0"},
+		"power too low":       {"power_watts = 155.0", "power_watts = 1.0"},
+		"power too high":      {"power_watts = 155.0", "power_watts = 5000.0"},
+		"efficiency zero":     {"drive_efficiency = 0.975", "drive_efficiency = 0"},
+		"efficiency over one": {"drive_efficiency = 0.975", "drive_efficiency = 1.5"},
+		"cda zero":            {"cda_m2 = 0.487", "cda_m2 = 0"},
+		"cda too small to bound the powered solver": {"cda_m2 = 0.487", "cda_m2 = 0.05"},
 		"cda absurd":              {"cda_m2 = 0.487", "cda_m2 = 10.0"},
 		"air density too low":     {"air_density_kg_per_m3 = 1.2", "air_density_kg_per_m3 = 0.1"},
 		"air density too high":    {"air_density_kg_per_m3 = 1.2", "air_density_kg_per_m3 = 5.0"},

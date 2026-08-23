@@ -128,7 +128,7 @@ func Match(points []route.Point, ways []Way) []Kind {
 func Compress(kinds []Kind) []Range {
 	ranges := make([]Range, 0)
 	for index, kind := range kinds {
-		if index > 0 && kind == kinds[index-1] {
+		if index > 0 && kind == kinds[index-1] { //nolint:gosec // index > 0 guards kinds[index-1]; G602 misreads this as unbounded.
 			ranges[len(ranges)-1].EndIndex = index
 
 			continue
@@ -147,7 +147,10 @@ func Compress(kinds []Kind) []Range {
 func Expand(ranges []Range, pointCount int) []Kind {
 	kinds := make([]Kind, pointCount)
 	for _, band := range ranges {
-		for index := band.StartIndex; index <= band.EndIndex && index < pointCount; index++ {
+		// A negative StartIndex cannot come from Compress, but Expand reads
+		// whatever a caller decoded — a corrupted row, in the worst case —
+		// and must degrade rather than panic on one.
+		for index := max(band.StartIndex, 0); index <= band.EndIndex && index < pointCount; index++ {
 			kinds[index] = band.Kind
 		}
 	}

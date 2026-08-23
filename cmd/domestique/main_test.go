@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 	"net/http"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -335,4 +336,65 @@ func testNotifier(t *testing.T) *pushover.Client {
 	require.NoError(t, err, "pushover.New()")
 
 	return notifier
+}
+
+// An operator who configures no coefficients file keeps every stage exactly
+// as it is today: no rider figure is ever guessed.
+func TestLoadRidePredictorReturnsNilWithNoCoefficientsFileConfigured(t *testing.T) {
+	t.Parallel()
+
+	directory := t.TempDir()
+	predictor, err := loadRidePredictor(&config.Settings{}, testStore(t, directory))
+	require.NoError(t, err, "loadRidePredictor()")
+	assert.Nil(t, predictor, "a predictor was built with no coefficients file configured")
+}
+
+func TestLoadRidePredictorBuildsAPredictorFromAValidFile(t *testing.T) {
+	t.Parallel()
+
+	directory := t.TempDir()
+	settings := &config.Settings{RideModel: config.RideModel{CoefficientsFile: writeTestCoefficients(t, directory)}}
+
+	predictor, err := loadRidePredictor(settings, testStore(t, directory))
+	require.NoError(t, err, "loadRidePredictor()")
+	assert.NotNil(t, predictor, "no predictor was built from a valid coefficients file")
+}
+
+// A malformed or physically implausible file is a startup failure: the
+// service refuses to serve a prediction it cannot stand behind.
+func TestLoadRidePredictorRefusesAnImplausibleFile(t *testing.T) {
+	t.Parallel()
+
+	directory := t.TempDir()
+	path := filepath.Join(directory, "ridemodel.toml")
+	require.NoError(t, os.WriteFile(path, []byte("mass_kg = 1.0\n"), 0o600), "writing coefficient file")
+	settings := &config.Settings{RideModel: config.RideModel{CoefficientsFile: path}}
+
+	_, err := loadRidePredictor(settings, testStore(t, directory))
+	require.Error(t, err, "loadRidePredictor() with an implausible coefficient file")
+}
+
+func writeTestCoefficients(t *testing.T, directory string) string {
+	t.Helper()
+
+	path := filepath.Join(directory, "ridemodel.toml")
+	const document = `
+mass_kg = 90.0
+power_watts = 155.0
+drive_efficiency = 0.975
+cda_m2 = 0.487
+air_density_kg_per_m3 = 1.2
+descent_cutoff_percent = -1.0
+descent_cap_metres_per_second = 22.0
+
+[crr]
+asphalt = 0.005
+paving = 0.006
+compacted = 0.007
+gravel = 0.009
+ground = 0.011
+`
+	require.NoError(t, os.WriteFile(path, []byte(document), 0o600), "writing coefficient file")
+
+	return path
 }

@@ -163,6 +163,22 @@ func TestPredictFallsBackToPedallingWhenCoastingWouldStall(t *testing.T) {
 	assert.Less(t, result.MovingSeconds, 120.0, "a borderline segment must not dominate the stage's time")
 }
 
+// At the extremes Load's own validation admits — maximum power, minimum drag
+// area — the powered solver's fixed speed bracket must still contain the
+// equation's true root rather than bottoming out and reporting a crawl.
+func TestPredictDoesNotCrawlAtTheValidatedPowerAndDragExtremes(t *testing.T) {
+	coefficients := testCoefficients()
+	coefficients.PowerWatts = maxPowerWatts
+	coefficients.CdAM2 = minCdAM2
+	points := flatStage(10_000, 50, 0)
+
+	result, ok := Predict(points, nil, coefficients)
+	require.True(t, ok, "Predict() ok")
+
+	impliedSpeed := 10_000 / result.MovingSeconds
+	assert.Greater(t, impliedSpeed, 10.0, "maximum power over minimum drag must not crawl")
+}
+
 func TestPredictTerminatesOnAVerticalWall(t *testing.T) {
 	coefficients := testCoefficients()
 	// One metre of run for five hundred metres of rise: as steep as geometry

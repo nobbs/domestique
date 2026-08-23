@@ -150,13 +150,9 @@ func run(ctx context.Context) error {
 	// Ride model prediction is equally optional. An operator who configures no
 	// coefficients file keeps every stage exactly as it is today: no rider
 	// figure is ever guessed, and no endpoint gains a field nobody asked for.
-	var predictor syncservice.Predictor
-	if settings.RideModel.CoefficientsFile != "" {
-		coefficients, coefficientsErr := ridemodel.Load(settings.RideModel.CoefficientsFile)
-		if coefficientsErr != nil {
-			return fmt.Errorf("loading ride model coefficients: %w", coefficientsErr)
-		}
-		predictor = ridemodel.NewPredictor(store, store, coefficients)
+	predictor, err := loadRidePredictor(settings, store)
+	if err != nil {
+		return err
 	}
 	reconciler, err := syncservice.New(&syncservice.Options{TargetIDs: targetIDs, MaxDeletionsPerTarget: settings.Sync.MaxDeletionsPerTarget, AllowEmptySourceDeletion: settings.Sync.EmptySourceDeletion == config.EmptySourceDeletionAllow}, store, sources, elevation.New(), fit.New(), destination, annotator, predictor)
 	if err != nil {
@@ -321,6 +317,25 @@ func run(ctx context.Context) error {
 	}
 
 	return serve(runCtx, cancel, server, readinessServer, schedulers, reporter)
+}
+
+// loadRidePredictor loads the ride-model coefficient file and builds a
+// predictor over it, or returns a nil predictor when no file is configured —
+// the operator's switch for leaving every stage without a predicted moving
+// time. A malformed or physically implausible file is a startup failure: the
+// service refuses to serve a prediction it cannot stand behind rather than
+// falling back to silence.
+func loadRidePredictor(settings *config.Settings, store *sqlite.Store) (syncservice.Predictor, error) {
+	if settings.RideModel.CoefficientsFile == "" {
+		//nolint:nilnil // a nil Predictor with no error is the valid "off" state, matching Annotator's own optionality.
+		return nil, nil
+	}
+	coefficients, err := ridemodel.Load(settings.RideModel.CoefficientsFile)
+	if err != nil {
+		return nil, fmt.Errorf("loading ride model coefficients: %w", err)
+	}
+
+	return ridemodel.NewPredictor(store, store, coefficients), nil
 }
 
 // startSurfaceIndex prepares the surface index and the schedule that rebuilds

@@ -25,10 +25,16 @@ import (
 // tyre-relative Crr band serves, drawn here instead against the file this
 // service actually loads.
 const (
-	minMassKG        = 20.0
-	maxMassKG        = 300.0
-	minPowerWatts    = 20.0
-	maxPowerWatts    = 1000.0
+	minMassKG     = 20.0
+	maxMassKG     = 300.0
+	minPowerWatts = 20.0
+	maxPowerWatts = 1000.0
+	// minCdAM2 is below anything a person on a bicycle presents to the wind —
+	// an aggressive hour-record position sits around 0.19 m². Below this, the
+	// powered solver's fixed speed bracket ([0, maxSolveSpeedMetresPerSecond])
+	// can fail to contain the equation's true root at high configured power,
+	// which would otherwise report a crawl speed rather than a fast one.
+	minCdAM2         = 0.15
 	maxCdAM2         = 2.0
 	minAirDensity    = 0.8
 	maxAirDensity    = 1.5
@@ -124,8 +130,8 @@ func (r rawCoefficients) build() (Coefficients, error) {
 	if r.DriveEfficiency <= 0 || r.DriveEfficiency > 1 {
 		return Coefficients{}, errors.New("ridemodel: drive_efficiency must be greater than 0 and at most 1")
 	}
-	if r.CdAM2 <= 0 || r.CdAM2 > maxCdAM2 {
-		return Coefficients{}, fmt.Errorf("ridemodel: cda_m2 must be greater than 0 and at most %g", maxCdAM2)
+	if r.CdAM2 < minCdAM2 || r.CdAM2 > maxCdAM2 {
+		return Coefficients{}, fmt.Errorf("ridemodel: cda_m2 must be between %g and %g", minCdAM2, maxCdAM2)
 	}
 	if r.AirDensityKGPerM3 < minAirDensity || r.AirDensityKGPerM3 > maxAirDensity {
 		return Coefficients{}, fmt.Errorf(
