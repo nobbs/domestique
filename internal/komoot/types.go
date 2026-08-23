@@ -20,11 +20,14 @@ type toursResponse struct {
 	} `json:"_embedded"` //nolint:tagliatelle // Komoot's API uses HAL's leading underscore.
 }
 
+// pageInfo's fields are pointers for the same reason coordinate's are: every
+// field here is required, and a plain int would let a response missing a
+// field — {"page":{}}, still a non-nil Page — decode as page 0 of a 0-element,
+// 0-page library and pass every check below as a legitimately empty one.
 type pageInfo struct {
-	Size          int `json:"size"`
-	TotalElements int `json:"totalElements"`
-	TotalPages    int `json:"totalPages"`
-	Number        int `json:"number"`
+	TotalElements *int `json:"totalElements"`
+	TotalPages    *int `json:"totalPages"`
+	Number        *int `json:"number"`
 }
 
 type tourSummary struct {

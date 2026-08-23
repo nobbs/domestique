@@ -45,6 +45,7 @@ private to this service.
 │   ├── surface/                    OSM surface classification and snapping
 │   ├── osmindex/                   OSM extract download, index build, schedule
 │   ├── veloplanner/                VeloPlanner HTTP source adapter
+│   ├── komoot/                     Komoot HTTP source adapter
 │   ├── fit/                        FIT encoding adapter
 │   ├── wahoo/                      Wahoo OAuth and route HTTP adapter
 │   ├── sqlite/                     encrypted durable-state adapter
@@ -80,6 +81,7 @@ owns a distinct responsibility in this tree.
 | surface | OSM surface and tracktype classification, snapping a stage to the ways under it, caching policy | SQL, HTTP routing, what the UI draws, where the ways come from |
 | osmindex | downloading regional OSM extracts, packing them into a cell-partitioned surface index, the rebuild schedule, serving the ways near a stage | classification rules, SQL of the state store, what a stage is |
 | veloplanner | login, listing, detail decoding, route conversion | SQLite and Wahoo concerns |
+| komoot | login, listing, detail decoding, route conversion | SQLite and Wahoo concerns |
 | fit | deterministic FIT bytes for one valid route stage | VeloPlanner requests, OAuth, HTTP |
 | wahoo | authorisation URL, exchange, refresh, user lookup, FIT route operations, rate headers | route-source parsing, SQLite queries, Pushover |
 | sqlite | migrations, encrypted token storage, snapshots and commits | Wahoo or VeloPlanner HTTP |
@@ -302,7 +304,7 @@ Tests live with the package under test:
 | --- | --- |
 | route and fit | table-driven unit tests plus FIT decode validation |
 | sync and oauth | in-memory fakes for their local consumer interfaces |
-| veloplanner and wahoo | httptest servers with malformed, rate-limit, and retry cases |
+| veloplanner, komoot, and wahoo | httptest servers with malformed, rate-limit, and retry cases |
 | sqlite | temporary database and migration/recovery tests |
 | httpapi | handler tests for identity on every route, JSON shape, safe errors, and the security and cache headers |
 | readiness | handler tests for the ready, unreadable-state, and incomplete-state answers, and container tests that the image, the compose example, and the deploy gate still name the probe's own port |
@@ -311,8 +313,9 @@ Tests live with the package under test:
 | schedule | deterministic clock or trigger seam, no wall-clock sleeping |
 | pushover | HTTP request shape and redaction tests |
 
-No normal test contacts VeloPlanner, Wahoo, Pushover, Tailscale, or a secret
-provider. The sandbox FIT/Wahoo acceptance test is separate from normal CI.
+No normal test contacts VeloPlanner, Komoot, Wahoo, Pushover, Tailscale, or a
+secret provider. The sandbox FIT/Wahoo acceptance test is separate from normal
+CI.
 
 ## Definition of architectural compliance
 

@@ -402,6 +402,40 @@ func TestClientInventoryTransportFailureDoesNotLeakEmail(t *testing.T) {
 		"http.Client wraps a dial failure in a *url.Error that embeds the request URL")
 }
 
+func TestClientInventoryPreservesEmailContainingSlash(t *testing.T) {
+	const email = "a/b@example.test"
+	var gotPath string
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if gotPath == "" {
+			gotPath = request.URL.Path
+		}
+		writeJSON(t, writer, `{"username":"42","password":"session-token"}`)
+	}))
+	defer server.Close()
+
+	client, err := New(&Options{
+		BaseURL:   server.URL,
+		Email:     []byte(email),
+		Password:  []byte("test-password"),
+		Timeout:   time.Second,
+		Transport: server.Client().Transport,
+	})
+	require.NoError(t, err)
+
+	_, err = client.Inventory(t.Context())
+	require.ErrorContains(t, err, "no page metadata")
+	assert.Equal(t, "/v006/account/email/"+email+"/", gotPath,
+		"a literal '/' in the email must stay part of the one path segment, not become an extra one")
+}
+
+func TestClientInventoryRejectsPageObjectMissingFields(t *testing.T) {
+	server := authenticatedListingServer(t, `{"_embedded":{"tours":[]},"page":{}}`)
+	defer server.Close()
+
+	_, err := newTestClient(t, server).Inventory(t.Context())
+	require.ErrorContains(t, err, "no page metadata")
+}
+
 func TestNewRejectsNilOptions(t *testing.T) {
 	_, err := New(nil)
 	require.Error(t, err)

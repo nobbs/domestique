@@ -175,16 +175,16 @@ func (c *Client) newSession() *session {
 // is untrusted-shaped data embedded directly in a path segment, and
 // newRequest's endpoint strings are otherwise plain constants and validated
 // numeric ids, so keeping the one call site that needs path escaping separate
-// keeps that escaping in exactly one place. The email is assigned to Path,
-// left decoded, with RawPath empty, so url.URL escapes it exactly once when
-// the request is built; the earlier version pre-escaped it and assigned that
-// to Path too, which made url.URL escape the already-escaped percent signs a
-// second time and broke login for any email containing a character that
-// needs escaping.
+// keeps that escaping in exactly one place.
 func (s *session) login(ctx context.Context) (userID, token string, err error) {
+	email := string(s.parent.email)
 	loginURL := *s.baseURL
-	loginURL.Path = "/v006/account/email/" + string(s.parent.email) + "/"
-	loginURL.RawPath = ""
+	// Path stays decoded; RawPath carries the escaped form so a character that
+	// needs escaping — including a literal '/', which PathEscape encodes as
+	// %2F — round-trips as one path segment rather than becoming an extra
+	// segment or being escaped a second time.
+	loginURL.Path = "/v006/account/email/" + email + "/"
+	loginURL.RawPath = "/v006/account/email/" + url.PathEscape(email) + "/"
 	loginURL.RawQuery = ""
 
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, loginURL.String(), http.NoBody)
@@ -242,25 +242,27 @@ func (s *session) listTours(ctx context.Context, userID, token string) ([]tourSu
 		if err := s.getJSON(ctx, userID, token, endpoint, &payload); err != nil {
 			return nil, fmt.Errorf("komoot: listing tours: %w", err)
 		}
-		if payload.Page == nil {
+		if payload.Page == nil || payload.Page.Number == nil || payload.Page.TotalElements == nil || payload.Page.TotalPages == nil {
 			return nil, errors.New("komoot: tour listing response had no page metadata")
 		}
-		if payload.Page.Number != page || payload.Page.TotalElements < 0 ||
-			payload.Page.TotalPages < 0 || payload.Page.TotalPages > maximumPages ||
-			payload.Page.TotalElements > maximumTours ||
-			(payload.Page.TotalPages == 0 && payload.Page.TotalElements != 0) ||
-			(wantTotal >= 0 && payload.Page.TotalElements != wantTotal) ||
-			(wantPages >= 0 && payload.Page.TotalPages != wantPages) {
+		number, totalElements, totalPages := *payload.Page.Number, *payload.Page.TotalElements, *payload.Page.TotalPages
+
+		if number != page || totalElements < 0 ||
+			totalPages < 0 || totalPages > maximumPages ||
+			totalElements > maximumTours ||
+			(totalPages == 0 && totalElements != 0) ||
+			(wantTotal >= 0 && totalElements != wantTotal) ||
+			(wantPages >= 0 && totalPages != wantPages) {
 			return nil, errors.New("komoot: invalid tour library pagination")
 		}
-		wantTotal, wantPages = payload.Page.TotalElements, payload.Page.TotalPages
+		wantTotal, wantPages = totalElements, totalPages
 
 		tours = append(tours, payload.Embedded.Tours...)
 		if len(tours) > maximumTours {
 			return nil, errors.New("komoot: tour library exceeded configured bounds")
 		}
 
-		if page+1 >= payload.Page.TotalPages {
+		if page+1 >= totalPages {
 			break
 		}
 	}
@@ -350,6 +352,15 @@ func (s *session) doRequest(request *http.Request) (body []byte, statusCode int,
 
 	body, err = io.ReadAll(io.LimitReader(response.Body, maximumBodyBytes+1))
 	if err != nil {
+		// A body read that fails because the caller's context was cancelled or
+		// timed out mid-stream is that cancellation, not a corrupt response;
+		// callers checking errors.Is against context.Canceled or
+		// context.DeadlineExceeded need it preserved rather than replaced with
+		// a generic read failure.
+		if ctxErr := request.Context().Err(); ctxErr != nil {
+			return nil, 0, fmt.Errorf("reading response: %w", ctxErr)
+		}
+
 		return nil, 0, errors.New("unable to read upstream response")
 	}
 	if len(body) > maximumBodyBytes {
