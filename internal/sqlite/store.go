@@ -584,6 +584,28 @@ func (s *Store) StoreStageDuration(
 	return nil
 }
 
+// PruneStageDurationsWithDifferentFingerprint deletes every cached prediction
+// not measured against currentFingerprint. It exists for the gap
+// pruneStageDuration does not cover: that function only reacts to a stage's
+// geometry changing, so a coefficient file edited or removed between restarts
+// would otherwise leave the previous file's predictions sitting in the read
+// path, served as current until the next enrichment pass happens to overwrite
+// or is never one for a stage whose geometry has not changed.
+//
+// Called once at startup. currentFingerprint is empty when no coefficient
+// file is configured, which clears every row — matching the contract that an
+// unconfigured deployment predicts nothing, rather than serving whatever a
+// previous configuration left behind.
+func (s *Store) PruneStageDurationsWithDifferentFingerprint(ctx context.Context, currentFingerprint string) error {
+	if _, err := s.database.ExecContext(ctx, `
+		DELETE FROM stage_duration WHERE coefficient_fingerprint != ?
+	`, currentFingerprint); err != nil {
+		return fmt.Errorf("pruning stale ride model predictions: %w", err)
+	}
+
+	return nil
+}
+
 // pruneStageDuration drops predictions that no longer describe anything, on the
 // same terms as pruneStageSurface: a row measured against a geometry that has
 // since been re-planned addresses a stage that, as far as this row knows, no

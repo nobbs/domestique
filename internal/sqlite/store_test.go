@@ -1296,6 +1296,44 @@ func TestStorePrunesDurationMeasuredAgainstReplacedGeometry(t *testing.T) {
 	assert.False(t, found, "stage_duration row survived re-planning")
 }
 
+func TestStorePruneStageDurationsWithDifferentFingerprintKeepsOnlyTheCurrentOne(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	movingSeconds := 100.0
+	require.NoError(t, store.StoreStageDuration(
+		t.Context(), route.ProviderVeloPlanner, 1, 1, "hash", "", "current", &movingSeconds, nil,
+	), "StoreStageDuration() current")
+	require.NoError(t, store.StoreStageDuration(
+		t.Context(), route.ProviderVeloPlanner, 2, 1, "hash", "", "earlier", &movingSeconds, nil,
+	), "StoreStageDuration() earlier")
+
+	require.NoError(t, store.PruneStageDurationsWithDifferentFingerprint(t.Context(), "current"), "PruneStageDurationsWithDifferentFingerprint()")
+
+	_, _, _, currentFound, err := store.StageDurationFingerprint(t.Context(), route.ProviderVeloPlanner, 1, 1)
+	require.NoError(t, err, "StageDurationFingerprint() current")
+	assert.True(t, currentFound, "a prediction matching the current fingerprint was pruned")
+
+	_, _, _, earlierFound, err := store.StageDurationFingerprint(t.Context(), route.ProviderVeloPlanner, 2, 1)
+	require.NoError(t, err, "StageDurationFingerprint() earlier")
+	assert.False(t, earlierFound, "a prediction from an earlier coefficient file survived pruning")
+}
+
+// An empty currentFingerprint is what an unconfigured deployment passes: it
+// matches no stored row, so every prediction is pruned — the read path must
+// serve nothing, not whatever an earlier configuration left behind.
+func TestStorePruneStageDurationsWithDifferentFingerprintClearsEverythingWhenUnconfigured(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	movingSeconds := 100.0
+	require.NoError(t, store.StoreStageDuration(
+		t.Context(), route.ProviderVeloPlanner, 1, 1, "hash", "", "a-since-removed-coefficient-file", &movingSeconds, nil,
+	), "StoreStageDuration()")
+
+	require.NoError(t, store.PruneStageDurationsWithDifferentFingerprint(t.Context(), ""), "PruneStageDurationsWithDifferentFingerprint()")
+
+	_, _, _, found, err := store.StageDurationFingerprint(t.Context(), route.ProviderVeloPlanner, 1, 1)
+	require.NoError(t, err, "StageDurationFingerprint()")
+	assert.False(t, found, "a prediction survived pruning with no fingerprint configured")
+}
+
 // testSurfaceRanges is one stored classification, in the shape the annotator
 // writes and the geometry endpoint serves.
 const testSurfaceRanges = `[{"kind":"asphalt","start_index":0,"end_index":1}]`
