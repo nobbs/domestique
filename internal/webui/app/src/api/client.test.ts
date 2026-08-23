@@ -7,6 +7,7 @@ import {
   fetchSyncRuns,
   setSyncSchedule,
   triggerSync,
+  triggerTargetSync,
 } from "./client";
 import { ContractError } from "./parse";
 
@@ -166,6 +167,30 @@ describe("the API client", () => {
     });
 
     const failure = await triggerSync("source").catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(ApiError);
+    expect((failure as ApiError).code).toBe("sync_in_progress");
+  });
+
+  it("triggers exactly the named target", async () => {
+    const fetchMock = vi.fn(
+      async (_input: RequestInfo | URL, _init?: RequestInit) =>
+        new Response(JSON.stringify({ status: "accepted" })),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await triggerTargetSync("rider-a");
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/v1/sync/targets/rider-a");
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ method: "POST" });
+  });
+
+  it("reports a rejected target trigger", async () => {
+    respondWith(409, {
+      error: { code: "sync_in_progress", message: "a synchronization is already running" },
+    });
+
+    const failure = await triggerTargetSync("rider-a").catch((error: unknown) => error);
 
     expect(failure).toBeInstanceOf(ApiError);
     expect((failure as ApiError).code).toBe("sync_in_progress");

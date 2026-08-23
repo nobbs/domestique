@@ -212,6 +212,9 @@ func run(ctx context.Context) error {
 
 				return false
 			},
+			TriggerTargetFunc: func(targetID string) bool {
+				return reporter.TriggerTarget(runCtx, targetID)
+			},
 			// Two halves of one answer: the reporter knows what is running now,
 			// and the scheduler knows what it is still holding back.
 			ActivityFunc: func() httpapi.SyncActivityState {

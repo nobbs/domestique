@@ -73,6 +73,9 @@ type Reporter struct {
 type Runner interface {
 	RunSource(ctx context.Context) Result
 	RunTargets(ctx context.Context) Result
+	// RunTarget reconciles exactly one configured target, on the same terms as
+	// RunTargets scoped to that slot alone.
+	RunTarget(ctx context.Context, targetID string) Result
 	// AnnotateStored enriches the stored inventory. It reports nothing because
 	// nothing it does may change a run's outcome.
 	AnnotateStored(ctx context.Context)
@@ -155,6 +158,27 @@ func (r *Reporter) trigger(ctx context.Context, source, targets bool) bool {
 	return true
 }
 
+// TriggerTarget starts a manual reconciliation of exactly one configured
+// target in the background. It returns false when a scheduled or another
+// manual synchronization — full or target-specific — is already running.
+//
+// It runs on the same terms as Trigger: whether or not the schedule allows the
+// target half to start, and through the same run recording and notification
+// path as an ordinary target phase, scoped to the one slot asked for.
+func (r *Reporter) TriggerTarget(ctx context.Context, targetID string) bool {
+	if !r.running.CompareAndSwap(false, true) {
+		return false
+	}
+	r.triggered.Go(func() {
+		defer r.running.Store(false)
+		_ = r.runPhasesWith(ctx, false, true, func(ctx context.Context) Result {
+			return r.runner.RunTarget(ctx, targetID)
+		})
+	})
+
+	return true
+}
+
 // Running reports what this process has under way: the half in flight, and
 // whether a run is under way at all.
 //
@@ -187,6 +211,14 @@ func (r *Reporter) enter(phase Phase) {
 // a change all the way through; the order also means a failed read leaves the
 // targets reconciling the last inventory known to be whole rather than nothing.
 func (r *Reporter) runPhases(ctx context.Context, source, targets bool) Result {
+	return r.runPhasesWith(ctx, source, targets, r.runner.RunTargets)
+}
+
+// runPhasesWith is runPhases parameterized over what reconciles the target
+// half, so a single-target trigger shares every recording, staleness, and
+// digest rule an ordinary target phase gets, without reconciling any slot
+// beyond the one it names.
+func (r *Reporter) runPhasesWith(ctx context.Context, source, targets bool, runTargets func(context.Context) Result) Result {
 	defer r.phase.Store(nil)
 
 	result := Result{Outcome: OutcomeSkipped}
@@ -198,7 +230,7 @@ func (r *Reporter) runPhases(ctx context.Context, source, targets bool) Result {
 	}
 	if targets {
 		r.enter(PhaseTargets)
-		result = r.run(ctx, r.runner.RunTargets)
+		result = r.run(ctx, runTargets)
 	}
 	// One instant for everything this pass settles below, so a tick landing on
 	// a second boundary cannot make the digest window and the whole-second

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"sort"
 	"sync/atomic"
 
@@ -415,6 +416,59 @@ func (s *Service) RunTargets(ctx context.Context) Result {
 	}
 
 	return result
+}
+
+// RunTarget reconciles the stored inventory onto exactly one configured
+// target, leaving every other target untouched. It shares the same ownership,
+// ordering, update-before-delete, and deletion-limit rules RunTargets applies
+// to that slot — this is the same reconciliation, scoped to one account rather
+// than run over all of them.
+//
+// It shares RunTargets' mutual exclusion: a target-specific request must not
+// race a full synchronization over the same stored state and target-stage
+// mappings.
+//
+// An unconfigured target ID performs no work, the same defensive answer a
+// concurrent run gives, because the caller is expected to have already
+// refused a slot this service was never given.
+func (s *Service) RunTarget(ctx context.Context, targetID string) Result {
+	if !slices.Contains(s.targetIDs, targetID) {
+		return Result{Phase: PhaseTargets, Outcome: OutcomeSkipped}
+	}
+	if !s.running.CompareAndSwap(false, true) {
+		return Result{Phase: PhaseTargets, Outcome: OutcomeSkipped}
+	}
+	defer s.running.Store(false)
+
+	authorization, err := s.state.TargetAuthorization(ctx, targetID)
+	if err != nil {
+		return Result{Phase: PhaseTargets, Outcome: OutcomeFailed, Failure: FailureState}
+	}
+	if authorization != authorizedState {
+		return Result{Phase: PhaseTargets, Outcome: OutcomeNotReady}
+	}
+
+	stored, err := s.state.TrustedInventory(ctx)
+	if err != nil {
+		return Result{Phase: PhaseTargets, Outcome: OutcomeFailed, Failure: FailureState}
+	}
+	desired, ordered, err := normalizeInventory(stored)
+	if err != nil {
+		return Result{Phase: PhaseTargets, Outcome: OutcomeFailed, Failure: FailureState}
+	}
+
+	targetCounts, failure := s.reconcileTarget(ctx, targetID, desired, ordered)
+
+	return Result{
+		Phase:        PhaseTargets,
+		Outcome:      targetOutcome(failure),
+		Failure:      failure,
+		SourceStages: len(ordered),
+		Created:      targetCounts.created,
+		Updated:      targetCounts.updated,
+		Deleted:      targetCounts.deleted,
+		Targets:      []TargetResult{{ID: targetID, Outcome: targetOutcome(failure), Failure: failure}},
+	}
 }
 
 // targetOutcome states one slot's reconciliation in the same vocabulary a run

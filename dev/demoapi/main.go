@@ -187,6 +187,26 @@ func newHandler(
 		return nil, fmt.Errorf("creating oauth service: %w", err)
 	}
 
+	// A demo has nothing to synchronise from and nowhere to write to, so a
+	// manual run re-seeds the library at the current instant instead. That is
+	// what makes the button worth pressing in a demo: the run it reports is a
+	// fresh one, and it still reaches nothing. It seeds on the request rather
+	// than in the background because the whole library is a few hundred
+	// milliseconds of local writes.
+	//
+	// False means one run is already in progress and nothing else, so that is
+	// the only thing it is used for here. A re-seed that fails is a run that
+	// failed rather than a conflict, and its error goes to the log.
+	//
+	// The full and single-target triggers share one reseeder, and so one
+	// `running` flag: a demo has no per-target work to isolate, and two
+	// independent flags would let a full re-seed and a single-target one
+	// interleave writes over the same rows.
+	demoReseeder := reseeder{
+		store:   store,
+		slots:   slots,
+		running: &atomic.Bool{},
+	}
 	handler, err := httpapi.New(
 		&httpapi.Options{
 			TargetIDs:        targetIDs,
@@ -199,21 +219,10 @@ func newHandler(
 		},
 		oauthService,
 		store,
-		// A demo has nothing to synchronise from and nowhere to write to, so a
-		// manual run re-seeds the library at the current instant instead. That is
-		// what makes the button worth pressing in a demo: the run it reports is a
-		// fresh one, and it still reaches nothing. It seeds on the request rather
-		// than in the background because the whole library is a few hundred
-		// milliseconds of local writes.
-		//
-		// False means one run is already in progress and nothing else, so that is
-		// the only thing it is used for here. A re-seed that fails is a run that
-		// failed rather than a conflict, and its error goes to the log.
-		httpapi.SyncFuncs{TriggerFunc: reseeder{
-			store:   store,
-			slots:   slots,
-			running: &atomic.Bool{},
-		}.trigger},
+		httpapi.SyncFuncs{
+			TriggerFunc:       demoReseeder.trigger,
+			TriggerTargetFunc: demoReseeder.triggerTarget,
+		},
 		bundleAssets(),
 	)
 	if err != nil {
@@ -285,6 +294,12 @@ func (r reseeder) trigger(_ httpapi.SyncPhase) bool {
 	}
 
 	return true
+}
+
+// triggerTarget re-seeds the whole demo library, the same as trigger: a demo
+// target names no real Wahoo account to isolate work against.
+func (r reseeder) triggerTarget(_ string) bool {
+	return r.trigger("")
 }
 
 // seed fills the database with the synthetic library. The clock is the wall

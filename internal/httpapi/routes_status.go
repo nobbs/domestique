@@ -355,6 +355,30 @@ func (h *Handler) syncTargets(writer http.ResponseWriter, _ *http.Request, _ str
 	h.trigger(writer, SyncPhaseTargets)
 }
 
+// syncTarget queues one immediate reconciliation of stored state onto exactly
+// one configured target, on the same terms as syncTargets: it runs whether or
+// not the schedule allows the target half to start, and every ownership,
+// ordering, and deletion rule a full target phase applies stays exactly what
+// it is, scoped to the slot named in the path.
+//
+// The target identifier is checked against the configured slots here, the
+// same way the OAuth start route checks it: an unconfigured or missing slot is
+// not found, not a target this request could ever reconcile.
+func (h *Handler) syncTarget(writer http.ResponseWriter, request *http.Request, _ string) {
+	targetID := request.PathValue("target")
+	if targetID == "" || !slices.Contains(h.targetIDs, targetID) {
+		h.notFound(writer)
+
+		return
+	}
+	if !h.syncRuns.TriggerTarget(targetID) {
+		h.error(writer, http.StatusConflict, "sync_in_progress", "a synchronization is already running")
+
+		return
+	}
+	h.writeJSON(writer, http.StatusAccepted, map[string]string{"status": "accepted"})
+}
+
 func (h *Handler) trigger(writer http.ResponseWriter, phase SyncPhase) {
 	if !h.syncRuns.Trigger(phase) {
 		h.error(writer, http.StatusConflict, "sync_in_progress", "a synchronization is already running")
