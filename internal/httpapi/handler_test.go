@@ -1350,6 +1350,14 @@ func TestSyncFuncsReportNoIncompleteCountWithoutAFunc(t *testing.T) {
 	assert.Zero(t, funcs.SurfaceIncomplete(), "SurfaceIncomplete()")
 }
 
+// A process with no classification pass to run, such as the demo build, wires
+// no TriggerAnnotateFunc at all. That must not panic a request that reaches it.
+func TestSyncFuncsRefuseAnAnnotationTriggerWithoutAFunc(t *testing.T) {
+	funcs := SyncFuncs{TriggerFunc: func(SyncPhase) bool { return false }}
+
+	assert.False(t, funcs.TriggerAnnotate(), "TriggerAnnotate()")
+}
+
 // An operator who has started the browser flow and not finished it is in a
 // state the targets table cannot hold, and it matters: told "not connected",
 // they would start the flow a second time and invalidate the first.

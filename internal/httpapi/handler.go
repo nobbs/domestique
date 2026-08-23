@@ -135,8 +135,13 @@ func (f SyncFuncs) Activity() SyncActivityState {
 	return f.ActivityFunc()
 }
 
-// TriggerAnnotate starts the adapted manual classification pass.
+// TriggerAnnotate starts the adapted manual classification pass. False when
+// unset, the honest answer from a process with no classification pass to run.
 func (f SyncFuncs) TriggerAnnotate() bool {
+	if f.TriggerAnnotateFunc == nil {
+		return false
+	}
+
 	return f.TriggerAnnotateFunc()
 }
 
