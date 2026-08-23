@@ -53,9 +53,9 @@ const maxLateralAccelMPS2 = 1.2
 // so the report can name every filter's own toll rather than one merged
 // exclusion count.
 type coastingFilterCounts struct {
-	Cornering     int
-	Plausibility  int
-	SurvivingRuns int
+	Cornering        int
+	Plausibility     int
+	SurvivingWindows int
 }
 
 // coastingWindowsFor builds this ride's coasting windows and reports how many
@@ -125,7 +125,7 @@ func windowsInRun(run []sampleRow, counts *coastingFilterCounts, massKG float64)
 		window := buildWindow(straight[segmentStart:segmentEnd])
 		if plausible(window, massKG) {
 			windows = append(windows, window)
-			counts.SurvivingRuns++
+			counts.SurvivingWindows++
 		} else {
 			counts.Plausibility++
 		}

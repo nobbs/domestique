@@ -48,8 +48,9 @@ func hrPowerRelationByYear(indoor []indoorRow) map[int]hrPowerRelation {
 	return relations
 }
 
-// impliedPower evaluates a year's relation at a heart rate, reporting
-// whether that year has a relation to evaluate at all.
+// impliedPower evaluates this year's relation at a heart rate. Whether a
+// year has a relation at all is the caller's own map-lookup concern (see
+// crossCheckRide), not something this method reports.
 func (r hrPowerRelation) impliedPower(heartRateBPM float64) float64 {
 	return r.Intercept + r.Slope*heartRateBPM
 }

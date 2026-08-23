@@ -244,14 +244,14 @@ func fitGroup(
 	}
 	result.CrossCheck = summarizeCrossCheck(checks, relations)
 
-	flatSpeedMPS, vamMetresPerHour := baselineCoefficients(samplesByRide, trainRideIDs)
+	flatSpeedMPS, vamMetresPerHour := baselineCoefficients(samplesByRide, trainRideIDs, cfg.climbThresholdPercent)
 	actualMovingSeconds := make(map[string]float64, len(groupRides))
 	for _, r := range groupRides {
 		actualMovingSeconds[r.RideID] = r.MovingSeconds
 	}
 	result.HeldOut = validateHeldOut(heldOutRideIDs, samplesByRide, actualMovingSeconds, &result, coefficientsConfig{
 		DriveEfficiency: cfg.driveEfficiency, DescentCutoffPercent: cfg.descentCutoffPercent, DescentCapMetresPerSecond: cfg.descentCapMPS,
-	}, flatSpeedMPS, vamMetresPerHour)
+	}, flatSpeedMPS, vamMetresPerHour, cfg.climbThresholdPercent)
 
 	return result
 }

@@ -9,11 +9,11 @@ import "math"
 const standardAirDensity = 1.225
 
 const (
-	seaLevelPressurePa       = 101325.0
-	seaLevelTemperatureK     = 288.15
-	temperatureLapseKPerM    = 0.0065
-	specificGasConstantDryAi = 287.05
-	barometricExponent       = 5.255
+	seaLevelPressurePa        = 101325.0
+	seaLevelTemperatureK      = 288.15
+	temperatureLapseKPerM     = 0.0065
+	specificGasConstantDryAir = 287.05
+	barometricExponent        = 5.255
 )
 
 // airDensityFor derives ρ from a sample's recorded temperature and altitude
@@ -29,7 +29,7 @@ func airDensityFor(s *sampleRow) float64 {
 	temperatureK := s.TemperatureC + 273.15
 	pressure := seaLevelPressurePa * math.Pow(1-temperatureLapseKPerM*s.AltitudeM/seaLevelTemperatureK, barometricExponent)
 
-	return pressure / (specificGasConstantDryAi * temperatureK)
+	return pressure / (specificGasConstantDryAir * temperatureK)
 }
 
 // meanAirDensity is a group's own representative ρ for the coefficient

@@ -93,7 +93,7 @@ func TestCoastingWindowsForBuildsWindowsFromASustainedRun(t *testing.T) {
 
 	windows := coastingWindowsFor(samples, counts, testMassKG)
 	require.NotEmpty(t, windows)
-	assert.Equal(t, len(windows), counts.SurvivingRuns)
+	assert.Equal(t, len(windows), counts.SurvivingWindows)
 	for _, w := range windows {
 		assert.InDelta(t, windowDurationSeconds, w.DurationSeconds, 0.01)
 		assert.Equal(t, "r1", w.RideID)
