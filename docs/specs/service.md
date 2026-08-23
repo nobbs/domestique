@@ -308,8 +308,10 @@ The read-only JSON surface is deliberately small:
   one read that takes query parameters — a bounded page size, and the cursor the
   previous page ended with — because a page of history cannot be decided in the
   browser from a listing it already holds.
-- `GET /v1/routes` lists known source routes and stages with their titles and
-  aggregate geometry facts.
+- `GET /v1/routes` lists known source routes and stages with their titles,
+  aggregate geometry facts, and — when a ride-model coefficient file is
+  configured and has predicted this exact geometry — a predicted moving time.
+  It is omitted, never zero, for a stage nothing has predicted yet.
 - `GET /v1/routes/{source-route-id}/stages/{stage}` returns stored route
   metadata, not edit controls.
 - `GET /v1/routes/{source-route-id}/stages/{stage}/geometry` returns the stored

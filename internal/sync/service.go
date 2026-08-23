@@ -177,6 +177,15 @@ type Annotator interface {
 	Annotate(ctx context.Context, stages []route.Stage) (classified, failed int, err error)
 }
 
+// Predictor computes and caches predicted moving time for the stored
+// inventory, from internal/ridemodel. It is optional and read on the same
+// terms as Annotator: whatever it learns it records itself, and a nil
+// predictor leaves stored stages carrying no prediction and changes nothing
+// else about a run.
+type Predictor interface {
+	Predict(ctx context.Context, stages []route.Stage) (predicted, failed int, err error)
+}
+
 // State owns the minimum durable state operations required by synchronization.
 // Callback iteration avoids sharing persistence record types with adapters.
 type State interface {
@@ -201,6 +210,7 @@ type Service struct {
 	encoder                  Encoder
 	target                   Target
 	annotator                Annotator
+	predictor                Predictor
 	targetIDs                []string
 	maxDeletionsPerTarget    int
 	allowEmptySourceDeletion bool
@@ -208,8 +218,9 @@ type Service struct {
 }
 
 // New creates a synchronizer with explicit consumer-owned dependencies. Every
-// dependency is required except the annotator: a nil annotator leaves stored
-// stages unclassified and changes nothing else about a run.
+// dependency is required except the annotator and the predictor: a nil
+// annotator leaves stored stages unclassified, a nil predictor leaves them
+// carrying no prediction, and either changes nothing else about a run.
 func New(
 	options *Options,
 	state State,
@@ -218,6 +229,7 @@ func New(
 	encoder Encoder,
 	target Target,
 	annotator Annotator,
+	predictor Predictor,
 ) (*Service, error) {
 	if options == nil || state == nil || len(sources) == 0 || processor == nil || encoder == nil || target == nil {
 		return nil, errors.New("sync options and dependencies are required")
@@ -261,6 +273,7 @@ func New(
 		encoder:                  encoder,
 		target:                   target,
 		annotator:                annotator,
+		predictor:                predictor,
 		targetIDs:                targetIDs,
 		maxDeletionsPerTarget:    options.MaxDeletionsPerTarget,
 		allowEmptySourceDeletion: options.AllowEmptySourceDeletion,
@@ -583,23 +596,27 @@ func targetOutcome(failure FailureCategory) Outcome {
 	return OutcomeFailed
 }
 
-// AnnotateStored classifies the ground under the stored inventory and reports
-// how much of it a pass could not classify.
+// AnnotateStored classifies the ground under the stored inventory and predicts
+// its moving time, reporting how much of the classification pass could not
+// classify. The two run over the same read of the inventory, predicting after
+// classifying, so a stage's prediction can read the classification this same
+// pass just wrote rather than waiting a full cycle behind it.
 //
-// It is deliberately not part of either phase. Getting routes onto a device is
-// what a synchronization is for, so a slow or unavailable tagging endpoint must
-// neither delay that nor be reported as a failed sync — which is why the caller
-// runs this after every phase it intended to run. The annotator caches what it
-// learns and is bounded per pass, so a failure costs only the stages this pass
-// would have filled in; the next one asks again, and until then those stages
-// simply carry no surface. The failed count is what tells that apart from a
+// Neither is part of either sync phase. Getting routes onto a device is what a
+// synchronization is for, so a slow or unavailable tagging endpoint, or a
+// coefficient file predicting nothing new, must neither delay that nor be
+// reported as a failed sync — which is why the caller runs this after every
+// phase it intended to run. Each pass caches what it learns and is bounded to
+// this one call, so a failure costs only the stages this pass would have
+// filled in; the next one asks again, and until then those stages simply carry
+// no surface or no prediction. The failed count is what tells that apart from a
 // stage nobody has asked about yet, which looks identical otherwise.
 //
 // It reads the inventory back from state rather than being handed one, because
 // a classification is a set of positions in one stored geometry's coordinate
 // array: the stages it must describe are precisely the stored ones.
 func (s *Service) AnnotateStored(ctx context.Context) (classified, failed int) {
-	if s.annotator == nil {
+	if s.annotator == nil && s.predictor == nil {
 		return 0, 0
 	}
 	stages, err := s.state.TrustedInventory(ctx)
@@ -608,27 +625,41 @@ func (s *Service) AnnotateStored(ctx context.Context) (classified, failed int) {
 
 		return 0, 0
 	}
-	classified, failed, err = s.annotator.Annotate(ctx, stages)
-	if failed == 0 && err == nil {
-		return classified, failed
+
+	if s.annotator != nil {
+		classified, failed, err = s.annotator.Annotate(ctx, stages)
+		logPassOutcome("surface classification", classified, failed, err)
 	}
-	// The one place this pass is allowed to be heard in the log. It cannot fail
-	// a run and it is not worth an alert, but a stage that fails every pass is
-	// invisible otherwise: it looks exactly like a stage nobody has asked about.
-	// Counts and whether the pass ran to the end — no stage names, no geometry,
-	// and nothing the endpoint said.
+	s.predictStored(ctx, stages)
+
+	return classified, failed
+}
+
+// predictStored runs the ride-model predictor over the same stages
+// AnnotateStored just read, and is silent on success for the same reason
+// AnnotateStored's own logging is: a routine pass is not worth a log line.
+func (s *Service) predictStored(ctx context.Context, stages []route.Stage) {
+	if s.predictor == nil {
+		return
+	}
+	predicted, failed, err := s.predictor.Predict(ctx, stages)
+	logPassOutcome("ride model prediction", predicted, failed, err)
+}
+
+// logPassOutcome is the one place either enrichment pass is allowed to be
+// heard in the log. Neither pass can fail a run and neither is worth an alert,
+// but a stage that fails every pass is invisible otherwise: it looks exactly
+// like a stage nobody has asked about. Counts and whether the pass ran to the
+// end — no stage names, no geometry, and nothing the endpoint said.
+func logPassOutcome(pass string, completed, failed int, err error) {
+	if failed == 0 && err == nil {
+		return
+	}
 	reason := "stage"
 	if err != nil {
 		reason = "stopped_early"
 	}
-	slog.Warn(
-		"surface classification incomplete",
-		"classified", classified,
-		"failed", failed,
-		"reason", reason,
-	)
-
-	return classified, failed
+	slog.Warn(pass+" incomplete", "completed", completed, "failed", failed, "reason", reason)
 }
 
 // exportProfiles returns the inventory carrying the elevation profile that is

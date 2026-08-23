@@ -109,6 +109,7 @@ type Settings struct {
 	Access        Access
 	WebUI         WebUI
 	Surface       Surface
+	RideModel     RideModel
 	Sync          Sync
 	State         State
 }
@@ -203,6 +204,20 @@ type Surface struct {
 	// extracts. A rebuild that finds every extract unchanged costs one small
 	// request per region and stops there.
 	RebuildInterval time.Duration
+}
+
+// RideModel configures the predicted moving time internal/ridemodel computes
+// per stage.
+type RideModel struct {
+	// CoefficientsFile names the coefficient file #215 fits: mass, power, drag
+	// area, rolling resistance per surface, and the descent constants. It is
+	// deliberately not a secret — it carries no credential and no route data —
+	// so it is a plain path like the OpenStreetMap extract configuration
+	// rather than a *_file secret input.
+	//
+	// The default is no file, which switches prediction off entirely: no
+	// coefficient is loaded, and no stage anywhere carries a predicted time.
+	CoefficientsFile string
 }
 
 // State configures durable service state.
@@ -375,6 +390,7 @@ type rawSettings struct {
 	Access        rawAccess        `koanf:"access"`
 	WebUI         rawWebUI         `koanf:"webui"`
 	Surface       rawSurface       `koanf:"surface"`
+	RideModel     rawRideModel     `koanf:"ridemodel"`
 	State         rawState         `koanf:"state"`
 	Sync          rawSync          `koanf:"sync"`
 }
@@ -398,6 +414,10 @@ type rawBasemap struct {
 type rawSurface struct {
 	Regions         []string      `koanf:"regions"`
 	RebuildInterval time.Duration `koanf:"rebuild_interval"`
+}
+
+type rawRideModel struct {
+	CoefficientsFile string `koanf:"coefficients_file"`
 }
 
 type rawAccess struct {
@@ -679,6 +699,9 @@ func build(raw *rawSettings, veloPlannerConfigured, komootConfigured bool) (*Set
 	if err := validateSurface(raw.Surface); err != nil {
 		return nil, err
 	}
+	if err := validateRideModel(raw.RideModel); err != nil {
+		return nil, err
+	}
 	if err := validateHTTPSOrigin("notifications.pushover.base_url", raw.Notifications.Pushover.BaseURL); err != nil {
 		return nil, err
 	}
@@ -816,6 +839,9 @@ func build(raw *rawSettings, veloPlannerConfigured, komootConfigured bool) (*Set
 		Surface: Surface{
 			Regions:         trimmedRegions(raw.Surface.Regions),
 			RebuildInterval: raw.Surface.RebuildInterval,
+		},
+		RideModel: RideModel{
+			CoefficientsFile: raw.RideModel.CoefficientsFile,
 		},
 		State: State{
 			DatabasePath:  raw.State.DatabasePath,
@@ -1002,6 +1028,23 @@ func validateSurface(surface rawSurface) error {
 	}
 	if len(regions) > 0 && surface.RebuildInterval <= 0 {
 		return errors.New("surface.rebuild_interval must be positive")
+	}
+
+	return nil
+}
+
+// validateRideModel accepts an unconfigured coefficients file — the operator's
+// switch for leaving every stage without a predicted moving time — or an
+// absolute path to one. The file itself is read, parsed, and validated for
+// physical plausibility by internal/ridemodel at composition, not here: this
+// package validates shape, the way it does for state.database_path, and
+// leaves what the file means to the package that owns the model.
+func validateRideModel(rideModel rawRideModel) error {
+	if rideModel.CoefficientsFile == "" {
+		return nil
+	}
+	if !filepath.IsAbs(rideModel.CoefficientsFile) {
+		return errors.New("ridemodel.coefficients_file must be an absolute path")
 	}
 
 	return nil

@@ -273,6 +273,35 @@ func TestHandlerListsStagesWithoutGeometry(t *testing.T) {
 	assert.NotContains(t, body, "coordinates", "the routes body leaked geometry")
 }
 
+// The moving time internal/ridemodel predicts is served alongside the other
+// aggregate geometry facts, but only once something has actually predicted it
+// — a stage nothing has predicted must not read as a zero-second ride.
+func TestHandlerServesPredictedMovingTimeWhenPresent(t *testing.T) {
+	movingSeconds := 1234.5
+	state := &fakeState{summaries: []route.Summary{{
+		RouteID: 3, StageOrder: 1, RouteName: "Sunday", PointCount: 2, DistanceMetres: 900,
+		MovingSeconds: &movingSeconds,
+	}}}
+	handler := newHandler(t, &fakeOAuth{}, state)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/routes"))
+	require.Equal(t, http.StatusOK, response.Code, "routes status")
+	assert.Contains(t, response.Body.String(), `"moving_seconds":1234.5`, "predicted moving time")
+}
+
+func TestHandlerOmitsMovingTimeWhenNothingHasPredictedIt(t *testing.T) {
+	state := &fakeState{summaries: []route.Summary{{
+		RouteID: 3, StageOrder: 1, RouteName: "Sunday", PointCount: 2, DistanceMetres: 900,
+	}}}
+	handler := newHandler(t, &fakeOAuth{}, state)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/routes"))
+	require.Equal(t, http.StatusOK, response.Code, "routes status")
+	assert.NotContains(t, response.Body.String(), "moving_seconds", "an unpredicted stage must not claim zero seconds")
+}
+
 func TestHandlerServesTileStyleConfiguration(t *testing.T) {
 	handler := newTestHandler(t)
 	response := httptest.NewRecorder()

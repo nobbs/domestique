@@ -167,3 +167,40 @@ func EncodeRanges(ranges []Range) ([]byte, error) {
 
 	return encoded, nil
 }
+
+// DecodeRanges is EncodeRanges's inverse, for a consumer of the cached wire
+// form that needs the ranges back rather than the raw bytes — ridemodel's
+// predictor, which selects rolling resistance per range.
+func DecodeRanges(data []byte) ([]Range, error) {
+	var stored []storedRange
+	if err := json.Unmarshal(data, &stored); err != nil {
+		return nil, fmt.Errorf("surface: decoding surface ranges: %w", err)
+	}
+
+	ranges := make([]Range, 0, len(stored))
+	for _, band := range stored {
+		ranges = append(ranges, Range{StartIndex: band.StartIndex, EndIndex: band.EndIndex, Kind: parseKind(band.Kind)})
+	}
+
+	return ranges, nil
+}
+
+// parseKind is String's inverse. An unrecognised name — from a row written by
+// a future version of this package — decodes as KindUnknown rather than
+// failing the whole read.
+func parseKind(name string) Kind {
+	switch name {
+	case "asphalt":
+		return KindAsphalt
+	case "paving":
+		return KindPaving
+	case "compacted":
+		return KindCompacted
+	case "gravel":
+		return KindGravel
+	case "ground":
+		return KindGround
+	}
+
+	return KindUnknown
+}

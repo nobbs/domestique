@@ -128,7 +128,7 @@ func Match(points []route.Point, ways []Way) []Kind {
 func Compress(kinds []Kind) []Range {
 	ranges := make([]Range, 0)
 	for index, kind := range kinds {
-		if index > 0 && kind == kinds[index-1] {
+		if index > 0 && kind == kinds[index-1] { //nolint:gosec // index > 0 guards kinds[index-1]; G602 misreads this as unbounded.
 			ranges[len(ranges)-1].EndIndex = index
 
 			continue
@@ -137,6 +137,25 @@ func Compress(kinds []Kind) []Range {
 	}
 
 	return ranges
+}
+
+// Expand is Compress's inverse: it restores one class per point from a set of
+// ranges, for a consumer that reads the cached wire form back and needs to
+// index it by point rather than by range. Positions outside every range —
+// which Compress never produces from a full Match, but a caller of Expand
+// should not have to assume — are KindUnknown.
+func Expand(ranges []Range, pointCount int) []Kind {
+	kinds := make([]Kind, pointCount)
+	for _, band := range ranges {
+		// A negative StartIndex cannot come from Compress, but Expand reads
+		// whatever a caller decoded — a corrupted row, in the worst case —
+		// and must degrade rather than panic on one.
+		for index := max(band.StartIndex, 0); index <= band.EndIndex && index < pointCount; index++ {
+			kinds[index] = band.Kind
+		}
+	}
+
+	return kinds
 }
 
 // MatchedMetres returns the stage length that snapped to a classified way. It is

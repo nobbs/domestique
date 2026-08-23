@@ -423,7 +423,7 @@ func TestServiceRewritesAStageWhosePushedRevisionWasForgotten(t *testing.T) {
 	}
 	service, err := New(
 		&Options{TargetIDs: []string{"a"}, MaxDeletionsPerTarget: 5},
-		state, []Source{&fakeSource{}}, identityProcessor{}, &fakeEncoder{}, target, nil,
+		state, []Source{&fakeSource{}}, identityProcessor{}, &fakeEncoder{}, target, nil, nil,
 	)
 	require.NoError(t, err, "New()")
 
@@ -566,7 +566,7 @@ func TestServiceSupportsOneTarget(t *testing.T) {
 	desired := testStage(t, 1, 1, "current", "current-hash")
 	state := newFakeState("a")
 	target := newFakeTarget()
-	service, err := New(&Options{TargetIDs: []string{"a"}, MaxDeletionsPerTarget: 5}, state, []Source{&fakeSource{stages: []route.Stage{desired}}}, identityProcessor{}, &fakeEncoder{}, target, nil)
+	service, err := New(&Options{TargetIDs: []string{"a"}, MaxDeletionsPerTarget: 5}, state, []Source{&fakeSource{stages: []route.Stage{desired}}}, identityProcessor{}, &fakeEncoder{}, target, nil, nil)
 	require.NoError(t, err, "New()")
 
 	result := runBoth(t.Context(), service)
@@ -584,7 +584,7 @@ func TestServiceUpdatesLegacyEncoderOutput(t *testing.T) {
 		contentHash:    desired.ContentHash(),
 		wahooRouteID:   101,
 	}
-	service, err := New(&Options{TargetIDs: []string{"a"}, MaxDeletionsPerTarget: 5}, state, []Source{&fakeSource{stages: []route.Stage{desired}}}, identityProcessor{}, &fakeEncoder{}, target, nil)
+	service, err := New(&Options{TargetIDs: []string{"a"}, MaxDeletionsPerTarget: 5}, state, []Source{&fakeSource{stages: []route.Stage{desired}}}, identityProcessor{}, &fakeEncoder{}, target, nil, nil)
 	require.NoError(t, err, "New()")
 
 	result := runBoth(t.Context(), service)
@@ -685,6 +685,7 @@ func newAnnotatedService(
 		&fakeEncoder{},
 		target,
 		annotator,
+		nil,
 	)
 	require.NoError(t, err, "New()")
 
@@ -709,6 +710,88 @@ func (a *fakeAnnotator) Annotate(
 	a.stages = append([]route.Stage(nil), stages...)
 	if a.err != nil {
 		return 0, len(stages), a.err
+	}
+
+	return len(stages), 0, nil
+}
+
+// The predictor sees the same inventory the annotator does, in the same pass,
+// so a stage's prediction can read the classification the annotator just
+// wrote rather than waiting a full cycle behind it.
+func TestServicePredictsTheStoredInventoryAfterReconciling(t *testing.T) {
+	desired := testStage(t, 1, 1, "current", "current-hash")
+	state := newFakeState("a")
+	target := newFakeTarget()
+	predictor := &fakePredictor{}
+	service, err := New(
+		&Options{TargetIDs: []string{"a"}, MaxDeletionsPerTarget: 5},
+		state, []Source{&fakeSource{stages: []route.Stage{desired}}}, exportProcessor{}, &fakeEncoder{}, target,
+		nil, predictor,
+	)
+	require.NoError(t, err, "New()")
+
+	result := runBoth(t.Context(), service)
+	require.Equal(t, OutcomeSucceeded, result.Outcome, "runBoth() outcome")
+	require.Equal(t, 1, predictor.calls, "predict calls")
+	require.Len(t, predictor.stages, 1, "predicted stages")
+}
+
+// Ride model prediction is not what a synchronization is for, on the same
+// terms surface classification is not: a coefficient file that cannot be
+// read must not turn a completed sync into a failure the operator is
+// notified about.
+func TestServiceSucceedsWhenPredictionFails(t *testing.T) {
+	desired := testStage(t, 1, 1, "current", "current-hash")
+	state := newFakeState("a")
+	target := newFakeTarget()
+	predictor := &fakePredictor{err: errors.New("coefficient file unavailable")}
+	service, err := New(
+		&Options{TargetIDs: []string{"a"}, MaxDeletionsPerTarget: 5},
+		state, []Source{&fakeSource{stages: []route.Stage{desired}}}, exportProcessor{}, &fakeEncoder{}, target,
+		nil, predictor,
+	)
+	require.NoError(t, err, "New()")
+
+	result := runBoth(t.Context(), service)
+	assert.Equal(t, OutcomeSucceeded, result.Outcome, "runBoth() outcome")
+	assert.Equal(t, FailureNone, result.Failure, "runBoth() failure")
+	assert.Equal(t, 1, result.Created, "created routes")
+}
+
+func TestServiceAnnotatesAndPredictsInTheSamePass(t *testing.T) {
+	desired := testStage(t, 1, 1, "current", "current-hash")
+	state := newFakeState("a")
+	state.trusted = []route.Stage{desired}
+	target := newFakeTarget()
+	annotator := &fakeAnnotator{}
+	predictor := &fakePredictor{}
+	service, err := New(
+		&Options{TargetIDs: []string{"a"}, MaxDeletionsPerTarget: 5},
+		state, []Source{&fakeSource{stages: []route.Stage{desired}}}, exportProcessor{}, &fakeEncoder{}, target,
+		annotator, predictor,
+	)
+	require.NoError(t, err, "New()")
+
+	classified, failed := service.AnnotateStored(t.Context())
+	assert.Equal(t, 1, annotator.calls, "annotate calls")
+	assert.Equal(t, 1, predictor.calls, "predict calls")
+	assert.Equal(t, 1, classified, "classified")
+	assert.Zero(t, failed, "failed")
+}
+
+type fakePredictor struct {
+	err    error
+	stages []route.Stage
+	calls  int
+}
+
+func (p *fakePredictor) Predict(
+	_ context.Context, stages []route.Stage,
+) (predicted, failed int, err error) {
+	p.calls++
+	p.stages = append([]route.Stage(nil), stages...)
+	if p.err != nil {
+		return 0, len(stages), p.err
 	}
 
 	return len(stages), 0, nil
@@ -761,7 +844,7 @@ func newService(t *testing.T, state *fakeState, source *fakeSource, encoder *fak
 		TargetIDs:                []string{"a", "b"},
 		MaxDeletionsPerTarget:    5,
 		AllowEmptySourceDeletion: allowEmpty,
-	}, state, []Source{source}, identityProcessor{}, encoder, target, nil)
+	}, state, []Source{source}, identityProcessor{}, encoder, target, nil, nil)
 	require.NoError(t, err, "New()")
 
 	return service
@@ -1154,7 +1237,7 @@ func newMultiSourceService(t *testing.T, state *fakeState, sources []Source, tar
 		TargetIDs:                []string{"a"},
 		MaxDeletionsPerTarget:    5,
 		AllowEmptySourceDeletion: allowEmpty,
-	}, state, sources, identityProcessor{}, &fakeEncoder{}, target, nil)
+	}, state, sources, identityProcessor{}, &fakeEncoder{}, target, nil, nil)
 	require.NoError(t, err, "New()")
 
 	return service
@@ -1311,7 +1394,7 @@ func TestServiceFailsASourceWhenItsShareCannotBeStored(t *testing.T) {
 func TestNewRejectsAnEmptySourceSet(t *testing.T) {
 	_, err := New(
 		&Options{TargetIDs: []string{"a"}, MaxDeletionsPerTarget: 5},
-		newFakeState("a"), nil, identityProcessor{}, &fakeEncoder{}, newFakeTarget(), nil,
+		newFakeState("a"), nil, identityProcessor{}, &fakeEncoder{}, newFakeTarget(), nil, nil,
 	)
 	assert.Error(t, err, "New() with no configured sources")
 }
@@ -1319,7 +1402,7 @@ func TestNewRejectsAnEmptySourceSet(t *testing.T) {
 func TestNewRejectsANilSource(t *testing.T) {
 	_, err := New(
 		&Options{TargetIDs: []string{"a"}, MaxDeletionsPerTarget: 5},
-		newFakeState("a"), []Source{nil}, identityProcessor{}, &fakeEncoder{}, newFakeTarget(), nil,
+		newFakeState("a"), []Source{nil}, identityProcessor{}, &fakeEncoder{}, newFakeTarget(), nil, nil,
 	)
 	assert.Error(t, err, "New() with a nil source")
 }
@@ -1327,7 +1410,7 @@ func TestNewRejectsANilSource(t *testing.T) {
 func TestNewRejectsASourceWithNoProvider(t *testing.T) {
 	_, err := New(
 		&Options{TargetIDs: []string{"a"}, MaxDeletionsPerTarget: 5},
-		newFakeState("a"), []Source{unnamedSource{}}, identityProcessor{}, &fakeEncoder{}, newFakeTarget(), nil,
+		newFakeState("a"), []Source{unnamedSource{}}, identityProcessor{}, &fakeEncoder{}, newFakeTarget(), nil, nil,
 	)
 	assert.Error(t, err, "New() with a source that names no provider")
 }
@@ -1335,7 +1418,7 @@ func TestNewRejectsASourceWithNoProvider(t *testing.T) {
 func TestNewRejectsDuplicateSourceProviders(t *testing.T) {
 	_, err := New(
 		&Options{TargetIDs: []string{"a"}, MaxDeletionsPerTarget: 5},
-		newFakeState("a"), []Source{&fakeSource{}, &fakeSource{}}, identityProcessor{}, &fakeEncoder{}, newFakeTarget(), nil,
+		newFakeState("a"), []Source{&fakeSource{}, &fakeSource{}}, identityProcessor{}, &fakeEncoder{}, newFakeTarget(), nil, nil,
 	)
 	assert.Error(t, err, "New() with two sources naming the same provider")
 }

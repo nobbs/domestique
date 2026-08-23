@@ -177,3 +177,17 @@ regions = []
 # build needs about half a gigabyte of memory and a few hundred megabytes of
 # disk for the extract it stages.
 rebuild_interval = "168h"
+
+[ridemodel]
+# The coefficient file the offline fitting tooling emits: total riding mass,
+# sustained power, drag area, and rolling resistance per surface class, fitted
+# to a corpus of your own recorded rides rather than guessed. The service
+# reads it once at startup and computes a predicted moving time per stage.
+#
+# Unlike every other file path in this example, this one is not a secret: it
+# carries fitted physical constants, not a credential or route data.
+#
+# The default is no file, which switches prediction off entirely: no stage
+# anywhere carries a predicted time. A missing, malformed, or physically
+# implausible file is a startup failure rather than a silent fallback.
+# coefficients_file = "/etc/domestique/ridemodel.toml"

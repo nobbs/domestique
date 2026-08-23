@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 	"net/http"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -335,4 +336,108 @@ func testNotifier(t *testing.T) *pushover.Client {
 	require.NoError(t, err, "pushover.New()")
 
 	return notifier
+}
+
+// An operator who configures no coefficients file keeps every stage exactly
+// as it is today: no rider figure is ever guessed.
+func TestLoadRidePredictorReturnsNilWithNoCoefficientsFileConfigured(t *testing.T) {
+	t.Parallel()
+
+	directory := t.TempDir()
+	predictor, err := loadRidePredictor(t.Context(), &config.Settings{}, testStore(t, directory))
+	require.NoError(t, err, "loadRidePredictor()")
+	assert.Nil(t, predictor, "a predictor was built with no coefficients file configured")
+}
+
+func TestLoadRidePredictorBuildsAPredictorFromAValidFile(t *testing.T) {
+	t.Parallel()
+
+	directory := t.TempDir()
+	settings := &config.Settings{RideModel: config.RideModel{CoefficientsFile: writeTestCoefficients(t, directory)}}
+
+	predictor, err := loadRidePredictor(t.Context(), settings, testStore(t, directory))
+	require.NoError(t, err, "loadRidePredictor()")
+	assert.NotNil(t, predictor, "no predictor was built from a valid coefficients file")
+}
+
+// A malformed or physically implausible file is a startup failure: the
+// service refuses to serve a prediction it cannot stand behind.
+func TestLoadRidePredictorRefusesAnImplausibleFile(t *testing.T) {
+	t.Parallel()
+
+	directory := t.TempDir()
+	path := filepath.Join(directory, "ridemodel.toml")
+	require.NoError(t, os.WriteFile(path, []byte("mass_kg = 1.0\n"), 0o600), "writing coefficient file")
+	settings := &config.Settings{RideModel: config.RideModel{CoefficientsFile: path}}
+
+	_, err := loadRidePredictor(t.Context(), settings, testStore(t, directory))
+	require.Error(t, err, "loadRidePredictor() with an implausible coefficient file")
+}
+
+// A coefficient file edited or removed since the last restart must not leave
+// the previous file's predictions being served as current: nothing else
+// would ever notice they no longer match what is loaded now, since they
+// still address the same, unchanged geometry.
+func TestLoadRidePredictorPrunesPredictionsFromADifferentCoefficientFile(t *testing.T) {
+	t.Parallel()
+
+	directory := t.TempDir()
+	store := testStore(t, directory)
+	seconds := 123.0
+	require.NoError(t, store.StoreStageDuration(
+		t.Context(), route.ProviderVeloPlanner, 1, 1, "hash", "", "an-earlier-coefficient-file", &seconds, nil,
+	), "seeding a stale prediction")
+
+	settings := &config.Settings{RideModel: config.RideModel{CoefficientsFile: writeTestCoefficients(t, directory)}}
+	_, err := loadRidePredictor(t.Context(), settings, store)
+	require.NoError(t, err, "loadRidePredictor()")
+
+	_, _, _, found, err := store.StageDurationFingerprint(t.Context(), route.ProviderVeloPlanner, 1, 1)
+	require.NoError(t, err, "StageDurationFingerprint()")
+	assert.False(t, found, "a prediction from a different coefficient file was still being served")
+}
+
+// The mirror case: switching ride model prediction off entirely must not
+// leave a previous configuration's predictions being served either.
+func TestLoadRidePredictorPrunesEverythingWhenUnconfigured(t *testing.T) {
+	t.Parallel()
+
+	directory := t.TempDir()
+	store := testStore(t, directory)
+	seconds := 123.0
+	require.NoError(t, store.StoreStageDuration(
+		t.Context(), route.ProviderVeloPlanner, 1, 1, "hash", "", "a-since-removed-coefficient-file", &seconds, nil,
+	), "seeding a stale prediction")
+
+	_, err := loadRidePredictor(t.Context(), &config.Settings{}, store)
+	require.NoError(t, err, "loadRidePredictor()")
+
+	_, _, _, found, err := store.StageDurationFingerprint(t.Context(), route.ProviderVeloPlanner, 1, 1)
+	require.NoError(t, err, "StageDurationFingerprint()")
+	assert.False(t, found, "a prediction survived switching ride model prediction off")
+}
+
+func writeTestCoefficients(t *testing.T, directory string) string {
+	t.Helper()
+
+	path := filepath.Join(directory, "ridemodel.toml")
+	const document = `
+mass_kg = 90.0
+power_watts = 155.0
+drive_efficiency = 0.975
+cda_m2 = 0.487
+air_density_kg_per_m3 = 1.2
+descent_cutoff_percent = -1.0
+descent_cap_metres_per_second = 22.0
+
+[crr]
+asphalt = 0.005
+paving = 0.006
+compacted = 0.007
+gravel = 0.009
+ground = 0.011
+`
+	require.NoError(t, os.WriteFile(path, []byte(document), 0o600), "writing coefficient file")
+
+	return path
 }
