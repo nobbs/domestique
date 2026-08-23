@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useLayoutEffect } from "react";
 import { Navigate, Route, Routes, useParams } from "react-router";
 import { RoutesPage } from "./features/routes/RoutesPage";
 import { SyncPage } from "./features/sync/SyncPage";
@@ -51,7 +51,11 @@ function OpenedLegacyRoute() {
 export function App() {
   const [themeChoice, setThemeChoice] = useThemeChoice();
 
-  useEffect(() => {
+  // Layout rather than passive: this app renders nothing until React mounts,
+  // so the commit this runs after is the first paint there is — an ordinary
+  // effect would let the browser paint the system default first and flash to
+  // a remembered override a frame later.
+  useLayoutEffect(() => {
     if (themeChoice === "system") {
       document.documentElement.removeAttribute("data-theme");
     } else {
