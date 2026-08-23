@@ -23,6 +23,15 @@ const (
 	tourPageSize     = 50
 	userAgent        = "domestique/1.0"
 	tourTypePlanned  = "tour_planned"
+
+	// acceptJSON is deliberately not the plain "application/json" it looks
+	// like it should be. Verified against a live account: every v007 resource
+	// (listing, detail) is served as HAL and answers a strict
+	// "Accept: application/json" with 406 HttpMediaTypeNotAcceptable, even
+	// though its body is ordinary JSON either way. v006's login is more
+	// lenient and would accept either, so the same header is used everywhere
+	// rather than carrying two.
+	acceptJSON = "application/hal+json, application/json;q=0.9"
 )
 
 // ErrAuthentication identifies an unsuccessful Komoot login.
@@ -191,7 +200,7 @@ func (s *session) login(ctx context.Context) (userID, token string, err error) {
 	if err != nil {
 		return "", "", fmt.Errorf("creating login request: %w", err)
 	}
-	request.Header.Set("Accept", "application/json")
+	request.Header.Set("Accept", acceptJSON)
 	request.Header.Set("User-Agent", userAgent)
 	request.SetBasicAuth(string(s.parent.email), string(s.parent.password))
 
@@ -319,7 +328,7 @@ func (s *session) newRequest(ctx context.Context, endpoint string) (*http.Reques
 	if err != nil {
 		return nil, fmt.Errorf("creating request: %w", err)
 	}
-	request.Header.Set("Accept", "application/json")
+	request.Header.Set("Accept", acceptJSON)
 	request.Header.Set("User-Agent", userAgent)
 
 	return request, nil

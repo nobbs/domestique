@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -21,6 +22,34 @@ func TestClientProviderIsKomoot(t *testing.T) {
 	require.NoError(t, err, "New()")
 
 	assert.Equal(t, route.ProviderKomoot, client.Provider(), "Provider()")
+}
+
+func TestClientNeverSendsAnAcceptHeaderTheRealAPIRejects(t *testing.T) {
+	// Verified against a live account: every v007 resource is served as HAL
+	// and answers a strict "Accept: application/json" with 406
+	// HttpMediaTypeNotAcceptable, even though its body is ordinary JSON
+	// either way. This server reproduces exactly that rejection so a
+	// regression here fails loudly instead of only in production.
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if strings.HasPrefix(request.URL.Path, "/v007/") && !strings.Contains(request.Header.Get("Accept"), "hal+json") {
+			writer.WriteHeader(http.StatusNotAcceptable)
+			writeJSON(t, writer, `{"status":406,"error":"HttpMediaTypeNotAcceptable","message":null}`)
+			return
+		}
+		switch request.URL.Path {
+		case "/v006/account/email/rider@example.test/":
+			writeJSON(t, writer, `{"username":"42","password":"session-token"}`)
+		case "/v007/users/42/tours/":
+			writeJSON(t, writer, `{"_embedded":{"tours":[]},"page":{"size":50,"totalElements":0,"totalPages":0,"number":0}}`)
+		default:
+			writer.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	stages, err := newTestClient(t, server).Inventory(t.Context())
+	require.NoError(t, err)
+	assert.Empty(t, stages)
 }
 
 func TestClientInventoryReadsPlannedToursAcrossPages(t *testing.T) {
