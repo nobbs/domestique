@@ -32,11 +32,14 @@ func convertTour(tour *tourDetail) (route.Stage, error) {
 
 	items := tour.Embedded.Coordinates.Items
 	geometry := make([]route.Point, 0, len(items))
-	for _, item := range items {
-		elevation := item.Elevation
+	for index, item := range items {
+		if item.Latitude == nil || item.Longitude == nil || item.Elevation == nil {
+			return route.Stage{}, fmt.Errorf("komoot: tour %d point %d is missing a coordinate field", tour.ID, index)
+		}
+		elevation := *item.Elevation
 		geometry = append(geometry, route.Point{
-			Longitude: item.Longitude,
-			Latitude:  item.Latitude,
+			Longitude: *item.Longitude,
+			Latitude:  *item.Latitude,
 			Elevation: &elevation,
 		})
 	}

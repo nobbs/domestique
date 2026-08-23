@@ -15,8 +15,8 @@ func exampleTour(id int64) *tourDetail {
 		ChangedAt: "2026-08-17T07:00:00.000Z",
 	}
 	tour.Embedded.Coordinates.Items = []coordinate{
-		{Latitude: 49.0, Longitude: 8.4, Elevation: 100},
-		{Latitude: 49.1, Longitude: 8.5, Elevation: 110},
+		{Latitude: new(49.0), Longitude: new(8.4), Elevation: new(100.0)},
+		{Latitude: new(49.1), Longitude: new(8.5), Elevation: new(110.0)},
 	}
 
 	return tour
@@ -61,7 +61,7 @@ func TestConvertTourDiffersOnChangedGeometry(t *testing.T) {
 	require.NoError(t, err)
 
 	changed := exampleTour(45)
-	changed.Embedded.Coordinates.Items[0].Elevation = 999
+	changed.Embedded.Coordinates.Items[0].Elevation = new(999.0)
 
 	second, err := convertTour(changed)
 	require.NoError(t, err)
@@ -80,4 +80,25 @@ func TestConvertTourRejectsTooFewPoints(t *testing.T) {
 
 	_, err := convertTour(tour)
 	require.Error(t, err)
+}
+
+func TestConvertTourRejectsMissingCoordinateField(t *testing.T) {
+	tests := []struct {
+		mutate func(*coordinate)
+		name   string
+	}{
+		{name: "missing latitude", mutate: func(c *coordinate) { c.Latitude = nil }},
+		{name: "missing longitude", mutate: func(c *coordinate) { c.Longitude = nil }},
+		{name: "missing elevation", mutate: func(c *coordinate) { c.Elevation = nil }},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			tour := exampleTour(45)
+			test.mutate(&tour.Embedded.Coordinates.Items[0])
+
+			_, err := convertTour(tour)
+			require.ErrorContains(t, err, "missing a coordinate field")
+		})
+	}
 }

@@ -40,11 +40,14 @@ type tourDetail struct {
 	ID int64 `json:"id"`
 }
 
-// coordinate is one point of a tour's geometry. alt is required by Komoot's
-// published schema and was present on every point of every planned tour
-// sampled, unlike VeloPlanner's optional elevation.
+// coordinate is one point of a tour's geometry. All three fields are pointers
+// so a missing or null field decodes as absent rather than as a fabricated
+// zero — a point at (0, 0) with no elevation is real JSON, not a safe
+// default. alt is required by Komoot's published schema and was present on
+// every point of every planned tour sampled, unlike VeloPlanner's optional
+// elevation; convertTour rejects a tour missing any of the three.
 type coordinate struct {
-	Latitude  float64 `json:"lat"`
-	Longitude float64 `json:"lng"`
-	Elevation float64 `json:"alt"`
+	Latitude  *float64 `json:"lat"`
+	Longitude *float64 `json:"lng"`
+	Elevation *float64 `json:"alt"`
 }

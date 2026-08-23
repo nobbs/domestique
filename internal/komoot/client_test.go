@@ -144,6 +144,18 @@ func TestClientInventoryRejectsWrongTourType(t *testing.T) {
 	require.ErrorContains(t, err, "not a planned tour")
 }
 
+func TestClientInventoryRejectsMissingAltitude(t *testing.T) {
+	server := authenticatedTourServer(t, `{
+        "id": 100, "type": "tour_planned", "name": "Morning ride",
+        "changed_at": "2026-08-17T07:00:00.000Z",
+        "_embedded": {"coordinates": {"items": [{"lat": 1, "lng": 2}, {"lat": 1.1, "lng": 2.1, "alt": 3.1}]}}
+    }`)
+	defer server.Close()
+
+	_, err := newTestClient(t, server).Inventory(t.Context())
+	require.ErrorContains(t, err, "missing a coordinate field")
+}
+
 func TestClientInventoryRejectsMissingRevision(t *testing.T) {
 	server := authenticatedTourServer(t, `{
         "id": 100, "type": "tour_planned", "name": "Morning ride", "changed_at": "",
@@ -273,6 +285,34 @@ func TestClientInventoryRejectsEmptyLoginCredentials(t *testing.T) {
 
 	_, err := newTestClient(t, server).Inventory(t.Context())
 	require.ErrorIs(t, err, ErrAuthentication)
+}
+
+func TestClientInventoryRejectsNonNumericUsername(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writeJSON(t, writer, `{"username":"42/../evil","password":"session-token"}`)
+	}))
+	defer server.Close()
+
+	_, err := newTestClient(t, server).Inventory(t.Context())
+	require.ErrorIs(t, err, ErrAuthentication)
+}
+
+func TestClientInventoryRejectsRedirect(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		http.Redirect(writer, request, "http://insecure.example.invalid/leak", http.StatusFound)
+	}))
+	defer server.Close()
+
+	_, err := newTestClient(t, server).Inventory(t.Context())
+	require.ErrorContains(t, err, "redirect")
+}
+
+func TestClientInventoryRejectsInconsistentEmptyPagination(t *testing.T) {
+	server := authenticatedListingServer(t, `{"_embedded":{"tours":[{"id":100}]},"page":{"size":1,"totalElements":1,"totalPages":0,"number":0}}`)
+	defer server.Close()
+
+	_, err := newTestClient(t, server).Inventory(t.Context())
+	require.ErrorContains(t, err, "invalid tour library pagination")
 }
 
 func TestNewRejectsNilOptions(t *testing.T) {

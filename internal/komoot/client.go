@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -151,6 +152,14 @@ func (c *Client) newSession() *session {
 		client: &http.Client{
 			Timeout:   c.timeout,
 			Transport: c.transport,
+			// Every request here carries HTTP Basic credentials or the session
+			// token. Go's default redirect policy keeps the Authorization header
+			// on a same-host redirect, so an https-to-http redirect on the
+			// configured origin would otherwise downgrade and leak them. Nothing
+			// this package calls ever needs to be redirected.
+			CheckRedirect: func(*http.Request, []*http.Request) error {
+				return errors.New("komoot: refusing to follow a redirect")
+			},
 		},
 		parent:  c,
 		baseURL: c.baseURL,
@@ -186,6 +195,13 @@ func (s *session) login(ctx context.Context) (userID, token string, err error) {
 	if payload.Username == "" || payload.Password == "" {
 		return "", "", ErrAuthentication
 	}
+	// username is documented as carrying the numeric user id. It is about to be
+	// interpolated into every later request's path, so a non-numeric value is
+	// treated the same as any other unusable login response rather than trusted
+	// verbatim.
+	if _, err := strconv.ParseUint(payload.Username, 10, 64); err != nil {
+		return "", "", ErrAuthentication
+	}
 
 	return payload.Username, payload.Password, nil
 }
@@ -210,6 +226,7 @@ func (s *session) listTours(ctx context.Context, userID, token string) ([]tourSu
 		if payload.Page.Number != page || payload.Page.TotalElements < 0 ||
 			payload.Page.TotalPages < 0 || payload.Page.TotalPages > maximumPages ||
 			payload.Page.TotalElements > maximumTours ||
+			(payload.Page.TotalPages == 0 && payload.Page.TotalElements != 0) ||
 			(wantTotal >= 0 && payload.Page.TotalElements != wantTotal) {
 			return nil, errors.New("komoot: invalid tour library pagination")
 		}
