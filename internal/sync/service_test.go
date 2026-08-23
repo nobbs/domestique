@@ -267,6 +267,10 @@ func TestServiceClearTargetRemovesEveryOwnedRouteAndItsMappings(t *testing.T) {
 	assert.Equal(t, OutcomeSucceeded, result.Outcome, "ClearTarget() outcome")
 	assert.Equal(t, 2, result.Deleted, "ClearTarget() deleted")
 	assert.Empty(t, state.mappings["a"], "the cleared slot still remembers stages")
+	// A clear reads the account through its own path, which tolerates the
+	// duplicate external IDs reconciliation's listing refuses.
+	assert.Equal(t, 1, target.clearCalls, "clears")
+	assert.Zero(t, target.listCalls, "a clear reconciled")
 
 	// The other slot is untouched: clearing one target says nothing about any
 	// other, and the library itself is not what was cleared.
@@ -984,10 +988,13 @@ type fakeTarget struct {
 	updatedRouteIDs    []int64
 	refreshTokens      []string
 	nextRouteID        int64
-	// listCalls counts route listings, so a test can assert that reconciling an
-	// unchanged library asks the target exactly once per run rather than once
-	// per stage.
-	listCalls int
+	// listCalls counts reconciliation's route listings, so a test can assert
+	// that an unchanged library asks the target exactly once per run rather
+	// than once per stage. clearCalls counts the clear's own bulk delete
+	// separately: one counter for both would let a clear hide a regression in
+	// how often reconciliation lists.
+	listCalls  int
+	clearCalls int
 }
 
 func newFakeTarget() *fakeTarget {
@@ -1019,7 +1026,7 @@ func (t *fakeTarget) ListOwnedRoutes(_ context.Context, accessToken string) (map
 }
 
 func (t *fakeTarget) DeleteOwnedRoutes(ctx context.Context, accessToken string) (int, error) {
-	t.listCalls++
+	t.clearCalls++
 	if t.listErr != nil {
 		return 0, t.listErr
 	}
