@@ -253,10 +253,12 @@ type Options struct {
 	SurfaceIndexFunc func() (generation string, builtAt time.Time, ok bool)
 
 	// SourceBaseURLs are each configured source's own web application, as the
-	// operator configured it, keyed by the provider it belongs to. The page
-	// builds an outbound link to a stage's source route from the entry
-	// matching that stage's provider, so an operator can open the route a
-	// stage was made from without hunting for it by name.
+	// operator configured it, keyed by the provider it belongs to. Where the
+	// page also knows that provider's route path, it builds an outbound link
+	// to a stage's source route from the matching entry, so an operator can
+	// open the route a stage was made from without hunting for it by name —
+	// today that is VeloPlanner alone; a provider whose path the page does not
+	// yet know offers no link even though its base URL is here.
 	//
 	// A provider with nothing configured for it is simply absent from the
 	// map, rather than present with an empty value.
