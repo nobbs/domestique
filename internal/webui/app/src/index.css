@@ -1929,6 +1929,61 @@ body {
 }
 
 /*
+ * Deleting everything an account holds is not one of the ordinary actions
+ * beside it, and does not look like one. It reads as a quiet link until it is
+ * asked for, so the row's real work stays the obvious thing to press.
+ */
+.sync-row__destructive {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--ink-2);
+  font: var(--type-row);
+  letter-spacing: var(--track-row);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.sync-row__destructive:hover:not(:disabled),
+.sync-row__destructive:focus-visible {
+  color: var(--danger, #b3261e);
+}
+
+.sync-row__destructive:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/*
+ * The confirmation takes the row's full width rather than sitting inline: it
+ * has a sentence to say about what is about to happen, and a request to type
+ * the account's own name, neither of which fits in a button's worth of space.
+ */
+.sync-row__confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.sync-row__confirm-label {
+  flex-basis: 100%;
+  color: var(--ink-2);
+  font: var(--type-row);
+  letter-spacing: var(--track-row);
+}
+
+.sync-row__confirm-input {
+  min-width: 8rem;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-1, 4px);
+  background: var(--surface-1, transparent);
+  color: var(--ink-1);
+  font: var(--type-row);
+}
+
+/*
  * What the card says about itself once its rows have said everything else: the
  * scope of a claim, or how far back the history goes.
  */

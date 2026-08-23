@@ -909,6 +909,39 @@ func TestHandlerRefusesADuplicateTargetTrigger(t *testing.T) {
 	assert.Equal(t, http.StatusConflict, response.Code, "POST /v1/sync/targets/rider-a status")
 }
 
+func TestHandlerClearsASingleTarget(t *testing.T) {
+	trigger := &fakeSync{accepted: true}
+	handler := newHandlerWithSync(t, &fakeOAuth{}, &fakeState{}, trigger)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/targets/rider-a/clear"))
+	assert.Equal(t, http.StatusAccepted, response.Code, "POST /v1/targets/rider-a/clear status")
+	assert.Equal(t, []string{"rider-a"}, trigger.clearTriggers, "cleared target")
+}
+
+// A clear is destructive, so a slot this build was never configured with is
+// refused exactly as it is for a reconciliation.
+func TestHandlerRejectsClearingAnUnconfiguredTarget(t *testing.T) {
+	trigger := &fakeSync{accepted: true}
+	handler := newHandlerWithSync(t, &fakeOAuth{}, &fakeState{}, trigger)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/targets/unknown/clear"))
+	assert.Equal(t, http.StatusNotFound, response.Code, "POST /v1/targets/unknown/clear status")
+	assert.Empty(t, trigger.clearTriggers, "an unconfigured target was cleared")
+}
+
+// It shares the single-flight guard: a clear must never race a run writing to
+// the same target.
+func TestHandlerRefusesAClearWhileSomethingIsRunning(t *testing.T) {
+	trigger := &fakeSync{accepted: false}
+	handler := newHandlerWithSync(t, &fakeOAuth{}, &fakeState{}, trigger)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/targets/rider-a/clear"))
+	assert.Equal(t, http.StatusConflict, response.Code, "POST /v1/targets/rider-a/clear status")
+}
+
 // A surface retry is triggered independently of either sync phase, and never
 // starts a synchronization: it must never read the source or write a target.
 func TestHandlerTriggersASurfaceRetryWithoutStartingASync(t *testing.T) {
@@ -1354,6 +1387,14 @@ func TestHandlerRefusesADuplicateTriggerWithoutManufacturingASecondRun(t *testin
 	assert.Equal(t, "source", view.Sync.Active.Phase, "active phase")
 }
 
+// A wiring that never offered a clear must refuse it rather than panic on a
+// nil function, so a build without the control answers the route safely.
+func TestSyncFuncsRefuseAClearItWasNotGiven(t *testing.T) {
+	funcs := SyncFuncs{TriggerFunc: func(SyncPhase) bool { return true }}
+
+	assert.False(t, funcs.TriggerClear("rider-a"), "an unwired clear was accepted")
+}
+
 func TestSyncFuncsAdaptAPairOfFunctions(t *testing.T) {
 	activity := SyncActivityState{Phase: SyncPhaseSource, Running: true}
 
@@ -1361,6 +1402,7 @@ func TestSyncFuncsAdaptAPairOfFunctions(t *testing.T) {
 	var annotateCalls int
 
 	var askedTarget string
+	var askedClear string
 
 	funcs := SyncFuncs{
 		TriggerFunc: func(phase SyncPhase) bool {
@@ -1370,6 +1412,11 @@ func TestSyncFuncsAdaptAPairOfFunctions(t *testing.T) {
 		},
 		TriggerTargetFunc: func(targetID string) bool {
 			askedTarget = targetID
+
+			return true
+		},
+		TriggerClearFunc: func(targetID string) bool {
+			askedClear = targetID
 
 			return true
 		},
@@ -1386,6 +1433,8 @@ func TestSyncFuncsAdaptAPairOfFunctions(t *testing.T) {
 	assert.Equal(t, SyncPhaseTargets, asked, "the phase the trigger was asked for")
 	assert.True(t, funcs.TriggerTarget("rider-a"), "trigger target")
 	assert.Equal(t, "rider-a", askedTarget, "the target the trigger was asked for")
+	assert.True(t, funcs.TriggerClear("rider-b"), "trigger clear")
+	assert.Equal(t, "rider-b", askedClear, "the target the clear was asked for")
 	assert.Equal(t, activity, funcs.Activity(), "activity")
 	assert.True(t, funcs.TriggerAnnotate(), "TriggerAnnotate()")
 	assert.Equal(t, 1, annotateCalls, "TriggerAnnotate calls")
@@ -1758,6 +1807,7 @@ type fakeSync struct {
 	activity          SyncActivityState
 	phases            []SyncPhase
 	targetTriggers    []string
+	clearTriggers     []string
 	calls             int
 	annotateCalls     int
 	surfaceIncomplete int
@@ -1775,6 +1825,13 @@ func (t *fakeSync) Trigger(phase SyncPhase) bool {
 func (t *fakeSync) TriggerTarget(targetID string) bool {
 	t.calls++
 	t.targetTriggers = append(t.targetTriggers, targetID)
+
+	return t.accepted
+}
+
+func (t *fakeSync) TriggerClear(targetID string) bool {
+	t.calls++
+	t.clearTriggers = append(t.clearTriggers, targetID)
 
 	return t.accepted
 }

@@ -13,7 +13,8 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { triggerTargetSync } from "../../api/client";
+import { useState } from "react";
+import { clearTarget, triggerTargetSync } from "../../api/client";
 import { statusQuery } from "../../api/queries";
 import type { TargetStatus } from "../../api/types";
 import { Button } from "../../components/Button";
@@ -76,6 +77,20 @@ export function TargetConvergence() {
     mutationFn: (targetId: string) => triggerTargetSync(targetId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: statusQuery().queryKey }),
   });
+  // Which account is being cleared, and what has been typed to confirm it.
+  // Holding the slot here rather than per row is what keeps two confirmations
+  // from ever being open at once.
+  const [clearing, setClearing] = useState<string | null>(null);
+  const [confirmation, setConfirmation] = useState("");
+  const clear = useMutation({
+    mutationFn: (targetId: string) => clearTarget(targetId),
+    onSuccess: () => {
+      setClearing(null);
+      setConfirmation("");
+
+      return queryClient.invalidateQueries({ queryKey: statusQuery().queryKey });
+    },
+  });
 
   if (isPending) {
     return null;
@@ -130,18 +145,77 @@ export function TargetConvergence() {
               ) : !authorisation ? (
                 <div className="sync-row__actions">
                   {/*
-                   * "This account", not "this device": the button reconciles the
-                   * Wahoo account the row is about, and says so, because what it
-                   * presses is not the same thing as a head unit fetching routes
-                   * from it on its own schedule.
+                   * While a deletion is being confirmed it is the only thing
+                   * this row offers. Leaving the ordinary action beside it
+                   * would crowd the sentence that explains what is about to
+                   * happen, and put a button next to it that undoes the point
+                   * of asking.
                    */}
-                  <Button
-                    disabled={reconcile.isPending}
-                    onClick={() => reconcile.mutate(target.id)}
-                    aria-label={`Reconcile now: ${target.id}`}
-                  >
-                    Reconcile this account
-                  </Button>
+                  {clearing === target.id ? (
+                    <div className="sync-row__confirm">
+                      <label className="sync-row__confirm-label" htmlFor={`clear-${target.id}`}>
+                        Delete every route Domestique put on {target.id}. Routes you made yourself
+                        are left alone, and the next sync puts these back. A large account can take
+                        several minutes, and nothing else syncs until it finishes. Type{" "}
+                        <strong>{target.id}</strong> to confirm.
+                      </label>
+                      <input
+                        className="sync-row__confirm-input"
+                        id={`clear-${target.id}`}
+                        value={confirmation}
+                        onChange={(event) => setConfirmation(event.target.value)}
+                        autoComplete="off"
+                      />
+                      <Button
+                        disabled={confirmation !== target.id || clear.isPending}
+                        onClick={() => clear.mutate(target.id)}
+                        aria-label={`Delete every Domestique route from ${target.id}`}
+                      >
+                        Delete them
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          setClearing(null);
+                          setConfirmation("");
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  ) : (
+                    <>
+                      {/*
+                       * "This account", not "this device": the button reconciles
+                       * the Wahoo account the row is about, and says so, because
+                       * what it presses is not the same thing as a head unit
+                       * fetching routes from it on its own schedule.
+                       */}
+                      <Button
+                        disabled={reconcile.isPending}
+                        onClick={() => reconcile.mutate(target.id)}
+                        aria-label={`Reconcile now: ${target.id}`}
+                      >
+                        Reconcile this account
+                      </Button>
+                      {/*
+                       * Deleting everything is not a variant of reconciling, so
+                       * it does not sit beside it as an equal. It asks first,
+                       * and what it asks for is the account's own name — the one
+                       * confirmation a stray click cannot supply.
+                       */}
+                      <button
+                        className="sync-row__destructive"
+                        type="button"
+                        disabled={clear.isPending}
+                        onClick={() => {
+                          setClearing(target.id);
+                          setConfirmation("");
+                        }}
+                      >
+                        Delete all routes…
+                      </button>
+                    </>
+                  )}
                 </div>
               ) : null}
             </li>
@@ -156,6 +230,13 @@ export function TargetConvergence() {
           {reconcile.error instanceof Error && reconcile.error.message
             ? reconcile.error.message
             : "That account could not be reconciled."}
+        </p>
+      ) : null}
+      {clear.isError ? (
+        <p className="sync-card__error" role="alert">
+          {clear.error instanceof Error && clear.error.message
+            ? clear.error.message
+            : "Those routes could not be deleted."}
         </p>
       ) : null}
     </>

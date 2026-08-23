@@ -98,6 +98,33 @@ func TestReporterTriggersOneTargetAlone(t *testing.T) {
 	assert.Equal(t, []string{"targets"}, state.phases, "recorded phases")
 }
 
+// A clear runs through the same recording and notification path as any other
+// target work, so a cleared account appears in history as the deletion it was
+// rather than as an unexplained drop in what that account holds.
+func TestReporterTriggersAClearOfOneTargetAlone(t *testing.T) {
+	runner := &reportingRunner{targets: Result{Phase: PhaseTargets, Outcome: OutcomeSucceeded, Deleted: 4}}
+	state := &fakeRunState{}
+	reporter := newReporter(t, runner, state, &fakeNotifier{})
+
+	require.True(t, reporter.TriggerClear(t.Context(), "rider-a"), "TriggerClear() rejected the run")
+	reporter.Wait()
+	assert.Equal(t, []string{"rider-a"}, runner.clearedIDs, "target cleared")
+	assert.Zero(t, runner.sourceRuns, "the source phase ran for a clear")
+	assert.Equal(t, []string{"targets"}, state.phases, "recorded phases")
+}
+
+// Deleting everything an account holds must never race a run writing to it.
+func TestReporterTriggerClearRejectsOverlappingRun(t *testing.T) {
+	runner := &blockingReportingRunner{started: make(chan struct{}), release: make(chan struct{})}
+	state := &fakeRunState{}
+	reporter := newReporter(t, runner, state, &fakeNotifier{})
+	require.True(t, reporter.Trigger(t.Context()), "Trigger() rejected the first run")
+	<-runner.started
+	assert.False(t, reporter.TriggerClear(t.Context(), "rider-a"), "TriggerClear() accepted a run while one was active")
+	close(runner.release)
+	reporter.Wait()
+}
+
 // A single-target trigger shares the same mutual exclusion as any other run:
 // it must not start while one is already in flight, full or scoped.
 func TestReporterTriggerTargetRejectsOverlappingRun(t *testing.T) {
@@ -467,6 +494,7 @@ func TestReporterReportsThePhaseInFlight(t *testing.T) {
 
 type reportingRunner struct {
 	targetRunIDs       []string
+	clearedIDs         []string
 	source             Result
 	targets            Result
 	sourceRuns         int
@@ -491,6 +519,12 @@ func (r *reportingRunner) RunTargets(context.Context) Result {
 func (r *reportingRunner) RunTarget(_ context.Context, targetID string) Result {
 	r.targetRuns++
 	r.targetRunIDs = append(r.targetRunIDs, targetID)
+
+	return r.targets
+}
+
+func (r *reportingRunner) ClearTarget(_ context.Context, targetID string) Result {
+	r.clearedIDs = append(r.clearedIDs, targetID)
 
 	return r.targets
 }
@@ -521,6 +555,10 @@ func (r *blockingReportingRunner) RunTarget(context.Context, string) Result {
 	return Result{Phase: PhaseTargets, Outcome: OutcomeSucceeded}
 }
 
+func (r *blockingReportingRunner) ClearTarget(context.Context, string) Result {
+	return Result{Phase: PhaseTargets, Outcome: OutcomeSucceeded}
+}
+
 func (r *blockingReportingRunner) AnnotateStored(context.Context) (classified, failed int) {
 	return 0, 0
 }
@@ -542,6 +580,10 @@ func (r *blockingAnnotateRunner) RunTargets(context.Context) Result {
 }
 
 func (r *blockingAnnotateRunner) RunTarget(context.Context, string) Result {
+	return Result{Phase: PhaseTargets, Outcome: OutcomeSucceeded}
+}
+
+func (r *blockingAnnotateRunner) ClearTarget(context.Context, string) Result {
 	return Result{Phase: PhaseTargets, Outcome: OutcomeSucceeded}
 }
 
@@ -1294,6 +1336,12 @@ func (r *pacedRunner) RunTargets(context.Context) Result {
 }
 
 func (r *pacedRunner) RunTarget(context.Context, string) Result {
+	*r.clock = r.clock.Add(r.step)
+
+	return r.targets
+}
+
+func (r *pacedRunner) ClearTarget(context.Context, string) Result {
 	*r.clock = r.clock.Add(r.step)
 
 	return r.targets

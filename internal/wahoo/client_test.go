@@ -172,6 +172,71 @@ func TestClientRefusesAListingWithADuplicateExternalID(t *testing.T) {
 	require.ErrorContains(t, err, "duplicate external id")
 }
 
+func TestClientDeleteOwnedRoutesRemovesOnlyWhatItIssued(t *testing.T) {
+	// Duplicates are the state a clear exists to get out of, so unlike the
+	// reconciliation listing this must see both and remove both — while a
+	// route it did not issue stays untouched.
+	var deleted []string
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.Method == http.MethodDelete {
+			deleted = append(deleted, request.URL.Path)
+			writer.WriteHeader(http.StatusNoContent)
+
+			return
+		}
+		writeJSON(t, writer, []map[string]any{
+			{"id": 51, "external_id": "domestique:veloplanner:1:stage:1"},
+			{"id": 52, "external_id": "domestique:veloplanner:1:stage:1"},
+			{"id": 53, "external_id": ""},
+			{"id": 54, "external_id": "strava:import:9"},
+			{"id": 55, "external_id": "domestique:komoot:7:stage:1"},
+		})
+	}))
+	defer server.Close()
+
+	count, err := newTestClient(t, server).DeleteOwnedRoutes(t.Context(), "access-token")
+	require.NoError(t, err)
+	assert.Equal(t, 3, count, "deleted count")
+	assert.Equal(t, []string{"/v1/routes/51", "/v1/routes/52", "/v1/routes/55"}, deleted,
+		"only routes this service issued may be deleted, and every duplicate of them")
+}
+
+func TestClientDeleteOwnedRoutesWaitsOutASpentQuota(t *testing.T) {
+	// A scheduled run would give up rather than sleep through a whole refill.
+	// A clear is finished only when the target is empty, so it waits — the
+	// alternative is pressing the same destructive button until it is done.
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.Method == http.MethodDelete {
+			writer.Header().Set("X-RateLimit-Remaining", "100, 50, 0")
+			writer.Header().Set("X-RateLimit-Reset", "300")
+			writer.WriteHeader(http.StatusNoContent)
+
+			return
+		}
+		writeJSON(t, writer, []map[string]any{
+			{"id": 51, "external_id": "domestique:veloplanner:1:stage:1"},
+			{"id": 52, "external_id": "domestique:veloplanner:2:stage:1"},
+		})
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	now := time.Date(2026, time.August, 17, 7, 0, 0, 0, time.UTC)
+	client.now = func() time.Time { return now }
+	var waits []time.Duration
+	client.wait = func(_ context.Context, duration time.Duration) error {
+		waits = append(waits, duration)
+		now = now.Add(duration)
+
+		return nil
+	}
+
+	count, err := client.DeleteOwnedRoutes(t.Context(), "access-token")
+	require.NoError(t, err, "a clear must ride out the quota rather than stop at it")
+	assert.Equal(t, 2, count, "deleted count")
+	assert.Equal(t, []time.Duration{5 * time.Minute}, waits, "the advertised reset was not waited out")
+}
+
 func TestClientRefusesAListingWithoutAnAccessToken(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		assert.Fail(t, "an unauthenticated listing must not reach the API")

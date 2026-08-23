@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"slices"
 	"sort"
 	"testing"
 
@@ -245,6 +246,144 @@ func TestServiceWritesNothingWhenTheTargetListingFails(t *testing.T) {
 	assert.Equal(t, FailureDestination, result.Failure, "RunTargets() failure")
 	assert.Zero(t, result.Created, "created")
 	assert.Empty(t, target.deletedRouteIDs, "deleted route ids")
+}
+
+func TestServiceClearTargetRemovesEveryOwnedRouteAndItsMappings(t *testing.T) {
+	first := testStage(t, 1, 1, "current", "current-hash")
+	second := testStage(t, 2, 1, "current", "current-hash")
+	state := newFakeState("a", "b")
+	target := newFakeTarget()
+	state.trusted = []route.Stage{first, second}
+	for _, stage := range []*route.Stage{&first, &second} {
+		for index, targetID := range []string{"a", "b"} {
+			routeID := int64(100 + index)
+			target.seedRoute(targetID, stage, routeID)
+			seedMapping(state, targetID, stage, routeID)
+		}
+	}
+	service := newService(t, state, &fakeSource{}, &fakeEncoder{}, target, false)
+
+	result := service.ClearTarget(t.Context(), "a")
+	assert.Equal(t, OutcomeSucceeded, result.Outcome, "ClearTarget() outcome")
+	assert.Equal(t, 2, result.Deleted, "ClearTarget() deleted")
+	assert.Empty(t, state.mappings["a"], "the cleared slot still remembers stages")
+
+	// The other slot is untouched: clearing one target says nothing about any
+	// other, and the library itself is not what was cleared.
+	assert.Len(t, state.mappings["b"], 2, "the other target's mappings")
+	assert.Len(t, state.trusted, 2, "the stored library")
+}
+
+func TestServiceClearTargetLeavesRoutesItDoesNotOwn(t *testing.T) {
+	// The listing only ever answers with routes carrying an external ID this
+	// service issued, so a hand-made route is not merely skipped here — it is
+	// never visible to this path at all. Nothing to delete means nothing
+	// deleted, and the mappings still go.
+	state := newFakeState("a")
+	target := newFakeTarget()
+	service := newService(t, state, &fakeSource{}, &fakeEncoder{}, target, false)
+
+	result := service.ClearTarget(t.Context(), "a")
+	assert.Equal(t, OutcomeSucceeded, result.Outcome, "ClearTarget() outcome")
+	assert.Zero(t, result.Deleted, "ClearTarget() deleted")
+	assert.Empty(t, target.deletedRouteIDs, "deleted route ids")
+}
+
+func TestServiceClearTargetIgnoresAnUnconfiguredSlot(t *testing.T) {
+	state := newFakeState("a", "b")
+	target := newFakeTarget()
+	service := newService(t, state, &fakeSource{}, &fakeEncoder{}, target, false)
+
+	result := service.ClearTarget(t.Context(), "not-a-slot")
+	assert.Equal(t, OutcomeSkipped, result.Outcome, "ClearTarget() outcome")
+	assert.Empty(t, target.deletedRouteIDs, "deleted route ids")
+}
+
+func TestServiceClearTargetRefusesUnusableTargetState(t *testing.T) {
+	desired := testStage(t, 1, 1, "current", "current-hash")
+
+	tests := []struct {
+		name    string
+		arrange func(state *fakeState, target *fakeTarget)
+		outcome Outcome
+		failure FailureCategory
+	}{
+		{
+			// Deleting from an account nobody has connected is not a recovery,
+			// it is a request the service cannot even authenticate.
+			name:    "target awaiting authorization",
+			arrange: func(state *fakeState, _ *fakeTarget) { state.authorizations["a"] = "needs_reauthorization" },
+			outcome: OutcomeNotReady,
+		},
+		{
+			name:    "authorization unreadable",
+			arrange: func(state *fakeState, _ *fakeTarget) { state.authorizationErr = errors.New("state unavailable") },
+			outcome: OutcomeFailed,
+			failure: FailureState,
+		},
+		{
+			name:    "refresh token rejected",
+			arrange: func(_ *fakeState, target *fakeTarget) { target.rejectRefreshToken["a"] = true },
+			outcome: OutcomeFailed,
+			failure: FailureAuthorization,
+		},
+		{
+			// Ownership cannot be established, so nothing may be removed.
+			name:    "listing fails",
+			arrange: func(_ *fakeState, target *fakeTarget) { target.listErr = errDestination },
+			outcome: OutcomeFailed,
+			failure: FailureDestination,
+		},
+		{
+			name:    "stored refresh token unreadable",
+			arrange: func(state *fakeState, _ *fakeTarget) { state.refreshTokenErr = errors.New("state unavailable") },
+			outcome: OutcomeFailed,
+			failure: FailureState,
+		},
+		{
+			// The rotated token could not be recorded, so the next request
+			// would authenticate with one Wahoo has already replaced.
+			name:    "rotated refresh token unstorable",
+			arrange: func(state *fakeState, _ *fakeTarget) { state.replaceTokenErr = errors.New("state unavailable") },
+			outcome: OutcomeFailed,
+			failure: FailureState,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			state := newFakeState("a")
+			target := newFakeTarget()
+			target.seedRoute("a", &desired, 101)
+			seedMapping(state, "a", &desired, 101)
+			test.arrange(state, target)
+			service := newService(t, state, &fakeSource{}, &fakeEncoder{}, target, false)
+
+			result := service.ClearTarget(t.Context(), "a")
+			assert.Equal(t, test.outcome, result.Outcome, "ClearTarget() outcome")
+			assert.Equal(t, test.failure, result.Failure, "ClearTarget() failure")
+			assert.Empty(t, target.deletedRouteIDs, "deleted route ids")
+			assert.Len(t, state.mappings["a"], 1, "mappings were forgotten without deleting anything")
+		})
+	}
+}
+
+func TestServiceClearTargetKeepsMappingsWhenADeletionFails(t *testing.T) {
+	// Remote first, local second: a clear that could not finish removing
+	// routes must not forget the ones it still owns, or they would be stranded
+	// with nothing recording that they exist.
+	desired := testStage(t, 1, 1, "current", "current-hash")
+	state := newFakeState("a")
+	target := newFakeTarget()
+	target.seedRoute("a", &desired, 101)
+	seedMapping(state, "a", &desired, 101)
+	target.failDeleteAccess = accessFor("a")
+	service := newService(t, state, &fakeSource{}, &fakeEncoder{}, target, false)
+
+	result := service.ClearTarget(t.Context(), "a")
+	assert.Equal(t, OutcomeFailed, result.Outcome, "ClearTarget() outcome")
+	assert.Equal(t, FailureDestination, result.Failure, "ClearTarget() failure")
+	assert.Len(t, state.mappings["a"], 1, "mappings were forgotten despite a failed deletion")
 }
 
 // A library that cannot be read back whole is indistinguishable from one whose
@@ -672,6 +811,8 @@ type fakeState struct {
 	trustedCountErr     error
 	storeErr            error
 	authorizationErr    error
+	refreshTokenErr     error
+	replaceTokenErr     error
 	authorizations      map[string]string
 	refreshTokens       map[string]string
 	mappings            map[string]map[route.Key]targetStage
@@ -718,10 +859,17 @@ func (s *fakeState) TargetAuthorization(_ context.Context, targetID string) (str
 }
 
 func (s *fakeState) RefreshToken(_ context.Context, targetID string) (string, error) {
+	if s.refreshTokenErr != nil {
+		return "", s.refreshTokenErr
+	}
+
 	return s.refreshTokens[targetID], nil
 }
 
 func (s *fakeState) ReplaceRefreshToken(_ context.Context, targetID, refreshToken string) error {
+	if s.replaceTokenErr != nil {
+		return s.replaceTokenErr
+	}
 	s.refreshTokens[targetID] = refreshToken
 
 	return nil
@@ -830,6 +978,7 @@ type fakeTarget struct {
 	rejectRefreshToken map[string]bool
 	listErr            error
 	failUpdateAccess   string
+	failDeleteAccess   string
 	deletedAccess      []string
 	deletedRouteIDs    []int64
 	updatedRouteIDs    []int64
@@ -869,6 +1018,28 @@ func (t *fakeTarget) ListOwnedRoutes(_ context.Context, accessToken string) (map
 	return owned, nil
 }
 
+func (t *fakeTarget) DeleteOwnedRoutes(ctx context.Context, accessToken string) (int, error) {
+	t.listCalls++
+	if t.listErr != nil {
+		return 0, t.listErr
+	}
+	owned := make([]int64, 0, len(t.routes[accessToken]))
+	for _, routeID := range t.routes[accessToken] {
+		owned = append(owned, routeID)
+	}
+	slices.Sort(owned)
+
+	deleted := 0
+	for _, routeID := range owned {
+		if err := t.DeleteRoute(ctx, routeID, accessToken); err != nil {
+			return deleted, err
+		}
+		deleted++
+	}
+
+	return deleted, nil
+}
+
 func (t *fakeTarget) CreateRoute(_ context.Context, accessToken string, stage *route.Stage, _ []byte) (routeID int64, err error) {
 	t.nextRouteID++
 	t.ensureAccess(accessToken)[stage.Key().ExternalID()] = t.nextRouteID
@@ -886,6 +1057,9 @@ func (t *fakeTarget) UpdateRoute(_ context.Context, routeID int64, accessToken s
 }
 
 func (t *fakeTarget) DeleteRoute(_ context.Context, routeID int64, accessToken string) error {
+	if t.failDeleteAccess == accessToken {
+		return errDestination
+	}
 	for externalID, candidateID := range t.routes[accessToken] {
 		if candidateID == routeID {
 			delete(t.routes[accessToken], externalID)

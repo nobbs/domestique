@@ -379,6 +379,29 @@ func (h *Handler) syncTarget(writer http.ResponseWriter, request *http.Request, 
 	h.writeJSON(writer, http.StatusAccepted, map[string]string{"status": "accepted"})
 }
 
+// clearTarget queues the deletion of every route this service owns on exactly
+// one configured target.
+//
+// It is the destructive counterpart to syncTarget and is checked the same way:
+// an unconfigured slot is not found. It carries no request body — the
+// confirmation this needs belongs with the operator looking at the target,
+// not in a field a script could fill in — and it is gated and origin-checked
+// like every other state-changing route.
+func (h *Handler) clearTarget(writer http.ResponseWriter, request *http.Request, _ string) {
+	targetID := request.PathValue("target")
+	if targetID == "" || !slices.Contains(h.targetIDs, targetID) {
+		h.notFound(writer)
+
+		return
+	}
+	if !h.syncRuns.TriggerClear(targetID) {
+		h.error(writer, http.StatusConflict, "sync_in_progress", "a synchronization is already running")
+
+		return
+	}
+	h.writeJSON(writer, http.StatusAccepted, map[string]string{"status": "accepted"})
+}
+
 func (h *Handler) trigger(writer http.ResponseWriter, phase SyncPhase) {
 	if !h.syncRuns.Trigger(phase) {
 		h.error(writer, http.StatusConflict, "sync_in_progress", "a synchronization is already running")

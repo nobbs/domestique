@@ -8,6 +8,28 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestOwnsExternalID(t *testing.T) {
+	// Ownership is the whole of what stands between reconciliation and a route
+	// somebody made by hand, so it has to agree with what ExternalID renders
+	// and refuse everything else.
+	stage, err := NewStage(ProviderKomoot, 7, 1, "2026-08-23", "Ride", "", []Point{
+		{Longitude: 8.4, Latitude: 49.0},
+		{Longitude: 8.5, Latitude: 49.1},
+	}, "hash")
+	require.NoError(t, err)
+	assert.True(t, OwnsExternalID(stage.Key().ExternalID()), "an ID this package renders must be recognised")
+
+	for _, externalID := range []string{
+		"",
+		"strava:12345",
+		"my own route",
+		"DOMESTIQUE:veloplanner:1:stage:1",
+		" domestique:veloplanner:1:stage:1",
+	} {
+		assert.Falsef(t, OwnsExternalID(externalID), "OwnsExternalID(%q)", externalID)
+	}
+}
+
 func TestNewStageCreatesImmutableStage(t *testing.T) {
 	elevation := 42.5
 	geometry := []Point{

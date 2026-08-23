@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"slices"
+	"strings"
 )
 
 // earthRadiusMetres is the spherical Earth model shared with the elevation
@@ -68,7 +69,23 @@ func (k Key) StageOrder() int {
 // that renders an external ID — the string that proves ownership before a
 // delete, so nothing else may format it independently.
 func (k Key) ExternalID() string {
-	return fmt.Sprintf("domestique:%s:%d:stage:%d", k.provider, k.routeID, k.stageOrder)
+	return externalIDPrefix + fmt.Sprintf("%s:%d:stage:%d", k.provider, k.routeID, k.stageOrder)
+}
+
+// externalIDPrefix is what every external ID this service issues begins with,
+// and the whole of what distinguishes a route it owns from one it must not
+// touch.
+const externalIDPrefix = "domestique:"
+
+// OwnsExternalID reports whether an external ID read back from a destination
+// was issued by this service.
+//
+// It lives beside ExternalID because the two have to agree: the prefix is the
+// entire evidence of ownership, and ownership is what stands between a
+// reconciliation and somebody's hand-made route. A destination route carrying
+// no external ID, or another tool's, is not ours to update or delete.
+func OwnsExternalID(externalID string) bool {
+	return strings.HasPrefix(externalID, externalIDPrefix)
 }
 
 // Point is one geographic point in a route-stage geometry.

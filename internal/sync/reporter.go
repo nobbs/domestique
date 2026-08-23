@@ -81,6 +81,9 @@ type Runner interface {
 	// RunTarget reconciles exactly one configured target, on the same terms as
 	// RunTargets scoped to that slot alone.
 	RunTarget(ctx context.Context, targetID string) Result
+	// ClearTarget deletes every owned route from exactly one configured
+	// target and forgets its stage mappings. Only an operator asks for it.
+	ClearTarget(ctx context.Context, targetID string) Result
 	// AnnotateStored enriches the stored inventory and reports how much of it it
 	// could not classify. The count can never change a run's outcome — it is
 	// read back through SurfaceIncomplete, never returned from a phase.
@@ -179,6 +182,28 @@ func (r *Reporter) TriggerTarget(ctx context.Context, targetID string) bool {
 		defer r.running.Store(false)
 		_ = r.runPhasesWith(ctx, false, true, func(ctx context.Context) Result {
 			return r.runner.RunTarget(ctx, targetID)
+		})
+	})
+
+	return true
+}
+
+// TriggerClear starts a manual clear of exactly one configured target in the
+// background, deleting every route this service owns there and forgetting its
+// stage mappings. It returns false when a synchronization or another manual
+// operation is already running.
+//
+// It reports through the same run recording and notification path as an
+// ordinary target phase, so a clear appears in history as the deletion it was
+// rather than as an unexplained drop in what a target holds.
+func (r *Reporter) TriggerClear(ctx context.Context, targetID string) bool {
+	if !r.running.CompareAndSwap(false, true) {
+		return false
+	}
+	r.triggered.Go(func() {
+		defer r.running.Store(false)
+		_ = r.runPhasesWith(ctx, false, true, func(ctx context.Context) Result {
+			return r.runner.ClearTarget(ctx, targetID)
 		})
 	})
 

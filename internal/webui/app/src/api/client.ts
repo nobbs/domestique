@@ -176,6 +176,24 @@ export function triggerTargetSync(targetId: string): Promise<null> {
 }
 
 /**
+ * Asks for every route this service owns to be deleted from one account.
+ *
+ * The destructive counterpart to a reconciliation, and the way out of a target
+ * whose contents are not worth repairing one route at a time. It removes only
+ * routes this service created — anything made by hand in the Wahoo account is
+ * invisible to it — and the stored library is untouched, so the next
+ * reconciliation puts the routes back.
+ *
+ * There is nothing to confirm here: the confirming belongs with the operator
+ * looking at the account, before this is ever called.
+ */
+export function clearTarget(targetId: string): Promise<null> {
+  return request(`/v1/targets/${encodeURIComponent(targetId)}/clear`, () => null, {
+    method: "POST",
+  });
+}
+
+/**
  * Asks for one stage to be redone from scratch, and for the run that will do it.
  *
  * The service records the request before starting anything, so a request made

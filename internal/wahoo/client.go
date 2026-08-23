@@ -46,6 +46,15 @@ const (
 	// run resumes from stored state. That makes progress in bounded steps
 	// instead of holding a single run open for hours.
 	maximumRateLimitWait = 90 * time.Second
+
+	// maximumPatientRateLimitWait is the same bound for an operation somebody
+	// is waiting on directly rather than one the schedule started. Clearing a
+	// target is the only such operation: it was asked for once, it is finished
+	// only when the target is empty, and asking an operator to press the same
+	// destructive button five times to get there would be worse than the wait.
+	// It exceeds the smallest advertised window so one refill is always
+	// reachable.
+	maximumPatientRateLimitWait = 6 * time.Minute
 )
 
 var (
@@ -218,9 +227,9 @@ func (c *Client) UpdateRoute(ctx context.Context, routeID int64, accessToken str
 // to ask once per stage: a library of a hundred stages cost a hundred
 // requests against a quota shared by every target, which is what exhausted it.
 //
-// A route without an external ID was not created here. Leaving it out of the
-// map is what keeps a manually created route unmatchable, and therefore
-// undeletable, by everything downstream.
+// A route whose external ID this service did not issue was not created here.
+// Leaving it out of the map is what keeps a hand-made route unmatchable, and
+// therefore undeletable, by everything downstream.
 func (c *Client) ListOwnedRoutes(ctx context.Context, accessToken string) (map[string]int64, error) {
 	if accessToken == "" {
 		return nil, errors.New("wahoo: access token is required")
@@ -240,7 +249,7 @@ func (c *Client) ListOwnedRoutes(ctx context.Context, accessToken string) (map[s
 
 	owned := make(map[string]int64, len(response))
 	for _, item := range response {
-		if item.ExternalID == "" || item.ID <= 0 {
+		if !route.OwnsExternalID(item.ExternalID) || item.ID <= 0 {
 			continue
 		}
 		// Two routes claiming one external ID leaves no way to say which one
@@ -257,6 +266,56 @@ func (c *Client) ListOwnedRoutes(ctx context.Context, accessToken string) (map[s
 	return owned, nil
 }
 
+// DeleteOwnedRoutes removes every route this service issued the external ID
+// for, and reports how many it removed. A route it did not issue is not
+// listed, not counted, and not touched.
+//
+// It reads the account's routes itself rather than taking a list, because the
+// two halves have to agree about repeated external IDs. Reconciliation cannot
+// act on one — it would not know which route it owns — so its listing refuses
+// them outright. Clearing is what an operator reaches for to get out of
+// exactly that state, so this sees duplicates and removes every last one.
+//
+// It waits out a spent request quota rather than stopping at one, because a
+// clear is finished only when the target is empty. On a small quota that can
+// mean several refills and many minutes; the alternative is an operator
+// pressing the same destructive button until the count reaches zero.
+//
+// A deletion that fails for any other reason ends it, and the count returned
+// alongside the error is real: those routes are gone, and repeating the call
+// continues from what is left.
+func (c *Client) DeleteOwnedRoutes(ctx context.Context, accessToken string) (int, error) {
+	if accessToken == "" {
+		return 0, errors.New("wahoo: access token is required")
+	}
+	ctx = withQuotaPatience(ctx)
+
+	request, err := c.newRequest(ctx, http.MethodGet, c.endpoint(c.apiBaseURL, "/v1/routes"), http.NoBody, accessToken)
+	if err != nil {
+		return 0, err
+	}
+	var response []routeResponse
+	if err := c.doJSON(request, &response); err != nil {
+		return 0, err
+	}
+	if len(response) > maximumRoutes {
+		return 0, errors.New("wahoo: route listing exceeded configured bounds")
+	}
+
+	deleted := 0
+	for _, item := range response {
+		if !route.OwnsExternalID(item.ExternalID) || item.ID <= 0 {
+			continue
+		}
+		if err := c.deleteRoute(ctx, item.ID, accessToken); err != nil {
+			return deleted, err
+		}
+		deleted++
+	}
+
+	return deleted, nil
+}
+
 // IsUnauthorized reports whether err is a permanent Wahoo authorization
 // rejection. Consumers use it to request an interactive reauthorization.
 func (c *Client) IsUnauthorized(err error) bool {
@@ -268,6 +327,15 @@ func (c *Client) DeleteRoute(ctx context.Context, routeID int64, accessToken str
 	if routeID <= 0 || accessToken == "" {
 		return errors.New("wahoo: route id and access token are required")
 	}
+
+	return c.deleteRoute(ctx, routeID, accessToken)
+}
+
+// deleteRoute is the request itself, without the argument checks a caller
+// outside this package needs. DeleteOwnedRoutes uses it for identifiers it
+// just read from the API, and to keep its own patient context rather than
+// having it replaced.
+func (c *Client) deleteRoute(ctx context.Context, routeID int64, accessToken string) error {
 	request, err := c.newRequest(ctx, http.MethodDelete, c.endpoint(c.apiBaseURL, fmt.Sprintf("/v1/routes/%d", routeID)), http.NoBody, accessToken)
 	if err != nil {
 		return err
@@ -383,7 +451,7 @@ func (c *Client) doJSON(request *http.Request, output any) (err error) {
 	defer c.mutex.Unlock()
 
 	if waitFor := c.notBefore.Sub(c.now()); waitFor > 0 {
-		if waitFor > maximumRateLimitWait {
+		if waitFor > waitBudget(request.Context()) {
 			return ErrRateLimited
 		}
 		if waitErr := c.wait(request.Context(), waitFor); waitErr != nil {
@@ -550,6 +618,28 @@ func haversine(left, right route.Point) float64 {
 
 func formatFloat(value float64) string {
 	return strconv.FormatFloat(value, 'f', -1, 64)
+}
+
+// quotaPatienceKey marks a context whose requests may wait longer for a spent
+// quota to refill. It is request-scoped rather than a client setting because
+// it is a property of what is being asked for, not of who is asking: the same
+// client serves both a scheduled run that must not stall and a clear somebody
+// is waiting on.
+type quotaPatienceKey struct{}
+
+func withQuotaPatience(ctx context.Context) context.Context {
+	return context.WithValue(ctx, quotaPatienceKey{}, true)
+}
+
+// waitBudget is how long a request on this context may wait for quota before
+// giving up and reporting the limit instead.
+func waitBudget(ctx context.Context) time.Duration {
+	patient, ok := ctx.Value(quotaPatienceKey{}).(bool)
+	if ok && patient {
+		return maximumPatientRateLimitWait
+	}
+
+	return maximumRateLimitWait
 }
 
 func waitFor(ctx context.Context, duration time.Duration) error {

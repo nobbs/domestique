@@ -191,6 +191,11 @@ of them needs an explicit specification revision, not a quiet edit.
 - **Deletion gates.** No automatic run deletes more than the configured maximum
   owned routes per target. A previously populated library that becomes empty is
   blocked unless the operator set the explicit empty-source acknowledgement.
+  Clearing a target is the one deliberate exception, and only because it is
+  never automatic: it deletes every owned route from one slot, at an operator's
+  direct request, and nothing schedules it. It does not weaken ownership —
+  it removes only routes carrying an external ID this service issued, so a
+  hand-made route is as untouchable there as anywhere else.
 - **A failed source inventory is never destructive.** Authentication failure,
   malformed data, or a suspicious shrink stops deletion and raises an alert.
 - **Secrets stay out of everything observable.** Logs, notifications, and error

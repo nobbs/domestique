@@ -223,6 +223,7 @@ func newHandler(
 		httpapi.SyncFuncs{
 			TriggerFunc:       demoReseeder.trigger,
 			TriggerTargetFunc: demoReseeder.triggerTarget,
+			TriggerClearFunc:  demoReseeder.triggerClear,
 		},
 		bundleAssets(),
 	)
@@ -300,6 +301,18 @@ func (r reseeder) trigger(_ httpapi.SyncPhase) bool {
 // triggerTarget re-seeds the whole demo library, the same as trigger: a demo
 // target names no real Wahoo account to isolate work against.
 func (r reseeder) triggerTarget(_ string) bool {
+	return r.trigger("")
+}
+
+// triggerClear answers the clear control so the demo can exercise it, and
+// re-seeds like every other trigger here.
+//
+// It deletes nothing, because there is nothing to delete: a demo target names
+// no Wahoo account, and the synthetic library is the whole of what this
+// process has. What it does offer is the control's real shape — accepted,
+// refused while something else runs, and the page settling afterwards — which
+// is what the demo exists to show.
+func (r reseeder) triggerClear(_ string) bool {
 	return r.trigger("")
 }
 
