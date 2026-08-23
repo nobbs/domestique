@@ -23,10 +23,10 @@ const (
 // weather answers the browser's request for a forecast at each point of a
 // planned ride, without the page ever reaching Open-Meteo itself.
 //
-// It derives from and to as the earliest and latest point time, calls
-// Forecast once for every requested point, and returns the single hour
-// nearest each point's own time — the service's own shape, never the
-// provider's field names or raw payload.
+// It derives from and to as the earliest and latest point time, and calls
+// Forecast exactly once for every point together, resolving each point's
+// answer to the single hour nearest its own time — the service's own shape,
+// never the provider's field names or raw payload.
 func (h *Handler) weatherForecast(writer http.ResponseWriter, request *http.Request, _ string) {
 	raw := request.URL.Query()["point"]
 	if len(raw) == 0 {
@@ -85,6 +85,12 @@ func (h *Handler) weatherForecast(writer http.ResponseWriter, request *http.Requ
 
 	view := weatherView{Points: make([]weatherPointView, len(points))}
 	for i, point := range points {
+		if !weatherSeriesConsistent(&series[i]) {
+			h.error(writer, http.StatusBadGateway, "provider_unavailable",
+				"the weather provider returned an inconsistent forecast series")
+
+			return
+		}
 		index, found := nearestHourIndex(series[i].Time, point.At)
 		if !found {
 			h.error(writer, http.StatusBadGateway, "provider_unavailable",
@@ -111,8 +117,9 @@ type weatherPoint struct {
 	Latitude, Longitude float64
 }
 
-// parseWeatherPoint reads "latitude,longitude,RFC3339-local-time" the way the
-// service specification defines the query parameter.
+// parseWeatherPoint reads "latitude,longitude,time", where time is a full
+// RFC3339 timestamp with an offset (or Z) and seconds, the way the service
+// specification defines the query parameter.
 func parseWeatherPoint(raw string) (point weatherPoint, ok bool) {
 	parts := strings.SplitN(raw, ",", 3)
 	if len(parts) != 3 {
@@ -127,6 +134,22 @@ func parseWeatherPoint(raw string) (point weatherPoint, ok bool) {
 	}
 
 	return weatherPoint{Latitude: latitude, Longitude: longitude, At: at}, true
+}
+
+// weatherSeriesConsistent reports whether every field of series names as many
+// hours as its Time slice does. Weather is an interface a future
+// implementation, or a test double, could satisfy with mismatched slices; this
+// is what turns that into a 502 rather than an index panic below.
+func weatherSeriesConsistent(series *WeatherSeries) bool {
+	count := len(series.Time)
+
+	return len(series.TemperatureCelsius) == count &&
+		len(series.ApparentTemperatureCelsius) == count &&
+		len(series.PrecipitationMillimetres) == count &&
+		len(series.PrecipitationProbabilityPercent) == count &&
+		len(series.WindSpeedKMH) == count &&
+		len(series.WindDirectionDegrees) == count &&
+		len(series.WeatherCode) == count
 }
 
 // nearestHourIndex finds the hour in an hourly series closest to at. The

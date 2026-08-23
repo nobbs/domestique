@@ -172,7 +172,8 @@ to the browser and this response is cached for the session.
 Weather forecasts go further than a keyless basemap: there is no key
 configuration could carry in the first place. Open-Meteo's free forecast
 endpoint needs none, so `internal/openmeteo`'s options hold no credential
-field at all, the way `internal/pushover`'s do. The asymmetry with the
+field at all — unlike `internal/pushover`'s, which carries an application
+token and a user key because Pushover requires them. The asymmetry with the
 basemap list above is a decision, not an oversight — a basemap's key is the
 provider's choice to require one; Open-Meteo's is not to.
 

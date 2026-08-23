@@ -327,14 +327,16 @@ The read-only JSON surface is deliberately small:
   one. That link is only useful to the operator whose account holds the route:
   the source route is private to that account, and following it as anyone else
   reaches the provider's own refusal, not the route.
-- `GET /v1/weather` returns an hourly forecast for up to 48 `point`
-  coordinate-and-time values, so the page can show a ride's weather without
-  reaching Open-Meteo itself. Each point is answered with the single hour of
-  its own coordinate's series nearest its own requested time — never
-  Open-Meteo's field names or its raw payload. A malformed point, more than 48
-  of them, or a window Open-Meteo could not answer is refused as `400` before
-  any outbound call; a provider failure is `502`, carrying no upstream
-  response text.
+- `GET /v1/weather` returns an hourly forecast for up to 48 repeated `point`
+  values, so the page can show a ride's weather without reaching Open-Meteo
+  itself. Each `point` is `latitude,longitude,time`: decimal-degree latitude
+  and longitude, and a full RFC3339 timestamp with an offset (or `Z`) and
+  seconds. Each point is answered with the single hour of its own
+  coordinate's series nearest its own requested time — never Open-Meteo's
+  field names or its raw payload. A malformed point, more than 48 of them, or
+  a window Open-Meteo could not answer is refused as `400` before any
+  outbound call; a provider failure is `502`, carrying no upstream response
+  text.
 The seven endpoints below that change state — the four sync triggers, the
 schedule switch, the reprocess request, and the enrichment retry — additionally
 require the browser origin described above, and answer 403 without it.

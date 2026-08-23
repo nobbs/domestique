@@ -59,7 +59,36 @@ func TestClientDecodesArrayResponseForSeveralCoordinates(t *testing.T) {
 	assert.Equal(t, []float64{18.4, 19.1}, result[0].TemperatureCelsius)
 	assert.Equal(t, []float64{17.0, 17.5}, result[1].TemperatureCelsius)
 	require.Len(t, result[0].Time, 2)
-	assert.True(t, result[0].Time[0].Equal(time.Date(2026, 8, 24, 6, 0, 0, 0, berlin)))
+	// "2026-08-24T06:00" is Berlin local time (CEST, UTC+2 in August), so the
+	// parsed instant is 04:00 UTC.
+	assert.True(t, result[0].Time[0].Equal(time.Date(2026, 8, 24, 4, 0, 0, 0, time.UTC)))
+}
+
+// A window that does not itself land on the hour must still ask for every
+// hour a point inside it could resolve to: from rounds down, to rounds up.
+func TestClientRoundsTheRequestWindowOutToWholeHours(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		query := request.URL.Query()
+		assert.Equal(t, "2026-08-24T08:00", query.Get("start_hour"))
+		assert.Equal(t, "2026-08-24T09:00", query.Get("end_hour"))
+
+		writer.Header().Set("Content-Type", "application/json")
+		writeResponse(t, writer, http.StatusOK, `{"hourly":{"time":["2026-08-24T08:00"],
+			"temperature_2m":[18.4],
+			"apparent_temperature":[17.1],
+			"precipitation":[0],
+			"precipitation_probability":[10],
+			"wind_speed_10m":[12.3],
+			"wind_direction_10m":[240],
+			"weather_code":[1]}}`)
+	}))
+	defer server.Close()
+
+	// 06:05 and 06:40 UTC land on 08:05 and 08:40 CEST — neither on the hour.
+	from := time.Date(2026, 8, 24, 6, 5, 0, 0, time.UTC)
+	to := time.Date(2026, 8, 24, 6, 40, 0, 0, time.UTC)
+	_, err := newTestClient(t, server).Forecast(t.Context(), []Coordinate{{Latitude: 50.11, Longitude: 8.68}}, from, to)
+	require.NoError(t, err)
 }
 
 func TestClientDecodesBareObjectResponseForOneCoordinate(t *testing.T) {

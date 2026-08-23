@@ -24,9 +24,14 @@ import (
 )
 
 const (
-	defaultBaseURL   = "https://api.open-meteo.com"
-	defaultTimeout   = 15 * time.Second
-	maximumBodyBytes = 1 << 20
+	defaultBaseURL = "https://api.open-meteo.com"
+	defaultTimeout = 15 * time.Second
+	// maximumBodyBytes bounds a response for the largest legitimate request
+	// the httpapi boundary allows through: 48 points over its 17-day window
+	// (a day of past allowance plus a 16-day forecast horizon), which is
+	// roughly 1.05 MB of column-oriented JSON. This leaves headroom above
+	// that without being unbounded.
+	maximumBodyBytes = 4 << 20
 	hourFormat       = "2006-01-02T15:04"
 
 	// hourlyParams names exactly the series the FIT-course ride window needs.
@@ -36,22 +41,6 @@ const (
 	hourlyParams = "temperature_2m,apparent_temperature,precipitation," +
 		"precipitation_probability,wind_speed_10m,wind_direction_10m,weather_code"
 )
-
-// berlin is loaded once. Every route this service holds is in Germany, and a
-// fixed zone keeps a returned timestamp describing where the rider reads it
-// rather than where the route happens to be.
-//
-//nolint:gochecknoglobals // Every request needs the same fixed zone; loaded once rather than reloaded per call.
-var berlin = func() *time.Location {
-	location, err := time.LoadLocation("Europe/Berlin")
-	if err != nil {
-		// Unreachable with time/tzdata embedded above; a panic here would mean
-		// the standard library's own embedded database is corrupt.
-		panic("openmeteo: Europe/Berlin timezone data is unavailable: " + err.Error())
-	}
-
-	return location
-}()
 
 // Options configures an Open-Meteo client. There is no API key: the free
 // forecast endpoint needs none, so unlike pushover.Options nothing here is a
@@ -83,8 +72,9 @@ type Hourly struct {
 // Client asks Open-Meteo for an hourly forecast. The host is hardcoded:
 // BaseURL exists to be overridden by a test, not by an operator.
 type Client struct {
-	client  *http.Client
-	baseURL *url.URL
+	client   *http.Client
+	baseURL  *url.URL
+	location *time.Location
 }
 
 // New creates an Open-Meteo client without contacting the upstream service.
@@ -111,20 +101,30 @@ func New(options *Options) (*Client, error) {
 	if transport == nil {
 		transport = http.DefaultTransport
 	}
+	// Every route this service holds is in Germany, and a fixed zone keeps a
+	// returned timestamp describing where the rider reads it rather than
+	// where the route happens to be. Loaded once here, on the client, rather
+	// than kept as package state.
+	location, err := time.LoadLocation("Europe/Berlin")
+	if err != nil {
+		return nil, fmt.Errorf("openmeteo: loading the Europe/Berlin timezone: %w", err)
+	}
 
 	return &Client{
 		client: &http.Client{
 			Timeout:   timeout,
 			Transport: transport,
 		},
-		baseURL: parsedBaseURL,
+		baseURL:  parsedBaseURL,
+		location: location,
 	}, nil
 }
 
 // Forecast returns one hourly series per coordinate, in the order given,
-// spanning from..to. from and to are truncated to minute precision in
-// Europe/Berlin local time, matching Open-Meteo's start_hour/end_hour
-// granularity.
+// spanning from..to. from is rounded down and to rounded up to the nearest
+// Europe/Berlin local hour before either crosses the wire, so a request
+// window that does not itself land on the hour still asks for — and gets
+// back — every hour a point inside it could resolve to.
 //
 // Open-Meteo replies with a JSON array, one object per coordinate, for
 // several coordinates — but a bare object, not a one-element array, for
@@ -151,8 +151,8 @@ func (c *Client) Forecast(ctx context.Context, at []Coordinate, from, to time.Ti
 		"longitude":  {strings.Join(longitudes, ",")},
 		"hourly":     {hourlyParams},
 		"timezone":   {"Europe/Berlin"},
-		"start_hour": {from.In(berlin).Format(hourFormat)},
-		"end_hour":   {to.In(berlin).Format(hourFormat)},
+		"start_hour": {floorHour(from.In(c.location)).Format(hourFormat)},
+		"end_hour":   {ceilHour(to.In(c.location)).Format(hourFormat)},
 	}.Encode()
 
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), http.NoBody)
@@ -193,7 +193,7 @@ func (c *Client) Forecast(ctx context.Context, at []Coordinate, from, to time.Ti
 
 	result := make([]Hourly, len(raw))
 	for i := range raw {
-		hourly, parseErr := raw[i].Hourly.parse()
+		hourly, parseErr := raw[i].Hourly.parse(c.location)
 		if parseErr != nil {
 			return nil, parseErr
 		}
@@ -242,7 +242,7 @@ func decodeForecastResponse(body []byte) ([]rawForecastResponse, error) {
 
 // parse converts one coordinate's raw hourly block, validating that every
 // series is the same length as the timestamps naming them.
-func (raw *rawHourly) parse() (Hourly, error) {
+func (raw *rawHourly) parse(location *time.Location) (Hourly, error) {
 	count := len(raw.Time)
 	for _, series := range [][]float64{
 		raw.Temperature2m, raw.ApparentTemperature, raw.Precipitation, raw.PrecipitationProbability,
@@ -258,7 +258,7 @@ func (raw *rawHourly) parse() (Hourly, error) {
 
 	times := make([]time.Time, count)
 	for i, value := range raw.Time {
-		parsed, err := time.ParseInLocation(hourFormat, value, berlin)
+		parsed, err := time.ParseInLocation(hourFormat, value, location)
 		if err != nil {
 			return Hourly{}, fmt.Errorf("openmeteo: parsing hourly time: %w", err)
 		}
@@ -275,6 +275,22 @@ func (raw *rawHourly) parse() (Hourly, error) {
 		WindDirectionDegrees:            raw.WindDirection10m,
 		WeatherCode:                     raw.WeatherCode,
 	}, nil
+}
+
+// floorHour rounds t down to the start of its hour.
+func floorHour(t time.Time) time.Time {
+	return t.Truncate(time.Hour)
+}
+
+// ceilHour rounds t up to the start of the next hour, or leaves it alone when
+// it already lands on one.
+func ceilHour(t time.Time) time.Time {
+	floored := floorHour(t)
+	if floored.Equal(t) {
+		return floored
+	}
+
+	return floored.Add(time.Hour)
 }
 
 func parseOrigin(value string) (*url.URL, error) {

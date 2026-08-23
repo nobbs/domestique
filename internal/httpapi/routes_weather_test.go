@@ -179,6 +179,29 @@ func TestWeatherReturnsBadGatewayWhenAPointsSeriesHasNoHours(t *testing.T) {
 	assert.Equal(t, http.StatusBadGateway, response.Code)
 }
 
+// A Weather implementation could return a series whose fields disagree in
+// length — this must become a 502, not an index panic.
+func TestWeatherReturnsBadGatewayOnAnInconsistentSeries(t *testing.T) {
+	handler := newHandlerWithWeather(t, &fakeWeather{
+		ForecastFunc: func(_ context.Context, latitudes, _ []float64, from, _ time.Time) ([]WeatherSeries, error) {
+			series := make([]WeatherSeries, len(latitudes))
+			for i := range series {
+				series[i] = WeatherSeries{
+					Time:               []time.Time{from},
+					TemperatureCelsius: []float64{},
+				}
+			}
+
+			return series, nil
+		},
+	})
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/weather?point=50.11,8.68,2026-08-24T06:00:00Z"))
+
+	assert.Equal(t, http.StatusBadGateway, response.Code)
+}
+
 // A later point naming an earlier time than an already-seen one must still
 // widen the window backwards, not just forwards.
 func TestWeatherDerivesFromAsTheEarliestPointEvenOutOfOrder(t *testing.T) {
