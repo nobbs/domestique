@@ -491,6 +491,31 @@ operator, as [the FIT acceptance guide](../fit-sandbox-acceptance.md) describes.
 An encoder change is adopted only once that check covers it. No personal route
 data belongs in repository fixtures.
 
+Komoot is a second, independent source integration against the same unofficial
+category of interface, described here ahead of the configuration and
+composition-root work that will actually offer it to an operator: until that
+work lands, the purpose and scope above still hold, and a deployment mirrors
+VeloPlanner alone. The adapter reads a private account's own email and
+password, exchanged at runtime for a session token, with no OAuth machinery
+involved. It is unofficial
+because Komoot's OAuth2 partner interface is issued only under a partner
+contract and is not available to an individual operator; the unofficial and
+partner interfaces serve the same documented resource shapes, so only the
+authentication differs. A Komoot tour has no stage subdivision, so it maps to
+exactly one stage — order 1, no stage name — rather than leaving the concept
+unused. The adapter issues no HTTP method other than `GET`: the session token
+Komoot returns is not read-scoped, and a write against it would delete a route
+from the operator's own library with no undo.
+
+Both sources hand over geometry and metadata only. Neither source's FIT, GPX,
+surface classification, way types, or turn directions are consumed, even where
+the provider offers them: FIT is produced once, by this service's own encoder,
+for every source alike, and surface classification is computed once, against
+this service's own OpenStreetMap index, for every source alike. A provider that
+supplied any of these directly would let two identical roads disagree depending
+on which source found them, and would give two sources unequal elevation
+handling. This rule is provider-agnostic and applies to any future source.
+
 ## Wahoo synchronisation
 
 Wahoo is the only destination. The service uses the approved confidential Wahoo
