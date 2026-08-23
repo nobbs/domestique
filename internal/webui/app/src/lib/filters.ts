@@ -24,12 +24,14 @@ export interface LibraryFilters {
   surfaces: SurfaceKind[];
 }
 
-const UNBOUNDED: NumericRange = { min: null, max: null };
-
+// Three separate objects, deliberately: every existing edit path replaces a
+// range with a new one rather than mutating it in place, but a range that
+// were the same object across all three fields would make that an invariant
+// this file has to keep rather than one the type system already guarantees.
 export const EMPTY_FILTERS: LibraryFilters = {
-  distanceMetres: UNBOUNDED,
-  ascentMetres: UNBOUNDED,
-  maxGradientPercent: UNBOUNDED,
+  distanceMetres: { min: null, max: null },
+  ascentMetres: { min: null, max: null },
+  maxGradientPercent: { min: null, max: null },
   surfaces: [],
 };
 
