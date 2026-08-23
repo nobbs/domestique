@@ -10,6 +10,7 @@ describe("UnitPicker", () => {
     const toggle = screen.getByRole("button");
     expect(toggle).toHaveTextContent("km");
     expect(toggle).toHaveAccessibleName("Distance and elevation in metric. Switch to imperial.");
+    expect(toggle).toHaveAttribute("aria-pressed", "false");
   });
 
   it("names the other system once imperial is on screen", () => {
@@ -18,6 +19,7 @@ describe("UnitPicker", () => {
     const toggle = screen.getByRole("button");
     expect(toggle).toHaveTextContent("mi");
     expect(toggle).toHaveAccessibleName("Distance and elevation in imperial. Switch to metric.");
+    expect(toggle).toHaveAttribute("aria-pressed", "true");
   });
 
   it("asks to switch to the other system on a press", async () => {

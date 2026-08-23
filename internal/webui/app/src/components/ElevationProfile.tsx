@@ -621,18 +621,29 @@ export function ElevationProfile({
         aria-label={
           zoomed ? `Position along ${title}, ${shownLabel} shown` : `Position along ${title}`
         }
-        aria-valuemin={Number(distanceValue(profile.startMetres, unitSystem).toFixed(1))}
-        aria-valuemax={Number(distanceValue(profile.endMetres, unitSystem).toFixed(1))}
+        aria-valuemin={Number(
+          distanceLabel(profile.startMetres, geometry.distanceStep, unitSystem),
+        )}
+        aria-valuemax={Number(distanceLabel(profile.endMetres, geometry.distanceStep, unitSystem))}
         // Falls back to the start of the stretch on show, not to zero: zoomed
         // into the far end of a route, zero is outside the range this slider
         // declares, and a value outside its own bounds is nothing assistive
         // technology can place.
+        //
+        // The same adaptive precision the axis labels use, not a fixed decimal:
+        // a mile is coarse enough that a fixed tenth can hold still for a
+        // couple of hundred metres of drag, which is a slider that stopped
+        // reporting position rather than one reporting it coarsely.
         aria-valuenow={Number(
-          distanceValue(active?.distanceMetres ?? profile.startMetres, unitSystem).toFixed(1),
+          distanceLabel(
+            active?.distanceMetres ?? profile.startMetres,
+            geometry.distanceStep,
+            unitSystem,
+          ),
         )}
         aria-valuetext={
           active
-            ? `${Math.round(elevationValue(active.elevationMetres, unitSystem))} ${elevationWord} at ${distanceValue(active.distanceMetres, unitSystem).toFixed(1)} ${distanceWord}, ${active.gradientPercent.toFixed(1)} percent` +
+            ? `${Math.round(elevationValue(active.elevationMetres, unitSystem))} ${elevationWord} at ${distanceLabel(active.distanceMetres, geometry.distanceStep, unitSystem)} ${distanceWord}, ${active.gradientPercent.toFixed(1)} percent` +
               (activeSurface ? `, ${activeSurface.toLowerCase()}` : "")
             : "No position selected"
         }
@@ -683,7 +694,7 @@ export function ElevationProfile({
               </strong>
               <span>
                 {" "}
-                at {distanceValue(active.distanceMetres, unitSystem).toFixed(1)}{" "}
+                at {distanceLabel(active.distanceMetres, geometry.distanceStep, unitSystem)}{" "}
                 {distanceUnitLabel(unitSystem)}
               </span>
               <span> · {active.gradientPercent.toFixed(1)}%</span>

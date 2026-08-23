@@ -26,6 +26,10 @@ export function UnitPicker({ system, onSystemChange }: UnitPickerProps) {
       className="unit-picker"
       type="button"
       aria-label={`Distance and elevation in ${NAME[system]}. Switch to ${NAME[next]}.`}
+      // A toggle rather than a plain action, so its state is programmatically
+      // determinable and not only readable from the label's own words. Pressed
+      // for imperial, the one of the two that is not the service's own metric.
+      aria-pressed={system === "imperial"}
       onClick={() => onSystemChange(next)}
     >
       {LABEL[system]}
