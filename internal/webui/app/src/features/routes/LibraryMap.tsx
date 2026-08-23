@@ -34,7 +34,9 @@ import type { Basemap, BoundingBox, Position } from "../../api/types";
 import { BasemapPicker } from "../../components/BasemapPicker";
 import { MapCredits } from "../../components/MapCredits";
 import { MapViewport } from "../../components/MapViewport";
+import { ThemePicker } from "../../components/ThemePicker";
 import type { Insets } from "../../lib/overlayInsets";
+import type { ThemeChoice } from "../../lib/theme";
 // Configures the shared worker pool; without it this map renders no tiles.
 import "../../lib/maplibre";
 
@@ -115,6 +117,12 @@ export interface LibraryMapProps {
   basemaps?: Basemap[];
   selectedBasemap?: string;
   onBasemapChange?: (name: string) => void;
+  /**
+   * The reader's colour-scheme pick, and how to change it — offered beside the
+   * basemap chooser for the same reason it sits in the same cluster.
+   */
+  themeChoice?: ThemeChoice;
+  onThemeChoiceChange?: (choice: ThemeChoice) => void;
   lines: LibraryLine[];
   /** The route standing out, by `routeKey`. Null draws the library flat. */
   selectedKey: string | null;
@@ -192,6 +200,8 @@ export function LibraryMap({
   basemaps = [],
   selectedBasemap = "",
   onBasemapChange,
+  themeChoice,
+  onThemeChoiceChange,
   lines,
   selectedKey,
   bounds,
@@ -220,6 +230,8 @@ export function LibraryMap({
    * time, and the names are only worth room while somebody is changing it.
    */
   const [pickerOpen, setPickerOpen] = useState(false);
+  /** And whether the theme choices are unfolded, for the same reason. */
+  const [themePickerOpen, setThemePickerOpen] = useState(false);
 
   // The selected route stays in the collection rather than being cut out of it:
   // removing it would rebuild every line on every selection, and the overlay
@@ -265,6 +277,14 @@ export function LibraryMap({
           onSelect={onBasemapChange}
           expanded={pickerOpen}
           onExpandedChange={setPickerOpen}
+        />
+      ) : null}
+      {themeChoice && onThemeChoiceChange ? (
+        <ThemePicker
+          choice={themeChoice}
+          onChoose={onThemeChoiceChange}
+          expanded={themePickerOpen}
+          onExpandedChange={setThemePickerOpen}
         />
       ) : null}
       <MapCredits

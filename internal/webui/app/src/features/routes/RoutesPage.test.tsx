@@ -12,8 +12,16 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { BoundingBox, Position, Route, RouteGeometry, RouteSurface } from "../../api/types";
+import type {
+  BoundingBox,
+  Position,
+  Route,
+  RouteGeometry,
+  RouteSurface,
+  WebUIConfig,
+} from "../../api/types";
 import { routeKey } from "../../api/types";
+import type { ThemeChoice } from "../../lib/theme";
 
 interface Drawing {
   keys: string[];
@@ -23,6 +31,9 @@ interface Drawing {
   overlaid: boolean;
   /** The line the map was told a pick would do nothing to. */
   inertKey: string | null;
+  /** The basemap style the map was handed, and whether it counts as dark. */
+  styleUrl: string;
+  darkBasemap: boolean;
 }
 
 const drawn = vi.hoisted(() => ({ maps: [] as Drawing[] }));
@@ -35,6 +46,8 @@ vi.mock("./LibraryMap", () => ({
     overlay?: unknown;
     onPick?: (key: string) => void;
     inertKey?: string | null;
+    styleUrl: string;
+    darkBasemap?: boolean;
   }) => {
     drawn.maps.push({
       keys: props.lines.map((line) => line.key),
@@ -42,6 +55,8 @@ vi.mock("./LibraryMap", () => ({
       bounds: props.bounds,
       overlaid: Boolean(props.overlay),
       inertKey: props.inertKey ?? null,
+      styleUrl: props.styleUrl,
+      darkBasemap: props.darkBasemap ?? false,
     });
 
     // Pointing at a line, without a line to point at: one control per route,
@@ -110,6 +125,9 @@ function renderPage(
     at?: string;
     /** Surface classification for a route's geometry, by `routeKey`. */
     surfaceFor?: Record<string, RouteSurface>;
+    basemaps?: WebUIConfig["basemaps"];
+    themeChoice?: ThemeChoice;
+    onThemeChoiceChange?: (choice: ThemeChoice) => void;
   } = {},
 ) {
   const client = new QueryClient({
@@ -117,7 +135,7 @@ function renderPage(
   });
   client.setQueryData(["stages"], library);
   client.setQueryData(["webui-config"], {
-    basemaps: [
+    basemaps: options.basemaps ?? [
       { name: "Streets", styleUrl: "https://tiles.example/style.json", darkCartography: false },
     ],
   });
@@ -157,7 +175,10 @@ function renderPage(
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[options.at ?? "/"]}>
-        <RoutesPage />
+        <RoutesPage
+          themeChoice={options.themeChoice ?? "system"}
+          onThemeChoiceChange={options.onThemeChoiceChange ?? (() => {})}
+        />
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -206,6 +227,41 @@ describe("RoutesPage", () => {
     expect(lastDrawing().keys).toEqual(["veloplanner/1/1", "veloplanner/1/2", "veloplanner/2/1"]);
     // Framed around the whole library, which is the union of what was drawn.
     expect(lastDrawing().bounds).toEqual([8, 49, 8.9, 49.1]);
+  });
+
+  // The default stub in src/test/setup.ts answers every media query "no", so
+  // the system here prefers light without anything further being stubbed.
+  const BASEMAP_WITH_DARK_STYLE = [
+    {
+      name: "Streets",
+      styleUrl: "https://tiles.example/light.json",
+      styleUrlDark: "https://tiles.example/dark.json",
+      darkCartography: false,
+    },
+  ];
+
+  it("picks the dark basemap for an explicit dark choice, system or not", () => {
+    renderPage(LIBRARY, { basemaps: BASEMAP_WITH_DARK_STYLE, themeChoice: "dark" });
+
+    expect(lastDrawing().styleUrl).toBe("https://tiles.example/dark.json");
+    expect(lastDrawing().darkBasemap).toBe(true);
+  });
+
+  it("keeps the light basemap for an explicit light choice under a dark system", () => {
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn((query: string) => ({
+        matches: query.includes("dark"),
+        media: query,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      })),
+    );
+
+    renderPage(LIBRARY, { basemaps: BASEMAP_WITH_DARK_STYLE, themeChoice: "light" });
+
+    expect(lastDrawing().styleUrl).toBe("https://tiles.example/light.json");
+    expect(lastDrawing().darkBasemap).toBe(false);
   });
 
   /*

@@ -31,6 +31,7 @@ import { Button } from "./Button";
 import { MapCredits } from "./MapCredits";
 import { RouteKey } from "./RouteKey";
 import { StatusMessage } from "./StatusMessage";
+import { ThemePicker } from "./ThemePicker";
 
 const STAGE: Route = {
   provider: "veloplanner",
@@ -243,6 +244,22 @@ describe("accessibility", () => {
           ]}
           selectedName="Streets"
           onSelect={() => {}}
+          expanded={expanded}
+          onExpandedChange={() => {}}
+        />,
+      );
+
+      await expectNoAxeViolations(container);
+      unmount();
+    }
+  });
+
+  it("holds for the theme chooser, folded and unfolded", async () => {
+    for (const expanded of [true, false]) {
+      const { container, unmount } = render(
+        <ThemePicker
+          choice="system"
+          onChoose={() => {}}
           expanded={expanded}
           onExpandedChange={() => {}}
         />,

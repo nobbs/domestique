@@ -10,7 +10,7 @@
 
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 // The pages behind these routes are a WebGL map and a query client; neither is
 // what is under test. Standing both in reduces each route to the address it
@@ -43,6 +43,28 @@ function address(): string {
   return screen.getByTestId("address").textContent ?? "";
 }
 
+/**
+ * A `localStorage` for jsdom, which has none — see `basemap.test.ts` for why
+ * a `Map` behind the two methods the hook uses is enough.
+ */
+function stubStorage(theme?: string): void {
+  const entries = new Map<string, string>();
+  if (theme !== undefined) {
+    entries.set("domestique.theme", theme);
+  }
+  vi.stubGlobal("localStorage", {
+    getItem: (key: string) => entries.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      entries.set(key, value);
+    },
+  });
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  document.documentElement.removeAttribute("data-theme");
+});
+
 describe("the client routes", () => {
   it("turns a route's path into the query the library opens it from", () => {
     open("/routes/veloplanner/12/1");
@@ -70,5 +92,27 @@ describe("the client routes", () => {
 
     expect(address()).toBe("/sync");
     expect(screen.getByText("the sync page")).toBeInTheDocument();
+  });
+});
+
+/*
+ * `data-theme` is what `index.css`'s explicit-override blocks key off — see
+ * there for why. It is a document-level attribute rather than something a
+ * page's own markup carries, so it is asserted here, at the one place that
+ * applies it regardless of which page is mounted.
+ */
+describe("the document theme", () => {
+  it("sets no override for the system default", () => {
+    stubStorage();
+    open("/");
+
+    expect(document.documentElement.hasAttribute("data-theme")).toBe(false);
+  });
+
+  it("applies the reader's remembered override on load", () => {
+    stubStorage("dark");
+    open("/");
+
+    expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
   });
 });

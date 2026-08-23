@@ -57,6 +57,11 @@ vi.mock("../../components/BasemapPicker", () => ({
   ),
 }));
 
+/* Same bargain as the basemap chooser above: offered at all, and where it lands. */
+vi.mock("../../components/ThemePicker", () => ({
+  ThemePicker: ({ choice }: { choice: string }) => <p data-testid="theme-picker">{choice}</p>,
+}));
+
 vi.mock("../../components/MapViewport", () => ({
   MapViewport: (props: { bounds: unknown; maxZoom: number }) => {
     drawn.viewports.push({ bounds: props.bounds, maxZoom: props.maxZoom });
@@ -399,6 +404,29 @@ describe("LibraryMap", () => {
 
     const cluster = drawn.container?.querySelector(".maplibregl-ctrl-bottom-left");
     expect(cluster?.textContent).toBe("Satellite© somebody");
+  });
+
+  // Same fragment, same reason: the theme chooser travels with the basemap
+  // chooser and the credit rather than finding its own way into the cluster.
+  it("puts the theme chooser in the cluster too, between the basemap chooser and the credit", () => {
+    show({
+      basemaps: TWO_BASEMAPS,
+      selectedBasemap: "Satellite",
+      onBasemapChange: () => {},
+      themeChoice: "dark",
+      onThemeChoiceChange: () => {},
+    });
+
+    const cluster = drawn.container?.querySelector(".maplibregl-ctrl-bottom-left");
+    expect(cluster?.textContent).toBe("Satellitedark© somebody");
+  });
+
+  // Nothing is listening for a theme change, so nothing is offered — the same
+  // bargain the basemap chooser strikes when it is handed no `onBasemapChange`.
+  it("offers no theme chooser when nothing is listening for a choice", () => {
+    show({ basemaps: TWO_BASEMAPS, selectedBasemap: "Satellite", onBasemapChange: () => {} });
+
+    expect(screen.queryByTestId("theme-picker")).toBeNull();
   });
 
   // Nothing is listening for a pick, so nothing is offered — the same bargain

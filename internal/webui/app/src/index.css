@@ -121,8 +121,22 @@
   --panel-width-route: 560px;
 }
 
+/*
+ * The dark palette, reachable two ways: the system asking for it, or the
+ * reader saying so explicitly through the theme picker.
+ *
+ * `data-theme` is set on the root element by `App.tsx`, from the choice
+ * `lib/theme.ts` holds, whenever the reader has picked "light" or "dark"
+ * rather than "system", and removed for "system" — so the media query below
+ * is the *default*, and the attribute is the override. The media block is
+ * guarded against `[data-theme="light"]` so an explicit light pick wins even
+ * while the system itself prefers dark; the attribute block below repeats the
+ * same values unconditionally, so an explicit dark pick wins even while the
+ * system prefers light. Both blocks are kept in step by hand — there is no
+ * build step here to share them.
+ */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --ground: #171a1d;
     --base: #101316;
     --panel: #24282c;
@@ -151,6 +165,36 @@
       0 1px 1px rgb(20 25 30 / 14%),
       0 4px 12px rgb(20 25 30 / 22%);
   }
+}
+
+:root[data-theme="dark"] {
+  --ground: #171a1d;
+  --base: #101316;
+  --panel: #24282c;
+  --rule: #3c4247;
+  --ink: #eef0f3;
+  --ink-2: #a5aaaf;
+  --accent: #70adfb;
+  --alert: #f2857d;
+  --good: #82c38f;
+  --hold: #e5b562;
+
+  --grade-0: #a9b3bc;
+  --grade-1: #3fd074;
+  --grade-2: #f7d13f;
+  --grade-3: #ff9e46;
+  --grade-4: #f95a4c;
+
+  --surface-asphalt: #8da8c3;
+  --surface-paving: #b77ff2;
+  --surface-compacted: #59ceba;
+  --surface-gravel: #fbc959;
+  --surface-ground: #f47d67;
+  --surface-unsurveyed: #dbdee2;
+
+  --shadow:
+    0 1px 1px rgb(20 25 30 / 14%),
+    0 4px 12px rgb(20 25 30 / 22%);
 }
 
 *,
@@ -1071,6 +1115,75 @@ body {
 .route-map > .basemap-picker {
   position: absolute;
   bottom: calc(var(--space-5) + 30px);
+  left: var(--space-5);
+  z-index: 1;
+}
+
+/*
+ * The theme chooser, one family with the basemap chooser and the credit — same
+ * surface, same fold pattern, only what is inside the list differs.
+ */
+.theme-picker {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  pointer-events: auto;
+  align-self: flex-start;
+  max-width: min(100%, 380px);
+  padding: 3px var(--space-2);
+  border-radius: calc(var(--radius) - 4px);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  color: var(--ink-2);
+}
+
+.theme-picker__toggle {
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+.theme-picker__toggle:hover,
+.theme-picker__toggle:focus-visible {
+  color: var(--accent);
+}
+
+.theme-picker__list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px var(--space-2);
+}
+
+.theme-picker__option {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font: var(--type-small);
+  letter-spacing: var(--track-small);
+  cursor: pointer;
+}
+
+.theme-picker__option input {
+  margin: 0;
+  accent-color: var(--accent);
+  width: 11px;
+  height: 11px;
+  cursor: pointer;
+}
+
+.theme-picker__option:has(input:checked) {
+  color: var(--ink);
+}
+
+/* Stacked above the basemap chooser, which is itself stacked above the credit. */
+.route-map > .theme-picker {
+  position: absolute;
+  bottom: calc(var(--space-5) + 60px);
   left: var(--space-5);
   z-index: 1;
 }
