@@ -82,9 +82,9 @@ owns a distinct responsibility in this tree.
 | osmindex | downloading regional OSM extracts, packing them into a cell-partitioned surface index, the rebuild schedule, serving the ways near a stage | classification rules, SQL of the state store, what a stage is |
 | veloplanner | login, listing, detail decoding, route conversion | SQLite and Wahoo concerns |
 | komoot | login, listing, detail decoding, route conversion | SQLite and Wahoo concerns |
-| fit | deterministic FIT bytes for one valid route stage | VeloPlanner requests, OAuth, HTTP |
+| fit | deterministic FIT bytes for one valid route stage | VeloPlanner or Komoot requests, OAuth, HTTP |
 | wahoo | authorisation URL, exchange, refresh, user lookup, FIT route operations, rate headers | route-source parsing, SQLite queries, Pushover |
-| sqlite | migrations, encrypted token storage, snapshots and commits | Wahoo or VeloPlanner HTTP |
+| sqlite | migrations, encrypted token storage, snapshots and commits | Wahoo, VeloPlanner, or Komoot HTTP |
 | pushover | delivery of an already safe notification | run aggregation or secret resolution |
 
 Config, route, and the use-case packages have no dependency on concrete
@@ -304,7 +304,8 @@ Tests live with the package under test:
 | --- | --- |
 | route and fit | table-driven unit tests plus FIT decode validation |
 | sync and oauth | in-memory fakes for their local consumer interfaces |
-| veloplanner, komoot, and wahoo | httptest servers with malformed, rate-limit, and retry cases |
+| veloplanner and wahoo | httptest servers with malformed, rate-limit, and retry cases |
+| komoot | httptest servers with malformed listing, pagination, and authentication-failure cases, and an assertion that no request uses a method other than GET |
 | sqlite | temporary database and migration/recovery tests |
 | httpapi | handler tests for identity on every route, JSON shape, safe errors, and the security and cache headers |
 | readiness | handler tests for the ready, unreadable-state, and incomplete-state answers, and container tests that the image, the compose example, and the deploy gate still name the probe's own port |
