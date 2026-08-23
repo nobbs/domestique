@@ -50,6 +50,11 @@ type surfaceEntry struct {
 type fakeSurfaceSource struct {
 	entries map[route.Key]surfaceEntry
 	err     error
+	// surfaceReadErr fails StageSurface alone, for a fake that reports a real
+	// classification generation via StageSurfaceHash but cannot read the
+	// ranges themselves — a transient failure independent of whether anything
+	// is classified.
+	surfaceReadErr error
 }
 
 func (f *fakeSurfaceSource) StageSurfaceHash(
@@ -71,6 +76,9 @@ func (f *fakeSurfaceSource) StageSurface(
 ) (ranges json.RawMessage, matchedMetres float64, found bool, err error) {
 	if f.err != nil {
 		return nil, 0, false, f.err
+	}
+	if f.surfaceReadErr != nil {
+		return nil, 0, false, f.surfaceReadErr
 	}
 	entry, ok := f.entries[route.NewKey(provider, routeID, stageOrder)]
 	if !ok || entry.contentHash != contentHash {
@@ -219,6 +227,43 @@ func TestPredictorFallsBackToAsphaltWhenNoSurfaceIsCached(t *testing.T) {
 	asphaltOnly, ok := Predict(stage.Geometry(), nil, coefficients)
 	require.True(t, ok, "Predict() reference")
 	assert.InDelta(t, asphaltOnly.MovingSeconds, *stored.movingSeconds, 1e-9, "an unclassified stage is timed as asphalt")
+}
+
+// Regression: StageSurfaceHash can report a real, non-empty generation while
+// StageSurface itself fails to read the ranges — a transient error, distinct
+// from nothing being classified yet. The stored fingerprint must not still
+// claim that generation, or a later successful read would look, to the cache,
+// identical to one that already used it, and the asphalt fallback this run
+// took would never be retried.
+func TestPredictorDoesNotLockInAnAsphaltFallbackWhenSurfaceRangesFailToRead(t *testing.T) {
+	stage := stageWithElevation(t, "hash-1")
+	coefficients := testCoefficients()
+	source := &fakeSurfaceSource{
+		entries: map[route.Key]surfaceEntry{
+			stage.Key(): {contentHash: "hash-1", generation: "generation-1"},
+		},
+		surfaceReadErr: errors.New("surface ranges unavailable"),
+	}
+	cache := newFakeDurationCache()
+	predictor := NewPredictor(source, cache, coefficients)
+
+	predicted, failed, err := predictor.Predict(t.Context(), []route.Stage{stage})
+	require.NoError(t, err, "Predict()")
+	assert.Equal(t, 1, predicted, "predicted")
+	assert.Zero(t, failed, "failed")
+
+	_, storedGeneration, _, found, err := cache.StageDurationFingerprint(t.Context(), route.ProviderVeloPlanner, 1, 1)
+	require.NoError(t, err, "StageDurationFingerprint()")
+	require.True(t, found, "no fingerprint was cached")
+	assert.Empty(t, storedGeneration, "an asphalt fallback must not be cached against the real surface generation")
+
+	// Once the ranges become readable, the mismatch against the cached empty
+	// generation must trigger a recompute rather than being skipped as current.
+	source.surfaceReadErr = nil
+	source.entries[stage.Key()] = surfaceEntry{contentHash: "hash-1", generation: "generation-1"}
+	predicted, _, err = predictor.Predict(t.Context(), []route.Stage{stage})
+	require.NoError(t, err, "second Predict()")
+	assert.Equal(t, 1, predicted, "a readable classification should trigger a recompute")
 }
 
 func TestPredictorReadsCachedSurfaceClassification(t *testing.T) {

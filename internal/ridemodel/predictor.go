@@ -98,6 +98,17 @@ func (p *Predictor) Predict(ctx context.Context, stages []route.Stage) (predicte
 func (p *Predictor) predictStage(ctx context.Context, stage *route.Stage, surfaceGeneration string) error {
 	geometry := stage.Geometry()
 	kinds := p.surfaceKinds(ctx, stage, len(geometry))
+	if kinds == nil {
+		// Predict reads a nil kinds as asphalt throughout, whatever the reason:
+		// nothing classified yet, or classification exists but could not be
+		// read or decoded this run. surfaceGeneration must not still claim the
+		// second case used it — caching the real generation against an
+		// asphalt-fallback prediction would make a transient read failure
+		// indistinguishable, to the next run, from a stage that genuinely used
+		// its classification, locking the fallback in permanently instead of
+		// retrying once the read succeeds.
+		surfaceGeneration = ""
+	}
 
 	result, ok := Predict(geometry, kinds, p.coefficients)
 
