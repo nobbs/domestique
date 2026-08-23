@@ -87,6 +87,23 @@ describe("FilterPanel", () => {
     });
   });
 
+  // The field only ever shows a tenth of a kilometre, so a value stored with
+  // finer precision than that would filter at a precision the field can
+  // never actually display — most visibly once the panel folds and reopens,
+  // rebuilding this field's text from the stored value alone.
+  it("stores a distance at the same tenth-of-a-kilometre precision it displays", async () => {
+    const onFiltersChange = vi.fn();
+    render(<ControlledFilterPanel onFiltersChange={onFiltersChange} />);
+
+    const [distanceMin] = screen.getAllByLabelText("Min");
+    await userEvent.type(distanceMin as HTMLElement, "1.51");
+
+    expect(onFiltersChange).toHaveBeenLastCalledWith({
+      ...EMPTY_FILTERS,
+      distanceMetres: { min: 1500, max: null },
+    });
+  });
+
   // A field driven straight from the stored, parsed number fights whatever
   // was just typed: "1." parses the same as "1", so a value re-derived from
   // it drops the point before a second digit can follow — this is the

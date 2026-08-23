@@ -272,10 +272,11 @@ export function SearchPanel({
         {/*
          * Derived from the filter rather than written anywhere: the count and
          * the column are the same fact, so they cannot disagree. It says nothing
-         * until the library has been narrowed, because "47 of 47" is a sum with
-         * no question behind it.
+         * until the library has actually been narrowed by a name or a filter,
+         * because "47 of 47" is a sum with no question behind it — which a
+         * route picked straight off the map, with neither set, would show.
          */}
-        {expanded ? (
+        {hasQuery || filtersActive ? (
           <span className="search__count">
             {shown.length} of {total}
           </span>

@@ -197,6 +197,15 @@ describe("SearchPanel", () => {
     expect(screen.getByRole("heading", { name: "Alpine loop — Descent" })).toBeInTheDocument();
   });
 
+  // A route picked straight off the map narrows neither a name nor a filter,
+  // so "1 of 47" here would be a sum with no question behind it — the same
+  // reason the count stays hidden at rest.
+  it("says nothing about the count for a route picked without narrowing anything", () => {
+    renderPanel({ selectedKey: routeKey(route()), total: 47 });
+
+    expect(screen.queryByText(/of 47/)).toBeNull();
+  });
+
   it("says when the library was read, beside where the route is", () => {
     renderPanel({ selectedKey: routeKey(route()) });
 
