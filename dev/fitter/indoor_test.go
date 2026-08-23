@@ -116,3 +116,32 @@ func TestSummarizeCrossCheckComputesMedianRatioAndCorrelation(t *testing.T) {
 	assert.InDelta(t, 1.0, summary.MedianRatio, 0.05)
 	assert.Greater(t, summary.Correlation, 0.9)
 }
+
+// A ride with no usable HRPower must not count toward Rides or feed the
+// correlation while being excluded from MedianRatio — all three figures
+// describe the same subset, or they are not comparable.
+func TestSummarizeCrossCheckExcludesARideWithNoUsableHRPowerFromEveryFigure(t *testing.T) {
+	checks := []rideCrossCheck{
+		{RideID: "r1", HRPower: 130, PhysicsPower: 130},
+		{RideID: "r2", HRPower: 140, PhysicsPower: 140},
+		{RideID: "r3", HRPower: 0, PhysicsPower: 9999}, // no usable HRPower, would skew correlation
+	}
+
+	summary := summarizeCrossCheck(checks, nil)
+	assert.Equal(t, 2, summary.Rides)
+	assert.InDelta(t, 1.0, summary.MedianRatio, 1e-9)
+}
+
+func TestSummarizeCrossCheckReturnsZeroValueWhenNoRideHasAUsableRatio(t *testing.T) {
+	checks := []rideCrossCheck{{RideID: "r1", HRPower: 0, PhysicsPower: 150}}
+	summary := summarizeCrossCheck(checks, nil)
+	assert.Equal(t, indoorCrossCheckSummary{}, summary)
+}
+
+func TestSummarizeCrossCheckSortsThinYearsForDeterministicOutput(t *testing.T) {
+	checks := []rideCrossCheck{{RideID: "r1", HRPower: 100, PhysicsPower: 100}}
+	relations := map[int]hrPowerRelation{2026: {Thin: true}, 2024: {Thin: true}, 2025: {Thin: true}}
+
+	summary := summarizeCrossCheck(checks, relations)
+	assert.Equal(t, []int{2024, 2025, 2026}, summary.ThinYears)
+}

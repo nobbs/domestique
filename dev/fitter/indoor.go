@@ -120,23 +120,27 @@ type indoorCrossCheckSummary struct {
 	Correlation float64
 }
 
+// summarizeCrossCheck reduces every ride's cross-check to one report. A ride
+// with a non-positive HRPower carries no usable ratio and would also skew
+// the correlation, so it is dropped from all three figures together —
+// Rides, MedianRatio and Correlation all describe the same subset, rather
+// than Rides counting rides the other two silently excluded.
 func summarizeCrossCheck(checks []rideCrossCheck, relations map[int]hrPowerRelation) indoorCrossCheckSummary {
-	if len(checks) == 0 {
+	ratios := make([]float64, 0, len(checks))
+	physics := make([]float64, 0, len(checks))
+	hr := make([]float64, 0, len(checks))
+	for _, c := range checks {
+		if c.HRPower <= 0 {
+			continue
+		}
+		ratios = append(ratios, c.PhysicsPower/c.HRPower)
+		physics = append(physics, c.PhysicsPower)
+		hr = append(hr, c.HRPower)
+	}
+	if len(ratios) == 0 {
 		return indoorCrossCheckSummary{}
 	}
-
-	ratios := make([]float64, 0, len(checks))
-	physics := make([]float64, len(checks))
-	hr := make([]float64, len(checks))
-	for i, c := range checks {
-		if c.HRPower > 0 {
-			ratios = append(ratios, c.PhysicsPower/c.HRPower)
-		}
-		physics[i] = c.PhysicsPower
-		hr[i] = c.HRPower
-	}
-	sortedRatios := append([]float64(nil), ratios...)
-	sort.Float64s(sortedRatios)
+	sort.Float64s(ratios)
 
 	var thinYears []int
 	for year, r := range relations {
@@ -144,10 +148,11 @@ func summarizeCrossCheck(checks []rideCrossCheck, relations map[int]hrPowerRelat
 			thinYears = append(thinYears, year)
 		}
 	}
+	sort.Ints(thinYears)
 
 	return indoorCrossCheckSummary{
-		Rides:       len(checks),
-		MedianRatio: percentileOf(sortedRatios, 0.5),
+		Rides:       len(ratios),
+		MedianRatio: percentileOf(ratios, 0.5),
 		Correlation: pearsonCorrelation(physics, hr),
 		ThinYears:   thinYears,
 	}
