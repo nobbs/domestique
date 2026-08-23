@@ -23,6 +23,29 @@ const (
 	defaultTimeout   = 30 * time.Second
 	maximumBodyBytes = 1 << 20
 	earthRadiusMetre = 6_371_000.0
+
+	// maximumRoutes bounds a route listing. Wahoo returns the account's routes
+	// in one response — verified against a live account, where `page` is
+	// accepted and then ignored, every page answering with the same complete
+	// set — so there is no paging to walk and no page count to bound. This
+	// instead refuses a response too large to be the library it claims to be,
+	// because a silently truncated listing would read as "these routes do not
+	// exist" and create duplicates of them.
+	maximumRoutes = 10_000
+
+	// defaultRateLimitReset is how long to hold off when Wahoo says a quota is
+	// spent but not when it refills. It answers 0 for seconds_until_reset on a
+	// response that was not itself limited, so a zero there means "unknown"
+	// rather than "already reset"; the smallest advertised window is the
+	// conservative reading.
+	defaultRateLimitReset = 5 * time.Minute
+
+	// maximumRateLimitWait bounds how long one request holds a run open waiting
+	// for quota. Beyond it the run ends and reports the limit rather than
+	// sleeping: reconciliation records each stage as it succeeds, so the next
+	// run resumes from stored state. That makes progress in bounded steps
+	// instead of holding a single run open for hours.
+	maximumRateLimitWait = 90 * time.Second
 )
 
 var (
@@ -190,33 +213,40 @@ func (c *Client) UpdateRoute(ctx context.Context, routeID int64, accessToken str
 	return c.writeRoute(ctx, http.MethodPut, routeID, accessToken, stage, fitData)
 }
 
-// RouteByExternalID looks up an owned route by its deterministic external ID.
-// A missing route returns found=false without treating the lookup as an error.
-func (c *Client) RouteByExternalID(ctx context.Context, accessToken, externalID string) (routeID int64, found bool, err error) {
-	if accessToken == "" || externalID == "" {
-		return 0, false, errors.New("wahoo: access token and external id are required")
+// ListOwnedRoutes returns every route the account holds that carries an
+// external ID, keyed by it. One listing answers what a per-stage lookup used
+// to ask once per stage: a library of a hundred stages cost a hundred
+// requests against a quota shared by every target, which is what exhausted it.
+//
+// A route without an external ID was not created here. Leaving it out of the
+// map is what keeps a manually created route unmatchable, and therefore
+// undeletable, by everything downstream.
+func (c *Client) ListOwnedRoutes(ctx context.Context, accessToken string) (map[string]int64, error) {
+	if accessToken == "" {
+		return nil, errors.New("wahoo: access token is required")
 	}
 
-	endpoint := c.endpoint(c.apiBaseURL, "/v1/routes")
-	query := endpoint.Query()
-	query.Set("external_id", externalID)
-	endpoint.RawQuery = query.Encode()
-	request, err := c.newRequest(ctx, http.MethodGet, endpoint, http.NoBody, accessToken)
+	request, err := c.newRequest(ctx, http.MethodGet, c.endpoint(c.apiBaseURL, "/v1/routes"), http.NoBody, accessToken)
 	if err != nil {
-		return 0, false, err
+		return nil, err
 	}
 	var response []routeResponse
 	if err := c.doJSON(request, &response); err != nil {
-		return 0, false, err
+		return nil, err
 	}
-	if len(response) == 0 {
-		return 0, false, nil
-	}
-	if len(response) > 1 || response[0].ID <= 0 || response[0].ExternalID != externalID {
-		return 0, false, errors.New("wahoo: route lookup returned an invalid result")
+	if len(response) > maximumRoutes {
+		return nil, errors.New("wahoo: route listing exceeded configured bounds")
 	}
 
-	return response[0].ID, true, nil
+	owned := make(map[string]int64, len(response))
+	for _, item := range response {
+		if item.ExternalID == "" || item.ID <= 0 {
+			continue
+		}
+		owned[item.ExternalID] = item.ID
+	}
+
+	return owned, nil
 }
 
 // IsUnauthorized reports whether err is a permanent Wahoo authorization
@@ -345,6 +375,9 @@ func (c *Client) doJSON(request *http.Request, output any) (err error) {
 	defer c.mutex.Unlock()
 
 	if waitFor := c.notBefore.Sub(c.now()); waitFor > 0 {
+		if waitFor > maximumRateLimitWait {
+			return ErrRateLimited
+		}
 		if waitErr := c.wait(request.Context(), waitFor); waitErr != nil {
 			return fmt.Errorf("wahoo: waiting for rate limit: %w", waitErr)
 		}
@@ -389,8 +422,16 @@ func (c *Client) doJSON(request *http.Request, output any) (err error) {
 
 func (c *Client) observeRateLimit(response *http.Response) {
 	remaining, reset, ok := rateLimit(response.Header)
-	if !ok || remaining > 0 || reset <= 0 {
+	if !ok || remaining > 0 {
 		return
+	}
+	// A spent quota with no usable reset still has to be waited out. Treating
+	// an unknown reset as "no need to wait" is what previously left this
+	// throttle permanently unarmed — Wahoo reports seconds_until_reset as 0 on
+	// every response that was not itself limited, so the guard never passed and
+	// a run kept spending until it was refused outright.
+	if reset <= 0 {
+		reset = defaultRateLimitReset
 	}
 	c.notBefore = c.now().Add(reset)
 }
@@ -429,9 +470,11 @@ func rateLimit(header http.Header) (int, time.Duration, bool) {
 	if !ok {
 		return 0, 0, false
 	}
+	// An absent or unreadable reset is not a reason to ignore an exhausted
+	// quota. It is reported as zero and the caller supplies its own floor.
 	seconds, err := strconv.ParseInt(strings.TrimSpace(header.Get("X-RateLimit-Reset")), 10, 64)
 	if err != nil || seconds < 0 {
-		return 0, 0, false
+		seconds = 0
 	}
 
 	return remaining, time.Duration(seconds) * time.Second, true

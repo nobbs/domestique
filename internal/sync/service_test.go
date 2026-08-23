@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"sort"
 	"testing"
 
@@ -197,6 +198,53 @@ func TestServiceReconcilesStoredInventoryWithoutReadingTheSource(t *testing.T) {
 	assert.Equal(t, OutcomeSucceeded, result.Outcome, "RunTargets() outcome")
 	assert.Equal(t, 2, result.Created, "RunTargets() created")
 	assert.Zero(t, source.calls, "source inventory calls")
+}
+
+// The whole point of listing: a library where nothing moved asks each target
+// once and writes nothing at all. Every stage used to cost its own lookup,
+// which is what exhausted a request quota shared by every target.
+func TestServiceReconcilingAnUnchangedLibraryCostsOneListingPerTarget(t *testing.T) {
+	first := testStage(t, 1, 1, "current", "current-hash")
+	second := testStage(t, 2, 1, "current", "current-hash")
+	state := newFakeState("a", "b")
+	target := newFakeTarget()
+	state.trusted = []route.Stage{first, second}
+	for _, targetID := range []string{"a", "b"} {
+		for index, stage := range []*route.Stage{&first, &second} {
+			routeID := int64(100 + index)
+			target.seedRoute(targetID, stage, routeID)
+			seedMapping(state, targetID, stage, routeID)
+		}
+	}
+	service := newService(t, state, &fakeSource{}, &fakeEncoder{}, target, false)
+
+	result := service.RunTargets(t.Context())
+	assert.Equal(t, OutcomeSucceeded, result.Outcome, "RunTargets() outcome")
+	assert.Equal(t, 2, target.listCalls, "one listing per target, however many stages it holds")
+	assert.Zero(t, result.Created, "created")
+	assert.Zero(t, result.Updated, "updated")
+	assert.Zero(t, result.Deleted, "deleted")
+	assert.Empty(t, target.updatedRouteIDs, "updated route ids")
+	assert.Empty(t, target.deletedRouteIDs, "deleted route ids")
+}
+
+// A target whose routes cannot be read is a target whose ownership cannot be
+// established, so nothing may be written to or removed from it.
+func TestServiceWritesNothingWhenTheTargetListingFails(t *testing.T) {
+	desired := testStage(t, 1, 1, "current", "current-hash")
+	stale := testStage(t, 2, 1, "old", "old-hash")
+	state := newFakeState("a", "b")
+	seedMapping(state, "a", &stale, 101)
+	state.trusted = []route.Stage{desired}
+	target := newFakeTarget()
+	target.listErr = errDestination
+	service := newService(t, state, &fakeSource{}, &fakeEncoder{}, target, false)
+
+	result := service.RunTargets(t.Context())
+	assert.Equal(t, OutcomeFailed, result.Outcome, "RunTargets() outcome")
+	assert.Equal(t, FailureDestination, result.Failure, "RunTargets() failure")
+	assert.Zero(t, result.Created, "created")
+	assert.Empty(t, target.deletedRouteIDs, "deleted route ids")
 }
 
 // A library that cannot be read back whole is indistinguishable from one whose
@@ -780,12 +828,17 @@ func (s *fakeState) DeleteTargetStage(_ context.Context, targetID string, provid
 type fakeTarget struct {
 	routes             map[string]map[string]int64
 	rejectRefreshToken map[string]bool
+	listErr            error
 	failUpdateAccess   string
 	deletedAccess      []string
 	deletedRouteIDs    []int64
 	updatedRouteIDs    []int64
 	refreshTokens      []string
 	nextRouteID        int64
+	// listCalls counts route listings, so a test can assert that reconciling an
+	// unchanged library asks the target exactly once per run rather than once
+	// per stage.
+	listCalls int
 }
 
 func newFakeTarget() *fakeTarget {
@@ -805,10 +858,15 @@ func (t *fakeTarget) RefreshAccessToken(_ context.Context, refreshToken string) 
 	return accessFor(refreshToken), refreshToken + "-replacement", nil
 }
 
-func (t *fakeTarget) RouteByExternalID(_ context.Context, accessToken, externalID string) (routeID int64, found bool, err error) {
-	routeID, found = t.routes[accessToken][externalID]
+func (t *fakeTarget) ListOwnedRoutes(_ context.Context, accessToken string) (map[string]int64, error) {
+	t.listCalls++
+	if t.listErr != nil {
+		return nil, t.listErr
+	}
+	owned := make(map[string]int64, len(t.routes[accessToken]))
+	maps.Copy(owned, t.routes[accessToken])
 
-	return routeID, found, nil
+	return owned, nil
 }
 
 func (t *fakeTarget) CreateRoute(_ context.Context, accessToken string, stage *route.Stage, _ []byte) (routeID int64, err error) {

@@ -67,7 +67,6 @@ func TestClientWritesAndFindsOwnedRoute(t *testing.T) {
 				assertRouteForm(t, request, externalID, true)
 				writeJSON(t, writer, map[string]any{"id": 51, "external_id": externalID})
 			case http.MethodGet:
-				assert.Equal(t, externalID, request.URL.Query().Get("external_id"), "external id query")
 				writeJSON(t, writer, []map[string]any{{"id": 51, "external_id": externalID}})
 			default:
 				writer.WriteHeader(http.StatusMethodNotAllowed)
@@ -96,10 +95,10 @@ func TestClientWritesAndFindsOwnedRoute(t *testing.T) {
 	_, err = client.UpdateRoute(t.Context(), createdRouteID, "access-token", &stage, []byte("new-fit-data"))
 	require.NoError(t, err)
 
-	foundRouteID, found, err := client.RouteByExternalID(t.Context(), "access-token", externalID)
+	owned, err := client.ListOwnedRoutes(t.Context(), "access-token")
 	require.NoError(t, err)
-	require.True(t, found, "the route this test just created was not found")
-	assert.Equal(t, int64(51), foundRouteID, "found route id")
+	require.Contains(t, owned, externalID, "the route this test just created was not listed")
+	assert.Equal(t, int64(51), owned[externalID], "listed route id")
 
 	require.NoError(t, client.DeleteRoute(t.Context(), createdRouteID, "access-token"))
 }
@@ -131,6 +130,101 @@ func TestClientWaitsForAdvertisedRateLimit(t *testing.T) {
 	_, err = client.AuthenticatedUser(t.Context(), "access-token")
 	require.NoError(t, err, "second AuthenticatedUser()")
 	assert.Equal(t, 5*time.Second, waited, "the advertised reset was not waited out")
+}
+
+func TestClientListsOnlyRoutesCarryingAnExternalID(t *testing.T) {
+	// A route with no external ID was created by hand in the Wahoo account.
+	// Leaving it out of the map is what keeps it unmatchable, and so
+	// undeletable, by reconciliation.
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writeJSON(t, writer, []map[string]any{
+			{"id": 51, "external_id": "domestique:veloplanner:1:stage:1"},
+			{"id": 52, "external_id": ""},
+			{"id": 53},
+			{"id": 0, "external_id": "domestique:veloplanner:9:stage:1"},
+			{"id": 54, "external_id": "domestique:komoot:7:stage:1"},
+		})
+	}))
+	defer server.Close()
+
+	owned, err := newTestClient(t, server).ListOwnedRoutes(t.Context(), "access-token")
+	require.NoError(t, err)
+	assert.Equal(t, map[string]int64{
+		"domestique:veloplanner:1:stage:1": 51,
+		"domestique:komoot:7:stage:1":      54,
+	}, owned, "only routes with both an external ID and a usable route ID belong in the map")
+}
+
+func TestClientRefusesAListingWithoutAnAccessToken(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		assert.Fail(t, "an unauthenticated listing must not reach the API")
+		writer.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	_, err := newTestClient(t, server).ListOwnedRoutes(t.Context(), "")
+	require.ErrorContains(t, err, "access token")
+}
+
+func TestClientReportsAFailedListing(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	_, err := newTestClient(t, server).ListOwnedRoutes(t.Context(), "access-token")
+	require.ErrorContains(t, err, "HTTP 500")
+}
+
+func TestClientHoldsOffWhenAQuotaIsSpentWithNoResetHeaderAtAll(t *testing.T) {
+	// Same reasoning as the zero-reset case, for a response that omits the
+	// header outright: an unreadable reset must not read as "nothing to wait
+	// for" while the quota itself is plainly spent.
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("X-RateLimit-Remaining", "100, 50, 0")
+		writeJSON(t, writer, map[string]int64{"id": 42})
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	now := time.Date(2026, time.August, 17, 7, 0, 0, 0, time.UTC)
+	client.now = func() time.Time { return now }
+
+	_, err := client.AuthenticatedUser(t.Context(), "access-token")
+	require.NoError(t, err, "first AuthenticatedUser()")
+	_, err = client.AuthenticatedUser(t.Context(), "access-token")
+	require.ErrorIs(t, err, ErrRateLimited)
+}
+
+func TestClientHoldsOffWhenAQuotaIsSpentWithoutAnAdvertisedReset(t *testing.T) {
+	// Wahoo answers seconds_until_reset as 0 on any response that was not
+	// itself limited, so a spent bucket routinely arrives with no usable
+	// reset. Reading that as "no need to wait" is what previously left the
+	// throttle permanently unarmed.
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("X-RateLimit-Remaining", "100, 50, 0")
+		writer.Header().Set("X-RateLimit-Reset", "0")
+		writeJSON(t, writer, map[string]int64{"id": 42})
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	now := time.Date(2026, time.August, 17, 7, 0, 0, 0, time.UTC)
+	client.now = func() time.Time { return now }
+	client.wait = func(_ context.Context, duration time.Duration) error {
+		now = now.Add(duration)
+
+		return nil
+	}
+
+	_, err := client.AuthenticatedUser(t.Context(), "access-token")
+	require.NoError(t, err, "first AuthenticatedUser()")
+
+	// The floor exceeds what one run will hold itself open for, so the next
+	// request ends the run instead of sleeping through the whole window. The
+	// run resumes from stored state on its next scheduled pass.
+	_, err = client.AuthenticatedUser(t.Context(), "access-token")
+	require.ErrorIs(t, err, ErrRateLimited)
 }
 
 func TestClientClassifiesRejectedRefreshToken(t *testing.T) {
