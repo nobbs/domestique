@@ -50,6 +50,8 @@ import {
 import { useSeenStages } from "../../lib/seenStages";
 import { widened } from "../../lib/selection";
 import { summariseSurface } from "../../lib/surface";
+import type { ThemeChoice } from "../../lib/theme";
+import { resolvesDark } from "../../lib/theme";
 import { useEscapeKey } from "../../lib/useEscapeKey";
 import type { LibraryLine } from "./LibraryMap";
 import { LibraryMap } from "./LibraryMap";
@@ -144,11 +146,22 @@ function convergedPhrase(targetCount: number): string {
   return targetCount === 2 ? "on both accounts" : "on every account";
 }
 
-export function RoutesPage() {
+export interface RoutesPageProps {
+  /** The reader's colour-scheme pick. Held by `App` — see there for why. */
+  themeChoice: ThemeChoice;
+  onThemeChoiceChange: (choice: ThemeChoice) => void;
+}
+
+export function RoutesPage({ themeChoice, onThemeChoiceChange }: RoutesPageProps) {
   const routes = useQuery(routesQuery());
   const config = useQuery(webUIConfigQuery());
   const status = useQuery(statusQuery());
   const prefersDark = usePrefersDarkScheme();
+  // The scheme actually in force: the system's own, unless the reader has
+  // overridden it. This is what the map's own dark/light decision has to
+  // follow — the page's CSS follows the same choice through `[data-theme]`,
+  // which `App` applies for every page, not only this one.
+  const resolvedDark = resolvesDark(themeChoice, prefersDark);
   /*
    * Which ground the reader asked for, and where it is remembered. Held here
    * rather than in the map, because the style URL is worked out here and the
@@ -451,7 +464,7 @@ export function RoutesPage() {
   const libraryBounds = useMemo(() => unionOf([...drawn.boxes.values()]), [drawn.boxes]);
   const bounds = windowBounds ?? focusBox ?? libraryBounds;
 
-  const basemap = config.data ? basemapFor(config.data, prefersDark, basemapChoice) : null;
+  const basemap = config.data ? basemapFor(config.data, resolvedDark, basemapChoice) : null;
   const readAt = status.data?.sync.phases.source?.lastCompletedAt;
 
   /*
@@ -486,6 +499,8 @@ export function RoutesPage() {
             basemaps={config.data?.basemaps ?? []}
             selectedBasemap={basemap.name}
             onBasemapChange={chooseBasemap}
+            themeChoice={themeChoice}
+            onThemeChoiceChange={onThemeChoiceChange}
             lines={drawn.lines}
             selectedKey={focusKey}
             bounds={bounds}

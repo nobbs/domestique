@@ -93,6 +93,39 @@ test("the two schemes do not render the same map", async ({ browser, baseURL }) 
   expect(light && dark && light.equals(dark)).toBe(false);
 });
 
+test.describe("the theme override", () => {
+  test.use({ colorScheme: "light" });
+
+  test("wins over the system when the reader picks dark explicitly", async ({
+    offlinePage: page,
+    basemapRequests,
+  }) => {
+    await openLibrary(page);
+    expect(await backgroundOfBody(page)).toBe(LIGHT_SURFACE);
+
+    await page.getByRole("button", { name: "Choose the colour theme" }).click();
+    await page.getByRole("radio", { name: "Dark" }).check();
+
+    // The page repaints in JavaScript-set state rather than a stylesheet
+    // recomputing on its own, so this is read back rather than asserted the
+    // instant the radio is checked.
+    await expect.poll(() => backgroundOfBody(page)).toBe(DARK_SURFACE);
+    // The same override reaches the basemap, which cannot follow CSS at all —
+    // see the dark-scheme test above for why the request is the proof.
+    await expect.poll(() => basemapRequests.some((url) => url.includes("dark"))).toBe(true);
+  });
+
+  test("survives a reload", async ({ offlinePage: page, baseURL }) => {
+    await openLibrary(page);
+    await page.getByRole("button", { name: "Choose the colour theme" }).click();
+    await page.getByRole("radio", { name: "Dark" }).check();
+    await expect.poll(() => backgroundOfBody(page)).toBe(DARK_SURFACE);
+
+    await page.goto(baseURL ?? "");
+    await expect.poll(() => backgroundOfBody(page)).toBe(DARK_SURFACE);
+  });
+});
+
 test.describe("on a narrow viewport", () => {
   test.use({ viewport: { width: 375, height: 667 } });
 
