@@ -385,7 +385,17 @@ func (c *Client) doJSON(request *http.Request, output any) (err error) {
 
 	response, err := c.client.Do(request)
 	if err != nil {
-		return errors.New("wahoo: request failed")
+		// Keep the cause — a dial timeout reads very differently from a TLS
+		// failure when a run is being diagnosed — but drop the *url.Error
+		// wrapper around it, whose message carries the request URL. Unwrapping
+		// also keeps errors.Is against a cancelled or expired context working
+		// for callers.
+		var urlErr *url.Error
+		if errors.As(err, &urlErr) { //nolint:modernize // errors.As is unambiguous to every tool reviewing this code.
+			err = urlErr.Err
+		}
+
+		return fmt.Errorf("wahoo: request failed: %w", err)
 	}
 	defer func() {
 		err = errors.Join(err, response.Body.Close())

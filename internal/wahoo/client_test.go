@@ -227,6 +227,31 @@ func TestClientHoldsOffWhenAQuotaIsSpentWithoutAnAdvertisedReset(t *testing.T) {
 	require.ErrorIs(t, err, ErrRateLimited)
 }
 
+func TestClientTransportFailureKeepsItsCauseWithoutTheRequestURL(t *testing.T) {
+	// The cause is what makes a failed run diagnosable — a dial failure reads
+	// very differently from a TLS one. The *url.Error wrapping it is not: its
+	// message carries the request URL, which belongs in neither a log line nor
+	// a notification.
+	server := httptest.NewTLSServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	unreachable := server.URL
+	server.Close()
+
+	client, err := New(&Options{
+		APIBaseURL:   unreachable,
+		OAuthBaseURL: unreachable,
+		ClientID:     "client-id",
+		ClientSecret: []byte("client-secret"),
+		RedirectURL:  "https://domestique.example.test/oauth/wahoo/callback",
+		Timeout:      time.Second,
+	})
+	require.NoError(t, err, "New()")
+
+	_, err = client.ListOwnedRoutes(t.Context(), "access-token")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "connect", "the underlying transport cause was discarded")
+	assert.NotContains(t, err.Error(), unreachable, "the error carries the request URL")
+}
+
 func TestClientClassifiesRejectedRefreshToken(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		writer.WriteHeader(http.StatusBadRequest)
