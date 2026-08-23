@@ -14,10 +14,17 @@ type toursResponse struct {
 	// JSON that decodes every field to its zero value — is distinguishable from
 	// an explicit, genuinely empty {"number":0,"totalPages":0,"totalElements":0}
 	// page. Both would otherwise look identical to a real, empty library.
-	Page     *pageInfo `json:"page"`
-	Embedded struct {
-		Tours []tourSummary `json:"tours"`
-	} `json:"_embedded"` //nolint:tagliatelle // Komoot's API uses HAL's leading underscore.
+	Page *pageInfo `json:"page"`
+	// Embedded is a pointer, and Tours stays a plain slice deliberately: Go
+	// decodes an absent or null "tours" as a nil slice but "tours":[] as a
+	// non-nil, zero-length one, so listTours can tell "the listing container
+	// was missing" from "the listing container said zero tours" without a
+	// second layer of pointers.
+	Embedded *embeddedTours `json:"_embedded"` //nolint:tagliatelle // Komoot's API uses HAL's leading underscore.
+}
+
+type embeddedTours struct {
+	Tours []tourSummary `json:"tours"`
 }
 
 // pageInfo's fields are pointers for the same reason coordinate's are: every
@@ -28,6 +35,7 @@ type pageInfo struct {
 	TotalElements *int `json:"totalElements"`
 	TotalPages    *int `json:"totalPages"`
 	Number        *int `json:"number"`
+	Size          *int `json:"size"`
 }
 
 type tourSummary struct {

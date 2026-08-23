@@ -323,6 +323,30 @@ func TestClientInventoryRejectsMissingPageObject(t *testing.T) {
 	require.ErrorContains(t, err, "no page metadata")
 }
 
+func TestClientInventoryRejectsZeroElementsWithNonzeroPages(t *testing.T) {
+	server := authenticatedListingServer(t, `{"_embedded":{"tours":[]},"page":{"size":50,"totalElements":0,"totalPages":3,"number":0}}`)
+	defer server.Close()
+
+	_, err := newTestClient(t, server).Inventory(t.Context())
+	require.ErrorContains(t, err, "invalid tour library pagination")
+}
+
+func TestClientInventoryRejectsMissingToursContainer(t *testing.T) {
+	server := authenticatedListingServer(t, `{"page":{"size":50,"totalElements":0,"totalPages":0,"number":0}}`)
+	defer server.Close()
+
+	_, err := newTestClient(t, server).Inventory(t.Context())
+	require.ErrorContains(t, err, "no tours container")
+}
+
+func TestClientInventoryRejectsMissingPageSize(t *testing.T) {
+	server := authenticatedListingServer(t, `{"_embedded":{"tours":[]},"page":{"totalElements":0,"totalPages":0,"number":0}}`)
+	defer server.Close()
+
+	_, err := newTestClient(t, server).Inventory(t.Context())
+	require.ErrorContains(t, err, "no page metadata")
+}
+
 func TestClientInventoryRejectsInconsistentTotalPages(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		switch request.URL.Path {

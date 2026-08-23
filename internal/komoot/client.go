@@ -242,15 +242,20 @@ func (s *session) listTours(ctx context.Context, userID, token string) ([]tourSu
 		if err := s.getJSON(ctx, userID, token, endpoint, &payload); err != nil {
 			return nil, fmt.Errorf("komoot: listing tours: %w", err)
 		}
-		if payload.Page == nil || payload.Page.Number == nil || payload.Page.TotalElements == nil || payload.Page.TotalPages == nil {
+		if payload.Page == nil || payload.Page.Number == nil || payload.Page.TotalElements == nil ||
+			payload.Page.TotalPages == nil || payload.Page.Size == nil {
 			return nil, errors.New("komoot: tour listing response had no page metadata")
 		}
-		number, totalElements, totalPages := *payload.Page.Number, *payload.Page.TotalElements, *payload.Page.TotalPages
+		if payload.Embedded == nil || payload.Embedded.Tours == nil {
+			return nil, errors.New("komoot: tour listing response had no tours container")
+		}
+		number, totalElements, totalPages, size :=
+			*payload.Page.Number, *payload.Page.TotalElements, *payload.Page.TotalPages, *payload.Page.Size
 
-		if number != page || totalElements < 0 ||
+		if number != page || totalElements < 0 || size < 0 ||
 			totalPages < 0 || totalPages > maximumPages ||
 			totalElements > maximumTours ||
-			(totalPages == 0 && totalElements != 0) ||
+			(totalPages == 0) != (totalElements == 0) ||
 			(wantTotal >= 0 && totalElements != wantTotal) ||
 			(wantPages >= 0 && totalPages != wantPages) {
 			return nil, errors.New("komoot: invalid tour library pagination")
