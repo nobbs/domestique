@@ -21,6 +21,7 @@ import { routeKey } from "../api/types";
 import { RoutePanel } from "../features/routes/RoutePanel";
 import { RouteProfile } from "../features/routes/RouteProfile";
 import { SearchPanel } from "../features/routes/SearchPanel";
+import { findClimbs } from "../lib/climbs";
 import { buildProfile, gradientShares } from "../lib/profile";
 import { summariseSurface } from "../lib/surface";
 import { expectNoAxeViolations } from "../test/axe";
@@ -155,6 +156,8 @@ describe("accessibility", () => {
             bands={gradientShares(CLIMB)}
             highlight={null}
             onHighlightChange={() => {}}
+            climbs={findClimbs(CLIMB)}
+            onSelectClimb={() => {}}
             libraryCount={47}
             onClose={() => {}}
             sourceBaseUrls={{ veloplanner: "https://veloplanner.example" }}
