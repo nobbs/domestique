@@ -179,6 +179,52 @@ a concrete Client. Compile-time satisfaction checks belong next to adapter types
 only when an implementation intentionally imports the consumer interface
 without creating an import cycle; ordinary constructor assignment is sufficient.
 
+## Tier ownership
+
+Package ownership settles where a computation lives within a tier. This settles
+which tier it belongs to.
+
+An answer that depends only on the route belongs to Go. It is the same for every
+viewer, every session and every device, so it can be computed once and stored:
+stage distance, ascent and maximum gradient in `Summary`; surface classification
+in `surface.Match`, which needs the OpenStreetMap index; the elevation
+normalisation the FIT encoder exports.
+
+An answer that depends on the person reading belongs to the browser. There is no
+single answer to store, because it differs by reader, by pointer position or by
+preference: the gradient bands and the sampled profile; `surfaceKindAt`, which
+answers what the cursor is over; the library's text filter; the theme and unit
+preferences kept per browser.
+
+Note that `surface` determines what the ground is and `lib/surface.ts` presents
+what was determined. The same subject divides cleanly along this line, and so
+does gradient: Go computes the stored maximum, the browser computes the bands it
+is drawn in.
+
+The rule reads a computation's inputs, not the shape of its output. A function
+returning coordinates still belongs to the browser when which coordinates it
+returns depends on the reader.
+
+Two conditions override it:
+
+- **The boundary pulls work backwards.** Work needing a credential, or that
+  would add a host the page itself reaches, belongs to Go however
+  reader-dependent it is. Adopting an outbound service to answer a per-reader
+  question is a deliberate exception to this section, and the issue adopting it
+  says so.
+- **Interaction pulls work forwards.** Route-only arithmetic that has to run on
+  every hover or drag frame is implemented in the browser as well.
+  `haversineMetres` and cumulative distance therefore exist on both sides: the
+  Go one feeds the stored `Summary`, the browser one feeds the live profile.
+  Both use the same spherical model, so the axis agrees with the distance shown
+  beside it. A second implementation without that agreement is a defect, not a
+  mirror.
+
+What crosses the boundary follows from the rule: route-shaped values do,
+reader-shaped values do not. Coordinates, distances and timestamps are sent;
+rider mass, sustained power, unit preference, theme and zoom are not, and no
+endpoint accepts them.
+
 ## Dependency direction
 
 ~~~mermaid
