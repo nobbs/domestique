@@ -56,7 +56,7 @@ func New(options *Options) (*Client, error) {
 	}
 
 	baseURL, err := url.Parse(options.BaseURL)
-	if err != nil || baseURL.Scheme != "https" || baseURL.Host == "" ||
+	if err != nil || baseURL.Scheme != "https" || baseURL.Host == "" || baseURL.Hostname() == "" ||
 		baseURL.User != nil || baseURL.RawQuery != "" || baseURL.Fragment != "" ||
 		(baseURL.Path != "" && baseURL.Path != "/") {
 		return nil, errors.New("komoot: base url must be an absolute https origin")

@@ -487,6 +487,10 @@ func TestNewRejectsInvalidOptions(t *testing.T) {
 			options: Options{BaseURL: "http://komoot.example.test", Email: []byte("email"), Password: []byte("password")},
 		},
 		{
+			name:    "base URL with no hostname",
+			options: Options{BaseURL: "https://:443", Email: []byte("email"), Password: []byte("password")},
+		},
+		{
 			name:    "missing email",
 			options: Options{BaseURL: "https://komoot.example.test", Password: []byte("password")},
 		},

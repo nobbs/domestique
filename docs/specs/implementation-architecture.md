@@ -247,6 +247,7 @@ flowchart LR
     Sync --> Route["route"]
 
     VP["veloplanner"] --> Route
+    Komoot["komoot"] --> Route
     FIT["fit"] --> Route
 
     Main --> VP

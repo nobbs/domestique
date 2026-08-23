@@ -492,8 +492,12 @@ An encoder change is adopted only once that check covers it. No personal route
 data belongs in repository fixtures.
 
 Komoot is a second, independent source integration against the same unofficial
-category of interface: a private account's own email and password, exchanged at
-runtime for a session token, with no OAuth machinery involved. It is unofficial
+category of interface, described here ahead of the configuration and
+composition-root work that will actually offer it to an operator: until that
+work lands, the purpose and scope above still hold, and a deployment mirrors
+VeloPlanner alone. The adapter reads a private account's own email and
+password, exchanged at runtime for a session token, with no OAuth machinery
+involved. It is unofficial
 because Komoot's OAuth2 partner interface is issued only under a partner
 contract and is not available to an individual operator; the unofficial and
 partner interfaces serve the same documented resource shapes, so only the
