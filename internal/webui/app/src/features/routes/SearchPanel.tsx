@@ -1,15 +1,17 @@
 /**
- * The one control on the entry page.
+ * The entry page's two ways of narrowing the library: by name and by what a
+ * route measures.
  *
- * At rest it is a pill saying how many routes there are. Typed into, it grows a
- * results column beneath itself; picking a result replaces that row with the
- * route's card, so the column never says the same route twice and nothing opens
- * beside anything else. The card's one button opens the route, which swaps this
- * panel for the route's own — there is no route page to leave for.
+ * At rest the pill says how many routes there are. Typed into, or filtered,
+ * it grows a results column beneath itself; picking a result replaces that
+ * row with the route's card, so the column never says the same route twice
+ * and nothing opens beside anything else. The card's one button opens the
+ * route, which swaps this panel for the route's own — there is no route page
+ * to leave for.
  *
- * Narrowing happens here in the browser, over the listing the page already
- * holds — see `lib/library.ts`. Nothing a reader types is sent to the service,
- * which keeps route names out of an access log.
+ * Both happen here in the browser, over the listing and geometry the page
+ * already holds — see `lib/library.ts` and `lib/filters.ts`. Nothing a reader
+ * types is sent to the service, which keeps route names out of an access log.
  */
 
 import { useEffect, useRef } from "react";
@@ -17,10 +19,13 @@ import type { Position, Route } from "../../api/types";
 import { routeKey } from "../../api/types";
 import { Button } from "../../components/Button";
 import { RouteGlyph } from "../../components/RouteGlyph";
+import type { LibraryFilters } from "../../lib/filters";
+import { hasActiveFilters } from "../../lib/filters";
 import { formatAscent, formatDistance, formatGradient } from "../../lib/format";
 import { gradientBand, gradientMix } from "../../lib/profile";
 import { providerLabel } from "../../lib/provider";
 import type { StageChange } from "../../lib/seenStages";
+import { FilterPanel } from "./FilterPanel";
 
 /** The geometry a row needs, when it has arrived. Rows render without it. */
 export interface RouteShape {
@@ -28,12 +33,16 @@ export interface RouteShape {
 }
 
 export interface SearchPanelProps {
-  /** What the search left, in the order it is read. */
+  /** What the search and the filters left, in the order it is read. */
   shown: Route[];
   /** The whole library, which is what the pill counts. */
   total: number;
   query: string;
   onQueryChange: (query: string) => void;
+  filters: LibraryFilters;
+  onFiltersChange: (filters: LibraryFilters) => void;
+  filtersExpanded: boolean;
+  onFiltersExpandedChange: (expanded: boolean) => void;
   /** The expanded route, by `routeKey`. */
   selectedKey: string | null;
   onSelect: (key: string | null) => void;
@@ -231,6 +240,10 @@ export function SearchPanel({
   total,
   query,
   onQueryChange,
+  filters,
+  onFiltersChange,
+  filtersExpanded,
+  onFiltersExpandedChange,
   selectedKey,
   onSelect,
   onOpen,
@@ -238,7 +251,10 @@ export function SearchPanel({
   readAt,
   changeOf,
 }: SearchPanelProps) {
-  const expanded = query.trim() !== "" || selectedKey !== null;
+  const filtersActive = hasActiveFilters(filters);
+  // A filter narrows the library exactly as a typed word does, so it opens the
+  // same results column and counts against the same total.
+  const expanded = query.trim() !== "" || selectedKey !== null || filtersActive;
 
   return (
     <div className="panel search">
@@ -258,14 +274,27 @@ export function SearchPanel({
          * until the library has been narrowed, because "47 of 47" is a sum with
          * no question behind it.
          */}
-        {query.trim() === "" ? null : (
+        {expanded ? (
           <span className="search__count">
             {shown.length} of {total}
           </span>
-        )}
+        ) : null}
       </div>
+      <FilterPanel
+        filters={filters}
+        onFiltersChange={onFiltersChange}
+        expanded={filtersExpanded}
+        onExpandedChange={onFiltersExpandedChange}
+      />
       {expanded && shown.length === 0 ? (
-        <p className="search__empty">Nothing here is called that.</p>
+        <p className="search__empty">
+          {/*
+           * A filter that excludes everything is not the same claim as a name
+           * nobody used: the reader typed nothing wrong, so the message must
+           * not imply they did.
+           */}
+          {filtersActive ? "Nothing here matches these filters." : "Nothing here is called that."}
+        </p>
       ) : null}
       {expanded && shown.length > 0 ? (
         <ul className="search__results">

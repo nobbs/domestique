@@ -24,7 +24,7 @@ import { useQueries, useQuery } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
 import { routeGeometryQuery, routesQuery, statusQuery, webUIConfigQuery } from "../../api/queries";
-import type { BoundingBox, Position, RouteGeometry } from "../../api/types";
+import type { BoundingBox, Position, RouteGeometry, SurfaceKind } from "../../api/types";
 import { routeKey } from "../../api/types";
 import { Layout } from "../../components/Layout";
 import { RouteOverlay, SURFACE_ATTRIBUTION } from "../../components/RouteOverlay";
@@ -33,6 +33,8 @@ import { Wordmark } from "../../components/Wordmark";
 import { basemapFor, useBasemapChoice, usePrefersDarkScheme } from "../../lib/basemap";
 import type { Climb } from "../../lib/climbs";
 import { findClimbs } from "../../lib/climbs";
+import type { LibraryFilters } from "../../lib/filters";
+import { EMPTY_FILTERS, matchesFilters } from "../../lib/filters";
 import { formatReadTime } from "../../lib/format";
 import type { Highlight } from "../../lib/highlight";
 import { matchingRoutes } from "../../lib/library";
@@ -159,6 +161,8 @@ export function RoutesPage() {
   const insets = useOverlayInsets();
 
   const [query, setQuery] = useState("");
+  const [filters, setFilters] = useState<LibraryFilters>(EMPTY_FILTERS);
+  const [filtersExpanded, setFiltersExpanded] = useState(false);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
 
   /*
@@ -172,7 +176,6 @@ export function RoutesPage() {
   const openKey = opened ? `${opened.provider}/${opened.routeId}/${opened.stageOrder}` : null;
 
   const library = useMemo(() => routes.data ?? [], [routes.data]);
-  const shown = useMemo(() => matchingRoutes(library, query), [library, query]);
 
   /*
    * One request per route, in parallel, and each of them cached for as long as
@@ -192,6 +195,10 @@ export function RoutesPage() {
       const lines: LibraryLine[] = [];
       const shapes = new Map<string, RouteShape>();
       const boxes = new Map<string, BoundingBox>();
+      // Ground classes actually present on each route, once its geometry has
+      // arrived and the enrichment pass has classified it — read from the same
+      // fetch the map already makes, not a second one for the filter's sake.
+      const surfaces = new Map<string, Set<SurfaceKind>>();
       library.forEach((route, index) => {
         const geometry = results[index]?.data;
         if (!geometry) {
@@ -202,9 +209,17 @@ export function RoutesPage() {
         lines.push({ key, coordinates });
         shapes.set(key, { coordinates });
         boxes.set(key, geometry.bbox);
+        const surface = geometry.surface;
+        const summary =
+          surface && surface.matchedMetres > 0
+            ? summariseSurface(coordinates, surface.ranges)
+            : null;
+        if (summary) {
+          surfaces.set(key, new Set(summary.shares.map((share) => share.kind)));
+        }
       });
 
-      return { lines, shapes, boxes };
+      return { lines, shapes, boxes, surfaces };
     },
     [library],
   );
@@ -216,10 +231,18 @@ export function RoutesPage() {
     combine,
   });
 
+  const shown = useMemo(
+    () =>
+      matchingRoutes(library, query).filter((route) =>
+        matchesFilters(route, filters, drawn.surfaces.get(routeKey(route))),
+      ),
+    [library, query, filters, drawn.surfaces],
+  );
+
   // The open route's geometry, which the library pass has already fetched under
   // exactly this key: asking for it by name is a read of the cache rather than
-  // a second request, and it is how the surface classification — which the
-  // library map has no use for — reaches the panel.
+  // a second request, and it is how the panel's own surface classification —
+  // richer than the filter's kind-only reading of the same fetch — reaches it.
   const openRoute = library.find((route) => routeKey(route) === openKey) ?? null;
   const openGeometry = useQuery({
     ...routeGeometryQuery(opened?.provider ?? "", opened?.routeId ?? 0, opened?.stageOrder ?? 0),
@@ -575,6 +598,15 @@ export function RoutesPage() {
             // expanded off the bottom of a column it is not in.
             setSelectedKey(null);
           }}
+          filters={filters}
+          onFiltersChange={(next) => {
+            setFilters(next);
+            // Same reasoning as a changed search: a filter that no longer holds
+            // the open route must not leave its card expanded regardless.
+            setSelectedKey(null);
+          }}
+          filtersExpanded={filtersExpanded}
+          onFiltersExpandedChange={setFiltersExpanded}
           selectedKey={selectedKey}
           onSelect={setSelectedKey}
           onOpen={open}

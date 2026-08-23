@@ -4,6 +4,7 @@ import { MemoryRouter } from "react-router";
 import { describe, expect, it, vi } from "vitest";
 import type { Position, Route } from "../../api/types";
 import { routeKey } from "../../api/types";
+import { EMPTY_FILTERS } from "../../lib/filters";
 import { SearchPanel, type SearchPanelProps } from "./SearchPanel";
 
 function route(overrides: Partial<Route> = {}): Route {
@@ -36,6 +37,10 @@ function renderPanel(overrides: Partial<SearchPanelProps> = {}) {
     total: 47,
     query: "",
     onQueryChange: () => {},
+    filters: EMPTY_FILTERS,
+    onFiltersChange: () => {},
+    filtersExpanded: false,
+    onFiltersExpandedChange: () => {},
     selectedKey: null,
     onSelect: () => {},
     onOpen: () => {},
