@@ -176,6 +176,7 @@ func newStageView(summary *route.Summary) stageView {
 		DistanceMetres:     summary.DistanceMetres,
 		AscentMetres:       summary.AscentMetres,
 		MaxGradientPercent: summary.MaxGradientPercent,
+		MovingSeconds:      summary.MovingSeconds,
 		PointCount:         summary.PointCount,
 	}
 }

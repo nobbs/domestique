@@ -108,11 +108,15 @@ type Bounds struct {
 // neither has to know the other's types, and it deliberately carries no
 // geometry.
 type Summary struct {
-	Provider           Provider
-	RouteName          string
-	StageName          string
+	// MovingSeconds is the predicted moving time from internal/ridemodel, nil
+	// when no coefficient file is configured, the stage has no usable
+	// elevation, or nothing has predicted this exact geometry yet.
+	MovingSeconds      *float64
 	SourceRevision     string
+	StageName          string
+	Provider           Provider
 	ContentHash        string
+	RouteName          string
 	Bounds             Bounds
 	DistanceMetres     float64
 	AscentMetres       float64

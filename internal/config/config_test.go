@@ -339,6 +339,25 @@ func TestLoadDefaultsToNoRegionsAndAWeeklyRebuild(t *testing.T) {
 	assert.Equal(t, defaultRebuildInterval, settings.Surface.RebuildInterval, "Surface.RebuildInterval")
 }
 
+func TestLoadDefaultsToNoRideModelCoefficients(t *testing.T) {
+	configPath, _ := writeValidConfiguration(t, t.TempDir())
+	t.Setenv(configFileEnv, configPath)
+
+	settings, err := Load()
+	require.NoError(t, err)
+	assert.Empty(t, settings.RideModel.CoefficientsFile, "ride model prediction is off until a coefficients file is named")
+}
+
+func TestLoadReadsTheRideModelCoefficientsFile(t *testing.T) {
+	configPath, _ := writeValidConfiguration(t, t.TempDir())
+	appendToFile(t, configPath, "\n[ridemodel]\ncoefficients_file = \"/etc/domestique/ridemodel.toml\"\n")
+	t.Setenv(configFileEnv, configPath)
+
+	settings, err := Load()
+	require.NoError(t, err)
+	assert.Equal(t, "/etc/domestique/ridemodel.toml", settings.RideModel.CoefficientsFile, "RideModel.CoefficientsFile")
+}
+
 func TestLoadDefaultsToPushoversOwnOrigin(t *testing.T) {
 	configPath, _ := writeValidConfiguration(t, t.TempDir())
 	t.Setenv(configFileEnv, configPath)
@@ -483,6 +502,30 @@ func TestValidateSurface(t *testing.T) {
 	}
 }
 
+func TestValidateRideModel(t *testing.T) {
+	tests := []struct {
+		name      string
+		rideModel rawRideModel
+		wantErr   bool
+	}{
+		{name: "no coefficients file at all"},
+		{name: "an absolute path", rideModel: rawRideModel{CoefficientsFile: "/etc/domestique/ridemodel.toml"}},
+		{name: "a relative path is rejected", rideModel: rawRideModel{CoefficientsFile: "ridemodel.toml"}, wantErr: true},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := validateRideModel(test.rideModel)
+			if test.wantErr {
+				require.Errorf(t, err, "validateRideModel(%v)", test.rideModel)
+
+				return
+			}
+			require.NoErrorf(t, err, "validateRideModel(%v)", test.rideModel)
+		})
+	}
+}
+
 func TestLoadDirectSecretWinsAndIsCleared(t *testing.T) {
 	configPath, _ := writeValidConfiguration(t, t.TempDir())
 	removeConfigurationLine(t, configPath, "email_file =")
@@ -546,6 +589,14 @@ func TestLoadRejectsInvalidConfiguration(t *testing.T) {
 				appendToFile(t, path, "\n[surface]\nregions = [\"../../etc/passwd\"]\n")
 			},
 			want: "surface.regions",
+		},
+		{
+			name: "a relative ride model coefficients file",
+			mutate: func(t *testing.T, path string) {
+				t.Helper()
+				appendToFile(t, path, "\n[ridemodel]\ncoefficients_file = \"ridemodel.toml\"\n")
+			},
+			want: "ridemodel.coefficients_file",
 		},
 		{
 			name: "plaintext notification origin",

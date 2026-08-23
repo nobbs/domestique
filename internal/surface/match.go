@@ -139,6 +139,22 @@ func Compress(kinds []Kind) []Range {
 	return ranges
 }
 
+// Expand is Compress's inverse: it restores one class per point from a set of
+// ranges, for a consumer that reads the cached wire form back and needs to
+// index it by point rather than by range. Positions outside every range —
+// which Compress never produces from a full Match, but a caller of Expand
+// should not have to assume — are KindUnknown.
+func Expand(ranges []Range, pointCount int) []Kind {
+	kinds := make([]Kind, pointCount)
+	for _, band := range ranges {
+		for index := band.StartIndex; index <= band.EndIndex && index < pointCount; index++ {
+			kinds[index] = band.Kind
+		}
+	}
+
+	return kinds
+}
+
 // MatchedMetres returns the stage length that snapped to a classified way. It is
 // the honest denominator for any share a caller wants to report: a stage that
 // matched a third of its length should not present its surface split as though

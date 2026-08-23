@@ -26,6 +26,7 @@ import (
 	"github.com/nobbs/domestique/internal/osmindex"
 	"github.com/nobbs/domestique/internal/pushover"
 	"github.com/nobbs/domestique/internal/readiness"
+	"github.com/nobbs/domestique/internal/ridemodel"
 	"github.com/nobbs/domestique/internal/route"
 	"github.com/nobbs/domestique/internal/schedule"
 	"github.com/nobbs/domestique/internal/sqlite"
@@ -145,7 +146,19 @@ func run(ctx context.Context) error {
 		}()
 		annotator = surface.NewAnnotator(surfaceIndex, store)
 	}
-	reconciler, err := syncservice.New(&syncservice.Options{TargetIDs: targetIDs, MaxDeletionsPerTarget: settings.Sync.MaxDeletionsPerTarget, AllowEmptySourceDeletion: settings.Sync.EmptySourceDeletion == config.EmptySourceDeletionAllow}, store, sources, elevation.New(), fit.New(), destination, annotator)
+
+	// Ride model prediction is equally optional. An operator who configures no
+	// coefficients file keeps every stage exactly as it is today: no rider
+	// figure is ever guessed, and no endpoint gains a field nobody asked for.
+	var predictor syncservice.Predictor
+	if settings.RideModel.CoefficientsFile != "" {
+		coefficients, coefficientsErr := ridemodel.Load(settings.RideModel.CoefficientsFile)
+		if coefficientsErr != nil {
+			return fmt.Errorf("loading ride model coefficients: %w", coefficientsErr)
+		}
+		predictor = ridemodel.NewPredictor(store, store, coefficients)
+	}
+	reconciler, err := syncservice.New(&syncservice.Options{TargetIDs: targetIDs, MaxDeletionsPerTarget: settings.Sync.MaxDeletionsPerTarget, AllowEmptySourceDeletion: settings.Sync.EmptySourceDeletion == config.EmptySourceDeletionAllow}, store, sources, elevation.New(), fit.New(), destination, annotator, predictor)
 	if err != nil {
 		return fmt.Errorf("creating sync service: %w", err)
 	}

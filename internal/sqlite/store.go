@@ -290,6 +290,7 @@ func (s *Store) ForEachStageSummary(ctx context.Context, visit func(summary rout
 			COALESCE(stage_geometry.distance_metres, 0),
 			COALESCE(stage_geometry.ascent_metres, 0),
 			COALESCE(stage_geometry.max_gradient_percent, 0),
+			stage_duration.moving_seconds,
 			COALESCE(stage_geometry.min_longitude, 0),
 			COALESCE(stage_geometry.min_latitude, 0),
 			COALESCE(stage_geometry.max_longitude, 0),
@@ -299,6 +300,11 @@ func (s *Store) ForEachStageSummary(ctx context.Context, visit func(summary rout
 			ON stage_geometry.provider = source_stages.provider
 			AND stage_geometry.route_id = source_stages.route_id
 			AND stage_geometry.stage_order = source_stages.stage_order
+		LEFT JOIN stage_duration
+			ON stage_duration.provider = source_stages.provider
+			AND stage_duration.route_id = source_stages.route_id
+			AND stage_duration.stage_order = source_stages.stage_order
+			AND stage_duration.content_hash = source_stages.content_hash
 		ORDER BY source_stages.provider, source_stages.route_id, source_stages.stage_order
 	`)
 	if err != nil {
@@ -307,14 +313,18 @@ func (s *Store) ForEachStageSummary(ctx context.Context, visit func(summary rout
 	defer closeRows(rows)
 	for rows.Next() {
 		var summary route.Summary
+		var movingSeconds sql.NullFloat64
 		if err := rows.Scan(
 			&summary.Provider, &summary.RouteID, &summary.StageOrder, &summary.SourceRevision, &summary.ContentHash,
 			&summary.RouteName, &summary.StageName, &summary.PointCount, &summary.DistanceMetres,
-			&summary.AscentMetres, &summary.MaxGradientPercent,
+			&summary.AscentMetres, &summary.MaxGradientPercent, &movingSeconds,
 			&summary.Bounds.MinLongitude, &summary.Bounds.MinLatitude,
 			&summary.Bounds.MaxLongitude, &summary.Bounds.MaxLatitude,
 		); err != nil {
 			return fmt.Errorf("reading stage summary: %w", err)
+		}
+		if movingSeconds.Valid {
+			summary.MovingSeconds = &movingSeconds.Float64
 		}
 		if err := visit(summary); err != nil {
 			return fmt.Errorf("visiting stage summary: %w", err)
@@ -338,6 +348,7 @@ func (s *Store) StageGeometry(
 ) (route.Summary, json.RawMessage, bool, error) {
 	var summary route.Summary
 	var coordinates []byte
+	var movingSeconds sql.NullFloat64
 	err := s.database.QueryRowContext(ctx, `
 		SELECT
 			stage_geometry.provider,
@@ -351,6 +362,7 @@ func (s *Store) StageGeometry(
 			stage_geometry.distance_metres,
 			stage_geometry.ascent_metres,
 			stage_geometry.max_gradient_percent,
+			stage_duration.moving_seconds,
 			stage_geometry.min_longitude,
 			stage_geometry.min_latitude,
 			stage_geometry.max_longitude,
@@ -361,11 +373,16 @@ func (s *Store) StageGeometry(
 			ON source_stages.provider = stage_geometry.provider
 			AND source_stages.route_id = stage_geometry.route_id
 			AND source_stages.stage_order = stage_geometry.stage_order
+		LEFT JOIN stage_duration
+			ON stage_duration.provider = stage_geometry.provider
+			AND stage_duration.route_id = stage_geometry.route_id
+			AND stage_duration.stage_order = stage_geometry.stage_order
+			AND stage_duration.content_hash = stage_geometry.content_hash
 		WHERE stage_geometry.provider = ? AND stage_geometry.route_id = ? AND stage_geometry.stage_order = ?
 	`, provider, routeID, stageOrder).Scan(
 		&summary.Provider, &summary.RouteID, &summary.StageOrder, &summary.SourceRevision, &summary.ContentHash,
 		&summary.RouteName, &summary.StageName, &summary.PointCount, &summary.DistanceMetres,
-		&summary.AscentMetres, &summary.MaxGradientPercent,
+		&summary.AscentMetres, &summary.MaxGradientPercent, &movingSeconds,
 		&summary.Bounds.MinLongitude, &summary.Bounds.MinLatitude,
 		&summary.Bounds.MaxLongitude, &summary.Bounds.MaxLatitude,
 		&coordinates,
@@ -375,6 +392,9 @@ func (s *Store) StageGeometry(
 	}
 	if err != nil {
 		return route.Summary{}, nil, false, fmt.Errorf("reading stage geometry: %w", err)
+	}
+	if movingSeconds.Valid {
+		summary.MovingSeconds = &movingSeconds.Float64
 	}
 
 	return summary, json.RawMessage(coordinates), true, nil
@@ -499,6 +519,87 @@ func pruneStageSurface(ctx context.Context, transaction *sql.Tx) error {
 		)
 	`); err != nil {
 		return fmt.Errorf("pruning stage surface: %w", err)
+	}
+
+	return nil
+}
+
+// StageDurationFingerprint returns what a stored prediction was computed
+// against: the stage's geometry, the surface classification generation it read,
+// and the coefficient file it was fitted from. All three have to match for a
+// cached row to still be an answer, on the same terms as StageSurfaceHash.
+func (s *Store) StageDurationFingerprint(
+	ctx context.Context,
+	provider route.Provider,
+	routeID int64,
+	stageOrder int,
+) (contentHash, surfaceGeneration, coefficientFingerprint string, found bool, err error) {
+	err = s.database.QueryRowContext(ctx, `
+		SELECT content_hash, surface_generation, coefficient_fingerprint
+		FROM stage_duration WHERE provider = ? AND route_id = ? AND stage_order = ?
+	`, provider, routeID, stageOrder).Scan(&contentHash, &surfaceGeneration, &coefficientFingerprint)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", "", "", false, nil
+	}
+	if err != nil {
+		return "", "", "", false, fmt.Errorf("reading stage duration fingerprint: %w", err)
+	}
+
+	return contentHash, surfaceGeneration, coefficientFingerprint, true, nil
+}
+
+// StoreStageDuration caches one stage's predicted moving time, or its absence,
+// against the geometry, surface generation, and coefficient fingerprint it was
+// computed from. A nil movingSeconds records that this exact combination was
+// asked and answered with no prediction — a stage with no usable elevation —
+// which is what stops it being asked again every run.
+func (s *Store) StoreStageDuration(
+	ctx context.Context,
+	provider route.Provider,
+	routeID int64,
+	stageOrder int,
+	contentHash, surfaceGeneration, coefficientFingerprint string,
+	movingSeconds *float64,
+	cumulativeSeconds []byte,
+) error {
+	if _, err := s.database.ExecContext(ctx, `
+		INSERT INTO stage_duration (
+			provider, route_id, stage_order, content_hash, surface_generation, coefficient_fingerprint,
+			moving_seconds, cumulative_seconds, updated_at_unix
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT (provider, route_id, stage_order) DO UPDATE SET
+			content_hash = excluded.content_hash,
+			surface_generation = excluded.surface_generation,
+			coefficient_fingerprint = excluded.coefficient_fingerprint,
+			moving_seconds = excluded.moving_seconds,
+			cumulative_seconds = excluded.cumulative_seconds,
+			updated_at_unix = excluded.updated_at_unix
+	`,
+		provider, routeID, stageOrder, contentHash, surfaceGeneration, coefficientFingerprint,
+		movingSeconds, cumulativeSeconds, time.Now().UTC().Unix(),
+	); err != nil {
+		return fmt.Errorf("storing stage duration: %w", err)
+	}
+
+	return nil
+}
+
+// pruneStageDuration drops predictions that no longer describe anything, on the
+// same terms as pruneStageSurface: a row measured against a geometry that has
+// since been re-planned addresses a stage that, as far as this row knows, no
+// longer exists.
+func pruneStageDuration(ctx context.Context, transaction *sql.Tx) error {
+	if _, err := transaction.ExecContext(ctx, `
+		DELETE FROM stage_duration
+		WHERE NOT EXISTS (
+			SELECT 1 FROM stage_geometry
+			WHERE stage_geometry.provider = stage_duration.provider
+			  AND stage_geometry.route_id = stage_duration.route_id
+			  AND stage_geometry.stage_order = stage_duration.stage_order
+			  AND stage_geometry.content_hash = stage_duration.content_hash
+		)
+	`); err != nil {
+		return fmt.Errorf("pruning stage duration: %w", err)
 	}
 
 	return nil
@@ -1103,6 +1204,9 @@ func (s *Store) StoreTrustedInventory(ctx context.Context, provider route.Provid
 		return err
 	}
 	if err := pruneStageSurface(ctx, transaction); err != nil {
+		return err
+	}
+	if err := pruneStageDuration(ctx, transaction); err != nil {
 		return err
 	}
 	if err := transaction.Commit(); err != nil {
@@ -2387,6 +2491,31 @@ func schemaMigrations() [][]string {
 			// The run id is monotonic and exact, and the rows it names are the
 			// same rows the digest totals.
 			`ALTER TABLE notification_state ADD COLUMN last_run_id INTEGER NOT NULL DEFAULT 0`,
+		},
+		{
+			// Predicted moving time from internal/ridemodel, in the manner of
+			// stage_surface: a fourth table rather than more columns on
+			// stage_geometry, because it is filled by a later pass reading the
+			// surface classification stage_surface itself holds, and because a
+			// re-fit against the same geometry must still invalidate it. That is
+			// what coefficient_fingerprint is for; surface_generation plays the
+			// same role stage_surface's own index_generation plays there.
+			//
+			// content_hash records the geometry the prediction was measured
+			// against; every read matches on it rather than trusting the row to
+			// be current, for the same reason stage_surface does.
+			`CREATE TABLE stage_duration (
+				provider                TEXT    NOT NULL,
+				route_id                INTEGER NOT NULL,
+				stage_order             INTEGER NOT NULL,
+				content_hash            TEXT    NOT NULL,
+				surface_generation      TEXT    NOT NULL,
+				coefficient_fingerprint TEXT    NOT NULL,
+				moving_seconds          REAL,
+				cumulative_seconds      BLOB,
+				updated_at_unix         INTEGER NOT NULL,
+				PRIMARY KEY (provider, route_id, stage_order)
+			)`,
 		},
 	}
 }

@@ -54,16 +54,24 @@ type targetRunView struct {
 }
 
 type stageView struct {
-	Provider string `json:"provider"`
+	// MovingSeconds is the predicted moving time from internal/ridemodel.
+	// Absent — never zero — when no coefficient file is configured, the stage
+	// has no usable elevation, or nothing has predicted this exact geometry
+	// yet: a rider figure the service never asked for must not manufacture a
+	// confident number.
+	//
 	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	RouteName string `json:"route_name"`
+	MovingSeconds *float64 `json:"moving_seconds,omitempty"`
+	Title         string   `json:"title"`
 	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
 	StageName string `json:"stage_name"`
-	Title     string `json:"title"`
+	Provider  string `json:"provider"`
 	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
 	SourceRevision string `json:"source_revision"`
 	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
 	ContentHash string `json:"content_hash"`
+	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
+	RouteName string `json:"route_name"`
 	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
 	DistanceMetres float64 `json:"distance_metres"`
 	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
