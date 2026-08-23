@@ -271,12 +271,14 @@ describe("the position tooltip", () => {
     }
 
     expect(
-      screen.getByText(`${formatDistance(active.distanceMetres)} from start`),
+      screen.getByText(`${formatDistance(active.distanceMetres, "metric")} from start`),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(`${formatDistance(profile.endMetres - active.distanceMetres)} to end`),
+      screen.getByText(
+        `${formatDistance(profile.endMetres - active.distanceMetres, "metric")} to end`,
+      ),
     ).toBeInTheDocument();
-    expect(screen.getByText(formatElevation(active.elevationMetres))).toBeInTheDocument();
+    expect(screen.getByText(formatElevation(active.elevationMetres, "metric"))).toBeInTheDocument();
     expect(screen.getByText(`${active.gradientPercent.toFixed(1)}%`)).toBeInTheDocument();
   });
 
@@ -372,7 +374,7 @@ describe("the position tooltip", () => {
 
     show({ activeMetres: ACTIVE_METRES, activeProfile: climbing });
 
-    expect(screen.getByText(formatElevation(active.elevationMetres))).toBeInTheDocument();
+    expect(screen.getByText(formatElevation(active.elevationMetres, "metric"))).toBeInTheDocument();
     expect(screen.getByText(`${active.gradientPercent.toFixed(1)}%`)).toBeInTheDocument();
   });
 
@@ -405,7 +407,9 @@ describe("the position tooltip", () => {
     show({ activeMetres: OUTSIDE_WINDOW_METRES, activeProfile: zoomed });
 
     expect(document.querySelector(".route-position-tooltip")).toBeInTheDocument();
-    expect(screen.getByText(formatElevation(wholeSample.elevationMetres))).toBeInTheDocument();
+    expect(
+      screen.getByText(formatElevation(wholeSample.elevationMetres, "metric")),
+    ).toBeInTheDocument();
   });
 
   /*

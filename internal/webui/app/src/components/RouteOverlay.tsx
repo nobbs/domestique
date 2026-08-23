@@ -33,6 +33,7 @@ import {
   surfaceKindAt,
   surfaceLinesWithin,
 } from "../lib/surface";
+import type { UnitSystem } from "../lib/units";
 import { useEscapeKey } from "../lib/useEscapeKey";
 
 /**
@@ -396,8 +397,8 @@ function tooltipOffset(anchor: TooltipAnchor): [number, number] {
  * ride, where zero metres to go is exactly the fact this line exists to
  * state.
  */
-function tooltipDistance(metres: number): string {
-  return metres > 0 ? formatDistance(metres) : "0 m";
+function tooltipDistance(metres: number, system: UnitSystem): string {
+  return metres > 0 ? formatDistance(metres, system) : system === "imperial" ? "0 ft" : "0 m";
 }
 
 /**
@@ -427,6 +428,7 @@ function PositionTooltip({
   endMetres,
   surfaceSummary,
   announce,
+  unitSystem,
 }: {
   /**
    * Where the marker sits: always the whole-route sample, the same one the
@@ -442,6 +444,7 @@ function PositionTooltip({
   endMetres: number;
   surfaceSummary: SurfaceSummary | null | undefined;
   announce: boolean;
+  unitSystem: UnitSystem;
 }) {
   const { current: map } = useMap();
   const boxRef = useRef<HTMLParagraphElement | null>(null);
@@ -513,9 +516,11 @@ function PositionTooltip({
         aria-hidden={announce ? undefined : true}
         aria-live={announce ? "polite" : undefined}
       >
-        <span>{tooltipDistance(content.distanceMetres)} from start</span>
-        <span>{tooltipDistance(Math.max(endMetres - content.distanceMetres, 0))} to end</span>
-        <span>{formatElevation(content.elevationMetres)}</span>
+        <span>{tooltipDistance(content.distanceMetres, unitSystem)} from start</span>
+        <span>
+          {tooltipDistance(Math.max(endMetres - content.distanceMetres, 0), unitSystem)} to end
+        </span>
+        <span>{formatElevation(content.elevationMetres, unitSystem)}</span>
         <span>{content.gradientPercent.toFixed(1)}%</span>
         {kind ? <span>{SURFACE_STYLES[kind].label}</span> : null}
       </p>
@@ -635,6 +640,8 @@ export interface RouteOverlayProps {
    * in on a climb and then asks for the gravel means the gravel on that climb.
    */
   highlight?: Highlight | null;
+  /** The units the tooltip and the route's own screen-reader summary report in. */
+  unitSystem?: UnitSystem;
 }
 
 export function RouteOverlay({
@@ -650,6 +657,7 @@ export function RouteOverlay({
   zoomWindow = null,
   onZoomChange,
   highlight = null,
+  unitSystem = "metric",
 }: RouteOverlayProps) {
   /**
    * The stretch being drawn on the route right now, which is not a window yet.
@@ -959,6 +967,7 @@ export function RouteOverlay({
           // it: the profile card is folded away, or — even open — a windowed
           // chart has no sample to announce for a hover outside its window.
           announce={profileCollapsed || windowedSample === null}
+          unitSystem={unitSystem}
         />
       ) : null}
       {/*
@@ -967,7 +976,7 @@ export function RouteOverlay({
        * visible — for a reader who is not looking at the canvas it is the whole
        * of what the cues say.
        */}
-      {cues ? <p className="visually-hidden">{cuesDescription(cues)}</p> : null}
+      {cues ? <p className="visually-hidden">{cuesDescription(cues, unitSystem)}</p> : null}
     </>
   );
 }

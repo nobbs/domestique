@@ -137,7 +137,7 @@ describe("the description a reader hears", () => {
   it("says where the ride goes when the ends are apart", () => {
     const cues = routeCues(eastward(21, 100));
 
-    expect(cues && cuesDescription(cues)).toBe(
+    expect(cues && cuesDescription(cues, "metric")).toBe(
       "Starts and finishes 2.0 km apart, the finish lying to the east. The ride leaves the start heading east.",
     );
   });
@@ -149,7 +149,7 @@ describe("the description a reader hears", () => {
     const cues = routeCues(wandering);
 
     expect(cues?.lengthMetres).toBeCloseTo(6000, -2);
-    expect(cues && cuesDescription(cues)).toBe(
+    expect(cues && cuesDescription(cues, "metric")).toBe(
       "Starts and finishes 2.0 km apart, the finish lying to the north. The ride leaves the start heading east.",
     );
   });
@@ -157,8 +157,16 @@ describe("the description a reader hears", () => {
   it("says plainly that a loop comes back to where it started", () => {
     const cues = routeCues(square(2000));
 
-    expect(cues && cuesDescription(cues)).toBe(
+    expect(cues && cuesDescription(cues, "metric")).toBe(
       "Starts and finishes in the same place. The ride leaves the start heading east and returns from the north, 8.0 km later.",
+    );
+  });
+
+  it("says the same thing in miles for the imperial system", () => {
+    const cues = routeCues(square(2000));
+
+    expect(cues && cuesDescription(cues, "imperial")).toBe(
+      "Starts and finishes in the same place. The ride leaves the start heading east and returns from the north, 5.0 mi later.",
     );
   });
 });

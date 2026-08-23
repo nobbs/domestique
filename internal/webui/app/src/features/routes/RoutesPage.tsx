@@ -52,6 +52,7 @@ import { widened } from "../../lib/selection";
 import { summariseSurface } from "../../lib/surface";
 import type { ThemeChoice } from "../../lib/theme";
 import { resolvesDark } from "../../lib/theme";
+import { useUnitSystem } from "../../lib/units";
 import { useEscapeKey } from "../../lib/useEscapeKey";
 import type { LibraryLine } from "./LibraryMap";
 import { LibraryMap } from "./LibraryMap";
@@ -168,6 +169,7 @@ export function RoutesPage({ themeChoice, onThemeChoiceChange }: RoutesPageProps
    * map is handed a style rather than a choice.
    */
   const [basemapChoice, chooseBasemap] = useBasemapChoice();
+  const [unitSystem, chooseUnitSystem] = useUnitSystem();
   const { changeOf, markSeen } = useSeenStages();
   // What the panels are standing on, so the camera frames a route in the part
   // of the map the reader can actually see.
@@ -501,6 +503,8 @@ export function RoutesPage({ themeChoice, onThemeChoiceChange }: RoutesPageProps
             onBasemapChange={chooseBasemap}
             themeChoice={themeChoice}
             onThemeChoiceChange={onThemeChoiceChange}
+            unitSystem={unitSystem}
+            onUnitSystemChange={chooseUnitSystem}
             lines={drawn.lines}
             selectedKey={focusKey}
             bounds={bounds}
@@ -524,6 +528,7 @@ export function RoutesPage({ themeChoice, onThemeChoiceChange }: RoutesPageProps
                   zoomWindow={shownWindow}
                   onZoomChange={onZoomChange}
                   highlight={highlight}
+                  unitSystem={unitSystem}
                 />
               ) : null
             }
@@ -587,6 +592,7 @@ export function RoutesPage({ themeChoice, onThemeChoiceChange }: RoutesPageProps
               highlight={highlight}
               collapsed={chartCollapsed}
               onCollapsedChange={setChartCollapsed}
+              unitSystem={unitSystem}
             />
           }
           highestMetres={routeProfile ? routeProfile.maxElevationMetres : null}
@@ -605,6 +611,7 @@ export function RoutesPage({ themeChoice, onThemeChoiceChange }: RoutesPageProps
           libraryCount={library.length}
           onClose={close}
           sourceBaseUrls={config.data?.sourceBaseUrls ?? {}}
+          unitSystem={unitSystem}
         />
       ) : library.length > 0 ? (
         <SearchPanel
@@ -632,6 +639,7 @@ export function RoutesPage({ themeChoice, onThemeChoiceChange }: RoutesPageProps
           shapes={drawn.shapes}
           readAt={readAt ? formatReadTime(readAt) : null}
           changeOf={changeOf}
+          unitSystem={unitSystem}
         />
       ) : null}
     </Layout>

@@ -48,6 +48,7 @@ function show(props: Partial<React.ComponentProps<typeof RouteProfile>> = {}) {
       highlight={null}
       collapsed={false}
       onCollapsedChange={onCollapsedChange}
+      unitSystem="metric"
       {...props}
     />,
   );
@@ -93,6 +94,12 @@ describe("RouteProfile", () => {
     show({ zoomWindow: { startMetres: 500, endMetres: 2900 } });
 
     expect(summary()).toBe("0.5–2.9 km shown · Escape returns");
+  });
+
+  it("reports the same figures in feet and miles for the imperial system", () => {
+    show({ unitSystem: "imperial", zoomWindow: { startMetres: 500, endMetres: 2900 } });
+
+    expect(summary()).toBe("0.3–1.8 mi shown · Escape returns");
   });
 
   // Nothing to plot is not the same as a plot with nothing in it: a route the

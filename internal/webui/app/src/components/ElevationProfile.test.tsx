@@ -95,9 +95,11 @@ function Harness({
 function ZoomHarness({
   surface = null,
   onZoom,
+  unitSystem = "metric",
 }: {
   surface?: SurfaceSummary | null;
   onZoom?: (window: DistanceWindow | null) => void;
+  unitSystem?: "metric" | "imperial";
 }) {
   const coordinates = useMemo(() => climb(), []);
   const [activeMetres, setActiveMetres] = useState<number | null>(null);
@@ -117,6 +119,7 @@ function ZoomHarness({
         setZoomWindow(next);
         setActiveMetres(null);
       }}
+      unitSystem={unitSystem}
     />
   );
 }
@@ -262,6 +265,37 @@ describe("ElevationProfile", () => {
 
     // 100 m to 295 m over the generated climb.
     expect(screen.getByText(/100–295 m/)).toBeInTheDocument();
+  });
+
+  it("reports the same range in feet for the imperial system", () => {
+    render(
+      <ElevationProfile
+        profile={buildProfile(climb())}
+        title="Eich Rundkurs 90"
+        activeMetres={null}
+        onActiveChange={() => {}}
+        unitSystem="imperial"
+      />,
+    );
+
+    // 100 m to 295 m converts to 328 ft and 968 ft.
+    expect(screen.getByText(/328–968 ft/)).toBeInTheDocument();
+  });
+
+  it("says the summary in miles and feet for the imperial system", () => {
+    render(
+      <ElevationProfile
+        profile={buildProfile(climb())}
+        title="Eich Rundkurs 90"
+        activeMetres={null}
+        onActiveChange={() => {}}
+        unitSystem="imperial"
+      />,
+    );
+
+    const figure = screen.getByRole("img", { name: /Eich Rundkurs 90/ });
+    expect(figure).toHaveAccessibleName(/miles/);
+    expect(figure).toHaveAccessibleName(/feet above sea level/);
   });
 });
 
@@ -493,6 +527,28 @@ describe("ElevationProfile zooming", () => {
     expect(screen.getByRole("slider")).toHaveAccessibleName(shown);
     expect(screen.getByRole("img")).toHaveAccessibleName(shown);
     expect(Number(screen.getByRole("slider").getAttribute("aria-valuemin"))).toBeCloseTo(0.5, 5);
+  });
+
+  /*
+   * A mile is coarse enough that a fixed tenth can hold still for a couple of
+   * hundred metres of drag — the same adaptive precision the axis labels use
+   * has to carry `aria-valuenow` too, or a fine zoom in imperial announces the
+   * same position for every step a reader takes.
+   */
+  it("keeps enough precision in imperial for a fine zoom's positions to read apart", async () => {
+    const user = userEvent.setup();
+    render(<ZoomHarness unitSystem="imperial" />);
+
+    await dragAcross(user, measured(screen.getByRole("slider")), 20, 40);
+
+    const scrub = screen.getByRole("slider");
+    scrub.focus();
+    fireEvent.keyDown(scrub, { key: "ArrowRight" });
+    const first = scrub.getAttribute("aria-valuenow");
+    fireEvent.keyDown(scrub, { key: "ArrowRight" });
+    const second = scrub.getAttribute("aria-valuenow");
+
+    expect(first).not.toBe(second);
   });
 
   it("returns to the whole route when the way back is taken", async () => {

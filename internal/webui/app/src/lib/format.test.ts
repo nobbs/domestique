@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  formatAscent,
   formatCount,
   formatDistance,
   formatElevation,
+  formatGradient,
   formatReadTime,
   formatTimestamp,
 } from "./format";
@@ -16,8 +18,27 @@ describe("formatDistance", () => {
     [1500, "1.5 km"],
     [42_500, "42.5 km"],
     [180_400, "180 km"],
-  ])("formats %p as %p", (metres, expected) => {
-    expect(formatDistance(metres)).toBe(expected);
+  ])("formats %p as %p in metric", (metres, expected) => {
+    expect(formatDistance(metres, "metric")).toBe(expected);
+  });
+
+  it.each([
+    [0, "—"],
+    [-5, "—"],
+    [Number.NaN, "—"],
+    [420, "1378 ft"],
+    [1609.344, "1.0 mi"],
+    [42_500, "26.4 mi"],
+    [290_000, "180 mi"],
+  ])("formats %p as %p in imperial", (metres, expected) => {
+    expect(formatDistance(metres, "imperial")).toBe(expected);
+  });
+
+  // A metre count whose feet fall just short of 5280 but round up to it must
+  // not print "5280 ft" — the cutover is judged on the rounded value, the same
+  // one the string prints, so the two can never disagree.
+  it("crosses over to miles once the rounded foot count reaches the mile, not before", () => {
+    expect(formatDistance(1609.2, "imperial")).toBe("1.0 mi");
   });
 });
 
@@ -89,12 +110,43 @@ describe("formatElevation", () => {
     [-4, "-4 m"],
     [960.4, "960 m"],
     [960.6, "961 m"],
-  ])("formats %p as %p", (metres, expected) => {
-    expect(formatElevation(metres)).toBe(expected);
+  ])("formats %p as %p in metric", (metres, expected) => {
+    expect(formatElevation(metres, "metric")).toBe(expected);
+  });
+
+  it("formats a height in feet for the imperial system", () => {
+    expect(formatElevation(960.4, "imperial")).toBe("3,151 ft");
   });
 
   it("says nothing rather than NaN for a height it does not have", () => {
-    expect(formatElevation(Number.NaN)).toBe("—");
-    expect(formatElevation(Number.POSITIVE_INFINITY)).toBe("—");
+    expect(formatElevation(Number.NaN, "metric")).toBe("—");
+    expect(formatElevation(Number.POSITIVE_INFINITY, "metric")).toBe("—");
+  });
+});
+
+describe("formatAscent", () => {
+  it("says nothing for a route with no usable elevation profile", () => {
+    expect(formatAscent(0, "metric")).toBe("—");
+    expect(formatAscent(-4, "metric")).toBe("—");
+  });
+
+  it("reports total climbing in metres for the metric system", () => {
+    expect(formatAscent(2730, "metric")).toBe("2,730 m");
+  });
+
+  it("reports total climbing in feet for the imperial system", () => {
+    expect(formatAscent(2730, "imperial")).toBe("8,957 ft");
+  });
+});
+
+describe("formatGradient", () => {
+  it("says nothing for a gradient too shallow to claim as one", () => {
+    expect(formatGradient(0.5)).toBe("—");
+    expect(formatGradient(Number.NaN)).toBe("—");
+  });
+
+  it("holds a decimal place under ten percent and drops it at ten and above", () => {
+    expect(formatGradient(9.2)).toBe("9.2%");
+    expect(formatGradient(11.6)).toBe("12%");
   });
 });
