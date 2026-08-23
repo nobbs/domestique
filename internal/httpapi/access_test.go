@@ -248,6 +248,18 @@ func TestNewRequiresAccessConfiguration(t *testing.T) {
 	}
 }
 
+// A handler with nowhere to ask a forecast could not serve GET /v1/weather.
+func TestNewRequiresAWeatherProvider(t *testing.T) {
+	_, err := New(&Options{
+		TargetIDs:        []string{"rider-a"},
+		Basemaps:         testBasemaps(),
+		AccessVerifier:   &recordingVerifier{email: testAccessEmail},
+		AccessEmail:      testAccessEmail,
+		BrowserOriginURL: testBrowserOriginURL,
+	}, &fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, nil)
+	require.Error(t, err, "New() accepted a nil weather provider")
+}
+
 // Health stays reachable without any identity, because Docker probes it over
 // loopback.
 func TestHealthRemainsUngated(t *testing.T) {
