@@ -285,6 +285,17 @@ run = "./dev/demo.sh"
 description = "Turn a Strava bulk export into a ride sample corpus"
 run = "go run ./dev/ridemodel"
 
+# Fits drag area, rolling resistance and sustained power from the corpus
+# dev/ridemodel emits (#215). Never built into the image — see dev/fitter —
+# and always outside quick and check for the same reason ridemodel is: it
+# needs a real corpus only the operator has, and its own unit suite runs
+# entirely on in-module synthetic fixtures. Mass is required and has no
+# default; pass it and the corpus directory with
+# `mise run fitter -- -corpus .local/ridemodel -mass-kg 90 -out .local/fitter`.
+[fitter]
+description = "Fit drag area, rolling resistance and sustained power from the ride corpus"
+run = "go run ./dev/fitter"
+
 # The only thing that installs node_modules. It declares the lockfile as its
 # source and the state file pnpm writes beside the installed tree as its output,
 # so it reinstalls when a dependency changes or the tree is gone, and costs a few
