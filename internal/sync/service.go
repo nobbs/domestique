@@ -150,10 +150,16 @@ type Processor interface {
 type Target interface {
 	RefreshAccessToken(ctx context.Context, refreshToken string) (accessToken, replacementRefreshToken string, err error)
 	// ListOwnedRoutes returns every route the target holds that carries an
-	// external ID, keyed by it. Reconciliation asks once per run and answers
-	// every stage from the result, so an unchanged library costs one request
-	// per target rather than one per stage.
+	// external ID this service issued, keyed by it. Reconciliation asks once
+	// per run and answers every stage from the result, so an unchanged library
+	// costs one request per target rather than one per stage.
 	ListOwnedRoutes(ctx context.Context, accessToken string) (map[string]int64, error)
+	// DeleteOwnedRoutes removes every route the target holds that this service
+	// issued the external ID for, and reports how many it removed. Only
+	// clearing a target uses it. It owns its own pacing, because a clear is
+	// finished only when the target is empty and may have to wait out a spent
+	// request quota to get there.
+	DeleteOwnedRoutes(ctx context.Context, accessToken string) (int, error)
 	CreateRoute(ctx context.Context, accessToken string, stage *route.Stage, fitData []byte) (routeID int64, err error)
 	UpdateRoute(ctx context.Context, routeID int64, accessToken string, stage *route.Stage, fitData []byte) (updatedRouteID int64, err error)
 	DeleteRoute(ctx context.Context, routeID int64, accessToken string) error
@@ -473,6 +479,92 @@ func (s *Service) RunTarget(ctx context.Context, targetID string) Result {
 		Deleted:      targetCounts.deleted,
 		Targets:      []TargetResult{{ID: targetID, Outcome: targetOutcome(failure), Failure: failure}},
 	}
+}
+
+// ClearTarget deletes every route this service owns from one configured
+// target, and forgets its stage mappings, leaving the slot as though it had
+// never been written to. The next reconciliation rebuilds it from stored
+// source state.
+//
+// It is the one deletion path the per-run deletion limit does not apply to,
+// and that is deliberate. The limit exists so an *unattended* run cannot act
+// on a bad inventory; this runs only when an operator asks for it directly,
+// having already been told what it will do. For the same reason nothing
+// schedules it: it is reachable from a manual trigger alone.
+//
+// What it may not do is unchanged. It deletes only routes carrying an external
+// ID this service issued, so a hand-made route in the same account is as
+// untouchable here as anywhere else — the ownership rule is the reason this
+// can exist at all, not an exception to it.
+//
+// It leaves the library alone: source stages, their geometry, and the trusted
+// inventory are untouched, because clearing a destination is not forgetting
+// what should be on it.
+func (s *Service) ClearTarget(ctx context.Context, targetID string) Result {
+	if !slices.Contains(s.targetIDs, targetID) {
+		return Result{Phase: PhaseTargets, Outcome: OutcomeSkipped}
+	}
+	if !s.running.CompareAndSwap(false, true) {
+		return Result{Phase: PhaseTargets, Outcome: OutcomeSkipped}
+	}
+	defer s.running.Store(false)
+
+	authorization, err := s.state.TargetAuthorization(ctx, targetID)
+	if err != nil {
+		return Result{Phase: PhaseTargets, Outcome: OutcomeFailed, Failure: FailureState}
+	}
+	if authorization != authorizedState {
+		return Result{Phase: PhaseTargets, Outcome: OutcomeNotReady}
+	}
+
+	deleted, failure := s.clearTarget(ctx, targetID)
+
+	return Result{
+		Phase:   PhaseTargets,
+		Outcome: targetOutcome(failure),
+		Failure: failure,
+		Deleted: deleted,
+		Targets: []TargetResult{{ID: targetID, Outcome: targetOutcome(failure), Failure: failure}},
+	}
+}
+
+// clearTarget removes the remote routes first and the local record of them
+// second. That order is what makes an interrupted clear safe to repeat: a
+// mapping still present for an already-deleted route is re-cleared harmlessly,
+// where the reverse would strand routes nothing remembers owning.
+func (s *Service) clearTarget(ctx context.Context, targetID string) (int, FailureCategory) {
+	refreshToken, refreshErr := s.state.RefreshToken(ctx, targetID)
+	if refreshErr != nil {
+		return 0, FailureState
+	}
+	accessToken, replacementRefreshToken, refreshErr := s.target.RefreshAccessToken(ctx, refreshToken)
+	if refreshErr != nil {
+		return 0, s.handleTargetError(ctx, targetID, refreshErr)
+	}
+	if replaceErr := s.state.ReplaceRefreshToken(ctx, targetID, replacementRefreshToken); replaceErr != nil {
+		return 0, FailureState
+	}
+
+	mappings, mappingsErr := s.targetStages(ctx, targetID)
+	if mappingsErr != nil {
+		return 0, FailureState
+	}
+
+	// The count is real even when this fails: those routes are gone, and
+	// repeating the clear continues from what is left rather than starting
+	// over. The mappings below are forgotten only on a clean sweep.
+	deleted, deleteErr := s.target.DeleteOwnedRoutes(ctx, accessToken)
+	if deleteErr != nil {
+		return deleted, s.handleTargetError(ctx, targetID, deleteErr)
+	}
+
+	for key := range mappings {
+		if err := s.state.DeleteTargetStage(ctx, targetID, key.Provider(), key.RouteID(), key.StageOrder()); err != nil {
+			return deleted, FailureState
+		}
+	}
+
+	return deleted, FailureNone
 }
 
 // targetOutcome states one slot's reconciliation in the same vocabulary a run

@@ -329,6 +329,14 @@ require the browser origin described above, and answer 403 without it.
 - `POST /v1/sync/targets/{target}` reconciles exactly one configured target
   slot, on the same terms as `POST /v1/sync/targets` scoped to that slot alone.
   `{target}` must name a configured slot, or the request is refused as `404`.
+- `POST /v1/targets/{target}/clear` deletes every route this service owns from
+  exactly one configured slot and forgets that slot's stage mappings. It is the
+  one deletion the per-target deletion limit does not bound, and is reachable
+  only this way — nothing schedules it. It still deletes only routes carrying
+  an external ID this service issued, and leaves the stored library untouched,
+  so the next reconciliation rebuilds the target. It returns `202 Accepted`,
+  `404` for a slot that is not configured, or `409 Conflict` while any run is
+  under way.
 - `PUT /v1/sync/schedule` sets both switches, and answers with the state it
   stored. A body that names only one switch is refused: the other would be left
   at whatever the caller assumed it was.

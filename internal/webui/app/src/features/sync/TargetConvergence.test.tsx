@@ -275,6 +275,73 @@ describe("TargetConvergence", () => {
     expect(fetchMock.mock.calls.some((call) => call[0] === "/v1/sync/targets/rider-a")).toBe(false);
   });
 
+  // Deleting everything an account holds must not be one click away, and the
+  // one thing a stray click cannot produce is the account's own name.
+  it("will not delete an account's routes until its name is typed", async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        return new Response(JSON.stringify({ status: "accepted" }), { status: 202 });
+      }
+
+      return new Response(JSON.stringify(status(true, [target()])), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderConvergence(status(true, [target()]));
+
+    await userEvent.click(screen.getByRole("button", { name: "Delete all routes…" }));
+
+    const confirm = screen.getByRole("button", {
+      name: "Delete every Domestique route from rider-a",
+    });
+    expect(confirm).toBeDisabled();
+
+    // The wrong name is not enough, however plausible it looks.
+    await userEvent.type(screen.getByLabelText(/Type/), "rider-b");
+    expect(confirm).toBeDisabled();
+
+    await userEvent.clear(screen.getByLabelText(/Type/));
+    await userEvent.type(screen.getByLabelText(/Type/), "rider-a");
+    expect(confirm).toBeEnabled();
+
+    await userEvent.click(confirm);
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some((call) => call[0] === "/v1/targets/rider-a/clear")).toBe(
+        true,
+      ),
+    );
+  });
+
+  it("says what clearing an account will and will not touch", async () => {
+    renderConvergence(status(true, [target()]));
+
+    await userEvent.click(screen.getByRole("button", { name: "Delete all routes…" }));
+
+    // Both halves matter: what goes, and what is left alone. An operator
+    // reaching for this is already worried about the second.
+    expect(screen.getByText(/Routes you made\s+yourself are left alone/)).toBeInTheDocument();
+    expect(screen.getByText(/the next sync puts these back/)).toBeInTheDocument();
+  });
+
+  it("abandons a clear that is cancelled", async () => {
+    const fetchMock = vi.fn(
+      async (_input: RequestInfo | URL, _init?: RequestInit) =>
+        new Response(JSON.stringify(status(true, [target()])), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    renderConvergence(status(true, [target()]));
+
+    await userEvent.click(screen.getByRole("button", { name: "Delete all routes…" }));
+    await userEvent.type(screen.getByLabelText(/Type/), "rider-a");
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    expect(screen.getByRole("button", { name: "Delete all routes…" })).toBeInTheDocument();
+    expect(fetchMock.mock.calls.some((call) => String(call[0]).includes("/clear"))).toBe(false);
+
+    // Reopening starts from empty rather than from what was typed before.
+    await userEvent.click(screen.getByRole("button", { name: "Delete all routes…" }));
+    expect(screen.getByLabelText(/Type/)).toHaveValue("");
+  });
+
   // A refused reconciliation is worth showing: the operator pressed something
   // and nothing happened.
   it("reports a rejected reconciliation", async () => {

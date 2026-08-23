@@ -399,6 +399,48 @@ fails. Per-target stage mappings change only after their corresponding remote
 operation succeeds. This permits a later run to complete only the lagging
 target without replaying destructive work.
 
+### Clearing a target
+
+An operator may clear one target: delete every route this service owns there
+and forget that slot's stage mappings, leaving it as though it had never been
+written to. It exists because a target can end up in a state not worth
+reconciling one route at a time, and repairing that by hand is worse than
+rebuilding it.
+
+It is the only deletion the per-target deletion limit does not bound. That
+limit exists so an unattended run cannot act on a bad inventory; a clear is an
+operator saying, about one named slot, that all of it should go. For the same
+reason nothing schedules it, and it is reachable only from an explicit manual
+request naming that slot.
+
+What it may not do is unchanged:
+
+- it deletes only routes carrying an external ID this service issued, so a
+  route created by hand in the same account is invisible to it;
+- it touches one slot; another target's routes and mappings are unaffected;
+- it leaves the library alone — source stages, their geometry, and the trusted
+  inventory are untouched, so the next reconciliation rebuilds the target from
+  stored state rather than from a fresh read; and
+- it removes the remote routes before forgetting the local record of them, so a
+  clear interrupted partway is safe to repeat: a mapping still naming an
+  already-deleted route is re-cleared harmlessly, where the reverse would
+  strand routes nothing remembers owning.
+
+Unlike a scheduled run, a clear waits out a spent request quota rather than
+ending and resuming later. A run the schedule started can afford to stop and
+continue on its next pass; a clear was asked for once and is finished only when
+the target is empty, so stopping partway would leave an operator pressing the
+same destructive control until the count reached zero. On a small quota it may
+therefore take many minutes and several refills. The count it reports is real
+even when it ends early: those routes are gone, and repeating it continues from
+what is left.
+
+It shares the single-flight guard with every other run, so it can neither race
+a synchronization nor be started while one is under way — which also means a
+long clear holds off the scheduled runs behind it until it finishes. It is
+recorded and notified as its own run, so a cleared target appears in history as
+the deletion it was rather than as an unexplained drop.
+
 ## Deletion gates
 
 A target deletion is permitted only when all conditions hold:

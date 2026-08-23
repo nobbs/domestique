@@ -79,6 +79,10 @@ type Sync interface {
 	// TriggerTarget starts a manual reconciliation of exactly one configured
 	// target, on the same terms as Trigger scoped to that slot alone.
 	TriggerTarget(targetID string) bool
+	// TriggerClear starts a manual clear of exactly one configured target,
+	// deleting every route this service owns there. It is destructive, and
+	// reachable only because an operator asked for it directly.
+	TriggerClear(targetID string) bool
 	// Activity reports the run that has not finished, if there is one.
 	Activity() SyncActivityState
 	// TriggerAnnotate starts one manual surface-classification pass and reports
@@ -112,6 +116,7 @@ type SyncActivityState struct {
 type SyncFuncs struct {
 	TriggerFunc           func(phase SyncPhase) bool
 	TriggerTargetFunc     func(targetID string) bool
+	TriggerClearFunc      func(targetID string) bool
 	ActivityFunc          func() SyncActivityState
 	TriggerAnnotateFunc   func() bool
 	SurfaceIncompleteFunc func() int
@@ -125,6 +130,18 @@ func (f SyncFuncs) Trigger(phase SyncPhase) bool {
 // TriggerTarget starts the adapted manual single-target reconciliation.
 func (f SyncFuncs) TriggerTarget(targetID string) bool {
 	return f.TriggerTargetFunc(targetID)
+}
+
+// TriggerClear starts the adapted manual single-target clear. An unset
+// TriggerClearFunc refuses, so a wiring that never offered the operation
+// answers as though it were already busy rather than panicking on a route
+// nothing serves.
+func (f SyncFuncs) TriggerClear(targetID string) bool {
+	if f.TriggerClearFunc == nil {
+		return false
+	}
+
+	return f.TriggerClearFunc(targetID)
 }
 
 // Activity reports the adapted process state.
@@ -456,6 +473,7 @@ func (h *Handler) routes() {
 	h.mux.Handle("POST /v1/sync/source", h.gated(h.sameOrigin(h.syncSource)))
 	h.mux.Handle("POST /v1/sync/targets", h.gated(h.sameOrigin(h.syncTargets)))
 	h.mux.Handle("POST /v1/sync/targets/{target}", h.gated(h.sameOrigin(h.syncTarget)))
+	h.mux.Handle("POST /v1/targets/{target}/clear", h.gated(h.sameOrigin(h.clearTarget)))
 	h.mux.Handle("POST /v1/sync/surface", h.gated(h.sameOrigin(h.syncSurface)))
 	h.mux.Handle("PUT /v1/sync/schedule", h.gated(h.sameOrigin(h.setSyncSchedule)))
 	h.mux.Handle("GET /v1/sync/runs", h.gated(h.syncHistory))
