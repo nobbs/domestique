@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { EMPTY_FILTERS, type LibraryFilters } from "../../lib/filters";
 import { FilterPanel } from "./FilterPanel";
@@ -14,6 +15,37 @@ function renderPanel(overrides: Partial<React.ComponentProps<typeof FilterPanel>
   };
 
   return render(<FilterPanel {...props} />);
+}
+
+/**
+ * `FilterPanel` is a controlled component: a bound's displayed text is
+ * resynced from `filters` whenever that prop no longer matches the field's
+ * own last edit, which is what lets an external change — Clear filters —
+ * update the field. A caller that never feeds an edit back, as a bare
+ * `vi.fn()` does not, looks exactly like that external case on every
+ * keystroke and wipes what was just typed. Tests that check what a field
+ * displays render this real, state-holding wrapper instead.
+ */
+function ControlledFilterPanel({
+  initial = EMPTY_FILTERS,
+  onFiltersChange,
+}: {
+  initial?: LibraryFilters;
+  onFiltersChange?: (next: LibraryFilters) => void;
+}) {
+  const [filters, setFilters] = useState(initial);
+
+  return (
+    <FilterPanel
+      filters={filters}
+      onFiltersChange={(next) => {
+        setFilters(next);
+        onFiltersChange?.(next);
+      }}
+      expanded={true}
+      onExpandedChange={() => {}}
+    />
+  );
 }
 
 describe("FilterPanel", () => {
@@ -53,6 +85,50 @@ describe("FilterPanel", () => {
       ...EMPTY_FILTERS,
       distanceMetres: { min: 1000, max: null },
     });
+  });
+
+  // A field driven straight from the stored, parsed number fights whatever
+  // was just typed: "1." parses the same as "1", so a value re-derived from
+  // it drops the point before a second digit can follow — this is the
+  // regression that made a fraction impossible to type at all.
+  it("keeps a decimal point in place while more digits follow it", async () => {
+    const onFiltersChange = vi.fn();
+    render(<ControlledFilterPanel onFiltersChange={onFiltersChange} />);
+
+    const [distanceMin] = screen.getAllByLabelText("Min");
+    await userEvent.type(distanceMin as HTMLElement, "1.5");
+
+    expect(distanceMin).toHaveValue("1.5");
+    expect(onFiltersChange).toHaveBeenLastCalledWith({
+      ...EMPTY_FILTERS,
+      distanceMetres: { min: 1500, max: null },
+    });
+  });
+
+  it("treats text that is not a number as leaving the bound unset", async () => {
+    const onFiltersChange = vi.fn();
+    render(<ControlledFilterPanel onFiltersChange={onFiltersChange} />);
+
+    const [distanceMin] = screen.getAllByLabelText("Min");
+    await userEvent.type(distanceMin as HTMLElement, "abc");
+
+    expect(distanceMin).toHaveValue("abc");
+    expect(onFiltersChange).toHaveBeenLastCalledWith(EMPTY_FILTERS);
+  });
+
+  it("resyncs a field's text when its value changes from outside, such as Clear filters", async () => {
+    render(
+      <ControlledFilterPanel
+        initial={{ ...EMPTY_FILTERS, ascentMetres: { min: 500, max: null } }}
+      />,
+    );
+
+    const ascentMin = screen.getAllByLabelText("Min")[1] as HTMLElement;
+    expect(ascentMin).toHaveValue("500");
+
+    await userEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+
+    expect(ascentMin).toHaveValue("");
   });
 
   it("leaves a bound unbounded again when the field is cleared", async () => {

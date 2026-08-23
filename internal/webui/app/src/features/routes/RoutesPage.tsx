@@ -210,12 +210,12 @@ export function RoutesPage() {
         shapes.set(key, { coordinates });
         boxes.set(key, geometry.bbox);
         const surface = geometry.surface;
-        const summary =
-          surface && surface.matchedMetres > 0
-            ? summariseSurface(coordinates, surface.ranges)
-            : null;
-        if (summary) {
-          surfaces.set(key, new Set(summary.shares.map((share) => share.kind)));
+        // The distinct kinds a filter checks against, not a share of the
+        // route. This runs for every already-arrived route each time another
+        // one's geometry lands, so it deliberately skips `summariseSurface`'s
+        // walk over every coordinate to measure lengths this has no use for.
+        if (surface && surface.matchedMetres > 0 && surface.ranges.length > 0) {
+          surfaces.set(key, new Set(surface.ranges.map((range) => range.kind)));
         }
       });
 
