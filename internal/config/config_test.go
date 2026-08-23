@@ -109,7 +109,11 @@ func TestLoadRefusesADuplicateSourceSection(t *testing.T) {
 	t.Setenv(configFileEnv, configPath)
 
 	_, err := Load()
-	require.ErrorContains(t, err, "already exists")
+	// The exact wording is the TOML library's own and could change with a
+	// dependency bump; assert this package's stable wrapper and the name of
+	// the duplicated table, not the library's precise phrasing.
+	require.ErrorContains(t, err, "parsing configuration")
+	require.ErrorContains(t, err, "veloplanner")
 }
 
 // appendValidKomootSection writes Komoot's two secret files into directory and
