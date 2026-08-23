@@ -16,11 +16,13 @@
 import type { Route } from "../../api/types";
 import { RouteKey } from "../../components/RouteKey";
 import { SourceRouteLink } from "../../components/SourceRouteLink";
+import type { Climb } from "../../lib/climbs";
 import { formatAscent, formatDistance, formatElevation, formatGradient } from "../../lib/format";
 import type { Highlight } from "../../lib/highlight";
 import type { BandShare } from "../../lib/profile";
 import { providerLabel } from "../../lib/provider";
 import type { SurfaceSummary } from "../../lib/surface";
+import { ClimbsList } from "./ClimbsList";
 import { ReprocessButton } from "./ReprocessButton";
 
 export interface RoutePanelProps {
@@ -52,6 +54,10 @@ export interface RoutePanelProps {
   bands: BandShare[];
   highlight: Highlight | null;
   onHighlightChange: (highlight: Highlight | null) => void;
+  /** The route's sustained climbs, in the order they are ridden. */
+  climbs: Climb[];
+  /** Opens the shared map/chart window on one climb. */
+  onSelectClimb: (climb: Climb) => void;
   /**
    * How many routes the search goes back to, which the way back says.
    *
@@ -76,6 +82,8 @@ export function RoutePanel({
   bands,
   highlight,
   onHighlightChange,
+  climbs,
+  onSelectClimb,
   libraryCount,
   onClose,
   sourceBaseUrls,
@@ -143,6 +151,7 @@ export function RoutePanel({
         </div>
       </dl>
       {profile}
+      <ClimbsList climbs={climbs} onSelect={onSelectClimb} />
       {/*
        * The two mixes, as a bar and a row of chips each, and pressing a chip
        * lights that ground on both the map and the chart. They sit under the

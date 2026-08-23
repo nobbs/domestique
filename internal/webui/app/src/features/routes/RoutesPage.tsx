@@ -31,6 +31,8 @@ import { RouteOverlay, SURFACE_ATTRIBUTION } from "../../components/RouteOverlay
 import { ErrorMessage, StatusMessage } from "../../components/StatusMessage";
 import { Wordmark } from "../../components/Wordmark";
 import { basemapFor, useBasemapChoice, usePrefersDarkScheme } from "../../lib/basemap";
+import type { Climb } from "../../lib/climbs";
+import { findClimbs } from "../../lib/climbs";
 import { formatReadTime } from "../../lib/format";
 import type { Highlight } from "../../lib/highlight";
 import { matchingRoutes } from "../../lib/library";
@@ -44,6 +46,7 @@ import {
   rangeBounds,
 } from "../../lib/profile";
 import { useSeenStages } from "../../lib/seenStages";
+import { widened } from "../../lib/selection";
 import { summariseSurface } from "../../lib/surface";
 import { useEscapeKey } from "../../lib/useEscapeKey";
 import type { LibraryLine } from "./LibraryMap";
@@ -373,6 +376,24 @@ export function RoutesPage() {
   // the chips do not re-run the classification on every hover.
   const gradient = useMemo(() => gradientShares(openCoordinates), [openCoordinates]);
 
+  // The route's sustained climbs, from the same stored coordinates.
+  const climbs = useMemo(() => findClimbs(openCoordinates), [openCoordinates]);
+
+  // A climb picked from the list opens the same shared window the chart's own
+  // drag-to-zoom gesture opens, widened the same way a short drag is: a
+  // hundred-metre climb is still worth a window big enough to plot.
+  const selectClimb = useCallback(
+    (climb: Climb) => {
+      onZoomChange(
+        widened(
+          { startMetres: climb.startMetres, endMetres: climb.endMetres },
+          routeProfile?.totalDistanceMetres ?? 0,
+        ),
+      );
+    },
+    [onZoomChange, routeProfile],
+  );
+
   // A classification that snapped to nothing is left unpainted rather than drawn
   // as unsurveyed from end to end: greying out the whole route to say nothing is
   // known says it less clearly than one sentence does.
@@ -537,6 +558,8 @@ export function RoutesPage() {
           bands={gradient}
           highlight={highlight}
           onHighlightChange={setHighlight}
+          climbs={climbs}
+          onSelectClimb={selectClimb}
           libraryCount={library.length}
           onClose={close}
           sourceBaseUrls={config.data?.sourceBaseUrls ?? {}}
