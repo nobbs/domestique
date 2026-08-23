@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -25,6 +26,7 @@ func TestClientProviderIsKomoot(t *testing.T) {
 func TestClientInventoryReadsPlannedToursAcrossPages(t *testing.T) {
 	var methods []string
 	var mu sync.Mutex
+	var loginCount atomic.Int32
 
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		mu.Lock()
@@ -34,6 +36,7 @@ func TestClientInventoryReadsPlannedToursAcrossPages(t *testing.T) {
 		switch request.URL.Path {
 		case "/v006/account/email/rider@example.test/":
 			assertBasicAuth(t, request, "rider@example.test", "test-password")
+			loginCount.Add(1)
 			writeJSON(t, writer, `{"username":"42","password":"session-token","user":{"displayname":"Rider"}}`)
 		case "/v007/users/42/tours/":
 			assertBasicAuth(t, request, "42", "session-token")
@@ -93,6 +96,10 @@ func TestClientInventoryReadsPlannedToursAcrossPages(t *testing.T) {
 
 	assert.Equal(t, "domestique:komoot:101:stage:1", stages[1].Key().ExternalID())
 	assert.Equal(t, "Ridge run", stages[1].Title(), "the trimmed name is used")
+
+	_, err = client.Inventory(t.Context())
+	require.NoError(t, err, "second Inventory()")
+	assert.Equal(t, int32(2), loginCount.Load(), "each run must authenticate its own session rather than reusing a cached token")
 
 	mu.Lock()
 	defer mu.Unlock()
@@ -428,10 +435,15 @@ func TestClientInventoryTransportFailureDoesNotLeakEmail(t *testing.T) {
 
 func TestClientInventoryPreservesEmailContainingSlash(t *testing.T) {
 	const email = "a/b@example.test"
-	var gotPath string
+	var gotEscapedPath string
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		if gotPath == "" {
-			gotPath = request.URL.Path
+		// request.URL.Path is already percent-decoded by net/http, so it reads
+		// identically whether the client escaped the '/' correctly or sent it
+		// as a literal separator — this test would pass either way if it
+		// asserted on Path. EscapedPath (and the raw RequestURI) is the one
+		// place the two cases still differ: %2F versus a literal '/'.
+		if gotEscapedPath == "" {
+			gotEscapedPath = request.URL.EscapedPath()
 		}
 		writeJSON(t, writer, `{"username":"42","password":"session-token"}`)
 	}))
@@ -448,8 +460,8 @@ func TestClientInventoryPreservesEmailContainingSlash(t *testing.T) {
 
 	_, err = client.Inventory(t.Context())
 	require.ErrorContains(t, err, "no page metadata")
-	assert.Equal(t, "/v006/account/email/"+email+"/", gotPath,
-		"a literal '/' in the email must stay part of the one path segment, not become an extra one")
+	assert.Equal(t, "/v006/account/email/a%2Fb@example.test/", gotEscapedPath,
+		"a literal '/' in the email must arrive on the wire as %2F, one path segment, not a second real segment")
 }
 
 func TestClientInventoryRejectsPageObjectMissingFields(t *testing.T) {
