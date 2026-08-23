@@ -18,7 +18,7 @@ function status(sync: Partial<SyncStatus> = {}, targets: TargetStatus[] = []): S
       deleted: 0,
       schedule: { source: true, targets: true },
       phases: {},
-      surface: { classified: 0, total: 0 },
+      surface: { classified: 0, total: 0, incomplete: 0 },
       ...sync,
     },
   };

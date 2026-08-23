@@ -452,6 +452,32 @@ func TestServiceSkipsAnnotationWhenNothingWasStored(t *testing.T) {
 	assert.Zero(t, annotator.calls, "annotate calls")
 }
 
+// AnnotateStored reports the annotator's own counts back, which is what lets a
+// caller distinguish a stage that keeps failing from one nobody has asked
+// about yet.
+func TestServiceAnnotateStoredReportsTheAnnotatorsCounts(t *testing.T) {
+	stage := testStage(t, 1, 1, "current", "current-hash")
+	state := newFakeState("a")
+	state.trusted = []route.Stage{stage}
+	service := newAnnotatedService(t, state, &fakeSource{}, newFakeTarget(), &fakeAnnotator{})
+
+	classified, failed := service.AnnotateStored(t.Context())
+	assert.Equal(t, 1, classified, "classified")
+	assert.Zero(t, failed, "failed")
+}
+
+// An inventory that cannot be read back leaves nothing to classify, and that
+// must not be reported as a stage this pass failed on.
+func TestServiceAnnotateStoredReportsNothingWhenTheInventoryCannotBeRead(t *testing.T) {
+	state := newFakeState("a")
+	state.trustedErr = errors.New("state unavailable")
+	service := newAnnotatedService(t, state, &fakeSource{}, newFakeTarget(), &fakeAnnotator{})
+
+	classified, failed := service.AnnotateStored(t.Context())
+	assert.Zero(t, classified, "classified")
+	assert.Zero(t, failed, "failed")
+}
+
 func newAnnotatedService(
 	t *testing.T,
 	state *fakeState,

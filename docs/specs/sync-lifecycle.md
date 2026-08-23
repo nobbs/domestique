@@ -83,12 +83,12 @@ backs the deletion guard and is replaced wholesale each run, whereas this cache
 serves only the map view and may be dropped at any time. Losing it degrades the
 map until the next run and can never affect sync safety or authorise a deletion.
 
-The stage surface cache is filled by a separate pass, after every half a tick
-intended to run and only when the source half stored something new. Unlike the
-geometry, it needs data no run holds: the ways lying under each stage, read from
-the locally built surface index. It comes last because getting routes onto a
-device is what a synchronization is for, and enrichment must never delay that. It
-belongs to no half and cannot change any outcome.
+The stage surface cache is filled by a separate pass: automatically, after every
+successful source read, and on request through the manual retry below. Unlike
+the geometry, it needs data no run holds: the ways lying under each stage, read
+from the locally built surface index. It runs after a source read rather than
+delaying it, because getting routes onto a device is what a synchronization is
+for. It belongs to no half and cannot change any outcome.
 
 The whole inventory is walked in one pass. A local index answers a stage in a few
 milliseconds, so there is nothing to spread over several runs; a stage already
@@ -109,12 +109,16 @@ failure that stopped the pass would stop it at the same place forever.
 
 Because none of this may fail a run, a pass that leaves work undone writes one
 log line carrying the counts and whether it ran to the end — never a stage name,
-never geometry, never anything the endpoint said — and `GET /v1/status` reports
-how many stored stages carry a classification of the geometry they currently
-hold. Without those, a stage that fails every pass is indistinguishable from one
-nobody has asked about. A stage whose geometry has been
-re-planned is reclassified, because the cached ranges are positions in the
-coordinate array that was replaced.
+never geometry, never anything the endpoint said. `GET /v1/status` reports two
+counts alongside it: how many stored stages carry a classification of the
+geometry they currently hold, durably, and how many the most recently completed
+pass could not classify, which is not — it answers from that one pass alone and
+reads zero again after a restart until a pass has run. What is neither count is
+simply waiting its turn. Without the second, a stage that fails every pass would
+be indistinguishable from one nobody has asked about — both absent from the
+first alike. A stage whose
+geometry has been re-planned is reclassified, because the cached ranges are
+positions in the coordinate array that was replaced.
 
 ## OAuth lifecycle
 
@@ -187,6 +191,24 @@ no second run state comes into being.
 A manual trigger runs its half whether or not the schedule is allowed to start
 it. The switches decide what happens unattended; a request is an operator who
 has already decided.
+
+## Retrying enrichment
+
+`POST /v1/sync/surface` asks for one immediate classification pass, on the same
+terms as a manual trigger: it carries the browser-origin requirement, and the
+service returns `202` only when no synchronization or other classification pass
+is active, `409` otherwise. It shares that one mutual exclusion with every
+other manual trigger above — `POST /v1/sync`, `POST /v1/sync/source`,
+`POST /v1/sync/targets`, and `POST /v1/sync/targets/{target}` — none of the
+five may run while another is in flight.
+
+Unlike the other four, it never reads VeloPlanner and never writes a Wahoo
+target. It reclassifies the stages already stored against the local surface
+index and cache alone, the same pass a successful source read runs
+automatically. This is what makes it safe to offer on its own: retrying
+enrichment can neither create, update, nor delete a route on any target, so it
+carries none of the safety gates or notification traffic a synchronization
+does.
 
 ## Reprocessing one stage
 
@@ -486,7 +508,8 @@ Returns 200 while the service can read state. The minimum shape is:
       "generation":"9f2c41ab77de",
       "built_at":"2026-08-17T03:41:00Z",
       "classified":12,
-      "total":12
+      "total":12,
+      "incomplete":0
     },
     "phases":{
       "source":{
@@ -549,6 +572,14 @@ it is counts only, so no route is named.
 `surface` counts how many stored stages carry a classification measured against
 the geometry they hold now; a classification of an earlier shape of a stage does
 not count, because it describes a line the map no longer draws.
+
+`incomplete` counts stages the most recently completed classification pass could
+not classify, and is what tells those apart from stages simply waiting their
+turn — a stage that fails every pass would otherwise look exactly like one
+nobody has asked about, since both are equally absent from `classified`. It
+answers from the last completed pass alone, whether that pass ran on the
+schedule or through `POST /v1/sync/surface`; it is not durable and reads zero
+after a restart until a pass has run again.
 
 `generation` and `built_at` name the surface index those classifications were
 read from — the build that is live in this process, not merely the last one
@@ -864,4 +895,10 @@ The implementation test suite must cover at least:
 - trusted-inventory staleness: no alert before any successful source run, one
   alert once the age crosses `sync.stale_after`, that alert suppressed for six
   hours, an unconditional recovery message on the next source success, and
-  `GET /v1/status` reporting the same age and freshness from local state alone.
+  `GET /v1/status` reporting the same age and freshness from local state alone;
+  and
+- `POST /v1/sync/surface` running a classification pass without reading the
+  source or writing a target, refusing to start one alongside a synchronization
+  or another such pass in either direction, and `GET /v1/status` reporting
+  `incomplete` from the most recently completed pass, reading zero again after
+  a restart until a pass has run.

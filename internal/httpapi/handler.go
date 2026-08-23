@@ -80,6 +80,14 @@ type Sync interface {
 	TriggerTarget(targetID string) bool
 	// Activity reports the run that has not finished, if there is one.
 	Activity() SyncActivityState
+	// TriggerAnnotate starts one manual surface-classification pass and reports
+	// whether it was accepted. Unlike Trigger, it never reads the source or
+	// writes a target — it shares Trigger's guard, so it is refused while a
+	// synchronization or another such pass is already under way.
+	TriggerAnnotate() bool
+	// SurfaceIncomplete reports how many stages the most recently completed
+	// classification pass could not classify.
+	SurfaceIncomplete() int
 }
 
 // SyncActivityState is what the process knows about a run that has not
@@ -101,9 +109,11 @@ type SyncActivityState struct {
 // ActivityFunc reports no work under way, which is the honest answer from a
 // process whose runs begin and end inside the request that asked for one.
 type SyncFuncs struct {
-	TriggerFunc       func(phase SyncPhase) bool
-	TriggerTargetFunc func(targetID string) bool
-	ActivityFunc      func() SyncActivityState
+	TriggerFunc           func(phase SyncPhase) bool
+	TriggerTargetFunc     func(targetID string) bool
+	ActivityFunc          func() SyncActivityState
+	TriggerAnnotateFunc   func() bool
+	SurfaceIncompleteFunc func() int
 }
 
 // Trigger starts the adapted manual synchronization.
@@ -123,6 +133,26 @@ func (f SyncFuncs) Activity() SyncActivityState {
 	}
 
 	return f.ActivityFunc()
+}
+
+// TriggerAnnotate starts the adapted manual classification pass. False when
+// unset, the honest answer from a process with no classification pass to run.
+func (f SyncFuncs) TriggerAnnotate() bool {
+	if f.TriggerAnnotateFunc == nil {
+		return false
+	}
+
+	return f.TriggerAnnotateFunc()
+}
+
+// SurfaceIncomplete reports the adapted process's incomplete count. Zero when
+// unset, which is the honest answer from a process that tracks none.
+func (f SyncFuncs) SurfaceIncomplete() int {
+	if f.SurfaceIncompleteFunc == nil {
+		return 0
+	}
+
+	return f.SurfaceIncompleteFunc()
 }
 
 // Assets serves the embedded browser UI. It is declared here so this package
@@ -416,6 +446,7 @@ func (h *Handler) routes() {
 	h.mux.Handle("POST /v1/sync/source", h.gated(h.sameOrigin(h.syncSource)))
 	h.mux.Handle("POST /v1/sync/targets", h.gated(h.sameOrigin(h.syncTargets)))
 	h.mux.Handle("POST /v1/sync/targets/{target}", h.gated(h.sameOrigin(h.syncTarget)))
+	h.mux.Handle("POST /v1/sync/surface", h.gated(h.sameOrigin(h.syncSurface)))
 	h.mux.Handle("PUT /v1/sync/schedule", h.gated(h.sameOrigin(h.setSyncSchedule)))
 	h.mux.Handle("GET /v1/sync/runs", h.gated(h.syncHistory))
 	h.mux.Handle("GET /v1/routes", h.gated(h.stages))

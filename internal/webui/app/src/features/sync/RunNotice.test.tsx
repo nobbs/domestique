@@ -45,7 +45,7 @@ function status(phases: Status["sync"]["phases"] = {}): Status {
       deleted: 0,
       schedule: { source: true, targets: true },
       phases,
-      surface: { classified: 0, total: 0 },
+      surface: { classified: 0, total: 0, incomplete: 0 },
     },
   };
 }

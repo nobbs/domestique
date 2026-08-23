@@ -168,7 +168,7 @@ func (h *Handler) status(writer http.ResponseWriter, request *http.Request, _ st
 
 		return
 	}
-	view.Sync.Surface = surfaceView{Classified: classified, Total: total}
+	view.Sync.Surface = surfaceView{Classified: classified, Total: total, Incomplete: h.syncRuns.SurfaceIncomplete()}
 	if h.surfaceIndex != nil {
 		if generation, builtAt, ok := h.surfaceIndex(); ok {
 			view.Sync.Surface.Generation = generation
@@ -382,6 +382,21 @@ func (h *Handler) syncTarget(writer http.ResponseWriter, request *http.Request, 
 func (h *Handler) trigger(writer http.ResponseWriter, phase SyncPhase) {
 	if !h.syncRuns.Trigger(phase) {
 		h.error(writer, http.StatusConflict, "sync_in_progress", "a synchronization is already running")
+
+		return
+	}
+	h.writeJSON(writer, http.StatusAccepted, map[string]string{"status": "accepted"})
+}
+
+// syncSurface queues one immediate surface-classification pass, independently
+// of either half of a synchronization. Unlike sync, syncSource, and
+// syncTargets, it never reads the source library or writes a Wahoo target — it
+// only reclassifies stages already stored, against the local surface index.
+// It shares their single-flight guard, so a synchronization or another such
+// pass already in flight refuses it the same way.
+func (h *Handler) syncSurface(writer http.ResponseWriter, _ *http.Request, _ string) {
+	if !h.syncRuns.TriggerAnnotate() {
+		h.error(writer, http.StatusConflict, "sync_in_progress", "a synchronization or classification pass is already running")
 
 		return
 	}

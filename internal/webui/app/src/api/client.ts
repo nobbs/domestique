@@ -195,6 +195,17 @@ export function reprocessStage(
 }
 
 /**
+ * Asks for one immediate surface-classification pass, independently of either
+ * sync phase. It never reads the source library or writes a Wahoo target —
+ * only the local surface index and cache — and shares the same in-flight guard
+ * as triggerSync, so a rejected request means a synchronization or another
+ * such pass was already running.
+ */
+export function retrySurfaceEnrichment(): Promise<null> {
+  return request("/v1/sync/surface", () => null, { method: "POST" });
+}
+
+/**
  * Sets both schedule switches and returns what the service stored.
  *
  * Both travel together because the service refuses a half-named schedule: the

@@ -227,6 +227,8 @@ func run(ctx context.Context) error {
 					Running:  running,
 				}
 			},
+			TriggerAnnotateFunc:   func() bool { return reporter.TriggerAnnotate(runCtx) },
+			SurfaceIncompleteFunc: reporter.SurfaceIncomplete,
 		},
 		assets,
 	)

@@ -14,7 +14,7 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { setSyncSchedule, triggerSync } from "../../api/client";
+import { retrySurfaceEnrichment, setSyncSchedule, triggerSync } from "../../api/client";
 import { statusQuery, webUIConfigQuery } from "../../api/queries";
 import type { Status, SyncActive, SyncPhase, SyncPhaseRun, SyncSchedule } from "../../api/types";
 import { SYNC_PHASES } from "../../api/types";
@@ -144,6 +144,10 @@ export function SyncControls() {
     mutationFn: (phase: SyncPhase) => triggerSync(phase),
     onSuccess: invalidateStatus,
   });
+  const retryClassification = useMutation({
+    mutationFn: retrySurfaceEnrichment,
+    onSuccess: invalidateStatus,
+  });
 
   if (isPending) {
     return null;
@@ -174,13 +178,36 @@ export function SyncControls() {
       {/*
        * Classification is enrichment: it never fails a run, so a route the
        * endpoint keeps refusing is otherwise indistinguishable from one that has
-       * not come up yet. The count is the only place that difference shows.
+       * not come up yet. incomplete is the count that draws that difference,
+       * and the retry beside it touches only the local surface index and
+       * cache — it never reads VeloPlanner or writes a Wahoo target, which is
+       * why it is offered on its own rather than folded into "Run now".
        */}
       {data.sync.surface.total > 0 && data.sync.surface.classified < data.sync.surface.total ? (
         <p className="sync-card__line">
           Surface classified for {data.sync.surface.classified} of {data.sync.surface.total}{" "}
           {data.sync.surface.total === 1 ? "route" : "routes"}. Each unclassified route is tried
           again after every read.
+          {data.sync.surface.incomplete > 0 ? (
+            <>
+              {" "}
+              {data.sync.surface.incomplete} could not be classified last time.{" "}
+              <Button
+                variant="standard"
+                disabled={retryClassification.isPending}
+                onClick={() => retryClassification.mutate()}
+              >
+                {retryClassification.isPending ? "Requesting…" : "Retry now"}
+              </Button>
+            </>
+          ) : null}
+        </p>
+      ) : null}
+      {retryClassification.isError ? (
+        <p className="sync-card__error" role="alert">
+          {retryClassification.error instanceof Error && retryClassification.error.message
+            ? retryClassification.error.message
+            : "That retry could not be started."}
         </p>
       ) : null}
       <ul className="sync-card__list">
