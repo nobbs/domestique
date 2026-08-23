@@ -51,12 +51,38 @@ type runConfig struct {
 	climbThresholdPercent float64
 }
 
-func run(cfg *runConfig) error {
+// validate fails fast on a flag combination that would otherwise reach a
+// division, a solver, or the plausibility gate in a state it cannot give a
+// sensible answer from — a zero drive-efficiency dividing by zero in
+// climbPowerWatts, a non-positive descent cap making every capped descent
+// prediction nonsense, or a tyre tolerance band whose low bound exceeds its
+// high one silently disabling the plausibility gate it is meant to run.
+func (cfg *runConfig) validate() error {
 	if cfg.corpusDir == "" {
 		return errors.New("-corpus is required")
 	}
 	if cfg.massKG <= 0 {
 		return errors.New("-mass-kg is required and must be positive: an input this fit is run against, not something it estimates")
+	}
+	if cfg.driveEfficiency <= 0 || cfg.driveEfficiency > 1 {
+		return errors.New("-drive-efficiency must be greater than 0 and at most 1")
+	}
+	if cfg.descentCapMPS <= 0 {
+		return errors.New("-descent-cap-mps must be positive")
+	}
+	if cfg.climbThresholdPercent <= 0 {
+		return errors.New("-climb-threshold-percent must be positive")
+	}
+	if cfg.tyreCrrBench > 0 && cfg.tyreCrrToleranceLow > cfg.tyreCrrToleranceHigh {
+		return errors.New("-tyre-crr-tolerance-low must not exceed -tyre-crr-tolerance-high")
+	}
+
+	return nil
+}
+
+func run(cfg *runConfig) error {
+	if err := cfg.validate(); err != nil {
+		return err
 	}
 
 	samples, err := readSamplesCSV(filepath.Join(cfg.corpusDir, "samples.csv"))

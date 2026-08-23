@@ -9,6 +9,48 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// validConfig is a runConfig that passes validate(), for tests that mutate
+// exactly one field to check it is rejected.
+func validConfig() runConfig {
+	return runConfig{
+		corpusDir: "corpus", massKG: 90, driveEfficiency: 0.975,
+		descentCapMPS: 22.0, climbThresholdPercent: defaultClimbThresholdPercent,
+		tyreCrrBench: 0.008, tyreCrrToleranceLow: 1.0, tyreCrrToleranceHigh: 1.5,
+	}
+}
+
+func TestRunConfigValidateAcceptsAWellFormedConfig(t *testing.T) {
+	cfg := validConfig()
+	assert.NoError(t, cfg.validate())
+}
+
+func TestRunConfigValidateRejectsEachInvalidFlagCombination(t *testing.T) {
+	for name, mutate := range map[string]func(*runConfig){
+		"missing corpus":               func(c *runConfig) { c.corpusDir = "" },
+		"non-positive mass":            func(c *runConfig) { c.massKG = 0 },
+		"zero drive efficiency":        func(c *runConfig) { c.driveEfficiency = 0 },
+		"drive efficiency above one":   func(c *runConfig) { c.driveEfficiency = 1.1 },
+		"non-positive descent cap":     func(c *runConfig) { c.descentCapMPS = -1 },
+		"non-positive climb threshold": func(c *runConfig) { c.climbThresholdPercent = 0 },
+		"tyre tolerance low above high": func(c *runConfig) {
+			c.tyreCrrToleranceLow, c.tyreCrrToleranceHigh = 2.0, 1.0
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			cfg := validConfig()
+			mutate(&cfg)
+			assert.Error(t, cfg.validate())
+		})
+	}
+}
+
+func TestRunConfigValidateIgnoresTyreToleranceOrderingWhenTheGateIsOff(t *testing.T) {
+	cfg := validConfig()
+	cfg.tyreCrrBench = 0 // gate disabled: an inverted tolerance band is moot
+	cfg.tyreCrrToleranceLow, cfg.tyreCrrToleranceHigh = 2.0, 1.0
+	assert.NoError(t, cfg.validate())
+}
+
 // syntheticRide builds one ride's worth of samples: a coasting section
 // consistent with the given crr/cda at massKG, followed by a sustained climb
 // at the given grade and speed — enough for both stage A and stage B to have

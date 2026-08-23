@@ -9,9 +9,11 @@ import (
 // startup-validation bounds (PR #232) rather than invented here: a window
 // this fit could not explain at any point in the range the forward model
 // itself would accept is not coasting cleanly, whichever direction it
-// misses by. Kept as this package's own constants because dev/ tooling
-// stays decoupled from the service's internal packages, the same reason
-// dev/ridemodel mirrors internal/route's gradientWindowMetres.
+// misses by. Kept as this package's own constants rather than imported,
+// because internal/ridemodel does not exist on main yet — #216 is still
+// open — the same reason dev/ridemodel mirrors internal/route's
+// gradientWindowMetres instead of importing internal/route for one
+// constant.
 const (
 	plausibleMinCrr = 0.0
 	plausibleMaxCrr = 0.05
@@ -97,24 +99,43 @@ func coastingEligible(samples []sampleRow, i int) bool {
 	return s.HasCadence && s.CadenceRPM == 0 && s.Moving && s.HasPosition && s.HasAltitude
 }
 
-// windowsInRun tiles one unbroken coasting run into non-overlapping
-// windowDurationSeconds windows, dropping cornering samples from
-// consideration first and testing each resulting window's implied
-// dissipation against the shared physical plausibility bounds.
+// windowsInRun splits one unbroken coasting run at every cornering sample —
+// a cornering sample breaks the run the same way a cadence change or a
+// timing gap does, rather than being spliced out of it. Deleting a
+// cornering sample and windowing over what remains would join intervals
+// from before and after the turn into one "window" whose duration and
+// distance come from one set of records while its start and end speeds
+// come from another, non-contiguous, pair — breaking the energy-balance
+// assumption every window here depends on.
 func windowsInRun(run []sampleRow, counts *coastingFilterCounts, massKG float64) []coastingWindow {
-	straight := make([]sampleRow, 0, len(run))
-	for i := range run {
-		if corneringPass(run, i) {
-			straight = append(straight, run[i])
-		} else {
+	var windows []coastingWindow
+
+	segmentStart := 0
+	for i := 0; i <= len(run); i++ {
+		cornering := i < len(run) && !corneringPass(run, i)
+		if cornering {
 			counts.Cornering++
 		}
+		if !cornering && i < len(run) {
+			continue
+		}
+
+		windows = append(windows, windowsInStraightSegment(run[segmentStart:i], counts, massKG)...)
+		segmentStart = i + 1
 	}
 
+	return windows
+}
+
+// windowsInStraightSegment tiles one contiguous, cornering-free stretch into
+// non-overlapping windowDurationSeconds windows, testing each one's implied
+// dissipation against the shared physical plausibility bounds.
+func windowsInStraightSegment(segment []sampleRow, counts *coastingFilterCounts, massKG float64) []coastingWindow {
 	var windows []coastingWindow
+
 	segmentStart := 0
-	for segmentStart < len(straight) {
-		segmentEnd, duration := segmentAtLeast(straight, segmentStart, windowDurationSeconds)
+	for segmentStart < len(segment) {
+		segmentEnd, duration := segmentAtLeast(segment, segmentStart, windowDurationSeconds)
 		if segmentEnd == segmentStart {
 			break
 		}
@@ -122,7 +143,7 @@ func windowsInRun(run []sampleRow, counts *coastingFilterCounts, massKG float64)
 			break
 		}
 
-		window := buildWindow(straight[segmentStart:segmentEnd])
+		window := buildWindow(segment[segmentStart:segmentEnd])
 		if plausible(window, massKG) {
 			windows = append(windows, window)
 			counts.SurvivingWindows++
