@@ -192,7 +192,7 @@ func TestNewRequiresABrowserOrigin(t *testing.T) {
 			AccessVerifier: &recordingVerifier{email: testAccessEmail},
 			AccessEmail:    testAccessEmail,
 		},
-		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{},
+		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{},
 	)
 	require.Error(t, err, "New() built a handler with no origin to compare against")
 }

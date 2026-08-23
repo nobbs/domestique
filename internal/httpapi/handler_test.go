@@ -87,6 +87,7 @@ func TestHandlerGatesEveryNonHealthRoute(t *testing.T) {
 		"/v1/providers/veloplanner/routes/1/stages/1",
 		"/v1/providers/veloplanner/routes/1/stages/1/geometry",
 		"/v1/webui/config",
+		"/v1/weather?point=50.11,8.68,2026-08-24T06:00:00Z",
 		"/oauth/wahoo/start/rider-a",
 		"/oauth/wahoo/callback",
 		"/assets/app-abc123.js",
@@ -297,7 +298,7 @@ func TestHandlerServesEveryConfiguredBasemapInOrder(t *testing.T) {
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
 		},
-		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{},
+		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{},
 	)
 	require.NoError(t, err, "New()")
 
@@ -335,7 +336,7 @@ func TestHandlerOmitsAnUnconfiguredDarkTileStyle(t *testing.T) {
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
 		},
-		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{},
+		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{},
 	)
 	require.NoError(t, err, "New()")
 
@@ -355,7 +356,7 @@ func TestHandlerOmitsAnUnconfiguredSourceBaseURL(t *testing.T) {
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
 		},
-		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{},
+		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{},
 	)
 	require.NoError(t, err, "New()")
 
@@ -382,7 +383,7 @@ func TestHandlerOmitsAProviderConfiguredWithABlankSourceBaseURL(t *testing.T) {
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
 		},
-		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{},
+		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{},
 	)
 	require.NoError(t, err, "New()")
 
@@ -420,7 +421,7 @@ func TestHandlerRefusesASourceBaseURLThatIsNotOne(t *testing.T) {
 				AccessEmail:      testAccessEmail,
 				BrowserOriginURL: testBrowserOriginURL,
 			},
-			&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{},
+			&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{},
 		)
 		require.Errorf(t, err, "New() accepted the source base URL %q", value)
 	}
@@ -436,7 +437,7 @@ func TestHandlerSendsASourceBaseURLWithoutSurroundingWhitespace(t *testing.T) {
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
 		},
-		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{},
+		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{},
 	)
 	require.NoError(t, err, "New()")
 
@@ -465,7 +466,7 @@ func TestHandlerAcceptsASourceBaseURLHostedUnderAPath(t *testing.T) {
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
 		},
-		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{},
+		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{},
 	)
 	require.NoError(t, err, "New()")
 
@@ -487,7 +488,7 @@ func TestHandlerServesEveryConfiguredSourceKeyedByProvider(t *testing.T) {
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
 		},
-		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{},
+		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{},
 	)
 	require.NoError(t, err, "New()")
 
@@ -581,7 +582,7 @@ func newHandlerWithBuild(t *testing.T, revision, imageDigest string) *Handler {
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
 		},
-		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{},
+		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{},
 	)
 	require.NoError(t, err, "New()")
 
@@ -600,7 +601,7 @@ func TestHandlerNamesEveryBasemapOriginInThePolicy(t *testing.T) {
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
 		},
-		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{},
+		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{},
 	)
 	require.NoError(t, err, "New()")
 
@@ -635,7 +636,7 @@ func TestHandlerNamesOneOriginOnceForTwoBasemapsSharingIt(t *testing.T) {
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
 		},
-		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{},
+		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{},
 	)
 	require.NoError(t, err, "New()")
 
@@ -664,7 +665,7 @@ func TestHandlerAcceptsADarkStyleOnItsOriginRegardlessOfHostCase(t *testing.T) {
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
 		},
-		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{},
+		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{},
 	)
 	require.NoError(t, err, "New()")
 
@@ -1589,7 +1590,7 @@ func TestNewRejectsIncompleteOptions(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := New(test.options, &fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{})
+			_, err := New(test.options, &fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{})
 			require.Error(t, err, "New() accepted the options")
 		})
 	}
@@ -1609,7 +1610,7 @@ func newHandlerWithVerifier(t *testing.T, verifier AccessVerifier) *Handler {
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
 		},
-		&fakeOAuth{}, &fakeState{}, &fakeSync{accepted: true}, &fakeAssets{},
+		&fakeOAuth{}, &fakeState{}, &fakeSync{accepted: true}, &fakeAssets{}, &fakeWeather{},
 	)
 	require.NoError(t, err, "New()")
 
@@ -1629,7 +1630,27 @@ func newHandlerWithSurfaceIndex(t *testing.T, index func() (string, time.Time, b
 			BrowserOriginURL: testBrowserOriginURL,
 			SurfaceIndexFunc: index,
 		},
-		&fakeOAuth{}, &fakeState{}, &fakeSync{accepted: true}, &fakeAssets{},
+		&fakeOAuth{}, &fakeState{}, &fakeSync{accepted: true}, &fakeAssets{}, &fakeWeather{},
+	)
+	require.NoError(t, err, "New()")
+
+	return handler
+}
+
+// newHandlerWithWeather builds a handler wired to the given forecast provider,
+// which is how a test observes the request Forecast is called with or forces
+// it to fail.
+func newHandlerWithWeather(t *testing.T, weather Weather) *Handler {
+	t.Helper()
+	handler, err := New(
+		&Options{
+			TargetIDs:        []string{"rider-a"},
+			Basemaps:         testBasemaps(),
+			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
+			AccessEmail:      testAccessEmail,
+			BrowserOriginURL: testBrowserOriginURL,
+		},
+		&fakeOAuth{}, &fakeState{}, &fakeSync{accepted: true}, &fakeAssets{}, weather,
 	)
 	require.NoError(t, err, "New()")
 
@@ -1653,7 +1674,7 @@ func newHandlerWithStaleAfter(t *testing.T, state State, staleAfter time.Duratio
 			BrowserOriginURL: testBrowserOriginURL,
 			SourceStaleAfter: staleAfter,
 		},
-		&fakeOAuth{}, state, &fakeSync{accepted: true}, &fakeAssets{},
+		&fakeOAuth{}, state, &fakeSync{accepted: true}, &fakeAssets{}, &fakeWeather{},
 	)
 	require.NoError(t, err, "New()")
 	handler.now = func() time.Time { return now }
@@ -1673,7 +1694,7 @@ func newHandlerWithTargets(t *testing.T, state State, targetIDs ...string) *Hand
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
 		},
-		&fakeOAuth{}, state, &fakeSync{accepted: true}, &fakeAssets{},
+		&fakeOAuth{}, state, &fakeSync{accepted: true}, &fakeAssets{}, &fakeWeather{},
 	)
 	require.NoError(t, err, "New()")
 
@@ -1692,7 +1713,7 @@ func newHandlerWithLiveSync(t *testing.T, state State, activity SyncActivityStat
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
 		},
-		&fakeOAuth{}, state, &fakeSync{accepted: true, activity: activity}, &fakeAssets{},
+		&fakeOAuth{}, state, &fakeSync{accepted: true, activity: activity}, &fakeAssets{}, &fakeWeather{},
 	)
 	require.NoError(t, err, "New()")
 
@@ -1710,7 +1731,7 @@ func newHandlerWithSync(t *testing.T, oauthService OAuth, state State, syncRuns 
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
 		},
-		oauthService, state, syncRuns, &fakeAssets{},
+		oauthService, state, syncRuns, &fakeAssets{}, &fakeWeather{},
 	)
 	require.NoError(t, err, "New()")
 
@@ -1808,6 +1829,36 @@ func (*fakeAssets) Static(writer http.ResponseWriter, _ *http.Request) {
 	if _, err := writer.Write([]byte("export default null;")); err != nil {
 		return
 	}
+}
+
+// fakeWeather answers with one deterministic hour per coordinate, unless
+// ForecastFunc is set for a test that needs to observe the call or force a
+// failure.
+type fakeWeather struct {
+	ForecastFunc func(ctx context.Context, latitudes, longitudes []float64, from, to time.Time) ([]WeatherSeries, error)
+}
+
+func (f *fakeWeather) Forecast(
+	ctx context.Context, latitudes, longitudes []float64, from, to time.Time,
+) ([]WeatherSeries, error) {
+	if f.ForecastFunc != nil {
+		return f.ForecastFunc(ctx, latitudes, longitudes, from, to)
+	}
+	series := make([]WeatherSeries, len(latitudes))
+	for i := range latitudes {
+		series[i] = WeatherSeries{
+			Time:                            []time.Time{from},
+			TemperatureCelsius:              []float64{18.4},
+			ApparentTemperatureCelsius:      []float64{17.1},
+			PrecipitationMillimetres:        []float64{0},
+			PrecipitationProbabilityPercent: []float64{10},
+			WindSpeedKMH:                    []float64{12.3},
+			WindDirectionDegrees:            []float64{240},
+			WeatherCode:                     []int{1},
+		}
+	}
+
+	return series, nil
 }
 
 // recordedRun is one run of the fake's history, which it holds newest first.

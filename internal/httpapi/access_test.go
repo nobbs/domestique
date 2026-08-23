@@ -65,7 +65,7 @@ func newAccessHandler(t *testing.T, verifier AccessVerifier, oauthService OAuth)
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
 		},
-		oauthService, &fakeState{}, &fakeSync{accepted: true}, &fakeAssets{},
+		oauthService, &fakeState{}, &fakeSync{accepted: true}, &fakeAssets{}, &fakeWeather{},
 	)
 	require.NoError(t, err)
 
@@ -242,7 +242,7 @@ func TestNewRequiresAccessConfiguration(t *testing.T) {
 
 	for name, options := range cases {
 		t.Run(name, func(t *testing.T) {
-			_, err := New(options, &fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{})
+			_, err := New(options, &fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{})
 			require.Error(t, err, "expected rejection, got a handler")
 		})
 	}

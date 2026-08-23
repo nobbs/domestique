@@ -1,0 +1,184 @@
+package httpapi
+
+import (
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+)
+
+const (
+	// maximumWeatherPoints bounds one request to roughly double the realistic
+	// worst case: a 200 km audax samples at about 25 points. The cap exists so
+	// a malformed page cannot turn one request into an unbounded outbound one.
+	maximumWeatherPoints = 48
+
+	// weatherPastAllowance and weatherForecastHorizon bound the window this
+	// service will ask Open-Meteo for, so a malformed window is refused here
+	// rather than passed through to be rejected remotely.
+	weatherPastAllowance   = 24 * time.Hour
+	weatherForecastHorizon = 16 * 24 * time.Hour
+)
+
+// weather answers the browser's request for a forecast at each point of a
+// planned ride, without the page ever reaching Open-Meteo itself.
+//
+// It derives from and to as the earliest and latest point time, calls
+// Forecast once for every requested point, and returns the single hour
+// nearest each point's own time — the service's own shape, never the
+// provider's field names or raw payload.
+func (h *Handler) weatherForecast(writer http.ResponseWriter, request *http.Request, _ string) {
+	raw := request.URL.Query()["point"]
+	if len(raw) == 0 {
+		h.error(writer, http.StatusBadRequest, "invalid_request", "at least one point is required")
+
+		return
+	}
+	if len(raw) > maximumWeatherPoints {
+		h.error(writer, http.StatusBadRequest, "invalid_request",
+			"no more than "+strconv.Itoa(maximumWeatherPoints)+" points are allowed")
+
+		return
+	}
+
+	points := make([]weatherPoint, len(raw))
+	for i, value := range raw {
+		point, ok := parseWeatherPoint(value)
+		if !ok {
+			h.error(writer, http.StatusBadRequest, "invalid_request", "point "+strconv.Itoa(i)+" is malformed")
+
+			return
+		}
+		points[i] = point
+	}
+
+	from, to := points[0].At, points[0].At
+	latitudes := make([]float64, len(points))
+	longitudes := make([]float64, len(points))
+	for i, point := range points {
+		latitudes[i] = point.Latitude
+		longitudes[i] = point.Longitude
+		if point.At.Before(from) {
+			from = point.At
+		}
+		if point.At.After(to) {
+			to = point.At
+		}
+	}
+	if !h.weatherWindowFits(from, to) {
+		h.error(writer, http.StatusBadRequest, "invalid_request", "the time window is outside what the provider can forecast")
+
+		return
+	}
+
+	series, err := h.weather.Forecast(request.Context(), latitudes, longitudes, from, to)
+	if err != nil {
+		h.error(writer, http.StatusBadGateway, "provider_unavailable", "the weather provider could not be reached")
+
+		return
+	}
+	if len(series) != len(points) {
+		h.error(writer, http.StatusBadGateway, "provider_unavailable", "the weather provider returned an unexpected response")
+
+		return
+	}
+
+	view := weatherView{Points: make([]weatherPointView, len(points))}
+	for i, point := range points {
+		index, found := nearestHourIndex(series[i].Time, point.At)
+		if !found {
+			h.error(writer, http.StatusBadGateway, "provider_unavailable",
+				"the weather provider returned no forecast for one of the requested points")
+
+			return
+		}
+		view.Points[i] = newWeatherPointView(&series[i], index)
+	}
+	h.writeJSON(writer, http.StatusOK, view)
+}
+
+// weatherWindowFits rejects a window Open-Meteo's forecast endpoint could
+// never answer: more than a day in the past, or beyond its forecast horizon.
+func (h *Handler) weatherWindowFits(from, to time.Time) bool {
+	now := h.now()
+
+	return !from.Before(now.Add(-weatherPastAllowance)) && !to.After(now.Add(weatherForecastHorizon))
+}
+
+// weatherPoint is one coordinate and time the browser asked a forecast for.
+type weatherPoint struct {
+	At                  time.Time
+	Latitude, Longitude float64
+}
+
+// parseWeatherPoint reads "latitude,longitude,RFC3339-local-time" the way the
+// service specification defines the query parameter.
+func parseWeatherPoint(raw string) (point weatherPoint, ok bool) {
+	parts := strings.SplitN(raw, ",", 3)
+	if len(parts) != 3 {
+		return weatherPoint{}, false
+	}
+	latitude, latErr := strconv.ParseFloat(parts[0], 64)
+	longitude, lonErr := strconv.ParseFloat(parts[1], 64)
+	at, timeErr := time.Parse(time.RFC3339, parts[2])
+	if latErr != nil || lonErr != nil || timeErr != nil ||
+		latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180 {
+		return weatherPoint{}, false
+	}
+
+	return weatherPoint{Latitude: latitude, Longitude: longitude, At: at}, true
+}
+
+// nearestHourIndex finds the hour in an hourly series closest to at. The
+// requested window always covers every point's own time, so this is an exact
+// match in practice; nearest is the defensive answer to a provider series
+// that turns out not to align to the hour.
+func nearestHourIndex(hours []time.Time, at time.Time) (index int, found bool) {
+	if len(hours) == 0 {
+		return 0, false
+	}
+	best := 0
+	bestDelta := hours[0].Sub(at).Abs()
+	for i := 1; i < len(hours); i++ {
+		if delta := hours[i].Sub(at).Abs(); delta < bestDelta {
+			best, bestDelta = i, delta
+		}
+	}
+
+	return best, true
+}
+
+type weatherView struct {
+	Points []weatherPointView `json:"points"`
+}
+
+type weatherPointView struct {
+	Time string `json:"time"`
+	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
+	TemperatureCelsius float64 `json:"temperature_celsius"`
+	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
+	ApparentTemperatureCelsius float64 `json:"apparent_temperature_celsius"`
+	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
+	PrecipitationMillimetres float64 `json:"precipitation_millimetres"`
+	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
+	PrecipitationProbabilityPercent float64 `json:"precipitation_probability_percent"`
+	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
+	WindSpeedKMH float64 `json:"wind_speed_kmh"`
+	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
+	WindDirectionDegrees float64 `json:"wind_direction_degrees"`
+	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
+	WeatherCode int `json:"weather_code"`
+}
+
+func newWeatherPointView(series *WeatherSeries, index int) weatherPointView {
+	return weatherPointView{
+		Time:                            series.Time[index].Format(time.RFC3339),
+		TemperatureCelsius:              series.TemperatureCelsius[index],
+		ApparentTemperatureCelsius:      series.ApparentTemperatureCelsius[index],
+		PrecipitationMillimetres:        series.PrecipitationMillimetres[index],
+		PrecipitationProbabilityPercent: series.PrecipitationProbabilityPercent[index],
+		WindSpeedKMH:                    series.WindSpeedKMH[index],
+		WindDirectionDegrees:            series.WindDirectionDegrees[index],
+		WeatherCode:                     series.WeatherCode[index],
+	}
+}

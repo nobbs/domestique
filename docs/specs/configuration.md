@@ -169,6 +169,13 @@ The whole list is served to the page, which chooses within it; the service
 resolves neither the reader's choice nor the colour scheme, because both belong
 to the browser and this response is cached for the session.
 
+Weather forecasts go further than a keyless basemap: there is no key
+configuration could carry in the first place. Open-Meteo's free forecast
+endpoint needs none, so `internal/openmeteo`'s options hold no credential
+field at all, the way `internal/pushover`'s do. The asymmetry with the
+basemap list above is a decision, not an oversight — a basemap's key is the
+provider's choice to require one; Open-Meteo's is not to.
+
 `surface.regions` names the OpenStreetMap extracts the **service** builds its
 surface index from, so it can classify a stage's ground as asphalt, paving,
 compacted, gravel, or unsurfaced. Each entry is a Geofabrik region path such as
