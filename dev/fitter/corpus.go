@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -58,7 +59,15 @@ func (c csvColumns) time(record []string, name string) time.Time {
 // readCorpusCSV reads a corpus file dev/ridemodel wrote, calling build for
 // every data row. It is generic over the row type so samples.csv, rides.csv
 // and indoor.csv share one reader rather than three near-identical loops.
-func readCorpusCSV[T any](path string, build func(record []string, columns csvColumns) T) ([]T, error) {
+//
+// requiredColumns names the columns this file's contract with dev/ridemodel
+// cannot do without — a row missing one of these is not "an absent optional
+// channel" the way a missing altitude or heart rate reading is, it means
+// the file is not the corpus this package expects. Read by name rather than
+// position tolerates dev/ridemodel reordering its own columns; it must not
+// also tolerate silently reading zero values for a column that went
+// missing or was renamed.
+func readCorpusCSV[T any](path string, requiredColumns []string, build func(record []string, columns csvColumns) T) ([]T, error) {
 	file, err := os.Open(path) //nolint:gosec // The path is the operator's own -corpus flag, joined with this package's fixed file names.
 	if err != nil {
 		return nil, fmt.Errorf("opening %s: %w", path, err)
@@ -73,6 +82,16 @@ func readCorpusCSV[T any](path string, build func(record []string, columns csvCo
 		return nil, fmt.Errorf("reading %s header: %w", path, err)
 	}
 	columns := columnsByName(header)
+
+	var missing []string
+	for _, name := range requiredColumns {
+		if _, ok := columns[name]; !ok {
+			missing = append(missing, name)
+		}
+	}
+	if len(missing) > 0 {
+		return nil, fmt.Errorf("%s is missing required column(s): %s", path, strings.Join(missing, ", "))
+	}
 
 	var rows []T
 	for {
@@ -90,7 +109,9 @@ func readCorpusCSV[T any](path string, build func(record []string, columns csvCo
 }
 
 func readSamplesCSV(path string) ([]sampleRow, error) {
-	return readCorpusCSV(path, func(record []string, c csvColumns) sampleRow {
+	required := []string{"ride_id", "time", "delta_seconds", "interval_distance_m", "gradient_percent", "moving"}
+
+	return readCorpusCSV(path, required, func(record []string, c csvColumns) sampleRow {
 		return sampleRow{
 			RideID:           c.str(record, "ride_id"),
 			Time:             c.time(record, "time"),
@@ -115,11 +136,12 @@ func readSamplesCSV(path string) ([]sampleRow, error) {
 }
 
 func readRidesCSV(path string) ([]rideRow, error) {
-	return readCorpusCSV(path, func(record []string, c csvColumns) rideRow {
+	required := []string{"ride_id", "date", "gear", "moving_seconds"}
+
+	return readCorpusCSV(path, required, func(record []string, c csvColumns) rideRow {
 		return rideRow{
 			RideID:        c.str(record, "ride_id"),
 			Date:          c.time(record, "date"),
-			Type:          c.str(record, "type"),
 			Gear:          c.str(record, "gear"),
 			MovingSeconds: c.float(record, "moving_seconds"),
 		}
@@ -127,7 +149,9 @@ func readRidesCSV(path string) ([]rideRow, error) {
 }
 
 func readIndoorCSV(path string) ([]indoorRow, error) {
-	return readCorpusCSV(path, func(record []string, c csvColumns) indoorRow {
+	required := []string{"ride_id", "time", "delta_seconds"}
+
+	return readCorpusCSV(path, required, func(record []string, c csvColumns) indoorRow {
 		return indoorRow{
 			RideID:       c.str(record, "ride_id"),
 			Time:         c.time(record, "time"),

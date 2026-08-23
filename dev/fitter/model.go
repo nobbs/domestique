@@ -49,7 +49,6 @@ type rideRow struct {
 	Date          time.Time
 	RideID        string
 	Gear          string
-	Type          string
 	MovingSeconds float64
 }
 

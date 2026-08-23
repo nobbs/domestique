@@ -10,7 +10,7 @@ import (
 func ridesFor(gear string, n int) []rideRow {
 	rides := make([]rideRow, n)
 	for i := range n {
-		rides[i] = rideRow{RideID: gear + string(rune('a'+i)), Gear: gear, Type: "Ride"}
+		rides[i] = rideRow{RideID: gear + string(rune('a'+i)), Gear: gear}
 	}
 
 	return rides

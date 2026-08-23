@@ -117,7 +117,16 @@ func run(cfg *runConfig) error {
 			return fmt.Errorf("opening osm index: %w", openErr)
 		}
 		defer closeIndex(index)
-		labelSurfaces(ctx, index, samplesByRide)
+		attempted, failed := labelSurfaces(ctx, index, samplesByRide)
+		if attempted > 0 && failed == attempted {
+			return fmt.Errorf(
+				"surface labelling: all %d ride lookups against -osm-index failed; check the index path and permissions",
+				attempted,
+			)
+		}
+		if failed > 0 {
+			fmt.Fprintf(os.Stderr, "fitter: surface labelling: %d/%d ride lookups failed; those rides fall back to unknown surface\n", failed, attempted)
+		}
 	}
 
 	ridesWithSamples := make([]rideRow, 0, len(rides))

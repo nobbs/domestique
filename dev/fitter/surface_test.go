@@ -38,10 +38,12 @@ func TestLabelSurfacesAssignsTheMatchedKindToEachPositionedSample(t *testing.T) 
 		},
 	}
 
-	labelSurfaces(context.Background(), fakeWayFetcher{kind: surface.KindGravel}, samplesByRide)
+	attempted, failed := labelSurfaces(context.Background(), fakeWayFetcher{kind: surface.KindGravel}, samplesByRide)
 
 	assert.Equal(t, surface.KindGravel, samplesByRide["r1"][0].Surface)
 	assert.Equal(t, surface.KindUnknown, samplesByRide["r1"][1].Surface)
+	assert.Equal(t, 1, attempted)
+	assert.Equal(t, 0, failed)
 }
 
 func TestLabelSurfacesLeavesARideUnlabelledWhenTheLookupFails(t *testing.T) {
@@ -49,9 +51,11 @@ func TestLabelSurfacesLeavesARideUnlabelledWhenTheLookupFails(t *testing.T) {
 		"r1": {{RideID: "r1", Latitude: 50.0, Longitude: 8.0, HasPosition: true}},
 	}
 
-	labelSurfaces(context.Background(), fakeWayFetcher{err: errWaysLookup}, samplesByRide)
+	attempted, failed := labelSurfaces(context.Background(), fakeWayFetcher{err: errWaysLookup}, samplesByRide)
 
 	assert.Equal(t, surface.KindUnknown, samplesByRide["r1"][0].Surface)
+	assert.Equal(t, 1, attempted)
+	assert.Equal(t, 1, failed)
 }
 
 var errWaysLookup = errors.New("ways lookup failed")
