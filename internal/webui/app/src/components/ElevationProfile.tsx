@@ -22,6 +22,14 @@ import { niceStep, sampleAt, ticksFor } from "../lib/profile";
 import { MIN_DRAG_PIXELS, spanBetween, widened } from "../lib/selection";
 import type { SurfaceSummary } from "../lib/surface";
 import { SURFACE_STYLES, surfaceBandsWithin, surfaceKindAt } from "../lib/surface";
+import type { UnitSystem } from "../lib/units";
+import {
+  distanceLabel,
+  distanceUnitLabel,
+  distanceValue,
+  elevationUnitLabel,
+  elevationValue,
+} from "../lib/units";
 import { useElementWidth } from "../lib/useElementWidth";
 import { useEscapeKey } from "../lib/useEscapeKey";
 import { Button } from "./Button";
@@ -94,6 +102,8 @@ export interface ElevationProfileProps {
    * legends can share a line.
    */
   highlight?: Highlight | null;
+  /** The units the axis, the tooltip, and the accessible readout report in. */
+  unitSystem?: UnitSystem;
 }
 
 /**
@@ -158,17 +168,6 @@ function runsOf(
 }
 
 /**
- * A distance in kilometres, with just enough decimals to tell it from its
- * neighbour. Whole kilometres are right for a whole route and useless for a
- * four hundred metre window, where every label would read the same number.
- */
-function kilometreLabel(metres: number, stepKilometres: number): string {
-  const decimals = Math.min(Math.max(Math.ceil(-Math.log10(stepKilometres)), 0), 3);
-
-  return (metres / 1000).toFixed(decimals);
-}
-
-/**
  * Claims the pointer for a drag, where that is possible.
  *
  * A browser refuses the call for a pointer that has already gone up, and jsdom
@@ -193,6 +192,7 @@ export function ElevationProfile({
   zoomWindow = null,
   onZoomChange,
   highlight = null,
+  unitSystem = "metric",
 }: ElevationProfileProps) {
   const { ref, width } = useElementWidth<HTMLDivElement>();
 
@@ -450,18 +450,20 @@ export function ElevationProfile({
   const active = activeMetres === null ? null : sampleAt(profile, activeMetres);
   const activeKind = active && surface ? surfaceKindAt(surface, active.distanceMetres) : null;
   const activeSurface = activeKind ? SURFACE_STYLES[activeKind].label : null;
+  const distanceWord = unitSystem === "imperial" ? "miles" : "kilometres";
+  const elevationWord = unitSystem === "imperial" ? "feet" : "metres";
   const shownLabel =
-    `${kilometreLabel(profile.startMetres, geometry.distanceStep)}–` +
-    `${kilometreLabel(profile.endMetres, geometry.distanceStep)} km`;
+    `${distanceLabel(profile.startMetres, geometry.distanceStep, unitSystem)}–` +
+    `${distanceLabel(profile.endMetres, geometry.distanceStep, unitSystem)} ${distanceUnitLabel(unitSystem)}`;
   // The picked class is said in words as well as in light: a chart that is
   // mostly veiled has to explain itself to a reader who cannot see the veil.
   const picked = highlight ? highlightLabel(highlight) : "";
   const summary =
     `Elevation profile of ${title}` +
     (zoomed ? `, ${shownLabel}` : "") +
-    `: ${((profile.endMetres - profile.startMetres) / 1000).toFixed(1)} kilometres, ` +
-    `between ${Math.round(profile.minElevationMetres)} and ` +
-    `${Math.round(profile.maxElevationMetres)} metres above sea level.` +
+    `: ${distanceValue(profile.endMetres - profile.startMetres, unitSystem).toFixed(1)} ${distanceWord}, ` +
+    `between ${Math.round(elevationValue(profile.minElevationMetres, unitSystem))} and ` +
+    `${Math.round(elevationValue(profile.maxElevationMetres, unitSystem))} ${elevationWord} above sea level.` +
     (picked ? ` Only the ${picked} stretches are lit.` : "");
 
   return (
@@ -491,7 +493,7 @@ export function ElevationProfile({
                 textAnchor="end"
                 dominantBaseline="middle"
               >
-                {Math.round(metres)}
+                {Math.round(elevationValue(metres, unitSystem))}
               </text>
             </g>
           ))}
@@ -514,7 +516,7 @@ export function ElevationProfile({
               y={plotHeight + 15}
               textAnchor="middle"
             >
-              {kilometreLabel(kilometres * 1000, geometry.distanceStep)}
+              {distanceLabel(kilometres * 1000, geometry.distanceStep, unitSystem)}
             </text>
           ))}
 
@@ -619,16 +621,18 @@ export function ElevationProfile({
         aria-label={
           zoomed ? `Position along ${title}, ${shownLabel} shown` : `Position along ${title}`
         }
-        aria-valuemin={Number((profile.startMetres / 1000).toFixed(1))}
-        aria-valuemax={Number((profile.endMetres / 1000).toFixed(1))}
+        aria-valuemin={Number(distanceValue(profile.startMetres, unitSystem).toFixed(1))}
+        aria-valuemax={Number(distanceValue(profile.endMetres, unitSystem).toFixed(1))}
         // Falls back to the start of the stretch on show, not to zero: zoomed
         // into the far end of a route, zero is outside the range this slider
         // declares, and a value outside its own bounds is nothing assistive
         // technology can place.
-        aria-valuenow={Number(((active?.distanceMetres ?? profile.startMetres) / 1000).toFixed(1))}
+        aria-valuenow={Number(
+          distanceValue(active?.distanceMetres ?? profile.startMetres, unitSystem).toFixed(1),
+        )}
         aria-valuetext={
           active
-            ? `${Math.round(active.elevationMetres)} metres at ${(active.distanceMetres / 1000).toFixed(1)} kilometres, ${active.gradientPercent.toFixed(1)} percent` +
+            ? `${Math.round(elevationValue(active.elevationMetres, unitSystem))} ${elevationWord} at ${distanceValue(active.distanceMetres, unitSystem).toFixed(1)} ${distanceWord}, ${active.gradientPercent.toFixed(1)} percent` +
               (activeSurface ? `, ${activeSurface.toLowerCase()}` : "")
             : "No position selected"
         }
@@ -673,15 +677,23 @@ export function ElevationProfile({
         <p className="elevation-profile__readout" aria-live="polite">
           {active ? (
             <>
-              <strong>{Math.round(active.elevationMetres)} m</strong>
-              <span> at {(active.distanceMetres / 1000).toFixed(1)} km</span>
+              <strong>
+                {Math.round(elevationValue(active.elevationMetres, unitSystem))}{" "}
+                {elevationUnitLabel(unitSystem)}
+              </strong>
+              <span>
+                {" "}
+                at {distanceValue(active.distanceMetres, unitSystem).toFixed(1)}{" "}
+                {distanceUnitLabel(unitSystem)}
+              </span>
               <span> · {active.gradientPercent.toFixed(1)}%</span>
               {activeSurface ? <span> · {activeSurface}</span> : null}
             </>
           ) : (
             <span>
-              {Math.round(profile.minElevationMetres)}–{Math.round(profile.maxElevationMetres)} m
-              above sea level
+              {Math.round(elevationValue(profile.minElevationMetres, unitSystem))}–
+              {Math.round(elevationValue(profile.maxElevationMetres, unitSystem))}{" "}
+              {elevationUnitLabel(unitSystem)} above sea level
             </span>
           )}
         </p>

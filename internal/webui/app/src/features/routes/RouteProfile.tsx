@@ -24,6 +24,8 @@ import type { Highlight } from "../../lib/highlight";
 import { useCoarsePointer } from "../../lib/mediaQuery";
 import type { DistanceWindow, Profile } from "../../lib/profile";
 import type { SurfaceSummary } from "../../lib/surface";
+import type { UnitSystem } from "../../lib/units";
+import { distanceUnitLabel, distanceValue } from "../../lib/units";
 
 export interface RouteProfileProps {
   /** The stretch on show: the whole route, or the window the reader chose. */
@@ -39,6 +41,8 @@ export interface RouteProfileProps {
   highlight: Highlight | null;
   collapsed: boolean;
   onCollapsedChange: (collapsed: boolean) => void;
+  /** The units the figures, the summary, and the chart itself report in. */
+  unitSystem: UnitSystem;
 }
 
 export function RouteProfile({
@@ -53,6 +57,7 @@ export function RouteProfile({
   highlight,
   collapsed,
   onCollapsedChange,
+  unitSystem,
 }: RouteProfileProps) {
   /*
    * A finger cannot hover, and a card that scrolls cannot give every downward
@@ -62,16 +67,16 @@ export function RouteProfile({
    */
   const coarse = useCoarsePointer();
   const range = profile
-    ? `${formatElevation(profile.minElevationMetres)}–${formatElevation(profile.maxElevationMetres)}`
+    ? `${formatElevation(profile.minElevationMetres, unitSystem)}–${formatElevation(profile.maxElevationMetres, unitSystem)}`
     : "";
   // Collapsed, the row is the summary; open, the same line is the hint that
   // says what the chart will do if it is dragged across.
   const summary = collapsed
-    ? [range, ascentMetres > 0 ? `${formatAscent(ascentMetres)} up` : ""]
+    ? [range, ascentMetres > 0 ? `${formatAscent(ascentMetres, unitSystem)} up` : ""]
         .filter(Boolean)
         .join(" · ")
     : zoomWindow
-      ? `${(zoomWindow.startMetres / 1000).toFixed(1)}–${(zoomWindow.endMetres / 1000).toFixed(1)} km shown · Escape returns`
+      ? `${distanceValue(zoomWindow.startMetres, unitSystem).toFixed(1)}–${distanceValue(zoomWindow.endMetres, unitSystem).toFixed(1)} ${distanceUnitLabel(unitSystem)} shown · Escape returns`
       : range === ""
         ? ""
         : `${range} · ${coarse ? "press and hold to look closer" : "drag across to look closer"}`;
@@ -133,6 +138,7 @@ export function RouteProfile({
             zoomWindow={zoomWindow}
             onZoomChange={onZoomChange}
             highlight={highlight}
+            unitSystem={unitSystem}
           />
         </div>
       )}

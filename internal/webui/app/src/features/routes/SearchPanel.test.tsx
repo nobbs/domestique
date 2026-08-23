@@ -47,6 +47,7 @@ function renderPanel(overrides: Partial<SearchPanelProps> = {}) {
     shapes: new Map([[routeKey(route()), { coordinates: CLIMB }]]),
     readAt: "19:38",
     changeOf: () => null,
+    unitSystem: "metric",
     ...overrides,
   };
 
@@ -172,6 +173,17 @@ describe("SearchPanel", () => {
     expect(screen.getByRole("heading", { name: "Alpine loop — Descent" })).toBeInTheDocument();
     expect(screen.getByText("42.5 km")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Alpine loop — Descent/ })).toBeNull();
+  });
+
+  it("reports the card's figures in miles and feet for the imperial system", () => {
+    renderPanel({
+      query: "alpine",
+      selectedKey: routeKey(route()),
+      unitSystem: "imperial",
+    });
+
+    expect(screen.getByText("26.4 mi")).toBeInTheDocument();
+    expect(screen.getByText("2,034 ft")).toBeInTheDocument();
   });
 
   /*

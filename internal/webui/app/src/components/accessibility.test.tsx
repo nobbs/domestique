@@ -32,6 +32,7 @@ import { MapCredits } from "./MapCredits";
 import { RouteKey } from "./RouteKey";
 import { StatusMessage } from "./StatusMessage";
 import { ThemePicker } from "./ThemePicker";
+import { UnitPicker } from "./UnitPicker";
 
 const STAGE: Route = {
   provider: "veloplanner",
@@ -86,6 +87,7 @@ describe("accessibility", () => {
             shapes={new Map([[routeKey(STAGE), { coordinates: CLIMB }]])}
             readAt="19:38"
             changeOf={() => "new"}
+            unitSystem="metric"
           />
         </MemoryRouter>,
       );
@@ -113,6 +115,7 @@ describe("accessibility", () => {
           shapes={new Map([[routeKey(STAGE), { coordinates: CLIMB }]])}
           readAt="19:38"
           changeOf={() => "updated"}
+          unitSystem="metric"
         />
       </MemoryRouter>,
     );
@@ -138,6 +141,7 @@ describe("accessibility", () => {
           shapes={new Map([[routeKey(STAGE), { coordinates: CLIMB }]])}
           readAt="19:38"
           changeOf={() => null}
+          unitSystem="metric"
         />
       </MemoryRouter>,
     );
@@ -182,6 +186,7 @@ describe("accessibility", () => {
                 highlight={null}
                 collapsed={false}
                 onCollapsedChange={() => {}}
+                unitSystem="metric"
               />
             }
             highestMetres={1840}
@@ -196,6 +201,7 @@ describe("accessibility", () => {
             libraryCount={47}
             onClose={() => {}}
             sourceBaseUrls={{ veloplanner: "https://veloplanner.example" }}
+            unitSystem="metric"
           />
         </MemoryRouter>
       </QueryClientProvider>,
@@ -263,6 +269,17 @@ describe("accessibility", () => {
           expanded={expanded}
           onExpandedChange={() => {}}
         />,
+      );
+
+      await expectNoAxeViolations(container);
+      unmount();
+    }
+  });
+
+  it("holds for the unit toggle, either system on screen", async () => {
+    for (const system of ["metric", "imperial"] as const) {
+      const { container, unmount } = render(
+        <UnitPicker system={system} onSystemChange={() => {}} />,
       );
 
       await expectNoAxeViolations(container);

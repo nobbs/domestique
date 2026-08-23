@@ -22,6 +22,7 @@ import type { Highlight } from "../../lib/highlight";
 import type { BandShare } from "../../lib/profile";
 import { providerLabel } from "../../lib/provider";
 import type { SurfaceSummary } from "../../lib/surface";
+import type { UnitSystem } from "../../lib/units";
 import { ClimbsList } from "./ClimbsList";
 import { ReprocessButton } from "./ReprocessButton";
 
@@ -70,6 +71,8 @@ export interface RoutePanelProps {
   onClose: () => void;
   /** Each configured source's web application, keyed by provider. */
   sourceBaseUrls: Record<string, string>;
+  /** The units the figures and the climbs list report distance and elevation in. */
+  unitSystem: UnitSystem;
 }
 
 export function RoutePanel({
@@ -87,6 +90,7 @@ export function RoutePanel({
   libraryCount,
   onClose,
   sourceBaseUrls,
+  unitSystem,
 }: RoutePanelProps) {
   const back =
     libraryCount > 0
@@ -130,11 +134,11 @@ export function RoutePanel({
       <dl className="route-panel__figures">
         <div>
           <dt>Distance</dt>
-          <dd>{formatDistance(route.distanceMetres)}</dd>
+          <dd>{formatDistance(route.distanceMetres, unitSystem)}</dd>
         </div>
         <div>
           <dt>Climbing</dt>
-          <dd>{formatAscent(route.ascentMetres)}</dd>
+          <dd>{formatAscent(route.ascentMetres, unitSystem)}</dd>
         </div>
         <div>
           <dt>Max gradient</dt>
@@ -147,11 +151,11 @@ export function RoutePanel({
            * four things this route is, and a figure that changed while a reader
            * dragged across the chart would be a fifth instrument.
            */}
-          <dd>{highestMetres === null ? "—" : formatElevation(highestMetres)}</dd>
+          <dd>{highestMetres === null ? "—" : formatElevation(highestMetres, unitSystem)}</dd>
         </div>
       </dl>
       {profile}
-      <ClimbsList climbs={climbs} onSelect={onSelectClimb} />
+      <ClimbsList climbs={climbs} onSelect={onSelectClimb} unitSystem={unitSystem} />
       {/*
        * The two mixes, as a bar and a row of chips each, and pressing a chip
        * lights that ground on both the map and the chart. They sit under the

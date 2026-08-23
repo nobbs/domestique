@@ -17,6 +17,7 @@
 import type { Position } from "../api/types";
 import { formatDistance } from "./format";
 import { cumulativeMetres, haversineMetres } from "./profile";
+import type { UnitSystem } from "./units";
 
 /**
  * Web Mercator ground resolution at zoom 0 on the equator, in metres per pixel.
@@ -205,19 +206,19 @@ export function routeCues(coordinates: Position[]): RouteCues | null {
  * look like: which way the ride leaves, and whether it comes back to where it
  * started.
  */
-export function cuesDescription(cues: RouteCues): string {
+export function cuesDescription(cues: RouteCues, system: UnitSystem): string {
   const leaving = `leaves the start heading ${compassPoint(cues.departure)}`;
   // In the same place rather than at the same point: the two ends only have to
   // be close enough that one marker would hide the other, and a stage that
   // finishes a street away from where it started is a loop to a rider.
   if (cues.sharedTerminal) {
-    return `Starts and finishes in the same place. The ride ${leaving} and returns from the ${compassPoint(cues.arrival + 180)}, ${formatDistance(cues.lengthMetres)} later.`;
+    return `Starts and finishes in the same place. The ride ${leaving} and returns from the ${compassPoint(cues.arrival + 180)}, ${formatDistance(cues.lengthMetres, system)} later.`;
   }
 
   // Apart is measured across the ground, not along the route: a stage that
   // wanders can be far longer than the gap between its ends, and saying the
   // length here would tell a reader the finish is much further away than it is.
-  return `Starts and finishes ${formatDistance(cues.separationMetres)} apart, the finish lying to the ${compassPoint(bearingBetween(cues.start, cues.finish))}. The ride ${leaving}.`;
+  return `Starts and finishes ${formatDistance(cues.separationMetres, system)} apart, the finish lying to the ${compassPoint(bearingBetween(cues.start, cues.finish))}. The ride ${leaving}.`;
 }
 
 /**

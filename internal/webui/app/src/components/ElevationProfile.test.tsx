@@ -263,6 +263,37 @@ describe("ElevationProfile", () => {
     // 100 m to 295 m over the generated climb.
     expect(screen.getByText(/100–295 m/)).toBeInTheDocument();
   });
+
+  it("reports the same range in feet for the imperial system", () => {
+    render(
+      <ElevationProfile
+        profile={buildProfile(climb())}
+        title="Eich Rundkurs 90"
+        activeMetres={null}
+        onActiveChange={() => {}}
+        unitSystem="imperial"
+      />,
+    );
+
+    // 100 m to 295 m converts to 328 ft and 968 ft.
+    expect(screen.getByText(/328–968 ft/)).toBeInTheDocument();
+  });
+
+  it("says the summary in miles and feet for the imperial system", () => {
+    render(
+      <ElevationProfile
+        profile={buildProfile(climb())}
+        title="Eich Rundkurs 90"
+        activeMetres={null}
+        onActiveChange={() => {}}
+        unitSystem="imperial"
+      />,
+    );
+
+    const figure = screen.getByRole("img", { name: /Eich Rundkurs 90/ });
+    expect(figure).toHaveAccessibleName(/miles/);
+    expect(figure).toHaveAccessibleName(/feet above sea level/);
+  });
 });
 
 describe("ElevationProfile zooming", () => {

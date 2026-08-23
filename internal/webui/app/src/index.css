@@ -1110,11 +1110,12 @@ body {
 
 /*
  * Where the chip lands if the map reported no cluster to draw it into — above
- * the credit in the same corner, which is the order it has inside the cluster.
+ * the theme chooser, which is itself above the credit, in the order the
+ * cluster holds them.
  */
 .route-map > .basemap-picker {
   position: absolute;
-  bottom: calc(var(--space-5) + 30px);
+  bottom: calc(var(--space-5) + 60px);
   left: var(--space-5);
   z-index: 1;
 }
@@ -1180,10 +1181,44 @@ body {
   color: var(--ink);
 }
 
-/* Stacked above the basemap chooser, which is itself stacked above the credit. */
+/* Stacked above the credit, which is the bottom of the corner by obligation. */
 .route-map > .theme-picker {
   position: absolute;
-  bottom: calc(var(--space-5) + 60px);
+  bottom: calc(var(--space-5) + 30px);
+  left: var(--space-5);
+  z-index: 1;
+}
+
+/*
+ * The unit toggle, built to the basemap chip's own surface and its neighbour
+ * in the same corner. Unlike the basemap there are only two answers, so this
+ * is one button rather than a fold and a list.
+ */
+.unit-picker {
+  display: inline-flex;
+  align-items: center;
+  pointer-events: auto;
+  align-self: flex-start;
+  padding: 3px var(--space-2);
+  border: 0;
+  border-radius: calc(var(--radius) - 4px);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  color: var(--ink-2);
+  font: var(--type-small);
+  letter-spacing: var(--track-small);
+  cursor: pointer;
+}
+
+.unit-picker:hover,
+.unit-picker:focus-visible {
+  color: var(--accent);
+}
+
+/* Topmost of the cluster's fallback stack — see the furniture order above. */
+.route-map > .unit-picker {
+  position: absolute;
+  bottom: calc(var(--space-5) + 90px);
   left: var(--space-5);
   z-index: 1;
 }

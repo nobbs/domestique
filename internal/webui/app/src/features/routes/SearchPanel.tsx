@@ -25,6 +25,7 @@ import { formatAscent, formatDistance, formatGradient } from "../../lib/format";
 import { gradientBand, gradientMix } from "../../lib/profile";
 import { providerLabel } from "../../lib/provider";
 import type { StageChange } from "../../lib/seenStages";
+import type { UnitSystem } from "../../lib/units";
 import { FilterPanel } from "./FilterPanel";
 
 /** The geometry a row needs, when it has arrived. Rows render without it. */
@@ -67,6 +68,8 @@ export interface SearchPanelProps {
   readAt: string | null;
   /** Whether a route is new or changed since this reader last opened it. */
   changeOf: (route: Route) => StageChange;
+  /** The units the figures report distance and elevation in. */
+  unitSystem: UnitSystem;
 }
 
 /** New or changed since this reader last opened it. Text, never colour alone. */
@@ -107,11 +110,13 @@ function ResultRow({
   shape,
   change,
   onSelect,
+  unitSystem,
 }: {
   route: Route;
   shape: RouteShape | undefined;
   change: StageChange;
   onSelect: () => void;
+  unitSystem: UnitSystem;
 }) {
   return (
     <li>
@@ -131,8 +136,8 @@ function ResultRow({
          */}
         <span className="source-label">{providerLabel(route.provider)}</span>
         <span className="result__figures">
-          <span>{formatDistance(route.distanceMetres)}</span>
-          <span>{formatAscent(route.ascentMetres)}</span>
+          <span>{formatDistance(route.distanceMetres, unitSystem)}</span>
+          <span>{formatAscent(route.ascentMetres, unitSystem)}</span>
           <span>{formatGradient(route.maxGradientPercent)}</span>
         </span>
       </button>
@@ -154,12 +159,14 @@ function RouteCard({
   readAt,
   change,
   onOpen,
+  unitSystem,
 }: {
   route: Route;
   shape: RouteShape | undefined;
   readAt: string | null;
   change: StageChange;
   onOpen: () => void;
+  unitSystem: UnitSystem;
 }) {
   /*
    * The card brings itself into view when it appears.
@@ -198,11 +205,11 @@ function RouteCard({
       <dl className="route-card__figures">
         <div>
           <dt>Distance</dt>
-          <dd>{formatDistance(route.distanceMetres)}</dd>
+          <dd>{formatDistance(route.distanceMetres, unitSystem)}</dd>
         </div>
         <div>
           <dt>Climbing</dt>
-          <dd>{formatAscent(route.ascentMetres)}</dd>
+          <dd>{formatAscent(route.ascentMetres, unitSystem)}</dd>
         </div>
         <div>
           <dt>Max</dt>
@@ -250,6 +257,7 @@ export function SearchPanel({
   shapes,
   readAt,
   changeOf,
+  unitSystem,
 }: SearchPanelProps) {
   const filtersActive = hasActiveFilters(filters);
   const hasQuery = query.trim() !== "";
@@ -317,6 +325,7 @@ export function SearchPanel({
                 readAt={readAt}
                 change={changeOf(route)}
                 onOpen={() => onOpen(key)}
+                unitSystem={unitSystem}
               />
             ) : (
               <ResultRow
@@ -325,6 +334,7 @@ export function SearchPanel({
                 shape={shape}
                 change={changeOf(route)}
                 onSelect={() => onSelect(key)}
+                unitSystem={unitSystem}
               />
             );
           })}

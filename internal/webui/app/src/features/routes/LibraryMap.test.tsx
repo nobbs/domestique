@@ -35,6 +35,8 @@ const drawn = vi.hoisted(() => ({
   furniture: [] as Array<{ control: string; position: string }>,
   /** What the loaded map hands back as its own container. */
   container: null as HTMLElement | null,
+  /** What the scale bar was told to report distance in. */
+  scaleUnit: "" as string,
 }));
 
 vi.mock("../../lib/maplibre", () => ({}));
@@ -60,6 +62,14 @@ vi.mock("../../components/BasemapPicker", () => ({
 /* Same bargain as the basemap chooser above: offered at all, and where it lands. */
 vi.mock("../../components/ThemePicker", () => ({
   ThemePicker: ({ choice }: { choice: string }) => <p data-testid="theme-picker">{choice}</p>,
+}));
+
+/*
+ * And the unit toggle decides nothing here either: what is asked of it in this
+ * file is whether it is offered at all, and where it lands.
+ */
+vi.mock("../../components/UnitPicker", () => ({
+  UnitPicker: ({ system }: { system: string }) => <p data-testid="units">{system}</p>,
 }));
 
 vi.mock("../../components/MapViewport", () => ({
@@ -130,8 +140,9 @@ vi.mock("react-map-gl/maplibre", () => ({
 
     return null;
   },
-  ScaleControl: ({ position }: { position: string }) => {
+  ScaleControl: ({ position, unit }: { position: string; unit: string }) => {
     drawn.furniture.push({ control: "scale", position });
+    drawn.scaleUnit = unit;
 
     return null;
   },
@@ -435,6 +446,37 @@ describe("LibraryMap", () => {
     show();
 
     expect(screen.queryByTestId("picker")).not.toBeInTheDocument();
+  });
+
+  it("puts the unit toggle in the cluster, above the basemap chooser", () => {
+    show({
+      basemaps: TWO_BASEMAPS,
+      selectedBasemap: "Satellite",
+      onBasemapChange: () => {},
+      unitSystem: "imperial",
+      onUnitSystemChange: () => {},
+    });
+
+    const cluster = drawn.container?.querySelector(".maplibregl-ctrl-bottom-left");
+    expect(cluster?.textContent).toBe("imperialSatellite© somebody");
+  });
+
+  it("offers no unit toggle where no one is listening for one", () => {
+    show();
+
+    expect(screen.queryByTestId("units")).not.toBeInTheDocument();
+  });
+
+  it("tells the scale bar which system to report distance in", () => {
+    show({ unitSystem: "imperial" });
+
+    expect(drawn.scaleUnit).toBe("imperial");
+  });
+
+  it("reports the scale bar in metric by default", () => {
+    show();
+
+    expect(drawn.scaleUnit).toBe("metric");
   });
 
   /*

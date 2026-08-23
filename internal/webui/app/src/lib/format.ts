@@ -1,8 +1,26 @@
-/** Presentation helpers. Units are metric, matching the stored values. */
+/**
+ * Presentation helpers. The service stores metric values throughout; every
+ * formatter here that shows a distance or an elevation takes the reader's
+ * `UnitSystem` and converts for display only — see `units.ts`.
+ */
 
-export function formatDistance(metres: number): string {
+import type { UnitSystem } from "./units";
+import { metresToFeet, metresToMiles } from "./units";
+
+/** Below this many feet, a distance reads as feet rather than as a fraction of a mile. */
+const FEET_DISPLAY_LIMIT = 5280;
+
+export function formatDistance(metres: number, system: UnitSystem): string {
   if (!Number.isFinite(metres) || metres <= 0) {
     return "—";
+  }
+  if (system === "imperial") {
+    const feet = metresToFeet(metres);
+    if (feet < FEET_DISPLAY_LIMIT) {
+      return `${Math.round(feet)} ft`;
+    }
+    const miles = metresToMiles(metres);
+    return `${miles.toFixed(miles < 100 ? 1 : 0)} mi`;
   }
   if (metres < 1000) {
     return `${Math.round(metres)} m`;
@@ -16,12 +34,14 @@ export function formatCount(value: number, singular: string, plural = `${singula
 }
 
 /** Total climbing. Zero means the source had no usable elevation profile. */
-export function formatAscent(metres: number): string {
+export function formatAscent(metres: number, system: UnitSystem): string {
   if (!Number.isFinite(metres) || metres <= 0) {
     return "—";
   }
 
-  return `${Math.round(metres).toLocaleString()} m`;
+  return system === "imperial"
+    ? `${Math.round(metresToFeet(metres)).toLocaleString()} ft`
+    : `${Math.round(metres).toLocaleString()} m`;
 }
 
 /**
@@ -83,10 +103,12 @@ export function formatReadTime(value: string | undefined, now = new Date()): str
  * profile, but an altitude of nought metres is the coast, and a route that
  * drops below sea level is a real one.
  */
-export function formatElevation(metres: number): string {
+export function formatElevation(metres: number, system: UnitSystem): string {
   if (!Number.isFinite(metres)) {
     return "—";
   }
 
-  return `${Math.round(metres).toLocaleString()} m`;
+  return system === "imperial"
+    ? `${Math.round(metresToFeet(metres)).toLocaleString()} ft`
+    : `${Math.round(metres).toLocaleString()} m`;
 }

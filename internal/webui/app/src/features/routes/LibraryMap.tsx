@@ -35,8 +35,10 @@ import { BasemapPicker } from "../../components/BasemapPicker";
 import { MapCredits } from "../../components/MapCredits";
 import { MapViewport } from "../../components/MapViewport";
 import { ThemePicker } from "../../components/ThemePicker";
+import { UnitPicker } from "../../components/UnitPicker";
 import type { Insets } from "../../lib/overlayInsets";
 import type { ThemeChoice } from "../../lib/theme";
+import type { UnitSystem } from "../../lib/units";
 // Configures the shared worker pool; without it this map renders no tiles.
 import "../../lib/maplibre";
 
@@ -123,6 +125,10 @@ export interface LibraryMapProps {
    */
   themeChoice?: ThemeChoice;
   onThemeChoiceChange?: (choice: ThemeChoice) => void;
+  /** The system the scale bar and the unit chip report in. Metric when absent. */
+  unitSystem?: UnitSystem;
+  /** Left out where nothing is listening, which also leaves the chip unmounted. */
+  onUnitSystemChange?: (system: UnitSystem) => void;
   lines: LibraryLine[];
   /** The route standing out, by `routeKey`. Null draws the library flat. */
   selectedKey: string | null;
@@ -202,6 +208,8 @@ export function LibraryMap({
   onBasemapChange,
   themeChoice,
   onThemeChoiceChange,
+  unitSystem = "metric",
+  onUnitSystemChange,
   lines,
   selectedKey,
   bounds,
@@ -270,6 +278,9 @@ export function LibraryMap({
    */
   const furniture = (
     <>
+      {onUnitSystemChange ? (
+        <UnitPicker system={unitSystem} onSystemChange={onUnitSystemChange} />
+      ) : null}
       {onBasemapChange ? (
         <BasemapPicker
           basemaps={basemaps}
@@ -335,7 +346,7 @@ export function LibraryMap({
          * adds to a bottom corner by prepending, so that a control added later
          * stacks above the corner rather than under the ones already there.
          */}
-        <ScaleControl position="bottom-left" unit="metric" />
+        <ScaleControl position="bottom-left" unit={unitSystem} />
         <NavigationControl position="bottom-left" showCompass={false} />
         {/*
          * One-shot: it flies to where the reader is, once, rather than

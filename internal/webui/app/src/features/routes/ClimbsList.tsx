@@ -10,13 +10,15 @@
 
 import type { Climb } from "../../lib/climbs";
 import { formatAscent, formatDistance, formatGradient } from "../../lib/format";
+import type { UnitSystem } from "../../lib/units";
 
 export interface ClimbsListProps {
   climbs: Climb[];
   onSelect: (climb: Climb) => void;
+  unitSystem: UnitSystem;
 }
 
-export function ClimbsList({ climbs, onSelect }: ClimbsListProps) {
+export function ClimbsList({ climbs, onSelect, unitSystem }: ClimbsListProps) {
   if (climbs.length === 0) {
     return null;
   }
@@ -29,11 +31,12 @@ export function ClimbsList({ climbs, onSelect }: ClimbsListProps) {
           <li key={climb.startMetres}>
             <button className="route-panel__climb" type="button" onClick={() => onSelect(climb)}>
               <span className="route-panel__climb-distance">
-                {formatDistance(climb.distanceMetres)}
+                {formatDistance(climb.distanceMetres, unitSystem)}
               </span>
               <span className="route-panel__climb-figures">
-                {formatAscent(climb.ascentMetres)} · avg {formatGradient(climb.averageGradePercent)}{" "}
-                · max {formatGradient(climb.maxGradePercent)}
+                {formatAscent(climb.ascentMetres, unitSystem)} · avg{" "}
+                {formatGradient(climb.averageGradePercent)} · max{" "}
+                {formatGradient(climb.maxGradePercent)}
               </span>
             </button>
           </li>
