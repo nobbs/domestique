@@ -22,6 +22,7 @@ import { RoutePanel } from "../features/routes/RoutePanel";
 import { RouteProfile } from "../features/routes/RouteProfile";
 import { SearchPanel } from "../features/routes/SearchPanel";
 import { findClimbs } from "../lib/climbs";
+import { EMPTY_FILTERS } from "../lib/filters";
 import { buildProfile, gradientShares } from "../lib/profile";
 import { summariseSurface } from "../lib/surface";
 import { expectNoAxeViolations } from "../test/axe";
@@ -74,6 +75,10 @@ describe("accessibility", () => {
             total={6}
             query={query}
             onQueryChange={() => {}}
+            filters={EMPTY_FILTERS}
+            onFiltersChange={() => {}}
+            filtersExpanded={false}
+            onFiltersExpandedChange={() => {}}
             selectedKey={null}
             onSelect={() => {}}
             onOpen={() => {}}
@@ -97,12 +102,41 @@ describe("accessibility", () => {
           total={6}
           query=""
           onQueryChange={() => {}}
+          filters={EMPTY_FILTERS}
+          onFiltersChange={() => {}}
+          filtersExpanded={false}
+          onFiltersExpandedChange={() => {}}
           selectedKey={routeKey(STAGE)}
           onSelect={() => {}}
           onOpen={() => {}}
           shapes={new Map([[routeKey(STAGE), { coordinates: CLIMB }]])}
           readAt="19:38"
           changeOf={() => "updated"}
+        />
+      </MemoryRouter>,
+    );
+
+    await expectNoAxeViolations(container);
+  });
+
+  it("holds for the library filters, expanded with an active filter", async () => {
+    const { container } = render(
+      <MemoryRouter>
+        <SearchPanel
+          shown={[STAGE]}
+          total={6}
+          query=""
+          onQueryChange={() => {}}
+          filters={{ ...EMPTY_FILTERS, surfaces: ["gravel"] }}
+          onFiltersChange={() => {}}
+          filtersExpanded={true}
+          onFiltersExpandedChange={() => {}}
+          selectedKey={null}
+          onSelect={() => {}}
+          onOpen={() => {}}
+          shapes={new Map([[routeKey(STAGE), { coordinates: CLIMB }]])}
+          readAt="19:38"
+          changeOf={() => null}
         />
       </MemoryRouter>,
     );

@@ -523,6 +523,106 @@ body {
   letter-spacing: var(--track-row);
 }
 
+/* Filter panel -------------------------------------------------------------- */
+
+.filter-panel {
+  border-top: 1px solid var(--rule);
+}
+
+.filter-panel__toggle {
+  display: block;
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  background: none;
+  color: var(--ink-2);
+  font: var(--type-small);
+  letter-spacing: var(--track-small);
+  text-align: left;
+  cursor: pointer;
+}
+
+.filter-panel__toggle:hover,
+.filter-panel__toggle:focus-visible {
+  color: var(--accent);
+}
+
+.filter-panel__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: 0 var(--space-3) var(--space-3);
+}
+
+.filter-panel__range {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.filter-panel__range legend {
+  flex: none;
+  width: 100%;
+  padding: 0;
+  color: var(--ink-2);
+  font: var(--type-small);
+  letter-spacing: var(--track-small);
+}
+
+.filter-panel__bound {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--ink-2);
+  font: var(--type-small);
+  letter-spacing: var(--track-small);
+}
+
+.filter-panel__bound input {
+  width: 64px;
+  padding: var(--space-1);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--ink);
+  font: var(--type-row);
+}
+
+.filter-panel__bound input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.filter-panel__surfaces {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.filter-panel__surfaces legend {
+  width: 100%;
+  padding: 0 0 var(--space-1);
+  color: var(--ink-2);
+  font: var(--type-small);
+  letter-spacing: var(--track-small);
+}
+
+.filter-panel__surface {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--ink);
+  font: var(--type-row);
+  letter-spacing: var(--track-row);
+}
+
 /* Result row -------------------------------------------------------------- */
 
 /*

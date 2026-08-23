@@ -4,6 +4,7 @@ import { MemoryRouter } from "react-router";
 import { describe, expect, it, vi } from "vitest";
 import type { Position, Route } from "../../api/types";
 import { routeKey } from "../../api/types";
+import { EMPTY_FILTERS } from "../../lib/filters";
 import { SearchPanel, type SearchPanelProps } from "./SearchPanel";
 
 function route(overrides: Partial<Route> = {}): Route {
@@ -36,6 +37,10 @@ function renderPanel(overrides: Partial<SearchPanelProps> = {}) {
     total: 47,
     query: "",
     onQueryChange: () => {},
+    filters: EMPTY_FILTERS,
+    onFiltersChange: () => {},
+    filtersExpanded: false,
+    onFiltersExpandedChange: () => {},
     selectedKey: null,
     onSelect: () => {},
     onOpen: () => {},
@@ -97,6 +102,27 @@ describe("SearchPanel", () => {
     renderPanel({ query: "kaiserstuhl", shown: [] });
 
     expect(screen.getByText("Nothing here is called that.")).toBeInTheDocument();
+  });
+
+  it("blames a filter alone for an empty result when no name was typed", () => {
+    renderPanel({ query: "", filters: { ...EMPTY_FILTERS, surfaces: ["gravel"] }, shown: [] });
+
+    expect(screen.getByText("Nothing here matches these filters.")).toBeInTheDocument();
+  });
+
+  // Neither a name nor a filter alone is the honest cause when both narrowed
+  // the library to nothing: blaming one over the other points the reader at
+  // the wrong control to relax.
+  it("names both when a search and a filter are narrowing at once", () => {
+    renderPanel({
+      query: "kaiserstuhl",
+      filters: { ...EMPTY_FILTERS, surfaces: ["gravel"] },
+      shown: [],
+    });
+
+    expect(
+      screen.getByText("Nothing here matches this search and these filters."),
+    ).toBeInTheDocument();
   });
 
   it("offers each result as the thing that opens it", async () => {
@@ -169,6 +195,15 @@ describe("SearchPanel", () => {
     renderPanel({ selectedKey: routeKey(route()) });
 
     expect(screen.getByRole("heading", { name: "Alpine loop — Descent" })).toBeInTheDocument();
+  });
+
+  // A route picked straight off the map narrows neither a name nor a filter,
+  // so "1 of 47" here would be a sum with no question behind it — the same
+  // reason the count stays hidden at rest.
+  it("says nothing about the count for a route picked without narrowing anything", () => {
+    renderPanel({ selectedKey: routeKey(route()), total: 47 });
+
+    expect(screen.queryByText(/of 47/)).toBeNull();
   });
 
   it("says when the library was read, beside where the route is", () => {
