@@ -47,6 +47,10 @@ deliberately selected work.
   synchronisation, safety, or deployment-contract changes.
 - Do not place credentials, real route data, deployment details, raw provider
   responses, or internal filesystem paths in an issue.
+- Write issue and pull-request bodies **unwrapped**: one line per paragraph, one
+  line per list item, no hard wrap at any column. GitHub reflows prose to the
+  reader's width, so a hard-wrapped source only makes later edits awkward. Code
+  fences, tables, and blockquotes keep their own line structure.
 - When an issue becomes ambiguous or blocked by authority, remove neither its
   history nor its priority automatically; explain the condition and wait for a
   user decision.
