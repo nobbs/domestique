@@ -155,6 +155,23 @@ func TestClientListsOnlyRoutesCarryingAnExternalID(t *testing.T) {
 	}, owned, "only routes with both an external ID and a usable route ID belong in the map")
 }
 
+func TestClientRefusesAListingWithADuplicateExternalID(t *testing.T) {
+	// Two routes claiming one external ID leaves no way to say which one this
+	// service owns — a real possibility after a partially written run — so
+	// every later answer about it would be decided by map order. Refuse the
+	// listing instead of silently keeping whichever arrived last.
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writeJSON(t, writer, []map[string]any{
+			{"id": 51, "external_id": "domestique:veloplanner:1:stage:1"},
+			{"id": 52, "external_id": "domestique:veloplanner:1:stage:1"},
+		})
+	}))
+	defer server.Close()
+
+	_, err := newTestClient(t, server).ListOwnedRoutes(t.Context(), "access-token")
+	require.ErrorContains(t, err, "duplicate external id")
+}
+
 func TestClientRefusesAListingWithoutAnAccessToken(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		assert.Fail(t, "an unauthenticated listing must not reach the API")

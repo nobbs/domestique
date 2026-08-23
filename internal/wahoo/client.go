@@ -243,6 +243,14 @@ func (c *Client) ListOwnedRoutes(ctx context.Context, accessToken string) (map[s
 		if item.ExternalID == "" || item.ID <= 0 {
 			continue
 		}
+		// Two routes claiming one external ID leaves no way to say which one
+		// this service owns, so every later answer about it — update this,
+		// delete that — would be a coin toss silently resolved by map order. A
+		// per-stage lookup refused a multiple match for the same reason; the
+		// listing has to refuse it too rather than keep whichever arrived last.
+		if _, duplicate := owned[item.ExternalID]; duplicate {
+			return nil, errors.New("wahoo: route listing contained a duplicate external id")
+		}
 		owned[item.ExternalID] = item.ID
 	}
 
