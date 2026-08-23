@@ -23,7 +23,8 @@ small Linux cloud VM. It has no CLI.
 
 The service serves a read-only browser UI for route preview. Its HTTP surface is
 read-only JSON for status, route data, and route geometry, except for the
-protected Wahoo OAuth onboarding flow and the manual sync trigger. The UI is a
+protected Wahoo OAuth onboarding flow and the manual triggers over
+synchronisation and surface enrichment. The UI is a
 view onto stored state: it draws the whole stored library on one map, opens any
 one source route stage over that same map, and reports synchronisation on a
 second view. A route is not a page of its own — it takes over the panel the
@@ -236,12 +237,15 @@ The service rejects an attempt to authorise the same Wahoo account for two
 target slots.
 
 Alongside it are the operator controls over synchronization: the manual
-triggers, the two switches that decide what the timer is allowed to start, and
-the per-stage reprocess request.
+triggers, the two switches that decide what the timer is allowed to start, the
+per-stage reprocess request, and the surface-enrichment retry.
 They change what the service does next; they change nothing it has stored about
 routes, and they cannot make a run less safe than a scheduled one, because a
-triggered run is the same run through the same gates. Every one of them is
-limited to the same principal as the rest of the surface.
+triggered run is the same run through the same gates. The enrichment retry is
+narrower still — it never reads VeloPlanner or writes a Wahoo target, only
+reclassifying stages already stored — and shares the same single-flight guard
+as the other four triggers. Every one of them is limited to the same principal
+as the rest of the surface.
 
 A synchronization has two halves, and each is separately switched, triggered,
 and reported:
@@ -313,15 +317,18 @@ The read-only JSON surface is deliberately small:
   one. That link is only useful to the operator whose account holds the route:
   the source route is private to that account, and following it as anyone else
   reaches the provider's own refusal, not the route.
-The five endpoints below that change state — the three triggers, the schedule
-switch, and the reprocess request — additionally require the browser origin
-described above, and answer 403 without it.
+The seven endpoints below that change state — the four sync triggers, the
+schedule switch, the reprocess request, and the enrichment retry — additionally
+require the browser origin described above, and answer 403 without it.
 
 - `POST /v1/sync` queues one immediate synchronization of both halves through
   the same reporting path as the schedule. It returns `202 Accepted`, or `409
   Conflict` when a scheduled or manual synchronization is already running.
 - `POST /v1/sync/source` and `POST /v1/sync/targets` queue one half on the same
   terms.
+- `POST /v1/sync/targets/{target}` reconciles exactly one configured target
+  slot, on the same terms as `POST /v1/sync/targets` scoped to that slot alone.
+  `{target}` must name a configured slot, or the request is refused as `404`.
 - `PUT /v1/sync/schedule` sets both switches, and answers with the state it
   stored. A body that names only one switch is refused: the other would be left
   at whatever the caller assumed it was.
@@ -329,6 +336,11 @@ described above, and answer 403 without it.
   stage to be worked out again from scratch and starts the synchronization that
   will do it. It returns `202 Accepted`, or `404` for a stage that is not in the
   stored inventory.
+- `POST /v1/sync/surface` queues one immediate surface-classification pass,
+  independently of either sync half. It returns `202 Accepted`, or `409
+  Conflict` when a synchronization or another such pass is already running. It
+  never reads VeloPlanner or writes a Wahoo target, so it carries none of the
+  other triggers' provider risk.
 
 The browser UI is served from the same origin and the same authenticated
 listener: an application entry document and immutable hashed static assets.
@@ -605,9 +617,10 @@ secret files remain outside Git.
 - Every HTTP interaction is identity-gated, to one principal, by a signature the
   service verifies itself. Beyond OAuth, the only ones
   that change anything are the synchronization triggers, the two schedule
-  switches, and the reprocess request, which discards derived answers so they are
-  worked out again. Nothing on the surface edits route data, in this service or
-  at the source.
+  switches, the reprocess request, which discards derived answers so they are
+  worked out again, and the surface-enrichment retry, which reclassifies stored
+  stages without reading VeloPlanner or writing a Wahoo target. Nothing on the
+  surface edits route data, in this service or at the source.
 - The browser UI renders stored source stages on a map, is reachable only by
   the configured identity, and offers no editing affordance. Selecting a surface
   class or gradient band in its key only changes what the map and the chart

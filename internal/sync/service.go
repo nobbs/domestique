@@ -487,38 +487,40 @@ func targetOutcome(failure FailureCategory) Outcome {
 	return OutcomeFailed
 }
 
-// AnnotateStored classifies the ground under the stored inventory.
+// AnnotateStored classifies the ground under the stored inventory and reports
+// how much of it a pass could not classify.
 //
 // It is deliberately not part of either phase. Getting routes onto a device is
 // what a synchronization is for, so a slow or unavailable tagging endpoint must
 // neither delay that nor be reported as a failed sync — which is why the caller
-// runs this after every phase it intended to run, and why nothing here is
-// returned. The annotator caches what it learns and is bounded per pass, so a
-// failure costs only the stages this pass would have filled in; the next one
-// asks again, and until then those stages simply carry no surface.
+// runs this after every phase it intended to run. The annotator caches what it
+// learns and is bounded per pass, so a failure costs only the stages this pass
+// would have filled in; the next one asks again, and until then those stages
+// simply carry no surface. The failed count is what tells that apart from a
+// stage nobody has asked about yet, which looks identical otherwise.
 //
 // It reads the inventory back from state rather than being handed one, because
 // a classification is a set of positions in one stored geometry's coordinate
 // array: the stages it must describe are precisely the stored ones.
-func (s *Service) AnnotateStored(ctx context.Context) {
+func (s *Service) AnnotateStored(ctx context.Context) (classified, failed int) {
 	if s.annotator == nil {
-		return
+		return 0, 0
 	}
 	stages, err := s.state.TrustedInventory(ctx)
 	if err != nil {
 		slog.Warn("surface classification skipped", "reason", "state")
 
-		return
+		return 0, 0
 	}
-	classified, failed, err := s.annotator.Annotate(ctx, stages)
+	classified, failed, err = s.annotator.Annotate(ctx, stages)
 	if failed == 0 && err == nil {
-		return
+		return classified, failed
 	}
-	// The one place this pass is allowed to be heard. It cannot fail a run and it
-	// is not worth an alert, but a stage that fails every pass is invisible
-	// otherwise: it looks exactly like a stage nobody has asked about. Counts and
-	// whether the pass ran to the end — no stage names, no geometry, and nothing
-	// the endpoint said.
+	// The one place this pass is allowed to be heard in the log. It cannot fail
+	// a run and it is not worth an alert, but a stage that fails every pass is
+	// invisible otherwise: it looks exactly like a stage nobody has asked about.
+	// Counts and whether the pass ran to the end — no stage names, no geometry,
+	// and nothing the endpoint said.
 	reason := "stage"
 	if err != nil {
 		reason = "stopped_early"
@@ -529,6 +531,8 @@ func (s *Service) AnnotateStored(ctx context.Context) {
 		"failed", failed,
 		"reason", reason,
 	)
+
+	return classified, failed
 }
 
 // exportProfiles returns the inventory carrying the elevation profile that is

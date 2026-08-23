@@ -390,6 +390,7 @@ function surfaceCoverageFrom(value: unknown, at: string): SurfaceCoverage {
   return {
     classified: count(coverage.classified, `${at}.classified`),
     total: count(coverage.total, `${at}.total`),
+    incomplete: count(coverage.incomplete, `${at}.incomplete`),
   };
 }
 

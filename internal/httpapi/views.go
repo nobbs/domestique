@@ -210,6 +210,12 @@ type surfaceView struct {
 	BuiltAt    string `json:"built_at,omitempty"`
 	Classified int    `json:"classified"`
 	Total      int    `json:"total"`
+	// Incomplete is how many stages the most recently completed classification
+	// pass could not classify. What is neither classified nor incomplete is
+	// simply waiting its turn — the difference this field exists to draw: a
+	// stage that keeps failing otherwise looks exactly like one nobody has
+	// asked about yet.
+	Incomplete int `json:"incomplete"`
 }
 
 type statusView struct {

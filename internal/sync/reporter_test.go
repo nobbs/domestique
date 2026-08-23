@@ -356,6 +356,67 @@ func TestReporterEnrichesOnlyAfterStoringANewInventory(t *testing.T) {
 	assert.Zero(t, targetsOnly.annotations, "a run that stored no inventory was enriched anyway")
 }
 
+// SurfaceIncomplete is what tells a stage that keeps failing classification
+// apart from one nobody has asked about yet, both otherwise absent alike.
+func TestReporterReportsTheLastAnnotationPassesIncompleteCount(t *testing.T) {
+	runner := &reportingRunner{
+		source:             Result{Phase: PhaseSource, Outcome: OutcomeSucceeded},
+		annotateClassified: 3,
+		annotateFailed:     2,
+	}
+	reporter := newReporter(t, runner, &fakeRunState{source: true}, &fakeNotifier{})
+	assert.Zero(t, reporter.SurfaceIncomplete(), "an incomplete count was reported before any pass ran")
+
+	reporter.Run(t.Context())
+	assert.Equal(t, 2, reporter.SurfaceIncomplete(), "SurfaceIncomplete()")
+
+	// A pass that catches up moves the gauge back down, rather than latching
+	// the worst count any pass ever saw.
+	runner.annotateFailed = 0
+	reporter.Run(t.Context())
+	assert.Zero(t, reporter.SurfaceIncomplete(), "a recovered pass left the old incomplete count in place")
+}
+
+// A manual retry classifies without touching either phase, and reports the
+// same way a scheduled pass does.
+func TestReporterTriggerAnnotateRunsOnlyClassification(t *testing.T) {
+	runner := &reportingRunner{annotateFailed: 1}
+	reporter := newReporter(t, runner, &fakeRunState{}, &fakeNotifier{})
+
+	require.True(t, reporter.TriggerAnnotate(t.Context()), "TriggerAnnotate() rejected the run")
+	reporter.Wait()
+	assert.Equal(t, 1, runner.annotations, "annotation passes")
+	assert.Zero(t, runner.sourceRuns, "TriggerAnnotate read the source")
+	assert.Zero(t, runner.targetRuns, "TriggerAnnotate wrote a target")
+	assert.Equal(t, 1, reporter.SurfaceIncomplete(), "SurfaceIncomplete()")
+}
+
+// The single-flight guard is shared with ordinary synchronization: an
+// annotation pass and a sync must never run at the same time.
+func TestReporterTriggerAnnotateRejectsOverlappingRun(t *testing.T) {
+	runner := &blockingReportingRunner{started: make(chan struct{}), release: make(chan struct{})}
+	reporter := newReporter(t, runner, &fakeRunState{}, &fakeNotifier{})
+	require.True(t, reporter.Trigger(t.Context()), "Trigger() rejected the first run")
+	<-runner.started
+
+	assert.False(t, reporter.TriggerAnnotate(t.Context()), "TriggerAnnotate() ran while a sync was active")
+	close(runner.release)
+	reporter.Wait()
+}
+
+// A sync must never start while an annotation pass triggered on its own is
+// still running.
+func TestReporterTriggerRejectsOverlappingAnnotate(t *testing.T) {
+	runner := &blockingAnnotateRunner{started: make(chan struct{}), release: make(chan struct{})}
+	reporter := newReporter(t, runner, &fakeRunState{}, &fakeNotifier{})
+	require.True(t, reporter.TriggerAnnotate(t.Context()), "TriggerAnnotate() rejected the first pass")
+	<-runner.started
+
+	assert.False(t, reporter.Trigger(t.Context()), "Trigger() ran while an annotation pass was active")
+	close(runner.release)
+	reporter.Wait()
+}
+
 func TestReporterDoesNotRecordOrNotifySkippedRun(t *testing.T) {
 	state := &fakeRunState{source: true, targets: true}
 	notifier := &fakeNotifier{}
@@ -405,12 +466,14 @@ func TestReporterReportsThePhaseInFlight(t *testing.T) {
 }
 
 type reportingRunner struct {
-	targetRunIDs []string
-	source       Result
-	targets      Result
-	sourceRuns   int
-	targetRuns   int
-	annotations  int
+	targetRunIDs       []string
+	source             Result
+	targets            Result
+	sourceRuns         int
+	targetRuns         int
+	annotations        int
+	annotateClassified int
+	annotateFailed     int
 }
 
 func (r *reportingRunner) RunSource(context.Context) Result {
@@ -432,8 +495,10 @@ func (r *reportingRunner) RunTarget(_ context.Context, targetID string) Result {
 	return r.targets
 }
 
-func (r *reportingRunner) AnnotateStored(context.Context) {
+func (r *reportingRunner) AnnotateStored(context.Context) (classified, failed int) {
 	r.annotations++
+
+	return r.annotateClassified, r.annotateFailed
 }
 
 type blockingReportingRunner struct {
@@ -456,7 +521,36 @@ func (r *blockingReportingRunner) RunTarget(context.Context, string) Result {
 	return Result{Phase: PhaseTargets, Outcome: OutcomeSucceeded}
 }
 
-func (r *blockingReportingRunner) AnnotateStored(context.Context) {}
+func (r *blockingReportingRunner) AnnotateStored(context.Context) (classified, failed int) {
+	return 0, 0
+}
+
+// blockingAnnotateRunner blocks in AnnotateStored, the mirror of
+// blockingReportingRunner blocking in RunSource, for tests that need an
+// annotation pass to still be under way when they check the guard.
+type blockingAnnotateRunner struct {
+	started chan struct{}
+	release chan struct{}
+}
+
+func (r *blockingAnnotateRunner) RunSource(context.Context) Result {
+	return Result{Phase: PhaseSource, Outcome: OutcomeSucceeded}
+}
+
+func (r *blockingAnnotateRunner) RunTargets(context.Context) Result {
+	return Result{Phase: PhaseTargets, Outcome: OutcomeSucceeded}
+}
+
+func (r *blockingAnnotateRunner) RunTarget(context.Context, string) Result {
+	return Result{Phase: PhaseTargets, Outcome: OutcomeSucceeded}
+}
+
+func (r *blockingAnnotateRunner) AnnotateStored(context.Context) (classified, failed int) {
+	close(r.started)
+	<-r.release
+
+	return 0, 0
+}
 
 // recordedRunReference is what this fake names every run it records. The store
 // mints a different one per run; what matters here is that whatever it returns
@@ -1205,7 +1299,9 @@ func (r *pacedRunner) RunTarget(context.Context, string) Result {
 	return r.targets
 }
 
-func (r *pacedRunner) AnnotateStored(context.Context) {}
+func (r *pacedRunner) AnnotateStored(context.Context) (classified, failed int) {
+	return 0, 0
+}
 
 // Both halves of the pass that carries the window past the interval are counted
 // in the same digest.

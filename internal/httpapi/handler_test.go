@@ -848,6 +848,28 @@ func TestHandlerRefusesADuplicateTargetTrigger(t *testing.T) {
 	assert.Equal(t, http.StatusConflict, response.Code, "POST /v1/sync/targets/rider-a status")
 }
 
+// A surface retry is triggered independently of either sync phase, and never
+// starts a synchronization: it must never read the source or write a target.
+func TestHandlerTriggersASurfaceRetryWithoutStartingASync(t *testing.T) {
+	trigger := &fakeSync{annotateAccepted: true}
+	handler := newHandlerWithSync(t, &fakeOAuth{}, &fakeState{}, trigger)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/sync/surface"))
+	assert.Equal(t, http.StatusAccepted, response.Code, "surface retry status")
+	assert.Equal(t, 1, trigger.annotateCalls, "TriggerAnnotate calls")
+	assert.Empty(t, trigger.phases, "the surface retry also triggered a phase")
+}
+
+// The surface retry shares the same single-flight guard as an ordinary sync.
+func TestHandlerRejectsAnOverlappingSurfaceRetry(t *testing.T) {
+	handler := newHandlerWithSync(t, &fakeOAuth{}, &fakeState{}, &fakeSync{})
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/sync/surface"))
+	assert.Equal(t, http.StatusConflict, response.Code, "surface retry status")
+}
+
 func TestHandlerSwitchesEitherHalfOfTheSchedule(t *testing.T) {
 	state := &fakeState{scheduleSource: true, scheduleTargets: true}
 	handler := newHandler(t, &fakeOAuth{}, state)
@@ -1045,6 +1067,21 @@ func TestHandlerReportsHowMuchOfTheLibraryIsClassified(t *testing.T) {
 	assert.Equal(t, 3, view.Sync.Surface.Total, "total")
 	assert.Empty(t, view.Sync.Surface.Generation, "a service with no index named one")
 	assert.Empty(t, view.Sync.Surface.BuiltAt, "a service with no index dated one")
+}
+
+// A stage that keeps failing classification otherwise looks exactly like one
+// nobody has asked about yet — the difference incomplete exists to draw.
+func TestHandlerReportsHowMuchOfTheLibraryCouldNotBeClassified(t *testing.T) {
+	state := &fakeState{surfaceClassified: 1, surfaceTotal: 3}
+	trigger := &fakeSync{surfaceIncomplete: 1}
+	handler := newHandlerWithSync(t, &fakeOAuth{}, state, trigger)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/status"))
+	require.Equal(t, http.StatusOK, response.Code, "status")
+	var view statusView
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &view), "decoding status")
+	assert.Equal(t, 1, view.Sync.Surface.Incomplete, "incomplete")
 }
 
 // The counts alone cannot say whether a full library is classified against a map
@@ -1260,6 +1297,7 @@ func TestSyncFuncsAdaptAPairOfFunctions(t *testing.T) {
 	activity := SyncActivityState{Phase: SyncPhaseSource, Running: true}
 
 	var asked SyncPhase
+	var annotateCalls int
 
 	var askedTarget string
 
@@ -1275,6 +1313,12 @@ func TestSyncFuncsAdaptAPairOfFunctions(t *testing.T) {
 			return true
 		},
 		ActivityFunc: func() SyncActivityState { return activity },
+		TriggerAnnotateFunc: func() bool {
+			annotateCalls++
+
+			return true
+		},
+		SurfaceIncompleteFunc: func() int { return 3 },
 	}
 
 	assert.True(t, funcs.Trigger(SyncPhaseTargets), "trigger")
@@ -1282,6 +1326,9 @@ func TestSyncFuncsAdaptAPairOfFunctions(t *testing.T) {
 	assert.True(t, funcs.TriggerTarget("rider-a"), "trigger target")
 	assert.Equal(t, "rider-a", askedTarget, "the target the trigger was asked for")
 	assert.Equal(t, activity, funcs.Activity(), "activity")
+	assert.True(t, funcs.TriggerAnnotate(), "TriggerAnnotate()")
+	assert.Equal(t, 1, annotateCalls, "TriggerAnnotate calls")
+	assert.Equal(t, 3, funcs.SurfaceIncomplete(), "SurfaceIncomplete()")
 }
 
 // A process whose runs begin and end inside the request that asked for one has
@@ -1293,6 +1340,14 @@ func TestSyncFuncsReportNothingUnderWayWithoutAnActivityFunc(t *testing.T) {
 	}
 
 	assert.Equal(t, SyncActivityState{}, funcs.Activity(), "activity")
+}
+
+// A process that tracks no incomplete count wires no SurfaceIncompleteFunc,
+// and zero is the honest answer for one that tracks none.
+func TestSyncFuncsReportNoIncompleteCountWithoutAFunc(t *testing.T) {
+	funcs := SyncFuncs{TriggerFunc: func(SyncPhase) bool { return false }}
+
+	assert.Zero(t, funcs.SurfaceIncomplete(), "SurfaceIncomplete()")
 }
 
 // An operator who has started the browser flow and not finished it is in a
@@ -1631,11 +1686,14 @@ func (o *fakeOAuth) Start(_ context.Context, _, targetID string) (string, error)
 func (o *fakeOAuth) Complete(context.Context, string, string, string) error { return o.completeErr }
 
 type fakeSync struct {
-	activity       SyncActivityState
-	phases         []SyncPhase
-	targetTriggers []string
-	calls          int
-	accepted       bool
+	activity          SyncActivityState
+	phases            []SyncPhase
+	targetTriggers    []string
+	calls             int
+	annotateCalls     int
+	surfaceIncomplete int
+	accepted          bool
+	annotateAccepted  bool
 }
 
 func (t *fakeSync) Trigger(phase SyncPhase) bool {
@@ -1653,6 +1711,14 @@ func (t *fakeSync) TriggerTarget(targetID string) bool {
 }
 
 func (t *fakeSync) Activity() SyncActivityState { return t.activity }
+
+func (t *fakeSync) TriggerAnnotate() bool {
+	t.annotateCalls++
+
+	return t.annotateAccepted
+}
+
+func (t *fakeSync) SurfaceIncomplete() int { return t.surfaceIncomplete }
 
 type fakeAssets struct{}
 

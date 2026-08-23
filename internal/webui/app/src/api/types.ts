@@ -185,12 +185,15 @@ export interface SyncRunPage {
  * How much of the library carries a usable surface classification.
  *
  * Classification cannot fail a synchronisation, by design — which means a stage
- * the endpoint refuses every time looks exactly like one nobody has asked about
- * yet. These two numbers are the difference.
+ * the endpoint refuses every time would look exactly like one nobody has asked
+ * about yet, if there were nothing to tell them apart. `incomplete` is that
+ * difference: what is neither classified nor incomplete is simply waiting its
+ * turn.
  */
 export interface SurfaceCoverage {
   classified: number;
   total: number;
+  incomplete: number;
 }
 
 /**

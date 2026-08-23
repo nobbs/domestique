@@ -28,7 +28,7 @@ function statusBody(build?: Record<string, unknown>) {
       deleted: 0,
       schedule: { source: true, targets: true },
       phases: {},
-      surface: { classified: 4, total: 4 },
+      surface: { classified: 4, total: 4, incomplete: 0 },
     },
     ...(build ? { build } : {}),
   };

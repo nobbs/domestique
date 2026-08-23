@@ -65,6 +65,11 @@ type Reporter struct {
 	running    atomic.Bool
 	triggered  stdsync.WaitGroup
 	staleAfter time.Duration
+	// surfaceIncomplete is how many stages the most recently completed
+	// annotation pass could not classify. It is read back by SurfaceIncomplete
+	// and is what tells a stage that keeps failing apart from one nobody has
+	// asked about yet — both otherwise look like the same absent classification.
+	surfaceIncomplete atomic.Int64
 }
 
 // Runner is the application service seam consumed by the reporter and
@@ -76,9 +81,10 @@ type Runner interface {
 	// RunTarget reconciles exactly one configured target, on the same terms as
 	// RunTargets scoped to that slot alone.
 	RunTarget(ctx context.Context, targetID string) Result
-	// AnnotateStored enriches the stored inventory. It reports nothing because
-	// nothing it does may change a run's outcome.
-	AnnotateStored(ctx context.Context)
+	// AnnotateStored enriches the stored inventory and reports how much of it it
+	// could not classify. The count can never change a run's outcome — it is
+	// read back through SurfaceIncomplete, never returned from a phase.
+	AnnotateStored(ctx context.Context) (classified, failed int)
 }
 
 // NewReporter creates a reporting runner with explicit dependencies. staleAfter
@@ -179,6 +185,29 @@ func (r *Reporter) TriggerTarget(ctx context.Context, targetID string) bool {
 	return true
 }
 
+// TriggerAnnotate starts one manual classification pass in the background,
+// touching only the local surface index and cache. It never reads VeloPlanner
+// or writes a Wahoo target, unlike Trigger and TriggerPhase, and shares their
+// single-flight guard: it returns false when a synchronization or another
+// annotation pass is already under way.
+func (r *Reporter) TriggerAnnotate(ctx context.Context) bool {
+	if !r.running.CompareAndSwap(false, true) {
+		return false
+	}
+	r.triggered.Go(func() {
+		defer r.running.Store(false)
+		r.annotate(ctx)
+	})
+
+	return true
+}
+
+// SurfaceIncomplete reports how many stages the most recently completed
+// annotation pass could not classify. Zero before any pass has run.
+func (r *Reporter) SurfaceIncomplete() int {
+	return int(r.surfaceIncomplete.Load())
+}
+
 // Running reports what this process has under way: the half in flight, and
 // whether a run is under way at all.
 //
@@ -245,13 +274,23 @@ func (r *Reporter) runPhasesWith(ctx context.Context, source, targets bool, runT
 	// inventory can go stale while the schedule has it switched off, and this
 	// reads only local state, so it costs no provider call either way.
 	r.checkStaleness(ctx, now, sourceStored)
-	// Enrichment comes after everything a rider is waiting for, and only when
-	// this pass stored something new to enrich.
+	// Enrichment comes after everything a rider is waiting for. It runs on any
+	// successful source refresh, whether or not that refresh actually changed
+	// the stored inventory — an unchanged library can still hold stages an
+	// earlier pass never got to.
 	if sourceStored {
-		r.runner.AnnotateStored(ctx)
+		r.annotate(ctx)
 	}
 
 	return result
+}
+
+// annotate runs one classification pass and records how much of it the pass
+// could not finish, for SurfaceIncomplete to read back. It is the seam shared
+// by the scheduled pass above and a manually triggered retry.
+func (r *Reporter) annotate(ctx context.Context) {
+	_, failed := r.runner.AnnotateStored(ctx)
+	r.surfaceIncomplete.Store(int64(failed))
 }
 
 // Wait waits for any manual synchronization accepted by Trigger to finish.
