@@ -20,6 +20,27 @@ export interface Route {
   ascentMetres: number;
   maxGradientPercent: number;
   pointCount: number;
+  /**
+   * Predicted moving time in seconds. Absent — never zero — when no
+   * coefficient file is configured, this stage has no usable elevation, or
+   * nothing has predicted this exact geometry yet.
+   */
+  movingSeconds?: number | undefined;
+  /**
+   * The frozen profile's measured unseen-route error, present only alongside
+   * `movingSeconds` and only when the loaded coefficient file itself carries
+   * a measured benchmark result. Every route on a deployment shares the same
+   * value: it describes the profile, not this route's own geometry.
+   */
+  validation?: RouteValidation | undefined;
+}
+
+/** The frozen ETA profile's measured unseen-route error, as percentages of moving time. */
+export interface RouteValidation {
+  biasPercent: number;
+  maePercent: number;
+  p90Percent: number;
+  evaluatedRides: number;
 }
 
 /** West, south, east, north — the order the map's fitBounds expects. */

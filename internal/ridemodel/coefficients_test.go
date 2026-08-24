@@ -64,6 +64,73 @@ func TestLoadAcceptsAValidFile(t *testing.T) {
 	assert.InDelta(t, 0.012, coefficients.CrrBySurface[surface.KindAsphalt], 0, "crr applied to asphalt")
 	assert.InDelta(t, 0.012, coefficients.CrrBySurface[surface.KindGround], 0, "crr applied uniformly to every surface")
 	assert.NotEmpty(t, coefficients.Fingerprint, "fingerprint")
+	assert.False(t, coefficients.HasValidation(), "a file with no measured benchmark result must not claim one")
+}
+
+// #217's four validation fields are optional, added after every field above
+// was already required: a file written before they existed must still load.
+func TestLoadAcceptsAFileWithoutValidationFields(t *testing.T) {
+	coefficients, err := Load(writeCoefficientsFile(t, validCoefficientsTOML))
+	require.NoError(t, err, "Load()")
+
+	assert.False(t, coefficients.HasValidation(), "HasValidation() on a file with no evaluated_rides")
+	assert.Zero(t, coefficients.EvaluatedRides, "EvaluatedRides")
+	assert.Zero(t, coefficients.BiasPercent, "BiasPercent")
+	assert.Zero(t, coefficients.MAEPercent, "MAEPercent")
+	assert.Zero(t, coefficients.P90Percent, "P90Percent")
+}
+
+// A negative bias is a legitimate reading — the model can run fast as easily
+// as slow — so it must load, not be rejected the way the physical fields
+// above are bounds-checked.
+func TestLoadAcceptsValidationFieldsIncludingANegativeBias(t *testing.T) {
+	document := validCoefficientsTOML + `
+evaluated_rides = 42
+bias_percent = -1.20
+mae_percent = 6.80
+p90_percent = 14.10
+`
+	coefficients, err := Load(writeCoefficientsFile(t, document))
+	require.NoError(t, err, "Load()")
+
+	assert.True(t, coefficients.HasValidation(), "HasValidation() on a file that carries a measured result")
+	assert.Equal(t, 42, coefficients.EvaluatedRides, "EvaluatedRides")
+	assert.InDelta(t, -1.20, coefficients.BiasPercent, 0, "BiasPercent")
+	assert.InDelta(t, 6.80, coefficients.MAEPercent, 0, "MAEPercent")
+	assert.InDelta(t, 14.10, coefficients.P90Percent, 0, "P90Percent")
+}
+
+// A negative evaluated_rides, mae_percent, or p90_percent is not a
+// physically meaningful reading — a count and two absolute-error
+// magnitudes cannot go negative — so each is a startup failure rather than
+// a value that silently loads and disables or corrupts HasValidation().
+func TestLoadRejectsNegativeValidationFields(t *testing.T) {
+	for name, addition := range map[string]string{
+		"negative evaluated_rides": "evaluated_rides = -1\n",
+		"negative mae_percent":     "evaluated_rides = 42\nmae_percent = -0.1\n",
+		"negative p90_percent":     "evaluated_rides = 42\np90_percent = -0.1\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := Load(writeCoefficientsFile(t, validCoefficientsTOML+addition))
+			require.Error(t, err, "Load()")
+		})
+	}
+}
+
+// A percentage set without evaluated_rides is a partially-updated file, not
+// an intentionally absent group: loading it would silently disable
+// HasValidation() and drop the metadata the operator meant to add.
+func TestLoadRejectsAValidationPercentageWithoutEvaluatedRides(t *testing.T) {
+	for name, addition := range map[string]string{
+		"bias_percent alone": "bias_percent = -1.2\n",
+		"mae_percent alone":  "mae_percent = 6.8\n",
+		"p90_percent alone":  "p90_percent = 14.1\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := Load(writeCoefficientsFile(t, validCoefficientsTOML+addition))
+			require.Error(t, err, "Load()")
+		})
+	}
 }
 
 func TestLoadFingerprintChangesWithFileContent(t *testing.T) {

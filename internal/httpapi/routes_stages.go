@@ -10,9 +10,10 @@ import (
 // stages lists every trusted source stage with its display metadata. It carries
 // no geometry: geometry is served only by its own endpoint.
 func (h *Handler) stages(writer http.ResponseWriter, request *http.Request, _ string) {
+	validation := h.stageValidationView()
 	views := make([]stageView, 0)
 	if err := h.state.ForEachStageSummary(request.Context(), func(summary route.Summary) error {
-		views = append(views, newStageView(&summary))
+		views = append(views, newStageView(&summary, validation))
 
 		return nil
 	}); err != nil {
@@ -32,10 +33,11 @@ func (h *Handler) stage(writer http.ResponseWriter, request *http.Request, _ str
 		return
 	}
 
+	validation := h.stageValidationView()
 	var found *stageView
 	if err := h.state.ForEachStageSummary(request.Context(), func(summary route.Summary) error {
 		if summary.Provider == provider && summary.RouteID == routeID && summary.StageOrder == stageOrder {
-			view := newStageView(&summary)
+			view := newStageView(&summary, validation)
 			found = &view
 		}
 
@@ -164,8 +166,8 @@ func (h *Handler) stageSurface(request *http.Request, summary *route.Summary) (v
 	return &geometrySurfaceView{Ranges: ranges, MatchedMetres: matchedMetres}, true
 }
 
-func newStageView(summary *route.Summary) stageView {
-	return stageView{
+func newStageView(summary *route.Summary, validation *stageValidation) stageView {
+	view := stageView{
 		Provider:           string(summary.Provider),
 		RouteID:            summary.RouteID,
 		StageOrder:         summary.StageOrder,
@@ -179,6 +181,29 @@ func newStageView(summary *route.Summary) stageView {
 		MaxGradientPercent: summary.MaxGradientPercent,
 		MovingSeconds:      summary.MovingSeconds,
 		PointCount:         summary.PointCount,
+	}
+	// A stage with no prediction of its own has nothing for the profile's
+	// uncertainty to qualify.
+	if summary.MovingSeconds != nil {
+		view.Validation = validation
+	}
+
+	return view
+}
+
+// stageValidationView reports the loaded coefficient profile's measured
+// unseen-route error as a stageView field, or nil when no profile is
+// configured or its file carries no measured benchmark result.
+func (h *Handler) stageValidationView() *stageValidation {
+	if h.rideModelValidation == nil {
+		return nil
+	}
+
+	return &stageValidation{
+		BiasPercent:    h.rideModelValidation.BiasPercent,
+		MAEPercent:     h.rideModelValidation.MAEPercent,
+		P90Percent:     h.rideModelValidation.P90Percent,
+		EvaluatedRides: h.rideModelValidation.EvaluatedRides,
 	}
 }
 

@@ -4,6 +4,7 @@
  * `UnitSystem` and converts for display only — see `units.ts`.
  */
 
+import type { RouteValidation } from "../api/types";
 import type { UnitSystem } from "./units";
 import {
   metresToFeet,
@@ -180,4 +181,41 @@ export function formatPrecipitation(millimetres: number, system: UnitSystem): st
   const value = precipitationValue(millimetres, system);
 
   return system === "imperial" ? `${value.toFixed(2)} in` : `${value.toFixed(1)} mm`;
+}
+
+/**
+ * Predicted moving time, rounded to the nearest five minutes — coarse enough
+ * that it reads as an estimate rather than a promise. Absent, never zero,
+ * when nothing has predicted this route's geometry.
+ */
+export function formatMovingTime(seconds: number | undefined): string {
+  if (seconds === undefined || !Number.isFinite(seconds) || seconds <= 0) {
+    return "—";
+  }
+  const roundedMinutes = Math.max(5, Math.round(seconds / 60 / 5) * 5);
+  const hours = Math.floor(roundedMinutes / 60);
+  const minutes = roundedMinutes % 60;
+  if (hours === 0) {
+    return `${minutes} min`;
+  }
+
+  return minutes === 0 ? `${hours} h` : `${hours} h ${minutes} min`;
+}
+
+/**
+ * A coarse qualifier for a shown moving time, from the frozen profile's own
+ * measured unseen-route error — mean absolute error, not the tighter bias,
+ * since the reader wants "how far off does this usually run" rather than the
+ * model's average direction of error. Undefined whenever the loaded profile
+ * carries no measured benchmark result, which the caller reads as "show the
+ * time unqualified" rather than as a missing value to report.
+ */
+export function formatMovingTimeUncertainty(
+  validation: RouteValidation | undefined,
+): string | undefined {
+  if (!validation) {
+    return undefined;
+  }
+
+  return `±${Math.round(validation.maePercent)}% typical`;
 }

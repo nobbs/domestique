@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -235,6 +237,33 @@ func TestEvaluateSplitRecalibratesTheRouteCoefficientsWhenAsked(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, eval.recalibrated)
 	assert.InDelta(t, 150, eval.secondsPerKM, 1, "recalibration should recover the corpus's own known rate")
+}
+
+// The copy-ready profile is what an operator pastes into ridemodel.toml, so
+// #217's four validation fields must appear in it too, matching the same
+// summarizeBenchmarkErrors call the human-readable line beside them uses —
+// no separate computation to drift out of step.
+func TestPrintCopyReadyProfileIncludesTheValidationFields(t *testing.T) {
+	rides, samplesByRide := syntheticCorpus(30)
+	coefficients := testCoefficients()
+	cfg := &runConfig{
+		etaRouteCellDegrees: defaultRouteCellDegrees, etaRouteJaccard: defaultRouteJaccardThreshold,
+		etaWarmupFraction: defaultBenchmarkWarmupFraction, recalibrate: true,
+	}
+
+	eval, err := evaluateSplit(rides, samplesByRide, &coefficients, time.Time{}, cfg)
+	require.NoError(t, err)
+
+	metrics := summarizeBenchmarkErrors(eval.errorsByModel["hybrid"])
+
+	var report strings.Builder
+	printCopyReadyProfile(&report, &coefficients, &eval)
+
+	printed := report.String()
+	assert.Contains(t, printed, fmt.Sprintf("evaluated_rides = %d\n", metrics.rides))
+	assert.Contains(t, printed, fmt.Sprintf("bias_percent = %.2f\n", metrics.bias))
+	assert.Contains(t, printed, fmt.Sprintf("mae_percent = %.2f\n", metrics.mae))
+	assert.Contains(t, printed, fmt.Sprintf("p90_percent = %.2f\n", metrics.p90))
 }
 
 func TestBenchmarkMetricsReportSignedBiasMAEAndP90(t *testing.T) {

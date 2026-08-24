@@ -264,6 +264,14 @@ the corpus could not reliably identify, and a two-parameter route correction
 carries what the corpus can — see #239 and #240. Only where it runs and where
 its inputs come from otherwise changed.
 
+The same boundary holds for the profile's measured unseen-route error
+([#217](https://github.com/nobbs/domestique/issues/217)): `internal/httpapi`
+reads it once, straight off the loaded `ridemodel.Coefficients`, and attaches
+it to every stage response that carries a prediction. It is metadata about
+the frozen profile, not a value this service computes at serve time —
+`dev/fitter -recalibrate` is what measures it, the same way it measures
+`seconds_per_km` and `seconds_per_ascent_m`.
+
 ## Dependency direction
 
 ~~~mermaid

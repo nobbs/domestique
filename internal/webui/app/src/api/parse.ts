@@ -14,6 +14,7 @@ import type {
   Route,
   RouteGeometry,
   RouteSurface,
+  RouteValidation,
   Status,
   SurfaceCoverage,
   SurfaceKind,
@@ -151,7 +152,90 @@ function optionalFlag(value: unknown, at: string): boolean | undefined {
   return value === undefined ? undefined : flag(value, at);
 }
 
+/**
+ * Reads the predicted moving time, which is absent — never zero or negative
+ * — when nothing has predicted this route's geometry. A non-positive value
+ * is a contract violation, not a reading to render: the Go side's own doc
+ * comment is explicit that absence is never zero, so a served zero or a
+ * negative duration means the two sides have drifted, not that a ride takes
+ * no time.
+ */
+function movingSecondsFrom(value: unknown, at: string): number | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  const seconds = count(value, at);
+  if (seconds <= 0) {
+    throw new ContractError(`${at} is not positive`);
+  }
+
+  return seconds;
+}
+
+/**
+ * Reads a positive integer count. `evaluated_rides` is both a measurement
+ * and the presence sentinel for the validation group on the Go side —
+ * `Coefficients.HasValidation()` is exactly `EvaluatedRides > 0` — so a zero
+ * or fractional reading here is the same kind of contract violation
+ * `movingSecondsFrom` rejects, not a value to show as though it meant
+ * something.
+ */
+function positiveCount(value: unknown, at: string): number {
+  const position = count(value, at);
+  if (!Number.isInteger(position) || position <= 0) {
+    throw new ContractError(`${at} is not a positive integer`);
+  }
+
+  return position;
+}
+
+/**
+ * Reads a non-negative magnitude — mean absolute error and its 90th
+ * percentile are both magnitudes of absolute error, so a negative reading
+ * is a contract violation rather than a sign this client should render
+ * ("±-3% typical" means nothing).
+ */
+function nonNegativeCount(value: unknown, at: string): number {
+  const magnitude = count(value, at);
+  if (magnitude < 0) {
+    throw new ContractError(`${at} is not non-negative`);
+  }
+
+  return magnitude;
+}
+
+/**
+ * Reads the frozen profile's measured unseen-route error, present only
+ * alongside a predicted moving time and only when the loaded coefficient
+ * file itself carries a benchmark result. Present or absent as one whole
+ * object, never partially — it describes one profile, not a per-field
+ * reading.
+ */
+function routeValidationFrom(value: unknown, at: string): RouteValidation | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  const validation = record(value, at);
+
+  return {
+    // Signed: the model can run fast as easily as slow.
+    biasPercent: count(validation.bias_percent, `${at}.bias_percent`),
+    maePercent: nonNegativeCount(validation.mae_percent, `${at}.mae_percent`),
+    p90Percent: nonNegativeCount(validation.p90_percent, `${at}.p90_percent`),
+    evaluatedRides: positiveCount(validation.evaluated_rides, `${at}.evaluated_rides`),
+  };
+}
+
 function routeFrom(source: Record<string, unknown>, at: string): Route {
+  const movingSeconds = movingSecondsFrom(source.moving_seconds, `${at}.moving_seconds`);
+  const validation = routeValidationFrom(source.validation, `${at}.validation`);
+  // validation qualifies a shown moving time; a server that sends one
+  // without the other has drifted from its own documented contract, not
+  // sent a value this client should render or silently drop.
+  if (validation !== undefined && movingSeconds === undefined) {
+    throw new ContractError(`${at}.validation is present without ${at}.moving_seconds`);
+  }
+
   return {
     provider: text(source.provider, `${at}.provider`),
     routeId: count(source.route_id, `${at}.route_id`),
@@ -165,6 +249,8 @@ function routeFrom(source: Record<string, unknown>, at: string): Route {
     ascentMetres: count(source.ascent_metres ?? 0, `${at}.ascent_metres`),
     maxGradientPercent: count(source.max_gradient_percent ?? 0, `${at}.max_gradient_percent`),
     pointCount: count(source.point_count, `${at}.point_count`),
+    movingSeconds,
+    validation,
   };
 }
 

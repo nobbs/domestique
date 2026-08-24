@@ -641,6 +641,44 @@ export function coordinateRange(
 }
 
 /**
+ * The predicted moving time for one stretch of the route, read off the same
+ * per-coordinate cumulative series the whole-stage figure comes from —
+ * subtracting the selection's boundaries rather than a second computation.
+ *
+ * Undefined whenever there is nothing to subtract: no selection, no
+ * predicted series for this geometry, or a selection too short to span two
+ * distinct coordinates.
+ */
+export function elapsedSecondsForWindow(
+  coordinates: Position[],
+  cumulativeSeconds: number[] | undefined,
+  window: DistanceWindow | null,
+): number | undefined {
+  if (!cumulativeSeconds || !window) {
+    return undefined;
+  }
+  const range = coordinateRange(coordinates, window.startMetres, window.endMetres);
+  if (!range) {
+    return undefined;
+  }
+  const start = cumulativeSeconds[range.startIndex];
+  const end = cumulativeSeconds[range.endIndex];
+  if (start === undefined || end === undefined) {
+    return undefined;
+  }
+  const elapsed = end - start;
+  // A non-monotonic or duplicated series is a drift this client cannot
+  // trust, not a stretch that took no time or ran backwards — reading it as
+  // absence lets the panel fall back to the whole-stage figure instead of
+  // rendering a zero or negative one.
+  if (!Number.isFinite(elapsed) || elapsed <= 0) {
+    return undefined;
+  }
+
+  return elapsed;
+}
+
+/**
  * The box that contains a stretch of the coordinates.
  *
  * Kept here, beside the range it is built from, rather than inside the map: the

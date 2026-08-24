@@ -47,6 +47,133 @@ describe("parseRoutes", () => {
     expect(() => parseRoutes({})).toThrow(ContractError);
     expect(() => parseRoutes(null)).toThrow(ContractError);
   });
+
+  it("leaves moving time and validation undefined when the service omits them", () => {
+    const stages = parseRoutes({ stages: [stagePayload] });
+
+    expect(stages[0]?.movingSeconds).toBeUndefined();
+    expect(stages[0]?.validation).toBeUndefined();
+  });
+
+  it("reads a predicted moving time and its validation metadata when present", () => {
+    const stages = parseRoutes({
+      stages: [
+        {
+          ...stagePayload,
+          moving_seconds: 4321.5,
+          validation: {
+            bias_percent: -1.2,
+            mae_percent: 6.8,
+            p90_percent: 14.1,
+            evaluated_rides: 42,
+          },
+        },
+      ],
+    });
+
+    expect(stages[0]?.movingSeconds).toBe(4321.5);
+    expect(stages[0]?.validation).toEqual({
+      biasPercent: -1.2,
+      maePercent: 6.8,
+      p90Percent: 14.1,
+      evaluatedRides: 42,
+    });
+  });
+
+  it("rejects a validation object missing one of its fields", () => {
+    expect(() =>
+      parseRoutes({
+        stages: [
+          {
+            ...stagePayload,
+            moving_seconds: 4321.5,
+            validation: { bias_percent: -1.2, mae_percent: 6.8, p90_percent: 14.1 },
+          },
+        ],
+      }),
+    ).toThrow(ContractError);
+  });
+
+  it("rejects a moving time that is zero or negative", () => {
+    expect(() => parseRoutes({ stages: [{ ...stagePayload, moving_seconds: 0 }] })).toThrow(
+      ContractError,
+    );
+    expect(() => parseRoutes({ stages: [{ ...stagePayload, moving_seconds: -4 }] })).toThrow(
+      ContractError,
+    );
+  });
+
+  it("rejects an evaluated_rides count that is zero or not a whole number", () => {
+    const withEvaluatedRides = (evaluatedRides: unknown) =>
+      parseRoutes({
+        stages: [
+          {
+            ...stagePayload,
+            moving_seconds: 4321.5,
+            validation: {
+              bias_percent: -1.2,
+              mae_percent: 6.8,
+              p90_percent: 14.1,
+              evaluated_rides: evaluatedRides,
+            },
+          },
+        ],
+      });
+
+    expect(() => withEvaluatedRides(0)).toThrow(ContractError);
+    expect(() => withEvaluatedRides(-3)).toThrow(ContractError);
+    expect(() => withEvaluatedRides(4.5)).toThrow(ContractError);
+  });
+
+  it("rejects a negative mae_percent or p90_percent, but accepts a negative bias_percent", () => {
+    const withValidation = (validation: Record<string, unknown>) =>
+      parseRoutes({
+        stages: [{ ...stagePayload, moving_seconds: 4321.5, validation }],
+      });
+
+    expect(() =>
+      withValidation({
+        bias_percent: -1.2,
+        mae_percent: -0.1,
+        p90_percent: 14.1,
+        evaluated_rides: 42,
+      }),
+    ).toThrow(ContractError);
+    expect(() =>
+      withValidation({
+        bias_percent: -1.2,
+        mae_percent: 6.8,
+        p90_percent: -0.1,
+        evaluated_rides: 42,
+      }),
+    ).toThrow(ContractError);
+
+    const stages = withValidation({
+      bias_percent: -1.2,
+      mae_percent: 6.8,
+      p90_percent: 14.1,
+      evaluated_rides: 42,
+    });
+    expect(stages[0]?.validation?.biasPercent).toBe(-1.2);
+  });
+
+  it("rejects validation present without a moving time to qualify", () => {
+    expect(() =>
+      parseRoutes({
+        stages: [
+          {
+            ...stagePayload,
+            validation: {
+              bias_percent: -1.2,
+              mae_percent: 6.8,
+              p90_percent: 14.1,
+              evaluated_rides: 42,
+            },
+          },
+        ],
+      }),
+    ).toThrow(ContractError);
+  });
 });
 
 describe("parseRouteGeometry", () => {

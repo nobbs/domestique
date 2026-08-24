@@ -865,6 +865,20 @@ body {
 }
 
 /*
+ * The moving time's own qualifier — how far off the estimate usually runs —
+ * set apart from the number it follows the same way dt already is, so it
+ * reads as a footnote rather than as a second figure.
+ */
+.route-panel__moving-time-uncertainty,
+.route-card__moving-time-uncertainty {
+  display: block;
+  color: var(--ink-2);
+  font: var(--type-micro);
+  font-weight: 400;
+  letter-spacing: var(--track-micro);
+}
+
+/*
  * The gradient mix, in the order it is ridden. It is a small mark, so the ramp
  * paints at full strength here rather than at the 0.5 the chart fills with.
  */

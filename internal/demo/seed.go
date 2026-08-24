@@ -83,6 +83,10 @@ func demoCoefficients() ridemodel.Coefficients {
 		CdAM2:             0.45,
 		SecondsPerKM:      145.0,
 		SecondsPerAscentM: 3.2,
+		EvaluatedRides:    42,
+		BiasPercent:       -1.2,
+		MAEPercent:        6.8,
+		P90Percent:        14.1,
 		CrrBySurface: map[surface.Kind]float64{
 			surface.KindAsphalt:   0.012,
 			surface.KindPaving:    0.012,

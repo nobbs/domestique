@@ -45,6 +45,7 @@ import {
   buildProfile,
   buildWindowedProfile,
   coordinateRange,
+  elapsedSecondsForWindow,
   gradientShares,
   rangeBounds,
 } from "../../lib/profile";
@@ -336,6 +337,14 @@ export function RoutesPage({ themeChoice }: RoutesPageProps) {
   // A window that built nothing is a slip, not a view: the map must not dim
   // around a stretch the chart is not showing.
   const shownWindow = windowed ? zoomWindow : null;
+  // The moving time for the stretch on show, read off the same cumulative
+  // series the whole-stage figure comes from. Undefined restores the
+  // whole-stage figure — clearing the selection, or a stage nothing has
+  // predicted, both fall back the same way.
+  const selectionMovingSeconds = useMemo(
+    () => elapsedSecondsForWindow(openCoordinates, cumulativeSeconds, shownWindow),
+    [openCoordinates, cumulativeSeconds, shownWindow],
+  );
 
   // The position was chosen against the view being left, so it goes with it.
   const onZoomChange = useCallback((next: DistanceWindow | null) => {
@@ -597,6 +606,7 @@ export function RoutesPage({ themeChoice }: RoutesPageProps) {
       {shownRoute ? (
         <RoutePanel
           route={shownRoute}
+          movingSecondsOverride={selectionMovingSeconds}
           profile={
             <RouteProfile
               profile={windowed ?? routeProfile}

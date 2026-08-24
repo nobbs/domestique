@@ -326,6 +326,14 @@ type Options struct {
 	// map, rather than present with an empty value.
 	SourceBaseURLs map[route.Provider]string
 
+	// RideModelValidation is the loaded coefficient profile's measured
+	// unseen-route error, when a profile is configured and its file carries
+	// one. It describes the profile as a whole, so every stage response
+	// carries the same value rather than one derived per stage. Nil when no
+	// profile is configured or the loaded file predates #217's validation
+	// fields.
+	RideModelValidation *RideModelValidation
+
 	// BuildRevision is the public source commit this binary was built from, and
 	// BuildImageDigest the immutable digest of the image running it. Both are
 	// optional: a local build knows neither, and the status response then says
@@ -366,6 +374,15 @@ type Options struct {
 	SourceStaleAfter time.Duration
 }
 
+// RideModelValidation is the frozen coefficient profile's measured
+// unseen-route error, from the same route-disjoint benchmark that froze it.
+type RideModelValidation struct {
+	BiasPercent    float64
+	MAEPercent     float64
+	P90Percent     float64
+	EvaluatedRides int
+}
+
 // Basemap is one cartography the page may load, as the operator configured it.
 type Basemap struct {
 	// Name labels the entry in the page's picker and is the identity a browser
@@ -390,24 +407,25 @@ type Basemap struct {
 
 // Handler enforces Cloudflare Access identity and exposes the v1 HTTP surface.
 type Handler struct {
-	oauth            OAuth
-	syncRuns         Sync
-	state            State
-	assets           Assets
-	weather          Weather
-	accessVerifier   AccessVerifier
-	mux              *http.ServeMux
-	now              func() time.Time
-	surfaceIndex     func() (string, time.Time, bool)
-	buildRevision    string
-	buildImageDigest string
-	browserOrigin    string
-	allowedEmail     string
-	sourceBaseURLs   map[route.Provider]string
-	tileOrigins      []string
-	targetIDs        []string
-	basemaps         []Basemap
-	sourceStaleAfter time.Duration
+	oauth               OAuth
+	syncRuns            Sync
+	state               State
+	assets              Assets
+	weather             Weather
+	accessVerifier      AccessVerifier
+	surfaceIndex        func() (string, time.Time, bool)
+	now                 func() time.Time
+	mux                 *http.ServeMux
+	sourceBaseURLs      map[route.Provider]string
+	rideModelValidation *RideModelValidation
+	buildRevision       string
+	buildImageDigest    string
+	browserOrigin       string
+	allowedEmail        string
+	tileOrigins         []string
+	targetIDs           []string
+	basemaps            []Basemap
+	sourceStaleAfter    time.Duration
 }
 
 // New creates a handler. Health checks are intentionally unauthenticated;
@@ -484,23 +502,35 @@ func New(
 		sourceBaseURLs[provider] = trimmed
 	}
 
+	// Copied rather than stored by reference, on the same terms as Basemaps
+	// and TargetIDs below: the handler serves concurrently, and a caller
+	// that mutated its own Options value after New returned — even
+	// inadvertently, in a test — must not be able to race the handler that
+	// reads it on every request.
+	var rideModelValidation *RideModelValidation
+	if options.RideModelValidation != nil {
+		copied := *options.RideModelValidation
+		rideModelValidation = &copied
+	}
+
 	handler := &Handler{
-		mux:              http.NewServeMux(),
-		oauth:            oauthService,
-		state:            state,
-		syncRuns:         syncRuns,
-		assets:           assets,
-		weather:          weather,
-		basemaps:         append([]Basemap(nil), options.Basemaps...),
-		sourceBaseURLs:   sourceBaseURLs,
-		buildRevision:    publishableRevision(options.BuildRevision),
-		buildImageDigest: publishableDigest(options.BuildImageDigest),
-		tileOrigins:      tileOrigins,
-		browserOrigin:    browserOrigin,
-		targetIDs:        append([]string(nil), options.TargetIDs...),
-		surfaceIndex:     options.SurfaceIndexFunc,
-		sourceStaleAfter: options.SourceStaleAfter,
-		now:              time.Now,
+		mux:                 http.NewServeMux(),
+		oauth:               oauthService,
+		state:               state,
+		syncRuns:            syncRuns,
+		assets:              assets,
+		weather:             weather,
+		basemaps:            append([]Basemap(nil), options.Basemaps...),
+		sourceBaseURLs:      sourceBaseURLs,
+		buildRevision:       publishableRevision(options.BuildRevision),
+		buildImageDigest:    publishableDigest(options.BuildImageDigest),
+		tileOrigins:         tileOrigins,
+		browserOrigin:       browserOrigin,
+		targetIDs:           append([]string(nil), options.TargetIDs...),
+		surfaceIndex:        options.SurfaceIndexFunc,
+		sourceStaleAfter:    options.SourceStaleAfter,
+		rideModelValidation: rideModelValidation,
+		now:                 time.Now,
 
 		accessVerifier: options.AccessVerifier,
 		allowedEmail:   strings.TrimSpace(options.AccessEmail),
