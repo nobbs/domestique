@@ -182,7 +182,15 @@ export function RouteProfile({
               samples={samples}
               coordinates={coordinates}
               startMetres={profile?.startMetres ?? 0}
-              endMetres={profile?.endMetres ?? 0}
+              /*
+               * Without a profile there is no chart to share an axis with, so
+               * the strip falls back to the whole route — the last sample sits
+               * at the finish, so it carries that distance. Zero would be a
+               * window nothing overlaps, and every cell would be dropped as
+               * off-screen: a stage with a timeline but no terrain is exactly
+               * the case that is supposed to still get a forecast.
+               */
+              endMetres={profile?.endMetres ?? samples[samples.length - 1]?.distanceMetres ?? 0}
               unitSystem={unitSystem}
             />
           ) : null}

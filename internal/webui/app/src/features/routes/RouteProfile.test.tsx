@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { weatherQuery } from "../../api/queries";
 import type { Position } from "../../api/types";
 import { buildProfile } from "../../lib/profile";
 import { RouteProfile } from "./RouteProfile";
@@ -37,6 +38,23 @@ function stubCoarsePointer() {
 function show(props: Partial<React.ComponentProps<typeof RouteProfile>> = {}) {
   const onCollapsedChange = vi.fn();
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  // The strip draws nothing until its forecast has arrived, so a test about
+  // what the strip is handed has to put one in the cache first.
+  const samples = props.samples ?? [];
+  if (samples.length > 0) {
+    client.setQueryData(weatherQuery(samples).queryKey, {
+      points: samples.map(() => ({
+        time: new Date("2026-08-25T07:00:00Z").toISOString(),
+        temperatureCelsius: 14,
+        apparentTemperatureCelsius: 12,
+        precipitationMillimetres: 0,
+        precipitationProbabilityPercent: 0,
+        windSpeedKmh: 10,
+        windDirectionDegrees: 180,
+        weatherCode: 1,
+      })),
+    });
+  }
   render(
     <QueryClientProvider client={client}>
       <RouteProfile
@@ -210,5 +228,36 @@ describe("RouteProfile", () => {
     show({ startAt: new Date("2026-08-25T07:00:00Z"), samples: [], rideSeconds: 3600 });
 
     expect(screen.queryByText(/no predicted moving time/i)).not.toBeInTheDocument();
+  });
+
+  /*
+   * Weather needs no terrain; only the shared axis does. A stage with a
+   * timeline but no profile therefore falls back to the whole route rather
+   * than a window of zero length, which nothing would overlap and every cell
+   * would be dropped against. Today no such stage exists — a prediction needs
+   * complete elevation — so this pins the fallback before something else
+   * starts producing timelines.
+   */
+  it("spans the whole route when there is no profile to share an axis with", () => {
+    const coordinates = climb();
+    const samples = [
+      { position: coordinates[0] as Position, distanceMetres: 0, arrivalAt: new Date() },
+      {
+        position: coordinates[coordinates.length - 1] as Position,
+        distanceMetres: 4_000,
+        arrivalAt: new Date(),
+      },
+    ];
+
+    show({
+      profile: null,
+      startAt: new Date("2026-08-25T07:00:00Z"),
+      samples,
+      rideSeconds: 3600,
+      coordinates,
+    });
+
+    const strip = document.querySelector(".forecast-strip svg");
+    expect(strip?.getAttribute("viewBox")).not.toMatch(/^0 0 0/);
   });
 });

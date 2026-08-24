@@ -286,9 +286,15 @@ func Classifications(stages []route.Stage) ([]Classification, error) {
 // and ridemodel.Predict read correctly: the former skips it as unclassified,
 // the latter falls back to asphalt throughout.
 //
-// It exists so Seed does not run the same per-point band assignment twice —
-// once to store a surface classification, once to feed the ride-model
-// prediction — over what is otherwise the same geometry and the same bands.
+// It exists so the two readers that need per-point bands — Classifications,
+// storing a surface classification, and seedDurations, feeding the ride-model
+// prediction — assign them the same way rather than each in its own words.
+//
+// Seed does call it once for each, so the bands are assigned twice per run.
+// That is deliberate: threading one result through both would mean widening
+// Classifications' exported signature so its callers computed and carried
+// something they have no use for, and this is seven synthetic stages built
+// once at demo start.
 func stageSurfaceKinds(stages []route.Stage) [][]surface.Kind {
 	specs := specs()
 	kinds := make([][]surface.Kind, len(stages))
