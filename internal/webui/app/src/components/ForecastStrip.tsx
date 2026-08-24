@@ -207,6 +207,18 @@ function windText(
     return `${named}, ${speed} ${direction}`;
   }
   const along = formatWindSpeed(Math.abs(componentKmhPerKmh) * point.windSpeedKmh, unitSystem);
+  /*
+   * "Headwind" and "Tailwind" already say which way their component pushes, so
+   * the magnitude alone is the whole of it. A crosswind is the reading that
+   * still leans one way or the other, and the sign is the only thing carrying
+   * that: without it, a cross leaning into the rider and one pushing them
+   * along announce the same number.
+   */
+  if (relation === "cross") {
+    const lean = componentKmhPerKmh < 0 ? "against you" : "with you";
+
+    return `${named}, ${along} ${lean} along the route, ${speed} ${direction}`;
+  }
 
   return `${named} ${along} along the route, ${speed} ${direction}`;
 }

@@ -240,6 +240,44 @@ describe("forecastSamples", () => {
     expect(samples.at(-1)?.position).toEqual(stalled[1000]);
   });
 
+  /*
+   * ForecastStrip tells its cells apart by distance and arrival together, so
+   * that pair has to be unique — a duplicate would collide as a React key and
+   * let reconciliation drop or misplace a row. The shapes below are the ones
+   * that push samples together: a stage standing still, a finish sharing its
+   * predecessor's clock, and a ride whose whole timeline is one instant.
+   */
+  it("never returns two samples sharing both a distance and an arrival", () => {
+    const stalledFinish: Position[] = [
+      [8, 49],
+      [8, 49.1],
+      [8, 49.2],
+      [8, 49.2],
+    ];
+    const motionless: Position[] = [
+      [8, 49],
+      [8, 49],
+      [8, 49],
+    ];
+    const cases: Array<[Position[], number[]]> = [
+      [stalledFinish, [0, 1800, 3600, 3600]],
+      [motionless, [0, 300, 600]],
+      [motionless, [0, 0, 600]],
+      [stalledFinish, [0, 0, 0, 5400]],
+    ];
+
+    for (const [coordinates, elapsedSeconds] of cases) {
+      const samples = forecastSamples(coordinates, elapsedSeconds, START_AT);
+      const keys = samples.map(
+        (sample) => `${sample.distanceMetres}-${sample.arrivalAt.getTime()}`,
+      );
+
+      expect(new Set(keys).size, `distinct keys for ${JSON.stringify(elapsedSeconds)}`).toBe(
+        keys.length,
+      );
+    }
+  });
+
   it("returns an empty list rather than throwing for a stage nothing has predicted", () => {
     expect(
       forecastSamples(

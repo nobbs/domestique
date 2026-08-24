@@ -170,6 +170,30 @@ describe("ForecastStrip", () => {
    * across the road is a couple of km/h against you, not its full speed. The
    * raw reading still travels, because that is what any other forecast quotes.
    */
+  /*
+   * A crosswind still leans one way or the other, and the magnitude alone
+   * cannot say which: without the sign, a cross pushing the rider along and
+   * one pushing back announce the same number.
+   */
+  it("says which way a crosswind leans", () => {
+    const coordinates = road();
+    const samples = forecastSamples(coordinates, movingTime(coordinates), START_AT);
+    const leaning = (windDirectionDegrees: number) => {
+      const seed = forecastFor(samples.length);
+      seed.points = seed.points.map((point) => ({ ...point, windDirectionDegrees }));
+      const view = renderStrip({ coordinates, samples, seed });
+      const text = screen.getByRole("table").textContent ?? "";
+      view.unmount();
+
+      return text;
+    };
+
+    // A due-east road: a wind from just north of due south leans forwards,
+    // and one from just north of due north leans back.
+    expect(leaning(190)).toMatch(/Crosswind, .* with you along the route/);
+    expect(leaning(10)).toMatch(/Crosswind, .* against you along the route/);
+  });
+
   it("reports the wind along the route, keeping the raw reading beside it", () => {
     const coordinates = road();
     const samples = forecastSamples(coordinates, movingTime(coordinates), START_AT);
