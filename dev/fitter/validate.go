@@ -14,6 +14,14 @@ import (
 // fitness trend across two years and flatter the result.
 const heldOutFraction = 0.2
 
+// maxMissingGeometryFraction is how much of a ride's moving time may come
+// from samples missing altitude or position (a GPS/barometer dropout)
+// before the ride is unscorable here. A short dropout barely shifts the
+// prediction, but a ride depending on one for a meaningful share of its
+// moving time would compare a partial-ride prediction against rides.csv's
+// full moving_seconds, biasing the held-out error.
+const maxMissingGeometryFraction = 0.05
+
 // splitByDate orders a group's rides chronologically and returns the earlier
 // rides to fit against and the later ones to validate against — never a
 // random split, per the issue's own stated reason.
@@ -44,17 +52,32 @@ func splitByDate(rides []rideRow) (train, heldOut []rideRow) {
 // ingest already mirrors), so this passes the ride's raw recorded geometry
 // — not dev/ridemodel's own precomputed per-sample gradient — exactly as a
 // route stage's geometry would be passed in production.
+//
+// A moving sample missing altitude or position (a GPS/barometer dropout) is
+// dropped from the point sequence rather than making the ride unscorable
+// outright — see maxMissingGeometryFraction for why a small amount of this
+// is tolerated.
 func predictedMovingSeconds(samples []sampleRow, result *fitResult, config coefficientsConfig, driveEfficiency, powerWatts float64) float64 {
 	points := make([]route.Point, 0, len(samples))
 	kinds := make([]surface.Kind, 0, len(samples))
+	var movingSeconds, missingGeometrySeconds float64
 	for i := range samples {
 		s := &samples[i]
-		if !s.Moving || !s.HasAltitude || !s.HasPosition {
+		if !s.Moving {
+			continue
+		}
+		movingSeconds += s.DeltaSeconds
+		if !s.HasAltitude || !s.HasPosition {
+			missingGeometrySeconds += s.DeltaSeconds
+
 			continue
 		}
 		altitude := s.AltitudeM
 		points = append(points, route.Point{Latitude: s.Latitude, Longitude: s.Longitude, Elevation: &altitude})
 		kinds = append(kinds, s.Surface)
+	}
+	if movingSeconds > 0 && missingGeometrySeconds/movingSeconds > maxMissingGeometryFraction {
+		return 0
 	}
 
 	coefficients := ridemodel.Coefficients{

@@ -33,9 +33,13 @@ func TestSplitByDateNeverShufflesAcrossTheBoundary(t *testing.T) {
 // hasCompleteElevation check, and a known geometry to check the wrapper's
 // output against a direct call to ridemodel.Predict with the same points.
 func threeSamplesUpAGrade(gradePercent float64) []sampleRow {
+	return samplesUpAGrade(gradePercent, 3)
+}
+
+func samplesUpAGrade(gradePercent float64, count int) []sampleRow {
 	when := time.Date(2026, 1, 1, 6, 0, 0, 0, time.UTC)
 	lat := 50.0
-	samples := make([]sampleRow, 3)
+	samples := make([]sampleRow, count)
 	for i := range samples {
 		samples[i] = sampleRow{
 			Time: when.Add(time.Duration(i) * time.Second), DeltaSeconds: 1,
@@ -81,6 +85,34 @@ func TestPredictedMovingSecondsReturnsZeroWithFewerThanTwoEligibleSamples(t *tes
 
 	got := predictedMovingSeconds(samples, result, config, config.DriveEfficiency, 155.0)
 	assert.InDelta(t, 0.0, got, 1e-9)
+}
+
+// A ride whose moving samples miss altitude or position — a GPS/barometer
+// dropout — for more than maxMissingGeometryFraction of its moving time must
+// be unscorable, not just have those samples skipped from the point
+// sequence: a prediction over the remaining points alone would compare a
+// materially partial-ride time against the ride's full moving_seconds.
+func TestPredictedMovingSecondsReturnsZeroWhenMissingGeometryExceedsTheTolerance(t *testing.T) {
+	samples := threeSamplesUpAGrade(6.0)
+	samples[1].HasPosition = false // 1 of 3 seconds missing, well past the 5% tolerance
+	result := &fitResult{CrrOverall: 0.006, CdA: 0.45, MassKG: 90.0}
+	config := coefficientsConfig{DriveEfficiency: 0.975, AirDensityKGPerM3: 1.2, DescentCutoffPercent: -1.0, DescentCapMetresPerSecond: 22.0}
+
+	got := predictedMovingSeconds(samples, result, config, config.DriveEfficiency, 155.0)
+	assert.InDelta(t, 0.0, got, 1e-9)
+}
+
+// A brief geometry dropout — under maxMissingGeometryFraction of the ride's
+// moving time — must not zero out the whole ride: real GPS/barometer
+// dropouts this small are routine and barely shift the predicted time.
+func TestPredictedMovingSecondsToleratesABriefGeometryDropout(t *testing.T) {
+	samples := samplesUpAGrade(6.0, 25)
+	samples[10].HasPosition = false // 1 of 25 seconds missing, under the 5% tolerance
+	result := &fitResult{CrrOverall: 0.006, CdA: 0.45, MassKG: 90.0}
+	config := coefficientsConfig{DriveEfficiency: 0.975, AirDensityKGPerM3: 1.2, DescentCutoffPercent: -1.0, DescentCapMetresPerSecond: 22.0}
+
+	got := predictedMovingSeconds(samples, result, config, config.DriveEfficiency, 155.0)
+	assert.Greater(t, got, 0.0)
 }
 
 func TestValidateHeldOutReportsBothMAEsOverTheHeldOutRidesOnly(t *testing.T) {
