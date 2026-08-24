@@ -4,6 +4,7 @@ import {
   FORECAST_HORIZON_MS,
   FORECAST_PAST_ALLOWANCE_MS,
   isWithinForecastWindow,
+  startTimeRefusal,
   useStartTime,
 } from "./startTime";
 
@@ -55,6 +56,35 @@ describe("isWithinForecastWindow", () => {
       true,
     );
     expect(isWithinForecastWindow(new Date(now.getTime() + FORECAST_HORIZON_MS), now)).toBe(true);
+  });
+});
+
+describe("startTimeRefusal", () => {
+  const now = new Date("2026-08-24T12:00:00Z");
+  const hours = (count: number) => count * 60 * 60 * 1000;
+
+  it("accepts a start whose whole ride fits inside the window", () => {
+    expect(startTimeRefusal(new Date(now.getTime() + hours(2)), 4 * 3600, now)).toBeNull();
+  });
+
+  it("names a stale start as past rather than as outrunning the forecast", () => {
+    expect(startTimeRefusal(new Date(now.getTime() - hours(30)), 3600, now)).toBe("past");
+  });
+
+  /*
+   * The two refusals want opposite remedies — a stale start needs a later
+   * time, one that outruns the forecast needs an earlier — so a ride that
+   * departs inside the window and finishes outside it must not be told it is
+   * in the past, however long it is.
+   */
+  it("names a long ride that finishes past the horizon as the horizon", () => {
+    const departure = new Date(now.getTime() - hours(2));
+
+    expect(startTimeRefusal(departure, 20 * 24 * 3600, now)).toBe("horizon");
+  });
+
+  it("names a departure past the horizon as the horizon too", () => {
+    expect(startTimeRefusal(new Date(now.getTime() + hours(24 * 17)), 3600, now)).toBe("horizon");
   });
 });
 

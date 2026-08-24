@@ -21,7 +21,7 @@ import { useState } from "react";
 import {
   FORECAST_HORIZON_MS,
   FORECAST_PAST_ALLOWANCE_MS,
-  isWithinForecastWindow,
+  startTimeRefusal,
 } from "../lib/startTime";
 
 const INPUT_ID = "start-time-input";
@@ -102,14 +102,15 @@ export function StartTimePicker({ value, onChange, rideSeconds }: StartTimePicke
           // can sit open for hours, and the window this is checked against is
           // the one in force when the reader picks, not when the field drew.
           const asOf = new Date();
-          // The arrival is what the forecast request has to reach, so it is
-          // what the window is checked against.
-          const arrival = new Date(parsed.getTime() + Math.max(rideSeconds ?? 0, 0) * 1000);
-          if (!isWithinForecastWindow(parsed, asOf) || !isWithinForecastWindow(arrival, asOf)) {
+          // Classified by the same function the page uses on a remembered
+          // value, so a keystroke and a stored time can never be told two
+          // different things about the same trouble.
+          const refusal = startTimeRefusal(parsed, rideSeconds, asOf);
+          if (refusal !== null) {
             setRefusal(
-              parsed.getTime() > asOf.getTime()
-                ? "That ride would finish past the 16-day forecast horizon."
-                : "That's more than a day in the past.",
+              refusal === "past"
+                ? "That's more than a day in the past."
+                : "That ride would finish past the 16-day forecast horizon.",
             );
 
             return;

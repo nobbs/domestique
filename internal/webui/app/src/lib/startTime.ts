@@ -70,6 +70,44 @@ function readStartTime(): Date | null {
   }
 }
 
+/**
+ * Why a start time cannot be forecast for a ride of `rideSeconds`, or null
+ * when it can.
+ *
+ * One classifier for the two places that ask. The control asks before it
+ * accepts a keystroke, and the page asks again about a value it was handed
+ * from storage — and both have to name the *same* trouble, because the two
+ * refusals want opposite remedies: a start left over from last week needs a
+ * later one, and a ride that outruns the forecast needs an earlier one.
+ * Deciding that twice is how they come to disagree.
+ *
+ * `now` is a parameter so a caller can read the clock at the moment it
+ * matters rather than when its component last rendered.
+ */
+export function startTimeRefusal(
+  startAt: Date,
+  rideSeconds: number | undefined,
+  now: Date = new Date(),
+): StartTimeRefusal | null {
+  if (startAt.getTime() < now.getTime() - FORECAST_PAST_ALLOWANCE_MS) {
+    return "past";
+  }
+  const arrival = new Date(startAt.getTime() + Math.max(rideSeconds ?? 0, 0) * 1000);
+  if (!isWithinForecastWindow(startAt, now) || !isWithinForecastWindow(arrival, now)) {
+    return "horizon";
+  }
+
+  return null;
+}
+
+/**
+ * The two ways a start time can fall outside what the forecast can answer:
+ * before the endpoint's past allowance, or with a finish beyond its horizon.
+ * The horizon case covers a departure past the horizon too, since a ride that
+ * starts after the forecast ends certainly finishes after it.
+ */
+export type StartTimeRefusal = "past" | "horizon";
+
 function writeStartTime(next: Date | null): void {
   try {
     if (next === null) {

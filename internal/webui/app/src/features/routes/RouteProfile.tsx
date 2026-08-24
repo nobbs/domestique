@@ -32,37 +32,10 @@ import { formatAscent, formatElevation } from "../../lib/format";
 import type { Highlight } from "../../lib/highlight";
 import { useCoarsePointer } from "../../lib/mediaQuery";
 import type { DistanceWindow, Profile } from "../../lib/profile";
-import { FORECAST_PAST_ALLOWANCE_MS, isWithinForecastWindow } from "../../lib/startTime";
+import { startTimeRefusal } from "../../lib/startTime";
 import type { SurfaceSummary } from "../../lib/surface";
 import type { UnitSystem } from "../../lib/units";
 import { distanceUnitLabel, distanceValue } from "../../lib/units";
-
-/**
- * Why a remembered start time cannot be forecast, or null when it can.
- *
- * Two different refusals, and they want two different remedies: a start left
- * over from last week wants a later one, and a start whose ride runs off the
- * end of the forecast wants an earlier one. Telling somebody their ride
- * finishes past the horizon when the real trouble is that it began three days
- * ago sends them the wrong way.
- *
- * The horizon wording covers a departure past the horizon too, since a ride
- * that starts after the forecast ends certainly finishes after it.
- */
-function refusalFor(startAt: Date | null, rideSeconds: number | undefined): string | null {
-  if (startAt === null) {
-    return null;
-  }
-  if (startAt.getTime() < Date.now() - FORECAST_PAST_ALLOWANCE_MS) {
-    return "That start time is more than a day in the past. Choose another to see a forecast.";
-  }
-  const arrival = new Date(startAt.getTime() + Math.max(rideSeconds ?? 0, 0) * 1000);
-  if (!isWithinForecastWindow(startAt) || !isWithinForecastWindow(arrival)) {
-    return "That start time is outside the 16-day forecast window for this stage — this ride would finish past it. Choose another to see a forecast.";
-  }
-
-  return null;
-}
 
 export interface RouteProfileProps {
   /** The stretch on show: the whole route, or the window the reader chose. */
@@ -151,7 +124,13 @@ export function RouteProfile({
    * as an unpredicted stage, and it says so.
    */
   const hasTimeline = rideSeconds !== undefined && rideSeconds > 0;
-  const startRefusal = refusalFor(startAt, rideSeconds);
+  const refusal = startAt === null ? null : startTimeRefusal(startAt, rideSeconds);
+  const startRefusal =
+    refusal === "past"
+      ? "That start time is more than a day in the past. Choose another to see a forecast."
+      : refusal === "horizon"
+        ? "That start time is outside the 16-day forecast window for this stage — this ride would finish past it. Choose another to see a forecast."
+        : null;
   const startFits = startAt !== null && startRefusal === null;
   const range = profile
     ? `${formatElevation(profile.minElevationMetres, unitSystem)}–${formatElevation(profile.maxElevationMetres, unitSystem)}`
