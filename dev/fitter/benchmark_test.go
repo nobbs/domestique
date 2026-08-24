@@ -169,6 +169,58 @@ func TestEvaluateSplitScoresRidesAfterTheLoadedCutoffWithNoFitting(t *testing.T)
 	assert.Contains(t, eval.errorsByModel, "route-only")
 }
 
+// TestEvaluateSplitTreatsTheWholeCutoffDateAsSeen is the exact bug a naive
+// Date.After(cutoff) comparison has: calibration_cutoff is a date — "the
+// last calibration ride's date" — not an instant, so a ride recorded later
+// on that same calendar date must still count as seen, not as an unseen
+// candidate to score.
+func TestEvaluateSplitTreatsTheWholeCutoffDateAsSeen(t *testing.T) {
+	rides, samplesByRide := syntheticCorpus(30)
+	cutoffDate := rides[17].Date
+	// A same-day ride recorded that evening: after the parsed midnight
+	// cutoff by time, but on the same calendar date the cutoff names.
+	sameDayLate := rideRow{
+		RideID: "same-day-late", Date: cutoffDate.Add(20 * time.Hour),
+		MovingSeconds: rides[17].MovingSeconds,
+	}
+	sameDaySamples := append([]sampleRow(nil), samplesByRide[rides[17].RideID]...)
+	for i := range sameDaySamples {
+		sameDaySamples[i].Longitude += 5 // its own, otherwise-unseen route
+	}
+	samplesByRide[sameDayLate.RideID] = sameDaySamples
+	withSameDayRide := append(append([]rideRow(nil), rides[:18]...), sameDayLate)
+	withSameDayRide = append(withSameDayRide, rides[18:]...)
+
+	coefficients := testCoefficients()
+	cfg := &runConfig{etaRouteCellDegrees: defaultRouteCellDegrees, etaRouteJaccard: defaultRouteJaccardThreshold}
+
+	eval, err := evaluateSplit(withSameDayRide, samplesByRide, &coefficients, cutoffDate, cfg)
+
+	require.NoError(t, err)
+	// 18 original pre-cutoff rides plus the same-day-late ride: 19 seen, not
+	// 18 — the naive bug would leave it out of "seen" and let it inflate the
+	// evaluation count below instead.
+	assert.Equal(t, 19, eval.seenCount)
+	assert.Equal(t, 12, eval.evaluateScored, "the same-day ride must not inflate the evaluation set")
+}
+
+// TestEvaluateSplitRejectsRecalibrationWithTooFewRidesBeforeTheCutoff covers
+// the panic risk a small warmup fraction (or a small corpus) creates: seen
+// must never be indexed into empty.
+func TestEvaluateSplitRejectsRecalibrationWithTooFewRidesBeforeTheCutoff(t *testing.T) {
+	rides, samplesByRide := syntheticCorpus(minGroupRides) // the smallest corpus routeDisjointSplit still runs on
+	coefficients := testCoefficients()
+	cfg := &runConfig{
+		etaRouteCellDegrees: defaultRouteCellDegrees, etaRouteJaccard: defaultRouteJaccardThreshold,
+		etaWarmupFraction: 0.05, recalibrate: true, // int(10 * 0.05) == 0 seen rides
+	}
+
+	_, err := evaluateSplit(rides, samplesByRide, &coefficients, time.Time{}, cfg)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "too few rides")
+}
+
 func TestEvaluateSplitRecalibratesTheRouteCoefficientsWhenAsked(t *testing.T) {
 	rides, samplesByRide := syntheticCorpus(30)
 	coefficients := testCoefficients()

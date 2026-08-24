@@ -96,7 +96,7 @@ func runETABenchmark(
 	if cfg.recalibrate {
 		fmt.Fprintln(&report, "ETA recalibration: refitting the route coefficients over the whole corpus, then scoring once on route-disjoint first attempts")
 	} else {
-		fmt.Fprintf(&report, "ETA evaluation: the frozen profile calibrated through %s, scored on route-disjoint first attempts since\n", cutoff.Format(time.DateOnly))
+		fmt.Fprintf(&report, "ETA evaluation: the frozen profile calibrated through %s, scored on route-disjoint first attempts after that date\n", cutoff.Format(time.DateOnly))
 	}
 	fmt.Fprintf(&report, "Errors are signed bias, mean absolute error and p90 absolute error, all as percentages of moving time. A repeat requires Jaccard overlap %.2f on a %.4f-degree coordinate grid.\n",
 		cfg.etaRouteJaccard, cfg.etaRouteCellDegrees)
@@ -146,11 +146,19 @@ func evaluateSplit(
 ) (splitEvaluation, error) {
 	clusters, clusterCount, repeatedRides, largestCluster := clusterRoutes(cleanRides, samplesByRide, cfg.etaRouteCellDegrees, cfg.etaRouteJaccard)
 
-	seenCount := sort.Search(len(cleanRides), func(i int) bool { return cleanRides[i].Date.After(cutoff) })
+	// calibration_cutoff is a date, not an instant — "the last calibration
+	// ride's date" — so every ride on that calendar date counts as seen,
+	// whatever time of day it was recorded. Comparing against the start of
+	// the following day, rather than cutoff itself, is what keeps a
+	// same-day ride from being misclassified as unseen.
+	seenCount := sort.Search(len(cleanRides), func(i int) bool { return !cleanRides[i].Date.Before(cutoff.AddDate(0, 0, 1)) })
 	if cfg.recalibrate {
 		seenCount = int(float64(len(cleanRides)) * cfg.etaWarmupFraction)
 	}
 	seen, evaluate := routeDisjointSplit(cleanRides, clusters, seenCount)
+	if cfg.recalibrate && len(seen) < minGroupRides {
+		return splitEvaluation{}, errors.New("too few rides before the recalibration cutoff to fit from")
+	}
 	if len(evaluate) == 0 {
 		return splitEvaluation{}, errors.New("no route-disjoint evaluation rides after the cutoff")
 	}
