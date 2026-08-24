@@ -75,6 +75,18 @@ func TestLoadFingerprintChangesWithFileContent(t *testing.T) {
 	assert.NotEqual(t, first.Fingerprint, second.Fingerprint, "changed content should change the fingerprint")
 }
 
+// TestFingerprintOfDoesNotCollideAcrossAVersionDataBoundaryShift is the exact
+// case plain concatenation would get wrong: "ab"+"cdef" and "abcd"+"ef"
+// concatenate to the same bytes, so a naive hash of version+data would give
+// the same fingerprint to two different (version, file) pairs — defeating
+// the guarantee that bumping modelVersion invalidates a cached prediction.
+func TestFingerprintOfDoesNotCollideAcrossAVersionDataBoundaryShift(t *testing.T) {
+	left := fingerprintOf("ab", []byte("cdef"))
+	right := fingerprintOf("abcd", []byte("ef"))
+
+	assert.NotEqual(t, left, right, "different (version, data) pairs must not share a fingerprint")
+}
+
 func TestLoadRejectsAMissingFile(t *testing.T) {
 	_, err := Load(filepath.Join(t.TempDir(), "missing.toml"))
 	require.Error(t, err, "Load() on a missing file")

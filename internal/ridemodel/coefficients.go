@@ -9,6 +9,7 @@ package ridemodel
 
 import (
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -59,14 +60,16 @@ type Coefficients struct {
 	SecondsPerAscentM float64
 }
 
-// crr returns the rolling resistance for a segment. It ignores kind: #239's
-// route-disjoint benchmark found the per-surface Crr table no material
-// improvement over one scalar value on the operator's real corpus, so Load
-// fills CrrBySurface with that same scalar for every surface.Kind rather than
-// varying it. The parameter and the KindUnknown-to-asphalt fallback the
-// surface classification pipeline still expects both stay in the signature —
-// Predict, Predictor, and the cache's surface-generation tracking are
-// unchanged by this — but every kind now reads the same value.
+// crr returns the rolling resistance for a segment, still selecting by kind
+// (with the KindUnknown-to-asphalt fallback the surface classification
+// pipeline expects) rather than ignoring it. What changed is what Load fills
+// CrrBySurface with: #239's route-disjoint benchmark found the per-surface
+// Crr table no material improvement over one scalar value on the operator's
+// real corpus, so every kind now maps to that same scalar for a loaded file,
+// and kind has no effect on the result in practice. The lookup itself stays
+// exactly as it was — Predict, Predictor, and the cache's surface-generation
+// tracking are unchanged by this — in case a future profile ever varies it
+// again.
 //
 //nolint:gocritic // value receiver: Coefficients is immutable once loaded, and a pointer would let a caller mutate the shared instance mid-prediction.
 func (c Coefficients) crr(kind surface.Kind) float64 {
@@ -115,13 +118,27 @@ func Load(path string) (Coefficients, error) {
 	// modelVersion is mixed into the hash, not just the file's own bytes: a
 	// code upgrade that changes one of model.go's versioned constants must
 	// still invalidate a cached prediction even when the operator's file is
-	// byte-for-byte unchanged. See modelVersion's own comment.
-	hash := sha256.New()
-	hash.Write([]byte(modelVersion))
-	hash.Write(data)
-	coefficients.Fingerprint = hex.EncodeToString(hash.Sum(nil))
+	// byte-for-byte unchanged. See modelVersion's own comment and
+	// fingerprintOf's for why it isn't simple concatenation.
+	coefficients.Fingerprint = fingerprintOf(modelVersion, data)
 
 	return coefficients, nil
+}
+
+// fingerprintOf hashes version and data with version's length written ahead
+// of it, so the two fields can never be reinterpreted as a different
+// (version, data) pair that happens to concatenate to the same bytes — a
+// longer version string whose extra suffix matches the shortened data's own
+// prefix, for one. Plain concatenation would not carry that guarantee.
+func fingerprintOf(version string, data []byte) string {
+	hash := sha256.New()
+	var versionLength [8]byte
+	binary.BigEndian.PutUint64(versionLength[:], uint64(len(version)))
+	hash.Write(versionLength[:])
+	hash.Write([]byte(version))
+	hash.Write(data)
+
+	return hex.EncodeToString(hash.Sum(nil))
 }
 
 func (r rawCoefficients) build() (Coefficients, error) {
