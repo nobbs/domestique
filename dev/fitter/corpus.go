@@ -109,7 +109,16 @@ func readCorpusCSV[T any](path string, requiredColumns []string, build func(reco
 }
 
 func readSamplesCSV(path string) ([]sampleRow, error) {
-	required := []string{"ride_id", "time", "delta_seconds", "interval_distance_m", "gradient_percent", "moving"}
+	// Everything stages A and B actually key decisions on: which samples are
+	// coasting- or climbing-eligible, and the physics inputs for both. Only
+	// temperature and heart rate are left out — both are genuinely optional
+	// sensor channels with a defined fallback (standard air density; skip the
+	// cross-check) rather than columns this package's core logic depends on.
+	required := []string{
+		"ride_id", "time", "delta_seconds", "interval_distance_m", "speed_mps", "gradient_percent",
+		"altitude_m", "has_altitude", "cadence_rpm", "has_cadence",
+		"latitude", "longitude", "has_position", "moving",
+	}
 
 	return readCorpusCSV(path, required, func(record []string, c csvColumns) sampleRow {
 		return sampleRow{

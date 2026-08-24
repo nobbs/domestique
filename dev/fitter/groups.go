@@ -8,9 +8,9 @@ import "sort"
 // rather than merged into a neighbouring group, which would attribute
 // coefficients to equipment that did not produce them.
 //
-// ponytail: a fixed threshold, not derived from the regression's own
-// standard error; revisit if a real corpus reports a group just above it
-// with a visibly unstable fit.
+// Note: a fixed threshold, not derived from the regression's own standard
+// error; revisit if a real corpus reports a group just above it with a
+// visibly unstable fit.
 const minGroupRides = 10
 
 // untaggedGear is the gear partition key for a ride whose export row carries

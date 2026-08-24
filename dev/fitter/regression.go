@@ -40,7 +40,7 @@ const robustIterations = 8
 // regressor (almost always Crr's, when coasting clusters at one speed) is
 // barely determined and will absorb noise the other regressor should carry.
 //
-// ponytail: a fixed threshold, not calibrated per corpus; revisit if a real
+// Note: a fixed threshold, not calibrated per corpus; revisit if a real
 // corpus reports a ratio just under it with a visibly bad fit.
 const maxAcceptableConditionRatio = 5000.0
 
