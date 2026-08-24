@@ -59,6 +59,13 @@ export interface RouteProfileProps {
   samples: ForecastSample[];
   /** The whole route's own geometry, which the forecast strip's wind reading is measured against. */
   coordinates: Position[];
+  /**
+   * The stage's whole predicted moving time, or undefined for a stage nothing
+   * has predicted one for. Absent is a state the page has to say out loud
+   * rather than draw as an empty space: the reader has asked for a forecast
+   * and is owed the reason they are not getting one.
+   */
+  rideSeconds?: number | undefined;
 }
 
 export function RouteProfile({
@@ -78,6 +85,7 @@ export function RouteProfile({
   onStartAtChange,
   samples,
   coordinates,
+  rideSeconds,
 }: RouteProfileProps) {
   /*
    * A finger cannot hover, and a card that scrolls cannot give every downward
@@ -162,8 +170,14 @@ export function RouteProfile({
               unitSystem={unitSystem}
             />
           </div>
-          <StartTimePicker value={startAt} onChange={onStartAtChange} />
-          {startAt ? (
+          <StartTimePicker value={startAt} onChange={onStartAtChange} rideSeconds={rideSeconds} />
+          {startAt && rideSeconds === undefined ? (
+            <p className="route-profile__unpredicted">
+              This stage has no predicted moving time, so there is no timeline to hang a forecast
+              on.
+            </p>
+          ) : null}
+          {startAt && rideSeconds !== undefined ? (
             <ForecastStrip
               samples={samples}
               coordinates={coordinates}

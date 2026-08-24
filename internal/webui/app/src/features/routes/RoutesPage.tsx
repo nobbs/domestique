@@ -322,6 +322,12 @@ export function RoutesPage({ themeChoice, onThemeChoiceChange }: RoutesPageProps
         : [],
     [openCoordinates, openGeometry.data?.cumulativeSeconds, startAt],
   );
+  // The whole stage's predicted moving time, and undefined for a stage nothing
+  // has predicted. It bounds how late a start the picker may offer — the
+  // forecast has to reach the arrival, not just the departure — and it is what
+  // tells the page to explain an absent strip rather than draw nothing.
+  const cumulativeSeconds = openGeometry.data?.cumulativeSeconds;
+  const rideSeconds = cumulativeSeconds?.[cumulativeSeconds.length - 1];
   // Rebuilt from the original geometry rather than from the last window, so
   // zooming inside a zoom compounds no rounding error and needs no stack.
   const windowed = useMemo(
@@ -613,6 +619,7 @@ export function RoutesPage({ themeChoice, onThemeChoiceChange }: RoutesPageProps
               onStartAtChange={setStartAt}
               samples={samples}
               coordinates={openCoordinates}
+              rideSeconds={rideSeconds}
             />
           }
           highestMetres={routeProfile ? routeProfile.maxElevationMetres : null}

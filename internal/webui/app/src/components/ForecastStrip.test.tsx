@@ -162,6 +162,53 @@ describe("ForecastStrip", () => {
   });
 
   /*
+   * The felt temperature is the one that decides what goes in the jersey
+   * pocket, and the dry-bulb figure alone would be the wrong number to lead
+   * with. Both travel; neither replaces the other.
+   */
+  it("leads with the felt temperature and keeps the actual one beside it", () => {
+    const coordinates = road();
+    const samples = forecastSamples(coordinates, movingTime(coordinates), START_AT);
+    const seed = forecastFor(samples.length);
+    seed.points = seed.points.map((point) => ({
+      ...point,
+      temperatureCelsius: 12,
+      apparentTemperatureCelsius: 6,
+    }));
+    renderStrip({ coordinates, samples, seed });
+
+    const table = screen.getByRole("table");
+    // Near freezing keeps a decimal; a dozen degrees does not — see format.ts.
+    expect(table).toHaveTextContent(/feels 6\.0\s*°C/);
+    expect(table).toHaveTextContent(/12\s*°C actual/);
+  });
+
+  /*
+   * The endpoint resolves every point to its nearest hour, so a point's own
+   * `time` is the forecast's clock and not the rider's. Reporting it as the
+   * arrival would tell somebody passing at 08:30 that they get there at 09:00.
+   */
+  it("reports when the rider arrives, not the hour the forecast was resolved to", () => {
+    const coordinates = road();
+    const samples = forecastSamples(coordinates, movingTime(coordinates), START_AT);
+    const seed = forecastFor(samples.length);
+    // Every reading resolved to one hour, well away from any arrival.
+    seed.points = seed.points.map((point) => ({
+      ...point,
+      time: new Date("2026-08-25T23:00:00Z").toISOString(),
+    }));
+    renderStrip({ coordinates, samples, seed });
+
+    const rows = screen.getAllByRole("row").slice(1);
+    const arrivals = (samples[0] as { arrivalAt: Date }).arrivalAt.toLocaleString(undefined, {
+      dateStyle: "medium",
+      timeStyle: "short",
+    });
+    expect(rows[0]).toHaveTextContent(arrivals);
+    expect(screen.getByRole("table")).not.toHaveTextContent("23:00");
+  });
+
+  /*
    * The strip is handed whatever stretch the elevation chart is drawing, so
    * dragging out a climb narrows this axis too. A cell for ground outside that
    * stretch has nowhere to sit and must be dropped rather than clamped onto

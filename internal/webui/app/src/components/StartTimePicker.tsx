@@ -38,11 +38,25 @@ function toInputValue(date: Date): string {
 export interface StartTimePickerProps {
   value: Date | null;
   onChange: (next: Date | null) => void;
+  /**
+   * The stage's predicted moving time, when it has one.
+   *
+   * The horizon belongs to the *last* sample, not the first: the forecast
+   * request spans from the departure to the arrival, and a five-hour ride
+   * begun at the very edge of the window ends five hours past it. Bounding the
+   * control by the horizon alone would offer a start that is certain to be
+   * refused, and the refusal would arrive as a `400` the page can only report
+   * as the provider being unavailable — which it would not be.
+   */
+  rideSeconds?: number | undefined;
 }
 
-export function StartTimePicker({ value, onChange }: StartTimePickerProps) {
+export function StartTimePicker({ value, onChange, rideSeconds }: StartTimePickerProps) {
   const [refusal, setRefusal] = useState<string | null>(null);
   const now = new Date();
+  const latestStart = new Date(
+    now.getTime() + FORECAST_HORIZON_MS - Math.max(rideSeconds ?? 0, 0) * 1000,
+  );
 
   return (
     <div className="start-time-picker">
@@ -59,7 +73,7 @@ export function StartTimePicker({ value, onChange }: StartTimePickerProps) {
         // kept ticking live, which a control open for a whole session would
         // need; nobody minds the boundary drifting by the odd minute.
         min={toInputValue(new Date(now.getTime() - FORECAST_PAST_ALLOWANCE_MS))}
-        max={toInputValue(new Date(now.getTime() + FORECAST_HORIZON_MS))}
+        max={toInputValue(latestStart)}
         value={value ? toInputValue(value) : ""}
         aria-describedby={refusal ? "start-time-refusal" : undefined}
         onChange={(event) => {
@@ -74,10 +88,13 @@ export function StartTimePicker({ value, onChange }: StartTimePickerProps) {
           if (Number.isNaN(parsed.getTime())) {
             return;
           }
-          if (!isWithinForecastWindow(parsed, now)) {
+          // The arrival is what the forecast request has to reach, so it is
+          // what the window is checked against.
+          const arrival = new Date(parsed.getTime() + Math.max(rideSeconds ?? 0, 0) * 1000);
+          if (!isWithinForecastWindow(parsed, now) || !isWithinForecastWindow(arrival, now)) {
             setRefusal(
               parsed.getTime() > now.getTime()
-                ? "That's further out than the 16-day forecast horizon."
+                ? "That ride would finish past the 16-day forecast horizon."
                 : "That's more than a day in the past.",
             );
 

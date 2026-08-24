@@ -1783,7 +1783,8 @@ body {
   letter-spacing: var(--track-small);
 }
 
-.forecast-strip__unavailable {
+.forecast-strip__unavailable,
+.route-profile__unpredicted {
   margin: var(--space-2) 0 0;
   color: var(--ink-2);
   font: var(--type-row);

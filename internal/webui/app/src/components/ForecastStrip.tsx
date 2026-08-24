@@ -127,6 +127,22 @@ function forecastSharpness(leadHours: number): string {
   return "More than 3 days out: coarser global guidance, past ICON's finer-grained range.";
 }
 
+/**
+ * The felt temperature first, the dry-bulb one behind it.
+ *
+ * On a bike at 25 km/h the apparent temperature is the figure that decides
+ * what goes in the jersey pocket — wind chill on a descent is most of the
+ * difference between the two — so it leads. The reading a thermometer by the
+ * road would give still travels beside it rather than instead of it, because
+ * the two disagreeing by ten degrees is itself worth seeing.
+ */
+function temperatureText(point: WeatherPoint, unitSystem: UnitSystem): string {
+  const apparent = formatTemperature(point.apparentTemperatureCelsius, unitSystem);
+  const actual = formatTemperature(point.temperatureCelsius, unitSystem);
+
+  return `feels ${apparent}, ${actual} actual`;
+}
+
 function conditionText(point: WeatherPoint, unitSystem: UnitSystem): string {
   const label = weatherCodeLabel(point.weatherCode);
   if (point.precipitationProbabilityPercent <= 0 && point.precipitationMillimetres <= 0) {
@@ -263,12 +279,12 @@ export function ForecastStrip({
             const cellWidth = Math.max(right - left, 0);
             const opacity =
               (point.precipitationProbabilityPercent / 100) * MAX_PRECIPITATION_OPACITY;
-            const time = new Date(point.time).toLocaleString(undefined, {
+            const time = sample.arrivalAt.toLocaleString(undefined, {
               weekday: "short",
               hour: "2-digit",
               minute: "2-digit",
             });
-            const title = `${time} — ${formatTemperature(point.temperatureCelsius, unitSystem)} · ${windText(point, relation, unitSystem)} · ${conditionText(point, unitSystem)}`;
+            const title = `${time} — ${temperatureText(point, unitSystem)} · ${windText(point, relation, unitSystem)} · ${conditionText(point, unitSystem)}`;
 
             return (
               <g key={sample.distanceMetres} className="forecast-strip__cell">
@@ -317,12 +333,12 @@ export function ForecastStrip({
           {cells.map(({ sample, point, relation }) => (
             <tr key={sample.distanceMetres}>
               <td>
-                {new Date(point.time).toLocaleString(undefined, {
+                {sample.arrivalAt.toLocaleString(undefined, {
                   dateStyle: "medium",
                   timeStyle: "short",
                 })}
               </td>
-              <td>{formatTemperature(point.temperatureCelsius, unitSystem)}</td>
+              <td>{temperatureText(point, unitSystem)}</td>
               <td>{windText(point, relation, unitSystem)}</td>
               <td>{conditionText(point, unitSystem)}</td>
             </tr>

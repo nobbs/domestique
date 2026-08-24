@@ -192,4 +192,23 @@ describe("RouteProfile", () => {
 
     expect(document.querySelector(".forecast-strip")).toBeNull();
   });
+
+  /*
+   * A stage with a profile but no predicted moving time has no timeline for a
+   * forecast to hang on. The reader has asked for one by picking a start, so
+   * the absence is owed a reason rather than an empty space where a strip
+   * would be — and never a guessed speed to fill the gap.
+   */
+  it("explains an absent forecast on a stage nothing has predicted", () => {
+    show({ startAt: new Date("2026-08-25T07:00:00Z"), samples: [], rideSeconds: undefined });
+
+    expect(screen.getByText(/no predicted moving time/i)).toBeInTheDocument();
+    expect(document.querySelector(".forecast-strip")).toBeNull();
+  });
+
+  it("says nothing of the sort once the stage has a prediction", () => {
+    show({ startAt: new Date("2026-08-25T07:00:00Z"), samples: [], rideSeconds: 3600 });
+
+    expect(screen.queryByText(/no predicted moving time/i)).not.toBeInTheDocument();
+  });
 });
