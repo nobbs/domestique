@@ -26,6 +26,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
+import { ApiError } from "../api/client";
 import { weatherQuery } from "../api/queries";
 import type { Position, WeatherPoint } from "../api/types";
 import type { ForecastSample } from "../lib/forecastSamples";
@@ -143,6 +144,17 @@ function temperatureText(point: WeatherPoint, unitSystem: UnitSystem): string {
   return `feels ${apparent}, ${actual} actual`;
 }
 
+/**
+ * What tells one cell from another.
+ *
+ * Not the distance alone: a stage with repeated coordinates puts several
+ * samples at the same point on the ground, and React would be handed the same
+ * key twice. The clock always moves even when the road does not.
+ */
+function cellKey(sample: ForecastSample): string {
+  return `${sample.distanceMetres}-${sample.arrivalAt.getTime()}`;
+}
+
 function conditionText(point: WeatherPoint, unitSystem: UnitSystem): string {
   const label = weatherCodeLabel(point.weatherCode);
   if (point.precipitationProbabilityPercent <= 0 && point.precipitationMillimetres <= 0) {
@@ -157,7 +169,23 @@ function conditionText(point: WeatherPoint, unitSystem: UnitSystem): string {
   return `${label}, ${Math.round(point.precipitationProbabilityPercent)}% chance of ${formatPrecipitation(point.precipitationMillimetres, unitSystem)}`;
 }
 
-function windText(point: WeatherPoint, relation: CellRelation, unitSystem: UnitSystem): string {
+/**
+ * The wind a rider actually feels, with the weather station's reading behind
+ * it.
+ *
+ * A bare "18 km/h from 240°" asks the reader to do trigonometry in their head,
+ * which is the whole reason this strip classifies the wind at all. The number
+ * that leads is therefore the component along the direction of travel: a
+ * crosswind leaning slightly ahead is a couple of kilometres an hour against
+ * you, not eighteen. The raw speed and bearing still travel, because they are
+ * what a forecast anywhere else will quote back.
+ */
+function windText(
+  point: WeatherPoint,
+  relation: CellRelation,
+  componentKmhPerKmh: number | null,
+  unitSystem: UnitSystem,
+): string {
   const speed = formatWindSpeed(point.windSpeedKmh, unitSystem);
   const direction = `from ${compassLabel(point.windDirectionDegrees)} (${Math.round(point.windDirectionDegrees)}°)`;
   const named =
@@ -170,8 +198,17 @@ function windText(point: WeatherPoint, relation: CellRelation, unitSystem: UnitS
           : relation === "mixed"
             ? "Mixed direction here"
             : null;
+  if (named === null) {
+    return `${speed} ${direction}`;
+  }
+  // Mixed means the road turns through the window, so there is no one
+  // component to quote: the same wind is ahead and behind within a kilometre.
+  if (componentKmhPerKmh === null || relation === "mixed") {
+    return `${named}, ${speed} ${direction}`;
+  }
+  const along = formatWindSpeed(Math.abs(componentKmhPerKmh) * point.windSpeedKmh, unitSystem);
 
-  return named ? `${named}, ${speed} ${direction}` : `${speed} ${direction}`;
+  return `${named} ${along} along the route, ${speed} ${direction}`;
 }
 
 /** The letter a cell's own glyph draws for a wind relation. */
@@ -222,7 +259,13 @@ export function ForecastStrip({
       // Outside the stretch the chart is drawing — a zoomed elevation profile
       // narrows the axis this strip shares with it, and a cell wholly outside
       // that window has nothing to draw itself against.
-      if (cellEnd <= startMetres || cellStart >= endMetres) {
+      //
+      // A window of no width is not a window that excludes everything: a stage
+      // that covers no ground still has a timeline, and dropping every cell
+      // against it would take the readable table down with the graphic. There
+      // is nothing to clip to, so nothing is clipped.
+      const clips = endMetres > startMetres;
+      if (clips && (cellEnd <= startMetres || cellStart >= endMetres)) {
         return [];
       }
 
@@ -238,7 +281,16 @@ export function ForecastStrip({
       const reading = bearing !== null ? windRelation(bearing, point.windDirectionDegrees) : null;
       const relation: CellRelation = mixed ? "mixed" : (reading?.relation ?? null);
 
-      return [{ sample, point, cellStart, cellEnd, relation }];
+      return [
+        {
+          sample,
+          point,
+          cellStart,
+          cellEnd,
+          relation,
+          component: reading?.componentKmhPerKmh ?? null,
+        },
+      ];
     });
   }, [samples, forecast.data, coordinates, distances, totalMetres, startMetres, endMetres]);
 
@@ -246,9 +298,21 @@ export function ForecastStrip({
     return null;
   }
   if (forecast.isError) {
+    /*
+     * Only a 502 is the provider's fault. A 400 is this page having asked for
+     * something the endpoint refuses — a window it cannot answer, or more
+     * points than it takes — and reporting that as an outage would send the
+     * reader off to check whether Open-Meteo is down over arithmetic done
+     * here. The start time is re-checked before the request is ever made, so
+     * this is the belt to that braces.
+     */
+    const provider = forecast.error instanceof ApiError && forecast.error.status >= 500;
+
     return (
       <p className="forecast-strip__unavailable">
-        The forecast is unavailable right now; the rest of this route is unaffected.
+        {provider
+          ? "The forecast is unavailable right now; the rest of this route is unaffected."
+          : "This forecast could not be requested for this ride; the rest of this route is unaffected."}
       </p>
     );
   }
@@ -278,7 +342,7 @@ export function ForecastStrip({
       >
         <title>{`Forecast along the way, ${cells.length} readings`}</title>
         <g transform={`translate(${PADDING.left} 0)`}>
-          {cells.map(({ sample, point, cellStart, cellEnd, relation }) => {
+          {cells.map(({ sample, point, cellStart, cellEnd, relation, component }) => {
             const left = Math.min(Math.max(x(cellStart), 0), plotWidth);
             const right = Math.min(Math.max(x(cellEnd), 0), plotWidth);
             const cellWidth = Math.max(right - left, 0);
@@ -289,10 +353,13 @@ export function ForecastStrip({
               hour: "2-digit",
               minute: "2-digit",
             });
-            const title = `${time} — ${temperatureText(point, unitSystem)} · ${windText(point, relation, unitSystem)} · ${conditionText(point, unitSystem)}`;
+            const title = `${time} — ${temperatureText(point, unitSystem)} · ${windText(point, relation, component, unitSystem)} · ${conditionText(point, unitSystem)}`;
 
             return (
-              <g key={sample.distanceMetres} className="forecast-strip__cell">
+              // Distance and arrival together: a stage that stands still —
+              // repeated coordinates — gives several samples the same distance,
+              // and the clock is what still tells them apart.
+              <g key={cellKey(sample)} className="forecast-strip__cell">
                 <rect
                   x={left}
                   y={0}
@@ -335,8 +402,8 @@ export function ForecastStrip({
           </tr>
         </thead>
         <tbody>
-          {cells.map(({ sample, point, relation }) => (
-            <tr key={sample.distanceMetres}>
+          {cells.map(({ sample, point, relation, component }) => (
+            <tr key={cellKey(sample)}>
               <td>
                 {sample.arrivalAt.toLocaleString(undefined, {
                   dateStyle: "medium",
@@ -344,7 +411,7 @@ export function ForecastStrip({
                 })}
               </td>
               <td>{temperatureText(point, unitSystem)}</td>
-              <td>{windText(point, relation, unitSystem)}</td>
+              <td>{windText(point, relation, component, unitSystem)}</td>
               <td>{conditionText(point, unitSystem)}</td>
             </tr>
           ))}

@@ -138,6 +138,48 @@ describe("ForecastStrip", () => {
     expect(await screen.findByText(/forecast is unavailable/i)).toBeInTheDocument();
   });
 
+  /*
+   * A 400 is this page having asked for something the endpoint refuses, not
+   * the provider being down. Reporting it as an outage would send a reader off
+   * to check whether Open-Meteo is up over arithmetic done here.
+   */
+  it("does not blame the provider for a request the endpoint refused", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              error: {
+                code: "invalid_request",
+                message: "the time window is outside what the provider can forecast",
+              },
+            }),
+            { status: 400 },
+          ),
+      ),
+    );
+    renderStrip({});
+
+    expect(await screen.findByText(/could not be requested/i)).toBeInTheDocument();
+    expect(screen.queryByText(/forecast is unavailable/i)).not.toBeInTheDocument();
+  });
+
+  /*
+   * The projected component is the number a cyclist wants: a wind leaning
+   * across the road is a couple of km/h against you, not its full speed. The
+   * raw reading still travels, because that is what any other forecast quotes.
+   */
+  it("reports the wind along the route, keeping the raw reading beside it", () => {
+    const coordinates = road();
+    const samples = forecastSamples(coordinates, movingTime(coordinates), START_AT);
+    renderStrip({ coordinates, samples, seed: forecastFor(samples.length) });
+
+    const table = screen.getByRole("table");
+    expect(table).toHaveTextContent(/Tailwind .* along the route/i);
+    expect(table).toHaveTextContent(/18 km\/h from W \(270°\)/);
+  });
+
   it("honours the unit preference in every figure the strip reports", () => {
     const coordinates = road();
     const samples = forecastSamples(coordinates, movingTime(coordinates), START_AT);

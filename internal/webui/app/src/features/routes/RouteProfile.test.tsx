@@ -224,6 +224,24 @@ describe("RouteProfile", () => {
     expect(document.querySelector(".forecast-strip")).toBeNull();
   });
 
+  /*
+   * A start time is remembered across visits, so the common path is opening a
+   * stage with one already set. `rideSeconds` is undefined while the geometry
+   * is in flight and also when the answer carries no prediction, and announcing
+   * the second during the first would tell a reader their stage has no
+   * prediction for as long as the fetch takes.
+   */
+  it("waits for the geometry before declaring a stage unpredicted", () => {
+    show({
+      startAt: new Date(Date.now() + 60 * 60 * 1000),
+      samples: [],
+      rideSeconds: undefined,
+      predictionKnown: false,
+    });
+
+    expect(screen.queryByText(/no predicted moving time/i)).not.toBeInTheDocument();
+  });
+
   it("says nothing of the sort once the stage has a prediction", () => {
     show({ startAt: new Date("2026-08-25T07:00:00Z"), samples: [], rideSeconds: 3600 });
 

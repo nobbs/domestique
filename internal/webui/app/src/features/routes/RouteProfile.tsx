@@ -67,6 +67,17 @@ export interface RouteProfileProps {
    * and is owed the reason they are not getting one.
    */
   rideSeconds?: number | undefined;
+  /**
+   * Whether the stage's prediction is settled — that is, whether its geometry
+   * has actually been answered for.
+   *
+   * `rideSeconds` alone cannot say: it is undefined both while the geometry is
+   * still being fetched and when the answer came back without a prediction. A
+   * remembered start time makes that difference visible, because the page
+   * would otherwise announce "no predicted moving time" for the second or two
+   * a fetch takes, on a stage that has one.
+   */
+  predictionKnown?: boolean;
 }
 
 export function RouteProfile({
@@ -87,6 +98,7 @@ export function RouteProfile({
   samples,
   coordinates,
   rideSeconds,
+  predictionKnown = true,
 }: RouteProfileProps) {
   /*
    * A finger cannot hover, and a card that scrolls cannot give every downward
@@ -185,7 +197,7 @@ export function RouteProfile({
             />
           </div>
           <StartTimePicker value={startAt} onChange={onStartAtChange} rideSeconds={rideSeconds} />
-          {startAt && rideSeconds === undefined ? (
+          {startAt && predictionKnown && rideSeconds === undefined ? (
             <p className="route-profile__unpredicted">
               This stage has no predicted moving time, so there is no timeline to hang a forecast
               on.

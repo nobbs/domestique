@@ -114,7 +114,9 @@ export const weatherQuery = (samples: ForecastSample[]) =>
   queryOptions({
     queryKey: ["weather", weatherQueryString(samples)] as const,
     queryFn: () => fetchWeather(samples),
-    // The endpoint resolves every point to its nearest hour, so nothing
-    // finer than an hour would ever buy a different answer.
-    staleTime: 60 * 60 * 1000,
+    // No stale time, deliberately. #206 chose not to cache the forecast, on
+    // the grounds that one operator will never trouble the provider's quota,
+    // and a lifetime here would be the same decision made again in the browser
+    // — a reader returning to a stage would be shown a forecast that a model
+    // run has since revised, to save a request nobody is counting.
   });
