@@ -1,8 +1,11 @@
 package main
 
 import (
-	"math"
 	"sort"
+
+	"github.com/nobbs/domestique/internal/ridemodel"
+	"github.com/nobbs/domestique/internal/route"
+	"github.com/nobbs/domestique/internal/surface"
 )
 
 // heldOutFraction is how much of a group's rides, by date, are withheld from
@@ -10,17 +13,6 @@ import (
 // that the split must be chronological — a random split would leak a
 // fitness trend across two years and flatter the result.
 const heldOutFraction = 0.2
-
-// maxSolveSpeedMetresPerSecond bounds the bisection search predictedSpeed
-// runs for a segment's speed. Wide enough for any plausible ride, narrow
-// enough that a solve failure (no root in range) is itself informative
-// rather than silently returning a nonsense speed.
-const maxSolveSpeedMetresPerSecond = 30.0
-
-// speedSolveIterations is enough bisection steps to resolve speed to a
-// fraction of a millimetre per second — far finer than the physics model
-// itself is accurate to.
-const speedSolveIterations = 60
 
 // splitByDate orders a group's rides chronologically and returns the earlier
 // rides to fit against and the later ones to validate against — never a
@@ -39,96 +31,45 @@ func splitByDate(rides []rideRow) (train, heldOut []rideRow) {
 	return sorted[:splitAt], sorted[splitAt:]
 }
 
-// predictedSpeed solves the power equation for the one positive speed that
-// consumes the configured power at this grade and air density, by bisection
-// rather than a closed form: the drag term makes it cubic in v, and a
-// numerical root is a few lines against a division-heavy closed-form cubic
-// solver that buys nothing a reader would trust more. It returns 0 when no
-// speed in [0, maxSolveSpeedMetresPerSecond] reaches the configured power —
-// the true root lies outside the bracket — so the caller can skip the
-// segment rather than silently taking the bracket's edge as an answer.
+// predictedMovingSeconds predicts a ride's moving time with the real
+// forward model, internal/ridemodel.Predict — the same equation, the same
+// package, that internal/ridemodel.Predictor evaluates for a deployed
+// route stage. This package reimplemented that equation locally until
+// #216 merged it onto main; calling it directly here instead removes a
+// standing drift risk between what this fitter's own validation measures
+// and what the service actually predicts.
 //
-// Below descentCutoffPercent the rider is assumed to coast rather than push
-// power into a descent: predictedSpeed instead solves the zero-power
-// equilibrium speed (where gravity exactly balances rolling resistance and
-// drag) and caps it at descentCapMPS — the same two constants
-// internal/ridemodel's own forward model will read from this package's
-// output file, so a segment predicts the same way here as it will there. A
-// grade only just past the cutoff can have no positive equilibrium speed at
-// all (gravity does not yet overcome rolling resistance while coasting),
-// in which case this also returns 0.
-func predictedSpeed(grade, airDensity, crr, cda, massKG, driveEfficiency, powerWatts, descentCutoffPercent, descentCapMPS float64) float64 {
-	if grade <= descentCutoffPercent {
-		return coastEquilibriumSpeed(grade, airDensity, crr, cda, massKG, descentCapMPS)
-	}
-
-	maxPower := climbPowerWatts(
-		climbSample{MeanSpeedMPS: maxSolveSpeedMetresPerSecond, GradePercent: grade, AirDensity: airDensity},
-		crr, cda, massKG, driveEfficiency,
-	)
-	if maxPower < powerWatts {
-		return 0
-	}
-
-	lo, hi := 0.0, maxSolveSpeedMetresPerSecond
-	for range speedSolveIterations {
-		mid := (lo + hi) / 2
-		power := climbPowerWatts(climbSample{MeanSpeedMPS: mid, GradePercent: grade, AirDensity: airDensity}, crr, cda, massKG, driveEfficiency)
-		if power < powerWatts {
-			lo = mid
-		} else {
-			hi = mid
-		}
-	}
-
-	return (lo + hi) / 2
-}
-
-// coastEquilibriumSpeed solves 0 = Crr·m·g·cosθ + m·g·sinθ + ½·ρ·CdA·v² for
-// v — the speed at which drag and rolling resistance exactly balance
-// gravity's forward push on a descent, the same equation climbPowerWatts
-// evaluates with its power term set to zero — and caps it at descentCapMPS.
-func coastEquilibriumSpeed(grade, airDensity, crr, cda, massKG, descentCapMPS float64) float64 {
-	rad := grade / 100
-	denom := math.Sqrt(1 + rad*rad)
-	sinTheta, cosTheta := rad/denom, 1/denom
-
-	drivingForce := -massKG*gravityMetresPerSecondSquared*sinTheta - crr*massKG*gravityMetresPerSecondSquared*cosTheta
-	if drivingForce <= 0 || cda <= 0 || airDensity <= 0 {
-		return 0
-	}
-
-	speed := math.Sqrt(2 * drivingForce / (airDensity * cda))
-	if speed > descentCapMPS {
-		return descentCapMPS
-	}
-
-	return speed
-}
-
-// predictedMovingSeconds sums each sample interval's predicted duration at
-// the configured coefficients, giving a predicted moving time for the whole
-// ride — the same quantity rides.csv's own moving_seconds reports, so the
-// two are directly comparable.
+// Predict recomputes its own gradient from the point sequence's distances
+// and elevations (the same gradientWindowMetres window dev/ridemodel's own
+// ingest already mirrors), so this passes the ride's raw recorded geometry
+// — not dev/ridemodel's own precomputed per-sample gradient — exactly as a
+// route stage's geometry would be passed in production.
 func predictedMovingSeconds(samples []sampleRow, result *fitResult, config coefficientsConfig, driveEfficiency, powerWatts float64) float64 {
-	var seconds float64
+	points := make([]route.Point, 0, len(samples))
+	kinds := make([]surface.Kind, 0, len(samples))
 	for i := range samples {
 		s := &samples[i]
-		if !s.Moving || !s.HasAltitude {
+		if !s.Moving || !s.HasAltitude || !s.HasPosition {
 			continue
 		}
-		crr := crrForSurface(result, s.Surface)
-		speed := predictedSpeed(
-			s.GradientPercent, airDensityFor(s), crr, result.CdA, result.MassKG, driveEfficiency, powerWatts,
-			config.DescentCutoffPercent, config.DescentCapMetresPerSecond,
-		)
-		if speed <= 0 {
-			continue
-		}
-		seconds += s.IntervalDistance / speed
+		altitude := s.AltitudeM
+		points = append(points, route.Point{Latitude: s.Latitude, Longitude: s.Longitude, Elevation: &altitude})
+		kinds = append(kinds, s.Surface)
 	}
 
-	return seconds
+	coefficients := ridemodel.Coefficients{
+		MassKG: result.MassKG, PowerWatts: powerWatts, DriveEfficiency: driveEfficiency,
+		CdAM2: result.CdA, AirDensityKGPerM3: config.AirDensityKGPerM3,
+		DescentCutoffPercent: config.DescentCutoffPercent, DescentCapMetresPerSecond: config.DescentCapMetresPerSecond,
+		CrrBySurface: fullCrrBySurface(result),
+	}
+
+	predicted, ok := ridemodel.Predict(points, kinds, coefficients)
+	if !ok {
+		return 0
+	}
+
+	return predicted.MovingSeconds
 }
 
 // baselineMovingSeconds is the trivial predictor the issue asks the model to

@@ -1,12 +1,15 @@
 package main
 
 import (
-	"math"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/nobbs/domestique/internal/ridemodel"
+	"github.com/nobbs/domestique/internal/route"
+	"github.com/nobbs/domestique/internal/surface"
 )
 
 func TestSplitByDateNeverShufflesAcrossTheBoundary(t *testing.T) {
@@ -25,54 +28,67 @@ func TestSplitByDateNeverShufflesAcrossTheBoundary(t *testing.T) {
 	}
 }
 
-func TestPredictedSpeedRecoversTheConfiguredPowerOnAClimb(t *testing.T) {
-	const crr, cda, massKG, efficiency, powerWatts = 0.006, 0.45, 90.0, 0.975, 155.0
+// threeSamplesUpAGrade builds an eligible sample sequence climbing at a
+// steady grade — enough points for ridemodel.Predict's own
+// hasCompleteElevation check, and a known geometry to check the wrapper's
+// output against a direct call to ridemodel.Predict with the same points.
+func threeSamplesUpAGrade(gradePercent float64) []sampleRow {
+	when := time.Date(2026, 1, 1, 6, 0, 0, 0, time.UTC)
+	lat := 50.0
+	samples := make([]sampleRow, 4)
+	for i := range samples {
+		samples[i] = sampleRow{
+			Time: when.Add(time.Duration(i) * time.Second), DeltaSeconds: 1,
+			IntervalDistance: 5, Latitude: lat, Longitude: 8.0, AltitudeM: float64(i) * 5 * gradePercent / 100,
+			HasAltitude: true, HasPosition: true, Moving: true,
+		}
+		lat += 0.00005
+	}
 
-	v := predictedSpeed(6.0, 1.2, crr, cda, massKG, efficiency, powerWatts, -1.0, 22.0)
-	require.Greater(t, v, 0.0)
-
-	gotPower := climbPowerWatts(climbSample{MeanSpeedMPS: v, GradePercent: 6.0, AirDensity: 1.2}, crr, cda, massKG, efficiency)
-	assert.InDelta(t, powerWatts, gotPower, 0.1)
+	return samples
 }
 
-func TestPredictedSpeedSolvesTheCoastEquilibriumOnAModerateDescent(t *testing.T) {
-	const crr, cda, massKG = 0.006, 0.45, 90.0
+// predictedMovingSeconds must be a thin adapter over internal/ridemodel.Predict
+// — this checks it produces exactly what a direct call to Predict with the
+// same points, kinds and coefficients would, rather than a second
+// reimplementation that happens to agree today.
+func TestPredictedMovingSecondsMatchesADirectRidemodelPredictCall(t *testing.T) {
+	samples := threeSamplesUpAGrade(6.0)
+	result := &fitResult{CrrOverall: 0.006, CdA: 0.45, MassKG: 90.0}
+	config := coefficientsConfig{DriveEfficiency: 0.975, AirDensityKGPerM3: 1.2, DescentCutoffPercent: -1.0, DescentCapMetresPerSecond: 22.0}
 
-	v := predictedSpeed(-5.0, 1.2, crr, cda, massKG, 0.975, 155.0, -1.0, 22.0)
-	require.Greater(t, v, 0.0)
-	require.Less(t, v, 22.0, "a moderate descent must not jump straight to the cap")
+	got := predictedMovingSeconds(samples, result, config, config.DriveEfficiency, 155.0)
 
-	// At the solved speed, drag and rolling resistance exactly balance
-	// gravity's forward push — net force is zero.
-	dissipative := crr*massKG*gravityMetresPerSecondSquared*(1/math.Sqrt(1+0.05*0.05)) + 0.5*1.2*cda*v*v
-	drivingForce := massKG * gravityMetresPerSecondSquared * (0.05 / math.Sqrt(1+0.05*0.05))
-	assert.InDelta(t, drivingForce, dissipative, 0.5)
+	points := make([]route.Point, len(samples))
+	kinds := make([]surface.Kind, len(samples))
+	for i := range samples {
+		altitude := samples[i].AltitudeM
+		points[i] = route.Point{Latitude: samples[i].Latitude, Longitude: samples[i].Longitude, Elevation: &altitude}
+	}
+	want, ok := ridemodel.Predict(points, kinds, ridemodel.Coefficients{
+		MassKG: 90.0, PowerWatts: 155.0, DriveEfficiency: 0.975, CdAM2: 0.45, AirDensityKGPerM3: 1.2,
+		DescentCutoffPercent: -1.0, DescentCapMetresPerSecond: 22.0, CrrBySurface: fullCrrBySurface(result),
+	})
+	require.True(t, ok)
+	assert.InDelta(t, want.MovingSeconds, got, 1e-9)
 }
 
-func TestPredictedSpeedCapsAVerySteepDescentAtTheConfiguredCap(t *testing.T) {
-	v := predictedSpeed(-25.0, 1.2, 0.006, 0.45, 90.0, 0.975, 155.0, -1.0, 22.0)
-	assert.InDelta(t, 22.0, v, 1e-9)
-}
+func TestPredictedMovingSecondsReturnsZeroWithFewerThanTwoEligibleSamples(t *testing.T) {
+	samples := []sampleRow{{Moving: true, HasAltitude: true, Latitude: 50.0, Longitude: 8.0}}
+	result := &fitResult{CrrOverall: 0.006, CdA: 0.45, MassKG: 90.0}
+	config := coefficientsConfig{DriveEfficiency: 0.975, AirDensityKGPerM3: 1.2, DescentCutoffPercent: -1.0, DescentCapMetresPerSecond: 22.0}
 
-func TestPredictedSpeedReturnsZeroWhenAGradeJustPastTheCutoffCannotSustainACoast(t *testing.T) {
-	v := predictedSpeed(-1.01, 1.2, 0.02, 0.45, 90.0, 0.975, 155.0, -1.0, 22.0)
-	assert.InDelta(t, 0.0, v, 1e-9)
-}
-
-func TestPredictedSpeedReturnsZeroWhenTheConfiguredPowerExceedsWhatTheBracketCanReach(t *testing.T) {
-	v := predictedSpeed(20.0, 1.2, 0.006, 0.45, 90.0, 0.975, 100000.0, -1.0, 22.0)
-	assert.InDelta(t, 0.0, v, 1e-9)
+	got := predictedMovingSeconds(samples, result, config, config.DriveEfficiency, 155.0)
+	assert.InDelta(t, 0.0, got, 1e-9)
 }
 
 func TestValidateHeldOutReportsBothMAEsOverTheHeldOutRidesOnly(t *testing.T) {
-	when := time.Date(2026, 6, 1, 6, 0, 0, 0, time.UTC)
-	samplesByRide := map[string][]sampleRow{
-		"heldout1": {
-			{RideID: "heldout1", Time: when, DeltaSeconds: 100, IntervalDistance: 400, Moving: true, HasAltitude: true, GradientPercent: 6.0},
-		},
+	samplesByRide := map[string][]sampleRow{"heldout1": threeSamplesUpAGrade(6.0)}
+	for i := range samplesByRide["heldout1"] {
+		samplesByRide["heldout1"][i].RideID = "heldout1"
 	}
 	result := fitResult{CrrOverall: 0.006, CdA: 0.45, MassKG: 90.0, PowerWatts: 155.0}
-	config := coefficientsConfig{DriveEfficiency: 0.975, DescentCutoffPercent: -1.0, DescentCapMetresPerSecond: 22.0}
+	config := coefficientsConfig{DriveEfficiency: 0.975, AirDensityKGPerM3: 1.2, DescentCutoffPercent: -1.0, DescentCapMetresPerSecond: 22.0}
 
 	summary := validateHeldOut(
 		map[string]bool{"heldout1": true}, samplesByRide, map[string]float64{"heldout1": 100.0},

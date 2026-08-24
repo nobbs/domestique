@@ -326,7 +326,8 @@ func fitGroup(
 		actualMovingSeconds[r.RideID] = r.MovingSeconds
 	}
 	result.HeldOut = validateHeldOut(heldOutRideIDs, samplesByRide, actualMovingSeconds, &result, coefficientsConfig{
-		DriveEfficiency: cfg.driveEfficiency, DescentCutoffPercent: cfg.descentCutoffPercent, DescentCapMetresPerSecond: cfg.descentCapMPS,
+		DriveEfficiency: cfg.driveEfficiency, AirDensityKGPerM3: result.MeanAirDensity,
+		DescentCutoffPercent: cfg.descentCutoffPercent, DescentCapMetresPerSecond: cfg.descentCapMPS,
 	}, flatSpeedMPS, vamMetresPerHour, cfg.climbThresholdPercent)
 
 	return result
