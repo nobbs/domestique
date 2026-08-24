@@ -75,8 +75,9 @@ type splitEvaluation struct {
 // runETABenchmark implements the repeat protocol: by default it evaluates
 // the loaded, still-frozen profile against rides after its own
 // calibration_cutoff — no fitting at all — and under -recalibrate it
-// additionally re-fits the two route coefficients over the whole corpus and
-// prints a copy-ready profile. Every model it scores — hybrid, physics-only,
+// additionally re-fits the two route coefficients over the oldest
+// -eta-warmup-fraction of the corpus and prints a copy-ready profile. Every
+// model it scores — hybrid, physics-only,
 // route-only — is built from the one loaded (or, under -recalibrate,
 // route-recalibrated) ridemodel.Coefficients value, and the hybrid model
 // calls internal/ridemodel.Predict directly: the real production equation,
@@ -94,7 +95,7 @@ func runETABenchmark(
 	}
 
 	if cfg.recalibrate {
-		fmt.Fprintln(&report, "ETA recalibration: refitting the route coefficients over the whole corpus, then scoring once on route-disjoint first attempts")
+		fmt.Fprintln(&report, "ETA recalibration: refitting the route coefficients over the oldest share of the corpus, then scoring once on the route-disjoint first attempts that follow")
 	} else {
 		fmt.Fprintf(&report, "ETA evaluation: the frozen profile calibrated through %s, scored on route-disjoint first attempts after that date\n", cutoff.Format(time.DateOnly))
 	}
