@@ -24,13 +24,19 @@ func main() {
 	descentCapMPS := flag.Float64("descent-cap-mps", 22.0, "speed a coasted descent is assumed to reach")
 	climbThresholdPercent := flag.Float64("climb-threshold-percent", defaultClimbThresholdPercent, "grade above which a window counts as sustained climbing")
 	osmIndexPath := flag.String("osm-index", "", "path to an osmindex database; empty skips surface labelling and per-surface Crr")
+	etaBenchmark := flag.Bool("eta-benchmark", false, "compare ETA models on first rides of previously unseen routes; writes no coefficients")
+	etaRouteCellDegrees := flag.Float64("eta-route-cell-degrees", defaultRouteCellDegrees, "coordinate grid used to identify repeated routes in -eta-benchmark")
+	etaRouteJaccard := flag.Float64("eta-route-jaccard", defaultRouteJaccardThreshold, "minimum route-cell Jaccard overlap considered a repeat in -eta-benchmark")
+	etaWarmupFraction := flag.Float64("eta-warmup-fraction", defaultBenchmarkWarmupFraction, "oldest share of rides used before -eta-benchmark starts scoring")
 	flag.Parse()
 
 	if err := run(&runConfig{
 		corpusDir: *corpusDir, outDir: *outDir, massKG: *massKG,
 		tyreCrrBench: *tyreCrrBench, tyreCrrToleranceLow: *tyreCrrToleranceLow, tyreCrrToleranceHigh: *tyreCrrToleranceHigh,
 		driveEfficiency: *driveEfficiency, descentCutoffPercent: *descentCutoffPercent, descentCapMPS: *descentCapMPS,
-		climbThresholdPercent: *climbThresholdPercent, osmIndexPath: *osmIndexPath,
+		climbThresholdPercent: *climbThresholdPercent, osmIndexPath: *osmIndexPath, etaBenchmark: *etaBenchmark,
+		etaRouteCellDegrees: *etaRouteCellDegrees, etaRouteJaccard: *etaRouteJaccard,
+		etaWarmupFraction: *etaWarmupFraction,
 	}); err != nil {
 		fmt.Fprintf(os.Stderr, "fitter: %v\n", err)
 		os.Exit(1)
@@ -49,6 +55,10 @@ type runConfig struct {
 	descentCutoffPercent  float64
 	descentCapMPS         float64
 	climbThresholdPercent float64
+	etaRouteCellDegrees   float64
+	etaRouteJaccard       float64
+	etaWarmupFraction     float64
+	etaBenchmark          bool
 }
 
 // validate fails fast on a flag combination that would otherwise reach a
@@ -82,6 +92,15 @@ func (cfg *runConfig) validate() error {
 	}
 	if cfg.tyreCrrBench > 0 && cfg.tyreCrrToleranceLow > cfg.tyreCrrToleranceHigh {
 		return errors.New("-tyre-crr-tolerance-low must not exceed -tyre-crr-tolerance-high")
+	}
+	if cfg.etaBenchmark && cfg.etaRouteCellDegrees <= 0 {
+		return errors.New("-eta-route-cell-degrees must be positive")
+	}
+	if cfg.etaBenchmark && (cfg.etaRouteJaccard <= 0 || cfg.etaRouteJaccard > 1) {
+		return errors.New("-eta-route-jaccard must be greater than 0 and at most 1")
+	}
+	if cfg.etaBenchmark && (cfg.etaWarmupFraction <= 0 || cfg.etaWarmupFraction >= 1) {
+		return errors.New("-eta-warmup-fraction must be greater than 0 and less than 1")
 	}
 
 	return nil
@@ -136,13 +155,20 @@ func run(cfg *runConfig) error {
 		}
 	}
 
+	groups := groupRidesByGear(ridesWithSamples)
+	if cfg.etaBenchmark {
+		report, benchmarkErr := runETABenchmark(groups, ridesWithSamples, samplesByRide, cfg)
+		fmt.Print(report)
+
+		return benchmarkErr
+	}
+
 	relations := hrPowerRelationByYear(indoor)
 
 	if err := os.MkdirAll(cfg.outDir, 0o750); err != nil {
 		return fmt.Errorf("creating output directory: %w", err)
 	}
 
-	groups := groupRidesByGear(ridesWithSamples)
 	if err := checkTOMLStemCollisions(groups); err != nil {
 		return err
 	}

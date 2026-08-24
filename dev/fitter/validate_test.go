@@ -8,8 +8,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/nobbs/domestique/internal/ridemodel"
-	"github.com/nobbs/domestique/internal/route"
-	"github.com/nobbs/domestique/internal/surface"
 )
 
 func TestSplitByDateNeverShufflesAcrossTheBoundary(t *testing.T) {
@@ -54,7 +52,7 @@ func samplesUpAGrade(gradePercent float64, count int) []sampleRow {
 
 // predictedMovingSeconds must be a thin adapter over internal/ridemodel.Predict
 // — this checks it produces exactly what a direct call to Predict with the
-// same points, kinds and coefficients would, rather than a second
+// same normalized stage, kinds and coefficients would, rather than a second
 // reimplementation that happens to agree today.
 func TestPredictedMovingSecondsMatchesADirectRidemodelPredictCall(t *testing.T) {
 	samples := threeSamplesUpAGrade(6.0)
@@ -63,14 +61,9 @@ func TestPredictedMovingSecondsMatchesADirectRidemodelPredictCall(t *testing.T) 
 
 	got := predictedMovingSeconds(samples, result, config, config.DriveEfficiency, 155.0)
 
-	points := make([]route.Point, len(samples))
-	kinds := make([]surface.Kind, len(samples))
-	for i := range samples {
-		altitude := samples[i].AltitudeM
-		points[i] = route.Point{Latitude: samples[i].Latitude, Longitude: samples[i].Longitude, Elevation: &altitude}
-		kinds[i] = samples[i].Surface
-	}
-	want, ok := ridemodel.Predict(points, kinds, ridemodel.Coefficients{
+	stage, kinds, ok := normalizedRideStage(samples)
+	require.True(t, ok)
+	want, ok := ridemodel.Predict(stage.Geometry(), kinds, ridemodel.Coefficients{
 		MassKG: 90.0, PowerWatts: 155.0, DriveEfficiency: 0.975, CdAM2: 0.45, AirDensityKGPerM3: 1.2,
 		DescentCutoffPercent: -1.0, DescentCapMetresPerSecond: 22.0, CrrBySurface: fullCrrBySurface(result),
 	})
