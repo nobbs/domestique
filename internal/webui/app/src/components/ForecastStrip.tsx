@@ -146,7 +146,12 @@ function temperatureText(point: WeatherPoint, unitSystem: UnitSystem): string {
 function conditionText(point: WeatherPoint, unitSystem: UnitSystem): string {
   const label = weatherCodeLabel(point.weatherCode);
   if (point.precipitationProbabilityPercent <= 0 && point.precipitationMillimetres <= 0) {
-    return label;
+    // Said rather than left to the missing fill. A dry cell is drawn by having
+    // no shading at all, which is exactly the "carried by colour alone" state
+    // this page does not allow — and "overcast" on its own says nothing about
+    // whether rain was forecast. A pair of zeros would be the same fact in a
+    // form nobody reads out loud.
+    return `${label}, no rain expected`;
   }
 
   return `${label}, ${Math.round(point.precipitationProbabilityPercent)}% chance of ${formatPrecipitation(point.precipitationMillimetres, unitSystem)}`;

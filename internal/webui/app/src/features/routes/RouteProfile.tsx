@@ -32,6 +32,7 @@ import { formatAscent, formatElevation } from "../../lib/format";
 import type { Highlight } from "../../lib/highlight";
 import { useCoarsePointer } from "../../lib/mediaQuery";
 import type { DistanceWindow, Profile } from "../../lib/profile";
+import { isWithinForecastWindow } from "../../lib/startTime";
 import type { SurfaceSummary } from "../../lib/surface";
 import type { UnitSystem } from "../../lib/units";
 import { distanceUnitLabel, distanceValue } from "../../lib/units";
@@ -94,6 +95,19 @@ export function RouteProfile({
    * this reader has.
    */
   const coarse = useCoarsePointer();
+  /*
+   * A remembered start time is checked again here, not only where it was
+   * typed. It can go stale on a page left open past the endpoint's 24-hour
+   * allowance, and a time that fits a short stage can put a long one's finish
+   * past the 16-day horizon — the picker's own bounds say nothing about a
+   * value it was handed rather than asked for. Sending it anyway would earn a
+   * `400` that the strip can only report as the provider being unavailable,
+   * which blames Open-Meteo for arithmetic done here.
+   */
+  const startFits =
+    startAt !== null &&
+    isWithinForecastWindow(startAt) &&
+    isWithinForecastWindow(new Date(startAt.getTime() + Math.max(rideSeconds ?? 0, 0) * 1000));
   const range = profile
     ? `${formatElevation(profile.minElevationMetres, unitSystem)}–${formatElevation(profile.maxElevationMetres, unitSystem)}`
     : "";
@@ -177,7 +191,13 @@ export function RouteProfile({
               on.
             </p>
           ) : null}
-          {startAt && rideSeconds !== undefined ? (
+          {startAt && rideSeconds !== undefined && !startFits ? (
+            <p className="route-profile__unpredicted">
+              That start time is outside the 16-day forecast window for this stage — this ride would
+              finish past it. Choose another to see a forecast.
+            </p>
+          ) : null}
+          {startAt && rideSeconds !== undefined && startFits ? (
             <ForecastStrip
               samples={samples}
               coordinates={coordinates}

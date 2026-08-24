@@ -184,6 +184,26 @@ describe("ForecastStrip", () => {
   });
 
   /*
+   * A dry cell is drawn by having no shading at all, so without words the only
+   * signal that no rain was forecast is the absence of colour — the state this
+   * page does not allow. "Overcast" alone does not say it either.
+   */
+  it("says a dry hour is dry rather than leaving it to the missing shading", () => {
+    const coordinates = road();
+    const samples = forecastSamples(coordinates, movingTime(coordinates), START_AT);
+    const seed = forecastFor(samples.length);
+    seed.points = seed.points.map((point) => ({
+      ...point,
+      weatherCode: 3,
+      precipitationMillimetres: 0,
+      precipitationProbabilityPercent: 0,
+    }));
+    renderStrip({ coordinates, samples, seed });
+
+    expect(screen.getByRole("table")).toHaveTextContent(/no rain expected/i);
+  });
+
+  /*
    * The endpoint resolves every point to its nearest hour, so a point's own
    * `time` is the forecast's clock and not the rider's. Reporting it as the
    * arrival would tell somebody passing at 08:30 that they get there at 09:00.

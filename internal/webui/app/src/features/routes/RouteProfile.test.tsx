@@ -231,6 +231,32 @@ describe("RouteProfile", () => {
   });
 
   /*
+   * The picker's bounds constrain what a reader can type, and say nothing
+   * about a value handed back from storage. A start remembered from an earlier
+   * visit can age past the 24-hour allowance while a page sits open, and one
+   * that fits a short stage can put a long stage's finish past the horizon.
+   * Sending it earns a 400 the strip can only report as the provider being
+   * down, so it is caught here and explained instead.
+   */
+  it("explains a remembered start the forecast window has moved past", () => {
+    const longAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+
+    show({ startAt: longAgo, samples: [], rideSeconds: 3600 });
+
+    expect(screen.getByText(/outside the 16-day forecast window/i)).toBeInTheDocument();
+    expect(document.querySelector(".forecast-strip")).toBeNull();
+  });
+
+  it("explains a start whose finish falls past the horizon on this stage", () => {
+    // Inside the window at the start line, and past it ten hours later.
+    const nearlyTheHorizon = new Date(Date.now() + 16 * 24 * 60 * 60 * 1000 - 60 * 60 * 1000);
+
+    show({ startAt: nearlyTheHorizon, samples: [], rideSeconds: 10 * 60 * 60 });
+
+    expect(screen.getByText(/outside the 16-day forecast window/i)).toBeInTheDocument();
+  });
+
+  /*
    * Weather needs no terrain; only the shared axis does. A stage with a
    * timeline but no profile therefore falls back to the whole route rather
    * than a window of zero length, which nothing would overlap and every cell
