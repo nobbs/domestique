@@ -134,9 +134,12 @@ func fingerprintOf(version string, data []byte) string {
 	hash := sha256.New()
 	var versionLength [8]byte
 	binary.BigEndian.PutUint64(versionLength[:], uint64(len(version)))
-	hash.Write(versionLength[:])
-	hash.Write([]byte(version))
-	hash.Write(data)
+	// hash.Hash.Write never returns an error — the interface only carries one
+	// because it embeds io.Writer — but the ignore is made explicit rather
+	// than implicit for a reader or a future linter change.
+	_, _ = hash.Write(versionLength[:])
+	_, _ = hash.Write([]byte(version))
+	_, _ = hash.Write(data)
 
 	return hex.EncodeToString(hash.Sum(nil))
 }
