@@ -261,7 +261,10 @@ describe("RouteProfile", () => {
 
     show({ startAt: longAgo, samples: [], rideSeconds: 3600 });
 
-    expect(screen.getByText(/outside the 16-day forecast window/i)).toBeInTheDocument();
+    // The remedy for a stale start is a later one, so it must not be told its
+    // ride finishes past the horizon — that would send the reader backwards.
+    expect(screen.getByText(/more than a day in the past/i)).toBeInTheDocument();
+    expect(screen.queryByText(/16-day forecast window/i)).not.toBeInTheDocument();
     expect(document.querySelector(".forecast-strip")).toBeNull();
   });
 
