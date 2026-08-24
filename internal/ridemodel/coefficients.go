@@ -52,7 +52,7 @@ const (
 type Coefficients struct {
 	CrrBySurface      map[surface.Kind]float64 // every surface.Kind mapped to the same scalar Crr — see crr's doc comment
 	Fingerprint       string
-	CalibrationCutoff string // "2025-08-01"; the last calibration ride's date, recorded rather than computed from
+	CalibrationCutoff string // "2025-08-01"; the last calibration ride's date, recorded as-is rather than computed from anything at load time
 	MassKG            float64
 	PowerWatts        float64
 	CdAM2             float64
