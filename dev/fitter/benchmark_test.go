@@ -1,13 +1,33 @@
 package main
 
 import (
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/nobbs/domestique/internal/ridemodel"
+	"github.com/nobbs/domestique/internal/surface"
 )
+
+func testCoefficients() ridemodel.Coefficients {
+	return ridemodel.Coefficients{
+		CalibrationCutoff: "2025-08-01",
+		MassKG:            90,
+		PowerWatts:        180,
+		CdAM2:             0.45,
+		SecondsPerKM:      140,
+		SecondsPerAscentM: 4,
+		CrrBySurface: map[surface.Kind]float64{
+			surface.KindAsphalt:   0.012,
+			surface.KindPaving:    0.012,
+			surface.KindCompacted: 0.012,
+			surface.KindGravel:    0.012,
+			surface.KindGround:    0.012,
+		},
+	}
+}
 
 func TestClusterRoutesTreatsTheSameTraceInReverseAsOneRoute(t *testing.T) {
 	forward := positionedSamples([][2]float64{{50.000, 8.000}, {50.002, 8.002}, {50.004, 8.004}})
@@ -40,17 +60,17 @@ func TestRouteDisjointSplitScoresOnlyTheFirstRideOfAnUnseenRoute(t *testing.T) {
 	clusters[rides[13].RideID] = clusters[rides[12].RideID]
 	clusters[rides[14].RideID] = clusters[rides[12].RideID]
 
-	calibrate, evaluate := routeDisjointSplit(rides, clusters, defaultBenchmarkWarmupFraction)
+	seen, evaluate := routeDisjointSplit(rides, clusters, 12)
 
-	require.Equal(t, rides[:12], calibrate)
-	seen := make(map[int]bool)
-	for _, ride := range calibrate {
-		seen[clusters[ride.RideID]] = true
+	require.Equal(t, rides[:12], seen)
+	seenClusters := make(map[int]bool)
+	for _, ride := range seen {
+		seenClusters[clusters[ride.RideID]] = true
 	}
 	selected := make(map[int]bool)
 	for _, ride := range evaluate {
 		cluster := clusters[ride.RideID]
-		assert.False(t, seen[cluster], "evaluation route already appeared in calibration")
+		assert.False(t, seenClusters[cluster], "evaluation route already appeared before the cutoff")
 		assert.False(t, selected[cluster], "evaluation route appeared twice")
 		selected[cluster] = true
 	}
@@ -61,13 +81,13 @@ func TestRouteDisjointSplitScoresOnlyTheFirstRideOfAnUnseenRoute(t *testing.T) {
 
 func TestRouteDisjointSplitReturnsNothingBelowTheMinimumGroupSize(t *testing.T) {
 	rides := make([]rideRow, minGroupRides-1)
-	calibrate, evaluate := routeDisjointSplit(rides, map[string]int{}, defaultBenchmarkWarmupFraction)
+	seen, evaluate := routeDisjointSplit(rides, map[string]int{}, 0)
 
-	assert.Nil(t, calibrate)
+	assert.Nil(t, seen)
 	assert.Nil(t, evaluate)
 }
 
-func TestDistanceAscentModelRecoversSyntheticRideTimes(t *testing.T) {
+func TestFitRouteCoefficientsRecoversSyntheticRideTimes(t *testing.T) {
 	rides := make([]rideRow, 10)
 	samplesByRide := make(map[string][]sampleRow, len(rides))
 	for i := range rides {
@@ -77,55 +97,92 @@ func TestDistanceAscentModelRecoversSyntheticRideTimes(t *testing.T) {
 		rides[i].MovingSeconds = 140*distanceKM + 3.5*ascentM
 	}
 
-	model, secondsPerKM, secondsPerAscentM, err := fitDistanceAscentModel(rides, samplesByRide)
+	secondsPerKM, secondsPerAscentM, err := fitRouteCoefficients(rides, samplesByRide)
 	require.NoError(t, err)
 	assert.InDelta(t, 140, secondsPerKM, 1e-6)
 	assert.InDelta(t, 3.5, secondsPerAscentM, 1e-6)
-	testSamples := rideFeatureSamples(25, 600)
-	distanceKM, ascentM := distanceAndAscent(testSamples)
-	assert.InDelta(t, 140*distanceKM+3.5*ascentM, model.predict(testSamples), 1e-6)
 }
 
-// TestFitBenchmarkModelsFreezesCalibrationOnCalibrationRidesOnly is the
-// property #239 exists to guarantee: the frozen candidate's route
-// coefficients come only from the rides passed as train, never from rides a
-// caller might later score against. Two calibration sets that share every
-// ride but one must therefore fit different coefficients — if a hidden
-// dependency on the evaluation rides existed, this is what would silently
-// paper over it.
-func TestFitBenchmarkModelsFreezesCalibrationOnCalibrationRidesOnly(t *testing.T) {
-	samplesByRide := make(map[string][]sampleRow)
-	rides := make([]rideRow, 12)
+// TestHybridModelEqualsTheWeightedPhysicsAndRouteHalves is #241's own
+// acceptance criterion as a test: physics-only and route-only, each isolated
+// from internal/ridemodel.Predict's own output, must average back to exactly
+// what the hybrid model predicts — because the hybrid model IS
+// internal/ridemodel.Predict, called directly, never a second
+// implementation of it.
+func TestHybridModelEqualsTheWeightedPhysicsAndRouteHalves(t *testing.T) {
+	coefficients := testCoefficients()
+	samples := rideFeatureSamples(25, 400)
+
+	hybrid := hybridModel(&coefficients).predict(samples)
+	physicsOnly := physicsOnlyModel(&coefficients).predict(samples)
+	routeOnly := routeOnlyModel(coefficients.SecondsPerKM, coefficients.SecondsPerAscentM).predict(samples)
+
+	assert.InDelta(t, 0.5*physicsOnly+0.5*routeOnly, hybrid, 1e-6)
+}
+
+func TestPhysicsOnlyModelIgnoresTheRouteCoefficients(t *testing.T) {
+	coefficients := testCoefficients()
+	samples := rideFeatureSamples(25, 400)
+
+	withRoute := physicsOnlyModel(&coefficients).predict(samples)
+	coefficients.SecondsPerKM, coefficients.SecondsPerAscentM = 999, 999
+	withDifferentRoute := physicsOnlyModel(&coefficients).predict(samples)
+
+	assert.InDelta(t, withRoute, withDifferentRoute, 1e-9, "physics-only must not depend on the route coefficients")
+}
+
+func syntheticCorpus(rideCount int) (rides []rideRow, samplesByRide map[string][]sampleRow) {
+	start := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	samplesByRide = make(map[string][]sampleRow, rideCount)
+	rides = make([]rideRow, rideCount)
 	for i := range rides {
-		rides[i].RideID = string(rune('a' + i))
-		samplesByRide[rides[i].RideID] = rideFeatureSamples(float64(10+i), float64(50+i*i*10))
-		distanceKM, ascentM := distanceAndAscent(samplesByRide[rides[i].RideID])
-		rides[i].MovingSeconds = 150*distanceKM + 4*ascentM
+		rideID := string(rune('a'+i%26)) + string(rune('0'+i/26))
+		samples := rideFeatureSamples(float64(15+i%8), float64(100+(i%8)*15))
+		for j := range samples {
+			samples[j].Longitude += float64(i) * 0.1
+		}
+		samplesByRide[rideID] = samples
+		distanceKM, ascentM := distanceAndAscent(samples)
+		rides[i] = rideRow{
+			RideID: rideID, Date: start.AddDate(0, 0, i),
+			MovingSeconds: 150*distanceKM + 4*ascentM,
+		}
 	}
-	// A 13th ride within the same distance/ascent range as the rest, but
-	// following a visibly different rate (200 s/km + 6 s/m instead of the
-	// other twelve's 150 s/km + 4 s/m) — in-distribution enough that
-	// including it shifts the fit rather than breaking it, which is the
-	// property this test needs: whether fitBenchmarkModels saw it at all.
-	oddOneOut := rideRow{RideID: "outlier"}
-	oddSamples := rideFeatureSamples(22, 1400)
-	samplesByRide[oddOneOut.RideID] = oddSamples
-	oddDistanceKM, oddAscentM := distanceAndAscent(oddSamples)
-	oddOneOut.MovingSeconds = 200*oddDistanceKM + 6*oddAscentM
 
-	cfg := &runConfig{massKG: 90}
-	_, secondsPerKMWithout, _, _, err := fitBenchmarkModels(rides, samplesByRide, cfg)
-	require.NoError(t, err)
-	_, secondsPerKMWith, _, _, err := fitBenchmarkModels(append(append([]rideRow(nil), rides...), oddOneOut), samplesByRide, cfg)
-	require.NoError(t, err)
-
-	assert.NotEqual(t, secondsPerKMWithout, secondsPerKMWith, "an outlier ride only in the second calibration set must change its fit")
+	return rides, samplesByRide
 }
 
-func TestFixedPhysicsModelUsesTheAcceptedConstants(t *testing.T) {
-	model := fixedPhysicsModel(90, nil)
-	assert.Contains(t, model.detail, "CdA 0.45")
-	assert.Contains(t, model.detail, "180 W")
+func TestEvaluateSplitScoresRidesAfterTheLoadedCutoffWithNoFitting(t *testing.T) {
+	rides, samplesByRide := syntheticCorpus(30)
+	coefficients := testCoefficients()
+	cfg := &runConfig{etaRouteCellDegrees: defaultRouteCellDegrees, etaRouteJaccard: defaultRouteJaccardThreshold}
+	cutoff := rides[17].Date // splits the corpus roughly where -recalibrate's warmup fraction would
+
+	eval, err := evaluateSplit(rides, samplesByRide, &coefficients, cutoff, cfg)
+
+	require.NoError(t, err)
+	assert.False(t, eval.recalibrated)
+	assert.InDelta(t, coefficients.SecondsPerKM, eval.secondsPerKM, 1e-9, "the frozen profile's own coefficients must be unchanged")
+	assert.Positive(t, eval.evaluateScored)
+	assert.Contains(t, eval.errorsByModel, "hybrid")
+	assert.Contains(t, eval.errorsByModel, "physics-only")
+	assert.Contains(t, eval.errorsByModel, "route-only")
+}
+
+func TestEvaluateSplitRecalibratesTheRouteCoefficientsWhenAsked(t *testing.T) {
+	rides, samplesByRide := syntheticCorpus(30)
+	coefficients := testCoefficients()
+	coefficients.SecondsPerKM = 1.0 // deliberately wrong, so recalibration visibly moves it
+	cfg := &runConfig{
+		etaRouteCellDegrees: defaultRouteCellDegrees, etaRouteJaccard: defaultRouteJaccardThreshold,
+		etaWarmupFraction: defaultBenchmarkWarmupFraction, recalibrate: true,
+	}
+
+	eval, err := evaluateSplit(rides, samplesByRide, &coefficients, time.Time{}, cfg)
+
+	require.NoError(t, err)
+	assert.True(t, eval.recalibrated)
+	assert.InDelta(t, 150, eval.secondsPerKM, 1, "recalibration should recover the corpus's own known rate")
 }
 
 func TestBenchmarkMetricsReportSignedBiasMAEAndP90(t *testing.T) {
@@ -161,96 +218,14 @@ func TestBenchmarkHygieneRejectsCorruptOrIncompleteRides(t *testing.T) {
 	assert.Equal(t, "incomplete geometry", benchmarkExclusionReason(ride, incomplete))
 }
 
-// syntheticCorpus builds a calibratable, scoreable corpus large enough to
-// clear minGroupRides on both sides of the default warm-up split, with every
-// ride following the same seconds_per_km + seconds_per_ascent_m relationship
-// so a route-only or hybrid fit recovers it cleanly. Positions walk east so
-// every ride is its own, non-repeating route cluster.
-func syntheticCorpus(rideCount int) (rides []rideRow, samplesByRide map[string][]sampleRow) {
-	start := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
-	samplesByRide = make(map[string][]sampleRow, rideCount)
-	rides = make([]rideRow, rideCount)
-	for i := range rides {
-		rideID := string(rune('a'+i%26)) + string(rune('0'+i/26))
-		samples := rideFeatureSamples(float64(15+i%8), float64(100+(i%8)*15))
-		for j := range samples {
-			samples[j].Longitude += float64(i) * 0.1
-		}
-		samplesByRide[rideID] = samples
-		distanceKM, ascentM := distanceAndAscent(samples)
-		rides[i] = rideRow{
-			RideID: rideID, Date: start.AddDate(0, 0, i),
-			MovingSeconds: 150*distanceKM + 4*ascentM,
-		}
-	}
+func TestNormalizedRideStageReturnsZeroWhenMissingGeometryExceedsTheTolerance(t *testing.T) {
+	samples := rideFeatureSamples(6, 100)
+	// 2 of 20 points missing (10%) is past the 5% tolerance.
+	samples[1].HasPosition = false
+	samples[2].HasPosition = false
 
-	return rides, samplesByRide
-}
-
-func TestEvaluateSplitScoresTheFrozenHybridCandidate(t *testing.T) {
-	rides, samplesByRide := syntheticCorpus(30)
-	cfg := &runConfig{massKG: 90, etaWarmupFraction: defaultBenchmarkWarmupFraction}
-
-	eval, err := evaluateSplit(rides, samplesByRide, cfg, defaultRouteCellDegrees, defaultRouteJaccardThreshold, cfg.etaWarmupFraction)
-
-	require.NoError(t, err)
-	assert.Positive(t, eval.evaluateScored)
-	scalar := eval.errorsByModel["hybrid (scalar Crr)"]
-	require.Len(t, scalar, eval.evaluateScored)
-	// The corpus exactly follows the route-only formula, so that baseline
-	// alone should recover it almost perfectly; the hybrid candidate also
-	// averages in the fixed, untuned physics half and is not expected to.
-	routeOnlyMetrics := summarizeBenchmarkErrors(eval.errorsByModel["route-only"])
-	assert.Less(t, routeOnlyMetrics.mae, 0.5, "route-only should recover a corpus that exactly follows its own formula")
-	assert.Contains(t, eval.errorsByModel, "hybrid (surface Crr)")
-}
-
-func TestEvaluateSplitReportsUnavailablePhysicsWithoutFailingTheRun(t *testing.T) {
-	// A corpus with no sustained climbing never produces a valid current-physics
-	// fit (fitPhysicsBenchmarkModel requires climb samples), but the hybrid
-	// candidate does not depend on that fit succeeding.
-	rides, samplesByRide := syntheticCorpus(30)
-	cfg := &runConfig{massKG: 90, etaWarmupFraction: defaultBenchmarkWarmupFraction, climbThresholdPercent: defaultClimbThresholdPercent}
-
-	eval, err := evaluateSplit(rides, samplesByRide, cfg, defaultRouteCellDegrees, defaultRouteJaccardThreshold, cfg.etaWarmupFraction)
-
-	require.NoError(t, err)
-	assert.NotEmpty(t, eval.physicsNote)
-	assert.NotContains(t, eval.errorsByModel, "current physics")
-	assert.Contains(t, eval.errorsByModel, "hybrid (scalar Crr)")
-}
-
-func TestPrintSurfaceComparisonFlagsAnUnlabelledRunAsUninformative(t *testing.T) {
-	eval := splitEvaluation{errorsByModel: map[string][]float64{
-		"hybrid (scalar Crr)":  {1, 2, 3},
-		"hybrid (surface Crr)": {1, 2, 3},
-	}}
-	var report strings.Builder
-
-	printSurfaceComparison(&report, &eval, false)
-
-	assert.Contains(t, report.String(), "not informative")
-}
-
-func TestPrintCopyReadyProfileNamesEveryFixedConstant(t *testing.T) {
-	eval := splitEvaluation{
-		calibrationCutoff: time.Date(2025, 6, 1, 0, 0, 0, 0, time.UTC),
-		secondsPerKM:      123.4, secondsPerAscentM: 3.21,
-		errorsByModel: map[string][]float64{"hybrid (scalar Crr)": {1, -2, 3}},
-	}
-	cfg := &runConfig{massKG: 90}
-	var report strings.Builder
-
-	printCopyReadyProfile(&report, cfg, &eval)
-
-	out := report.String()
-	for _, want := range []string{
-		"calibration_cutoff = 2025-06-01", "seconds_per_km = 123.4000", "seconds_per_ascent_m = 3.2100",
-		"mass_kg = 90.0", "cda_m2 = 0.45", "power_watts = 180", "crr = 0.012",
-		"asphalt = 0.012", "paving = 0.014", "compacted = 0.015", "gravel = 0.018", "ground = 0.025",
-	} {
-		assert.Contains(t, out, want)
-	}
+	_, ok := normalizedRideStage(samples)
+	assert.False(t, ok)
 }
 
 func positionedSamples(points [][2]float64) []sampleRow {
