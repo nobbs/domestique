@@ -339,7 +339,7 @@ describe("coordinateRange", () => {
 
 describe("elapsedSecondsForWindow", () => {
   const coordinates = route([100, 200, 300, 400, 500]);
-  // One second per point, so the window's own elapsed time is easy to check
+  // Ten seconds per point, so the window's own elapsed time is easy to check
   // against coordinateRange's own start/end indices.
   const cumulativeSeconds = [0, 10, 20, 30, 40];
 
