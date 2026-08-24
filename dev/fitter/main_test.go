@@ -33,6 +33,15 @@ func TestRunConfigValidateRejectsEachInvalidFlagCombination(t *testing.T) {
 		"positive descent cutoff":      func(c *runConfig) { c.descentCutoffPercent = 0.5 },
 		"non-positive descent cap":     func(c *runConfig) { c.descentCapMPS = -1 },
 		"non-positive climb threshold": func(c *runConfig) { c.climbThresholdPercent = 0 },
+		"non-positive ETA route cell": func(c *runConfig) {
+			c.etaBenchmark, c.etaRouteCellDegrees = true, 0
+		},
+		"ETA route overlap above one": func(c *runConfig) {
+			c.etaBenchmark, c.etaRouteCellDegrees, c.etaRouteJaccard, c.etaWarmupFraction = true, 0.002, 1.1, 0.6
+		},
+		"ETA warmup at one": func(c *runConfig) {
+			c.etaBenchmark, c.etaRouteCellDegrees, c.etaRouteJaccard, c.etaWarmupFraction = true, 0.002, 0.7, 1
+		},
 		"tyre tolerance low above high": func(c *runConfig) {
 			c.tyreCrrToleranceLow, c.tyreCrrToleranceHigh = 2.0, 1.0
 		},
@@ -43,6 +52,15 @@ func TestRunConfigValidateRejectsEachInvalidFlagCombination(t *testing.T) {
 			assert.Error(t, cfg.validate())
 		})
 	}
+}
+
+func TestRunConfigValidateAcceptsBenchmarkAssumptions(t *testing.T) {
+	cfg := validConfig()
+	cfg.etaBenchmark = true
+	cfg.etaRouteCellDegrees = defaultRouteCellDegrees
+	cfg.etaRouteJaccard = defaultRouteJaccardThreshold
+	cfg.etaWarmupFraction = defaultBenchmarkWarmupFraction
+	assert.NoError(t, cfg.validate())
 }
 
 func TestRunConfigValidateIgnoresTyreToleranceOrderingWhenTheGateIsOff(t *testing.T) {
