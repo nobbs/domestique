@@ -153,12 +153,40 @@ function optionalFlag(value: unknown, at: string): boolean | undefined {
 }
 
 /**
- * Reads the predicted moving time, which is absent — never zero — when
- * nothing has predicted this route's geometry. Mirrors `surfaceFrom`'s
- * absence convention, just for a scalar instead of a group.
+ * Reads the predicted moving time, which is absent — never zero or negative
+ * — when nothing has predicted this route's geometry. A non-positive value
+ * is a contract violation, not a reading to render: the Go side's own doc
+ * comment is explicit that absence is never zero, so a served zero or a
+ * negative duration means the two sides have drifted, not that a ride takes
+ * no time.
  */
-function optionalCount(value: unknown, at: string): number | undefined {
-  return value === undefined || value === null ? undefined : count(value, at);
+function movingSecondsFrom(value: unknown, at: string): number | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  const seconds = count(value, at);
+  if (seconds <= 0) {
+    throw new ContractError(`${at} is not positive`);
+  }
+
+  return seconds;
+}
+
+/**
+ * Reads a positive integer count. `evaluated_rides` is both a measurement
+ * and the presence sentinel for the validation group on the Go side —
+ * `Coefficients.HasValidation()` is exactly `EvaluatedRides > 0` — so a zero
+ * or fractional reading here is the same kind of contract violation
+ * `movingSecondsFrom` rejects, not a value to show as though it meant
+ * something.
+ */
+function positiveCount(value: unknown, at: string): number {
+  const position = count(value, at);
+  if (!Number.isInteger(position) || position <= 0) {
+    throw new ContractError(`${at} is not a positive integer`);
+  }
+
+  return position;
 }
 
 /**
@@ -178,7 +206,7 @@ function routeValidationFrom(value: unknown, at: string): RouteValidation | unde
     biasPercent: count(validation.bias_percent, `${at}.bias_percent`),
     maePercent: count(validation.mae_percent, `${at}.mae_percent`),
     p90Percent: count(validation.p90_percent, `${at}.p90_percent`),
-    evaluatedRides: count(validation.evaluated_rides, `${at}.evaluated_rides`),
+    evaluatedRides: positiveCount(validation.evaluated_rides, `${at}.evaluated_rides`),
   };
 }
 
@@ -196,7 +224,7 @@ function routeFrom(source: Record<string, unknown>, at: string): Route {
     ascentMetres: count(source.ascent_metres ?? 0, `${at}.ascent_metres`),
     maxGradientPercent: count(source.max_gradient_percent ?? 0, `${at}.max_gradient_percent`),
     pointCount: count(source.point_count, `${at}.point_count`),
-    movingSeconds: optionalCount(source.moving_seconds, `${at}.moving_seconds`),
+    movingSeconds: movingSecondsFrom(source.moving_seconds, `${at}.moving_seconds`),
     validation: routeValidationFrom(source.validation, `${at}.validation`),
   };
 }

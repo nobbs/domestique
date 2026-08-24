@@ -93,6 +93,37 @@ describe("parseRoutes", () => {
       }),
     ).toThrow(ContractError);
   });
+
+  it("rejects a moving time that is zero or negative", () => {
+    expect(() => parseRoutes({ stages: [{ ...stagePayload, moving_seconds: 0 }] })).toThrow(
+      ContractError,
+    );
+    expect(() => parseRoutes({ stages: [{ ...stagePayload, moving_seconds: -4 }] })).toThrow(
+      ContractError,
+    );
+  });
+
+  it("rejects an evaluated_rides count that is zero or not a whole number", () => {
+    const withEvaluatedRides = (evaluatedRides: unknown) =>
+      parseRoutes({
+        stages: [
+          {
+            ...stagePayload,
+            moving_seconds: 4321.5,
+            validation: {
+              bias_percent: -1.2,
+              mae_percent: 6.8,
+              p90_percent: 14.1,
+              evaluated_rides: evaluatedRides,
+            },
+          },
+        ],
+      });
+
+    expect(() => withEvaluatedRides(0)).toThrow(ContractError);
+    expect(() => withEvaluatedRides(-3)).toThrow(ContractError);
+    expect(() => withEvaluatedRides(4.5)).toThrow(ContractError);
+  });
 });
 
 describe("parseRouteGeometry", () => {
