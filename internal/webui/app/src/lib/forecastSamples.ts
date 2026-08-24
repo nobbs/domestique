@@ -59,18 +59,19 @@ export interface ForecastSample {
  *
  * `elapsedSeconds` is the predicted moving time at each coordinate — the
  * `cumulativeSeconds` the API attaches to a stage's geometry — indexed 1:1
- * with `coordinates` and assumed non-decreasing. A stage nothing has
- * predicted a time for has no clock to sample against, so this never guesses
- * one: it returns `[]` for empty input, mismatched lengths, or a total
- * elapsed time of zero, leaving the caller to decide what an unpredicted
- * stage shows.
+ * with `coordinates` and assumed non-decreasing. It is optional for the same
+ * reason that field is: a stage nothing has predicted a time for has no clock
+ * to sample against, and this never guesses one. It returns `[]` for an
+ * absent or empty series, mismatched lengths, or a total elapsed time of
+ * zero, leaving the caller to decide what an unpredicted stage shows.
  */
 export function forecastSamples(
   coordinates: Position[],
-  elapsedSeconds: number[],
+  elapsedSeconds: number[] | undefined,
   startAt: Date,
 ): ForecastSample[] {
   if (
+    elapsedSeconds === undefined ||
     coordinates.length === 0 ||
     elapsedSeconds.length === 0 ||
     coordinates.length !== elapsedSeconds.length
@@ -98,6 +99,18 @@ export function forecastSamples(
     if (candidates[candidates.length - 1] !== cursor) {
       candidates.push(cursor);
     }
+  }
+
+  // A ride whose last coordinates share one elapsed time — a stage ending in a
+  // zero-length segment — leaves the cursor on the first of them, so the finish
+  // itself would never be sampled. It is the point a rider most wants, so it
+  // replaces the sample before it once the cap is already full.
+  const lastIndex = coordinates.length - 1;
+  if (candidates[candidates.length - 1] !== lastIndex) {
+    if (candidates.length >= MAX_SAMPLES) {
+      candidates.pop();
+    }
+    candidates.push(lastIndex);
   }
 
   const distances = cumulativeMetres(coordinates);

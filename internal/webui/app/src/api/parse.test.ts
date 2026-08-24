@@ -130,6 +130,21 @@ describe("parseRouteGeometry", () => {
     ).toThrow(ContractError);
   });
 
+  it("rejects a moving time series that names a different number of points than the geometry", () => {
+    expect(() =>
+      parseRouteGeometry({
+        ...payload,
+        properties: { ...stagePayload, cumulative_seconds: [0] },
+      }),
+    ).toThrow(ContractError);
+    expect(() =>
+      parseRouteGeometry({
+        ...payload,
+        properties: { ...stagePayload, cumulative_seconds: [] },
+      }),
+    ).toThrow(ContractError);
+  });
+
   it("keeps a classification that matched nothing distinct from an absent one", () => {
     const geometry = parseRouteGeometry({
       ...payload,

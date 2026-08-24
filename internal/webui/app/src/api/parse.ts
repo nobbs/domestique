@@ -234,13 +234,27 @@ function surfaceFrom(value: unknown, at: string): RouteSurface | undefined {
  * Reads the predicted moving time per coordinate, which is absent until
  * something has predicted this exact geometry — not empty, not zero-filled —
  * the same absence-means-unpredicted convention `surfaceFrom` uses.
+ *
+ * A present series names one time per coordinate, so a length that disagrees
+ * with the geometry is drift between this page and the service rather than a
+ * stage without a prediction. It fails here, where the field paths say which
+ * two things disagree, rather than downstream as a forecast that quietly never
+ * appears.
  */
-function cumulativeSecondsFrom(value: unknown, at: string): number[] | undefined {
+function cumulativeSecondsFrom(
+  value: unknown,
+  at: string,
+  coordinateCount: number,
+): number[] | undefined {
   if (value === undefined || value === null) {
     return undefined;
   }
+  const seconds = array(value, at).map((entry, index) => count(entry, `${at}[${index}]`));
+  if (seconds.length !== coordinateCount) {
+    throw new ContractError(`${at} needs one entry per coordinate`);
+  }
 
-  return array(value, at).map((entry, index) => count(entry, `${at}[${index}]`));
+  return seconds;
 }
 
 export function parseRouteGeometry(payload: unknown): RouteGeometry {
@@ -254,16 +268,19 @@ export function parseRouteGeometry(payload: unknown): RouteGeometry {
     throw new ContractError("body.bbox needs exactly four numbers");
   }
 
+  const coordinates = array(geometry.coordinates, "body.geometry.coordinates").map((entry, index) =>
+    positionFrom(entry, `body.geometry.coordinates[${index}]`),
+  );
+
   return {
     stage: routeFrom(properties, "body.properties"),
     bbox: bboxValues as BoundingBox,
-    coordinates: array(geometry.coordinates, "body.geometry.coordinates").map((entry, index) =>
-      positionFrom(entry, `body.geometry.coordinates[${index}]`),
-    ),
+    coordinates,
     surface: surfaceFrom(properties.surface, "body.properties.surface"),
     cumulativeSeconds: cumulativeSecondsFrom(
       properties.cumulative_seconds,
       "body.properties.cumulative_seconds",
+      coordinates.length,
     ),
   };
 }

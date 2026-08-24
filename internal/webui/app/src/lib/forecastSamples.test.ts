@@ -208,6 +208,51 @@ describe("forecastSamples", () => {
     ]);
   });
 
+  it("samples the finish even when the last coordinates share one elapsed time", () => {
+    // A stage ending in a zero-length segment: the clock stops before the
+    // geometry does, so the naive cursor would stop on the second-to-last
+    // coordinate and never sample the point the rider finishes at.
+    const coordinates: Position[] = [
+      [8, 49],
+      [8, 49.1],
+      [8, 49.2],
+      [8, 49.2],
+    ];
+
+    const samples = forecastSamples(coordinates, [0, 1800, 3600, 3600], START_AT);
+
+    expect(samples.at(-1)?.position).toEqual(coordinates[3]);
+    expect(samples.at(-1)?.arrivalAt.getTime()).toBe(START_AT.getTime() + 3_600_000);
+  });
+
+  it("keeps the finish inside the cap on a long route that ends in a zero-length segment", () => {
+    // Both rules at once: a ride long enough to fill all 48 slots, ending in a
+    // segment the clock does not advance over. The finish must still be the
+    // last sample, and the cap must still hold — 49 points would be refused by
+    // the weather endpoint outright.
+    const { coordinates, elapsedSeconds } = constantSpeedRoute(1000, 0.01, 6);
+    const stalled: Position[] = [...coordinates, coordinates[999] as Position];
+    const stalledSeconds = [...elapsedSeconds, elapsedSeconds[999] as number];
+
+    const samples = forecastSamples(stalled, stalledSeconds, START_AT);
+
+    expect(samples).toHaveLength(MAX_SAMPLES);
+    expect(samples.at(-1)?.position).toEqual(stalled[1000]);
+  });
+
+  it("returns an empty list rather than throwing for a stage nothing has predicted", () => {
+    expect(
+      forecastSamples(
+        [
+          [8, 49],
+          [8, 50],
+        ],
+        undefined,
+        START_AT,
+      ),
+    ).toEqual([]);
+  });
+
   it("returns an empty list rather than throwing for an empty elapsed-time series", () => {
     expect(
       forecastSamples(
