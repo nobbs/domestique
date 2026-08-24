@@ -15,8 +15,9 @@ func main() {
 	coefficientsPath := flag.String("coefficients", "", "path to the ridemodel.toml being evaluated, or recalibrated from")
 	recalibrate := flag.Bool(
 		"recalibrate", false,
-		"refit seconds_per_km and seconds_per_ascent_m over the whole corpus and print a copy-ready profile; "+
-			"the default evaluates the loaded profile's own frozen cutoff against rides after it, with no fitting",
+		"refit seconds_per_km and seconds_per_ascent_m over the oldest -eta-warmup-fraction of the corpus "+
+			"and print a copy-ready profile; the default evaluates the loaded profile's own frozen cutoff "+
+			"against rides after it, with no fitting",
 	)
 	etaRouteCellDegrees := flag.Float64("eta-route-cell-degrees", defaultRouteCellDegrees, "coordinate grid used to identify repeated routes")
 	etaRouteJaccard := flag.Float64("eta-route-jaccard", defaultRouteJaccardThreshold, "minimum route-cell Jaccard overlap considered a repeat")

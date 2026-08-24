@@ -76,7 +76,7 @@ func writeCorpus(t *testing.T, dir string, rides []rideRow, samplesByRide map[st
 	var ridesCSV strings.Builder
 	ridesCSV.WriteString("ride_id,date,gear,moving_seconds\n")
 	for _, ride := range rides {
-		fmt.Fprintf(&ridesCSV, "%s,%s,Bike A,%v\n", ride.RideID, ride.Date.Format(time.RFC3339), ride.MovingSeconds)
+		fmt.Fprintf(&ridesCSV, "%s,%s,%s,%v\n", ride.RideID, ride.Date.Format(time.RFC3339), ride.Gear, ride.MovingSeconds)
 	}
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "rides.csv"), []byte(ridesCSV.String()), 0o600))
 }

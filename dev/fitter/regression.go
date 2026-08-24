@@ -25,7 +25,7 @@ const robustIterations = 8
 const maxAcceptableConditionRatio = 5000.0
 
 // coastingObservation is one regression row: this package's only remaining
-// use is fitDistanceAscentModel's two-variable fit of seconds_per_km and
+// use is fitRouteCoefficients' two-variable fit of seconds_per_km and
 // seconds_per_ascent_m against a ride's distance and ascent — the name is a
 // holdover from the coasting-window regression #241 deleted, kept because
 // renaming a still-correct, still-generic type is not this issue's job.
@@ -33,9 +33,10 @@ type coastingObservation struct {
 	Y, X1, X2, Weight float64
 }
 
-// solve2x2 fits y = crr*x1 + cda*x2 by weighted least squares, and returns
-// the normal matrix's eigenvalue ratio alongside the fit: the same solve the
-// conditioning diagnostic needs, computed once.
+// solve2x2 fits y = a*x1 + b*x2 by weighted least squares, and returns the
+// normal matrix's eigenvalue ratio alongside the fit: the same solve the
+// conditioning diagnostic needs, computed once. Generic over what x1/x2/y
+// represent — today that's a ride's distance/ascent against moving seconds.
 func solve2x2(observations []coastingObservation) (crr, cda, conditionRatio float64) {
 	var sxx1, sxx12, sxx2, sx1y, sx2y float64
 	for _, o := range observations {
