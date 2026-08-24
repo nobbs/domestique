@@ -5,7 +5,13 @@
  */
 
 import type { UnitSystem } from "./units";
-import { metresToFeet, metresToMiles } from "./units";
+import {
+  metresToFeet,
+  metresToMiles,
+  precipitationValue,
+  speedValue,
+  temperatureValue,
+} from "./units";
 
 /** Below this many feet, a distance reads as feet rather than as a fraction of a mile. */
 const FEET_DISPLAY_LIMIT = 5280;
@@ -114,4 +120,64 @@ export function formatElevation(metres: number, system: UnitSystem): string {
   return system === "imperial"
     ? `${Math.round(metresToFeet(metres)).toLocaleString()} ft`
     : `${Math.round(metres).toLocaleString()} m`;
+}
+
+/**
+ * Air temperature at one forecast point.
+ *
+ * A decimal earns its place near freezing, where the digit after the point is
+ * the difference between rain and ice; a reading already in double digits has
+ * left that boundary far enough behind that the extra digit is only noise.
+ */
+export function formatTemperature(celsius: number, system: UnitSystem): string {
+  if (!Number.isFinite(celsius)) {
+    return "—";
+  }
+  const value = temperatureValue(celsius, system);
+  // Judged on the Celsius reading, whichever scale it is shown in: freezing
+  // sits at 32 on the Fahrenheit one, so testing the converted number would
+  // drop the decimal exactly where it was meant to be kept and hand it back on
+  // a hard frost.
+  const decimals = Math.abs(celsius) < 10 ? 1 : 0;
+  // A reading just below zero rounds to negative zero, and "-0°F" reads as a
+  // fault rather than as a temperature.
+  const rounded = Number(value.toFixed(decimals));
+  const shown = Object.is(rounded, -0) ? 0 : rounded;
+
+  return system === "imperial" ? `${shown.toFixed(decimals)}°F` : `${shown.toFixed(decimals)}°C`;
+}
+
+/**
+ * Wind speed at one forecast point.
+ *
+ * The same reasoning as `formatTemperature`: a decimal separates a calm from
+ * a light breeze, but is wasted once the reading is already a two-digit gale.
+ */
+export function formatWindSpeed(kmh: number, system: UnitSystem): string {
+  if (!Number.isFinite(kmh)) {
+    return "—";
+  }
+  const value = speedValue(kmh, system);
+  const decimals = value < 10 ? 1 : 0;
+
+  return system === "imperial"
+    ? `${value.toFixed(decimals)} mph`
+    : `${value.toFixed(decimals)} km/h`;
+}
+
+/**
+ * Precipitation depth at one forecast point.
+ *
+ * An inch is roughly twenty-five millimetres, so the same decimal count would
+ * read as noise in one unit or as nothing in the other — one decimal of
+ * millimetres and two of inches is what formatDistance already demonstrates,
+ * kept to the same real-world resolution in both.
+ */
+export function formatPrecipitation(millimetres: number, system: UnitSystem): string {
+  if (!Number.isFinite(millimetres)) {
+    return "—";
+  }
+  const value = precipitationValue(millimetres, system);
+
+  return system === "imperial" ? `${value.toFixed(2)} in` : `${value.toFixed(1)} mm`;
 }

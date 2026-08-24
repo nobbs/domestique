@@ -17,6 +17,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Highlight } from "../lib/highlight";
 import { gapsOutside, highlightLabel } from "../lib/highlight";
 import { useNarrowViewport } from "../lib/mediaQuery";
+import { PADDING, plotAxis } from "../lib/plotAxis";
 import type { DistanceWindow, Profile, ProfileSample } from "../lib/profile";
 import { niceStep, sampleAt, ticksFor } from "../lib/profile";
 import { MIN_DRAG_PIXELS, spanBetween, widened } from "../lib/selection";
@@ -44,14 +45,6 @@ import { Button } from "./Button";
  * the two mixes below it can be read alongside.
  */
 const PLOT_HEIGHT = { wide: 92, narrow: 74 } as const;
-
-/**
- * The room around the terrain: the metre labels down the left, the kilometre
- * labels along the foot, and enough at the top and right that a peak touching
- * the ceiling is not clipped by it.
- */
-const PADDING = { top: 8, right: 8, bottom: 22, left: 40 };
-const MIN_WIDTH = 240;
 
 /**
  * How long a finger has to stay put before the drag is armed.
@@ -199,7 +192,10 @@ export function ElevationProfile({
   const plotHeight = useNarrowViewport() ? PLOT_HEIGHT.narrow : PLOT_HEIGHT.wide;
   const height = plotHeight + PADDING.top + PADDING.bottom;
 
-  const plotWidth = Math.max(width, MIN_WIDTH) - PADDING.left - PADDING.right;
+  // Measured through the shared axis rather than repeating its arithmetic, so
+  // the chart and the forecast strip below it cannot disagree about how much
+  // room the terrain has.
+  const { plotWidth } = plotAxis(width, 0, 1);
 
   const drag = useRef<{ pointerId: number; originX: number; anchorMetres: number } | null>(null);
   /*
@@ -222,10 +218,13 @@ export function ElevationProfile({
     const span = Math.max(profile.maxElevationMetres - profile.minElevationMetres, 10);
     const low = profile.minElevationMetres;
     // A window of no length cannot happen, but dividing by one would put every
-    // mark on the chart at the same place rather than say so.
+    // mark on the chart at the same place rather than say so — the same
+    // shortfall `plotAxis` itself guards against for `x`.
     const shown = Math.max(profile.endMetres - profile.startMetres, 1);
 
-    const x = (metres: number) => ((metres - profile.startMetres) / shown) * plotWidth;
+    // The same axis the forecast strip draws its cells against, so the two
+    // never disagree about where a distance sits by a rounding error.
+    const { x } = plotAxis(width, profile.startMetres, profile.endMetres);
     const y = (metres: number) => plotHeight - ((metres - low) / span) * plotHeight;
 
     return {
@@ -239,7 +238,7 @@ export function ElevationProfile({
         ? surfaceBandsWithin(surface, profile.startMetres, profile.endMetres)
         : [],
     };
-  }, [profile, surface, plotWidth, plotHeight]);
+  }, [profile, surface, width, plotWidth, plotHeight]);
 
   /**
    * The ground the picked class does not cover, which is what gets veiled.

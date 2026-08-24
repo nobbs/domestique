@@ -2,11 +2,14 @@ package demo
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
 
+	"github.com/nobbs/domestique/internal/ridemodel"
 	"github.com/nobbs/domestique/internal/route"
+	"github.com/nobbs/domestique/internal/surface"
 )
 
 // State is what seeding needs from the state database. It is declared here, in
@@ -15,6 +18,7 @@ import (
 type State interface {
 	StoreTrustedInventory(ctx context.Context, provider route.Provider, stages []route.Stage) error
 	StoreStageSurface(ctx context.Context, provider route.Provider, routeID int64, stageOrder int, contentHash, indexGeneration string, ranges []byte, matchedMetres float64) error
+	StoreStageDuration(ctx context.Context, provider route.Provider, routeID int64, stageOrder int, contentHash, surfaceGeneration, coefficientFingerprint string, movingSeconds *float64, cumulativeSeconds []byte) error
 	EnsureTargets(ctx context.Context, targetIDs []string) error
 	AuthorizeTarget(ctx context.Context, targetID, wahooUserID, refreshToken string) error
 	UpsertTargetStage(ctx context.Context, targetID string, provider route.Provider, routeID int64, stageOrder int, sourceRevision, contentHash string, wahooRouteID int64) error
@@ -54,6 +58,41 @@ const orphanRouteID = 4199
 // configured regions therefore reclassifies its fixtures rather than trusting
 // them, which is what any stage classified by a retired index should do.
 const demoIndexGeneration = "demo"
+
+// demoCoefficientFingerprint marks every seeded prediction as coming from a
+// coefficient file that no real deployment loads, on the same terms as
+// demoIndexGeneration above.
+const demoCoefficientFingerprint = "demo-coefficients"
+
+// demoCoefficients are physically plausible fitted constants for a mid-weight
+// rider and a fairly upright road position — an unremarkable ride, not this
+// package's own claim about any real one. CdA, Crr and mass are near the
+// figures issue #213's fitting corpus actually recorded; the rest are
+// reasonable stand-ins that Coefficients' own load-time validation would
+// accept from a real coefficient file.
+//
+// A function rather than a package variable, on the same terms as specs() in
+// library.go: nothing here may become mutable package-level state, and a
+// fresh map on every call is cheap next to the geometry this package already
+// rebuilds on every Seed.
+func demoCoefficients() ridemodel.Coefficients {
+	return ridemodel.Coefficients{
+		MassKG:                    90,
+		PowerWatts:                150,
+		DriveEfficiency:           0.97,
+		CdAM2:                     0.5,
+		AirDensityKGPerM3:         1.225,
+		DescentCutoffPercent:      -1.5,
+		DescentCapMetresPerSecond: 20,
+		CrrBySurface: map[surface.Kind]float64{
+			surface.KindAsphalt:   0.008,
+			surface.KindPaving:    0.009,
+			surface.KindCompacted: 0.012,
+			surface.KindGravel:    0.018,
+			surface.KindGround:    0.025,
+		},
+	}
+}
 
 // Seed writes the synthetic library, its surfaces, and one state per slot.
 //
@@ -104,6 +143,10 @@ func Seed(ctx context.Context, state State, slots []Slot, now time.Time) error {
 		}
 	}
 
+	if err := seedDurations(ctx, state, stages); err != nil {
+		return err
+	}
+
 	targetIDs := make([]string, 0, len(slots))
 	for _, slot := range slots {
 		targetIDs = append(targetIDs, slot.ID)
@@ -125,6 +168,48 @@ func Seed(ctx context.Context, state State, slots []Slot, now time.Time) error {
 	// cannot reach a provider: that is the environment's job, not the fixture's.
 	if err := state.SetSyncSchedule(ctx, true, true); err != nil {
 		return fmt.Errorf("demo: setting schedule: %w", err)
+	}
+
+	return nil
+}
+
+// seedDurations predicts and stores one moving-time series per stage, computed
+// by internal/ridemodel.Predict over the stage's own geometry and its surface
+// classification — the same forward model and the same per-point surface
+// classes a real enrichment pass would use, run here once against fixed
+// coefficients instead of a loaded coefficient file.
+//
+// Predict returns false for a stage with no usable elevation, which this
+// package's own elevation-less and partially-elevated stages both are: they
+// are stored as nil, nil, exactly what Predict itself would have this package
+// cache for a real stage it could not answer, rather than a fabricated time
+// that would misrepresent what the model can and cannot do.
+func seedDurations(ctx context.Context, state State, stages []route.Stage) error {
+	kindsByStage := stageSurfaceKinds(stages)
+	for index := range stages {
+		stage := &stages[index]
+		key := stage.Key()
+		result, ok := ridemodel.Predict(stage.Geometry(), kindsByStage[index], demoCoefficients())
+
+		var movingSeconds *float64
+		var cumulativeSeconds []byte
+		if ok {
+			movingSeconds = &result.MovingSeconds
+			encoded, encodeErr := json.Marshal(result.CumulativeSeconds)
+			if encodeErr != nil {
+				return fmt.Errorf("demo: encoding cumulative series for %d/%d: %w",
+					key.RouteID(), key.StageOrder(), encodeErr)
+			}
+			cumulativeSeconds = encoded
+		}
+
+		if err := state.StoreStageDuration(
+			ctx, key.Provider(), key.RouteID(), key.StageOrder(),
+			stage.ContentHash(), demoIndexGeneration, demoCoefficientFingerprint,
+			movingSeconds, cumulativeSeconds,
+		); err != nil {
+			return fmt.Errorf("demo: storing duration for %d/%d: %w", key.RouteID(), key.StageOrder(), err)
+		}
 	}
 
 	return nil

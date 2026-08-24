@@ -28,6 +28,8 @@ import type {
   TargetRun,
   TargetStatus,
   WahooRateLimit,
+  WeatherForecast,
+  WeatherPoint,
   WebUIConfig,
 } from "./types";
 import { SURFACE_KINDS, SYNC_PHASES, TARGET_CONVERGENCES } from "./types";
@@ -570,5 +572,44 @@ export function parseWebUIConfig(payload: unknown): WebUIConfig {
   return {
     basemaps,
     sourceBaseUrls: textRecord(body.source_base_urls, "body.source_base_urls"),
+  };
+}
+
+function weatherPointFrom(point: Record<string, unknown>, at: string): WeatherPoint {
+  return {
+    time: text(point.time, `${at}.time`),
+    temperatureCelsius: count(point.temperature_celsius, `${at}.temperature_celsius`),
+    apparentTemperatureCelsius: count(
+      point.apparent_temperature_celsius,
+      `${at}.apparent_temperature_celsius`,
+    ),
+    precipitationMillimetres: count(
+      point.precipitation_millimetres,
+      `${at}.precipitation_millimetres`,
+    ),
+    precipitationProbabilityPercent: count(
+      point.precipitation_probability_percent,
+      `${at}.precipitation_probability_percent`,
+    ),
+    windSpeedKmh: count(point.wind_speed_kmh, `${at}.wind_speed_kmh`),
+    windDirectionDegrees: count(point.wind_direction_degrees, `${at}.wind_direction_degrees`),
+    weatherCode: count(point.weather_code, `${at}.weather_code`),
+  };
+}
+
+/**
+ * Reads a forecast, one point per requested point.
+ *
+ * `weather_code` is read as a plain number: there is no int-enum precedent in
+ * this file, and inventing a mapping table here is a component's concern, not
+ * the parser's.
+ */
+export function parseWeather(payload: unknown): WeatherForecast {
+  const body = record(payload, "body");
+
+  return {
+    points: array(body.points, "body.points").map((entry, index) =>
+      weatherPointFrom(record(entry, `body.points[${index}]`), `body.points[${index}]`),
+    ),
   };
 }

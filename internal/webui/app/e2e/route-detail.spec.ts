@@ -248,3 +248,64 @@ test("the way back to the library is reachable from the keyboard", async ({
   // search over everything rather than a column of cards.
   await expect(page.getByRole("searchbox", { name: "Search the route library" })).toBeVisible();
 });
+
+/*
+ * There is no default start time — see lib/startTime.ts — so a reader has to
+ * choose one before the strip draws anything, and the value it chooses proves
+ * the forecast is really landing under the elevation chart rather than beside
+ * it by coincidence.
+ */
+test("choosing a start time draws a forecast strip under the profile", async ({
+  offlinePage: page,
+}) => {
+  await openRoute(page, LINE_ROUTE.provider, LINE_ROUTE.routeId, LINE_ROUTE.stageOrder);
+
+  await expect(page.getByRole("img", { name: /Forecast along the way/ })).toHaveCount(0);
+
+  const soon = new Date(Date.now() + 2 * 60 * 60 * 1000);
+  await page.getByLabel("Ride start").fill(soon.toISOString().slice(0, 16));
+
+  const strip = page.getByRole("img", { name: /Forecast along the way/ });
+  await expect(strip).toBeVisible();
+  // Attribution the licence requires wherever the forecast appears — see
+  // components/ForecastStrip.tsx.
+  await expect(page.locator(".forecast-strip__credit")).toContainText("Open-Meteo.com");
+
+  /*
+   * The alignment is the whole point of drawing the strip here rather than
+   * anywhere else, and it is invisible to every assertion above: the strip
+   * shipped once measuring nothing, drawing itself at the fallback width and
+   * stretching that over the card, which reads as a strip until you notice the
+   * rain sitting a kilometre from the climb it falls on. Both charts plot
+   * against the same measured width, so their viewBoxes agree to the pixel or
+   * one of them is measuring something the other is not.
+   */
+  const widths = await page.evaluate(() => {
+    const boxOf = (selector: string) =>
+      document.querySelector(`${selector} svg`)?.getAttribute("viewBox")?.split(" ")[2];
+
+    return { profile: boxOf(".elevation-profile"), strip: boxOf(".forecast-strip") };
+  });
+  expect(widths.strip, "the strip and the profile plot at the same width").toBe(widths.profile);
+});
+
+/*
+ * A stage with no predicted moving time — the same one that has no elevation
+ * profile at all — has nothing a forecast sample could be timed against, and
+ * the strip has to say nothing rather than guess.
+ */
+test("a stage with no predicted moving time shows no forecast strip", async ({
+  offlinePage: page,
+}) => {
+  await openRoute(
+    page,
+    UNCLASSIFIED_ROUTE.provider,
+    UNCLASSIFIED_ROUTE.routeId,
+    UNCLASSIFIED_ROUTE.stageOrder,
+  );
+
+  const soon = new Date(Date.now() + 2 * 60 * 60 * 1000);
+  await page.getByLabel("Ride start").fill(soon.toISOString().slice(0, 16));
+
+  await expect(page.getByRole("img", { name: /Forecast along the way/ })).toHaveCount(0);
+});

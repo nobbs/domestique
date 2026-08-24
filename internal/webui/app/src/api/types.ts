@@ -309,6 +309,48 @@ export interface WebUIConfig {
   sourceBaseUrls: Record<string, string>;
 }
 
+/**
+ * The forecast at one place and moment along a stage.
+ *
+ * Every figure here is metric on the wire, exactly as `GET /v1/weather`
+ * (`internal/httpapi/routes_weather.go`) answers it — `format.ts` is where a
+ * reader's own unit system is applied, not here.
+ */
+export interface WeatherPoint {
+  /**
+   * The hour this point resolves to, RFC3339. Not necessarily the time asked
+   * for: the endpoint answers the nearest hour it has.
+   */
+  time: string;
+  temperatureCelsius: number;
+  /**
+   * What the air feels like, folding in wind and humidity — a colder ride
+   * than the bare temperature alone would suggest.
+   */
+  apparentTemperatureCelsius: number;
+  precipitationMillimetres: number;
+  precipitationProbabilityPercent: number;
+  windSpeedKmh: number;
+  windDirectionDegrees: number;
+  /**
+   * Open-Meteo's own WMO weather code. Left as the provider's number: no
+   * int-enum precedent exists in this file, and a mapping table is a
+   * component's concern, not this one's.
+   */
+  weatherCode: number;
+}
+
+/**
+ * A forecast at each requested point, one point per point asked for.
+ *
+ * The service answers points in the same order they were requested in, which
+ * is what lets `fetchWeather` zip this array back up against the samples that
+ * asked for it without carrying a key of its own.
+ */
+export interface WeatherForecast {
+  points: WeatherPoint[];
+}
+
 /** A route's stable identity, used for routing and list keys. */
 export function routeKey(route: Pick<Route, "provider" | "routeId" | "stageOrder">): string {
   return `${route.provider}/${route.routeId}/${route.stageOrder}`;

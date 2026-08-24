@@ -5,6 +5,7 @@ import {
   parseRoutes,
   parseStatus,
   parseSyncRuns,
+  parseWeather,
   parseWebUIConfig,
 } from "./parse";
 
@@ -786,5 +787,51 @@ describe("parseWebUIConfig", () => {
         ],
       }),
     ).toThrow(ContractError);
+  });
+});
+
+describe("parseWeather", () => {
+  const pointPayload = {
+    time: "2026-08-25T09:00:00Z",
+    temperature_celsius: 18.2,
+    apparent_temperature_celsius: 17.1,
+    precipitation_millimetres: 0.4,
+    precipitation_probability_percent: 35,
+    wind_speed_kmh: 18,
+    wind_direction_degrees: 240,
+    weather_code: 61,
+  };
+
+  it("reads a forecast point into the domain shape", () => {
+    const forecast = parseWeather({ points: [pointPayload] });
+
+    expect(forecast.points).toEqual([
+      {
+        time: "2026-08-25T09:00:00Z",
+        temperatureCelsius: 18.2,
+        apparentTemperatureCelsius: 17.1,
+        precipitationMillimetres: 0.4,
+        precipitationProbabilityPercent: 35,
+        windSpeedKmh: 18,
+        windDirectionDegrees: 240,
+        weatherCode: 61,
+      },
+    ]);
+  });
+
+  it("accepts an empty forecast", () => {
+    expect(parseWeather({ points: [] }).points).toEqual([]);
+  });
+
+  it("refuses a point missing one of its measurements", () => {
+    const { wind_speed_kmh: _windSpeedKmh, ...withoutWindSpeed } = pointPayload;
+
+    expect(() => parseWeather({ points: [withoutWindSpeed] })).toThrow(ContractError);
+  });
+
+  it("refuses a point whose weather code is not a number", () => {
+    expect(() => parseWeather({ points: [{ ...pointPayload, weather_code: "clear" }] })).toThrow(
+      ContractError,
+    );
   });
 });

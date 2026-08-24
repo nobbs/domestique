@@ -16,20 +16,24 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { describe, it } from "vitest";
-import type { Position, Route } from "../api/types";
+import { weatherQuery } from "../api/queries";
+import type { Position, Route, WeatherPoint } from "../api/types";
 import { routeKey } from "../api/types";
 import { RoutePanel } from "../features/routes/RoutePanel";
 import { RouteProfile } from "../features/routes/RouteProfile";
 import { SearchPanel } from "../features/routes/SearchPanel";
 import { findClimbs } from "../lib/climbs";
 import { EMPTY_FILTERS } from "../lib/filters";
-import { buildProfile, gradientShares } from "../lib/profile";
+import { forecastSamples } from "../lib/forecastSamples";
+import { buildProfile, cumulativeMetres, gradientShares } from "../lib/profile";
 import { summariseSurface } from "../lib/surface";
 import { expectNoAxeViolations } from "../test/axe";
 import { BasemapPicker } from "./BasemapPicker";
 import { Button } from "./Button";
+import { ForecastStrip } from "./ForecastStrip";
 import { MapCredits } from "./MapCredits";
 import { RouteKey } from "./RouteKey";
+import { StartTimePicker } from "./StartTimePicker";
 import { StatusMessage } from "./StatusMessage";
 import { ThemePicker } from "./ThemePicker";
 import { UnitPicker } from "./UnitPicker";
@@ -187,6 +191,10 @@ describe("accessibility", () => {
                 collapsed={false}
                 onCollapsedChange={() => {}}
                 unitSystem="metric"
+                startAt={null}
+                onStartAtChange={() => {}}
+                samples={[]}
+                coordinates={CLIMB}
               />
             }
             highestMetres={1840}
@@ -295,5 +303,47 @@ describe("accessibility", () => {
     );
 
     await expectNoAxeViolations(container);
+  });
+
+  it("holds for the forecast strip, drawn with a forecast", async () => {
+    const startAt = new Date("2026-08-25T06:00:00Z");
+    const cumulativeSeconds = CLIMB.map((_, index) => index * 120);
+    const samples = forecastSamples(CLIMB, cumulativeSeconds, startAt);
+    const points: WeatherPoint[] = samples.map((sample, index) => ({
+      time: sample.arrivalAt.toISOString(),
+      temperatureCelsius: 14 + index,
+      apparentTemperatureCelsius: 13 + index,
+      precipitationMillimetres: index % 2 === 0 ? 0 : 1.2,
+      precipitationProbabilityPercent: index % 2 === 0 ? 0 : 40,
+      windSpeedKmh: 18,
+      windDirectionDegrees: 240,
+      weatherCode: index % 2 === 0 ? 1 : 61,
+    }));
+    const distances = cumulativeMetres(CLIMB);
+    const client = new QueryClient();
+    client.setQueryData(weatherQuery(samples).queryKey, { points });
+
+    const { container } = render(
+      <QueryClientProvider client={client}>
+        <ForecastStrip
+          samples={samples}
+          coordinates={CLIMB}
+          startMetres={0}
+          endMetres={distances[distances.length - 1] ?? 0}
+          unitSystem="metric"
+        />
+      </QueryClientProvider>,
+    );
+
+    await expectNoAxeViolations(container);
+  });
+
+  it("holds for the start-time control, empty and filled", async () => {
+    for (const value of [null, new Date("2026-08-25T06:00:00Z")]) {
+      const { container, unmount } = render(<StartTimePicker value={value} onChange={() => {}} />);
+
+      await expectNoAxeViolations(container);
+      unmount();
+    }
   });
 });

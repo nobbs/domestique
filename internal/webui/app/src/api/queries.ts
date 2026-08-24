@@ -4,13 +4,16 @@
  */
 
 import { infiniteQueryOptions, queryOptions } from "@tanstack/react-query";
+import type { ForecastSample } from "../lib/forecastSamples";
 import {
   fetchRoute,
   fetchRouteGeometry,
   fetchRoutes,
   fetchStatus,
   fetchSyncRuns,
+  fetchWeather,
   fetchWebUIConfig,
+  weatherQueryString,
 } from "./client";
 
 /** How often a run that has not finished is asked what it is doing now. */
@@ -98,4 +101,24 @@ export const webUIConfigQuery = () =>
     queryKey: ["webui-config"] as const,
     queryFn: fetchWebUIConfig,
     staleTime: Number.POSITIVE_INFINITY,
+  });
+
+/**
+ * A forecast for one stage's forecast samples.
+ *
+ * The key is the exact query string `fetchWeather` sends, built by the same
+ * `weatherQueryString` helper — so two calls that would hit the same URL
+ * always share the same cache entry, and the two can never drift apart.
+ */
+export const weatherQuery = (samples: ForecastSample[]) =>
+  queryOptions({
+    queryKey: ["weather", weatherQueryString(samples)] as const,
+    queryFn: () => fetchWeather(samples),
+    // No stale time, deliberately. #206 chose not to cache the forecast, on
+    // the grounds that one operator will never trouble the provider's quota,
+    // and a lifetime here would be the same decision made again in the
+    // browser. So every mount revalidates: reopening a stage may show the
+    // reading it last had while the request is in flight — React Query keeps
+    // inactive data for its own collection window — but it is never left
+    // standing as the answer.
   });

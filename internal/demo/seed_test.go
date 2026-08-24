@@ -96,6 +96,75 @@ func TestSeedStoresGeometryTheEndpointCanServe(t *testing.T) {
 	assert.Positive(t, matched)
 }
 
+// A stage with a complete elevation profile must carry a predicted moving
+// time whose cumulative series ends exactly at that total: those are the two
+// numbers the browser UI reads to draw a stage's own timeline, and a fixture
+// where they disagree would look like a rounding bug rather than a demo.
+func TestSeedStoresAPredictedDurationForAFullyElevatedStage(t *testing.T) {
+	t.Parallel()
+
+	store := seed(t, []demo.Slot{{ID: "rider-a", State: demo.SlotCurrent}})
+
+	stages, err := demo.Stages()
+	require.NoError(t, err)
+	stage := &stages[0] // Synthetic Rhine Traverse / Valley floor: profiled end to end.
+	key := stage.Key()
+
+	summary, _, cumulativeSecondsRaw, found, err := store.StageGeometry(
+		t.Context(), key.Provider(), key.RouteID(), key.StageOrder(),
+	)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.NotNil(t, summary.MovingSeconds, "a fully-elevated stage must carry a predicted moving time")
+	assert.Positive(t, *summary.MovingSeconds)
+
+	var cumulativeSeconds []float64
+	require.NoError(t, json.Unmarshal(cumulativeSecondsRaw, &cumulativeSeconds))
+	require.NotEmpty(t, cumulativeSeconds)
+	assert.InDelta(t, *summary.MovingSeconds, cumulativeSeconds[len(cumulativeSeconds)-1], 1e-6,
+		"the cumulative series should end exactly at the stage's own moving time")
+
+	contentHash, surfaceGeneration, coefficientFingerprint, found, err := store.StageDurationFingerprint(
+		t.Context(), key.Provider(), key.RouteID(), key.StageOrder(),
+	)
+	require.NoError(t, err)
+	require.True(t, found)
+	assert.Equal(t, stage.ContentHash(), contentHash)
+	assert.NotEmpty(t, surfaceGeneration)
+	assert.NotEmpty(t, coefficientFingerprint)
+}
+
+// ridemodel.Predict cannot answer for a stage with no elevation at all, or one
+// whose profile stops partway, and the fixture must reproduce that asymmetry
+// rather than fabricate a time the model itself would have refused to give.
+func TestSeedLeavesElevationlessStagesWithNoPredictedDuration(t *testing.T) {
+	t.Parallel()
+
+	store := seed(t, []demo.Slot{{ID: "rider-a", State: demo.SlotCurrent}})
+
+	stages, err := demo.Stages()
+	require.NoError(t, err)
+
+	for _, routeID := range []int64{4103, 4104} { // no profile, and a profile with a hole in it.
+		var stage *route.Stage
+		for index := range stages {
+			if stages[index].Key().RouteID() == routeID {
+				stage = &stages[index]
+			}
+		}
+		require.NotNil(t, stage, "fixture must still contain route %d", routeID)
+		key := stage.Key()
+
+		summary, _, cumulativeSecondsRaw, found, err := store.StageGeometry(
+			t.Context(), key.Provider(), key.RouteID(), key.StageOrder(),
+		)
+		require.NoError(t, err)
+		require.True(t, found)
+		assert.Nil(t, summary.MovingSeconds, "route %d must not carry a predicted moving time", routeID)
+		assert.Empty(t, cumulativeSecondsRaw, "route %d must not carry a cumulative series", routeID)
+	}
+}
+
 func TestSeedLeavesEachSlotInTheStateItWasAskedFor(t *testing.T) {
 	t.Parallel()
 

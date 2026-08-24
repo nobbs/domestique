@@ -16,13 +16,23 @@
  * which heights the route runs and how much climbing that comes to. The choice
  * sticks as the reader moves between routes, because a reader who put the chart
  * away did so to see more of the card, not to see more of one route's card.
+ *
+ * The start-time control and the forecast strip live in the same row of the
+ * card as the chart, immediately under it — and fold away with it, since a
+ * forecast for a chart the reader has already put away is answering a
+ * question they are not asking any more.
  */
 
+import type { Position } from "../../api/types";
 import { ElevationProfile } from "../../components/ElevationProfile";
+import { ForecastStrip } from "../../components/ForecastStrip";
+import { StartTimePicker } from "../../components/StartTimePicker";
+import type { ForecastSample } from "../../lib/forecastSamples";
 import { formatAscent, formatElevation } from "../../lib/format";
 import type { Highlight } from "../../lib/highlight";
 import { useCoarsePointer } from "../../lib/mediaQuery";
 import type { DistanceWindow, Profile } from "../../lib/profile";
+import { startTimeRefusal } from "../../lib/startTime";
 import type { SurfaceSummary } from "../../lib/surface";
 import type { UnitSystem } from "../../lib/units";
 import { distanceUnitLabel, distanceValue } from "../../lib/units";
@@ -43,6 +53,37 @@ export interface RouteProfileProps {
   onCollapsedChange: (collapsed: boolean) => void;
   /** The units the figures, the summary, and the chart itself report in. */
   unitSystem: UnitSystem;
+  /** When the reader means to set off, or null while nothing has been chosen. */
+  startAt: Date | null;
+  onStartAtChange: (next: Date | null) => void;
+  /** The forecast samples for the whole route — see `forecastSamples.ts`. */
+  samples: ForecastSample[];
+  /** The whole route's own geometry, which the forecast strip's wind reading is measured against. */
+  coordinates: Position[];
+  /**
+   * The stage's whole predicted moving time, or undefined for a stage nothing
+   * has predicted one for. Absent is a state the page has to say out loud
+   * rather than draw as an empty space: the reader has asked for a forecast
+   * and is owed the reason they are not getting one.
+   */
+  rideSeconds?: number | undefined;
+  /**
+   * What identifies the stage on show — `routeKey`'s provider/route/stage
+   * triple. The title cannot stand in for it: two stages may legitimately
+   * carry the same one, and this is used to tell them apart.
+   */
+  stageKey?: string | undefined;
+  /**
+   * Whether the stage's prediction is settled — that is, whether its geometry
+   * has actually been answered for.
+   *
+   * `rideSeconds` alone cannot say: it is undefined both while the geometry is
+   * still being fetched and when the answer came back without a prediction. A
+   * remembered start time makes that difference visible, because the page
+   * would otherwise announce "no predicted moving time" for the second or two
+   * a fetch takes, on a stage that has one.
+   */
+  predictionKnown?: boolean;
 }
 
 export function RouteProfile({
@@ -58,6 +99,13 @@ export function RouteProfile({
   collapsed,
   onCollapsedChange,
   unitSystem,
+  startAt,
+  onStartAtChange,
+  samples,
+  coordinates,
+  rideSeconds,
+  predictionKnown = true,
+  stageKey,
 }: RouteProfileProps) {
   /*
    * A finger cannot hover, and a card that scrolls cannot give every downward
@@ -66,6 +114,31 @@ export function RouteProfile({
    * this reader has.
    */
   const coarse = useCoarsePointer();
+  /*
+   * A remembered start time is checked again here, not only where it was
+   * typed. It can go stale on a page left open past the endpoint's 24-hour
+   * allowance, and a time that fits a short stage can put a long one's finish
+   * past the 16-day horizon — the picker's own bounds say nothing about a
+   * value it was handed rather than asked for. Sending it anyway would earn a
+   * `400` that the strip can only report as the provider being unavailable,
+   * which blames Open-Meteo for arithmetic done here.
+   */
+  /*
+   * A prediction of no time at all is not a timeline: `forecastSamples`
+   * returns nothing for a non-positive total, so treating it as drawable
+   * mounts a strip that immediately renders null and leaves the reader with no
+   * explanation at all. It is the same "nothing to hang a forecast on" state
+   * as an unpredicted stage, and it says so.
+   */
+  const hasTimeline = rideSeconds !== undefined && rideSeconds > 0;
+  const refusal = startAt === null ? null : startTimeRefusal(startAt, rideSeconds);
+  const startRefusal =
+    refusal === "past"
+      ? "That start time is more than a day in the past. Choose another to see a forecast."
+      : refusal === "horizon"
+        ? "That start time is outside the 16-day forecast window for this stage — this ride would finish past it. Choose another to see a forecast."
+        : null;
+  const startFits = startAt !== null && startRefusal === null;
   const range = profile
     ? `${formatElevation(profile.minElevationMetres, unitSystem)}–${formatElevation(profile.maxElevationMetres, unitSystem)}`
     : "";
@@ -128,19 +201,61 @@ export function RouteProfile({
        * must not be a plot a stray drag can still select a stretch of.
        */}
       {collapsed ? null : (
-        <div id="elevation-plot">
-          <ElevationProfile
-            profile={profile}
-            title={title}
-            surface={surface}
-            activeMetres={activeMetres}
-            onActiveChange={onActiveChange}
-            zoomWindow={zoomWindow}
-            onZoomChange={onZoomChange}
-            highlight={highlight}
-            unitSystem={unitSystem}
+        <>
+          <div id="elevation-plot">
+            <ElevationProfile
+              profile={profile}
+              title={title}
+              surface={surface}
+              activeMetres={activeMetres}
+              onActiveChange={onActiveChange}
+              zoomWindow={zoomWindow}
+              onZoomChange={onZoomChange}
+              highlight={highlight}
+              unitSystem={unitSystem}
+            />
+          </div>
+          {/*
+           * Keyed by the stage, so its refusal does not outlive the stage it
+           * was about: this section is reused rather than remounted as the
+           * reader moves between routes, and an alert about one stage's
+           * horizon attached to the next one would be about nothing. By the
+           * stage's identity rather than its title, which two stages may
+           * legitimately share.
+           */}
+          <StartTimePicker
+            key={stageKey ?? title}
+            value={startAt}
+            onChange={onStartAtChange}
+            rideSeconds={rideSeconds}
           />
-        </div>
+          {startAt && predictionKnown && !hasTimeline ? (
+            <p className="route-profile__unpredicted">
+              This stage has no predicted moving time, so there is no timeline to hang a forecast
+              on.
+            </p>
+          ) : null}
+          {startAt && hasTimeline && startRefusal !== null ? (
+            <p className="route-profile__unpredicted">{startRefusal}</p>
+          ) : null}
+          {startAt && hasTimeline && startFits ? (
+            <ForecastStrip
+              samples={samples}
+              coordinates={coordinates}
+              startMetres={profile?.startMetres ?? 0}
+              /*
+               * Without a profile there is no chart to share an axis with, so
+               * the strip falls back to the whole route — the last sample sits
+               * at the finish, so it carries that distance. Zero would be a
+               * window nothing overlaps, and every cell would be dropped as
+               * off-screen: a stage with a timeline but no terrain is exactly
+               * the case that is supposed to still get a forecast.
+               */
+              endMetres={profile?.endMetres ?? samples[samples.length - 1]?.distanceMetres ?? 0}
+              unitSystem={unitSystem}
+            />
+          ) : null}
+        </>
       )}
     </section>
   );
