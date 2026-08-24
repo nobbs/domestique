@@ -17,6 +17,13 @@ function input(): HTMLInputElement {
   return screen.getByLabelText("Ride start") as HTMLInputElement;
 }
 
+/** What a `datetime-local` field carries for a moment: local time, to the minute. */
+function localInputValue(date: Date): string {
+  const pad = (value: number) => String(value).padStart(2, "0");
+
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 describe("StartTimePicker", () => {
   it("opens empty when nothing has been chosen", () => {
     render(<StartTimePicker value={null} onChange={() => {}} />);
@@ -87,6 +94,25 @@ describe("StartTimePicker", () => {
 
     expect(input().getAttribute("max") ?? "").not.toBe("");
     expect((input().getAttribute("max") ?? "") < shortRideMax).toBe(true);
+  });
+
+  /*
+   * The bounds are drawn once, and this page can sit open for hours. What the
+   * check must measure against is the window in force when the reader picks,
+   * not the one that happened to be current when the field last rendered.
+   */
+  it("checks a pick against the clock now, not the one the field drew with", () => {
+    const onChange = vi.fn();
+    render(<StartTimePicker value={null} onChange={onChange} />);
+    // Two minutes inside the past allowance when the field was drawn.
+    const almostStale = new Date(NOW.getTime() - 24 * 60 * 60 * 1000 + 2 * 60 * 1000);
+    // ...and ten minutes of sitting open later, outside it.
+    vi.setSystemTime(new Date(NOW.getTime() + 10 * 60 * 1000));
+
+    fireEvent.change(input(), { target: { value: localInputValue(almostStale) } });
+
+    expect(onChange).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert")).toHaveTextContent("more than a day in the past");
   });
 
   it("clears back to nothing chosen", () => {

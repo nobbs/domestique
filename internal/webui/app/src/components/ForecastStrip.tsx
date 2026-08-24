@@ -299,12 +299,14 @@ export function ForecastStrip({
   }
   if (forecast.isError) {
     /*
-     * Only a 502 is the provider's fault. A 400 is this page having asked for
-     * something the endpoint refuses — a window it cannot answer, or more
-     * points than it takes — and reporting that as an outage would send the
-     * reader off to check whether Open-Meteo is down over arithmetic done
-     * here. The start time is re-checked before the request is ever made, so
-     * this is the belt to that braces.
+     * A failure the service owns — a 502 carrying the provider's own outage,
+     * or a 5xx of its own — is not the reader's to act on, and reads as the
+     * forecast being unavailable. A 4xx is: it is this page having asked for
+     * something the endpoint refuses, a window it cannot answer or more points
+     * than it takes, and reporting that as an outage would send the reader off
+     * to check whether Open-Meteo is down over arithmetic done here. The start
+     * time is re-checked before the request is ever made, so this is the belt
+     * to that braces.
      */
     const provider = forecast.error instanceof ApiError && forecast.error.status >= 500;
 

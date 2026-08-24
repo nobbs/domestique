@@ -242,6 +242,18 @@ describe("RouteProfile", () => {
     expect(screen.queryByText(/no predicted moving time/i)).not.toBeInTheDocument();
   });
 
+  /*
+   * A prediction of no time at all is not a timeline: the sampler returns
+   * nothing for it, so a strip mounted against it renders null and the reader
+   * is left with no explanation at all. It is the same absence as an
+   * unpredicted stage.
+   */
+  it("treats a prediction of no time at all as no timeline", () => {
+    show({ startAt: new Date(Date.now() + 60 * 60 * 1000), samples: [], rideSeconds: 0 });
+
+    expect(screen.getByText(/no predicted moving time/i)).toBeInTheDocument();
+  });
+
   it("says nothing of the sort once the stage has a prediction", () => {
     show({ startAt: new Date("2026-08-25T07:00:00Z"), samples: [], rideSeconds: 3600 });
 

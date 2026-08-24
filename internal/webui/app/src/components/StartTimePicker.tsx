@@ -26,6 +26,11 @@ import {
 
 const INPUT_ID = "start-time-input";
 
+/** The next whole minute at or after `epochMs`, since the input works in minutes. */
+function ceilToMinute(epochMs: number): number {
+  return Math.ceil(epochMs / 60_000) * 60_000;
+}
+
 function pad(value: number): string {
   return String(value).padStart(2, "0");
 }
@@ -68,11 +73,16 @@ export function StartTimePicker({ value, onChange, rideSeconds }: StartTimePicke
         className="start-time-picker__input"
         type="datetime-local"
         // The browser's own hint for the same window this refuses by hand —
-        // cheap to offer and it steers a picker away from the refusal before
+        // cheap to offer, and it steers a picker away from the refusal before
         // the reader ever reaches it. Computed once per render rather than
         // kept ticking live, which a control open for a whole session would
-        // need; nobody minds the boundary drifting by the odd minute.
-        min={toInputValue(new Date(now.getTime() - FORECAST_PAST_ALLOWANCE_MS))}
+        // need; the check in the handler reads the clock afresh, so a drifted
+        // hint costs a refusal rather than a bad request.
+        //
+        // Rounded up to the next whole minute, because the field works in
+        // minutes: truncating downwards would advertise a minute already a few
+        // seconds too old to pass that check.
+        min={toInputValue(new Date(ceilToMinute(now.getTime() - FORECAST_PAST_ALLOWANCE_MS)))}
         max={toInputValue(latestStart)}
         value={value ? toInputValue(value) : ""}
         aria-describedby={refusal ? "start-time-refusal" : undefined}
@@ -88,12 +98,16 @@ export function StartTimePicker({ value, onChange, rideSeconds }: StartTimePicke
           if (Number.isNaN(parsed.getTime())) {
             return;
           }
+          // A fresh reading rather than the one this render captured: a page
+          // can sit open for hours, and the window this is checked against is
+          // the one in force when the reader picks, not when the field drew.
+          const asOf = new Date();
           // The arrival is what the forecast request has to reach, so it is
           // what the window is checked against.
           const arrival = new Date(parsed.getTime() + Math.max(rideSeconds ?? 0, 0) * 1000);
-          if (!isWithinForecastWindow(parsed, now) || !isWithinForecastWindow(arrival, now)) {
+          if (!isWithinForecastWindow(parsed, asOf) || !isWithinForecastWindow(arrival, asOf)) {
             setRefusal(
-              parsed.getTime() > now.getTime()
+              parsed.getTime() > asOf.getTime()
                 ? "That ride would finish past the 16-day forecast horizon."
                 : "That's more than a day in the past.",
             );

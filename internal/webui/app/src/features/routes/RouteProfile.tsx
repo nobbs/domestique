@@ -143,6 +143,14 @@ export function RouteProfile({
    * `400` that the strip can only report as the provider being unavailable,
    * which blames Open-Meteo for arithmetic done here.
    */
+  /*
+   * A prediction of no time at all is not a timeline: `forecastSamples`
+   * returns nothing for a non-positive total, so treating it as drawable
+   * mounts a strip that immediately renders null and leaves the reader with no
+   * explanation at all. It is the same "nothing to hang a forecast on" state
+   * as an unpredicted stage, and it says so.
+   */
+  const hasTimeline = rideSeconds !== undefined && rideSeconds > 0;
   const startRefusal = refusalFor(startAt, rideSeconds);
   const startFits = startAt !== null && startRefusal === null;
   const range = profile
@@ -222,16 +230,16 @@ export function RouteProfile({
             />
           </div>
           <StartTimePicker value={startAt} onChange={onStartAtChange} rideSeconds={rideSeconds} />
-          {startAt && predictionKnown && rideSeconds === undefined ? (
+          {startAt && predictionKnown && !hasTimeline ? (
             <p className="route-profile__unpredicted">
               This stage has no predicted moving time, so there is no timeline to hang a forecast
               on.
             </p>
           ) : null}
-          {startAt && rideSeconds !== undefined && startRefusal !== null ? (
+          {startAt && hasTimeline && startRefusal !== null ? (
             <p className="route-profile__unpredicted">{startRefusal}</p>
           ) : null}
-          {startAt && rideSeconds !== undefined && startFits ? (
+          {startAt && hasTimeline && startFits ? (
             <ForecastStrip
               samples={samples}
               coordinates={coordinates}

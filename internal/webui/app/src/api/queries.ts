@@ -116,7 +116,9 @@ export const weatherQuery = (samples: ForecastSample[]) =>
     queryFn: () => fetchWeather(samples),
     // No stale time, deliberately. #206 chose not to cache the forecast, on
     // the grounds that one operator will never trouble the provider's quota,
-    // and a lifetime here would be the same decision made again in the browser
-    // — a reader returning to a stage would be shown a forecast that a model
-    // run has since revised, to save a request nobody is counting.
+    // and a lifetime here would be the same decision made again in the
+    // browser. So every mount revalidates: reopening a stage may show the
+    // reading it last had while the request is in flight — React Query keeps
+    // inactive data for its own collection window — but it is never left
+    // standing as the answer.
   });
