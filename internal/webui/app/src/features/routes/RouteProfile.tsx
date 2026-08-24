@@ -208,7 +208,18 @@ export function RouteProfile({
               unitSystem={unitSystem}
             />
           </div>
-          <StartTimePicker value={startAt} onChange={onStartAtChange} rideSeconds={rideSeconds} />
+          {/*
+           * Keyed by the stage, so its refusal does not outlive the stage it
+           * was about: this section is reused rather than remounted as the
+           * reader moves between routes, and an alert about one stage's
+           * horizon attached to the next one would be about nothing.
+           */}
+          <StartTimePicker
+            key={title}
+            value={startAt}
+            onChange={onStartAtChange}
+            rideSeconds={rideSeconds}
+          />
           {startAt && predictionKnown && !hasTimeline ? (
             <p className="route-profile__unpredicted">
               This stage has no predicted moving time, so there is no timeline to hang a forecast

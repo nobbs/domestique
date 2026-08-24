@@ -169,7 +169,18 @@ describe("formatTemperature", () => {
   });
 
   it("converts to Fahrenheit for the imperial system", () => {
-    expect(formatTemperature(0, "imperial")).toBe("32°F");
+    expect(formatTemperature(18.2, "imperial")).toBe("65°F");
+  });
+
+  /*
+   * Freezing is 0 on one scale and 32 on the other, so a threshold applied to
+   * the converted number keeps the decimal in the wrong places: it would drop
+   * it at freezing point — the one reading where the digit decides between
+   * rain and ice — and hand it back on a hard frost at −10°C, which reads 14°F.
+   */
+  it("keeps the decimal near freezing in imperial too, and drops it far from it", () => {
+    expect(formatTemperature(0.4, "imperial")).toBe("32.7°F");
+    expect(formatTemperature(-18, "imperial")).toBe("0°F");
   });
 });
 

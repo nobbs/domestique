@@ -323,7 +323,10 @@ export function ForecastStrip({
     const provider = forecast.error instanceof ApiError && forecast.error.status >= 500;
 
     return (
-      <p className="forecast-strip__unavailable">
+      // Announced, not merely rendered: this appears when a request the
+      // reader never watched comes back, and every other asynchronous failure
+      // in this UI says so out loud.
+      <p className="forecast-strip__unavailable" role="alert">
         {provider
           ? "The forecast is unavailable right now; the rest of this route is unaffected."
           : "This forecast could not be requested for this ride; the rest of this route is unaffected."}

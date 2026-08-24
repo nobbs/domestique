@@ -44,7 +44,7 @@ function show(props: Partial<React.ComponentProps<typeof RouteProfile>> = {}) {
   if (samples.length > 0) {
     client.setQueryData(weatherQuery(samples).queryKey, {
       points: samples.map(() => ({
-        time: new Date("2026-08-25T07:00:00Z").toISOString(),
+        time: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
         temperatureCelsius: 14,
         apparentTemperatureCelsius: 12,
         precipitationMillimetres: 0,
@@ -80,6 +80,18 @@ function show(props: Partial<React.ComponentProps<typeof RouteProfile>> = {}) {
   );
 
   return { onCollapsedChange };
+}
+
+/**
+ * A start time an hour from now.
+ *
+ * Relative rather than a fixed date: `RouteProfile` re-checks a start against
+ * the forecast window using the real clock, so a hard-coded one silently turns
+ * into the stale-start case the day after it passes, and the test starts
+ * asserting against a refusal notice instead of what it meant to.
+ */
+function soon(): Date {
+  return new Date(Date.now() + 60 * 60 * 1000);
 }
 
 /** The line beside the heading, whatever it happens to be saying. */
@@ -218,7 +230,7 @@ describe("RouteProfile", () => {
    * would be — and never a guessed speed to fill the gap.
    */
   it("explains an absent forecast on a stage nothing has predicted", () => {
-    show({ startAt: new Date("2026-08-25T07:00:00Z"), samples: [], rideSeconds: undefined });
+    show({ startAt: soon(), samples: [], rideSeconds: undefined });
 
     expect(screen.getByText(/no predicted moving time/i)).toBeInTheDocument();
     expect(document.querySelector(".forecast-strip")).toBeNull();
@@ -255,7 +267,7 @@ describe("RouteProfile", () => {
   });
 
   it("says nothing of the sort once the stage has a prediction", () => {
-    show({ startAt: new Date("2026-08-25T07:00:00Z"), samples: [], rideSeconds: 3600 });
+    show({ startAt: soon(), samples: [], rideSeconds: 3600 });
 
     expect(screen.queryByText(/no predicted moving time/i)).not.toBeInTheDocument();
   });
@@ -310,7 +322,7 @@ describe("RouteProfile", () => {
 
     show({
       profile: null,
-      startAt: new Date("2026-08-25T07:00:00Z"),
+      startAt: soon(),
       samples,
       rideSeconds: 3600,
       coordinates,

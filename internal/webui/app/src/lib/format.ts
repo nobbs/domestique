@@ -134,9 +134,17 @@ export function formatTemperature(celsius: number, system: UnitSystem): string {
     return "—";
   }
   const value = temperatureValue(celsius, system);
-  const decimals = Math.abs(value) < 10 ? 1 : 0;
+  // Judged on the Celsius reading, whichever scale it is shown in: freezing
+  // sits at 32 on the Fahrenheit one, so testing the converted number would
+  // drop the decimal exactly where it was meant to be kept and hand it back on
+  // a hard frost.
+  const decimals = Math.abs(celsius) < 10 ? 1 : 0;
+  // A reading just below zero rounds to negative zero, and "-0°F" reads as a
+  // fault rather than as a temperature.
+  const rounded = Number(value.toFixed(decimals));
+  const shown = Object.is(rounded, -0) ? 0 : rounded;
 
-  return system === "imperial" ? `${value.toFixed(decimals)}°F` : `${value.toFixed(decimals)}°C`;
+  return system === "imperial" ? `${shown.toFixed(decimals)}°F` : `${shown.toFixed(decimals)}°C`;
 }
 
 /**

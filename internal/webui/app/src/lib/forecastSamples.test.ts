@@ -278,6 +278,25 @@ describe("forecastSamples", () => {
     }
   });
 
+  /*
+   * A stage shorter than the 5 km floor cannot satisfy it: its only two
+   * samples are the departure and the finish, and they are unavoidably closer
+   * together than the floor asks. Dropping the finish there would leave a
+   * rider with the weather at the start line and nothing about getting home,
+   * on exactly the rides that are quickest to fit in.
+   */
+  it("keeps the finish on a stage shorter than the sample spacing floor", () => {
+    // Four kilometres, twenty minutes: inside the floor and inside one slot.
+    const coordinates = evenlyTimedRoute(5, 0.009, 300).coordinates;
+    const elapsedSeconds = [0, 300, 600, 900, 1200];
+
+    const samples = forecastSamples(coordinates, elapsedSeconds, START_AT);
+
+    expect(samples).toHaveLength(2);
+    expect(samples[0]?.position).toEqual(coordinates[0]);
+    expect(samples[1]?.position).toEqual(coordinates[4]);
+  });
+
   it("returns an empty list rather than throwing for a stage nothing has predicted", () => {
     expect(
       forecastSamples(
