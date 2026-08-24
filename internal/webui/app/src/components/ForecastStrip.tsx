@@ -335,7 +335,7 @@ export function ForecastStrip({
      * than it takes, and reporting that as an outage would send the reader off
      * to check whether Open-Meteo is down over arithmetic done here. The start
      * time is re-checked before the request is ever made, so this is the belt
-     * to that braces.
+     * to those braces.
      */
     const provider = forecast.error instanceof ApiError && forecast.error.status >= 500;
 
