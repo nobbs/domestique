@@ -80,7 +80,7 @@ owns a distinct responsibility in this tree.
 | elevation | sampling and median-filtering the exported elevation profile | source fetching, storage, FIT bytes |
 | surface | OSM surface and tracktype classification, snapping a stage to the ways under it, caching policy | SQL, HTTP routing, what the UI draws, where the ways come from |
 | osmindex | downloading regional OSM extracts, packing them into a cell-partitioned surface index, the rebuild schedule, serving the ways near a stage | classification rules, SQL of the state store, what a stage is |
-| ridemodel | the fitted-coefficient type and its loading, the forward physical model that turns a stage's geometry into a predicted moving time, caching that prediction against geometry, surface, and coefficient fingerprints | fitting coefficients from a ride corpus (`dev/ridemodel`'s job), SQL, HTTP routing, how a stage's surface is classified |
+| ridemodel | the hybrid coefficient type and its loading, the forward model — fixed physics averaged with a rides-calibrated route correction — that turns a stage's geometry into a predicted moving time, caching that prediction against geometry, surface, and coefficient fingerprints | calibrating the route correction from a ride corpus (`dev/fitter`'s job), SQL, HTTP routing, how a stage's surface is classified |
 | veloplanner | login, listing, detail decoding, route conversion | SQLite and Wahoo concerns |
 | komoot | login, listing, detail decoding, route conversion | SQLite and Wahoo concerns |
 | fit | deterministic FIT bytes for one valid route stage | VeloPlanner or Komoot requests, OAuth, HTTP |
@@ -240,25 +240,29 @@ The rule sends reader-dependent work to the browser *because* there is no
 single answer to store: an earlier proposal, #136, asked the operator to type
 a flat-road speed, a mass, and a sustained power into `localStorage`, and a
 different reader — or the same reader on a different device — would type
-different ones. That premise does not hold once the coefficients are fitted
-from a corpus of recorded rides rather than guessed: there is one operator,
-one fitted model, and therefore exactly one answer per stage, which is
-precisely the shape of thing this section already sends to Go. The
-conclusion moves because the premise does, not because it is being worked
-around.
+different ones. That premise does not hold once there is one configured
+hybrid profile — fixed physical priors averaged with a route correction
+calibrated once against a corpus of recorded rides ([#239](https://github.com/nobbs/domestique/issues/239))
+— rather than a value each reader guesses: there is one operator, one profile,
+and therefore exactly one answer per stage, which is precisely the shape of
+thing this section already sends to Go. The conclusion moves because the
+premise does, not because it is being worked around.
 
 The guarantee the rule exists to protect survives intact by a different
-route: no endpoint accepts a rider-shaped value. The fitted coefficients
-arrive as configuration — `ridemodel.coefficients_file` — never as a request
-field, so "rider mass, sustained power... are not [sent], and no endpoint
-accepts them" remains true of every HTTP request this service answers. What
-changed is only where the one answer a fitted model produces is computed and
-kept.
+route: no endpoint accepts a rider-shaped value. The profile arrives as
+configuration — `ridemodel.coefficients_file` — never as a request field, so
+"rider mass, sustained power... are not [sent], and no endpoint accepts them"
+remains true of every HTTP request this service answers. What changed is only
+where the one answer the profile produces is computed and kept.
 
 This supersedes #136's placement. A later reader finding both documents
-should trust this one: the moving-time model itself is substantially as #136
-specified it — the same physics, the same rolling-resistance table, the same
-descent cap — only where it runs and where its inputs come from changed.
+should trust this one: the moving-time model's physics is substantially the
+same forward solve and descent cap #136 specified. Two deliberate changes
+came later: drag, rolling resistance and power are now settled reference
+values rather than fitted per-deployment from coasting and climbing samples
+the corpus could not reliably identify, and a two-parameter route correction
+carries what the corpus can — see #239 and #240. Only where it runs and where
+its inputs come from otherwise changed.
 
 ## Dependency direction
 

@@ -48,6 +48,30 @@ const (
 	minMeaningfulCoastingSpeedMetresPerSecond = 1.0
 )
 
+// modelVersion identifies the exact set of constants below. #213 accepted
+// them as fixed physical priors rather than operator-configurable inputs —
+// mass, power, CdA and Crr still vary per coefficient file, but these do not.
+// Load mixes this into a loaded file's fingerprint precisely because they
+// don't live in the file: bump it whenever any of the constants in this block
+// changes, or a code upgrade that changes what a stage's prediction means
+// would leave a stale cached duration looking exactly as current as it did
+// before the upgrade.
+const modelVersion = "hybrid-v1"
+
+// The non-varying half of #213's accepted hybrid model: independently
+// defensible physical constants, not values #239's benchmark found this
+// service's ride corpus can reliably identify on its own.
+const (
+	// hybridPhysicsWeight is the physics half's share of the blended time; the
+	// route-calibrated linear half takes the remainder. #213 settled on an
+	// equal weighting.
+	hybridPhysicsWeight            = 0.5
+	fixedDriveEfficiency           = 0.975
+	fixedAirDensityKGPerM3         = 1.225
+	fixedDescentCutoffPercent      = -1.0
+	fixedDescentCapMetresPerSecond = 60.0 / 3.6 // 60 km/h
+)
+
 // Result is one stage's predicted moving time: the total, and the running time
 // at every point of the geometry it was computed from. The cumulative series is
 // stored alongside the total because two downstream consumers need a time at an
@@ -58,12 +82,18 @@ type Result struct {
 	MovingSeconds     float64
 }
 
-// Predict runs the forward model over one stage's geometry. kinds is the
-// surface class of each point, aligned with points; a nil or short kinds is
-// read as asphalt throughout, which is how a stage with no cached
-// classification is timed. The second return is false when the geometry has no
+// Predict runs the forward model over one stage's geometry: an equal-weight
+// average, per segment, of the fixed-physics time and the route-calibrated
+// linear time — #213's accepted hybrid, computed once per segment so the
+// running total stays aligned 1:1 with the geometry rather than only agreeing
+// with the benchmark on the stage's grand total. kinds is the surface class of
+// each point, aligned with points; a nil or short kinds is read as asphalt
+// throughout, which is how a stage with no cached classification is timed,
+// though every surface currently resolves to the same Crr regardless — see
+// Coefficients.crr. The second return is false when the geometry has no
 // usable elevation, in which case Result is the zero value and carries no
-// prediction.
+// prediction: the linear half needs elevation exactly as much as the physics
+// half does, so one gate in front of both is enough.
 //
 //nolint:gocritic // value param: Coefficients is immutable once loaded, and a pointer would let a caller mutate the shared instance mid-prediction.
 func Predict(points []route.Point, kinds []surface.Kind, coefficients Coefficients) (Result, bool) {
@@ -91,8 +121,18 @@ func Predict(points []route.Point, kinds []surface.Kind, coefficients Coefficien
 			kind = kinds[index-1]
 		}
 
-		speed := segmentSpeedMetresPerSecond(gradients[index], coefficients.crr(kind), coefficients)
-		cumulative[index] = cumulative[index-1] + span/speed
+		physicsSpeed := segmentSpeedMetresPerSecond(gradients[index], coefficients.crr(kind), coefficients)
+		physicsSeconds := span / physicsSpeed
+
+		// The raw, unwindowed rise — not gradients[index] — because the linear
+		// half's ascent term is #239's own definition of ascent: the same
+		// positive-delta sum route.Stage.ElevationGainMetres() reports, which is
+		// what seconds_per_ascent_m was calibrated against.
+		rise := *points[index].Elevation - *points[index-1].Elevation
+		linearSeconds := coefficients.SecondsPerKM*(span/1000) + coefficients.SecondsPerAscentM*math.Max(0, rise)
+
+		cumulative[index] = cumulative[index-1] +
+			hybridPhysicsWeight*physicsSeconds + (1-hybridPhysicsWeight)*linearSeconds
 	}
 
 	return Result{
@@ -159,7 +199,7 @@ func windowedGradientPercent(distances []float64, points []route.Point) []float6
 //nolint:gocritic // value param: same reasoning as Predict above.
 func segmentSpeedMetresPerSecond(gradientPercent, crr float64, coefficients Coefficients) float64 {
 	sinTheta, cosTheta := gradientTrig(gradientPercent)
-	if gradientPercent <= coefficients.DescentCutoffPercent {
+	if gradientPercent <= fixedDescentCutoffPercent {
 		if speed, coasting := coastingSpeedMetresPerSecond(crr, sinTheta, cosTheta, coefficients); coasting {
 			return speed
 		}
@@ -190,10 +230,10 @@ func gradientTrig(gradientPercent float64) (sinTheta, cosTheta float64) {
 //
 //nolint:gocritic // value param: same reasoning as Predict above.
 func poweredSpeedMetresPerSecond(crr, sinTheta, cosTheta float64, coefficients Coefficients) float64 {
-	target := coefficients.PowerWatts * coefficients.DriveEfficiency
+	target := coefficients.PowerWatts * fixedDriveEfficiency
 	gravityTerm := coefficients.MassKG * gravityMetresPerSecondSquared * (crr*cosTheta + sinTheta)
 	residual := func(speed float64) float64 {
-		return speed*(gravityTerm+0.5*coefficients.AirDensityKGPerM3*coefficients.CdAM2*speed*speed) - target
+		return speed*(gravityTerm+0.5*fixedAirDensityKGPerM3*coefficients.CdAM2*speed*speed) - target
 	}
 
 	low, high := minSolveSpeedMetresPerSecond, maxSolveSpeedMetresPerSecond
@@ -239,12 +279,12 @@ func coastingSpeedMetresPerSecond(crr, sinTheta, cosTheta float64, coefficients 
 		return 0, false
 	}
 
-	speed = math.Sqrt(2 * drivingForce / (coefficients.AirDensityKGPerM3 * coefficients.CdAM2))
+	speed = math.Sqrt(2 * drivingForce / (fixedAirDensityKGPerM3 * coefficients.CdAM2))
 	if speed < minMeaningfulCoastingSpeedMetresPerSecond {
 		return 0, false
 	}
 
-	return min(speed, coefficients.DescentCapMetresPerSecond), true
+	return min(speed, fixedDescentCapMetresPerSecond), true
 }
 
 // haversineMetres returns the great-circle distance between two points. It

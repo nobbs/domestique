@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/nobbs/domestique/internal/ridemodel"
+	"github.com/nobbs/domestique/internal/surface"
 )
 
 func TestSplitByDateNeverShufflesAcrossTheBoundary(t *testing.T) {
@@ -50,11 +50,11 @@ func samplesUpAGrade(gradePercent float64, count int) []sampleRow {
 	return samples
 }
 
-// predictedMovingSeconds must be a thin adapter over internal/ridemodel.Predict
-// — this checks it produces exactly what a direct call to Predict with the
-// same normalized stage, kinds and coefficients would, rather than a second
-// reimplementation that happens to agree today.
-func TestPredictedMovingSecondsMatchesADirectRidemodelPredictCall(t *testing.T) {
+// predictedMovingSeconds must be a thin adapter over physics.go's own
+// physicsOnlyMovingSeconds — this checks it produces exactly what a direct
+// call would, given the same normalized geometry and per-segment Crr, rather
+// than a second reimplementation that happens to agree today.
+func TestPredictedMovingSecondsMatchesADirectPhysicsOnlyCall(t *testing.T) {
 	samples := threeSamplesUpAGrade(6.0)
 	result := &fitResult{CrrOverall: 0.006, CdA: 0.45, MassKG: 90.0}
 	config := coefficientsConfig{DriveEfficiency: 0.975, AirDensityKGPerM3: 1.2, DescentCutoffPercent: -1.0, DescentCapMetresPerSecond: 22.0}
@@ -63,12 +63,19 @@ func TestPredictedMovingSecondsMatchesADirectRidemodelPredictCall(t *testing.T) 
 
 	stage, kinds, ok := normalizedRideStage(samples)
 	require.True(t, ok)
-	want, ok := ridemodel.Predict(stage.Geometry(), kinds, ridemodel.Coefficients{
-		MassKG: 90.0, PowerWatts: 155.0, DriveEfficiency: 0.975, CdAM2: 0.45, AirDensityKGPerM3: 1.2,
-		DescentCutoffPercent: -1.0, DescentCapMetresPerSecond: 22.0, CrrBySurface: fullCrrBySurface(result),
-	})
-	require.True(t, ok)
-	assert.InDelta(t, want.MovingSeconds, got, 1e-9)
+	points := stage.Geometry()
+	crrBySurface := fullCrrBySurface(result)
+	crrPerSegment := make([]float64, max(0, len(points)-1))
+	for i := range crrPerSegment {
+		kind := surface.KindAsphalt
+		if i < len(kinds) && kinds[i] != surface.KindUnknown {
+			kind = kinds[i]
+		}
+		crrPerSegment[i] = crrBySurface[kind]
+	}
+	want := physicsOnlyMovingSeconds(points, crrPerSegment, 90.0, 155.0, 0.45, config)
+
+	assert.InDelta(t, want, got, 1e-9)
 }
 
 func TestPredictedMovingSecondsReturnsZeroWithFewerThanTwoEligibleSamples(t *testing.T) {

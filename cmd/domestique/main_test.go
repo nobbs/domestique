@@ -422,20 +422,13 @@ func writeTestCoefficients(t *testing.T, directory string) string {
 
 	path := filepath.Join(directory, "ridemodel.toml")
 	const document = `
+calibration_cutoff = "2025-08-01"
 mass_kg = 90.0
-power_watts = 155.0
-drive_efficiency = 0.975
-cda_m2 = 0.487
-air_density_kg_per_m3 = 1.2
-descent_cutoff_percent = -1.0
-descent_cap_metres_per_second = 22.0
-
-[crr]
-asphalt = 0.005
-paving = 0.006
-compacted = 0.007
-gravel = 0.009
-ground = 0.011
+power_watts = 180.0
+cda_m2 = 0.45
+crr = 0.012
+seconds_per_km = 145.3578
+seconds_per_ascent_m = 3.2190
 `
 	require.NoError(t, os.WriteFile(path, []byte(document), 0o600), "writing coefficient file")
 
