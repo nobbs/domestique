@@ -3,6 +3,7 @@ package main
 import (
 	"sort"
 
+	"github.com/nobbs/domestique/internal/elevation"
 	"github.com/nobbs/domestique/internal/ridemodel"
 	"github.com/nobbs/domestique/internal/route"
 	"github.com/nobbs/domestique/internal/surface"
@@ -47,17 +48,40 @@ func splitByDate(rides []rideRow) (train, heldOut []rideRow) {
 // standing drift risk between what this fitter's own validation measures
 // and what the service actually predicts.
 //
-// Predict recomputes its own gradient from the point sequence's distances
-// and elevations (the same gradientWindowMetres window dev/ridemodel's own
-// ingest already mirrors), so this passes the ride's raw recorded geometry
-// — not dev/ridemodel's own precomputed per-sample gradient — exactly as a
-// route stage's geometry would be passed in production.
+// Predict recomputes its own gradient from the point sequence's distances and
+// elevations. The ride is first passed through the production elevation
+// normalizer, so validation sees the same stored profile a deployed route does
+// rather than a noisier recorded-altitude surrogate.
 //
 // A moving sample missing altitude or position (a GPS/barometer dropout) is
 // dropped from the point sequence rather than making the ride unscorable
 // outright — see maxMissingGeometryFraction for why a small amount of this
 // is tolerated.
 func predictedMovingSeconds(samples []sampleRow, result *fitResult, config coefficientsConfig, driveEfficiency, powerWatts float64) float64 {
+	stage, kinds, ok := normalizedRideStage(samples)
+	if !ok {
+		return 0
+	}
+
+	coefficients := ridemodel.Coefficients{
+		MassKG: result.MassKG, PowerWatts: powerWatts, DriveEfficiency: driveEfficiency,
+		CdAM2: result.CdA, AirDensityKGPerM3: config.AirDensityKGPerM3,
+		DescentCutoffPercent: config.DescentCutoffPercent, DescentCapMetresPerSecond: config.DescentCapMetresPerSecond,
+		CrrBySurface: fullCrrBySurface(result),
+	}
+
+	predicted, ok := ridemodel.Predict(stage.Geometry(), kinds, coefficients)
+	if !ok {
+		return 0
+	}
+
+	return predicted.MovingSeconds
+}
+
+// normalizedRideStage converts a ridden trace into the same elevation profile
+// production stores and predicts: the normalizer preserves the GPS line while
+// resampling and median-filtering its altitude channel.
+func normalizedRideStage(samples []sampleRow) (route.Stage, []surface.Kind, bool) {
 	points := make([]route.Point, 0, len(samples))
 	kinds := make([]surface.Kind, 0, len(samples))
 	var movingSeconds, missingGeometrySeconds float64
@@ -77,22 +101,20 @@ func predictedMovingSeconds(samples []sampleRow, result *fitResult, config coeff
 		kinds = append(kinds, s.Surface)
 	}
 	if movingSeconds > 0 && missingGeometrySeconds/movingSeconds > maxMissingGeometryFraction {
-		return 0
+		return route.Stage{}, nil, false
+	}
+	stage, err := route.NewStage(
+		route.ProviderVeloPlanner, 1, 1, "benchmark", "benchmark", "", points, "benchmark",
+	)
+	if err != nil {
+		return route.Stage{}, nil, false
+	}
+	normalized, err := elevation.New().Process(&stage)
+	if err != nil {
+		return route.Stage{}, nil, false
 	}
 
-	coefficients := ridemodel.Coefficients{
-		MassKG: result.MassKG, PowerWatts: powerWatts, DriveEfficiency: driveEfficiency,
-		CdAM2: result.CdA, AirDensityKGPerM3: config.AirDensityKGPerM3,
-		DescentCutoffPercent: config.DescentCutoffPercent, DescentCapMetresPerSecond: config.DescentCapMetresPerSecond,
-		CrrBySurface: fullCrrBySurface(result),
-	}
-
-	predicted, ok := ridemodel.Predict(points, kinds, coefficients)
-	if !ok {
-		return 0
-	}
-
-	return predicted.MovingSeconds
+	return normalized, kinds, true
 }
 
 // baselineMovingSeconds is the trivial predictor the issue asks the model to

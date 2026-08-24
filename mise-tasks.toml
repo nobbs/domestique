@@ -292,6 +292,8 @@ run = "go run ./dev/ridemodel"
 # entirely on in-module synthetic fixtures. Mass is required and has no
 # default; pass it and the corpus directory with
 # `mise run fitter -- -corpus .local/ridemodel -mass-kg 90 -out .local/fitter`.
+# Append `-eta-benchmark` to compare models on previously unseen routes without
+# writing coefficient files.
 [fitter]
 description = "Fit drag area, rolling resistance and sustained power from the ride corpus"
 run = "go run ./dev/fitter"
