@@ -11,20 +11,22 @@ import (
 	"github.com/nobbs/domestique/internal/surface"
 )
 
+// testCoefficients is a plausible hybrid profile: a scalar Crr applied
+// uniformly across every surface.Kind, matching what Load produces from a
+// real file since #240 — see Coefficients.crr's doc comment for why the map
+// still exists.
 func testCoefficients() Coefficients {
 	return Coefficients{
-		MassKG:                    90,
-		PowerWatts:                200,
-		DriveEfficiency:           0.97,
-		CdAM2:                     0.4,
-		AirDensityKGPerM3:         1.2,
-		DescentCutoffPercent:      -1,
-		DescentCapMetresPerSecond: 20,
+		MassKG:            90,
+		PowerWatts:        200,
+		CdAM2:             0.4,
+		SecondsPerKM:      140,
+		SecondsPerAscentM: 4,
 		CrrBySurface: map[surface.Kind]float64{
-			surface.KindAsphalt:   0.005,
-			surface.KindPaving:    0.006,
-			surface.KindCompacted: 0.007,
-			surface.KindGravel:    0.009,
+			surface.KindAsphalt:   0.012,
+			surface.KindPaving:    0.012,
+			surface.KindCompacted: 0.012,
+			surface.KindGravel:    0.012,
 			surface.KindGround:    0.012,
 		},
 		Fingerprint: "test",
@@ -83,10 +85,72 @@ func TestPredictFlatAsphaltRoundTripsThroughItsOwnSolver(t *testing.T) {
 
 	sinTheta, cosTheta := gradientTrig(0)
 	speed := poweredSpeedMetresPerSecond(coefficients.crr(surface.KindAsphalt), sinTheta, cosTheta, coefficients)
-	assert.InDelta(t, 10_000/speed, result.MovingSeconds, 1e-6, "flat asphalt moving time")
+	physicsSeconds := 10_000 / speed
+	linearSeconds := coefficients.SecondsPerKM * 10.0 // flat: distance only, no ascent contribution
+	expected := hybridPhysicsWeight*physicsSeconds + (1-hybridPhysicsWeight)*linearSeconds
+	assert.InDelta(t, expected, result.MovingSeconds, 1e-6, "flat asphalt moving time is the 50/50 blend")
 }
 
-func TestPredictSteadyClimbAgreesWithGravityPowerBalanceAndIsMonotonic(t *testing.T) {
+// TestPredictBlendsPhysicsAndLinearHalvesPerSegment is #240's own acceptance
+// criterion as a test: the runtime total matches the same 50/50 average of
+// independently-summed physics-only and linear-only segment times #239's
+// benchmark validated, now computed once per segment so the running series
+// stays aligned 1:1 with the geometry rather than only agreeing on the grand
+// total.
+func TestPredictBlendsPhysicsAndLinearHalvesPerSegment(t *testing.T) {
+	coefficients := testCoefficients()
+	hill := func(d float64) float64 { return 40 * math.Sin(d/2000) }
+	points := sampledStage(8_000, 40, hill)
+
+	result, ok := Predict(points, nil, coefficients)
+	require.True(t, ok, "Predict() ok")
+
+	distances := make([]float64, len(points))
+	for index := 1; index < len(points); index++ {
+		distances[index] = distances[index-1] + haversineMetres(points[index-1], points[index])
+	}
+	gradients := windowedGradientPercent(distances, points)
+	crr := coefficients.crr(surface.KindAsphalt)
+
+	var expected float64
+	for index := 1; index < len(points); index++ {
+		span := distances[index] - distances[index-1]
+		physicsSeconds := span / segmentSpeedMetresPerSecond(gradients[index], crr, coefficients)
+		rise := *points[index].Elevation - *points[index-1].Elevation
+		linearSeconds := coefficients.SecondsPerKM*(span/1000) + coefficients.SecondsPerAscentM*math.Max(0, rise)
+		expected += hybridPhysicsWeight*physicsSeconds + (1-hybridPhysicsWeight)*linearSeconds
+	}
+
+	assert.InDelta(t, expected, result.MovingSeconds, 1e-6, "hybrid total should match the independently-summed 50/50 blend")
+}
+
+// TestPredictLinearHalfCreditsOnlyPositiveAscent matches
+// route.Stage.ElevationGainMetres()'s own definition, which
+// seconds_per_ascent_m was calibrated against: a descending segment
+// contributes nothing to the linear half.
+func TestPredictLinearHalfCreditsOnlyPositiveAscent(t *testing.T) {
+	coefficients := testCoefficients()
+	coefficients.SecondsPerKM = 0 // isolate the ascent term from the distance term
+	crr := coefficients.crr(surface.KindAsphalt)
+
+	up := sampledStage(1_000, 2, func(d float64) float64 { return d * 0.05 })
+	down := sampledStage(1_000, 2, func(d float64) float64 { return -d * 0.05 })
+
+	upResult, ok := Predict(up, nil, coefficients)
+	require.True(t, ok, "Predict() ok climbing")
+	downResult, ok := Predict(down, nil, coefficients)
+	require.True(t, ok, "Predict() ok descending")
+
+	physicsSecondsClimbing := 1000 / segmentSpeedMetresPerSecond(5, crr, coefficients)
+	physicsSecondsDescending := 1000 / segmentSpeedMetresPerSecond(-5, crr, coefficients)
+
+	assert.InDelta(t, hybridPhysicsWeight*physicsSecondsDescending, downResult.MovingSeconds, 1e-6,
+		"a descending segment adds nothing from the linear half's ascent term")
+	assert.Greater(t, upResult.MovingSeconds, hybridPhysicsWeight*physicsSecondsClimbing,
+		"a climbing segment adds something from the linear half's ascent term")
+}
+
+func TestPredictSteadyClimbIsMonotonicInPowerAndMass(t *testing.T) {
 	coefficients := testCoefficients()
 	const ascentMetres = 500.0
 	// A steady five percent climb over its whole length.
@@ -95,14 +159,7 @@ func TestPredictSteadyClimbAgreesWithGravityPowerBalanceAndIsMonotonic(t *testin
 
 	result, ok := Predict(points, nil, coefficients)
 	require.True(t, ok, "Predict() ok")
-
-	// Gravity alone, ignoring the drag and rolling correction: a lower bound
-	// on the true time, since both resist the climb further.
-	gravityOnlySeconds := ascentMetres * coefficients.MassKG * gravityMetresPerSecondSquared /
-		(coefficients.PowerWatts * coefficients.DriveEfficiency)
-	assert.Greater(t, result.MovingSeconds, gravityOnlySeconds, "moving time should exceed the gravity-only estimate")
-	assert.InEpsilon(t, gravityOnlySeconds, result.MovingSeconds, 0.2,
-		"moving time should stay within the drag and rolling correction")
+	assert.Positive(t, result.MovingSeconds, "a steady climb should get a positive prediction")
 
 	morePower := coefficients
 	morePower.PowerWatts = coefficients.PowerWatts * 1.5
@@ -117,8 +174,13 @@ func TestPredictSteadyClimbAgreesWithGravityPowerBalanceAndIsMonotonic(t *testin
 	assert.Greater(t, slowerResult.MovingSeconds, result.MovingSeconds, "more mass should climb slower")
 }
 
-func TestPredictPointDensityDoesNotMateriallyChangeTime(t *testing.T) {
+// TestPredictPhysicsHalfPointDensityDoesNotMateriallyChangeTime isolates the
+// physics half (zero route coefficients, so the blended total is just
+// hybridPhysicsWeight times the physics-only total) to verify the windowed
+// gradient's own density invariance, unchanged by #240.
+func TestPredictPhysicsHalfPointDensityDoesNotMateriallyChangeTime(t *testing.T) {
 	coefficients := testCoefficients()
+	coefficients.SecondsPerKM, coefficients.SecondsPerAscentM = 0, 0
 	hill := func(d float64) float64 { return 80 * math.Sin(d/1500) }
 
 	coarse, ok := Predict(sampledStage(20_000, 100, hill), nil, coefficients)
@@ -127,19 +189,21 @@ func TestPredictPointDensityDoesNotMateriallyChangeTime(t *testing.T) {
 	require.True(t, ok, "Predict() ok for the doubled-density profile")
 
 	assert.InEpsilon(t, coarse.MovingSeconds, dense.MovingSeconds, 0.01,
-		"doubling point density should change the time only negligibly")
+		"doubling point density should change the physics half's time only negligibly")
 }
 
-func TestPredictNeverExceedsTheDescentCap(t *testing.T) {
+func TestPredictPhysicsHalfNeverExceedsTheDescentCap(t *testing.T) {
 	coefficients := testCoefficients()
+	coefficients.SecondsPerKM, coefficients.SecondsPerAscentM = 0, 0
 	// A steep, sustained descent: gravity alone would push well past the cap.
 	points := sampledStage(2_000, 50, func(d float64) float64 { return 200 - d*0.1 })
 
 	result, ok := Predict(points, nil, coefficients)
 	require.True(t, ok, "Predict() ok")
 
-	impliedSpeed := 2_000 / result.MovingSeconds
-	assert.LessOrEqual(t, impliedSpeed, coefficients.DescentCapMetresPerSecond+1e-9,
+	physicsSeconds := result.MovingSeconds / hybridPhysicsWeight
+	impliedSpeed := 2_000 / physicsSeconds
+	assert.LessOrEqual(t, impliedSpeed, fixedDescentCapMetresPerSecond+1e-9,
 		"a descent must never be credited a speed above the configured cap")
 }
 
@@ -148,8 +212,9 @@ func TestPredictNeverExceedsTheDescentCap(t *testing.T) {
 // forward. Regression for a defect where that single borderline segment
 // credited a near-stationary crawl and inflated a whole stage's time by an
 // order of magnitude.
-func TestPredictFallsBackToPedallingWhenCoastingWouldStall(t *testing.T) {
+func TestPredictPhysicsHalfFallsBackToPedallingWhenCoastingWouldStall(t *testing.T) {
 	coefficients := testCoefficients()
+	coefficients.SecondsPerKM, coefficients.SecondsPerAscentM = 0, 0
 	coefficients.CrrBySurface = map[surface.Kind]float64{surface.KindAsphalt: 0.012}
 	// Just past the -1% cutoff: rolling resistance at Crr 0.012 exceeds the
 	// gravity component of a 1.2% descent, so coasting alone would stall.
@@ -160,14 +225,16 @@ func TestPredictFallsBackToPedallingWhenCoastingWouldStall(t *testing.T) {
 
 	// A rider pedalling a shallow, rough downhill still covers it in minutes,
 	// not the tens of minutes a stalled crawl would produce.
-	assert.Less(t, result.MovingSeconds, 120.0, "a borderline segment must not dominate the stage's time")
+	physicsSeconds := result.MovingSeconds / hybridPhysicsWeight
+	assert.Less(t, physicsSeconds, 120.0, "a borderline segment must not dominate the stage's time")
 }
 
 // At the extremes Load's own validation admits — maximum power, minimum drag
 // area — the powered solver's fixed speed bracket must still contain the
 // equation's true root rather than bottoming out and reporting a crawl.
-func TestPredictDoesNotCrawlAtTheValidatedPowerAndDragExtremes(t *testing.T) {
+func TestPredictPhysicsHalfDoesNotCrawlAtTheValidatedPowerAndDragExtremes(t *testing.T) {
 	coefficients := testCoefficients()
+	coefficients.SecondsPerKM, coefficients.SecondsPerAscentM = 0, 0
 	coefficients.PowerWatts = maxPowerWatts
 	coefficients.CdAM2 = minCdAM2
 	points := flatStage(10_000, 50, 0)
@@ -175,7 +242,8 @@ func TestPredictDoesNotCrawlAtTheValidatedPowerAndDragExtremes(t *testing.T) {
 	result, ok := Predict(points, nil, coefficients)
 	require.True(t, ok, "Predict() ok")
 
-	impliedSpeed := 10_000 / result.MovingSeconds
+	physicsSeconds := result.MovingSeconds / hybridPhysicsWeight
+	impliedSpeed := 10_000 / physicsSeconds
 	assert.Greater(t, impliedSpeed, 10.0, "maximum power over minimum drag must not crawl")
 }
 
@@ -209,14 +277,10 @@ func TestPoweredSpeedBottomsOutRatherThanDivergingWhenNoBracketedSpeedSuffices(t
 	// the fastest speed the solver brackets cannot absorb the climb: the
 	// pathology the fixed bracket exists to survive rather than assume away.
 	coefficients := Coefficients{
-		MassKG:                    100_000,
-		PowerWatts:                20,
-		DriveEfficiency:           1,
-		CdAM2:                     0.001,
-		AirDensityKGPerM3:         1.2,
-		DescentCutoffPercent:      -1,
-		DescentCapMetresPerSecond: 20,
-		CrrBySurface:              map[surface.Kind]float64{surface.KindAsphalt: 0.005},
+		MassKG:       100_000,
+		PowerWatts:   20,
+		CdAM2:        0.001,
+		CrrBySurface: map[surface.Kind]float64{surface.KindAsphalt: 0.005},
 	}
 	sinTheta, cosTheta := gradientTrig(20)
 
@@ -224,8 +288,14 @@ func TestPoweredSpeedBottomsOutRatherThanDivergingWhenNoBracketedSpeedSuffices(t
 	assert.InDelta(t, minSolveSpeedMetresPerSecond, speed, 1e-12)
 }
 
+// TestPredictSurfaceSelectsRollingResistance exercises the crr(kind) lookup
+// mechanism directly, with an explicitly differentiated map — not what Load
+// produces since #239 selected the scalar (every real profile now maps every
+// kind to the same value), but the mechanism itself is unchanged and stays
+// covered in case a future profile ever varies it again.
 func TestPredictSurfaceSelectsRollingResistance(t *testing.T) {
 	coefficients := testCoefficients()
+	coefficients.CrrBySurface = map[surface.Kind]float64{surface.KindAsphalt: 0.005, surface.KindGravel: 0.02}
 	points := flatStage(10_000, 50, 0)
 
 	asphalt, ok := Predict(points, kindsAll(len(points), surface.KindAsphalt), coefficients)

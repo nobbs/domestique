@@ -219,13 +219,32 @@ superseded file is removed only once the new one is serving. A build holds
 roughly half a gigabyte of heap and stages an extract of a few hundred megabytes
 on disk, both of which are released when it finishes.
 
-`ridemodel.coefficients_file` names the coefficient file the offline fitting
-tooling ([#215](https://github.com/nobbs/domestique/issues/215)) emits: total
-riding mass, sustained power, drag area, rolling resistance per surface class,
-and the descent constants, fitted to a corpus of recorded rides rather than
-guessed. The service reads it once at startup and computes a predicted moving
-time per stage from it, in the manner surface classification is computed —
-see [the implementation architecture specification's tier ownership
+`ridemodel.coefficients_file` names the hybrid profile the offline benchmark
+tooling ([#239](https://github.com/nobbs/domestique/issues/239)) emits:
+
+```toml
+calibration_cutoff = "2025-08-01"
+mass_kg = 90.0
+power_watts = 180.0
+cda_m2 = 0.45
+crr = 0.012
+seconds_per_km = 145.3578
+seconds_per_ascent_m = 3.2190
+```
+
+The predicted moving time is an equal-weight average of fixed physics —
+independently defensible assumptions, not values a corpus this small can
+reliably identify — and a two-parameter route correction, `seconds_per_km` and
+`seconds_per_ascent_m`, calibrated once against a chronological, route-disjoint
+holdout of recorded rides. Mass, power, drag area and rolling resistance stay
+per-file because they vary with the rider and the bike; the 50/50 weight,
+drivetrain efficiency, standard air density, and the descent cutoff and cap do
+not appear in the file at all — they are fixed constants a code upgrade can
+change, which is why an upgrade to them still invalidates a cached prediction
+even when the operator's file is unchanged. The service reads the file once at
+startup and computes a predicted moving time per stage from it, in the manner
+surface classification is computed — see [the implementation architecture
+specification's tier ownership
 section](implementation-architecture.md#predicted-moving-time-is-a-deliberate-departure)
 for why that placement is correct despite depending on rider mass and power.
 
@@ -238,10 +257,11 @@ implausible file is a startup failure rather than a silent fallback to no
 prediction.
 
 Unlike every other file this specification names, `coefficients_file` is
-**deliberately not a secret**. It carries fitted physical constants and no
-route data, no credential, and no personal information, so it is a plain path
-like `surface.regions`' extracts rather than a `*_file` secret input, and it
-is safe to commit alongside the rest of this example.
+**deliberately not a secret**. It carries physical constants and a rides-
+calibrated correction, and no route data, no credential, and no personal
+information, so it is a plain path like `surface.regions`' extracts rather
+than a `*_file` secret input, and it is safe to commit alongside the rest of
+this example.
 
 ## Secret input
 

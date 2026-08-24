@@ -4,7 +4,6 @@ import (
 	"sort"
 
 	"github.com/nobbs/domestique/internal/elevation"
-	"github.com/nobbs/domestique/internal/ridemodel"
 	"github.com/nobbs/domestique/internal/route"
 	"github.com/nobbs/domestique/internal/surface"
 )
@@ -40,18 +39,15 @@ func splitByDate(rides []rideRow) (train, heldOut []rideRow) {
 	return sorted[:splitAt], sorted[splitAt:]
 }
 
-// predictedMovingSeconds predicts a ride's moving time with the real
-// forward model, internal/ridemodel.Predict — the same equation, the same
-// package, that internal/ridemodel.Predictor evaluates for a deployed
-// route stage. This package reimplemented that equation locally until
-// #216 merged it onto main; calling it directly here instead removes a
-// standing drift risk between what this fitter's own validation measures
-// and what the service actually predicts.
+// predictedMovingSeconds predicts a ride's moving time from fixed-mass,
+// fixed-power physics alone — physics.go's own copy of the physics branch
+// internal/ridemodel.Predict ran before #240 made that function inherently
+// hybrid; see physics.go's doc comment for why this package keeps a
+// short-lived copy rather than calling internal/ridemodel directly.
 //
-// Predict recomputes its own gradient from the point sequence's distances and
-// elevations. The ride is first passed through the production elevation
-// normalizer, so validation sees the same stored profile a deployed route does
-// rather than a noisier recorded-altitude surrogate.
+// The ride is first passed through the production elevation normalizer, so
+// validation sees the same stored profile a deployed route does rather than a
+// noisier recorded-altitude surrogate.
 //
 // A moving sample missing altitude or position (a GPS/barometer dropout) is
 // dropped from the point sequence rather than making the ride unscorable
@@ -63,19 +59,20 @@ func predictedMovingSeconds(samples []sampleRow, result *fitResult, config coeff
 		return 0
 	}
 
-	coefficients := ridemodel.Coefficients{
-		MassKG: result.MassKG, PowerWatts: powerWatts, DriveEfficiency: driveEfficiency,
-		CdAM2: result.CdA, AirDensityKGPerM3: config.AirDensityKGPerM3,
-		DescentCutoffPercent: config.DescentCutoffPercent, DescentCapMetresPerSecond: config.DescentCapMetresPerSecond,
-		CrrBySurface: fullCrrBySurface(result),
+	crrBySurface := fullCrrBySurface(result)
+	points := stage.Geometry()
+	crrPerSegment := make([]float64, max(0, len(points)-1))
+	for i := range crrPerSegment {
+		kind := surface.KindAsphalt
+		if i < len(kinds) && kinds[i] != surface.KindUnknown {
+			kind = kinds[i]
+		}
+		crrPerSegment[i] = crrBySurface[kind]
 	}
 
-	predicted, ok := ridemodel.Predict(stage.Geometry(), kinds, coefficients)
-	if !ok {
-		return 0
-	}
+	config.DriveEfficiency = driveEfficiency
 
-	return predicted.MovingSeconds
+	return physicsOnlyMovingSeconds(points, crrPerSegment, result.MassKG, powerWatts, result.CdA, config)
 }
 
 // normalizedRideStage converts a ridden trace into the same elevation profile

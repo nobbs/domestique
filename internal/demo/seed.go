@@ -64,12 +64,12 @@ const demoIndexGeneration = "demo"
 // demoIndexGeneration above.
 const demoCoefficientFingerprint = "demo-coefficients"
 
-// demoCoefficients are physically plausible fitted constants for a mid-weight
+// demoCoefficients are a physically plausible hybrid profile for a mid-weight
 // rider and a fairly upright road position — an unremarkable ride, not this
-// package's own claim about any real one. CdA, Crr and mass are near the
-// figures issue #213's fitting corpus actually recorded; the rest are
-// reasonable stand-ins that Coefficients' own load-time validation would
-// accept from a real coefficient file.
+// package's own claim about any real one. Mass, power, CdA and the route
+// coefficients are near the figures #239's real benchmark actually recorded;
+// the rest are reasonable stand-ins that Coefficients' own load-time
+// validation would accept from a real coefficient file.
 //
 // A function rather than a package variable, on the same terms as specs() in
 // library.go: nothing here may become mutable package-level state, and a
@@ -77,19 +77,18 @@ const demoCoefficientFingerprint = "demo-coefficients"
 // rebuilds on every Seed.
 func demoCoefficients() ridemodel.Coefficients {
 	return ridemodel.Coefficients{
-		MassKG:                    90,
-		PowerWatts:                150,
-		DriveEfficiency:           0.97,
-		CdAM2:                     0.5,
-		AirDensityKGPerM3:         1.225,
-		DescentCutoffPercent:      -1.5,
-		DescentCapMetresPerSecond: 20,
+		CalibrationCutoff: "2025-08-01",
+		MassKG:            90,
+		PowerWatts:        180,
+		CdAM2:             0.45,
+		SecondsPerKM:      145.0,
+		SecondsPerAscentM: 3.2,
 		CrrBySurface: map[surface.Kind]float64{
-			surface.KindAsphalt:   0.008,
-			surface.KindPaving:    0.009,
+			surface.KindAsphalt:   0.012,
+			surface.KindPaving:    0.012,
 			surface.KindCompacted: 0.012,
-			surface.KindGravel:    0.018,
-			surface.KindGround:    0.025,
+			surface.KindGravel:    0.012,
+			surface.KindGround:    0.012,
 		},
 	}
 }

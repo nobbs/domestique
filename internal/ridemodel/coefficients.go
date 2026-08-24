@@ -1,18 +1,20 @@
 // Package ridemodel is the forward physical model that turns a stage's
-// geometry and a set of fitted coefficients into a predicted moving time.
+// geometry and a set of hybrid coefficients into a predicted moving time.
 //
 // It is a pure function of its inputs: nothing here reaches a network, SQLite,
-// or the clock. dev/ridemodel's fitter and this package's Predictor both run
+// or the clock. dev/fitter's benchmark and this package's Predictor both run
 // exactly this model, so a coefficient set means the same thing wherever it is
 // evaluated.
 package ridemodel
 
 import (
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/pelletier/go-toml/v2"
 
@@ -34,33 +36,40 @@ const (
 	// powered solver's fixed speed bracket ([0, maxSolveSpeedMetresPerSecond])
 	// can fail to contain the equation's true root at high configured power,
 	// which would otherwise report a crawl speed rather than a fast one.
-	minCdAM2         = 0.15
-	maxCdAM2         = 2.0
-	minAirDensity    = 0.8
-	maxAirDensity    = 1.5
-	maxCrr           = 0.05
-	maxDescentCapMPS = 40.0 // 144 km/h; a safety ceiling, not a claim anyone rides it.
+	minCdAM2 = 0.15
+	maxCdAM2 = 2.0
+	maxCrr   = 0.05
 )
 
-// Coefficients are the fitted and configured constants the forward model needs
-// to turn geometry into time. They arrive as one file, loaded once at startup.
+// Coefficients are the values the accepted hybrid model — #213's equal-weight
+// average of fixed physics and a rides-calibrated route correction — can
+// legitimately vary. Everything else (the 50/50 weight, drivetrain efficiency,
+// standard air density, the descent cutoff and cap) is a versioned model
+// constant in model.go, not an operator input; see modelVersion's own comment
+// for why that split is what makes an upgrade to those constants still
+// invalidate a cached prediction. They arrive as one file, loaded once at
+// startup.
 type Coefficients struct {
-	CrrBySurface              map[surface.Kind]float64
-	Fingerprint               string
-	MassKG                    float64
-	PowerWatts                float64
-	DriveEfficiency           float64
-	CdAM2                     float64
-	AirDensityKGPerM3         float64
-	DescentCutoffPercent      float64
-	DescentCapMetresPerSecond float64
+	CrrBySurface      map[surface.Kind]float64 // every surface.Kind mapped to the same scalar Crr — see crr's doc comment
+	Fingerprint       string
+	CalibrationCutoff string // "2025-08-01"; the last calibration ride's date, recorded as-is rather than computed from anything at load time
+	MassKG            float64
+	PowerWatts        float64
+	CdAM2             float64
+	SecondsPerKM      float64
+	SecondsPerAscentM float64
 }
 
-// crr returns the rolling resistance for a surface class. KindUnknown takes
-// asphalt's value: it means nobody has surveyed that stretch, and treating
-// unsurveyed ground as rough would penalise a stage by how well mapped it is
-// rather than by how it rides — the same reasoning the repository already
-// applies to drawing unclassified stages plainly.
+// crr returns the rolling resistance for a segment, still selecting by kind
+// (with the KindUnknown-to-asphalt fallback the surface classification
+// pipeline expects) rather than ignoring it. What changed is what Load fills
+// CrrBySurface with: #239's route-disjoint benchmark found the per-surface
+// Crr table no material improvement over one scalar value on the operator's
+// real corpus, so every kind now maps to that same scalar for a loaded file,
+// and kind has no effect on the result in practice. The lookup itself stays
+// exactly as it was — Predict, Predictor, and the cache's surface-generation
+// tracking are unchanged by this — in case a future profile ever varies it
+// again.
 //
 //nolint:gocritic // value receiver: Coefficients is immutable once loaded, and a pointer would let a caller mutate the shared instance mid-prediction.
 func (c Coefficients) crr(kind surface.Kind) float64 {
@@ -71,32 +80,25 @@ func (c Coefficients) crr(kind surface.Kind) float64 {
 	return c.CrrBySurface[kind]
 }
 
-// rawCoefficients is the TOML shape of the coefficient file #215 emits.
+// rawCoefficients is the TOML shape of the hybrid profile #239 emits.
 type rawCoefficients struct {
-	Crr                       rawCrr  `toml:"crr"`
-	MassKG                    float64 `toml:"mass_kg"`
-	PowerWatts                float64 `toml:"power_watts"`
-	DriveEfficiency           float64 `toml:"drive_efficiency"`
-	CdAM2                     float64 `toml:"cda_m2"`
-	AirDensityKGPerM3         float64 `toml:"air_density_kg_per_m3"`
-	DescentCutoffPercent      float64 `toml:"descent_cutoff_percent"`
-	DescentCapMetresPerSecond float64 `toml:"descent_cap_metres_per_second"`
-}
-
-// rawCrr carries rolling resistance per surface class named in the repository's
-// own vocabulary (internal/surface.Kind.String), rather than the raw
-// OpenStreetMap tags that vocabulary already collapses.
-type rawCrr struct {
-	Asphalt   float64 `toml:"asphalt"`
-	Paving    float64 `toml:"paving"`
-	Compacted float64 `toml:"compacted"`
-	Gravel    float64 `toml:"gravel"`
-	Ground    float64 `toml:"ground"`
+	CalibrationCutoff string  `toml:"calibration_cutoff"`
+	MassKG            float64 `toml:"mass_kg"`
+	PowerWatts        float64 `toml:"power_watts"`
+	CdAM2             float64 `toml:"cda_m2"`
+	Crr               float64 `toml:"crr"`
+	SecondsPerKM      float64 `toml:"seconds_per_km"`
+	SecondsPerAscentM float64 `toml:"seconds_per_ascent_m"`
 }
 
 // Load reads, parses, and validates a coefficient file. A missing, malformed,
 // or physically impossible file is a startup failure: main refuses to serve a
-// prediction it cannot stand behind rather than falling back to silence.
+// prediction it cannot stand behind rather than falling back to silence. A
+// file in the old physics-fitted schema — a `[crr]` table, `drive_efficiency`,
+// no `seconds_per_km` — fails here too: `crr` no longer unmarshals as a table
+// into a float field, and the new required fields are absent, so it is
+// rejected the same way any other malformed file is, with no compatibility
+// path carried for a schema this service no longer runs.
 func Load(path string) (Coefficients, error) {
 	data, err := os.ReadFile(path) //nolint:gosec // path is an operator-configured absolute file, not user input.
 	if err != nil {
@@ -113,13 +115,35 @@ func Load(path string) (Coefficients, error) {
 		return Coefficients{}, err
 	}
 
-	sum := sha256.Sum256(data)
-	coefficients.Fingerprint = hex.EncodeToString(sum[:])
+	// modelVersion is mixed into the hash, not just the file's own bytes: a
+	// code upgrade that changes one of model.go's versioned constants must
+	// still invalidate a cached prediction even when the operator's file is
+	// byte-for-byte unchanged. See modelVersion's own comment and
+	// fingerprintOf's for why it isn't simple concatenation.
+	coefficients.Fingerprint = fingerprintOf(modelVersion, data)
 
 	return coefficients, nil
 }
 
-//nolint:gocritic // value receiver: rawCoefficients is a short-lived TOML decode target, not a hot path.
+// fingerprintOf hashes version and data with version's length written ahead
+// of it, so the two fields can never be reinterpreted as a different
+// (version, data) pair that happens to concatenate to the same bytes — a
+// longer version string whose extra suffix matches the shortened data's own
+// prefix, for one. Plain concatenation would not carry that guarantee.
+func fingerprintOf(version string, data []byte) string {
+	hash := sha256.New()
+	var versionLength [8]byte
+	binary.BigEndian.PutUint64(versionLength[:], uint64(len(version)))
+	// hash.Hash.Write never returns an error — the interface only carries one
+	// because it embeds io.Writer — but the ignore is made explicit rather
+	// than implicit for a reader or a future linter change.
+	_, _ = hash.Write(versionLength[:])
+	_, _ = hash.Write([]byte(version))
+	_, _ = hash.Write(data)
+
+	return hex.EncodeToString(hash.Sum(nil))
+}
+
 func (r rawCoefficients) build() (Coefficients, error) {
 	if r.MassKG < minMassKG || r.MassKG > maxMassKG {
 		return Coefficients{}, fmt.Errorf("ridemodel: mass_kg must be between %g and %g", minMassKG, maxMassKG)
@@ -127,49 +151,37 @@ func (r rawCoefficients) build() (Coefficients, error) {
 	if r.PowerWatts < minPowerWatts || r.PowerWatts > maxPowerWatts {
 		return Coefficients{}, fmt.Errorf("ridemodel: power_watts must be between %g and %g", minPowerWatts, maxPowerWatts)
 	}
-	if r.DriveEfficiency <= 0 || r.DriveEfficiency > 1 {
-		return Coefficients{}, errors.New("ridemodel: drive_efficiency must be greater than 0 and at most 1")
-	}
 	if r.CdAM2 < minCdAM2 || r.CdAM2 > maxCdAM2 {
 		return Coefficients{}, fmt.Errorf("ridemodel: cda_m2 must be between %g and %g", minCdAM2, maxCdAM2)
 	}
-	if r.AirDensityKGPerM3 < minAirDensity || r.AirDensityKGPerM3 > maxAirDensity {
-		return Coefficients{}, fmt.Errorf(
-			"ridemodel: air_density_kg_per_m3 must be between %g and %g", minAirDensity, maxAirDensity,
-		)
+	if r.Crr <= 0 || r.Crr > maxCrr {
+		return Coefficients{}, fmt.Errorf("ridemodel: crr must be greater than 0 and at most %g", maxCrr)
 	}
-	if r.DescentCutoffPercent > 0 {
-		return Coefficients{}, errors.New("ridemodel: descent_cutoff_percent must not be positive")
+	if r.SecondsPerKM <= 0 {
+		return Coefficients{}, errors.New("ridemodel: seconds_per_km must be positive")
 	}
-	if r.DescentCapMetresPerSecond <= 0 || r.DescentCapMetresPerSecond > maxDescentCapMPS {
-		return Coefficients{}, fmt.Errorf(
-			"ridemodel: descent_cap_metres_per_second must be greater than 0 and at most %g", maxDescentCapMPS,
-		)
+	if r.SecondsPerAscentM <= 0 {
+		return Coefficients{}, errors.New("ridemodel: seconds_per_ascent_m must be positive")
+	}
+	if _, parseErr := time.Parse(time.DateOnly, r.CalibrationCutoff); parseErr != nil {
+		return Coefficients{}, fmt.Errorf("ridemodel: calibration_cutoff must be a date in %s form: %w", time.DateOnly, parseErr)
 	}
 
 	crr := map[surface.Kind]float64{
-		surface.KindAsphalt:   r.Crr.Asphalt,
-		surface.KindPaving:    r.Crr.Paving,
-		surface.KindCompacted: r.Crr.Compacted,
-		surface.KindGravel:    r.Crr.Gravel,
-		surface.KindGround:    r.Crr.Ground,
-	}
-	for _, kind := range []surface.Kind{
-		surface.KindAsphalt, surface.KindPaving, surface.KindCompacted, surface.KindGravel, surface.KindGround,
-	} {
-		if value := crr[kind]; value <= 0 || value > maxCrr {
-			return Coefficients{}, fmt.Errorf("ridemodel: crr.%s must be greater than 0 and at most %g", kind, maxCrr)
-		}
+		surface.KindAsphalt:   r.Crr,
+		surface.KindPaving:    r.Crr,
+		surface.KindCompacted: r.Crr,
+		surface.KindGravel:    r.Crr,
+		surface.KindGround:    r.Crr,
 	}
 
 	return Coefficients{
-		MassKG:                    r.MassKG,
-		PowerWatts:                r.PowerWatts,
-		DriveEfficiency:           r.DriveEfficiency,
-		CdAM2:                     r.CdAM2,
-		AirDensityKGPerM3:         r.AirDensityKGPerM3,
-		DescentCutoffPercent:      r.DescentCutoffPercent,
-		DescentCapMetresPerSecond: r.DescentCapMetresPerSecond,
-		CrrBySurface:              crr,
+		CalibrationCutoff: r.CalibrationCutoff,
+		MassKG:            r.MassKG,
+		PowerWatts:        r.PowerWatts,
+		CdAM2:             r.CdAM2,
+		SecondsPerKM:      r.SecondsPerKM,
+		SecondsPerAscentM: r.SecondsPerAscentM,
+		CrrBySurface:      crr,
 	}, nil
 }
