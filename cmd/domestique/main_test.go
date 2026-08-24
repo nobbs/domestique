@@ -344,9 +344,10 @@ func TestLoadRidePredictorReturnsNilWithNoCoefficientsFileConfigured(t *testing.
 	t.Parallel()
 
 	directory := t.TempDir()
-	predictor, err := loadRidePredictor(t.Context(), &config.Settings{}, testStore(t, directory))
+	predictor, validation, err := loadRidePredictor(t.Context(), &config.Settings{}, testStore(t, directory))
 	require.NoError(t, err, "loadRidePredictor()")
 	assert.Nil(t, predictor, "a predictor was built with no coefficients file configured")
+	assert.Nil(t, validation, "validation metadata was built with no coefficients file configured")
 }
 
 func TestLoadRidePredictorBuildsAPredictorFromAValidFile(t *testing.T) {
@@ -355,9 +356,43 @@ func TestLoadRidePredictorBuildsAPredictorFromAValidFile(t *testing.T) {
 	directory := t.TempDir()
 	settings := &config.Settings{RideModel: config.RideModel{CoefficientsFile: writeTestCoefficients(t, directory)}}
 
-	predictor, err := loadRidePredictor(t.Context(), settings, testStore(t, directory))
+	predictor, validation, err := loadRidePredictor(t.Context(), settings, testStore(t, directory))
 	require.NoError(t, err, "loadRidePredictor()")
 	assert.NotNil(t, predictor, "no predictor was built from a valid coefficients file")
+	assert.Nil(t, validation, "validation metadata was built from a file with no measured benchmark result")
+}
+
+// A file that does carry the optional benchmark fields makes its measured
+// unseen-route error available to the HTTP layer.
+func TestLoadRidePredictorSurfacesValidationFromAFileThatHasIt(t *testing.T) {
+	t.Parallel()
+
+	directory := t.TempDir()
+	path := filepath.Join(directory, "ridemodel.toml")
+	document := `
+calibration_cutoff = "2025-08-01"
+mass_kg = 90.0
+power_watts = 180.0
+cda_m2 = 0.45
+crr = 0.012
+seconds_per_km = 145.3578
+seconds_per_ascent_m = 3.2190
+evaluated_rides = 42
+bias_percent = -1.20
+mae_percent = 6.80
+p90_percent = 14.10
+`
+	require.NoError(t, os.WriteFile(path, []byte(document), 0o600), "writing coefficient file")
+	settings := &config.Settings{RideModel: config.RideModel{CoefficientsFile: path}}
+
+	predictor, validation, err := loadRidePredictor(t.Context(), settings, testStore(t, directory))
+	require.NoError(t, err, "loadRidePredictor()")
+	assert.NotNil(t, predictor, "no predictor was built from a valid coefficients file")
+	require.NotNil(t, validation, "no validation metadata was built from a file that carries it")
+	assert.Equal(t, 42, validation.EvaluatedRides, "EvaluatedRides")
+	assert.InDelta(t, -1.20, validation.BiasPercent, 1e-9, "BiasPercent")
+	assert.InDelta(t, 6.80, validation.MAEPercent, 1e-9, "MAEPercent")
+	assert.InDelta(t, 14.10, validation.P90Percent, 1e-9, "P90Percent")
 }
 
 // A malformed or physically implausible file is a startup failure: the
@@ -370,7 +405,7 @@ func TestLoadRidePredictorRefusesAnImplausibleFile(t *testing.T) {
 	require.NoError(t, os.WriteFile(path, []byte("mass_kg = 1.0\n"), 0o600), "writing coefficient file")
 	settings := &config.Settings{RideModel: config.RideModel{CoefficientsFile: path}}
 
-	_, err := loadRidePredictor(t.Context(), settings, testStore(t, directory))
+	_, _, err := loadRidePredictor(t.Context(), settings, testStore(t, directory))
 	require.Error(t, err, "loadRidePredictor() with an implausible coefficient file")
 }
 
@@ -389,7 +424,7 @@ func TestLoadRidePredictorPrunesPredictionsFromADifferentCoefficientFile(t *test
 	), "seeding a stale prediction")
 
 	settings := &config.Settings{RideModel: config.RideModel{CoefficientsFile: writeTestCoefficients(t, directory)}}
-	_, err := loadRidePredictor(t.Context(), settings, store)
+	_, _, err := loadRidePredictor(t.Context(), settings, store)
 	require.NoError(t, err, "loadRidePredictor()")
 
 	_, _, _, found, err := store.StageDurationFingerprint(t.Context(), route.ProviderVeloPlanner, 1, 1)
@@ -409,7 +444,7 @@ func TestLoadRidePredictorPrunesEverythingWhenUnconfigured(t *testing.T) {
 		t.Context(), route.ProviderVeloPlanner, 1, 1, "hash", "", "a-since-removed-coefficient-file", &seconds, nil,
 	), "seeding a stale prediction")
 
-	_, err := loadRidePredictor(t.Context(), &config.Settings{}, store)
+	_, _, err := loadRidePredictor(t.Context(), &config.Settings{}, store)
 	require.NoError(t, err, "loadRidePredictor()")
 
 	_, _, _, found, err := store.StageDurationFingerprint(t.Context(), route.ProviderVeloPlanner, 1, 1)

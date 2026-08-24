@@ -186,6 +186,24 @@ describe("SearchPanel", () => {
     expect(screen.getByText("2,034 ft")).toBeInTheDocument();
   });
 
+  it("shows the predicted moving time and its qualifier without fetching geometry", () => {
+    const predicted = route({
+      movingSeconds: 6420,
+      validation: { biasPercent: -1.2, maePercent: 6.8, p90Percent: 14.1, evaluatedRides: 42 },
+    });
+    renderPanel({ query: "alpine", shown: [predicted], selectedKey: routeKey(predicted) });
+
+    expect(screen.getByText("1 h 45 min")).toBeInTheDocument();
+    expect(screen.getByText("±7% typical")).toBeInTheDocument();
+  });
+
+  it("shows nothing for a route nothing has predicted", () => {
+    renderPanel({ query: "alpine", shown: [route()], selectedKey: routeKey(route()) });
+
+    expect(screen.getByText("—")).toBeInTheDocument();
+    expect(screen.queryByText("±", { exact: false })).toBeNull();
+  });
+
   /*
    * The card's one button opens the route in place. There is no route page to
    * leave for: it swaps this panel for the route's own, which is a thing the

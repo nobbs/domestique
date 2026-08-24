@@ -257,6 +257,10 @@ func printCopyReadyProfile(report *strings.Builder, coefficients *ridemodel.Coef
 	fmt.Fprintf(report, "    crr = %.3f\n", coefficients.CrrBySurface[surface.KindAsphalt])
 	fmt.Fprintf(report, "    seconds_per_km = %.4f\n", eval.secondsPerKM)
 	fmt.Fprintf(report, "    seconds_per_ascent_m = %.4f\n", eval.secondsPerAscentM)
+	fmt.Fprintf(report, "    evaluated_rides = %d\n", metrics.rides)
+	fmt.Fprintf(report, "    bias_percent = %.2f\n", metrics.bias)
+	fmt.Fprintf(report, "    mae_percent = %.2f\n", metrics.mae)
+	fmt.Fprintf(report, "    p90_percent = %.2f\n", metrics.p90)
 	fmt.Fprintf(report, "    validation: rides %d, bias %+.2f%%, MAE %.2f%%, p90 %.2f%%\n", metrics.rides, metrics.bias, metrics.mae, metrics.p90)
 }
 

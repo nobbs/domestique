@@ -14,6 +14,7 @@ import type {
   Route,
   RouteGeometry,
   RouteSurface,
+  RouteValidation,
   Status,
   SurfaceCoverage,
   SurfaceKind,
@@ -151,6 +152,36 @@ function optionalFlag(value: unknown, at: string): boolean | undefined {
   return value === undefined ? undefined : flag(value, at);
 }
 
+/**
+ * Reads the predicted moving time, which is absent — never zero — when
+ * nothing has predicted this route's geometry. Mirrors `surfaceFrom`'s
+ * absence convention, just for a scalar instead of a group.
+ */
+function optionalCount(value: unknown, at: string): number | undefined {
+  return value === undefined || value === null ? undefined : count(value, at);
+}
+
+/**
+ * Reads the frozen profile's measured unseen-route error, present only
+ * alongside a predicted moving time and only when the loaded coefficient
+ * file itself carries a benchmark result. Present or absent as one whole
+ * object, never partially — it describes one profile, not a per-field
+ * reading.
+ */
+function routeValidationFrom(value: unknown, at: string): RouteValidation | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  const validation = record(value, at);
+
+  return {
+    biasPercent: count(validation.bias_percent, `${at}.bias_percent`),
+    maePercent: count(validation.mae_percent, `${at}.mae_percent`),
+    p90Percent: count(validation.p90_percent, `${at}.p90_percent`),
+    evaluatedRides: count(validation.evaluated_rides, `${at}.evaluated_rides`),
+  };
+}
+
 function routeFrom(source: Record<string, unknown>, at: string): Route {
   return {
     provider: text(source.provider, `${at}.provider`),
@@ -165,6 +196,8 @@ function routeFrom(source: Record<string, unknown>, at: string): Route {
     ascentMetres: count(source.ascent_metres ?? 0, `${at}.ascent_metres`),
     maxGradientPercent: count(source.max_gradient_percent ?? 0, `${at}.max_gradient_percent`),
     pointCount: count(source.point_count, `${at}.point_count`),
+    movingSeconds: optionalCount(source.moving_seconds, `${at}.moving_seconds`),
+    validation: routeValidationFrom(source.validation, `${at}.validation`),
   };
 }
 

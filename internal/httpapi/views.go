@@ -62,7 +62,13 @@ type stageView struct {
 	//
 	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
 	MovingSeconds *float64 `json:"moving_seconds,omitempty"`
-	Title         string   `json:"title"`
+	// Validation is the frozen profile's measured unseen-route error —
+	// present only alongside MovingSeconds, and only when the loaded
+	// coefficient file itself carries a measured benchmark result. Every
+	// stage on a deployment shares the same value: it describes the profile,
+	// not this stage's own geometry.
+	Validation *stageValidation `json:"validation,omitempty"`
+	Title      string           `json:"title"`
 	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
 	StageName string `json:"stage_name"`
 	Provider  string `json:"provider"`
@@ -83,6 +89,20 @@ type stageView struct {
 	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
 	PointCount int `json:"point_count"`
 	StageOrder int `json:"stage"`
+}
+
+// stageValidation is the frozen coefficient profile's measured unseen-route
+// error, from the same route-disjoint benchmark that froze it. It describes
+// the profile as a whole, not any one stage's geometry.
+type stageValidation struct {
+	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
+	BiasPercent float64 `json:"bias_percent"`
+	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
+	MAEPercent float64 `json:"mae_percent"`
+	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
+	P90Percent float64 `json:"p90_percent"`
+	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
+	EvaluatedRides int `json:"evaluated_rides"`
 }
 
 // syncScheduleView reports which halves of a synchronization the timer may

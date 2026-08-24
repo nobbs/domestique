@@ -58,6 +58,25 @@ type Coefficients struct {
 	CdAM2             float64
 	SecondsPerKM      float64
 	SecondsPerAscentM float64
+	// EvaluatedRides, BiasPercent, MAEPercent, and P90Percent are the frozen
+	// profile's measured unseen-route error, from the same route-disjoint
+	// benchmark #239 froze the profile against. Unlike every field above,
+	// these are optional: a file written before #217 omits them, and
+	// EvaluatedRides == 0 is the sentinel that means "not measured" — a real
+	// evaluation always scores more than zero rides, so it can't collide with
+	// a genuine reading the way a zero bias legitimately could.
+	EvaluatedRides int
+	BiasPercent    float64
+	MAEPercent     float64
+	P90Percent     float64
+}
+
+// HasValidation reports whether the loaded file carries a measured
+// unseen-route benchmark result.
+//
+//nolint:gocritic // value receiver: Coefficients is immutable once loaded, and a pointer would let a caller mutate the shared instance mid-prediction.
+func (c Coefficients) HasValidation() bool {
+	return c.EvaluatedRides > 0
 }
 
 // crr returns the rolling resistance for a segment, still selecting by kind
@@ -89,6 +108,10 @@ type rawCoefficients struct {
 	Crr               float64 `toml:"crr"`
 	SecondsPerKM      float64 `toml:"seconds_per_km"`
 	SecondsPerAscentM float64 `toml:"seconds_per_ascent_m"`
+	EvaluatedRides    int     `toml:"evaluated_rides"`
+	BiasPercent       float64 `toml:"bias_percent"`
+	MAEPercent        float64 `toml:"mae_percent"`
+	P90Percent        float64 `toml:"p90_percent"`
 }
 
 // Load reads, parses, and validates a coefficient file. A missing, malformed,
@@ -144,7 +167,7 @@ func fingerprintOf(version string, data []byte) string {
 	return hex.EncodeToString(hash.Sum(nil))
 }
 
-func (r rawCoefficients) build() (Coefficients, error) {
+func (r *rawCoefficients) build() (Coefficients, error) {
 	if r.MassKG < minMassKG || r.MassKG > maxMassKG {
 		return Coefficients{}, fmt.Errorf("ridemodel: mass_kg must be between %g and %g", minMassKG, maxMassKG)
 	}
@@ -183,5 +206,9 @@ func (r rawCoefficients) build() (Coefficients, error) {
 		SecondsPerKM:      r.SecondsPerKM,
 		SecondsPerAscentM: r.SecondsPerAscentM,
 		CrrBySurface:      crr,
+		EvaluatedRides:    r.EvaluatedRides,
+		BiasPercent:       r.BiasPercent,
+		MAEPercent:        r.MAEPercent,
+		P90Percent:        r.P90Percent,
 	}, nil
 }

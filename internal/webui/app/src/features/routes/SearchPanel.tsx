@@ -22,7 +22,13 @@ import { Button } from "../../components/Button";
 import { RouteGlyph } from "../../components/RouteGlyph";
 import type { LibraryFilters } from "../../lib/filters";
 import { hasActiveFilters } from "../../lib/filters";
-import { formatAscent, formatDistance, formatGradient } from "../../lib/format";
+import {
+  formatAscent,
+  formatDistance,
+  formatGradient,
+  formatMovingTime,
+  formatMovingTimeUncertainty,
+} from "../../lib/format";
 import { gradientBand, gradientMix } from "../../lib/profile";
 import { providerLabel } from "../../lib/provider";
 import type { StageChange } from "../../lib/seenStages";
@@ -191,6 +197,17 @@ function RouteCard({
         <div>
           <dt>Max</dt>
           <dd>{formatGradient(route.maxGradientPercent)}</dd>
+        </div>
+        <div>
+          <dt>Moving time</dt>
+          <dd>
+            {formatMovingTime(route.movingSeconds)}
+            {route.movingSeconds !== undefined && route.validation ? (
+              <span className="route-card__moving-time-uncertainty">
+                {formatMovingTimeUncertainty(route.validation)}
+              </span>
+            ) : null}
+          </dd>
         </div>
       </dl>
       {mix.length > 0 ? (

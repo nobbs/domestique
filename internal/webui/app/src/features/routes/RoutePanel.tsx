@@ -18,7 +18,14 @@ import type { Route } from "../../api/types";
 import { RouteKey } from "../../components/RouteKey";
 import { SourceRouteLink } from "../../components/SourceRouteLink";
 import type { Climb } from "../../lib/climbs";
-import { formatAscent, formatDistance, formatElevation, formatGradient } from "../../lib/format";
+import {
+  formatAscent,
+  formatDistance,
+  formatElevation,
+  formatGradient,
+  formatMovingTime,
+  formatMovingTimeUncertainty,
+} from "../../lib/format";
 import type { Highlight } from "../../lib/highlight";
 import type { BandShare } from "../../lib/profile";
 import { providerLabel } from "../../lib/provider";
@@ -29,6 +36,13 @@ import { ReprocessButton } from "./ReprocessButton";
 
 export interface RoutePanelProps {
   route: Route;
+  /**
+   * The moving time for the elevation-profile stretch currently on show, in
+   * place of the whole stage's. Undefined restores the whole-stage figure —
+   * clearing the selection, or a stage nothing has predicted, both read the
+   * same way here.
+   */
+  movingSecondsOverride?: number | undefined;
   /**
    * The elevation profile, which sits inside this card between the figures it
    * elaborates and the gradient bar it explains.
@@ -78,6 +92,7 @@ export interface RoutePanelProps {
 
 export function RoutePanel({
   route,
+  movingSecondsOverride,
   profile,
   highestMetres,
   subtitle,
@@ -97,6 +112,7 @@ export function RoutePanel({
     libraryCount > 0
       ? `Search ${libraryCount} ${libraryCount === 1 ? "route" : "routes"}`
       : "Back to search";
+  const movingSeconds = movingSecondsOverride ?? route.movingSeconds;
 
   return (
     <section className="panel route-panel" aria-label={route.title}>
@@ -145,6 +161,24 @@ export function RoutePanel({
         <div>
           <dt>Max gradient</dt>
           <dd>{formatGradient(route.maxGradientPercent)}</dd>
+        </div>
+        <div>
+          <dt>Moving time</dt>
+          {/*
+           * Predicted, not measured — the label says "moving time", not
+           * "arrival time", and carries no stops, traffic, or day-specific
+           * weather. The qualifier names how far off that estimate usually
+           * runs, from the frozen profile's own held-out benchmark, and is
+           * absent whenever the loaded profile carries no measured result.
+           */}
+          <dd>
+            {formatMovingTime(movingSeconds)}
+            {movingSeconds !== undefined && route.validation ? (
+              <span className="route-panel__moving-time-uncertainty">
+                {formatMovingTimeUncertainty(route.validation)}
+              </span>
+            ) : null}
+          </dd>
         </div>
         <div>
           <dt>Highest</dt>

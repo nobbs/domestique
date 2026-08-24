@@ -5,6 +5,7 @@ import {
   buildWindowedProfile,
   coordinateRange,
   cumulativeMetres,
+  elapsedSecondsForWindow,
   GRADIENT_BANDS,
   GRADIENT_WINDOW_METRES,
   gradientBand,
@@ -333,6 +334,39 @@ describe("coordinateRange", () => {
   it("refuses a stretch of no length or geometry too short to have one", () => {
     expect(coordinateRange(route([100, 200, 300]), 100, 100)).toBeNull();
     expect(coordinateRange([[8, 49, 100]], 0, 100)).toBeNull();
+  });
+});
+
+describe("elapsedSecondsForWindow", () => {
+  const coordinates = route([100, 200, 300, 400, 500]);
+  // One second per point, so the window's own elapsed time is easy to check
+  // against coordinateRange's own start/end indices.
+  const cumulativeSeconds = [0, 10, 20, 30, 40];
+
+  it("subtracts the cumulative series at the selection's rounded-outward boundaries", () => {
+    const elapsed = elapsedSecondsForWindow(coordinates, cumulativeSeconds, {
+      startMetres: 150,
+      endMetres: 250,
+    });
+
+    // coordinateRange rounds this stretch out to indices 1 and 3.
+    expect(elapsed).toBe((cumulativeSeconds[3] ?? 0) - (cumulativeSeconds[1] ?? 0));
+  });
+
+  it("is undefined with no selection", () => {
+    expect(elapsedSecondsForWindow(coordinates, cumulativeSeconds, null)).toBeUndefined();
+  });
+
+  it("is undefined with no predicted series", () => {
+    expect(
+      elapsedSecondsForWindow(coordinates, undefined, { startMetres: 150, endMetres: 250 }),
+    ).toBeUndefined();
+  });
+
+  it("is undefined for a selection too short to span two coordinates", () => {
+    expect(
+      elapsedSecondsForWindow(coordinates, cumulativeSeconds, { startMetres: 100, endMetres: 100 }),
+    ).toBeUndefined();
   });
 });
 

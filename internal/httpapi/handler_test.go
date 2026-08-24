@@ -348,6 +348,58 @@ func TestHandlerOmitsMovingTimeWhenNothingHasPredictedIt(t *testing.T) {
 	assert.NotContains(t, response.Body.String(), "moving_seconds", "an unpredicted stage must not claim zero seconds")
 }
 
+// The profile's measured unseen-route error rides alongside its prediction —
+// it describes the profile, not any one stage, so every stage that has a
+// prediction carries the same validation object.
+func TestHandlerServesValidationAlongsideAPredictedStage(t *testing.T) {
+	movingSeconds := 1234.5
+	state := &fakeState{summaries: []route.Summary{{
+		RouteID: 3, StageOrder: 1, RouteName: "Sunday", PointCount: 2, DistanceMetres: 900,
+		MovingSeconds: &movingSeconds,
+	}}}
+	handler := newHandlerWithRideModelValidation(t, state, &RideModelValidation{
+		BiasPercent: -1.2, MAEPercent: 6.8, P90Percent: 14.1, EvaluatedRides: 42,
+	})
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/routes"))
+	require.Equal(t, http.StatusOK, response.Code, "routes status")
+	body := response.Body.String()
+	assert.Contains(t, body, `"validation":{"bias_percent":-1.2,"mae_percent":6.8,"p90_percent":14.1,"evaluated_rides":42}`, "validation")
+}
+
+// A stage nothing has predicted has no number for the validation to qualify,
+// even when the loaded profile carries one.
+func TestHandlerOmitsValidationWhenTheStageHasNoPrediction(t *testing.T) {
+	state := &fakeState{summaries: []route.Summary{{
+		RouteID: 3, StageOrder: 1, RouteName: "Sunday", PointCount: 2, DistanceMetres: 900,
+	}}}
+	handler := newHandlerWithRideModelValidation(t, state, &RideModelValidation{
+		BiasPercent: -1.2, MAEPercent: 6.8, P90Percent: 14.1, EvaluatedRides: 42,
+	})
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/routes"))
+	require.Equal(t, http.StatusOK, response.Code, "routes status")
+	assert.NotContains(t, response.Body.String(), "validation", "an unpredicted stage must not carry validation metadata")
+}
+
+// The mirror case: no configured profile, or one with no measured benchmark
+// result, must not fabricate a validation object even for a predicted stage.
+func TestHandlerOmitsValidationWhenNoneIsConfigured(t *testing.T) {
+	movingSeconds := 1234.5
+	state := &fakeState{summaries: []route.Summary{{
+		RouteID: 3, StageOrder: 1, RouteName: "Sunday", PointCount: 2, DistanceMetres: 900,
+		MovingSeconds: &movingSeconds,
+	}}}
+	handler := newHandler(t, &fakeOAuth{}, state)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/routes"))
+	require.Equal(t, http.StatusOK, response.Code, "routes status")
+	assert.NotContains(t, response.Body.String(), "validation", "no profile is configured in this handler")
+}
+
 func TestHandlerServesTileStyleConfiguration(t *testing.T) {
 	handler := newTestHandler(t)
 	response := httptest.NewRecorder()
@@ -1867,6 +1919,27 @@ func newHandlerWithLiveSync(t *testing.T, state State, activity SyncActivityStat
 			BrowserOriginURL: testBrowserOriginURL,
 		},
 		&fakeOAuth{}, state, &fakeSync{accepted: true, activity: activity}, &fakeAssets{}, &fakeWeather{},
+	)
+	require.NoError(t, err, "New()")
+
+	return handler
+}
+
+// newHandlerWithRideModelValidation builds a handler with a configured
+// profile's measured unseen-route error, the way the composition root
+// supplies it from ridemodel.Coefficients.
+func newHandlerWithRideModelValidation(t *testing.T, state State, validation *RideModelValidation) *Handler {
+	t.Helper()
+	handler, err := New(
+		&Options{
+			TargetIDs:           []string{"rider-a"},
+			Basemaps:            testBasemaps(),
+			AccessVerifier:      &recordingVerifier{email: testAccessEmail},
+			AccessEmail:         testAccessEmail,
+			BrowserOriginURL:    testBrowserOriginURL,
+			RideModelValidation: validation,
+		},
+		&fakeOAuth{}, state, &fakeSync{accepted: true}, &fakeAssets{}, &fakeWeather{},
 	)
 	require.NoError(t, err, "New()")
 

@@ -5,6 +5,8 @@ import {
   formatDistance,
   formatElevation,
   formatGradient,
+  formatMovingTime,
+  formatMovingTimeUncertainty,
   formatPrecipitation,
   formatReadTime,
   formatTemperature,
@@ -151,6 +153,45 @@ describe("formatGradient", () => {
   it("holds a decimal place under ten percent and drops it at ten and above", () => {
     expect(formatGradient(9.2)).toBe("9.2%");
     expect(formatGradient(11.6)).toBe("12%");
+  });
+});
+
+describe("formatMovingTime", () => {
+  it("says nothing for a time it does not have", () => {
+    expect(formatMovingTime(undefined)).toBe("—");
+    expect(formatMovingTime(0)).toBe("—");
+    expect(formatMovingTime(-4)).toBe("—");
+    expect(formatMovingTime(Number.NaN)).toBe("—");
+  });
+
+  it("rounds to the nearest five minutes under an hour", () => {
+    expect(formatMovingTime(62)).toBe("5 min");
+    expect(formatMovingTime(7 * 60 + 40)).toBe("10 min");
+  });
+
+  it("reports whole hours without a trailing zero", () => {
+    expect(formatMovingTime(2 * 3600)).toBe("2 h");
+  });
+
+  it("reports hours and minutes together", () => {
+    expect(formatMovingTime(2 * 3600 + 47 * 60)).toBe("2 h 45 min");
+  });
+});
+
+describe("formatMovingTimeUncertainty", () => {
+  it("is undefined when the loaded profile carries no measured result", () => {
+    expect(formatMovingTimeUncertainty(undefined)).toBeUndefined();
+  });
+
+  it("reports the rounded mean absolute error", () => {
+    expect(
+      formatMovingTimeUncertainty({
+        biasPercent: -1.2,
+        maePercent: 6.8,
+        p90Percent: 14.1,
+        evaluatedRides: 42,
+      }),
+    ).toBe("±7% typical");
   });
 });
 

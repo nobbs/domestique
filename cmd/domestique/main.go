@@ -150,7 +150,7 @@ func run(ctx context.Context) error {
 	// Ride model prediction is equally optional. An operator who configures no
 	// coefficients file keeps every stage exactly as it is today: no rider
 	// figure is ever guessed, and no endpoint gains a field nobody asked for.
-	predictor, err := loadRidePredictor(ctx, settings, store)
+	predictor, rideModelValidation, err := loadRidePredictor(ctx, settings, store)
 	if err != nil {
 		return err
 	}
@@ -236,7 +236,8 @@ func run(ctx context.Context) error {
 
 				return metadata.Generation, metadata.BuiltAt, ok
 			},
-			SourceStaleAfter: settings.Sync.StaleAfter,
+			SourceStaleAfter:    settings.Sync.StaleAfter,
+			RideModelValidation: rideModelValidation,
 		},
 		oauthService,
 		store,
@@ -325,16 +326,27 @@ func run(ctx context.Context) error {
 // time. A malformed or physically implausible file is a startup failure: the
 // service refuses to serve a prediction it cannot stand behind rather than
 // falling back to silence.
-func loadRidePredictor(ctx context.Context, settings *config.Settings, store *sqlite.Store) (syncservice.Predictor, error) {
+func loadRidePredictor(
+	ctx context.Context, settings *config.Settings, store *sqlite.Store,
+) (syncservice.Predictor, *httpapi.RideModelValidation, error) {
 	var fingerprint string
 	var predictor syncservice.Predictor
+	var validation *httpapi.RideModelValidation
 	if settings.RideModel.CoefficientsFile != "" {
 		coefficients, err := ridemodel.Load(settings.RideModel.CoefficientsFile)
 		if err != nil {
-			return nil, fmt.Errorf("loading ride model coefficients: %w", err)
+			return nil, nil, fmt.Errorf("loading ride model coefficients: %w", err)
 		}
 		fingerprint = coefficients.Fingerprint
 		predictor = ridemodel.NewPredictor(store, store, coefficients)
+		if coefficients.HasValidation() {
+			validation = &httpapi.RideModelValidation{
+				BiasPercent:    coefficients.BiasPercent,
+				MAEPercent:     coefficients.MAEPercent,
+				P90Percent:     coefficients.P90Percent,
+				EvaluatedRides: coefficients.EvaluatedRides,
+			}
+		}
 	}
 
 	// A coefficient file edited or removed since the last restart must not
@@ -342,10 +354,10 @@ func loadRidePredictor(ctx context.Context, settings *config.Settings, store *sq
 	// address the same geometry, so nothing else would ever notice they no
 	// longer match what is loaded now.
 	if err := store.PruneStageDurationsWithDifferentFingerprint(ctx, fingerprint); err != nil {
-		return nil, fmt.Errorf("pruning stale ride model predictions: %w", err)
+		return nil, nil, fmt.Errorf("pruning stale ride model predictions: %w", err)
 	}
 
-	return predictor, nil
+	return predictor, validation, nil
 }
 
 // startSurfaceIndex prepares the surface index and the schedule that rebuilds

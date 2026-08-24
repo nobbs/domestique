@@ -230,7 +230,21 @@ cda_m2 = 0.45
 crr = 0.012
 seconds_per_km = 145.3578
 seconds_per_ascent_m = 3.2190
+evaluated_rides = 42
+bias_percent = -1.20
+mae_percent = 6.80
+p90_percent = 14.10
 ```
+
+The last four fields are the frozen profile's own measured unseen-route
+error, from the same route-disjoint benchmark that produced
+`seconds_per_km` and `seconds_per_ascent_m`. They are optional — a file
+written before [#217](https://github.com/nobbs/domestique/issues/217) added
+them still loads — and, when present, are served alongside a stage's
+predicted moving time so the browser can qualify the estimate rather than
+present it as a bare number. `dev/fitter -recalibrate` prints them as part
+of its copy-ready profile, computed from the same evaluation pass that
+prints the human-readable `validation:` line beside them.
 
 The predicted moving time is an equal-weight average of fixed physics —
 independently defensible assumptions, not values a corpus this small can

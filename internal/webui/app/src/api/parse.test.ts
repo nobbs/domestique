@@ -47,6 +47,52 @@ describe("parseRoutes", () => {
     expect(() => parseRoutes({})).toThrow(ContractError);
     expect(() => parseRoutes(null)).toThrow(ContractError);
   });
+
+  it("leaves moving time and validation undefined when the service omits them", () => {
+    const stages = parseRoutes({ stages: [stagePayload] });
+
+    expect(stages[0]?.movingSeconds).toBeUndefined();
+    expect(stages[0]?.validation).toBeUndefined();
+  });
+
+  it("reads a predicted moving time and its validation metadata when present", () => {
+    const stages = parseRoutes({
+      stages: [
+        {
+          ...stagePayload,
+          moving_seconds: 4321.5,
+          validation: {
+            bias_percent: -1.2,
+            mae_percent: 6.8,
+            p90_percent: 14.1,
+            evaluated_rides: 42,
+          },
+        },
+      ],
+    });
+
+    expect(stages[0]?.movingSeconds).toBe(4321.5);
+    expect(stages[0]?.validation).toEqual({
+      biasPercent: -1.2,
+      maePercent: 6.8,
+      p90Percent: 14.1,
+      evaluatedRides: 42,
+    });
+  });
+
+  it("rejects a validation object missing one of its fields", () => {
+    expect(() =>
+      parseRoutes({
+        stages: [
+          {
+            ...stagePayload,
+            moving_seconds: 4321.5,
+            validation: { bias_percent: -1.2, mae_percent: 6.8, p90_percent: 14.1 },
+          },
+        ],
+      }),
+    ).toThrow(ContractError);
+  });
 });
 
 describe("parseRouteGeometry", () => {
