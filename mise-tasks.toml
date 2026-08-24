@@ -274,28 +274,31 @@ description = "Run the whole stack against a synthetic library"
 depends = ["ui-install"]
 run = "./dev/demo.sh"
 
-# Turns a Strava bulk export into a flat ride sample corpus for the drag and
-# power fitter (#215) to regress over. Never built into the image — see
-# dev/ridemodel — and always outside quick and check: it needs an export
-# directory only the operator has, and its own unit suite runs entirely on
-# in-module synthetic fixtures. The export path is required and has no
-# default; pass it and where to write the corpus with
+# Turns a Strava bulk export into a flat ride sample corpus for dev/fitter's
+# ETA benchmark to score against. Never built into the image and always
+# outside quick and check: it needs an export directory only the operator
+# has, and its own unit suite runs entirely on in-module synthetic fixtures.
+# The export path is required and has no default; pass it and where to write
+# the corpus with
 # `mise run ridemodel -- -export /path/to/export -out .local/ridemodel`.
 [ridemodel]
 description = "Turn a Strava bulk export into a ride sample corpus"
 run = "go run ./dev/ridemodel"
 
-# Fits drag area, rolling resistance and sustained power from the corpus
-# dev/ridemodel emits (#215). Never built into the image — see dev/fitter —
-# and always outside quick and check for the same reason ridemodel is: it
-# needs a real corpus only the operator has, and its own unit suite runs
-# entirely on in-module synthetic fixtures. Mass is required and has no
-# default; pass it and the corpus directory with
-# `mise run fitter -- -corpus .local/ridemodel -mass-kg 90 -out .local/fitter`.
-# Append `-eta-benchmark` to compare models on previously unseen routes without
-# writing coefficient files.
+# Benchmarks the accepted hybrid ETA model (#213, #239, #240) — the real
+# internal/ridemodel.Predict, never a second implementation of it — against
+# the corpus dev/ridemodel emits, and can recalibrate its two route
+# coefficients when explicitly asked (#241). Never built into the image and
+# always outside quick and check for the same reason ridemodel is: it needs a
+# real corpus only the operator has, and its own unit suite runs entirely on
+# in-module synthetic fixtures. The corpus directory and the coefficient file
+# being evaluated are both required and have no default:
+# `mise run fitter -- -corpus .local/ridemodel -coefficients
+# /etc/domestique/ridemodel.toml`. Append `-recalibrate` to also refit
+# seconds_per_km and seconds_per_ascent_m over the oldest
+# -eta-warmup-fraction of the corpus and print a copy-ready profile.
 [fitter]
-description = "Fit drag area, rolling resistance and sustained power from the ride corpus"
+description = "Benchmark and recalibrate the hybrid ETA model against the ride corpus"
 run = "go run ./dev/fitter"
 
 # The only thing that installs node_modules. It declares the lockfile as its

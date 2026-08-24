@@ -9,38 +9,32 @@ import (
 	"strings"
 	"time"
 
+	"github.com/nobbs/domestique/internal/elevation"
+	"github.com/nobbs/domestique/internal/ridemodel"
+	"github.com/nobbs/domestique/internal/route"
 	"github.com/nobbs/domestique/internal/surface"
 )
 
-// The physics half of the accepted hybrid model (#213's "Decisions already
-// made") is fixed rather than fitted: independently defensible constants, not
-// values the corpus is trusted to identify. Only the two route-level
-// coefficients — seconds per kilometre and seconds per ascent metre — are
-// calibrated, and only once, before the evaluation cutoff.
 const (
-	defaultBenchmarkWarmupFraction = 0.6
 	defaultRouteCellDegrees        = 0.002
 	defaultRouteJaccardThreshold   = 0.7
-	referenceDriveEfficiency       = 0.975
-	referenceCdA                   = 0.45
-	referencePowerWatts            = 180.0
-	referenceScalarCrr             = 0.012
-	referenceDescentCutoffPercent  = -1.0
-	observedDescentCapMPS          = 60.0 / 3.6
-	hybridModelVersion             = "hybrid-v1"
+	defaultBenchmarkWarmupFraction = 0.6
+	// modelVersionLabel mirrors internal/ridemodel/model.go's unexported
+	// modelVersion constant, for display only: this package never loads or
+	// computes it, it just needs the same label on the profile it prints.
+	modelVersionLabel = "hybrid-v1"
+	// physicsOnlyScaleFactor recovers the physics-only prediction from
+	// internal/ridemodel.Predict's own equal-weight blend: with the route
+	// coefficients zeroed, every segment's blended time is exactly half its
+	// physics time (#213's settled 50/50 split), so doubling Predict's own
+	// output — the real equation, with the route half silenced, not a second
+	// implementation of it — recovers the physics-only prediction exactly.
+	physicsOnlyScaleFactor = 2.0
+	// maxMissingGeometryFraction is how much of a ride's moving time may come
+	// from samples missing altitude or position (a GPS/barometer dropout)
+	// before the ride is unscorable here.
+	maxMissingGeometryFraction = 0.05
 )
-
-// referenceCrrBySurface is the per-surface rolling resistance table the
-// hybrid candidate compares against its own scalar assumption. #239 keeps it
-// only if it materially improves the frozen candidate on route-disjoint
-// evaluation rides; otherwise the runtime rework drops ETA's surface
-// dependency entirely.
-func referenceCrrBySurface() map[surface.Kind]float64 {
-	return map[surface.Kind]float64{
-		surface.KindAsphalt: referenceScalarCrr, surface.KindPaving: 0.014, surface.KindCompacted: 0.015,
-		surface.KindGravel: 0.018, surface.KindGround: 0.025,
-	}
-}
 
 type benchmarkModel struct {
 	predict func([]sampleRow) float64
@@ -60,35 +54,53 @@ type routeCell struct {
 	longitude int
 }
 
-// splitEvaluation is one calibrate-once, score-once pass: the models it fit
+// splitEvaluation is one calibrate-once, score-once pass: the models it built
 // and the per-model prediction errors scored against the route-disjoint
-// evaluation rides. runETABenchmark builds one for the run's own configured
-// parameters and several more, varying one parameter at a time, for the
-// robustness section.
+// evaluation rides.
 type splitEvaluation struct {
 	calibrationCutoff time.Time
 	errorsByModel     map[string][]float64
-	physicsNote       string
 	models            []benchmarkModel
 	clusterCount      int
 	repeatedRides     int
 	largestCluster    int
-	calibrateCount    int
+	seenCount         int
 	evaluateCount     int
 	evaluateScored    int
 	secondsPerKM      float64
 	secondsPerAscentM float64
+	recalibrated      bool
 }
 
+// runETABenchmark implements the repeat protocol: by default it evaluates
+// the loaded, still-frozen profile against rides after its own
+// calibration_cutoff — no fitting at all — and under -recalibrate it
+// additionally re-fits the two route coefficients over the oldest
+// -eta-warmup-fraction of the corpus and prints a copy-ready profile. Every
+// model it scores — hybrid, physics-only,
+// route-only — is built from the one loaded (or, under -recalibrate,
+// route-recalibrated) ridemodel.Coefficients value, and the hybrid model
+// calls internal/ridemodel.Predict directly: the real production equation,
+// never a second implementation of it.
 func runETABenchmark(
-	groups []rideGroup, rides []rideRow, samplesByRide map[string][]sampleRow, cfg *runConfig,
+	groups []rideGroup, rides []rideRow, samplesByRide map[string][]sampleRow,
+	coefficients *ridemodel.Coefficients, cfg *runConfig,
 ) (string, error) {
 	var report strings.Builder
 	var benchmarkErrors []error
-	fmt.Fprintln(&report, "ETA benchmark: one frozen calibration, scored once on route-disjoint first attempts")
-	fmt.Fprintln(&report, "Errors are signed bias, mean absolute error and p90 absolute error, all as percentages of moving time.")
-	fmt.Fprintf(&report, "Calibration is the oldest %.0f%% of rides; a repeat requires Jaccard overlap %.2f on a %.4f-degree coordinate grid.\n",
-		cfg.etaWarmupFraction*100, cfg.etaRouteJaccard, cfg.etaRouteCellDegrees)
+
+	cutoff, err := time.Parse(time.DateOnly, coefficients.CalibrationCutoff)
+	if err != nil {
+		return "", fmt.Errorf("coefficient file's calibration_cutoff: %w", err)
+	}
+
+	if cfg.recalibrate {
+		fmt.Fprintln(&report, "ETA recalibration: refitting the route coefficients over the oldest share of the corpus, then scoring once on the route-disjoint first attempts that follow")
+	} else {
+		fmt.Fprintf(&report, "ETA evaluation: the frozen profile calibrated through %s, scored on route-disjoint first attempts after that date\n", cutoff.Format(time.DateOnly))
+	}
+	fmt.Fprintf(&report, "Errors are signed bias, mean absolute error and p90 absolute error, all as percentages of moving time. A repeat requires Jaccard overlap %.2f on a %.4f-degree coordinate grid.\n",
+		cfg.etaRouteJaccard, cfg.etaRouteCellDegrees)
 
 	for _, group := range groups {
 		if group.Skipped {
@@ -104,7 +116,7 @@ func runETABenchmark(
 			fmt.Fprintf(&report, "  excluded: %s\n", renderExclusions(exclusions))
 		}
 
-		eval, err := evaluateSplit(cleanRides, samplesByRide, cfg, cfg.etaRouteCellDegrees, cfg.etaRouteJaccard, cfg.etaWarmupFraction)
+		eval, err := evaluateSplit(cleanRides, samplesByRide, coefficients, cutoff, cfg)
 		if err != nil {
 			fmt.Fprintf(&report, "  skipped (%v)\n", err)
 			benchmarkErrors = append(benchmarkErrors, fmt.Errorf("%s: %w", displayGear(group.Gear), err))
@@ -115,39 +127,57 @@ func runETABenchmark(
 		printSplitSummary(&report, &eval)
 		printModelMetrics(&report, &eval)
 		printCandidateComparison(&report, &eval)
-		printSurfaceComparison(&report, &eval, cfg.osmIndexPath != "")
-		printRobustness(&report, cleanRides, samplesByRide, cfg)
-		printCopyReadyProfile(&report, cfg, &eval)
+		if cfg.recalibrate {
+			printCopyReadyProfile(&report, coefficients, &eval)
+		}
 	}
 
 	return report.String(), errors.Join(benchmarkErrors...)
 }
 
-// evaluateSplit runs the whole pipeline for one set of route-matching and
-// warm-up parameters: cluster routes, split chronologically into calibration
-// and evaluation rides, fit every model once on calibration alone, and score
-// them once against the route-disjoint evaluation rides. Calling it again
-// with different parameters — what the robustness section does — never
-// reuses a fit from another parameterisation, so a robustness variation is as
-// frozen as the primary run.
+// evaluateSplit clusters routes, splits chronologically into "seen" and
+// "evaluate" — by the loaded profile's own calibration_cutoff date by
+// default, or by -eta-warmup-fraction of the whole corpus under
+// -recalibrate — builds every model once from the resulting coefficients
+// (only re-fit under -recalibrate), and scores them once against the
+// route-disjoint evaluation rides.
 func evaluateSplit(
-	cleanRides []rideRow, samplesByRide map[string][]sampleRow, cfg *runConfig,
-	cellDegrees, jaccard, warmupFraction float64,
+	cleanRides []rideRow, samplesByRide map[string][]sampleRow,
+	coefficients *ridemodel.Coefficients, cutoff time.Time, cfg *runConfig,
 ) (splitEvaluation, error) {
-	clusters, clusterCount, repeatedRides, largestCluster := clusterRoutes(cleanRides, samplesByRide, cellDegrees, jaccard)
-	calibrate, evaluate := routeDisjointSplit(cleanRides, clusters, warmupFraction)
-	if len(calibrate) < minGroupRides {
-		return splitEvaluation{}, errors.New("too few calibration rides")
+	clusters, clusterCount, repeatedRides, largestCluster := clusterRoutes(cleanRides, samplesByRide, cfg.etaRouteCellDegrees, cfg.etaRouteJaccard)
+
+	// calibration_cutoff is a date, not an instant — "the last calibration
+	// ride's date" — so every ride on that calendar date counts as seen,
+	// whatever time of day it was recorded. Comparing against the start of
+	// the following day, rather than cutoff itself, is what keeps a
+	// same-day ride from being misclassified as unseen.
+	seenCount := sort.Search(len(cleanRides), func(i int) bool { return !cleanRides[i].Date.Before(cutoff.AddDate(0, 0, 1)) })
+	if cfg.recalibrate {
+		seenCount = int(float64(len(cleanRides)) * cfg.etaWarmupFraction)
+	}
+	seen, evaluate := routeDisjointSplit(cleanRides, clusters, seenCount)
+	if cfg.recalibrate && len(seen) < minGroupRides {
+		return splitEvaluation{}, errors.New("too few rides before the recalibration cutoff to fit from")
 	}
 	if len(evaluate) == 0 {
-		return splitEvaluation{}, errors.New("no route-disjoint evaluation rides")
+		return splitEvaluation{}, errors.New("no route-disjoint evaluation rides after the cutoff")
 	}
 
-	models, secondsPerKM, secondsPerAscentM, physicsNote, err := fitBenchmarkModels(calibrate, samplesByRide, cfg)
-	if err != nil {
-		return splitEvaluation{}, err
+	active := *coefficients
+	splitCutoff := cutoff
+	recalibrated := false
+	if cfg.recalibrate {
+		secondsPerKM, secondsPerAscentM, err := fitRouteCoefficients(seen, samplesByRide)
+		if err != nil {
+			return splitEvaluation{}, err
+		}
+		active.SecondsPerKM, active.SecondsPerAscentM = secondsPerKM, secondsPerAscentM
+		splitCutoff = seen[len(seen)-1].Date
+		recalibrated = true
 	}
 
+	models := []benchmarkModel{physicsOnlyModel(&active), routeOnlyModel(active.SecondsPerKM, active.SecondsPerAscentM), hybridModel(&active)}
 	errorsByModel, scored := scoreRides(models, evaluate, samplesByRide)
 	if scored == 0 {
 		return splitEvaluation{}, errors.New("no evaluation ride could be scored")
@@ -155,28 +185,29 @@ func evaluateSplit(
 
 	return splitEvaluation{
 		clusterCount: clusterCount, repeatedRides: repeatedRides, largestCluster: largestCluster,
-		calibrateCount: len(calibrate), evaluateCount: len(evaluate), evaluateScored: scored,
-		calibrationCutoff: calibrate[len(calibrate)-1].Date,
-		models:            models, errorsByModel: errorsByModel, physicsNote: physicsNote,
-		secondsPerKM: secondsPerKM, secondsPerAscentM: secondsPerAscentM,
+		seenCount: len(seen), evaluateCount: len(evaluate), evaluateScored: scored,
+		calibrationCutoff: splitCutoff, models: models, errorsByModel: errorsByModel,
+		secondsPerKM: active.SecondsPerKM, secondsPerAscentM: active.SecondsPerAscentM, recalibrated: recalibrated,
 	}, nil
 }
 
 func printSplitSummary(report *strings.Builder, eval *splitEvaluation) {
 	fmt.Fprintf(report, "  %d route clusters, %d repeats, largest cluster %d\n",
 		eval.clusterCount, eval.repeatedRides, eval.largestCluster)
-	fmt.Fprintf(report, "  calibration: %d rides through %s\n", eval.calibrateCount, eval.calibrationCutoff.Format(time.DateOnly))
-	fmt.Fprintf(report, "  evaluation: %d/%d route-disjoint first attempts scored\n", eval.evaluateScored, eval.evaluateCount)
-	if eval.physicsNote != "" {
-		fmt.Fprintf(report, "  current physics: unavailable (%s)\n", eval.physicsNote)
+	if eval.recalibrated {
+		fmt.Fprintf(report, "  recalibrated on %d rides through %s\n", eval.seenCount, eval.calibrationCutoff.Format(time.DateOnly))
+	} else {
+		fmt.Fprintf(report, "  frozen profile calibrated through %s; %d rides already seen by then\n",
+			eval.calibrationCutoff.Format(time.DateOnly), eval.seenCount)
 	}
+	fmt.Fprintf(report, "  evaluation: %d/%d route-disjoint first attempts scored\n", eval.evaluateScored, eval.evaluateCount)
 }
 
 func printModelMetrics(report *strings.Builder, eval *splitEvaluation) {
 	bestName, bestMAE := "", math.Inf(1)
 	for _, model := range eval.models {
 		metrics := summarizeBenchmarkErrors(eval.errorsByModel[model.name])
-		fmt.Fprintf(report, "    %-24s bias %+6.2f  MAE %6.2f  p90 %6.2f", model.name, metrics.bias, metrics.mae, metrics.p90)
+		fmt.Fprintf(report, "    %-14s bias %+6.2f  MAE %6.2f  p90 %6.2f", model.name, metrics.bias, metrics.mae, metrics.p90)
 		if model.detail != "" {
 			fmt.Fprintf(report, "  (%s)", model.detail)
 		}
@@ -188,111 +219,44 @@ func printModelMetrics(report *strings.Builder, eval *splitEvaluation) {
 	fmt.Fprintf(report, "  lowest MAE: %s (%.2f%%)\n", bestName, bestMAE)
 }
 
-// printCandidateComparison reports the frozen hybrid candidate against both
-// baselines the acceptance criteria name: the current fitted physics model
-// (when this corpus could fit one) and the route-only baseline it averages
-// with. A candidate that is not materially better than the fitted baseline,
-// or not competitive with the route-only one, is a reason to stop rather than
-// tune against these same evaluation routes — this section is what that
-// decision reads off.
+// printCandidateComparison reports the hybrid model against the physics-only
+// and route-only diagnostics the issue's "Keep" list names, so a reader can
+// see whether the hybrid is earning its blend rather than being carried by
+// one half.
 func printCandidateComparison(report *strings.Builder, eval *splitEvaluation) {
-	candidate := eval.errorsByModel["hybrid (scalar Crr)"]
+	candidate := eval.errorsByModel["hybrid"]
 	if len(candidate) == 0 {
 		return
 	}
-	fmt.Fprintln(report, "  hybrid candidate vs baselines (positive is the candidate doing better):")
-	if current := eval.errorsByModel["current physics"]; len(current) > 0 {
-		improvement, low, high := pairedMAEImprovement(current, candidate)
-		fmt.Fprintf(report, "    vs current physics       %+6.2f pp  95%% bootstrap [%+6.2f, %+6.2f]\n", improvement, low, high)
+	fmt.Fprintln(report, "  hybrid vs diagnostic baselines (positive is the hybrid doing better):")
+	if physicsOnly := eval.errorsByModel["physics-only"]; len(physicsOnly) > 0 {
+		improvement, low, high := pairedMAEImprovement(physicsOnly, candidate)
+		fmt.Fprintf(report, "    vs physics-only   %+6.2f pp  95%% bootstrap [%+6.2f, %+6.2f]\n", improvement, low, high)
 	}
 	if routeOnly := eval.errorsByModel["route-only"]; len(routeOnly) > 0 {
 		improvement, low, high := pairedMAEImprovement(routeOnly, candidate)
-		fmt.Fprintf(report, "    vs route-only            %+6.2f pp  95%% bootstrap [%+6.2f, %+6.2f]\n", improvement, low, high)
+		fmt.Fprintf(report, "    vs route-only     %+6.2f pp  95%% bootstrap [%+6.2f, %+6.2f]\n", improvement, low, high)
 	}
 }
 
-// printSurfaceComparison records the surface-table decision from this run's
-// own scored errors, per #239's acceptance criterion that the decision come
-// from an OSM-labelled run rather than being assumed. Without -osm-index every
-// sample reads as surface.KindUnknown, which Coefficients.crr already maps to
-// asphalt — the same value the scalar variant uses — so the two candidates
-// would score identically and the comparison is flagged as uninformative
-// rather than silently printed as a real result.
-func printSurfaceComparison(report *strings.Builder, eval *splitEvaluation, osmIndexProvided bool) {
-	scalar, surfaceTable := eval.errorsByModel["hybrid (scalar Crr)"], eval.errorsByModel["hybrid (surface Crr)"]
-	if len(scalar) == 0 || len(surfaceTable) == 0 {
-		return
-	}
-	fmt.Fprintln(report, "  surface table vs scalar Crr (positive is the surface table doing better):")
-	if !osmIndexProvided {
-		fmt.Fprintln(report, "    no -osm-index supplied; every sample is unclassified and reads as asphalt either way — not informative")
-
-		return
-	}
-	improvement, low, high := pairedMAEImprovement(scalar, surfaceTable)
-	fmt.Fprintf(report, "    %+6.2f pp  95%% bootstrap [%+6.2f, %+6.2f]\n", improvement, low, high)
-}
-
-// printRobustness re-runs the whole calibrate-once/score-once pipeline at one
-// alternate value for each of the three parameters the acceptance criteria
-// name — the route-matching grid, the route-overlap threshold, and the
-// warm-up fraction — and reports how the hybrid candidate's MAE moves. Each
-// alternate run calibrates fresh from its own split; nothing here reuses the
-// primary run's fit.
-func printRobustness(
-	report *strings.Builder, cleanRides []rideRow, samplesByRide map[string][]sampleRow, cfg *runConfig,
-) {
-	fmt.Fprintln(report, "  robustness (hybrid candidate MAE, scalar Crr):")
-	variations := []struct {
-		label                        string
-		cellDegrees, jaccard, warmup float64
-	}{
-		{"default", cfg.etaRouteCellDegrees, cfg.etaRouteJaccard, cfg.etaWarmupFraction},
-		{"coarser route grid", cfg.etaRouteCellDegrees * 2, cfg.etaRouteJaccard, cfg.etaWarmupFraction},
-		{"looser route overlap", cfg.etaRouteCellDegrees, cfg.etaRouteJaccard - 0.1, cfg.etaWarmupFraction},
-		{"shorter warm-up", cfg.etaRouteCellDegrees, cfg.etaRouteJaccard, cfg.etaWarmupFraction - 0.1},
-	}
-	for _, variation := range variations {
-		eval, err := evaluateSplit(cleanRides, samplesByRide, cfg, variation.cellDegrees, variation.jaccard, variation.warmup)
-		if err != nil {
-			fmt.Fprintf(report, "    %-22s unavailable (%v)\n", variation.label, err)
-
-			continue
-		}
-		metrics := summarizeBenchmarkErrors(eval.errorsByModel["hybrid (scalar Crr)"])
-		fmt.Fprintf(report, "    %-22s MAE %6.2f (%d rides)\n", variation.label, metrics.mae, metrics.rides)
-	}
-}
-
-// printCopyReadyProfile prints the values #240 needs to carry the frozen
-// candidate into the runtime coefficient contract: the calibrated route
-// coefficients, the fixed physics constants they were averaged against, the
-// calibration cutoff, and the validation metrics that justify the choice.
-// This is a report block, not a file writer — the production TOML schema is
-// #240's decision, and this is what the operator pastes into it.
-func printCopyReadyProfile(report *strings.Builder, cfg *runConfig, eval *splitEvaluation) {
-	candidate := eval.errorsByModel["hybrid (scalar Crr)"]
+// printCopyReadyProfile prints the values an operator pastes into
+// ridemodel.toml after an explicitly requested recalibration: the newly
+// fitted route coefficients, the profile's unchanged physics inputs, the new
+// calibration cutoff, and the validation metrics that justify adopting it.
+func printCopyReadyProfile(report *strings.Builder, coefficients *ridemodel.Coefficients, eval *splitEvaluation) {
+	candidate := eval.errorsByModel["hybrid"]
 	if len(candidate) == 0 {
 		return
 	}
 	metrics := summarizeBenchmarkErrors(candidate)
-	fmt.Fprintf(report, "  copy-ready profile (%s):\n", hybridModelVersion)
+	fmt.Fprintf(report, "  copy-ready profile (%s):\n", modelVersionLabel)
 	fmt.Fprintf(report, "    calibration_cutoff = %s\n", eval.calibrationCutoff.Format(time.DateOnly))
+	fmt.Fprintf(report, "    mass_kg = %.1f\n", coefficients.MassKG)
+	fmt.Fprintf(report, "    power_watts = %.0f\n", coefficients.PowerWatts)
+	fmt.Fprintf(report, "    cda_m2 = %.2f\n", coefficients.CdAM2)
+	fmt.Fprintf(report, "    crr = %.3f\n", coefficients.CrrBySurface[surface.KindAsphalt])
 	fmt.Fprintf(report, "    seconds_per_km = %.4f\n", eval.secondsPerKM)
 	fmt.Fprintf(report, "    seconds_per_ascent_m = %.4f\n", eval.secondsPerAscentM)
-	fmt.Fprintf(report, "    mass_kg = %.1f\n", cfg.massKG)
-	fmt.Fprintf(report, "    cda_m2 = %.2f\n", referenceCdA)
-	fmt.Fprintf(report, "    power_watts = %.0f\n", referencePowerWatts)
-	fmt.Fprintf(report, "    drive_efficiency = %.3f\n", referenceDriveEfficiency)
-	fmt.Fprintf(report, "    air_density_kg_per_m3 = %.3f\n", standardAirDensity)
-	fmt.Fprintf(report, "    descent_cutoff_percent = %.1f\n", referenceDescentCutoffPercent)
-	fmt.Fprintf(report, "    descent_cap_metres_per_second = %.2f\n", observedDescentCapMPS)
-	fmt.Fprintf(report, "    crr = %.3f (scalar; use this unless the surface-table comparison above favours the table below)\n", referenceScalarCrr)
-	fmt.Fprintln(report, "    crr_by_surface (per-surface alternative; paste this instead if the comparison favours it):")
-	surfaceCrr := referenceCrrBySurface()
-	for _, kind := range []surface.Kind{surface.KindAsphalt, surface.KindPaving, surface.KindCompacted, surface.KindGravel, surface.KindGround} {
-		fmt.Fprintf(report, "      %s = %.3f\n", kind, surfaceCrr[kind])
-	}
 	fmt.Fprintf(report, "    validation: rides %d, bias %+.2f%%, MAE %.2f%%, p90 %.2f%%\n", metrics.rides, metrics.bias, metrics.mae, metrics.p90)
 }
 
@@ -507,163 +471,43 @@ func unionClusters(parents []int, left, right int) {
 	}
 }
 
-// routeDisjointSplit orders rides chronologically and draws one cutoff at
-// warmupFraction: everything before it calibrates, and everything after it is
-// scored — but only a ride whose route cluster never appeared in calibration
-// and has not already been selected, so evaluation sees each unseen route
-// exactly once. #239 forbids refitting per fold or per test route; a single
-// cutoff is what makes that true by construction rather than by convention.
-func routeDisjointSplit(rides []rideRow, clusters map[string]int, warmupFraction float64) (calibrate, evaluate []rideRow) {
+// routeDisjointSplit orders rides chronologically and draws one cutoff at the
+// given index: everything before it is "seen", and everything after it is
+// scored — but only a ride whose route cluster never appeared in "seen" and
+// has not already been selected, so evaluation sees each unseen route
+// exactly once. The caller computes seenCount two different ways
+// (evaluateSplit): a date-based search against the loaded profile's own
+// cutoff by default, or an -eta-warmup-fraction of the corpus under
+// -recalibrate — one dedup implementation, two ways to find where to cut.
+func routeDisjointSplit(rides []rideRow, clusters map[string]int, seenCount int) (seen, evaluate []rideRow) {
 	if len(rides) < minGroupRides {
 		return nil, nil
 	}
-	warmup := int(float64(len(rides)) * warmupFraction)
-	calibrate = rides[:warmup]
+	seen = rides[:seenCount]
 
-	seen := make(map[int]bool, warmup)
-	for _, ride := range calibrate {
-		seen[clusters[ride.RideID]] = true
+	seenClusters := make(map[int]bool, seenCount)
+	for _, ride := range seen {
+		seenClusters[clusters[ride.RideID]] = true
 	}
 	selected := make(map[int]bool)
-	for _, ride := range rides[warmup:] {
+	for _, ride := range rides[seenCount:] {
 		cluster := clusters[ride.RideID]
-		if seen[cluster] || selected[cluster] {
+		if seenClusters[cluster] || selected[cluster] {
 			continue
 		}
 		selected[cluster] = true
 		evaluate = append(evaluate, ride)
 	}
 
-	return calibrate, evaluate
+	return seen, evaluate
 }
 
-// fitBenchmarkModels fits every model once against the calibration rides: the
-// route-only linear model (always attempted — it is half of the candidate),
-// the frozen hybrid candidate in its scalar- and surface-Crr forms, and the
-// current fitted physics model as a comparison baseline only. The physics fit
-// is exactly the identification problem #213 exists to route around, so its
-// failure does not fail the whole run — the candidate does not depend on it —
-// it is reported as an unavailable baseline instead.
-func fitBenchmarkModels(
-	train []rideRow, samplesByRide map[string][]sampleRow, cfg *runConfig,
-) (models []benchmarkModel, secondsPerKM, secondsPerAscentM float64, physicsNote string, err error) {
-	linear, secondsPerKM, secondsPerAscentM, err := fitDistanceAscentModel(train, samplesByRide)
-	if err != nil {
-		return nil, 0, 0, "", err
-	}
-
-	hybridScalar := averageModels(fixedPhysicsModel(cfg.massKG, nil), linear, "hybrid (scalar Crr)")
-	hybridSurface := averageModels(fixedPhysicsModel(cfg.massKG, referenceCrrBySurface()), linear, "hybrid (surface Crr)")
-	models = []benchmarkModel{linear, hybridScalar, hybridSurface}
-
-	if physics, physicsErr := fitPhysicsBenchmarkModel(train, samplesByRide, cfg); physicsErr == nil {
-		models = append([]benchmarkModel{physics}, models...)
-	} else {
-		physicsNote = physicsErr.Error()
-	}
-
-	return models, secondsPerKM, secondsPerAscentM, physicsNote, nil
-}
-
-func averageModels(left, right benchmarkModel, name string) benchmarkModel {
-	return benchmarkModel{
-		name:   name,
-		detail: "equal weights",
-		predict: func(samples []sampleRow) float64 {
-			return (left.predict(samples) + right.predict(samples)) / 2
-		},
-	}
-}
-
-func pairedMAEImprovement(current, candidate []float64) (mean, low, high float64) {
-	if len(current) == 0 || len(current) != len(candidate) {
-		return 0, 0, 0
-	}
-	differences := make([]float64, len(current))
-	for i := range current {
-		differences[i] = math.Abs(current[i]) - math.Abs(candidate[i])
-	}
-	mean = meanOf(differences)
-
-	const bootstrapSamples = 10_000
-	bootstrapMeans := make([]float64, bootstrapSamples)
-	random := rand.New(rand.NewSource(1)) //nolint:gosec // Fixed-seed resampling is reproducible statistics, not security.
-	for sample := range bootstrapSamples {
-		var sum float64
-		for range differences {
-			sum += differences[random.Intn(len(differences))]
-		}
-		bootstrapMeans[sample] = sum / float64(len(differences))
-	}
-	sort.Float64s(bootstrapMeans)
-
-	return mean, percentileOf(bootstrapMeans, 0.025), percentileOf(bootstrapMeans, 0.975)
-}
-
-func fitPhysicsBenchmarkModel(train []rideRow, samplesByRide map[string][]sampleRow, cfg *runConfig) (benchmarkModel, error) {
-	var windows []coastingWindow
-	var climbs []climbSample
-	for _, ride := range train {
-		windows = append(windows, coastingWindowsFor(samplesByRide[ride.RideID], &coastingFilterCounts{}, cfg.massKG)...)
-		climbs = append(climbs, climbWindowsFor(samplesByRide[ride.RideID], cfg.climbThresholdPercent)...)
-	}
-	crr, cda, condition := irlsFit(observationsFor(windows, cfg.massKG))
-	if !finitePositive(crr) || crr > plausibleMaxCrr || !finitePositive(cda) || condition > maxAcceptableConditionRatio {
-		return benchmarkModel{}, fmt.Errorf("current physics fit is invalid (Crr %.5f, CdA %.3f, condition %.0f)", crr, cda, condition)
-	}
-	crrBySurface := crrPerSurface(windows, cfg.massKG, cda)
-	power := sustainedPowerWatts(climbs, crrBySurface, crr, cda, cfg.massKG, cfg.driveEfficiency)
-	if !finitePositive(power) {
-		return benchmarkModel{}, errors.New("current physics fit has no valid climbing power")
-	}
-	result := &fitResult{
-		MassKG: cfg.massKG, CrrOverall: crr, CrrBySurface: crrBySurface, CdA: cda,
-		PowerWatts: power, MeanAirDensity: meanAirDensity(windows),
-	}
-	config := coefficientsConfig{
-		DriveEfficiency: cfg.driveEfficiency, AirDensityKGPerM3: result.MeanAirDensity,
-		DescentCutoffPercent: cfg.descentCutoffPercent, DescentCapMetresPerSecond: cfg.descentCapMPS,
-	}
-
-	return benchmarkModel{
-		name:   "current physics",
-		detail: fmt.Sprintf("Crr %.5f, CdA %.3f, %.0f W", crr, cda, power),
-		predict: func(samples []sampleRow) float64 {
-			return predictedMovingSeconds(samples, result, config, cfg.driveEfficiency, power)
-		},
-	}, nil
-}
-
-// fixedPhysicsModel is the settled physics half of the hybrid candidate: mass
-// is the only input this fitter still takes from the operator, everything
-// else is the constant #213 accepted. crrBySurface is nil for the scalar
-// variant (fullCrrBySurface then falls every class back to CrrOverall) and
-// the full per-surface table for the other.
-func fixedPhysicsModel(massKG float64, crrBySurface map[surface.Kind]float64) benchmarkModel {
-	result := &fitResult{
-		MassKG: massKG, CrrOverall: referenceScalarCrr, CdA: referenceCdA,
-		PowerWatts: referencePowerWatts, MeanAirDensity: standardAirDensity, CrrBySurface: crrBySurface,
-	}
-	config := coefficientsConfig{
-		DriveEfficiency: referenceDriveEfficiency, AirDensityKGPerM3: standardAirDensity,
-		DescentCutoffPercent: referenceDescentCutoffPercent, DescentCapMetresPerSecond: observedDescentCapMPS,
-	}
-
-	return benchmarkModel{
-		name: "fixed physics",
-		detail: fmt.Sprintf(
-			"CdA %.2f, %.0f W, coast <= %.0f%%, %.0f km/h cap", referenceCdA, referencePowerWatts,
-			referenceDescentCutoffPercent, observedDescentCapMPS*3.6,
-		),
-		predict: func(samples []sampleRow) float64 {
-			return predictedMovingSeconds(samples, result, config, referenceDriveEfficiency, referencePowerWatts)
-		},
-	}
-}
-
-func fitDistanceAscentModel(
-	train []rideRow, samplesByRide map[string][]sampleRow,
-) (model benchmarkModel, secondsPerKM, secondsPerAscentM float64, err error) {
+// fitRouteCoefficients fits seconds_per_km and seconds_per_ascent_m by
+// weighted least squares against a set of rides' distance, ascent and
+// moving time — the only recalibration this package ever performs; mass,
+// power, drag area and rolling resistance are never re-derived from ride
+// data.
+func fitRouteCoefficients(train []rideRow, samplesByRide map[string][]sampleRow) (secondsPerKM, secondsPerAscentM float64, err error) {
 	observations := make([]coastingObservation, 0, len(train))
 	for _, ride := range train {
 		distanceKM, ascentM := distanceAndAscent(samplesByRide[ride.RideID])
@@ -676,27 +520,120 @@ func fitDistanceAscentModel(
 	}
 	secondsPerKM, secondsPerAscentM, _ = irlsFit(observations)
 	if !finitePositive(secondsPerKM) || !finitePositive(secondsPerAscentM) {
-		return benchmarkModel{}, 0, 0, fmt.Errorf("route-only fit is invalid (%.2f s/km, %.3f s/m)", secondsPerKM, secondsPerAscentM)
+		return 0, 0, fmt.Errorf("route coefficient fit is invalid (%.2f s/km, %.3f s/m)", secondsPerKM, secondsPerAscentM)
 	}
 
+	return secondsPerKM, secondsPerAscentM, nil
+}
+
+// hybridModel is the exact production predictor: internal/ridemodel.Predict,
+// called directly with the loaded (or recalibrated) coefficients. Never a
+// second implementation of the equation.
+func hybridModel(coefficients *ridemodel.Coefficients) benchmarkModel {
+	return benchmarkModel{
+		name:   "hybrid",
+		detail: fmt.Sprintf("%.4f s/km + %.4f s/m", coefficients.SecondsPerKM, coefficients.SecondsPerAscentM),
+		predict: func(samples []sampleRow) float64 {
+			return predictHybrid(samples, coefficients)
+		},
+	}
+}
+
+// physicsOnlyModel isolates the hybrid's physics half by zeroing the route
+// coefficients and doubling internal/ridemodel.Predict's own output — see
+// physicsOnlyScaleFactor's doc comment. Still the real equation, not a copy
+// of it.
+func physicsOnlyModel(coefficients *ridemodel.Coefficients) benchmarkModel {
+	physicsOnly := *coefficients
+	physicsOnly.SecondsPerKM, physicsOnly.SecondsPerAscentM = 0, 0
+
+	return benchmarkModel{
+		name:   "physics-only",
+		detail: fmt.Sprintf("CdA %.2f, %.0f W", coefficients.CdAM2, coefficients.PowerWatts),
+		predict: func(samples []sampleRow) float64 {
+			return physicsOnlyScaleFactor * predictHybrid(samples, &physicsOnly)
+		},
+	}
+}
+
+// routeOnlyModel is the linear route correction alone, with no physics
+// contribution at all — a pure arithmetic diagnostic, never routed through
+// internal/ridemodel.Predict, since Predict has no way to weight the physics
+// half at zero.
+func routeOnlyModel(secondsPerKM, secondsPerAscentM float64) benchmarkModel {
 	return benchmarkModel{
 		name:   "route-only",
-		detail: fmt.Sprintf("%.1f s/km + %.2f s/m", secondsPerKM, secondsPerAscentM),
+		detail: fmt.Sprintf("%.4f s/km + %.4f s/m", secondsPerKM, secondsPerAscentM),
 		predict: func(samples []sampleRow) float64 {
 			distanceKM, ascentM := distanceAndAscent(samples)
 
 			return secondsPerKM*distanceKM + secondsPerAscentM*ascentM
 		},
-	}, secondsPerKM, secondsPerAscentM, nil
+	}
+}
+
+func predictHybrid(samples []sampleRow, coefficients *ridemodel.Coefficients) float64 {
+	stage, ok := normalizedRideStage(samples)
+	if !ok {
+		return 0
+	}
+
+	result, ok := ridemodel.Predict(stage.Geometry(), nil, *coefficients)
+	if !ok {
+		return 0
+	}
+
+	return result.MovingSeconds
 }
 
 func distanceAndAscent(samples []sampleRow) (distanceKM, ascentM float64) {
-	stage, _, ok := normalizedRideStage(samples)
+	stage, ok := normalizedRideStage(samples)
 	if !ok {
 		return 0, 0
 	}
 
 	return stage.DistanceMetres() / 1000, stage.ElevationGainMetres()
+}
+
+// normalizedRideStage converts a ridden trace into the same elevation
+// profile production stores and predicts: the normalizer preserves the GPS
+// line while resampling and median-filtering its altitude channel. A moving
+// sample missing altitude or position (a GPS/barometer dropout) is dropped
+// from the point sequence rather than making the ride unscorable outright —
+// see maxMissingGeometryFraction for why a small amount of this is
+// tolerated.
+func normalizedRideStage(samples []sampleRow) (route.Stage, bool) {
+	points := make([]route.Point, 0, len(samples))
+	var movingSeconds, missingGeometrySeconds float64
+	for i := range samples {
+		s := &samples[i]
+		if !s.Moving {
+			continue
+		}
+		movingSeconds += s.DeltaSeconds
+		if !s.HasAltitude || !s.HasPosition {
+			missingGeometrySeconds += s.DeltaSeconds
+
+			continue
+		}
+		altitude := s.AltitudeM
+		points = append(points, route.Point{Latitude: s.Latitude, Longitude: s.Longitude, Elevation: &altitude})
+	}
+	if movingSeconds > 0 && missingGeometrySeconds/movingSeconds > maxMissingGeometryFraction {
+		return route.Stage{}, false
+	}
+	stage, err := route.NewStage(
+		route.ProviderVeloPlanner, 1, 1, "benchmark", "benchmark", "", points, "benchmark",
+	)
+	if err != nil {
+		return route.Stage{}, false
+	}
+	normalized, err := elevation.New().Process(&stage)
+	if err != nil {
+		return route.Stage{}, false
+	}
+
+	return normalized, true
 }
 
 func scoreRides(
@@ -744,4 +681,41 @@ func summarizeBenchmarkErrors(errorPercentages []float64) benchmarkMetrics {
 		mae:   meanOf(absolute),
 		p90:   percentileOf(absolute, 0.9),
 	}
+}
+
+func meanOf(values []float64) float64 {
+	if len(values) == 0 {
+		return 0
+	}
+	sum := 0.0
+	for _, v := range values {
+		sum += v
+	}
+
+	return sum / float64(len(values))
+}
+
+func pairedMAEImprovement(current, candidate []float64) (mean, low, high float64) {
+	if len(current) == 0 || len(current) != len(candidate) {
+		return 0, 0, 0
+	}
+	differences := make([]float64, len(current))
+	for i := range current {
+		differences[i] = math.Abs(current[i]) - math.Abs(candidate[i])
+	}
+	mean = meanOf(differences)
+
+	const bootstrapSamples = 10_000
+	bootstrapMeans := make([]float64, bootstrapSamples)
+	random := rand.New(rand.NewSource(1)) //nolint:gosec // Fixed-seed resampling is reproducible statistics, not security.
+	for sample := range bootstrapSamples {
+		var sum float64
+		for range differences {
+			sum += differences[random.Intn(len(differences))]
+		}
+		bootstrapMeans[sample] = sum / float64(len(differences))
+	}
+	sort.Float64s(bootstrapMeans)
+
+	return mean, percentileOf(bootstrapMeans, 0.025), percentileOf(bootstrapMeans, 0.975)
 }

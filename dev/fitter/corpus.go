@@ -109,15 +109,14 @@ func readCorpusCSV[T any](path string, requiredColumns []string, build func(reco
 }
 
 func readSamplesCSV(path string) ([]sampleRow, error) {
-	// Everything stages A and B actually key decisions on: which samples are
-	// coasting- or climbing-eligible, and the physics inputs for both. Only
-	// temperature and heart rate are left out — both are genuinely optional
-	// sensor channels with a defined fallback (standard air density; skip the
-	// cross-check) rather than columns this package's core logic depends on.
+	// Everything the route-only fit and the hybrid benchmark actually key
+	// decisions on: geometry, timing, and the moving flag. Cadence,
+	// temperature and heart rate were the sensor-level physical fitter's own
+	// columns — dev/ridemodel still writes them, but nothing here reads them
+	// since #241.
 	required := []string{
 		"ride_id", "time", "delta_seconds", "interval_distance_m", "speed_mps", "gradient_percent",
-		"altitude_m", "has_altitude", "cadence_rpm", "has_cadence",
-		"latitude", "longitude", "has_position", "moving",
+		"altitude_m", "has_altitude", "latitude", "longitude", "has_position", "moving",
 	}
 
 	return readCorpusCSV(path, required, func(record []string, c csvColumns) sampleRow {
@@ -130,15 +129,9 @@ func readSamplesCSV(path string) ([]sampleRow, error) {
 			GradientPercent:  c.float(record, "gradient_percent"),
 			AltitudeM:        c.float(record, "altitude_m"),
 			HasAltitude:      c.boolean(record, "has_altitude"),
-			CadenceRPM:       c.float(record, "cadence_rpm"),
-			HasCadence:       c.boolean(record, "has_cadence"),
-			TemperatureC:     c.float(record, "temperature_c"),
-			HasTemperature:   c.boolean(record, "has_temperature"),
 			Latitude:         c.float(record, "latitude"),
 			Longitude:        c.float(record, "longitude"),
 			HasPosition:      c.boolean(record, "has_position"),
-			HeartRateBPM:     c.float(record, "heart_rate_bpm"),
-			HasHeartRate:     c.boolean(record, "has_heart_rate"),
 			Moving:           c.boolean(record, "moving"),
 		}
 	})
@@ -153,22 +146,6 @@ func readRidesCSV(path string) ([]rideRow, error) {
 			Date:          c.time(record, "date"),
 			Gear:          c.str(record, "gear"),
 			MovingSeconds: c.float(record, "moving_seconds"),
-		}
-	})
-}
-
-func readIndoorCSV(path string) ([]indoorRow, error) {
-	required := []string{"ride_id", "time", "delta_seconds"}
-
-	return readCorpusCSV(path, required, func(record []string, c csvColumns) indoorRow {
-		return indoorRow{
-			RideID:       c.str(record, "ride_id"),
-			Time:         c.time(record, "time"),
-			DeltaSeconds: c.float(record, "delta_seconds"),
-			PowerWatts:   c.float(record, "power_w"),
-			HasPower:     c.boolean(record, "has_power"),
-			HeartRateBPM: c.float(record, "heart_rate_bpm"),
-			HasHeartRate: c.boolean(record, "has_heart_rate"),
 		}
 	})
 }
