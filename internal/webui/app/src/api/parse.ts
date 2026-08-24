@@ -227,6 +227,15 @@ function routeValidationFrom(value: unknown, at: string): RouteValidation | unde
 }
 
 function routeFrom(source: Record<string, unknown>, at: string): Route {
+  const movingSeconds = movingSecondsFrom(source.moving_seconds, `${at}.moving_seconds`);
+  const validation = routeValidationFrom(source.validation, `${at}.validation`);
+  // validation qualifies a shown moving time; a server that sends one
+  // without the other has drifted from its own documented contract, not
+  // sent a value this client should render or silently drop.
+  if (validation !== undefined && movingSeconds === undefined) {
+    throw new ContractError(`${at}.validation is present without ${at}.moving_seconds`);
+  }
+
   return {
     provider: text(source.provider, `${at}.provider`),
     routeId: count(source.route_id, `${at}.route_id`),
@@ -240,8 +249,8 @@ function routeFrom(source: Record<string, unknown>, at: string): Route {
     ascentMetres: count(source.ascent_metres ?? 0, `${at}.ascent_metres`),
     maxGradientPercent: count(source.max_gradient_percent ?? 0, `${at}.max_gradient_percent`),
     pointCount: count(source.point_count, `${at}.point_count`),
-    movingSeconds: movingSecondsFrom(source.moving_seconds, `${at}.moving_seconds`),
-    validation: routeValidationFrom(source.validation, `${at}.validation`),
+    movingSeconds,
+    validation,
   };
 }
 

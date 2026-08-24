@@ -156,6 +156,24 @@ describe("parseRoutes", () => {
     });
     expect(stages[0]?.validation?.biasPercent).toBe(-1.2);
   });
+
+  it("rejects validation present without a moving time to qualify", () => {
+    expect(() =>
+      parseRoutes({
+        stages: [
+          {
+            ...stagePayload,
+            validation: {
+              bias_percent: -1.2,
+              mae_percent: 6.8,
+              p90_percent: 14.1,
+              evaluated_rides: 42,
+            },
+          },
+        ],
+      }),
+    ).toThrow(ContractError);
+  });
 });
 
 describe("parseRouteGeometry", () => {

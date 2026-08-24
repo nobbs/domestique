@@ -400,6 +400,27 @@ func TestHandlerOmitsValidationWhenNoneIsConfigured(t *testing.T) {
 	assert.NotContains(t, response.Body.String(), "validation", "no profile is configured in this handler")
 }
 
+// New copies RideModelValidation on the same terms Basemaps and TargetIDs
+// already are: the handler serves it on every request, so a caller that
+// mutates its own Options value after New returns must not be able to
+// change what a concurrent handler serves.
+func TestHandlerIsUnaffectedByMutatingTheOptionsAfterConstruction(t *testing.T) {
+	movingSeconds := 1234.5
+	state := &fakeState{summaries: []route.Summary{{
+		RouteID: 3, StageOrder: 1, RouteName: "Sunday", PointCount: 2, DistanceMetres: 900,
+		MovingSeconds: &movingSeconds,
+	}}}
+	validation := &RideModelValidation{BiasPercent: -1.2, MAEPercent: 6.8, P90Percent: 14.1, EvaluatedRides: 42}
+	handler := newHandlerWithRideModelValidation(t, state, validation)
+
+	validation.MAEPercent = 99.9
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/routes"))
+	require.Equal(t, http.StatusOK, response.Code, "routes status")
+	assert.Contains(t, response.Body.String(), `"mae_percent":6.8`, "the handler must not see a post-construction mutation")
+}
+
 func TestHandlerServesTileStyleConfiguration(t *testing.T) {
 	handler := newTestHandler(t)
 	response := httptest.NewRecorder()

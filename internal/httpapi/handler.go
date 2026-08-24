@@ -502,6 +502,17 @@ func New(
 		sourceBaseURLs[provider] = trimmed
 	}
 
+	// Copied rather than stored by reference, on the same terms as Basemaps
+	// and TargetIDs below: the handler serves concurrently, and a caller
+	// that mutated its own Options value after New returned — even
+	// inadvertently, in a test — must not be able to race the handler that
+	// reads it on every request.
+	var rideModelValidation *RideModelValidation
+	if options.RideModelValidation != nil {
+		copied := *options.RideModelValidation
+		rideModelValidation = &copied
+	}
+
 	handler := &Handler{
 		mux:                 http.NewServeMux(),
 		oauth:               oauthService,
@@ -518,7 +529,7 @@ func New(
 		targetIDs:           append([]string(nil), options.TargetIDs...),
 		surfaceIndex:        options.SurfaceIndexFunc,
 		sourceStaleAfter:    options.SourceStaleAfter,
-		rideModelValidation: options.RideModelValidation,
+		rideModelValidation: rideModelValidation,
 		now:                 time.Now,
 
 		accessVerifier: options.AccessVerifier,
