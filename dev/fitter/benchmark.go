@@ -7,6 +7,8 @@ import (
 	"math/rand"
 	"sort"
 	"strings"
+
+	"github.com/nobbs/domestique/internal/surface"
 )
 
 const (
@@ -15,6 +17,8 @@ const (
 	recentRideCount                = 20
 	defaultRouteCellDegrees        = 0.002
 	defaultRouteJaccardThreshold   = 0.7
+	referenceDriveEfficiency       = 0.975
+	observedDescentCapMPS          = 60.0 / 3.6
 )
 
 type benchmarkModel struct {
@@ -70,7 +74,7 @@ func runETABenchmark(
 		}
 
 		aggregate := make(map[string][]float64)
-		modelOrder := make([]string, 0, 7)
+		modelOrder := make([]string, 0, 15)
 		scoredFolds := 0
 		for index, fold := range folds {
 			models, err := fitBenchmarkModels(fold.train, samplesByRide, cfg)
@@ -402,6 +406,14 @@ func fitBenchmarkModels(train []rideRow, samplesByRide map[string][]sampleRow, c
 		return nil, err
 	}
 	physicsLinear := averageModels(physics, linear, "physics + linear average")
+	referencePhysics := referencePhysicsBenchmarkModel(cfg.massKG, 0.40, 200)
+	referenceLinear := averageModels(referencePhysics, linear, "reference + linear avg")
+	midDragPhysics := referencePhysicsBenchmarkModel(cfg.massKG, 0.45, 200)
+	midDragLinear := averageModels(midDragPhysics, linear, "mid-drag + linear avg")
+	midDrag180Physics := referencePhysicsBenchmarkModel(cfg.massKG, 0.45, 180)
+	midDrag180Linear := averageModels(midDrag180Physics, linear, "mid-drag 180 W + linear")
+	highDragPhysics := referencePhysicsBenchmarkModel(cfg.massKG, 0.50, 200)
+	highDragLinear := averageModels(highDragPhysics, linear, "high-drag + linear avg")
 
 	return []benchmarkModel{
 		baseline,
@@ -411,6 +423,14 @@ func fitBenchmarkModels(train []rideRow, samplesByRide map[string][]sampleRow, c
 		withRecentScale(linear, train, samplesByRide),
 		physicsLinear,
 		withRecentScale(physicsLinear, train, samplesByRide),
+		referencePhysics,
+		referenceLinear,
+		midDragPhysics,
+		midDragLinear,
+		midDrag180Physics,
+		midDrag180Linear,
+		highDragPhysics,
+		highDragLinear,
 	}, nil
 }
 
@@ -481,6 +501,32 @@ func fitPhysicsBenchmarkModel(train []rideRow, samplesByRide map[string][]sample
 			return predictedMovingSeconds(samples, result, config, cfg.driveEfficiency, power)
 		},
 	}, nil
+}
+
+func referencePhysicsBenchmarkModel(massKG, cda, powerWatts float64) benchmarkModel {
+	result := &fitResult{
+		MassKG: massKG, CrrOverall: 0.012, CdA: cda,
+		PowerWatts: powerWatts, MeanAirDensity: standardAirDensity,
+		CrrBySurface: map[surface.Kind]float64{
+			surface.KindAsphalt: 0.012, surface.KindPaving: 0.014, surface.KindCompacted: 0.015,
+			surface.KindGravel: 0.018, surface.KindGround: 0.025,
+		},
+	}
+	config := coefficientsConfig{
+		DriveEfficiency: referenceDriveEfficiency, AirDensityKGPerM3: standardAirDensity,
+		DescentCutoffPercent: -1, DescentCapMetresPerSecond: observedDescentCapMPS,
+	}
+
+	return benchmarkModel{
+		name: fmt.Sprintf("reference %.2f / %.0f W", cda, powerWatts),
+		detail: fmt.Sprintf(
+			"Crr 0.012 asphalt, CdA %.2f, %.0f W, coast <= -1%%, 60 km/h cap",
+			cda, powerWatts,
+		),
+		predict: func(samples []sampleRow) float64 {
+			return predictedMovingSeconds(samples, result, config, referenceDriveEfficiency, powerWatts)
+		},
+	}
 }
 
 func fitDistanceAscentModel(train []rideRow, samplesByRide map[string][]sampleRow) (benchmarkModel, error) {
