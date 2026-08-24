@@ -35,7 +35,7 @@ func TestSplitByDateNeverShufflesAcrossTheBoundary(t *testing.T) {
 func threeSamplesUpAGrade(gradePercent float64) []sampleRow {
 	when := time.Date(2026, 1, 1, 6, 0, 0, 0, time.UTC)
 	lat := 50.0
-	samples := make([]sampleRow, 4)
+	samples := make([]sampleRow, 3)
 	for i := range samples {
 		samples[i] = sampleRow{
 			Time: when.Add(time.Duration(i) * time.Second), DeltaSeconds: 1,
@@ -64,6 +64,7 @@ func TestPredictedMovingSecondsMatchesADirectRidemodelPredictCall(t *testing.T) 
 	for i := range samples {
 		altitude := samples[i].AltitudeM
 		points[i] = route.Point{Latitude: samples[i].Latitude, Longitude: samples[i].Longitude, Elevation: &altitude}
+		kinds[i] = samples[i].Surface
 	}
 	want, ok := ridemodel.Predict(points, kinds, ridemodel.Coefficients{
 		MassKG: 90.0, PowerWatts: 155.0, DriveEfficiency: 0.975, CdAM2: 0.45, AirDensityKGPerM3: 1.2,
@@ -74,7 +75,7 @@ func TestPredictedMovingSecondsMatchesADirectRidemodelPredictCall(t *testing.T) 
 }
 
 func TestPredictedMovingSecondsReturnsZeroWithFewerThanTwoEligibleSamples(t *testing.T) {
-	samples := []sampleRow{{Moving: true, HasAltitude: true, Latitude: 50.0, Longitude: 8.0}}
+	samples := []sampleRow{{Moving: true, HasAltitude: true, HasPosition: true, Latitude: 50.0, Longitude: 8.0}}
 	result := &fitResult{CrrOverall: 0.006, CdA: 0.45, MassKG: 90.0}
 	config := coefficientsConfig{DriveEfficiency: 0.975, AirDensityKGPerM3: 1.2, DescentCutoffPercent: -1.0, DescentCapMetresPerSecond: 22.0}
 
