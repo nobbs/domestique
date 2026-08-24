@@ -23,6 +23,7 @@
  * question they are not asking any more.
  */
 
+import { IconChevronDown } from "@tabler/icons-react";
 import type { Position } from "../../api/types";
 import { ElevationProfile } from "../../components/ElevationProfile";
 import { ForecastStrip } from "../../components/ForecastStrip";
@@ -178,21 +179,12 @@ export function RouteProfile({
            * through the change says the chart folded away, where two paths
            * cutting from one to the other would only say it is gone.
            */}
-          <svg
+          <IconChevronDown
             className="route-profile__chevron"
-            viewBox="0 0 12 12"
-            width="12"
-            height="12"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.6"
-            strokeLinecap="round"
-            strokeLinejoin="round"
+            size={12}
+            stroke={1.6}
             aria-hidden="true"
-            focusable="false"
-          >
-            <polyline points="2.5,4.5 6,8 9.5,4.5" />
-          </svg>
+          />
         </button>
       </div>
       {/*

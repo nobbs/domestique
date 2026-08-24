@@ -42,7 +42,7 @@ const METRES_PER_DEGREE_LATITUDE = 111_320;
 export const CHEVRON_SPACING_PIXELS = 120;
 
 /** How long each arm of a chevron runs, in pixels on screen. */
-export const CHEVRON_ARM_PIXELS = 7;
+export const CHEVRON_ARM_PIXELS = 10;
 
 /** How far an arm swings back from the direction of travel. */
 const CHEVRON_SPREAD_DEGREES = 35;

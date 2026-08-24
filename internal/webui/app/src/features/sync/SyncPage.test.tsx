@@ -35,7 +35,7 @@ function statusBody(build?: Record<string, unknown>) {
 }
 
 /**
- * Every request the page makes, answered from one place. The page is three
+ * Every request the page makes, answered from one place. The page is four
  * cards that each fetch for themselves, so a test that stubbed only one of them
  * would be asserting against a page half of which had failed.
  */
@@ -68,19 +68,24 @@ afterEach(() => {
 
 describe("SyncPage", () => {
   /*
-   * Three cards, in the order the questions come. The headings are the page: an
+   * Settings, then three operational cards in the order the questions come. The headings are the page: an
    * operator scanning it should be able to find what is happening now without
    * reading the history, and find the history without reading the accounts.
    */
-  it("asks the three questions in order, and offers the way back to the map", async () => {
+  it("puts visible settings before the operational questions and offers the way back to the map", async () => {
     renderPage();
 
     expect(screen.getByRole("heading", { level: 1, name: "Sync" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "← Back to the map" })).toHaveAttribute("href", "/");
+    expect(screen.getByRole("link", { name: "Back to the map" })).toHaveAttribute("href", "/");
     const headings = (await screen.findAllByRole("heading", { level: 2 })).map(
       (heading) => heading.textContent,
     );
-    expect(headings).toEqual(["Now", "What the accounts hold", "What has happened"]);
+    expect(headings).toEqual(["Settings", "Now", "What the accounts hold", "What has happened"]);
+    expect(screen.getByRole("radio", { name: "Metric (km)" })).toBeVisible();
+    expect(screen.getByRole("radio", { name: "Imperial (mi)" })).toBeVisible();
+    expect(screen.getByRole("radio", { name: "System" })).toBeVisible();
+    expect(screen.getByRole("radio", { name: "Light" })).toBeVisible();
+    expect(screen.getByRole("radio", { name: "Dark" })).toBeVisible();
   });
 
   // A notification carries one opaque reference and lands here. A reference for

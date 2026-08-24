@@ -12,6 +12,7 @@
  * is never sent anywhere; only the basemap underneath comes from outside.
  */
 
+import { IconChevronsRight, IconFlagCheck, IconPlayerPlay } from "@tabler/icons-react";
 import type { DataDrivenPropertyValueSpecification } from "maplibre-gl";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Layer, Marker, Source, useMap } from "react-map-gl/maplibre";
@@ -22,7 +23,13 @@ import { highlightRanges, litRanges } from "../lib/highlight";
 import { routeSelection } from "../lib/mapSelection";
 import type { DistanceWindow, Profile, ProfileSample } from "../lib/profile";
 import { coordinateRange, nearestSample, sampleAt } from "../lib/profile";
-import { cuesDescription, directionChevrons, metresPerPixel, routeCues } from "../lib/routeCues";
+import {
+  bearingBetween,
+  cuesDescription,
+  directionChevrons,
+  metresPerPixel,
+  routeCues,
+} from "../lib/routeCues";
 import { gradientSlices, routeLinesWithin } from "../lib/routeLines";
 import { NEAR_ROUTE_PIXELS } from "../lib/selection";
 import type { SurfaceSummary } from "../lib/surface";
@@ -80,11 +87,7 @@ const CASING_OPACITY = 0.85;
  * a survey mark, which is why the words beside the map say plainly that the two
  * ends are the same place.
  */
-const TERMINAL_NUDGE_PIXELS = 9;
-
-/** How wide a terminal marker is drawn, and how heavy its ring. */
-const TERMINAL_RADIUS = 7;
-const TERMINAL_RING_WIDTH = 3;
+const TERMINAL_NUDGE_PIXELS = 16;
 
 /**
  * The steepness ramp, band by band, mirroring `--band-*` in `index.css`.
@@ -272,7 +275,13 @@ function SelectionLink({
  * geometry is measured over the whole route, and a stage of several thousand
  * points would otherwise be re-measured sixty times a second to no visible end.
  */
-function DirectionCues({ coordinates }: { coordinates: Position[] }) {
+function DirectionCues({
+  coordinates,
+  darkBasemap,
+}: {
+  coordinates: Position[];
+  darkBasemap: boolean;
+}) {
   const { current: map } = useMap();
   const [resolution, setResolution] = useState<number | null>(null);
 
@@ -296,39 +305,43 @@ function DirectionCues({ coordinates }: { coordinates: Position[] }) {
       resolution === null ? [] : directionChevrons(coordinates, { metresPerPixel: resolution }),
     [coordinates, resolution],
   );
-  // An empty collection keeps the source and its layer mounted, so the stack
-  // above them never has to be rebuilt when a zoom leaves no room for a cue.
-  const data = useMemo(
-    () => ({
-      type: "FeatureCollection" as const,
-      features:
-        chevrons.length === 0
-          ? []
-          : [
-              {
-                type: "Feature" as const,
-                geometry: { type: "MultiLineString" as const, coordinates: chevrons },
-                properties: {},
-              },
-            ],
-    }),
+  // A marker sits at each chevron tip, rotated from its two arms rather than
+  // from a bearing guessed again from the route's raw points.
+  const markers = useMemo(
+    () =>
+      chevrons.flatMap((chevron, index) => {
+        const [left, tip, right] = chevron;
+        if (!left || !tip || !right) {
+          return [];
+        }
+        const behind: Position = [(left[0] + right[0]) / 2, (left[1] + right[1]) / 2];
+
+        return [{ key: index, position: tip, rotation: bearingBetween(behind, tip) - 90 }];
+      }),
     [chevrons],
   );
 
   return (
-    <Source id="route-direction" type="geojson" data={data}>
-      {/*
-       * White, and over the route rather than beside it: every class and band
-       * beneath is a mid-to-dark colour, so the same cue reads on all of them,
-       * and a cue drawn alongside the line would be a second thing to follow.
-       */}
-      <Layer
-        id="route-direction-chevrons"
-        type="line"
-        layout={{ "line-cap": "round", "line-join": "round" }}
-        paint={{ "line-color": "#ffffff", "line-width": 2.4, "line-opacity": 0.95 }}
-      />
-    </Source>
+    <>
+      {markers.map(({ key, position, rotation }) => (
+        <Marker
+          key={key}
+          longitude={position[0]}
+          latitude={position[1]}
+          anchor="center"
+          className="route-direction-marker"
+        >
+          <IconChevronsRight
+            className={`route-direction route-direction--${darkBasemap ? "dark" : "light"}`}
+            color={ROUTE_CASING[darkBasemap ? "dark" : "light"]}
+            size={26}
+            stroke={3}
+            style={{ transform: `rotate(${rotation}deg)` }}
+            aria-hidden="true"
+          />
+        </Marker>
+      ))}
+    </>
   );
 }
 
@@ -528,20 +541,37 @@ function PositionTooltip({
   );
 }
 
-/** One terminal as a point collection, empty when the stage has no cues. */
-function terminalCollection(position: Position | undefined) {
-  return {
-    type: "FeatureCollection" as const,
-    features: position
-      ? [
-          {
-            type: "Feature" as const,
-            geometry: { type: "Point" as const, coordinates: position },
-            properties: {},
-          },
-        ]
-      : [],
-  };
+/** The terminals use distinct pictograms, not two variants of the same dot. */
+function RouteTerminal({
+  kind,
+  position,
+  offset,
+  accent,
+}: {
+  kind: "start" | "finish";
+  position: Position;
+  offset: number;
+  accent: string;
+}) {
+  return (
+    <Marker
+      longitude={position[0]}
+      latitude={position[1]}
+      anchor="center"
+      offset={[offset, 0]}
+      className={`route-terminal-marker route-terminal-marker--${kind}`}
+    >
+      {kind === "start" ? (
+        <span className="route-terminal route-terminal--start" aria-hidden="true">
+          <IconPlayerPlay color="#ffffff" size={18} stroke={3} />
+        </span>
+      ) : (
+        <span className="route-terminal route-terminal--finish" aria-hidden="true">
+          <IconFlagCheck color={accent} size={19} stroke={2.5} />
+        </span>
+      )}
+    </Marker>
+  );
 }
 
 export interface RouteOverlayProps {
@@ -786,8 +816,6 @@ export function RouteOverlay({
   // coordinates already drawn. Null for anything that is not a ride — a single
   // point has an end but no direction, and there is nothing honest to draw.
   const cues = useMemo(() => routeCues(coordinates), [coordinates]);
-  const startPoint = useMemo(() => terminalCollection(cues?.start), [cues]);
-  const finishPoint = useMemo(() => terminalCollection(cues?.finish), [cues]);
   // Opposite nudges, so a loop shows two markers side by side at the one point
   // it both leaves and returns to.
   const nudge = cues?.sharedTerminal ? TERMINAL_NUDGE_PIXELS : 0;
@@ -912,39 +940,17 @@ export function RouteOverlay({
           />
         </Source>
       ))}
-      <DirectionCues coordinates={coordinates} />
+      <DirectionCues coordinates={coordinates} darkBasemap={darkBasemap} />
       {/*
-       * The two ends, mounted above the route and the cues so neither is lost
-       * under a line. They are told apart by shape as well as by fill — a disc
-       * for the start, a ring for the finish — because a reader who cannot
-       * separate the two colours still has to be able to separate the two ends.
+       * The two ends are DOM markers, so their pictograms stay legible at every
+       * zoom instead of becoming two nearly identical dots on the canvas.
        */}
-      <Source id="route-start" type="geojson" data={startPoint}>
-        <Layer
-          id="route-start-point"
-          type="circle"
-          paint={{
-            "circle-radius": TERMINAL_RADIUS,
-            "circle-color": accent,
-            "circle-stroke-color": "#ffffff",
-            "circle-stroke-width": 2.5,
-            "circle-translate": [-nudge, 0],
-          }}
-        />
-      </Source>
-      <Source id="route-finish" type="geojson" data={finishPoint}>
-        <Layer
-          id="route-finish-point"
-          type="circle"
-          paint={{
-            "circle-radius": TERMINAL_RADIUS - TERMINAL_RING_WIDTH / 2,
-            "circle-color": "#ffffff",
-            "circle-stroke-color": accent,
-            "circle-stroke-width": TERMINAL_RING_WIDTH,
-            "circle-translate": [nudge, 0],
-          }}
-        />
-      </Source>
+      {cues ? (
+        <>
+          <RouteTerminal kind="start" position={cues.start} offset={-nudge} accent={accent} />
+          <RouteTerminal kind="finish" position={cues.finish} offset={nudge} accent={accent} />
+        </>
+      ) : null}
       <Source id="route-position" type="geojson" data={marker}>
         <Layer
           id="route-position-halo"

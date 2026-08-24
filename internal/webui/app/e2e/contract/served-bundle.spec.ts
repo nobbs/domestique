@@ -8,7 +8,7 @@
  * exist to catch, and it surfaces as the page failing to show what it fetched.
  */
 
-import { mapRegion, openLibrary, openRoute, openSync, settleMap } from "../fixtures";
+import { mapRegion, openLibrary, openRoute, openSearch, openSync, settleMap } from "../fixtures";
 import { callsTo, expect, test } from "./fixtures";
 
 const LOOP_ROUTE = { provider: "veloplanner", routeId: 4102, stageOrder: 1 };
@@ -28,7 +28,7 @@ test("the service serves a bundle the browser can boot", async ({ bundlePage: pa
 
   // The application mounted, which means the hashed module the document names was
   // served, parsed and run by the embed handler's file server.
-  await expect(page.getByRole("searchbox", { name: "Search the route library" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Search the route library" })).toBeVisible();
   const asset = await page.locator("script[type='module']").first().getAttribute("src");
   expect(asset).toMatch(/^\/assets\/.+\.js$/);
 });
@@ -39,11 +39,8 @@ test("the library is drawn from the routes view", async ({ bundlePage: page, api
   // The listing is counted where the page states its size rather than in a
   // column of cards: the entry page draws the library on the map, and nothing is
   // listed until something is asked.
-  await expect(page.getByRole("searchbox", { name: "Search the route library" })).toHaveAttribute(
-    "placeholder",
-    "Search 7 routes",
-  );
-  await page.getByRole("searchbox", { name: "Search the route library" }).fill("kaiserstuhl");
+  await expect(await openSearch(page)).toHaveAttribute("placeholder", "Search 7 routes");
+  await (await openSearch(page)).fill("kaiserstuhl");
   await page.getByRole("button", { name: /Synthetic Kaiserstuhl Loop/ }).click();
   // Distances come from `distance_metres`, so a card with a figure on it is a
   // route view this client could read. A renamed field would leave the parser

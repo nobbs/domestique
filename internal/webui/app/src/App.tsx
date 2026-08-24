@@ -65,13 +65,13 @@ export function App() {
 
   return (
     <Routes>
-      <Route
-        path="/"
-        element={<RoutesPage themeChoice={themeChoice} onThemeChoiceChange={setThemeChoice} />}
-      />
+      <Route path="/" element={<RoutesPage themeChoice={themeChoice} />} />
       <Route path="routes/:provider/:routeId/:stage" element={<OpenedRoute />} />
       <Route path="routes/:routeId/:stage" element={<OpenedLegacyRoute />} />
-      <Route path="sync" element={<SyncPage />} />
+      <Route
+        path="sync"
+        element={<SyncPage themeChoice={themeChoice} onThemeChoiceChange={setThemeChoice} />}
+      />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

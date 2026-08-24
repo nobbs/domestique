@@ -15,6 +15,7 @@ import {
   mapRegion,
   openLibrary,
   openRoute,
+  openSearch,
   pinRendering,
   settleMap,
   test,
@@ -103,13 +104,14 @@ test.describe("the theme override", () => {
     await openLibrary(page);
     expect(await backgroundOfBody(page)).toBe(LIGHT_SURFACE);
 
-    await page.getByRole("button", { name: "Choose the colour theme" }).click();
+    await page.getByRole("link", { name: /^Sync/ }).click();
     await page.getByRole("radio", { name: "Dark" }).check();
 
     // The page repaints in JavaScript-set state rather than a stylesheet
     // recomputing on its own, so this is read back rather than asserted the
     // instant the radio is checked.
     await expect.poll(() => backgroundOfBody(page)).toBe(DARK_SURFACE);
+    await page.getByRole("link", { name: "Back to the map" }).click();
     // The same override reaches the basemap, which cannot follow CSS at all —
     // see the dark-scheme test above for why the request is the proof.
     await expect.poll(() => basemapRequests.some((url) => url.includes("dark"))).toBe(true);
@@ -117,7 +119,7 @@ test.describe("the theme override", () => {
 
   test("survives a reload", async ({ offlinePage: page, baseURL }) => {
     await openLibrary(page);
-    await page.getByRole("button", { name: "Choose the colour theme" }).click();
+    await page.getByRole("link", { name: /^Sync/ }).click();
     await page.getByRole("radio", { name: "Dark" }).check();
     await expect.poll(() => backgroundOfBody(page)).toBe(DARK_SURFACE);
 
@@ -133,7 +135,7 @@ test.describe("on a narrow viewport", () => {
     offlinePage: page,
   }) => {
     await openLibrary(page);
-    await page.getByRole("searchbox", { name: "Search the route library" }).fill("rhine");
+    await (await openSearch(page)).fill("rhine");
 
     const panel = await page.locator(".search").boundingBox();
     const map = await mapRegion(page).boundingBox();
@@ -161,10 +163,10 @@ test.describe("on a narrow viewport", () => {
   }) => {
     await openLibrary(page);
 
-    const cluster = page.locator(".maplibregl-ctrl-bottom-left");
+    const creditControl = page.locator(".map-credits");
     const show = page.getByRole("button", { name: "Show the map credit" });
     await expect(show).toBeVisible();
-    const folded = await cluster.boundingBox();
+    const folded = await creditControl.boundingBox();
 
     await show.click();
     await expect(page.getByRole("button", { name: "Hide the map credit" })).toBeVisible();
@@ -173,7 +175,7 @@ test.describe("on a narrow viewport", () => {
     // The provider wrapped that in a link. The page took the words and left the
     // markup, which is the rule the credit is read out of the document under.
     await expect(credit.locator("a")).toHaveCount(0);
-    const open = await cluster.boundingBox();
+    const open = await creditControl.boundingBox();
 
     expect(folded).not.toBeNull();
     expect(open).not.toBeNull();

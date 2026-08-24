@@ -10,7 +10,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { ReactNode } from "react";
+import { forwardRef, type ReactNode, useImperativeHandle } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Basemap, BoundingBox, Position } from "../../api/types";
 
@@ -37,6 +37,12 @@ const drawn = vi.hoisted(() => ({
   container: null as HTMLElement | null,
   /** What the scale bar was told to report distance in. */
   scaleUnit: "" as string,
+  map: {
+    zoomIn: vi.fn(),
+    zoomOut: vi.fn(),
+    flyTo: vi.fn(),
+    getZoom: vi.fn(() => 10),
+  },
 }));
 
 vi.mock("../../lib/maplibre", () => ({}));
@@ -59,19 +65,6 @@ vi.mock("../../components/BasemapPicker", () => ({
   ),
 }));
 
-/* Same bargain as the basemap chooser above: offered at all, and where it lands. */
-vi.mock("../../components/ThemePicker", () => ({
-  ThemePicker: ({ choice }: { choice: string }) => <p data-testid="theme-picker">{choice}</p>,
-}));
-
-/*
- * And the unit toggle decides nothing here either: what is asked of it in this
- * file is whether it is offered at all, and where it lands.
- */
-vi.mock("../../components/UnitPicker", () => ({
-  UnitPicker: ({ system }: { system: string }) => <p data-testid="units">{system}</p>,
-}));
-
 vi.mock("../../components/MapViewport", () => ({
   MapViewport: (props: { bounds: unknown; maxZoom: number }) => {
     drawn.viewports.push({ bounds: props.bounds, maxZoom: props.maxZoom });
@@ -81,19 +74,23 @@ vi.mock("../../components/MapViewport", () => ({
 }));
 
 vi.mock("react-map-gl/maplibre", () => ({
-  Map: ({
-    children,
-    onLoad,
-    onClick,
-    onMouseMove,
-    ...rest
-  }: {
-    children?: ReactNode;
-    "aria-label"?: string;
-    onLoad?: (event: { target: { getContainer: () => HTMLElement | null } }) => void;
-    onClick?: (event: PointerEventStub) => void;
-    onMouseMove?: (event: PointerEventStub) => void;
-  }) => {
+  Map: forwardRef(function MapMock(
+    {
+      children,
+      onLoad,
+      onClick,
+      onMouseMove,
+      ...rest
+    }: {
+      children?: ReactNode;
+      "aria-label"?: string;
+      onLoad?: (event: { target: { getContainer: () => HTMLElement | null } }) => void;
+      onClick?: (event: PointerEventStub) => void;
+      onMouseMove?: (event: PointerEventStub) => void;
+    },
+    ref,
+  ) {
+    useImperativeHandle(ref, () => drawn.map);
     drawn.maps.push(rest);
 
     // A ref callback rather than the render pass: the real map reports itself
@@ -124,19 +121,9 @@ vi.mock("react-map-gl/maplibre", () => ({
         {children}
       </div>
     );
-  },
+  }),
   Layer: (props: LayerRecord) => {
     drawn.layers.push(props);
-
-    return null;
-  },
-  GeolocateControl: ({ position }: { position: string }) => {
-    drawn.furniture.push({ control: "geolocate", position });
-
-    return null;
-  },
-  NavigationControl: ({ position }: { position: string }) => {
-    drawn.furniture.push({ control: "navigation", position });
 
     return null;
   },
@@ -146,12 +133,12 @@ vi.mock("react-map-gl/maplibre", () => ({
 
     return null;
   },
+  Marker: ({ children }: { children?: ReactNode }) => <>{children}</>,
   Source: ({ children, ...rest }: { children?: ReactNode } & SourceRecord) => {
     drawn.sources.push(rest);
 
     return <>{children}</>;
   },
-  useMap: () => ({ current: null }),
 }));
 
 const { LibraryMap } = await import("./LibraryMap");
@@ -204,6 +191,11 @@ beforeEach(() => {
   drawn.viewports = [];
   drawn.maps = [];
   drawn.furniture = [];
+  drawn.map.zoomIn.mockReset();
+  drawn.map.zoomOut.mockReset();
+  drawn.map.flyTo.mockReset();
+  drawn.map.getZoom.mockReset();
+  drawn.map.getZoom.mockReturnValue(10);
   drawn.container?.remove();
   drawn.container = containerWithCluster();
 });
@@ -365,8 +357,7 @@ describe("LibraryMap", () => {
 
   /*
    * MapLibre's own attribution control renders the provider's markup into a
-   * corner of its own, and this map has one corner: the credit is drawn beneath
-   * the zoom pair and the scale bar instead.
+   * corner of its own. This map positions the sanitised credit itself instead.
    */
   it("draws the credit itself rather than letting MapLibre place it", () => {
     show();
@@ -378,66 +369,38 @@ describe("LibraryMap", () => {
   });
 
   /*
-   * One corner rather than four. The scale bar is asked for first because
-   * MapLibre adds to a bottom corner by prepending, so each control asked for
-   * after it stacks above it: the cluster reads locate, zoom, scale, credit
-   * downward.
+   * The app controls use the same icon set as the rest of the page, while
+   * MapLibre still supplies the accurate scale bar.
    */
-  it("asks for every control in the one corner, locate button uppermost", () => {
+  it("renders Tabler map controls separately from the scale", async () => {
     show();
 
-    // The first pass: finding the cluster to draw the credit into renders the
-    // map a second time, and MapLibre keeps a control it has already been given.
-    expect(drawn.furniture.slice(0, 3)).toEqual([
-      { control: "scale", position: "bottom-left" },
-      { control: "navigation", position: "bottom-left" },
-      { control: "geolocate", position: "bottom-left" },
-    ]);
+    expect(drawn.furniture.at(0)).toEqual({ control: "scale", position: "bottom-left" });
+    expect(screen.getByRole("button", { name: "Find my location" })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Zoom in" }));
+    await userEvent.click(screen.getByRole("button", { name: "Zoom out" }));
+
+    expect(drawn.map.zoomIn).toHaveBeenCalledOnce();
+    expect(drawn.map.zoomOut).toHaveBeenCalledOnce();
   });
 
-  it("draws the credit into that same corner, under the controls", () => {
+  it("keeps the credit out of the scale corner", () => {
     show();
 
-    expect(drawn.container?.querySelector(".maplibregl-ctrl-bottom-left")?.textContent).toBe(
-      "© somebody",
-    );
+    expect(drawn.container?.querySelector(".maplibregl-ctrl-bottom-left")?.textContent).toBe("");
+    expect(screen.getByTestId("credits")).toBeInTheDocument();
   });
 
   /*
-   * The chooser goes into the cluster above the credit, and the two travel as
-   * one fragment so that order holds wherever they land. Above rather than
-   * below because the credit is the bottom of the column by obligation: it must
-   * be the thing that is always there, and a control that appears and
-   * disappears with the number of configured basemaps must not push it around.
+   * The chooser goes into the scale corner. Its absence cannot move the map
+   * actions or attribution, because those use the right edge instead.
    */
-  it("puts the basemap chooser in the cluster, above the credit", () => {
+  it("puts the basemap chooser in the scale cluster", () => {
     show({ basemaps: TWO_BASEMAPS, selectedBasemap: "Satellite", onBasemapChange: () => {} });
 
     const cluster = drawn.container?.querySelector(".maplibregl-ctrl-bottom-left");
-    expect(cluster?.textContent).toBe("Satellite© somebody");
-  });
-
-  // Same fragment, same reason: the theme chooser travels with the basemap
-  // chooser and the credit rather than finding its own way into the cluster.
-  it("puts the theme chooser in the cluster too, between the basemap chooser and the credit", () => {
-    show({
-      basemaps: TWO_BASEMAPS,
-      selectedBasemap: "Satellite",
-      onBasemapChange: () => {},
-      themeChoice: "dark",
-      onThemeChoiceChange: () => {},
-    });
-
-    const cluster = drawn.container?.querySelector(".maplibregl-ctrl-bottom-left");
-    expect(cluster?.textContent).toBe("Satellitedark© somebody");
-  });
-
-  // Nothing is listening for a theme change, so nothing is offered — the same
-  // bargain the basemap chooser strikes when it is handed no `onBasemapChange`.
-  it("offers no theme chooser when nothing is listening for a choice", () => {
-    show({ basemaps: TWO_BASEMAPS, selectedBasemap: "Satellite", onBasemapChange: () => {} });
-
-    expect(screen.queryByTestId("theme-picker")).toBeNull();
+    expect(cluster?.textContent).toBe("Satellite");
   });
 
   // Nothing is listening for a pick, so nothing is offered — the same bargain
@@ -446,25 +409,6 @@ describe("LibraryMap", () => {
     show();
 
     expect(screen.queryByTestId("picker")).not.toBeInTheDocument();
-  });
-
-  it("puts the unit toggle in the cluster, above the basemap chooser", () => {
-    show({
-      basemaps: TWO_BASEMAPS,
-      selectedBasemap: "Satellite",
-      onBasemapChange: () => {},
-      unitSystem: "imperial",
-      onUnitSystemChange: () => {},
-    });
-
-    const cluster = drawn.container?.querySelector(".maplibregl-ctrl-bottom-left");
-    expect(cluster?.textContent).toBe("imperialSatellite© somebody");
-  });
-
-  it("offers no unit toggle where no one is listening for one", () => {
-    show();
-
-    expect(screen.queryByTestId("units")).not.toBeInTheDocument();
   });
 
   it("tells the scale bar which system to report distance in", () => {
@@ -564,10 +508,6 @@ describe("LibraryMap", () => {
     show({ basemaps: TWO_BASEMAPS, selectedBasemap: "Streets", onBasemapChange: () => {} });
 
     expect(screen.getByTestId("credits")).toBeInTheDocument();
-    // And in the same order, because the fragment is what moved rather than
-    // each piece finding its own way into the corner.
-    expect(
-      screen.getByTestId("picker").compareDocumentPosition(screen.getByTestId("credits")),
-    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(screen.getByTestId("picker")).toBeInTheDocument();
   });
 });

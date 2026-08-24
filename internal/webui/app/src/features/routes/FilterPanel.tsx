@@ -8,6 +8,7 @@
  * caller for the same reason it is there — see `BasemapPicker`.
  */
 
+import { IconAdjustmentsHorizontal } from "@tabler/icons-react";
 import { useState } from "react";
 import { SURFACE_KINDS } from "../../api/types";
 import { Button } from "../../components/Button";
@@ -151,6 +152,7 @@ export function FilterPanel({
         className="filter-panel__toggle"
         type="button"
         aria-expanded={expanded}
+        data-active={active ? "" : undefined}
         // The mark says "filters are set" to anyone who can see it; the name
         // says so for anyone who cannot, the same split `BasemapPicker` uses.
         aria-label={
@@ -163,7 +165,7 @@ export function FilterPanel({
         {...(expanded ? { "aria-controls": FILTER_PANEL_ID } : {})}
         onClick={() => onExpandedChange(!expanded)}
       >
-        Filters{active ? " •" : ""}
+        <IconAdjustmentsHorizontal size={16} stroke={1.6} aria-hidden="true" />
       </button>
       {expanded ? (
         <div className="filter-panel__body" id={FILTER_PANEL_ID}>

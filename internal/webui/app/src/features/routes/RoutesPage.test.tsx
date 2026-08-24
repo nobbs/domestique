@@ -127,7 +127,6 @@ function renderPage(
     surfaceFor?: Record<string, RouteSurface>;
     basemaps?: WebUIConfig["basemaps"];
     themeChoice?: ThemeChoice;
-    onThemeChoiceChange?: (choice: ThemeChoice) => void;
   } = {},
 ) {
   const client = new QueryClient({
@@ -175,10 +174,7 @@ function renderPage(
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[options.at ?? "/"]}>
-        <RoutesPage
-          themeChoice={options.themeChoice ?? "system"}
-          onThemeChoiceChange={options.onThemeChoiceChange ?? (() => {})}
-        />
+        <RoutesPage themeChoice={options.themeChoice ?? "system"} />
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -192,6 +188,17 @@ function lastDrawing(): Drawing {
   }
 
   return last;
+}
+
+async function searchBox() {
+  const existing = screen.queryByRole("searchbox", { name: "Search the route library" });
+  if (existing) {
+    return existing;
+  }
+
+  await userEvent.click(screen.getByRole("button", { name: "Search the route library" }));
+
+  return screen.getByRole("searchbox", { name: "Search the route library" });
 }
 
 /**
@@ -276,20 +283,21 @@ describe("RoutesPage", () => {
     expect(heading).toHaveClass("visually-hidden");
   });
 
-  it("counts the whole library in the search pill, however narrow the result", async () => {
+  it("keeps the library size in the expanded search prompt", async () => {
     renderPage();
 
-    expect(screen.getByRole("searchbox")).toHaveAttribute("placeholder", "Search 3 routes");
-    await userEvent.type(screen.getByRole("searchbox"), "rhine");
+    const search = await searchBox();
+    expect(search).toHaveAttribute("placeholder", "Search 3 routes");
+    await userEvent.type(search, "rhine");
 
-    expect(screen.getByText("2 of 3")).toBeInTheDocument();
+    expect(search).toHaveValue("rhine");
   });
 
   // The map and the column are two views of one state. A search that narrows
   // one and not the other would be two answers to the same question.
   it("keeps the map whole while the column narrows", async () => {
     renderPage();
-    await userEvent.type(screen.getByRole("searchbox"), "kaiserstuhl");
+    await userEvent.type(await searchBox(), "kaiserstuhl");
 
     expect(screen.getByRole("button", { name: /Kaiserstuhl Loop/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Rhine Traverse/ })).toBeNull();
@@ -350,7 +358,7 @@ describe("RoutesPage", () => {
    */
   it("picks a route out on the map and flies to it", async () => {
     renderPage();
-    await userEvent.type(screen.getByRole("searchbox"), "kaiserstuhl");
+    await userEvent.type(await searchBox(), "kaiserstuhl");
     await userEvent.click(screen.getByRole("button", { name: /Kaiserstuhl Loop/ }));
 
     expect(lastDrawing().selectedKey).toBe("veloplanner/2/1");
@@ -362,9 +370,9 @@ describe("RoutesPage", () => {
   // in a column it is not in.
   it("closes the open route when the search moves on", async () => {
     renderPage();
-    await userEvent.type(screen.getByRole("searchbox"), "kaiserstuhl");
+    await userEvent.type(await searchBox(), "kaiserstuhl");
     await userEvent.click(screen.getByRole("button", { name: /Kaiserstuhl Loop/ }));
-    await userEvent.clear(screen.getByRole("searchbox"));
+    await userEvent.clear(await searchBox());
 
     expect(lastDrawing().selectedKey).toBeNull();
     expect(screen.queryByRole("button", { name: "Open route" })).toBeNull();
@@ -374,7 +382,7 @@ describe("RoutesPage", () => {
   // so a per-route time would be the same time repeated.
   it("says when the library was read, from the read half's own last run", async () => {
     renderPage(LIBRARY, { readAt: "2026-08-18T06:30:00Z" });
-    await userEvent.type(screen.getByRole("searchbox"), "kaiserstuhl");
+    await userEvent.type(await searchBox(), "kaiserstuhl");
     await userEvent.click(screen.getByRole("button", { name: /Kaiserstuhl Loop/ }));
 
     expect(screen.getByText(/read /)).toBeInTheDocument();
@@ -402,7 +410,7 @@ describe("RoutesPage", () => {
     renderPage();
     const before = lastDrawing().bounds;
 
-    await userEvent.type(screen.getByRole("searchbox"), "rhine");
+    await userEvent.type(await searchBox(), "rhine");
 
     expect(drawn.maps.length).toBeGreaterThan(1);
     expect(lastDrawing().bounds).toBe(before);
@@ -415,7 +423,7 @@ describe("RoutesPage", () => {
    */
   it("frames the selected route even when routes above it are still in flight", async () => {
     renderPage(LIBRARY, { geometryFor: [LIBRARY[1] as Route, LIBRARY[2] as Route] });
-    await userEvent.type(screen.getByRole("searchbox"), "kaiserstuhl");
+    await userEvent.type(await searchBox(), "kaiserstuhl");
     await userEvent.click(screen.getByRole("button", { name: /Kaiserstuhl Loop/ }));
 
     expect(lastDrawing().selectedKey).toBe("veloplanner/2/1");
@@ -459,7 +467,7 @@ describe("RoutesPage", () => {
    */
   it("clears a search the route pointed at is not in", async () => {
     renderPage();
-    await userEvent.type(screen.getByRole("searchbox"), "kaiserstuhl");
+    await userEvent.type(await searchBox(), "kaiserstuhl");
     await userEvent.click(screen.getByRole("button", { name: "point at veloplanner/1/2" }));
 
     expect(screen.getByRole("searchbox")).toHaveValue("");
@@ -471,7 +479,7 @@ describe("RoutesPage", () => {
   // here, and clearing it would throw away the column they were comparing in.
   it("keeps a search the route pointed at is in", async () => {
     renderPage();
-    await userEvent.type(screen.getByRole("searchbox"), "rhine");
+    await userEvent.type(await searchBox(), "rhine");
     await userEvent.click(screen.getByRole("button", { name: "point at veloplanner/1/2" }));
 
     expect(screen.getByRole("searchbox")).toHaveValue("rhine");
@@ -529,7 +537,7 @@ describe("RoutesPage", () => {
    */
   it("swaps the search for the route in the same column", async () => {
     renderPage();
-    await userEvent.type(screen.getByRole("searchbox"), "kaiserstuhl");
+    await userEvent.type(await searchBox(), "kaiserstuhl");
     await userEvent.click(screen.getByRole("button", { name: /Kaiserstuhl Loop/ }));
     await userEvent.click(screen.getByRole("button", { name: "Open route" }));
 
@@ -570,7 +578,7 @@ describe("RoutesPage", () => {
     renderPage(LIBRARY, { at: "/?route=veloplanner%2F0%2F1" });
 
     expect(screen.queryByText("No route at that address.")).not.toBeInTheDocument();
-    expect(screen.getByRole("searchbox", { name: "Search the route library" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Search the route library" })).toBeInTheDocument();
   });
 
   /*
@@ -586,15 +594,15 @@ describe("RoutesPage", () => {
 
     expect(await screen.findByText("Could not load that route's geometry.")).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Kaiserstuhl Loop" })).toBeNull();
-    expect(screen.getByRole("searchbox")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Search the route library" })).toBeInTheDocument();
     expect(lastDrawing().overlaid).toBe(false);
   });
 
   it("goes back to the search it came from", async () => {
     renderPage(LIBRARY, { at: "/?route=veloplanner%2F2%2F1" });
-    await userEvent.click(screen.getByRole("button", { name: /^← Search \d+ routes?$/ }));
+    await userEvent.click(screen.getByRole("button", { name: /^Search \d+ routes?$/ }));
 
-    expect(screen.getByRole("searchbox")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Search the route library" })).toBeInTheDocument();
     expect(lastDrawing().overlaid).toBe(false);
   });
 
@@ -616,7 +624,7 @@ describe("RoutesPage", () => {
   it("marks a route new until it has been opened", async () => {
     stubStorage();
     renderPage();
-    await userEvent.type(screen.getByRole("searchbox"), "kaiserstuhl");
+    await userEvent.type(await searchBox(), "kaiserstuhl");
 
     expect(screen.getByText("New")).toBeInTheDocument();
   });
@@ -624,8 +632,8 @@ describe("RoutesPage", () => {
   it("stops marking a route new once its own panel has been opened", async () => {
     stubStorage();
     renderPage(LIBRARY, { at: "/?route=veloplanner%2F2%2F1" });
-    await userEvent.click(screen.getByRole("button", { name: /^← Search \d+ routes?$/ }));
-    await userEvent.type(screen.getByRole("searchbox"), "kaiserstuhl");
+    await userEvent.click(screen.getByRole("button", { name: /^Search \d+ routes?$/ }));
+    await userEvent.type(await searchBox(), "kaiserstuhl");
 
     expect(screen.queryByText("New")).toBeNull();
   });
@@ -636,10 +644,10 @@ describe("RoutesPage", () => {
   it("stops marking a route new once it is opened by hand", async () => {
     stubStorage();
     renderPage();
-    await userEvent.type(screen.getByRole("searchbox"), "kaiserstuhl");
+    await userEvent.type(await searchBox(), "kaiserstuhl");
     await userEvent.click(screen.getByRole("button", { name: /Kaiserstuhl Loop/ }));
     await userEvent.click(screen.getByRole("button", { name: "Open route" }));
-    await userEvent.click(screen.getByRole("button", { name: /^← Search \d+ routes?$/ }));
+    await userEvent.click(screen.getByRole("button", { name: /^Search \d+ routes?$/ }));
 
     expect(screen.queryByText("New")).toBeNull();
   });

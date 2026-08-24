@@ -13,6 +13,7 @@
  * again.
  */
 
+import { IconArrowLeft, IconX } from "@tabler/icons-react";
 import type { Route } from "../../api/types";
 import { RouteKey } from "../../components/RouteKey";
 import { SourceRouteLink } from "../../components/SourceRouteLink";
@@ -94,8 +95,8 @@ export function RoutePanel({
 }: RoutePanelProps) {
   const back =
     libraryCount > 0
-      ? `← Search ${libraryCount} ${libraryCount === 1 ? "route" : "routes"}`
-      : "← Back to search";
+      ? `Search ${libraryCount} ${libraryCount === 1 ? "route" : "routes"}`
+      : "Back to search";
 
   return (
     <section className="panel route-panel" aria-label={route.title}>
@@ -110,7 +111,8 @@ export function RoutePanel({
        */}
       <div className="route-panel__header">
         <button className="route-panel__back" type="button" onClick={onClose}>
-          {back}
+          <IconArrowLeft size={16} stroke={2} aria-hidden="true" />
+          <span>{back}</span>
         </button>
         <button
           className="route-panel__close"
@@ -118,7 +120,7 @@ export function RoutePanel({
           onClick={onClose}
           aria-label="Close the route"
         >
-          ×
+          <IconX size={18} stroke={2} aria-hidden="true" />
         </button>
       </div>
       <div className="route-panel__name">

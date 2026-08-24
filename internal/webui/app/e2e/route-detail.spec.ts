@@ -11,6 +11,8 @@ import { expect, mapRegion, openRoute, profileScrubber, settleMap, test } from "
 
 /** A straight three-band route: the simplest ground to point at. */
 const LINE_ROUTE = { provider: "veloplanner", routeId: 4101, stageOrder: 3 };
+/** A hill route, used where the climbs disclosure is the subject. */
+const CLIMB_ROUTE = { provider: "veloplanner", routeId: 4101, stageOrder: 1 };
 /** The loop, whose classification covers all six surface classes. */
 const LOOP_ROUTE = { provider: "veloplanner", routeId: 4102, stageOrder: 1 };
 /** The short link, which was never classified and has no profile at all. */
@@ -20,6 +22,9 @@ test("the route draws its map, its facts and its profile", async ({ offlinePage:
   await openRoute(page, LINE_ROUTE.provider, LINE_ROUTE.routeId, LINE_ROUTE.stageOrder);
 
   await expect(page.locator(".maplibregl-canvas")).toBeVisible();
+  await expect(page.locator(".route-terminal--start")).toBeVisible();
+  await expect(page.locator(".route-terminal--finish")).toBeVisible();
+  await expect(page.locator(".route-direction").first()).toBeVisible();
   await expect(page.locator(".route-panel__figures")).toContainText("km");
   // What the map says to a reader who cannot see it: the same start, finish and
   // direction the markers and chevrons draw.
@@ -29,6 +34,16 @@ test("the route draws its map, its facts and its profile", async ({ offlinePage:
   // so this is the map reporting that it really rendered rather than that its
   // container exists.
   await expect(page.locator(".maplibregl-ctrl-scale")).toContainText(/\d/);
+});
+
+test("climbs start folded and expand on demand", async ({ offlinePage: page }) => {
+  await openRoute(page, CLIMB_ROUTE.provider, CLIMB_ROUTE.routeId, CLIMB_ROUTE.stageOrder);
+
+  const toggle = page.getByRole("button", { name: /^Show \d+ climbs?$/ });
+  await expect(toggle).toBeVisible();
+  await toggle.click();
+  await expect(page.getByRole("button", { name: /^Hide \d+ climbs?$/ })).toBeVisible();
+  await expect(page.locator("#climbs-list .route-panel__climb").first()).toBeVisible();
 });
 
 test("the chart answers the arrow keys and says where it is", async ({ offlinePage: page }) => {
@@ -238,7 +253,7 @@ test("the way back to the library is reachable from the keyboard", async ({
 }) => {
   await openRoute(page, LINE_ROUTE.provider, LINE_ROUTE.routeId, LINE_ROUTE.stageOrder);
 
-  const back = page.getByRole("button", { name: /^← Search \d+ routes?$/ });
+  const back = page.getByRole("button", { name: /^Search \d+ routes?$/ });
   await back.focus();
   await expect(back).toBeFocused();
   await back.press("Enter");
@@ -246,7 +261,7 @@ test("the way back to the library is reachable from the keyboard", async ({
   await expect(page).toHaveURL(/\/$/);
   // The library is a map, not a list: what proves the way back arrived is the
   // search over everything rather than a column of cards.
-  await expect(page.getByRole("searchbox", { name: "Search the route library" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Search the route library" })).toBeVisible();
 });
 
 /*

@@ -27,6 +27,7 @@
  * loading, silently undoing a press the reader had already made.
  */
 
+import { IconInfoCircle } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { useNarrowViewport } from "../lib/mediaQuery";
 
@@ -162,20 +163,7 @@ export function MapCredits({ styleUrl, extra, choice, onChoiceChange }: MapCredi
         {...(expanded ? { "aria-controls": CREDIT_TEXT_ID } : {})}
         onClick={() => onChoiceChange(!expanded)}
       >
-        <svg
-          viewBox="0 0 12 12"
-          width="12"
-          height="12"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.2"
-          aria-hidden="true"
-          focusable="false"
-        >
-          <circle cx="6" cy="6" r="5" />
-          <path d="M6 5.4v3" strokeLinecap="round" />
-          <path d="M6 3.4v0.01" strokeLinecap="round" strokeWidth="1.6" />
-        </svg>
+        <IconInfoCircle size={12} stroke={1.2} aria-hidden="true" />
       </button>
       {expanded ? (
         <p className="map-credits__text" id={CREDIT_TEXT_ID}>

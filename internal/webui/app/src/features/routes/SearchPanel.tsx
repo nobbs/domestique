@@ -14,7 +14,8 @@
  * types is sent to the service, which keeps route names out of an access log.
  */
 
-import { useEffect, useRef } from "react";
+import { IconSearch } from "@tabler/icons-react";
+import { useEffect, useRef, useState } from "react";
 import type { Position, Route } from "../../api/types";
 import { routeKey } from "../../api/types";
 import { Button } from "../../components/Button";
@@ -85,25 +86,6 @@ function StageChangeBadge({ change }: { change: StageChange }) {
   );
 }
 
-/** The magnifier. Decorative: the field beside it carries the accessible name. */
-function SearchIcon() {
-  return (
-    <svg
-      className="search__icon"
-      width="16"
-      height="16"
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.6"
-      aria-hidden="true"
-    >
-      <circle cx="7" cy="7" r="4.5" />
-      <line x1="10.4" y1="10.4" x2="14" y2="14" strokeLinecap="round" />
-    </svg>
-  );
-}
-
 /** One route, closed: its shape, its name, and the three figures that rank it. */
 function ResultRow({
   route,
@@ -130,11 +112,6 @@ function ResultRow({
         </span>
         <span className="result__name">{route.title}</span>
         <StageChangeBadge change={change} />
-        {/*
-         * Which source this row came from. A quiet label, not a logo wall: two
-         * sources is what a private tool has, not a marketplace.
-         */}
-        <span className="source-label">{providerLabel(route.provider)}</span>
         <span className="result__figures">
           <span>{formatDistance(route.distanceMetres, unitSystem)}</span>
           <span>{formatAscent(route.ascentMetres, unitSystem)}</span>
@@ -261,84 +238,133 @@ export function SearchPanel({
 }: SearchPanelProps) {
   const filtersActive = hasActiveFilters(filters);
   const hasQuery = query.trim() !== "";
+  const [searchExpanded, setSearchExpanded] = useState(
+    hasQuery || selectedKey !== null || filtersActive,
+  );
+  const [focusSearch, setFocusSearch] = useState(false);
+  const field = useRef<HTMLInputElement>(null);
+
+  // A route picked from the map still needs its card to appear in this panel.
+  // Typing only becomes possible after the reader has explicitly opened search.
+  useEffect(() => {
+    if (hasQuery || selectedKey !== null) {
+      setSearchExpanded(true);
+    }
+  }, [hasQuery, selectedKey]);
+
+  useEffect(() => {
+    if (focusSearch && searchExpanded) {
+      field.current?.focus();
+      setFocusSearch(false);
+    }
+  }, [focusSearch, searchExpanded]);
+
   // A filter narrows the library exactly as a typed word does, so it opens the
-  // same results column and counts against the same total.
-  const expanded = hasQuery || selectedKey !== null || filtersActive;
+  // same results column and counts against the same total. Selecting from the
+  // map is different: it names one route, not a reason to list the library.
+  const hasResults = hasQuery || filtersActive;
+  const selectedRoute = selectedKey
+    ? (shown.find((route) => routeKey(route) === selectedKey) ?? null)
+    : null;
 
   return (
-    <div className="panel search">
-      <div className="search__pill">
-        <SearchIcon />
-        <input
-          className="search__field"
-          type="search"
-          value={query}
-          onChange={(event) => onQueryChange(event.target.value)}
-          placeholder={`Search ${total} ${total === 1 ? "route" : "routes"}`}
-          aria-label="Search the route library"
+    <div className="search">
+      <div className="search__controls">
+        {searchExpanded ? (
+          <div className="search__pill search__pill--control">
+            <IconSearch className="search__icon" size={16} stroke={1.6} aria-hidden="true" />
+            <input
+              className="search__field"
+              ref={field}
+              type="search"
+              value={query}
+              onChange={(event) => onQueryChange(event.target.value)}
+              placeholder={`Search ${total} ${total === 1 ? "route" : "routes"}`}
+              aria-label="Search the route library"
+            />
+          </div>
+        ) : (
+          <button
+            className="search__toggle"
+            type="button"
+            aria-label="Search the route library"
+            onClick={() => {
+              setSearchExpanded(true);
+              setFocusSearch(true);
+            }}
+          >
+            <IconSearch className="search__icon" size={16} stroke={1.6} aria-hidden="true" />
+          </button>
+        )}
+        <FilterPanel
+          filters={filters}
+          onFiltersChange={(next) => {
+            onFiltersChange(next);
+            setSearchExpanded(true);
+          }}
+          expanded={filtersExpanded}
+          onExpandedChange={onFiltersExpandedChange}
         />
-        {/*
-         * Derived from the filter rather than written anywhere: the count and
-         * the column are the same fact, so they cannot disagree. It says nothing
-         * until the library has actually been narrowed by a name or a filter,
-         * because "47 of 47" is a sum with no question behind it — which a
-         * route picked straight off the map, with neither set, would show.
-         */}
-        {hasQuery || filtersActive ? (
-          <span className="search__count">
-            {shown.length} of {total}
-          </span>
-        ) : null}
       </div>
-      <FilterPanel
-        filters={filters}
-        onFiltersChange={onFiltersChange}
-        expanded={filtersExpanded}
-        onExpandedChange={onFiltersExpandedChange}
-      />
-      {expanded && shown.length === 0 ? (
-        <p className="search__empty">
-          {/*
-           * Whichever of the two actually narrowed the library to nothing —
-           * or, typed and filtered at once, both. Blaming a filter for what a
-           * misremembered name caused, or the reverse, points the reader
-           * at the wrong control to relax.
-           */}
-          {hasQuery && filtersActive
-            ? "Nothing here matches this search and these filters."
-            : filtersActive
-              ? "Nothing here matches these filters."
-              : "Nothing here is called that."}
-        </p>
-      ) : null}
-      {expanded && shown.length > 0 ? (
-        <ul className="search__results">
-          {shown.map((route) => {
-            const key = routeKey(route);
-            const shape = shapes.get(key);
+      {hasResults || selectedRoute ? (
+        <div className="panel search__panel">
+          {hasResults && shown.length === 0 ? (
+            <p className="search__empty">
+              {/*
+               * Whichever of the two actually narrowed the library to nothing —
+               * or, typed and filtered at once, both. Blaming a filter for what a
+               * misremembered name caused, or the reverse, points the reader
+               * at the wrong control to relax.
+               */}
+              {hasQuery && filtersActive
+                ? "Nothing here matches this search and these filters."
+                : filtersActive
+                  ? "Nothing here matches these filters."
+                  : "Nothing here is called that."}
+            </p>
+          ) : null}
+          {hasResults && shown.length > 0 ? (
+            <ul className="search__results">
+              {shown.map((route) => {
+                const key = routeKey(route);
+                const shape = shapes.get(key);
 
-            return key === selectedKey ? (
+                return key === selectedKey ? (
+                  <RouteCard
+                    key={key}
+                    route={route}
+                    shape={shape}
+                    readAt={readAt}
+                    change={changeOf(route)}
+                    onOpen={() => onOpen(key)}
+                    unitSystem={unitSystem}
+                  />
+                ) : (
+                  <ResultRow
+                    key={key}
+                    route={route}
+                    shape={shape}
+                    change={changeOf(route)}
+                    onSelect={() => onSelect(key)}
+                    unitSystem={unitSystem}
+                  />
+                );
+              })}
+            </ul>
+          ) : null}
+          {!hasResults && selectedRoute ? (
+            <ul className="search__results">
               <RouteCard
-                key={key}
-                route={route}
-                shape={shape}
+                route={selectedRoute}
+                shape={shapes.get(routeKey(selectedRoute))}
                 readAt={readAt}
-                change={changeOf(route)}
-                onOpen={() => onOpen(key)}
+                change={changeOf(selectedRoute)}
+                onOpen={() => onOpen(routeKey(selectedRoute))}
                 unitSystem={unitSystem}
               />
-            ) : (
-              <ResultRow
-                key={key}
-                route={route}
-                shape={shape}
-                change={changeOf(route)}
-                onSelect={() => onSelect(key)}
-                unitSystem={unitSystem}
-              />
-            );
-          })}
-        </ul>
+            </ul>
+          ) : null}
+        </div>
       ) : null}
     </div>
   );

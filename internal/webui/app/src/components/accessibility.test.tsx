@@ -35,8 +35,6 @@ import { MapCredits } from "./MapCredits";
 import { RouteKey } from "./RouteKey";
 import { StartTimePicker } from "./StartTimePicker";
 import { StatusMessage } from "./StatusMessage";
-import { ThemePicker } from "./ThemePicker";
-import { UnitPicker } from "./UnitPicker";
 
 const STAGE: Route = {
   provider: "veloplanner",
@@ -261,33 +259,6 @@ describe("accessibility", () => {
           expanded={expanded}
           onExpandedChange={() => {}}
         />,
-      );
-
-      await expectNoAxeViolations(container);
-      unmount();
-    }
-  });
-
-  it("holds for the theme chooser, folded and unfolded", async () => {
-    for (const expanded of [true, false]) {
-      const { container, unmount } = render(
-        <ThemePicker
-          choice="system"
-          onChoose={() => {}}
-          expanded={expanded}
-          onExpandedChange={() => {}}
-        />,
-      );
-
-      await expectNoAxeViolations(container);
-      unmount();
-    }
-  });
-
-  it("holds for the unit toggle, either system on screen", async () => {
-    for (const system of ["metric", "imperial"] as const) {
-      const { container, unmount } = render(
-        <UnitPicker system={system} onSystemChange={() => {}} />,
       );
 
       await expectNoAxeViolations(container);

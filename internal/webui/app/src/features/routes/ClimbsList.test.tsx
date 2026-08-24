@@ -28,18 +28,39 @@ describe("ClimbsList", () => {
   it("names each climb by its distance, ascent, and grades", () => {
     render(<ClimbsList climbs={[climb()]} onSelect={() => {}} unitSystem="metric" />);
 
+    expect(screen.getByRole("button", { name: "Show 1 climb" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+    expect(screen.getByRole("button", { name: "Show 1 climb" })).not.toHaveAttribute(
+      "aria-controls",
+    );
+    expect(screen.queryByText("600 m")).not.toBeInTheDocument();
+  });
+
+  it("shows each climb after it is expanded", async () => {
+    render(<ClimbsList climbs={[climb()]} onSelect={() => {}} unitSystem="metric" />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Show 1 climb" }));
+
+    expect(screen.getByRole("button", { name: "Hide 1 climb" })).toHaveAttribute(
+      "aria-controls",
+      "climbs-list",
+    );
     expect(screen.getByText("600 m")).toBeInTheDocument();
     expect(screen.getByText(/54 m · avg 9\.0% · max 11%/)).toBeInTheDocument();
   });
 
-  it("reports the same climb in feet for the imperial system", () => {
+  it("reports the same climb in feet for the imperial system", async () => {
     render(<ClimbsList climbs={[climb()]} onSelect={() => {}} unitSystem="imperial" />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Show 1 climb" }));
 
     expect(screen.getByText("1969 ft")).toBeInTheDocument();
     expect(screen.getByText(/177 ft · avg 9\.0% · max 11%/)).toBeInTheDocument();
   });
 
-  it("lists more than one climb in the order they are ridden", () => {
+  it("lists more than one climb in the order they are ridden", async () => {
     render(
       <ClimbsList
         climbs={[
@@ -51,7 +72,9 @@ describe("ClimbsList", () => {
       />,
     );
 
-    expect(screen.getAllByRole("button")).toHaveLength(2);
+    await userEvent.click(screen.getByRole("button", { name: "Show 2 climbs" }));
+
+    expect(screen.getAllByRole("button")).toHaveLength(3);
   });
 
   it("hands the picked climb back to its owner", async () => {
@@ -59,7 +82,8 @@ describe("ClimbsList", () => {
     const picked = climb();
     render(<ClimbsList climbs={[picked]} onSelect={onSelect} unitSystem="metric" />);
 
-    await userEvent.click(screen.getByRole("button"));
+    await userEvent.click(screen.getByRole("button", { name: "Show 1 climb" }));
+    await userEvent.click(screen.getByRole("button", { name: /600 m/ }));
 
     expect(onSelect).toHaveBeenCalledWith(picked);
   });

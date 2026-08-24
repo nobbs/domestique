@@ -19,6 +19,7 @@
  * back to offer, and saying so with an inert control would be saying it worse.
  */
 
+import { IconExternalLink } from "@tabler/icons-react";
 import { sourceRoute } from "../lib/sourceRoute";
 import { ExternalButtonLink } from "./Button";
 
@@ -59,16 +60,7 @@ export function SourceRouteLink({ provider, baseUrl, routeId }: SourceRouteLinkP
        * fails to paint.
        */}
       <span>{source.name}</span>
-      <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" focusable="false">
-        <path
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.6"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          d="M6.5 3H3.8A.8.8 0 0 0 3 3.8v8.4a.8.8 0 0 0 .8.8h8.4a.8.8 0 0 0 .8-.8V9.5M9.5 2.5H13.5V6.5M13 3 7.5 8.5"
-        />
-      </svg>
+      <IconExternalLink size={13} stroke={1.6} aria-hidden="true" />
     </ExternalButtonLink>
   );
 }
