@@ -52,10 +52,14 @@ function renderStrip(options: {
   coordinates?: Position[];
   seed?: WeatherForecast;
   unitSystem?: "metric" | "imperial";
+  startAt?: Date;
+  startMetres?: number;
+  endMetres?: number;
 }) {
   const coordinates = options.coordinates ?? road();
   const samples =
-    options.samples ?? forecastSamples(coordinates, movingTime(coordinates), START_AT);
+    options.samples ??
+    forecastSamples(coordinates, movingTime(coordinates), options.startAt ?? START_AT);
   const distances = cumulativeMetres(coordinates);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   if (options.seed) {
@@ -67,8 +71,8 @@ function renderStrip(options: {
       <ForecastStrip
         samples={samples}
         coordinates={coordinates}
-        startMetres={0}
-        endMetres={distances[distances.length - 1] ?? 0}
+        startMetres={options.startMetres ?? 0}
+        endMetres={options.endMetres ?? distances[distances.length - 1] ?? 0}
         unitSystem={options.unitSystem ?? "metric"}
       />
     </QueryClientProvider>,
@@ -155,5 +159,59 @@ describe("ForecastStrip", () => {
     renderStrip({ coordinates, samples, seed: forecastFor(samples.length) });
 
     expect(screen.getByRole("table")).toHaveTextContent(/Tailwind/i);
+  });
+
+  /*
+   * The strip is handed whatever stretch the elevation chart is drawing, so
+   * dragging out a climb narrows this axis too. A cell for ground outside that
+   * stretch has nowhere to sit and must be dropped rather than clamped onto
+   * the edge, where it would claim a reading for ground the chart is not
+   * showing.
+   */
+  it("drops the cells outside the stretch the profile is showing", () => {
+    const coordinates = road();
+    const samples = forecastSamples(coordinates, movingTime(coordinates), START_AT);
+    const distances = cumulativeMetres(coordinates);
+    const total = distances[distances.length - 1] ?? 0;
+
+    const whole = renderStrip({ coordinates, samples, seed: forecastFor(samples.length) });
+    const wholeRows = screen.getAllByRole("row").length;
+    whole.unmount();
+
+    renderStrip({
+      coordinates,
+      samples,
+      seed: forecastFor(samples.length),
+      startMetres: total / 2,
+      endMetres: total,
+    });
+
+    expect(screen.getAllByRole("row").length).toBeLessThan(wholeRows);
+  });
+
+  /*
+   * The endpoint answers 16 days out and the response never names its model,
+   * so the only honest signal that a far-off forecast is a coarser one is this
+   * line. Every band it can report is a start time a reader can pick.
+   */
+  it("says how sharp the forecast is, and says it differently further out", () => {
+    const coordinates = road();
+    const readingFor = (daysAhead: number) => {
+      const startAt = new Date(Date.now() + daysAhead * 24 * 60 * 60 * 1000);
+      const samples = forecastSamples(coordinates, movingTime(coordinates), startAt);
+      const view = renderStrip({ coordinates, samples, seed: forecastFor(samples.length) });
+      const text = screen.getByText(/resolution|guidance/i).textContent ?? "";
+      view.unmount();
+
+      return text;
+    };
+
+    const tomorrow = readingFor(1);
+    const inThreeDays = readingFor(3);
+    const inTenDays = readingFor(10);
+
+    expect(tomorrow).toMatch(/2 km/);
+    expect(inThreeDays).not.toBe(tomorrow);
+    expect(inTenDays).not.toBe(inThreeDays);
   });
 });
