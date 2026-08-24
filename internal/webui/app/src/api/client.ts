@@ -7,6 +7,7 @@
  * holds a credential.
  */
 
+import type { ForecastSample } from "../lib/forecastSamples";
 import {
   ContractError,
   parseRoute,
@@ -15,6 +16,7 @@ import {
   parseStatus,
   parseSyncRuns,
   parseSyncSchedule,
+  parseWeather,
   parseWebUIConfig,
 } from "./parse";
 import type {
@@ -24,6 +26,7 @@ import type {
   SyncPhase,
   SyncRunPage,
   SyncSchedule,
+  WeatherForecast,
   WebUIConfig,
 } from "./types";
 
@@ -233,5 +236,44 @@ export function setSyncSchedule(schedule: SyncSchedule): Promise<SyncSchedule> {
   return request("/v1/sync/schedule", (payload) => parseSyncSchedule(payload), {
     method: "PUT",
     body: schedule,
+  });
+}
+
+/**
+ * Builds the query string `GET /v1/weather` reads, one repeated `point` per
+ * sample. Exported so `queries.ts` can build the identical string for its
+ * cache key without a second copy of this logic to drift out of step with it.
+ */
+export function weatherQueryString(samples: ForecastSample[]): string {
+  const query = new URLSearchParams();
+  for (const sample of samples) {
+    // ForecastSample.position is [longitude, latitude] — GeoJSON order — but
+    // the wire format is "latitude,longitude,time": the opposite way round.
+    // Named locals make the swap visible rather than leaving it implicit in
+    // which array slot goes where.
+    const [longitude, latitude] = sample.position;
+    query.append("point", `${latitude},${longitude},${sample.arrivalAt.toISOString()}`);
+  }
+
+  return query.toString();
+}
+
+/**
+ * Reads a forecast for each of a stage's forecast samples, in one request.
+ *
+ * The endpoint answers exactly one point per point requested, in the order
+ * requested — never fewer, never more — so a length mismatch is drift between
+ * this client and the service rather than data to degrade past.
+ */
+export function fetchWeather(samples: ForecastSample[]): Promise<WeatherForecast> {
+  return request(`/v1/weather?${weatherQueryString(samples)}`, (payload) => {
+    const forecast = parseWeather(payload);
+    if (forecast.points.length !== samples.length) {
+      throw new ContractError(
+        `body.points has ${forecast.points.length} points for ${samples.length} requested`,
+      );
+    }
+
+    return forecast;
   });
 }

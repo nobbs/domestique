@@ -1,6 +1,7 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Position } from "../../api/types";
 import { buildProfile } from "../../lib/profile";
 import { RouteProfile } from "./RouteProfile";
@@ -35,22 +36,29 @@ function stubCoarsePointer() {
 
 function show(props: Partial<React.ComponentProps<typeof RouteProfile>> = {}) {
   const onCollapsedChange = vi.fn();
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
-    <RouteProfile
-      profile={PROFILE}
-      title="Col du Test"
-      ascentMetres={1560}
-      surface={null}
-      activeMetres={null}
-      onActiveChange={() => {}}
-      zoomWindow={null}
-      onZoomChange={() => {}}
-      highlight={null}
-      collapsed={false}
-      onCollapsedChange={onCollapsedChange}
-      unitSystem="metric"
-      {...props}
-    />,
+    <QueryClientProvider client={client}>
+      <RouteProfile
+        profile={PROFILE}
+        title="Col du Test"
+        ascentMetres={1560}
+        surface={null}
+        activeMetres={null}
+        onActiveChange={() => {}}
+        zoomWindow={null}
+        onZoomChange={() => {}}
+        highlight={null}
+        collapsed={false}
+        onCollapsedChange={onCollapsedChange}
+        unitSystem="metric"
+        startAt={null}
+        onStartAtChange={() => {}}
+        samples={[]}
+        coordinates={climb()}
+        {...props}
+      />
+    </QueryClientProvider>,
   );
 
   return { onCollapsedChange };
@@ -60,6 +68,16 @@ function show(props: Partial<React.ComponentProps<typeof RouteProfile>> = {}) {
 function summary(): string {
   return document.querySelector(".route-profile__summary")?.textContent ?? "";
 }
+
+beforeEach(() => {
+  // The forecast strip owns its own query; a start time this suite is not
+  // exercising directly must still find a fetch stub loud enough to notice an
+  // unseeded request rather than hang.
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => new Response("{}", { status: 404 })),
+  );
+});
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -151,5 +169,27 @@ describe("RouteProfile", () => {
 
     expect(unfold).toHaveAttribute("aria-expanded", "false");
     expect(unfold).not.toHaveAttribute("aria-controls");
+  });
+
+  it("offers a way to set a ride start time, beside the chart", () => {
+    show();
+
+    expect(screen.getByLabelText("Ride start")).toBeInTheDocument();
+  });
+
+  // Answering "when the strip is asking about" for a chart that is not on the
+  // page any more is a question nobody there asked.
+  it("folds the start-time control away with the chart", () => {
+    show({ collapsed: true });
+
+    expect(screen.queryByLabelText("Ride start")).not.toBeInTheDocument();
+  });
+
+  // No default start time means no forecast strip until the reader chooses
+  // one — see lib/startTime.ts on why a chosen time is never invented.
+  it("draws no forecast strip before a start time is chosen", () => {
+    show({ startAt: null, samples: [] });
+
+    expect(document.querySelector(".forecast-strip")).toBeNull();
   });
 });

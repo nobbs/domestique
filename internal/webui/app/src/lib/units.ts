@@ -64,6 +64,53 @@ export function distanceLabel(metres: number, stepKilometres: number, system: Un
   return value.toFixed(decimals);
 }
 
+const FAHRENHEIT_DEGREES_PER_CELSIUS_DEGREE = 9 / 5;
+const FAHRENHEIT_FREEZING_POINT = 32;
+const KMH_PER_MPH = 1.609344;
+const MILLIMETRES_PER_INCH = 25.4;
+
+export function celsiusToFahrenheit(celsius: number): number {
+  return celsius * FAHRENHEIT_DEGREES_PER_CELSIUS_DEGREE + FAHRENHEIT_FREEZING_POINT;
+}
+
+export function kmhToMph(kmh: number): number {
+  return kmh / KMH_PER_MPH;
+}
+
+export function millimetresToInches(millimetres: number): number {
+  return millimetres / MILLIMETRES_PER_INCH;
+}
+
+/** The name of this system's temperature unit: a degree Celsius or Fahrenheit. */
+export function temperatureUnitLabel(system: UnitSystem): string {
+  return system === "imperial" ? "°F" : "°C";
+}
+
+/** The name of this system's speed unit: kilometres or miles per hour. */
+export function speedUnitLabel(system: UnitSystem): string {
+  return system === "imperial" ? "mph" : "km/h";
+}
+
+/** The name of this system's precipitation unit: a millimetre or an inch. */
+export function precipitationUnitLabel(system: UnitSystem): string {
+  return system === "imperial" ? "in" : "mm";
+}
+
+/** A temperature, converted for display. */
+export function temperatureValue(celsius: number, system: UnitSystem): number {
+  return system === "imperial" ? celsiusToFahrenheit(celsius) : celsius;
+}
+
+/** A speed, converted for display. */
+export function speedValue(kmh: number, system: UnitSystem): number {
+  return system === "imperial" ? kmhToMph(kmh) : kmh;
+}
+
+/** A precipitation depth, converted for display. */
+export function precipitationValue(millimetres: number, system: UnitSystem): number {
+  return system === "imperial" ? millimetresToInches(millimetres) : millimetres;
+}
+
 /** The reader's chosen unit system, remembered across visits. Metric by default. */
 export function useUnitSystem(): [UnitSystem, (system: UnitSystem) => void] {
   const [system, setSystem] = useState<UnitSystem>(readSystem);

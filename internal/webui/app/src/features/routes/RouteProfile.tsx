@@ -16,9 +16,18 @@
  * which heights the route runs and how much climbing that comes to. The choice
  * sticks as the reader moves between routes, because a reader who put the chart
  * away did so to see more of the card, not to see more of one route's card.
+ *
+ * The start-time control and the forecast strip live in the same row of the
+ * card as the chart, immediately under it — and fold away with it, since a
+ * forecast for a chart the reader has already put away is answering a
+ * question they are not asking any more.
  */
 
+import type { Position } from "../../api/types";
 import { ElevationProfile } from "../../components/ElevationProfile";
+import { ForecastStrip } from "../../components/ForecastStrip";
+import { StartTimePicker } from "../../components/StartTimePicker";
+import type { ForecastSample } from "../../lib/forecastSamples";
 import { formatAscent, formatElevation } from "../../lib/format";
 import type { Highlight } from "../../lib/highlight";
 import { useCoarsePointer } from "../../lib/mediaQuery";
@@ -43,6 +52,13 @@ export interface RouteProfileProps {
   onCollapsedChange: (collapsed: boolean) => void;
   /** The units the figures, the summary, and the chart itself report in. */
   unitSystem: UnitSystem;
+  /** When the reader means to set off, or null while nothing has been chosen. */
+  startAt: Date | null;
+  onStartAtChange: (next: Date | null) => void;
+  /** The forecast samples for the whole route — see `forecastSamples.ts`. */
+  samples: ForecastSample[];
+  /** The whole route's own geometry, which the forecast strip's wind reading is measured against. */
+  coordinates: Position[];
 }
 
 export function RouteProfile({
@@ -58,6 +74,10 @@ export function RouteProfile({
   collapsed,
   onCollapsedChange,
   unitSystem,
+  startAt,
+  onStartAtChange,
+  samples,
+  coordinates,
 }: RouteProfileProps) {
   /*
    * A finger cannot hover, and a card that scrolls cannot give every downward
@@ -128,19 +148,31 @@ export function RouteProfile({
        * must not be a plot a stray drag can still select a stretch of.
        */}
       {collapsed ? null : (
-        <div id="elevation-plot">
-          <ElevationProfile
-            profile={profile}
-            title={title}
-            surface={surface}
-            activeMetres={activeMetres}
-            onActiveChange={onActiveChange}
-            zoomWindow={zoomWindow}
-            onZoomChange={onZoomChange}
-            highlight={highlight}
-            unitSystem={unitSystem}
-          />
-        </div>
+        <>
+          <div id="elevation-plot">
+            <ElevationProfile
+              profile={profile}
+              title={title}
+              surface={surface}
+              activeMetres={activeMetres}
+              onActiveChange={onActiveChange}
+              zoomWindow={zoomWindow}
+              onZoomChange={onZoomChange}
+              highlight={highlight}
+              unitSystem={unitSystem}
+            />
+          </div>
+          <StartTimePicker value={startAt} onChange={onStartAtChange} />
+          {startAt ? (
+            <ForecastStrip
+              samples={samples}
+              coordinates={coordinates}
+              startMetres={profile?.startMetres ?? 0}
+              endMetres={profile?.endMetres ?? 0}
+              unitSystem={unitSystem}
+            />
+          ) : null}
+        </>
       )}
     </section>
   );

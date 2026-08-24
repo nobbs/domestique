@@ -1700,6 +1700,96 @@ body {
   letter-spacing: var(--track-row);
 }
 
+/* Ride start and forecast strip -------------------------------------------- */
+
+/*
+ * When the ride starts: the first date field this service draws, in the same
+ * row rhythm as the profile's own summary line rather than the corner-chip
+ * surface the map's own pickers use — this lives inside the card, not
+ * floating over the map.
+ */
+.start-time-picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.start-time-picker__label {
+  color: var(--ink-2);
+  font: var(--type-small);
+  letter-spacing: var(--track-small);
+}
+
+.start-time-picker__input {
+  padding: 2px var(--space-1);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--ink);
+  font: var(--type-small);
+  letter-spacing: var(--track-small);
+}
+
+.start-time-picker__input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Refused rather than sent — the same window the endpoint itself enforces. */
+.start-time-picker__refusal {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--alert);
+  font: var(--type-small);
+  letter-spacing: var(--track-small);
+}
+
+/*
+ * One cell per forecast sample, sharing the elevation chart's own axis — see
+ * `lib/plotAxis.ts` — so the two never disagree about where a distance sits.
+ *
+ * Colour carries precipitation and nothing else here: unlike the elevation
+ * chart's bands, this is not exempted in the `forced-colors` block below, on
+ * purpose. Every figure a cell encodes is also said in words — the wind
+ * relation as its own letter glyph, everything as an SVG `<title>` a pointer
+ * can hover, and the full reading in the visually hidden table beside it.
+ */
+.forecast-strip {
+  margin-top: var(--space-2);
+}
+
+.forecast-strip svg {
+  display: block;
+}
+
+.forecast-strip__precip {
+  fill: var(--accent);
+}
+
+.forecast-strip__wind-glyph {
+  fill: var(--ink-2);
+  font: var(--type-small);
+  letter-spacing: var(--track-small);
+  pointer-events: none;
+}
+
+.forecast-strip__sharpness,
+.forecast-strip__credit {
+  margin: var(--space-1) 0 0;
+  color: var(--ink-2);
+  font: var(--type-small);
+  letter-spacing: var(--track-small);
+}
+
+.forecast-strip__unavailable {
+  margin: var(--space-2) 0 0;
+  color: var(--ink-2);
+  font: var(--type-row);
+  letter-spacing: var(--track-row);
+}
+
 /* Status ------------------------------------------------------------------ */
 
 /*

@@ -253,15 +253,16 @@ type Classification struct {
 // cannot drift into a shape the production reader would not accept.
 func Classifications(stages []route.Stage) ([]Classification, error) {
 	specs := specs()
+	kindsByStage := stageSurfaceKinds(stages)
 	classifications := make([]Classification, 0, len(specs))
 	for index := range specs {
 		spec := &specs[index]
-		if len(spec.bands) == 0 {
+		kinds := kindsByStage[index]
+		if kinds == nil {
 			continue
 		}
 		stage := &stages[index]
 		geometry := stage.Geometry()
-		kinds := spec.kinds(len(geometry))
 		encoded, err := surface.EncodeRanges(surface.Compress(kinds))
 		if err != nil {
 			return nil, fmt.Errorf("demo: encoding surface for %d/%d: %w", spec.routeID, spec.stageOrder, err)
@@ -277,6 +278,29 @@ func Classifications(stages []route.Stage) ([]Classification, error) {
 	}
 
 	return classifications, nil
+}
+
+// stageSurfaceKinds returns each stage's per-point surface class, aligned with
+// stages and indexed the same way. A stage with no classification bands (the
+// one never surveyed at all) reports nil, which both Classifications' encoder
+// and ridemodel.Predict read correctly: the former skips it as unclassified,
+// the latter falls back to asphalt throughout.
+//
+// It exists so Seed does not run the same per-point band assignment twice —
+// once to store a surface classification, once to feed the ride-model
+// prediction — over what is otherwise the same geometry and the same bands.
+func stageSurfaceKinds(stages []route.Stage) [][]surface.Kind {
+	specs := specs()
+	kinds := make([][]surface.Kind, len(stages))
+	for index := range specs {
+		spec := &specs[index]
+		if len(spec.bands) == 0 {
+			continue
+		}
+		kinds[index] = spec.kinds(len(stages[index].Geometry()))
+	}
+
+	return kinds
 }
 
 // Revision is the source revision a stage is stored at. Convergence compares

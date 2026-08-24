@@ -5,8 +5,11 @@ import {
   formatDistance,
   formatElevation,
   formatGradient,
+  formatPrecipitation,
   formatReadTime,
+  formatTemperature,
   formatTimestamp,
+  formatWindSpeed,
 } from "./format";
 
 describe("formatDistance", () => {
@@ -148,5 +151,58 @@ describe("formatGradient", () => {
   it("holds a decimal place under ten percent and drops it at ten and above", () => {
     expect(formatGradient(9.2)).toBe("9.2%");
     expect(formatGradient(11.6)).toBe("12%");
+  });
+});
+
+describe("formatTemperature", () => {
+  it("says nothing for a reading it does not have", () => {
+    expect(formatTemperature(Number.NaN, "metric")).toBe("—");
+    expect(formatTemperature(Number.POSITIVE_INFINITY, "metric")).toBe("—");
+  });
+
+  it("keeps a decimal near freezing, in metric", () => {
+    expect(formatTemperature(0.4, "metric")).toBe("0.4°C");
+  });
+
+  it("drops the decimal once safely away from freezing, in metric", () => {
+    expect(formatTemperature(18.2, "metric")).toBe("18°C");
+  });
+
+  it("converts to Fahrenheit for the imperial system", () => {
+    expect(formatTemperature(0, "imperial")).toBe("32°F");
+  });
+});
+
+describe("formatWindSpeed", () => {
+  it("says nothing for a reading it does not have", () => {
+    expect(formatWindSpeed(Number.NaN, "metric")).toBe("—");
+  });
+
+  it("holds a decimal under ten and drops it at ten and above, in metric", () => {
+    expect(formatWindSpeed(4.2, "metric")).toBe("4.2 km/h");
+    expect(formatWindSpeed(18, "metric")).toBe("18 km/h");
+  });
+
+  it("converts to miles per hour for the imperial system", () => {
+    expect(formatWindSpeed(18, "imperial")).toBe("11 mph");
+    expect(formatWindSpeed(3, "imperial")).toBe("1.9 mph");
+  });
+});
+
+describe("formatPrecipitation", () => {
+  it("says nothing for a reading it does not have", () => {
+    expect(formatPrecipitation(Number.NaN, "metric")).toBe("—");
+  });
+
+  it("reports one decimal of millimetres in metric", () => {
+    expect(formatPrecipitation(0.4, "metric")).toBe("0.4 mm");
+  });
+
+  // An inch is roughly twenty-five millimetres, so the same one-decimal
+  // precision would round a light shower away to nothing in inches — two
+  // decimals keeps the same real resolution as one decimal of millimetres.
+  it("reports two decimals of inches in imperial", () => {
+    expect(formatPrecipitation(25.4, "imperial")).toBe("1.00 in");
+    expect(formatPrecipitation(0.4, "imperial")).toBe("0.02 in");
   });
 });

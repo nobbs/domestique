@@ -35,6 +35,7 @@ import type { Climb } from "../../lib/climbs";
 import { findClimbs } from "../../lib/climbs";
 import type { LibraryFilters } from "../../lib/filters";
 import { EMPTY_FILTERS, matchesFilters } from "../../lib/filters";
+import { forecastSamples } from "../../lib/forecastSamples";
 import { formatReadTime } from "../../lib/format";
 import type { Highlight } from "../../lib/highlight";
 import { matchingRoutes } from "../../lib/library";
@@ -49,6 +50,7 @@ import {
 } from "../../lib/profile";
 import { useSeenStages } from "../../lib/seenStages";
 import { widened } from "../../lib/selection";
+import { useStartTime } from "../../lib/startTime";
 import { summariseSurface } from "../../lib/surface";
 import type { ThemeChoice } from "../../lib/theme";
 import { resolvesDark } from "../../lib/theme";
@@ -170,6 +172,9 @@ export function RoutesPage({ themeChoice, onThemeChoiceChange }: RoutesPageProps
    */
   const [basemapChoice, chooseBasemap] = useBasemapChoice();
   const [unitSystem, chooseUnitSystem] = useUnitSystem();
+  // No default: an invented start time would draw a confident forecast for a
+  // ride nobody actually planned. See lib/startTime.ts.
+  const [startAt, setStartAt] = useStartTime();
   const { changeOf, markSeen } = useSeenStages();
   // What the panels are standing on, so the camera frames a route in the part
   // of the map the reader can actually see.
@@ -306,6 +311,17 @@ export function RoutesPage({ themeChoice, onThemeChoiceChange }: RoutesPageProps
   const [chartCollapsed, setChartCollapsed] = useState(false);
 
   const routeProfile = useMemo(() => buildProfile(openCoordinates), [openCoordinates]);
+  // Samples for the forecast strip: nothing until the reader has chosen a
+  // start time, and nothing for a stage nothing has predicted a moving time
+  // for — `forecastSamples` itself returns `[]` for either, which the strip
+  // reads as nothing to draw.
+  const samples = useMemo(
+    () =>
+      startAt
+        ? forecastSamples(openCoordinates, openGeometry.data?.cumulativeSeconds, startAt)
+        : [],
+    [openCoordinates, openGeometry.data?.cumulativeSeconds, startAt],
+  );
   // Rebuilt from the original geometry rather than from the last window, so
   // zooming inside a zoom compounds no rounding error and needs no stack.
   const windowed = useMemo(
@@ -593,6 +609,10 @@ export function RoutesPage({ themeChoice, onThemeChoiceChange }: RoutesPageProps
               collapsed={chartCollapsed}
               onCollapsedChange={setChartCollapsed}
               unitSystem={unitSystem}
+              startAt={startAt}
+              onStartAtChange={setStartAt}
+              samples={samples}
+              coordinates={openCoordinates}
             />
           }
           highestMetres={routeProfile ? routeProfile.maxElevationMetres : null}

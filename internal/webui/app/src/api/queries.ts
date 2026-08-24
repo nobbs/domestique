@@ -4,13 +4,16 @@
  */
 
 import { infiniteQueryOptions, queryOptions } from "@tanstack/react-query";
+import type { ForecastSample } from "../lib/forecastSamples";
 import {
   fetchRoute,
   fetchRouteGeometry,
   fetchRoutes,
   fetchStatus,
   fetchSyncRuns,
+  fetchWeather,
   fetchWebUIConfig,
+  weatherQueryString,
 } from "./client";
 
 /** How often a run that has not finished is asked what it is doing now. */
@@ -98,4 +101,20 @@ export const webUIConfigQuery = () =>
     queryKey: ["webui-config"] as const,
     queryFn: fetchWebUIConfig,
     staleTime: Number.POSITIVE_INFINITY,
+  });
+
+/**
+ * A forecast for one stage's forecast samples.
+ *
+ * The key is the exact query string `fetchWeather` sends, built by the same
+ * `weatherQueryString` helper — so two calls that would hit the same URL
+ * always share the same cache entry, and the two can never drift apart.
+ */
+export const weatherQuery = (samples: ForecastSample[]) =>
+  queryOptions({
+    queryKey: ["weather", weatherQueryString(samples)] as const,
+    queryFn: () => fetchWeather(samples),
+    // The endpoint resolves every point to its nearest hour, so nothing
+    // finer than an hour would ever buy a different answer.
+    staleTime: 60 * 60 * 1000,
   });

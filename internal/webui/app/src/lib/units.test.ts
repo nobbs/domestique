@@ -1,12 +1,21 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  celsiusToFahrenheit,
   distanceLabel,
   distanceUnitLabel,
   elevationUnitLabel,
   elevationValue,
+  kmhToMph,
   metresToFeet,
   metresToMiles,
+  millimetresToInches,
+  precipitationUnitLabel,
+  precipitationValue,
+  speedUnitLabel,
+  speedValue,
+  temperatureUnitLabel,
+  temperatureValue,
   useUnitSystem,
 } from "./units";
 
@@ -77,6 +86,76 @@ describe("distanceLabel", () => {
     // but the same step is well under a mile — so relabelled in miles it
     // needs a decimal to still tell its neighbours apart.
     expect(distanceLabel(42_000, 1, "imperial")).toBe("26.1");
+  });
+});
+
+describe("celsiusToFahrenheit", () => {
+  it("converts freezing and boiling reference points", () => {
+    expect(celsiusToFahrenheit(0)).toBeCloseTo(32, 6);
+    expect(celsiusToFahrenheit(100)).toBeCloseTo(212, 6);
+  });
+});
+
+describe("kmhToMph", () => {
+  it("converts a speed in kilometres per hour to miles per hour", () => {
+    expect(kmhToMph(1.609344)).toBeCloseTo(1, 6);
+  });
+});
+
+describe("millimetresToInches", () => {
+  it("converts a depth in millimetres to inches", () => {
+    expect(millimetresToInches(25.4)).toBeCloseTo(1, 6);
+  });
+});
+
+describe("temperatureUnitLabel", () => {
+  it("names the metric and imperial temperature units", () => {
+    expect(temperatureUnitLabel("metric")).toBe("°C");
+    expect(temperatureUnitLabel("imperial")).toBe("°F");
+  });
+});
+
+describe("speedUnitLabel", () => {
+  it("names the metric and imperial speed units", () => {
+    expect(speedUnitLabel("metric")).toBe("km/h");
+    expect(speedUnitLabel("imperial")).toBe("mph");
+  });
+});
+
+describe("precipitationUnitLabel", () => {
+  it("names the metric and imperial precipitation units", () => {
+    expect(precipitationUnitLabel("metric")).toBe("mm");
+    expect(precipitationUnitLabel("imperial")).toBe("in");
+  });
+});
+
+describe("temperatureValue", () => {
+  it("passes a metric temperature through unchanged", () => {
+    expect(temperatureValue(18.2, "metric")).toBe(18.2);
+  });
+
+  it("converts to Fahrenheit for the imperial system", () => {
+    expect(temperatureValue(0, "imperial")).toBeCloseTo(32, 6);
+  });
+});
+
+describe("speedValue", () => {
+  it("passes a metric speed through unchanged", () => {
+    expect(speedValue(18, "metric")).toBe(18);
+  });
+
+  it("converts to miles per hour for the imperial system", () => {
+    expect(speedValue(1.609344, "imperial")).toBeCloseTo(1, 6);
+  });
+});
+
+describe("precipitationValue", () => {
+  it("passes a metric depth through unchanged", () => {
+    expect(precipitationValue(0.4, "metric")).toBe(0.4);
+  });
+
+  it("converts to inches for the imperial system", () => {
+    expect(precipitationValue(25.4, "imperial")).toBeCloseTo(1, 6);
   });
 });
 

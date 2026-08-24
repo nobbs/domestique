@@ -1,15 +1,37 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { ForecastSample } from "../lib/forecastSamples";
 import {
   ApiError,
   fetchRoute,
   fetchRouteGeometry,
   fetchRoutes,
   fetchSyncRuns,
+  fetchWeather,
   setSyncSchedule,
   triggerSync,
   triggerTargetSync,
 } from "./client";
 import { ContractError } from "./parse";
+
+const weatherPointPayload = {
+  time: "2026-08-25T09:00:00Z",
+  temperature_celsius: 18.2,
+  apparent_temperature_celsius: 17.1,
+  precipitation_millimetres: 0.4,
+  precipitation_probability_percent: 35,
+  wind_speed_kmh: 18,
+  wind_direction_degrees: 240,
+  weather_code: 61,
+};
+
+/** [longitude, latitude], deliberately far apart so a transposed pair reads wrong. */
+function forecastSample(position: [number, number] = [8.4, 49.0]): ForecastSample {
+  return {
+    position,
+    distanceMetres: 0,
+    arrivalAt: new Date("2026-08-25T09:00:00Z"),
+  };
+}
 
 function respondWith(status: number, body: unknown): void {
   vi.stubGlobal(
@@ -213,5 +235,40 @@ describe("the API client", () => {
       }),
     );
     expect(stored).toEqual({ source: true, targets: false });
+  });
+
+  // ForecastSample.position is [longitude, latitude] — GeoJSON order — but the
+  // wire format is "latitude,longitude,time", the opposite way round. This
+  // sample's two coordinates are unmistakably different, so a transposed pair
+  // would fail this assertion rather than pass it by coincidence.
+  it("builds the weather query with latitude before longitude", async () => {
+    const fetchMock = vi.fn(
+      async () => new Response(JSON.stringify({ points: [weatherPointPayload] }), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await fetchWeather([forecastSample([8.4, 49.0])]);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/v1/weather?point=49%2C8.4%2C2026-08-25T09%3A00%3A00.000Z",
+      expect.anything(),
+    );
+  });
+
+  it("reads a forecast with one point per requested sample", async () => {
+    respondWith(200, { points: [weatherPointPayload] });
+
+    const forecast = await fetchWeather([forecastSample()]);
+
+    expect(forecast.points).toHaveLength(1);
+    expect(forecast.points[0]).toMatchObject({ temperatureCelsius: 18.2, weatherCode: 61 });
+  });
+
+  // The endpoint answers exactly one point per point requested; anything else
+  // is drift between this client and the service, not data to render around.
+  it("refuses a forecast whose point count disagrees with the request", async () => {
+    respondWith(200, { points: [weatherPointPayload, weatherPointPayload] });
+
+    await expect(fetchWeather([forecastSample()])).rejects.toBeInstanceOf(ContractError);
   });
 });
