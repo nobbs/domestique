@@ -34,7 +34,7 @@ func writeSamples(path string, samples []sample) error {
 	return writeCSVFile(path, []string{
 		"ride_id", "time", "delta_seconds", "interval_distance_m", "speed_mps", "gradient_percent",
 		"altitude_m", "has_altitude", "cadence_rpm", "has_cadence", "temperature_c", "has_temperature",
-		"latitude", "longitude", "has_position", "moving", "derived",
+		"latitude", "longitude", "has_position", "heart_rate_bpm", "has_heart_rate", "moving", "derived",
 	}, len(samples), func(i int) []string {
 		s := samples[i]
 
@@ -45,6 +45,7 @@ func writeSamples(path string, samples []sample) error {
 			formatFloat(s.CadenceRPM), formatBool(s.HasCadence),
 			formatFloat(s.TemperatureCelsius), formatBool(s.HasTemperatureCelsius),
 			formatFloat(s.Latitude), formatFloat(s.Longitude), formatBool(s.HasPosition),
+			formatFloat(s.HeartRateBPM), formatBool(s.HasHeartRate),
 			formatBool(s.MovingFilter), formatBool(s.Derived),
 		}
 	})

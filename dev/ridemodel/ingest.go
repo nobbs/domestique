@@ -262,6 +262,10 @@ func buildSamples(rideID string, records []point, derived bool) []sample {
 			s.Latitude = cur.Latitude
 			s.Longitude = cur.Longitude
 		}
+		if cur.HasHeartRate {
+			s.HasHeartRate = true
+			s.HeartRateBPM = cur.HeartRateBPM
+		}
 		samples = append(samples, s)
 	}
 

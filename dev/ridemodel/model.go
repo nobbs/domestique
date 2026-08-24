@@ -136,10 +136,12 @@ type sample struct {
 	AltitudeMetres         float64
 	CadenceRPM             float64
 	Latitude               float64
+	HeartRateBPM           float64
 	HasCadence             bool
 	HasPosition            bool
 	HasTemperatureCelsius  bool
 	HasAltitude            bool
+	HasHeartRate           bool
 	MovingFilter           bool
 	Derived                bool
 }
