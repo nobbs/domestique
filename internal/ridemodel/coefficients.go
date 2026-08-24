@@ -202,6 +202,16 @@ func (r *rawCoefficients) build() (Coefficients, error) {
 	if r.P90Percent < 0 {
 		return Coefficients{}, errors.New("ridemodel: p90_percent must not be negative")
 	}
+	// A partially-updated file — one of the three percentages set without
+	// evaluated_rides — must not silently load and then drop the metadata:
+	// HasValidation() would read EvaluatedRides == 0 as "not measured" and
+	// serve none of it, which is exactly the configuration mistake this
+	// catches rather than masks.
+	if r.EvaluatedRides == 0 && (r.BiasPercent != 0 || r.MAEPercent != 0 || r.P90Percent != 0) {
+		return Coefficients{}, errors.New(
+			"ridemodel: bias_percent, mae_percent, and p90_percent require evaluated_rides",
+		)
+	}
 
 	crr := map[surface.Kind]float64{
 		surface.KindAsphalt:   r.Crr,

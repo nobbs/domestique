@@ -117,6 +117,22 @@ func TestLoadRejectsNegativeValidationFields(t *testing.T) {
 	}
 }
 
+// A percentage set without evaluated_rides is a partially-updated file, not
+// an intentionally absent group: loading it would silently disable
+// HasValidation() and drop the metadata the operator meant to add.
+func TestLoadRejectsAValidationPercentageWithoutEvaluatedRides(t *testing.T) {
+	for name, addition := range map[string]string{
+		"bias_percent alone": "bias_percent = -1.2\n",
+		"mae_percent alone":  "mae_percent = 6.8\n",
+		"p90_percent alone":  "p90_percent = 14.1\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := Load(writeCoefficientsFile(t, validCoefficientsTOML+addition))
+			require.Error(t, err, "Load()")
+		})
+	}
+}
+
 func TestLoadFingerprintChangesWithFileContent(t *testing.T) {
 	first, err := Load(writeCoefficientsFile(t, validCoefficientsTOML))
 	require.NoError(t, err, "Load() first")
