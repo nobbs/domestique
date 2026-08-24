@@ -68,6 +68,12 @@ export interface RouteProfileProps {
    */
   rideSeconds?: number | undefined;
   /**
+   * What identifies the stage on show — `routeKey`'s provider/route/stage
+   * triple. The title cannot stand in for it: two stages may legitimately
+   * carry the same one, and this is used to tell them apart.
+   */
+  stageKey?: string | undefined;
+  /**
    * Whether the stage's prediction is settled — that is, whether its geometry
    * has actually been answered for.
    *
@@ -99,6 +105,7 @@ export function RouteProfile({
   coordinates,
   rideSeconds,
   predictionKnown = true,
+  stageKey,
 }: RouteProfileProps) {
   /*
    * A finger cannot hover, and a card that scrolls cannot give every downward
@@ -212,10 +219,12 @@ export function RouteProfile({
            * Keyed by the stage, so its refusal does not outlive the stage it
            * was about: this section is reused rather than remounted as the
            * reader moves between routes, and an alert about one stage's
-           * horizon attached to the next one would be about nothing.
+           * horizon attached to the next one would be about nothing. By the
+           * stage's identity rather than its title, which two stages may
+           * legitimately share.
            */}
           <StartTimePicker
-            key={title}
+            key={stageKey ?? title}
             value={startAt}
             onChange={onStartAtChange}
             rideSeconds={rideSeconds}

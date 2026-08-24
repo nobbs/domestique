@@ -621,6 +621,7 @@ export function RoutesPage({ themeChoice, onThemeChoiceChange }: RoutesPageProps
               coordinates={openCoordinates}
               rideSeconds={rideSeconds}
               predictionKnown={openGeometry.isSuccess}
+              stageKey={openKey ?? undefined}
             />
           }
           highestMetres={routeProfile ? routeProfile.maxElevationMetres : null}

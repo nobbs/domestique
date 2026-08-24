@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { weatherQuery } from "../../api/queries";
@@ -55,7 +55,7 @@ function show(props: Partial<React.ComponentProps<typeof RouteProfile>> = {}) {
       })),
     });
   }
-  render(
+  const element = (overrides: Partial<React.ComponentProps<typeof RouteProfile>>) => (
     <QueryClientProvider client={client}>
       <RouteProfile
         profile={PROFILE}
@@ -75,11 +75,17 @@ function show(props: Partial<React.ComponentProps<typeof RouteProfile>> = {}) {
         samples={[]}
         coordinates={climb()}
         {...props}
+        {...overrides}
       />
-    </QueryClientProvider>,
+    </QueryClientProvider>
   );
+  const view = render(element({}));
 
-  return { onCollapsedChange };
+  return {
+    onCollapsedChange,
+    moveTo: (overrides: Partial<React.ComponentProps<typeof RouteProfile>>) =>
+      view.rerender(element(overrides)),
+  };
 }
 
 /**
@@ -264,6 +270,27 @@ describe("RouteProfile", () => {
     show({ startAt: new Date(Date.now() + 60 * 60 * 1000), samples: [], rideSeconds: 0 });
 
     expect(screen.getByText(/no predicted moving time/i)).toBeInTheDocument();
+  });
+
+  /*
+   * The picker keeps its refusal in local state and this section is reused
+   * rather than remounted as the reader moves between stages, so it is keyed
+   * by the stage. By identity, not by title: two stages may legitimately carry
+   * the same title, and an alert about one stage's horizon sitting over
+   * another is an alert about nothing.
+   */
+  it("gives the start-time control a fresh identity per stage, not per title", () => {
+    const { moveTo } = show({ stageKey: "veloplanner/1/1", title: "Same" });
+    // A start the endpoint would refuse, so the control raises its alert.
+    fireEvent.change(screen.getByLabelText("Ride start"), {
+      target: { value: "2020-01-01T07:00" },
+    });
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+
+    // The same title, a different stage: the alert was about the other one.
+    moveTo({ stageKey: "veloplanner/2/1", title: "Same" });
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("says nothing of the sort once the stage has a prediction", () => {
