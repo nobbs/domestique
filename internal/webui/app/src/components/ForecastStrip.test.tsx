@@ -194,6 +194,25 @@ describe("ForecastStrip", () => {
     expect(leaning(10)).toMatch(/Crosswind, .* against you along the route/);
   });
 
+  /*
+   * A wind square across the road pushes the rider neither way. Claiming it
+   * leans "against you" at nought point nought is a direction put on a
+   * quantity that has none — and it is what the strip actually printed until
+   * somebody read it.
+   */
+  it("claims no lean for a wind square across the road", () => {
+    const coordinates = road();
+    const samples = forecastSamples(coordinates, movingTime(coordinates), START_AT);
+    const seed = forecastFor(samples.length);
+    // Due north across a due-east road: no component along the way at all.
+    seed.points = seed.points.map((point) => ({ ...point, windDirectionDegrees: 0 }));
+    renderStrip({ coordinates, samples, seed });
+
+    const table = screen.getByRole("table");
+    expect(table).toHaveTextContent(/Crosswind, 18 km\/h from N/);
+    expect(table).not.toHaveTextContent(/along the route/);
+  });
+
   it("reports the wind along the route, keeping the raw reading beside it", () => {
     const coordinates = road();
     const samples = forecastSamples(coordinates, movingTime(coordinates), START_AT);

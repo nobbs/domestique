@@ -48,6 +48,14 @@ type CellRelation = WindRelation | "mixed" | null;
 /** How tall the strip's row of cells is drawn. Short: it is a strip, not a chart. */
 const STRIP_HEIGHT = 22;
 
+/**
+ * Below this along-route component, in km/h, the wind is reported by its
+ * relation and its raw reading alone. Half a kilometre an hour is nothing a
+ * rider feels, and quoting it would put a direction on a quantity that has
+ * none.
+ */
+const NEGLIGIBLE_COMPONENT_KMH = 0.5;
+
 /** Below this many pixels a cell's own wind glyph is dropped rather than crowded. */
 const MIN_GLYPH_CELL_WIDTH = 14;
 
@@ -206,7 +214,16 @@ function windText(
   if (componentKmhPerKmh === null || relation === "mixed") {
     return `${named}, ${speed} ${direction}`;
   }
-  const along = formatWindSpeed(Math.abs(componentKmhPerKmh) * point.windSpeedKmh, unitSystem);
+  const alongKmh = Math.abs(componentKmhPerKmh) * point.windSpeedKmh;
+  /*
+   * A wind square across the road pushes the rider neither way, and "0.0 mph
+   * against you" is a direction claimed for a quantity that has none. The
+   * relation and the raw reading say everything there is to say about it.
+   */
+  if (alongKmh < NEGLIGIBLE_COMPONENT_KMH) {
+    return `${named}, ${speed} ${direction}`;
+  }
+  const along = formatWindSpeed(alongKmh, unitSystem);
   /*
    * "Headwind" and "Tailwind" already say which way their component pushes, so
    * the magnitude alone is the whole of it. A crosswind is the reading that
