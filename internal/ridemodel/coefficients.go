@@ -189,6 +189,19 @@ func (r *rawCoefficients) build() (Coefficients, error) {
 	if _, parseErr := time.Parse(time.DateOnly, r.CalibrationCutoff); parseErr != nil {
 		return Coefficients{}, fmt.Errorf("ridemodel: calibration_cutoff must be a date in %s form: %w", time.DateOnly, parseErr)
 	}
+	// Optional, but a value present at all must be a value that could mean
+	// something: EvaluatedRides is a count, and MAEPercent/P90Percent are
+	// magnitudes of absolute error, so none of the three can be negative.
+	// BiasPercent is signed and gets no such check.
+	if r.EvaluatedRides < 0 {
+		return Coefficients{}, errors.New("ridemodel: evaluated_rides must not be negative")
+	}
+	if r.MAEPercent < 0 {
+		return Coefficients{}, errors.New("ridemodel: mae_percent must not be negative")
+	}
+	if r.P90Percent < 0 {
+		return Coefficients{}, errors.New("ridemodel: p90_percent must not be negative")
+	}
 
 	crr := map[surface.Kind]float64{
 		surface.KindAsphalt:   r.Crr,

@@ -100,6 +100,23 @@ p90_percent = 14.10
 	assert.InDelta(t, 14.10, coefficients.P90Percent, 0, "P90Percent")
 }
 
+// A negative evaluated_rides, mae_percent, or p90_percent is not a
+// physically meaningful reading — a count and two absolute-error
+// magnitudes cannot go negative — so each is a startup failure rather than
+// a value that silently loads and disables or corrupts HasValidation().
+func TestLoadRejectsNegativeValidationFields(t *testing.T) {
+	for name, addition := range map[string]string{
+		"negative evaluated_rides": "evaluated_rides = -1\n",
+		"negative mae_percent":     "evaluated_rides = 42\nmae_percent = -0.1\n",
+		"negative p90_percent":     "evaluated_rides = 42\np90_percent = -0.1\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := Load(writeCoefficientsFile(t, validCoefficientsTOML+addition))
+			require.Error(t, err, "Load()")
+		})
+	}
+}
+
 func TestLoadFingerprintChangesWithFileContent(t *testing.T) {
 	first, err := Load(writeCoefficientsFile(t, validCoefficientsTOML))
 	require.NoError(t, err, "Load() first")

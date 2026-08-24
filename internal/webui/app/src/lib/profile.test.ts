@@ -368,6 +368,18 @@ describe("elapsedSecondsForWindow", () => {
       elapsedSecondsForWindow(coordinates, cumulativeSeconds, { startMetres: 100, endMetres: 100 }),
     ).toBeUndefined();
   });
+
+  it("is undefined for a non-monotonic or duplicated series rather than a zero or negative elapsed time", () => {
+    const flat = [0, 10, 10, 10, 40];
+    expect(
+      elapsedSecondsForWindow(coordinates, flat, { startMetres: 150, endMetres: 250 }),
+    ).toBeUndefined();
+
+    const nonMonotonic = [0, 20, 20, 10, 40];
+    expect(
+      elapsedSecondsForWindow(coordinates, nonMonotonic, { startMetres: 150, endMetres: 250 }),
+    ).toBeUndefined();
+  });
 });
 
 describe("rangeBounds", () => {

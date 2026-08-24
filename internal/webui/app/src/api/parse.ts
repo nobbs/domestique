@@ -190,6 +190,21 @@ function positiveCount(value: unknown, at: string): number {
 }
 
 /**
+ * Reads a non-negative magnitude — mean absolute error and its 90th
+ * percentile are both magnitudes of absolute error, so a negative reading
+ * is a contract violation rather than a sign this client should render
+ * ("±-3% typical" means nothing).
+ */
+function nonNegativeCount(value: unknown, at: string): number {
+  const magnitude = count(value, at);
+  if (magnitude < 0) {
+    throw new ContractError(`${at} is not non-negative`);
+  }
+
+  return magnitude;
+}
+
+/**
  * Reads the frozen profile's measured unseen-route error, present only
  * alongside a predicted moving time and only when the loaded coefficient
  * file itself carries a benchmark result. Present or absent as one whole
@@ -203,9 +218,10 @@ function routeValidationFrom(value: unknown, at: string): RouteValidation | unde
   const validation = record(value, at);
 
   return {
+    // Signed: the model can run fast as easily as slow.
     biasPercent: count(validation.bias_percent, `${at}.bias_percent`),
-    maePercent: count(validation.mae_percent, `${at}.mae_percent`),
-    p90Percent: count(validation.p90_percent, `${at}.p90_percent`),
+    maePercent: nonNegativeCount(validation.mae_percent, `${at}.mae_percent`),
+    p90Percent: nonNegativeCount(validation.p90_percent, `${at}.p90_percent`),
     evaluatedRides: positiveCount(validation.evaluated_rides, `${at}.evaluated_rides`),
   };
 }

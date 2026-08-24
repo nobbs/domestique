@@ -124,6 +124,38 @@ describe("parseRoutes", () => {
     expect(() => withEvaluatedRides(-3)).toThrow(ContractError);
     expect(() => withEvaluatedRides(4.5)).toThrow(ContractError);
   });
+
+  it("rejects a negative mae_percent or p90_percent, but accepts a negative bias_percent", () => {
+    const withValidation = (validation: Record<string, unknown>) =>
+      parseRoutes({
+        stages: [{ ...stagePayload, moving_seconds: 4321.5, validation }],
+      });
+
+    expect(() =>
+      withValidation({
+        bias_percent: -1.2,
+        mae_percent: -0.1,
+        p90_percent: 14.1,
+        evaluated_rides: 42,
+      }),
+    ).toThrow(ContractError);
+    expect(() =>
+      withValidation({
+        bias_percent: -1.2,
+        mae_percent: 6.8,
+        p90_percent: -0.1,
+        evaluated_rides: 42,
+      }),
+    ).toThrow(ContractError);
+
+    const stages = withValidation({
+      bias_percent: -1.2,
+      mae_percent: 6.8,
+      p90_percent: 14.1,
+      evaluated_rides: 42,
+    });
+    expect(stages[0]?.validation?.biasPercent).toBe(-1.2);
+  });
 });
 
 describe("parseRouteGeometry", () => {
