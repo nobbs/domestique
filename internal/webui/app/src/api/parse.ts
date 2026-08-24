@@ -230,6 +230,19 @@ function surfaceFrom(value: unknown, at: string): RouteSurface | undefined {
   };
 }
 
+/**
+ * Reads the predicted moving time per coordinate, which is absent until
+ * something has predicted this exact geometry — not empty, not zero-filled —
+ * the same absence-means-unpredicted convention `surfaceFrom` uses.
+ */
+function cumulativeSecondsFrom(value: unknown, at: string): number[] | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+
+  return array(value, at).map((entry, index) => count(entry, `${at}[${index}]`));
+}
+
 export function parseRouteGeometry(payload: unknown): RouteGeometry {
   const body = record(payload, "body");
   const geometry = record(body.geometry, "body.geometry");
@@ -248,6 +261,10 @@ export function parseRouteGeometry(payload: unknown): RouteGeometry {
       positionFrom(entry, `body.geometry.coordinates[${index}]`),
     ),
     surface: surfaceFrom(properties.surface, "body.properties.surface"),
+    cumulativeSeconds: cumulativeSecondsFrom(
+      properties.cumulative_seconds,
+      "body.properties.cumulative_seconds",
+    ),
   };
 }
 

@@ -77,6 +77,13 @@ export interface RouteGeometry {
    * arrives as a present group with no ranges.
    */
   surface?: RouteSurface | undefined;
+  /**
+   * Predicted moving time in seconds at each coordinate, indexed 1:1 with
+   * `coordinates`. Absent until something has predicted this exact geometry —
+   * not empty, not zero-filled — which is the same absence-means-unpredicted
+   * convention `surface` uses.
+   */
+  cumulativeSeconds?: number[] | undefined;
 }
 
 /**

@@ -77,7 +77,7 @@ func TestSeedStoresGeometryTheEndpointCanServe(t *testing.T) {
 	stage := &stages[0]
 	key := stage.Key()
 
-	summary, geometry, found, err := store.StageGeometry(t.Context(), key.Provider(), key.RouteID(), key.StageOrder())
+	summary, geometry, _, found, err := store.StageGeometry(t.Context(), key.Provider(), key.RouteID(), key.StageOrder())
 	require.NoError(t, err)
 	require.True(t, found)
 	assert.Equal(t, len(stage.Geometry()), summary.PointCount)

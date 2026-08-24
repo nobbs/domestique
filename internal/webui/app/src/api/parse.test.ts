@@ -108,6 +108,28 @@ describe("parseRouteGeometry", () => {
     expect(parseRouteGeometry(payload).surface).toBeUndefined();
   });
 
+  it("reads predicted moving time beside the geometry it describes", () => {
+    const geometry = parseRouteGeometry({
+      ...payload,
+      properties: { ...stagePayload, cumulative_seconds: [0, 42.5] },
+    });
+
+    expect(geometry.cumulativeSeconds).toEqual([0, 42.5]);
+  });
+
+  it("leaves the moving time absent on a stage nothing has predicted yet", () => {
+    expect(parseRouteGeometry(payload).cumulativeSeconds).toBeUndefined();
+  });
+
+  it("rejects a moving time series that drifts from the contract", () => {
+    expect(() =>
+      parseRouteGeometry({
+        ...payload,
+        properties: { ...stagePayload, cumulative_seconds: [0, "42.5"] },
+      }),
+    ).toThrow(ContractError);
+  });
+
   it("keeps a classification that matched nothing distinct from an absent one", () => {
     const geometry = parseRouteGeometry({
       ...payload,

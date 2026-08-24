@@ -316,7 +316,11 @@ The read-only JSON surface is deliberately small:
   metadata, not edit controls.
 - `GET /v1/routes/{source-route-id}/stages/{stage}/geometry` returns the stored
   geometry of one stage for map rendering, together with the surface
-  classification of that geometry when one has been cached.
+  classification of that geometry when one has been cached, and — when a
+  ride-model coefficient file is configured and has predicted this exact
+  geometry — the predicted cumulative moving time at each coordinate, indexed
+  1:1 with the geometry. It is omitted, never empty, for a stage nothing has
+  predicted yet.
 - `GET /v1/webui/config` returns the settings the browser UI needs at runtime so
   the built assets stay static: the list of basemaps the map may be switched
   between — each with its name, style URL, optional dark style URL, and whether

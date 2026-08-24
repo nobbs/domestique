@@ -345,6 +345,15 @@ type geometryPropertyView struct {
 	RouteName string `json:"route_name"`
 	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
 	StageName string `json:"stage_name"`
+	// CumulativeSeconds is the predicted moving time in seconds at each
+	// coordinate, indexed 1:1 with the feature's coordinates and passed through
+	// as stored so serving it costs no decode and re-encode. It is absent —
+	// never a zero-filled array — whenever nothing has predicted this exact
+	// geometry: a deployment with no coefficient file configured, a stage with
+	// no usable elevation, or a prediction measured against geometry that has
+	// since changed.
+	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
+	CumulativeSeconds json.RawMessage `json:"cumulative_seconds,omitempty"`
 	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
 	DistanceMetres float64 `json:"distance_metres"`
 	//nolint:tagliatelle // This v1 JSON contract uses snake_case.

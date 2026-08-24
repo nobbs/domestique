@@ -521,7 +521,7 @@ func TestStoreTrustedInventoryIsScopedToItsProvider(t *testing.T) {
 	secondCountAfter, err := store.TrustedInventoryCount(t.Context(), secondProvider)
 	require.NoError(t, err, "TrustedInventoryCount() second provider after replacement")
 	assert.Equal(t, 1, secondCountAfter, "second provider count is unaffected by the first provider's replacement")
-	_, _, secondGeometryFound, err := store.StageGeometry(t.Context(), secondProvider, 1, 1)
+	_, _, _, secondGeometryFound, err := store.StageGeometry(t.Context(), secondProvider, 1, 1)
 	require.NoError(t, err, "StageGeometry() second provider")
 	assert.True(t, secondGeometryFound, "the second provider's geometry cache must survive the first provider's replacement")
 }
@@ -608,7 +608,7 @@ func TestStoreRewritesGeometryOfAReprocessedStage(t *testing.T) {
 
 	// Without a request, an unchanged stage is left alone.
 	require.NoError(t, store.StoreTrustedInventory(t.Context(), route.ProviderVeloPlanner, []route.Stage{stage}), "StoreTrustedInventory()")
-	summary, _, _, err := store.StageGeometry(t.Context(), route.ProviderVeloPlanner, 7, 2)
+	summary, _, _, _, err := store.StageGeometry(t.Context(), route.ProviderVeloPlanner, 7, 2)
 	require.NoError(t, err, "StageGeometry()")
 	// An unchanged stage is not rewritten, so the aged name is still there.
 	require.Equal(t, "stale name", summary.RouteName, "route name")
@@ -616,7 +616,7 @@ func TestStoreRewritesGeometryOfAReprocessedStage(t *testing.T) {
 	_, requestErr := store.RequestStageReprocess(t.Context(), route.ProviderVeloPlanner, 7, 2)
 	require.NoError(t, requestErr, "RequestStageReprocess()")
 	require.NoError(t, store.StoreTrustedInventory(t.Context(), route.ProviderVeloPlanner, []route.Stage{stage}), "StoreTrustedInventory() after request")
-	summary, _, _, err = store.StageGeometry(t.Context(), route.ProviderVeloPlanner, 7, 2)
+	summary, _, _, _, err = store.StageGeometry(t.Context(), route.ProviderVeloPlanner, 7, 2)
 	require.NoError(t, err, "StageGeometry()")
 	assert.Equal(t, "Alpine loop", summary.RouteName, "the request did not rewrite the route name")
 
@@ -909,7 +909,7 @@ func TestStoreCachesStageGeometryForTheMapView(t *testing.T) {
 	})
 	require.NoError(t, store.StoreTrustedInventory(t.Context(), route.ProviderVeloPlanner, []route.Stage{stage}), "StoreTrustedInventory()")
 
-	summary, coordinates, found, err := store.StageGeometry(t.Context(), route.ProviderVeloPlanner, 7, 2)
+	summary, coordinates, _, found, err := store.StageGeometry(t.Context(), route.ProviderVeloPlanner, 7, 2)
 	require.NoError(t, err, "StageGeometry()")
 	require.True(t, found, "StageGeometry() did not find the stored stage")
 	assert.Equal(t, "Alpine loop — Descent", summary.Title(), "Title()")
@@ -935,7 +935,7 @@ func TestStoreCachesElevationStatistics(t *testing.T) {
 	stage := storeTestStageWithGeometry(t, 5, 1, "revision", "hash", "Climb", "", geometry)
 	require.NoError(t, store.StoreTrustedInventory(t.Context(), route.ProviderVeloPlanner, []route.Stage{stage}), "StoreTrustedInventory()")
 
-	summary, _, found, err := store.StageGeometry(t.Context(), route.ProviderVeloPlanner, 5, 1)
+	summary, _, _, found, err := store.StageGeometry(t.Context(), route.ProviderVeloPlanner, 5, 1)
 	require.NoError(t, err, "StageGeometry()")
 	require.True(t, found, "StageGeometry() did not find the stored stage")
 	assert.InDelta(t, 40.0, summary.AscentMetres, 0.001, "AscentMetres")
@@ -960,7 +960,7 @@ func TestStoreReadsGeometryCachedBeforeElevationStatistics(t *testing.T) {
 		`UPDATE stage_geometry SET ascent_metres = 0, max_gradient_percent = 0`)
 	require.NoError(t, err, "clearing statistics")
 
-	summary, _, found, err := store.StageGeometry(t.Context(), route.ProviderVeloPlanner, 1, 1)
+	summary, _, _, found, err := store.StageGeometry(t.Context(), route.ProviderVeloPlanner, 1, 1)
 	require.NoError(t, err, "StageGeometry()")
 	require.True(t, found, "StageGeometry() did not find the stored stage")
 	assert.Zero(t, summary.AscentMetres, "AscentMetres")
@@ -996,11 +996,11 @@ func TestStorePrunesGeometryForStagesLeavingTheInventory(t *testing.T) {
 	require.NoError(t, store.StoreTrustedInventory(t.Context(), route.ProviderVeloPlanner, []route.Stage{first, second}), "StoreTrustedInventory()")
 	require.NoError(t, store.StoreTrustedInventory(t.Context(), route.ProviderVeloPlanner, []route.Stage{first}), "second StoreTrustedInventory()")
 
-	_, _, removedFound, removedErr := store.StageGeometry(t.Context(), route.ProviderVeloPlanner, 2, 1)
+	_, _, _, removedFound, removedErr := store.StageGeometry(t.Context(), route.ProviderVeloPlanner, 2, 1)
 	require.NoError(t, removedErr, "StageGeometry() for a removed stage")
 	assert.False(t, removedFound, "the geometry of a removed stage is still stored")
 
-	_, _, retainedFound, retainedErr := store.StageGeometry(t.Context(), route.ProviderVeloPlanner, 1, 1)
+	_, _, _, retainedFound, retainedErr := store.StageGeometry(t.Context(), route.ProviderVeloPlanner, 1, 1)
 	require.NoError(t, retainedErr, "StageGeometry() for a retained stage")
 	assert.True(t, retainedFound, "the geometry of a retained stage was dropped")
 }
@@ -1206,11 +1206,12 @@ func TestStoreCachesStageDurationAgainstTheFingerprintItWasComputedFrom(t *testi
 	assert.Equal(t, "surface-gen", surfaceGeneration, "surface generation")
 	assert.Equal(t, "coefficient-fingerprint", coefficientFingerprint, "coefficient fingerprint")
 
-	summary, _, found, err := store.StageGeometry(t.Context(), route.ProviderVeloPlanner, 7, 2)
+	summary, _, cumulativeSeconds, found, err := store.StageGeometry(t.Context(), route.ProviderVeloPlanner, 7, 2)
 	require.NoError(t, err, "StageGeometry()")
 	require.True(t, found, "StageGeometry() did not find the stage")
 	require.NotNil(t, summary.MovingSeconds, "StageGeometry() moving seconds")
 	assert.InDelta(t, 987.5, *summary.MovingSeconds, 0.001, "moving seconds")
+	assert.JSONEq(t, `[0,10,20]`, string(cumulativeSeconds), "StageGeometry() cumulative seconds")
 }
 
 // A stage with no usable elevation is still recorded, with a nil prediction,
@@ -1230,10 +1231,11 @@ func TestStoreStoresTheAbsenceOfAPrediction(t *testing.T) {
 	require.True(t, found, "a stage with no usable elevation was not recorded")
 	assert.Equal(t, "content-hash", contentHash, "content hash")
 
-	summary, _, found, err := store.StageGeometry(t.Context(), route.ProviderVeloPlanner, 1, 1)
+	summary, _, cumulativeSeconds, found, err := store.StageGeometry(t.Context(), route.ProviderVeloPlanner, 1, 1)
 	require.NoError(t, err, "StageGeometry()")
 	require.True(t, found, "StageGeometry() did not find the stage")
 	assert.Nil(t, summary.MovingSeconds, "a stage with no usable elevation must not report a moving time")
+	assert.Empty(t, cumulativeSeconds, "a stage with no usable elevation must not report a cumulative series")
 }
 
 // A prediction measured against an earlier plan of the same stage addresses
@@ -1249,10 +1251,11 @@ func TestStoreHidesADurationMeasuredAgainstOtherGeometry(t *testing.T) {
 		t.Context(), route.ProviderVeloPlanner, 1, 1, "earlier-hash", "", "fingerprint", &movingSeconds, nil,
 	), "StoreStageDuration()")
 
-	summary, _, found, err := store.StageGeometry(t.Context(), route.ProviderVeloPlanner, 1, 1)
+	summary, _, cumulativeSeconds, found, err := store.StageGeometry(t.Context(), route.ProviderVeloPlanner, 1, 1)
 	require.NoError(t, err, "StageGeometry()")
 	require.True(t, found, "StageGeometry() did not find the stage")
 	assert.Nil(t, summary.MovingSeconds, "a prediction measured against replaced geometry was served for it")
+	assert.Empty(t, cumulativeSeconds, "a cumulative series measured against replaced geometry was served for it")
 }
 
 func TestStorePrunesDurationForStagesLeavingTheInventory(t *testing.T) {

@@ -339,17 +339,23 @@ func (s *Store) ForEachStageSummary(ctx context.Context, visit func(summary rout
 
 // StageGeometry returns one stage's cached geometry with its display metadata.
 // The coordinates are a JSON array of [longitude, latitude, elevation?]
-// positions, ready to serve as a GeoJSON coordinate list without re-encoding.
+// positions, and cumulativeSeconds is a JSON array of the predicted moving time
+// at each coordinate, both ready to serve as-is without re-encoding.
+//
+// cumulativeSeconds is nil unless a prediction was measured against this exact
+// geometry: the same stage_duration.content_hash join StageDurationFingerprint
+// relies on, so a prediction left over from an earlier plan of the stage is
+// withheld rather than served against coordinates it no longer describes.
 func (s *Store) StageGeometry(
 	ctx context.Context,
 	provider route.Provider,
 	routeID int64,
 	stageOrder int,
-) (route.Summary, json.RawMessage, bool, error) {
-	var summary route.Summary
-	var coordinates []byte
+) (summary route.Summary, coordinates, cumulativeSeconds json.RawMessage, found bool, err error) {
+	var coordinatesBytes []byte
+	var cumulativeSecondsBytes []byte
 	var movingSeconds sql.NullFloat64
-	err := s.database.QueryRowContext(ctx, `
+	err = s.database.QueryRowContext(ctx, `
 		SELECT
 			stage_geometry.provider,
 			stage_geometry.route_id,
@@ -367,7 +373,8 @@ func (s *Store) StageGeometry(
 			stage_geometry.min_latitude,
 			stage_geometry.max_longitude,
 			stage_geometry.max_latitude,
-			stage_geometry.coordinates
+			stage_geometry.coordinates,
+			stage_duration.cumulative_seconds
 		FROM stage_geometry
 		LEFT JOIN source_stages
 			ON source_stages.provider = stage_geometry.provider
@@ -385,19 +392,20 @@ func (s *Store) StageGeometry(
 		&summary.AscentMetres, &summary.MaxGradientPercent, &movingSeconds,
 		&summary.Bounds.MinLongitude, &summary.Bounds.MinLatitude,
 		&summary.Bounds.MaxLongitude, &summary.Bounds.MaxLatitude,
-		&coordinates,
+		&coordinatesBytes,
+		&cumulativeSecondsBytes,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
-		return route.Summary{}, nil, false, nil
+		return route.Summary{}, nil, nil, false, nil
 	}
 	if err != nil {
-		return route.Summary{}, nil, false, fmt.Errorf("reading stage geometry: %w", err)
+		return route.Summary{}, nil, nil, false, fmt.Errorf("reading stage geometry: %w", err)
 	}
 	if movingSeconds.Valid {
 		summary.MovingSeconds = &movingSeconds.Float64
 	}
 
-	return summary, json.RawMessage(coordinates), true, nil
+	return summary, json.RawMessage(coordinatesBytes), json.RawMessage(cumulativeSecondsBytes), true, nil
 }
 
 // StageSurface returns one stage's cached surface classification, but only where
