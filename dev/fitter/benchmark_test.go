@@ -247,6 +247,7 @@ func TestPrintCopyReadyProfileNamesEveryFixedConstant(t *testing.T) {
 	for _, want := range []string{
 		"calibration_cutoff = 2025-06-01", "seconds_per_km = 123.4000", "seconds_per_ascent_m = 3.2100",
 		"mass_kg = 90.0", "cda_m2 = 0.45", "power_watts = 180", "crr = 0.012",
+		"asphalt = 0.012", "paving = 0.014", "compacted = 0.015", "gravel = 0.018", "ground = 0.025",
 	} {
 		assert.Contains(t, out, want)
 	}

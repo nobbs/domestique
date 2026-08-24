@@ -287,7 +287,12 @@ func printCopyReadyProfile(report *strings.Builder, cfg *runConfig, eval *splitE
 	fmt.Fprintf(report, "    air_density_kg_per_m3 = %.3f\n", standardAirDensity)
 	fmt.Fprintf(report, "    descent_cutoff_percent = %.1f\n", referenceDescentCutoffPercent)
 	fmt.Fprintf(report, "    descent_cap_metres_per_second = %.2f\n", observedDescentCapMPS)
-	fmt.Fprintf(report, "    crr = %.3f (scalar; see surface-table comparison above before choosing the per-surface table instead)\n", referenceScalarCrr)
+	fmt.Fprintf(report, "    crr = %.3f (scalar; use this unless the surface-table comparison above favours the table below)\n", referenceScalarCrr)
+	fmt.Fprintln(report, "    crr_by_surface (per-surface alternative; paste this instead if the comparison favours it):")
+	surfaceCrr := referenceCrrBySurface()
+	for _, kind := range []surface.Kind{surface.KindAsphalt, surface.KindPaving, surface.KindCompacted, surface.KindGravel, surface.KindGround} {
+		fmt.Fprintf(report, "      %s = %.3f\n", kind, surfaceCrr[kind])
+	}
 	fmt.Fprintf(report, "    validation: rides %d, bias %+.2f%%, MAE %.2f%%, p90 %.2f%%\n", metrics.rides, metrics.bias, metrics.mae, metrics.p90)
 }
 
