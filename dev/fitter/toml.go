@@ -55,7 +55,24 @@ func crrForSurface(result *fitResult, kind surface.Kind) float64 {
 	return result.CrrOverall
 }
 
+// fullCrrBySurface returns a group's Crr for every one of the five surface
+// classes internal/ridemodel.Coefficients.CrrBySurface reads, falling back
+// to the pooled Crr for a class this run never fitted its own value for.
+// Shared by the TOML writer and the held-out validator's own in-memory
+// Coefficients, so the two can never disagree about what a class with no
+// data of its own is assumed to ride like.
+func fullCrrBySurface(result *fitResult) map[surface.Kind]float64 {
+	return map[surface.Kind]float64{
+		surface.KindAsphalt:   crrForSurface(result, surface.KindAsphalt),
+		surface.KindPaving:    crrForSurface(result, surface.KindPaving),
+		surface.KindCompacted: crrForSurface(result, surface.KindCompacted),
+		surface.KindGravel:    crrForSurface(result, surface.KindGravel),
+		surface.KindGround:    crrForSurface(result, surface.KindGround),
+	}
+}
+
 func writeCoefficientsTOML(path string, result *fitResult, config coefficientsConfig) error {
+	crr := fullCrrBySurface(result)
 	raw := rawCoefficients{
 		MassKG:                    result.MassKG,
 		PowerWatts:                result.PowerWatts,
@@ -65,11 +82,11 @@ func writeCoefficientsTOML(path string, result *fitResult, config coefficientsCo
 		DescentCutoffPercent:      config.DescentCutoffPercent,
 		DescentCapMetresPerSecond: config.DescentCapMetresPerSecond,
 		Crr: rawCrr{
-			Asphalt:   crrForSurface(result, surface.KindAsphalt),
-			Paving:    crrForSurface(result, surface.KindPaving),
-			Compacted: crrForSurface(result, surface.KindCompacted),
-			Gravel:    crrForSurface(result, surface.KindGravel),
-			Ground:    crrForSurface(result, surface.KindGround),
+			Asphalt:   crr[surface.KindAsphalt],
+			Paving:    crr[surface.KindPaving],
+			Compacted: crr[surface.KindCompacted],
+			Gravel:    crr[surface.KindGravel],
+			Ground:    crr[surface.KindGround],
 		},
 	}
 
