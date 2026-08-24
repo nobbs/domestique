@@ -141,6 +141,52 @@ func TestHandlerServesStageGeometryAsGeoJSON(t *testing.T) {
 	assert.InDeltaSlice(t, []float64{8.4, 49.0, 8.5, 49.2}, view.BBox, 1e-9, "bbox")
 }
 
+// The per-coordinate moving time internal/ridemodel predicts travels with the
+// geometry it was measured against, passed through verbatim exactly as the
+// coordinates already are.
+func TestHandlerServesCumulativeSecondsWithGeometry(t *testing.T) {
+	state := &fakeState{
+		summaries: []route.Summary{{
+			Provider: route.ProviderVeloPlanner,
+			RouteID:  12, StageOrder: 1, RouteName: "Alpine loop", StageName: "Descent",
+			SourceRevision: "revision", ContentHash: "hash", PointCount: 2, DistanceMetres: 1234.5,
+			Bounds: route.Bounds{MinLongitude: 8.4, MinLatitude: 49.0, MaxLongitude: 8.5, MaxLatitude: 49.2},
+		}},
+		coordinates:       json.RawMessage(`[[8.4,49],[8.5,49.2]]`),
+		cumulativeSeconds: json.RawMessage(`[0,42.5]`),
+	}
+	handler := newHandler(t, &fakeOAuth{}, state)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/providers/veloplanner/routes/12/stages/1/geometry"))
+	require.Equal(t, http.StatusOK, response.Code, "geometry status")
+
+	var view geometryView
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &view), "decoding geometry")
+	assert.Equal(t, `[0,42.5]`, string(view.Properties.CumulativeSeconds), "cumulative seconds")
+}
+
+// A stage nothing has predicted must not read as a zero-filled cumulative
+// series, on the same terms an unpredicted stage omits moving_seconds on
+// /v1/routes.
+func TestHandlerOmitsCumulativeSecondsWhenNothingHasPredictedThem(t *testing.T) {
+	state := &fakeState{
+		summaries: []route.Summary{{
+			Provider: route.ProviderVeloPlanner,
+			RouteID:  12, StageOrder: 1, RouteName: "Alpine loop", StageName: "Descent",
+			SourceRevision: "revision", ContentHash: "hash", PointCount: 2, DistanceMetres: 1234.5,
+			Bounds: route.Bounds{MinLongitude: 8.4, MinLatitude: 49.0, MaxLongitude: 8.5, MaxLatitude: 49.2},
+		}},
+		coordinates: json.RawMessage(`[[8.4,49],[8.5,49.2]]`),
+	}
+	handler := newHandler(t, &fakeOAuth{}, state)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/providers/veloplanner/routes/12/stages/1/geometry"))
+	require.Equal(t, http.StatusOK, response.Code, "geometry status")
+	assert.NotContains(t, response.Body.String(), "cumulative_seconds", "the geometry claimed a cumulative series nothing predicted")
+}
+
 func TestHandlerServesTheStoredSurfaceWithGeometry(t *testing.T) {
 	state := surfaceState()
 	handler := newHandler(t, &fakeOAuth{}, state)
@@ -2022,6 +2068,7 @@ type fakeState struct {
 	lastRun           *phaseRun
 	surfaceHash       string
 	coordinates       json.RawMessage
+	cumulativeSeconds json.RawMessage
 	surfaceRanges     json.RawMessage
 	summaries         []route.Summary
 	phaseRuns         []phaseRun
@@ -2154,15 +2201,15 @@ func (s *fakeState) StageGeometry(
 	provider route.Provider,
 	routeID int64,
 	stageOrder int,
-) (route.Summary, json.RawMessage, bool, error) {
+) (summary route.Summary, coordinates, cumulativeSeconds json.RawMessage, found bool, err error) {
 	for index := range s.summaries {
-		summary := s.summaries[index]
-		if summary.Provider == provider && summary.RouteID == routeID && summary.StageOrder == stageOrder {
-			return summary, s.coordinates, true, nil
+		candidate := s.summaries[index]
+		if candidate.Provider == provider && candidate.RouteID == routeID && candidate.StageOrder == stageOrder {
+			return candidate, s.coordinates, s.cumulativeSeconds, true, nil
 		}
 	}
 
-	return route.Summary{}, nil, false, nil
+	return route.Summary{}, nil, nil, false, nil
 }
 
 // StageSurface answers only for the geometry a classification was measured

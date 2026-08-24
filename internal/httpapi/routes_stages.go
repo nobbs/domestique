@@ -63,7 +63,7 @@ func (h *Handler) stageGeometry(writer http.ResponseWriter, request *http.Reques
 		return
 	}
 
-	summary, coordinates, found, err := h.state.StageGeometry(request.Context(), provider, routeID, stageOrder)
+	summary, coordinates, cumulativeSeconds, found, err := h.state.StageGeometry(request.Context(), provider, routeID, stageOrder)
 	if err != nil {
 		h.unavailable(writer)
 
@@ -100,6 +100,7 @@ func (h *Handler) stageGeometry(writer http.ResponseWriter, request *http.Reques
 			MaxGradientPercent: summary.MaxGradientPercent,
 			PointCount:         summary.PointCount,
 			Surface:            surface,
+			CumulativeSeconds:  cumulativeSeconds,
 		},
 	})
 }
