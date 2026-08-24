@@ -59,23 +59,33 @@ function renderPanel(overrides: Partial<SearchPanelProps> = {}) {
 }
 
 describe("SearchPanel", () => {
-  /*
-   * At rest the panel is one pill over the map. A results column standing open
-   * on arrival would cover the cartography the page exists to show.
-   */
-  it("is only a pill until it is used", () => {
+  it("is two compact controls until search is opened", async () => {
     renderPanel();
+
+    expect(screen.queryByRole("searchbox", { name: "Search the route library" })).toBeNull();
+    expect(screen.queryByText("Search")).toBeNull();
+    expect(screen.queryByText("Filters")).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Search the route library" }));
 
     expect(screen.getByRole("searchbox", { name: "Search the route library" })).toHaveAttribute(
       "placeholder",
       "Search 47 routes",
     );
+    expect(screen.getByRole("searchbox", { name: "Search the route library" })).toHaveFocus();
     expect(screen.queryByRole("list")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Search the route library" })).toBeNull();
   });
 
-  it("counts the library in its own words for a library of one", () => {
+  it("leaves the result count out of a narrowed library", () => {
+    renderPanel({ query: "alpine", shown: [route()], total: 47 });
+
+    expect(screen.queryByText("1 of 47")).toBeNull();
+  });
+
+  it("counts the library in its own words for a library of one", async () => {
     renderPanel({ total: 1 });
 
+    await userEvent.click(screen.getByRole("button", { name: "Search the route library" }));
     expect(screen.getByRole("searchbox")).toHaveAttribute("placeholder", "Search 1 route");
   });
 
@@ -83,20 +93,10 @@ describe("SearchPanel", () => {
     const onQueryChange = vi.fn();
     renderPanel({ onQueryChange });
 
+    await userEvent.click(screen.getByRole("button", { name: "Search the route library" }));
     await userEvent.type(screen.getByRole("searchbox"), "a");
 
     expect(onQueryChange).toHaveBeenCalledWith("a");
-  });
-
-  // The count and the column are the same fact, derived from the same filter,
-  // so they cannot disagree — and "47 of 47" is a sum with no question behind it.
-  it("says how much was left only once the library has been narrowed", () => {
-    const { unmount } = renderPanel({ query: "alpine", shown: [route()], total: 47 });
-    expect(screen.getByText("1 of 47")).toBeInTheDocument();
-    unmount();
-
-    renderPanel({ query: "", total: 47 });
-    expect(screen.queryByText(/of 47/)).toBeNull();
   });
 
   it("says a search matched nothing rather than showing an empty column", () => {
@@ -201,21 +201,14 @@ describe("SearchPanel", () => {
     expect(onOpen).toHaveBeenCalledWith(routeKey(route()));
   });
 
-  // Picking a route opens the card whether or not anything was typed, so the
-  // column has to grow for a selection made on the map as well.
-  it("grows for a route picked without a search", () => {
-    renderPanel({ selectedKey: routeKey(route()) });
+  // Picking a route opens its card without turning the whole library into a
+  // result list: selection names one answer, while typing asks for many.
+  it("shows only the picked route without a search", () => {
+    const other = route({ routeId: 13, title: "Valley loop" });
+    renderPanel({ selectedKey: routeKey(route()), shown: [route(), other] });
 
     expect(screen.getByRole("heading", { name: "Alpine loop — Descent" })).toBeInTheDocument();
-  });
-
-  // A route picked straight off the map narrows neither a name nor a filter,
-  // so "1 of 47" here would be a sum with no question behind it — the same
-  // reason the count stays hidden at rest.
-  it("says nothing about the count for a route picked without narrowing anything", () => {
-    renderPanel({ selectedKey: routeKey(route()), total: 47 });
-
-    expect(screen.queryByText(/of 47/)).toBeNull();
+    expect(screen.queryByRole("button", { name: /Valley loop/ })).toBeNull();
   });
 
   it("says when the library was read, beside where the route is", () => {

@@ -13,7 +13,7 @@
 
 import AxeBuilder from "@axe-core/playwright";
 import type { Page } from "@playwright/test";
-import { expect, openLibrary, openRoute, openSync, test } from "./fixtures";
+import { expect, openLibrary, openRoute, openSearch, openSync, test } from "./fixtures";
 
 const LOOP_ROUTE = { provider: "veloplanner", routeId: 4102, stageOrder: 1 };
 
@@ -56,7 +56,7 @@ test("the entry page has nothing for axe to report", async ({ offlinePage: page 
  */
 test("the search panel has nothing for axe to report, open", async ({ offlinePage: page }) => {
   await openLibrary(page);
-  await page.getByRole("searchbox", { name: "Search the route library" }).fill("kaiserstuhl");
+  await (await openSearch(page)).fill("kaiserstuhl");
   await page.getByRole("button", { name: /Synthetic Kaiserstuhl Loop/ }).click();
 
   expect(await violations(page)).toEqual([]);
@@ -117,7 +117,7 @@ test.describe("on a phone-sized portrait viewport", () => {
 
     // The panel is the shape most likely to push a phone sideways: it is a
     // fixed width on the desktop, and a card of figures inside it.
-    await page.getByRole("searchbox", { name: "Search the route library" }).fill("kaiserstuhl");
+    await (await openSearch(page)).fill("kaiserstuhl");
     await page.getByRole("button", { name: /Synthetic Kaiserstuhl Loop/ }).click();
 
     expect(await overflowsSideways(page)).toBe(false);

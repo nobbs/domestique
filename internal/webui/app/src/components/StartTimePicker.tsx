@@ -3,8 +3,8 @@
  * into real moments worth asking `GET /v1/weather` about.
  *
  * The first date input in this codebase, so it gets a proper `<label>` rather
- * than borrowing a pattern that does not exist yet. Built like `UnitPicker`:
- * a value and a callback, nothing held here.
+ * than borrowing a pattern that does not exist yet. It takes a value and a
+ * callback, with nothing held here.
  *
  * There is no default. An invented start time would draw a confident forecast
  * for a ride nobody actually planned, so the field opens empty and stays that

@@ -18,26 +18,17 @@
  * the screen.
  */
 
-import { useMemo, useState } from "react";
+import { IconCurrentLocation, IconMapPinFilled, IconMinus, IconPlus } from "@tabler/icons-react";
+import { useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { MapLayerMouseEvent } from "react-map-gl/maplibre";
-import {
-  GeolocateControl,
-  Layer,
-  Map as MapLibre,
-  NavigationControl,
-  ScaleControl,
-  Source,
-} from "react-map-gl/maplibre";
+import { Layer, Map as MapLibre, Marker, ScaleControl, Source } from "react-map-gl/maplibre";
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { Basemap, BoundingBox, Position } from "../../api/types";
 import { BasemapPicker } from "../../components/BasemapPicker";
 import { MapCredits } from "../../components/MapCredits";
 import { MapViewport } from "../../components/MapViewport";
-import { ThemePicker } from "../../components/ThemePicker";
-import { UnitPicker } from "../../components/UnitPicker";
 import type { Insets } from "../../lib/overlayInsets";
-import type { ThemeChoice } from "../../lib/theme";
 import type { UnitSystem } from "../../lib/units";
 // Configures the shared worker pool; without it this map renders no tiles.
 import "../../lib/maplibre";
@@ -63,7 +54,7 @@ const SELECTION_ACCENT = { light: "#236fc7", dark: "#70adfb" } as const;
 /** The invisible band along each route that a pointer is actually asked about. */
 const HIT_LAYER = "library-hit";
 
-/** Where MapLibre keeps the controls this map asked for. */
+/** Where MapLibre keeps the scale and optional basemap chooser. */
 const CLUSTER_SELECTOR = ".maplibregl-ctrl-bottom-left";
 
 /**
@@ -99,6 +90,9 @@ const HIT_WIDTH = 18;
 /** How close the camera will go by default: enough for one route, not a street. */
 const DEFAULT_MAX_ZOOM = 14;
 
+/** Keeps a location lookup from jumping a reader from a close route to the whole country. */
+const LOCATION_ZOOM = 12;
+
 /** One drawable route: its identity, and the line itself. */
 export interface LibraryLine {
   key: string;
@@ -119,16 +113,8 @@ export interface LibraryMapProps {
   basemaps?: Basemap[];
   selectedBasemap?: string;
   onBasemapChange?: (name: string) => void;
-  /**
-   * The reader's colour-scheme pick, and how to change it — offered beside the
-   * basemap chooser for the same reason it sits in the same cluster.
-   */
-  themeChoice?: ThemeChoice;
-  onThemeChoiceChange?: (choice: ThemeChoice) => void;
   /** The system the scale bar and the unit chip report in. Metric when absent. */
   unitSystem?: UnitSystem;
-  /** Left out where nothing is listening, which also leaves the chip unmounted. */
-  onUnitSystemChange?: (system: UnitSystem) => void;
   lines: LibraryLine[];
   /** The route standing out, by `routeKey`. Null draws the library flat. */
   selectedKey: string | null;
@@ -200,16 +186,72 @@ function collectionOf(lines: LibraryLine[]) {
   };
 }
 
+/** Map actions use the same icon set as the rest of the app. */
+function MapControls({
+  mapRef,
+  onLocationFound,
+}: {
+  mapRef: React.RefObject<React.ComponentRef<typeof MapLibre> | null>;
+  onLocationFound: (location: { longitude: number; latitude: number }) => void;
+}) {
+  const geolocationAvailable = typeof navigator !== "undefined" && "geolocation" in navigator;
+
+  const locate = () => {
+    if (!geolocationAvailable) {
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(({ coords }) => {
+      const map = mapRef.current;
+      onLocationFound({ longitude: coords.longitude, latitude: coords.latitude });
+      map?.flyTo({
+        center: [coords.longitude, coords.latitude],
+        zoom: Math.max(map.getZoom(), LOCATION_ZOOM),
+      });
+    });
+  };
+
+  return (
+    <div className="map-controls">
+      <button
+        className="map-controls__button"
+        type="button"
+        onClick={locate}
+        disabled={!geolocationAvailable}
+        aria-label="Find my location"
+        title="Find my location"
+      >
+        <IconCurrentLocation size={16} stroke={2} aria-hidden="true" />
+      </button>
+      <div className="map-controls__zoom">
+        <button
+          type="button"
+          onClick={() => mapRef.current?.zoomIn()}
+          aria-label="Zoom in"
+          title="Zoom in"
+        >
+          <IconPlus size={16} stroke={2} aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          onClick={() => mapRef.current?.zoomOut()}
+          aria-label="Zoom out"
+          title="Zoom out"
+        >
+          <IconMinus size={16} stroke={2} aria-hidden="true" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function LibraryMap({
   styleUrl,
   darkBasemap = false,
   basemaps = [],
   selectedBasemap = "",
   onBasemapChange,
-  themeChoice,
-  onThemeChoiceChange,
   unitSystem = "metric",
-  onUnitSystemChange,
   lines,
   selectedKey,
   bounds,
@@ -221,6 +263,8 @@ export function LibraryMap({
   inertKey = null,
 }: LibraryMapProps) {
   const theme = darkBasemap ? "dark" : "light";
+  const mapRef = useRef<React.ComponentRef<typeof MapLibre>>(null);
+  const [location, setLocation] = useState<{ longitude: number; latitude: number } | null>(null);
   const [cluster, setCluster] = useState<HTMLElement | null>(null);
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
   /*
@@ -238,8 +282,6 @@ export function LibraryMap({
    * time, and the names are only worth room while somebody is changing it.
    */
   const [pickerOpen, setPickerOpen] = useState(false);
-  /** And whether the theme choices are unfolded, for the same reason. */
-  const [themePickerOpen, setThemePickerOpen] = useState(false);
 
   // The selected route stays in the collection rather than being cut out of it:
   // removing it would rebuild every line on every selection, and the overlay
@@ -271,51 +313,29 @@ export function LibraryMap({
   };
 
   /*
-   * One fragment, rendered in one of two places below, so that moving it does
-   * not give either piece a different set of props — and so the picker sits
-   * above the credit either way, rather than in whichever order the two places
-   * happen to produce.
+   * The optional basemap chooser lives with MapLibre's scale, so the two map
+   * choices that describe the ground stay together without occupying a corner
+   * the reader uses for actions or attribution.
    */
-  const furniture = (
-    <>
-      {onUnitSystemChange ? (
-        <UnitPicker system={unitSystem} onSystemChange={onUnitSystemChange} />
-      ) : null}
-      {onBasemapChange ? (
-        <BasemapPicker
-          basemaps={basemaps}
-          selectedName={selectedBasemap}
-          onSelect={onBasemapChange}
-          expanded={pickerOpen}
-          onExpandedChange={setPickerOpen}
-        />
-      ) : null}
-      {themeChoice && onThemeChoiceChange ? (
-        <ThemePicker
-          choice={themeChoice}
-          onChoose={onThemeChoiceChange}
-          expanded={themePickerOpen}
-          onExpandedChange={setThemePickerOpen}
-        />
-      ) : null}
-      <MapCredits
-        styleUrl={styleUrl}
-        extra={extraCredit}
-        choice={creditChoice}
-        onChoiceChange={setCreditChoice}
-      />
-    </>
-  );
+  const furniture = onBasemapChange ? (
+    <BasemapPicker
+      basemaps={basemaps}
+      selectedName={selectedBasemap}
+      onSelect={onBasemapChange}
+      expanded={pickerOpen}
+      onExpandedChange={setPickerOpen}
+    />
+  ) : null;
 
   /*
    * MapLibre's own attribution control is off. It renders the provider's own
-   * markup into a corner of its own, and this map has one corner: the credit is
-   * drawn by MapCredits, under the locate button, the zoom pair and the scale
-   * bar.
+   * markup into a corner of its own. The app draws the legally required credit
+   * in the lower-right, clear of the map actions and the scale.
    */
   return (
     <div className="route-map">
       <MapLibre
+        ref={mapRef}
         mapStyle={styleUrl}
         onError={onError}
         onLoad={findCluster}
@@ -340,24 +360,18 @@ export function LibraryMap({
       >
         <MapViewport bounds={bounds} maxZoom={maxZoom} {...(insets ? { insets } : {})} />
         {/*
-         * One cluster, bottom-left: the locate button, the zoom pair, the scale
-         * bar, then the basemap chip and the credit, top to bottom. The three
-         * MapLibre owns are asked for in the reverse of that order because it
-         * adds to a bottom corner by prepending, so that a control added later
-         * stacks above the corner rather than under the ones already there.
+         * MapLibre owns the scale because it is an accurate distance readout.
+         * The app's actions are overlaid in the upper-right, and the credit is
+         * overlaid in the lower-right, so neither competes with this measure.
          */}
         <ScaleControl position="bottom-left" unit={unitSystem} />
-        <NavigationControl position="bottom-left" showCompass={false} />
-        {/*
-         * One-shot: it flies to where the reader is, once, rather than
-         * `trackUserLocation`'s continuous watch — that costs battery on the
-         * device this is most likely used on, and keeps a position live for as
-         * long as the tab stays open. `trackUserLocation` defaults to off, so
-         * this is a choice left alone rather than a prop set. The position never
-         * leaves the browser: nothing here hands it to the service, a log, or
-         * storage.
-         */}
-        <GeolocateControl position="bottom-left" />
+        {location ? (
+          <Marker longitude={location.longitude} latitude={location.latitude} anchor="bottom">
+            <div className="current-location-marker" role="img" aria-label="Your location">
+              <IconMapPinFilled size={18} aria-hidden="true" />
+            </div>
+          </Marker>
+        ) : null}
         <Source id="library-lines" type="geojson" data={library}>
           <Layer
             id="library-line"
@@ -439,15 +453,19 @@ export function LibraryMap({
          */}
         {overlay}
       </MapLibre>
+      <MapControls mapRef={mapRef} onLocationFound={setLocation} />
+      <MapCredits
+        styleUrl={styleUrl}
+        extra={extraCredit}
+        choice={creditChoice}
+        onChoiceChange={setCreditChoice}
+      />
       {/*
-       * Into the cluster if the map has one, and into the corner itself if it
-       * has not. Drawn into MapLibre's own container rather than beside it so
-       * every piece of furniture is one column with one gap: a credit
-       * positioned alongside the cluster would have to be cleared by it, and
-       * whatever number did that clearing would be wrong for the next provider
-       * whose attribution runs to a second line.
+       * Into MapLibre's scale corner if it has one, and alongside it if it has
+       * not. A basemap is optional, so its absence must not move any of the
+       * persistent map controls.
        */}
-      {cluster === null ? furniture : createPortal(furniture, cluster)}
+      {furniture === null ? null : cluster === null ? furniture : createPortal(furniture, cluster)}
     </div>
   );
 }

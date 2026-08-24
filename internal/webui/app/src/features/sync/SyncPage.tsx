@@ -7,21 +7,31 @@
  * about it needs more room than a strip when it does need attention, so it is a
  * page of its own that the wordmark links to and a notification lands on.
  *
- * Three cards, in the order the questions come: what is happening now, what the
- * accounts hold, and what has happened. A fourth appears above them when an
- * operator arrived from a notification, or when the last run still needs them.
+ * Visible settings, then three cards in the order the questions come: what is
+ * happening now, what the accounts hold, and what has happened. A notice
+ * appears above them when an operator arrived from a notification, or when the
+ * last run still needs them.
  */
 
+import { IconArrowLeft } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router";
 import { statusQuery } from "../../api/queries";
 import { PageShell } from "../../components/Layout";
+import { THEME_CHOICES, type ThemeChoice } from "../../lib/theme";
+import { useUnitSystem } from "../../lib/units";
 import { RunNotice } from "./RunNotice";
 import { SyncControls } from "./SyncControls";
 import { SyncHistory } from "./SyncHistory";
 import { TargetConvergence } from "./TargetConvergence";
 
 const REPOSITORY_URL = "https://github.com/nobbs/domestique";
+
+const THEME_LABELS: Record<ThemeChoice, string> = {
+  system: "System",
+  light: "Light",
+  dark: "Dark",
+};
 
 /** How much of a commit a person can read at a glance and still recognise. */
 const SHORT_REVISION_LENGTH = 7;
@@ -43,6 +53,58 @@ function SyncCard({
       </h2>
       {children}
     </section>
+  );
+}
+
+function Settings({
+  themeChoice,
+  onThemeChoiceChange,
+}: {
+  themeChoice: ThemeChoice;
+  onThemeChoiceChange: (choice: ThemeChoice) => void;
+}) {
+  const [unitSystem, setUnitSystem] = useUnitSystem();
+
+  return (
+    <SyncCard id="settings" heading="Settings">
+      <div className="sync-settings">
+        <fieldset className="sync-settings__group">
+          <legend>Units</legend>
+          <label>
+            <input
+              type="radio"
+              name="units"
+              checked={unitSystem === "metric"}
+              onChange={() => setUnitSystem("metric")}
+            />
+            Metric (km)
+          </label>
+          <label>
+            <input
+              type="radio"
+              name="units"
+              checked={unitSystem === "imperial"}
+              onChange={() => setUnitSystem("imperial")}
+            />
+            Imperial (mi)
+          </label>
+        </fieldset>
+        <fieldset className="sync-settings__group">
+          <legend>Theme</legend>
+          {THEME_CHOICES.map((choice) => (
+            <label key={choice}>
+              <input
+                type="radio"
+                name="theme"
+                checked={themeChoice === choice}
+                onChange={() => onThemeChoiceChange(choice)}
+              />
+              {THEME_LABELS[choice]}
+            </label>
+          ))}
+        </fieldset>
+      </div>
+    </SyncCard>
   );
 }
 
@@ -93,7 +155,13 @@ function BuildLine() {
   );
 }
 
-export function SyncPage() {
+export function SyncPage({
+  themeChoice = "system",
+  onThemeChoiceChange = () => {},
+}: {
+  themeChoice?: ThemeChoice;
+  onThemeChoiceChange?: (choice: ThemeChoice) => void;
+}) {
   const [params] = useSearchParams();
   // The opaque name a Pushover message carries, and nothing else from the query
   // string. It is matched against the recorded runs and printed as it is. A
@@ -106,10 +174,12 @@ export function SyncPage() {
       <div className="sync-page">
         <header className="sync-page__header">
           <Link className="sync-page__back" to="/">
-            ← Back to the map
+            <IconArrowLeft size={16} stroke={2} aria-hidden="true" />
+            <span>Back to the map</span>
           </Link>
           <h1 className="sync-page__title">Sync</h1>
         </header>
+        <Settings themeChoice={themeChoice} onThemeChoiceChange={onThemeChoiceChange} />
         <RunNotice reference={reference} />
         <SyncCard id="now" heading="Now">
           <SyncControls />

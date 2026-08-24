@@ -19,6 +19,7 @@
  * did not name, and the mark must follow the ground actually loaded.
  */
 
+import { IconStack2 } from "@tabler/icons-react";
 import type { Basemap } from "../api/types";
 
 /** What the button expands, named so the button can point at it. */
@@ -71,20 +72,7 @@ export function BasemapPicker({
         {...(expanded ? { "aria-controls": BASEMAP_LIST_ID } : {})}
         onClick={() => onExpandedChange(!expanded)}
       >
-        <svg
-          viewBox="0 0 12 12"
-          width="12"
-          height="12"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.2"
-          strokeLinejoin="round"
-          aria-hidden="true"
-          focusable="false"
-        >
-          <path d="M6 1.2 1.2 3.6 6 6l4.8-2.4z" />
-          <path d="M1.2 6.6 6 9l4.8-2.4" strokeLinecap="round" />
-        </svg>
+        <IconStack2 size={12} stroke={1.2} aria-hidden="true" />
       </button>
       {expanded ? (
         <div

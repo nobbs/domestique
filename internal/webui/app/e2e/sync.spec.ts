@@ -14,11 +14,23 @@ import { expect, openLibrary, openSync, test } from "./fixtures";
 /** A reference no recorded run can have, standing in for a pruned one. */
 const PRUNED = "000000000000";
 
-test("the page answers the three questions in order", async ({ offlinePage: page }) => {
+test("the page puts visible settings before the operational questions", async ({
+  offlinePage: page,
+}) => {
   await openSync(page);
 
   const headings = page.getByRole("heading", { level: 2 });
-  await expect(headings).toHaveText(["Now", "What the accounts hold", "What has happened"]);
+  await expect(headings).toHaveText([
+    "Settings",
+    "Now",
+    "What the accounts hold",
+    "What has happened",
+  ]);
+  await expect(page.getByRole("radio", { name: "Metric (km)" })).toBeVisible();
+  await expect(page.getByRole("radio", { name: "Imperial (mi)" })).toBeVisible();
+  await expect(page.getByRole("radio", { name: "System" })).toBeVisible();
+  await expect(page.getByRole("radio", { name: "Light" })).toBeVisible();
+  await expect(page.getByRole("radio", { name: "Dark" })).toBeVisible();
   // Each card really read its view: the schedule and the run control come from
   // the status, the slots from the same status, and the rows from the history.
   await expect(page.getByRole("button", { name: "Run now: Read from VeloPlanner" })).toBeVisible();
@@ -33,7 +45,7 @@ test("the way back is the map itself", async ({ offlinePage: page }) => {
   await page.getByRole("link", { name: /Back to the map/ }).click();
 
   await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByRole("searchbox", { name: "Search the route library" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Search the route library" })).toBeVisible();
 });
 
 test("a notification about a run that is gone says so", async ({ offlinePage: page }) => {

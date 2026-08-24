@@ -500,14 +500,50 @@ body {
 
 /* Search ------------------------------------------------------------------ */
 
-/*
- * At rest a pill; typed into, the same 8 px box with a results column grown
- * beneath it. One panel, not two, so nothing moves when the results appear.
- */
+/* At rest two small controls; search grows its own panel only when asked. */
 .search {
   display: flex;
   flex-direction: column;
+  gap: var(--space-3);
   min-height: 0;
+}
+
+.search__controls {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.search__toggle,
+.filter-panel {
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.search__toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  min-height: 36px;
+  padding: 0;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.search__toggle:hover,
+.search__toggle:focus-visible {
+  color: var(--accent);
+}
+
+.search__toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.search__panel {
   overflow: hidden;
 }
 
@@ -516,6 +552,16 @@ body {
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3);
+}
+
+.search__pill--control {
+  flex: 1;
+  min-width: 0;
+  min-height: 36px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--panel);
+  box-shadow: var(--shadow);
 }
 
 .search__icon {
@@ -541,15 +587,6 @@ body {
   color: var(--ink-2);
 }
 
-/* Derived from the filter, never written by hand. */
-.search__count {
-  flex: none;
-  color: var(--ink-2);
-  font: var(--type-small);
-  letter-spacing: var(--track-small);
-  font-variant-numeric: tabular-nums;
-}
-
 .search__results {
   margin: 0;
   padding: 0 var(--space-2) var(--space-2);
@@ -570,24 +607,27 @@ body {
 /* Filter panel -------------------------------------------------------------- */
 
 .filter-panel {
-  border-top: 1px solid var(--rule);
+  overflow: hidden;
 }
 
 .filter-panel__toggle {
-  display: block;
-  width: 100%;
-  padding: var(--space-2) var(--space-3);
+  display: grid;
+  place-items: center;
+  width: 36px;
+  min-height: 36px;
+  padding: 0;
   border: 0;
   background: none;
-  color: var(--ink-2);
-  font: var(--type-small);
-  letter-spacing: var(--track-small);
-  text-align: left;
+  color: var(--ink);
   cursor: pointer;
 }
 
 .filter-panel__toggle:hover,
 .filter-panel__toggle:focus-visible {
+  color: var(--accent);
+}
+
+.filter-panel__toggle[data-active] {
   color: var(--accent);
 }
 
@@ -917,9 +957,8 @@ body {
 }
 
 /*
- * One control cluster, bottom-left: the zoom pair, then the scale bar, then the
- * credit, in that order. MapLibre puts a control in whichever of the four
- * corners it was given, and four occupied corners is four things to look past.
+ * The scale and optional basemap chooser share the lower-left. Actions and
+ * attribution use the right edge, where they do not crowd this reference.
  *
  * The one corner nothing else wants. Nothing crosses the foot of the map any
  * more — the profile is inside the route card — so the cluster sits on the page
@@ -930,57 +969,183 @@ body {
   display: flex;
   flex-direction: column;
   align-items: start;
-  gap: var(--space-3);
+  gap: var(--space-2);
   padding: var(--space-5);
   padding: var(--space-5) var(--space-5) calc(var(--space-5) + env(safe-area-inset-bottom))
     calc(var(--space-5) + env(safe-area-inset-left));
 }
 
+.maplibregl-ctrl-bottom-left .maplibregl-ctrl,
+.basemap-picker,
+.map-controls__button,
+.map-controls__zoom {
+  box-sizing: border-box;
+  min-height: 32px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+
 .maplibregl-ctrl-bottom-left .maplibregl-ctrl {
   margin: 0;
-  border-radius: var(--radius);
   box-shadow: var(--shadow);
 }
 
-.maplibregl-ctrl-group button {
-  border-radius: var(--radius);
+.map-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: start;
+  gap: var(--space-2);
+  pointer-events: auto;
 }
 
-.maplibregl-ctrl-scale {
-  border-color: var(--rule);
+.route-map > .map-controls {
+  position: absolute;
+  top: calc(var(--space-5) + env(safe-area-inset-top));
+  right: calc(var(--space-5) + env(safe-area-inset-right));
+  z-index: 1;
+}
+
+.map-controls__button,
+.map-controls__zoom button {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.map-controls__button {
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
   background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.map-controls__button:hover,
+.map-controls__button:focus-visible,
+.map-controls__zoom button:hover,
+.map-controls__zoom button:focus-visible {
+  color: var(--accent);
+}
+
+.map-controls__button:focus-visible,
+.map-controls__zoom button:focus-visible {
+  position: relative;
+  z-index: 1;
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.map-controls__button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.map-controls__zoom {
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+
+.map-controls__zoom button + button {
+  border-top: 1px solid var(--rule);
+}
+
+.map-controls__zoom button:first-child {
+  border-top-left-radius: calc(var(--radius) - 1px);
+  border-top-right-radius: calc(var(--radius) - 1px);
+}
+
+.map-controls__zoom button:last-child {
+  border-bottom-right-radius: calc(var(--radius) - 1px);
+  border-bottom-left-radius: calc(var(--radius) - 1px);
+}
+
+.current-location-marker {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 2px solid var(--panel);
+  border-radius: 50% 50% 50% 0;
+  background: var(--accent);
+  box-shadow: var(--shadow);
+  color: var(--panel);
+  pointer-events: none;
+  transform: rotate(-45deg);
+}
+
+.current-location-marker > svg {
+  transform: rotate(45deg);
+}
+
+.maplibregl-ctrl-bottom-left .maplibregl-ctrl-scale {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 0;
+  padding: 0 2px 2px;
+  border: 0;
+  border-bottom: 2px solid currentColor;
+  border-radius: 0;
+  background: none;
+  background-image: repeating-linear-gradient(
+    to right,
+    currentColor 0 1px,
+    transparent 1px 25%
+  );
+  background-position: left bottom;
+  background-repeat: no-repeat;
+  background-size: 100% 4px;
+  box-shadow: none;
   color: var(--ink-2);
   font: var(--type-small);
   letter-spacing: var(--track-small);
   font-variant-numeric: tabular-nums;
 }
 
+.maplibregl-ctrl-bottom-left .maplibregl-ctrl-scale::before,
+.maplibregl-ctrl-bottom-left .maplibregl-ctrl-scale::after {
+  content: "";
+  position: absolute;
+  bottom: -2px;
+  width: 2px;
+  height: 8px;
+  background: currentColor;
+}
+
+.maplibregl-ctrl-bottom-left .maplibregl-ctrl-scale::before {
+  left: 0;
+}
+
+.maplibregl-ctrl-bottom-left .maplibregl-ctrl-scale::after {
+  right: 0;
+}
+
 /*
- * The tile and map-data credit, the last thing in the control cluster. It is
- * text read out of the style document rather than the provider's own markup —
- * see MapCredits — so it is styled here like anything else on the page.
+ * The tile and map-data credit. It is text read out of the style document
+ * rather than the provider's own markup — see MapCredits — so it remains
+ * correct while the lower-right placement stays consistent.
  *
  * A chip of its own rather than a strip across the corner: it is the same kind
  * of floating thing as the zoom pair above it, and sized to what it says, so a
  * one-line credit does not reserve the width a three-provider one would need.
  *
  * The chip is the whole control, button and text together, so folding the text
- * away leaves one small mark in the cluster rather than a second floating thing
- * beside an empty one.
+ * away leaves one small mark rather than a second floating thing beside it.
  */
 .map-credits {
   display: flex;
   align-items: center;
   gap: var(--space-1);
-  /*
-   * The cluster passes pointer events through to the map and each control MapLibre
-   * owns takes them back. This one is not one of MapLibre's, so it has to take
-   * them back itself, or the button would be a button the map swallowed every
-   * press of.
-   */
   pointer-events: auto;
   max-width: min(100%, 380px);
   padding: 3px var(--space-2);
+  border: 1px solid var(--rule);
   border-radius: calc(var(--radius) - 4px);
   background: var(--panel);
   box-shadow: var(--shadow);
@@ -1015,24 +1180,19 @@ body {
 }
 
 /*
- * The credit is drawn into the cluster, and this is where it lands if the map
- * never reported one — the corner it would have been in. A licence obliges the
- * credit to be visible, so it has somewhere to go whatever MapLibre does.
+ * Attribution is kept at the lower-right, where it does not join the scale or
+ * the map actions. A licence obliges it to stay visible.
  */
 .route-map > .map-credits {
   position: absolute;
-  bottom: var(--space-5);
-  left: var(--space-5);
+  right: calc(var(--space-5) + env(safe-area-inset-right));
+  bottom: calc(var(--space-5) + env(safe-area-inset-bottom));
   z-index: 1;
 }
 
 /*
- * The basemap chooser, immediately above the credit and built to the same
- * pattern: one chip, a mark that folds it open, and what it says unmounted
- * rather than hidden when it is folded away. The two are neighbours in one
- * corner and must read as one family, so everything about the surface — the
- * radius, the shadow, the padding, the way the mark answers a pointer — is the
- * credit's, and only what is inside differs.
+ * The basemap chooser in the scale corner: one chip, a mark that folds it open,
+ * and names that unmount when folded.
  */
 .basemap-picker {
   display: flex;
@@ -1110,19 +1270,18 @@ body {
 
 /*
  * Where the chip lands if the map reported no cluster to draw it into — above
- * the theme chooser, which is itself above the credit, in the order the
- * cluster holds them.
+ * the scale it would otherwise sit beside.
  */
 .route-map > .basemap-picker {
   position: absolute;
-  bottom: calc(var(--space-5) + 60px);
+  bottom: calc(var(--space-5) + 38px);
   left: var(--space-5);
   z-index: 1;
 }
 
 /*
- * The theme chooser, one family with the basemap chooser and the credit — same
- * surface, same fold pattern, only what is inside the list differs.
+ * The theme chooser in Sync settings: the same compact folded control used for
+ * the basemap, but with the reader's colour choices.
  */
 .theme-picker {
   display: flex;
@@ -1181,19 +1340,7 @@ body {
   color: var(--ink);
 }
 
-/* Stacked above the credit, which is the bottom of the corner by obligation. */
-.route-map > .theme-picker {
-  position: absolute;
-  bottom: calc(var(--space-5) + 30px);
-  left: var(--space-5);
-  z-index: 1;
-}
-
-/*
- * The unit toggle, built to the basemap chip's own surface and its neighbour
- * in the same corner. Unlike the basemap there are only two answers, so this
- * is one button rather than a fold and a list.
- */
+/* The unit toggle is used from the settings card. */
 .unit-picker {
   display: inline-flex;
   align-items: center;
@@ -1215,14 +1362,6 @@ body {
   color: var(--accent);
 }
 
-/* Topmost of the cluster's fallback stack — see the furniture order above. */
-.route-map > .unit-picker {
-  position: absolute;
-  bottom: calc(var(--space-5) + 90px);
-  left: var(--space-5);
-  z-index: 1;
-}
-
 /*
  * The position tooltip's marker. Pointer events are off on the wrapper
  * MapLibre draws, not only on the text inside it: it sits directly over the
@@ -1231,6 +1370,44 @@ body {
  */
 .route-position-tooltip-marker {
   pointer-events: none;
+}
+
+.route-terminal-marker {
+  pointer-events: none;
+}
+
+.route-direction-marker {
+  pointer-events: none;
+}
+
+.route-direction {
+  display: block;
+}
+
+.route-direction--light {
+  filter: drop-shadow(0 0 2px rgb(28 33 38 / 85%));
+}
+
+.route-direction--dark {
+  filter: drop-shadow(0 0 2px rgb(252 253 255 / 85%));
+}
+
+.route-terminal {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 2.5px solid #ffffff;
+  border-radius: 50%;
+  filter: drop-shadow(0 1px 2px rgb(28 33 38 / 35%));
+}
+
+.route-terminal--start {
+  background: #188b45;
+}
+
+.route-terminal--finish {
+  background: #ffffff;
 }
 
 /*
@@ -1292,6 +1469,9 @@ body {
  */
 .route-panel__back {
   align-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
   padding: 0;
   border: 0;
   background: none;
@@ -1352,11 +1532,58 @@ body {
  * the same route.
  */
 .route-panel__climbs-heading {
-  margin: 0 0 var(--space-2);
+  margin: 0;
+}
+
+.route-panel__climbs-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2);
+  border: 0;
+  border-radius: calc(var(--radius) - 2px);
+  background: none;
   color: var(--ink-2);
   font: var(--type-micro);
   letter-spacing: var(--track-micro);
   text-transform: uppercase;
+  text-align: left;
+  cursor: pointer;
+}
+
+.route-panel__climbs-toggle:hover {
+  background: var(--base);
+}
+
+.route-panel__climbs-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.route-panel__climbs-count {
+  margin-left: auto;
+  padding: 1px var(--space-2);
+  border-radius: 999px;
+  background: var(--base);
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.route-panel__climbs-chevron {
+  flex: none;
+  transition: transform 160ms ease;
+  transform: rotate(90deg);
+}
+
+.route-panel__climbs-toggle[aria-expanded="true"] .route-panel__climbs-chevron {
+  transform: rotate(-90deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .route-panel__climbs-chevron {
+    transition: none;
+  }
 }
 
 .route-panel__climbs-list {
@@ -1831,9 +2058,9 @@ body {
 /* Sync page --------------------------------------------------------------- */
 
 /*
- * Three cards in one column: what is happening now, what the accounts hold, and
- * what has happened. It is a page you read rather than press, which is why it
- * has an address of its own instead of a banner over the map.
+ * Settings and three operational cards in one column. It is a page you read
+ * rather than press, which is why it has an address of its own instead of a
+ * banner over the map.
  */
 .sync-page {
   width: 100%;
@@ -1858,6 +2085,9 @@ body {
 }
 
 .sync-page__back {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
   color: var(--ink-2);
   font: var(--type-row);
   letter-spacing: var(--track-row);
@@ -1889,6 +2119,54 @@ body {
   margin: 0;
   font: var(--type-title);
   letter-spacing: var(--track-title);
+}
+
+.sync-settings {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-5);
+}
+
+.sync-settings__group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  color: var(--ink-2);
+}
+
+.sync-settings__group legend {
+  width: 100%;
+  margin-bottom: var(--space-1);
+  color: var(--ink);
+  font: var(--type-small);
+  font-weight: 600;
+  letter-spacing: var(--track-small);
+}
+
+.sync-settings__group label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font: var(--type-small);
+  letter-spacing: var(--track-small);
+  cursor: pointer;
+}
+
+.sync-settings__group input {
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+@media (max-width: 36rem) {
+  .sync-settings {
+    grid-template-columns: 1fr;
+    gap: var(--space-3);
+  }
 }
 
 .sync-card__line {

@@ -9,7 +9,7 @@
  */
 
 import type { Page } from "@playwright/test";
-import { expect, mapRegion, openLibrary, settleMap, test } from "./fixtures";
+import { expect, mapRegion, openLibrary, openSearch, settleMap, test } from "./fixtures";
 
 const DEMO_TITLES = [
   "Synthetic Rhine Traverse — Valley floor",
@@ -38,7 +38,8 @@ test("the entry page is the library, drawn", async ({ offlinePage: page }) => {
   await expect(page.locator(".maplibregl-canvas")).toBeVisible();
   await expect(page.getByText("domestique")).toBeVisible();
   await expect(page.getByRole("link", { name: /^Sync/ })).toBeVisible();
-  await expect(page.getByRole("searchbox", { name: "Search the route library" })).toHaveAttribute(
+  await expect(page.getByRole("button", { name: "Search the route library" })).toBeVisible();
+  await expect(await openSearch(page)).toHaveAttribute(
     "placeholder",
     `Search ${DEMO_TITLES.length} routes`,
   );
@@ -51,30 +52,67 @@ test("the entry page is the library, drawn", async ({ offlinePage: page }) => {
   await expect(page.locator(".maplibregl-ctrl-scale")).toContainText(/\d/);
 });
 
+test("the Tabler zoom controls move the map", async ({ offlinePage: page }) => {
+  await openLibrary(page);
+  const before = await settleMap(page);
+
+  await page.getByRole("button", { name: "Zoom in" }).click();
+
+  expect((await settleMap(page)).equals(before)).toBe(false);
+});
+
+test("keeps map actions, scale, and attribution in their own corners", async ({
+  offlinePage: page,
+}) => {
+  await openLibrary(page);
+
+  const map = await mapRegion(page).boundingBox();
+  const locate = await page.getByRole("button", { name: "Find my location" }).boundingBox();
+  const zoom = await page.getByRole("button", { name: "Zoom in" }).boundingBox();
+  const credit = await page.locator(".map-credits").boundingBox();
+  expect(map).not.toBeNull();
+  expect(locate).not.toBeNull();
+  expect(zoom).not.toBeNull();
+  expect(credit).not.toBeNull();
+  if (!map || !locate || !zoom || !credit) {
+    throw new Error("expected the map controls to have been laid out");
+  }
+
+  for (const control of [locate, zoom]) {
+    expect(control.x).toBeGreaterThan(map.x + map.width / 2);
+    expect(control.y).toBeLessThan(map.y + map.height / 2);
+  }
+  expect(credit.x).toBeGreaterThan(map.x + map.width / 2);
+  expect(credit.y).toBeGreaterThan(map.y + map.height / 2);
+  await expect(page.locator(".maplibregl-ctrl-scale")).toHaveCSS(
+    "background-color",
+    "rgba(0, 0, 0, 0)",
+  );
+  await expect(page.locator(".maplibregl-ctrl-scale")).toHaveCSS("border-bottom-style", "solid");
+});
+
 // The mixed case: a library assembled from more than one source, and a reader
 // telling its stages apart by more than the row they happen to sit in.
-test("a stage names its source, and a search can narrow to one", async ({ offlinePage: page }) => {
+test("a search can narrow the library to one route", async ({ offlinePage: page }) => {
   await openLibrary(page);
-  const search = page.getByRole("searchbox", { name: "Search the route library" });
+  const search = await openSearch(page);
 
   await search.fill("komoot");
 
   await expect(page.locator(".result")).toHaveCount(1);
   await expect(page.locator(".result__name")).toHaveText(["Synthetic Foothill Circuit"]);
-  await expect(page.locator(".result .source-label")).toHaveText(["Komoot"]);
 
   await search.fill("kaiserstuhl");
-  await expect(page.locator(".result .source-label")).toHaveText(["VeloPlanner"]);
+  await expect(page.locator(".result__name")).toHaveText(["Synthetic Kaiserstuhl Loop"]);
 });
 
 test("searching grows a column of what is left", async ({ offlinePage: page }) => {
   await openLibrary(page);
-  const search = page.getByRole("searchbox", { name: "Search the route library" });
+  const search = await openSearch(page);
 
   await search.fill("rhine");
 
   await expect(page.locator(".result")).toHaveCount(3);
-  await expect(page.getByText("3 of 7")).toBeVisible();
 
   await search.fill("forest");
 
@@ -93,7 +131,7 @@ test("nothing a reader types leaves the page", async ({ offlinePage: page }) => 
   const asked: string[] = [];
   page.on("request", (request) => asked.push(request.url()));
 
-  await page.getByRole("searchbox", { name: "Search the route library" }).fill("kaiserstuhl");
+  await (await openSearch(page)).fill("kaiserstuhl");
   await expect(page.locator(".result")).toHaveCount(1);
 
   // Narrowing happens in the browser over the listing the page already holds,
@@ -107,7 +145,7 @@ test("picking a route lifts it out of the library and opens its card", async ({
   await openLibrary(page);
   const before = await settleMap(page);
 
-  await page.getByRole("searchbox", { name: "Search the route library" }).fill("kaiserstuhl");
+  await (await openSearch(page)).fill("kaiserstuhl");
   await page.getByRole("button", { name: new RegExp(LOOP.title) }).click();
 
   // The row is replaced by the card, so the column never says the same route
@@ -127,7 +165,7 @@ test("the card is the way into a route, and the route takes the same column", as
   offlinePage: page,
 }) => {
   await openLibrary(page);
-  await page.getByRole("searchbox", { name: "Search the route library" }).fill("kaiserstuhl");
+  await (await openSearch(page)).fill("kaiserstuhl");
   await page.getByRole("button", { name: new RegExp(LOOP.title) }).click();
 
   await page.getByRole("button", { name: "Open route" }).click();
@@ -177,9 +215,9 @@ test("a bookmarked two-part address lands on the route", async ({ offlinePage: p
  * Points at a route on the map, wherever one happens to be.
  *
  * The framing decides where any one route falls, so the pointer is swept across
- * the middle of the map until the cursor says it is over a line — which is the
- * same promise the reader is given before they click. It leaves the pointer
- * where it found one, ready to click.
+ * the map until the cursor says it is over a line — which is the same promise
+ * the reader is given before they click. It leaves the pointer where it found
+ * one, ready to click.
  */
 async function pointAtALine(page: Page): Promise<{ x: number; y: number }> {
   const box = await mapRegion(page).boundingBox();
@@ -188,16 +226,18 @@ async function pointAtALine(page: Page): Promise<{ x: number; y: number }> {
     throw new Error("expected the map to have been laid out");
   }
   const canvas = page.locator(".maplibregl-canvas");
-  const y = box.y + box.height / 2;
-  for (let step = 1; step < 40; step += 1) {
-    const x = box.x + (box.width * step) / 40;
-    await page.mouse.move(x, y);
-    await page.waitForTimeout(60);
-    if ((await canvas.evaluate((node) => node.style.cursor)) === "pointer") {
-      return { x, y };
+  for (const yFraction of [0.25, 0.4, 0.55, 0.7]) {
+    const y = box.y + box.height * yFraction;
+    for (let step = 1; step < 40; step += 1) {
+      const x = box.x + (box.width * step) / 40;
+      await page.mouse.move(x, y);
+      await page.waitForTimeout(60);
+      if ((await canvas.evaluate((node) => node.style.cursor)) === "pointer") {
+        return { x, y };
+      }
     }
   }
-  throw new Error("expected a route somewhere across the middle of the map");
+  throw new Error("expected a route somewhere on the map");
 }
 
 /*

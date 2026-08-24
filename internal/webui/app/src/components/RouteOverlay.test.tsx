@@ -28,6 +28,7 @@ interface MarkerRecord {
   offset: [number, number];
   longitude: number;
   latitude: number;
+  className?: string | undefined;
 }
 
 const drawn = vi.hoisted(() => ({
@@ -61,6 +62,7 @@ vi.mock("react-map-gl/maplibre", () => ({
       offset: props.offset,
       longitude: props.longitude,
       latitude: props.latitude,
+      className: props.className,
     });
 
     return <>{props.children}</>;
@@ -155,7 +157,8 @@ function show(
     profile,
     layer: (id: string) => drawn.layers.find((entry) => entry.id === id),
     ids: () => drawn.layers.map((entry) => entry.id),
-    marker: () => drawn.markers[0],
+    marker: () =>
+      drawn.markers.find((marker) => marker.className === "route-position-tooltip-marker"),
     /** Re-renders the same tree with a different position, for a transition a fresh render cannot prove. */
     setActiveMetres: (metres: number | null) => rerender(jsx(metres)),
   };
@@ -221,6 +224,13 @@ describe("the way back out of a stretch", () => {
  * the geometry is observable at all.
  */
 describe("the route's start, finish, and direction cues", () => {
+  it("uses a labelled start disc and a checkered finish flag", () => {
+    show();
+
+    expect(document.querySelector(".route-terminal--start")).toBeInTheDocument();
+    expect(document.querySelector(".route-terminal--finish")).toBeInTheDocument();
+  });
+
   it("says which way a point-to-point route is ridden", () => {
     show();
 

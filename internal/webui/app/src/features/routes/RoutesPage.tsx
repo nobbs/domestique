@@ -152,10 +152,9 @@ function convergedPhrase(targetCount: number): string {
 export interface RoutesPageProps {
   /** The reader's colour-scheme pick. Held by `App` — see there for why. */
   themeChoice: ThemeChoice;
-  onThemeChoiceChange: (choice: ThemeChoice) => void;
 }
 
-export function RoutesPage({ themeChoice, onThemeChoiceChange }: RoutesPageProps) {
+export function RoutesPage({ themeChoice }: RoutesPageProps) {
   const routes = useQuery(routesQuery());
   const config = useQuery(webUIConfigQuery());
   const status = useQuery(statusQuery());
@@ -171,7 +170,7 @@ export function RoutesPage({ themeChoice, onThemeChoiceChange }: RoutesPageProps
    * map is handed a style rather than a choice.
    */
   const [basemapChoice, chooseBasemap] = useBasemapChoice();
-  const [unitSystem, chooseUnitSystem] = useUnitSystem();
+  const [unitSystem] = useUnitSystem();
   // No default: an invented start time would draw a confident forecast for a
   // ride nobody actually planned. See lib/startTime.ts.
   const [startAt, setStartAt] = useStartTime();
@@ -511,7 +510,7 @@ export function RoutesPage({ themeChoice, onThemeChoiceChange }: RoutesPageProps
 
   return (
     <Layout
-      expanded={query.trim() !== "" || selectedKey !== null || openKey !== null}
+      expanded={query.trim() !== "" || filtersExpanded || selectedKey !== null || openKey !== null}
       // Only an open route: the results column is deliberately no wider than a
       // line worth reading, and the extra width is the profile's, not the list's.
       wide={openKey !== null}
@@ -523,10 +522,7 @@ export function RoutesPage({ themeChoice, onThemeChoiceChange }: RoutesPageProps
             basemaps={config.data?.basemaps ?? []}
             selectedBasemap={basemap.name}
             onBasemapChange={chooseBasemap}
-            themeChoice={themeChoice}
-            onThemeChoiceChange={onThemeChoiceChange}
             unitSystem={unitSystem}
-            onUnitSystemChange={chooseUnitSystem}
             lines={drawn.lines}
             selectedKey={focusKey}
             bounds={bounds}

@@ -5,10 +5,9 @@
  * works — and what proves it stays quiet until pressed, and honest about a
  * denial — needs a real browser. The camera's own state cannot be read back any
  * more than the basemap chooser's can, so a screenshot is the evidence, the same
- * way it is in `basemap.spec.ts` — cropped away from the bottom-left corner,
- * because the canvas fills the whole map behind the control cluster and a
- * denial's own icon change there (the control showing its own state, as it is
- * meant to) would otherwise be mistaken for the camera having moved.
+ * way it is in `basemap.spec.ts` — cropped away from the corners, because the
+ * canvas fills the whole map behind the controls and a denial's own icon change
+ * would otherwise be mistaken for the camera having moved.
  */
 
 import type { Page } from "@playwright/test";
@@ -25,10 +24,9 @@ function locateButton(page: Page) {
 /**
  * What the camera actually painted, independent of the controls drawn over it.
  *
- * The canvas element fills the whole map, corner cluster included — an element
+ * The canvas element fills the whole map, including the controls — an element
  * screenshot is the composited page, not a read of the WebGL buffer alone — so
- * this crops to the quadrant furthest from the bottom-left corner the locate
- * button, zoom pair and scale bar live in.
+ * this crops to its centre.
  */
 async function cameraScreenshot(page: Page): Promise<Buffer> {
   const box = await page.locator(".maplibregl-canvas").boundingBox();
@@ -38,10 +36,10 @@ async function cameraScreenshot(page: Page): Promise<Buffer> {
 
   return page.screenshot({
     clip: {
-      x: box.x + box.width * 0.35,
-      y: box.y,
+      x: box.x + box.width * 0.2,
+      y: box.y + box.height * 0.2,
       width: box.width * 0.6,
-      height: box.height * 0.55,
+      height: box.height * 0.6,
     },
   });
 }
@@ -79,6 +77,7 @@ test.describe("granted", () => {
     await settleMap(page);
 
     expect((await cameraScreenshot(page)).equals(before)).toBe(false);
+    await expect(page.getByRole("img", { name: "Your location" })).toBeVisible();
   });
 
   test("answers the keyboard the same way it answers a click", async ({ offlinePage: page }) => {

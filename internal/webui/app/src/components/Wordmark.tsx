@@ -12,6 +12,7 @@
  * link carries as its own colour rather than as a line of prose under the name.
  */
 
+import { IconAdjustmentsHorizontal } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router";
 import { statusQuery } from "../api/queries";
@@ -117,25 +118,9 @@ export function Wordmark() {
          * Two sliders, taking the colour of the state around them. The word it
          * replaces said the same thing twice — the panel's other two marks are
          * already the name — and a glyph leaves the tone to be the whole of what
-         * the corner is saying. The knobs are punched out in the panel's own
-         * ground so the mark reads at 16 px rather than filling in.
+         * the corner is saying.
          */}
-        <svg
-          viewBox="0 0 16 16"
-          width="16"
-          height="16"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.6"
-          strokeLinecap="round"
-          aria-hidden="true"
-          focusable="false"
-        >
-          <line x1="2" y1="5.2" x2="14" y2="5.2" />
-          <line x1="2" y1="10.8" x2="14" y2="10.8" />
-          <circle cx="6" cy="5.2" r="1.9" fill="var(--panel)" />
-          <circle cx="10.6" cy="10.8" r="1.9" fill="var(--panel)" />
-        </svg>
+        <IconAdjustmentsHorizontal size={16} stroke={1.6} aria-hidden="true" />
       </Link>
     </div>
   );
