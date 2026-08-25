@@ -184,7 +184,7 @@ describe("SyncControls", () => {
           JSON.stringify(
             input === "/v1/status"
               ? status({ schedule: { source: false, targets: false } })
-              : { accepted: true },
+              : { status: "accepted" },
           ),
         ),
     );
@@ -375,7 +375,7 @@ describe("SyncControls", () => {
           JSON.stringify(
             input === "/v1/status"
               ? status({ surface: { classified: 1, total: 3, incomplete: 1 } })
-              : { accepted: true },
+              : { status: "accepted" },
           ),
         ),
     );

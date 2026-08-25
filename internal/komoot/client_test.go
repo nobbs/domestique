@@ -204,7 +204,6 @@ func TestClientInventoryRejectsMissingRevision(t *testing.T) {
 }
 
 func TestClientInventoryRejectsOversizedBody(t *testing.T) {
-	body := strings.Repeat("0", maximumBodyBytes+1)
 	client, err := New(&Options{
 		BaseURL:  "https://komoot.example.test",
 		Email:    []byte("rider@example.test"),
@@ -212,9 +211,12 @@ func TestClientInventoryRejectsOversizedBody(t *testing.T) {
 		Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
 			require.Equal(t, "/v006/account/email/rider@example.test/", request.URL.Path)
 
+			// Streamed rather than built: the client reads the limit into
+			// memory itself, and a materialised fixture would hold a second
+			// copy of the same sixteen megabytes for the whole test.
 			return &http.Response{
 				StatusCode: http.StatusOK,
-				Body:       io.NopCloser(strings.NewReader(body)),
+				Body:       io.NopCloser(io.LimitReader(zeroReader{}, maximumBodyBytes+1)),
 				Header:     make(http.Header),
 				Request:    request,
 			}, nil
@@ -607,6 +609,18 @@ func writeJSON(t *testing.T, writer http.ResponseWriter, body string) {
 	writer.Header().Set("Content-Type", "application/json")
 	_, err := io.WriteString(writer, body)
 	assert.NoError(t, err, "writing the test response")
+}
+
+// zeroReader streams an endless run of zero bytes, so an oversized-body test
+// needs no large fixture in the repository.
+type zeroReader struct{}
+
+func (zeroReader) Read(buffer []byte) (int, error) {
+	for index := range buffer {
+		buffer[index] = '0'
+	}
+
+	return len(buffer), nil
 }
 
 type roundTripperFunc func(*http.Request) (*http.Response, error)
