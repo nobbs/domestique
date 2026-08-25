@@ -3,10 +3,8 @@ package httpapi
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"io"
 	"net/http"
-	"net/http/httptest"
 
 	openapi "github.com/nobbs/domestique/internal/httpapi/contract"
 )
@@ -34,34 +32,30 @@ func rememberContractRequest(next strictHandlerFunc, _ string) strictHandlerFunc
 	}
 }
 
+// capturedResponse defers a legacy handler until the generated strict handler
+// hands over the real ResponseWriter. Nothing is buffered: a geometry or asset
+// body is written straight through, so serving one costs no copy of it and
+// http.ServeContent's incremental writes still reach the client.
 type capturedResponse struct {
-	header http.Header
-	body   []byte
-	status int
+	request *http.Request
+	handler func(http.ResponseWriter, *http.Request)
 }
 
 func (response capturedResponse) write(writer http.ResponseWriter) error {
-	for name, values := range response.header {
-		writer.Header()[name] = append([]string(nil), values...)
+	if response.request == nil {
+		writer.WriteHeader(http.StatusInternalServerError)
+
+		return nil
 	}
-	writer.WriteHeader(response.status)
-	_, err := writer.Write(response.body)
-	if err != nil {
-		return fmt.Errorf("writing captured response: %w", err)
-	}
+	response.handler(writer, response.request)
 
 	return nil
 }
 
 func (server *contractServer) capture(ctx context.Context, handler func(http.ResponseWriter, *http.Request)) capturedResponse {
-	request, ok := ctx.Value(contractRequestKey{}).(*http.Request)
-	if !ok {
-		return capturedResponse{status: http.StatusInternalServerError}
-	}
-	recorder := httptest.NewRecorder()
-	handler(recorder, request)
+	request, _ := ctx.Value(contractRequestKey{}).(*http.Request)
 
-	return capturedResponse{status: recorder.Code, header: recorder.Header(), body: recorder.Body.Bytes()}
+	return capturedResponse{request: request, handler: handler}
 }
 
 func (server *contractServer) scheduleRequest(ctx context.Context) *http.Request {

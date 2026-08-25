@@ -572,7 +572,10 @@ func (h *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	header.Set("Referrer-Policy", "no-referrer")
 	header.Set("X-Content-Type-Options", "nosniff")
 	header.Set("Cache-Control", cacheAPI)
-	if request.Method == http.MethodGet && request.URL.Path == "/healthz" {
+	// HEAD as well as GET: Go's "GET /healthz" pattern answers both, and a
+	// liveness probe that sends HEAD must not be told it needs an identity.
+	if (request.Method == http.MethodGet || request.Method == http.MethodHead) &&
+		request.URL.Path == "/healthz" {
 		h.mux.ServeHTTP(writer, request)
 
 		return
@@ -591,9 +594,15 @@ func (h *Handler) contractDispatch(writer http.ResponseWriter, request *http.Req
 	h.serveContract(writer, request)
 }
 
-// contractStateChange mirrors the state-changing OpenAPI operations. OAuth is
-// deliberately absent: its cross-site redirect is protected by one-time,
-// identity-bound state rather than Origin.
+// contractStateChange mirrors the state-changing OpenAPI operations, which are
+// exactly the ones declaring the Origin parameter. Because the generated router
+// registers routes from that document while this list is written out by hand,
+// TestContractStateChangeMatchesTheDocumentedOriginParameter asserts the two
+// agree: an operation added to the contract without a matching case here would
+// otherwise serve with no provenance check at all.
+//
+// OAuth is deliberately absent from both: its cross-site redirect is protected
+// by one-time, identity-bound state rather than Origin.
 func contractStateChange(request *http.Request) bool {
 	if request.Method == http.MethodPut {
 		return request.URL.Path == "/v1/sync/schedule"

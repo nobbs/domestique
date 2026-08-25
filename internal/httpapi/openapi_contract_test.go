@@ -24,7 +24,22 @@ type openAPIContract struct {
 }
 
 type openAPIOperation struct {
-	Responses map[string]yaml.Node `yaml:"responses"`
+	Responses  map[string]yaml.Node `yaml:"responses"`
+	Parameters []struct {
+		Ref string `yaml:"$ref"`
+	} `yaml:"parameters"`
+}
+
+// declaresOrigin reports whether this operation requires the browser Origin
+// header, which is how the contract names an operation as state-changing.
+func (operation openAPIOperation) declaresOrigin() bool {
+	for _, parameter := range operation.Parameters {
+		if strings.HasSuffix(parameter.Ref, "/parameters/Origin") {
+			return true
+		}
+	}
+
+	return false
 }
 
 func loadOpenAPIContract(t *testing.T) openAPIContract {
@@ -114,3 +129,38 @@ func TestOpenAPIContractResponses(t *testing.T) {
 }
 
 func statusCode(status int) string { return strconv.Itoa(status) }
+
+// contractPathValues fills a documented path template with values the handlers
+// accept, so a documented operation can be turned into a request to probe.
+var contractPathValues = strings.NewReplacer(
+	"{provider}", "veloplanner", "{routeId}", "12", "{stage}", "1",
+	"{target}", "rider-a", "{asset}", "app.js",
+)
+
+// TestContractStateChangeMatchesTheDocumentedOriginParameter couples the
+// hand-written same-origin guard to the document the routes are generated from.
+// The guard runs before generated parameter binding, so it cannot be derived
+// from the bound request; this asserts instead that it names exactly the
+// operations the contract marks as requiring an Origin. An operation added to
+// api/openapi.yaml without a matching case in contractStateChange registers a
+// working state-changing route with no provenance check, and the generated
+// binding only requires the header to be present, not to match the configured
+// origin — so nothing else would catch it.
+func TestContractStateChangeMatchesTheDocumentedOriginParameter(t *testing.T) {
+	document := loadOpenAPIContract(t)
+
+	for path, operations := range document.Paths {
+		for method, operation := range operations {
+			t.Run(strings.ToUpper(method)+" "+path, func(t *testing.T) {
+				request := httptest.NewRequestWithContext(
+					context.Background(),
+					strings.ToUpper(method),
+					contractPathValues.Replace(path),
+					http.NoBody,
+				)
+				assert.Equal(t, operation.declaresOrigin(), contractStateChange(request),
+					"the same-origin guard and the documented Origin parameter must name the same operations")
+			})
+		}
+	}
+}
