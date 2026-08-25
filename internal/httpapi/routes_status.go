@@ -179,7 +179,7 @@ func (h *Handler) status(writer http.ResponseWriter, request *http.Request, _ st
 	if h.surfaceIndex != nil {
 		if generation, builtAt, ok := h.surfaceIndex(); ok {
 			view.Sync.Surface.Generation = generation
-			view.Sync.Surface.BuiltAt = builtAt.Format(time.RFC3339)
+			view.Sync.Surface.BuiltAt = builtAt.UTC().Format(time.RFC3339)
 		}
 	}
 	if phaseErr := h.state.ForEachPhaseRun(request.Context(), func(
@@ -187,7 +187,7 @@ func (h *Handler) status(writer http.ResponseWriter, request *http.Request, _ st
 		sourceStages, created, updated, deleted int,
 	) error {
 		run := phaseRunView{
-			LastCompletedAt: completedAt.Format(time.RFC3339),
+			LastCompletedAt: completedAt.UTC().Format(time.RFC3339),
 			LastResult:      outcome,
 			LastFailure:     detail,
 			SourceStages:    sourceStages,
@@ -225,7 +225,7 @@ func (h *Handler) status(writer http.ResponseWriter, request *http.Request, _ st
 	}
 	if found {
 		view.Sync.State, view.Sync.LastResult = outcome, outcome
-		view.Sync.LastCompletedAt = completedAt.Format(time.RFC3339)
+		view.Sync.LastCompletedAt = completedAt.UTC().Format(time.RFC3339)
 		view.Sync.SourceStages, view.Sync.Created, view.Sync.Updated, view.Sync.Deleted =
 			sourceStages, created, updated, deleted
 	}
@@ -318,7 +318,7 @@ func (h *Handler) syncHistory(writer http.ResponseWriter, request *http.Request,
 		view.Runs = append(view.Runs, syncRunView{
 			Reference:    reference,
 			Phase:        phase,
-			CompletedAt:  completedAt.Format(time.RFC3339),
+			CompletedAt:  completedAt.UTC().Format(time.RFC3339),
 			Result:       outcome,
 			Failure:      detail,
 			SourceStages: sourceStages,
@@ -451,7 +451,7 @@ func (h *Handler) trustedInventoryFreshness(ctx context.Context) (*trustedInvent
 	// problem elsewhere and must not be read here as a claim about the future.
 	age := max(h.now().Sub(lastSuccess), 0)
 	ageSeconds := int64(age / time.Second)
-	view.LastSuccessAt = lastSuccess.Format(time.RFC3339)
+	view.LastSuccessAt = lastSuccess.UTC().Format(time.RFC3339)
 	view.AgeSeconds = ageSeconds
 	// Fresh is derived from the same truncated seconds the response reports,
 	// not the untruncated duration: a sub-second sync.stale_after would

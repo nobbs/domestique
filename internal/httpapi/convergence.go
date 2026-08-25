@@ -114,7 +114,7 @@ func (h *Handler) targetRuns(ctx context.Context) (map[string]targetRunView, err
 			// deployment and is not reported.
 			if slices.Contains(h.targetIDs, targetID) {
 				runs[targetID] = targetRunView{
-					CompletedAt: finishedAt.Format(time.RFC3339),
+					CompletedAt: finishedAt.UTC().Format(time.RFC3339),
 					Result:      outcome,
 					Failure:     detail,
 				}
