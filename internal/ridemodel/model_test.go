@@ -203,30 +203,55 @@ func TestPredictPhysicsHalfNeverExceedsTheDescentCap(t *testing.T) {
 
 	physicsSeconds := result.MovingSeconds / hybridPhysicsWeight
 	impliedSpeed := 2_000 / physicsSeconds
-	assert.LessOrEqual(t, impliedSpeed, fixedDescentCapMetresPerSecond+1e-9,
+	assert.LessOrEqual(t, impliedSpeed, fixedSpeedCapMetresPerSecond+1e-9,
 		"a descent must never be credited a speed above the configured cap")
 }
 
-// A gradient just past the coasting cutoff, on rough enough ground, can leave
-// rolling resistance stronger than the gravity pulling a freewheeling bike
-// forward. Regression for a defect where that single borderline segment
-// credited a near-stationary crawl and inflated a whole stage's time by an
-// order of magnitude.
-func TestPredictPhysicsHalfFallsBackToPedallingWhenCoastingWouldStall(t *testing.T) {
+// Regression for the freewheeling branch this model used to take below a -1%
+// gradient: a shallow descent came back slower than the same road flat — 11
+// km/h down a 1.5% grade — because dropping the rider's power could only ever
+// subtract speed. Gravity helping must never cost time.
+func TestPredictPhysicsHalfIsNeverSlowerDownhillThanOnTheFlat(t *testing.T) {
 	coefficients := testCoefficients()
 	coefficients.SecondsPerKM, coefficients.SecondsPerAscentM = 0, 0
 	coefficients.CrrBySurface = map[surface.Kind]float64{surface.KindAsphalt: 0.012}
-	// Just past the -1% cutoff: rolling resistance at Crr 0.012 exceeds the
-	// gravity component of a 1.2% descent, so coasting alone would stall.
-	points := sampledStage(1_000, 20, func(d float64) float64 { return -0.012 * d })
 
-	result, ok := Predict(points, nil, coefficients)
-	require.True(t, ok, "Predict() ok")
+	flat, ok := Predict(flatStage(1_000, 20, 100), nil, coefficients)
+	require.True(t, ok, "Predict() ok on the flat stage")
 
-	// A rider pedalling a shallow, rough downhill still covers it in minutes,
-	// not the tens of minutes a stalled crawl would produce.
-	physicsSeconds := result.MovingSeconds / hybridPhysicsWeight
-	assert.Less(t, physicsSeconds, 120.0, "a borderline segment must not dominate the stage's time")
+	// Every gradient the old cutoff sent freewheeling, including the ones it
+	// let past its own crawl floor.
+	for _, gradient := range []float64{-1.2, -1.5, -2, -3, -5} {
+		points := sampledStage(1_000, 20, func(d float64) float64 { return 100 + gradient/100*d })
+		descent, ok := Predict(points, nil, coefficients)
+		require.True(t, ok, "Predict() ok at %.1f%%", gradient)
+		assert.Less(t, descent.MovingSeconds, flat.MovingSeconds,
+			"a %.1f%% descent must be quicker than the same road flat", gradient)
+	}
+}
+
+// The same guarantee at the extremes Load admits, which is where the speed cap
+// actually binds on level ground. It is the case for gating the cap on a
+// negative gradient — the obvious reading of a constant that exists for
+// descents — and the reason not to: capping only below zero leaves this
+// profile solving past the cap at +0.01% and pinned to it at -0.01%, so the
+// bike comes out slower downhill than up, with a cliff at exactly zero.
+func TestPredictPhysicsHalfIsNeverSlowerDownhillAtTheValidatedExtremes(t *testing.T) {
+	coefficients := testCoefficients()
+	coefficients.SecondsPerKM, coefficients.SecondsPerAscentM = 0, 0
+	coefficients.CrrBySurface = map[surface.Kind]float64{surface.KindAsphalt: 0.012}
+	coefficients.PowerWatts = maxPowerWatts
+	coefficients.CdAM2 = minCdAM2
+
+	previous := math.Inf(1)
+	for _, gradient := range []float64{2, 0.5, 0.01, 0, -0.01, -0.5, -2, -6} {
+		points := sampledStage(1_000, 20, func(d float64) float64 { return 100 + gradient/100*d })
+		result, ok := Predict(points, nil, coefficients)
+		require.True(t, ok, "Predict() ok at %.2f%%", gradient)
+		assert.LessOrEqual(t, result.MovingSeconds, previous+1e-9,
+			"time must not rise as the road tilts down, at %.2f%%", gradient)
+		previous = result.MovingSeconds
+	}
 }
 
 // At the extremes Load's own validation admits — maximum power, minimum drag

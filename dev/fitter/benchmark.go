@@ -16,20 +16,33 @@ import (
 )
 
 const (
-	defaultRouteCellDegrees        = 0.002
-	defaultRouteJaccardThreshold   = 0.7
-	defaultBenchmarkWarmupFraction = 0.6
+	defaultRouteCellDegrees      = 0.002
+	defaultRouteJaccardThreshold = 0.7
+	// defaultTrainingWindowMonths bounds how far back a fit reaches. #251
+	// measured the choice on the operator's corpus: accuracy is flat from six
+	// months to all history, so the window buys no error today. It is here so
+	// a profile can follow a rider whose form actually moves — an all-history
+	// fit takes years to forget a season — and twelve months is the shortest
+	// window that still spans a full year of weather and daylight.
+	defaultTrainingWindowMonths = 12
+	// rollingHorizonMonths is how much of the future one fold scores. It
+	// matches the interval a profile is expected to be refit at, so a fold
+	// measures a profile over the same span of staleness it will really serve.
+	rollingHorizonMonths = 1
 	// modelVersionLabel mirrors internal/ridemodel/model.go's unexported
 	// modelVersion constant, for display only: this package never loads or
 	// computes it, it just needs the same label on the profile it prints.
-	modelVersionLabel = "hybrid-v1"
+	modelVersionLabel = "hybrid-v2"
 	// physicsOnlyScaleFactor recovers the physics-only prediction from
-	// internal/ridemodel.Predict's own equal-weight blend: with the route
-	// coefficients zeroed, every segment's blended time is exactly half its
-	// physics time (#213's settled 50/50 split), so doubling Predict's own
-	// output — the real equation, with the route half silenced, not a second
-	// implementation of it — recovers the physics-only prediction exactly.
-	physicsOnlyScaleFactor = 2.0
+	// internal/ridemodel.Predict's own weighted blend: with the route
+	// coefficients zeroed, every segment's blended time is exactly
+	// hybridPhysicsWeight of its physics time, so scaling Predict's own
+	// output by the reciprocal — the real equation, with the route half
+	// silenced, not a second implementation of it — recovers the
+	// physics-only prediction exactly. It must stay the reciprocal of that
+	// constant; TestPhysicsOnlyScaleFactorInvertsTheBlendWeight is what
+	// catches a reweighting that forgets this.
+	physicsOnlyScaleFactor = 4.0
 	// maxMissingGeometryFraction is how much of a ride's moving time may come
 	// from samples missing altitude or position (a GPS/barometer dropout)
 	// before the ride is unscorable here.
@@ -69,19 +82,35 @@ type splitEvaluation struct {
 	evaluateScored    int
 	secondsPerKM      float64
 	secondsPerAscentM float64
-	recalibrated      bool
+}
+
+// recalibration is one walk-forward run: the coefficients it ends up
+// recommending, and the out-of-sample errors pooled across every fold that
+// produced them. The two are deliberately not the same fit — see
+// runRecalibration.
+type recalibration struct {
+	errorsByModel     map[string][]float64
+	firstOrigin       time.Time
+	lastOrigin        time.Time
+	calibrationCutoff time.Time
+	modelNames        []string
+	folds             int
+	scored            int
+	trainRides        int
+	windowMonths      int
+	secondsPerKM      float64
+	secondsPerAscentM float64
 }
 
 // runETABenchmark implements the repeat protocol: by default it evaluates
 // the loaded, still-frozen profile against rides after its own
-// calibration_cutoff — no fitting at all — and under -recalibrate it
-// additionally re-fits the two route coefficients over the oldest
-// -eta-warmup-fraction of the corpus and prints a copy-ready profile. Every
-// model it scores — hybrid, physics-only,
-// route-only — is built from the one loaded (or, under -recalibrate,
-// route-recalibrated) ridemodel.Coefficients value, and the hybrid model
-// calls internal/ridemodel.Predict directly: the real production equation,
-// never a second implementation of it.
+// calibration_cutoff — no fitting at all — and under -recalibrate it walks a
+// monthly origin across the corpus, refitting the two route coefficients per
+// fold, and prints a copy-ready profile carrying the pooled out-of-sample
+// error. Every model it scores — hybrid, physics-only, route-only — is built
+// from a ridemodel.Coefficients value, and the hybrid model calls
+// internal/ridemodel.Predict directly: the real production equation, never a
+// second implementation of it.
 func runETABenchmark(
 	groups []rideGroup, rides []rideRow, samplesByRide map[string][]sampleRow,
 	coefficients *ridemodel.Coefficients, cfg *runConfig,
@@ -95,9 +124,11 @@ func runETABenchmark(
 	}
 
 	if cfg.recalibrate {
-		fmt.Fprintln(&report, "ETA recalibration: refitting the route coefficients over the oldest share of the corpus, then scoring once on the route-disjoint first attempts that follow")
+		fmt.Fprintf(&report, "ETA recalibration: walking a monthly origin across the corpus, each fold fit on the %d months before it and scored on the unseen routes of the month after; the shipped fit then covers the newest %d months\n",
+			cfg.etaTrainingMonths, cfg.etaTrainingMonths)
 	} else {
-		fmt.Fprintf(&report, "ETA evaluation: the frozen profile calibrated through %s, scored on route-disjoint first attempts after that date\n", cutoff.Format(time.DateOnly))
+		fmt.Fprintf(&report, "ETA evaluation: the frozen profile calibrated through %s, scored on route-disjoint first attempts after that date that also fall within the newest %d months of the corpus\n",
+			cutoff.Format(time.DateOnly), cfg.etaTrainingMonths)
 	}
 	fmt.Fprintf(&report, "Errors are signed bias, mean absolute error and p90 absolute error, all as percentages of moving time. A repeat requires Jaccard overlap %.2f on a %.4f-degree coordinate grid.\n",
 		cfg.etaRouteJaccard, cfg.etaRouteCellDegrees)
@@ -116,6 +147,25 @@ func runETABenchmark(
 			fmt.Fprintf(&report, "  excluded: %s\n", renderExclusions(exclusions))
 		}
 
+		if cfg.recalibrate {
+			clusters, clusterCount, repeatedRides, largestCluster := clusterRoutes(
+				cleanRides, samplesByRide, cfg.etaRouteCellDegrees, cfg.etaRouteJaccard)
+			fmt.Fprintf(&report, "  %d route clusters, %d repeats, largest cluster %d\n",
+				clusterCount, repeatedRides, largestCluster)
+
+			eval, recalibrateErr := runRecalibration(cleanRides, samplesByRide, clusters, coefficients, cfg)
+			if recalibrateErr != nil {
+				fmt.Fprintf(&report, "  skipped (%v)\n", recalibrateErr)
+				benchmarkErrors = append(benchmarkErrors, fmt.Errorf("%s: %w", displayGear(group.Gear), recalibrateErr))
+
+				continue
+			}
+			printRecalibration(&report, &eval)
+			printCopyReadyProfile(&report, coefficients, &eval)
+
+			continue
+		}
+
 		eval, err := evaluateSplit(cleanRides, samplesByRide, coefficients, cutoff, cfg)
 		if err != nil {
 			fmt.Fprintf(&report, "  skipped (%v)\n", err)
@@ -127,20 +177,21 @@ func runETABenchmark(
 		printSplitSummary(&report, &eval)
 		printModelMetrics(&report, &eval)
 		printCandidateComparison(&report, &eval)
-		if cfg.recalibrate {
-			printCopyReadyProfile(&report, coefficients, &eval)
-		}
 	}
 
 	return report.String(), errors.Join(benchmarkErrors...)
 }
 
-// evaluateSplit clusters routes, splits chronologically into "seen" and
-// "evaluate" — by the loaded profile's own calibration_cutoff date by
-// default, or by -eta-warmup-fraction of the whole corpus under
-// -recalibrate — builds every model once from the resulting coefficients
-// (only re-fit under -recalibrate), and scores them once against the
-// route-disjoint evaluation rides.
+// evaluateSplit scores the loaded, still-frozen profile: it clusters routes,
+// splits chronologically at the profile's own calibration_cutoff, and scores
+// every model once against the route-disjoint rides after it. Nothing is
+// fitted here — this is the "how is the file I am running doing" pass, and
+// -recalibrate takes runRecalibration's road instead.
+//
+// Evaluation rides are additionally confined to the trailing window, because
+// a profile is a claim about how the rider rides *now*: scoring it against
+// everything since its cutoff let a year-old ride offset a present-day error
+// and report the average as if it described today.
 func evaluateSplit(
 	cleanRides []rideRow, samplesByRide map[string][]sampleRow,
 	coefficients *ridemodel.Coefficients, cutoff time.Time, cfg *runConfig,
@@ -153,31 +204,20 @@ func evaluateSplit(
 	// the following day, rather than cutoff itself, is what keeps a
 	// same-day ride from being misclassified as unseen.
 	seenCount := sort.Search(len(cleanRides), func(i int) bool { return !cleanRides[i].Date.Before(cutoff.AddDate(0, 0, 1)) })
-	if cfg.recalibrate {
-		seenCount = int(float64(len(cleanRides)) * cfg.etaWarmupFraction)
-	}
 	seen, evaluate := routeDisjointSplit(cleanRides, clusters, seenCount)
-	if cfg.recalibrate && len(seen) < minGroupRides {
-		return splitEvaluation{}, errors.New("too few rides before the recalibration cutoff to fit from")
-	}
 	if len(evaluate) == 0 {
 		return splitEvaluation{}, errors.New("no route-disjoint evaluation rides after the cutoff")
 	}
-
-	active := *coefficients
-	splitCutoff := cutoff
-	recalibrated := false
-	if cfg.recalibrate {
-		secondsPerKM, secondsPerAscentM, err := fitRouteCoefficients(seen, samplesByRide)
-		if err != nil {
-			return splitEvaluation{}, err
-		}
-		active.SecondsPerKM, active.SecondsPerAscentM = secondsPerKM, secondsPerAscentM
-		splitCutoff = seen[len(seen)-1].Date
-		recalibrated = true
+	newest := cleanRides[len(cleanRides)-1].Date
+	evaluate = ridesBetween(evaluate, newest.AddDate(0, -cfg.etaTrainingMonths, 0), newest.AddDate(0, 0, 1))
+	if len(evaluate) == 0 {
+		return splitEvaluation{}, fmt.Errorf(
+			"no route-disjoint evaluation ride in the %d months before %s",
+			cfg.etaTrainingMonths, newest.Format(time.DateOnly))
 	}
 
-	models := []benchmarkModel{physicsOnlyModel(&active), routeOnlyModel(active.SecondsPerKM, active.SecondsPerAscentM), hybridModel(&active)}
+	active := *coefficients
+	models := benchmarkModels(&active)
 	errorsByModel, scored := scoreRides(models, evaluate, samplesByRide)
 	if scored == 0 {
 		return splitEvaluation{}, errors.New("no evaluation ride could be scored")
@@ -186,20 +226,16 @@ func evaluateSplit(
 	return splitEvaluation{
 		clusterCount: clusterCount, repeatedRides: repeatedRides, largestCluster: largestCluster,
 		seenCount: len(seen), evaluateCount: len(evaluate), evaluateScored: scored,
-		calibrationCutoff: splitCutoff, models: models, errorsByModel: errorsByModel,
-		secondsPerKM: active.SecondsPerKM, secondsPerAscentM: active.SecondsPerAscentM, recalibrated: recalibrated,
+		calibrationCutoff: cutoff, models: models, errorsByModel: errorsByModel,
+		secondsPerKM: active.SecondsPerKM, secondsPerAscentM: active.SecondsPerAscentM,
 	}, nil
 }
 
 func printSplitSummary(report *strings.Builder, eval *splitEvaluation) {
 	fmt.Fprintf(report, "  %d route clusters, %d repeats, largest cluster %d\n",
 		eval.clusterCount, eval.repeatedRides, eval.largestCluster)
-	if eval.recalibrated {
-		fmt.Fprintf(report, "  recalibrated on %d rides through %s\n", eval.seenCount, eval.calibrationCutoff.Format(time.DateOnly))
-	} else {
-		fmt.Fprintf(report, "  frozen profile calibrated through %s; %d rides already seen by then\n",
-			eval.calibrationCutoff.Format(time.DateOnly), eval.seenCount)
-	}
+	fmt.Fprintf(report, "  frozen profile calibrated through %s; %d rides already seen by then\n",
+		eval.calibrationCutoff.Format(time.DateOnly), eval.seenCount)
 	fmt.Fprintf(report, "  evaluation: %d/%d route-disjoint first attempts scored\n", eval.evaluateScored, eval.evaluateCount)
 }
 
@@ -241,16 +277,22 @@ func printCandidateComparison(report *strings.Builder, eval *splitEvaluation) {
 
 // printCopyReadyProfile prints the values an operator pastes into
 // ridemodel.toml after an explicitly requested recalibration: the newly
-// fitted route coefficients, the profile's unchanged physics inputs, the new
-// calibration cutoff, and the validation metrics that justify adopting it.
-func printCopyReadyProfile(report *strings.Builder, coefficients *ridemodel.Coefficients, eval *splitEvaluation) {
+// fitted route coefficients, the profile's unchanged physics inputs, the
+// window and cutoff that bound the data they came from, and the pooled
+// out-of-sample error that justifies adopting them.
+//
+// Those metrics measure the *procedure*, not these exact numbers — the
+// shipped fit covers the newest window and so has no held-out future left to
+// score against. See runRecalibration for why that is the honest arrangement
+// rather than a gap.
+func printCopyReadyProfile(report *strings.Builder, coefficients *ridemodel.Coefficients, eval *recalibration) {
 	candidate := eval.errorsByModel["hybrid"]
 	if len(candidate) == 0 {
 		return
 	}
 	metrics := summarizeBenchmarkErrors(candidate)
 	fmt.Fprintf(report, "  copy-ready profile (%s):\n", modelVersionLabel)
-	fmt.Fprintf(report, "    calibration_cutoff = %s\n", eval.calibrationCutoff.Format(time.DateOnly))
+	fmt.Fprintf(report, "    calibration_cutoff = \"%s\"\n", eval.calibrationCutoff.Format(time.DateOnly))
 	fmt.Fprintf(report, "    mass_kg = %.1f\n", coefficients.MassKG)
 	fmt.Fprintf(report, "    power_watts = %.0f\n", coefficients.PowerWatts)
 	fmt.Fprintf(report, "    cda_m2 = %.2f\n", coefficients.CdAM2)
@@ -261,7 +303,9 @@ func printCopyReadyProfile(report *strings.Builder, coefficients *ridemodel.Coef
 	fmt.Fprintf(report, "    bias_percent = %.2f\n", metrics.bias)
 	fmt.Fprintf(report, "    mae_percent = %.2f\n", metrics.mae)
 	fmt.Fprintf(report, "    p90_percent = %.2f\n", metrics.p90)
-	fmt.Fprintf(report, "    validation: rides %d, bias %+.2f%%, MAE %.2f%%, p90 %.2f%%\n", metrics.rides, metrics.bias, metrics.mae, metrics.p90)
+	fmt.Fprintf(report, "    training_window_months = %d\n", eval.windowMonths)
+	fmt.Fprintf(report, "    validation: %d unseen-route scorings over %d folds, bias %+.2f%%, MAE %.2f%%, p90 %.2f%%\n",
+		metrics.rides, eval.folds, metrics.bias, metrics.mae, metrics.p90)
 }
 
 func displayGear(gear string) string {
@@ -479,10 +523,9 @@ func unionClusters(parents []int, left, right int) {
 // given index: everything before it is "seen", and everything after it is
 // scored — but only a ride whose route cluster never appeared in "seen" and
 // has not already been selected, so evaluation sees each unseen route
-// exactly once. The caller computes seenCount two different ways
-// (evaluateSplit): a date-based search against the loaded profile's own
-// cutoff by default, or an -eta-warmup-fraction of the corpus under
-// -recalibrate — one dedup implementation, two ways to find where to cut.
+// exactly once. seenCount comes from a date search against the loaded
+// profile's own calibration_cutoff; the rolling-origin path uses
+// unseenRoutesIn instead, which applies the same rule per fold.
 func routeDisjointSplit(rides []rideRow, clusters map[string]int, seenCount int) (seen, evaluate []rideRow) {
 	if len(rides) < minGroupRides {
 		return nil, nil
@@ -528,6 +571,17 @@ func fitRouteCoefficients(train []rideRow, samplesByRide map[string][]sampleRow)
 	}
 
 	return secondsPerKM, secondsPerAscentM, nil
+}
+
+// benchmarkModels builds the three models every evaluation scores from one
+// coefficient set: the production hybrid and the two halves it blends, so a
+// reader can see whether the hybrid is earning its blend.
+func benchmarkModels(coefficients *ridemodel.Coefficients) []benchmarkModel {
+	return []benchmarkModel{
+		physicsOnlyModel(coefficients),
+		routeOnlyModel(coefficients.SecondsPerKM, coefficients.SecondsPerAscentM),
+		hybridModel(coefficients),
+	}
 }
 
 // hybridModel is the exact production predictor: internal/ridemodel.Predict,
@@ -722,4 +776,177 @@ func pairedMAEImprovement(current, candidate []float64) (mean, low, high float64
 	sort.Float64s(bootstrapMeans)
 
 	return mean, percentileOf(bootstrapMeans, 0.025), percentileOf(bootstrapMeans, 0.975)
+}
+
+// trainingWindow returns the rides a fit calibrates from: those inside the
+// trailing window of the given length ending at origin. Bounding it is what
+// lets a profile follow the rider's current form instead of averaging over
+// every season on record.
+//
+// The window is extended backwards when it holds too few rides to fit from,
+// so an injury or a quiet winter narrows the training set rather than
+// emptying it. rides must be sorted by date, which benchmarkEligibleRides
+// guarantees.
+func trainingWindow(rides []rideRow, origin time.Time, windowMonths int) []rideRow {
+	end := sort.Search(len(rides), func(i int) bool { return !rides[i].Date.Before(origin) })
+	start := sort.Search(len(rides), func(i int) bool {
+		return !rides[i].Date.Before(origin.AddDate(0, -windowMonths, 0))
+	})
+	if end-start < minGroupRides {
+		start = max(0, end-minGroupRides)
+	}
+
+	return rides[start:end]
+}
+
+// unseenRoutesIn selects the rides of horizon whose route cluster never
+// appears in train, keeping each cluster only once, so a fold scores every
+// route its fit had not been calibrated on exactly one time.
+func unseenRoutesIn(horizon, train []rideRow, clusters map[string]int) []rideRow {
+	trained := make(map[int]bool, len(train))
+	for _, ride := range train {
+		trained[clusters[ride.RideID]] = true
+	}
+	selected := make(map[int]bool)
+	unseen := make([]rideRow, 0, len(horizon))
+	for _, ride := range horizon {
+		cluster := clusters[ride.RideID]
+		if trained[cluster] || selected[cluster] {
+			continue
+		}
+		selected[cluster] = true
+		unseen = append(unseen, ride)
+	}
+
+	return unseen
+}
+
+// ridesBetween returns the rides dated on or after start and before end.
+// rides must be sorted by date.
+func ridesBetween(rides []rideRow, start, end time.Time) []rideRow {
+	from := sort.Search(len(rides), func(i int) bool { return !rides[i].Date.Before(start) })
+	to := sort.Search(len(rides), func(i int) bool { return !rides[i].Date.Before(end) })
+
+	return rides[from:to]
+}
+
+// monthStart truncates a date to the first of its month, which is where every
+// rolling origin sits.
+func monthStart(date time.Time) time.Time {
+	return time.Date(date.Year(), date.Month(), 1, 0, 0, 0, 0, date.Location())
+}
+
+// runRecalibration is the calibration protocol #251 replaced the single
+// oldest-share split with. It does two separate things, and keeping them
+// separate is the whole point:
+//
+// The folds measure the *procedure*. Walking a monthly origin across the
+// corpus, each fold fits from the training window behind its origin and
+// scores the unseen routes of the month after it. No fold ever sees a ride
+// dated at or after the rides it is scored on, so the pooled error is honest
+// in a way the old single split was not: that one drew its evaluation rides
+// from across the whole corpus, so a profile could be badly wrong about the
+// present and still record a flattering average.
+//
+// The shipped coefficients are then fit over the newest window, including the
+// rides the final folds scored. Withholding them would deploy a profile
+// deliberately blinded to the most recent months, which is the opposite of
+// what a rider wants; the pooled fold error still describes it, because it
+// was produced by this same procedure applied to less data.
+func runRecalibration(
+	rides []rideRow, samplesByRide map[string][]sampleRow, clusters map[string]int,
+	coefficients *ridemodel.Coefficients, cfg *runConfig,
+) (recalibration, error) {
+	if len(rides) < minGroupRides {
+		return recalibration{}, errors.New("too few hygienic rides to recalibrate from")
+	}
+
+	pooled := make(map[string][]float64)
+	var modelNames []string
+	var folds, scored int
+	var firstOrigin, lastOrigin time.Time
+
+	// Folds start one window back rather than at the first ride, so the
+	// pooled error describes the same span of riding the shipped fit is
+	// calibrated on. Reaching further back only averages the present
+	// together with a fitness, a bike or a model the profile no longer
+	// represents — the failure that let a live bias record itself as its
+	// own opposite.
+	newest := rides[len(rides)-1].Date
+	firstFold := monthStart(newest.AddDate(0, -cfg.etaTrainingMonths, 0))
+	for origin := firstFold; !origin.After(newest); origin = origin.AddDate(0, 1, 0) {
+		train := trainingWindow(rides, origin, cfg.etaTrainingMonths)
+		if len(train) < minGroupRides {
+			continue
+		}
+		horizon := ridesBetween(rides, origin, origin.AddDate(0, rollingHorizonMonths, 0))
+		evaluate := unseenRoutesIn(horizon, train, clusters)
+		if len(evaluate) == 0 {
+			continue
+		}
+		secondsPerKM, secondsPerAscentM, err := fitRouteCoefficients(train, samplesByRide)
+		if err != nil {
+			continue
+		}
+		active := *coefficients
+		active.SecondsPerKM, active.SecondsPerAscentM = secondsPerKM, secondsPerAscentM
+
+		models := benchmarkModels(&active)
+		errorsByModel, foldScored := scoreRides(models, evaluate, samplesByRide)
+		if foldScored == 0 {
+			continue
+		}
+		if modelNames == nil {
+			for _, model := range models {
+				modelNames = append(modelNames, model.name)
+			}
+		}
+		for name, errorPercentages := range errorsByModel {
+			pooled[name] = append(pooled[name], errorPercentages...)
+		}
+		if folds == 0 {
+			firstOrigin = origin
+		}
+		lastOrigin = origin
+		folds++
+		scored += foldScored
+	}
+
+	if folds == 0 {
+		return recalibration{}, errors.New("no rolling-origin fold could be both fitted and scored")
+	}
+
+	// The shipped fit: the newest window, ending a day past the last ride so
+	// that ride is inside it rather than just outside.
+	train := trainingWindow(rides, newest.AddDate(0, 0, 1), cfg.etaTrainingMonths)
+	secondsPerKM, secondsPerAscentM, err := fitRouteCoefficients(train, samplesByRide)
+	if err != nil {
+		return recalibration{}, err
+	}
+
+	return recalibration{
+		errorsByModel: pooled, modelNames: modelNames,
+		firstOrigin: firstOrigin, lastOrigin: lastOrigin, calibrationCutoff: newest,
+		folds: folds, scored: scored, trainRides: len(train), windowMonths: cfg.etaTrainingMonths,
+		secondsPerKM: secondsPerKM, secondsPerAscentM: secondsPerAscentM,
+	}, nil
+}
+
+func printRecalibration(report *strings.Builder, eval *recalibration) {
+	fmt.Fprintf(report, "  %d rolling-origin folds, origins %s .. %s, %d unseen-route scorings pooled\n",
+		eval.folds, eval.firstOrigin.Format("2006-01"), eval.lastOrigin.Format("2006-01"), eval.scored)
+	fmt.Fprintf(report, "  each fold fit on the %d months before its origin, scored on the %d month(s) after it\n",
+		eval.windowMonths, rollingHorizonMonths)
+
+	bestName, bestMAE := "", math.Inf(1)
+	for _, name := range eval.modelNames {
+		metrics := summarizeBenchmarkErrors(eval.errorsByModel[name])
+		fmt.Fprintf(report, "    %-14s bias %+6.2f  MAE %6.2f  p90 %6.2f\n", name, metrics.bias, metrics.mae, metrics.p90)
+		if metrics.mae < bestMAE {
+			bestName, bestMAE = name, metrics.mae
+		}
+	}
+	fmt.Fprintf(report, "  lowest MAE: %s (%.2f%%)\n", bestName, bestMAE)
+	fmt.Fprintf(report, "  shipped fit: %d rides in the %d months through %s\n",
+		eval.trainRides, eval.windowMonths, eval.calibrationCutoff.Format(time.DateOnly))
 }

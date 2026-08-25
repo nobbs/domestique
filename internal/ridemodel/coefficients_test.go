@@ -100,15 +100,16 @@ p90_percent = 14.10
 	assert.InDelta(t, 14.10, coefficients.P90Percent, 0, "P90Percent")
 }
 
-// A negative evaluated_rides, mae_percent, or p90_percent is not a
-// physically meaningful reading — a count and two absolute-error
-// magnitudes cannot go negative — so each is a startup failure rather than
+// A negative evaluated_rides, mae_percent, p90_percent, or
+// training_window_months is not a physically meaningful reading — a count,
+// two absolute-error magnitudes and a span of months cannot go negative — so each is a startup failure rather than
 // a value that silently loads and disables or corrupts HasValidation().
 func TestLoadRejectsNegativeValidationFields(t *testing.T) {
 	for name, addition := range map[string]string{
 		"negative evaluated_rides": "evaluated_rides = -1\n",
 		"negative mae_percent":     "evaluated_rides = 42\nmae_percent = -0.1\n",
 		"negative p90_percent":     "evaluated_rides = 42\np90_percent = -0.1\n",
+		"negative training window": "training_window_months = -1\n",
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := Load(writeCoefficientsFile(t, validCoefficientsTOML+addition))
@@ -131,6 +132,19 @@ func TestLoadRejectsAValidationPercentageWithoutEvaluatedRides(t *testing.T) {
 			require.Error(t, err, "Load()")
 		})
 	}
+}
+
+// training_window_months records how far back the fit that produced this
+// profile reached, so the profile can be reproduced from its own metadata.
+// It is optional: a file written before #251 omits it and still loads.
+func TestLoadAcceptsAndReportsTheTrainingWindow(t *testing.T) {
+	withWindow, err := Load(writeCoefficientsFile(t, validCoefficientsTOML+"training_window_months = 12\n"))
+	require.NoError(t, err, "Load()")
+	assert.Equal(t, 12, withWindow.TrainingWindowMonths)
+
+	without, err := Load(writeCoefficientsFile(t, validCoefficientsTOML))
+	require.NoError(t, err, "Load()")
+	assert.Equal(t, 0, without.TrainingWindowMonths, "a file predating the field must load with no window recorded")
 }
 
 func TestLoadFingerprintChangesWithFileContent(t *testing.T) {

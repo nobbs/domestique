@@ -234,25 +234,59 @@ evaluated_rides = 42
 bias_percent = -1.20
 mae_percent = 6.80
 p90_percent = 14.10
+training_window_months = 12
 ```
 
-The last four fields are the frozen profile's own measured unseen-route
-error, from the same route-disjoint benchmark that produced
-`seconds_per_km` and `seconds_per_ascent_m`. They are optional — a file
-written before [#217](https://github.com/nobbs/domestique/issues/217) added
-them still loads — and, when present, are served alongside a stage's
-predicted moving time so the browser can qualify the estimate rather than
-present it as a bare number. `dev/fitter -recalibrate` prints them as part
-of its copy-ready profile, computed from the same evaluation pass that
-prints the human-readable `validation:` line beside them.
+`evaluated_rides`, `bias_percent`, `mae_percent` and `p90_percent` are the
+profile's measured unseen-route error. They are optional — a file written
+before [#217](https://github.com/nobbs/domestique/issues/217) added them
+still loads — and, when present, are served alongside a stage's predicted
+moving time so the browser can qualify the estimate rather than present it
+as a bare number. `dev/fitter -recalibrate` prints them as part of its
+copy-ready profile, computed from the same evaluation pass that prints the
+human-readable `validation:` line beside them.
 
-The predicted moving time is an equal-weight average of fixed physics —
+They describe the *procedure* that produced the profile rather than these
+exact coefficients, and
+[#251](https://github.com/nobbs/domestique/issues/251) is why the
+distinction is worth drawing. The fitter walks a monthly origin across the
+corpus; each fold calibrates on the training window behind its origin and is
+scored on the unseen routes of the month after it, so no fold is ever
+measured against a ride it was fitted on. Those per-fold errors are pooled
+into the four fields. The coefficients themselves are then fit over the
+newest window — including the rides the last folds scored — because a
+profile withholding the most recent months is precisely the stale profile
+the exercise exists to avoid. The single chronological split this replaced
+drew its evaluation rides from across the whole corpus, which let a profile
+that was badly wrong about the present still report a flattering average.
+
+`training_window_months` is how far back that fit was allowed to reach;
+`calibration_cutoff` is where it stopped, so the two together say exactly
+which rides produced the file. It is optional and defaults to zero, meaning
+a file written before the window existed and fitted over all history. The
+window is a bound rather than a guillotine: the fitter reaches further back
+when a window holds too few rides to fit from, so a quiet season narrows the
+training set instead of emptying it. Twelve months is the default because it
+is the shortest span covering a full year of weather and daylight —
+measured on the operator's own corpus, accuracy is flat from six months to
+all history, so the window buys no error today and exists so a profile can
+follow a rider whose form actually moves.
+
+The predicted moving time is a weighted average of fixed physics —
 independently defensible assumptions, not values a corpus this small can
 reliably identify — and a two-parameter route correction, `seconds_per_km` and
-`seconds_per_ascent_m`, calibrated once against a chronological, route-disjoint
-holdout of recorded rides. Mass, power, drag area and rolling resistance stay
-per-file because they vary with the rider and the bike; the 50/50 weight,
-drivetrain efficiency, standard air density, and the descent cutoff and cap do
+`seconds_per_ascent_m`, calibrated against the route-disjoint rolling-origin
+protocol described above. The physics half carries a quarter of the blend and
+the route correction the remaining three quarters, because the two are not
+peers: the route half is fitted against whole moving times and so is already a
+complete estimate, while the physics half is a fixed prior nobody calibrates.
+Weighting them equally pulls a calibrated answer halfway toward an
+uncalibrated one, which measurably worsened error on routes the fit had never
+seen. The physics share is not zero because the linear half cannot tell 200 m
+of climbing up a single wall from 200 m spread over rolling ground, and only
+the physics half can. Mass, power, drag area and rolling resistance stay
+per-file because they vary with the rider and the bike; the blend weight,
+drivetrain efficiency, standard air density, and the descent cap do
 not appear in the file at all — they are fixed constants a code upgrade can
 change, which is why an upgrade to them still invalidates a cached prediction
 even when the operator's file is unchanged. The service reads the file once at
