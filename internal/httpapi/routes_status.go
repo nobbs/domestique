@@ -129,7 +129,7 @@ func (h *Handler) status(writer http.ResponseWriter, request *http.Request, _ st
 		targets = append(targets, openapi.TargetStatus{
 			Id:            targetID,
 			Authorisation: authorization,
-			Convergence:   openapi.TargetStatusConvergence(convergence),
+			Convergence:   convergence,
 			Stages:        stages,
 			LastRun:       lastRun,
 		})

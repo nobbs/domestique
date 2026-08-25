@@ -1709,7 +1709,7 @@ func TestHandlerReportsAnInFlightAuthorizationAsPending(t *testing.T) {
 		assert.Equalf(t, "pending", target.Authorisation, "%s authorisation", target.Id)
 		// Pending is still not authorised. Nothing may be written to a slot whose
 		// flow has not come back, and the one word each target gets says so.
-		assert.Equalf(t, convergenceUnauthorized, string(target.Convergence), "%s convergence", target.Id)
+		assert.Equalf(t, convergenceUnauthorized, target.Convergence, "%s convergence", target.Id)
 	}
 	assert.False(t, view.Ready, "a target midway through connecting reported the service ready")
 }
@@ -2545,13 +2545,13 @@ func TestHandlerReportsPerTargetConvergence(t *testing.T) {
 	view := statusOf(t, newHandlerWithTargets(t, state, "rider-a", "rider-b"))
 
 	require.Len(t, view.Targets, 2)
-	assert.Equal(t, convergenceCurrent, string(view.Targets[0].Convergence))
+	assert.Equal(t, convergenceCurrent, view.Targets[0].Convergence)
 	assert.Equal(t, openapi.TargetStages{Current: 2, Pending: 0}, view.Targets[0].Stages)
 	require.NotNil(t, view.Targets[0].LastRun)
 	assert.Equal(t, "succeeded", view.Targets[0].LastRun.Result)
 	assert.Equal(t, "2026-08-18T06:00:00Z", wireInstant(view.Targets[0].LastRun.CompletedAt))
 
-	assert.Equal(t, convergenceLagging, string(view.Targets[1].Convergence))
+	assert.Equal(t, convergenceLagging, view.Targets[1].Convergence)
 	assert.Equal(t, openapi.TargetStages{Current: 0, Pending: 2}, view.Targets[1].Stages)
 	// A slot that has never been reconciled is not a slot whose run succeeded
 	// with nothing to do.
@@ -2569,7 +2569,7 @@ func TestHandlerReportsOverallConvergenceOnlyWhenEveryTargetIsCurrent(t *testing
 
 	assert.True(t, view.Converged)
 	for _, target := range view.Targets {
-		assert.Equal(t, convergenceCurrent, string(target.Convergence))
+		assert.Equal(t, convergenceCurrent, target.Convergence)
 		assert.Equal(t, openapi.TargetStages{Current: 2, Pending: 0}, target.Stages)
 	}
 }
@@ -2587,8 +2587,8 @@ func TestHandlerReportsPartialTargetFailurePerTarget(t *testing.T) {
 	view := statusOf(t, newHandlerWithTargets(t, state, "rider-a", "rider-b"))
 
 	require.Len(t, view.Targets, 2)
-	assert.Equal(t, convergenceCurrent, string(view.Targets[0].Convergence))
-	assert.Equal(t, convergenceFailed, string(view.Targets[1].Convergence))
+	assert.Equal(t, convergenceCurrent, view.Targets[0].Convergence)
+	assert.Equal(t, convergenceFailed, view.Targets[1].Convergence)
 	require.NotNil(t, view.Targets[1].LastRun)
 	assert.Equal(t, "destination", value(view.Targets[1].LastRun.Failure))
 	assert.False(t, view.Converged)
@@ -2608,9 +2608,9 @@ func TestHandlerCountsARouteTheLibraryNoLongerHasAsPending(t *testing.T) {
 
 	require.Len(t, view.Targets, 2)
 	assert.Equal(t, openapi.TargetStages{Current: 1, Pending: 1}, view.Targets[0].Stages)
-	assert.Equal(t, convergenceLagging, string(view.Targets[0].Convergence))
+	assert.Equal(t, convergenceLagging, view.Targets[0].Convergence)
 	assert.Equal(t, openapi.TargetStages{Current: 1, Pending: 0}, view.Targets[1].Stages)
-	assert.Equal(t, convergenceCurrent, string(view.Targets[1].Convergence))
+	assert.Equal(t, convergenceCurrent, view.Targets[1].Convergence)
 	assert.False(t, view.Converged)
 }
 
@@ -2624,7 +2624,7 @@ func TestHandlerReportsAnEmptyLibraryAsCurrentEverywhere(t *testing.T) {
 	view := statusOf(t, newHandlerWithTargets(t, state, "rider-a"))
 
 	require.Len(t, view.Targets, 1)
-	assert.Equal(t, convergenceCurrent, string(view.Targets[0].Convergence))
+	assert.Equal(t, convergenceCurrent, view.Targets[0].Convergence)
 	assert.Equal(t, openapi.TargetStages{}, view.Targets[0].Stages)
 	assert.True(t, view.Converged)
 }
@@ -2637,7 +2637,7 @@ func TestHandlerReportsAnUnauthorizedTargetAsUnconverged(t *testing.T) {
 	view := statusOf(t, newHandlerWithTargets(t, state, "rider-a", "rider-b"))
 
 	require.Len(t, view.Targets, 2)
-	assert.Equal(t, convergenceUnauthorized, string(view.Targets[1].Convergence))
+	assert.Equal(t, convergenceUnauthorized, view.Targets[1].Convergence)
 	assert.False(t, view.Converged)
 }
 

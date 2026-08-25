@@ -13,21 +13,24 @@ import (
 // The one word each target gets, in decreasing order of what an operator has to
 // act on. They are a summary of the counts and the last run beside them, so a
 // reader that wants the detail already has it.
+// They are aliases for the contract's own enum members rather than their own
+// spellings, so a word this package can produce is a word the contract
+// declares, and dropping one from api/openapi.yaml stops this file compiling.
 const (
 	// convergenceUnauthorized means the slot has never completed, or has lost,
 	// its one-time browser onboarding. Nothing can be written until it does.
-	convergenceUnauthorized = "unauthorized"
+	convergenceUnauthorized = openapi.TargetStatusConvergenceUnauthorized
 	// convergenceFailed means this slot's own last reconciliation did not
 	// succeed. The reason is the safe category in its last run, which for a
 	// blocked run is a safety gate holding rather than a fault.
-	convergenceFailed = "failed"
+	convergenceFailed = openapi.TargetStatusConvergenceFailed
 	// convergenceLagging means the slot is onboarded and its last run was fine,
 	// but stored stages are still owed to it.
-	convergenceLagging = "lagging"
+	convergenceLagging = openapi.TargetStatusConvergenceLagging
 	// convergenceCurrent means the Wahoo account holds every stored stage at the
 	// revision the library holds now. It is not a claim that any head unit has
 	// downloaded them.
-	convergenceCurrent = "current"
+	convergenceCurrent = openapi.TargetStatusConvergenceCurrent
 )
 
 // succeededOutcome is the one run result that is not something to look into. It
@@ -131,7 +134,9 @@ func (h *Handler) targetRuns(ctx context.Context) (map[string]openapi.TargetRun,
 }
 
 // convergenceState reduces one target to the word that describes it.
-func convergenceState(authorization string, stages openapi.TargetStages, run *openapi.TargetRun) string {
+func convergenceState(
+	authorization string, stages openapi.TargetStages, run *openapi.TargetRun,
+) openapi.TargetStatusConvergence {
 	if authorization != authorizedState {
 		return convergenceUnauthorized
 	}
