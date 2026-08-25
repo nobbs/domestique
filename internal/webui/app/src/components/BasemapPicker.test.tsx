@@ -82,10 +82,14 @@ describe("BasemapPicker", () => {
 
     const group = screen.getByRole("radiogroup", { name: "Basemap" });
     expect(group).toBeInTheDocument();
-    expect(screen.getAllByRole("radio").map((radio) => radio.getAttribute("value"))).toEqual([
-      "Streets",
-      "Satellite",
-    ]);
+    expect(screen.getByRole("radio", { name: "Streets" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Satellite" })).toBeInTheDocument();
+    expect(screen.getAllByRole("radio")).toHaveLength(2);
+    expect(group).toHaveAttribute("data-slot", "radio-group");
+    expect(screen.getByRole("radio", { name: "Streets" })).toHaveAttribute(
+      "data-slot",
+      "radio-group-item",
+    );
   });
 
   /*

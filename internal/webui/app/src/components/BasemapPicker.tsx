@@ -20,18 +20,14 @@
  */
 
 import { IconStack2 } from "@tabler/icons-react";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { cn } from "@/lib/utils";
 import type { Basemap } from "../api/types";
 
 /** What the button expands, named so the button can point at it. */
 const BASEMAP_LIST_ID = "map-basemap-list";
-
-/**
- * The radios' shared group, which is what makes them one control to a keyboard.
- *
- * A constant is enough: there is one library map on the page, and a second
- * would be a second map of the same library rather than a second choice.
- */
-const BASEMAP_GROUP = "map-basemap";
 
 export interface BasemapPickerProps {
   /** Every basemap the operator offers, in the order they configured them. */
@@ -56,9 +52,16 @@ export function BasemapPicker({
   }
 
   return (
-    <div className="basemap-picker">
-      <button
-        className="basemap-picker__toggle"
+    <div
+      className={cn(
+        "basemap-picker z-[1] flex flex-wrap items-center gap-2 self-start pointer-events-auto",
+        expanded &&
+          "max-w-[min(100%,380px)] rounded-md border border-border bg-background p-1 shadow-sm",
+      )}
+    >
+      <Button
+        variant={expanded ? "ghost" : "outline"}
+        size="icon-xs"
         type="button"
         aria-expanded={expanded}
         // The mark says "the ground is a choice" to anyone who can see it; the
@@ -72,33 +75,27 @@ export function BasemapPicker({
         {...(expanded ? { "aria-controls": BASEMAP_LIST_ID } : {})}
         onClick={() => onExpandedChange(!expanded)}
       >
-        <IconStack2 size={12} stroke={1.2} aria-hidden="true" />
-      </button>
+        <IconStack2 data-icon="inline-start" stroke={1.2} aria-hidden="true" />
+      </Button>
       {expanded ? (
-        <div
-          className="basemap-picker__list"
+        <RadioGroup
+          className="flex w-auto flex-wrap items-center gap-x-3 gap-y-1"
           id={BASEMAP_LIST_ID}
-          role="radiogroup"
           aria-label="Basemap"
+          value={selectedName}
+          onValueChange={(value) => onSelect(value)}
         >
-          {basemaps.map((basemap) => (
-            <label className="basemap-picker__option" key={basemap.name}>
-              {/*
-               * Native radios rather than painted ones: arrow keys move within
-               * the group, the group is one tab stop, and the checked one is
-               * announced, all without this component reimplementing any of it.
-               */}
-              <input
-                type="radio"
-                name={BASEMAP_GROUP}
-                value={basemap.name}
-                checked={basemap.name === selectedName}
-                onChange={() => onSelect(basemap.name)}
-              />
-              <span>{basemap.name}</span>
-            </label>
-          ))}
-        </div>
+          {basemaps.map((basemap, index) => {
+            const itemID = `map-basemap-${index}`;
+
+            return (
+              <div className="flex items-center gap-2" key={basemap.name}>
+                <RadioGroupItem id={itemID} value={basemap.name} />
+                <Label htmlFor={itemID}>{basemap.name}</Label>
+              </div>
+            );
+          })}
+        </RadioGroup>
       ) : null}
     </div>
   );

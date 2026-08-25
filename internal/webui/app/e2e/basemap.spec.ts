@@ -8,9 +8,9 @@
  * provider's style document, that the credit under it changes hands, and that
  * the pick outlives the page it was made on.
  *
- * The demo is configured with one basemap, so the harness offers a second; see
- * `secondBasemap` in `fixtures.ts` for why it is added there rather than to the
- * demo's own configuration.
+ * The demo offers several public cartographies. The harness also adds one
+ * isolated style, so this test can prove that a choice changes both the style
+ * request and the attribution without reaching the public tile provider.
  */
 
 import {
@@ -38,6 +38,7 @@ test.describe("the basemap chooser", () => {
 
     // What a reader who has chosen nothing gets: the first configured entry.
     expect(askedForSecond(requested)).toBe(false);
+    await page.getByRole("button", { name: "Show the map credit" }).click();
     await expect(page.getByText(BASEMAP_ATTRIBUTION_TEXT)).toBeVisible();
 
     await page.getByRole("button", { name: "Choose the basemap" }).click();

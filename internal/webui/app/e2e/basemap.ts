@@ -23,10 +23,8 @@
 /**
  * A second provider's name, offered by the harness rather than by the service.
  *
- * The demo is configured with one basemap, and one basemap is not a choice — so
- * a suite that wanted to press the chooser had nothing to press. The harness
- * rewrites the configuration to offer this one as well; see
- * `installOfflineBasemap`.
+ * The demo's cartographies are public styles, so the harness adds this one and
+ * answers it from memory; see `installOfflineBasemap`.
  */
 export const SECOND_BASEMAP_NAME = "Imagery";
 

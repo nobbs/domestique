@@ -127,6 +127,31 @@ empty_source_deletion = "deny"
 # downloaded and no surface index is ever built.
 regions = []
 
+# A single tile provider with several distinct cartographies makes the desktop
+# map reviewable without widening the demo's network boundary. These are demo
+# choices only; production keeps its own configured default.
+[[webui.basemaps]]
+name = "Streets"
+style_url = "https://tiles.openfreemap.org/styles/bright"
+style_url_dark = "https://tiles.openfreemap.org/styles/dark"
+
+[[webui.basemaps]]
+name = "Positron"
+style_url = "https://tiles.openfreemap.org/styles/positron"
+
+[[webui.basemaps]]
+name = "Liberty"
+style_url = "https://tiles.openfreemap.org/styles/liberty"
+
+[[webui.basemaps]]
+name = "Dark"
+style_url = "https://tiles.openfreemap.org/styles/dark"
+dark_cartography = true
+
+[[webui.basemaps]]
+name = "Fiord"
+style_url = "https://tiles.openfreemap.org/styles/fiord"
+
 [notifications.pushover]
 base_url = "${BROWSER_ORIGIN}"
 application_token_file = "${DEMO_SECRETS}/pushover_application_token"
