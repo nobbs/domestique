@@ -45,6 +45,11 @@ as `application/geo+json`; its stored coordinates and surface ranges pass
 through without decoding and re-encoding. Deploying this wire change requires a
 browser hard reload. There is no compatibility endpoint or public SDK.
 
+Every number is IEEE 754 double precision, declared as `format: double` so a
+generated client cannot narrow a coordinate to single precision. Every
+timestamp is RFC 3339 in UTC, at second resolution, so one instant has one
+spelling on the wire regardless of the timezone the service runs in.
+
 Where a stage's surface classification has been cached, that view draws it: the
 route is banded by ground class on the map, and the stage's split is summarised
 beside its stored facts. A stage with no cached classification is drawn plainly

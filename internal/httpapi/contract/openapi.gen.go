@@ -244,7 +244,7 @@ type Error struct {
 
 // GeoJSONFeature defines model for GeoJSONFeature.
 type GeoJSONFeature struct {
-	Bbox       []float32          `json:"bbox"`
+	Bbox       []float64          `json:"bbox"`
 	Geometry   GeoJSONLineString  `json:"geometry"`
 	Properties GeoJSONProperties  `json:"properties"`
 	Type       GeoJSONFeatureType `json:"type"`
@@ -255,7 +255,7 @@ type GeoJSONFeatureType string
 
 // GeoJSONLineString defines model for GeoJSONLineString.
 type GeoJSONLineString struct {
-	Coordinates [][]float32           `json:"coordinates"`
+	Coordinates [][]float64           `json:"coordinates"`
 	Type        GeoJSONLineStringType `json:"type"`
 }
 
@@ -264,10 +264,10 @@ type GeoJSONLineStringType string
 
 // GeoJSONProperties defines model for GeoJSONProperties.
 type GeoJSONProperties struct {
-	AscentMetres       float32    `json:"ascentMetres"`
-	CumulativeSeconds  *[]float32 `json:"cumulativeSeconds,omitempty"`
-	DistanceMetres     float32    `json:"distanceMetres"`
-	MaxGradientPercent float32    `json:"maxGradientPercent"`
+	AscentMetres       float64    `json:"ascentMetres"`
+	CumulativeSeconds  *[]float64 `json:"cumulativeSeconds,omitempty"`
+	DistanceMetres     float64    `json:"distanceMetres"`
+	MaxGradientPercent float64    `json:"maxGradientPercent"`
 	PointCount         int        `json:"pointCount"`
 	Provider           string     `json:"provider"`
 	RouteId            int64      `json:"routeId"`
@@ -275,7 +275,7 @@ type GeoJSONProperties struct {
 	StageName          string     `json:"stageName"`
 	StageOrder         int        `json:"stageOrder"`
 	Surface            *struct {
-		MatchedMetres float32        `json:"matchedMetres"`
+		MatchedMetres float64        `json:"matchedMetres"`
 		Ranges        []SurfaceRange `json:"ranges"`
 	} `json:"surface,omitempty"`
 	Title string `json:"title"`
@@ -312,11 +312,11 @@ type ReadinessStatus string
 
 // Route defines model for Route.
 type Route struct {
-	AscentMetres       float32          `json:"ascentMetres"`
+	AscentMetres       float64          `json:"ascentMetres"`
 	ContentHash        string           `json:"contentHash"`
-	DistanceMetres     float32          `json:"distanceMetres"`
-	MaxGradientPercent float32          `json:"maxGradientPercent"`
-	MovingSeconds      *float32         `json:"movingSeconds,omitempty"`
+	DistanceMetres     float64          `json:"distanceMetres"`
+	MaxGradientPercent float64          `json:"maxGradientPercent"`
+	MovingSeconds      *float64         `json:"movingSeconds,omitempty"`
 	PointCount         int              `json:"pointCount"`
 	Provider           string           `json:"provider"`
 	RouteId            int64            `json:"routeId"`
@@ -335,10 +335,10 @@ type RouteList struct {
 
 // RouteValidation defines model for RouteValidation.
 type RouteValidation struct {
-	BiasPercent    float32 `json:"biasPercent"`
+	BiasPercent    float64 `json:"biasPercent"`
 	EvaluatedRides int     `json:"evaluatedRides"`
-	MaePercent     float32 `json:"maePercent"`
-	P90Percent     float32 `json:"p90Percent"`
+	MaePercent     float64 `json:"maePercent"`
+	P90Percent     float64 `json:"p90Percent"`
 }
 
 // SourceBaseUrls defines model for SourceBaseUrls.
@@ -506,14 +506,14 @@ type WeatherForecast struct {
 
 // WeatherPoint defines model for WeatherPoint.
 type WeatherPoint struct {
-	ApparentTemperatureCelsius      float32   `json:"apparentTemperatureCelsius"`
-	PrecipitationMillimetres        float32   `json:"precipitationMillimetres"`
-	PrecipitationProbabilityPercent float32   `json:"precipitationProbabilityPercent"`
-	TemperatureCelsius              float32   `json:"temperatureCelsius"`
+	ApparentTemperatureCelsius      float64   `json:"apparentTemperatureCelsius"`
+	PrecipitationMillimetres        float64   `json:"precipitationMillimetres"`
+	PrecipitationProbabilityPercent float64   `json:"precipitationProbabilityPercent"`
+	TemperatureCelsius              float64   `json:"temperatureCelsius"`
 	Time                            time.Time `json:"time"`
 	WeatherCode                     int       `json:"weatherCode"`
-	WindDirectionDegrees            float32   `json:"windDirectionDegrees"`
-	WindSpeedKmh                    float32   `json:"windSpeedKmh"`
+	WindDirectionDegrees            float64   `json:"windDirectionDegrees"`
+	WindSpeedKmh                    float64   `json:"windSpeedKmh"`
 }
 
 // WebUIConfig defines model for WebUIConfig.

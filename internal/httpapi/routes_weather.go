@@ -188,7 +188,7 @@ type weatherPointView struct {
 
 func newWeatherPointView(series *WeatherSeries, index int) weatherPointView {
 	return weatherPointView{
-		Time:                            series.Time[index].Format(time.RFC3339),
+		Time:                            series.Time[index].UTC().Format(time.RFC3339),
 		TemperatureCelsius:              series.TemperatureCelsius[index],
 		ApparentTemperatureCelsius:      series.ApparentTemperatureCelsius[index],
 		PrecipitationMillimetres:        series.PrecipitationMillimetres[index],

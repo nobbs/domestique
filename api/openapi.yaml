@@ -400,7 +400,7 @@ components:
       type: object
       additionalProperties: false
       required: [biasPercent, maePercent, p90Percent, evaluatedRides]
-      properties: {biasPercent: {type: number}, maePercent: {type: number}, p90Percent: {type: number}, evaluatedRides: {type: integer, minimum: 0}}
+      properties: {biasPercent: {type: number, format: double}, maePercent: {type: number, format: double}, p90Percent: {type: number, format: double}, evaluatedRides: {type: integer, minimum: 0}}
     Route:
       type: object
       additionalProperties: false
@@ -414,11 +414,11 @@ components:
         stageName: {type: string}
         sourceRevision: {type: string}
         contentHash: {type: string}
-        distanceMetres: {type: number}
-        ascentMetres: {type: number}
-        maxGradientPercent: {type: number}
+        distanceMetres: {type: number, format: double}
+        ascentMetres: {type: number, format: double}
+        maxGradientPercent: {type: number, format: double}
         pointCount: {type: integer}
-        movingSeconds: {type: number}
+        movingSeconds: {type: number, format: double}
         validation: {$ref: '#/components/schemas/RouteValidation'}
     RouteList:
       type: object
@@ -522,7 +522,7 @@ components:
       type: object
       additionalProperties: false
       required: [type, coordinates]
-      properties: {type: {type: string, const: LineString}, coordinates: {type: array, minItems: 2, items: {type: array, minItems: 2, maxItems: 3, items: {type: number}}}}
+      properties: {type: {type: string, const: LineString}, coordinates: {type: array, minItems: 2, items: {type: array, minItems: 2, maxItems: 3, items: {type: number, format: double}}}}
     GeoJSONProperties:
       type: object
       additionalProperties: false
@@ -534,26 +534,26 @@ components:
         title: {type: string}
         routeName: {type: string}
         stageName: {type: string}
-        distanceMetres: {type: number}
-        ascentMetres: {type: number}
-        maxGradientPercent: {type: number}
+        distanceMetres: {type: number, format: double}
+        ascentMetres: {type: number, format: double}
+        maxGradientPercent: {type: number, format: double}
         pointCount: {type: integer}
         surface:
           type: object
           additionalProperties: false
           required: [ranges, matchedMetres]
-          properties: {ranges: {type: array, items: {$ref: '#/components/schemas/SurfaceRange'}}, matchedMetres: {type: number}}
-        cumulativeSeconds: {type: array, items: {type: number}}
+          properties: {ranges: {type: array, items: {$ref: '#/components/schemas/SurfaceRange'}}, matchedMetres: {type: number, format: double}}
+        cumulativeSeconds: {type: array, items: {type: number, format: double}}
     GeoJSONFeature:
       type: object
       additionalProperties: false
       required: [type, bbox, geometry, properties]
-      properties: {type: {type: string, const: Feature}, bbox: {type: array, minItems: 4, maxItems: 4, items: {type: number}}, geometry: {$ref: '#/components/schemas/GeoJSONLineString'}, properties: {$ref: '#/components/schemas/GeoJSONProperties'}}
+      properties: {type: {type: string, const: Feature}, bbox: {type: array, minItems: 4, maxItems: 4, items: {type: number, format: double}}, geometry: {$ref: '#/components/schemas/GeoJSONLineString'}, properties: {$ref: '#/components/schemas/GeoJSONProperties'}}
     WeatherPoint:
       type: object
       additionalProperties: false
       required: [time, temperatureCelsius, apparentTemperatureCelsius, precipitationMillimetres, precipitationProbabilityPercent, windSpeedKmh, windDirectionDegrees, weatherCode]
-      properties: {time: {type: string, format: date-time}, temperatureCelsius: {type: number}, apparentTemperatureCelsius: {type: number}, precipitationMillimetres: {type: number}, precipitationProbabilityPercent: {type: number}, windSpeedKmh: {type: number}, windDirectionDegrees: {type: number}, weatherCode: {type: integer}}
+      properties: {time: {type: string, format: date-time}, temperatureCelsius: {type: number, format: double}, apparentTemperatureCelsius: {type: number, format: double}, precipitationMillimetres: {type: number, format: double}, precipitationProbabilityPercent: {type: number, format: double}, windSpeedKmh: {type: number, format: double}, windDirectionDegrees: {type: number, format: double}, weatherCode: {type: integer}}
     WeatherForecast:
       type: object
       additionalProperties: false
