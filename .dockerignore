@@ -6,7 +6,9 @@ build
 # tree or a stale local bundle must never leak into the build context.
 node_modules
 **/node_modules
+.pnpm-store
 internal/webui/app/dist
+internal/webui/app/storybook-static
 coverage.*
 *.coverprofile
 .coverage

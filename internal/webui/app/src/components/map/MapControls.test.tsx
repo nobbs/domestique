@@ -54,6 +54,10 @@ describe("MapControls", () => {
     vi.stubGlobal("navigator", { geolocation: { getCurrentPosition } });
     render(<MapControls />);
 
+    expect(screen.getByRole("button", { name: "Find my location" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Zoom in" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Zoom out" })).toBeDisabled();
+
     await userEvent.click(screen.getByRole("button", { name: "Find my location" }));
 
     expect(getCurrentPosition).not.toHaveBeenCalled();

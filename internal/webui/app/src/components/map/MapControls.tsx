@@ -39,19 +39,26 @@ export function MapControls() {
           className="map-controls__button"
           type="button"
           onClick={locate}
-          disabled={!geolocationAvailable}
+          disabled={!geolocationAvailable || !map}
           aria-label="Find my location"
           title="Find my location"
         >
           <IconCurrentLocation size={16} stroke={2} aria-hidden="true" />
         </button>
         <div className="map-controls__zoom">
-          <button type="button" onClick={() => map?.zoomIn()} aria-label="Zoom in" title="Zoom in">
+          <button
+            type="button"
+            onClick={() => map?.zoomIn()}
+            disabled={!map}
+            aria-label="Zoom in"
+            title="Zoom in"
+          >
             <IconPlus size={16} stroke={2} aria-hidden="true" />
           </button>
           <button
             type="button"
             onClick={() => map?.zoomOut()}
+            disabled={!map}
             aria-label="Zoom out"
             title="Zoom out"
           >
