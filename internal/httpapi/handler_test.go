@@ -99,6 +99,7 @@ func TestHandlerGatesEveryNonHealthRoute(t *testing.T) {
 		"/",
 		"/routes/veloplanner/1/1",
 		"/settings",
+		"/sync",
 		"/unknown",
 	}
 
@@ -892,7 +893,7 @@ func TestHandlerSetsPolicyAndCacheHeaders(t *testing.T) {
 
 func TestHandlerServesTheApplicationDocumentForDeepLinks(t *testing.T) {
 	handler := newTestHandler(t)
-	for _, path := range []string{"/", "/routes/veloplanner/12/1", "/settings"} {
+	for _, path := range []string{"/", "/routes/veloplanner/12/1", "/settings", "/sync"} {
 		t.Run(path, func(t *testing.T) {
 			response := httptest.NewRecorder()
 			handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, path))
@@ -1379,6 +1380,23 @@ func TestHandlerReportsTheObservedWahooRateLimit(t *testing.T) {
 	require.NotNil(t, view.Sync.WahooRateLimit, "an observed quota should be reported")
 	assert.Equal(t, 187, view.Sync.WahooRateLimit.Remaining, "remaining")
 	assert.Equal(t, wireInstant(resetAt), wireInstant(value(view.Sync.WahooRateLimit.ResetsAt)), "resets_at")
+}
+
+// Wahoo advertises a remaining count without always saying when it refills. The
+// quota is still worth reporting; the instant is simply absent, rather than
+// served as an epoch a reader would take for a real one.
+func TestHandlerReportsAQuotaThatNamesNoResetInstant(t *testing.T) {
+	trigger := &fakeSync{rateLimitKnown: true, rateLimitRemaining: 42}
+	handler := newHandlerWithSync(t, &fakeOAuth{}, &fakeState{}, trigger)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/status"))
+	require.Equal(t, http.StatusOK, response.Code, "status")
+	var view openapi.Status
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &view), "decoding status")
+	require.NotNil(t, view.Sync.WahooRateLimit, "an observed quota should be reported")
+	assert.Equal(t, 42, view.Sync.WahooRateLimit.Remaining, "remaining")
+	assert.Nil(t, view.Sync.WahooRateLimit.ResetsAt, "no reset instant was advertised")
 }
 
 // The counts alone cannot say whether a full library is classified against a map
