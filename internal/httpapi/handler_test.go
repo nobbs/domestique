@@ -245,7 +245,7 @@ func TestHandlerReportsUnreadableSurfaceStateAsUnavailable(t *testing.T) {
 
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/providers/veloplanner/routes/12/stages/1/geometry"))
-	assert.Equal(t, http.StatusInternalServerError, response.Code, "geometry status")
+	assert.Equal(t, http.StatusServiceUnavailable, response.Code, "geometry status")
 }
 
 // surfaceState holds one stage whose surface has been classified against the
@@ -1278,7 +1278,7 @@ func TestHandlerReportsAHistoryItCannotRead(t *testing.T) {
 
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/sync/runs"))
-	assert.Equal(t, http.StatusInternalServerError, response.Code, "status")
+	assert.Equal(t, http.StatusServiceUnavailable, response.Code, "status")
 }
 
 // A cursor this service did not issue is the caller's mistake, and answering it
@@ -1431,7 +1431,7 @@ func TestHandlerReportsUnavailableWhenTrustedInventoryStateCannotBeRead(t *testi
 
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/status"))
-	assert.Equal(t, http.StatusInternalServerError, response.Code, "status")
+	assert.Equal(t, http.StatusServiceUnavailable, response.Code, "status")
 }
 
 // The reported age and freshness are read from local state alone, against the
@@ -1712,7 +1712,7 @@ func TestHandlerReportsUnreadablePendingAuthorizationsAsUnavailable(t *testing.T
 
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/status"))
-	assert.Equal(t, http.StatusInternalServerError, response.Code, "status")
+	assert.Equal(t, http.StatusServiceUnavailable, response.Code, "status")
 }
 
 func TestHandlerReportsUnreadableScheduleAsUnavailable(t *testing.T) {
@@ -1721,7 +1721,7 @@ func TestHandlerReportsUnreadableScheduleAsUnavailable(t *testing.T) {
 
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/status"))
-	assert.Equal(t, http.StatusInternalServerError, response.Code, "status")
+	assert.Equal(t, http.StatusServiceUnavailable, response.Code, "status")
 }
 
 func TestHandlerRejectsOverlappingManualSync(t *testing.T) {
@@ -2629,7 +2629,7 @@ func TestHandlerReportsUnreadableConvergenceStateAsUnavailable(t *testing.T) {
 			response := httptest.NewRecorder()
 			newHandlerWithTargets(t, state, "rider-a").
 				ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/status"))
-			assert.Equal(t, http.StatusInternalServerError, response.Code)
+			assert.Equal(t, http.StatusServiceUnavailable, response.Code)
 		})
 	}
 }

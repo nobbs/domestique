@@ -463,5 +463,5 @@ func (h *Handler) trustedInventoryFreshness(ctx context.Context) (*trustedInvent
 }
 
 func (h *Handler) unavailable(writer http.ResponseWriter) {
-	h.error(writer, http.StatusInternalServerError, "unavailable", "service state is unavailable")
+	h.error(writer, http.StatusServiceUnavailable, "unavailable", "service state is unavailable")
 }
