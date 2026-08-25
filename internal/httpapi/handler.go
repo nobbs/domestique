@@ -2,12 +2,10 @@
 package httpapi
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"slices"
@@ -550,11 +548,7 @@ func New(
 // outside generated parameter binding, so malformed requests cannot become an
 // unauthenticated side door and every rejection keeps the shared error shape.
 func (h *Handler) routes() {
-	strict := openapi.NewStrictHandlerWithOptions(&contractServer{handler: h}, []openapi.StrictMiddlewareFunc{rememberContractRequest}, openapi.StrictHTTPServerOptions{
-		RequestErrorHandlerFunc:  h.contractRequestError,
-		ResponseErrorHandlerFunc: h.contractResponseError,
-	})
-	openapi.HandlerWithOptions(strict, openapi.StdHTTPServerOptions{
+	openapi.HandlerWithOptions(&contractServer{handler: h}, openapi.StdHTTPServerOptions{
 		BaseRouter:       h.mux,
 		ErrorHandlerFunc: h.contractRequestError,
 	})
@@ -586,12 +580,12 @@ func (h *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 func (h *Handler) contractDispatch(writer http.ResponseWriter, request *http.Request, principal string) {
 	if contractStateChange(request) {
 		h.sameOrigin(func(writer http.ResponseWriter, request *http.Request, _ string) {
-			h.serveContract(writer, request)
+			h.mux.ServeHTTP(writer, request)
 		})(writer, request, principal)
 
 		return
 	}
-	h.serveContract(writer, request)
+	h.mux.ServeHTTP(writer, request)
 }
 
 // contractStateChange mirrors the state-changing OpenAPI operations, which are
@@ -629,23 +623,8 @@ func contractStateChange(request *http.Request) bool {
 		(strings.HasPrefix(path, "/v1/routes/") && strings.HasSuffix(path, "/reprocess"))
 }
 
-func (h *Handler) serveContract(writer http.ResponseWriter, request *http.Request) {
-	if request.Method == http.MethodPut && request.URL.Path == "/v1/sync/schedule" {
-		body, err := io.ReadAll(io.LimitReader(request.Body, maximumRequestBytes+1))
-		if err == nil {
-			request = request.WithContext(context.WithValue(request.Context(), scheduleBodyKey{}, body))
-			request.Body = io.NopCloser(bytes.NewReader(body))
-		}
-	}
-	h.mux.ServeHTTP(writer, request)
-}
-
 func (h *Handler) contractRequestError(writer http.ResponseWriter, _ *http.Request, _ error) {
 	h.error(writer, http.StatusBadRequest, "invalid_request", "the request does not match this operation")
-}
-
-func (h *Handler) contractResponseError(writer http.ResponseWriter, _ *http.Request, _ error) {
-	h.error(writer, http.StatusServiceUnavailable, "unavailable", "the request could not be completed")
 }
 
 // gatedFunc is a handler that has already proven the caller's identity. The
