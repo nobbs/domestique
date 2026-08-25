@@ -889,11 +889,18 @@ func (s *Store) ForEachSyncRun(
 	}
 	// One row past the page, so "is there more" is read rather than guessed
 	// from a page that happened to come back full.
+	//
+	// Rows recorded before runs were split by phase keep an empty phase, and
+	// the history is served per phase: a run that covered both halves at once
+	// cannot be reported as either without claiming something untrue. They are
+	// excluded here rather than in the caller so the lookahead above still
+	// counts what the page will actually contain, on the same terms as
+	// ForEachPhaseRun.
 	rows, err := s.database.QueryContext(ctx, `
 		SELECT id, reference, phase, finished_at_unix, outcome, COALESCE(detail, ''),
 			source_stages, created, updated, deleted
 		FROM sync_runs
-		WHERE id < ?
+		WHERE id < ? AND phase <> ''
 		ORDER BY id DESC
 		LIMIT ?
 	`, position, limit+1)
