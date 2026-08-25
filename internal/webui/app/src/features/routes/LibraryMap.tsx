@@ -268,10 +268,8 @@ export function LibraryMap({
   const [cluster, setCluster] = useState<HTMLElement | null>(null);
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
   /*
-   * Whether the reader folded the credit away, held here rather than inside it.
-   * Finding the cluster moves the credit into it through a portal, which
-   * remounts the credit — so a choice it held itself would be undone by the map
-   * finishing loading. `null` until the reader says, so the viewport decides.
+   * Whether the reader unfolded the credit. `null` until they say, so it starts
+   * folded.
    */
   const [creditChoice, setCreditChoice] = useState<boolean | null>(null);
   /*

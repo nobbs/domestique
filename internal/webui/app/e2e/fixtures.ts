@@ -109,15 +109,10 @@ export interface OfflineOptions {
    */
   headers?: Record<string, string>;
   /**
-   * Offers a second basemap, by rewriting the configuration the page reads.
-   *
-   * The demo is configured with one, and one basemap is not a choice — the
-   * chooser is not rendered at all — so a test that wants to press it has to be
-   * given something to choose between. The entry is added here rather than to
-   * the demo's own configuration because everything else about that
-   * configuration is what a deployment really looks like, and a second provider
-   * in it would be a provider every other test in this suite then had to know
-   * about.
+   * Offers an isolated extra basemap by rewriting the configuration the page
+   * reads. The demo's cartographies are public styles, which this hermetic suite
+   * must never fetch; this entry lets the chooser test prove its request and
+   * attribution behaviour from memory instead.
    */
   secondBasemap?: boolean;
 }

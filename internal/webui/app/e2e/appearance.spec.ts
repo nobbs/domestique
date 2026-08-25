@@ -170,7 +170,7 @@ test.describe("on a narrow viewport", () => {
 
     await show.click();
     await expect(page.getByRole("button", { name: "Hide the map credit" })).toBeVisible();
-    const credit = page.locator(".map-credits__text");
+    const credit = page.getByText(BASEMAP_ATTRIBUTION_TEXT);
     await expect(credit).toHaveText(BASEMAP_ATTRIBUTION_TEXT);
     // The provider wrapped that in a link. The page took the words and left the
     // markup, which is the rule the credit is read out of the document under.

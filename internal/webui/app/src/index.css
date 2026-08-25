@@ -5,6 +5,10 @@
 
 @custom-variant dark (&:is(.dark *));
 
+@layer base {
+  button:not(:disabled), [role="button"]:not(:disabled) { cursor: pointer; }
+}
+
 :root {
   --font-sans: "Karla Variable", Karla, system-ui, -apple-system, "Segoe UI", sans-serif;
   --ground: #e4e6e9;
@@ -197,16 +201,7 @@ body { margin: 0; background: var(--base); color: var(--ink); font-family: var(-
 .map-controls__button:disabled { cursor: not-allowed; opacity: .5; }
 .current-location-marker { display: grid; width: 28px; height: 28px; place-items: center; border: 2px solid var(--panel); border-radius: 50% 50% 50% 0; background: var(--accent); box-shadow: var(--shadow); color: var(--panel); pointer-events: none; transform: rotate(-45deg); }
 .current-location-marker > svg { transform: rotate(45deg); }
-.map-credits, .basemap-picker { z-index: 1; display: flex; align-items: center; gap: 4px; max-width: min(100%, 380px); padding: 3px 8px; border: 1px solid var(--rule); border-radius: 6px; background: var(--panel); box-shadow: var(--shadow); color: var(--ink-2); pointer-events: auto; }
 .route-map > .map-credits { position: absolute; right: calc(24px + env(safe-area-inset-right)); bottom: calc(24px + env(safe-area-inset-bottom)); }
-.map-credits__toggle, .basemap-picker__toggle { display: inline-flex; align-items: center; padding: 0; border: 0; background: none; color: inherit; cursor: pointer; }
-.map-credits__toggle:hover, .map-credits__toggle:focus-visible, .basemap-picker__toggle:hover, .basemap-picker__toggle:focus-visible { color: var(--accent); }
-.map-credits__text, .basemap-picker__option { margin: 0; font-size: 12px; }
-.basemap-picker { flex-wrap: wrap; align-self: flex-start; gap: 8px; }
-.basemap-picker__list { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; }
-.basemap-picker__option { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
-.basemap-picker__option input { width: 11px; height: 11px; margin: 0; accent-color: var(--accent); }
-.basemap-picker__option:has(input:checked) { color: var(--ink); }
 .route-map > .basemap-picker { position: absolute; bottom: calc(24px + 38px); left: 24px; }
 .route-position-tooltip-marker, .route-terminal-marker, .route-direction-marker { pointer-events: none; }
 .route-direction { display: block; }

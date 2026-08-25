@@ -12,24 +12,17 @@
  * from a third-party origin, and no third-party markup is injected into this
  * page.
  *
- * It folds behind a button rather than always standing open, because on a phone
- * the line is a strip of small text across the whole map. It cannot simply go
- * away — the licences oblige the credit to be visible — but attribution
- * guidance accepts a credit collapsed behind an affordance on a constrained
- * display, provided it is there and one interaction away, which is the same
- * bargain MapLibre's own `compact` attribution strikes. So the fold follows the
- * room available: open where there is space for the line, away where there is
- * not, and the reader's own choice wins over both.
+ * It folds behind a button rather than competing with the map. It cannot simply
+ * go away — the licences oblige the credit to be reachable — and the existing
+ * labelled control reveals it in one interaction. The reader's own choice wins
+ * from then on.
  *
- * That choice is the caller's to hold. The credit is moved into MapLibre's own
- * cluster by a portal once the map reports having one, and that move remounts
- * this component — so a choice kept here would be reset by the map finishing
- * loading, silently undoing a press the reader had already made.
  */
 
 import { IconInfoCircle } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
-import { useNarrowViewport } from "../lib/mediaQuery";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 /** What the button expands, named so the button can point at it. */
 const CREDIT_TEXT_ID = "map-credit-text";
@@ -114,12 +107,8 @@ export interface MapCreditsProps {
    */
   extra?: string | undefined;
   /**
-   * Whether the reader folded the credit open or away, or `null` while they
-   * have said nothing and the viewport decides.
-   *
-   * Three states rather than two, because "not yet asked" is not the same
-   * answer as "asked for it folded": only the first should give way when the
-   * room available changes.
+   * Whether the reader folded the credit open or away. `null` is the initial,
+   * folded state.
    */
   choice: boolean | null;
   onChoiceChange: (choice: boolean) => void;
@@ -132,14 +121,7 @@ export function MapCredits({ styleUrl, extra, choice, onChoiceChange }: MapCredi
     enabled: styleUrl !== undefined,
     staleTime: Number.POSITIVE_INFINITY,
   });
-  /*
-   * No choice yet means the viewport decides, and a choice outranks it from
-   * then on. Reading the width once into a stored answer instead would freeze
-   * whichever width the map first loaded at, and a phone that turns landscape
-   * would keep hiding a line it now has room for.
-   */
-  const narrow = useNarrowViewport();
-  const expanded = choice ?? !narrow;
+  const expanded = choice ?? false;
 
   const credits = [attribution.data, extra].filter(Boolean).join(" · ");
   if (credits === "") {
@@ -147,9 +129,15 @@ export function MapCredits({ styleUrl, extra, choice, onChoiceChange }: MapCredi
   }
 
   return (
-    <div className="map-credits">
-      <button
-        className="map-credits__toggle"
+    <div
+      className={cn(
+        "map-credits z-[1] flex max-w-[min(100%,380px)] items-center gap-1 pointer-events-auto",
+        expanded && "rounded-md border border-border bg-background p-1 shadow-sm",
+      )}
+    >
+      <Button
+        variant={expanded ? "ghost" : "outline"}
+        size="icon-xs"
         type="button"
         aria-expanded={expanded}
         // The mark says "there is something to read here" to anyone who can see
@@ -163,10 +151,10 @@ export function MapCredits({ styleUrl, extra, choice, onChoiceChange }: MapCredi
         {...(expanded ? { "aria-controls": CREDIT_TEXT_ID } : {})}
         onClick={() => onChoiceChange(!expanded)}
       >
-        <IconInfoCircle size={12} stroke={1.2} aria-hidden="true" />
-      </button>
+        <IconInfoCircle data-icon="inline-start" stroke={1.2} aria-hidden="true" />
+      </Button>
       {expanded ? (
-        <p className="map-credits__text" id={CREDIT_TEXT_ID}>
+        <p className="text-xs text-muted-foreground" id={CREDIT_TEXT_ID}>
           {credits}
         </p>
       ) : null}

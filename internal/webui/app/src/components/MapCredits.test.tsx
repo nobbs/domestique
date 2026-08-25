@@ -53,41 +53,12 @@ function show(props: Partial<CreditProps> = {}) {
   return render(provided(<Held {...props} />));
 }
 
-/**
- * Answers the width query yes, which the shared setup answers no.
- *
- * The fold follows the room available, so both answers have to be renderable
- * here — the default the shared stub gives is the wide one.
- */
-function stubNarrowViewport() {
-  vi.stubGlobal(
-    "matchMedia",
-    vi.fn((query: string) => ({
-      matches: query.includes("max-width"),
-      media: query,
-      addEventListener: () => {},
-      removeEventListener: () => {},
-    })),
-  );
-}
-
 afterEach(() => {
   vi.unstubAllGlobals();
 });
 
 describe("MapCredits", () => {
-  it("stands open where there is room for the line", () => {
-    show();
-
-    expect(screen.getByText(SURFACE_CREDIT)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Hide the map credit" })).toHaveAttribute(
-      "aria-expanded",
-      "true",
-    );
-  });
-
-  it("folds away where there is not, and says what it is holding", () => {
-    stubNarrowViewport();
+  it("starts folded until the reader asks for the credit", () => {
     show();
 
     expect(screen.queryByText(SURFACE_CREDIT)).not.toBeInTheDocument();
@@ -98,7 +69,6 @@ describe("MapCredits", () => {
   });
 
   it("gives the credit back to a keyboard in one interaction", async () => {
-    stubNarrowViewport();
     show();
 
     await userEvent.tab();
@@ -114,16 +84,15 @@ describe("MapCredits", () => {
     );
   });
 
-  it("keeps the reader's choice when the viewport says otherwise", async () => {
+  it("keeps the reader's choice after it is unfolded", async () => {
     show();
 
-    await userEvent.click(screen.getByRole("button", { name: "Hide the map credit" }));
+    await userEvent.click(screen.getByRole("button", { name: "Show the map credit" }));
 
-    expect(screen.queryByText(SURFACE_CREDIT)).not.toBeInTheDocument();
+    expect(screen.getByText(SURFACE_CREDIT)).toBeInTheDocument();
   });
 
   it("keeps the reader's choice when the map moves the credit into its cluster", async () => {
-    stubNarrowViewport();
     /*
      * The map draws the credit where it stands until the map reports having a
      * control cluster, and into that cluster afterwards. React unmounts and
@@ -178,6 +147,7 @@ describe("MapCredits", () => {
     );
     show({ styleUrl: "https://tiles.example.test/style.json" });
 
+    await userEvent.click(screen.getByRole("button", { name: "Show the map credit" }));
     expect(await screen.findByText(`© Tile People · ${SURFACE_CREDIT}`)).toBeInTheDocument();
     // The provider's own markup is read for its words and never rendered.
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
