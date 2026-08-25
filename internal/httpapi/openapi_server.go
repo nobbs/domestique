@@ -1,397 +1,184 @@
 package httpapi
 
 import (
-	"bytes"
-	"context"
-	"io"
 	"net/http"
 
 	openapi "github.com/nobbs/domestique/internal/httpapi/contract"
 )
 
-type strictServerInterface = openapi.StrictServerInterface
-type strictHandlerFunc = openapi.StrictHandlerFunc
-
-// contractServer adapts the established handler logic to the generated strict
-// interface. Keeping the legacy writers inside this adapter is intentional:
-// geometry coordinates and surface ranges remain json.RawMessage all the way to
-// the response instead of being decoded into generated float slices and encoded
-// again.
+// contractServer adapts the handler methods to the generated router. Every
+// method is a forwarder: the generated wrapper has already bound and validated
+// this operation's parameters — rejecting a malformed one with 400 before
+// reaching here — and the handlers read the values they need back off the
+// request, so the bound copies are deliberately unused.
+//
+// Non-strict generation is what keeps this file a forwarder. Strict mode would
+// take the ResponseWriter away and decode the request body, and both are
+// needed as they are: geometry coordinates and surface ranges stay
+// json.RawMessage all the way to the wire, assets are served incrementally by
+// http.ServeContent, and the schedule body is read under a size limit.
 type contractServer struct{ handler *Handler }
 
-var _ strictServerInterface = (*contractServer)(nil)
+var _ openapi.ServerInterface = (*contractServer)(nil)
 
-type contractRequestKey struct{}
-type scheduleBodyKey struct{}
-
-// rememberContractRequest makes the original request available to the strict
-// implementation after generated binding has produced its request object.
-func rememberContractRequest(next strictHandlerFunc, _ string) strictHandlerFunc {
-	return func(ctx context.Context, writer http.ResponseWriter, request *http.Request, value any) (any, error) {
-		return next(context.WithValue(ctx, contractRequestKey{}, request), writer, request, value)
-	}
-}
-
-// capturedResponse defers a legacy handler until the generated strict handler
-// hands over the real ResponseWriter. Nothing is buffered: a geometry or asset
-// body is written straight through, so serving one costs no copy of it and
-// http.ServeContent's incremental writes still reach the client.
-type capturedResponse struct {
-	request *http.Request
-	handler func(http.ResponseWriter, *http.Request)
-}
-
-func (response capturedResponse) write(writer http.ResponseWriter) error {
-	if response.request == nil {
-		writer.WriteHeader(http.StatusInternalServerError)
-
-		return nil
-	}
-	response.handler(writer, response.request)
-
-	return nil
-}
-
-func (server *contractServer) capture(ctx context.Context, handler func(http.ResponseWriter, *http.Request)) capturedResponse {
-	request, ok := ctx.Value(contractRequestKey{}).(*http.Request)
-	if !ok {
-		return capturedResponse{}
-	}
-
-	return capturedResponse{request: request, handler: handler}
-}
-
-func (server *contractServer) scheduleRequest(ctx context.Context) *http.Request {
-	request, requestOK := ctx.Value(contractRequestKey{}).(*http.Request)
-	body, bodyOK := ctx.Value(scheduleBodyKey{}).([]byte)
-	if !requestOK || !bodyOK {
-		return request
-	}
-
-	clonedRequest := request.Clone(ctx)
-	clonedRequest.Body = io.NopCloser(bytes.NewReader(body))
-
-	return clonedRequest
-}
-
-type getIndexCapturedResponse struct{ capturedResponse }
-
-func (r getIndexCapturedResponse) VisitGetIndexResponse(w http.ResponseWriter) error {
-	return r.write(w)
-}
-
-type getAssetCapturedResponse struct{ capturedResponse }
-
-func (r getAssetCapturedResponse) VisitGetAssetResponse(w http.ResponseWriter) error {
-	return r.write(w)
+func (server *contractServer) GetIndex(writer http.ResponseWriter, request *http.Request) {
+	server.handler.index(writer, request, server.handler.allowedEmail)
 }
-
-type getFaviconCapturedResponse struct{ capturedResponse }
 
-func (r getFaviconCapturedResponse) VisitGetFaviconResponse(w http.ResponseWriter) error {
-	return r.write(w)
+func (server *contractServer) GetAsset(writer http.ResponseWriter, request *http.Request, _ string) {
+	server.handler.staticAsset(writer, request, server.handler.allowedEmail)
 }
 
-type getHealthCapturedResponse struct{ capturedResponse }
-
-func (r getHealthCapturedResponse) VisitGetHealthResponse(w http.ResponseWriter) error {
-	return r.write(w)
+func (server *contractServer) GetFavicon(writer http.ResponseWriter, request *http.Request) {
+	server.handler.stableAsset(writer, request, server.handler.allowedEmail)
 }
 
-type getIcon256CapturedResponse struct{ capturedResponse }
-
-func (r getIcon256CapturedResponse) VisitGetIcon256Response(w http.ResponseWriter) error {
-	return r.write(w)
+func (server *contractServer) GetHealth(writer http.ResponseWriter, request *http.Request) {
+	server.handler.health(writer, request)
 }
-
-type getIcon512CapturedResponse struct{ capturedResponse }
 
-func (r getIcon512CapturedResponse) VisitGetIcon512Response(w http.ResponseWriter) error {
-	return r.write(w)
+func (server *contractServer) GetIcon256(writer http.ResponseWriter, request *http.Request) {
+	server.handler.stableAsset(writer, request, server.handler.allowedEmail)
 }
 
-type getManifestCapturedResponse struct{ capturedResponse }
-
-func (r getManifestCapturedResponse) VisitGetManifestResponse(w http.ResponseWriter) error {
-	return r.write(w)
+func (server *contractServer) GetIcon512(writer http.ResponseWriter, request *http.Request) {
+	server.handler.stableAsset(writer, request, server.handler.allowedEmail)
 }
-
-type completeOAuthCapturedResponse struct{ capturedResponse }
 
-func (r completeOAuthCapturedResponse) VisitCompleteOAuthResponse(w http.ResponseWriter) error {
-	return r.write(w)
+func (server *contractServer) GetManifest(writer http.ResponseWriter, request *http.Request) {
+	server.handler.webManifest(writer, request, server.handler.allowedEmail)
 }
 
-type startOAuthCapturedResponse struct{ capturedResponse }
-
-func (r startOAuthCapturedResponse) VisitStartOAuthResponse(w http.ResponseWriter) error {
-	return r.write(w)
+func (server *contractServer) CompleteOAuth(
+	writer http.ResponseWriter, request *http.Request, _ openapi.CompleteOAuthParams,
+) {
+	server.handler.callback(writer, request, server.handler.allowedEmail)
 }
 
-type getRoutePageCapturedResponse struct{ capturedResponse }
-
-func (r getRoutePageCapturedResponse) VisitGetRoutePageResponse(w http.ResponseWriter) error {
-	return r.write(w)
+func (server *contractServer) StartOAuth(writer http.ResponseWriter, request *http.Request, _ openapi.Target) {
+	server.handler.start(writer, request, server.handler.allowedEmail)
 }
-
-type redirectLegacyRoutePageCapturedResponse struct{ capturedResponse }
 
-func (r redirectLegacyRoutePageCapturedResponse) VisitRedirectLegacyRoutePageResponse(w http.ResponseWriter) error {
-	return r.write(w)
+func (server *contractServer) GetRoutePage(
+	writer http.ResponseWriter, request *http.Request, _ openapi.Provider, _ openapi.RouteId, _ openapi.Stage,
+) {
+	server.handler.index(writer, request, server.handler.allowedEmail)
 }
 
-type getSettingsPageCapturedResponse struct{ capturedResponse }
-
-func (r getSettingsPageCapturedResponse) VisitGetSettingsPageResponse(w http.ResponseWriter) error {
-	return r.write(w)
+func (server *contractServer) RedirectLegacyRoutePage(
+	writer http.ResponseWriter, request *http.Request, _ openapi.RouteId, _ openapi.Stage,
+) {
+	server.handler.redirectLegacyBrowserRoute(writer, request, server.handler.allowedEmail)
 }
-
-type getSyncPageCapturedResponse struct{ capturedResponse }
 
-func (r getSyncPageCapturedResponse) VisitGetSyncPageResponse(w http.ResponseWriter) error {
-	return r.write(w)
+func (server *contractServer) GetSettingsPage(writer http.ResponseWriter, request *http.Request) {
+	server.handler.index(writer, request, server.handler.allowedEmail)
 }
 
-type getRouteCapturedResponse struct{ capturedResponse }
-
-func (r getRouteCapturedResponse) VisitGetRouteResponse(w http.ResponseWriter) error {
-	return r.write(w)
+func (server *contractServer) GetSyncPage(writer http.ResponseWriter, request *http.Request) {
+	server.handler.index(writer, request, server.handler.allowedEmail)
 }
 
-type getRouteGeometryCapturedResponse struct{ capturedResponse }
-
-func (r getRouteGeometryCapturedResponse) VisitGetRouteGeometryResponse(w http.ResponseWriter) error {
-	return r.write(w)
+func (server *contractServer) GetRoute(
+	writer http.ResponseWriter, request *http.Request, _ openapi.Provider, _ openapi.RouteId, _ openapi.Stage,
+) {
+	server.handler.stage(writer, request, server.handler.allowedEmail)
 }
-
-type reprocessRouteCapturedResponse struct{ capturedResponse }
 
-func (r reprocessRouteCapturedResponse) VisitReprocessRouteResponse(w http.ResponseWriter) error {
-	return r.write(w)
+func (server *contractServer) GetRouteGeometry(
+	writer http.ResponseWriter, request *http.Request, _ openapi.Provider, _ openapi.RouteId, _ openapi.Stage,
+) {
+	server.handler.stageGeometry(writer, request, server.handler.allowedEmail)
 }
 
-type getRoutesCapturedResponse struct{ capturedResponse }
-
-func (r getRoutesCapturedResponse) VisitGetRoutesResponse(w http.ResponseWriter) error {
-	return r.write(w)
+func (server *contractServer) ReprocessRoute(
+	writer http.ResponseWriter, request *http.Request,
+	_ openapi.Provider, _ openapi.RouteId, _ openapi.Stage, _ openapi.ReprocessRouteParams,
+) {
+	server.handler.reprocessStage(writer, request, server.handler.allowedEmail)
 }
-
-type redirectLegacyRouteCapturedResponse struct{ capturedResponse }
 
-func (r redirectLegacyRouteCapturedResponse) VisitRedirectLegacyRouteResponse(w http.ResponseWriter) error {
-	return r.write(w)
+func (server *contractServer) GetRoutes(writer http.ResponseWriter, request *http.Request) {
+	server.handler.stages(writer, request, server.handler.allowedEmail)
 }
 
-type redirectLegacyGeometryCapturedResponse struct{ capturedResponse }
-
-func (r redirectLegacyGeometryCapturedResponse) VisitRedirectLegacyGeometryResponse(w http.ResponseWriter) error {
-	return r.write(w)
+func (server *contractServer) RedirectLegacyRoute(
+	writer http.ResponseWriter, request *http.Request, _ openapi.RouteId, _ openapi.Stage,
+) {
+	server.handler.redirectLegacyStagePath("")(writer, request, server.handler.allowedEmail)
 }
 
-type redirectLegacyReprocessCapturedResponse struct{ capturedResponse }
-
-func (r redirectLegacyReprocessCapturedResponse) VisitRedirectLegacyReprocessResponse(w http.ResponseWriter) error {
-	return r.write(w)
+func (server *contractServer) RedirectLegacyGeometry(
+	writer http.ResponseWriter, request *http.Request, _ openapi.RouteId, _ openapi.Stage,
+) {
+	server.handler.redirectLegacyStagePath("/geometry")(writer, request, server.handler.allowedEmail)
 }
-
-type getStatusCapturedResponse struct{ capturedResponse }
 
-func (r getStatusCapturedResponse) VisitGetStatusResponse(w http.ResponseWriter) error {
-	return r.write(w)
+func (server *contractServer) RedirectLegacyReprocess(
+	writer http.ResponseWriter, request *http.Request,
+	_ openapi.RouteId, _ openapi.Stage, _ openapi.RedirectLegacyReprocessParams,
+) {
+	server.handler.redirectLegacyStagePath("/reprocess")(writer, request, server.handler.allowedEmail)
 }
 
-type triggerSyncCapturedResponse struct{ capturedResponse }
-
-func (r triggerSyncCapturedResponse) VisitTriggerSyncResponse(w http.ResponseWriter) error {
-	return r.write(w)
+func (server *contractServer) GetStatus(writer http.ResponseWriter, request *http.Request) {
+	server.handler.status(writer, request, server.handler.allowedEmail)
 }
-
-type getSyncRunsCapturedResponse struct{ capturedResponse }
 
-func (r getSyncRunsCapturedResponse) VisitGetSyncRunsResponse(w http.ResponseWriter) error {
-	return r.write(w)
+func (server *contractServer) TriggerSync(
+	writer http.ResponseWriter, request *http.Request, _ openapi.TriggerSyncParams,
+) {
+	server.handler.sync(writer, request, server.handler.allowedEmail)
 }
 
-type setSyncScheduleCapturedResponse struct{ capturedResponse }
-
-func (r setSyncScheduleCapturedResponse) VisitSetSyncScheduleResponse(w http.ResponseWriter) error {
-	return r.write(w)
+func (server *contractServer) GetSyncRuns(
+	writer http.ResponseWriter, request *http.Request, _ openapi.GetSyncRunsParams,
+) {
+	server.handler.syncHistory(writer, request, server.handler.allowedEmail)
 }
 
-type triggerSourceSyncCapturedResponse struct{ capturedResponse }
-
-func (r triggerSourceSyncCapturedResponse) VisitTriggerSourceSyncResponse(w http.ResponseWriter) error {
-	return r.write(w)
+func (server *contractServer) SetSyncSchedule(
+	writer http.ResponseWriter, request *http.Request, _ openapi.SetSyncScheduleParams,
+) {
+	server.handler.setSyncSchedule(writer, request, server.handler.allowedEmail)
 }
-
-type triggerSurfaceSyncCapturedResponse struct{ capturedResponse }
 
-func (r triggerSurfaceSyncCapturedResponse) VisitTriggerSurfaceSyncResponse(w http.ResponseWriter) error {
-	return r.write(w)
+func (server *contractServer) TriggerSourceSync(
+	writer http.ResponseWriter, request *http.Request, _ openapi.TriggerSourceSyncParams,
+) {
+	server.handler.syncSource(writer, request, server.handler.allowedEmail)
 }
 
-type triggerTargetsSyncCapturedResponse struct{ capturedResponse }
-
-func (r triggerTargetsSyncCapturedResponse) VisitTriggerTargetsSyncResponse(w http.ResponseWriter) error {
-	return r.write(w)
+func (server *contractServer) TriggerSurfaceSync(
+	writer http.ResponseWriter, request *http.Request, _ openapi.TriggerSurfaceSyncParams,
+) {
+	server.handler.syncSurface(writer, request, server.handler.allowedEmail)
 }
-
-type triggerTargetSyncCapturedResponse struct{ capturedResponse }
 
-func (r triggerTargetSyncCapturedResponse) VisitTriggerTargetSyncResponse(w http.ResponseWriter) error {
-	return r.write(w)
+func (server *contractServer) TriggerTargetsSync(
+	writer http.ResponseWriter, request *http.Request, _ openapi.TriggerTargetsSyncParams,
+) {
+	server.handler.syncTargets(writer, request, server.handler.allowedEmail)
 }
 
-type clearTargetCapturedResponse struct{ capturedResponse }
-
-func (r clearTargetCapturedResponse) VisitClearTargetResponse(w http.ResponseWriter) error {
-	return r.write(w)
+func (server *contractServer) TriggerTargetSync(
+	writer http.ResponseWriter, request *http.Request, _ openapi.Target, _ openapi.TriggerTargetSyncParams,
+) {
+	server.handler.syncTarget(writer, request, server.handler.allowedEmail)
 }
 
-type getWeatherCapturedResponse struct{ capturedResponse }
-
-func (r getWeatherCapturedResponse) VisitGetWeatherResponse(w http.ResponseWriter) error {
-	return r.write(w)
+func (server *contractServer) ClearTarget(
+	writer http.ResponseWriter, request *http.Request, _ openapi.Target, _ openapi.ClearTargetParams,
+) {
+	server.handler.clearTarget(writer, request, server.handler.allowedEmail)
 }
-
-type getWebUIConfigCapturedResponse struct{ capturedResponse }
 
-func (r getWebUIConfigCapturedResponse) VisitGetWebUIConfigResponse(w http.ResponseWriter) error {
-	return r.write(w)
+func (server *contractServer) GetWeather(
+	writer http.ResponseWriter, request *http.Request, _ openapi.GetWeatherParams,
+) {
+	server.handler.weatherForecast(writer, request, server.handler.allowedEmail)
 }
 
-func (server *contractServer) GetIndex(ctx context.Context, _ openapi.GetIndexRequestObject) (openapi.GetIndexResponseObject, error) {
-	return getIndexCapturedResponse{server.capture(ctx, func(w http.ResponseWriter, r *http.Request) { server.handler.index(w, r, server.handler.allowedEmail) })}, nil
-}
-func (server *contractServer) GetAsset(ctx context.Context, _ openapi.GetAssetRequestObject) (openapi.GetAssetResponseObject, error) {
-	return getAssetCapturedResponse{server.capture(ctx, func(w http.ResponseWriter, r *http.Request) {
-		server.handler.staticAsset(w, r, server.handler.allowedEmail)
-	})}, nil
-}
-func (server *contractServer) GetFavicon(ctx context.Context, _ openapi.GetFaviconRequestObject) (openapi.GetFaviconResponseObject, error) {
-	return getFaviconCapturedResponse{server.capture(ctx, func(w http.ResponseWriter, r *http.Request) {
-		server.handler.stableAsset(w, r, server.handler.allowedEmail)
-	})}, nil
-}
-func (server *contractServer) GetHealth(ctx context.Context, _ openapi.GetHealthRequestObject) (openapi.GetHealthResponseObject, error) {
-	return getHealthCapturedResponse{server.capture(ctx, server.handler.health)}, nil
-}
-func (server *contractServer) GetIcon256(ctx context.Context, _ openapi.GetIcon256RequestObject) (openapi.GetIcon256ResponseObject, error) {
-	return getIcon256CapturedResponse{server.capture(ctx, func(w http.ResponseWriter, r *http.Request) {
-		server.handler.stableAsset(w, r, server.handler.allowedEmail)
-	})}, nil
-}
-func (server *contractServer) GetIcon512(ctx context.Context, _ openapi.GetIcon512RequestObject) (openapi.GetIcon512ResponseObject, error) {
-	return getIcon512CapturedResponse{server.capture(ctx, func(w http.ResponseWriter, r *http.Request) {
-		server.handler.stableAsset(w, r, server.handler.allowedEmail)
-	})}, nil
-}
-func (server *contractServer) GetManifest(ctx context.Context, _ openapi.GetManifestRequestObject) (openapi.GetManifestResponseObject, error) {
-	return getManifestCapturedResponse{server.capture(ctx, func(w http.ResponseWriter, r *http.Request) {
-		server.handler.webManifest(w, r, server.handler.allowedEmail)
-	})}, nil
-}
-func (server *contractServer) CompleteOAuth(ctx context.Context, _ openapi.CompleteOAuthRequestObject) (openapi.CompleteOAuthResponseObject, error) {
-	return completeOAuthCapturedResponse{server.capture(ctx, func(w http.ResponseWriter, r *http.Request) {
-		server.handler.callback(w, r, server.handler.allowedEmail)
-	})}, nil
-}
-func (server *contractServer) StartOAuth(ctx context.Context, _ openapi.StartOAuthRequestObject) (openapi.StartOAuthResponseObject, error) {
-	return startOAuthCapturedResponse{server.capture(ctx, func(w http.ResponseWriter, r *http.Request) { server.handler.start(w, r, server.handler.allowedEmail) })}, nil
-}
-func (server *contractServer) GetRoutePage(ctx context.Context, _ openapi.GetRoutePageRequestObject) (openapi.GetRoutePageResponseObject, error) {
-	return getRoutePageCapturedResponse{server.capture(ctx, func(w http.ResponseWriter, r *http.Request) { server.handler.index(w, r, server.handler.allowedEmail) })}, nil
-}
-func (server *contractServer) RedirectLegacyRoutePage(ctx context.Context, _ openapi.RedirectLegacyRoutePageRequestObject) (openapi.RedirectLegacyRoutePageResponseObject, error) {
-	return redirectLegacyRoutePageCapturedResponse{server.capture(ctx, func(w http.ResponseWriter, r *http.Request) {
-		server.handler.redirectLegacyBrowserRoute(w, r, server.handler.allowedEmail)
-	})}, nil
-}
-func (server *contractServer) GetSettingsPage(ctx context.Context, _ openapi.GetSettingsPageRequestObject) (openapi.GetSettingsPageResponseObject, error) {
-	return getSettingsPageCapturedResponse{server.capture(ctx, func(w http.ResponseWriter, r *http.Request) { server.handler.index(w, r, server.handler.allowedEmail) })}, nil
-}
-func (server *contractServer) GetSyncPage(ctx context.Context, _ openapi.GetSyncPageRequestObject) (openapi.GetSyncPageResponseObject, error) {
-	return getSyncPageCapturedResponse{server.capture(ctx, func(w http.ResponseWriter, r *http.Request) { server.handler.index(w, r, server.handler.allowedEmail) })}, nil
-}
-func (server *contractServer) GetRoute(ctx context.Context, _ openapi.GetRouteRequestObject) (openapi.GetRouteResponseObject, error) {
-	return getRouteCapturedResponse{server.capture(ctx, func(w http.ResponseWriter, r *http.Request) { server.handler.stage(w, r, server.handler.allowedEmail) })}, nil
-}
-func (server *contractServer) GetRouteGeometry(ctx context.Context, _ openapi.GetRouteGeometryRequestObject) (openapi.GetRouteGeometryResponseObject, error) {
-	return getRouteGeometryCapturedResponse{server.capture(ctx, func(w http.ResponseWriter, r *http.Request) {
-		server.handler.stageGeometry(w, r, server.handler.allowedEmail)
-	})}, nil
-}
-func (server *contractServer) ReprocessRoute(ctx context.Context, _ openapi.ReprocessRouteRequestObject) (openapi.ReprocessRouteResponseObject, error) {
-	return reprocessRouteCapturedResponse{server.capture(ctx, func(w http.ResponseWriter, r *http.Request) {
-		server.handler.reprocessStage(w, r, server.handler.allowedEmail)
-	})}, nil
-}
-func (server *contractServer) GetRoutes(ctx context.Context, _ openapi.GetRoutesRequestObject) (openapi.GetRoutesResponseObject, error) {
-	return getRoutesCapturedResponse{server.capture(ctx, func(w http.ResponseWriter, r *http.Request) { server.handler.stages(w, r, server.handler.allowedEmail) })}, nil
-}
-func (server *contractServer) RedirectLegacyRoute(ctx context.Context, _ openapi.RedirectLegacyRouteRequestObject) (openapi.RedirectLegacyRouteResponseObject, error) {
-	return redirectLegacyRouteCapturedResponse{server.capture(ctx, func(w http.ResponseWriter, r *http.Request) {
-		server.handler.redirectLegacyStagePath("")(w, r, server.handler.allowedEmail)
-	})}, nil
-}
-func (server *contractServer) RedirectLegacyGeometry(ctx context.Context, _ openapi.RedirectLegacyGeometryRequestObject) (openapi.RedirectLegacyGeometryResponseObject, error) {
-	return redirectLegacyGeometryCapturedResponse{server.capture(ctx, func(w http.ResponseWriter, r *http.Request) {
-		server.handler.redirectLegacyStagePath("/geometry")(w, r, server.handler.allowedEmail)
-	})}, nil
-}
-func (server *contractServer) RedirectLegacyReprocess(ctx context.Context, _ openapi.RedirectLegacyReprocessRequestObject) (openapi.RedirectLegacyReprocessResponseObject, error) {
-	return redirectLegacyReprocessCapturedResponse{server.capture(ctx, func(w http.ResponseWriter, r *http.Request) {
-		server.handler.redirectLegacyStagePath("/reprocess")(w, r, server.handler.allowedEmail)
-	})}, nil
-}
-func (server *contractServer) GetStatus(ctx context.Context, _ openapi.GetStatusRequestObject) (openapi.GetStatusResponseObject, error) {
-	return getStatusCapturedResponse{server.capture(ctx, func(w http.ResponseWriter, r *http.Request) { server.handler.status(w, r, server.handler.allowedEmail) })}, nil
-}
-func (server *contractServer) TriggerSync(ctx context.Context, _ openapi.TriggerSyncRequestObject) (openapi.TriggerSyncResponseObject, error) {
-	return triggerSyncCapturedResponse{server.capture(ctx, func(w http.ResponseWriter, r *http.Request) { server.handler.sync(w, r, server.handler.allowedEmail) })}, nil
-}
-func (server *contractServer) GetSyncRuns(ctx context.Context, _ openapi.GetSyncRunsRequestObject) (openapi.GetSyncRunsResponseObject, error) {
-	return getSyncRunsCapturedResponse{server.capture(ctx, func(w http.ResponseWriter, r *http.Request) {
-		server.handler.syncHistory(w, r, server.handler.allowedEmail)
-	})}, nil
-}
-func (server *contractServer) SetSyncSchedule(ctx context.Context, _ openapi.SetSyncScheduleRequestObject) (openapi.SetSyncScheduleResponseObject, error) {
-	return setSyncScheduleCapturedResponse{server.capture(ctx, func(w http.ResponseWriter, _ *http.Request) {
-		server.handler.setSyncSchedule(w, server.scheduleRequest(ctx), server.handler.allowedEmail)
-	})}, nil
-}
-func (server *contractServer) TriggerSourceSync(ctx context.Context, _ openapi.TriggerSourceSyncRequestObject) (openapi.TriggerSourceSyncResponseObject, error) {
-	return triggerSourceSyncCapturedResponse{server.capture(ctx, func(w http.ResponseWriter, r *http.Request) {
-		server.handler.syncSource(w, r, server.handler.allowedEmail)
-	})}, nil
-}
-func (server *contractServer) TriggerSurfaceSync(ctx context.Context, _ openapi.TriggerSurfaceSyncRequestObject) (openapi.TriggerSurfaceSyncResponseObject, error) {
-	return triggerSurfaceSyncCapturedResponse{server.capture(ctx, func(w http.ResponseWriter, r *http.Request) {
-		server.handler.syncSurface(w, r, server.handler.allowedEmail)
-	})}, nil
-}
-func (server *contractServer) TriggerTargetsSync(ctx context.Context, _ openapi.TriggerTargetsSyncRequestObject) (openapi.TriggerTargetsSyncResponseObject, error) {
-	return triggerTargetsSyncCapturedResponse{server.capture(ctx, func(w http.ResponseWriter, r *http.Request) {
-		server.handler.syncTargets(w, r, server.handler.allowedEmail)
-	})}, nil
-}
-func (server *contractServer) TriggerTargetSync(ctx context.Context, _ openapi.TriggerTargetSyncRequestObject) (openapi.TriggerTargetSyncResponseObject, error) {
-	return triggerTargetSyncCapturedResponse{server.capture(ctx, func(w http.ResponseWriter, r *http.Request) {
-		server.handler.syncTarget(w, r, server.handler.allowedEmail)
-	})}, nil
-}
-func (server *contractServer) ClearTarget(ctx context.Context, _ openapi.ClearTargetRequestObject) (openapi.ClearTargetResponseObject, error) {
-	return clearTargetCapturedResponse{server.capture(ctx, func(w http.ResponseWriter, r *http.Request) {
-		server.handler.clearTarget(w, r, server.handler.allowedEmail)
-	})}, nil
-}
-func (server *contractServer) GetWeather(ctx context.Context, _ openapi.GetWeatherRequestObject) (openapi.GetWeatherResponseObject, error) {
-	return getWeatherCapturedResponse{server.capture(ctx, func(w http.ResponseWriter, r *http.Request) {
-		server.handler.weatherForecast(w, r, server.handler.allowedEmail)
-	})}, nil
-}
-func (server *contractServer) GetWebUIConfig(ctx context.Context, _ openapi.GetWebUIConfigRequestObject) (openapi.GetWebUIConfigResponseObject, error) {
-	return getWebUIConfigCapturedResponse{server.capture(ctx, func(w http.ResponseWriter, r *http.Request) {
-		server.handler.webUIConfig(w, r, server.handler.allowedEmail)
-	})}, nil
+func (server *contractServer) GetWebUIConfig(writer http.ResponseWriter, request *http.Request) {
+	server.handler.webUIConfig(writer, request, server.handler.allowedEmail)
 }

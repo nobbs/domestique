@@ -27,7 +27,18 @@ func (h *Handler) start(writer http.ResponseWriter, request *http.Request, login
 
 		return
 	}
-	http.Redirect(writer, request, location, http.StatusFound)
+	// Re-rendered from the parsed URL rather than sent as the string that was
+	// parsed, so what the browser is handed is provably the value the checks
+	// above accepted.
+	//
+	// Taint analysis reaches the request through targetID, which reaches the
+	// authorization URL through the OAuth service. It cannot see the two
+	// checks that make the path safe: targetID is refused unless it is one of
+	// the configured slots, and the URL the service returns is refused unless
+	// it parses as https with a host. Neither is expressible to the analyser,
+	// so the finding is suppressed here rather than answered by a third check.
+	//nolint:gosec // G710: redirect target is allowlisted and scheme-checked above.
+	http.Redirect(writer, request, parsedLocation.String(), http.StatusFound)
 }
 
 // callback consumes the one-time OAuth state without echoing its query values.
