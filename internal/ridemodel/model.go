@@ -72,12 +72,21 @@ const (
 	hybridPhysicsWeight    = 0.25
 	fixedDriveEfficiency   = 0.975
 	fixedAirDensityKGPerM3 = 1.225
-	// fixedDescentCapMetresPerSecond stands in for a rider braking into a
-	// descent rather than letting one run away, and is the only bound on a
-	// descending segment: the rider holds the configured power there as
-	// everywhere else. See segmentSpeedMetresPerSecond for why freewheeling
-	// is not modelled separately.
-	fixedDescentCapMetresPerSecond = 60.0 / 3.6 // 60 km/h
+	// fixedSpeedCapMetresPerSecond is the fastest this model will time any
+	// segment. It stands in for a rider braking into a descent rather than
+	// letting one run away, which is the only case where it binds for a
+	// plausible profile — 350 W behind a 0.30 m² frontal area first reaches
+	// it around −6%, and no realistic profile approaches it on the flat.
+	//
+	// It is deliberately not gated on a negative gradient, despite only
+	// descents being the reason it exists. Load admits up to 1000 W and a
+	// CdA as low as 0.15, and such a profile solves past this speed on level
+	// ground; capping only below zero would then predict a bike slower at
+	// -0.01% than at +0.01%, a cliff at exactly zero gradient of the same
+	// kind #251 removed from the coasting branch. One ceiling over every
+	// gradient keeps speed monotone in gradient everywhere, which is the
+	// property that matters more than the constant's name.
+	fixedSpeedCapMetresPerSecond = 60.0 / 3.6 // 60 km/h
 )
 
 // Result is one stage's predicted moving time: the total, and the running time
@@ -205,11 +214,15 @@ func windowedGradientPercent(distances []float64, points []route.Point) []float6
 // steeper cutoff and no cutoff at all within 0.01 percentage points of each
 // other, so nothing is lost by dropping the branch that produced the cliff.
 //
+// The cap applies at every gradient rather than only below zero; see
+// fixedSpeedCapMetresPerSecond for why gating it on a descent would put a
+// discontinuity back at zero gradient.
+//
 //nolint:gocritic // value param: same reasoning as Predict above.
 func segmentSpeedMetresPerSecond(gradientPercent, crr float64, coefficients Coefficients) float64 {
 	sinTheta, cosTheta := gradientTrig(gradientPercent)
 
-	return min(poweredSpeedMetresPerSecond(crr, sinTheta, cosTheta, coefficients), fixedDescentCapMetresPerSecond)
+	return min(poweredSpeedMetresPerSecond(crr, sinTheta, cosTheta, coefficients), fixedSpeedCapMetresPerSecond)
 }
 
 // gradientTrig converts a percent gradient (rise over run, as a percentage) to

@@ -203,7 +203,7 @@ func TestPredictPhysicsHalfNeverExceedsTheDescentCap(t *testing.T) {
 
 	physicsSeconds := result.MovingSeconds / hybridPhysicsWeight
 	impliedSpeed := 2_000 / physicsSeconds
-	assert.LessOrEqual(t, impliedSpeed, fixedDescentCapMetresPerSecond+1e-9,
+	assert.LessOrEqual(t, impliedSpeed, fixedSpeedCapMetresPerSecond+1e-9,
 		"a descent must never be credited a speed above the configured cap")
 }
 
@@ -227,6 +227,30 @@ func TestPredictPhysicsHalfIsNeverSlowerDownhillThanOnTheFlat(t *testing.T) {
 		require.True(t, ok, "Predict() ok at %.1f%%", gradient)
 		assert.Less(t, descent.MovingSeconds, flat.MovingSeconds,
 			"a %.1f%% descent must be quicker than the same road flat", gradient)
+	}
+}
+
+// The same guarantee at the extremes Load admits, which is where the speed cap
+// actually binds on level ground. It is the case for gating the cap on a
+// negative gradient — the obvious reading of a constant that exists for
+// descents — and the reason not to: capping only below zero leaves this
+// profile solving past the cap at +0.01% and pinned to it at -0.01%, so the
+// bike comes out slower downhill than up, with a cliff at exactly zero.
+func TestPredictPhysicsHalfIsNeverSlowerDownhillAtTheValidatedExtremes(t *testing.T) {
+	coefficients := testCoefficients()
+	coefficients.SecondsPerKM, coefficients.SecondsPerAscentM = 0, 0
+	coefficients.CrrBySurface = map[surface.Kind]float64{surface.KindAsphalt: 0.012}
+	coefficients.PowerWatts = maxPowerWatts
+	coefficients.CdAM2 = minCdAM2
+
+	previous := math.Inf(1)
+	for _, gradient := range []float64{2, 0.5, 0.01, 0, -0.01, -0.5, -2, -6} {
+		points := sampledStage(1_000, 20, func(d float64) float64 { return 100 + gradient/100*d })
+		result, ok := Predict(points, nil, coefficients)
+		require.True(t, ok, "Predict() ok at %.2f%%", gradient)
+		assert.LessOrEqual(t, result.MovingSeconds, previous+1e-9,
+			"time must not rise as the road tilts down, at %.2f%%", gradient)
+		previous = result.MovingSeconds
 	}
 }
 

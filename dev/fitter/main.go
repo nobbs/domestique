@@ -17,13 +17,14 @@ func main() {
 		"recalibrate", false,
 		"refit seconds_per_km and seconds_per_ascent_m by walking a monthly origin across the corpus "+
 			"and print a copy-ready profile; the default evaluates the loaded profile's own frozen cutoff "+
-			"against rides after it, with no fitting",
+			"against rides after it that fall within the last -eta-training-months, with no fitting",
 	)
 	etaRouteCellDegrees := flag.Float64("eta-route-cell-degrees", defaultRouteCellDegrees, "coordinate grid used to identify repeated routes")
 	etaRouteJaccard := flag.Float64("eta-route-jaccard", defaultRouteJaccardThreshold, "minimum route-cell Jaccard overlap considered a repeat")
 	etaTrainingMonths := flag.Int(
 		"eta-training-months", defaultTrainingWindowMonths,
-		"how many months back a fit may reach, extended only when the window holds too few rides to fit from",
+		"how many months back a fit may reach, extended only when the window holds too few rides to fit "+
+			"from; also bounds how far back either mode scores, so a stale era cannot average away a live bias",
 	)
 	flag.Parse()
 
