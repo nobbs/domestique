@@ -127,7 +127,8 @@ func runETABenchmark(
 		fmt.Fprintf(&report, "ETA recalibration: walking a monthly origin across the corpus, each fold fit on the %d months before it and scored on the unseen routes of the month after; the shipped fit then covers the newest %d months\n",
 			cfg.etaTrainingMonths, cfg.etaTrainingMonths)
 	} else {
-		fmt.Fprintf(&report, "ETA evaluation: the frozen profile calibrated through %s, scored on route-disjoint first attempts after that date\n", cutoff.Format(time.DateOnly))
+		fmt.Fprintf(&report, "ETA evaluation: the frozen profile calibrated through %s, scored on route-disjoint first attempts after that date that also fall within the newest %d months of the corpus\n",
+			cutoff.Format(time.DateOnly), cfg.etaTrainingMonths)
 	}
 	fmt.Fprintf(&report, "Errors are signed bias, mean absolute error and p90 absolute error, all as percentages of moving time. A repeat requires Jaccard overlap %.2f on a %.4f-degree coordinate grid.\n",
 		cfg.etaRouteJaccard, cfg.etaRouteCellDegrees)
