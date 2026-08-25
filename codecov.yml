@@ -103,6 +103,7 @@ ignore:
   # The generated strict OpenAPI bindings are verified by generator freshness
   # and contract tests, not by handwritten branch coverage.
   - "internal/httpapi/contract/openapi.gen.go"
+  - "internal/readiness/contract/openapi.gen.go"
 
 comment:
   layout: "condensed_header, diff, flags, files"

@@ -1,0 +1,9 @@
+# The readiness probe answers on its own listener, so it gets its own bindings
+# from the same contract: models only, because that listener is two routes on a
+# mux of its own and has no use for a generated router.
+package: contract
+generate:
+  models: true
+output: internal/readiness/contract/openapi.gen.go
+output-options:
+  include-tags: [readiness]
