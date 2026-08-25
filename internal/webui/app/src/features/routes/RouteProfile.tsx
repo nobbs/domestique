@@ -25,8 +25,8 @@
 
 import { IconChevronsRight } from "@tabler/icons-react";
 import type { Position } from "../../api/types";
-import { ElevationProfile } from "../../components/ElevationProfile";
-import { ForecastStrip } from "../../components/ForecastStrip";
+import { ElevationProfile } from "../../components/route/ElevationProfile";
+import { ForecastStrip } from "../../components/route/ForecastStrip";
 import { StartTimePicker } from "../../components/StartTimePicker";
 import type { ForecastSample } from "../../lib/forecastSamples";
 import { formatAscent, formatElevation } from "../../lib/format";

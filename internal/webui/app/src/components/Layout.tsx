@@ -7,7 +7,7 @@ import {
   DrawerTrigger,
 } from "@/components/ui/drawer";
 import { useNarrowViewport } from "../lib/mediaQuery";
-import { Wordmark } from "./Wordmark";
+import { Wordmark } from "./brand/Wordmark";
 
 export interface LayoutProps {
   /** The full-bleed library map. */

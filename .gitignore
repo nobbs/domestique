@@ -41,8 +41,10 @@ go.work.sum
 # Browser UI build output and dependencies. The .gitkeep placeholder stays
 # tracked so the go:embed pattern remains valid before the UI has been built.
 node_modules/
+/.pnpm-store/
 /internal/webui/app/dist/*
 !/internal/webui/app/dist/.gitkeep
+/internal/webui/app/storybook-static/
 
 # Local Domestique state and configuration
 /build/
