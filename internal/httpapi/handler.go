@@ -741,11 +741,13 @@ func (h *Handler) contentSecurityPolicy() string {
 }
 
 func (h *Handler) health(writer http.ResponseWriter, _ *http.Request) {
-	h.writeJSON(writer, http.StatusOK, map[string]string{"status": "ok"})
+	h.writeJSON(writer, http.StatusOK, openapi.Health{Status: openapi.Ok})
 }
 
 func (h *Handler) error(writer http.ResponseWriter, status int, code, message string) {
-	h.writeJSON(writer, status, map[string]map[string]string{"error": {"code": code, "message": message}})
+	body := openapi.Error{}
+	body.Error.Code, body.Error.Message = code, message
+	h.writeJSON(writer, status, body)
 }
 
 func (h *Handler) writeJSON(writer http.ResponseWriter, status int, value any) {
