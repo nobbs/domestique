@@ -67,8 +67,8 @@ func liveSyncState(activity SyncActivityState) (string, bool) {
 	return "", false
 }
 
-// status reports readiness, per-target convergence, and the last terminal run.
-func (h *Handler) status(writer http.ResponseWriter, request *http.Request, _ string) {
+// GetStatus reports readiness, per-target convergence, and the last terminal run.
+func (h *Handler) GetStatus(writer http.ResponseWriter, request *http.Request) {
 	authorizations := make(map[string]string, len(h.targetIDs))
 	if err := h.state.ForEachTarget(request.Context(), func(id, authorization string) error {
 		if slices.Contains(h.targetIDs, id) {
@@ -256,9 +256,11 @@ func (h *Handler) status(writer http.ResponseWriter, request *http.Request, _ st
 	h.writeJSON(writer, http.StatusOK, view)
 }
 
-// setSyncSchedule switches either half of the scheduled synchronization on or
+// SetSyncSchedule switches either half of the scheduled synchronization on or
 // off. It changes nothing about a run already in flight, and never starts one.
-func (h *Handler) setSyncSchedule(writer http.ResponseWriter, request *http.Request, _ string) {
+func (h *Handler) SetSyncSchedule(
+	writer http.ResponseWriter, request *http.Request, _ openapi.SetSyncScheduleParams,
+) {
 	var body struct {
 		Source  *bool `json:"source"`
 		Targets *bool `json:"targets"`
@@ -295,13 +297,15 @@ const (
 	maximumSyncRunPage = 100
 )
 
-// syncHistory serves one page of the recorded run history, newest first,
+// GetSyncRuns serves one page of the recorded run history, newest first,
 // followed by the cursor for the page after it.
 //
 // Every field is read from the same local records the status response is
 // derived from, so a page names no route, carries no geometry, quotes nothing a
 // provider said, and costs no provider call.
-func (h *Handler) syncHistory(writer http.ResponseWriter, request *http.Request, _ string) {
+func (h *Handler) GetSyncRuns(
+	writer http.ResponseWriter, request *http.Request, _ openapi.GetSyncRunsParams,
+) {
 	query := request.URL.Query()
 	limit := defaultSyncRunPage
 	if raw := query.Get("limit"); raw != "" {
@@ -350,25 +354,29 @@ func (h *Handler) syncHistory(writer http.ResponseWriter, request *http.Request,
 	h.writeJSON(writer, http.StatusOK, view)
 }
 
-// sync queues one immediate run through the same reporting path as the schedule.
-func (h *Handler) sync(writer http.ResponseWriter, _ *http.Request, _ string) {
+// TriggerSync queues one immediate run through the same reporting path as the schedule.
+func (h *Handler) TriggerSync(writer http.ResponseWriter, _ *http.Request, _ openapi.TriggerSyncParams) {
 	h.trigger(writer, SyncPhaseAll)
 }
 
-// syncSource queues one immediate read of the source library. It runs whether or
+// TriggerSourceSync queues one immediate read of the source library. It runs whether or
 // not the schedule is allowed to start that phase: the switch governs unattended
 // runs, and an operator asking for one now has already decided.
-func (h *Handler) syncSource(writer http.ResponseWriter, _ *http.Request, _ string) {
+func (h *Handler) TriggerSourceSync(
+	writer http.ResponseWriter, _ *http.Request, _ openapi.TriggerSourceSyncParams,
+) {
 	h.trigger(writer, SyncPhaseSource)
 }
 
-// syncTargets queues one immediate reconciliation of stored state onto the
+// TriggerTargetsSync queues one immediate reconciliation of stored state onto the
 // targets, on the same terms as syncSource.
-func (h *Handler) syncTargets(writer http.ResponseWriter, _ *http.Request, _ string) {
+func (h *Handler) TriggerTargetsSync(
+	writer http.ResponseWriter, _ *http.Request, _ openapi.TriggerTargetsSyncParams,
+) {
 	h.trigger(writer, SyncPhaseTargets)
 }
 
-// syncTarget queues one immediate reconciliation of stored state onto exactly
+// TriggerTargetSync queues one immediate reconciliation of stored state onto exactly
 // one configured target, on the same terms as syncTargets: it runs whether or
 // not the schedule allows the target half to start, and every ownership,
 // ordering, and deletion rule a full target phase applies stays exactly what
@@ -377,7 +385,9 @@ func (h *Handler) syncTargets(writer http.ResponseWriter, _ *http.Request, _ str
 // The target identifier is checked against the configured slots here, the
 // same way the OAuth start route checks it: an unconfigured or missing slot is
 // not found, not a target this request could ever reconcile.
-func (h *Handler) syncTarget(writer http.ResponseWriter, request *http.Request, _ string) {
+func (h *Handler) TriggerTargetSync(
+	writer http.ResponseWriter, request *http.Request, _ openapi.Target, _ openapi.TriggerTargetSyncParams,
+) {
 	targetID := request.PathValue("target")
 	if targetID == "" || !slices.Contains(h.targetIDs, targetID) {
 		h.notFound(writer)
@@ -392,7 +402,7 @@ func (h *Handler) syncTarget(writer http.ResponseWriter, request *http.Request, 
 	h.writeJSON(writer, http.StatusAccepted, openapi.Accepted{Status: openapi.AcceptedStatusAccepted})
 }
 
-// clearTarget queues the deletion of every route this service owns on exactly
+// ClearTarget queues the deletion of every route this service owns on exactly
 // one configured target.
 //
 // It is the destructive counterpart to syncTarget and is checked the same way:
@@ -400,7 +410,9 @@ func (h *Handler) syncTarget(writer http.ResponseWriter, request *http.Request, 
 // confirmation this needs belongs with the operator looking at the target,
 // not in a field a script could fill in — and it is gated and origin-checked
 // like every other state-changing route.
-func (h *Handler) clearTarget(writer http.ResponseWriter, request *http.Request, _ string) {
+func (h *Handler) ClearTarget(
+	writer http.ResponseWriter, request *http.Request, _ openapi.Target, _ openapi.ClearTargetParams,
+) {
 	targetID := request.PathValue("target")
 	if targetID == "" || !slices.Contains(h.targetIDs, targetID) {
 		h.notFound(writer)
@@ -424,13 +436,15 @@ func (h *Handler) trigger(writer http.ResponseWriter, phase SyncPhase) {
 	h.writeJSON(writer, http.StatusAccepted, openapi.Accepted{Status: openapi.AcceptedStatusAccepted})
 }
 
-// syncSurface queues one immediate surface-classification pass, independently
+// TriggerSurfaceSync queues one immediate surface-classification pass, independently
 // of either half of a synchronization. Unlike sync, syncSource, and
 // syncTargets, it never reads the source library or writes a Wahoo target — it
 // only reclassifies stages already stored, against the local surface index.
 // It shares their single-flight guard, so a synchronization or another such
 // pass already in flight refuses it the same way.
-func (h *Handler) syncSurface(writer http.ResponseWriter, _ *http.Request, _ string) {
+func (h *Handler) TriggerSurfaceSync(
+	writer http.ResponseWriter, _ *http.Request, _ openapi.TriggerSurfaceSyncParams,
+) {
 	if !h.syncRuns.TriggerAnnotate() {
 		h.error(writer, http.StatusConflict, "sync_in_progress", "a synchronization or classification pass is already running")
 

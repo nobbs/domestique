@@ -4,10 +4,13 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
+
+	openapi "github.com/nobbs/domestique/internal/httpapi/contract"
 )
 
-// start redirects the operator's browser to Wahoo for one configured slot.
-func (h *Handler) start(writer http.ResponseWriter, request *http.Request, login string) {
+// StartOAuth redirects the operator's browser to Wahoo for one configured slot.
+func (h *Handler) StartOAuth(writer http.ResponseWriter, request *http.Request, _ openapi.Target) {
+	login := h.allowedEmail
 	targetID := request.PathValue("target")
 	if targetID == "" || !slices.Contains(h.targetIDs, targetID) {
 		h.notFound(writer)
@@ -41,7 +44,7 @@ func (h *Handler) start(writer http.ResponseWriter, request *http.Request, login
 	http.Redirect(writer, request, parsedLocation.String(), http.StatusFound)
 }
 
-// callback consumes the one-time OAuth state without echoing its query values.
+// CompleteOAuth consumes the one-time OAuth state without echoing its query values.
 //
 // It returns the browser to the UI rather than to the JSON status endpoint.
 // What arrives here is an operator who was sent to Wahoo by a link on that
@@ -49,7 +52,10 @@ func (h *Handler) start(writer http.ResponseWriter, request *http.Request, login
 // endpoint would answer the same question in a format nobody came to read. The
 // redirect drops the authorization code and state from the browser URL either
 // way, which is what the 303 is for.
-func (h *Handler) callback(writer http.ResponseWriter, request *http.Request, login string) {
+func (h *Handler) CompleteOAuth(
+	writer http.ResponseWriter, request *http.Request, _ openapi.CompleteOAuthParams,
+) {
+	login := h.allowedEmail
 	query := request.URL.Query()
 	if err := h.oauth.Complete(request.Context(), login, query.Get("state"), query.Get("code")); err != nil {
 		h.error(writer, http.StatusBadRequest, "authorization_failed", "wahoo authorization could not be completed")
