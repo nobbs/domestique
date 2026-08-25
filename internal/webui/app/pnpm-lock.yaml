@@ -61,13 +61,13 @@ importers:
         specifier: 1.62.1
         version: 1.62.1
       '@storybook/addon-a11y':
-        specifier: ^10.5.10
+        specifier: 10.5.10
         version: 10.5.10(storybook@10.5.10(@types/react@19.2.18)(react@19.2.8))
       '@storybook/react-vite':
-        specifier: ^10.5.10
+        specifier: 10.5.10
         version: 10.5.10(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(esbuild@0.28.2)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(storybook@10.5.10(@types/react@19.2.18)(react@19.2.8))(supports-color@7.2.0)(typescript@7.0.2)(vite@8.2.2(@types/node@26.2.0)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.0))
       '@tailwindcss/vite':
-        specifier: ^4.3.3
+        specifier: 4.3.3
         version: 4.3.3(vite@8.2.2(@types/node@26.2.0)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.0))
       '@testing-library/jest-dom':
         specifier: 7.0.1
@@ -103,10 +103,10 @@ importers:
         specifier: 8.26.0
         version: 8.26.0(supports-color@7.2.0)(typescript@7.0.2)
       storybook:
-        specifier: ^10.5.10
+        specifier: 10.5.10
         version: 10.5.10(@types/react@19.2.18)(react@19.2.8)
       tailwindcss:
-        specifier: ^4.3.3
+        specifier: 4.3.3
         version: 4.3.3
       typescript:
         specifier: 7.0.2
