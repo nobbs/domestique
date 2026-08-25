@@ -841,7 +841,7 @@ export type triggerTargetSyncResponseError = (
 };
 
 export const getTriggerTargetSyncUrl = (target: string) => {
-  return `/v1/sync/targets/${target}`;
+  return `/v1/sync/targets/${encodeURIComponent(String(target))}`;
 };
 
 export const triggerTargetSync = async (
@@ -964,7 +964,7 @@ export type clearTargetResponseError = (
 };
 
 export const getClearTargetUrl = (target: string) => {
-  return `/v1/targets/${target}/clear`;
+  return `/v1/targets/${encodeURIComponent(String(target))}/clear`;
 };
 
 export const clearTarget = async (
@@ -1799,7 +1799,7 @@ export type getRouteResponseError = (
 };
 
 export const getGetRouteUrl = (provider: string, routeId: number, stage: number) => {
-  return `/v1/providers/${provider}/routes/${routeId}/stages/${stage}`;
+  return `/v1/providers/${encodeURIComponent(String(provider))}/routes/${encodeURIComponent(String(routeId))}/stages/${encodeURIComponent(String(stage))}`;
 };
 
 export const getRoute = async (
@@ -2014,7 +2014,7 @@ export type getRouteGeometryResponseError = (
 };
 
 export const getGetRouteGeometryUrl = (provider: string, routeId: number, stage: number) => {
-  return `/v1/providers/${provider}/routes/${routeId}/stages/${stage}/geometry`;
+  return `/v1/providers/${encodeURIComponent(String(provider))}/routes/${encodeURIComponent(String(routeId))}/stages/${encodeURIComponent(String(stage))}/geometry`;
 };
 
 export const getRouteGeometry = async (
@@ -2232,7 +2232,7 @@ export type reprocessRouteResponseError = (
 };
 
 export const getReprocessRouteUrl = (provider: string, routeId: number, stage: number) => {
-  return `/v1/providers/${provider}/routes/${routeId}/stages/${stage}/reprocess`;
+  return `/v1/providers/${encodeURIComponent(String(provider))}/routes/${encodeURIComponent(String(routeId))}/stages/${encodeURIComponent(String(stage))}/reprocess`;
 };
 
 export const reprocessRoute = async (
