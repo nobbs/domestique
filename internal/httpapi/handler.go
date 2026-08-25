@@ -593,6 +593,7 @@ func (h *Handler) routes() {
 	h.mux.Handle("GET /routes/{provider}/{routeID}/{stage}", h.gated(h.index))
 	h.mux.Handle("GET /routes/{routeID}/{stage}", h.gated(h.redirectLegacyBrowserRoute))
 	h.mux.Handle("GET /sync", h.gated(h.index))
+	h.mux.Handle("GET /settings", h.gated(h.index))
 
 	// Unknown paths still answer as JSON, and still require the identity, so an
 	// unauthenticated caller cannot probe which paths exist.

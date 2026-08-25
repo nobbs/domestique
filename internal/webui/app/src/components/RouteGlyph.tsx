@@ -23,6 +23,13 @@ import type { Position } from "../api/types";
  */
 const VIEWBOX = 48;
 const PADDING = 4;
+const bandStroke = [
+  "stroke-[var(--grade-0)]",
+  "stroke-[var(--grade-1)]",
+  "stroke-[var(--grade-2)]",
+  "stroke-[var(--grade-3)]",
+  "stroke-[var(--grade-4)]",
+] as const;
 
 /**
  * Projects longitude and latitude onto the viewBox.
@@ -79,12 +86,12 @@ export function RouteGlyph({ coordinates, title, band }: RouteGlyphProps) {
   const points = useMemo(() => glyphPoints(coordinates), [coordinates]);
 
   if (points === "") {
-    return <div className="route-glyph route-glyph--empty" aria-hidden="true" />;
+    return <div className="size-full rounded bg-[var(--base)]" role="presentation" />;
   }
 
   return (
     <svg
-      className="route-glyph"
+      className="block size-full"
       viewBox={`0 0 ${VIEWBOX} ${VIEWBOX}`}
       role="img"
       aria-label={`Shape of ${title}`}
@@ -95,6 +102,7 @@ export function RouteGlyph({ coordinates, title, band }: RouteGlyphProps) {
         // is a set of custom properties and a presentation attribute cannot
         // resolve one — see the `.route-glyph` rules in index.css.
         data-band={band}
+        className={bandStroke[band] ?? bandStroke[0]}
         points={points}
         fill="none"
         strokeWidth={2}

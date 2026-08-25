@@ -23,7 +23,9 @@ import { triggerSync } from "../../api/client";
 import { statusQuery, syncRunLookupQuery } from "../../api/queries";
 import type { Status, SyncPhase, SyncRun } from "../../api/types";
 import { SYNC_PHASES } from "../../api/types";
-import { Button } from "../../components/Button";
+import { Alert, AlertDescription, AlertTitle } from "../../components/ui/alert";
+import { Button } from "../../components/ui/button";
+import { Spinner } from "../../components/ui/spinner";
 import { formatTimestamp } from "../../lib/format";
 import { syncGuidance } from "../../lib/syncGuidance";
 
@@ -138,11 +140,15 @@ export function RunNotice({ reference }: { reference: string | null }) {
     const unread = !history.isSuccess || isFetchNextPageError;
 
     return (
-      <section className="panel sync-card run-notice" aria-labelledby="notice-heading">
-        <h2 className="sync-card__heading" id="notice-heading">
+      <Alert
+        variant="destructive"
+        className="gap-2 border-[var(--rule)] bg-[var(--panel)] p-4"
+        aria-labelledby="notice-heading"
+      >
+        <AlertTitle id="notice-heading" role="heading" aria-level={2}>
           {unread ? "That run could not be looked up" : "That run is no longer kept"}
-        </h2>
-        <p className="sync-card__line">
+        </AlertTitle>
+        <AlertDescription>
           {unread ? (
             <>
               The notification named run {reference}, and the history it would be found in could not
@@ -154,8 +160,8 @@ export function RunNotice({ reference }: { reference: string | null }) {
               has happened since is below.
             </>
           )}
-        </p>
-      </section>
+        </AlertDescription>
+      </Alert>
     );
   }
 
@@ -164,23 +170,29 @@ export function RunNotice({ reference }: { reference: string | null }) {
   const tone = guidance ? (guidance.kind === "blocked" ? "hold" : "alert") : "good";
 
   return (
-    <section
-      className="panel sync-card run-notice"
-      data-tone={tone}
+    <Alert
+      className={
+        tone === "good"
+          ? "border-[var(--good)]/30 bg-[var(--panel)] p-4"
+          : tone === "hold"
+            ? "border-[var(--hold)]/30 bg-[var(--panel)] p-4"
+            : "border-[var(--alert)]/30 bg-[var(--panel)] p-4"
+      }
       aria-labelledby="notice-heading"
     >
-      <h2 className="sync-card__heading" id="notice-heading">
+      <AlertTitle id="notice-heading" role="heading" aria-level={2}>
         {headline}
-      </h2>
-      <p className="run-notice__reference">
+      </AlertTitle>
+      <p className="text-xs text-[var(--ink-2)]">
         {formatTimestamp(notice.completedAt)}
         {notice.reference === "" ? null : <> · run {notice.reference}</>}
       </p>
-      <p className="sync-card__line">
+      <AlertDescription>
         {guidance ? guidance.remediation : "Nothing needs doing. It is in the history below."}
-      </p>
-      <div className="run-notice__actions">
-        <Button variant="primary" disabled={run.isPending} onClick={() => run.mutate(notice.phase)}>
+      </AlertDescription>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <Button disabled={run.isPending} onClick={() => run.mutate(notice.phase)}>
+          {run.isPending ? <Spinner aria-label="Starting run" /> : null}
           {RETRY_LABELS[notice.phase]}
         </Button>
         {/*
@@ -189,17 +201,20 @@ export function RunNotice({ reference }: { reference: string | null }) {
          * in the service's own configuration or in the cards below, so the
          * second action leaves rather than pretending this card can do it.
          */}
-        <Link className="run-notice__dismiss" to="/sync">
+        <Link
+          className="text-sm text-[var(--ink-2)] underline-offset-4 hover:text-[var(--ink)] hover:underline"
+          to="/sync"
+        >
           Dismiss
         </Link>
       </div>
       {run.isError ? (
-        <p className="sync-card__error" role="alert">
+        <p className="text-sm text-[var(--alert)]" role="alert">
           {run.error instanceof Error && run.error.message
             ? run.error.message
             : "That run could not be started."}
         </p>
       ) : null}
-    </section>
+    </Alert>
   );
 }

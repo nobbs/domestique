@@ -23,7 +23,7 @@
  * question they are not asking any more.
  */
 
-import { IconChevronDown } from "@tabler/icons-react";
+import { IconChevronsRight } from "@tabler/icons-react";
 import type { Position } from "../../api/types";
 import { ElevationProfile } from "../../components/ElevationProfile";
 import { ForecastStrip } from "../../components/ForecastStrip";
@@ -156,44 +156,37 @@ export function RouteProfile({
         : `${range} · ${coarse ? "press and hold to look closer" : "drag across to look closer"}`;
 
   return (
-    <section className="route-profile" aria-labelledby="elevation-heading">
-      <div className="route-profile__header">
-        <h3 id="elevation-heading">Elevation</h3>
-        {summary === "" ? null : <span className="route-profile__summary">{summary}</span>}
+    <section className="border-t border-[var(--rule)] pt-4" aria-labelledby="elevation-heading">
+      <h3>
         <button
-          className="route-profile__collapse"
+          className="flex w-full items-center gap-2 text-left font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
           type="button"
           aria-expanded={!collapsed}
-          // The words the button used to carry. A chevron at the end of a header
-          // row is read as "this folds away" by anyone who can see it, and the
-          // sentence is still there for anyone who cannot.
           aria-label={collapsed ? "Show the profile" : "Hide the profile"}
-          // Only while there is a plot to point at: the chart is unmounted when
-          // the section is a row, and a control naming an element that is not in
-          // the document is a dangling reference a screen reader cannot follow.
           {...(collapsed ? {} : { "aria-controls": "elevation-plot" })}
           onClick={() => onCollapsedChange(!collapsed)}
         >
-          {/*
-           * One chevron, turned rather than swapped: the same mark rotating
-           * through the change says the chart folded away, where two paths
-           * cutting from one to the other would only say it is gone.
-           */}
-          <IconChevronDown
-            className="route-profile__chevron"
-            size={12}
-            stroke={1.6}
+          <span id="elevation-heading">Elevation</span>
+          {summary === "" ? null : (
+            <output aria-label="Elevation summary" className="min-w-0 text-xs text-[var(--ink-2)]">
+              {summary}
+            </output>
+          )}
+          <IconChevronsRight
+            className={collapsed ? "transition-transform" : "rotate-90 transition-transform"}
             aria-hidden="true"
+            size={16}
+            stroke={2}
           />
         </button>
-      </div>
+      </h3>
       {/*
        * Unmounted rather than hidden when the section is a row: the chart holds
        * a pointer listener over its whole plot area, and a plot nobody can see
        * must not be a plot a stray drag can still select a stretch of.
        */}
       {collapsed ? null : (
-        <>
+        <div className="mt-3 grid gap-3">
           <div id="elevation-plot">
             <ElevationProfile
               profile={profile}
@@ -222,13 +215,13 @@ export function RouteProfile({
             rideSeconds={rideSeconds}
           />
           {startAt && predictionKnown && !hasTimeline ? (
-            <p className="route-profile__unpredicted">
+            <p className="text-sm text-[var(--hold)]">
               This stage has no predicted moving time, so there is no timeline to hang a forecast
               on.
             </p>
           ) : null}
           {startAt && hasTimeline && startRefusal !== null ? (
-            <p className="route-profile__unpredicted">{startRefusal}</p>
+            <p className="text-sm text-[var(--hold)]">{startRefusal}</p>
           ) : null}
           {startAt && hasTimeline && startFits ? (
             <ForecastStrip
@@ -247,7 +240,7 @@ export function RouteProfile({
               unitSystem={unitSystem}
             />
           ) : null}
-        </>
+        </div>
       )}
     </section>
   );

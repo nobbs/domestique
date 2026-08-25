@@ -16,7 +16,10 @@ import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-quer
 import { useEffect, useRef } from "react";
 import { statusQuery, syncRunsQuery, webUIConfigQuery } from "../../api/queries";
 import type { SyncRun } from "../../api/types";
-import { Button } from "../../components/Button";
+import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
+import { Skeleton } from "../../components/ui/skeleton";
+import { Spinner } from "../../components/ui/spinner";
 import { formatTimestamp } from "../../lib/format";
 import { GUIDANCE_LABELS, syncGuidance } from "../../lib/syncGuidance";
 import { phaseLabels } from "../../lib/syncLabels";
@@ -97,20 +100,22 @@ export function SyncHistory() {
   }, [lastCompletedAt, queryClient]);
 
   if (isPending) {
-    return null;
+    return <Skeleton className="h-24 w-full" role="status" aria-label="Loading sync history" />;
   }
   if (isError) {
-    return <p className="sync-card__error">The service did not say what has happened.</p>;
+    return (
+      <p className="text-sm text-[var(--alert)]">The service did not say what has happened.</p>
+    );
   }
 
   const runs = data.pages.flatMap((page) => page.runs);
   if (runs.length === 0) {
-    return <p className="sync-card__line">Nothing has run yet.</p>;
+    return <p className="text-sm text-[var(--ink-2)]">Nothing has run yet.</p>;
   }
 
   return (
     <>
-      <ul className="sync-card__list">
+      <ul className="grid gap-2">
         {runs.map((run) => (
           /*
            * A run recorded by a binary rolled back past the migration that named
@@ -118,14 +123,27 @@ export function SyncHistory() {
            * Which half finished when is the rest of the name: the two halves
            * never run at once, so no two rows share both.
            */
-          <li className="run-row" data-phase={run.phase} key={runKey(run)}>
-            <span className="run-row__when">{formatTimestamp(run.completedAt)}</span>
-            <span className="run-row__phase">{labels[run.phase]}</span>
-            <span className="run-row__counts">{runCounts(run)}</span>
-            <span className="run-row__outcome">
-              <span className="run-row__result" data-tone={runTone(run)}>
+          <li
+            className="grid gap-1 rounded-lg border border-[var(--rule)] p-3 text-sm sm:grid-cols-[1fr_auto]"
+            data-phase={run.phase}
+            key={runKey(run)}
+          >
+            <span className="text-[var(--ink-2)]">{formatTimestamp(run.completedAt)}</span>
+            <span className="font-medium">{labels[run.phase]}</span>
+            <span className="text-[var(--ink-2)]">{runCounts(run)}</span>
+            <span className="flex flex-wrap items-center gap-2 sm:row-span-2 sm:col-start-2 sm:row-start-1 sm:self-center">
+              <Badge
+                className={
+                  runTone(run) === "good"
+                    ? "border-[var(--good)] bg-[var(--base)] text-[var(--ink)]"
+                    : runTone(run) === "hold"
+                      ? "border-[var(--hold)] bg-[var(--base)] text-[var(--ink)]"
+                      : "border-[var(--alert)] bg-[var(--base)] text-[var(--ink)]"
+                }
+                variant="secondary"
+              >
                 {runResult(run)}
-              </span>
+              </Badge>
               {/*
                * The reference is the only thing on the row that is not about
                * what happened. It is here so a notification can be traced to the
@@ -134,7 +152,10 @@ export function SyncHistory() {
                * runs were named has none to show.
                */}
               {run.reference === "" ? null : (
-                <span className="run-row__reference">{run.reference}</span>
+                <span className="text-xs text-[var(--ink-2)]">
+                  <span className="sr-only">Run reference </span>
+                  {run.reference}
+                </span>
               )}
             </span>
           </li>
@@ -142,14 +163,17 @@ export function SyncHistory() {
       </ul>
       {hasNextPage ? (
         <Button
-          className="sync-card__more"
+          variant="outline"
           disabled={isFetchingNextPage}
           onClick={() => void fetchNextPage()}
         >
+          {isFetchingNextPage ? <Spinner aria-label="Loading earlier runs" /> : null}
           Earlier runs
         </Button>
       ) : (
-        <p className="sync-card__foot">Older runs are pruned as new ones are recorded.</p>
+        <p className="text-sm text-[var(--ink-2)]">
+          Older runs are pruned as new ones are recorded.
+        </p>
       )}
     </>
   );

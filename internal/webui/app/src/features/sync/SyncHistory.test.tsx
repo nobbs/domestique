@@ -113,7 +113,8 @@ describe("SyncHistory", () => {
     });
 
     expect(screen.getAllByText("1 created · 2 updated")).toHaveLength(2);
-    expect(document.querySelectorAll(".run-row__reference")).toHaveLength(0);
+    expect(screen.queryByText("aaaaaaaaaaaa")).toBeNull();
+    expect(screen.queryByText("bbbbbbbbbbbb")).toBeNull();
   });
 
   // A gate that held and a run that broke are opposite events, and the raw

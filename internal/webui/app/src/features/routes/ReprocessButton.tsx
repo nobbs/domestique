@@ -15,6 +15,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { reprocessStage } from "../../api/client";
 import { routeGeometryQuery, statusQuery } from "../../api/queries";
 import { Button } from "../../components/Button";
+import { Spinner } from "../../components/ui/spinner";
 
 export function ReprocessButton({
   provider,
@@ -48,17 +49,18 @@ export function ReprocessButton({
   });
 
   return (
-    <div className="route-panel__reprocess">
+    <div className="grid gap-1">
       <Button variant="standard" disabled={reprocess.isPending} onClick={() => reprocess.mutate()}>
+        {reprocess.isPending ? <Spinner aria-label="Requesting reprocess" /> : null}
         {reprocess.isPending ? "Requesting…" : "Reprocess"}
       </Button>
       {reprocess.isSuccess ? (
-        <span className="route-panel__reprocess-note" role="status">
+        <span className="text-xs text-[var(--ink-2)]" role="status">
           Queued. This stage is read, derived, and pushed again on the next pass.
         </span>
       ) : null}
       {reprocess.isError ? (
-        <span className="route-panel__reprocess-note" role="status">
+        <span className="text-xs text-[var(--alert)]" role="status">
           {reprocess.error instanceof Error && reprocess.error.message
             ? reprocess.error.message
             : "That request could not be made."}

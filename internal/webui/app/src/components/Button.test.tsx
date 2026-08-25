@@ -4,11 +4,6 @@ import { MemoryRouter } from "react-router";
 import { describe, expect, it, vi } from "vitest";
 import { Button, ButtonLink } from "./Button";
 
-/** The base class first, then the variant, as the component composes them. */
-function classesOf(element: HTMLElement): string[] {
-  return element.className.split(" ");
-}
-
 describe("Button", () => {
   // A shared control that could quietly become a submit button is a trap, so
   // the type is not among the props a call site can pass.
@@ -18,18 +13,18 @@ describe("Button", () => {
     expect(screen.getByRole("button", { name: "Run now" })).toHaveAttribute("type", "button");
   });
 
-  it("dresses the one primary differently from a standard one, on the same base", () => {
+  it("distinguishes the primary action from a standard one", () => {
     render(
       <>
         <Button variant="primary">Open route</Button>
         <Button>Reprocess</Button>
       </>,
     );
-    const primary = classesOf(screen.getByRole("button", { name: "Open route" }));
-    const standard = classesOf(screen.getByRole("button", { name: "Reprocess" }));
+    const primary = screen.getByRole("button", { name: "Open route" });
+    const standard = screen.getByRole("button", { name: "Reprocess" });
 
-    expect(primary[0]).toBe(standard[0]);
-    expect(primary[1]).not.toBe(standard[1]);
+    expect(primary).toHaveClass("bg-primary");
+    expect(standard).toHaveClass("bg-background");
   });
 
   // A navigation that looks like an action is still a link: middle-click, copy
@@ -48,7 +43,7 @@ describe("Button", () => {
     expect(link).toHaveAttribute("href", "/routes/12/2");
     // The appearance is shared with the button of the same weight, and only the
     // appearance: the element is what makes it a link.
-    expect(classesOf(link)).toEqual(classesOf(screen.getByRole("button", { name: "Run now" })));
+    expect(link.className).toBe(screen.getByRole("button", { name: "Run now" }).className);
   });
 
   it("keeps the class the feature placing it asked for", () => {

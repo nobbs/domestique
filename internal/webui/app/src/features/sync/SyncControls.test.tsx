@@ -118,9 +118,9 @@ describe("SyncControls", () => {
     // Each control names its own half: the visible words are the same in both
     // rows, so the accessible name is what tells them apart.
     expect(
-      screen.getByRole("checkbox", { name: "Hourly: Read from VeloPlanner" }),
+      screen.getByRole("switch", { name: "Hourly: Read from VeloPlanner" }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("checkbox", { name: "Hourly: Write to Wahoo" })).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: "Hourly: Write to Wahoo" })).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Run now: Read from VeloPlanner" }),
     ).toBeInTheDocument();
@@ -156,7 +156,7 @@ describe("SyncControls", () => {
     vi.stubGlobal("fetch", fetchMock);
     renderControls(status({ schedule: { source: true, targets: true } }));
 
-    await userEvent.click(screen.getByRole("checkbox", { name: "Hourly: Write to Wahoo" }));
+    await userEvent.click(screen.getByRole("switch", { name: "Hourly: Write to Wahoo" }));
 
     await waitFor(() =>
       expect(fetchMock.mock.calls.some((call) => call[0] === "/v1/sync/schedule")).toBe(true),
@@ -192,8 +192,14 @@ describe("SyncControls", () => {
   it("shows the state of each switch on the switch", () => {
     renderControls(status({ schedule: { source: true, targets: false } }));
 
-    expect(screen.getByRole("checkbox", { name: "Hourly: Read from VeloPlanner" })).toBeChecked();
-    expect(screen.getByRole("checkbox", { name: "Hourly: Write to Wahoo" })).not.toBeChecked();
+    expect(screen.getByRole("switch", { name: "Hourly: Read from VeloPlanner" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    expect(screen.getByRole("switch", { name: "Hourly: Write to Wahoo" })).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
   });
 
   it("summarises each half's last run in its own terms", () => {

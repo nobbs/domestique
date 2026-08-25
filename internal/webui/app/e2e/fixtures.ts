@@ -251,13 +251,21 @@ export { expect };
 /** The entry page, once the library has arrived and the map is drawn. */
 export async function openLibrary(page: Page): Promise<void> {
   await page.goto("/");
-  await expect(page.getByRole("button", { name: "Search the route library" })).toBeVisible();
   await settleMap(page);
+}
+
+/** Opens the compact workspace when the map is being viewed on a narrow screen. */
+export async function openWorkspace(page: Page): Promise<void> {
+  const browse = page.getByRole("button", { name: "Browse routes" });
+  if (await browse.isVisible()) {
+    await browse.click();
+  }
 }
 
 /** Opens the library search and returns the field it puts under the control. */
 export async function openSearch(page: Page): Promise<Locator> {
   const field = page.getByRole("searchbox", { name: "Search the route library" });
+  await openWorkspace(page);
   if (!(await field.isVisible())) {
     await page.getByRole("button", { name: "Search the route library" }).click();
   }
@@ -280,6 +288,7 @@ export async function openRoute(
   stageOrder: number,
 ): Promise<void> {
   await page.goto(`/?route=${provider}%2F${routeId}%2F${stageOrder}`);
+  await openWorkspace(page);
   await expect(page.getByRole("button", { name: /^Search \d+ routes?$/ })).toBeVisible();
   await settleMap(page);
 }

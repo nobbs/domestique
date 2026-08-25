@@ -45,6 +45,13 @@ import { Button } from "./Button";
  * the two mixes below it can be read alongside.
  */
 const PLOT_HEIGHT = { wide: 92, narrow: 74 } as const;
+const bandPaint = [
+  "fill-[var(--grade-0)] stroke-[var(--grade-0)]",
+  "fill-[var(--grade-1)] stroke-[var(--grade-1)]",
+  "fill-[var(--grade-2)] stroke-[var(--grade-2)]",
+  "fill-[var(--grade-3)] stroke-[var(--grade-3)]",
+  "fill-[var(--grade-4)] stroke-[var(--grade-4)]",
+] as const;
 
 /**
  * How long a finger has to stay put before the drag is armed.
@@ -439,7 +446,7 @@ export function ElevationProfile({
 
   if (!profile || !geometry) {
     return (
-      <p className="elevation-profile__absent">
+      <p className="text-sm text-[var(--ink-2)]">
         This route has no elevation data, so it has no profile to show.
       </p>
     );
@@ -466,8 +473,9 @@ export function ElevationProfile({
     (picked ? ` Only the ${picked} stretches are lit.` : "");
 
   return (
-    <div className="elevation-profile" ref={ref} data-zoomed={zoomed ? "true" : undefined}>
+    <div className="relative" ref={ref} data-zoomed={zoomed ? "true" : undefined}>
       <svg
+        className="block overflow-visible"
         width="100%"
         height={height}
         viewBox={`0 0 ${plotWidth + PADDING.left + PADDING.right} ${height}`}
@@ -479,14 +487,14 @@ export function ElevationProfile({
           {geometry.elevationTicks.map((metres) => (
             <g key={metres}>
               <line
-                className="elevation-profile__grid"
+                className="stroke-[var(--rule)] [stroke-width:1]"
                 x1={0}
                 x2={plotWidth}
                 y1={geometry.y(metres)}
                 y2={geometry.y(metres)}
               />
               <text
-                className="elevation-profile__tick"
+                className="fill-[var(--ink-2)] text-xs [font-variant-numeric:tabular-nums]"
                 x={-8}
                 y={geometry.y(metres)}
                 textAnchor="end"
@@ -502,7 +510,7 @@ export function ElevationProfile({
               // Runs are positional slices of one profile; there is no id to key on.
               // biome-ignore lint/suspicious/noArrayIndexKey: positional by nature
               key={`column-${index}`}
-              className="elevation-profile__column"
+              className={`[fill-opacity:0.5] [stroke-linejoin:round] [stroke-width:2.4] forced-colors:forced-color-adjust-none ${bandPaint[run.band] ?? bandPaint[0]}`}
               data-band={run.band}
               d={run.column}
             />
@@ -510,7 +518,7 @@ export function ElevationProfile({
           {geometry.distanceTicks.map((kilometres) => (
             <text
               key={kilometres}
-              className="elevation-profile__tick"
+              className="fill-[var(--ink-2)] text-xs [font-variant-numeric:tabular-nums]"
               x={geometry.x(kilometres * 1000)}
               y={plotHeight + 15}
               textAnchor="middle"
@@ -528,7 +536,8 @@ export function ElevationProfile({
           {veiled.map((gap) => (
             <rect
               key={gap.startMetres}
-              className="elevation-profile__veil"
+              className="fill-[var(--panel)] opacity-60 forced-colors:fill-[Canvas]"
+              data-testid="profile-veil"
               x={Math.max(geometry.x(gap.startMetres), 0)}
               y={0}
               width={Math.max(
@@ -547,16 +556,18 @@ export function ElevationProfile({
            * outside the window, so the two views say one thing one way.
            */}
           {selection ? (
-            <g className="elevation-profile__selection">
+            <g>
               <rect
-                className="elevation-profile__veil"
+                className="fill-[var(--panel)] opacity-60 forced-colors:fill-[Canvas]"
+                data-testid="profile-veil"
                 x={0}
                 y={0}
                 width={Math.max(geometry.x(selection.startMetres), 0)}
                 height={plotHeight}
               />
               <rect
-                className="elevation-profile__veil"
+                className="fill-[var(--panel)] opacity-60 forced-colors:fill-[Canvas]"
+                data-testid="profile-veil"
                 x={geometry.x(selection.endMetres)}
                 y={0}
                 width={Math.max(plotWidth - geometry.x(selection.endMetres), 0)}
@@ -565,7 +576,7 @@ export function ElevationProfile({
               {[selection.startMetres, selection.endMetres].map((metres) => (
                 <line
                   key={metres}
-                  className="elevation-profile__selection-edge"
+                  className="stroke-[var(--accent)] [stroke-dasharray:3_3] [stroke-width:1.5]"
                   x1={geometry.x(metres)}
                   x2={geometry.x(metres)}
                   y1={0}
@@ -576,8 +587,9 @@ export function ElevationProfile({
           ) : null}
 
           {active ? (
-            <g className="elevation-profile__cursor">
+            <g data-testid="profile-cursor">
               <line
+                className="stroke-[var(--ink-2)] [stroke-width:1]"
                 x1={geometry.x(active.distanceMetres)}
                 x2={geometry.x(active.distanceMetres)}
                 y1={0}
@@ -588,6 +600,7 @@ export function ElevationProfile({
                 cy={geometry.y(active.elevationMetres)}
                 r={4}
                 data-band={active.band}
+                className={`stroke-[var(--panel)] [paint-order:stroke] [stroke-width:2] forced-colors:forced-color-adjust-none ${bandPaint[active.band] ?? bandPaint[0]}`}
               />
             </g>
           ) : null}
@@ -603,7 +616,7 @@ export function ElevationProfile({
        * the button in the footer, which is the half a keyboard can reach.
        */}
       <div
-        className="elevation-profile__scrub"
+        className="absolute touch-pan-y cursor-crosshair select-none [-webkit-touch-callout:none] data-[holding=true]:touch-none data-[dragging=true]:cursor-ew-resize focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-[var(--accent)]"
         data-dragging={selection ? "true" : undefined}
         // Until a finger has asked for the chart, a swipe over it is the card's
         // to scroll — which is a rule the stylesheet cannot write, because only
@@ -671,7 +684,7 @@ export function ElevationProfile({
         onBlur={() => onActiveChange(null)}
       />
 
-      <div className="elevation-profile__status">
+      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
         {/*
          * Only while zoomed. A permanently present, permanently disabled way
          * back is a control that spends most of its life lying about what it
@@ -681,13 +694,13 @@ export function ElevationProfile({
         {zoomed && onZoomChange ? (
           <Button variant="standard" aria-keyshortcuts="Escape" onClick={() => onZoomChange(null)}>
             Whole route
-            <span className="elevation-profile__reset-span"> · showing {shownLabel}</span>
+            <span className="tabular-nums"> · showing {shownLabel}</span>
           </Button>
         ) : null}
-        <p className="elevation-profile__readout" aria-live="polite">
+        <p className="text-xs text-[var(--ink-2)] tabular-nums" aria-live="polite">
           {active ? (
             <>
-              <strong>
+              <strong className="font-semibold text-[var(--ink)]">
                 {Math.round(elevationValue(active.elevationMetres, unitSystem))}{" "}
                 {elevationUnitLabel(unitSystem)}
               </strong>

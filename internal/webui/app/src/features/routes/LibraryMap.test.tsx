@@ -174,11 +174,11 @@ function line(key: string, offset = 0) {
   };
 }
 
-/** A map container with the corner MapLibre keeps its controls in. */
+/** A map container with the unobstructed corner the chooser uses. */
 function containerWithCluster(): HTMLElement {
   const container = document.createElement("div");
   const cluster = document.createElement("div");
-  cluster.className = "maplibregl-ctrl-bottom-left";
+  cluster.className = "maplibregl-ctrl-bottom-right";
   container.append(cluster);
   document.body.append(container);
 
@@ -388,18 +388,18 @@ describe("LibraryMap", () => {
   it("keeps the credit out of the scale corner", () => {
     show();
 
-    expect(drawn.container?.querySelector(".maplibregl-ctrl-bottom-left")?.textContent).toBe("");
+    expect(drawn.container?.textContent).toBe("");
     expect(screen.getByTestId("credits")).toBeInTheDocument();
   });
 
   /*
-   * The chooser goes into the scale corner. Its absence cannot move the map
-   * actions or attribution, because those use the right edge instead.
+   * The chooser goes into the lower-right map corner, clear of the desktop
+   * library rail. Its absence cannot move the map actions or attribution.
    */
-  it("puts the basemap chooser in the scale cluster", () => {
+  it("puts the basemap chooser in the unobstructed map corner", () => {
     show({ basemaps: TWO_BASEMAPS, selectedBasemap: "Satellite", onBasemapChange: () => {} });
 
-    const cluster = drawn.container?.querySelector(".maplibregl-ctrl-bottom-left");
+    const cluster = drawn.container?.querySelector(".maplibregl-ctrl-bottom-right");
     expect(cluster?.textContent).toBe("Satellite");
   });
 

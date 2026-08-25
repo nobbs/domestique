@@ -38,7 +38,6 @@
  * resting state is nothing picked and whose way back is a second press.
  */
 
-import { ToggleGroup } from "radix-ui";
 import type { ReactNode } from "react";
 import type { SurfaceKind } from "../api/types";
 import type { Highlight } from "../lib/highlight";
@@ -46,7 +45,21 @@ import type { BandShare } from "../lib/profile";
 import { GRADIENT_BANDS } from "../lib/profile";
 import type { SurfaceSummary } from "../lib/surface";
 import { SURFACE_STYLES } from "../lib/surface";
-import styles from "./RouteKey.module.css";
+import { ToggleGroup, ToggleGroupItem } from "./ui/toggle-group";
+
+const paintClasses = {
+  "band:0": "bg-[var(--grade-0)]",
+  "band:1": "bg-[var(--grade-1)]",
+  "band:2": "bg-[var(--grade-2)]",
+  "band:3": "bg-[var(--grade-3)]",
+  "band:4": "bg-[var(--grade-4)]",
+  "surface:asphalt": "bg-[var(--surface-asphalt)]",
+  "surface:paving": "bg-[var(--surface-paving)]",
+  "surface:compacted": "bg-[var(--surface-compacted)]",
+  "surface:gravel": "bg-[var(--surface-gravel)]",
+  "surface:ground": "bg-[var(--surface-ground)]",
+  "surface:unknown": "bg-[var(--surface-unsurveyed)]",
+} as const;
 
 /**
  * A share as a percentage, never rounded into a contradiction.
@@ -98,7 +111,7 @@ function chipValue(highlight: Highlight): string {
  */
 function MixBar({ children }: { children: ReactNode }) {
   return (
-    <span className={styles.bar} aria-hidden="true">
+    <span className="mb-1 flex h-1.5 w-full overflow-hidden rounded-sm" aria-hidden="true">
       {children}
     </span>
   );
@@ -150,36 +163,40 @@ export function RouteKey({
   };
 
   return (
-    <ToggleGroup.Root
-      type="multiple"
-      className={styles.key}
+    <ToggleGroup
+      className="flex w-full flex-col items-stretch gap-3 [&_[aria-pressed=false]]:data-[picked=true]:opacity-55"
       aria-label="Route key"
       data-picked={highlight ? "true" : undefined}
       value={highlight ? [chipValue(highlight)] : []}
       onValueChange={pick}
     >
       {bands.length > 0 ? (
-        <div className={styles.section}>
-          <h3 className={styles.heading}>Gradient</h3>
+        <div className="flex flex-col gap-1">
+          <h3 className="text-[11px] font-semibold tracking-[0.07em] text-[var(--ink-2)] uppercase">
+            Gradient
+          </h3>
           <MixBar>
             {bands.map((entry) => (
               <span
                 key={entry.band}
-                className={`${styles.paint} ${styles.fill}`}
+                className={`block min-w-px ${paintClasses[`band:${entry.band}` as keyof typeof paintClasses]}`}
                 data-band={entry.band}
                 style={{ width: segmentWidth(entry.share) }}
               />
             ))}
           </MixBar>
-          <ul className={styles.list} aria-label="Gradient bands">
+          <ul
+            className="flex flex-wrap gap-x-2 gap-y-1 text-xs text-[var(--ink-2)] tabular-nums"
+            aria-label="Gradient bands"
+          >
             {bands.map((entry) => {
               const band = GRADIENT_BANDS[entry.band];
               const share = formatShare(entry.share);
 
               return (
                 <li key={entry.band}>
-                  <ToggleGroup.Item
-                    className={styles.chip}
+                  <ToggleGroupItem
+                    className="-m-0.5 h-7 min-w-0 gap-1 rounded-md border border-transparent bg-transparent px-1.5 text-xs font-normal text-[var(--ink-2)] hover:border-[var(--rule)] hover:bg-transparent hover:text-[var(--ink)] focus-visible:ring-[var(--accent)] aria-pressed:border-[var(--accent)] aria-pressed:bg-[color-mix(in_srgb,var(--accent)_14%,transparent)] aria-pressed:text-[var(--ink)]"
                     value={chipValue(bandHighlight(entry.band))}
                     // The chips are read as a row of five and are terse about
                     // it, so the span each one covers is spoken rather than
@@ -188,13 +205,13 @@ export function RouteKey({
                     aria-label={`${band?.label}, ${band?.description}, ${share} of the route`}
                   >
                     <span
-                      className={`${styles.paint} ${styles.swatch}`}
+                      className={`size-4 shrink-0 rounded-sm border border-transparent forced-colors:border-[CanvasText] forced-colors:forced-color-adjust-none ${paintClasses[`band:${entry.band}` as keyof typeof paintClasses]}`}
                       data-band={entry.band}
                       aria-hidden="true"
                     />
                     <span>{band?.label}</span>
-                    <span className={styles.share}>{share}</span>
-                  </ToggleGroup.Item>
+                    <span className="text-[var(--ink)]">{share}</span>
+                  </ToggleGroupItem>
                 </li>
               );
             })}
@@ -202,29 +219,34 @@ export function RouteKey({
         </div>
       ) : null}
 
-      <div className={styles.section}>
-        <h3 className={styles.heading}>Surface</h3>
+      <div className="flex flex-col gap-1">
+        <h3 className="text-[11px] font-semibold tracking-[0.07em] text-[var(--ink-2)] uppercase">
+          Surface
+        </h3>
         {surface ? (
           <>
             <MixBar>
               {surface.shares.map((entry) => (
                 <span
                   key={entry.kind}
-                  className={`${styles.paint} ${styles.fill}`}
+                  className={`block min-w-px ${paintClasses[`surface:${entry.kind}` as keyof typeof paintClasses]}`}
                   data-surface={entry.kind}
                   style={{ width: segmentWidth(entry.share) }}
                 />
               ))}
             </MixBar>
-            <ul className={styles.list} aria-label="Surface classes">
+            <ul
+              className="flex flex-wrap gap-x-2 gap-y-1 text-xs text-[var(--ink-2)] tabular-nums"
+              aria-label="Surface classes"
+            >
               {surface.shares.map((entry) => {
                 const style = SURFACE_STYLES[entry.kind];
                 const share = formatShare(entry.share);
 
                 return (
                   <li key={entry.kind}>
-                    <ToggleGroup.Item
-                      className={styles.chip}
+                    <ToggleGroupItem
+                      className="-m-0.5 h-7 min-w-0 gap-1 rounded-md border border-transparent bg-transparent px-1.5 text-xs font-normal text-[var(--ink-2)] hover:border-[var(--rule)] hover:bg-transparent hover:text-[var(--ink)] focus-visible:ring-[var(--accent)] aria-pressed:border-[var(--accent)] aria-pressed:bg-[color-mix(in_srgb,var(--accent)_14%,transparent)] aria-pressed:text-[var(--ink)]"
                       value={chipValue(surfaceHighlight(entry.kind))}
                       // What the class means, for a key that has to explain
                       // "compacted" — spoken as part of the name, because a
@@ -233,22 +255,22 @@ export function RouteKey({
                       aria-label={`${style.label}, ${style.description}, ${share} of the route`}
                     >
                       <span
-                        className={`${styles.paint} ${styles.swatch}`}
+                        className={`size-4 shrink-0 rounded-sm border border-transparent forced-colors:border-[CanvasText] forced-colors:forced-color-adjust-none ${paintClasses[`surface:${entry.kind}` as keyof typeof paintClasses]}`}
                         data-surface={entry.kind}
                         aria-hidden="true"
                       />
                       <span>{style.label}</span>
-                      <span className={styles.share}>{share}</span>
-                    </ToggleGroup.Item>
+                      <span className="text-[var(--ink)]">{share}</span>
+                    </ToggleGroupItem>
                   </li>
                 );
               })}
             </ul>
           </>
         ) : (
-          <p className={styles.absent}>{surfaceAbsence}</p>
+          <p className="text-xs text-[var(--ink-2)]">{surfaceAbsence}</p>
         )}
       </div>
-    </ToggleGroup.Root>
+    </ToggleGroup>
   );
 }

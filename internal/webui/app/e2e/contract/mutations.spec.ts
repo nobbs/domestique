@@ -17,7 +17,7 @@ const SOURCE_SWITCH = "Hourly: Read from VeloPlanner";
 test("changing the schedule is stored and read back", async ({ bundlePage: page, apiCalls }) => {
   await openSync(page);
 
-  const switchControl = page.getByLabel(SOURCE_SWITCH);
+  const switchControl = page.getByRole("switch", { name: SOURCE_SWITCH });
   await expect(switchControl).toBeVisible();
   const wasScheduled = await switchControl.isChecked();
 
@@ -31,10 +31,14 @@ test("changing the schedule is stored and read back", async ({ bundlePage: page,
 
   // A reload proves the change reached SQLite instead of only the page's cache.
   await page.reload();
-  await expect(page.getByLabel(SOURCE_SWITCH)).toBeChecked({ checked: !wasScheduled });
+  await expect(page.getByRole("switch", { name: SOURCE_SWITCH })).toBeChecked({
+    checked: !wasScheduled,
+  });
 
-  await page.getByLabel(SOURCE_SWITCH).click();
-  await expect(page.getByLabel(SOURCE_SWITCH)).toBeChecked({ checked: wasScheduled });
+  await page.getByRole("switch", { name: SOURCE_SWITCH }).click();
+  await expect(page.getByRole("switch", { name: SOURCE_SWITCH })).toBeChecked({
+    checked: wasScheduled,
+  });
 });
 
 test("asking for a run now is accepted", async ({ bundlePage: page, apiCalls }) => {
@@ -50,7 +54,7 @@ test("asking for a run now is accepted", async ({ bundlePage: page, apiCalls }) 
   }).toPass();
   // The card is still the one the status view drives, and it did not fall into an
   // error state over a response with nothing in it to parse.
-  await expect(page.locator(".sync-card__error")).toHaveCount(0);
+  await expect(page.getByText("That run could not be started.")).toHaveCount(0);
   await expect(page.getByRole("region", { name: "Now" })).toBeVisible();
 });
 

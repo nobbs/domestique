@@ -21,6 +21,9 @@ vi.mock("./features/routes/RoutesPage", () => ({
 vi.mock("./features/sync/SyncPage", () => ({
   SyncPage: () => <p>the sync page</p>,
 }));
+vi.mock("./features/settings/SettingsPage", () => ({
+  SettingsPage: () => <p>the settings page</p>,
+}));
 
 const { App } = await import("./App");
 
@@ -92,6 +95,13 @@ describe("the client routes", () => {
 
     expect(address()).toBe("/sync");
     expect(screen.getByText("the sync page")).toBeInTheDocument();
+  });
+
+  it("keeps settings as a deep-linkable client page", () => {
+    open("/settings");
+
+    expect(address()).toBe("/settings");
+    expect(screen.getByText("the settings page")).toBeInTheDocument();
   });
 });
 

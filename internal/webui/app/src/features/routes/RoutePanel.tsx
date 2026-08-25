@@ -115,7 +115,7 @@ export function RoutePanel({
   const movingSeconds = movingSecondsOverride ?? route.movingSeconds;
 
   return (
-    <section className="panel route-panel" aria-label={route.title}>
+    <section className="flex w-[32.5rem] max-w-full flex-col gap-4" aria-label={route.title}>
       {/*
        * The way back, and the only thing above the name: this panel replaced
        * the search, so a reader who opened a route by accident has to be able
@@ -125,13 +125,17 @@ export function RoutePanel({
        * where leaving goes; the cross is the one a reader looks for without
        * reading anything, and it sits where every dismissable thing keeps it.
        */}
-      <div className="route-panel__header">
-        <button className="route-panel__back" type="button" onClick={onClose}>
+      <div className="flex items-center justify-between gap-2">
+        <button
+          className="inline-flex items-center gap-1 text-sm text-[var(--ink-2)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
+          type="button"
+          onClick={onClose}
+        >
           <IconArrowLeft size={16} stroke={2} aria-hidden="true" />
           <span>{back}</span>
         </button>
         <button
-          className="route-panel__close"
+          className="inline-flex size-8 items-center justify-center rounded-lg text-[var(--ink-2)] hover:bg-[var(--base)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
           type="button"
           onClick={onClose}
           aria-label="Close the route"
@@ -139,17 +143,19 @@ export function RoutePanel({
           <IconX size={18} stroke={2} aria-hidden="true" />
         </button>
       </div>
-      <div className="route-panel__name">
-        <h2 className="route-panel__title">{route.title}</h2>
+      <div>
+        <h2 className="text-xl font-semibold tracking-tight">{route.title}</h2>
         {/*
          * Which source this stage came from. A quiet label rather than a logo:
          * this is a private tool with two sources, not a marketplace, and real
          * text is what makes it distinguishable by accessible name alone.
          */}
-        <span className="source-label">{providerLabel(route.provider)}</span>
-        {subtitle === "" ? null : <p className="route-panel__subtitle">{subtitle}</p>}
+        <span className="text-xs font-semibold tracking-[0.06em] text-[var(--ink-2)] uppercase">
+          {providerLabel(route.provider)}
+        </span>
+        {subtitle === "" ? null : <p className="mt-1 text-sm text-[var(--ink-2)]">{subtitle}</p>}
       </div>
-      <dl className="route-panel__figures">
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-3">
         <div>
           <dt>Distance</dt>
           <dd>{formatDistance(route.distanceMetres, unitSystem)}</dd>
@@ -174,7 +180,7 @@ export function RoutePanel({
           <dd>
             {formatMovingTime(movingSeconds)}
             {movingSeconds !== undefined && route.validation ? (
-              <span className="route-panel__moving-time-uncertainty">
+              <span className="ml-1 text-xs text-[var(--ink-2)]">
                 {formatMovingTimeUncertainty(route.validation)}
               </span>
             ) : null}
@@ -206,7 +212,7 @@ export function RoutePanel({
         highlight={highlight}
         onHighlightChange={onHighlightChange}
       />
-      <div className="route-panel__actions">
+      <div className="flex flex-wrap gap-2 border-t border-[var(--rule)] pt-4">
         <SourceRouteLink
           provider={route.provider}
           baseUrl={sourceBaseUrls[route.provider]}

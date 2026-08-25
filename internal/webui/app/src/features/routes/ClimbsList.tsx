@@ -28,10 +28,10 @@ export function ClimbsList({ climbs, onSelect, unitSystem }: ClimbsListProps) {
   }
 
   return (
-    <section className="route-panel__climbs" aria-labelledby="climbs-heading">
-      <h3 className="route-panel__climbs-heading" id="climbs-heading">
+    <section className="border-t border-[var(--rule)] pt-4" aria-labelledby="climbs-heading">
+      <h3 id="climbs-heading">
         <button
-          className="route-panel__climbs-toggle"
+          className="flex w-full items-center gap-2 text-left font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
           type="button"
           aria-expanded={expanded}
           aria-label={`${expanded ? "Hide" : "Show"} ${climbs.length} ${climbs.length === 1 ? "climb" : "climbs"}`}
@@ -39,9 +39,11 @@ export function ClimbsList({ climbs, onSelect, unitSystem }: ClimbsListProps) {
           onClick={() => setExpanded((current) => !current)}
         >
           <span>Climbs</span>
-          <span className="route-panel__climbs-count">{climbs.length}</span>
+          <span className="rounded-full bg-[var(--base)] px-1.5 py-0.5 text-xs text-[var(--ink-2)]">
+            {climbs.length}
+          </span>
           <IconChevronsRight
-            className="route-panel__climbs-chevron"
+            className={expanded ? "rotate-90 transition-transform" : "transition-transform"}
             aria-hidden="true"
             size={16}
             stroke={2}
@@ -49,14 +51,18 @@ export function ClimbsList({ climbs, onSelect, unitSystem }: ClimbsListProps) {
         </button>
       </h3>
       {expanded ? (
-        <ol className="route-panel__climbs-list" id="climbs-list">
+        <ol className="mt-2 grid gap-1" id="climbs-list">
           {climbs.map((climb) => (
             <li key={climb.startMetres}>
-              <button className="route-panel__climb" type="button" onClick={() => onSelect(climb)}>
-                <span className="route-panel__climb-distance">
+              <button
+                className="grid w-full grid-cols-[auto_1fr] gap-x-3 rounded-lg p-2 text-left text-sm hover:bg-[var(--base)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
+                type="button"
+                onClick={() => onSelect(climb)}
+              >
+                <span className="font-semibold tabular-nums">
                   {formatDistance(climb.distanceMetres, unitSystem)}
                 </span>
-                <span className="route-panel__climb-figures">
+                <span className="text-[var(--ink-2)]">
                   {formatAscent(climb.ascentMetres, unitSystem)} · avg{" "}
                   {formatGradient(climb.averageGradePercent)} · max{" "}
                   {formatGradient(climb.maxGradePercent)}

@@ -9,9 +9,13 @@
  */
 
 import { IconAdjustmentsHorizontal } from "@tabler/icons-react";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { SURFACE_KINDS } from "../../api/types";
-import { Button } from "../../components/Button";
+import { Button } from "../../components/ui/button";
+import { Checkbox } from "../../components/ui/checkbox";
+import { FieldLabel } from "../../components/ui/field";
+import { Input } from "../../components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "../../components/ui/popover";
 import type { LibraryFilters, NumericRange } from "../../lib/filters";
 import { EMPTY_FILTERS, hasActiveFilters } from "../../lib/filters";
 import { SURFACE_STYLES } from "../../lib/surface";
@@ -68,6 +72,7 @@ function displayOf(stored: number | null, toDisplay: (stored: number) => number)
  * for digits and a point.
  */
 function BoundInput({ label, stored, onChange, toDisplay, toStored }: BoundInputProps) {
+  const id = useId();
   const [text, setText] = useState(() => displayOf(stored, toDisplay));
   const [lastStored, setLastStored] = useState(stored);
 
@@ -77,9 +82,11 @@ function BoundInput({ label, stored, onChange, toDisplay, toStored }: BoundInput
   }
 
   return (
-    <label className="filter-panel__bound">
-      {label}
-      <input
+    <label className="grid gap-1 text-xs text-[var(--ink-2)]" htmlFor={id}>
+      <span>{label}</span>
+      <Input
+        id={id}
+        className="bg-[var(--panel)]"
         type="text"
         inputMode="decimal"
         value={text}
@@ -116,8 +123,8 @@ function RangeRow({
   toStored = (value) => value,
 }: RangeRowProps) {
   return (
-    <fieldset className="filter-panel__range">
-      <legend>
+    <fieldset className="grid grid-cols-2 gap-2">
+      <legend className="col-span-2 text-sm font-semibold">
         {legend} ({unit})
       </legend>
       <BoundInput
@@ -147,12 +154,9 @@ export function FilterPanel({
   const active = hasActiveFilters(filters);
 
   return (
-    <div className="filter-panel">
-      <button
-        className="filter-panel__toggle"
-        type="button"
-        aria-expanded={expanded}
-        data-active={active ? "" : undefined}
+    <Popover open={expanded} onOpenChange={onExpandedChange}>
+      <PopoverTrigger
+        className={`inline-flex size-8 items-center justify-center rounded-lg border bg-[var(--panel)] text-[var(--ink-2)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] ${active ? "border-[var(--accent)]" : "border-[var(--rule)]"}`}
         // The mark says "filters are set" to anyone who can see it; the name
         // says so for anyone who cannot, the same split `BasemapPicker` uses.
         aria-label={
@@ -162,13 +166,14 @@ export function FilterPanel({
               ? "Show the library filters — filters are active"
               : "Show the library filters"
         }
-        {...(expanded ? { "aria-controls": FILTER_PANEL_ID } : {})}
-        onClick={() => onExpandedChange(!expanded)}
       >
         <IconAdjustmentsHorizontal size={16} stroke={1.6} aria-hidden="true" />
-      </button>
-      {expanded ? (
-        <div className="filter-panel__body" id={FILTER_PANEL_ID}>
+      </PopoverTrigger>
+      <PopoverContent
+        className="w-[min(23rem,calc(100vw-1.5rem))] gap-4 bg-[var(--panel)] p-3 shadow-[var(--shadow)]"
+        id={FILTER_PANEL_ID}
+      >
+        <div className="grid gap-4">
           <RangeRow
             legend="Distance"
             unit="km"
@@ -194,29 +199,32 @@ export function FilterPanel({
             range={filters.maxGradientPercent}
             onChange={(next) => onFiltersChange({ ...filters, maxGradientPercent: next })}
           />
-          <fieldset className="filter-panel__surfaces">
-            <legend>Surface</legend>
+          <fieldset className="grid gap-2">
+            <legend className="text-sm font-semibold">Surface</legend>
             {SURFACE_KINDS.map((kind) => (
-              <label className="filter-panel__surface" key={kind}>
-                <input
-                  type="checkbox"
+              <FieldLabel className="flex items-center gap-2 text-sm" key={kind}>
+                <Checkbox
                   checked={filters.surfaces.includes(kind)}
-                  onChange={(event) => {
-                    const surfaces = event.target.checked
+                  onCheckedChange={(checked) => {
+                    const surfaces = checked
                       ? [...filters.surfaces, kind]
                       : filters.surfaces.filter((selected) => selected !== kind);
                     onFiltersChange({ ...filters, surfaces });
                   }}
                 />
                 {SURFACE_STYLES[kind].label}
-              </label>
+              </FieldLabel>
             ))}
           </fieldset>
-          <Button disabled={!active} onClick={() => onFiltersChange(EMPTY_FILTERS)}>
+          <Button
+            variant="outline"
+            disabled={!active}
+            onClick={() => onFiltersChange(EMPTY_FILTERS)}
+          >
             Clear filters
           </Button>
         </div>
-      ) : null}
-    </div>
+      </PopoverContent>
+    </Popover>
   );
 }

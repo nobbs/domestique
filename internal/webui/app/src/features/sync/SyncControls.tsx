@@ -18,7 +18,10 @@ import { retrySurfaceEnrichment, setSyncSchedule, triggerSync } from "../../api/
 import { statusQuery, webUIConfigQuery } from "../../api/queries";
 import type { Status, SyncActive, SyncPhase, SyncPhaseRun, SyncSchedule } from "../../api/types";
 import { SYNC_PHASES } from "../../api/types";
-import { Button } from "../../components/Button";
+import { Button } from "../../components/ui/button";
+import { Skeleton } from "../../components/ui/skeleton";
+import { Spinner } from "../../components/ui/spinner";
+import { Switch } from "../../components/ui/switch";
 import { formatTimestamp } from "../../lib/format";
 import { syncGuidance } from "../../lib/syncGuidance";
 import { phaseLabels, runningPhaseLabels } from "../../lib/syncLabels";
@@ -150,10 +153,10 @@ export function SyncControls() {
   });
 
   if (isPending) {
-    return null;
+    return <Skeleton className="h-28 w-full" role="status" aria-label="Loading sync controls" />;
   }
   if (isError) {
-    return <p className="sync-card__error">The service did not say what it is doing.</p>;
+    return <p className="text-sm text-[var(--alert)]">The service did not say what it is doing.</p>;
   }
 
   // Both switches travel on every change: the service refuses a half-named
@@ -170,7 +173,7 @@ export function SyncControls() {
        * its progress is something to look at when they choose to, and the text
        * only changes when the run does.
        */}
-      <p className="sync-card__line" aria-live="polite">
+      <p className="text-sm text-[var(--ink-2)]" aria-live="polite">
         {data.sync.active
           ? activeSummary(data.sync.state, data.sync.active, runningLabels)
           : idleSummary(data)}
@@ -184,7 +187,7 @@ export function SyncControls() {
        * why it is offered on its own rather than folded into "Run now".
        */}
       {data.sync.surface.total > 0 && data.sync.surface.classified < data.sync.surface.total ? (
-        <p className="sync-card__line">
+        <p className="text-sm text-[var(--ink-2)]">
           Surface classified for {data.sync.surface.classified} of {data.sync.surface.total}{" "}
           {data.sync.surface.total === 1 ? "route" : "routes"}. Each unclassified route is tried
           again after every read.
@@ -193,10 +196,12 @@ export function SyncControls() {
               {" "}
               {data.sync.surface.incomplete} could not be classified last time.{" "}
               <Button
-                variant="standard"
+                variant="outline"
+                size="sm"
                 disabled={retryClassification.isPending}
                 onClick={() => retryClassification.mutate()}
               >
+                {retryClassification.isPending ? <Spinner aria-label="Requesting retry" /> : null}
                 {retryClassification.isPending ? "Requesting…" : "Retry now"}
               </Button>
             </>
@@ -204,13 +209,13 @@ export function SyncControls() {
         </p>
       ) : null}
       {retryClassification.isError ? (
-        <p className="sync-card__error" role="alert">
+        <p className="text-sm text-[var(--alert)]" role="alert">
           {retryClassification.error instanceof Error && retryClassification.error.message
             ? retryClassification.error.message
             : "That retry could not be started."}
         </p>
       ) : null}
-      <ul className="sync-card__list">
+      <ul className="grid gap-3">
         {SYNC_PHASES.map((phase) => {
           const enabled = data.sync.schedule[phase];
           const phaseRun = data.sync.phases[phase];
@@ -219,44 +224,53 @@ export function SyncControls() {
             : undefined;
 
           return (
-            <li className="sync-row" key={phase}>
-              <div className="sync-row__text">
-                <span className="sync-row__title">{labels[phase]}</span>
-                <span className="sync-row__detail">{runSummary(phase, phaseRun)}</span>
+            <li
+              className="flex flex-col gap-3 rounded-lg border border-[var(--rule)] p-3 sm:flex-row sm:items-start sm:justify-between"
+              key={phase}
+            >
+              <div className="flex min-w-0 flex-col gap-1 text-sm">
+                <span className="font-semibold">{labels[phase]}</span>
+                <span className="text-[var(--ink-2)]">{runSummary(phase, phaseRun)}</span>
                 {/*
                  * A gate that held is not an error the operator caused, so it is
                  * stated rather than announced: the page is being read, not
                  * interrupted, and the run it describes finished some time ago.
                  */}
                 {guidance ? (
-                  <span className="sync-guidance" data-kind={guidance.kind}>
+                  <span
+                    className={
+                      guidance.kind === "blocked" ? "text-[var(--hold)]" : "text-[var(--alert)]"
+                    }
+                    data-kind={guidance.kind}
+                  >
                     <strong>{guidance.headline}</strong> {guidance.remediation}
                   </span>
                 ) : null}
               </div>
-              <div className="sync-row__actions">
+              <div className="flex shrink-0 flex-wrap items-center gap-3">
                 {/*
                  * Both rows carry the same two words, so the visible text alone
                  * names neither half. The accessible name says which one, since
-                 * a reader arriving at the second checkbox has no row above it
+                 * a reader arriving at the second switch has no row above it
                  * to tell them apart. The interval is the service's own and is
                  * fixed at an hour, so the switch can say what it schedules.
                  */}
-                <label className="sync-row__switch">
-                  <input
-                    type="checkbox"
+                <div className="flex items-center gap-2 text-sm">
+                  <Switch
                     checked={enabled}
                     disabled={schedule.isPending}
-                    onChange={() => toggle(phase)}
+                    onCheckedChange={() => toggle(phase)}
                     aria-label={`Hourly: ${labels[phase]}`}
                   />
                   <span>Hourly</span>
-                </label>
+                </div>
                 <Button
+                  variant="outline"
                   disabled={run.isPending}
                   onClick={() => run.mutate(phase)}
                   aria-label={`Run now: ${labels[phase]}`}
                 >
+                  {run.isPending ? <Spinner aria-label={`Running ${labels[phase]}`} /> : null}
                   Run now
                 </Button>
               </div>
@@ -270,12 +284,12 @@ export function SyncControls() {
        * is least suited to.
        */}
       {schedule.isError ? (
-        <p className="sync-card__error" role="alert">
+        <p className="text-sm text-[var(--alert)]" role="alert">
           The schedule was not changed. It is still what it was.
         </p>
       ) : null}
       {run.isError ? (
-        <p className="sync-card__error" role="alert">
+        <p className="text-sm text-[var(--alert)]" role="alert">
           {run.error instanceof Error && run.error.message
             ? run.error.message
             : "That run could not be started."}

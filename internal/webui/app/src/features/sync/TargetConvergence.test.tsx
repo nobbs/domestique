@@ -338,7 +338,7 @@ describe("TargetConvergence", () => {
     // Both halves matter: what goes, and what is left alone. An operator
     // reaching for this is already worried about the second.
     expect(screen.getByText(/Routes you made\s+yourself are left alone/)).toBeInTheDocument();
-    expect(screen.getByText(/the next sync puts these back/)).toBeInTheDocument();
+    expect(screen.getByText(/The next sync puts these back/)).toBeInTheDocument();
   });
 
   it("abandons a clear that is cancelled", async () => {

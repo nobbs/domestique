@@ -87,11 +87,11 @@ describe("RouteGlyph", () => {
     expect(screen.getByRole("img", { name: /Eich Rundkurs 90/ })).toBeInTheDocument();
   });
 
-  it("renders a placeholder instead of an empty graphic", () => {
-    const { container } = render(<RouteGlyph coordinates={[]} title="Empty" band={0} />);
+  it("renders a presentational placeholder instead of an empty graphic", () => {
+    render(<RouteGlyph coordinates={[]} title="Empty" band={0} />);
 
     expect(screen.queryByRole("img")).not.toBeInTheDocument();
-    expect(container.querySelector(".route-glyph--empty")).not.toBeNull();
+    expect(screen.getByRole("presentation")).toBeInTheDocument();
   });
 });
 

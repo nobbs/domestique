@@ -14,23 +14,12 @@ import { expect, openLibrary, openSync, test } from "./fixtures";
 /** A reference no recorded run can have, standing in for a pruned one. */
 const PRUNED = "000000000000";
 
-test("the page puts visible settings before the operational questions", async ({
-  offlinePage: page,
-}) => {
+test("the page puts notices before the operational questions", async ({ offlinePage: page }) => {
   await openSync(page);
 
-  const headings = page.getByRole("heading", { level: 2 });
-  await expect(headings).toHaveText([
-    "Settings",
-    "Now",
-    "What the accounts hold",
-    "What has happened",
-  ]);
-  await expect(page.getByRole("radio", { name: "Metric (km)" })).toBeVisible();
-  await expect(page.getByRole("radio", { name: "Imperial (mi)" })).toBeVisible();
-  await expect(page.getByRole("radio", { name: "System" })).toBeVisible();
-  await expect(page.getByRole("radio", { name: "Light" })).toBeVisible();
-  await expect(page.getByRole("radio", { name: "Dark" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Now" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "What the accounts hold" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "What has happened" })).toBeVisible();
   // Each card really read its view: the schedule and the run control come from
   // the status, the slots from the same status, and the rows from the history.
   await expect(page.getByRole("button", { name: "Run now: Read from VeloPlanner" })).toBeVisible();
@@ -54,7 +43,7 @@ test("a notification about a run that is gone says so", async ({ offlinePage: pa
   // The notice is the first card, above the three: an operator who followed a
   // notification is told what became of the run it named before they are told
   // anything else.
-  const notice = page.locator(".run-notice");
+  const notice = page.getByRole("alert").filter({ hasText: "That run is no longer kept" });
   await expect(notice).toBeVisible();
   await expect(notice).toContainText("That run is no longer kept");
   await expect(notice).toContainText(PRUNED);
@@ -67,12 +56,16 @@ test("a notification about a recorded run lands on that run", async ({ offlinePa
   // Whatever the demo last recorded, taken from the history rather than assumed:
   // the assertion is that a reference read off a row resolves back to a notice
   // about that same row.
-  const reference = await page.locator(".run-row__reference").first().innerText();
+  const reference = (
+    await page.getByText("Run reference", { exact: true }).first().locator("..").innerText()
+  )
+    .replace("Run reference", "")
+    .trim();
   expect(reference).not.toBe("");
 
   await page.goto(`/sync?run=${reference.trim()}`);
 
-  const notice = page.locator(".run-notice");
+  const notice = page.getByRole("alert").filter({ hasText: reference.trim() });
   await expect(notice).toBeVisible();
   await expect(notice).toContainText(reference.trim());
   await expect(notice).not.toContainText("no longer kept");
@@ -81,7 +74,7 @@ test("a notification about a recorded run lands on that run", async ({ offlinePa
 test("the foot of the page names the running build", async ({ offlinePage: page }) => {
   await openSync(page);
 
-  const build = page.locator(".sync-page__build a");
+  const build = page.getByRole("link", { name: "a development build" });
   await expect(build).toBeVisible();
   // The demo is a local build, so the link is the repository and the words say
   // which kind of process this is rather than printing a commit it does not have.

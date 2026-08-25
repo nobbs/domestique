@@ -208,7 +208,10 @@ describe("RunNotice", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Run the write again" }));
 
-    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(await screen.findByText("request failed with status 409")).toHaveAttribute(
+      "role",
+      "alert",
+    );
   });
 
   /*

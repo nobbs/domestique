@@ -29,7 +29,6 @@ import { routeKey } from "../../api/types";
 import { Layout } from "../../components/Layout";
 import { RouteOverlay, SURFACE_ATTRIBUTION } from "../../components/RouteOverlay";
 import { ErrorMessage, StatusMessage } from "../../components/StatusMessage";
-import { Wordmark } from "../../components/Wordmark";
 import { basemapFor, useBasemapChoice, usePrefersDarkScheme } from "../../lib/basemap";
 import type { Climb } from "../../lib/climbs";
 import { findClimbs } from "../../lib/climbs";
@@ -519,10 +518,6 @@ export function RoutesPage({ themeChoice }: RoutesPageProps) {
 
   return (
     <Layout
-      expanded={query.trim() !== "" || filtersExpanded || selectedKey !== null || openKey !== null}
-      // Only an open route: the results column is deliberately no wider than a
-      // line worth reading, and the extra width is the profile's, not the list's.
-      wide={openKey !== null}
       map={
         basemap ? (
           <LibraryMap
@@ -570,7 +565,6 @@ export function RoutesPage({ themeChoice }: RoutesPageProps) {
        * into the middle of a hierarchy. It is not drawn: the map is the title.
        */}
       <h1 className="visually-hidden">Route library</h1>
-      <Wordmark />
       {routes.isError ? <ErrorMessage what="the route library" error={routes.error} /> : null}
       {config.isError ? <ErrorMessage what="the map configuration" error={config.error} /> : null}
       {/*

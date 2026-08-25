@@ -64,13 +64,13 @@ export function StartTimePicker({ value, onChange, rideSeconds }: StartTimePicke
   );
 
   return (
-    <div className="start-time-picker">
-      <label className="start-time-picker__label" htmlFor={INPUT_ID}>
+    <div className="grid gap-1">
+      <label className="text-sm font-semibold" htmlFor={INPUT_ID}>
         Ride start
       </label>
       <input
         id={INPUT_ID}
-        className="start-time-picker__input"
+        className="h-8 rounded-lg border border-[var(--rule)] bg-[var(--panel)] px-2 text-sm"
         type="datetime-local"
         // The browser's own hint for the same window this refuses by hand —
         // cheap to offer, and it steers a picker away from the refusal before
@@ -120,7 +120,7 @@ export function StartTimePicker({ value, onChange, rideSeconds }: StartTimePicke
         }}
       />
       {refusal ? (
-        <p className="start-time-picker__refusal" id="start-time-refusal" role="alert">
+        <p className="text-xs text-[var(--alert)]" id="start-time-refusal" role="alert">
           {refusal}
         </p>
       ) : null}
