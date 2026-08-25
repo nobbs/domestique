@@ -149,7 +149,10 @@ export function SyncControls() {
   });
   const sourceRun = useTriggerSourceSync({ mutation: { onSuccess: invalidateStatus } });
   const targetsRun = useTriggerTargetsSync({ mutation: { onSuccess: invalidateStatus } });
-  const runError = sourceRun.error ?? targetsRun.error;
+  // Each phase now has its own mutation, so each keeps its own terminal state
+  // and a failure would otherwise outlive the successful run of the other half.
+  // The banner belongs to whichever phase was asked for last.
+  const lastRun = targetsRun.submittedAt >= sourceRun.submittedAt ? targetsRun : sourceRun;
   const retryClassification = useTriggerSurfaceSync({
     mutation: { onSuccess: invalidateStatus },
   });
@@ -291,10 +294,10 @@ export function SyncControls() {
           The schedule was not changed. It is still what it was.
         </p>
       ) : null}
-      {sourceRun.isError || targetsRun.isError ? (
+      {lastRun.isError ? (
         <p className="text-sm text-[var(--alert)]" role="alert">
-          {runError instanceof Error && runError.message
-            ? runError.message
+          {lastRun.error instanceof Error && lastRun.error.message
+            ? lastRun.error.message
             : "That run could not be started."}
         </p>
       ) : null}

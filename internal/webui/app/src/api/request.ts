@@ -30,10 +30,12 @@ export async function domestiqueRequest<T>(url: string, options: RequestInit): P
 
   const response = await fetch(url, { ...options, credentials: "same-origin", headers });
   let payload: unknown;
+  let readable = true;
   try {
     payload = await response.json();
   } catch {
     payload = undefined;
+    readable = false;
   }
   if (!response.ok) {
     const error = (payload as { error?: { code?: unknown; message?: unknown } } | undefined)?.error;
@@ -43,6 +45,16 @@ export async function domestiqueRequest<T>(url: string, options: RequestInit): P
       typeof error?.message === "string"
         ? error.message
         : `request failed with status ${response.status}`,
+    );
+  }
+  // A success whose body did not parse is a transport failure, not an empty
+  // answer. Returning `data: undefined` would push it downstream to surface as
+  // a property access on nothing, naming neither the request nor the problem.
+  if (!readable && response.status !== 204) {
+    throw new ApiError(
+      response.status,
+      "unreadable_response",
+      `${options.method ?? "GET"} ${url} returned a body that is not JSON`,
     );
   }
 

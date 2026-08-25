@@ -217,14 +217,19 @@ export function RunNotice({ reference }: { reference: string | null }) {
   );
 }
 
+// Each phase has its own mutation, so each keeps its own terminal state. The
+// failure reported is the one belonging to whichever phase was asked for last,
+// rather than either half's outliving a later, successful run of the other.
 function noticePhaseMutation(
   source: ReturnType<typeof useTriggerSourceSync>,
   targets: ReturnType<typeof useTriggerTargetsSync>,
 ) {
+  const latest = targets.submittedAt >= source.submittedAt ? targets : source;
+
   return {
     isPending: source.isPending || targets.isPending,
-    isError: source.isError || targets.isError,
-    error: source.error ?? targets.error,
+    isError: latest.isError,
+    error: latest.error,
     mutate: (phase: SyncPhase) => (phase === "source" ? source : targets).mutate(),
   };
 }
