@@ -130,22 +130,6 @@ func TestOpenAPIContractResponses(t *testing.T) {
 
 func statusCode(status int) string { return strconv.Itoa(status) }
 
-// contractPathValues fills a documented path template with values the handlers
-// accept, so a documented operation can be turned into a request to probe.
-var contractPathValues = strings.NewReplacer(
-	"{provider}", "veloplanner", "{routeId}", "12", "{stage}", "1",
-	"{target}", "rider-a", "{asset}", "app.js",
-)
-
-// contractEscapedPathValues fills the same templates with values carrying a
-// percent-encoded reserved character. A target identifier is operator-
-// configured free text, so "a%2Fb" is a legitimate way to address a configured
-// slot rather than a malformed request.
-var contractEscapedPathValues = strings.NewReplacer(
-	"{provider}", "velo%2Fplanner", "{routeId}", "12", "{stage}", "1",
-	"{target}", "a%2Fb", "{asset}", "app%2Ejs",
-)
-
 // TestContractStateChangeMatchesTheDocumentedOriginParameter couples the
 // hand-written same-origin guard to the document the routes are generated from.
 // The guard runs before generated parameter binding, so it cannot be derived
@@ -157,6 +141,18 @@ var contractEscapedPathValues = strings.NewReplacer(
 // origin — so nothing else would catch it.
 func TestContractStateChangeMatchesTheDocumentedOriginParameter(t *testing.T) {
 	document := loadOpenAPIContract(t)
+	// Values the handlers accept, so a documented operation becomes a request
+	// to probe; and the same templates carrying a percent-encoded reserved
+	// character. A target identifier is operator-configured free text, so
+	// "a%2Fb" addresses a configured slot rather than being malformed.
+	plain := strings.NewReplacer(
+		"{provider}", "veloplanner", "{routeId}", "12", "{stage}", "1",
+		"{target}", "rider-a", "{asset}", "app.js",
+	)
+	escapedValues := strings.NewReplacer(
+		"{provider}", "velo%2Fplanner", "{routeId}", "12", "{stage}", "1",
+		"{target}", "a%2Fb", "{asset}", "app%2Ejs",
+	)
 
 	for path, operations := range document.Paths {
 		for method, operation := range operations {
@@ -164,7 +160,7 @@ func TestContractStateChangeMatchesTheDocumentedOriginParameter(t *testing.T) {
 				request := httptest.NewRequestWithContext(
 					context.Background(),
 					strings.ToUpper(method),
-					contractPathValues.Replace(path),
+					plain.Replace(path),
 					http.NoBody,
 				)
 				assert.Equal(t, operation.declaresOrigin(), contractStateChange(request),
@@ -177,7 +173,7 @@ func TestContractStateChangeMatchesTheDocumentedOriginParameter(t *testing.T) {
 				escaped := httptest.NewRequestWithContext(
 					context.Background(),
 					strings.ToUpper(method),
-					contractEscapedPathValues.Replace(path),
+					escapedValues.Replace(path),
 					http.NoBody,
 				)
 				assert.Equal(t, operation.declaresOrigin(), contractStateChange(escaped),

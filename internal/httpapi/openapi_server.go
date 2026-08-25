@@ -53,7 +53,10 @@ func (response capturedResponse) write(writer http.ResponseWriter) error {
 }
 
 func (server *contractServer) capture(ctx context.Context, handler func(http.ResponseWriter, *http.Request)) capturedResponse {
-	request, _ := ctx.Value(contractRequestKey{}).(*http.Request)
+	request, ok := ctx.Value(contractRequestKey{}).(*http.Request)
+	if !ok {
+		return capturedResponse{}
+	}
 
 	return capturedResponse{request: request, handler: handler}
 }
