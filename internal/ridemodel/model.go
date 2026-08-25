@@ -35,17 +35,6 @@ const (
 	// what guarantees the solver terminates on every segment, pathological
 	// gradients included.
 	bisectionIterations = 60
-	// minMeaningfulCoastingSpeedMetresPerSecond is the floor below which
-	// coasting is treated as not applicable rather than as a valid, if slow,
-	// answer. Right at the descent cutoff, the gravity component pulling a
-	// freewheeling bike forward can be a floating-point hair away from the
-	// rolling resistance opposing it; the driving force this produces is
-	// technically positive but arbitrarily small, and the coasting equation
-	// has no lower bound of its own the way the powered bisection's bracket
-	// does. A rider would simply pedal through ground that shallow rather
-	// than freewheel at a near-standstill, so this sends the segment to the
-	// powered branch instead of crediting a below-walking-pace crawl.
-	minMeaningfulCoastingSpeedMetresPerSecond = 1.0
 )
 
 // modelVersion identifies the exact set of constants below. #213 accepted
@@ -56,7 +45,7 @@ const (
 // changes, or a code upgrade that changes what a stage's prediction means
 // would leave a stale cached duration looking exactly as current as it did
 // before the upgrade.
-const modelVersion = "hybrid-v1"
+const modelVersion = "hybrid-v2"
 
 // The non-varying half of #213's accepted hybrid model: independently
 // defensible physical constants, not values #239's benchmark found this
@@ -65,10 +54,14 @@ const (
 	// hybridPhysicsWeight is the physics half's share of the blended time; the
 	// route-calibrated linear half takes the remainder. #213 settled on an
 	// equal weighting.
-	hybridPhysicsWeight            = 0.5
-	fixedDriveEfficiency           = 0.975
-	fixedAirDensityKGPerM3         = 1.225
-	fixedDescentCutoffPercent      = -1.0
+	hybridPhysicsWeight    = 0.5
+	fixedDriveEfficiency   = 0.975
+	fixedAirDensityKGPerM3 = 1.225
+	// fixedDescentCapMetresPerSecond stands in for a rider braking into a
+	// descent rather than letting one run away, and is the only bound on a
+	// descending segment: the rider holds the configured power there as
+	// everywhere else. See segmentSpeedMetresPerSecond for why freewheeling
+	// is not modelled separately.
 	fixedDescentCapMetresPerSecond = 60.0 / 3.6 // 60 km/h
 )
 
@@ -184,28 +177,23 @@ func windowedGradientPercent(distances []float64, points []route.Point) []float6
 	return gradients
 }
 
-// segmentSpeedMetresPerSecond picks the branch: below the cutoff the rider
-// coasts, at or above it the rider holds the configured power.
+// segmentSpeedMetresPerSecond solves one segment at the configured power,
+// whatever its gradient, and brakes the answer to the descent cap.
 //
-// Coasting is offered, never forced. On rough ground with a shallow cutoff, a
-// gradient just past it can still leave rolling resistance stronger than the
-// gravity component pulling the coasting bike forward — gravity alone would
-// have the bike stall rather than freewheel. A real rider would simply keep
-// pedalling through a stretch that mild, so this falls back to the powered
-// branch rather than crediting that one segment a near-zero crawl, which
-// would otherwise let a single borderline segment dominate a whole stage's
-// time.
+// An earlier model switched to freewheeling below a -1% gradient. Adding
+// power to a coasting bike can only make it faster — both branches solve the
+// same cubic, one with P·η on the right where the other has zero — so that
+// branch could only ever credit a segment less speed than the rider was
+// already producing, and just past the cutoff it credited far less: 11 km/h
+// down a 1.5% grade a rider covers at better than 30. #239's corpus scores a
+// steeper cutoff and no cutoff at all within 0.01 percentage points of each
+// other, so nothing is lost by dropping the branch that produced the cliff.
 //
 //nolint:gocritic // value param: same reasoning as Predict above.
 func segmentSpeedMetresPerSecond(gradientPercent, crr float64, coefficients Coefficients) float64 {
 	sinTheta, cosTheta := gradientTrig(gradientPercent)
-	if gradientPercent <= fixedDescentCutoffPercent {
-		if speed, coasting := coastingSpeedMetresPerSecond(crr, sinTheta, cosTheta, coefficients); coasting {
-			return speed
-		}
-	}
 
-	return poweredSpeedMetresPerSecond(crr, sinTheta, cosTheta, coefficients)
+	return min(poweredSpeedMetresPerSecond(crr, sinTheta, cosTheta, coefficients), fixedDescentCapMetresPerSecond)
 }
 
 // gradientTrig converts a percent gradient (rise over run, as a percentage) to
@@ -254,37 +242,6 @@ func poweredSpeedMetresPerSecond(crr, sinTheta, cosTheta float64, coefficients C
 	}
 
 	return (low + high) / 2
-}
-
-// coastingSpeedMetresPerSecond solves 0 = Crr·m·g·cosθ + m·g·sinθ +
-// ½·ρ·CdA·v² for the speed at which gravity balances drag and rolling
-// resistance with no pedalling power, then bounds it. The upper bound has no
-// physical justification of its own — it stands in for a rider braking into a
-// descent rather than free-wheeling to whatever speed drag alone would allow.
-//
-// ok is false when coasting does not clearly apply, in which case the caller
-// falls back to the powered branch: either gravity alone cannot overcome
-// rolling resistance — right at the cutoff boundary on rough ground, coasting
-// would stall rather than freewheel — or it can, but only by a floating-point
-// hair, which the coasting equation has no lower bound to protect against the
-// way the powered bisection's bracket does. A rider would pedal through
-// ground that shallow rather than freewheel at a near-standstill, so both
-// cases defer to the powered branch instead of crediting a below-walking-pace
-// crawl.
-//
-//nolint:gocritic // value param: same reasoning as Predict above.
-func coastingSpeedMetresPerSecond(crr, sinTheta, cosTheta float64, coefficients Coefficients) (speed float64, ok bool) {
-	drivingForce := coefficients.MassKG * gravityMetresPerSecondSquared * (-sinTheta - crr*cosTheta)
-	if drivingForce <= 0 {
-		return 0, false
-	}
-
-	speed = math.Sqrt(2 * drivingForce / (fixedAirDensityKGPerM3 * coefficients.CdAM2))
-	if speed < minMeaningfulCoastingSpeedMetresPerSecond {
-		return 0, false
-	}
-
-	return min(speed, fixedDescentCapMetresPerSecond), true
 }
 
 // haversineMetres returns the great-circle distance between two points. It

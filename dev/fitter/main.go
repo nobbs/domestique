@@ -15,20 +15,21 @@ func main() {
 	coefficientsPath := flag.String("coefficients", "", "path to the ridemodel.toml being evaluated, or recalibrated from")
 	recalibrate := flag.Bool(
 		"recalibrate", false,
-		"refit seconds_per_km and seconds_per_ascent_m over the oldest -eta-warmup-fraction of the corpus "+
+		"refit seconds_per_km and seconds_per_ascent_m by walking a monthly origin across the corpus "+
 			"and print a copy-ready profile; the default evaluates the loaded profile's own frozen cutoff "+
 			"against rides after it, with no fitting",
 	)
 	etaRouteCellDegrees := flag.Float64("eta-route-cell-degrees", defaultRouteCellDegrees, "coordinate grid used to identify repeated routes")
 	etaRouteJaccard := flag.Float64("eta-route-jaccard", defaultRouteJaccardThreshold, "minimum route-cell Jaccard overlap considered a repeat")
-	etaWarmupFraction := flag.Float64(
-		"eta-warmup-fraction", defaultBenchmarkWarmupFraction, "oldest share of the corpus recalibrated from, under -recalibrate",
+	etaTrainingMonths := flag.Int(
+		"eta-training-months", defaultTrainingWindowMonths,
+		"how many months back a fit may reach, extended only when the window holds too few rides to fit from",
 	)
 	flag.Parse()
 
 	if err := run(&runConfig{
 		corpusDir: *corpusDir, coefficientsPath: *coefficientsPath, recalibrate: *recalibrate,
-		etaRouteCellDegrees: *etaRouteCellDegrees, etaRouteJaccard: *etaRouteJaccard, etaWarmupFraction: *etaWarmupFraction,
+		etaRouteCellDegrees: *etaRouteCellDegrees, etaRouteJaccard: *etaRouteJaccard, etaTrainingMonths: *etaTrainingMonths,
 	}); err != nil {
 		fmt.Fprintf(os.Stderr, "fitter: %v\n", err)
 		os.Exit(1)
@@ -40,7 +41,7 @@ type runConfig struct {
 	coefficientsPath    string
 	etaRouteCellDegrees float64
 	etaRouteJaccard     float64
-	etaWarmupFraction   float64
+	etaTrainingMonths   int
 	recalibrate         bool
 }
 
@@ -57,8 +58,8 @@ func (cfg *runConfig) validate() error {
 	if cfg.etaRouteJaccard <= 0 || cfg.etaRouteJaccard > 1 {
 		return errors.New("-eta-route-jaccard must be greater than 0 and at most 1")
 	}
-	if cfg.etaWarmupFraction <= 0 || cfg.etaWarmupFraction >= 1 {
-		return errors.New("-eta-warmup-fraction must be greater than 0 and less than 1")
+	if cfg.etaTrainingMonths <= 0 {
+		return errors.New("-eta-training-months must be positive")
 	}
 
 	return nil

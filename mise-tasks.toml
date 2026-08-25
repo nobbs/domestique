@@ -295,8 +295,9 @@ run = "go run ./dev/ridemodel"
 # being evaluated are both required and have no default:
 # `mise run fitter -- -corpus .local/ridemodel -coefficients
 # /etc/domestique/ridemodel.toml`. Append `-recalibrate` to also refit
-# seconds_per_km and seconds_per_ascent_m over the oldest
-# -eta-warmup-fraction of the corpus and print a copy-ready profile.
+# seconds_per_km and seconds_per_ascent_m over the newest
+# -eta-training-months of the corpus, validate that recipe against the
+# rolling-origin folds of #251, and print a copy-ready profile.
 [fitter]
 description = "Benchmark and recalibrate the hybrid ETA model against the ride corpus"
 run = "go run ./dev/fitter"

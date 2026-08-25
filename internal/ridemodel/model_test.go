@@ -207,26 +207,27 @@ func TestPredictPhysicsHalfNeverExceedsTheDescentCap(t *testing.T) {
 		"a descent must never be credited a speed above the configured cap")
 }
 
-// A gradient just past the coasting cutoff, on rough enough ground, can leave
-// rolling resistance stronger than the gravity pulling a freewheeling bike
-// forward. Regression for a defect where that single borderline segment
-// credited a near-stationary crawl and inflated a whole stage's time by an
-// order of magnitude.
-func TestPredictPhysicsHalfFallsBackToPedallingWhenCoastingWouldStall(t *testing.T) {
+// Regression for the freewheeling branch this model used to take below a -1%
+// gradient: a shallow descent came back slower than the same road flat — 11
+// km/h down a 1.5% grade — because dropping the rider's power could only ever
+// subtract speed. Gravity helping must never cost time.
+func TestPredictPhysicsHalfIsNeverSlowerDownhillThanOnTheFlat(t *testing.T) {
 	coefficients := testCoefficients()
 	coefficients.SecondsPerKM, coefficients.SecondsPerAscentM = 0, 0
 	coefficients.CrrBySurface = map[surface.Kind]float64{surface.KindAsphalt: 0.012}
-	// Just past the -1% cutoff: rolling resistance at Crr 0.012 exceeds the
-	// gravity component of a 1.2% descent, so coasting alone would stall.
-	points := sampledStage(1_000, 20, func(d float64) float64 { return -0.012 * d })
 
-	result, ok := Predict(points, nil, coefficients)
-	require.True(t, ok, "Predict() ok")
+	flat, ok := Predict(flatStage(1_000, 20, 100), nil, coefficients)
+	require.True(t, ok, "Predict() ok on the flat stage")
 
-	// A rider pedalling a shallow, rough downhill still covers it in minutes,
-	// not the tens of minutes a stalled crawl would produce.
-	physicsSeconds := result.MovingSeconds / hybridPhysicsWeight
-	assert.Less(t, physicsSeconds, 120.0, "a borderline segment must not dominate the stage's time")
+	// Every gradient the old cutoff sent freewheeling, including the ones it
+	// let past its own crawl floor.
+	for _, gradient := range []float64{-1.2, -1.5, -2, -3, -5} {
+		points := sampledStage(1_000, 20, func(d float64) float64 { return 100 + gradient/100*d })
+		descent, ok := Predict(points, nil, coefficients)
+		require.True(t, ok, "Predict() ok at %.1f%%", gradient)
+		assert.Less(t, descent.MovingSeconds, flat.MovingSeconds,
+			"a %.1f%% descent must be quicker than the same road flat", gradient)
+	}
 }
 
 // At the extremes Load's own validation admits — maximum power, minimum drag

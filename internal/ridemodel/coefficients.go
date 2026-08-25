@@ -44,7 +44,7 @@ const (
 // Coefficients are the values the accepted hybrid model — #213's equal-weight
 // average of fixed physics and a rides-calibrated route correction — can
 // legitimately vary. Everything else (the 50/50 weight, drivetrain efficiency,
-// standard air density, the descent cutoff and cap) is a versioned model
+// standard air density, the descent cap) is a versioned model
 // constant in model.go, not an operator input; see modelVersion's own comment
 // for why that split is what makes an upgrade to those constants still
 // invalidate a cached prediction. They arrive as one file, loaded once at
@@ -58,17 +58,25 @@ type Coefficients struct {
 	CdAM2             float64
 	SecondsPerKM      float64
 	SecondsPerAscentM float64
-	// EvaluatedRides, BiasPercent, MAEPercent, and P90Percent are the frozen
-	// profile's measured unseen-route error, from the same route-disjoint
-	// benchmark #239 froze the profile against. Unlike every field above,
-	// these are optional: a file written before #217 omits them, and
-	// EvaluatedRides == 0 is the sentinel that means "not measured" — a real
-	// evaluation always scores more than zero rides, so it can't collide with
-	// a genuine reading the way a zero bias legitimately could.
+	// EvaluatedRides, BiasPercent, MAEPercent, and P90Percent are the
+	// profile's measured unseen-route error, pooled across #251's
+	// rolling-origin folds rather than read off a single frozen split.
+	// Unlike every field above, these are optional: a file written before
+	// #217 omits them, and EvaluatedRides == 0 is the sentinel that means
+	// "not measured" — a real evaluation always scores more than zero rides,
+	// so it can't collide with a genuine reading the way a zero bias
+	// legitimately could.
 	EvaluatedRides int
 	BiasPercent    float64
 	MAEPercent     float64
 	P90Percent     float64
+	// TrainingWindowMonths is how far back the fit that produced
+	// SecondsPerKM and SecondsPerAscentM was allowed to reach. Nothing here
+	// reads it — the service only predicts — but without it a profile cannot
+	// be reproduced from its own metadata: CalibrationCutoff says where the
+	// training data ended and this says where it began. Optional, and zero
+	// means a file that predates #251 and was fit over all history.
+	TrainingWindowMonths int
 }
 
 // HasValidation reports whether the loaded file carries a measured
@@ -112,6 +120,8 @@ type rawCoefficients struct {
 	BiasPercent       float64 `toml:"bias_percent"`
 	MAEPercent        float64 `toml:"mae_percent"`
 	P90Percent        float64 `toml:"p90_percent"`
+
+	TrainingWindowMonths int `toml:"training_window_months"`
 }
 
 // Load reads, parses, and validates a coefficient file. A missing, malformed,
@@ -202,6 +212,9 @@ func (r *rawCoefficients) build() (Coefficients, error) {
 	if r.P90Percent < 0 {
 		return Coefficients{}, errors.New("ridemodel: p90_percent must not be negative")
 	}
+	if r.TrainingWindowMonths < 0 {
+		return Coefficients{}, errors.New("ridemodel: training_window_months must not be negative")
+	}
 	// A partially-updated file — one of the three percentages set without
 	// evaluated_rides — must not silently load and then drop the metadata:
 	// HasValidation() would read EvaluatedRides == 0 as "not measured" and
@@ -233,5 +246,7 @@ func (r *rawCoefficients) build() (Coefficients, error) {
 		BiasPercent:       r.BiasPercent,
 		MAEPercent:        r.MAEPercent,
 		P90Percent:        r.P90Percent,
+
+		TrainingWindowMonths: r.TrainingWindowMonths,
 	}, nil
 }

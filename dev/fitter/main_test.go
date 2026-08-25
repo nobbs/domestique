@@ -18,7 +18,7 @@ func validConfig() runConfig {
 	return runConfig{
 		corpusDir: "corpus", coefficientsPath: "ridemodel.toml",
 		etaRouteCellDegrees: defaultRouteCellDegrees, etaRouteJaccard: defaultRouteJaccardThreshold,
-		etaWarmupFraction: defaultBenchmarkWarmupFraction,
+		etaTrainingMonths: defaultTrainingWindowMonths,
 	}
 }
 
@@ -29,13 +29,13 @@ func TestRunConfigValidateAcceptsAWellFormedConfig(t *testing.T) {
 
 func TestRunConfigValidateRejectsEachInvalidFlagCombination(t *testing.T) {
 	for name, mutate := range map[string]func(*runConfig){
-		"missing corpus":          func(c *runConfig) { c.corpusDir = "" },
-		"missing coefficients":    func(c *runConfig) { c.coefficientsPath = "" },
-		"non-positive route cell": func(c *runConfig) { c.etaRouteCellDegrees = 0 },
-		"route overlap above one": func(c *runConfig) { c.etaRouteJaccard = 1.1 },
-		"route overlap zero":      func(c *runConfig) { c.etaRouteJaccard = 0 },
-		"warmup at one":           func(c *runConfig) { c.etaWarmupFraction = 1 },
-		"warmup zero":             func(c *runConfig) { c.etaWarmupFraction = 0 },
+		"missing corpus":             func(c *runConfig) { c.corpusDir = "" },
+		"missing coefficients":       func(c *runConfig) { c.coefficientsPath = "" },
+		"non-positive route cell":    func(c *runConfig) { c.etaRouteCellDegrees = 0 },
+		"route overlap above one":    func(c *runConfig) { c.etaRouteJaccard = 1.1 },
+		"route overlap zero":         func(c *runConfig) { c.etaRouteJaccard = 0 },
+		"training window zero":       func(c *runConfig) { c.etaTrainingMonths = 0 },
+		"training window below zero": func(c *runConfig) { c.etaTrainingMonths = -1 },
 	} {
 		t.Run(name, func(t *testing.T) {
 			cfg := validConfig()
@@ -109,7 +109,7 @@ func TestRunEvaluatesTheLoadedProfileEndToEnd(t *testing.T) {
 	cfg := &runConfig{
 		corpusDir: dir, coefficientsPath: coefficientsPath,
 		etaRouteCellDegrees: defaultRouteCellDegrees, etaRouteJaccard: defaultRouteJaccardThreshold,
-		etaWarmupFraction: defaultBenchmarkWarmupFraction,
+		etaTrainingMonths: defaultTrainingWindowMonths,
 	}
 	err := run(cfg)
 	require.NoError(t, err)
@@ -123,7 +123,7 @@ func TestRunFailsClearlyOnAMissingCoefficientsFile(t *testing.T) {
 	cfg := &runConfig{
 		corpusDir: dir, coefficientsPath: filepath.Join(dir, "missing.toml"),
 		etaRouteCellDegrees: defaultRouteCellDegrees, etaRouteJaccard: defaultRouteJaccardThreshold,
-		etaWarmupFraction: defaultBenchmarkWarmupFraction,
+		etaTrainingMonths: defaultTrainingWindowMonths,
 	}
 	err := run(cfg)
 	require.Error(t, err)

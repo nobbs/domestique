@@ -133,6 +133,27 @@ func TestPhysicsOnlyModelIgnoresTheRouteCoefficients(t *testing.T) {
 	assert.InDelta(t, withRoute, withDifferentRoute, 1e-9, "physics-only must not depend on the route coefficients")
 }
 
+// recalibrateConfig is the flag set every rolling-origin test runs under.
+func recalibrateConfig() *runConfig {
+	return &runConfig{
+		etaRouteCellDegrees: defaultRouteCellDegrees, etaRouteJaccard: defaultRouteJaccardThreshold,
+		etaTrainingMonths: defaultTrainingWindowMonths, recalibrate: true,
+	}
+}
+
+// monthlySyntheticCorpus is syntheticCorpus spread ten days apart instead of
+// one, so the rides span enough months for a rolling origin to have somewhere
+// to walk.
+func monthlySyntheticCorpus(rideCount int) (rides []rideRow, samplesByRide map[string][]sampleRow) {
+	rides, samplesByRide = syntheticCorpus(rideCount)
+	start := rides[0].Date
+	for i := range rides {
+		rides[i].Date = start.AddDate(0, 0, i*10)
+	}
+
+	return rides, samplesByRide
+}
+
 func syntheticCorpus(rideCount int) (rides []rideRow, samplesByRide map[string][]sampleRow) {
 	start := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	samplesByRide = make(map[string][]sampleRow, rideCount)
@@ -157,13 +178,15 @@ func syntheticCorpus(rideCount int) (rides []rideRow, samplesByRide map[string][
 func TestEvaluateSplitScoresRidesAfterTheLoadedCutoffWithNoFitting(t *testing.T) {
 	rides, samplesByRide := syntheticCorpus(30)
 	coefficients := testCoefficients()
-	cfg := &runConfig{etaRouteCellDegrees: defaultRouteCellDegrees, etaRouteJaccard: defaultRouteJaccardThreshold}
-	cutoff := rides[17].Date // splits the corpus roughly where -recalibrate's warmup fraction would
+	cfg := &runConfig{
+		etaRouteCellDegrees: defaultRouteCellDegrees, etaRouteJaccard: defaultRouteJaccardThreshold,
+		etaTrainingMonths: defaultTrainingWindowMonths,
+	}
+	cutoff := rides[17].Date // a little over halfway through the corpus
 
 	eval, err := evaluateSplit(rides, samplesByRide, &coefficients, cutoff, cfg)
 
 	require.NoError(t, err)
-	assert.False(t, eval.recalibrated)
 	assert.InDelta(t, coefficients.SecondsPerKM, eval.secondsPerKM, 1e-9, "the frozen profile's own coefficients must be unchanged")
 	assert.Positive(t, eval.evaluateScored)
 	assert.Contains(t, eval.errorsByModel, "hybrid")
@@ -194,7 +217,10 @@ func TestEvaluateSplitTreatsTheWholeCutoffDateAsSeen(t *testing.T) {
 	withSameDayRide = append(withSameDayRide, rides[18:]...)
 
 	coefficients := testCoefficients()
-	cfg := &runConfig{etaRouteCellDegrees: defaultRouteCellDegrees, etaRouteJaccard: defaultRouteJaccardThreshold}
+	cfg := &runConfig{
+		etaRouteCellDegrees: defaultRouteCellDegrees, etaRouteJaccard: defaultRouteJaccardThreshold,
+		etaTrainingMonths: defaultTrainingWindowMonths,
+	}
 
 	eval, err := evaluateSplit(withSameDayRide, samplesByRide, &coefficients, cutoffDate, cfg)
 
@@ -206,37 +232,86 @@ func TestEvaluateSplitTreatsTheWholeCutoffDateAsSeen(t *testing.T) {
 	assert.Equal(t, 12, eval.evaluateScored, "the same-day ride must not inflate the evaluation set")
 }
 
-// TestEvaluateSplitRejectsRecalibrationWithTooFewRidesBeforeTheCutoff covers
-// the panic risk a small warmup fraction (or a small corpus) creates: seen
-// must never be indexed into empty.
-func TestEvaluateSplitRejectsRecalibrationWithTooFewRidesBeforeTheCutoff(t *testing.T) {
-	rides, samplesByRide := syntheticCorpus(minGroupRides) // the smallest corpus routeDisjointSplit still runs on
+func TestRunRecalibrationRejectsACorpusTooSmallToFitFrom(t *testing.T) {
+	rides, samplesByRide := monthlySyntheticCorpus(minGroupRides - 1)
 	coefficients := testCoefficients()
-	cfg := &runConfig{
-		etaRouteCellDegrees: defaultRouteCellDegrees, etaRouteJaccard: defaultRouteJaccardThreshold,
-		etaWarmupFraction: 0.05, recalibrate: true, // int(10 * 0.05) == 0 seen rides
-	}
+	cfg := recalibrateConfig()
+	clusters, _, _, _ := clusterRoutes(rides, samplesByRide, cfg.etaRouteCellDegrees, cfg.etaRouteJaccard)
 
-	_, err := evaluateSplit(rides, samplesByRide, &coefficients, time.Time{}, cfg)
+	_, err := runRecalibration(rides, samplesByRide, clusters, &coefficients, cfg)
 
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "too few rides")
+	assert.Contains(t, err.Error(), "too few hygienic rides")
 }
 
-func TestEvaluateSplitRecalibratesTheRouteCoefficientsWhenAsked(t *testing.T) {
-	rides, samplesByRide := syntheticCorpus(30)
+func TestRunRecalibrationRecoversTheCorpusOwnRate(t *testing.T) {
+	rides, samplesByRide := monthlySyntheticCorpus(60)
 	coefficients := testCoefficients()
 	coefficients.SecondsPerKM = 1.0 // deliberately wrong, so recalibration visibly moves it
-	cfg := &runConfig{
-		etaRouteCellDegrees: defaultRouteCellDegrees, etaRouteJaccard: defaultRouteJaccardThreshold,
-		etaWarmupFraction: defaultBenchmarkWarmupFraction, recalibrate: true,
-	}
+	cfg := recalibrateConfig()
+	clusters, _, _, _ := clusterRoutes(rides, samplesByRide, cfg.etaRouteCellDegrees, cfg.etaRouteJaccard)
 
-	eval, err := evaluateSplit(rides, samplesByRide, &coefficients, time.Time{}, cfg)
+	eval, err := runRecalibration(rides, samplesByRide, clusters, &coefficients, cfg)
 
 	require.NoError(t, err)
-	assert.True(t, eval.recalibrated)
 	assert.InDelta(t, 150, eval.secondsPerKM, 1, "recalibration should recover the corpus's own known rate")
+	assert.Positive(t, eval.folds)
+	assert.Positive(t, eval.scored)
+}
+
+// The shipped fit must cover the newest rides. Withholding them — which a
+// naive reading of "never train on the evaluation data" would do — deploys a
+// profile deliberately blind to the months a rider most cares about.
+func TestRunRecalibrationFitsThroughTheNewestRide(t *testing.T) {
+	rides, samplesByRide := monthlySyntheticCorpus(60)
+	coefficients := testCoefficients()
+	cfg := recalibrateConfig()
+	clusters, _, _, _ := clusterRoutes(rides, samplesByRide, cfg.etaRouteCellDegrees, cfg.etaRouteJaccard)
+
+	eval, err := runRecalibration(rides, samplesByRide, clusters, &coefficients, cfg)
+
+	require.NoError(t, err)
+	assert.Equal(t, rides[len(rides)-1].Date, eval.calibrationCutoff)
+	assert.True(t, eval.lastOrigin.Before(eval.calibrationCutoff),
+		"the last fold's origin must precede the shipped fit's cutoff")
+}
+
+// Every fold must be scored on rides its own fit never saw. This is the
+// property the single frozen split failed to guarantee, and the reason a
+// live bias could average itself away against a stale era.
+func TestRunRecalibrationNeverScoresAFoldOnItsOwnTrainingRides(t *testing.T) {
+	rides, samplesByRide := monthlySyntheticCorpus(60)
+	cfg := recalibrateConfig()
+	clusters, _, _, _ := clusterRoutes(rides, samplesByRide, cfg.etaRouteCellDegrees, cfg.etaRouteJaccard)
+
+	newest := rides[len(rides)-1].Date
+	for origin := monthStart(newest.AddDate(0, -cfg.etaTrainingMonths, 0)); !origin.After(newest); origin = origin.AddDate(0, 1, 0) {
+		train := trainingWindow(rides, origin, cfg.etaTrainingMonths)
+		horizon := ridesBetween(rides, origin, origin.AddDate(0, rollingHorizonMonths, 0))
+		for _, scoredRide := range unseenRoutesIn(horizon, train, clusters) {
+			for _, trainedRide := range train {
+				assert.NotEqual(t, trainedRide.RideID, scoredRide.RideID)
+				assert.True(t, trainedRide.Date.Before(scoredRide.Date),
+					"a fold must never train on a ride dated at or after one it scores")
+			}
+		}
+	}
+}
+
+// The window is a bound, not a guillotine: a corpus thinner than the window
+// must still produce a fit rather than an empty training set.
+func TestTrainingWindowReachesPastTheWindowRatherThanStarve(t *testing.T) {
+	rides, _ := monthlySyntheticCorpus(60)
+	origin := rides[len(rides)-1].Date.AddDate(0, 0, 1)
+
+	assert.Len(t, trainingWindow(rides, origin, 1), minGroupRides,
+		"a one-month window holding fewer than the minimum must reach back for exactly the minimum")
+
+	wide := trainingWindow(rides, origin, 12)
+	assert.Greater(t, len(wide), minGroupRides)
+	for _, ride := range wide {
+		assert.False(t, ride.Date.Before(origin.AddDate(0, -12, 0)), "a full window must not reach past its own bound")
+	}
 }
 
 // The copy-ready profile is what an operator pastes into ridemodel.toml, so
@@ -244,14 +319,12 @@ func TestEvaluateSplitRecalibratesTheRouteCoefficientsWhenAsked(t *testing.T) {
 // summarizeBenchmarkErrors call the human-readable line beside them uses —
 // no separate computation to drift out of step.
 func TestPrintCopyReadyProfileIncludesTheValidationFields(t *testing.T) {
-	rides, samplesByRide := syntheticCorpus(30)
+	rides, samplesByRide := monthlySyntheticCorpus(60)
 	coefficients := testCoefficients()
-	cfg := &runConfig{
-		etaRouteCellDegrees: defaultRouteCellDegrees, etaRouteJaccard: defaultRouteJaccardThreshold,
-		etaWarmupFraction: defaultBenchmarkWarmupFraction, recalibrate: true,
-	}
+	cfg := recalibrateConfig()
+	clusters, _, _, _ := clusterRoutes(rides, samplesByRide, cfg.etaRouteCellDegrees, cfg.etaRouteJaccard)
 
-	eval, err := evaluateSplit(rides, samplesByRide, &coefficients, time.Time{}, cfg)
+	eval, err := runRecalibration(rides, samplesByRide, clusters, &coefficients, cfg)
 	require.NoError(t, err)
 
 	metrics := summarizeBenchmarkErrors(eval.errorsByModel["hybrid"])
