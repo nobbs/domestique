@@ -5,6 +5,7 @@ build
 # The image builds the UI in its own stage from the lockfile; a host-installed
 # tree or a stale local bundle must never leak into the build context.
 node_modules
+**/node_modules
 internal/webui/app/dist
 coverage.*
 *.coverprofile

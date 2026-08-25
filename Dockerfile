@@ -20,7 +20,7 @@ WORKDIR /app
 RUN corepack enable pnpm
 
 # The lockfile is copied first so a source-only change reuses the install layer.
-COPY internal/webui/app/package.json internal/webui/app/pnpm-lock.yaml ./
+COPY internal/webui/app/package.json internal/webui/app/pnpm-lock.yaml internal/webui/app/pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 
 COPY internal/webui/app/ ./
