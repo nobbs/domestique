@@ -62,16 +62,20 @@ describe("SearchPanel", () => {
   it("is two compact controls until search is opened", async () => {
     renderPanel();
 
+    const search = screen.getByRole("button", { name: "Search the route library" });
+
+    expect(search.closest("[data-compact-workspace]")).toBeInTheDocument();
     expect(screen.queryByRole("searchbox", { name: "Search the route library" })).toBeNull();
     expect(screen.queryByText("Search")).toBeNull();
     expect(screen.queryByText("Filters")).toBeNull();
-    await userEvent.click(screen.getByRole("button", { name: "Search the route library" }));
+    await userEvent.click(search);
 
     expect(screen.getByRole("searchbox", { name: "Search the route library" })).toHaveAttribute(
       "placeholder",
       "Search 47 routes",
     );
     expect(screen.getByRole("searchbox", { name: "Search the route library" })).toHaveFocus();
+    expect(screen.getByRole("searchbox").closest("[data-compact-workspace]")).toBeNull();
     expect(screen.queryByRole("list")).toBeNull();
     expect(screen.queryByRole("button", { name: "Search the route library" })).toBeNull();
   });
@@ -186,12 +190,12 @@ describe("SearchPanel", () => {
     expect(screen.getByText("2,034 ft")).toBeInTheDocument();
   });
 
-  it("shows the predicted moving time and its qualifier without fetching geometry", () => {
+  it("shows the predicted moving time and its qualifier in a library result", () => {
     const predicted = route({
       movingSeconds: 6420,
       validation: { biasPercent: -1.2, maePercent: 6.8, p90Percent: 14.1, evaluatedRides: 42 },
     });
-    renderPanel({ query: "alpine", shown: [predicted], selectedKey: routeKey(predicted) });
+    renderPanel({ query: "alpine", shown: [predicted] });
 
     expect(screen.getByText("1 h 45 min")).toBeInTheDocument();
     expect(screen.getByText("±7% typical")).toBeInTheDocument();
@@ -246,7 +250,7 @@ describe("SearchPanel", () => {
       shapes: new Map(),
     });
 
-    expect(document.querySelector(".route-card__where")).toBeNull();
+    expect(screen.queryByText(/Alpine loop · read/)).toBeNull();
   });
 
   /*
@@ -257,7 +261,7 @@ describe("SearchPanel", () => {
   it("divides the mix bar by the share each band covers", () => {
     renderPanel({ selectedKey: routeKey(route()) });
 
-    const bar = document.querySelector(".route-card__mix");
+    const bar = screen.getByTestId("gradient-mix");
     expect(bar).toHaveAttribute("aria-hidden", "true");
     const runs = Array.from(bar?.children ?? []);
     expect(runs.length).toBeGreaterThan(1);
@@ -271,6 +275,6 @@ describe("SearchPanel", () => {
     renderPanel({ query: "alpine", shapes: new Map() });
 
     expect(screen.getByRole("button", { name: /Alpine loop — Descent/ })).toBeInTheDocument();
-    expect(document.querySelector(".route-card__mix")).toBeNull();
+    expect(screen.queryByTestId("gradient-mix")).toBeNull();
   });
 });

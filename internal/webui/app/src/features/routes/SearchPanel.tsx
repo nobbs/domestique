@@ -20,6 +20,7 @@ import type { Position, Route } from "../../api/types";
 import { routeKey } from "../../api/types";
 import { Button } from "../../components/Button";
 import { RouteGlyph } from "../../components/RouteGlyph";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "../../components/ui/input-group";
 import type { LibraryFilters } from "../../lib/filters";
 import { hasActiveFilters } from "../../lib/filters";
 import {
@@ -86,13 +87,16 @@ function StageChangeBadge({ change }: { change: StageChange }) {
   }
 
   return (
-    <span className="stage-badge" data-change={change}>
+    <span
+      className="rounded-full bg-[var(--base)] px-1.5 py-0.5 text-[11px] font-semibold text-[var(--ink-2)]"
+      data-change={change}
+    >
       {change === "new" ? "New" : "Updated"}
     </span>
   );
 }
 
-/** One route, closed: its shape, its name, and the three figures that rank it. */
+/** One route, closed: its shape, its name, and the figures that rank it. */
 function ResultRow({
   route,
   shape,
@@ -108,20 +112,30 @@ function ResultRow({
 }) {
   return (
     <li>
-      <button className="result" type="button" onClick={onSelect}>
-        <span className="result__glyph">
+      <button
+        className="grid w-full grid-cols-[2.5rem_1fr_auto] items-center gap-x-2 gap-y-1 rounded-lg p-2 text-left text-sm hover:bg-[var(--base)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
+        type="button"
+        onClick={onSelect}
+      >
+        <span className="row-span-2 flex size-10 items-center justify-center">
           <RouteGlyph
             coordinates={shape?.coordinates ?? []}
             title={route.title}
             band={gradientBand(route.maxGradientPercent)}
           />
         </span>
-        <span className="result__name">{route.title}</span>
+        <span className="min-w-0 truncate font-semibold">{route.title}</span>
         <StageChangeBadge change={change} />
-        <span className="result__figures">
+        <span className="col-start-2 col-end-4 flex flex-wrap gap-x-2 gap-y-1 text-xs text-[var(--ink-2)] tabular-nums">
           <span>{formatDistance(route.distanceMetres, unitSystem)}</span>
           <span>{formatAscent(route.ascentMetres, unitSystem)}</span>
           <span>{formatGradient(route.maxGradientPercent)}</span>
+          <span>
+            {formatMovingTime(route.movingSeconds)}
+            {route.movingSeconds !== undefined && route.validation ? (
+              <span className="ml-1">{formatMovingTimeUncertainty(route.validation)}</span>
+            ) : null}
+          </span>
         </span>
       </button>
     </li>
@@ -180,12 +194,14 @@ function RouteCard({
   });
 
   return (
-    <li className="route-card" ref={card}>
-      <h2 className="route-card__title">{route.title}</h2>
+    <li className="rounded-lg border border-[var(--rule)] bg-[var(--base)] p-3" ref={card}>
+      <h2 className="text-base font-semibold">{route.title}</h2>
       <StageChangeBadge change={change} />
-      <span className="source-label">{providerLabel(route.provider)}</span>
-      {second === "" ? null : <p className="route-card__where">{second}</p>}
-      <dl className="route-card__figures">
+      <span className="ml-1 text-xs font-semibold tracking-[0.06em] text-[var(--ink-2)] uppercase">
+        {providerLabel(route.provider)}
+      </span>
+      {second === "" ? null : <p className="mt-1 text-sm text-[var(--ink-2)]">{second}</p>}
+      <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-4">
         <div>
           <dt>Distance</dt>
           <dd>{formatDistance(route.distanceMetres, unitSystem)}</dd>
@@ -203,7 +219,7 @@ function RouteCard({
           <dd>
             {formatMovingTime(route.movingSeconds)}
             {route.movingSeconds !== undefined && route.validation ? (
-              <span className="route-card__moving-time-uncertainty">
+              <span className="ml-1 text-xs text-[var(--ink-2)]">
                 {formatMovingTimeUncertainty(route.validation)}
               </span>
             ) : null}
@@ -214,7 +230,11 @@ function RouteCard({
         // Decorative: every band in it is stated in the key on the route's own
         // page, and a reader who cannot see the colours loses nothing here that
         // the three figures above have not already said.
-        <div className="route-card__mix" aria-hidden="true">
+        <div
+          className="mt-3 flex h-1.5 overflow-hidden rounded-sm"
+          data-testid="gradient-mix"
+          aria-hidden="true"
+        >
           {runs.map((entry) => (
             <span
               key={`${entry.start.toFixed(6)}-${entry.band}`}
@@ -229,7 +249,7 @@ function RouteCard({
        * there is no route page to go to — so it says what it will show rather
        * than where it will take anybody.
        */}
-      <Button className="route-card__open" variant="primary" onClick={onOpen}>
+      <Button className="mt-3" variant="primary" onClick={onOpen}>
         Open route
       </Button>
     </li>
@@ -284,14 +304,21 @@ export function SearchPanel({
     ? (shown.find((route) => routeKey(route) === selectedKey) ?? null)
     : null;
 
+  const compactWorkspace = !searchExpanded && !hasResults && selectedRoute === null;
+  const workspaceWidth = compactWorkspace ? "w-fit" : "w-[32.5rem] max-w-full";
+
   return (
-    <div className="search">
-      <div className="search__controls">
+    <div
+      className={`flex flex-col gap-3 ${workspaceWidth}`}
+      data-compact-workspace={compactWorkspace ? "" : undefined}
+    >
+      <div className="flex items-center gap-2">
         {searchExpanded ? (
-          <div className="search__pill search__pill--control">
-            <IconSearch className="search__icon" size={16} stroke={1.6} aria-hidden="true" />
-            <input
-              className="search__field"
+          <InputGroup className="bg-[var(--panel)]">
+            <InputGroupAddon>
+              <IconSearch size={16} stroke={1.6} aria-hidden="true" />
+            </InputGroupAddon>
+            <InputGroupInput
               ref={field}
               type="search"
               value={query}
@@ -299,10 +326,10 @@ export function SearchPanel({
               placeholder={`Search ${total} ${total === 1 ? "route" : "routes"}`}
               aria-label="Search the route library"
             />
-          </div>
+          </InputGroup>
         ) : (
           <button
-            className="search__toggle"
+            className="inline-flex size-8 items-center justify-center rounded-lg border border-[var(--rule)] bg-[var(--panel)] text-[var(--ink-2)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
             type="button"
             aria-label="Search the route library"
             onClick={() => {
@@ -310,7 +337,7 @@ export function SearchPanel({
               setFocusSearch(true);
             }}
           >
-            <IconSearch className="search__icon" size={16} stroke={1.6} aria-hidden="true" />
+            <IconSearch size={16} stroke={1.6} aria-hidden="true" />
           </button>
         )}
         <FilterPanel
@@ -324,9 +351,9 @@ export function SearchPanel({
         />
       </div>
       {hasResults || selectedRoute ? (
-        <div className="panel search__panel">
+        <div className="rounded-lg border border-[var(--rule)] bg-[var(--panel)] p-2 shadow-[var(--shadow)]">
           {hasResults && shown.length === 0 ? (
-            <p className="search__empty">
+            <p className="p-2 text-sm text-[var(--ink-2)]">
               {/*
                * Whichever of the two actually narrowed the library to nothing —
                * or, typed and filtered at once, both. Blaming a filter for what a
@@ -341,7 +368,7 @@ export function SearchPanel({
             </p>
           ) : null}
           {hasResults && shown.length > 0 ? (
-            <ul className="search__results">
+            <ul className="grid gap-1">
               {shown.map((route) => {
                 const key = routeKey(route);
                 const shape = shapes.get(key);
@@ -370,7 +397,7 @@ export function SearchPanel({
             </ul>
           ) : null}
           {!hasResults && selectedRoute ? (
-            <ul className="search__results">
+            <ul className="grid gap-1">
               <RouteCard
                 route={selectedRoute}
                 shape={shapes.get(routeKey(selectedRoute))}

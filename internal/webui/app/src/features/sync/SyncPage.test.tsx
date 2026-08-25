@@ -67,12 +67,7 @@ afterEach(() => {
 });
 
 describe("SyncPage", () => {
-  /*
-   * Settings, then three operational cards in the order the questions come. The headings are the page: an
-   * operator scanning it should be able to find what is happening now without
-   * reading the history, and find the history without reading the accounts.
-   */
-  it("puts visible settings before the operational questions and offers the way back to the map", async () => {
+  it("puts the operational questions in scan order and offers the way back to the map", async () => {
     renderPage();
 
     expect(screen.getByRole("heading", { level: 1, name: "Sync" })).toBeInTheDocument();
@@ -80,12 +75,8 @@ describe("SyncPage", () => {
     const headings = (await screen.findAllByRole("heading", { level: 2 })).map(
       (heading) => heading.textContent,
     );
-    expect(headings).toEqual(["Settings", "Now", "What the accounts hold", "What has happened"]);
-    expect(screen.getByRole("radio", { name: "Metric (km)" })).toBeVisible();
-    expect(screen.getByRole("radio", { name: "Imperial (mi)" })).toBeVisible();
-    expect(screen.getByRole("radio", { name: "System" })).toBeVisible();
-    expect(screen.getByRole("radio", { name: "Light" })).toBeVisible();
-    expect(screen.getByRole("radio", { name: "Dark" })).toBeVisible();
+    expect(headings).toEqual(["Now", "What the accounts hold", "What has happened"]);
+    expect(screen.queryByRole("radio", { name: "Metric (km)" })).toBeNull();
   });
 
   // A notification carries one opaque reference and lands here. A reference for

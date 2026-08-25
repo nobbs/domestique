@@ -29,6 +29,11 @@ const LOOP = {
   title: "Synthetic Kaiserstuhl Loop",
 };
 
+/** Result rows are buttons named by their decorative route shape and route title. */
+function results(page: Page) {
+  return page.getByRole("button", { name: /^Shape of Synthetic/ });
+}
+
 test("the entry page is the library, drawn", async ({ offlinePage: page }) => {
   await openLibrary(page);
 
@@ -45,7 +50,7 @@ test("the entry page is the library, drawn", async ({ offlinePage: page }) => {
   );
   // Nothing is listed until something is asked: the results column is what a
   // search or a selection grows.
-  await expect(page.locator(".result")).toHaveCount(0);
+  await expect(results(page)).toHaveCount(0);
   // The scale control only has a distance to print once the camera has a zoom,
   // so this is the map reporting that it framed the library rather than that its
   // container exists.
@@ -99,11 +104,11 @@ test("a search can narrow the library to one route", async ({ offlinePage: page 
 
   await search.fill("komoot");
 
-  await expect(page.locator(".result")).toHaveCount(1);
-  await expect(page.locator(".result__name")).toHaveText(["Synthetic Foothill Circuit"]);
+  await expect(results(page)).toHaveCount(1);
+  await expect(results(page)).toContainText("Synthetic Foothill Circuit");
 
   await search.fill("kaiserstuhl");
-  await expect(page.locator(".result__name")).toHaveText(["Synthetic Kaiserstuhl Loop"]);
+  await expect(results(page)).toContainText("Synthetic Kaiserstuhl Loop");
 });
 
 test("searching grows a column of what is left", async ({ offlinePage: page }) => {
@@ -112,17 +117,15 @@ test("searching grows a column of what is left", async ({ offlinePage: page }) =
 
   await search.fill("rhine");
 
-  await expect(page.locator(".result")).toHaveCount(3);
+  await expect(results(page)).toHaveCount(3);
 
   await search.fill("forest");
 
-  await expect(page.locator(".result__name")).toHaveText([
-    "Synthetic Rhine Traverse — Forest ramps",
-  ]);
+  await expect(results(page)).toHaveText([/Forest ramps/]);
 
   await search.fill("nothing is called this");
 
-  await expect(page.locator(".result")).toHaveCount(0);
+  await expect(results(page)).toHaveCount(0);
   await expect(page.getByText("Nothing here is called that.")).toBeVisible();
 });
 
@@ -132,7 +135,7 @@ test("nothing a reader types leaves the page", async ({ offlinePage: page }) => 
   page.on("request", (request) => asked.push(request.url()));
 
   await (await openSearch(page)).fill("kaiserstuhl");
-  await expect(page.locator(".result")).toHaveCount(1);
+  await expect(results(page)).toHaveCount(1);
 
   // Narrowing happens in the browser over the listing the page already holds,
   // which is what keeps route names out of an access log.
@@ -152,7 +155,7 @@ test("picking a route lifts it out of the library and opens its card", async ({
   // twice.
   await expect(page.getByRole("heading", { name: LOOP.title })).toBeVisible();
   await expect(page.getByRole("button", { name: new RegExp(LOOP.title) })).toHaveCount(0);
-  await expect(page.locator(".route-card__mix > span").first()).toBeVisible();
+  await expect(page.getByTestId("gradient-mix").locator("span").first()).toBeVisible();
 
   // The camera followed the selection and the accent went on: comparing the map
   // against itself within the run is a visual assertion with no stored image to
@@ -254,8 +257,7 @@ test("pointing at a line on the map picks that route out, twice to open it", asy
   await page.mouse.click(first.x, first.y);
 
   // The card, in the column the search was in.
-  await expect(page.locator(".route-card")).toBeVisible();
-  const title = await page.locator(".route-card__title").innerText();
+  const title = await page.getByRole("heading", { level: 2 }).innerText();
 
   // The camera flew to the route it picked, so where that line is on the screen
   // has to be asked again rather than assumed.
@@ -264,7 +266,7 @@ test("pointing at a line on the map picks that route out, twice to open it", asy
   await page.mouse.click(second.x, second.y);
 
   await expect(page.getByRole("region", { name: title })).toBeVisible();
-  await expect(page.locator(".elevation-profile")).toBeVisible();
+  await expect(page.getByRole("img", { name: /^Elevation profile of / })).toBeVisible();
 });
 
 test("the wordmark says what sync is doing and is the way to it", async ({ offlinePage: page }) => {

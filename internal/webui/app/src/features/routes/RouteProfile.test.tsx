@@ -102,7 +102,7 @@ function soon(): Date {
 
 /** The line beside the heading, whatever it happens to be saying. */
 function summary(): string {
-  return document.querySelector(".route-profile__summary")?.textContent ?? "";
+  return screen.queryByLabelText("Elevation summary")?.textContent ?? "";
 }
 
 beforeEach(() => {
@@ -161,7 +161,7 @@ describe("RouteProfile", () => {
   it("offers no hint at all for a route with no profile", () => {
     show({ profile: null });
 
-    expect(document.querySelector(".route-profile__summary")).toBeNull();
+    expect(screen.queryByLabelText("Elevation summary")).toBeNull();
   });
 
   it("folds to a row still carrying the figures the chart was there to give", () => {
@@ -182,7 +182,7 @@ describe("RouteProfile", () => {
   it("says nothing in that row for a route it has no figures for", () => {
     show({ collapsed: true, profile: null, ascentMetres: 0 });
 
-    expect(document.querySelector(".route-profile__summary")).toBeNull();
+    expect(screen.queryByLabelText("Elevation summary")).toBeNull();
   });
 
   it("carries the words the chevron does not, and points at the plot it folds", async () => {
@@ -226,7 +226,7 @@ describe("RouteProfile", () => {
   it("draws no forecast strip before a start time is chosen", () => {
     show({ startAt: null, samples: [] });
 
-    expect(document.querySelector(".forecast-strip")).toBeNull();
+    expect(screen.queryByRole("img", { name: /Forecast along the way/ })).toBeNull();
   });
 
   /*
@@ -239,7 +239,7 @@ describe("RouteProfile", () => {
     show({ startAt: soon(), samples: [], rideSeconds: undefined });
 
     expect(screen.getByText(/no predicted moving time/i)).toBeInTheDocument();
-    expect(document.querySelector(".forecast-strip")).toBeNull();
+    expect(screen.queryByRole("img", { name: /Forecast along the way/ })).toBeNull();
   });
 
   /*
@@ -316,7 +316,7 @@ describe("RouteProfile", () => {
     // ride finishes past the horizon — that would send the reader backwards.
     expect(screen.getByText(/more than a day in the past/i)).toBeInTheDocument();
     expect(screen.queryByText(/16-day forecast window/i)).not.toBeInTheDocument();
-    expect(document.querySelector(".forecast-strip")).toBeNull();
+    expect(screen.queryByRole("img", { name: /Forecast along the way/ })).toBeNull();
   });
 
   it("explains a start whose finish falls past the horizon on this stage", () => {
@@ -355,7 +355,8 @@ describe("RouteProfile", () => {
       coordinates,
     });
 
-    const strip = document.querySelector(".forecast-strip svg");
-    expect(strip?.getAttribute("viewBox")).not.toMatch(/^0 0 0/);
+    expect(
+      screen.getByRole("img", { name: /Forecast along the way/ }).getAttribute("viewBox"),
+    ).not.toMatch(/^0 0 0/);
   });
 });

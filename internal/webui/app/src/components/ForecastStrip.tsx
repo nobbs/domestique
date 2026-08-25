@@ -343,7 +343,7 @@ export function ForecastStrip({
       // Announced, not merely rendered: this appears when a request the
       // reader never watched comes back, and every other asynchronous failure
       // in this UI says so out loud.
-      <p className="forecast-strip__unavailable" role="alert">
+      <p className="mt-2 text-sm text-[var(--alert)]" role="alert">
         {provider
           ? "The forecast is unavailable right now; the rest of this route is unaffected."
           : "This forecast could not be requested for this ride; the rest of this route is unaffected."}
@@ -366,9 +366,10 @@ export function ForecastStrip({
     : 0;
 
   return (
-    <div className="forecast-strip" ref={ref}>
+    <div className="mt-2" ref={ref}>
       <svg
         width="100%"
+        className="block"
         height={STRIP_HEIGHT}
         viewBox={`0 0 ${totalWidth} ${STRIP_HEIGHT}`}
         role="img"
@@ -393,20 +394,20 @@ export function ForecastStrip({
               // Distance and arrival together: a stage that stands still —
               // repeated coordinates — gives several samples the same distance,
               // and the clock is what still tells them apart.
-              <g key={cellKey(sample)} className="forecast-strip__cell">
+              <g key={cellKey(sample)}>
                 <rect
                   x={left}
                   y={0}
                   width={cellWidth}
                   height={STRIP_HEIGHT}
-                  className="forecast-strip__precip"
+                  className="fill-[var(--accent)]"
                   style={{ fillOpacity: opacity }}
                 >
                   <title>{title}</title>
                 </rect>
                 {relation && cellWidth >= MIN_GLYPH_CELL_WIDTH ? (
                   <text
-                    className="forecast-strip__wind-glyph"
+                    className="pointer-events-none fill-[var(--ink-2)] text-xs"
                     data-relation={relation}
                     x={left + cellWidth / 2}
                     y={STRIP_HEIGHT / 2}
@@ -422,8 +423,8 @@ export function ForecastStrip({
         </g>
       </svg>
 
-      <p className="forecast-strip__sharpness">{forecastSharpness(leadHours)}</p>
-      <p className="forecast-strip__credit">Weather data by Open-Meteo.com</p>
+      <p className="mt-1 text-xs text-[var(--ink-2)]">{forecastSharpness(leadHours)}</p>
+      <p className="mt-1 text-xs text-[var(--ink-2)]">Weather data by Open-Meteo.com</p>
 
       <table className="visually-hidden">
         <caption>Forecast along the way</caption>

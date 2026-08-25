@@ -14,9 +14,12 @@ export interface StatusMessageProps {
 
 export function StatusMessage({ title, detail, tone = "neutral", children }: StatusMessageProps) {
   return (
-    <div className="status-message" data-tone={tone} role={tone === "error" ? "alert" : "status"}>
-      <p className="status-message__title">{title}</p>
-      {detail ? <p className="status-message__detail">{detail}</p> : null}
+    <div
+      className={`rounded-lg border p-3 text-sm shadow-[var(--shadow)] ${tone === "error" ? "border-[var(--alert)]/30 bg-[var(--panel)] text-[var(--alert)]" : "border-[var(--rule)] bg-[var(--panel)] text-[var(--ink)]"}`}
+      role={tone === "error" ? "alert" : "status"}
+    >
+      <p className="font-semibold">{title}</p>
+      {detail ? <p className="mt-1 text-[var(--ink-2)]">{detail}</p> : null}
       {children}
     </div>
   );

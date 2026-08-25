@@ -40,7 +40,7 @@ export function SourceRouteLink({ provider, baseUrl, routeId }: SourceRouteLinkP
 
   return (
     <ExternalButtonLink
-      className="route-panel__source"
+      className="inline-flex items-center gap-1"
       href={source.href}
       target="_blank"
       rel="noreferrer"

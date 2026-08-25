@@ -17,7 +17,21 @@ import { useState } from "react";
 import { clearTarget, triggerTargetSync } from "../../api/client";
 import { statusQuery } from "../../api/queries";
 import type { TargetStatus } from "../../api/types";
-import { Button } from "../../components/Button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "../../components/ui/alert-dialog";
+import { Button } from "../../components/ui/button";
+import { Input } from "../../components/ui/input";
+import { Skeleton } from "../../components/ui/skeleton";
+import { Spinner } from "../../components/ui/spinner";
 import { formatCount, formatTimestamp } from "../../lib/format";
 import { GUIDANCE_LABELS, syncGuidance } from "../../lib/syncGuidance";
 import { authorisationGuidance, authorisationStartHref } from "../../lib/targetAuthorisation";
@@ -93,15 +107,17 @@ export function TargetConvergence() {
   });
 
   if (isPending) {
-    return null;
+    return <Skeleton className="h-24 w-full" role="status" aria-label="Loading accounts" />;
   }
   if (isError) {
-    return <p className="sync-card__error">The service did not say what the accounts hold.</p>;
+    return (
+      <p className="text-sm text-[var(--alert)]">The service did not say what the accounts hold.</p>
+    );
   }
 
   return (
     <>
-      <ul className="sync-card__list">
+      <ul className="grid gap-3">
         {data.targets.map((target) => {
           const guidance = targetGuidance(target);
           const authorisation = authorisationGuidance(target.authorisation);
@@ -109,28 +125,33 @@ export function TargetConvergence() {
 
           return (
             <li
-              className="sync-row"
+              className="flex flex-col gap-3 rounded-lg border border-[var(--rule)] p-3 sm:flex-row sm:items-start sm:justify-between"
               data-convergence={target.convergence}
               data-run={guidance?.kind}
               key={target.id}
             >
-              <div className="sync-row__text">
-                <span className="sync-row__title">{target.id}</span>
-                <span className="sync-row__detail">{stagesSummary(target)}</span>
-                {failure ? <span className="sync-row__detail">{failure}</span> : null}
+              <div className="flex min-w-0 flex-col gap-1 text-sm">
+                <span className="font-semibold">{target.id}</span>
+                <span className="text-[var(--ink-2)]">{stagesSummary(target)}</span>
+                {failure ? <span className="text-[var(--ink-2)]">{failure}</span> : null}
                 {authorisation ? (
-                  <span className="sync-guidance" data-kind="blocked">
+                  <span className="text-[var(--hold)]" data-kind="blocked">
                     {authorisation.detail}
                   </span>
                 ) : null}
                 {guidance ? (
-                  <span className="sync-guidance" data-kind={guidance.kind}>
+                  <span
+                    className={
+                      guidance.kind === "blocked" ? "text-[var(--hold)]" : "text-[var(--alert)]"
+                    }
+                    data-kind={guidance.kind}
+                  >
                     <strong>{guidance.headline}</strong> {guidance.remediation}
                   </span>
                 ) : null}
               </div>
               {authorisation?.action ? (
-                <div className="sync-row__actions">
+                <div className="flex shrink-0 items-center gap-2">
                   {/*
                    * A plain anchor, and a full-page navigation: the flow leaves
                    * this application for Wahoo and returns to it, so there is
@@ -138,12 +159,15 @@ export function TargetConvergence() {
                    * to carry. It is a GET the service gates on the same identity
                    * as this page.
                    */}
-                  <a className="sync-row__connect" href={authorisationStartHref(target.id)}>
+                  <a
+                    className="inline-flex h-8 items-center rounded-lg bg-[var(--accent)] px-3 text-sm font-semibold text-white hover:brightness-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
+                    href={authorisationStartHref(target.id)}
+                  >
                     {authorisation.action} {target.id}
                   </a>
                 </div>
               ) : !authorisation ? (
-                <div className="sync-row__actions">
+                <div className="flex shrink-0 flex-wrap items-center gap-2">
                   {/*
                    * While a deletion is being confirmed it is the only thing
                    * this row offers. Leaving the ordinary action beside it
@@ -151,78 +175,82 @@ export function TargetConvergence() {
                    * happen, and put a button next to it that undoes the point
                    * of asking.
                    */}
-                  {clearing === target.id ? (
-                    <div className="sync-row__confirm">
-                      <label className="sync-row__confirm-label" htmlFor={`clear-${target.id}`}>
-                        Delete every route Domestique put on {target.id}. Routes you made yourself
-                        are left alone, and the next sync puts these back. A large account can take
-                        several minutes, and nothing else syncs until it finishes. Type{" "}
-                        <strong>{target.id}</strong> to confirm.
+                  {/*
+                   * "This account", not "this device": the button reconciles
+                   * the Wahoo account the row is about, and says so, because
+                   * what it presses is not the same thing as a head unit
+                   * fetching routes from it on its own schedule.
+                   */}
+                  <Button
+                    variant="outline"
+                    disabled={reconcile.isPending}
+                    onClick={() => reconcile.mutate(target.id)}
+                    aria-label={`Reconcile now: ${target.id}`}
+                  >
+                    {reconcile.isPending ? <Spinner aria-label="Reconciling" /> : null}
+                    Reconcile this account
+                  </Button>
+                  {/*
+                   * Deleting everything is not a variant of reconciling, so
+                   * it does not sit beside it as an equal. It asks first,
+                   * and what it asks for is the account's own name — the one
+                   * confirmation a stray click cannot supply.
+                   */}
+                  <AlertDialog
+                    open={clearing === target.id}
+                    onOpenChange={(open) => {
+                      setClearing(open ? target.id : null);
+                      if (!open) {
+                        setConfirmation("");
+                      }
+                    }}
+                  >
+                    <AlertDialogTrigger
+                      className="text-sm text-[var(--alert)] underline-offset-4 hover:underline disabled:opacity-50"
+                      disabled={clear.isPending}
+                    >
+                      Delete all routes…
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>
+                          Delete Domestique routes from {target.id}?
+                        </AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Routes you made yourself are left alone. The next sync puts these back,
+                          and no other sync starts until this clear finishes.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <label className="grid gap-1 text-sm" htmlFor={`clear-${target.id}`}>
+                        Type <strong>{target.id}</strong> to confirm.
+                        <Input
+                          id={`clear-${target.id}`}
+                          value={confirmation}
+                          onChange={(event) => setConfirmation(event.target.value)}
+                          autoComplete="off"
+                        />
                       </label>
-                      <input
-                        className="sync-row__confirm-input"
-                        id={`clear-${target.id}`}
-                        value={confirmation}
-                        onChange={(event) => setConfirmation(event.target.value)}
-                        autoComplete="off"
-                      />
-                      <Button
-                        disabled={confirmation !== target.id || clear.isPending}
-                        onClick={() => clear.mutate(target.id)}
-                        aria-label={`Delete every Domestique route from ${target.id}`}
-                      >
-                        Delete them
-                      </Button>
-                      <Button
-                        onClick={() => {
-                          setClearing(null);
-                          setConfirmation("");
-                        }}
-                      >
-                        Cancel
-                      </Button>
-                    </div>
-                  ) : (
-                    <>
-                      {/*
-                       * "This account", not "this device": the button reconciles
-                       * the Wahoo account the row is about, and says so, because
-                       * what it presses is not the same thing as a head unit
-                       * fetching routes from it on its own schedule.
-                       */}
-                      <Button
-                        disabled={reconcile.isPending}
-                        onClick={() => reconcile.mutate(target.id)}
-                        aria-label={`Reconcile now: ${target.id}`}
-                      >
-                        Reconcile this account
-                      </Button>
-                      {/*
-                       * Deleting everything is not a variant of reconciling, so
-                       * it does not sit beside it as an equal. It asks first,
-                       * and what it asks for is the account's own name — the one
-                       * confirmation a stray click cannot supply.
-                       */}
-                      <button
-                        className="sync-row__destructive"
-                        type="button"
-                        disabled={clear.isPending}
-                        onClick={() => {
-                          setClearing(target.id);
-                          setConfirmation("");
-                        }}
-                      >
-                        Delete all routes…
-                      </button>
-                    </>
-                  )}
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                          variant="destructive"
+                          disabled={confirmation !== target.id || clear.isPending}
+                          onClick={() => clear.mutate(target.id)}
+                          aria-label={`Delete every Domestique route from ${target.id}`}
+                        >
+                          {clear.isPending ? <Spinner aria-label="Deleting" /> : null}
+                          Delete them
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
                 </div>
               ) : null}
             </li>
           );
         })}
       </ul>
-      <p className="sync-card__foot">
+      <p className="text-sm text-[var(--ink-2)]">
         This is what the accounts hold, not what a head unit has downloaded.
       </p>
       {/*
@@ -232,7 +260,7 @@ export function TargetConvergence() {
        * actually reached Wahoo and reported one.
        */}
       {data.sync.wahooRateLimit ? (
-        <p className="sync-card__foot">
+        <p className="text-sm text-[var(--ink-2)]">
           Wahoo has {formatCount(data.sync.wahooRateLimit.remaining, "request")} left, shared by
           every account here.
           {data.sync.wahooRateLimit.resetsAt
@@ -241,14 +269,14 @@ export function TargetConvergence() {
         </p>
       ) : null}
       {reconcile.isError ? (
-        <p className="sync-card__error" role="alert">
+        <p className="text-sm text-[var(--alert)]" role="alert">
           {reconcile.error instanceof Error && reconcile.error.message
             ? reconcile.error.message
             : "That account could not be reconciled."}
         </p>
       ) : null}
       {clear.isError ? (
-        <p className="sync-card__error" role="alert">
+        <p className="text-sm text-[var(--alert)]" role="alert">
           {clear.error instanceof Error && clear.error.message
             ? clear.error.message
             : "Those routes could not be deleted."}

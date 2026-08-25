@@ -1,3 +1,5 @@
+import { fileURLToPath, URL } from "node:url";
+import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vitest/config";
 
@@ -38,7 +40,12 @@ const proxy = {
 };
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), tailwindcss()],
+  resolve: {
+    alias: {
+      "@": fileURLToPath(new URL("./src", import.meta.url)),
+    },
+  },
   // MapLibre instantiates its worker with `{ type: "module" }`, so the worker
   // bundle has to be emitted as an ES module rather than the default IIFE.
   worker: { format: "es" },

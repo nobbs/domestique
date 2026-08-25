@@ -378,6 +378,10 @@ require the browser origin described above, and answer 403 without it.
 
 The browser UI is served from the same origin and the same authenticated
 listener: an application entry document and immutable hashed static assets.
+`/`, `/sync`, and `/settings` are authenticated browser entry routes; Settings
+stores the selected theme and units only in the authenticated browser's local
+storage. It introduces no JSON endpoint, does not alter the route or moving-time
+contracts, and unknown paths remain JSON `404` responses.
 
 The response schemas are defined in
 [the sync lifecycle specification](sync-lifecycle.md). They must never expose

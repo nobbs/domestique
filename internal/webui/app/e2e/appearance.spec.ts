@@ -104,7 +104,7 @@ test.describe("the theme override", () => {
     await openLibrary(page);
     expect(await backgroundOfBody(page)).toBe(LIGHT_SURFACE);
 
-    await page.getByRole("link", { name: /^Sync/ }).click();
+    await page.getByRole("link", { name: "Settings" }).click();
     await page.getByRole("radio", { name: "Dark" }).check();
 
     // The page repaints in JavaScript-set state rather than a stylesheet
@@ -119,7 +119,7 @@ test.describe("the theme override", () => {
 
   test("survives a reload", async ({ offlinePage: page, baseURL }) => {
     await openLibrary(page);
-    await page.getByRole("link", { name: /^Sync/ }).click();
+    await page.getByRole("link", { name: "Settings" }).click();
     await page.getByRole("radio", { name: "Dark" }).check();
     await expect.poll(() => backgroundOfBody(page)).toBe(DARK_SURFACE);
 
@@ -137,7 +137,7 @@ test.describe("on a narrow viewport", () => {
     await openLibrary(page);
     await (await openSearch(page)).fill("rhine");
 
-    const panel = await page.locator(".search").boundingBox();
+    const panel = await page.getByRole("dialog", { name: "Route library" }).boundingBox();
     const map = await mapRegion(page).boundingBox();
     expect(panel).not.toBeNull();
     expect(map).not.toBeNull();

@@ -71,7 +71,7 @@ describe("FilterPanel", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Show the library filters" }));
 
-    expect(onExpandedChange).toHaveBeenCalledWith(true);
+    expect(onExpandedChange.mock.calls[0]?.[0]).toBe(true);
   });
 
   it("stores a distance minimum in metres from a kilometre input", async () => {

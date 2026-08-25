@@ -91,7 +91,8 @@ test.describe("in a forced-colours palette", () => {
     // a column *is* which band it is. These are the only marks exempted, and the
     // exemption is worth nothing unless they really do still differ.
     const fills = await page
-      .locator(".elevation-profile__column")
+      .getByRole("img", { name: /^Elevation profile of / })
+      .locator("[data-band]")
       .evaluateAll((columns) => columns.map((column) => getComputedStyle(column).fill));
     expect(fills.length).toBeGreaterThan(1);
     expect(new Set(fills).size).toBeGreaterThan(1);

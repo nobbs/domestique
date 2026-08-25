@@ -218,11 +218,11 @@ describe("ElevationProfile", () => {
     ]);
 
     const classified = render(<Harness surface={surface} />);
-    expect(classified.container.querySelector(".elevation-profile__surface")).toBeNull();
+    expect(screen.queryByTestId("profile-surface")).toBeNull();
     classified.unmount();
 
-    const { container } = render(<Harness />);
-    expect(container.querySelector(".elevation-profile__surface")).toBeNull();
+    render(<Harness />);
+    expect(screen.queryByTestId("profile-surface")).toBeNull();
   });
 
   it("leaves the readout as it was on a stage nothing has classified", async () => {
@@ -346,7 +346,7 @@ describe("ElevationProfile zooming", () => {
     vi.useFakeTimers();
     try {
       const onZoom = vi.fn();
-      const { container } = render(<ZoomHarness onZoom={onZoom} />);
+      render(<ZoomHarness onZoom={onZoom} />);
       const scrub = measured(screen.getByRole("slider"));
 
       fireEvent.pointerDown(scrub, {
@@ -370,7 +370,7 @@ describe("ElevationProfile zooming", () => {
       const window = onZoom.mock.calls[0]?.[0] as DistanceWindow;
       expect(window.startMetres).toBeCloseTo(metresAt(30), 0);
       expect(window.endMetres).toBeCloseTo(metresAt(140), 0);
-      expect(container.querySelector(".elevation-profile__veil")).toBeNull();
+      expect(screen.queryByTestId("profile-veil")).toBeNull();
     } finally {
       vi.useRealTimers();
     }
@@ -455,7 +455,7 @@ describe("ElevationProfile zooming", () => {
 
   it("shows the stretch under the pointer while it is still being chosen", async () => {
     const user = userEvent.setup();
-    const { container } = render(<ZoomHarness />);
+    render(<ZoomHarness />);
     const scrub = measured(screen.getByRole("slider"));
 
     await user.pointer([
@@ -463,19 +463,19 @@ describe("ElevationProfile zooming", () => {
       { target: scrub, coords: { clientX: 120, clientY: 20 } },
     ]);
 
-    const veils = [...container.querySelectorAll(".elevation-profile__veil")];
+    const veils = screen.getAllByTestId("profile-veil");
     expect(veils).toHaveLength(2);
     // Over what is being left behind on either side, and nothing in between.
     expect(Number(veils[0]?.getAttribute("width"))).toBeCloseTo(20, 0);
     expect(Number(veils[1]?.getAttribute("x"))).toBeCloseTo(120, 0);
 
     await user.pointer({ keys: "[/MouseLeft]", target: scrub, coords: { clientX: 120 } });
-    expect(container.querySelector(".elevation-profile__veil")).toBeNull();
+    expect(screen.queryByTestId("profile-veil")).toBeNull();
   });
 
   it("commits nothing when the gesture is cancelled out from under it", () => {
     const onZoom = vi.fn();
-    const { container } = render(<ZoomHarness onZoom={onZoom} />);
+    render(<ZoomHarness onZoom={onZoom} />);
     const scrub = measured(screen.getByRole("slider"));
 
     fireEvent.pointerDown(scrub, { pointerId: 1, isPrimary: true, button: 0, clientX: 20 });
@@ -483,7 +483,7 @@ describe("ElevationProfile zooming", () => {
     fireEvent.pointerCancel(scrub, { pointerId: 1 });
 
     expect(onZoom).not.toHaveBeenCalled();
-    expect(container.querySelector(".elevation-profile__veil")).toBeNull();
+    expect(screen.queryByTestId("profile-veil")).toBeNull();
   });
 
   // The reader asked to look closer at somewhere. The answer to "closer than the
@@ -610,23 +610,23 @@ describe("ElevationProfile zooming", () => {
   // painted here would outlive the gesture that drew it.
   it("ends a drag the chart can no longer follow when the pointer leaves it", () => {
     const onZoom = vi.fn();
-    const { container } = render(<ZoomHarness onZoom={onZoom} />);
+    render(<ZoomHarness onZoom={onZoom} />);
     const scrub = measured(screen.getByRole("slider"));
 
     fireEvent.pointerDown(scrub, { pointerId: 1, isPrimary: true, button: 0, clientX: 20 });
     fireEvent.pointerMove(scrub, { pointerId: 1, clientX: 120 });
-    expect(container.querySelector(".elevation-profile__veil")).not.toBeNull();
+    expect(screen.queryAllByTestId("profile-veil")).not.toHaveLength(0);
 
     fireEvent.pointerLeave(scrub, { pointerId: 1 });
 
-    expect(container.querySelector(".elevation-profile__veil")).toBeNull();
+    expect(screen.queryByTestId("profile-veil")).toBeNull();
     expect(onZoom).not.toHaveBeenCalled();
   });
 
   it("marks nothing when the map reports a position outside the stretch on show", () => {
     const coordinates = climb();
     const window = { startMetres: 1000, endMetres: 3000 };
-    const { container } = render(
+    render(
       <ElevationProfile
         profile={buildWindowedProfile(coordinates, window)}
         title="Eich Rundkurs 90"
@@ -637,7 +637,7 @@ describe("ElevationProfile zooming", () => {
       />,
     );
 
-    expect(container.querySelector(".elevation-profile__cursor")).toBeNull();
+    expect(screen.queryByTestId("profile-cursor")).toBeNull();
   });
 
   it("steps within the stretch on show, not across the whole route", async () => {
@@ -687,21 +687,21 @@ describe("ElevationProfile zooming", () => {
  */
 describe("a picked class", () => {
   it("leaves the chart unveiled when nothing is picked", () => {
-    const { container } = render(<Harness />);
+    render(<Harness />);
 
-    expect(container.querySelectorAll(".elevation-profile__veil")).toHaveLength(0);
+    expect(screen.queryAllByTestId("profile-veil")).toHaveLength(0);
   });
 
   it("veils nothing when the whole stage is the picked band", () => {
-    const { container } = render(<Harness highlight={{ type: "band", band: 1 }} />);
+    render(<Harness highlight={{ type: "band", band: 1 }} />);
 
-    expect(container.querySelectorAll(".elevation-profile__veil")).toHaveLength(0);
+    expect(screen.queryAllByTestId("profile-veil")).toHaveLength(0);
   });
 
   it("veils the whole chart when the stage has none of the picked band", () => {
-    const { container } = render(<Harness highlight={{ type: "band", band: 4 }} />);
+    render(<Harness highlight={{ type: "band", band: 4 }} />);
 
-    expect(container.querySelectorAll(".elevation-profile__veil")).toHaveLength(1);
+    expect(screen.queryAllByTestId("profile-veil")).toHaveLength(1);
   });
 
   it("lights only the picked class, and leaves the rest of the ride veiled", () => {
@@ -709,11 +709,9 @@ describe("a picked class", () => {
       { kind: "asphalt", startIndex: 0, endIndex: 18 },
       { kind: "gravel", startIndex: 19, endIndex: 38 },
     ]);
-    const { container } = render(
-      <Harness surface={summary} highlight={{ type: "surface", kind: "gravel" }} />,
-    );
+    render(<Harness surface={summary} highlight={{ type: "surface", kind: "gravel" }} />);
 
-    expect(container.querySelectorAll(".elevation-profile__veil")).toHaveLength(1);
+    expect(screen.queryAllByTestId("profile-veil")).toHaveLength(1);
   });
 
   // A chart that is mostly veiled has to explain itself to a reader who cannot

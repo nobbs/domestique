@@ -45,7 +45,9 @@ test("the library is drawn from the routes view", async ({ bundlePage: page, api
   // Distances come from `distance_metres`, so a card with a figure on it is a
   // route view this client could read. A renamed field would leave the parser
   // throwing and the page showing its error state instead.
-  await expect(page.locator(".route-card__figures")).toContainText("km");
+  await expect(
+    page.getByRole("heading", { name: "Synthetic Kaiserstuhl Loop" }).locator(".."),
+  ).toContainText("km");
   expect(callsTo(apiCalls, "GET", "/v1/routes").map((call) => call.status)).toContain(200);
   expect(callsTo(apiCalls, "GET", "/v1/webui/config").map((call) => call.status)).toContain(200);
 });
@@ -55,7 +57,9 @@ test("a route's geometry and its surface reach the map", async ({ bundlePage: pa
 
   await expect(page.getByRole("region", { name: "Synthetic Kaiserstuhl Loop" })).toBeVisible();
   await expect(page.locator(".maplibregl-canvas")).toBeVisible();
-  await expect(page.locator(".route-panel__figures")).toContainText("km");
+  await expect(page.getByRole("region", { name: "Synthetic Kaiserstuhl Loop" })).toContainText(
+    "km",
+  );
   // The coordinates, the bounding box and the surface ranges all came out of the
   // geometry view; a map that fitted its camera and a key that lists classes are
   // the two halves of that having been read.

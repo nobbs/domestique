@@ -54,8 +54,8 @@ const SELECTION_ACCENT = { light: "#236fc7", dark: "#70adfb" } as const;
 /** The invisible band along each route that a pointer is actually asked about. */
 const HIT_LAYER = "library-hit";
 
-/** Where MapLibre keeps the scale and optional basemap chooser. */
-const CLUSTER_SELECTOR = ".maplibregl-ctrl-bottom-left";
+/** The unobstructed MapLibre corner for the optional basemap chooser. */
+const CLUSTER_SELECTOR = ".maplibregl-ctrl-bottom-right";
 
 /**
  * How strongly the library is drawn.
@@ -461,9 +461,9 @@ export function LibraryMap({
         onChoiceChange={setCreditChoice}
       />
       {/*
-       * Into MapLibre's scale corner if it has one, and alongside it if it has
-       * not. A basemap is optional, so its absence must not move any of the
-       * persistent map controls.
+       * Into MapLibre's unobstructed lower-right corner if it has one, and
+       * alongside it if it has not. A basemap is optional, so its absence must
+       * not move any of the persistent map controls.
        */}
       {furniture === null ? null : cluster === null ? furniture : createPortal(furniture, cluster)}
     </div>

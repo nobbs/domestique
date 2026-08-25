@@ -7,6 +7,7 @@
  * can see.
  */
 
+import type { Page } from "@playwright/test";
 import { expect, mapRegion, openRoute, profileScrubber, settleMap, test } from "./fixtures";
 
 /** A straight three-band route: the simplest ground to point at. */
@@ -18,14 +19,21 @@ const LOOP_ROUTE = { provider: "veloplanner", routeId: 4102, stageOrder: 1 };
 /** The short link, which was never classified and has no profile at all. */
 const UNCLASSIFIED_ROUTE = { provider: "veloplanner", routeId: 4103, stageOrder: 1 };
 
+function routePanel(page: Page) {
+  return page
+    .getByRole("button", { name: /^Search \d+ routes?$/ })
+    .locator("xpath=ancestor::section");
+}
+
+function profile(page: Page) {
+  return profileScrubber(page).locator("..");
+}
+
 test("the route draws its map, its facts and its profile", async ({ offlinePage: page }) => {
   await openRoute(page, LINE_ROUTE.provider, LINE_ROUTE.routeId, LINE_ROUTE.stageOrder);
 
   await expect(page.locator(".maplibregl-canvas")).toBeVisible();
-  await expect(page.locator(".route-terminal--start")).toBeVisible();
-  await expect(page.locator(".route-terminal--finish")).toBeVisible();
-  await expect(page.locator(".route-direction").first()).toBeVisible();
-  await expect(page.locator(".route-panel__figures")).toContainText("km");
+  await expect(routePanel(page)).toContainText("km");
   // What the map says to a reader who cannot see it: the same start, finish and
   // direction the markers and chevrons draw.
   await expect(mapRegion(page)).toContainText("Starts and finishes");
@@ -42,8 +50,11 @@ test("climbs start folded and expand on demand", async ({ offlinePage: page }) =
   const toggle = page.getByRole("button", { name: /^Show \d+ climbs?$/ });
   await expect(toggle).toBeVisible();
   await toggle.click();
-  await expect(page.getByRole("button", { name: /^Hide \d+ climbs?$/ })).toBeVisible();
-  await expect(page.locator("#climbs-list .route-panel__climb").first()).toBeVisible();
+  const expanded = page.getByRole("button", { name: /^Hide \d+ climbs?$/ });
+  await expect(expanded).toBeVisible();
+  await expect(
+    expanded.locator("xpath=ancestor::section").getByRole("listitem").first(),
+  ).toBeVisible();
 });
 
 test("the chart answers the arrow keys and says where it is", async ({ offlinePage: page }) => {
@@ -62,7 +73,7 @@ test("the chart answers the arrow keys and says where it is", async ({ offlinePa
   expect(moved).toBeGreaterThan(start);
   // The readout is a live region, so a reader who cannot see the marker is told
   // the same thing the marker shows.
-  await expect(page.locator(".elevation-profile__readout")).toContainText("m");
+  await expect(scrubber).toHaveAttribute("aria-valuetext", /metres/);
 
   await scrubber.press("ArrowLeft");
   expect(Number(await scrubber.getAttribute("aria-valuenow"))).toBeLessThan(moved);
@@ -73,7 +84,7 @@ test("dragging across the chart zooms into that stretch, and Escape leaves it", 
 }) => {
   await openRoute(page, LINE_ROUTE.provider, LINE_ROUTE.routeId, LINE_ROUTE.stageOrder);
 
-  const chart = page.locator(".elevation-profile");
+  const chart = profile(page);
   const box = await chart.boundingBox();
   expect(box).not.toBeNull();
   if (!box) {
@@ -88,11 +99,11 @@ test("dragging across the chart zooms into that stretch, and Escape leaves it", 
   await expect(chart).toHaveAttribute("data-zoomed", "true");
   // The header row keeps the stretch visible even when the chart holding the way
   // back is folded away, so it is the honest place to read the window from.
-  await expect(page.locator(".route-profile__summary")).toContainText("km shown");
+  await expect(page.getByLabel("Elevation summary")).toContainText("km shown");
 
   await page.keyboard.press("Escape");
   await expect(chart).not.toHaveAttribute("data-zoomed", "true");
-  await expect(page.locator(".route-profile__summary")).not.toContainText("km shown");
+  await expect(page.getByLabel("Elevation summary")).not.toContainText("km shown");
 });
 
 test("dragging along the route picks the same stretch off the map", async ({
@@ -116,7 +127,7 @@ test("dragging along the route picks the same stretch off the map", async ({
   if (!box) {
     return;
   }
-  const column = await page.locator(".route-panel").boundingBox();
+  const column = await routePanel(page).boundingBox();
   const centreX = ((column ? column.x + column.width : box.x) + box.x + box.width) / 2;
   const centreY = box.y + box.height / 2;
   await page.mouse.move(centreX, centreY);
@@ -124,13 +135,13 @@ test("dragging along the route picks the same stretch off the map", async ({
   await page.mouse.move(centreX + 120, centreY + 40, { steps: 10 });
   await page.mouse.up();
 
-  await expect(page.locator(".route-profile__summary")).toContainText("km shown");
-  await expect(page.locator(".elevation-profile")).toHaveAttribute("data-zoomed", "true");
+  await expect(page.getByLabel("Elevation summary")).toContainText("km shown");
+  await expect(profile(page)).toHaveAttribute("data-zoomed", "true");
 
   // Escape over the map returns the whole route, the same way out the chart's own
   // control offers.
   await page.keyboard.press("Escape");
-  await expect(page.locator(".route-profile__summary")).not.toContainText("km shown");
+  await expect(page.getByLabel("Elevation summary")).not.toContainText("km shown");
 });
 
 test("picking a surface class out of the key repaints the map", async ({ offlinePage: page }) => {
@@ -166,7 +177,7 @@ test("a route nobody classified says so rather than showing an empty key", async
   await expect(page.getByText("Surface not classified yet.")).toBeVisible();
   // The same route has no elevation either, which is a second absence the page
   // has to state instead of drawing a flat line through it.
-  await expect(page.locator(".elevation-profile__absent")).toContainText("no elevation data");
+  await expect(page.getByText(/no elevation data/)).toBeVisible();
 });
 
 /*
@@ -177,15 +188,15 @@ test("a route nobody classified says so rather than showing an empty key", async
 test("the profile folds to a row that still carries its figures", async ({ offlinePage: page }) => {
   await openRoute(page, LINE_ROUTE.provider, LINE_ROUTE.routeId, LINE_ROUTE.stageOrder);
 
-  const section = page.locator(".route-profile");
+  const section = page.getByRole("region", { name: "Elevation" });
   await expect(page.getByRole("img", { name: /^Elevation profile of / })).toBeVisible();
 
   await page.getByRole("button", { name: "Hide the profile" }).click();
 
   await expect(page.getByRole("img", { name: /^Elevation profile of / })).toBeHidden();
-  await expect(section.locator(".route-profile__summary")).toContainText("m");
+  await expect(section.getByLabel("Elevation summary")).toContainText("m");
   // The route is still open around it: the chart was put away, not the route.
-  await expect(page.locator(".route-panel__figures")).toContainText("km");
+  await expect(routePanel(page)).toContainText("km");
 
   await page.getByRole("button", { name: "Show the profile" }).click();
   await expect(page.getByRole("img", { name: /^Elevation profile of / })).toBeVisible();
@@ -210,7 +221,7 @@ test("hovering the route labels the position while the profile is folded away", 
    */
   const region = mapRegion(page);
   const box = await region.boundingBox();
-  const panel = await page.locator(".route-panel").boundingBox();
+  const panel = await routePanel(page).boundingBox();
   expect(box).not.toBeNull();
   if (!box) {
     return;
@@ -220,14 +231,14 @@ test("hovering the route labels the position while the profile is folded away", 
   await page.mouse.move(x, y);
   // Proof the point really is on the line, before the readout it would have
   // shown this on is folded away.
-  await expect(page.locator(".elevation-profile__readout")).toContainText("%");
+  await expect(profileScrubber(page)).toHaveAttribute("aria-valuetext", /percent/);
 
   const collapse = page.getByRole("button", { name: "Hide the profile" });
   await collapse.focus();
   await collapse.press("Enter");
   await expect(page.getByRole("img", { name: /^Elevation profile of / })).toBeHidden();
 
-  const tooltip = page.locator(".route-position-tooltip");
+  const tooltip = page.getByText(/from start/).locator("xpath=ancestor::p");
   await expect(tooltip).toBeVisible();
   await expect(tooltip).toContainText("from start");
   await expect(tooltip).toContainText("to end");
@@ -237,7 +248,7 @@ test("hovering the route labels the position while the profile is folded away", 
 
   // Moving onto the panel takes the pointer off the map, the same way leaving
   // the canvas through `mouseout` does.
-  const foldedPanel = await page.locator(".route-panel").boundingBox();
+  const foldedPanel = await routePanel(page).boundingBox();
   expect(foldedPanel).not.toBeNull();
   if (foldedPanel) {
     await page.mouse.move(
@@ -284,7 +295,7 @@ test("choosing a start time draws a forecast strip under the profile", async ({
   await expect(strip).toBeVisible();
   // Attribution the licence requires wherever the forecast appears — see
   // components/ForecastStrip.tsx.
-  await expect(page.locator(".forecast-strip__credit")).toContainText("Open-Meteo.com");
+  await expect(page.getByText("Weather data by Open-Meteo.com")).toBeVisible();
 
   /*
    * The alignment is the whole point of drawing the strip here rather than
@@ -295,12 +306,12 @@ test("choosing a start time draws a forecast strip under the profile", async ({
    * against the same measured width, so their viewBoxes agree to the pixel or
    * one of them is measuring something the other is not.
    */
-  const widths = await page.evaluate(() => {
-    const boxOf = (selector: string) =>
-      document.querySelector(`${selector} svg`)?.getAttribute("viewBox")?.split(" ")[2];
-
-    return { profile: boxOf(".elevation-profile"), strip: boxOf(".forecast-strip") };
-  });
+  const widths = {
+    profile: (
+      await page.getByRole("img", { name: /^Elevation profile of / }).getAttribute("viewBox")
+    )?.split(" ")[2],
+    strip: (await strip.getAttribute("viewBox"))?.split(" ")[2],
+  };
   expect(widths.strip, "the strip and the profile plot at the same width").toBe(widths.profile);
 });
 

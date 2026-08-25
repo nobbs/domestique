@@ -97,6 +97,7 @@ func TestHandlerGatesEveryNonHealthRoute(t *testing.T) {
 		"/manifest.webmanifest",
 		"/",
 		"/routes/veloplanner/1/1",
+		"/settings",
 		"/unknown",
 	}
 
@@ -871,7 +872,7 @@ func TestHandlerSetsPolicyAndCacheHeaders(t *testing.T) {
 
 func TestHandlerServesTheApplicationDocumentForDeepLinks(t *testing.T) {
 	handler := newTestHandler(t)
-	for _, path := range []string{"/", "/routes/veloplanner/12/1"} {
+	for _, path := range []string{"/", "/routes/veloplanner/12/1", "/settings"} {
 		t.Run(path, func(t *testing.T) {
 			response := httptest.NewRecorder()
 			handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, path))
@@ -1879,6 +1880,7 @@ func newHandlerWithWeather(t *testing.T, weather Weather) *Handler {
 		&fakeOAuth{}, &fakeState{}, &fakeSync{accepted: true}, &fakeAssets{}, weather,
 	)
 	require.NoError(t, err, "New()")
+	handler.now = func() time.Time { return time.Date(2026, 8, 24, 0, 0, 0, 0, time.UTC) }
 
 	return handler
 }

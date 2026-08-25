@@ -12,7 +12,7 @@
  * link carries as its own colour rather than as a line of prose under the name.
  */
 
-import { IconAdjustmentsHorizontal } from "@tabler/icons-react";
+import { IconAdjustmentsHorizontal, IconSettings } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router";
 import { statusQuery } from "../api/queries";
@@ -97,11 +97,11 @@ export function Wordmark() {
   const described = state ? `Sync · ${state.label}` : undefined;
 
   return (
-    <div className="panel wordmark">
-      <Logo className="wordmark__logo" size={22} />
-      <span className="wordmark__name">domestique</span>
+    <div className="flex items-center gap-2 rounded-xl bg-[var(--panel)] px-2.5 py-2 shadow-[var(--shadow)] ring-1 ring-black/5">
+      <Logo className="text-[var(--accent)]" size={22} />
+      <span className="text-sm font-semibold tracking-tight">domestique</span>
       <Link
-        className="wordmark__sync"
+        className="ml-1 inline-flex size-7 items-center justify-center rounded-md text-[var(--ink-2)] hover:bg-[var(--base)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] data-[tone=good]:text-[var(--good)] data-[tone=hold]:text-[var(--hold)] data-[tone=alert]:text-[var(--alert)]"
         to="/sync"
         data-tone={state?.tone}
         /*
@@ -121,6 +121,14 @@ export function Wordmark() {
          * the corner is saying.
          */}
         <IconAdjustmentsHorizontal size={16} stroke={1.6} aria-hidden="true" />
+      </Link>
+      <Link
+        className="inline-flex size-7 items-center justify-center rounded-md text-[var(--ink-2)] hover:bg-[var(--base)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
+        to="/settings"
+        aria-label="Settings"
+        title="Settings"
+      >
+        <IconSettings size={16} stroke={1.6} aria-hidden="true" />
       </Link>
     </div>
   );
