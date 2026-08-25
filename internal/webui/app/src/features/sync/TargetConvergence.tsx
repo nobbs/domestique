@@ -12,9 +12,9 @@
  * as "on the device".
  */
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { clearTarget, triggerTargetSync } from "../../api/client";
+import { useClearTarget, useTriggerTargetSync } from "../../api/generated";
 import { statusQuery } from "../../api/queries";
 import type { TargetStatus } from "../../api/types";
 import {
@@ -87,22 +87,24 @@ function targetGuidance(target: TargetStatus) {
 export function TargetConvergence() {
   const queryClient = useQueryClient();
   const { data, isPending, isError } = useQuery(statusQuery());
-  const reconcile = useMutation({
-    mutationFn: (targetId: string) => triggerTargetSync(targetId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: statusQuery().queryKey }),
+  const reconcile = useTriggerTargetSync({
+    mutation: {
+      onSuccess: () => queryClient.invalidateQueries({ queryKey: statusQuery().queryKey }),
+    },
   });
   // Which account is being cleared, and what has been typed to confirm it.
   // Holding the slot here rather than per row is what keeps two confirmations
   // from ever being open at once.
   const [clearing, setClearing] = useState<string | null>(null);
   const [confirmation, setConfirmation] = useState("");
-  const clear = useMutation({
-    mutationFn: (targetId: string) => clearTarget(targetId),
-    onSuccess: () => {
-      setClearing(null);
-      setConfirmation("");
+  const clear = useClearTarget({
+    mutation: {
+      onSuccess: () => {
+        setClearing(null);
+        setConfirmation("");
 
-      return queryClient.invalidateQueries({ queryKey: statusQuery().queryKey });
+        return queryClient.invalidateQueries({ queryKey: statusQuery().queryKey });
+      },
     },
   });
 
@@ -184,7 +186,7 @@ export function TargetConvergence() {
                   <Button
                     variant="outline"
                     disabled={reconcile.isPending}
-                    onClick={() => reconcile.mutate(target.id)}
+                    onClick={() => reconcile.mutate({ target: target.id })}
                     aria-label={`Reconcile now: ${target.id}`}
                   >
                     {reconcile.isPending ? <Spinner aria-label="Reconciling" /> : null}
@@ -235,7 +237,7 @@ export function TargetConvergence() {
                         <AlertDialogAction
                           variant="destructive"
                           disabled={confirmation !== target.id || clear.isPending}
-                          onClick={() => clear.mutate(target.id)}
+                          onClick={() => clear.mutate({ target: target.id })}
                           aria-label={`Delete every Domestique route from ${target.id}`}
                         >
                           {clear.isPending ? <Spinner aria-label="Deleting" /> : null}

@@ -162,12 +162,10 @@ func TestRevisionsDifferSoATargetCanLookBehind(t *testing.T) {
 
 // storedRange is the wire form the geometry endpoint serves, restated here so
 // the test reads the bytes a consumer would rather than the producer's types.
-//
-//nolint:tagliatelle // the stored wire form is snake_case; this reads it, it does not choose it.
 type storedRange struct {
 	Kind       string `json:"kind"`
-	StartIndex int    `json:"start_index"`
-	EndIndex   int    `json:"end_index"`
+	StartIndex int    `json:"startIndex"`
+	EndIndex   int    `json:"endIndex"`
 }
 
 func decodeRanges(t *testing.T, encoded []byte) []storedRange {

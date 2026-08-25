@@ -139,11 +139,9 @@ func (a *Annotator) annotateStage(ctx context.Context, stage *route.Stage, gener
 // and the class travels as its stable name rather than as an integer nothing
 // outside this package could interpret.
 type storedRange struct {
-	Kind string `json:"kind"`
-	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	StartIndex int `json:"start_index"`
-	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	EndIndex int `json:"end_index"`
+	Kind       string `json:"kind"`
+	StartIndex int    `json:"startIndex"`
+	EndIndex   int    `json:"endIndex"`
 }
 
 // EncodeRanges renders ranges as the JSON array the endpoint serves. It is

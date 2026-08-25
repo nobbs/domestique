@@ -70,14 +70,14 @@ async function styleUrls(
   const response = await page.request.get(`${baseUrl}/v1/webui/config`, { headers });
   expect(response.ok(), "the demo API serves its browser configuration").toBeTruthy();
   const payload = (await response.json()) as {
-    basemaps?: { style_url?: string; style_url_dark?: string }[];
+    basemaps?: { styleUrl?: string; styleUrlDark?: string }[];
   };
   // The first entry is the one a browser that has chosen nothing loads, which is
   // every browser this harness starts.
   const first = payload.basemaps?.[0];
-  expect(first?.style_url, "the service names a basemap style").toBeTruthy();
+  expect(first?.styleUrl, "the service names a basemap style").toBeTruthy();
 
-  return { light: first?.style_url ?? "", dark: first?.style_url_dark };
+  return { light: first?.styleUrl ?? "", dark: first?.styleUrlDark };
 }
 
 /** What an offline page may be given beyond the defaults. */
@@ -151,8 +151,8 @@ export async function installOfflineBasemap(
       // other test loads and the added one is what a press has to reach for.
       payload.basemaps.push({
         name: SECOND_BASEMAP_NAME,
-        style_url: secondStyle,
-        dark_cartography: true,
+        styleUrl: secondStyle,
+        darkCartography: true,
       });
       await route.fulfill({ contentType: "application/json", body: JSON.stringify(payload) });
 

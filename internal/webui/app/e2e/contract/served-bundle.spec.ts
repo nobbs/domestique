@@ -2,10 +2,10 @@
  * The bundle the service serves, reading the views the service returns.
  *
  * Everything here crosses the real HTTP boundary: the document and its assets
- * come from the Go embed handler, and every figure on the page was parsed by the
- * shipped client out of a response a real handler wrote from a real SQLite row.
- * A Go view and its TypeScript parser drifting apart is the failure these tests
- * exist to catch, and it surfaces as the page failing to show what it fetched.
+ * come from the Go embed handler, and every figure on the page was read by
+ * generated operations from a response a real handler wrote from a real SQLite
+ * row. A Go view and its generated client drifting apart surfaces as the page
+ * failing to show what it fetched.
  */
 
 import { mapRegion, openLibrary, openRoute, openSearch, openSync, settleMap } from "../fixtures";
@@ -31,6 +31,11 @@ test("the service serves a bundle the browser can boot", async ({ bundlePage: pa
   await expect(page.getByRole("button", { name: "Search the route library" })).toBeVisible();
   const asset = await page.locator("script[type='module']").first().getAttribute("src");
   expect(asset).toMatch(/^\/assets\/.+\.js$/);
+
+  // A contract cutover replaces field names in place, so deployment verification
+  // must include the browser request that discards its prior bundle.
+  await page.reload({ waitUntil: "networkidle" });
+  await expect(page.getByRole("button", { name: "Search the route library" })).toBeVisible();
 });
 
 test("the library is drawn from the routes view", async ({ bundlePage: page, apiCalls }) => {
@@ -42,9 +47,8 @@ test("the library is drawn from the routes view", async ({ bundlePage: page, api
   await expect(await openSearch(page)).toHaveAttribute("placeholder", "Search 7 routes");
   await (await openSearch(page)).fill("kaiserstuhl");
   await page.getByRole("button", { name: /Synthetic Kaiserstuhl Loop/ }).click();
-  // Distances come from `distance_metres`, so a card with a figure on it is a
-  // route view this client could read. A renamed field would leave the parser
-  // throwing and the page showing its error state instead.
+  // Distances come from `distanceMetres`, so a card with a figure on it proves
+  // the generated route model matched the real response.
   await expect(
     page.getByRole("heading", { name: "Synthetic Kaiserstuhl Loop" }).locator(".."),
   ).toContainText("km");

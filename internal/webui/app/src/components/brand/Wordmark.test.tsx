@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { describe, expect, it } from "vitest";
+import { statusQuery } from "../../api/queries";
 import type { Status, SyncStatus, TargetStatus } from "../../api/types";
 import { Wordmark, wordmarkState } from "./Wordmark";
 
@@ -162,7 +163,7 @@ function renderWordmark(value?: Status) {
     defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
   });
   if (value) {
-    client.setQueryData(["status"], value);
+    client.setQueryData(statusQuery().queryKey, value);
   }
 
   return render(

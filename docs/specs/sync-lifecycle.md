@@ -477,6 +477,12 @@ future reconciliation feature.
 
 ## HTTP JSON contract
 
+The route inventory, status, sync, OAuth, browser, asset, media-type, and
+error-envelope wire details are authoritative in
+[`api/openapi.yaml`](../../api/openapi.yaml). All Domestique JSON properties
+there use camelCase; this specification defines the lifecycle and safety rules
+those responses describe.
+
 All routes on the served listener except the loopback liveness probe require the
 configured Tailnet identity, and the readiness probe is not on that listener at
 all. Every state-changing route additionally requires an `Origin` header

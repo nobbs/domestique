@@ -98,6 +98,27 @@ sources = ["mise-tasks.toml", ".mise.toml"]
 outputs = { auto = true }
 run = "mise tasks validate"
 
+# One contract generates both sides of the same-origin boundary. The generated
+# files are committed: generation is deterministic, and api-check makes drift a
+# review-time failure rather than a stale browser/runtime mismatch.
+[api-generate]
+description = "Generate Go and browser API bindings from OpenAPI"
+sources = ["api/openapi.yaml", "api/oapi-codegen.yaml", "internal/webui/app/orval.config.ts", "internal/webui/app/src/api/request.ts", "internal/webui/app/package.json", "internal/webui/app/pnpm-lock.yaml"]
+outputs = ["internal/httpapi/contract/openapi.gen.go", "internal/webui/app/src/api/generated.ts"]
+# The second command reads node_modules, so this is the task that has to follow
+# ui-install; api-check below only reads git, and gets the ordering anyway
+# because it depends on this one.
+wait_for = ["ui-install"]
+run = [
+  "oapi-codegen --config api/oapi-codegen.yaml api/openapi.yaml",
+  "pnpm --dir internal/webui/app run api:generate",
+]
+
+[api-check]
+description = "Check generated API bindings are current"
+depends = ["api-generate"]
+run = "./dev/check-generated.sh"
+
 # gotestsum runs `go test` and reformats its JSON stream: `standard-quiet` is
 # what `go test` itself prints, so the only thing that changed here is the JUnit
 # report written alongside it. CI uploads that file to Codecov's test analytics,
@@ -176,7 +197,7 @@ run = ["go mod tidy -diff", "go mod verify"]
 
 [vulncheck]
 description = "Check the Go tree against the advisory database"
-run = "govulncheck ./..."
+run = "CGO_ENABLED=0 govulncheck ./..."
 
 [secret-scan]
 description = "Scan the working tree for secrets"
@@ -349,7 +370,9 @@ run = "pnpm --dir internal/webui/app run storybook:build"
 
 # The UI checks below read node_modules but do not install it. `wait_for` orders
 # them behind `ui-install` when a gate scheduled it, and does nothing when one
-# of them is run on its own.
+# of them is run on its own. The three that read src/api/generated.ts also
+# follow `api-check`, so a regeneration cannot rewrite that file underneath a
+# check already reading it.
 [ui-typecheck]
 description = "Type-check the UI"
 sources = [
@@ -362,7 +385,7 @@ sources = [
   "internal/webui/app/*.json",
 ]
 outputs = { auto = true }
-wait_for = ["ui-install"]
+wait_for = ["ui-install", "api-check"]
 run = "pnpm --dir internal/webui/app run typecheck"
 
 [ui-lint]
@@ -377,7 +400,7 @@ sources = [
   "internal/webui/app/*.json",
 ]
 outputs = { auto = true }
-wait_for = ["ui-install"]
+wait_for = ["ui-install", "api-check"]
 run = "pnpm --dir internal/webui/app run lint"
 
 [ui-format]
@@ -396,7 +419,7 @@ sources = [
   "internal/webui/app/*.json",
 ]
 outputs = { auto = true }
-wait_for = ["ui-install"]
+wait_for = ["ui-install", "api-check"]
 run = "pnpm --dir internal/webui/app run test"
 
 # Downloads the browser the whole-page suite runs in. Separate from running the
@@ -561,6 +584,7 @@ depends = ["mod-check", "vulncheck", "ui-audit", "secret-scan"]
 description = "The UI half of the gate, as CI groups it"
 depends = [
   "ui-install",
+  "api-check",
   "ui-typecheck",
   "ui-lint",
   "ui-test",
@@ -594,6 +618,7 @@ depends = [
 description = "The routine local loop"
 depends = [
   "ui-install",
+  "api-check",
   "hygiene",
   "lint",
   "markdownlint",

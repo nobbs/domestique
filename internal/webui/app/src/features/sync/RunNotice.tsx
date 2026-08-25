@@ -16,11 +16,11 @@
  * words. A reference is printed as the opaque string it is.
  */
 
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { Link } from "react-router";
-import { triggerSync } from "../../api/client";
-import { statusQuery, syncRunLookupQuery } from "../../api/queries";
+import { useTriggerSourceSync, useTriggerTargetsSync } from "../../api/generated";
+import { statusQuery, useSyncRunLookup } from "../../api/queries";
 import type { Status, SyncPhase, SyncRun } from "../../api/types";
 import { SYNC_PHASES } from "../../api/types";
 import { Alert, AlertDescription, AlertTitle } from "../../components/ui/alert";
@@ -94,14 +94,12 @@ export function RunNotice({ reference }: { reference: string | null }) {
    * because what it needs is not the recent runs but whether one particular run
    * is anywhere in the history at all.
    */
-  const history = useInfiniteQuery({
-    ...syncRunLookupQuery(reference ?? ""),
-    enabled: reference !== null,
-  });
-  const run = useMutation({
-    mutationFn: (phase: SyncPhase) => triggerSync(phase),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: statusQuery().queryKey }),
-  });
+  const history = useSyncRunLookup(reference);
+  const invalidateStatus = () =>
+    queryClient.invalidateQueries({ queryKey: statusQuery().queryKey });
+  const sourceRun = useTriggerSourceSync({ mutation: { onSuccess: invalidateStatus } });
+  const targetsRun = useTriggerTargetsSync({ mutation: { onSuccess: invalidateStatus } });
+  const run = noticePhaseMutation(sourceRun, targetsRun);
 
   const runs = history.data?.pages.flatMap((page) => page.runs) ?? [];
   const notice = noticeRun(reference, runs, status.data);
@@ -217,4 +215,21 @@ export function RunNotice({ reference }: { reference: string | null }) {
       ) : null}
     </Alert>
   );
+}
+
+// Each phase has its own mutation, so each keeps its own terminal state. The
+// failure reported is the one belonging to whichever phase was asked for last,
+// rather than either half's outliving a later, successful run of the other.
+function noticePhaseMutation(
+  source: ReturnType<typeof useTriggerSourceSync>,
+  targets: ReturnType<typeof useTriggerTargetsSync>,
+) {
+  const latest = targets.submittedAt >= source.submittedAt ? targets : source;
+
+  return {
+    isPending: source.isPending || targets.isPending,
+    isError: latest.isError,
+    error: latest.error,
+    mutate: (phase: SyncPhase) => (phase === "source" ? source : targets).mutate(),
+  };
 }

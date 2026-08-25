@@ -31,6 +31,20 @@ second view. A route is not a page of its own — it takes over the panel the
 search occupies and adds its own layers to the map already on screen — but the
 route being read is carried in the address, so the view stays linkable.
 
+## HTTP wire contract
+
+[`api/openapi.yaml`](../../api/openapi.yaml) is the normative HTTP wire
+contract for every public and loopback-probe route: JSON properties, response
+codes, media types, headers, redirects, assets, and the Access and Origin
+requirements. The prose specifications retain lifecycle, safety, and operating
+rules; they do not define a competing JSON shape.
+
+All Domestique JSON is camelCase, apart from the standard Web Manifest's
+specified property names. The one geometry response is a GeoJSON Feature served
+as `application/geo+json`; its stored coordinates and surface ranges pass
+through without decoding and re-encoding. Deploying this wire change requires a
+browser hard reload. There is no compatibility endpoint or public SDK.
+
 Where a stage's surface classification has been cached, that view draws it: the
 route is banded by ground class on the map, and the stage's split is summarised
 beside its stored facts. A stage with no cached classification is drawn plainly
@@ -312,9 +326,9 @@ The read-only JSON surface is deliberately small:
   aggregate geometry facts, and — when a ride-model coefficient file is
   configured and has predicted this exact geometry — a predicted moving time.
   It is omitted, never zero, for a stage nothing has predicted yet.
-- `GET /v1/routes/{source-route-id}/stages/{stage}` returns stored route
+- `GET /v1/providers/{provider}/routes/{source-route-id}/stages/{stage}` returns stored route
   metadata, not edit controls.
-- `GET /v1/routes/{source-route-id}/stages/{stage}/geometry` returns the stored
+- `GET /v1/providers/{provider}/routes/{source-route-id}/stages/{stage}/geometry` returns the stored
   geometry of one stage for map rendering, together with the surface
   classification of that geometry when one has been cached, and — when a
   ride-model coefficient file is configured and has predicted this exact
@@ -485,6 +499,14 @@ four of the six stage-keyed tables from holding two providers' stages at once
 and so defeat the migration's purpose. A future migration carries the same
 obligation to be additive; this exception licenses that one change, not a
 general relaxation.
+
+The camelCase HTTP cutover is a second, bounded exception. It rewrites only the
+cached JSON bytes in `stage_surface.ranges`, so existing geometry can stay a raw
+pass-through response rather than being decoded and re-encoded by the handler.
+A rollback onto the preceding image would serve the new range field names, so a
+failed deployment must roll forward after the browser hard reload instead of
+rolling back that image. No route data, ownership record, or sync safety state
+changes meaning.
 
 It does hold the operator's route geometry in plaintext as a rendering cache.
 That is personal data rather than a credential, and losing it is harmless — the

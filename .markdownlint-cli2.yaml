@@ -2,5 +2,7 @@ config:
   MD013: false
 ignores:
   - ".agents/**"
+  - ".playwright/**"
+  - ".worktrees/**"
   - "**/node_modules/**"
   - "**/dist/**"

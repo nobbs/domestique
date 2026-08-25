@@ -204,18 +204,27 @@ func TestClientInventoryRejectsMissingRevision(t *testing.T) {
 }
 
 func TestClientInventoryRejectsOversizedBody(t *testing.T) {
-	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		if request.URL.Path != "/v006/account/email/rider@example.test/" {
-			writer.WriteHeader(http.StatusNotFound)
-			return
-		}
-		writer.Header().Set("Content-Type", "application/json")
-		_, err := io.Copy(writer, io.LimitReader(zeroReader{}, maximumBodyBytes+1))
-		assert.NoError(t, err)
-	}))
-	defer server.Close()
+	client, err := New(&Options{
+		BaseURL:  "https://komoot.example.test",
+		Email:    []byte("rider@example.test"),
+		Password: []byte("test-password"),
+		Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
+			require.Equal(t, "/v006/account/email/rider@example.test/", request.URL.Path)
 
-	_, err := newTestClient(t, server).Inventory(t.Context())
+			// Streamed rather than built: the client reads the limit into
+			// memory itself, and a materialised fixture would hold a second
+			// copy of the same sixteen megabytes for the whole test.
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(io.LimitReader(zeroReader{}, maximumBodyBytes+1)),
+				Header:     make(http.Header),
+				Request:    request,
+			}, nil
+		}),
+	})
+	require.NoError(t, err)
+
+	_, err = client.Inventory(t.Context())
 	require.ErrorContains(t, err, "exceeded size limit")
 }
 
@@ -612,4 +621,10 @@ func (zeroReader) Read(buffer []byte) (int, error) {
 	}
 
 	return len(buffer), nil
+}
+
+type roundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripperFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return f(request)
 }

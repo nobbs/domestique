@@ -13,10 +13,15 @@
  * runs, not a lock.
  */
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { retrySurfaceEnrichment, setSyncSchedule, triggerSync } from "../../api/client";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useSetSyncSchedule,
+  useTriggerSourceSync,
+  useTriggerSurfaceSync,
+  useTriggerTargetsSync,
+} from "../../api/generated";
 import { statusQuery, webUIConfigQuery } from "../../api/queries";
-import type { Status, SyncActive, SyncPhase, SyncPhaseRun, SyncSchedule } from "../../api/types";
+import type { Status, SyncActive, SyncPhase, SyncPhaseRun } from "../../api/types";
 import { SYNC_PHASES } from "../../api/types";
 import { Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
@@ -139,17 +144,17 @@ export function SyncControls() {
 
   const invalidateStatus = () =>
     queryClient.invalidateQueries({ queryKey: statusQuery().queryKey });
-  const schedule = useMutation({
-    mutationFn: (next: SyncSchedule) => setSyncSchedule(next),
-    onSuccess: invalidateStatus,
+  const schedule = useSetSyncSchedule({
+    mutation: { onSuccess: invalidateStatus },
   });
-  const run = useMutation({
-    mutationFn: (phase: SyncPhase) => triggerSync(phase),
-    onSuccess: invalidateStatus,
-  });
-  const retryClassification = useMutation({
-    mutationFn: retrySurfaceEnrichment,
-    onSuccess: invalidateStatus,
+  const sourceRun = useTriggerSourceSync({ mutation: { onSuccess: invalidateStatus } });
+  const targetsRun = useTriggerTargetsSync({ mutation: { onSuccess: invalidateStatus } });
+  // Each phase now has its own mutation, so each keeps its own terminal state
+  // and a failure would otherwise outlive the successful run of the other half.
+  // The banner belongs to whichever phase was asked for last.
+  const lastRun = targetsRun.submittedAt >= sourceRun.submittedAt ? targetsRun : sourceRun;
+  const retryClassification = useTriggerSurfaceSync({
+    mutation: { onSuccess: invalidateStatus },
   });
 
   if (isPending) {
@@ -163,7 +168,7 @@ export function SyncControls() {
   // schedule, and sending the pair means the operator's own view of the other
   // half is what gets written rather than a value assumed here.
   const toggle = (phase: SyncPhase) =>
-    schedule.mutate({ ...data.sync.schedule, [phase]: !data.sync.schedule[phase] });
+    schedule.mutate({ data: { ...data.sync.schedule, [phase]: !data.sync.schedule[phase] } });
 
   return (
     <>
@@ -218,6 +223,7 @@ export function SyncControls() {
       <ul className="grid gap-3">
         {SYNC_PHASES.map((phase) => {
           const enabled = data.sync.schedule[phase];
+          const run = phase === "source" ? sourceRun : targetsRun;
           const phaseRun = data.sync.phases[phase];
           const guidance = phaseRun
             ? syncGuidance(phase, phaseRun.lastResult, phaseRun.lastFailure)
@@ -267,7 +273,7 @@ export function SyncControls() {
                 <Button
                   variant="outline"
                   disabled={run.isPending}
-                  onClick={() => run.mutate(phase)}
+                  onClick={() => run.mutate()}
                   aria-label={`Run now: ${labels[phase]}`}
                 >
                   {run.isPending ? <Spinner aria-label={`Running ${labels[phase]}`} /> : null}
@@ -288,10 +294,10 @@ export function SyncControls() {
           The schedule was not changed. It is still what it was.
         </p>
       ) : null}
-      {run.isError ? (
+      {lastRun.isError ? (
         <p className="text-sm text-[var(--alert)]" role="alert">
-          {run.error instanceof Error && run.error.message
-            ? run.error.message
+          {lastRun.error instanceof Error && lastRun.error.message
+            ? lastRun.error.message
             : "That run could not be started."}
         </p>
       ) : null}

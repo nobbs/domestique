@@ -27,7 +27,6 @@ func (h *Handler) start(writer http.ResponseWriter, request *http.Request, login
 
 		return
 	}
-	//nolint:gosec // The OAuth service returned a validated HTTPS Wahoo authorization URL.
 	http.Redirect(writer, request, location, http.StatusFound)
 }
 

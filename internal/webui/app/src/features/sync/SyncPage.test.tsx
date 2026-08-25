@@ -102,7 +102,7 @@ describe("SyncPage", () => {
   });
 
   it("addresses the exact commit the running service was built from", async () => {
-    renderPage("/sync", statusBody({ revision: REVISION, image_digest: DIGEST }));
+    renderPage("/sync", statusBody({ revision: REVISION, imageDigest: DIGEST }));
 
     const link = await screen.findByRole("link", { name: "commit 0123456" });
     expect(link).toHaveAttribute("href", `https://github.com/nobbs/domestique/commit/${REVISION}`);

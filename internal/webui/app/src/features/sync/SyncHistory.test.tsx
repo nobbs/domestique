@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { statusQuery, syncRunsQueryKey, webUIConfigQuery } from "../../api/queries";
 import type { Status, SyncRun, SyncRunPage, WebUIConfig } from "../../api/types";
 import { SyncHistory } from "./SyncHistory";
 
@@ -55,9 +56,9 @@ function renderHistory(page: SyncRunPage, configValue: WebUIConfig = config()) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
   });
-  client.setQueryData(["sync-runs"], { pages: [page], pageParams: [undefined] });
-  client.setQueryData(["status"], status("2026-08-18T06:30:00Z"));
-  client.setQueryData(["webui-config"], configValue);
+  client.setQueryData(syncRunsQueryKey(), { pages: [page], pageParams: [undefined] });
+  client.setQueryData(statusQuery().queryKey, status("2026-08-18T06:30:00Z"));
+  client.setQueryData(webUIConfigQuery().queryKey, configValue);
   render(
     <QueryClientProvider client={client}>
       <SyncHistory />
@@ -177,7 +178,7 @@ describe("SyncHistory", () => {
     expect(fetchMock).not.toHaveBeenCalled();
 
     act(() => {
-      client.setQueryData(["status"], status("2026-08-18T07:30:00Z"));
+      client.setQueryData(statusQuery().queryKey, status("2026-08-18T07:30:00Z"));
     });
 
     await waitFor(() =>

@@ -565,7 +565,7 @@ func TestStoreReprocessesOneStageWithoutLosingItsRouteIdentity(t *testing.T) {
 	require.NoError(t, store.StoreTrustedInventory(t.Context(), route.ProviderVeloPlanner, []route.Stage{stage}), "StoreTrustedInventory()")
 	require.NoError(t, store.UpsertTargetStage(t.Context(), "rider-a", route.ProviderVeloPlanner, 7, 2, "revision", "encoded-hash", 4242), "UpsertTargetStage()")
 	require.NoError(t, store.StoreStageSurface(
-		t.Context(), route.ProviderVeloPlanner, 7, 2, "content-hash", "index-gen", []byte(`[{"kind":"asphalt","start_index":0,"end_index":1}]`), 100,
+		t.Context(), route.ProviderVeloPlanner, 7, 2, "content-hash", "index-gen", []byte(`[{"kind":"asphalt","startIndex":0,"endIndex":1}]`), 100,
 	), "StoreStageSurface()")
 
 	found, err := store.RequestStageReprocess(t.Context(), route.ProviderVeloPlanner, 7, 2)
@@ -651,10 +651,10 @@ func TestStoreCountsOnlyClassificationsOfTheCurrentGeometry(t *testing.T) {
 	require.Equal(t, 2, total, "total stages")
 
 	require.NoError(t, store.StoreStageSurface(
-		t.Context(), route.ProviderVeloPlanner, 7, 1, "hash-a", "index-gen", []byte(`[{"kind":"asphalt","start_index":0,"end_index":1}]`), 100,
+		t.Context(), route.ProviderVeloPlanner, 7, 1, "hash-a", "index-gen", []byte(`[{"kind":"asphalt","startIndex":0,"endIndex":1}]`), 100,
 	), "StoreStageSurface()")
 	require.NoError(t, store.StoreStageSurface(
-		t.Context(), route.ProviderVeloPlanner, 8, 1, "an-earlier-shape", "index-gen", []byte(`[{"kind":"gravel","start_index":0,"end_index":1}]`), 100,
+		t.Context(), route.ProviderVeloPlanner, 8, 1, "an-earlier-shape", "index-gen", []byte(`[{"kind":"gravel","startIndex":0,"endIndex":1}]`), 100,
 	), "StoreStageSurface()")
 
 	classified, total, err = store.SurfaceCoverage(t.Context())
@@ -1053,6 +1053,32 @@ func TestStoreCachesStageSurfaceAgainstTheGeometryItDescribes(t *testing.T) {
 	assert.Equal(t, "index-gen", generation, "StageSurfaceHash() generation")
 }
 
+func TestStoreMigratesStoredSurfaceRangesToCamelCase(t *testing.T) {
+	databasePath := filepath.Join(t.TempDir(), "state.db")
+	seedSchemaVersion(t, databasePath, len(schemaMigrations())-1)
+
+	database, err := sql.Open(driverName, databasePath)
+	require.NoError(t, err, "opening state before the range migration")
+	_, err = database.ExecContext(t.Context(), `
+		INSERT INTO stage_surface (
+			provider, route_id, stage_order, content_hash, index_generation, ranges, matched_metres, updated_at_unix
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`, route.ProviderVeloPlanner, 7, 2, "content-hash", "index-gen", `[{"kind":"asphalt","start_index":0,"end_index":1}]`, 1234.5, time.Now().Unix())
+	require.NoError(t, err, "storing the prior wire shape")
+	require.NoError(t, database.Close(), "closing state before migration")
+
+	store, err := Open(t.Context(), databasePath, testKey(1))
+	require.NoError(t, err, "opening state applies the range migration")
+	t.Cleanup(func() {
+		assert.NoError(t, store.Close(), "closing migrated state")
+	})
+
+	ranges, _, found, err := store.StageSurface(t.Context(), route.ProviderVeloPlanner, 7, 2, "content-hash")
+	require.NoError(t, err, "reading migrated ranges")
+	require.True(t, found, "migrated surface range")
+	assert.JSONEq(t, `[{"kind":"asphalt","startIndex":0,"endIndex":1}]`, string(ranges), "migrated range fields")
+}
+
 func TestStoreHidesASurfaceMeasuredAgainstOtherGeometry(t *testing.T) {
 	store := openTestStore(t, testKey(1))
 	stage := storeTestStage(t, 1, 1, "revision", "current-hash")
@@ -1339,7 +1365,7 @@ func TestStorePruneStageDurationsWithDifferentFingerprintClearsEverythingWhenUnc
 
 // testSurfaceRanges is one stored classification, in the shape the annotator
 // writes and the geometry endpoint serves.
-const testSurfaceRanges = `[{"kind":"asphalt","start_index":0,"end_index":1}]`
+const testSurfaceRanges = `[{"kind":"asphalt","startIndex":0,"endIndex":1}]`
 
 func countStageSurfaceRows(t *testing.T, store *Store) int {
 	t.Helper()

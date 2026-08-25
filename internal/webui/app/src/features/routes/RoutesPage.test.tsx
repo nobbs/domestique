@@ -12,6 +12,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { routeGeometryQuery, routesQuery, statusQuery, webUIConfigQuery } from "../../api/queries";
 import type {
   BoundingBox,
   Position,
@@ -98,7 +99,7 @@ const LIBRARY = [
   route(2, 1, "Kaiserstuhl Loop", ""),
 ];
 
-function geometry(stage: Route, offset: number): RouteGeometry {
+function geometry(_stage: Route, offset: number): RouteGeometry {
   const coordinates: Position[] = [
     [8 + offset, 49, 100],
     [8.05 + offset, 49.05, 140],
@@ -106,7 +107,6 @@ function geometry(stage: Route, offset: number): RouteGeometry {
   ];
 
   return {
-    stage,
     bbox: [8 + offset, 49, 8.1 + offset, 49.1],
     coordinates,
   };
@@ -132,13 +132,14 @@ function renderPage(
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
   });
-  client.setQueryData(["stages"], library);
-  client.setQueryData(["webui-config"], {
+  client.setQueryData(routesQuery().queryKey, library);
+  client.setQueryData(webUIConfigQuery().queryKey, {
     basemaps: options.basemaps ?? [
       { name: "Streets", styleUrl: "https://tiles.example/style.json", darkCartography: false },
     ],
+    sourceBaseUrls: {},
   });
-  client.setQueryData(["status"], {
+  client.setQueryData(statusQuery().queryKey, {
     ready: true,
     converged: true,
     targets: [],
@@ -165,10 +166,13 @@ function renderPage(
     },
   });
   (options.geometryFor ?? library).forEach((entry, index) => {
-    client.setQueryData(["stage-geometry", entry.provider, entry.routeId, entry.stageOrder], {
-      ...geometry(entry, index * 0.4),
-      surface: options.surfaceFor?.[routeKey(entry)],
-    });
+    client.setQueryData(
+      routeGeometryQuery(entry.provider, entry.routeId, entry.stageOrder).queryKey,
+      {
+        ...geometry(entry, index * 0.4),
+        surface: options.surfaceFor?.[routeKey(entry)],
+      },
+    );
   });
 
   return render(
