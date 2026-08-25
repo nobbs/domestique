@@ -107,11 +107,8 @@ export interface MapCreditsProps {
    */
   extra?: string | undefined;
   /**
-   * Whether the reader folded the credit open or away, or `null` while they
-   * have said nothing and it begins folded.
-   *
-   * Three states rather than two, because "not yet asked" is not the same
-   * answer as "asked for it folded".
+   * Whether the reader folded the credit open or away. `null` is the initial,
+   * folded state.
    */
   choice: boolean | null;
   onChoiceChange: (choice: boolean) => void;

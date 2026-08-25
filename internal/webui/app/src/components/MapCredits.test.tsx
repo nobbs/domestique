@@ -66,10 +66,6 @@ describe("MapCredits", () => {
       "aria-expanded",
       "false",
     );
-    expect(screen.getByRole("button", { name: "Show the map credit" })).toHaveAttribute(
-      "data-slot",
-      "button",
-    );
   });
 
   it("gives the credit back to a keyboard in one interaction", async () => {

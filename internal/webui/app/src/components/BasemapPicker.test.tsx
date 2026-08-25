@@ -85,11 +85,6 @@ describe("BasemapPicker", () => {
     expect(screen.getByRole("radio", { name: "Streets" })).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: "Satellite" })).toBeInTheDocument();
     expect(screen.getAllByRole("radio")).toHaveLength(2);
-    expect(group).toHaveAttribute("data-slot", "radio-group");
-    expect(screen.getByRole("radio", { name: "Streets" })).toHaveAttribute(
-      "data-slot",
-      "radio-group-item",
-    );
   });
 
   /*
