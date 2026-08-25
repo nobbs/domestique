@@ -111,6 +111,12 @@ func TestFitRouteCoefficientsRecoversSyntheticRideTimes(t *testing.T) {
 // what the hybrid model predicts — because the hybrid model IS
 // internal/ridemodel.Predict, called directly, never a second
 // implementation of it.
+//
+// The weight is read off physicsOnlyScaleFactor rather than written in
+// literally, so this stays an identity about the two halves reassembling
+// rather than a second place a reweighting has to be remembered;
+// TestPhysicsOnlyScaleFactorInvertsTheBlendWeight is what holds that factor
+// to the real constant.
 func TestHybridModelEqualsTheWeightedPhysicsAndRouteHalves(t *testing.T) {
 	coefficients := testCoefficients()
 	samples := rideFeatureSamples(25, 400)
@@ -119,7 +125,8 @@ func TestHybridModelEqualsTheWeightedPhysicsAndRouteHalves(t *testing.T) {
 	physicsOnly := physicsOnlyModel(&coefficients).predict(samples)
 	routeOnly := routeOnlyModel(coefficients.SecondsPerKM, coefficients.SecondsPerAscentM).predict(samples)
 
-	assert.InDelta(t, 0.5*physicsOnly+0.5*routeOnly, hybrid, 1e-6)
+	physicsWeight := 1 / physicsOnlyScaleFactor
+	assert.InDelta(t, physicsWeight*physicsOnly+(1-physicsWeight)*routeOnly, hybrid, 1e-6)
 }
 
 func TestPhysicsOnlyModelIgnoresTheRouteCoefficients(t *testing.T) {

@@ -272,12 +272,20 @@ measured on the operator's own corpus, accuracy is flat from six months to
 all history, so the window buys no error today and exists so a profile can
 follow a rider whose form actually moves.
 
-The predicted moving time is an equal-weight average of fixed physics —
+The predicted moving time is a weighted average of fixed physics —
 independently defensible assumptions, not values a corpus this small can
 reliably identify — and a two-parameter route correction, `seconds_per_km` and
 `seconds_per_ascent_m`, calibrated against the route-disjoint rolling-origin
-protocol described above. Mass, power, drag area and rolling resistance stay
-per-file because they vary with the rider and the bike; the 50/50 weight,
+protocol described above. The physics half carries a quarter of the blend and
+the route correction the remaining three quarters, because the two are not
+peers: the route half is fitted against whole moving times and so is already a
+complete estimate, while the physics half is a fixed prior nobody calibrates.
+Weighting them equally pulls a calibrated answer halfway toward an
+uncalibrated one, which measurably worsened error on routes the fit had never
+seen. The physics share is not zero because the linear half cannot tell 200 m
+of climbing up a single wall from 200 m spread over rolling ground, and only
+the physics half can. Mass, power, drag area and rolling resistance stay
+per-file because they vary with the rider and the bike; the blend weight,
 drivetrain efficiency, standard air density, and the descent cap do
 not appear in the file at all — they are fixed constants a code upgrade can
 change, which is why an upgrade to them still invalidates a cached prediction

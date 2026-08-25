@@ -34,12 +34,15 @@ const (
 	// computes it, it just needs the same label on the profile it prints.
 	modelVersionLabel = "hybrid-v2"
 	// physicsOnlyScaleFactor recovers the physics-only prediction from
-	// internal/ridemodel.Predict's own equal-weight blend: with the route
-	// coefficients zeroed, every segment's blended time is exactly half its
-	// physics time (#213's settled 50/50 split), so doubling Predict's own
-	// output — the real equation, with the route half silenced, not a second
-	// implementation of it — recovers the physics-only prediction exactly.
-	physicsOnlyScaleFactor = 2.0
+	// internal/ridemodel.Predict's own weighted blend: with the route
+	// coefficients zeroed, every segment's blended time is exactly
+	// hybridPhysicsWeight of its physics time, so scaling Predict's own
+	// output by the reciprocal — the real equation, with the route half
+	// silenced, not a second implementation of it — recovers the
+	// physics-only prediction exactly. It must stay the reciprocal of that
+	// constant; TestPhysicsOnlyScaleFactorInvertsTheBlendWeight is what
+	// catches a reweighting that forgets this.
+	physicsOnlyScaleFactor = 4.0
 	// maxMissingGeometryFraction is how much of a ride's moving time may come
 	// from samples missing altitude or position (a GPS/barometer dropout)
 	// before the ride is unscorable here.

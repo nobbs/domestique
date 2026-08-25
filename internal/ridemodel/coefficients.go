@@ -41,9 +41,9 @@ const (
 	maxCrr   = 0.05
 )
 
-// Coefficients are the values the accepted hybrid model — #213's equal-weight
+// Coefficients are the values the accepted hybrid model — #213's weighted
 // average of fixed physics and a rides-calibrated route correction — can
-// legitimately vary. Everything else (the 50/50 weight, drivetrain efficiency,
+// legitimately vary. Everything else (the blend weight, drivetrain efficiency,
 // standard air density, the descent cap) is a versioned model
 // constant in model.go, not an operator input; see modelVersion's own comment
 // for why that split is what makes an upgrade to those constants still

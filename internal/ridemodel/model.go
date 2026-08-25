@@ -53,8 +53,23 @@ const modelVersion = "hybrid-v2"
 const (
 	// hybridPhysicsWeight is the physics half's share of the blended time; the
 	// route-calibrated linear half takes the remainder. #213 settled on an
-	// equal weighting.
-	hybridPhysicsWeight    = 0.5
+	// equal weighting, which #251 measured and found too generous.
+	//
+	// The two halves are not peers. fitRouteCoefficients trains the linear
+	// half against whole moving times, so it is already a complete answer;
+	// the physics half is fixed priors nobody fits. Averaging them evenly
+	// therefore drags a calibrated estimate halfway toward an uncalibrated
+	// one, and the blend's bias comes out as the plain mean of the two
+	// halves' biases. On the operator's corpus that cost 1.3 MAE points on
+	// routes the fit had never seen, where error rose monotonically with
+	// this constant at every training window tried.
+	//
+	// It is not zero because the linear half is blind to how a stage's
+	// ascent is distributed: 200 m up one wall and 200 m of rolling ground
+	// are the same input to it, and only the physics half can tell them
+	// apart. A quarter is the weight that keeps that term while leaving the
+	// blend near-unbiased on the corpus as a whole.
+	hybridPhysicsWeight    = 0.25
 	fixedDriveEfficiency   = 0.975
 	fixedAirDensityKGPerM3 = 1.225
 	// fixedDescentCapMetresPerSecond stands in for a rider braking into a
@@ -75,9 +90,10 @@ type Result struct {
 	MovingSeconds     float64
 }
 
-// Predict runs the forward model over one stage's geometry: an equal-weight
+// Predict runs the forward model over one stage's geometry: a weighted
 // average, per segment, of the fixed-physics time and the route-calibrated
-// linear time — #213's accepted hybrid, computed once per segment so the
+// linear time — #213's accepted hybrid, reweighted by #251 and computed once
+// per segment so the
 // running total stays aligned 1:1 with the geometry rather than only agreeing
 // with the benchmark on the stage's grand total. kinds is the surface class of
 // each point, aligned with points; a nil or short kinds is read as asphalt
