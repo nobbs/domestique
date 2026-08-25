@@ -340,6 +340,8 @@ sources = [
   "internal/webui/app/src/**",
   "internal/webui/app/*.json",
   "internal/webui/app/*.ts",
+  "internal/webui/app/pnpm-lock.yaml",
+  "internal/webui/app/pnpm-workspace.yaml",
 ]
 outputs = ["internal/webui/app/storybook-static/**"]
 wait_for = ["ui-install"]

@@ -2,7 +2,7 @@ import type { Preview } from "@storybook/react-vite";
 import { type ReactNode, useEffect } from "react";
 import "../src/index.css";
 
-function StorybookTheme({ children, theme }: { children: ReactNode; theme: unknown }) {
+function StorybookTheme({ children, theme }: { children: ReactNode; theme: string }) {
   useEffect(() => {
     document.documentElement.dataset.theme = theme === "dark" ? "dark" : "light";
   }, [theme]);
