@@ -171,12 +171,13 @@ costs a push and a five-minute wait.
 
 The Go profile is collected across the service as a whole rather than per
 package under test, so that a function exercised only through another package's
-tests is not reported as dead. Four things are deliberately outside the measured
+tests is not reported as dead. Five things are deliberately outside the measured
 set, and nothing else is:
 
 | Not measured | Why |
 | --- | --- |
 | `dev/` | Repository tooling rather than the service. It has its own tests, and they run in the normal suite. |
+| `internal/httpapi/contract/openapi.gen.go` | Generated bindings. Generator freshness and contract tests verify the source of truth; branch coverage would only grade generator output. |
 | `src/**/*.test.{ts,tsx}` and `src/test/` | The tests and their harness are the measurement, not its subject. |
 | `src/**/*.d.ts` | Type-only declarations emit no runtime statement to reach. |
 | `src/main.tsx` | It mounts React onto a real document and does nothing else, so a test of it would assert the framework rather than this UI. |
@@ -354,8 +355,8 @@ a change to it should be checked. The `bundle` project runs the specs in
 `e2e/contract` against the Go service directly — the production bundle served by
 `internal/webui`'s embed handler, the real routes behind it, and the cache
 headers, content security policy and gates a deployment applies. It exists
-because a handler test and a parser test can both keep passing while the JSON
-they each assume has drifted apart: only the shipped client reading a real
+because a handler test and generated-client test can both keep passing while the
+bundle or wire contract has drifted: only the shipped client reading a real
 response catches that, so a contract failure there is a real defect rather than a
 stale fixture. Contract failures name the request they came back from, because a
 mismatch that names neither the endpoint nor the field is a bug report nobody can

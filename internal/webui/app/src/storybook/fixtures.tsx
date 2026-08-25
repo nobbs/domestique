@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { type ReactNode, useState } from "react";
 import { MemoryRouter } from "react-router";
-import { statusQuery, syncRunsQuery, weatherQuery, webUIConfigQuery } from "../api/queries";
+import { statusQuery, syncRunsQueryKey, weatherQuery, webUIConfigQuery } from "../api/queries";
 import type { Route, Status, SyncRun, WebUIConfig } from "../api/types";
 import type { Climb } from "../lib/climbs";
 import type { ForecastSample } from "../lib/forecastSamples";
@@ -155,7 +155,7 @@ export function StoryProviders({ children }: { children: ReactNode }) {
     });
     next.setQueryData(statusQuery().queryKey, status);
     next.setQueryData(webUIConfigQuery().queryKey, config);
-    next.setQueryData(syncRunsQuery().queryKey, {
+    next.setQueryData(syncRunsQueryKey(), {
       pages: [{ runs }],
       pageParams: [undefined],
     });

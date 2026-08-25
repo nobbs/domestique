@@ -2,16 +2,19 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"slices"
 	"strings"
 	"time"
 
+	openapi "github.com/nobbs/domestique/internal/httpapi/contract"
 	"github.com/nobbs/domestique/internal/route"
 )
 
@@ -492,6 +495,9 @@ func New(
 	// hand-edited config file, and a browser will not parse it back into a URL.
 	sourceBaseURLs := make(map[route.Provider]string, len(options.SourceBaseURLs))
 	for provider, value := range options.SourceBaseURLs {
+		if provider != route.ProviderVeloPlanner && provider != route.ProviderKomoot {
+			return nil, fmt.Errorf("source base URL provider %q is not in the HTTP contract", provider)
+		}
 		trimmed := strings.TrimSpace(value)
 		if trimmed == "" {
 			continue
@@ -540,66 +546,23 @@ func New(
 	return handler, nil
 }
 
-// routes registers the fixed v1 surface. Every pattern except the liveness
-// probe is wrapped by the Access identity gate, and every pattern that triggers
-// a run or writes state is additionally wrapped by the provenance check.
+// routes registers the generated OpenAPI surface. Access and Origin checks sit
+// outside generated parameter binding, so malformed requests cannot become an
+// unauthenticated side door and every rejection keeps the shared error shape.
 func (h *Handler) routes() {
-	h.mux.HandleFunc("GET /healthz", h.health)
-
-	h.mux.Handle("GET /v1/status", h.gated(h.status))
-	h.mux.Handle("POST /v1/sync", h.gated(h.sameOrigin(h.sync)))
-	h.mux.Handle("POST /v1/sync/source", h.gated(h.sameOrigin(h.syncSource)))
-	h.mux.Handle("POST /v1/sync/targets", h.gated(h.sameOrigin(h.syncTargets)))
-	h.mux.Handle("POST /v1/sync/targets/{target}", h.gated(h.sameOrigin(h.syncTarget)))
-	h.mux.Handle("POST /v1/targets/{target}/clear", h.gated(h.sameOrigin(h.clearTarget)))
-	h.mux.Handle("POST /v1/sync/surface", h.gated(h.sameOrigin(h.syncSurface)))
-	h.mux.Handle("PUT /v1/sync/schedule", h.gated(h.sameOrigin(h.setSyncSchedule)))
-	h.mux.Handle("GET /v1/sync/runs", h.gated(h.syncHistory))
-	h.mux.Handle("GET /v1/routes", h.gated(h.stages))
-	// The provider-qualified surface is nested under its own "providers" literal
-	// rather than under "/v1/routes/{provider}/...": a same-length pattern there
-	// would collide with the legacy "/v1/routes/{routeID}/stages/{stage}/geometry"
-	// route, since a Go ServeMux pattern conflict is decided purely by whether
-	// some path could satisfy both patterns' shapes, not by what a caller would
-	// plausibly send. A literal that differs at the same position rules that out
-	// unconditionally.
-	h.mux.Handle("GET /v1/providers/{provider}/routes/{routeID}/stages/{stage}", h.gated(h.stage))
-	h.mux.Handle("GET /v1/providers/{provider}/routes/{routeID}/stages/{stage}/geometry", h.gated(h.stageGeometry))
-	h.mux.Handle(
-		"POST /v1/providers/{provider}/routes/{routeID}/stages/{stage}/reprocess",
-		h.gated(h.sameOrigin(h.reprocessStage)),
-	)
-	// A URL from before a second provider existed names no provider at all. It
-	// keeps resolving by redirecting to the same stage under the only provider
-	// it could ever have meant, rather than breaking a bookmark or share link.
-	h.mux.Handle("GET /v1/routes/{routeID}/stages/{stage}", h.gated(h.redirectLegacyStagePath("")))
-	h.mux.Handle("GET /v1/routes/{routeID}/stages/{stage}/geometry", h.gated(h.redirectLegacyStagePath("/geometry")))
-	h.mux.Handle(
-		"POST /v1/routes/{routeID}/stages/{stage}/reprocess",
-		h.gated(h.sameOrigin(h.redirectLegacyStagePath("/reprocess"))),
-	)
-	h.mux.Handle("GET /v1/webui/config", h.gated(h.webUIConfig))
-	h.mux.Handle("GET /v1/weather", h.gated(h.weatherForecast))
-
-	h.mux.Handle("GET /oauth/wahoo/start/{target}", h.gated(h.start))
-	h.mux.Handle("GET /oauth/wahoo/callback", h.gated(h.callback))
-
-	h.mux.Handle("GET /assets/", h.gated(h.staticAsset))
-	h.mux.Handle("GET /favicon.svg", h.gated(h.stableAsset))
-	h.mux.Handle("GET /icon-256.png", h.gated(h.stableAsset))
-	h.mux.Handle("GET /icon-512.png", h.gated(h.stableAsset))
-	h.mux.Handle("GET /manifest.webmanifest", h.gated(h.webManifest))
-	h.mux.Handle("GET /{$}", h.gated(h.index))
-	h.mux.Handle("GET /routes/{provider}/{routeID}/{stage}", h.gated(h.index))
-	h.mux.Handle("GET /routes/{routeID}/{stage}", h.gated(h.redirectLegacyBrowserRoute))
-	h.mux.Handle("GET /sync", h.gated(h.index))
-	h.mux.Handle("GET /settings", h.gated(h.index))
-
-	// Unknown paths still answer as JSON, and still require the identity, so an
-	// unauthenticated caller cannot probe which paths exist.
-	h.mux.Handle("/", h.gated(func(writer http.ResponseWriter, _ *http.Request, _ string) {
-		h.error(writer, http.StatusNotFound, "not_found", "resource was not found")
-	}))
+	strict := openapi.NewStrictHandlerWithOptions(&contractServer{handler: h}, []openapi.StrictMiddlewareFunc{rememberContractRequest}, openapi.StrictHTTPServerOptions{
+		RequestErrorHandlerFunc:  h.contractRequestError,
+		ResponseErrorHandlerFunc: h.contractResponseError,
+	})
+	openapi.HandlerWithOptions(strict, openapi.StdHTTPServerOptions{
+		BaseRouter:       h.mux,
+		ErrorHandlerFunc: h.contractRequestError,
+	})
+	// The OpenAPI document names every registered route. This remains separate
+	// because OpenAPI has no pattern for ServeMux's unmatched-path fallback.
+	h.mux.HandleFunc("/", func(writer http.ResponseWriter, _ *http.Request) {
+		h.notFound(writer)
+	})
 }
 
 // ServeHTTP applies the shared response headers and dispatches.
@@ -609,7 +572,63 @@ func (h *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	header.Set("Referrer-Policy", "no-referrer")
 	header.Set("X-Content-Type-Options", "nosniff")
 	header.Set("Cache-Control", cacheAPI)
+	if request.Method == http.MethodGet && request.URL.Path == "/healthz" {
+		h.mux.ServeHTTP(writer, request)
+
+		return
+	}
+	h.gated(h.contractDispatch).ServeHTTP(writer, request)
+}
+
+func (h *Handler) contractDispatch(writer http.ResponseWriter, request *http.Request, principal string) {
+	if contractStateChange(request) {
+		h.sameOrigin(func(writer http.ResponseWriter, request *http.Request, _ string) {
+			h.serveContract(writer, request)
+		})(writer, request, principal)
+
+		return
+	}
+	h.serveContract(writer, request)
+}
+
+// contractStateChange mirrors the state-changing OpenAPI operations. OAuth is
+// deliberately absent: its cross-site redirect is protected by one-time,
+// identity-bound state rather than Origin.
+func contractStateChange(request *http.Request) bool {
+	if request.Method == http.MethodPut {
+		return request.URL.Path == "/v1/sync/schedule"
+	}
+	if request.Method != http.MethodPost {
+		return false
+	}
+	switch request.URL.Path {
+	case "/v1/sync", "/v1/sync/source", "/v1/sync/targets", "/v1/sync/surface":
+		return true
+	}
+	return (strings.HasPrefix(request.URL.Path, "/v1/sync/targets/") &&
+		strings.Count(request.URL.Path, "/") == 4) ||
+		(strings.HasPrefix(request.URL.Path, "/v1/targets/") && strings.HasSuffix(request.URL.Path, "/clear")) ||
+		(strings.HasPrefix(request.URL.Path, "/v1/providers/") && strings.HasSuffix(request.URL.Path, "/reprocess")) ||
+		(strings.HasPrefix(request.URL.Path, "/v1/routes/") && strings.HasSuffix(request.URL.Path, "/reprocess"))
+}
+
+func (h *Handler) serveContract(writer http.ResponseWriter, request *http.Request) {
+	if request.Method == http.MethodPut && request.URL.Path == "/v1/sync/schedule" {
+		body, err := io.ReadAll(io.LimitReader(request.Body, maximumRequestBytes+1))
+		if err == nil {
+			request = request.WithContext(context.WithValue(request.Context(), scheduleBodyKey{}, body))
+			request.Body = io.NopCloser(bytes.NewReader(body))
+		}
+	}
 	h.mux.ServeHTTP(writer, request)
+}
+
+func (h *Handler) contractRequestError(writer http.ResponseWriter, _ *http.Request, _ error) {
+	h.error(writer, http.StatusBadRequest, "invalid_request", "the request does not match this operation")
+}
+
+func (h *Handler) contractResponseError(writer http.ResponseWriter, _ *http.Request, _ error) {
+	h.error(writer, http.StatusInternalServerError, "unavailable", "the request could not be completed")
 }
 
 // gatedFunc is a handler that has already proven the caller's identity. The
@@ -734,7 +753,9 @@ func (h *Handler) error(writer http.ResponseWriter, status int, code, message st
 }
 
 func (h *Handler) writeJSON(writer http.ResponseWriter, status int, value any) {
-	writer.Header().Set("Content-Type", "application/json; charset=utf-8")
+	if writer.Header().Get("Content-Type") == "" {
+		writer.Header().Set("Content-Type", "application/json; charset=utf-8")
+	}
 	writer.WriteHeader(status)
 	if err := json.NewEncoder(writer).Encode(value); err != nil {
 		return

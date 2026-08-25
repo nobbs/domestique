@@ -26,8 +26,8 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
-import { ApiError } from "../../api/client";
 import { weatherQuery } from "../../api/queries";
+import { ApiError } from "../../api/request";
 import type { Position, WeatherPoint } from "../../api/types";
 import type { ForecastSample } from "../../lib/forecastSamples";
 import { formatPrecipitation, formatTemperature, formatWindSpeed } from "../../lib/format";

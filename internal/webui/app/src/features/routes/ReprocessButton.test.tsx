@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { routeGeometryQuery } from "../../api/queries";
 import { ReprocessButton } from "./ReprocessButton";
 
 function renderButton() {
@@ -69,14 +70,17 @@ describe("ReprocessButton", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
     const { client } = renderButton();
-    client.setQueryData(["stage-geometry", "veloplanner", 12, 1], { stage: "old" });
+    client.setQueryData(routeGeometryQuery("veloplanner", 12, 1).queryKey, {
+      bbox: [8, 49, 8.1, 49.1],
+      coordinates: [],
+    });
 
     await userEvent.click(screen.getByRole("button", { name: "Reprocess" }));
     await screen.findByRole("status");
 
-    expect(client.getQueryState(["stage-geometry", "veloplanner", 12, 1])?.isInvalidated).toBe(
-      true,
-    );
+    expect(
+      client.getQueryState(routeGeometryQuery("veloplanner", 12, 1).queryKey)?.isInvalidated,
+    ).toBe(true);
     expect(fetchMock.mock.calls.some((call) => String(call[0]).includes("/geometry"))).toBe(false);
   });
 });

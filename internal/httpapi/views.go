@@ -6,7 +6,7 @@ import (
 	"github.com/nobbs/domestique/internal/route"
 )
 
-// The v1 JSON contract uses snake_case throughout. These view types are
+// The v1 JSON contract uses camelCase throughout. These view types are
 // deliberately separate from persistence and adapter structs so a storage
 // change cannot silently alter the wire format.
 
@@ -20,8 +20,7 @@ import (
 type targetView struct {
 	// LastRun is absent until this slot has been reconciled once, which is a
 	// different state from having been reconciled and failed.
-	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	LastRun       *targetRunView `json:"last_run,omitempty"`
+	LastRun       *targetRunView `json:"lastRun,omitempty"`
 	ID            string         `json:"id"`
 	Authorization string         `json:"authorisation"`
 	// Convergence is the one word for this target: "current", "lagging",
@@ -45,8 +44,7 @@ type targetStagesView struct {
 // targetRunView is one target's own last reconciliation, in the same vocabulary
 // a run uses.
 type targetRunView struct {
-	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	CompletedAt string `json:"completed_at"`
+	CompletedAt string `json:"completedAt"`
 	Result      string `json:"result"`
 	// Failure is the safe failure category, present only when that run did not
 	// succeed. It is never provider text.
@@ -60,49 +58,35 @@ type stageView struct {
 	// yet: a rider figure the service never asked for must not manufacture a
 	// confident number.
 	//
-	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	MovingSeconds *float64 `json:"moving_seconds,omitempty"`
+	MovingSeconds *float64 `json:"movingSeconds,omitempty"`
 	// Validation is the frozen profile's measured unseen-route error —
 	// present only alongside MovingSeconds, and only when the loaded
 	// coefficient file itself carries a measured benchmark result. Every
 	// stage on a deployment shares the same value: it describes the profile,
 	// not this stage's own geometry.
-	Validation *stageValidation `json:"validation,omitempty"`
-	Title      string           `json:"title"`
-	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	StageName string `json:"stage_name"`
-	Provider  string `json:"provider"`
-	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	SourceRevision string `json:"source_revision"`
-	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	ContentHash string `json:"content_hash"`
-	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	RouteName string `json:"route_name"`
-	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	DistanceMetres float64 `json:"distance_metres"`
-	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	AscentMetres float64 `json:"ascent_metres"`
-	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	MaxGradientPercent float64 `json:"max_gradient_percent"`
-	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	RouteID int64 `json:"route_id"`
-	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	PointCount int `json:"point_count"`
-	StageOrder int `json:"stage"`
+	Validation         *stageValidation `json:"validation,omitempty"`
+	Title              string           `json:"title"`
+	StageName          string           `json:"stageName"`
+	Provider           string           `json:"provider"`
+	SourceRevision     string           `json:"sourceRevision"`
+	ContentHash        string           `json:"contentHash"`
+	RouteName          string           `json:"routeName"`
+	DistanceMetres     float64          `json:"distanceMetres"`
+	AscentMetres       float64          `json:"ascentMetres"`
+	MaxGradientPercent float64          `json:"maxGradientPercent"`
+	RouteID            int64            `json:"routeId"`
+	PointCount         int              `json:"pointCount"`
+	StageOrder         int              `json:"stageOrder"`
 }
 
 // stageValidation is the frozen coefficient profile's measured unseen-route
 // error, from the same route-disjoint benchmark that froze it. It describes
 // the profile as a whole, not any one stage's geometry.
 type stageValidation struct {
-	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	BiasPercent float64 `json:"bias_percent"`
-	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	MAEPercent float64 `json:"mae_percent"`
-	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	P90Percent float64 `json:"p90_percent"`
-	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	EvaluatedRides int `json:"evaluated_rides"`
+	BiasPercent    float64 `json:"biasPercent"`
+	MAEPercent     float64 `json:"maePercent"`
+	P90Percent     float64 `json:"p90Percent"`
+	EvaluatedRides int     `json:"evaluatedRides"`
 }
 
 // syncScheduleView reports which halves of a synchronization the timer may
@@ -116,17 +100,13 @@ type syncScheduleView struct {
 // phaseRunView is the last recorded run of one phase. Absent means that phase
 // has not finished a run since the service learned to record them separately.
 type phaseRunView struct {
-	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	LastCompletedAt string `json:"last_completed_at"`
-	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	LastResult string `json:"last_result"`
-	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	LastFailure string `json:"last_failure,omitempty"`
-	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	SourceStages int `json:"source_stages"`
-	Created      int `json:"created"`
-	Updated      int `json:"updated"`
-	Deleted      int `json:"deleted"`
+	LastCompletedAt string `json:"lastCompletedAt"`
+	LastResult      string `json:"lastResult"`
+	LastFailure     string `json:"lastFailure,omitempty"`
+	SourceStages    int    `json:"sourceStages"`
+	Created         int    `json:"created"`
+	Updated         int    `json:"updated"`
+	Deleted         int    `json:"deleted"`
 }
 
 // syncRunView is one terminal run in the recorded history: which half it was,
@@ -137,17 +117,15 @@ type phaseRunView struct {
 // Reference is the opaque name the run was recorded under. It is what a
 // notification can say out loud, and what an operator matches this row against.
 type syncRunView struct {
-	Reference string `json:"reference"`
-	Phase     string `json:"phase"`
-	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	CompletedAt string `json:"completed_at"`
-	Result      string `json:"result"`
-	Failure     string `json:"failure,omitempty"`
-	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	SourceStages int `json:"source_stages"`
-	Created      int `json:"created"`
-	Updated      int `json:"updated"`
-	Deleted      int `json:"deleted"`
+	Reference    string `json:"reference"`
+	Phase        string `json:"phase"`
+	CompletedAt  string `json:"completedAt"`
+	Result       string `json:"result"`
+	Failure      string `json:"failure,omitempty"`
+	SourceStages int    `json:"sourceStages"`
+	Created      int    `json:"created"`
+	Updated      int    `json:"updated"`
+	Deleted      int    `json:"deleted"`
 }
 
 // syncRunsView is one page of that history, newest first, with the cursor for
@@ -172,9 +150,8 @@ type syncPhasesView struct {
 type activeView struct {
 	// Phase is the half in flight, absent while a run has been accepted but no
 	// half of it has started.
-	Phase string `json:"phase,omitempty"`
-	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	StartsAt string `json:"starts_at,omitempty"`
+	Phase    string `json:"phase,omitempty"`
+	StartsAt string `json:"startsAt,omitempty"`
 	// Targets is how many accounts are configured, which is what the stage
 	// counts beside it are measured against.
 	Targets int              `json:"targets"`
@@ -186,8 +163,7 @@ type activeView struct {
 // keeps itself — Wahoo's quota is shared across every configured target, so
 // nothing local could total it correctly on its own.
 type wahooRateLimitView struct {
-	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	ResetsAt  string `json:"resets_at,omitempty"`
+	ResetsAt  string `json:"resetsAt,omitempty"`
 	Remaining int    `json:"remaining"`
 }
 
@@ -198,25 +174,20 @@ type syncView struct {
 	Active *activeView `json:"active,omitempty"`
 	// WahooRateLimit is absent until a request has actually reached Wahoo and
 	// carried a quota header back.
-	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	WahooRateLimit *wahooRateLimitView `json:"wahoo_rate_limit,omitempty"`
+	WahooRateLimit *wahooRateLimitView `json:"wahooRateLimit,omitempty"`
 	// TrustedInventory reports the age of the trusted source inventory against
 	// the configured staleness bound. Absent when the deployment named no
 	// bound.
-	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	TrustedInventory *trustedInventoryView `json:"trusted_inventory,omitempty"`
+	TrustedInventory *trustedInventoryView `json:"trustedInventory,omitempty"`
 	State            string                `json:"state"`
-	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	LastCompletedAt string `json:"last_completed_at,omitempty"`
-	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	LastResult string      `json:"last_result,omitempty"`
-	Surface    surfaceView `json:"surface"`
-	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	SourceStages int              `json:"source_stages"`
-	Created      int              `json:"created"`
-	Updated      int              `json:"updated"`
-	Deleted      int              `json:"deleted"`
-	Schedule     syncScheduleView `json:"schedule"`
+	LastCompletedAt  string                `json:"lastCompletedAt,omitempty"`
+	LastResult       string                `json:"lastResult,omitempty"`
+	Surface          surfaceView           `json:"surface"`
+	SourceStages     int                   `json:"sourceStages"`
+	Created          int                   `json:"created"`
+	Updated          int                   `json:"updated"`
+	Deleted          int                   `json:"deleted"`
+	Schedule         syncScheduleView      `json:"schedule"`
 }
 
 // trustedInventoryView reports the trusted source inventory's freshness. It is
@@ -228,13 +199,10 @@ type trustedInventoryView struct {
 	// always present and reads 0 in both, and cannot carry the distinction on
 	// its own without the ",omitempty" on a plain int also dropping a
 	// perfectly valid zero age read immediately after a successful refresh.
-	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	LastSuccessAt string `json:"last_success_at,omitempty"`
-	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	AgeSeconds int64 `json:"age_seconds"`
-	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	MaxAgeSeconds int64 `json:"max_age_seconds"`
-	Fresh         bool  `json:"fresh"`
+	LastSuccessAt string `json:"lastSuccessAt,omitempty"`
+	AgeSeconds    int64  `json:"ageSeconds"`
+	MaxAgeSeconds int64  `json:"maxAgeSeconds"`
+	Fresh         bool   `json:"fresh"`
 }
 
 // surfaceView reports how much of the library carries a usable classification.
@@ -248,8 +216,7 @@ type trustedInventoryView struct {
 // first index has finished building.
 type surfaceView struct {
 	Generation string `json:"generation,omitempty"`
-	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	BuiltAt    string `json:"built_at,omitempty"`
+	BuiltAt    string `json:"builtAt,omitempty"`
 	Classified int    `json:"classified"`
 	Total      int    `json:"total"`
 	// Incomplete is how many stages the most recently completed classification
@@ -283,8 +250,7 @@ type buildView struct {
 	Revision string `json:"revision"`
 	// ImageDigest is the digest alone, without the registry or repository the
 	// host pulls it from. Absent when the service was not told one.
-	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	ImageDigest string `json:"image_digest,omitempty"`
+	ImageDigest string `json:"imageDigest,omitempty"`
 }
 
 type webUIConfigView struct {
@@ -298,8 +264,7 @@ type webUIConfigView struct {
 	// A base URL only: the route identifier the link needs is already in the
 	// stage the page is showing, and no route name, URL, or geometry is added
 	// here.
-	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	SourceBaseURLs map[route.Provider]string `json:"source_base_urls,omitempty"`
+	SourceBaseURLs map[route.Provider]string `json:"sourceBaseUrls,omitempty"`
 	// The cartographies the page may switch between, in the configured order.
 	// Never empty: the first entry is what a browser that has not chosen loads.
 	Basemaps []basemapView `json:"basemaps"`
@@ -311,18 +276,15 @@ type webUIConfigView struct {
 type basemapView struct {
 	// The label the picker shows, and the identity a browser remembers its
 	// choice by.
-	Name string `json:"name"`
-	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	StyleURL string `json:"style_url"`
+	Name     string `json:"name"`
+	StyleURL string `json:"styleUrl"`
 	// Omitted when unconfigured, which is how the page knows to keep this
 	// entry's one style in both colour schemes.
-	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	StyleURLDark string `json:"style_url_dark,omitempty"`
+	StyleURLDark string `json:"styleUrlDark,omitempty"`
 	// Omitted when false. True marks ground that is dark in either colour
 	// scheme, so the page inks routes over it to match the map rather than the
 	// system.
-	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	DarkCartography bool `json:"dark_cartography,omitempty"`
+	DarkCartography bool `json:"darkCartography,omitempty"`
 }
 
 // geometryView is a GeoJSON Feature carrying one stage's stored geometry. The
@@ -352,19 +314,16 @@ type geometrySurfaceView struct {
 	// as an `unknown` range in its own place along the line. What was surveyed
 	// is MatchedMetres, and it alone answers how much of the stage the classes
 	// actually describe.
-	Ranges json.RawMessage `json:"ranges"`
-	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	MatchedMetres float64 `json:"matched_metres"`
+	Ranges        json.RawMessage `json:"ranges"`
+	MatchedMetres float64         `json:"matchedMetres"`
 }
 
 type geometryPropertyView struct {
-	Surface  *geometrySurfaceView `json:"surface,omitempty"`
-	Provider string               `json:"provider"`
-	Title    string               `json:"title"`
-	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	RouteName string `json:"route_name"`
-	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	StageName string `json:"stage_name"`
+	Surface   *geometrySurfaceView `json:"surface,omitempty"`
+	Provider  string               `json:"provider"`
+	Title     string               `json:"title"`
+	RouteName string               `json:"routeName"`
+	StageName string               `json:"stageName"`
 	// CumulativeSeconds is the predicted moving time in seconds at each
 	// coordinate, indexed 1:1 with the feature's coordinates and passed through
 	// as stored so serving it costs no decode and re-encode. It is absent —
@@ -372,17 +331,11 @@ type geometryPropertyView struct {
 	// geometry: a deployment with no coefficient file configured, a stage with
 	// no usable elevation, or a prediction measured against geometry that has
 	// since changed.
-	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	CumulativeSeconds json.RawMessage `json:"cumulative_seconds,omitempty"`
-	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	DistanceMetres float64 `json:"distance_metres"`
-	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	AscentMetres float64 `json:"ascent_metres"`
-	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	MaxGradientPercent float64 `json:"max_gradient_percent"`
-	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	RouteID int64 `json:"route_id"`
-	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	PointCount int `json:"point_count"`
-	StageOrder int `json:"stage"`
+	CumulativeSeconds  json.RawMessage `json:"cumulativeSeconds,omitempty"`
+	DistanceMetres     float64         `json:"distanceMetres"`
+	AscentMetres       float64         `json:"ascentMetres"`
+	MaxGradientPercent float64         `json:"maxGradientPercent"`
+	RouteID            int64           `json:"routeId"`
+	PointCount         int             `json:"pointCount"`
+	StageOrder         int             `json:"stageOrder"`
 }

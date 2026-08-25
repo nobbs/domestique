@@ -83,6 +83,7 @@ func (h *Handler) stageGeometry(writer http.ResponseWriter, request *http.Reques
 		return
 	}
 
+	writer.Header().Set("Content-Type", "application/geo+json")
 	h.writeJSON(writer, http.StatusOK, geometryView{
 		Type:     "Feature",
 		Geometry: lineStringView{Type: "LineString", Coordinates: coordinates},
@@ -214,7 +215,7 @@ func (h *Handler) stageValidationView() *stageValidation {
 // well-formed but absent routeID is.
 func stageKey(request *http.Request) (provider route.Provider, routeID int64, stageOrder int, ok bool) {
 	provider = route.Provider(request.PathValue("provider"))
-	routeID, routeErr := strconv.ParseInt(request.PathValue("routeID"), 10, 64)
+	routeID, routeErr := strconv.ParseInt(request.PathValue("routeId"), 10, 64)
 	stageOrder, stageErr := strconv.Atoi(request.PathValue("stage"))
 
 	return provider, routeID, stageOrder, provider != "" && routeErr == nil && stageErr == nil && routeID > 0 && stageOrder > 0
@@ -266,7 +267,7 @@ func (h *Handler) redirectLegacyBrowserRoute(writer http.ResponseWriter, request
 // from a legacy, provider-less path, the same way stageKey does for the
 // provider-qualified one.
 func legacyStagePathValues(request *http.Request) (routeID int64, stageOrder int, ok bool) {
-	routeID, routeErr := strconv.ParseInt(request.PathValue("routeID"), 10, 64)
+	routeID, routeErr := strconv.ParseInt(request.PathValue("routeId"), 10, 64)
 	stageOrder, stageErr := strconv.Atoi(request.PathValue("stage"))
 
 	return routeID, stageOrder, routeErr == nil && stageErr == nil && routeID > 0 && stageOrder > 0

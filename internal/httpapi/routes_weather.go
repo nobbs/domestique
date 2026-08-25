@@ -176,21 +176,14 @@ type weatherView struct {
 }
 
 type weatherPointView struct {
-	Time string `json:"time"`
-	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	TemperatureCelsius float64 `json:"temperature_celsius"`
-	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	ApparentTemperatureCelsius float64 `json:"apparent_temperature_celsius"`
-	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	PrecipitationMillimetres float64 `json:"precipitation_millimetres"`
-	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	PrecipitationProbabilityPercent float64 `json:"precipitation_probability_percent"`
-	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	WindSpeedKMH float64 `json:"wind_speed_kmh"`
-	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	WindDirectionDegrees float64 `json:"wind_direction_degrees"`
-	//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-	WeatherCode int `json:"weather_code"`
+	Time                            string  `json:"time"`
+	TemperatureCelsius              float64 `json:"temperatureCelsius"`
+	ApparentTemperatureCelsius      float64 `json:"apparentTemperatureCelsius"`
+	PrecipitationMillimetres        float64 `json:"precipitationMillimetres"`
+	PrecipitationProbabilityPercent float64 `json:"precipitationProbabilityPercent"`
+	WindSpeedKMH                    float64 `json:"windSpeedKmh"`
+	WindDirectionDegrees            float64 `json:"windDirectionDegrees"`
+	WeatherCode                     int     `json:"weatherCode"`
 }
 
 func newWeatherPointView(series *WeatherSeries, index int) weatherPointView {

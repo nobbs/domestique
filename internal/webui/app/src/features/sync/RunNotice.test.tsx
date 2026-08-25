@@ -3,6 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { statusQuery, syncRunsQueryKey } from "../../api/queries";
 import type { Status, SyncPhaseRun, SyncRun } from "../../api/types";
 import { noticeRun, RunNotice } from "./RunNotice";
 
@@ -125,8 +126,8 @@ function renderNotice(
       mutations: { retry: false },
     },
   });
-  client.setQueryData(["status"], value);
-  client.setQueryData(["sync-run-lookup", reference ?? ""], {
+  client.setQueryData(statusQuery().queryKey, value);
+  client.setQueryData(syncRunsQueryKey(100), {
     pages: [{ runs }],
     pageParams: [undefined],
   });
@@ -248,9 +249,9 @@ describe("RunNotice", () => {
         mutations: { retry: false },
       },
     });
-    client.setQueryData(["status"], status());
+    client.setQueryData(statusQuery().queryKey, status());
     // One page held, and a cursor saying the history goes further back.
-    client.setQueryData(["sync-run-lookup", "aaaaaaaaaaaa"], {
+    client.setQueryData(syncRunsQueryKey(100), {
       pages: [{ runs: [run({ reference: "bbbbbbbbbbbb" })], next: "cursor" }],
       pageParams: [undefined],
     });
@@ -282,7 +283,7 @@ describe("RunNotice", () => {
         mutations: { retry: false },
       },
     });
-    client.setQueryData(["status"], status());
+    client.setQueryData(statusQuery().queryKey, status());
     render(
       <QueryClientProvider client={client}>
         <MemoryRouter>

@@ -2547,5 +2547,13 @@ func schemaMigrations() [][]string {
 				PRIMARY KEY (provider, route_id, stage_order)
 			)`,
 		},
+		{
+			// Surface ranges are stored JSON that the geometry endpoint passes
+			// through verbatim. The HTTP contract changed its field names to
+			// camelCase, so migrate the cached bytes once rather than decoding and
+			// re-encoding them on every response.
+			`UPDATE stage_surface
+				SET ranges = REPLACE(REPLACE(ranges, '"start_index"', '"startIndex"'), '"end_index"', '"endIndex"')`,
+		},
 	}
 }

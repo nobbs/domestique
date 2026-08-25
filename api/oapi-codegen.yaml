@@ -1,0 +1,9 @@
+package: contract
+generate:
+  models: true
+  std-http-server: true
+  strict-server: true
+output: internal/httpapi/contract/openapi.gen.go
+output-options:
+  exclude-tags: [readiness]
+  skip-prune: true

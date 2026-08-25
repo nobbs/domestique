@@ -168,7 +168,7 @@ func TestHandlerServesCumulativeSecondsWithGeometry(t *testing.T) {
 }
 
 // A stage nothing has predicted must not read as a zero-filled cumulative
-// series, on the same terms an unpredicted stage omits moving_seconds on
+// series, on the same terms an unpredicted stage omits movingSeconds on
 // /v1/routes.
 func TestHandlerOmitsCumulativeSecondsWhenNothingHasPredictedThem(t *testing.T) {
 	state := &fakeState{
@@ -185,7 +185,7 @@ func TestHandlerOmitsCumulativeSecondsWhenNothingHasPredictedThem(t *testing.T) 
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/providers/veloplanner/routes/12/stages/1/geometry"))
 	require.Equal(t, http.StatusOK, response.Code, "geometry status")
-	assert.NotContains(t, response.Body.String(), "cumulative_seconds", "the geometry claimed a cumulative series nothing predicted")
+	assert.NotContains(t, response.Body.String(), "cumulativeSeconds", "the geometry claimed a cumulative series nothing predicted")
 }
 
 func TestHandlerServesTheStoredSurfaceWithGeometry(t *testing.T) {
@@ -209,7 +209,7 @@ func TestHandlerServesTheStoredSurfaceWithGeometry(t *testing.T) {
 // was answered — an absent surface would say it never was.
 func TestHandlerServesAnUnsurveyedSurfaceAsClassified(t *testing.T) {
 	state := surfaceState()
-	state.surfaceRanges = json.RawMessage(`[{"kind":"unknown","start_index":0,"end_index":1}]`)
+	state.surfaceRanges = json.RawMessage(`[{"kind":"unknown","startIndex":0,"endIndex":1}]`)
 	state.surfaceMetres = 0
 	handler := newHandler(t, &fakeOAuth{}, state)
 
@@ -259,7 +259,7 @@ func surfaceState() *fakeState {
 			Bounds: route.Bounds{MinLongitude: 8.4, MinLatitude: 49.0, MaxLongitude: 8.5, MaxLatitude: 49.2},
 		}},
 		coordinates:   json.RawMessage(`[[8.4,49],[8.5,49.2]]`),
-		surfaceRanges: json.RawMessage(`[{"kind":"asphalt","start_index":0,"end_index":1}]`),
+		surfaceRanges: json.RawMessage(`[{"kind":"asphalt","startIndex":0,"endIndex":1}]`),
 		surfaceHash:   "hash",
 		surfaceMetres: 1234.5,
 	}
@@ -301,7 +301,11 @@ func TestHandlerRejectsMalformedStageIdentifiers(t *testing.T) {
 		t.Run(path, func(t *testing.T) {
 			response := httptest.NewRecorder()
 			handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, path))
-			assert.Equal(t, http.StatusNotFound, response.Code, "status")
+			want := http.StatusNotFound
+			if strings.Contains(path, "/abc/") {
+				want = http.StatusBadRequest
+			}
+			assert.Equal(t, want, response.Code, "status")
 		})
 	}
 }
@@ -334,7 +338,7 @@ func TestHandlerServesPredictedMovingTimeWhenPresent(t *testing.T) {
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/routes"))
 	require.Equal(t, http.StatusOK, response.Code, "routes status")
-	assert.Contains(t, response.Body.String(), `"moving_seconds":1234.5`, "predicted moving time")
+	assert.Contains(t, response.Body.String(), `"movingSeconds":1234.5`, "predicted moving time")
 }
 
 func TestHandlerOmitsMovingTimeWhenNothingHasPredictedIt(t *testing.T) {
@@ -346,7 +350,7 @@ func TestHandlerOmitsMovingTimeWhenNothingHasPredictedIt(t *testing.T) {
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/routes"))
 	require.Equal(t, http.StatusOK, response.Code, "routes status")
-	assert.NotContains(t, response.Body.String(), "moving_seconds", "an unpredicted stage must not claim zero seconds")
+	assert.NotContains(t, response.Body.String(), "movingSeconds", "an unpredicted stage must not claim zero seconds")
 }
 
 // The profile's measured unseen-route error rides alongside its prediction —
@@ -366,7 +370,7 @@ func TestHandlerServesValidationAlongsideAPredictedStage(t *testing.T) {
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/routes"))
 	require.Equal(t, http.StatusOK, response.Code, "routes status")
 	body := response.Body.String()
-	assert.Contains(t, body, `"validation":{"bias_percent":-1.2,"mae_percent":6.8,"p90_percent":14.1,"evaluated_rides":42}`, "validation")
+	assert.Contains(t, body, `"validation":{"biasPercent":-1.2,"maePercent":6.8,"p90Percent":14.1,"evaluatedRides":42}`, "validation")
 }
 
 // A stage nothing has predicted has no number for the validation to qualify,
@@ -419,7 +423,7 @@ func TestHandlerIsUnaffectedByMutatingTheOptionsAfterConstruction(t *testing.T) 
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/routes"))
 	require.Equal(t, http.StatusOK, response.Code, "routes status")
-	assert.Contains(t, response.Body.String(), `"mae_percent":6.8`, "the handler must not see a post-construction mutation")
+	assert.Contains(t, response.Body.String(), `"maePercent":6.8`, "the handler must not see a post-construction mutation")
 }
 
 func TestHandlerServesTileStyleConfiguration(t *testing.T) {
@@ -457,11 +461,9 @@ func TestHandlerServesEveryConfiguredBasemapInOrder(t *testing.T) {
 
 	var body struct {
 		Basemaps []struct {
-			Name string `json:"name"`
-			//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-			StyleURL string `json:"style_url"`
-			//nolint:tagliatelle // This v1 JSON contract uses snake_case.
-			DarkCartography bool `json:"dark_cartography"`
+			Name            string `json:"name"`
+			StyleURL        string `json:"styleUrl"`
+			DarkCartography bool   `json:"darkCartography"`
 		} `json:"basemaps"`
 	}
 	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body), "decoding the config body")
@@ -493,7 +495,7 @@ func TestHandlerOmitsAnUnconfiguredDarkTileStyle(t *testing.T) {
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/webui/config"))
 	// Absent rather than empty: that is how the page knows to keep one style in
 	// both colour schemes.
-	assert.NotContains(t, response.Body.String(), "style_url_dark", "the config body carries a dark style key")
+	assert.NotContains(t, response.Body.String(), "styleUrlDark", "the config body carries a dark style key")
 }
 
 func TestHandlerOmitsAnUnconfiguredSourceBaseURL(t *testing.T) {
@@ -513,7 +515,7 @@ func TestHandlerOmitsAnUnconfiguredSourceBaseURL(t *testing.T) {
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/webui/config"))
 	// Absent rather than an empty map: that is how the page knows to offer no
 	// source link at all rather than one pointing at nowhere.
-	assert.NotContains(t, response.Body.String(), "source_base_urls", "the config body carries a source base URLs key")
+	assert.NotContains(t, response.Body.String(), "sourceBaseUrls", "the config body carries a source base URLs key")
 }
 
 func TestHandlerOmitsAProviderConfiguredWithABlankSourceBaseURL(t *testing.T) {
@@ -539,8 +541,7 @@ func TestHandlerOmitsAProviderConfiguredWithABlankSourceBaseURL(t *testing.T) {
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/webui/config"))
 	var payload struct {
-		//nolint:tagliatelle // Mirrors the wire field the page reads.
-		SourceBaseURLs map[string]string `json:"source_base_urls"`
+		SourceBaseURLs map[string]string `json:"sourceBaseUrls"`
 	}
 	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &payload), "decoding config body")
 	assert.Equal(t, testSourceBaseURL, payload.SourceBaseURLs["veloplanner"], "veloplanner source base URL")
@@ -576,6 +577,22 @@ func TestHandlerRefusesASourceBaseURLThatIsNotOne(t *testing.T) {
 	}
 }
 
+func TestNewRejectsASourceBaseURLForAnUndocumentedProvider(t *testing.T) {
+	_, err := New(
+		&Options{
+			TargetIDs:        []string{"rider-a"},
+			Basemaps:         testBasemaps(),
+			SourceBaseURLs:   map[route.Provider]string{"another-provider": testSourceBaseURL},
+			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
+			AccessEmail:      testAccessEmail,
+			BrowserOriginURL: testBrowserOriginURL,
+		},
+		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{},
+	)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not in the HTTP contract")
+}
+
 func TestHandlerSendsASourceBaseURLWithoutSurroundingWhitespace(t *testing.T) {
 	handler, err := New(
 		&Options{
@@ -596,8 +613,7 @@ func TestHandlerSendsASourceBaseURLWithoutSurroundingWhitespace(t *testing.T) {
 	// browser cannot parse a URL with whitespace around it, so an accepted
 	// configuration would silently produce no link.
 	var payload struct {
-		//nolint:tagliatelle // Mirrors the wire field the page reads.
-		SourceBaseURLs map[string]string `json:"source_base_urls"`
+		SourceBaseURLs map[string]string `json:"sourceBaseUrls"`
 	}
 	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &payload), "decoding config body")
 	assert.Equal(t, testSourceBaseURL, payload.SourceBaseURLs["veloplanner"], "source base URL")
@@ -644,8 +660,7 @@ func TestHandlerServesEveryConfiguredSourceKeyedByProvider(t *testing.T) {
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/webui/config"))
 	var payload struct {
-		//nolint:tagliatelle // Mirrors the wire field the page reads.
-		SourceBaseURLs map[string]string `json:"source_base_urls"`
+		SourceBaseURLs map[string]string `json:"sourceBaseUrls"`
 	}
 	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &payload), "decoding config body")
 	assert.Equal(t, testSourceBaseURL, payload.SourceBaseURLs["veloplanner"], "veloplanner source base URL")
@@ -661,9 +676,8 @@ func TestHandlerNamesTheBuildItIsRunning(t *testing.T) {
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/status"))
 	var view struct {
 		Build *struct {
-			Revision string `json:"revision"`
-			//nolint:tagliatelle // Mirrors the wire field the page reads.
-			ImageDigest string `json:"image_digest"`
+			Revision    string `json:"revision"`
+			ImageDigest string `json:"imageDigest"`
 		} `json:"build"`
 	}
 	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &view), "decoding status body")
@@ -711,7 +725,7 @@ func TestHandlerRefusesToPublishABuildStampThatIsNotOne(t *testing.T) {
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/status"))
 		body := response.Body.String()
-		assert.NotContainsf(t, body, "image_digest", "the status body for image %q carries a digest", value)
+		assert.NotContainsf(t, body, "imageDigest", "the status body for image %q carries a digest", value)
 		// The revision still stands on its own: one unusable value must not cost
 		// the operator the other.
 		assert.Containsf(t, body, strings.Repeat("ab", 20), "the status body for image %q lost the revision", value)
@@ -1003,7 +1017,11 @@ func TestHandlerRejectsMalformedLegacyStagePaths(t *testing.T) {
 	} {
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, target))
-		assert.Equalf(t, http.StatusNotFound, response.Code, "GET %s status", target)
+		want := http.StatusNotFound
+		if strings.Contains(target, "not-a-number") {
+			want = http.StatusBadRequest
+		}
+		assert.Equalf(t, want, response.Code, "GET %s status", target)
 	}
 }
 
@@ -1247,7 +1265,7 @@ func TestHandlerServesNothingAboutWhatARunTouched(t *testing.T) {
 	}
 	slices.Sort(fields)
 	assert.Equal(t, []string{
-		"completed_at", "created", "deleted", "failure", "phase", "reference", "result", "source_stages", "updated",
+		"completedAt", "created", "deleted", "failure", "phase", "reference", "result", "sourceStages", "updated",
 	}, fields, "the fields a recorded run is served as")
 }
 
@@ -1441,7 +1459,7 @@ func TestHandlerReportsAZeroAgeRatherThanOmittingIt(t *testing.T) {
 
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/status"))
-	assert.Contains(t, response.Body.String(), `"age_seconds":0`, "a zero age was omitted from the response")
+	assert.Contains(t, response.Body.String(), `"ageSeconds":0`, "a zero age was omitted from the response")
 }
 
 // A recorded success later than now — a clock that has moved backwards, or a

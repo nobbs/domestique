@@ -11,8 +11,8 @@
  * deletes one, never creates a second, and changes nothing in VeloPlanner.
  */
 
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { reprocessStage } from "../../api/client";
+import { useQueryClient } from "@tanstack/react-query";
+import { useReprocessRoute } from "../../api/generated";
 import { routeGeometryQuery, statusQuery } from "../../api/queries";
 import { Button } from "../../components/Button";
 import { Spinner } from "../../components/ui/spinner";
@@ -27,30 +27,35 @@ export function ReprocessButton({
   stageOrder: number;
 }) {
   const queryClient = useQueryClient();
-  const reprocess = useMutation({
-    mutationFn: () => reprocessStage(provider, routeId, stageOrder),
-    onSuccess: async () => {
-      await Promise.all([
-        // The status is polled anyway, and refetching it now is how the run this
-        // request started shows up as running rather than as nothing happening.
-        queryClient.invalidateQueries({ queryKey: statusQuery().queryKey }),
-        // The geometry is only marked stale. Refetching it now would fetch the
-        // old stage — the run has barely started — and then hold that answer as
-        // fresh for the five minutes the query is allowed to cache, which is
-        // exactly the wrong thing to do to a page waiting for new data. Stale
-        // instead means the next visit or focus fetches whatever has landed by
-        // then.
-        queryClient.invalidateQueries({
-          queryKey: routeGeometryQuery(provider, routeId, stageOrder).queryKey,
-          refetchType: "none",
-        }),
-      ]);
+  const reprocess = useReprocessRoute({
+    mutation: {
+      onSuccess: async () => {
+        await Promise.all([
+          // The status is polled anyway, and refetching it now is how the run this
+          // request started shows up as running rather than as nothing happening.
+          queryClient.invalidateQueries({ queryKey: statusQuery().queryKey }),
+          // The geometry is only marked stale. Refetching it now would fetch the
+          // old stage — the run has barely started — and then hold that answer as
+          // fresh for the five minutes the query is allowed to cache, which is
+          // exactly the wrong thing to do to a page waiting for new data. Stale
+          // instead means the next visit or focus fetches whatever has landed by
+          // then.
+          queryClient.invalidateQueries({
+            queryKey: routeGeometryQuery(provider, routeId, stageOrder).queryKey,
+            refetchType: "none",
+          }),
+        ]);
+      },
     },
   });
 
   return (
     <div className="grid gap-1">
-      <Button variant="standard" disabled={reprocess.isPending} onClick={() => reprocess.mutate()}>
+      <Button
+        variant="standard"
+        disabled={reprocess.isPending}
+        onClick={() => reprocess.mutate({ provider, routeId, stage: stageOrder })}
+      >
         {reprocess.isPending ? <Spinner aria-label="Requesting reprocess" /> : null}
         {reprocess.isPending ? "Requesting…" : "Reprocess"}
       </Button>

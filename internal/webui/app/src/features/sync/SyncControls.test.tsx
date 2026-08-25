@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { statusQuery, webUIConfigQuery } from "../../api/queries";
 import type { Status, WebUIConfig } from "../../api/types";
 import { activeSummary, idleSummary, SyncControls } from "./SyncControls";
 
@@ -45,8 +46,8 @@ function renderControls(value: Status = status(), configValue: WebUIConfig = con
       mutations: { retry: false },
     },
   });
-  client.setQueryData(["status"], value);
-  client.setQueryData(["webui-config"], configValue);
+  client.setQueryData(statusQuery().queryKey, value);
+  client.setQueryData(webUIConfigQuery().queryKey, configValue);
 
   return render(
     <QueryClientProvider client={client}>
@@ -150,8 +151,14 @@ describe("SyncControls", () => {
   // carry the operator's view of the other.
   it("sends both switches when one is changed", async () => {
     const fetchMock = vi.fn(
-      async (_input: RequestInfo | URL, _init?: RequestInit) =>
-        new Response(JSON.stringify({ source: true, targets: false })),
+      async (input: RequestInfo | URL, _init?: RequestInit) =>
+        new Response(
+          JSON.stringify(
+            input === "/v1/status"
+              ? status({ schedule: { source: true, targets: false } })
+              : { source: true, targets: false },
+          ),
+        ),
     );
     vi.stubGlobal("fetch", fetchMock);
     renderControls(status({ schedule: { source: true, targets: true } }));
@@ -172,8 +179,14 @@ describe("SyncControls", () => {
   // decided.
   it("still runs a half whose schedule is switched off", async () => {
     const fetchMock = vi.fn(
-      async (_input: RequestInfo | URL, _init?: RequestInit) =>
-        new Response(JSON.stringify({ status: "accepted" })),
+      async (input: RequestInfo | URL, _init?: RequestInit) =>
+        new Response(
+          JSON.stringify(
+            input === "/v1/status"
+              ? status({ schedule: { source: false, targets: false } })
+              : { accepted: true },
+          ),
+        ),
     );
     vi.stubGlobal("fetch", fetchMock);
     renderControls(status({ schedule: { source: false, targets: false } }));
@@ -357,8 +370,14 @@ describe("SyncControls", () => {
 
   it("retries classification without touching either sync phase", async () => {
     const fetchMock = vi.fn(
-      async (_input: RequestInfo | URL, _init?: RequestInit) =>
-        new Response(JSON.stringify({ status: "accepted" })),
+      async (input: RequestInfo | URL, _init?: RequestInit) =>
+        new Response(
+          JSON.stringify(
+            input === "/v1/status"
+              ? status({ surface: { classified: 1, total: 3, incomplete: 1 } })
+              : { accepted: true },
+          ),
+        ),
     );
     vi.stubGlobal("fetch", fetchMock);
     renderControls(status({ surface: { classified: 1, total: 3, incomplete: 1 } }));

@@ -404,6 +404,15 @@ func TestJudgeNamesChangedFilesTheReportShouldHoldAndDoesNot(t *testing.T) {
 	assert.Equal(t, []string{"internal/route/new.go"}, found.untracked)
 }
 
+func TestMeasurableGoMatchesCodecovPaths(t *testing.T) {
+	t.Parallel()
+
+	assert.True(t, measurableGo("internal/httpapi/handler.go"))
+	assert.False(t, measurableGo("internal/httpapi/contract/openapi.gen.go"))
+	assert.False(t, measurableGo("internal/httpapi/handler_test.go"))
+	assert.False(t, measurableGo("dev/patchcoverage/main.go"))
+}
+
 func TestMeasurableUISkipsWhatVitestExcludes(t *testing.T) {
 	t.Parallel()
 

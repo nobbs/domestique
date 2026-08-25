@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { statusQuery } from "../../api/queries";
 import type { Status, TargetStatus } from "../../api/types";
 import { TargetConvergence } from "./TargetConvergence";
 
@@ -45,7 +46,7 @@ function renderConvergence(value: Status) {
       mutations: { retry: false },
     },
   });
-  client.setQueryData(["status"], value);
+  client.setQueryData(statusQuery().queryKey, value);
 
   return render(
     <QueryClientProvider client={client}>
@@ -117,7 +118,6 @@ describe("TargetConvergence", () => {
           authorisation: "not_authorized",
           convergence: "unauthorized",
           stages: { current: 0, pending: 4 },
-          lastRun: undefined,
         }),
       ]),
     );
@@ -186,7 +186,6 @@ describe("TargetConvergence", () => {
           authorisation: "pending",
           convergence: "unauthorized",
           stages: { current: 0, pending: 4 },
-          lastRun: undefined,
         }),
       ]),
     );

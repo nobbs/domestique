@@ -149,6 +149,11 @@ func readReport(lang language) (lines, error) {
 	if err != nil {
 		return nil, fmt.Errorf("reading %s: %w", lang.report, err)
 	}
+	for file := range measured {
+		if !lang.measurable(file) {
+			delete(measured, file)
+		}
+	}
 
 	return measured, nil
 }
@@ -233,6 +238,9 @@ func languageNamed(name string) (language, error) {
 // profile, so a changed one is not a gap.
 func measurableGo(path string) bool {
 	if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+		return false
+	}
+	if path == "internal/httpapi/contract/openapi.gen.go" {
 		return false
 	}
 

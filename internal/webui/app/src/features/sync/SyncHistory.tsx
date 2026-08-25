@@ -12,9 +12,9 @@
  * an operator matches a notification against a row with.
  */
 
-import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
-import { statusQuery, syncRunsQuery, webUIConfigQuery } from "../../api/queries";
+import { statusQuery, syncRunsQueryKey, useSyncRuns, webUIConfigQuery } from "../../api/queries";
 import type { SyncRun } from "../../api/types";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
@@ -80,7 +80,7 @@ export function SyncHistory() {
   const config = useQuery(webUIConfigQuery());
   const labels = phaseLabels(Object.keys(config.data?.sourceBaseUrls ?? {}));
   const { data, isPending, isError, fetchNextPage, hasNextPage, isFetchingNextPage } =
-    useInfiniteQuery(syncRunsQuery());
+    useSyncRuns();
 
   // A run that finishes writes a row this list does not know about. The status
   // above is already polled while a run is in flight, so the instant it reports
@@ -96,7 +96,7 @@ export function SyncHistory() {
       return;
     }
     seenCompletion.current = lastCompletedAt;
-    void queryClient.invalidateQueries({ queryKey: syncRunsQuery().queryKey });
+    void queryClient.invalidateQueries({ queryKey: syncRunsQueryKey() });
   }, [lastCompletedAt, queryClient]);
 
   if (isPending) {

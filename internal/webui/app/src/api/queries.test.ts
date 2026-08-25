@@ -18,7 +18,7 @@ function intervalWhile(active: unknown): number | false | undefined {
     throw new Error("the status query no longer decides its own interval");
   }
 
-  return refetchInterval({ state: { data: { sync: { active } } } } as Parameters<
+  return refetchInterval({ state: { data: { sync: { active } } } } as unknown as Parameters<
     typeof refetchInterval
   >[0]);
 }
@@ -31,12 +31,11 @@ function intervalWhile(active: unknown): number | false | undefined {
  */
 describe("a stage's query key", () => {
   it("names the provider alongside the route and stage", () => {
-    expect(routeQuery("veloplanner", 12, 1).queryKey).toEqual(["stage", "veloplanner", 12, 1]);
+    expect(routeQuery("veloplanner", 12, 1).queryKey).toEqual([
+      "/v1/providers/veloplanner/routes/12/stages/1",
+    ]);
     expect(routeGeometryQuery("veloplanner", 12, 1).queryKey).toEqual([
-      "stage-geometry",
-      "veloplanner",
-      12,
-      1,
+      "/v1/providers/veloplanner/routes/12/stages/1/geometry",
     ]);
   });
 
