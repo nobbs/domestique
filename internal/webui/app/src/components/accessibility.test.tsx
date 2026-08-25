@@ -28,11 +28,11 @@ import { forecastSamples } from "../lib/forecastSamples";
 import { buildProfile, cumulativeMetres, gradientShares } from "../lib/profile";
 import { summariseSurface } from "../lib/surface";
 import { expectNoAxeViolations } from "../test/axe";
-import { BasemapPicker } from "./BasemapPicker";
 import { Button } from "./Button";
-import { ForecastStrip } from "./ForecastStrip";
-import { MapCredits } from "./MapCredits";
-import { RouteKey } from "./RouteKey";
+import { BasemapPicker } from "./map/BasemapPicker";
+import { MapCredits } from "./map/MapCredits";
+import { ForecastStrip } from "./route/ForecastStrip";
+import { RouteKey } from "./route/RouteKey";
 import { StartTimePicker } from "./StartTimePicker";
 import { StatusMessage } from "./StatusMessage";
 

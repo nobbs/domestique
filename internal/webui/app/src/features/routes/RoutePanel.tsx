@@ -15,7 +15,7 @@
 
 import { IconArrowLeft, IconX } from "@tabler/icons-react";
 import type { Route } from "../../api/types";
-import { RouteKey } from "../../components/RouteKey";
+import { RouteKey } from "../../components/route/RouteKey";
 import { SourceRouteLink } from "../../components/SourceRouteLink";
 import type { Climb } from "../../lib/climbs";
 import {

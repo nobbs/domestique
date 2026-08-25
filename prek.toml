@@ -9,9 +9,11 @@ repo = "builtin"
 
 [[repos.hooks]]
 id = "trailing-whitespace"
+exclude = "^\\.agents/skills/"
 
 [[repos.hooks]]
 id = "end-of-file-fixer"
+exclude = "^\\.agents/skills/"
 
 [[repos.hooks]]
 id = "check-added-large-files"

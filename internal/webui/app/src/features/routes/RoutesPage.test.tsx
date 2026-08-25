@@ -43,7 +43,7 @@ vi.mock("./LibraryMap", () => ({
     lines: Array<{ key: string }>;
     selectedKey: string | null;
     bounds: BoundingBox | null;
-    overlay?: unknown;
+    children?: unknown;
     onPick?: (key: string) => void;
     inertKey?: string | null;
     styleUrl: string;
@@ -53,7 +53,7 @@ vi.mock("./LibraryMap", () => ({
       keys: props.lines.map((line) => line.key),
       selectedKey: props.selectedKey,
       bounds: props.bounds,
-      overlaid: Boolean(props.overlay),
+      overlaid: Boolean(props.children),
       inertKey: props.inertKey ?? null,
       styleUrl: props.styleUrl,
       darkBasemap: props.darkBasemap ?? false,

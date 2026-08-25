@@ -27,7 +27,7 @@ import { routeGeometryQuery, routesQuery, statusQuery, webUIConfigQuery } from "
 import type { BoundingBox, Position, RouteGeometry, SurfaceKind } from "../../api/types";
 import { routeKey } from "../../api/types";
 import { Layout } from "../../components/Layout";
-import { RouteOverlay, SURFACE_ATTRIBUTION } from "../../components/RouteOverlay";
+import { RouteOverlay, SURFACE_ATTRIBUTION } from "../../components/route/RouteOverlay";
 import { ErrorMessage, StatusMessage } from "../../components/StatusMessage";
 import { basemapFor, useBasemapChoice, usePrefersDarkScheme } from "../../lib/basemap";
 import type { Climb } from "../../lib/climbs";
@@ -56,8 +56,7 @@ import type { ThemeChoice } from "../../lib/theme";
 import { resolvesDark } from "../../lib/theme";
 import { useUnitSystem } from "../../lib/units";
 import { useEscapeKey } from "../../lib/useEscapeKey";
-import type { LibraryLine } from "./LibraryMap";
-import { LibraryMap } from "./LibraryMap";
+import { LibraryMap, type MapLine } from "./LibraryMap";
 import { RoutePanel } from "./RoutePanel";
 import { RouteProfile } from "./RouteProfile";
 import type { RouteShape } from "./SearchPanel";
@@ -211,7 +210,7 @@ export function RoutesPage({ themeChoice }: RoutesPageProps) {
    */
   const combine = useCallback(
     (results: Array<UseQueryResult<RouteGeometry>>) => {
-      const lines: LibraryLine[] = [];
+      const lines: MapLine[] = [];
       const shapes = new Map<string, RouteShape>();
       const boxes = new Map<string, BoundingBox>();
       // Ground classes actually present on each route, once its geometry has
@@ -535,26 +534,25 @@ export function RoutesPage({ themeChoice }: RoutesPageProps) {
             extraCredit={shownRoute ? SURFACE_ATTRIBUTION : undefined}
             onPick={pick}
             inertKey={openKey}
-            overlay={
-              shownRoute && openCoordinates.length > 1 ? (
-                <RouteOverlay
-                  darkBasemap={basemap.dark}
-                  coordinates={openCoordinates}
-                  surface={surfaceSummary ? surface?.ranges : undefined}
-                  surfaceSummary={surfaceSummary}
-                  profile={routeProfile}
-                  activeProfile={windowed ?? routeProfile}
-                  activeMetres={activeMetres}
-                  onActiveChange={setActiveMetres}
-                  profileCollapsed={chartCollapsed}
-                  zoomWindow={shownWindow}
-                  onZoomChange={onZoomChange}
-                  highlight={highlight}
-                  unitSystem={unitSystem}
-                />
-              ) : null
-            }
-          />
+          >
+            {shownRoute && openCoordinates.length > 1 ? (
+              <RouteOverlay
+                darkBasemap={basemap.dark}
+                coordinates={openCoordinates}
+                surface={surfaceSummary ? surface?.ranges : undefined}
+                surfaceSummary={surfaceSummary}
+                profile={routeProfile}
+                activeProfile={windowed ?? routeProfile}
+                activeMetres={activeMetres}
+                onActiveChange={setActiveMetres}
+                profileCollapsed={chartCollapsed}
+                zoomWindow={shownWindow}
+                onZoomChange={onZoomChange}
+                highlight={highlight}
+                unitSystem={unitSystem}
+              />
+            ) : null}
+          </LibraryMap>
         ) : null
       }
     >

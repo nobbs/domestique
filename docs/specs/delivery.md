@@ -37,6 +37,8 @@ The repository provides these stable tasks:
 | `mise run build` | Compiles the Linux service binary for `BUILD_ARCH`, the machine's own architecture unless overridden, with `CGO_ENABLED=0`, after building the browser UI. |
 | `mise run ui-build` | Builds the browser UI bundle that the binary embeds. |
 | `mise run ui-dev` | Runs the UI dev server, proxying the API to the local service. |
+| `mise run storybook` | Runs the component workshop on port 6006. |
+| `mise run storybook-build` | Builds the static component workshop. |
 | `mise run dev-setup` | Snapshots the deployed state into an isolated development environment. |
 | `mise run dev-api` | Serves the API against that snapshot on `:8081`. |
 | `mise run container-smoke` | Starts the production image under the documented deployment runtime and asserts the runtime contract. Takes an image; builds none. |

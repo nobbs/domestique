@@ -19,7 +19,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Position, Route } from "../../api/types";
 import { routeKey } from "../../api/types";
 import { Button } from "../../components/Button";
-import { RouteGlyph } from "../../components/RouteGlyph";
+import { RouteGlyph } from "../../components/route/RouteGlyph";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "../../components/ui/input-group";
 import type { LibraryFilters } from "../../lib/filters";
 import { hasActiveFilters } from "../../lib/filters";

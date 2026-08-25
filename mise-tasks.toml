@@ -317,6 +317,7 @@ description = "Install the UI dependency tree from the lockfile"
 sources = [
   "internal/webui/app/package.json",
   "internal/webui/app/pnpm-lock.yaml",
+  "internal/webui/app/pnpm-workspace.yaml",
 ]
 outputs = ["internal/webui/app/node_modules/.modules.yaml"]
 run = [
@@ -328,12 +329,29 @@ run = [
 description = "Serve the UI with hot reload"
 run = "pnpm --dir internal/webui/app run dev"
 
+[storybook]
+description = "Serve the UI component workshop"
+run = "pnpm --dir internal/webui/app run storybook"
+
+[storybook-build]
+description = "Build the UI component workshop"
+sources = [
+  "internal/webui/app/.storybook/**",
+  "internal/webui/app/src/**",
+  "internal/webui/app/*.json",
+  "internal/webui/app/*.ts",
+]
+outputs = ["internal/webui/app/storybook-static/**"]
+wait_for = ["ui-install"]
+run = "pnpm --dir internal/webui/app run storybook:build"
+
 # The UI checks below read node_modules but do not install it. `wait_for` orders
 # them behind `ui-install` when a gate scheduled it, and does nothing when one
 # of them is run on its own.
 [ui-typecheck]
 description = "Type-check the UI"
 sources = [
+  "internal/webui/app/.storybook/**",
   "internal/webui/app/src/**",
   "internal/webui/app/e2e/**",
   "internal/webui/app/public/**",
@@ -348,6 +366,7 @@ run = "pnpm --dir internal/webui/app run typecheck"
 [ui-lint]
 description = "Lint the UI"
 sources = [
+  "internal/webui/app/.storybook/**",
   "internal/webui/app/src/**",
   "internal/webui/app/e2e/**",
   "internal/webui/app/public/**",

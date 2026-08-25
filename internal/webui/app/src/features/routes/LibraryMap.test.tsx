@@ -8,9 +8,10 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { forwardRef, type ReactNode, useImperativeHandle } from "react";
+import { createPortal } from "react-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Basemap, BoundingBox, Position } from "../../api/types";
 
@@ -35,6 +36,9 @@ const drawn = vi.hoisted(() => ({
   furniture: [] as Array<{ control: string; position: string }>,
   /** What the loaded map hands back as its own container. */
   container: null as HTMLElement | null,
+  /** Lets the camera test hold the load event until it is ready to send it. */
+  delayLoad: false,
+  onLoad: null as ((event: { target: { getContainer: () => HTMLElement | null } }) => void) | null,
   /** What the scale bar was told to report distance in. */
   scaleUnit: "" as string,
   map: {
@@ -51,7 +55,7 @@ vi.mock("../../lib/maplibre", () => ({}));
  * The credit asks the style document what it must attribute, which is a fetch
  * and nothing this file is about. What is asked here is where it lands.
  */
-vi.mock("../../components/MapCredits", () => ({
+vi.mock("../../components/map/MapCredits", () => ({
   MapCredits: () => <p data-testid="credits">© somebody</p>,
 }));
 
@@ -59,17 +63,53 @@ vi.mock("../../components/MapCredits", () => ({
  * And the chooser decides nothing here either: what is asked of it in this file
  * is whether it is offered at all, and where it lands.
  */
-vi.mock("../../components/BasemapPicker", () => ({
-  BasemapPicker: ({ selectedName }: { selectedName: string }) => (
-    <p data-testid="picker">{selectedName}</p>
+vi.mock("../../components/map/BasemapPicker", () => ({
+  BasemapPicker: ({
+    selectedName,
+    onSelect,
+  }: {
+    selectedName: string;
+    onSelect: (name: string) => void;
+  }) => (
+    <button data-testid="picker" type="button" onClick={() => onSelect("Streets")}>
+      {selectedName}
+    </button>
   ),
 }));
 
-vi.mock("../../components/MapViewport", () => ({
+vi.mock("../../components/map/MapViewport", () => ({
   MapViewport: (props: { bounds: unknown; maxZoom: number }) => {
     drawn.viewports.push({ bounds: props.bounds, maxZoom: props.maxZoom });
 
     return null;
+  },
+}));
+
+vi.mock("../../components/map/MapControls", () => ({
+  MapControls: () => (
+    <div>
+      <button type="button" aria-label="Find my location">
+        Find my location
+      </button>
+      <button type="button" aria-label="Zoom in" onClick={() => drawn.map.zoomIn()}>
+        Zoom in
+      </button>
+      <button type="button" aria-label="Zoom out" onClick={() => drawn.map.zoomOut()}>
+        Zoom out
+      </button>
+    </div>
+  ),
+}));
+
+vi.mock("../../components/map/MapOverlay", () => ({
+  MapOverlay: ({ children }: { children: ReactNode }) => <>{children}</>,
+}));
+
+vi.mock("../../components/map/MapControlCluster", () => ({
+  MapControlCluster: ({ children }: { children: ReactNode }) => {
+    const cluster = drawn.container?.querySelector(".maplibregl-ctrl-bottom-right");
+
+    return cluster ? createPortal(children, cluster) : children;
   },
 }));
 
@@ -100,7 +140,11 @@ vi.mock("react-map-gl/maplibre", () => ({
         data-testid="map"
         ref={(node) => {
           if (node) {
-            onLoad?.({ target: { getContainer: () => drawn.container } });
+            if (drawn.delayLoad) {
+              drawn.onLoad = onLoad ?? null;
+            } else {
+              onLoad?.({ target: { getContainer: () => drawn.container } });
+            }
           }
         }}
       >
@@ -196,14 +240,18 @@ beforeEach(() => {
   drawn.map.flyTo.mockReset();
   drawn.map.getZoom.mockReset();
   drawn.map.getZoom.mockReturnValue(10);
+  drawn.delayLoad = false;
+  drawn.onLoad = null;
   drawn.container?.remove();
   drawn.container = containerWithCluster();
 });
 
-function show(props: Partial<Parameters<typeof LibraryMap>[0]> = {}) {
+function show(props: Partial<Parameters<typeof LibraryMap>[0]> & { overlay?: ReactNode } = {}) {
   // The credits under the map ask the style document what it wants attributed,
   // which is a query like any other and is nothing this file is about.
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+  const { overlay, ...mapProps } = props;
 
   return render(
     <QueryClientProvider client={client}>
@@ -212,8 +260,10 @@ function show(props: Partial<Parameters<typeof LibraryMap>[0]> = {}) {
         lines={[line("1/1"), line("2/1", 0.4)]}
         selectedKey={null}
         bounds={BOUNDS}
-        {...props}
-      />
+        {...mapProps}
+      >
+        {overlay}
+      </LibraryMap>
     </QueryClientProvider>,
   );
 }
@@ -234,6 +284,15 @@ function layer(id: string) {
   }
 
   return found;
+}
+
+function loadMap() {
+  const onLoad = drawn.onLoad;
+  if (!onLoad) {
+    throw new Error("expected the map load handler");
+  }
+
+  onLoad({ target: { getContainer: () => drawn.container } });
 }
 
 describe("LibraryMap", () => {
@@ -347,6 +406,17 @@ describe("LibraryMap", () => {
     expect(drawn.viewports.at(-1)).toEqual({ bounds: BOUNDS, maxZoom: 14 });
   });
 
+  it("frames the library once MapLibre has loaded", () => {
+    drawn.delayLoad = true;
+    show();
+
+    expect(drawn.viewports).toEqual([]);
+
+    act(loadMap);
+
+    expect(drawn.viewports.at(-1)).toEqual({ bounds: BOUNDS, maxZoom: 14 });
+  });
+
   // A stretch of one route was asked for, so the camera is allowed closer than
   // it goes for the library or for a whole route.
   it("lets the camera go as close as it was told it may", () => {
@@ -401,6 +471,15 @@ describe("LibraryMap", () => {
 
     const cluster = drawn.container?.querySelector(".maplibregl-ctrl-bottom-right");
     expect(cluster?.textContent).toBe("Satellite");
+  });
+
+  it("hands the layer switcher selection back to its owner", async () => {
+    const changed = vi.fn();
+    show({ basemaps: TWO_BASEMAPS, selectedBasemap: "Satellite", onBasemapChange: changed });
+
+    await userEvent.click(screen.getByTestId("picker"));
+
+    expect(changed).toHaveBeenCalledWith("Streets");
   });
 
   // Nothing is listening for a pick, so nothing is offered — the same bargain
