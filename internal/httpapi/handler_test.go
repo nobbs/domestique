@@ -1880,6 +1880,7 @@ func newHandlerWithWeather(t *testing.T, weather Weather) *Handler {
 		&fakeOAuth{}, &fakeState{}, &fakeSync{accepted: true}, &fakeAssets{}, weather,
 	)
 	require.NoError(t, err, "New()")
+	handler.now = func() time.Time { return time.Date(2026, 8, 24, 0, 0, 0, 0, time.UTC) }
 
 	return handler
 }
