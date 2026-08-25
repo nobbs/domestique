@@ -2,6 +2,9 @@ package httpapi
 
 import (
 	"net/http"
+
+	openapi "github.com/nobbs/domestique/internal/httpapi/contract"
+	"github.com/nobbs/domestique/internal/route"
 )
 
 // webUIConfig hands the page its runtime settings so the built assets stay
@@ -21,19 +24,30 @@ import (
 // URL on every stage it serves — would be the same fact repeated once per
 // stage.
 func (h *Handler) webUIConfig(writer http.ResponseWriter, _ *http.Request, _ string) {
-	// The view is the configured entry with JSON tags on it, so the conversion
-	// is the whole of the mapping. It compiles only while the two stay
-	// field-for-field identical, which is the point: a field added to one and
-	// forgotten in the other is a build error rather than a silent omission.
-	basemaps := make([]basemapView, len(h.basemaps))
+	// An unset dark style and an unset dark-cartography flag are both absent
+	// from the response rather than sent as an empty string or false, which is
+	// how the page tells "keep this entry's one style in both colour schemes"
+	// from a value it was given.
+	basemaps := make([]openapi.BrowserBasemap, len(h.basemaps))
 	for index, basemap := range h.basemaps {
-		basemaps[index] = basemapView(basemap)
+		basemaps[index] = openapi.BrowserBasemap{
+			Name:            basemap.Name,
+			StyleUrl:        basemap.StyleURL,
+			StyleUrlDark:    optionalString(basemap.StyleURLDark),
+			DarkCartography: optionalBool(basemap.DarkCartography),
+		}
 	}
 
-	h.writeJSON(writer, http.StatusOK, webUIConfigView{
-		Basemaps:       basemaps,
-		SourceBaseURLs: h.sourceBaseURLs,
-	})
+	config := openapi.WebUIConfig{Basemaps: basemaps}
+	// Omitted entirely when no source named one, so the page offers no link at
+	// all rather than building a broken one.
+	if len(h.sourceBaseURLs) > 0 {
+		config.SourceBaseUrls = &openapi.SourceBaseUrls{
+			Komoot:      optionalString(h.sourceBaseURLs[route.ProviderKomoot]),
+			Veloplanner: optionalString(h.sourceBaseURLs[route.ProviderVeloPlanner]),
+		}
+	}
+	h.writeJSON(writer, http.StatusOK, config)
 }
 
 // index serves the application entry document for every UI route, so a deep

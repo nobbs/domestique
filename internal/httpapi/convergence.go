@@ -6,6 +6,7 @@ import (
 	"slices"
 	"time"
 
+	openapi "github.com/nobbs/domestique/internal/httpapi/contract"
 	"github.com/nobbs/domestique/internal/route"
 )
 
@@ -55,7 +56,7 @@ type sourceStageKey struct {
 // records is the encoded course's, derived by the layer that writes it, and this
 // layer has no business knowing how a course is encoded. A stage whose content
 // changed changes revision with it.
-func (h *Handler) targetStageCounts(ctx context.Context) (map[string]targetStagesView, error) {
+func (h *Handler) targetStageCounts(ctx context.Context) (map[string]openapi.TargetStages, error) {
 	revisions := make(map[sourceStageKey]string)
 	if err := h.state.ForEachSourceStage(
 		ctx,
@@ -68,7 +69,7 @@ func (h *Handler) targetStageCounts(ctx context.Context) (map[string]targetStage
 		return nil, fmt.Errorf("read stored stages: %w", err)
 	}
 
-	counts := make(map[string]targetStagesView, len(h.targetIDs))
+	counts := make(map[string]openapi.TargetStages, len(h.targetIDs))
 	for _, targetID := range h.targetIDs {
 		var current, orphaned int
 		if err := h.state.ForEachTargetStage(
@@ -93,7 +94,7 @@ func (h *Handler) targetStageCounts(ctx context.Context) (map[string]targetStage
 		); err != nil {
 			return nil, fmt.Errorf("read applied stages: %w", err)
 		}
-		counts[targetID] = targetStagesView{
+		counts[targetID] = openapi.TargetStages{
 			Current: current,
 			Pending: len(revisions) - current + orphaned,
 		}
@@ -105,18 +106,18 @@ func (h *Handler) targetStageCounts(ctx context.Context) (map[string]targetStage
 // targetRuns reads each configured target's own last reconciliation. A slot with
 // no row has never been reconciled, and is reported as absent rather than as a
 // run that succeeded with nothing to do.
-func (h *Handler) targetRuns(ctx context.Context) (map[string]targetRunView, error) {
-	runs := make(map[string]targetRunView, len(h.targetIDs))
+func (h *Handler) targetRuns(ctx context.Context) (map[string]openapi.TargetRun, error) {
+	runs := make(map[string]openapi.TargetRun, len(h.targetIDs))
 	if err := h.state.ForEachTargetRun(
 		ctx,
 		func(targetID string, finishedAt time.Time, outcome, detail string) error {
 			// A slot left over from an earlier configuration is not part of this
 			// deployment and is not reported.
 			if slices.Contains(h.targetIDs, targetID) {
-				runs[targetID] = targetRunView{
-					CompletedAt: finishedAt.UTC().Format(time.RFC3339),
+				runs[targetID] = openapi.TargetRun{
+					CompletedAt: wireTime(finishedAt),
 					Result:      outcome,
-					Failure:     detail,
+					Failure:     optionalString(detail),
 				}
 			}
 
@@ -130,7 +131,7 @@ func (h *Handler) targetRuns(ctx context.Context) (map[string]targetRunView, err
 }
 
 // convergenceState reduces one target to the word that describes it.
-func convergenceState(authorization string, stages targetStagesView, run *targetRunView) string {
+func convergenceState(authorization string, stages openapi.TargetStages, run *openapi.TargetRun) string {
 	if authorization != authorizedState {
 		return convergenceUnauthorized
 	}

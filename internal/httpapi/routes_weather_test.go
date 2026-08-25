@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	openapi "github.com/nobbs/domestique/internal/httpapi/contract"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -57,7 +58,7 @@ func TestWeatherReturnsOneSampleFromEachPointsSeries(t *testing.T) {
 	assert.True(t, gotFrom.Equal(time.Date(2026, 8, 24, 6, 0, 0, 0, time.UTC)), "from")
 	assert.True(t, gotTo.Equal(time.Date(2026, 8, 24, 7, 5, 0, 0, time.UTC)), "to")
 
-	var body weatherView
+	var body openapi.WeatherForecast
 	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
 	require.Len(t, body.Points, 2)
 	// The first point asks for exactly the series' first hour; the second asks
@@ -77,7 +78,7 @@ func TestWeatherDecodesBareObjectSeriesForOnePoint(t *testing.T) {
 		"/v1/weather?point=50.11,8.68,2026-08-24T06:00:00Z"))
 
 	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
-	var body weatherView
+	var body openapi.WeatherForecast
 	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
 	require.Len(t, body.Points, 1)
 	assert.InDelta(t, 18.4, body.Points[0].TemperatureCelsius, 0)

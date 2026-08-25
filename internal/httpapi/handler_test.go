@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	openapi "github.com/nobbs/domestique/internal/httpapi/contract"
 	"github.com/nobbs/domestique/internal/route"
 )
 
@@ -369,8 +370,13 @@ func TestHandlerServesValidationAlongsideAPredictedStage(t *testing.T) {
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/routes"))
 	require.Equal(t, http.StatusOK, response.Code, "routes status")
-	body := response.Body.String()
-	assert.Contains(t, body, `"validation":{"biasPercent":-1.2,"maePercent":6.8,"p90Percent":14.1,"evaluatedRides":42}`, "validation")
+	var view openapi.RouteList
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &view), "decoding the routes")
+	require.Len(t, view.Stages, 1, "stages")
+	require.NotNil(t, view.Stages[0].Validation, "validation")
+	assert.Equal(t, openapi.RouteValidation{
+		BiasPercent: -1.2, MaePercent: 6.8, P90Percent: 14.1, EvaluatedRides: 42,
+	}, *view.Stages[0].Validation, "validation")
 }
 
 // A stage nothing has predicted has no number for the validation to qualify,
@@ -1183,15 +1189,15 @@ func TestHandlerReportsTheScheduleAndEachPhaseInStatus(t *testing.T) {
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/status"))
 	require.Equal(t, http.StatusOK, response.Code, "status")
-	var view statusView
+	var view openapi.Status
 	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &view), "decoding status")
 	assert.True(t, view.Sync.Schedule.Source, "the reported schedule has the source half off")
 	assert.False(t, view.Sync.Schedule.Targets, "the reported schedule has the target half on")
 	require.NotNil(t, view.Sync.Phases.Source, "the status reports no source run")
 	require.NotNil(t, view.Sync.Phases.Targets, "the status reports no target run")
 	assert.Equal(t, 12, view.Sync.Phases.Source.SourceStages, "source stages")
-	assert.Equal(t, "destination", view.Sync.Phases.Targets.LastFailure, "target failure")
-	assert.Equal(t, completedAt.Format(time.RFC3339), view.Sync.Phases.Source.LastCompletedAt, "source completion")
+	assert.Equal(t, "destination", value(view.Sync.Phases.Targets.LastFailure), "target failure")
+	assert.Equal(t, wireInstant(completedAt), wireInstant(view.Sync.Phases.Source.LastCompletedAt), "source completion")
 }
 
 // historyStateFixture holds three recorded runs, newest first.
@@ -1211,13 +1217,13 @@ func historyStateFixture() *fakeState {
 	}}
 }
 
-func historyPage(t *testing.T, handler http.Handler, query string) syncRunsView {
+func historyPage(t *testing.T, handler http.Handler, query string) openapi.SyncRunPage {
 	t.Helper()
 
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/sync/runs"+query))
 	require.Equal(t, http.StatusOK, response.Code, "status")
-	var view syncRunsView
+	var view openapi.SyncRunPage
 	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &view), "decoding the history")
 
 	return view
@@ -1232,14 +1238,14 @@ func TestHandlerServesTheRecordedHistoryOnePageAtATime(t *testing.T) {
 	require.Len(t, first.Runs, 2, "the first page")
 	assert.Equal(t, []string{"aaaaaaaaaaaa", "bbbbbbbbbbbb"},
 		[]string{first.Runs[0].Reference, first.Runs[1].Reference}, "the newest runs, newest first")
-	assert.Equal(t, "targets", first.Runs[0].Phase, "phase")
+	assert.Equal(t, "targets", string(first.Runs[0].Phase), "phase")
 	assert.Equal(t, "failed", first.Runs[0].Result, "result")
-	assert.Equal(t, "destination", first.Runs[0].Failure, "failure")
-	assert.Equal(t, "2026-08-18T06:30:00Z", first.Runs[0].CompletedAt, "completion")
+	assert.Equal(t, "destination", value(first.Runs[0].Failure), "failure")
+	assert.Equal(t, "2026-08-18T06:30:00Z", wireInstant(first.Runs[0].CompletedAt), "completion")
 	assert.Equal(t, 12, first.Runs[1].SourceStages, "source stages")
 	require.NotEmpty(t, first.Next, "a cursor for the page after the first")
 
-	second := historyPage(t, handler, "?limit=2&after="+first.Next)
+	second := historyPage(t, handler, "?limit=2&after="+*first.Next)
 	require.Len(t, second.Runs, 1, "the page after the first")
 	assert.Equal(t, "cccccccccccc", second.Runs[0].Reference, "the oldest run")
 	assert.Empty(t, second.Next, "a cursor past the oldest recorded run")
@@ -1323,7 +1329,7 @@ func TestHandlerReportsHowMuchOfTheLibraryIsClassified(t *testing.T) {
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/status"))
 	require.Equal(t, http.StatusOK, response.Code, "status")
-	var view statusView
+	var view openapi.Status
 	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &view), "decoding status")
 	assert.Equal(t, 1, view.Sync.Surface.Classified, "classified")
 	assert.Equal(t, 3, view.Sync.Surface.Total, "total")
@@ -1341,7 +1347,7 @@ func TestHandlerReportsHowMuchOfTheLibraryCouldNotBeClassified(t *testing.T) {
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/status"))
 	require.Equal(t, http.StatusOK, response.Code, "status")
-	var view statusView
+	var view openapi.Status
 	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &view), "decoding status")
 	assert.Equal(t, 1, view.Sync.Surface.Incomplete, "incomplete")
 }
@@ -1355,7 +1361,7 @@ func TestHandlerOmitsWahooRateLimitUntilOneIsObserved(t *testing.T) {
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/status"))
 	require.Equal(t, http.StatusOK, response.Code, "status")
-	var view statusView
+	var view openapi.Status
 	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &view), "decoding status")
 	assert.Nil(t, view.Sync.WahooRateLimit, "no quota has been observed yet")
 }
@@ -1368,11 +1374,11 @@ func TestHandlerReportsTheObservedWahooRateLimit(t *testing.T) {
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/status"))
 	require.Equal(t, http.StatusOK, response.Code, "status")
-	var view statusView
+	var view openapi.Status
 	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &view), "decoding status")
 	require.NotNil(t, view.Sync.WahooRateLimit, "an observed quota should be reported")
 	assert.Equal(t, 187, view.Sync.WahooRateLimit.Remaining, "remaining")
-	assert.Equal(t, resetAt.Format(time.RFC3339), view.Sync.WahooRateLimit.ResetsAt, "resets_at")
+	assert.Equal(t, wireInstant(resetAt), wireInstant(value(view.Sync.WahooRateLimit.ResetsAt)), "resets_at")
 }
 
 // The counts alone cannot say whether a full library is classified against a map
@@ -1385,8 +1391,8 @@ func TestHandlerNamesTheMapBuildTheClassificationsCameFrom(t *testing.T) {
 	})
 
 	view := statusOf(t, handler)
-	assert.Equal(t, "9f2c41ab77de", view.Sync.Surface.Generation, "generation")
-	assert.Equal(t, "2026-08-17T03:41:00Z", view.Sync.Surface.BuiltAt, "built_at")
+	assert.Equal(t, "9f2c41ab77de", value(view.Sync.Surface.Generation), "generation")
+	assert.Equal(t, "2026-08-17T03:41:00Z", wireInstant(value(view.Sync.Surface.BuiltAt)), "built_at")
 }
 
 // A build the state database remembers whose file did not survive a restart is
@@ -1445,9 +1451,9 @@ func TestHandlerReportsTrustedInventoryAgeAndFreshness(t *testing.T) {
 	view := statusOf(t, handler)
 	require.NotNil(t, view.Sync.TrustedInventory, "want a freshness claim")
 	assert.False(t, view.Sync.TrustedInventory.Fresh, "a 24h30m-old inventory against a 24h bound was reported fresh")
-	assert.Equal(t, "2026-08-16T08:00:00Z", view.Sync.TrustedInventory.LastSuccessAt, "last_success_at")
-	assert.Equal(t, int64(24*time.Hour/time.Second), view.Sync.TrustedInventory.MaxAgeSeconds, "max_age_seconds")
-	assert.Equal(t, int64((24*time.Hour+30*time.Minute)/time.Second), view.Sync.TrustedInventory.AgeSeconds, "age_seconds")
+	assert.Equal(t, "2026-08-16T08:00:00Z", wireInstant(value(view.Sync.TrustedInventory.LastSuccessAt)), "last_success_at")
+	assert.Equal(t, int(24*time.Hour/time.Second), view.Sync.TrustedInventory.MaxAgeSeconds, "max_age_seconds")
+	assert.Equal(t, int((24*time.Hour+30*time.Minute)/time.Second), view.Sync.TrustedInventory.AgeSeconds, "age_seconds")
 }
 
 // An age of exactly zero, read immediately after a successful refresh, is
@@ -1490,8 +1496,8 @@ func TestHandlerKeepsFreshConsistentWithASubSecondStaleAfter(t *testing.T) {
 	// both sides: the untruncated duration comparison (1.4s < 1.5s) says
 	// fresh, but the documented contract compares the reported seconds
 	// (1 < 1), which says stale. fresh must follow the documented contract.
-	assert.Equal(t, int64(1), view.Sync.TrustedInventory.MaxAgeSeconds, "max_age_seconds")
-	assert.Equal(t, int64(1), view.Sync.TrustedInventory.AgeSeconds, "age_seconds")
+	assert.Equal(t, 1, view.Sync.TrustedInventory.MaxAgeSeconds, "max_age_seconds")
+	assert.Equal(t, 1, view.Sync.TrustedInventory.AgeSeconds, "age_seconds")
 	assert.False(t, view.Sync.TrustedInventory.Fresh, "fresh disagreed with age_seconds < max_age_seconds")
 }
 
@@ -1512,13 +1518,13 @@ func TestHandlerReportsARunInFlightRatherThanTheLastResult(t *testing.T) {
 	assert.Equal(t, runningState, view.Sync.State, "sync state")
 	// The finished run is still reported beside it. It remains the last thing
 	// that happened; it is only no longer the answer to "what is happening".
-	assert.Equal(t, "succeeded", view.Sync.LastResult, "last result")
+	assert.Equal(t, "succeeded", value(view.Sync.LastResult), "last result")
 	require.NotNil(t, view.Sync.Active, "the status reports no work under way")
-	assert.Equal(t, "targets", view.Sync.Active.Phase, "active phase")
+	assert.Equal(t, "targets", string(value(view.Sync.Active.Phase)), "active phase")
 	assert.Equal(t, 2, view.Sync.Active.Targets, "configured targets")
 	// The aggregate of the two slots in the fixture: one holds both stages, the
 	// other owes both.
-	assert.Equal(t, targetStagesView{Current: 2, Pending: 2}, view.Sync.Active.Stages, "active stages")
+	assert.Equal(t, openapi.TargetStages{Current: 2, Pending: 2}, view.Sync.Active.Stages, "active stages")
 	assert.Empty(t, view.Sync.Active.StartsAt, "a run under way is being held back")
 }
 
@@ -1540,7 +1546,7 @@ func TestHandlerReportsAFirstRunHeldBackByTheInitialDelay(t *testing.T) {
 
 	assert.Equal(t, delayedState, view.Sync.State, "sync state")
 	require.NotNil(t, view.Sync.Active, "the status reports no work under way")
-	assert.Equal(t, "2026-08-18T06:05:00Z", view.Sync.Active.StartsAt, "the instant the run is held until")
+	assert.Equal(t, "2026-08-18T06:05:00Z", wireInstant(value(view.Sync.Active.StartsAt)), "the instant the run is held until")
 	assert.Empty(t, view.Sync.Active.Phase, "a half was named before the run started")
 }
 
@@ -1581,7 +1587,7 @@ func TestHandlerRefusesADuplicateTriggerWithoutManufacturingASecondRun(t *testin
 	view := statusOf(t, handler)
 	assert.Equal(t, runningState, view.Sync.State, "sync state")
 	require.NotNil(t, view.Sync.Active, "the status reports no work under way")
-	assert.Equal(t, "source", view.Sync.Active.Phase, "active phase")
+	assert.Equal(t, "source", string(value(view.Sync.Active.Phase)), "active phase")
 }
 
 // A wiring that never offered a clear must refuse it rather than panic on a
@@ -1682,10 +1688,10 @@ func TestHandlerReportsAnInFlightAuthorizationAsPending(t *testing.T) {
 
 	require.Len(t, view.Targets, 2, "targets")
 	for _, target := range view.Targets {
-		assert.Equalf(t, "pending", target.Authorization, "%s authorisation", target.ID)
+		assert.Equalf(t, "pending", target.Authorisation, "%s authorisation", target.Id)
 		// Pending is still not authorised. Nothing may be written to a slot whose
 		// flow has not come back, and the one word each target gets says so.
-		assert.Equalf(t, convergenceUnauthorized, target.Convergence, "%s convergence", target.ID)
+		assert.Equalf(t, convergenceUnauthorized, string(target.Convergence), "%s convergence", target.Id)
 	}
 	assert.False(t, view.Ready, "a target midway through connecting reported the service ready")
 }
@@ -1702,7 +1708,7 @@ func TestHandlerKeepsAnAuthorizedTargetAuthorizedDuringAFreshFlow(t *testing.T) 
 	view := statusOf(t, handler)
 
 	require.Len(t, view.Targets, 1, "targets")
-	assert.Equal(t, "authorized", view.Targets[0].Authorization, "authorisation")
+	assert.Equal(t, "authorized", view.Targets[0].Authorisation, "authorisation")
 	assert.True(t, view.Ready, "an authorised target stopped the service being ready")
 }
 
@@ -2473,12 +2479,12 @@ func (s *fakeState) SetSyncSchedule(_ context.Context, source, targets bool) err
 }
 
 // statusOf reads the status document as the handler serves it.
-func statusOf(t *testing.T, handler *Handler) statusView {
+func statusOf(t *testing.T, handler *Handler) openapi.Status {
 	t.Helper()
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/status"))
 	require.Equal(t, http.StatusOK, response.Code)
-	var view statusView
+	var view openapi.Status
 	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &view))
 
 	return view
@@ -2521,14 +2527,14 @@ func TestHandlerReportsPerTargetConvergence(t *testing.T) {
 	view := statusOf(t, newHandlerWithTargets(t, state, "rider-a", "rider-b"))
 
 	require.Len(t, view.Targets, 2)
-	assert.Equal(t, convergenceCurrent, view.Targets[0].Convergence)
-	assert.Equal(t, targetStagesView{Current: 2, Pending: 0}, view.Targets[0].Stages)
+	assert.Equal(t, convergenceCurrent, string(view.Targets[0].Convergence))
+	assert.Equal(t, openapi.TargetStages{Current: 2, Pending: 0}, view.Targets[0].Stages)
 	require.NotNil(t, view.Targets[0].LastRun)
 	assert.Equal(t, "succeeded", view.Targets[0].LastRun.Result)
-	assert.Equal(t, "2026-08-18T06:00:00Z", view.Targets[0].LastRun.CompletedAt)
+	assert.Equal(t, "2026-08-18T06:00:00Z", wireInstant(view.Targets[0].LastRun.CompletedAt))
 
-	assert.Equal(t, convergenceLagging, view.Targets[1].Convergence)
-	assert.Equal(t, targetStagesView{Current: 0, Pending: 2}, view.Targets[1].Stages)
+	assert.Equal(t, convergenceLagging, string(view.Targets[1].Convergence))
+	assert.Equal(t, openapi.TargetStages{Current: 0, Pending: 2}, view.Targets[1].Stages)
 	// A slot that has never been reconciled is not a slot whose run succeeded
 	// with nothing to do.
 	assert.Nil(t, view.Targets[1].LastRun)
@@ -2545,8 +2551,8 @@ func TestHandlerReportsOverallConvergenceOnlyWhenEveryTargetIsCurrent(t *testing
 
 	assert.True(t, view.Converged)
 	for _, target := range view.Targets {
-		assert.Equal(t, convergenceCurrent, target.Convergence)
-		assert.Equal(t, targetStagesView{Current: 2, Pending: 0}, target.Stages)
+		assert.Equal(t, convergenceCurrent, string(target.Convergence))
+		assert.Equal(t, openapi.TargetStages{Current: 2, Pending: 0}, target.Stages)
 	}
 }
 
@@ -2563,10 +2569,10 @@ func TestHandlerReportsPartialTargetFailurePerTarget(t *testing.T) {
 	view := statusOf(t, newHandlerWithTargets(t, state, "rider-a", "rider-b"))
 
 	require.Len(t, view.Targets, 2)
-	assert.Equal(t, convergenceCurrent, view.Targets[0].Convergence)
-	assert.Equal(t, convergenceFailed, view.Targets[1].Convergence)
+	assert.Equal(t, convergenceCurrent, string(view.Targets[0].Convergence))
+	assert.Equal(t, convergenceFailed, string(view.Targets[1].Convergence))
 	require.NotNil(t, view.Targets[1].LastRun)
-	assert.Equal(t, "destination", view.Targets[1].LastRun.Failure)
+	assert.Equal(t, "destination", value(view.Targets[1].LastRun.Failure))
 	assert.False(t, view.Converged)
 }
 
@@ -2583,10 +2589,10 @@ func TestHandlerCountsARouteTheLibraryNoLongerHasAsPending(t *testing.T) {
 	view := statusOf(t, newHandlerWithTargets(t, state, "rider-a", "rider-b"))
 
 	require.Len(t, view.Targets, 2)
-	assert.Equal(t, targetStagesView{Current: 1, Pending: 1}, view.Targets[0].Stages)
-	assert.Equal(t, convergenceLagging, view.Targets[0].Convergence)
-	assert.Equal(t, targetStagesView{Current: 1, Pending: 0}, view.Targets[1].Stages)
-	assert.Equal(t, convergenceCurrent, view.Targets[1].Convergence)
+	assert.Equal(t, openapi.TargetStages{Current: 1, Pending: 1}, view.Targets[0].Stages)
+	assert.Equal(t, convergenceLagging, string(view.Targets[0].Convergence))
+	assert.Equal(t, openapi.TargetStages{Current: 1, Pending: 0}, view.Targets[1].Stages)
+	assert.Equal(t, convergenceCurrent, string(view.Targets[1].Convergence))
 	assert.False(t, view.Converged)
 }
 
@@ -2600,8 +2606,8 @@ func TestHandlerReportsAnEmptyLibraryAsCurrentEverywhere(t *testing.T) {
 	view := statusOf(t, newHandlerWithTargets(t, state, "rider-a"))
 
 	require.Len(t, view.Targets, 1)
-	assert.Equal(t, convergenceCurrent, view.Targets[0].Convergence)
-	assert.Equal(t, targetStagesView{}, view.Targets[0].Stages)
+	assert.Equal(t, convergenceCurrent, string(view.Targets[0].Convergence))
+	assert.Equal(t, openapi.TargetStages{}, view.Targets[0].Stages)
 	assert.True(t, view.Converged)
 }
 
@@ -2613,7 +2619,7 @@ func TestHandlerReportsAnUnauthorizedTargetAsUnconverged(t *testing.T) {
 	view := statusOf(t, newHandlerWithTargets(t, state, "rider-a", "rider-b"))
 
 	require.Len(t, view.Targets, 2)
-	assert.Equal(t, convergenceUnauthorized, view.Targets[1].Convergence)
+	assert.Equal(t, convergenceUnauthorized, string(view.Targets[1].Convergence))
 	assert.False(t, view.Converged)
 }
 
@@ -2652,4 +2658,22 @@ func TestHandlerReportsConvergenceWithoutNamingAnything(t *testing.T) {
 	for _, secret := range []string{"Alpine loop", "Descent", "r2", "912", "wahoo"} {
 		assert.NotContains(t, body, secret)
 	}
+}
+
+// value reads an optional wire field, reporting the zero value for an absent
+// one so an assertion names what it expected rather than a pointer.
+func value[T any](field *T) T {
+	if field == nil {
+		var zero T
+
+		return zero
+	}
+
+	return *field
+}
+
+// wireInstant renders a timestamp the way the contract declares one, which is
+// what these assertions are written against.
+func wireInstant(at time.Time) string {
+	return at.UTC().Format(time.RFC3339)
 }

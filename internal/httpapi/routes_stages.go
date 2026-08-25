@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
+	openapi "github.com/nobbs/domestique/internal/httpapi/contract"
 	"github.com/nobbs/domestique/internal/route"
 )
 
@@ -11,7 +12,7 @@ import (
 // no geometry: geometry is served only by its own endpoint.
 func (h *Handler) stages(writer http.ResponseWriter, request *http.Request, _ string) {
 	validation := h.stageValidationView()
-	views := make([]stageView, 0)
+	views := make([]openapi.Route, 0)
 	if err := h.state.ForEachStageSummary(request.Context(), func(summary route.Summary) error {
 		views = append(views, newStageView(&summary, validation))
 
@@ -21,7 +22,7 @@ func (h *Handler) stages(writer http.ResponseWriter, request *http.Request, _ st
 
 		return
 	}
-	h.writeJSON(writer, http.StatusOK, map[string][]stageView{"stages": views})
+	h.writeJSON(writer, http.StatusOK, openapi.RouteList{Stages: views})
 }
 
 // stage returns one stage's stored metadata, not edit controls.
@@ -34,7 +35,7 @@ func (h *Handler) stage(writer http.ResponseWriter, request *http.Request, _ str
 	}
 
 	validation := h.stageValidationView()
-	var found *stageView
+	var found *openapi.Route
 	if err := h.state.ForEachStageSummary(request.Context(), func(summary route.Summary) error {
 		if summary.Provider == provider && summary.RouteID == routeID && summary.StageOrder == stageOrder {
 			view := newStageView(&summary, validation)
@@ -167,10 +168,10 @@ func (h *Handler) stageSurface(request *http.Request, summary *route.Summary) (v
 	return &geometrySurfaceView{Ranges: ranges, MatchedMetres: matchedMetres}, true
 }
 
-func newStageView(summary *route.Summary, validation *stageValidation) stageView {
-	view := stageView{
+func newStageView(summary *route.Summary, validation *openapi.RouteValidation) openapi.Route {
+	view := openapi.Route{
 		Provider:           string(summary.Provider),
-		RouteID:            summary.RouteID,
+		RouteId:            summary.RouteID,
 		StageOrder:         summary.StageOrder,
 		Title:              summary.Title(),
 		RouteName:          summary.RouteName,
@@ -193,16 +194,16 @@ func newStageView(summary *route.Summary, validation *stageValidation) stageView
 }
 
 // stageValidationView reports the loaded coefficient profile's measured
-// unseen-route error as a stageView field, or nil when no profile is
+// unseen-route error as a route field, or nil when no profile is
 // configured or its file carries no measured benchmark result.
-func (h *Handler) stageValidationView() *stageValidation {
+func (h *Handler) stageValidationView() *openapi.RouteValidation {
 	if h.rideModelValidation == nil {
 		return nil
 	}
 
-	return &stageValidation{
+	return &openapi.RouteValidation{
 		BiasPercent:    h.rideModelValidation.BiasPercent,
-		MAEPercent:     h.rideModelValidation.MAEPercent,
+		MaePercent:     h.rideModelValidation.MAEPercent,
 		P90Percent:     h.rideModelValidation.P90Percent,
 		EvaluatedRides: h.rideModelValidation.EvaluatedRides,
 	}

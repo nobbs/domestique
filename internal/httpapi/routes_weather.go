@@ -5,6 +5,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	openapi "github.com/nobbs/domestique/internal/httpapi/contract"
 )
 
 const (
@@ -83,7 +85,7 @@ func (h *Handler) weatherForecast(writer http.ResponseWriter, request *http.Requ
 		return
 	}
 
-	view := weatherView{Points: make([]weatherPointView, len(points))}
+	view := openapi.WeatherForecast{Points: make([]openapi.WeatherPoint, len(points))}
 	for i, point := range points {
 		if !weatherSeriesConsistent(&series[i]) {
 			h.error(writer, http.StatusBadGateway, "provider_unavailable",
@@ -171,29 +173,14 @@ func nearestHourIndex(hours []time.Time, at time.Time) (index int, found bool) {
 	return best, true
 }
 
-type weatherView struct {
-	Points []weatherPointView `json:"points"`
-}
-
-type weatherPointView struct {
-	Time                            string  `json:"time"`
-	TemperatureCelsius              float64 `json:"temperatureCelsius"`
-	ApparentTemperatureCelsius      float64 `json:"apparentTemperatureCelsius"`
-	PrecipitationMillimetres        float64 `json:"precipitationMillimetres"`
-	PrecipitationProbabilityPercent float64 `json:"precipitationProbabilityPercent"`
-	WindSpeedKMH                    float64 `json:"windSpeedKmh"`
-	WindDirectionDegrees            float64 `json:"windDirectionDegrees"`
-	WeatherCode                     int     `json:"weatherCode"`
-}
-
-func newWeatherPointView(series *WeatherSeries, index int) weatherPointView {
-	return weatherPointView{
-		Time:                            series.Time[index].UTC().Format(time.RFC3339),
+func newWeatherPointView(series *WeatherSeries, index int) openapi.WeatherPoint {
+	return openapi.WeatherPoint{
+		Time:                            wireTime(series.Time[index]),
 		TemperatureCelsius:              series.TemperatureCelsius[index],
 		ApparentTemperatureCelsius:      series.ApparentTemperatureCelsius[index],
 		PrecipitationMillimetres:        series.PrecipitationMillimetres[index],
 		PrecipitationProbabilityPercent: series.PrecipitationProbabilityPercent[index],
-		WindSpeedKMH:                    series.WindSpeedKMH[index],
+		WindSpeedKmh:                    series.WindSpeedKMH[index],
 		WindDirectionDegrees:            series.WindDirectionDegrees[index],
 		WeatherCode:                     series.WeatherCode[index],
 	}

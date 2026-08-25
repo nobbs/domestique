@@ -8,6 +8,8 @@ import (
 	"slices"
 	"strconv"
 	"time"
+
+	openapi "github.com/nobbs/domestique/internal/httpapi/contract"
 )
 
 // The authorisation words this service serves. Three of them are the states a
@@ -104,11 +106,11 @@ func (h *Handler) status(writer http.ResponseWriter, request *http.Request, _ st
 		return
 	}
 
-	targets := make([]targetView, 0, len(h.targetIDs))
+	targets := make([]openapi.TargetStatus, 0, len(h.targetIDs))
 	// The aggregate of the per-target counts, which is the only progress a run
 	// in flight reports: how much of the library is already on the configured
 	// accounts, and how much of it is still owed to them.
-	allStages := targetStagesView{}
+	allStages := openapi.TargetStages{}
 	ready, converged := true, true
 	for _, targetID := range h.targetIDs {
 		stored, found := authorizations[targetID]
@@ -119,15 +121,15 @@ func (h *Handler) status(writer http.ResponseWriter, request *http.Request, _ st
 		}
 		authorization := reportedAuthorization(stored, inFlight[targetID])
 		stages := stageCounts[targetID]
-		var lastRun *targetRunView
+		var lastRun *openapi.TargetRun
 		if run, recorded := runs[targetID]; recorded {
 			lastRun = &run
 		}
 		convergence := convergenceState(authorization, stages, lastRun)
-		targets = append(targets, targetView{
-			ID:            targetID,
-			Authorization: authorization,
-			Convergence:   convergence,
+		targets = append(targets, openapi.TargetStatus{
+			Id:            targetID,
+			Authorisation: authorization,
+			Convergence:   openapi.TargetStatusConvergence(convergence),
 			Stages:        stages,
 			LastRun:       lastRun,
 		})
@@ -140,17 +142,17 @@ func (h *Handler) status(writer http.ResponseWriter, request *http.Request, _ st
 	}
 
 	activity := h.syncRuns.Activity()
-	view := statusView{
+	view := openapi.Status{
 		Ready:     ready,
 		Converged: converged,
 		Targets:   targets,
-		Sync:      syncView{State: "not_ready"},
+		Sync:      openapi.SyncStatus{State: "not_ready"},
 	}
 	// Only when the revision is known: the digest alone would say which image is
 	// running without saying what is in it, and a group with nothing to identify
 	// is worse than no group.
 	if h.buildRevision != "" {
-		view.Build = &buildView{Revision: h.buildRevision, ImageDigest: h.buildImageDigest}
+		view.Build = &openapi.Build{Revision: h.buildRevision, ImageDigest: optionalString(h.buildImageDigest)}
 	}
 	if ready {
 		view.Sync.State = "idle"
@@ -161,35 +163,36 @@ func (h *Handler) status(writer http.ResponseWriter, request *http.Request, _ st
 
 		return
 	}
-	view.Sync.Schedule = syncScheduleView{Source: scheduleSource, Targets: scheduleTargets}
+	view.Sync.Schedule = openapi.SyncSchedule{Source: scheduleSource, Targets: scheduleTargets}
 	classified, total, coverageErr := h.state.SurfaceCoverage(request.Context())
 	if coverageErr != nil {
 		h.unavailable(writer)
 
 		return
 	}
-	view.Sync.Surface = surfaceView{Classified: classified, Total: total, Incomplete: h.syncRuns.SurfaceIncomplete()}
+	view.Sync.Surface = openapi.SurfaceCoverage{
+		Classified: classified, Total: total, Incomplete: h.syncRuns.SurfaceIncomplete(),
+	}
 	if remaining, resetAt, known := h.syncRuns.RateLimit(); known {
-		rateLimit := wahooRateLimitView{Remaining: remaining}
-		if !resetAt.IsZero() {
-			rateLimit.ResetsAt = resetAt.UTC().Format(time.RFC3339)
+		view.Sync.WahooRateLimit = &openapi.WahooRateLimit{
+			Remaining: remaining,
+			ResetsAt:  optionalTime(resetAt),
 		}
-		view.Sync.WahooRateLimit = &rateLimit
 	}
 	if h.surfaceIndex != nil {
 		if generation, builtAt, ok := h.surfaceIndex(); ok {
-			view.Sync.Surface.Generation = generation
-			view.Sync.Surface.BuiltAt = builtAt.UTC().Format(time.RFC3339)
+			view.Sync.Surface.Generation = optionalString(generation)
+			view.Sync.Surface.BuiltAt = optionalTime(builtAt)
 		}
 	}
 	if phaseErr := h.state.ForEachPhaseRun(request.Context(), func(
 		phase string, completedAt time.Time, outcome, detail string,
 		sourceStages, created, updated, deleted int,
 	) error {
-		run := phaseRunView{
-			LastCompletedAt: completedAt.UTC().Format(time.RFC3339),
+		run := openapi.SyncPhaseRun{
+			LastCompletedAt: wireTime(completedAt),
 			LastResult:      outcome,
-			LastFailure:     detail,
+			LastFailure:     optionalString(detail),
 			SourceStages:    sourceStages,
 			Created:         created,
 			Updated:         updated,
@@ -224,8 +227,8 @@ func (h *Handler) status(writer http.ResponseWriter, request *http.Request, _ st
 		return
 	}
 	if found {
-		view.Sync.State, view.Sync.LastResult = outcome, outcome
-		view.Sync.LastCompletedAt = completedAt.UTC().Format(time.RFC3339)
+		view.Sync.State, view.Sync.LastResult = outcome, optionalString(outcome)
+		view.Sync.LastCompletedAt = optionalTime(completedAt)
 		view.Sync.SourceStages, view.Sync.Created, view.Sync.Updated, view.Sync.Deleted =
 			sourceStages, created, updated, deleted
 	}
@@ -235,16 +238,19 @@ func (h *Handler) status(writer http.ResponseWriter, request *http.Request, _ st
 	// would read it as their answer.
 	if state, live := liveSyncState(activity); live {
 		view.Sync.State = state
-		view.Sync.Active = &activeView{
-			Phase:   string(activity.Phase),
+		view.Sync.Active = &openapi.SyncActive{
 			Targets: len(h.targetIDs),
 			Stages:  allStages,
+		}
+		if activity.Phase != "" {
+			phase := openapi.SyncActivePhase(activity.Phase)
+			view.Sync.Active.Phase = &phase
 		}
 		// Only a delay has a due instant to report. A run triggered while the
 		// first one is still being held back is under way now, and saying when
 		// something else was going to start would read as its own progress.
 		if state == delayedState {
-			view.Sync.Active.StartsAt = activity.StartsAt.UTC().Format(time.RFC3339)
+			view.Sync.Active.StartsAt = optionalTime(activity.StartsAt)
 		}
 	}
 	h.writeJSON(writer, http.StatusOK, view)
@@ -278,7 +284,7 @@ func (h *Handler) setSyncSchedule(writer http.ResponseWriter, request *http.Requ
 
 		return
 	}
-	h.writeJSON(writer, http.StatusOK, syncScheduleView{Source: *body.Source, Targets: *body.Targets})
+	h.writeJSON(writer, http.StatusOK, openapi.SyncSchedule{Source: *body.Source, Targets: *body.Targets})
 }
 
 // The recorded history is served a page at a time. The default is what the page
@@ -310,17 +316,17 @@ func (h *Handler) syncHistory(writer http.ResponseWriter, request *http.Request,
 	}
 	// An empty history is an empty list rather than a null one: the page is the
 	// answer either way.
-	view := syncRunsView{Runs: []syncRunView{}}
+	view := openapi.SyncRunPage{Runs: []openapi.SyncRun{}}
 	next, usable, err := h.state.ForEachSyncRun(request.Context(), query.Get("after"), limit, func(
 		reference, phase string, completedAt time.Time, outcome, detail string,
 		sourceStages, created, updated, deleted int,
 	) error {
-		view.Runs = append(view.Runs, syncRunView{
+		view.Runs = append(view.Runs, openapi.SyncRun{
 			Reference:    reference,
-			Phase:        phase,
-			CompletedAt:  completedAt.UTC().Format(time.RFC3339),
+			Phase:        openapi.SyncRunPhase(phase),
+			CompletedAt:  wireTime(completedAt),
 			Result:       outcome,
-			Failure:      detail,
+			Failure:      optionalString(detail),
 			SourceStages: sourceStages,
 			Created:      created,
 			Updated:      updated,
@@ -340,7 +346,7 @@ func (h *Handler) syncHistory(writer http.ResponseWriter, request *http.Request,
 
 		return
 	}
-	view.Next = next
+	view.Next = optionalString(next)
 	h.writeJSON(writer, http.StatusOK, view)
 }
 
@@ -383,7 +389,7 @@ func (h *Handler) syncTarget(writer http.ResponseWriter, request *http.Request, 
 
 		return
 	}
-	h.writeJSON(writer, http.StatusAccepted, map[string]string{"status": "accepted"})
+	h.writeJSON(writer, http.StatusAccepted, openapi.Accepted{Status: openapi.AcceptedStatusAccepted})
 }
 
 // clearTarget queues the deletion of every route this service owns on exactly
@@ -406,7 +412,7 @@ func (h *Handler) clearTarget(writer http.ResponseWriter, request *http.Request,
 
 		return
 	}
-	h.writeJSON(writer, http.StatusAccepted, map[string]string{"status": "accepted"})
+	h.writeJSON(writer, http.StatusAccepted, openapi.Accepted{Status: openapi.AcceptedStatusAccepted})
 }
 
 func (h *Handler) trigger(writer http.ResponseWriter, phase SyncPhase) {
@@ -415,7 +421,7 @@ func (h *Handler) trigger(writer http.ResponseWriter, phase SyncPhase) {
 
 		return
 	}
-	h.writeJSON(writer, http.StatusAccepted, map[string]string{"status": "accepted"})
+	h.writeJSON(writer, http.StatusAccepted, openapi.Accepted{Status: openapi.AcceptedStatusAccepted})
 }
 
 // syncSurface queues one immediate surface-classification pass, independently
@@ -430,15 +436,15 @@ func (h *Handler) syncSurface(writer http.ResponseWriter, _ *http.Request, _ str
 
 		return
 	}
-	h.writeJSON(writer, http.StatusAccepted, map[string]string{"status": "accepted"})
+	h.writeJSON(writer, http.StatusAccepted, openapi.Accepted{Status: openapi.AcceptedStatusAccepted})
 }
 
 // trustedInventoryFreshness reports the trusted source inventory's age against
 // the configured bound, derived from local state alone. Absent last success is
 // reported as fresh: a service that has never completed a source run has no
 // trusted inventory yet, which is not the same claim as a stale one.
-func (h *Handler) trustedInventoryFreshness(ctx context.Context) (*trustedInventoryView, error) {
-	view := &trustedInventoryView{Fresh: true, MaxAgeSeconds: int64(h.sourceStaleAfter / time.Second)}
+func (h *Handler) trustedInventoryFreshness(ctx context.Context) (*openapi.TrustedInventory, error) {
+	view := &openapi.TrustedInventory{Fresh: true, MaxAgeSeconds: int(h.sourceStaleAfter / time.Second)}
 	lastSuccess, found, err := h.state.LastSuccessfulPhaseCompletion(ctx, string(SyncPhaseSource))
 	if err != nil {
 		return nil, fmt.Errorf("reading the trusted inventory's last success: %w", err)
@@ -450,8 +456,8 @@ func (h *Handler) trustedInventoryFreshness(ctx context.Context) (*trustedInvent
 	// backwards, or a recorded success that races ahead of it, is a clock
 	// problem elsewhere and must not be read here as a claim about the future.
 	age := max(h.now().Sub(lastSuccess), 0)
-	ageSeconds := int64(age / time.Second)
-	view.LastSuccessAt = lastSuccess.UTC().Format(time.RFC3339)
+	ageSeconds := int(age / time.Second)
+	view.LastSuccessAt = optionalTime(lastSuccess)
 	view.AgeSeconds = ageSeconds
 	// Fresh is derived from the same truncated seconds the response reports,
 	// not the untruncated duration: a sub-second sync.stale_after would
