@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/getkin/kin-openapi/openapi3filter"
+	"github.com/getkin/kin-openapi/routers/gorillamux"
 	"github.com/nobbs/domestique/internal/route"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -28,13 +30,14 @@ type openAPIOperation struct {
 	Parameters []struct {
 		Ref string `yaml:"$ref"`
 	} `yaml:"parameters"`
+	Security []map[string][]string `yaml:"security"`
 }
 
-// declaresOrigin reports whether this operation requires the browser Origin
-// header, which is how the contract names an operation as state-changing.
+// declaresOrigin reports whether this operation requires the browser origin,
+// which is how the contract names an operation as state-changing.
 func (operation openAPIOperation) declaresOrigin() bool {
-	for _, parameter := range operation.Parameters {
-		if strings.HasSuffix(parameter.Ref, "/parameters/Origin") {
+	for _, requirement := range operation.Security {
+		if _, required := requirement[browserOriginScheme]; required {
 			return true
 		}
 	}
@@ -130,55 +133,121 @@ func TestOpenAPIContractResponses(t *testing.T) {
 
 func statusCode(status int) string { return strconv.Itoa(status) }
 
-// TestContractStateChangeMatchesTheDocumentedOriginParameter couples the
-// hand-written same-origin guard to the document the routes are generated from.
-// The guard runs before generated parameter binding, so it cannot be derived
-// from the bound request; this asserts instead that it names exactly the
-// operations the contract marks as requiring an Origin. An operation added to
-// api/openapi.yaml without a matching case in contractStateChange registers a
-// working state-changing route with no provenance check, and the generated
-// binding only requires the header to be present, not to match the configured
-// origin — so nothing else would catch it.
-func TestContractStateChangeMatchesTheDocumentedOriginParameter(t *testing.T) {
+// Every operation the contract marks as state-changing is refused without the
+// browser's origin, and no other operation is refused for wanting one. The
+// document is now the only place that distinction is written down — the
+// validator reads the security requirement rather than matching paths — so this
+// walks the document and proves the served behaviour matches it operation by
+// operation.
+//
+// Each is also reached with a reserved character percent-encoded inside a path
+// parameter. A target identifier is operator-configured free text, so "a%2Fb"
+// addresses a configured slot rather than being malformed, and a guard that
+// read the decoded path would see a different operation than the one the
+// request actually reaches.
+func TestEveryStateChangingOperationRequiresTheBrowserOrigin(t *testing.T) {
 	document := loadOpenAPIContract(t)
-	// Values the handlers accept, so a documented operation becomes a request
-	// to probe; and the same templates carrying a percent-encoded reserved
-	// character. A target identifier is operator-configured free text, so
-	// "a%2Fb" addresses a configured slot rather than being malformed.
+	handler := newTestHandler(t)
 	plain := strings.NewReplacer(
 		"{provider}", "veloplanner", "{routeId}", "12", "{stage}", "1",
 		"{target}", "rider-a", "{asset}", "app.js",
 	)
-	escapedValues := strings.NewReplacer(
+	escaped := strings.NewReplacer(
 		"{provider}", "velo%2Fplanner", "{routeId}", "12", "{stage}", "1",
 		"{target}", "a%2Fb", "{asset}", "app%2Ejs",
 	)
 
 	for path, operations := range document.Paths {
 		for method, operation := range operations {
-			t.Run(strings.ToUpper(method)+" "+path, func(t *testing.T) {
-				request := httptest.NewRequestWithContext(
-					context.Background(),
-					strings.ToUpper(method),
-					plain.Replace(path),
-					http.NoBody,
-				)
-				assert.Equal(t, operation.declaresOrigin(), contractStateChange(request),
-					"the same-origin guard and the documented Origin parameter must name the same operations")
+			for name, replacer := range map[string]*strings.Replacer{"plain": plain, "escaped": escaped} {
+				t.Run(strings.ToUpper(method)+" "+path+" ("+name+")", func(t *testing.T) {
+					request := httptest.NewRequestWithContext(
+						t.Context(), strings.ToUpper(method), replacer.Replace(path), http.NoBody,
+					)
+					request.Header.Set(assertionHeader, testAssertion)
 
-				// The same operation reached with a reserved character escaped
-				// inside a path parameter. ServeMux routes on the escaped path,
-				// so a guard reading the decoded one would classify this as a
-				// different operation and skip the check the route requires.
-				escaped := httptest.NewRequestWithContext(
-					context.Background(),
-					strings.ToUpper(method),
-					escapedValues.Replace(path),
-					http.NoBody,
-				)
-				assert.Equal(t, operation.declaresOrigin(), contractStateChange(escaped),
-					"an escaped path parameter must not change which operation the guard sees")
-			})
+					response := httptest.NewRecorder()
+					handler.ServeHTTP(response, request)
+
+					if operation.declaresOrigin() {
+						assert.Equal(t, http.StatusForbidden, response.Code,
+							"a documented state-changing operation served without an origin")
+
+						return
+					}
+					assert.NotEqual(t, http.StatusForbidden, response.Code,
+						"an operation the contract does not gate on provenance was refused for it")
+				})
+			}
 		}
+	}
+}
+
+// The served listener answers within its own contract, checked the other way
+// round: the request validator holds callers to the document, and this holds
+// the handlers to it.
+//
+// It is a test rather than a middleware on purpose. Validating a response costs
+// decoding every body this service serves, geometry included, on a path whose
+// whole point is that geometry is never decoded. The class of defect it catches
+// is one nothing else does: a stored value that is outside the enum the
+// document declares reaches the wire silently, and is found in review months
+// later, if at all.
+func TestServedResponsesSatisfyTheContract(t *testing.T) {
+	// The geometry response is GeoJSON, which is JSON with its own media type.
+	// Registering it here rather than in the service is deliberate: nothing
+	// sends this type, so only response validation ever has to read one.
+	openapi3filter.RegisterBodyDecoder("application/geo+json", openapi3filter.JSONBodyDecoder)
+
+	spec, err := servedSpec()
+	require.NoError(t, err, "the embedded contract")
+	router, err := gorillamux.NewRouter(spec)
+	require.NoError(t, err, "a router over the contract")
+
+	// The history fixture is reused so the run page carries real rows: a page
+	// of nothing would satisfy any schema.
+	state := historyStateFixture()
+	state.summaries = []route.Summary{{
+		Provider: route.ProviderVeloPlanner, RouteID: 12, StageOrder: 1,
+		RouteName: "Contract route", PointCount: 2,
+	}}
+	state.coordinates = json.RawMessage(`[[8,49],[8.1,49.1]]`)
+	handler := newHandler(t, &fakeOAuth{}, state)
+
+	for _, target := range []string{
+		"/healthz",
+		"/v1/status",
+		"/v1/routes",
+		"/v1/sync/runs",
+		"/v1/webui/config",
+		"/v1/providers/veloplanner/routes/12/stages/1",
+		"/v1/providers/veloplanner/routes/12/stages/1/geometry",
+	} {
+		t.Run(target, func(t *testing.T) {
+			request := authenticatedRequest(http.MethodGet, target)
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+
+			operation, pathParams, routeErr := router.FindRoute(request)
+			require.NoError(t, routeErr, "the contract names this route")
+
+			result := response.Result()
+			defer func() { require.NoError(t, result.Body.Close(), "closing the recorded body") }()
+
+			require.NoError(t, openapi3filter.ValidateResponse(t.Context(), &openapi3filter.ResponseValidationInput{
+				RequestValidationInput: &openapi3filter.RequestValidationInput{
+					Request: request, PathParams: pathParams, Route: operation,
+					Options: &openapi3filter.Options{AuthenticationFunc: handler.authenticateScheme},
+				},
+				Status: response.Code,
+				Header: response.Header(),
+				Body:   result.Body,
+				Options: &openapi3filter.Options{
+					IncludeResponseStatus: true,
+					AuthenticationFunc:    handler.authenticateScheme,
+				},
+			}), "the response does not satisfy the contract")
+		})
 	}
 }

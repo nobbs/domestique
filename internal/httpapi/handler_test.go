@@ -291,23 +291,24 @@ func TestHandlerServesAStageStoredUnderAnyProvider(t *testing.T) {
 	assert.Contains(t, response.Body.String(), `"provider":"komoot"`, "the stage names its provider")
 }
 
+// An identifier the contract cannot describe and one it can are different
+// answers. The contract declares routeId and stage as integers of minimum 1, so
+// "abc", "0" and "-1" are all malformed requests rather than missing stages;
+// only a well-formed identifier naming nothing stored is a 404.
 func TestHandlerRejectsMalformedStageIdentifiers(t *testing.T) {
 	handler := newTestHandler(t)
-	for _, path := range []string{
-		"/v1/providers/veloplanner/routes/0/stages/1",
-		"/v1/providers/veloplanner/routes/-1/stages/1/geometry",
-		"/v1/providers/veloplanner/routes/abc/stages/1",
-		"/v1/providers/veloplanner/routes/1/stages/0/geometry",
-		"/v1/providers/komoot/routes/1/stages/1",
+	for path, want := range map[string]int{
+		"/v1/providers/veloplanner/routes/0/stages/1":           http.StatusBadRequest,
+		"/v1/providers/veloplanner/routes/-1/stages/1/geometry": http.StatusBadRequest,
+		"/v1/providers/veloplanner/routes/abc/stages/1":         http.StatusBadRequest,
+		"/v1/providers/veloplanner/routes/1/stages/0/geometry":  http.StatusBadRequest,
+		"/v1/providers/komoot/routes/1/stages/1":                http.StatusNotFound,
 	} {
 		t.Run(path, func(t *testing.T) {
 			response := httptest.NewRecorder()
 			handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, path))
-			want := http.StatusNotFound
-			if strings.Contains(path, "/abc/") {
-				want = http.StatusBadRequest
-			}
 			assert.Equal(t, want, response.Code, "status")
+			assert.Contains(t, response.Body.String(), `"error":{"code":`, "the shared error shape")
 		})
 	}
 }
@@ -1016,6 +1017,8 @@ func TestHandlerRedirectsLegacyBrowserRoute(t *testing.T) {
 func TestHandlerRejectsMalformedLegacyStagePaths(t *testing.T) {
 	handler := newTestHandler(t)
 
+	// Every one of these is refused before a redirect is built, and all for the
+	// same reason: the contract describes no such identifier.
 	for _, target := range []string{
 		"/v1/routes/not-a-number/stages/1",
 		"/v1/routes/12/stages/not-a-number",
@@ -1024,11 +1027,8 @@ func TestHandlerRejectsMalformedLegacyStagePaths(t *testing.T) {
 	} {
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, target))
-		want := http.StatusNotFound
-		if strings.Contains(target, "not-a-number") {
-			want = http.StatusBadRequest
-		}
-		assert.Equalf(t, want, response.Code, "GET %s status", target)
+		assert.Equalf(t, http.StatusBadRequest, response.Code, "GET %s status", target)
+		assert.Emptyf(t, response.Header().Get("Location"), "GET %s redirected", target)
 	}
 }
 
@@ -2040,6 +2040,9 @@ func authenticatedRequest(method, target string) *http.Request {
 func authenticatedRequestWithBody(method, target, body string) *http.Request {
 	request := httptest.NewRequestWithContext(context.Background(), method, target, strings.NewReader(body))
 	request.Header.Set(assertionHeader, testAssertion)
+	// Exactly what the browser client sends with a body: see request.ts, which
+	// sets this on every request that carries one.
+	request.Header.Set("Content-Type", "application/json")
 	withBrowserOrigin(request)
 
 	return request

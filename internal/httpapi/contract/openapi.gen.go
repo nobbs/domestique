@@ -6,11 +6,18 @@
 package contract
 
 import (
+	"bytes"
+	"compress/flate"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
+	"path"
+	"strings"
 	"time"
 
+	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/oapi-codegen/runtime"
 )
 
@@ -522,9 +529,6 @@ type WebUIConfig struct {
 	SourceBaseUrls *SourceBaseUrls  `json:"sourceBaseUrls,omitempty"`
 }
 
-// Origin defines model for Origin.
-type Origin = string
-
 // Provider defines model for Provider.
 type Provider = string
 
@@ -567,64 +571,10 @@ type CompleteOAuthParams struct {
 	Code  *string `form:"code,omitempty" json:"code,omitempty"`
 }
 
-// ReprocessRouteParams defines parameters for ReprocessRoute.
-type ReprocessRouteParams struct {
-	// Origin Exact browser origin configured for this service.
-	Origin Origin `json:"Origin"`
-}
-
-// RedirectLegacyReprocessParams defines parameters for RedirectLegacyReprocess.
-type RedirectLegacyReprocessParams struct {
-	// Origin Exact browser origin configured for this service.
-	Origin Origin `json:"Origin"`
-}
-
-// TriggerSyncParams defines parameters for TriggerSync.
-type TriggerSyncParams struct {
-	// Origin Exact browser origin configured for this service.
-	Origin Origin `json:"Origin"`
-}
-
 // GetSyncRunsParams defines parameters for GetSyncRuns.
 type GetSyncRunsParams struct {
 	After *string `form:"after,omitempty" json:"after,omitempty"`
 	Limit *int    `form:"limit,omitempty" json:"limit,omitempty"`
-}
-
-// SetSyncScheduleParams defines parameters for SetSyncSchedule.
-type SetSyncScheduleParams struct {
-	// Origin Exact browser origin configured for this service.
-	Origin Origin `json:"Origin"`
-}
-
-// TriggerSourceSyncParams defines parameters for TriggerSourceSync.
-type TriggerSourceSyncParams struct {
-	// Origin Exact browser origin configured for this service.
-	Origin Origin `json:"Origin"`
-}
-
-// TriggerSurfaceSyncParams defines parameters for TriggerSurfaceSync.
-type TriggerSurfaceSyncParams struct {
-	// Origin Exact browser origin configured for this service.
-	Origin Origin `json:"Origin"`
-}
-
-// TriggerTargetsSyncParams defines parameters for TriggerTargetsSync.
-type TriggerTargetsSyncParams struct {
-	// Origin Exact browser origin configured for this service.
-	Origin Origin `json:"Origin"`
-}
-
-// TriggerTargetSyncParams defines parameters for TriggerTargetSync.
-type TriggerTargetSyncParams struct {
-	// Origin Exact browser origin configured for this service.
-	Origin Origin `json:"Origin"`
-}
-
-// ClearTargetParams defines parameters for ClearTarget.
-type ClearTargetParams struct {
-	// Origin Exact browser origin configured for this service.
-	Origin Origin `json:"Origin"`
 }
 
 // GetWeatherParams defines parameters for GetWeather.
@@ -684,7 +634,7 @@ type ServerInterface interface {
 	GetRouteGeometry(w http.ResponseWriter, r *http.Request, provider Provider, routeId RouteId, stage Stage)
 
 	// (POST /v1/providers/{provider}/routes/{routeId}/stages/{stage}/reprocess)
-	ReprocessRoute(w http.ResponseWriter, r *http.Request, provider Provider, routeId RouteId, stage Stage, params ReprocessRouteParams)
+	ReprocessRoute(w http.ResponseWriter, r *http.Request, provider Provider, routeId RouteId, stage Stage)
 
 	// (GET /v1/routes)
 	GetRoutes(w http.ResponseWriter, r *http.Request)
@@ -696,34 +646,34 @@ type ServerInterface interface {
 	RedirectLegacyGeometry(w http.ResponseWriter, r *http.Request, routeId RouteId, stage Stage)
 
 	// (POST /v1/routes/{routeId}/stages/{stage}/reprocess)
-	RedirectLegacyReprocess(w http.ResponseWriter, r *http.Request, routeId RouteId, stage Stage, params RedirectLegacyReprocessParams)
+	RedirectLegacyReprocess(w http.ResponseWriter, r *http.Request, routeId RouteId, stage Stage)
 
 	// (GET /v1/status)
 	GetStatus(w http.ResponseWriter, r *http.Request)
 
 	// (POST /v1/sync)
-	TriggerSync(w http.ResponseWriter, r *http.Request, params TriggerSyncParams)
+	TriggerSync(w http.ResponseWriter, r *http.Request)
 
 	// (GET /v1/sync/runs)
 	GetSyncRuns(w http.ResponseWriter, r *http.Request, params GetSyncRunsParams)
 
 	// (PUT /v1/sync/schedule)
-	SetSyncSchedule(w http.ResponseWriter, r *http.Request, params SetSyncScheduleParams)
+	SetSyncSchedule(w http.ResponseWriter, r *http.Request)
 
 	// (POST /v1/sync/source)
-	TriggerSourceSync(w http.ResponseWriter, r *http.Request, params TriggerSourceSyncParams)
+	TriggerSourceSync(w http.ResponseWriter, r *http.Request)
 
 	// (POST /v1/sync/surface)
-	TriggerSurfaceSync(w http.ResponseWriter, r *http.Request, params TriggerSurfaceSyncParams)
+	TriggerSurfaceSync(w http.ResponseWriter, r *http.Request)
 
 	// (POST /v1/sync/targets)
-	TriggerTargetsSync(w http.ResponseWriter, r *http.Request, params TriggerTargetsSyncParams)
+	TriggerTargetsSync(w http.ResponseWriter, r *http.Request)
 
 	// (POST /v1/sync/targets/{target})
-	TriggerTargetSync(w http.ResponseWriter, r *http.Request, target Target, params TriggerTargetSyncParams)
+	TriggerTargetSync(w http.ResponseWriter, r *http.Request, target Target)
 
 	// (POST /v1/targets/{target}/clear)
-	ClearTarget(w http.ResponseWriter, r *http.Request, target Target, params ClearTargetParams)
+	ClearTarget(w http.ResponseWriter, r *http.Request, target Target)
 
 	// (GET /v1/weather)
 	GetWeather(w http.ResponseWriter, r *http.Request, params GetWeatherParams)
@@ -1151,36 +1101,8 @@ func (siw *ServerInterfaceWrapper) ReprocessRoute(w http.ResponseWriter, r *http
 		return
 	}
 
-	// Parameter object where we will unmarshal all parameters from the context
-	var params ReprocessRouteParams
-
-	headers := r.Header
-
-	// ------------- Required header parameter "Origin" -------------
-	if valueList, found := headers[http.CanonicalHeaderKey("Origin")]; found {
-		var Origin Origin
-		n := len(valueList)
-		if n != 1 {
-			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Origin", Count: n})
-			return
-		}
-
-		err = runtime.BindStyledParameterWithOptions("simple", "Origin", valueList[0], &Origin, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
-		if err != nil {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Origin", Err: err})
-			return
-		}
-
-		params.Origin = Origin
-
-	} else {
-		err := fmt.Errorf("Header parameter Origin is required, but not found")
-		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Origin", Err: err})
-		return
-	}
-
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ReprocessRoute(w, r, provider, routeId, stage, params)
+		siw.Handler.ReprocessRoute(w, r, provider, routeId, stage)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1298,36 +1220,8 @@ func (siw *ServerInterfaceWrapper) RedirectLegacyReprocess(w http.ResponseWriter
 		return
 	}
 
-	// Parameter object where we will unmarshal all parameters from the context
-	var params RedirectLegacyReprocessParams
-
-	headers := r.Header
-
-	// ------------- Required header parameter "Origin" -------------
-	if valueList, found := headers[http.CanonicalHeaderKey("Origin")]; found {
-		var Origin Origin
-		n := len(valueList)
-		if n != 1 {
-			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Origin", Count: n})
-			return
-		}
-
-		err = runtime.BindStyledParameterWithOptions("simple", "Origin", valueList[0], &Origin, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
-		if err != nil {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Origin", Err: err})
-			return
-		}
-
-		params.Origin = Origin
-
-	} else {
-		err := fmt.Errorf("Header parameter Origin is required, but not found")
-		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Origin", Err: err})
-		return
-	}
-
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.RedirectLegacyReprocess(w, r, routeId, stage, params)
+		siw.Handler.RedirectLegacyReprocess(w, r, routeId, stage)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1354,39 +1248,8 @@ func (siw *ServerInterfaceWrapper) GetStatus(w http.ResponseWriter, r *http.Requ
 // TriggerSync operation middleware
 func (siw *ServerInterfaceWrapper) TriggerSync(w http.ResponseWriter, r *http.Request) {
 
-	var err error
-	_ = err
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params TriggerSyncParams
-
-	headers := r.Header
-
-	// ------------- Required header parameter "Origin" -------------
-	if valueList, found := headers[http.CanonicalHeaderKey("Origin")]; found {
-		var Origin Origin
-		n := len(valueList)
-		if n != 1 {
-			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Origin", Count: n})
-			return
-		}
-
-		err = runtime.BindStyledParameterWithOptions("simple", "Origin", valueList[0], &Origin, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
-		if err != nil {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Origin", Err: err})
-			return
-		}
-
-		params.Origin = Origin
-
-	} else {
-		err := fmt.Errorf("Header parameter Origin is required, but not found")
-		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Origin", Err: err})
-		return
-	}
-
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.TriggerSync(w, r, params)
+		siw.Handler.TriggerSync(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1445,39 +1308,8 @@ func (siw *ServerInterfaceWrapper) GetSyncRuns(w http.ResponseWriter, r *http.Re
 // SetSyncSchedule operation middleware
 func (siw *ServerInterfaceWrapper) SetSyncSchedule(w http.ResponseWriter, r *http.Request) {
 
-	var err error
-	_ = err
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params SetSyncScheduleParams
-
-	headers := r.Header
-
-	// ------------- Required header parameter "Origin" -------------
-	if valueList, found := headers[http.CanonicalHeaderKey("Origin")]; found {
-		var Origin Origin
-		n := len(valueList)
-		if n != 1 {
-			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Origin", Count: n})
-			return
-		}
-
-		err = runtime.BindStyledParameterWithOptions("simple", "Origin", valueList[0], &Origin, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
-		if err != nil {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Origin", Err: err})
-			return
-		}
-
-		params.Origin = Origin
-
-	} else {
-		err := fmt.Errorf("Header parameter Origin is required, but not found")
-		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Origin", Err: err})
-		return
-	}
-
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.SetSyncSchedule(w, r, params)
+		siw.Handler.SetSyncSchedule(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1490,39 +1322,8 @@ func (siw *ServerInterfaceWrapper) SetSyncSchedule(w http.ResponseWriter, r *htt
 // TriggerSourceSync operation middleware
 func (siw *ServerInterfaceWrapper) TriggerSourceSync(w http.ResponseWriter, r *http.Request) {
 
-	var err error
-	_ = err
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params TriggerSourceSyncParams
-
-	headers := r.Header
-
-	// ------------- Required header parameter "Origin" -------------
-	if valueList, found := headers[http.CanonicalHeaderKey("Origin")]; found {
-		var Origin Origin
-		n := len(valueList)
-		if n != 1 {
-			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Origin", Count: n})
-			return
-		}
-
-		err = runtime.BindStyledParameterWithOptions("simple", "Origin", valueList[0], &Origin, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
-		if err != nil {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Origin", Err: err})
-			return
-		}
-
-		params.Origin = Origin
-
-	} else {
-		err := fmt.Errorf("Header parameter Origin is required, but not found")
-		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Origin", Err: err})
-		return
-	}
-
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.TriggerSourceSync(w, r, params)
+		siw.Handler.TriggerSourceSync(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1535,39 +1336,8 @@ func (siw *ServerInterfaceWrapper) TriggerSourceSync(w http.ResponseWriter, r *h
 // TriggerSurfaceSync operation middleware
 func (siw *ServerInterfaceWrapper) TriggerSurfaceSync(w http.ResponseWriter, r *http.Request) {
 
-	var err error
-	_ = err
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params TriggerSurfaceSyncParams
-
-	headers := r.Header
-
-	// ------------- Required header parameter "Origin" -------------
-	if valueList, found := headers[http.CanonicalHeaderKey("Origin")]; found {
-		var Origin Origin
-		n := len(valueList)
-		if n != 1 {
-			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Origin", Count: n})
-			return
-		}
-
-		err = runtime.BindStyledParameterWithOptions("simple", "Origin", valueList[0], &Origin, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
-		if err != nil {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Origin", Err: err})
-			return
-		}
-
-		params.Origin = Origin
-
-	} else {
-		err := fmt.Errorf("Header parameter Origin is required, but not found")
-		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Origin", Err: err})
-		return
-	}
-
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.TriggerSurfaceSync(w, r, params)
+		siw.Handler.TriggerSurfaceSync(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1580,39 +1350,8 @@ func (siw *ServerInterfaceWrapper) TriggerSurfaceSync(w http.ResponseWriter, r *
 // TriggerTargetsSync operation middleware
 func (siw *ServerInterfaceWrapper) TriggerTargetsSync(w http.ResponseWriter, r *http.Request) {
 
-	var err error
-	_ = err
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params TriggerTargetsSyncParams
-
-	headers := r.Header
-
-	// ------------- Required header parameter "Origin" -------------
-	if valueList, found := headers[http.CanonicalHeaderKey("Origin")]; found {
-		var Origin Origin
-		n := len(valueList)
-		if n != 1 {
-			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Origin", Count: n})
-			return
-		}
-
-		err = runtime.BindStyledParameterWithOptions("simple", "Origin", valueList[0], &Origin, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
-		if err != nil {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Origin", Err: err})
-			return
-		}
-
-		params.Origin = Origin
-
-	} else {
-		err := fmt.Errorf("Header parameter Origin is required, but not found")
-		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Origin", Err: err})
-		return
-	}
-
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.TriggerTargetsSync(w, r, params)
+		siw.Handler.TriggerTargetsSync(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1637,36 +1376,8 @@ func (siw *ServerInterfaceWrapper) TriggerTargetSync(w http.ResponseWriter, r *h
 		return
 	}
 
-	// Parameter object where we will unmarshal all parameters from the context
-	var params TriggerTargetSyncParams
-
-	headers := r.Header
-
-	// ------------- Required header parameter "Origin" -------------
-	if valueList, found := headers[http.CanonicalHeaderKey("Origin")]; found {
-		var Origin Origin
-		n := len(valueList)
-		if n != 1 {
-			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Origin", Count: n})
-			return
-		}
-
-		err = runtime.BindStyledParameterWithOptions("simple", "Origin", valueList[0], &Origin, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
-		if err != nil {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Origin", Err: err})
-			return
-		}
-
-		params.Origin = Origin
-
-	} else {
-		err := fmt.Errorf("Header parameter Origin is required, but not found")
-		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Origin", Err: err})
-		return
-	}
-
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.TriggerTargetSync(w, r, target, params)
+		siw.Handler.TriggerTargetSync(w, r, target)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1691,36 +1402,8 @@ func (siw *ServerInterfaceWrapper) ClearTarget(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	// Parameter object where we will unmarshal all parameters from the context
-	var params ClearTargetParams
-
-	headers := r.Header
-
-	// ------------- Required header parameter "Origin" -------------
-	if valueList, found := headers[http.CanonicalHeaderKey("Origin")]; found {
-		var Origin Origin
-		n := len(valueList)
-		if n != 1 {
-			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Origin", Count: n})
-			return
-		}
-
-		err = runtime.BindStyledParameterWithOptions("simple", "Origin", valueList[0], &Origin, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
-		if err != nil {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Origin", Err: err})
-			return
-		}
-
-		params.Origin = Origin
-
-	} else {
-		err := fmt.Errorf("Header parameter Origin is required, but not found")
-		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Origin", Err: err})
-		return
-	}
-
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ClearTarget(w, r, target, params)
+		siw.Handler.ClearTarget(w, r, target)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1930,4 +1613,172 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/settings", wrapper.GetSettingsPage)
 
 	return m
+}
+
+// Base64 encoded, compressed with deflate, json marshaled OpenAPI spec.
+// Stored as a slice of fixed-width chunks rather than one concatenated
+// const string: with thousands of chunks the chained `+` fold is several
+// times slower for the Go compiler than parsing a slice literal.
+var swaggerSpec = []string{
+	"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",
+	"QxowfT57fn//fwEAAP//",
+}
+
+// decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,
+// after base64-decoding and flate-decompressing the embedded blob.
+func decodeSpec() ([]byte, error) {
+	encoded := strings.Join(swaggerSpec, "")
+	compressed, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		return nil, fmt.Errorf("error base64 decoding spec: %w", err)
+	}
+	zr := flate.NewReader(bytes.NewReader(compressed))
+	var buf bytes.Buffer
+	if _, err := buf.ReadFrom(zr); err != nil {
+		return nil, fmt.Errorf("read flate: %w", err)
+	}
+	if err := zr.Close(); err != nil {
+		return nil, fmt.Errorf("close flate reader: %w", err)
+	}
+
+	return buf.Bytes(), nil
+}
+
+var rawSpec = decodeSpecCached()
+
+// a naive cache of the decoded OpenAPI spec
+func decodeSpecCached() func() ([]byte, error) {
+	data, err := decodeSpec()
+	return func() ([]byte, error) {
+		return data, err
+	}
+}
+
+// Constructs a synthetic filesystem for resolving external references when loading openapi specifications.
+func PathToRawSpec(pathToFile string) map[string]func() ([]byte, error) {
+	res := make(map[string]func() ([]byte, error))
+	if len(pathToFile) > 0 {
+		res[pathToFile] = rawSpec
+	}
+
+	return res
+}
+
+// GetSpec returns the OpenAPI specification corresponding to the generated
+// code in this file. External references in the spec are resolved through
+// PathToRawSpec; externally-referenced files must be embedded in their
+// corresponding Go packages (via the import-mapping feature). URL-based
+// external refs are not supported.
+func GetSpec() (swagger *openapi3.T, err error) {
+	resolvePath := PathToRawSpec("")
+
+	loader := openapi3.NewLoader()
+	loader.IsExternalRefsAllowed = true
+	loader.ReadFromURIFunc = func(loader *openapi3.Loader, url *url.URL) ([]byte, error) {
+		pathToFile := url.String()
+		pathToFile = path.Clean(pathToFile)
+		getSpec, ok := resolvePath[pathToFile]
+		if !ok {
+			err1 := fmt.Errorf("path not found: %s", pathToFile)
+			return nil, err1
+		}
+		return getSpec()
+	}
+	var specData []byte
+	specData, err = rawSpec()
+	if err != nil {
+		return
+	}
+	swagger, err = loader.LoadFromData(specData)
+	if err != nil {
+		return
+	}
+	return
+}
+
+// GetSpecJSON returns the raw JSON bytes of the embedded OpenAPI
+// specification: decompressed but not unmarshaled. External references
+// are not resolved here; the bytes are the spec exactly as embedded by
+// codegen. The result is cached at package init time, so repeated calls
+// are cheap.
+func GetSpecJSON() ([]byte, error) {
+	return rawSpec()
+}
+
+// GetSwagger returns the OpenAPI specification corresponding to the
+// generated code in this file.
+//
+// Deprecated: GetSwagger predates kin-openapi renaming openapi3.Swagger
+// to openapi3.T. Use [GetSpec] instead. This wrapper is retained for
+// backwards compatibility.
+func GetSwagger() (*openapi3.T, error) {
+	return GetSpec()
 }

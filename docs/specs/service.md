@@ -45,6 +45,21 @@ as `application/geo+json`; its stored coordinates and surface ranges pass
 through without decoding and re-encoding. Deploying this wire change requires a
 browser hard reload. There is no compatibility endpoint or public SDK.
 
+The contract is enforced at runtime rather than only described by it. Every
+request is held to the document before it reaches a handler: the parameter
+bounds, the request bodies, and the provenance requirement that marks an
+operation as state-changing. A request the document does not describe is
+refused with the shared error shape, so a constraint written down here cannot
+quietly go unchecked in the code.
+
+Two checks sit deliberately outside that validation, and in front of it. The
+Access identity is proven first, because the validator resolves a route before
+it validates security: an unknown path would otherwise answer "no such route"
+to a caller that has proven nothing, which is the surface enumeration the gate
+exists to prevent. The request body is capped first for the same kind of
+reason: the validator reads a declared body whole to check it, and the bound on
+that read has to already be in place.
+
 Every `type: number` in the contract is IEEE 754 double precision, declared as
 `format: double` so a generated client cannot narrow a coordinate to single
 precision. Identifiers and counts are `type: integer` and stay integral: a

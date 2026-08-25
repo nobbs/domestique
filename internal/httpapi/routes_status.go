@@ -258,9 +258,7 @@ func (h *Handler) GetStatus(writer http.ResponseWriter, request *http.Request) {
 
 // SetSyncSchedule switches either half of the scheduled synchronization on or
 // off. It changes nothing about a run already in flight, and never starts one.
-func (h *Handler) SetSyncSchedule(
-	writer http.ResponseWriter, request *http.Request, _ openapi.SetSyncScheduleParams,
-) {
+func (h *Handler) SetSyncSchedule(writer http.ResponseWriter, request *http.Request) {
 	var body struct {
 		Source  *bool `json:"source"`
 		Targets *bool `json:"targets"`
@@ -355,24 +353,20 @@ func (h *Handler) GetSyncRuns(
 }
 
 // TriggerSync queues one immediate run through the same reporting path as the schedule.
-func (h *Handler) TriggerSync(writer http.ResponseWriter, _ *http.Request, _ openapi.TriggerSyncParams) {
+func (h *Handler) TriggerSync(writer http.ResponseWriter, _ *http.Request) {
 	h.trigger(writer, SyncPhaseAll)
 }
 
 // TriggerSourceSync queues one immediate read of the source library. It runs whether or
 // not the schedule is allowed to start that phase: the switch governs unattended
 // runs, and an operator asking for one now has already decided.
-func (h *Handler) TriggerSourceSync(
-	writer http.ResponseWriter, _ *http.Request, _ openapi.TriggerSourceSyncParams,
-) {
+func (h *Handler) TriggerSourceSync(writer http.ResponseWriter, _ *http.Request) {
 	h.trigger(writer, SyncPhaseSource)
 }
 
 // TriggerTargetsSync queues one immediate reconciliation of stored state onto the
 // targets, on the same terms as syncSource.
-func (h *Handler) TriggerTargetsSync(
-	writer http.ResponseWriter, _ *http.Request, _ openapi.TriggerTargetsSyncParams,
-) {
+func (h *Handler) TriggerTargetsSync(writer http.ResponseWriter, _ *http.Request) {
 	h.trigger(writer, SyncPhaseTargets)
 }
 
@@ -385,9 +379,7 @@ func (h *Handler) TriggerTargetsSync(
 // The target identifier is checked against the configured slots here, the
 // same way the OAuth start route checks it: an unconfigured or missing slot is
 // not found, not a target this request could ever reconcile.
-func (h *Handler) TriggerTargetSync(
-	writer http.ResponseWriter, request *http.Request, _ openapi.Target, _ openapi.TriggerTargetSyncParams,
-) {
+func (h *Handler) TriggerTargetSync(writer http.ResponseWriter, request *http.Request, _ openapi.Target) {
 	targetID := request.PathValue("target")
 	if targetID == "" || !slices.Contains(h.targetIDs, targetID) {
 		h.notFound(writer)
@@ -410,9 +402,7 @@ func (h *Handler) TriggerTargetSync(
 // confirmation this needs belongs with the operator looking at the target,
 // not in a field a script could fill in — and it is gated and origin-checked
 // like every other state-changing route.
-func (h *Handler) ClearTarget(
-	writer http.ResponseWriter, request *http.Request, _ openapi.Target, _ openapi.ClearTargetParams,
-) {
+func (h *Handler) ClearTarget(writer http.ResponseWriter, request *http.Request, _ openapi.Target) {
 	targetID := request.PathValue("target")
 	if targetID == "" || !slices.Contains(h.targetIDs, targetID) {
 		h.notFound(writer)
@@ -442,9 +432,7 @@ func (h *Handler) trigger(writer http.ResponseWriter, phase SyncPhase) {
 // only reclassifies stages already stored, against the local surface index.
 // It shares their single-flight guard, so a synchronization or another such
 // pass already in flight refuses it the same way.
-func (h *Handler) TriggerSurfaceSync(
-	writer http.ResponseWriter, _ *http.Request, _ openapi.TriggerSurfaceSyncParams,
-) {
+func (h *Handler) TriggerSurfaceSync(writer http.ResponseWriter, _ *http.Request) {
 	if !h.syncRuns.TriggerAnnotate() {
 		h.error(writer, http.StatusConflict, "sync_in_progress", "a synchronization or classification pass is already running")
 
