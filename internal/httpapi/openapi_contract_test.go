@@ -137,6 +137,15 @@ var contractPathValues = strings.NewReplacer(
 	"{target}", "rider-a", "{asset}", "app.js",
 )
 
+// contractEscapedPathValues fills the same templates with values carrying a
+// percent-encoded reserved character. A target identifier is operator-
+// configured free text, so "a%2Fb" is a legitimate way to address a configured
+// slot rather than a malformed request.
+var contractEscapedPathValues = strings.NewReplacer(
+	"{provider}", "velo%2Fplanner", "{routeId}", "12", "{stage}", "1",
+	"{target}", "a%2Fb", "{asset}", "app%2Ejs",
+)
+
 // TestContractStateChangeMatchesTheDocumentedOriginParameter couples the
 // hand-written same-origin guard to the document the routes are generated from.
 // The guard runs before generated parameter binding, so it cannot be derived
@@ -160,6 +169,19 @@ func TestContractStateChangeMatchesTheDocumentedOriginParameter(t *testing.T) {
 				)
 				assert.Equal(t, operation.declaresOrigin(), contractStateChange(request),
 					"the same-origin guard and the documented Origin parameter must name the same operations")
+
+				// The same operation reached with a reserved character escaped
+				// inside a path parameter. ServeMux routes on the escaped path,
+				// so a guard reading the decoded one would classify this as a
+				// different operation and skip the check the route requires.
+				escaped := httptest.NewRequestWithContext(
+					context.Background(),
+					strings.ToUpper(method),
+					contractEscapedPathValues.Replace(path),
+					http.NoBody,
+				)
+				assert.Equal(t, operation.declaresOrigin(), contractStateChange(escaped),
+					"an escaped path parameter must not change which operation the guard sees")
 			})
 		}
 	}

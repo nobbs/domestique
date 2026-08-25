@@ -603,22 +603,30 @@ func (h *Handler) contractDispatch(writer http.ResponseWriter, request *http.Req
 //
 // OAuth is deliberately absent from both: its cross-site redirect is protected
 // by one-time, identity-bound state rather than Origin.
+//
+// The escaped path is what is classified, because the escaped path is what
+// ServeMux routes on. A target identifier is operator-configured free text and
+// may contain a reserved character, so "/v1/sync/targets/a%2Fb" reaches the
+// {target} route as one segment while its decoded form reads as two — and a
+// segment count taken from the decoded form would wave that request past the
+// Origin check the route it matched requires.
 func contractStateChange(request *http.Request) bool {
+	path := request.URL.EscapedPath()
 	if request.Method == http.MethodPut {
-		return request.URL.Path == "/v1/sync/schedule"
+		return path == "/v1/sync/schedule"
 	}
 	if request.Method != http.MethodPost {
 		return false
 	}
-	switch request.URL.Path {
+	switch path {
 	case "/v1/sync", "/v1/sync/source", "/v1/sync/targets", "/v1/sync/surface":
 		return true
 	}
-	return (strings.HasPrefix(request.URL.Path, "/v1/sync/targets/") &&
-		strings.Count(request.URL.Path, "/") == 4) ||
-		(strings.HasPrefix(request.URL.Path, "/v1/targets/") && strings.HasSuffix(request.URL.Path, "/clear")) ||
-		(strings.HasPrefix(request.URL.Path, "/v1/providers/") && strings.HasSuffix(request.URL.Path, "/reprocess")) ||
-		(strings.HasPrefix(request.URL.Path, "/v1/routes/") && strings.HasSuffix(request.URL.Path, "/reprocess"))
+	return (strings.HasPrefix(path, "/v1/sync/targets/") &&
+		strings.Count(path, "/") == 4) ||
+		(strings.HasPrefix(path, "/v1/targets/") && strings.HasSuffix(path, "/clear")) ||
+		(strings.HasPrefix(path, "/v1/providers/") && strings.HasSuffix(path, "/reprocess")) ||
+		(strings.HasPrefix(path, "/v1/routes/") && strings.HasSuffix(path, "/reprocess"))
 }
 
 func (h *Handler) serveContract(writer http.ResponseWriter, request *http.Request) {
@@ -637,7 +645,7 @@ func (h *Handler) contractRequestError(writer http.ResponseWriter, _ *http.Reque
 }
 
 func (h *Handler) contractResponseError(writer http.ResponseWriter, _ *http.Request, _ error) {
-	h.error(writer, http.StatusInternalServerError, "unavailable", "the request could not be completed")
+	h.error(writer, http.StatusServiceUnavailable, "unavailable", "the request could not be completed")
 }
 
 // gatedFunc is a handler that has already proven the caller's identity. The
