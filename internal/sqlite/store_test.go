@@ -884,6 +884,40 @@ func TestStoreNamesRunsRecordedBeforeReferencesExisted(t *testing.T) {
 
 // readSyncRunPage collects one page of the recorded history as the references
 // it names, newest first, with the cursor for the page after it.
+// Runs recorded before the history was split by phase keep an empty phase, and
+// they are not served: the history reports one half or the other, and a run
+// that covered both at once cannot be called either without saying something
+// untrue. The page they are excluded from still fills to its limit, because the
+// exclusion happens where the page is read rather than after it.
+func TestStoreLeavesPrePhaseRunsOutOfTheHistory(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	startedAt := time.Date(2026, time.August, 17, 8, 0, 0, 0, time.UTC)
+	legacy, err := store.RecordSyncRun(
+		t.Context(), "source", startedAt, startedAt.Add(time.Second), "succeeded", "", 1, 0, 0, 0,
+	)
+	require.NoError(t, err, "RecordSyncRun()")
+	// The state the phase migration leaves a pre-existing row in.
+	_, err = store.database.ExecContext(
+		t.Context(), "UPDATE sync_runs SET phase = '' WHERE reference = ?", legacy,
+	)
+	require.NoError(t, err, "ageing a run back to the pre-phase shape")
+
+	recent := make([]string, 0, 2)
+	for minute := range 2 {
+		began := startedAt.Add(time.Duration(minute+1) * time.Minute)
+		reference, recordErr := store.RecordSyncRun(
+			t.Context(), "targets", began, began.Add(time.Second), "succeeded", "", 0, minute, 0, 0,
+		)
+		require.NoError(t, recordErr, "RecordSyncRun()")
+		recent = append(recent, reference)
+	}
+
+	page, next := readSyncRunPage(t, store, "", 10)
+	assert.Equal(t, []string{recent[1], recent[0]}, page, "the phased runs, newest first")
+	assert.NotContains(t, page, legacy, "a run from before the history was split by phase")
+	assert.Empty(t, next, "a cursor past the oldest servable run")
+}
+
 func readSyncRunPage(t *testing.T, store *Store, after string, limit int) (references []string, next string) {
 	t.Helper()
 
