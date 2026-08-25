@@ -12,13 +12,13 @@ export function MapControls() {
   const geolocationAvailable = typeof navigator !== "undefined" && "geolocation" in navigator;
 
   const locate = () => {
-    if (!geolocationAvailable) {
+    if (!geolocationAvailable || !map) {
       return;
     }
 
     navigator.geolocation.getCurrentPosition(({ coords }) => {
       setLocation({ longitude: coords.longitude, latitude: coords.latitude });
-      map?.flyTo({
+      map.flyTo({
         center: [coords.longitude, coords.latitude],
         zoom: Math.max(map.getZoom(), LOCATION_ZOOM),
       });

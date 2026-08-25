@@ -8,10 +8,11 @@ const map = vi.hoisted(() => ({
   zoomIn: vi.fn(),
   zoomOut: vi.fn(),
 }));
+const mapReady = vi.hoisted(() => ({ value: true }));
 
 vi.mock("react-map-gl/maplibre", () => ({
   Marker: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-  useMap: () => ({ current: map }),
+  useMap: () => ({ current: mapReady.value ? map : null }),
 }));
 
 const { MapControls } = await import("./MapControls");
@@ -22,6 +23,7 @@ afterEach(() => {
   map.getZoom.mockReturnValue(10);
   map.zoomIn.mockReset();
   map.zoomOut.mockReset();
+  mapReady.value = true;
   vi.unstubAllGlobals();
 });
 
@@ -44,5 +46,17 @@ describe("MapControls", () => {
     expect(map.zoomOut).toHaveBeenCalledOnce();
     expect(map.flyTo).toHaveBeenCalledWith({ center: [8, 49], zoom: 12 });
     expect(screen.getByRole("img", { name: "Your location" })).toBeInTheDocument();
+  });
+
+  it("does not read the map while it is unavailable", async () => {
+    const getCurrentPosition = vi.fn();
+    mapReady.value = false;
+    vi.stubGlobal("navigator", { geolocation: { getCurrentPosition } });
+    render(<MapControls />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Find my location" }));
+
+    expect(getCurrentPosition).not.toHaveBeenCalled();
+    expect(map.getZoom).not.toHaveBeenCalled();
   });
 });

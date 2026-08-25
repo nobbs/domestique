@@ -13,7 +13,9 @@ export function MapControlCluster({ children }: { children: ReactNode }) {
   useEffect(() => {
     const mapContainer = map?.getContainer();
     setContainer(
-      mapContainer?.querySelector(CLUSTER_SELECTOR) ?? mapContainer?.parentElement ?? null,
+      mapContainer?.querySelector<HTMLElement>(CLUSTER_SELECTOR) ??
+        mapContainer?.parentElement ??
+        null,
     );
   }, [map]);
 

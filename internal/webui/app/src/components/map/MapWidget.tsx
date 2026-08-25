@@ -32,14 +32,18 @@ export function MapWidget({
   onMouseMove,
   onMouseOut,
 }: MapWidgetProps) {
-  const [loaded, setLoaded] = useState(false);
+  const [loadedStyleUrl, setLoadedStyleUrl] = useState<string | null>(null);
 
   return (
     <div className="route-map">
       <MapLibre
         mapStyle={styleUrl}
-        onError={(event) => console.error("map error:", event.error?.message ?? event)}
-        onLoad={() => setLoaded(true)}
+        onLoad={() => setLoadedStyleUrl(styleUrl)}
+        onStyleData={(event) => {
+          if (event.target.isStyleLoaded()) {
+            setLoadedStyleUrl(styleUrl);
+          }
+        }}
         style={{ width: "100%", height: "100%" }}
         aria-label={ariaLabel}
         attributionControl={false}
@@ -49,7 +53,7 @@ export function MapWidget({
         {...(onMouseMove ? { onMouseMove } : {})}
         {...(onMouseOut ? { onMouseOut } : {})}
       >
-        {loaded ? children : null}
+        {loadedStyleUrl === styleUrl ? children : null}
       </MapLibre>
     </div>
   );
