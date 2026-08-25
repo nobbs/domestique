@@ -2698,3 +2698,34 @@ func value[T any](field *T) T {
 func wireInstant(at time.Time) string {
 	return at.UTC().Format(time.RFC3339)
 }
+
+// The identifier guards inside the stage handlers are unreachable through the
+// router: the request validator refuses anything that is not an integer of at
+// least 1, overflow included, before a handler runs. They stay because a
+// redirect target and a store lookup must never be built from a value this
+// package did not itself parse, and a handler that trusted the middleware
+// entirely would fail open the day that middleware is reordered or skipped.
+//
+// They are reached here by calling the handler with the path values a router
+// would have set, which is the only way in.
+func TestStageHandlersRefuseAnIdentifierTheyCannotParse(t *testing.T) {
+	handler := newTestHandler(t)
+
+	legacy := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/routes/12/stages/1", http.NoBody)
+	legacy.SetPathValue("routeId", "not-a-number")
+	legacy.SetPathValue("stage", "1")
+	response := httptest.NewRecorder()
+	handler.RedirectLegacyRoute(response, legacy, 12, 1)
+	assert.Equal(t, http.StatusNotFound, response.Code, "legacy redirect status")
+	assert.Empty(t, response.Header().Get("Location"), "a redirect built from an unparsed identifier")
+
+	qualified := httptest.NewRequestWithContext(
+		t.Context(), http.MethodGet, "/v1/providers/veloplanner/routes/12/stages/1", http.NoBody,
+	)
+	qualified.SetPathValue("provider", "veloplanner")
+	qualified.SetPathValue("routeId", "not-a-number")
+	qualified.SetPathValue("stage", "1")
+	response = httptest.NewRecorder()
+	handler.GetRoute(response, qualified, "veloplanner", 12, 1)
+	assert.Equal(t, http.StatusNotFound, response.Code, "stage status")
+}

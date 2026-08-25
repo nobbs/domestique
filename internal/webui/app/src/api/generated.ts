@@ -347,11 +347,6 @@ export type InvalidRequestResponse = Error;
  */
 export type ProviderUnavailableResponse = Error;
 
-/**
- * Exact browser origin configured for this service.
- */
-export type OriginParameter = string;
-
 export type GetSyncRunsParams = {
   after?: string;
   /**
@@ -365,7 +360,7 @@ export type GetWeatherParams = {
   /**
    * @minItems 1
    * @maxItems 48
-   * @items.pattern ^-?[0-9]+(\\.[0-9]+)?,-?[0-9]+(\\.[0-9]+)?,.+$
+   * @items.pattern ^-?[0-9]+(\.[0-9]+)?,-?[0-9]+(\.[0-9]+)?,.+$
    */
   point: string[];
 };
