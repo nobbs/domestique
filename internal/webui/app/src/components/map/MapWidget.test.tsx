@@ -68,6 +68,30 @@ describe("MapWidget", () => {
     expect(screen.getByText("layered content")).toBeInTheDocument();
   });
 
+  it("leaves the furniture standing while a replacement style loads", () => {
+    const { rerender } = render(
+      <MapWidget styleUrl="https://tiles.example/bright.json" furniture={<p>the controls</p>}>
+        <p>layered content</p>
+      </MapWidget>,
+    );
+
+    rerender(
+      <MapWidget styleUrl="https://tiles.example/dark.json" furniture={<p>the controls</p>}>
+        <p>layered content</p>
+      </MapWidget>,
+    );
+
+    // The layers cannot outlive the style holding them and go; the furniture
+    // owes the cartography nothing and has no reason to blink with them.
+    expect(screen.queryByText("layered content")).not.toBeInTheDocument();
+    expect(screen.getByText("the controls")).toBeInTheDocument();
+
+    act(() => drawn.onIdle?.());
+
+    expect(screen.getByText("layered content")).toBeInTheDocument();
+    expect(screen.getByText("the controls")).toBeInTheDocument();
+  });
+
   it("does not read readiness from an event that can describe the outgoing style", () => {
     // `styledata` fires several times on a basemap change, and the only one
     // that reports `isStyleLoaded()` arrives microseconds after the swap, while

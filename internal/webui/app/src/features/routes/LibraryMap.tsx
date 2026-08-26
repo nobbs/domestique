@@ -83,20 +83,35 @@ export function LibraryMap({
           onPick?.(key);
         }
       }}
+      // Everything the cartography has no say over. It stays mounted while a
+      // new basemap loads, so choosing one does not take the controls away
+      // from under the hand that just used them.
+      furniture={
+        <>
+          <ScaleControl position="bottom-left" unit={unitSystem} />
+          <MapControls>
+            {onBasemapChange ? (
+              <BasemapPicker
+                basemaps={basemaps}
+                selectedName={selectedBasemap}
+                onSelect={onBasemapChange}
+                expanded={pickerOpen}
+                onExpandedChange={setPickerOpen}
+              />
+            ) : null}
+          </MapControls>
+          <MapOverlay>
+            <MapCredits
+              styleUrl={styleUrl}
+              extra={extraCredit}
+              choice={creditChoice}
+              onChoiceChange={setCreditChoice}
+            />
+          </MapOverlay>
+        </>
+      }
     >
       <MapViewport bounds={bounds} maxZoom={maxZoom} {...(insets ? { insets } : {})} />
-      <ScaleControl position="bottom-left" unit={unitSystem} />
-      <MapControls>
-        {onBasemapChange ? (
-          <BasemapPicker
-            basemaps={basemaps}
-            selectedName={selectedBasemap}
-            onSelect={onBasemapChange}
-            expanded={pickerOpen}
-            onExpandedChange={setPickerOpen}
-          />
-        ) : null}
-      </MapControls>
       <LibraryRoutes
         lines={lines}
         darkBasemap={darkBasemap}
@@ -106,14 +121,6 @@ export function LibraryMap({
         {...(onPick ? { hitLayerId: LIBRARY_HIT_LAYER } : {})}
       />
       {children}
-      <MapOverlay>
-        <MapCredits
-          styleUrl={styleUrl}
-          extra={extraCredit}
-          choice={creditChoice}
-          onChoiceChange={setCreditChoice}
-        />
-      </MapOverlay>
     </MapWidget>
   );
 }
