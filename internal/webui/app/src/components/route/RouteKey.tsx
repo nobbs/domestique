@@ -38,7 +38,6 @@
  * resting state is nothing picked and whose way back is a second press.
  */
 
-import type { ReactNode } from "react";
 import type { SurfaceKind } from "../../api/types";
 import type { Highlight } from "../../lib/highlight";
 import type { BandShare } from "../../lib/profile";
@@ -46,6 +45,7 @@ import { GRADIENT_BANDS } from "../../lib/profile";
 import type { SurfaceSummary } from "../../lib/surface";
 import { SURFACE_STYLES } from "../../lib/surface";
 import { ToggleGroup, ToggleGroupItem } from "../ui/toggle-group";
+import { MixBar } from "./MixBar";
 
 const paintClasses = {
   "band:0": "bg-[var(--grade-0)]",
@@ -100,21 +100,6 @@ function formatShare(share: number): string {
  */
 function chipValue(highlight: Highlight): string {
   return highlight.type === "surface" ? `surface:${highlight.kind}` : `band:${highlight.band}`;
-}
-
-/**
- * One proportion bar.
- *
- * Hidden from assistive technology: every segment in it is a chip below it with
- * its own figure spoken in full, and a bar is a picture of figures that have
- * already been said.
- */
-function MixBar({ children }: { children: ReactNode }) {
-  return (
-    <span className="mb-1 flex h-1.5 w-full overflow-hidden rounded-sm" aria-hidden="true">
-      {children}
-    </span>
-  );
 }
 
 export interface RouteKeyProps {
