@@ -46,7 +46,7 @@ export function Layout({ map, children }: LayoutProps) {
       ) : (
         <div className="shell__overlay pointer-events-none absolute inset-0 z-20">
           <aside
-            className="pointer-events-auto absolute top-16 left-3 max-h-[calc(100dvh-4.75rem)] w-fit max-w-[calc(100dvw-1.5rem)] overflow-y-auto rounded-xl bg-[var(--panel)] p-3 shadow-[var(--shadow)] ring-1 ring-black/5 transition-[background-color,box-shadow,padding] duration-200 has-[>[data-compact-workspace]]:bg-transparent has-[>[data-compact-workspace]]:p-0 has-[>[data-compact-workspace]]:shadow-none has-[>[data-compact-workspace]]:ring-0"
+            className="pointer-events-auto absolute top-16 left-3 max-h-[calc(100dvh-4.75rem)] w-fit max-w-[calc(100dvw-1.5rem)] overflow-y-auto rounded-xl bg-[var(--panel)] p-3 shadow-[var(--shadow)] ring-1 ring-black/5 transition-[background-color,box-shadow,padding] duration-200 has-[>[data-compact-workspace]]:overflow-visible has-[>[data-compact-workspace]]:bg-transparent has-[>[data-compact-workspace]]:p-0 has-[>[data-compact-workspace]]:shadow-none has-[>[data-compact-workspace]]:ring-0"
             aria-label="Route library controls"
           >
             {children}
