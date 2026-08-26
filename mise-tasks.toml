@@ -526,14 +526,11 @@ description = "Check the UI dependency tree against the advisory database"
 wait_for = ["ui-install"]
 run = "pnpm --dir internal/webui/app audit --prod"
 
-# The bundler empties dist, which would remove the committed placeholder that
-# keeps the go:embed pattern valid before a UI build. Restore it afterwards.
-#
-# It waits for `ci-ui` for the same reason `build-check` does: the browser suite
-# in that group bundles into this same directory. `build-check` waiting is not
-# enough on its own, because a dependency is scheduled independently of what the
-# task depending on it waits for — so the write has to be ordered where it
-# happens.
+# Waits for `ci-ui` for the same reason `build-check` does: the browser suite in
+# that group bundles into this same directory, and two bundlers emptying it at
+# once leave neither's output whole. `build-check` waiting is not enough on its
+# own, because a dependency is scheduled independently of what the task
+# depending on it waits for — so the write has to be ordered where it happens.
 [ui-build]
 description = "Build the UI bundle"
 sources = [
@@ -546,10 +543,7 @@ sources = [
 ]
 outputs = ["internal/webui/app/dist/**"]
 wait_for = ["ui-install", "ci-ui"]
-run = [
-  "pnpm --dir internal/webui/app run build",
-  "touch internal/webui/app/dist/.gitkeep",
-]
+run = "pnpm --dir internal/webui/app run build"
 
 # The running service reports which public commit produced it, and only a
 # trusted build input can say which one that is: a Docker build context carries
