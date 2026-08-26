@@ -99,26 +99,26 @@ func (h *Handler) ready(writer http.ResponseWriter, request *http.Request) {
 	}); err != nil {
 		// The category only. The reason a state read failed can name a path or a
 		// key, and this response is written to whatever asked.
-		unready(writer, contract.StateUnreadable)
+		unready(writer, contract.Unready_ReasonStateUnreadable)
 
 		return
 	}
 	for _, targetID := range h.targetIDs {
 		if _, found := known[targetID]; !found {
-			unready(writer, contract.StateIncomplete)
+			unready(writer, contract.Unready_ReasonStateIncomplete)
 
 			return
 		}
 	}
-	writeJSON(writer, http.StatusOK, contract.Readiness{Status: contract.Ready})
+	writeJSON(writer, http.StatusOK, contract.Readiness{Status: "ready"})
 }
 
 // unready reports why the probe failed, in the contract's own words: the reason
 // is the generated enum rather than a string, so a reason this package can
 // report is a reason api/openapi.yaml declares.
-func unready(writer http.ResponseWriter, reason contract.UnreadyReason) {
+func unready(writer http.ResponseWriter, reason contract.Unready_Reason) {
 	writeJSON(writer, http.StatusServiceUnavailable, contract.Unready{
-		Status: contract.UnreadyStatusUnready,
+		Status: "unready",
 		Reason: reason,
 	})
 }

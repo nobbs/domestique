@@ -117,6 +117,30 @@ func TestHandlerGatesEveryNonHealthRoute(t *testing.T) {
 	}
 }
 
+func TestBrowserUIRoutesAreRegistered(t *testing.T) {
+	handler := newTestHandler(t)
+	paths := []string{
+		"/assets/app.js",
+		"/favicon.svg",
+		"/icon-256.png",
+		"/icon-512.png",
+		"/manifest.webmanifest",
+		"/",
+		"/routes/veloplanner/1/1",
+		"/routes/1/1",
+		"/sync",
+		"/settings",
+	}
+
+	for _, path := range paths {
+		t.Run(path, func(t *testing.T) {
+			request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, http.NoBody)
+			_, pattern := handler.mux.Handler(request)
+			assert.NotEqual(t, "/", pattern, "the UI route is not registered")
+		})
+	}
+}
+
 func TestHandlerServesStageGeometryAsGeoJSON(t *testing.T) {
 	state := &fakeState{
 		summaries: []route.Summary{{
@@ -377,7 +401,7 @@ func TestHandlerServesValidationAlongsideAPredictedStage(t *testing.T) {
 	require.Len(t, view.Stages, 1, "stages")
 	require.NotNil(t, view.Stages[0].Validation, "validation")
 	assert.Equal(t, openapi.RouteValidation{
-		BiasPercent: -1.2, MaePercent: 6.8, P90Percent: 14.1, EvaluatedRides: 42,
+		BiasPercent: -1.2, MaePercent: 6.8, P90percent: 14.1, EvaluatedRides: 42,
 	}, *view.Stages[0].Validation, "validation")
 }
 
@@ -1013,22 +1037,24 @@ func TestHandlerRedirectsLegacyBrowserRoute(t *testing.T) {
 }
 
 // A malformed legacy path is refused rather than redirected to a target that
-// could never resolve.
+// could never resolve. API paths return a contract validation error; browser
+// navigation treats the malformed address as not found.
 func TestHandlerRejectsMalformedLegacyStagePaths(t *testing.T) {
 	handler := newTestHandler(t)
 
-	// Every one of these is refused before a redirect is built, and all for the
-	// same reason: the contract describes no such identifier.
-	for _, target := range []string{
-		"/v1/routes/not-a-number/stages/1",
-		"/v1/routes/12/stages/not-a-number",
-		"/v1/routes/0/stages/1",
-		"/routes/not-a-number/1",
+	for _, test := range []struct {
+		target string
+		status int
+	}{
+		{"/v1/routes/not-a-number/stages/1", http.StatusBadRequest},
+		{"/v1/routes/12/stages/not-a-number", http.StatusBadRequest},
+		{"/v1/routes/0/stages/1", http.StatusBadRequest},
+		{"/routes/not-a-number/1", http.StatusNotFound},
 	} {
 		response := httptest.NewRecorder()
-		handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, target))
-		assert.Equalf(t, http.StatusBadRequest, response.Code, "GET %s status", target)
-		assert.Emptyf(t, response.Header().Get("Location"), "GET %s redirected", target)
+		handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, test.target))
+		assert.Equalf(t, test.status, response.Code, "GET %s status", test.target)
+		assert.Emptyf(t, response.Header().Get("Location"), "GET %s redirected", test.target)
 	}
 }
 
@@ -1706,10 +1732,10 @@ func TestHandlerReportsAnInFlightAuthorizationAsPending(t *testing.T) {
 
 	require.Len(t, view.Targets, 2, "targets")
 	for _, target := range view.Targets {
-		assert.Equalf(t, "pending", target.Authorisation, "%s authorisation", target.Id)
+		assert.Equalf(t, "pending", target.Authorisation, "%s authorisation", target.ID)
 		// Pending is still not authorised. Nothing may be written to a slot whose
 		// flow has not come back, and the one word each target gets says so.
-		assert.Equalf(t, convergenceUnauthorized, target.Convergence, "%s convergence", target.Id)
+		assert.Equalf(t, convergenceUnauthorized, target.Convergence, "%s convergence", target.ID)
 	}
 	assert.False(t, view.Ready, "a target midway through connecting reported the service ready")
 }
@@ -2715,7 +2741,7 @@ func TestStageHandlersRefuseAnIdentifierTheyCannotParse(t *testing.T) {
 	legacy.SetPathValue("routeId", "not-a-number")
 	legacy.SetPathValue("stage", "1")
 	response := httptest.NewRecorder()
-	handler.RedirectLegacyRoute(response, legacy, 12, 1)
+	handler.RedirectLegacyRoute(response, legacy)
 	assert.Equal(t, http.StatusNotFound, response.Code, "legacy redirect status")
 	assert.Empty(t, response.Header().Get("Location"), "a redirect built from an unparsed identifier")
 
@@ -2726,6 +2752,6 @@ func TestStageHandlersRefuseAnIdentifierTheyCannotParse(t *testing.T) {
 	qualified.SetPathValue("routeId", "not-a-number")
 	qualified.SetPathValue("stage", "1")
 	response = httptest.NewRecorder()
-	handler.GetRoute(response, qualified, "veloplanner", 12, 1)
+	handler.GetRoute(response, qualified)
 	assert.Equal(t, http.StatusNotFound, response.Code, "stage status")
 }

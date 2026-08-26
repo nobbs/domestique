@@ -127,7 +127,7 @@ func (h *Handler) GetStatus(writer http.ResponseWriter, request *http.Request) {
 		}
 		convergence := convergenceState(authorization, stages, lastRun)
 		targets = append(targets, openapi.TargetStatus{
-			Id:            targetID,
+			ID:            targetID,
 			Authorisation: authorization,
 			Convergence:   convergence,
 			Stages:        stages,
@@ -243,7 +243,7 @@ func (h *Handler) GetStatus(writer http.ResponseWriter, request *http.Request) {
 			Stages:  allStages,
 		}
 		if activity.Phase != "" {
-			phase := openapi.SyncActivePhase(activity.Phase)
+			phase := openapi.SyncActive_Phase(activity.Phase)
 			view.Sync.Active.Phase = &phase
 		}
 		// Only a delay has a due instant to report. A run triggered while the
@@ -301,9 +301,7 @@ const (
 // Every field is read from the same local records the status response is
 // derived from, so a page names no route, carries no geometry, quotes nothing a
 // provider said, and costs no provider call.
-func (h *Handler) GetSyncRuns(
-	writer http.ResponseWriter, request *http.Request, _ openapi.GetSyncRunsParams,
-) {
+func (h *Handler) GetSyncRuns(writer http.ResponseWriter, request *http.Request) {
 	query := request.URL.Query()
 	limit := defaultSyncRunPage
 	if raw := query.Get("limit"); raw != "" {
@@ -325,7 +323,7 @@ func (h *Handler) GetSyncRuns(
 	) error {
 		view.Runs = append(view.Runs, openapi.SyncRun{
 			Reference:    reference,
-			Phase:        openapi.SyncRunPhase(phase),
+			Phase:        openapi.SyncRun_Phase(phase),
 			CompletedAt:  wireTime(completedAt),
 			Result:       outcome,
 			Failure:      optionalString(detail),
@@ -379,7 +377,7 @@ func (h *Handler) TriggerTargetsSync(writer http.ResponseWriter, _ *http.Request
 // The target identifier is checked against the configured slots here, the
 // same way the OAuth start route checks it: an unconfigured or missing slot is
 // not found, not a target this request could ever reconcile.
-func (h *Handler) TriggerTargetSync(writer http.ResponseWriter, request *http.Request, _ openapi.Target) {
+func (h *Handler) TriggerTargetSync(writer http.ResponseWriter, request *http.Request) {
 	targetID := request.PathValue("target")
 	if targetID == "" || !slices.Contains(h.targetIDs, targetID) {
 		h.notFound(writer)
@@ -391,7 +389,7 @@ func (h *Handler) TriggerTargetSync(writer http.ResponseWriter, request *http.Re
 
 		return
 	}
-	h.writeJSON(writer, http.StatusAccepted, openapi.Accepted{Status: openapi.AcceptedStatusAccepted})
+	h.writeJSON(writer, http.StatusAccepted, openapi.Accepted{Status: "accepted"})
 }
 
 // ClearTarget queues the deletion of every route this service owns on exactly
@@ -402,7 +400,7 @@ func (h *Handler) TriggerTargetSync(writer http.ResponseWriter, request *http.Re
 // confirmation this needs belongs with the operator looking at the target,
 // not in a field a script could fill in — and it is gated and origin-checked
 // like every other state-changing route.
-func (h *Handler) ClearTarget(writer http.ResponseWriter, request *http.Request, _ openapi.Target) {
+func (h *Handler) ClearTarget(writer http.ResponseWriter, request *http.Request) {
 	targetID := request.PathValue("target")
 	if targetID == "" || !slices.Contains(h.targetIDs, targetID) {
 		h.notFound(writer)
@@ -414,7 +412,7 @@ func (h *Handler) ClearTarget(writer http.ResponseWriter, request *http.Request,
 
 		return
 	}
-	h.writeJSON(writer, http.StatusAccepted, openapi.Accepted{Status: openapi.AcceptedStatusAccepted})
+	h.writeJSON(writer, http.StatusAccepted, openapi.Accepted{Status: "accepted"})
 }
 
 func (h *Handler) trigger(writer http.ResponseWriter, phase SyncPhase) {
@@ -423,7 +421,7 @@ func (h *Handler) trigger(writer http.ResponseWriter, phase SyncPhase) {
 
 		return
 	}
-	h.writeJSON(writer, http.StatusAccepted, openapi.Accepted{Status: openapi.AcceptedStatusAccepted})
+	h.writeJSON(writer, http.StatusAccepted, openapi.Accepted{Status: "accepted"})
 }
 
 // TriggerSurfaceSync queues one immediate surface-classification pass, independently
@@ -438,7 +436,7 @@ func (h *Handler) TriggerSurfaceSync(writer http.ResponseWriter, _ *http.Request
 
 		return
 	}
-	h.writeJSON(writer, http.StatusAccepted, openapi.Accepted{Status: openapi.AcceptedStatusAccepted})
+	h.writeJSON(writer, http.StatusAccepted, openapi.Accepted{Status: "accepted"})
 }
 
 // trustedInventoryFreshness reports the trusted source inventory's age against

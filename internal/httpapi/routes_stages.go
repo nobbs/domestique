@@ -26,10 +26,7 @@ func (h *Handler) GetRoutes(writer http.ResponseWriter, request *http.Request) {
 }
 
 // GetRoute returns one stage's stored metadata, not edit controls.
-func (h *Handler) GetRoute(
-	writer http.ResponseWriter, request *http.Request,
-	_ openapi.Provider, _ openapi.RouteId, _ openapi.Stage,
-) {
+func (h *Handler) GetRoute(writer http.ResponseWriter, request *http.Request) {
 	provider, routeID, stageOrder, ok := stageKey(request)
 	if !ok {
 		h.notFound(writer)
@@ -61,10 +58,7 @@ func (h *Handler) GetRoute(
 
 // GetRouteGeometry returns one stage's cached geometry as a GeoJSON Feature. This
 // is the only endpoint that serves geometry, and only to the gated identity.
-func (h *Handler) GetRouteGeometry(
-	writer http.ResponseWriter, request *http.Request,
-	_ openapi.Provider, _ openapi.RouteId, _ openapi.Stage,
-) {
+func (h *Handler) GetRouteGeometry(writer http.ResponseWriter, request *http.Request) {
 	provider, routeID, stageOrder, ok := stageKey(request)
 	if !ok {
 		h.notFound(writer)
@@ -123,10 +117,7 @@ func (h *Handler) GetRouteGeometry(
 // include it at all, so the mark waits for a pass that will honour it rather
 // than being dropped on the floor. That is why a busy service still answers
 // `202` here — the operator's request has been taken either way.
-func (h *Handler) ReprocessRoute(
-	writer http.ResponseWriter, request *http.Request,
-	_ openapi.Provider, _ openapi.RouteId, _ openapi.Stage,
-) {
+func (h *Handler) ReprocessRoute(writer http.ResponseWriter, request *http.Request) {
 	provider, routeID, stageOrder, ok := stageKey(request)
 	if !ok {
 		h.notFound(writer)
@@ -148,7 +139,7 @@ func (h *Handler) ReprocessRoute(
 	// Both halves, in order: the stage is read and derived again, then written
 	// to every target. Asking for only one would leave the request half met.
 	h.syncRuns.Trigger(SyncPhaseAll)
-	h.writeJSON(writer, http.StatusAccepted, openapi.Accepted{Status: openapi.AcceptedStatusAccepted})
+	h.writeJSON(writer, http.StatusAccepted, openapi.Accepted{Status: "accepted"})
 }
 
 // stageSurface reads the classification stored for this exact geometry. It
@@ -180,7 +171,7 @@ func (h *Handler) stageSurface(request *http.Request, summary *route.Summary) (v
 func newStageView(summary *route.Summary, validation *openapi.RouteValidation) openapi.Route {
 	view := openapi.Route{
 		Provider:           string(summary.Provider),
-		RouteId:            summary.RouteID,
+		RouteID:            summary.RouteID,
 		StageOrder:         summary.StageOrder,
 		Title:              summary.Title(),
 		RouteName:          summary.RouteName,
@@ -213,7 +204,7 @@ func (h *Handler) stageValidationView() *openapi.RouteValidation {
 	return &openapi.RouteValidation{
 		BiasPercent:    h.rideModelValidation.BiasPercent,
 		MaePercent:     h.rideModelValidation.MAEPercent,
-		P90Percent:     h.rideModelValidation.P90Percent,
+		P90percent:     h.rideModelValidation.P90Percent,
 		EvaluatedRides: h.rideModelValidation.EvaluatedRides,
 	}
 }
@@ -263,32 +254,24 @@ func (h *Handler) redirectLegacyStagePath(writer http.ResponseWriter, request *h
 // RedirectLegacyRoute sends a provider-less stage address to the same stage
 // under the only provider it could ever have meant. It and the two methods
 // below differ only in the suffix they preserve.
-func (h *Handler) RedirectLegacyRoute(
-	writer http.ResponseWriter, request *http.Request, _ openapi.RouteId, _ openapi.Stage,
-) {
+func (h *Handler) RedirectLegacyRoute(writer http.ResponseWriter, request *http.Request) {
 	h.redirectLegacyStagePath(writer, request, "")
 }
 
 // RedirectLegacyGeometry does the same for that stage's geometry.
-func (h *Handler) RedirectLegacyGeometry(
-	writer http.ResponseWriter, request *http.Request, _ openapi.RouteId, _ openapi.Stage,
-) {
+func (h *Handler) RedirectLegacyGeometry(writer http.ResponseWriter, request *http.Request) {
 	h.redirectLegacyStagePath(writer, request, "/geometry")
 }
 
 // RedirectLegacyReprocess does the same for that stage's reprocess request.
-func (h *Handler) RedirectLegacyReprocess(
-	writer http.ResponseWriter, request *http.Request, _ openapi.RouteId, _ openapi.Stage,
-) {
+func (h *Handler) RedirectLegacyReprocess(writer http.ResponseWriter, request *http.Request) {
 	h.redirectLegacyStagePath(writer, request, "/reprocess")
 }
 
 // RedirectLegacyRoutePage sends a browser address from before a second
 // provider existed to its provider-qualified equivalent, so a bookmark or
 // share link keeps resolving.
-func (h *Handler) RedirectLegacyRoutePage(
-	writer http.ResponseWriter, request *http.Request, _ openapi.RouteId, _ openapi.Stage,
-) {
+func (h *Handler) RedirectLegacyRoutePage(writer http.ResponseWriter, request *http.Request) {
 	routeID, stageOrder, ok := legacyStagePathValues(request)
 	if !ok {
 		h.notFound(writer)

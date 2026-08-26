@@ -6,13 +6,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
 
-	"github.com/getkin/kin-openapi/openapi3filter"
-	"github.com/getkin/kin-openapi/routers/gorillamux"
 	"github.com/nobbs/domestique/internal/route"
+	validator "github.com/pb33f/libopenapi-validator"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.yaml.in/yaml/v3"
@@ -27,15 +27,43 @@ type openAPIContract struct {
 
 type openAPIOperation struct {
 	Responses  map[string]yaml.Node `yaml:"responses"`
+	Tags       []string             `yaml:"tags"`
 	Parameters []struct {
 		Ref string `yaml:"$ref"`
 	} `yaml:"parameters"`
 	Security []map[string][]string `yaml:"security"`
 }
 
+// Every contract operation must have an explicit native route. This replaces
+// the generated ServerInterface compile-time check without repeating the
+// contract as a second route table.
+func TestEveryContractOperationIsRegistered(t *testing.T) {
+	document := loadOpenAPIContract(t)
+	handler := newTestHandler(t)
+	pathValues := strings.NewReplacer(
+		"{provider}", "veloplanner", "{routeId}", "12", "{stage}", "1",
+		"{target}", "rider-a", "{asset}", "app.js",
+	)
+
+	for path, operations := range document.Paths {
+		for method, operation := range operations {
+			if slices.Contains(operation.Tags, readinessTag) {
+				continue
+			}
+			t.Run(strings.ToUpper(method)+" "+path, func(t *testing.T) {
+				request := httptest.NewRequestWithContext(
+					t.Context(), strings.ToUpper(method), pathValues.Replace(path), http.NoBody,
+				)
+				_, pattern := handler.mux.Handler(request)
+				assert.NotEqual(t, "/", pattern, "the contract operation is not registered")
+			})
+		}
+	}
+}
+
 // declaresOrigin reports whether this operation requires the browser origin,
 // which is how the contract names an operation as state-changing.
-func (operation openAPIOperation) declaresOrigin() bool {
+func (operation *openAPIOperation) declaresOrigin() bool {
 	for _, requirement := range operation.Security {
 		if _, required := requirement[browserOriginScheme]; required {
 			return true
@@ -84,8 +112,6 @@ func TestOpenAPIContractResponses(t *testing.T) {
 		{"geometry", "/v1/providers/{provider}/routes/{routeId}/stages/{stage}/geometry", http.MethodGet, "application/geo+json", cacheAPI, "", http.StatusOK, true},
 		{"trigger", "/v1/sync", http.MethodPost, "application/json", cacheAPI, "", http.StatusAccepted, true},
 		{"legacy redirect", "/v1/routes/{routeId}/stages/{stage}", http.MethodGet, "", cacheAPI, "/v1/providers/veloplanner/routes/12/stages/1", http.StatusPermanentRedirect, true},
-		{"browser entry", "/", http.MethodGet, "text/html", cacheDocument, "", http.StatusOK, true},
-		{"asset", "/assets/{asset}", http.MethodGet, "text/javascript", cacheImmutable, "", http.StatusOK, true},
 		{"unmatched", "", http.MethodGet, "application/json", cacheAPI, "", document.Fallback.Status, true},
 	}
 
@@ -194,15 +220,10 @@ func TestEveryStateChangingOperationRequiresTheBrowserOrigin(t *testing.T) {
 // document declares reaches the wire silently, and is found in review months
 // later, if at all.
 func TestServedResponsesSatisfyTheContract(t *testing.T) {
-	// The geometry response is GeoJSON, which is JSON with its own media type.
-	// Registering it here rather than in the service is deliberate: nothing
-	// sends this type, so only response validation ever has to read one.
-	openapi3filter.RegisterBodyDecoder("application/geo+json", openapi3filter.JSONBodyDecoder)
-
 	spec, err := servedSpec()
-	require.NoError(t, err, "the embedded contract")
-	router, err := gorillamux.NewRouter(spec)
-	require.NoError(t, err, "a router over the contract")
+	require.NoError(t, err, "the source contract")
+	contractValidator := validator.NewValidatorFromV3Model(spec)
+	t.Cleanup(contractValidator.Release)
 
 	// The history fixture is reused so the run page carries real rows: a page
 	// of nothing would satisfy any schema.
@@ -229,25 +250,11 @@ func TestServedResponsesSatisfyTheContract(t *testing.T) {
 			handler.ServeHTTP(response, request)
 			require.Equal(t, http.StatusOK, response.Code, response.Body.String())
 
-			operation, pathParams, routeErr := router.FindRoute(request)
-			require.NoError(t, routeErr, "the contract names this route")
-
 			result := response.Result()
 			defer func() { require.NoError(t, result.Body.Close(), "closing the recorded body") }()
 
-			require.NoError(t, openapi3filter.ValidateResponse(t.Context(), &openapi3filter.ResponseValidationInput{
-				RequestValidationInput: &openapi3filter.RequestValidationInput{
-					Request: request, PathParams: pathParams, Route: operation,
-					Options: &openapi3filter.Options{AuthenticationFunc: handler.authenticateScheme},
-				},
-				Status: response.Code,
-				Header: response.Header(),
-				Body:   result.Body,
-				Options: &openapi3filter.Options{
-					IncludeResponseStatus: true,
-					AuthenticationFunc:    handler.authenticateScheme,
-				},
-			}), "the response does not satisfy the contract")
+			valid, validationErrors := contractValidator.ValidateHttpResponse(request, result)
+			require.True(t, valid, "the response does not satisfy the contract: %v", validationErrors)
 		})
 	}
 }

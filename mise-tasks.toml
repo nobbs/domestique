@@ -98,13 +98,12 @@ sources = ["mise-tasks.toml", ".mise.toml"]
 outputs = { auto = true }
 run = "mise tasks validate"
 
-# One contract generates every binding from it: the served listener, the
-# readiness listener, and the browser client. The generated files are committed:
-# generation is deterministic, and api-check makes drift a review-time failure
-# rather than a stale browser/runtime mismatch.
+# One contract generates the Go models and browser client. The native route
+# registration is checked against the served contract, and generated files are
+# committed so api-check makes drift a review-time failure.
 [api-generate]
-description = "Generate Go and browser API bindings from OpenAPI"
-sources = ["api/openapi.yaml", "api/oapi-codegen.yaml", "api/oapi-codegen-readiness.yaml", "internal/webui/app/orval.config.ts", "internal/webui/app/src/api/request.ts", "internal/webui/app/package.json", "internal/webui/app/pnpm-lock.yaml"]
+description = "Generate Go models and browser API bindings from OpenAPI"
+sources = ["api/openapi.yaml", "api/generate.go", "go.mod", "go.sum", "internal/webui/app/orval.config.ts", "internal/webui/app/src/api/request.ts", "internal/webui/app/package.json", "internal/webui/app/pnpm-lock.yaml"]
 outputs = [
   "internal/httpapi/contract/openapi.gen.go",
   "internal/readiness/contract/openapi.gen.go",
@@ -115,8 +114,7 @@ outputs = [
 # because it depends on this one.
 wait_for = ["ui-install"]
 run = [
-  "oapi-codegen --config api/oapi-codegen.yaml api/openapi.yaml",
-  "oapi-codegen --config api/oapi-codegen-readiness.yaml api/openapi.yaml",
+  "go run api/generate.go",
   "pnpm --dir internal/webui/app run api:generate",
 ]
 

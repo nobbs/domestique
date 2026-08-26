@@ -29,9 +29,7 @@ const (
 // Forecast exactly once for every point together, resolving each point's
 // answer to the single hour nearest its own time — the service's own shape,
 // never the provider's field names or raw payload.
-func (h *Handler) GetWeather(
-	writer http.ResponseWriter, request *http.Request, _ openapi.GetWeatherParams,
-) {
+func (h *Handler) GetWeather(writer http.ResponseWriter, request *http.Request) {
 	raw := request.URL.Query()["point"]
 	if len(raw) == 0 {
 		h.error(writer, http.StatusBadRequest, "invalid_request", "at least one point is required")

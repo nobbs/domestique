@@ -550,22 +550,43 @@ func New(
 	return handler, nil
 }
 
-// The Handler is the generated server: its exported methods are the contract's
-// operations, so an operation added to api/openapi.yaml stops this package
-// compiling until it is served.
-var _ openapi.ServerInterface = (*Handler)(nil)
-
-// routes registers the generated OpenAPI surface. The identity gate sits
-// outside it, so a caller that has proven nothing cannot learn which paths
-// exist; everything else the document declares is enforced by the validator
-// between the two.
+// routes registers the API and browser surfaces. The identity gate sits outside
+// both, while the document validator applies only to API and OAuth requests.
 func (h *Handler) routes() {
-	openapi.HandlerWithOptions(h, openapi.StdHTTPServerOptions{
-		BaseRouter:       h.mux,
-		ErrorHandlerFunc: h.contractRequestError,
-	})
-	// The OpenAPI document names every registered route. This remains separate
-	// because OpenAPI has no pattern for ServeMux's unmatched-path fallback.
+	h.mux.HandleFunc("GET /healthz", h.GetHealth)
+	h.mux.HandleFunc("GET /v1/status", h.GetStatus)
+	h.mux.HandleFunc("POST /v1/sync", h.TriggerSync)
+	h.mux.HandleFunc("POST /v1/sync/source", h.TriggerSourceSync)
+	h.mux.HandleFunc("POST /v1/sync/targets", h.TriggerTargetsSync)
+	h.mux.HandleFunc("POST /v1/sync/targets/{target}", h.TriggerTargetSync)
+	h.mux.HandleFunc("POST /v1/targets/{target}/clear", h.ClearTarget)
+	h.mux.HandleFunc("POST /v1/sync/surface", h.TriggerSurfaceSync)
+	h.mux.HandleFunc("PUT /v1/sync/schedule", h.SetSyncSchedule)
+	h.mux.HandleFunc("GET /v1/sync/runs", h.GetSyncRuns)
+	h.mux.HandleFunc("GET /v1/routes", h.GetRoutes)
+	h.mux.HandleFunc("GET /v1/providers/{provider}/routes/{routeId}/stages/{stage}", h.GetRoute)
+	h.mux.HandleFunc("GET /v1/providers/{provider}/routes/{routeId}/stages/{stage}/geometry", h.GetRouteGeometry)
+	h.mux.HandleFunc("POST /v1/providers/{provider}/routes/{routeId}/stages/{stage}/reprocess", h.ReprocessRoute)
+	h.mux.HandleFunc("GET /v1/routes/{routeId}/stages/{stage}", h.RedirectLegacyRoute)
+	h.mux.HandleFunc("GET /v1/routes/{routeId}/stages/{stage}/geometry", h.RedirectLegacyGeometry)
+	h.mux.HandleFunc("POST /v1/routes/{routeId}/stages/{stage}/reprocess", h.RedirectLegacyReprocess)
+	h.mux.HandleFunc("GET /v1/webui/config", h.GetWebUIConfig)
+	h.mux.HandleFunc("GET /v1/weather", h.GetWeather)
+	h.mux.HandleFunc("GET /oauth/wahoo/start/{target}", h.StartOAuth)
+	h.mux.HandleFunc("GET /oauth/wahoo/callback", h.CompleteOAuth)
+	h.mux.HandleFunc("GET /assets/{asset}", h.GetAsset)
+	h.mux.HandleFunc("GET /favicon.svg", h.GetFavicon)
+	h.mux.HandleFunc("GET /icon-256.png", h.GetIcon256)
+	h.mux.HandleFunc("GET /icon-512.png", h.GetIcon512)
+	h.mux.HandleFunc("GET /manifest.webmanifest", h.GetManifest)
+	h.mux.HandleFunc("GET /{$}", h.GetIndex)
+	h.mux.HandleFunc("GET /routes/{provider}/{routeId}/{stage}", h.GetRoutePage)
+	h.mux.HandleFunc("GET /routes/{routeId}/{stage}", h.RedirectLegacyRoutePage)
+	h.mux.HandleFunc("GET /sync", h.GetSyncPage)
+	h.mux.HandleFunc("GET /settings", h.GetSettingsPage)
+	// Browser routes are deliberately explicit: they are application navigation
+	// and assets, not OpenAPI operations. This remains separate because
+	// ServeMux has no pattern for the unmatched-path fallback.
 	h.mux.HandleFunc("/", func(writer http.ResponseWriter, _ *http.Request) {
 		h.notFound(writer)
 	})
@@ -586,7 +607,12 @@ func (h *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 
 		return
 	}
-	h.gated(h.bounded(h.validate(h.mux))).ServeHTTP(writer, request)
+	if strings.HasPrefix(request.URL.Path, "/v1/") || strings.HasPrefix(request.URL.Path, "/oauth/") {
+		h.gated(h.bounded(h.validate(h.mux))).ServeHTTP(writer, request)
+
+		return
+	}
+	h.gated(h.mux).ServeHTTP(writer, request)
 }
 
 // bounded caps the body before the validator reads it. The validator reads a
@@ -600,10 +626,6 @@ func (h *Handler) bounded(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(writer, request)
 	})
-}
-
-func (h *Handler) contractRequestError(writer http.ResponseWriter, _ *http.Request, _ error) {
-	h.error(writer, http.StatusBadRequest, "invalid_request", "the request does not match this operation")
 }
 
 // gated rejects any caller that is not the single configured identity.
@@ -688,7 +710,7 @@ func (h *Handler) contentSecurityPolicy() string {
 // GetHealth answers the liveness probe: this process is answering HTTP. It
 // reads nothing, so it stays outside the identity gate.
 func (h *Handler) GetHealth(writer http.ResponseWriter, _ *http.Request) {
-	h.writeJSON(writer, http.StatusOK, openapi.Health{Status: openapi.Ok})
+	h.writeJSON(writer, http.StatusOK, openapi.Health{Status: "ok"})
 }
 
 func (h *Handler) error(writer http.ResponseWriter, status int, code, message string) {

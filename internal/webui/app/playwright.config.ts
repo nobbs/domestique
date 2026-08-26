@@ -140,7 +140,7 @@ export default defineConfig({
     reuseExistingServer: !process.env.CI,
     // A cold run bundles the UI and compiles the demo API: the budget is the Vite
     // production build plus the Go build plus the dev server's first transform.
-    timeout: 180_000,
+    timeout: 300_000,
     stdout: "pipe",
     stderr: "pipe",
   },

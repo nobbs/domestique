@@ -7,11 +7,13 @@ import (
 	"net/http"
 	"slices"
 
-	"github.com/getkin/kin-openapi/openapi3"
-	"github.com/getkin/kin-openapi/openapi3filter"
-	middleware "github.com/oapi-codegen/nethttp-middleware"
+	"github.com/pb33f/libopenapi"
+	validator "github.com/pb33f/libopenapi-validator"
+	"github.com/pb33f/libopenapi-validator/config"
+	validationerrors "github.com/pb33f/libopenapi-validator/errors"
+	v3 "github.com/pb33f/libopenapi/datamodel/high/v3"
 
-	openapi "github.com/nobbs/domestique/internal/httpapi/contract"
+	api "github.com/nobbs/domestique/api"
 )
 
 // browserOriginScheme is the contract's name for the provenance requirement.
@@ -27,60 +29,79 @@ const readinessTag = "readiness"
 // refused it describes the check it has to defeat.
 var errForeignOrigin = errors.New("request origin is not permitted")
 
-// servedSpec is the contract this listener enforces: the embedded document
-// minus the operations the readiness listener owns.
+// servedSpec is the contract this listener enforces: the source document minus
+// the operations the readiness listener owns.
 //
 // The two have to be filtered separately. The generated router beside this is
-// produced with exclude-tags, so it never registers /readyz, but embedded-spec
-// carries the document whole — and a validator built from the unfiltered one
+// produced with exclude-tags, so it never registers /readyz, but the source
+// document carries it whole — and a validator built from the unfiltered one
 // would accept a readiness request on the served socket that the router then
 // could not answer. Filtering by the tag rather than by the path keeps the
 // document the source of that decision.
-func servedSpec() (*openapi3.T, error) {
-	spec, err := openapi.GetSpec()
+func servedSpec() (*v3.Document, error) {
+	document, err := libopenapi.NewDocument(api.OpenAPISpec())
 	if err != nil {
-		return nil, fmt.Errorf("reading the embedded contract: %w", err)
+		return nil, fmt.Errorf("reading the source contract: %w", err)
 	}
-	for path, item := range spec.Paths.Map() {
-		for method, operation := range item.Operations() {
-			if slices.Contains(operation.Tags, readinessTag) {
-				item.SetOperation(method, nil)
-			}
-		}
-		if len(item.Operations()) == 0 {
-			spec.Paths.Delete(path)
+	model, err := document.BuildV3Model()
+	if err != nil {
+		return nil, fmt.Errorf("building the source contract: %w", err)
+	}
+	for path, item := range model.Model.Paths.PathItems.FromOldest() {
+		removeReadinessOperation(&item.Get)
+		removeReadinessOperation(&item.Put)
+		removeReadinessOperation(&item.Post)
+		removeReadinessOperation(&item.Delete)
+		removeReadinessOperation(&item.Options)
+		removeReadinessOperation(&item.Head)
+		removeReadinessOperation(&item.Patch)
+		removeReadinessOperation(&item.Trace)
+		removeReadinessOperation(&item.Query)
+		if item.GetOperations().Len() == 0 {
+			model.Model.Paths.PathItems.Delete(path)
 		}
 	}
 
-	return spec, nil
+	return &model.Model, nil
 }
 
-// useContractValidation builds the middleware that holds every request to the
-// document: the parameter bounds, the request bodies, and the provenance
-// requirement that used to be a hand-written table of paths.
-//
-// The middleware constructor panics rather than returning an error when it
-// cannot build a router from the document, so the panic is recovered into one
-// here: a startup failure belongs to main, which alone decides the exit code.
-func (h *Handler) useContractValidation() (err error) {
+func removeReadinessOperation(operation **v3.Operation) {
+	if *operation != nil && slices.Contains((*operation).Tags, readinessTag) {
+		*operation = nil
+	}
+}
+
+// useContractValidation builds the middleware that holds API and OAuth
+// requests to the document: path and header bounds, request bodies, and the
+// provenance requirement that used to be a hand-written table of paths. The
+// handlers validate query parameters.
+func (h *Handler) useContractValidation() error {
 	spec, err := servedSpec()
 	if err != nil {
 		return err
 	}
-	defer func() {
-		if recovered := recover(); recovered != nil {
-			err = fmt.Errorf("building the contract validator: %v", recovered)
-		}
-	}()
+	contractValidator := validator.NewValidatorFromV3Model(
+		spec,
+		config.WithAuthenticationFunc(h.authenticateScheme),
+		// Weather points are repeated query parameters whose individual values
+		// contain commas. libopenapi-validator treats those commas as array
+		// delimiters even when the parameter is exploded. The handlers already
+		// validate every query parameter this service has.
+		// ponytail: restore this when libopenapi-validator supports comma-bearing
+		// exploded values without rejecting the individual values as delimiters.
+		config.WithoutRequestQueryParameterValidation(),
+	)
 
-	h.validate = middleware.OapiRequestValidatorWithOptions(spec, &middleware.Options{
-		// The document declares one relative server, which would otherwise turn
-		// into Host validation this service does not want: it is reached under
-		// several names, and the identity gate is what decides who may call it.
-		DoNotValidateServers: true,
-		Options:              openapi3filter.Options{AuthenticationFunc: h.authenticateScheme},
-		ErrorHandlerWithOpts: h.contractValidationError,
-	})
+	h.validate = func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+			if valid, validationErrors := contractValidator.ValidateHttpRequestSync(request); !valid {
+				h.contractValidationError(writer, validationErrors)
+
+				return
+			}
+			next.ServeHTTP(writer, request)
+		})
+	}
 
 	return nil
 }
@@ -94,7 +115,7 @@ func (h *Handler) useContractValidation() (err error) {
 // enumeration the identity gate exists to prevent. Verifying the assertion a
 // second time here would cost a second signature check per request and change
 // nothing.
-func (h *Handler) authenticateScheme(_ context.Context, input *openapi3filter.AuthenticationInput) error {
+func (h *Handler) authenticateScheme(_ context.Context, input *config.AuthenticationInput) error {
 	if input.SecuritySchemeName != browserOriginScheme {
 		return nil
 	}
@@ -103,7 +124,7 @@ func (h *Handler) authenticateScheme(_ context.Context, input *openapi3filter.Au
 	// it. A missing header is therefore not "same-origin, header omitted" — it
 	// is a caller that is not this UI. So is "null", which is what a sandboxed
 	// or redirected context sends. Both fail this comparison.
-	if input.RequestValidationInput.Request.Header.Get("Origin") != h.browserOrigin {
+	if input.Request.Header.Get("Origin") != h.browserOrigin {
 		return errForeignOrigin
 	}
 
@@ -114,10 +135,11 @@ func (h *Handler) authenticateScheme(_ context.Context, input *openapi3filter.Au
 // so a request refused by the document reads the same as one refused by a
 // handler.
 func (h *Handler) contractValidationError(
-	_ context.Context, err error, writer http.ResponseWriter, _ *http.Request, opts middleware.ErrorHandlerOpts,
+	writer http.ResponseWriter, validationErrors []*validationerrors.ValidationError,
 ) {
-	security, refused := errors.AsType[*openapi3filter.SecurityRequirementsError](err)
-	if refused && security != nil {
+	if slices.ContainsFunc(validationErrors, func(validationErr *validationerrors.ValidationError) bool {
+		return validationErr.Reason == errForeignOrigin.Error()
+	}) {
 		h.error(writer, http.StatusForbidden, "forbidden", "request origin is not permitted")
 
 		return
@@ -126,7 +148,9 @@ func (h *Handler) contractValidationError(
 	// path it does, are both "no such resource" here. ServeMux's unmatched-path
 	// fallback answers the first that way already, and the contract declares no
 	// 405 on any operation.
-	if opts.StatusCode == http.StatusNotFound || opts.StatusCode == http.StatusMethodNotAllowed {
+	if slices.ContainsFunc(validationErrors, func(validationErr *validationerrors.ValidationError) bool {
+		return validationErr.IsPathMissingError() || validationErr.IsOperationMissingError()
+	}) {
 		h.notFound(writer)
 
 		return

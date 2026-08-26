@@ -1,12 +1,12 @@
 openapi: 3.1.0
 info:
-  title: Domestique HTTP API
+  title: Domestique API
   version: 1.0.0
   description: |
-    The complete HTTP contract served by Domestique. JSON property names are
-    camelCase. All routes except `GET /healthz` require the signed Cloudflare
-    Access assertion; state-changing routes also require the same-origin
-    `Origin` header.
+    The API contract served by Domestique. JSON property names are camelCase.
+    All routes except `GET /healthz` require the signed Cloudflare Access
+    assertion; state-changing routes also require the same-origin `Origin`
+    header.
 servers:
   - url: /
 security:
@@ -20,7 +20,6 @@ tags:
   - name: browser-api
     description: Programmatic same-origin API used by the embedded UI.
   - name: oauth
-  - name: browser-ui
   - name: readiness
     description: Loopback readiness listener, served separately from the public handler.
 paths:
@@ -229,6 +228,7 @@ paths:
           required: true
           style: form
           explode: true
+          allowReserved: true
           schema: {type: array, minItems: 1, maxItems: 48, items: {type: string, pattern: '^-?[0-9]+(\.[0-9]+)?,-?[0-9]+(\.[0-9]+)?,.+$'}}
       responses:
         '200': {description: Forecast samples in request order., content: {application/json: {schema: {$ref: '#/components/schemas/WeatherForecast'}}}}
@@ -259,63 +259,6 @@ paths:
         '400': {$ref: '#/components/responses/AuthorizationFailed'}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
-  /assets/{asset}:
-    get:
-      tags: [browser-ui]
-      operationId: getAsset
-      parameters: [{name: asset, in: path, required: true, schema: {type: string}}]
-      responses:
-        '200': {$ref: '#/components/responses/Asset'}
-        '401': {$ref: '#/components/responses/Unauthorized'}
-        '403': {$ref: '#/components/responses/Forbidden'}
-        '404': {$ref: '#/components/responses/NotFound'}
-  /favicon.svg:
-    get:
-      tags: [browser-ui]
-      operationId: getFavicon
-      responses: {'200': {$ref: '#/components/responses/SVGAsset'}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}, '404': {$ref: '#/components/responses/NotFound'}}
-  /icon-256.png:
-    get:
-      tags: [browser-ui]
-      operationId: getIcon256
-      responses: {'200': {$ref: '#/components/responses/PNGAsset'}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}, '404': {$ref: '#/components/responses/NotFound'}}
-  /icon-512.png:
-    get:
-      tags: [browser-ui]
-      operationId: getIcon512
-      responses: {'200': {$ref: '#/components/responses/PNGAsset'}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}, '404': {$ref: '#/components/responses/NotFound'}}
-  /manifest.webmanifest:
-    get:
-      tags: [browser-ui]
-      operationId: getManifest
-      responses: {'200': {$ref: '#/components/responses/Manifest'}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}, '404': {$ref: '#/components/responses/NotFound'}}
-  /:
-    get:
-      tags: [browser-ui]
-      operationId: getIndex
-      responses: {'200': {$ref: '#/components/responses/HTML'}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}}
-  /routes/{provider}/{routeId}/{stage}:
-    get:
-      tags: [browser-ui]
-      operationId: getRoutePage
-      parameters: [{$ref: '#/components/parameters/Provider'}, {$ref: '#/components/parameters/RouteId'}, {$ref: '#/components/parameters/Stage'}]
-      responses: {'200': {$ref: '#/components/responses/HTML'}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}}
-  /routes/{routeId}/{stage}:
-    get:
-      tags: [browser-ui]
-      operationId: redirectLegacyRoutePage
-      parameters: [{$ref: '#/components/parameters/RouteId'}, {$ref: '#/components/parameters/Stage'}]
-      responses: {'308': {$ref: '#/components/responses/LegacyRedirect'}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}, '404': {$ref: '#/components/responses/NotFound'}}
-  /sync:
-    get:
-      tags: [browser-ui]
-      operationId: getSyncPage
-      responses: {'200': {$ref: '#/components/responses/HTML'}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}}
-  /settings:
-    get:
-      tags: [browser-ui]
-      operationId: getSettingsPage
-      responses: {'200': {$ref: '#/components/responses/HTML'}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}}
 components:
   securitySchemes:
     accessAssertion:
@@ -350,11 +293,6 @@ components:
     OAuthRedirect: {description: Redirect to Wahoo authorization., headers: {Location: {required: true, schema: {type: string, format: uri}}}}
     BrowserRedirect: {description: Redirect back to browser UI., headers: {Location: {required: true, schema: {type: string}}}}
     LegacyRedirect: {description: Permanent method-preserving redirect., headers: {Location: {required: true, schema: {type: string}}}}
-    HTML: {description: Embedded browser entry document., headers: {Cache-Control: {schema: {type: string, const: no-cache}}}, content: {text/html: {schema: {type: string}}}}
-    Manifest: {description: Web application manifest., headers: {Cache-Control: {schema: {type: string, const: no-cache}}}, content: {application/manifest+json: {schema: {$ref: '#/components/schemas/Manifest'}}}}
-    SVGAsset: {description: SVG application icon., headers: {Cache-Control: {schema: {type: string, const: no-cache}}}, content: {image/svg+xml: {schema: {type: string, contentEncoding: base64}}}}
-    PNGAsset: {description: PNG application icon., headers: {Cache-Control: {schema: {type: string, const: no-cache}}}, content: {image/png: {schema: {type: string, contentEncoding: base64}}}}
-    Asset: {description: Immutable hashed application asset., headers: {Cache-Control: {schema: {type: string, const: 'public, max-age=31536000, immutable'}}}, content: {text/css: {schema: {type: string}}, text/javascript: {schema: {type: string}}, application/javascript: {schema: {type: string}}, image/svg+xml: {schema: {type: string, contentEncoding: base64}}, image/png: {schema: {type: string, contentEncoding: base64}}, font/woff2: {schema: {type: string, contentEncoding: base64}}}}
   schemas:
     Error:
       type: object
@@ -569,8 +507,3 @@ components:
       additionalProperties: false
       required: [points]
       properties: {points: {type: array, items: {$ref: '#/components/schemas/WeatherPoint'}}}
-    Manifest:
-      type: object
-      additionalProperties: false
-      required: [name, short_name, start_url, display, icons]
-      properties: {name: {type: string}, short_name: {type: string}, start_url: {type: string}, display: {type: string}, icons: {type: array, items: {type: object, additionalProperties: false, required: [src, sizes, type], properties: {src: {type: string}, sizes: {type: string}, type: {type: string}}}}}

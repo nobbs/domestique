@@ -12,7 +12,6 @@ markdownlint-cli2 = "0.23.2"
 shellcheck = "0.11.0"
 "go:golang.org/x/vuln/cmd/govulncheck" = "v1.6.0"
 "go:gotest.tools/gotestsum" = "v1.13.0"
-"go:github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen" = "v2.8.0"
 
 [env]
 GOCACHE = "{{config_root}}/.cache/go-build"

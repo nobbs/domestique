@@ -29,6 +29,7 @@ function stubStorage(): Map<string, string> {
 }
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
@@ -97,6 +98,8 @@ describe("useStartTime", () => {
   });
 
   it("reports the pick, and remembers it for the next visit", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-24T12:00:00Z"));
     stubStorage();
     const { result } = renderHook(() => useStartTime());
     const chosen = new Date("2026-08-25T09:00:00Z");
