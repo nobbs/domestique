@@ -22,14 +22,16 @@ const (
 	weatherForecastHorizon = 16 * 24 * time.Hour
 )
 
-// weather answers the browser's request for a forecast at each point of a
+// GetWeather answers the browser's request for a forecast at each point of a
 // planned ride, without the page ever reaching Open-Meteo itself.
 //
 // It derives from and to as the earliest and latest point time, and calls
 // Forecast exactly once for every point together, resolving each point's
 // answer to the single hour nearest its own time — the service's own shape,
 // never the provider's field names or raw payload.
-func (h *Handler) weatherForecast(writer http.ResponseWriter, request *http.Request, _ string) {
+func (h *Handler) GetWeather(
+	writer http.ResponseWriter, request *http.Request, _ openapi.GetWeatherParams,
+) {
 	raw := request.URL.Query()["point"]
 	if len(raw) == 0 {
 		h.error(writer, http.StatusBadRequest, "invalid_request", "at least one point is required")

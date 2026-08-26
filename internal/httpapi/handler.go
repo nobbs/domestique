@@ -544,11 +544,16 @@ func New(
 	return handler, nil
 }
 
+// The Handler is the generated server: its exported methods are the contract's
+// operations, so an operation added to api/openapi.yaml stops this package
+// compiling until it is served.
+var _ openapi.ServerInterface = (*Handler)(nil)
+
 // routes registers the generated OpenAPI surface. Access and Origin checks sit
 // outside generated parameter binding, so malformed requests cannot become an
 // unauthenticated side door and every rejection keeps the shared error shape.
 func (h *Handler) routes() {
-	openapi.HandlerWithOptions(&contractServer{handler: h}, openapi.StdHTTPServerOptions{
+	openapi.HandlerWithOptions(h, openapi.StdHTTPServerOptions{
 		BaseRouter:       h.mux,
 		ErrorHandlerFunc: h.contractRequestError,
 	})
@@ -574,14 +579,12 @@ func (h *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 
 		return
 	}
-	h.gated(h.contractDispatch).ServeHTTP(writer, request)
+	h.gated(http.HandlerFunc(h.contractDispatch)).ServeHTTP(writer, request)
 }
 
-func (h *Handler) contractDispatch(writer http.ResponseWriter, request *http.Request, principal string) {
+func (h *Handler) contractDispatch(writer http.ResponseWriter, request *http.Request) {
 	if contractStateChange(request) {
-		h.sameOrigin(func(writer http.ResponseWriter, request *http.Request, _ string) {
-			h.mux.ServeHTTP(writer, request)
-		})(writer, request, principal)
+		h.sameOrigin(h.mux).ServeHTTP(writer, request)
 
 		return
 	}
@@ -627,10 +630,6 @@ func (h *Handler) contractRequestError(writer http.ResponseWriter, _ *http.Reque
 	h.error(writer, http.StatusBadRequest, "invalid_request", "the request does not match this operation")
 }
 
-// gatedFunc is a handler that has already proven the caller's identity. The
-// principal is the single configured address every request resolves to.
-type gatedFunc func(writer http.ResponseWriter, request *http.Request, principal string)
-
 // gated rejects any caller that is not the single configured identity.
 //
 // Requests arrive through Cloudflare Access and cloudflared, which runs on a
@@ -642,7 +641,7 @@ type gatedFunc func(writer http.ResponseWriter, request *http.Request, principal
 // reach it, so there is deliberately no Tailscale-User-Login branch: it would
 // be a second front door, and a forgeable one, since a tunnel forwards client
 // headers verbatim.
-func (h *Handler) gated(next gatedFunc) http.Handler {
+func (h *Handler) gated(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		assertion := request.Header.Get(assertionHeader)
 		if assertion == "" {
@@ -665,11 +664,11 @@ func (h *Handler) gated(next gatedFunc) http.Handler {
 			return
 		}
 
-		// The configured address, not the asserted one, is what goes downstream.
-		// They differ only in case, and OAuth state is bound to this string, so
-		// resolving to one spelling keeps a flow started in one request
-		// consumable by the next.
-		next(writer, request, h.allowedEmail)
+		// The asserted address is proven and then dropped: it differs from the
+		// configured one only in case, and the routes that need an identity
+		// read h.allowedEmail. OAuth state is bound to that one spelling, so a
+		// flow started in one request stays consumable by the next.
+		next.ServeHTTP(writer, request)
 	})
 }
 
@@ -691,16 +690,16 @@ func (h *Handler) gated(next gatedFunc) http.Handler {
 // The OAuth callback is deliberately not wrapped: it is a cross-site GET the
 // browser is redirected into, and what protects it is its one-time,
 // identity-bound, expiring state rather than its provenance.
-func (h *Handler) sameOrigin(next gatedFunc) gatedFunc {
-	return func(writer http.ResponseWriter, request *http.Request, principal string) {
+func (h *Handler) sameOrigin(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if request.Header.Get("Origin") != h.browserOrigin {
 			h.error(writer, http.StatusForbidden, "forbidden", "request origin is not permitted")
 
 			return
 		}
 
-		next(writer, request, principal)
-	}
+		next.ServeHTTP(writer, request)
+	})
 }
 
 // contentSecurityPolicy confines the page to this service's own origin plus the
@@ -740,7 +739,9 @@ func (h *Handler) contentSecurityPolicy() string {
 	}, "; ")
 }
 
-func (h *Handler) health(writer http.ResponseWriter, _ *http.Request) {
+// GetHealth answers the liveness probe: this process is answering HTTP. It
+// reads nothing, so it stays outside the identity gate.
+func (h *Handler) GetHealth(writer http.ResponseWriter, _ *http.Request) {
 	h.writeJSON(writer, http.StatusOK, openapi.Health{Status: openapi.Ok})
 }
 

@@ -8,9 +8,9 @@ import (
 	"github.com/nobbs/domestique/internal/route"
 )
 
-// stages lists every trusted source stage with its display metadata. It carries
+// GetRoutes lists every trusted source stage with its display metadata. It carries
 // no geometry: geometry is served only by its own endpoint.
-func (h *Handler) stages(writer http.ResponseWriter, request *http.Request, _ string) {
+func (h *Handler) GetRoutes(writer http.ResponseWriter, request *http.Request) {
 	validation := h.stageValidationView()
 	views := make([]openapi.Route, 0)
 	if err := h.state.ForEachStageSummary(request.Context(), func(summary route.Summary) error {
@@ -25,8 +25,11 @@ func (h *Handler) stages(writer http.ResponseWriter, request *http.Request, _ st
 	h.writeJSON(writer, http.StatusOK, openapi.RouteList{Stages: views})
 }
 
-// stage returns one stage's stored metadata, not edit controls.
-func (h *Handler) stage(writer http.ResponseWriter, request *http.Request, _ string) {
+// GetRoute returns one stage's stored metadata, not edit controls.
+func (h *Handler) GetRoute(
+	writer http.ResponseWriter, request *http.Request,
+	_ openapi.Provider, _ openapi.RouteId, _ openapi.Stage,
+) {
 	provider, routeID, stageOrder, ok := stageKey(request)
 	if !ok {
 		h.notFound(writer)
@@ -56,9 +59,12 @@ func (h *Handler) stage(writer http.ResponseWriter, request *http.Request, _ str
 	h.writeJSON(writer, http.StatusOK, found)
 }
 
-// stageGeometry returns one stage's cached geometry as a GeoJSON Feature. This
+// GetRouteGeometry returns one stage's cached geometry as a GeoJSON Feature. This
 // is the only endpoint that serves geometry, and only to the gated identity.
-func (h *Handler) stageGeometry(writer http.ResponseWriter, request *http.Request, _ string) {
+func (h *Handler) GetRouteGeometry(
+	writer http.ResponseWriter, request *http.Request,
+	_ openapi.Provider, _ openapi.RouteId, _ openapi.Stage,
+) {
 	provider, routeID, stageOrder, ok := stageKey(request)
 	if !ok {
 		h.notFound(writer)
@@ -109,7 +115,7 @@ func (h *Handler) stageGeometry(writer http.ResponseWriter, request *http.Reques
 	})
 }
 
-// reprocessStage asks for one stage to be worked out again from scratch, and
+// ReprocessRoute asks for one stage to be worked out again from scratch, and
 // starts the synchronization that will do it.
 //
 // The request is recorded before the run is asked for, and deliberately survives
@@ -117,7 +123,10 @@ func (h *Handler) stageGeometry(writer http.ResponseWriter, request *http.Reques
 // include it at all, so the mark waits for a pass that will honour it rather
 // than being dropped on the floor. That is why a busy service still answers
 // `202` here — the operator's request has been taken either way.
-func (h *Handler) reprocessStage(writer http.ResponseWriter, request *http.Request, _ string) {
+func (h *Handler) ReprocessRoute(
+	writer http.ResponseWriter, request *http.Request,
+	_ openapi.Provider, _ openapi.RouteId, _ openapi.Stage, _ openapi.ReprocessRouteParams,
+) {
 	provider, routeID, stageOrder, ok := stageKey(request)
 	if !ok {
 		h.notFound(writer)
@@ -233,25 +242,49 @@ func (h *Handler) notFound(writer http.ResponseWriter) {
 // body intact. The route and stage identifiers are re-rendered from parsed
 // integers, rather than carried over as raw path text, so the redirect target
 // is never built from unvalidated request input.
-func (h *Handler) redirectLegacyStagePath(suffix string) gatedFunc {
-	return func(writer http.ResponseWriter, request *http.Request, _ string) {
-		routeID, stageOrder, ok := legacyStagePathValues(request)
-		if !ok {
-			h.notFound(writer)
+func (h *Handler) redirectLegacyStagePath(writer http.ResponseWriter, request *http.Request, suffix string) {
+	routeID, stageOrder, ok := legacyStagePathValues(request)
+	if !ok {
+		h.notFound(writer)
 
-			return
-		}
-
-		target := "/v1/providers/" + string(route.ProviderVeloPlanner) + "/routes/" +
-			strconv.FormatInt(routeID, 10) + "/stages/" + strconv.Itoa(stageOrder) + suffix
-		http.Redirect(writer, request, target, http.StatusPermanentRedirect)
+		return
 	}
+
+	target := "/v1/providers/" + string(route.ProviderVeloPlanner) + "/routes/" +
+		strconv.FormatInt(routeID, 10) + "/stages/" + strconv.Itoa(stageOrder) + suffix
+	http.Redirect(writer, request, target, http.StatusPermanentRedirect)
 }
 
-// redirectLegacyBrowserRoute sends a browser address from before a second
+// RedirectLegacyRoute sends a provider-less stage address to the same stage
+// under the only provider it could ever have meant. It and the two methods
+// below differ only in the suffix they preserve.
+func (h *Handler) RedirectLegacyRoute(
+	writer http.ResponseWriter, request *http.Request, _ openapi.RouteId, _ openapi.Stage,
+) {
+	h.redirectLegacyStagePath(writer, request, "")
+}
+
+// RedirectLegacyGeometry does the same for that stage's geometry.
+func (h *Handler) RedirectLegacyGeometry(
+	writer http.ResponseWriter, request *http.Request, _ openapi.RouteId, _ openapi.Stage,
+) {
+	h.redirectLegacyStagePath(writer, request, "/geometry")
+}
+
+// RedirectLegacyReprocess does the same for that stage's reprocess request.
+func (h *Handler) RedirectLegacyReprocess(
+	writer http.ResponseWriter, request *http.Request,
+	_ openapi.RouteId, _ openapi.Stage, _ openapi.RedirectLegacyReprocessParams,
+) {
+	h.redirectLegacyStagePath(writer, request, "/reprocess")
+}
+
+// RedirectLegacyRoutePage sends a browser address from before a second
 // provider existed to its provider-qualified equivalent, so a bookmark or
 // share link keeps resolving.
-func (h *Handler) redirectLegacyBrowserRoute(writer http.ResponseWriter, request *http.Request, _ string) {
+func (h *Handler) RedirectLegacyRoutePage(
+	writer http.ResponseWriter, request *http.Request, _ openapi.RouteId, _ openapi.Stage,
+) {
 	routeID, stageOrder, ok := legacyStagePathValues(request)
 	if !ok {
 		h.notFound(writer)

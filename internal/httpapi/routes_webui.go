@@ -7,7 +7,7 @@ import (
 	"github.com/nobbs/domestique/internal/route"
 )
 
-// webUIConfig hands the page its runtime settings so the built assets stay
+// GetWebUIConfig hands the page its runtime settings so the built assets stay
 // static and fully cacheable. It exposes no secret: the tile style URLs are
 // operator-chosen configuration that the browser must know to render a map.
 //
@@ -23,7 +23,7 @@ import (
 // provider that stage names, and the alternative — the service putting a route
 // URL on every stage it serves — would be the same fact repeated once per
 // stage.
-func (h *Handler) webUIConfig(writer http.ResponseWriter, _ *http.Request, _ string) {
+func (h *Handler) GetWebUIConfig(writer http.ResponseWriter, _ *http.Request) {
 	// An unset dark style and an unset dark-cartography flag are both absent
 	// from the response rather than sent as an empty string or false, which is
 	// how the page tells "keep this entry's one style in both colour schemes"
@@ -52,12 +52,12 @@ func (h *Handler) webUIConfig(writer http.ResponseWriter, _ *http.Request, _ str
 
 // index serves the application entry document for every UI route, so a deep
 // link such as /routes/12/1 loads the app and lets it route client-side.
-func (h *Handler) index(writer http.ResponseWriter, request *http.Request, _ string) {
+func (h *Handler) index(writer http.ResponseWriter, request *http.Request) {
 	writer.Header().Set("Cache-Control", cacheDocument)
 	h.assets.Index(writer, request)
 }
 
-// webManifest serves the manifest that makes the UI installable, which is how
+// GetManifest serves the manifest that makes the UI installable, which is how
 // the map runs edge to edge on a phone: iOS 26 Safari lays a tab out between
 // its own chrome and reports no safe-area insets, while the same document added
 // to the Home Screen gets the whole screen.
@@ -66,9 +66,9 @@ func (h *Handler) index(writer http.ResponseWriter, request *http.Request, _ str
 // responses carry X-Content-Type-Options: nosniff. The caching is the stable
 // kind for the reason below, and doubly so for this file: it decides how an
 // installed copy launches.
-func (h *Handler) webManifest(writer http.ResponseWriter, request *http.Request, target string) {
+func (h *Handler) GetManifest(writer http.ResponseWriter, request *http.Request) {
 	writer.Header().Set("Content-Type", "application/manifest+json")
-	h.stableAsset(writer, request, target)
+	h.stableAsset(writer, request)
 }
 
 // stableAsset serves a build artefact that is addressed by a fixed name rather
@@ -81,15 +81,57 @@ func (h *Handler) webManifest(writer http.ResponseWriter, request *http.Request,
 // year of immutable caching is a year of the Home Screen showing the previous
 // one. They revalidate instead, which costs a conditional request and keeps the
 // installed copy honest.
-func (h *Handler) stableAsset(writer http.ResponseWriter, request *http.Request, _ string) {
+func (h *Handler) stableAsset(writer http.ResponseWriter, request *http.Request) {
 	writer.Header().Set("Cache-Control", cacheDocument)
 	h.assets.Static(writer, request)
 }
 
-// staticAsset serves a build artefact the bundler content-hashed. A change of
+// GetAsset serves a build artefact the bundler content-hashed. A change of
 // content is a change of name, so these may be cached indefinitely; anything
 // served under a name the bundler did not hash belongs on stableAsset above.
-func (h *Handler) staticAsset(writer http.ResponseWriter, request *http.Request, _ string) {
+func (h *Handler) GetAsset(writer http.ResponseWriter, request *http.Request, _ string) {
 	writer.Header().Set("Cache-Control", cacheImmutable)
 	h.assets.Static(writer, request)
+}
+
+// GetIndex serves the application document at the root. It and the three
+// methods below are separate operations because each is a page a reader can be
+// linked straight to; they serve the same document because the routing that
+// follows is the application's own.
+func (h *Handler) GetIndex(writer http.ResponseWriter, request *http.Request) {
+	h.index(writer, request)
+}
+
+// GetRoutePage serves the application document for one stage's address.
+func (h *Handler) GetRoutePage(
+	writer http.ResponseWriter, request *http.Request,
+	_ openapi.Provider, _ openapi.RouteId, _ openapi.Stage,
+) {
+	h.index(writer, request)
+}
+
+// GetSettingsPage serves the application document for the settings view.
+func (h *Handler) GetSettingsPage(writer http.ResponseWriter, request *http.Request) {
+	h.index(writer, request)
+}
+
+// GetSyncPage serves the application document for the synchronization view.
+func (h *Handler) GetSyncPage(writer http.ResponseWriter, request *http.Request) {
+	h.index(writer, request)
+}
+
+// GetFavicon serves the tab icon. It and the two methods below are separate
+// operations because the contract names each file the manifest may point at.
+func (h *Handler) GetFavicon(writer http.ResponseWriter, request *http.Request) {
+	h.stableAsset(writer, request)
+}
+
+// GetIcon256 serves the smaller installed-application icon.
+func (h *Handler) GetIcon256(writer http.ResponseWriter, request *http.Request) {
+	h.stableAsset(writer, request)
+}
+
+// GetIcon512 serves the larger installed-application icon.
+func (h *Handler) GetIcon512(writer http.ResponseWriter, request *http.Request) {
+	h.stableAsset(writer, request)
 }
