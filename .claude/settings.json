@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "test -f skills-lock.json && jq -r '.skills | keys[]' skills-lock.json | while read -r s; do [ -d \".agents/skills/$s\" ] || { bunx skills experimental_install -y; break; }; done"
+            "command": "mise run skills-sync"
           }
         ]
       }
