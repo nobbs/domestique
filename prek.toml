@@ -65,12 +65,21 @@ language = "system"
 files = "\\.md$"
 pass_filenames = true
 
-# OpenAPI accepts JSON flow syntax, but this contract stays readable YAML. The
-# check compares each staged contract to yq's canonical block-style output.
+# OpenAPI accepts JSON flow syntax, but this contract stays readable YAML.
 [[repos.hooks]]
 id = "openapi-yaml-format"
 name = "OpenAPI YAML format"
-entry = "./dev/check-openapi-format.sh"
-language = "script"
+entry = "mise exec -- yamlfmt -conf .yamlfmt -lint"
+language = "system"
+files = "^api/openapi\\.yaml$"
+pass_filenames = true
+
+# yamlfmt preserves flow mappings. Reject nonempty flow nodes separately while
+# allowing OpenAPI's idiomatic empty arrays (`[]`).
+[[repos.hooks]]
+id = "openapi-no-flow-style"
+name = "OpenAPI block style"
+entry = "mise exec -- yq eval --exit-status '[.. | select(style == \"flow\" and length > 0)] | length == 0'"
+language = "system"
 files = "^api/openapi\\.yaml$"
 pass_filenames = true
