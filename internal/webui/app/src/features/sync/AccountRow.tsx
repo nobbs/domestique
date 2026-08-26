@@ -24,7 +24,7 @@ import { authorisationGuidance, authorisationStartHref } from "../../lib/targetA
  * saying so alongside "not connected" would be two answers to one question. The
  * connection is the answer that matters, so it is the one the line gives.
  */
-export function stagesSummary(target: TargetStatus): string {
+function stagesSummary(target: TargetStatus): string {
   const authorisation = authorisationGuidance(target.authorisation);
   if (authorisation) {
     return authorisation.label;
@@ -48,7 +48,7 @@ export function stagesSummary(target: TargetStatus): string {
  * say which, and a gate must not be read as a fault: the account is intact and
  * the next move is the operator's.
  */
-export function lastRunSummary(target: TargetStatus): string | null {
+function lastRunSummary(target: TargetStatus): string | null {
   const guidance = targetGuidance(target);
   if (!guidance || !target.lastRun) {
     return null;
