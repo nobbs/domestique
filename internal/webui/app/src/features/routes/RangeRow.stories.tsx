@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
-import { expect, userEvent } from "storybook/test";
+import { expect, fn, userEvent } from "storybook/test";
 import type { NumericRange } from "../../lib/filters";
 import { RangeRow } from "./RangeRow";
 
@@ -12,7 +12,14 @@ function Field() {
 
 const meta = {
   title: "Features/Routes/Range Row",
+  component: RangeRow,
   tags: ["autodocs"],
+  args: {
+    legend: "Distance",
+    unit: "km",
+    range: { min: null, max: null },
+    onChange: fn(),
+  },
   decorators: [
     (Story) => (
       <div className="w-64 bg-[var(--panel)] p-4">
@@ -20,7 +27,7 @@ const meta = {
       </div>
     ),
   ],
-} satisfies Meta;
+} satisfies Meta<typeof RangeRow>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;

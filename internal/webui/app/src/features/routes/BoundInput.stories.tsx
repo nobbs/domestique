@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
-import { expect, userEvent } from "storybook/test";
+import { expect, fn, userEvent } from "storybook/test";
 import { BoundInput } from "./BoundInput";
 
 /** Holds the stored value, as the range row it normally sits in does. */
@@ -20,7 +20,15 @@ function Field({ initial }: { initial: number | null }) {
 
 const meta = {
   title: "Features/Routes/Bound Input",
+  component: BoundInput,
   tags: ["autodocs"],
+  args: {
+    label: "Min",
+    stored: null,
+    onChange: fn(),
+    toDisplay: (value) => value,
+    toStored: (value) => value,
+  },
   decorators: [
     (Story) => (
       <div className="w-32 bg-[var(--panel)] p-4">
@@ -28,7 +36,7 @@ const meta = {
       </div>
     ),
   ],
-} satisfies Meta;
+} satisfies Meta<typeof BoundInput>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
