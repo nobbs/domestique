@@ -55,8 +55,21 @@ function Held({
 
 const meta = {
   title: "Features/Sync/Account Row",
-  component: Held,
+  component: AccountRow,
   tags: ["autodocs"],
+  args: {
+    target: connected,
+    reconciling: false,
+    onReconcile: fn(),
+    clear: {
+      open: false,
+      onOpenChange: fn(),
+      confirmation: "",
+      onConfirmationChange: fn(),
+      pending: false,
+      onConfirm: fn(),
+    },
+  },
   decorators: [
     (Story) => (
       <ul className="w-[28rem] bg-[var(--panel)] p-2">
@@ -64,7 +77,7 @@ const meta = {
       </ul>
     ),
   ],
-} satisfies Meta<typeof Held>;
+} satisfies Meta<typeof AccountRow>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
