@@ -4,7 +4,7 @@
 # drift by `api-check`. Marked generated so a review collapses them by default
 # and the language statistics describe what is written here by hand. They stay
 # diffable: the drift check is read by eye when the contract moves.
-internal/httpapi/contract/openapi.gen.go linguist-generated=true
+internal/*/contract/openapi.gen.go linguist-generated=true
 internal/webui/app/src/api/generated.ts linguist-generated=true
 
 # Resolved by the package manager, never edited directly.
