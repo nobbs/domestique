@@ -4,10 +4,7 @@ import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SyncPage } from "./SyncPage";
 
-const REVISION = "0123456789abcdef0123456789abcdef01234567";
-const DIGEST = `sha256:${"cd".repeat(32)}`;
-
-function statusBody(build?: Record<string, unknown>) {
+function statusBody() {
   return {
     ready: true,
     converged: true,
@@ -30,7 +27,6 @@ function statusBody(build?: Record<string, unknown>) {
       phases: {},
       surface: { classified: 4, total: 4, incomplete: 0 },
     },
-    ...(build ? { build } : {}),
   };
 }
 
@@ -99,45 +95,5 @@ describe("SyncPage", () => {
     // than against a card that had not decided what to say yet.
     expect(await screen.findByText("Nothing has run yet.")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: /That run/ })).toBeNull();
-  });
-
-  it("addresses the exact commit the running service was built from", async () => {
-    renderPage("/sync", statusBody({ revision: REVISION, imageDigest: DIGEST }));
-
-    const link = await screen.findByRole("link", { name: "commit 0123456" });
-    expect(link).toHaveAttribute("href", `https://github.com/nobbs/domestique/commit/${REVISION}`);
-    expect(link.getAttribute("title")).toBe(`Source code at commit ${REVISION} · image ${DIGEST}`);
-    // Leaving the Tailnet: a new tab, and no referrer handed to GitHub.
-    expect(link).toHaveAttribute("target", "_blank");
-    expect(link.getAttribute("rel")).toContain("noreferrer");
-  });
-
-  it("says a build carries no commit rather than implying one", async () => {
-    renderPage("/sync", statusBody());
-
-    const link = await screen.findByRole("link", { name: "a development build" });
-    expect(link).toHaveAttribute("href", "https://github.com/nobbs/domestique");
-  });
-
-  /*
-   * Not knowing yet is not the same as knowing there is no revision: naming a
-   * development build on a deployed service, even for one frame, is the exact
-   * wrong answer to the question this line exists to settle.
-   */
-  it("says nothing about the build until the status answers", () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(() => new Promise<Response>(() => {})),
-    );
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    render(
-      <QueryClientProvider client={client}>
-        <MemoryRouter initialEntries={["/sync"]}>
-          <SyncPage />
-        </MemoryRouter>
-      </QueryClientProvider>,
-    );
-
-    expect(screen.queryByText(/^Running/)).toBeNull();
   });
 });

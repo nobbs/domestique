@@ -38,14 +38,15 @@
  * resting state is nothing picked and whose way back is a second press.
  */
 
-import type { ReactNode } from "react";
 import type { SurfaceKind } from "../../api/types";
 import type { Highlight } from "../../lib/highlight";
 import type { BandShare } from "../../lib/profile";
 import { GRADIENT_BANDS } from "../../lib/profile";
 import type { SurfaceSummary } from "../../lib/surface";
 import { SURFACE_STYLES } from "../../lib/surface";
-import { ToggleGroup, ToggleGroupItem } from "../ui/toggle-group";
+import { ToggleGroup } from "../ui/toggle-group";
+import { KeyChip } from "./KeyChip";
+import { MixBar } from "./MixBar";
 
 const paintClasses = {
   "band:0": "bg-[var(--grade-0)]",
@@ -100,21 +101,6 @@ function formatShare(share: number): string {
  */
 function chipValue(highlight: Highlight): string {
   return highlight.type === "surface" ? `surface:${highlight.kind}` : `band:${highlight.band}`;
-}
-
-/**
- * One proportion bar.
- *
- * Hidden from assistive technology: every segment in it is a chip below it with
- * its own figure spoken in full, and a bar is a picture of figures that have
- * already been said.
- */
-function MixBar({ children }: { children: ReactNode }) {
-  return (
-    <span className="mb-1 flex h-1.5 w-full overflow-hidden rounded-sm" aria-hidden="true">
-      {children}
-    </span>
-  );
 }
 
 export interface RouteKeyProps {
@@ -194,25 +180,16 @@ export function RouteKey({
               const share = formatShare(entry.share);
 
               return (
-                <li key={entry.band}>
-                  <ToggleGroupItem
-                    className="-m-0.5 h-7 min-w-0 gap-1 rounded-md border border-transparent bg-transparent px-1.5 text-xs font-normal text-[var(--ink-2)] hover:border-[var(--rule)] hover:bg-transparent hover:text-[var(--ink)] focus-visible:ring-[var(--accent)] aria-pressed:border-[var(--accent)] aria-pressed:bg-[color-mix(in_srgb,var(--accent)_14%,transparent)] aria-pressed:text-[var(--ink)]"
-                    value={chipValue(bandHighlight(entry.band))}
-                    // The chips are read as a row of five and are terse about
-                    // it, so the span each one covers is spoken rather than
-                    // written: "6%" on the chip, "6 to 9%" in the name.
-                    title={band?.description}
-                    aria-label={`${band?.label}, ${band?.description}, ${share} of the route`}
-                  >
-                    <span
-                      className={`size-4 shrink-0 rounded-sm border border-transparent forced-colors:border-[CanvasText] forced-colors:forced-color-adjust-none ${paintClasses[`band:${entry.band}` as keyof typeof paintClasses]}`}
-                      data-band={entry.band}
-                      aria-hidden="true"
-                    />
-                    <span>{band?.label}</span>
-                    <span className="text-[var(--ink)]">{share}</span>
-                  </ToggleGroupItem>
-                </li>
+                <KeyChip
+                  key={entry.band}
+                  value={chipValue(bandHighlight(entry.band))}
+                  paintClassName={paintClasses[`band:${entry.band}` as keyof typeof paintClasses]}
+                  title={band?.description}
+                  ariaLabel={`${band?.label}, ${band?.description}, ${share} of the route`}
+                  label={band?.label}
+                  share={share}
+                  swatch={{ band: entry.band }}
+                />
               );
             })}
           </ul>
@@ -244,25 +221,21 @@ export function RouteKey({
                 const share = formatShare(entry.share);
 
                 return (
-                  <li key={entry.kind}>
-                    <ToggleGroupItem
-                      className="-m-0.5 h-7 min-w-0 gap-1 rounded-md border border-transparent bg-transparent px-1.5 text-xs font-normal text-[var(--ink-2)] hover:border-[var(--rule)] hover:bg-transparent hover:text-[var(--ink)] focus-visible:ring-[var(--accent)] aria-pressed:border-[var(--accent)] aria-pressed:bg-[color-mix(in_srgb,var(--accent)_14%,transparent)] aria-pressed:text-[var(--ink)]"
-                      value={chipValue(surfaceHighlight(entry.kind))}
-                      // What the class means, for a key that has to explain
-                      // "compacted" — spoken as part of the name, because a
-                      // tooltip is nothing to a keyboard or a finger.
-                      title={style.description}
-                      aria-label={`${style.label}, ${style.description}, ${share} of the route`}
-                    >
-                      <span
-                        className={`size-4 shrink-0 rounded-sm border border-transparent forced-colors:border-[CanvasText] forced-colors:forced-color-adjust-none ${paintClasses[`surface:${entry.kind}` as keyof typeof paintClasses]}`}
-                        data-surface={entry.kind}
-                        aria-hidden="true"
-                      />
-                      <span>{style.label}</span>
-                      <span className="text-[var(--ink)]">{share}</span>
-                    </ToggleGroupItem>
-                  </li>
+                  <KeyChip
+                    key={entry.kind}
+                    value={chipValue(surfaceHighlight(entry.kind))}
+                    paintClassName={
+                      paintClasses[`surface:${entry.kind}` as keyof typeof paintClasses]
+                    }
+                    // What the class means, for a key that has to explain
+                    // "compacted" — spoken as part of the name, because a
+                    // tooltip is nothing to a keyboard or a finger.
+                    title={style.description}
+                    ariaLabel={`${style.label}, ${style.description}, ${share} of the route`}
+                    label={style.label}
+                    share={share}
+                    swatch={{ surface: entry.kind }}
+                  />
                 );
               })}
             </ul>
