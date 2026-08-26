@@ -541,7 +541,10 @@ sources = [
   "internal/webui/app/*.ts",
   "internal/webui/app/*.json",
 ]
-outputs = ["internal/webui/app/dist/**"]
+# The bundle alone. `dist` also holds the committed placeholder that keeps the
+# go:embed pattern valid, and the bundler neither writes nor reads it — naming
+# it here would declare an output the task never produces.
+outputs = ["internal/webui/app/dist/bundle/**"]
 wait_for = ["ui-install", "ci-ui"]
 run = "pnpm --dir internal/webui/app run build"
 
