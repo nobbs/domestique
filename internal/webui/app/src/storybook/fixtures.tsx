@@ -190,21 +190,21 @@ export function StoryProviders({ children }: { children: ReactNode }) {
  * Storybook dev server, where reaching for it renders the story as an error
  * instead — so the stub is done here, against nothing but the platform.
  *
- * Defined rather than assigned: `localStorage` is an accessor on the window
- * with no setter, and a plain assignment to it does nothing at all.
+ * The undo puts back the original descriptor rather than the original value.
+ * `localStorage` is a getter-only accessor on the window, so assigning to it
+ * does nothing at all, and restoring it as a plain value would leave a frozen
+ * copy of whatever the getter returned once — writable, where the real one is
+ * not. A name with no own property to begin with is deleted rather than
+ * restored, so nothing on the prototype stays shadowed.
  */
 export function stubGlobal(name: string, value: unknown): () => void {
   const target = globalThis as unknown as Record<string, unknown>;
-  const present = name in target;
-  const original = target[name];
-  const define = (held: unknown) =>
-    Object.defineProperty(target, name, { value: held, configurable: true, writable: true });
-
-  define(value);
+  const original = Object.getOwnPropertyDescriptor(target, name);
+  Object.defineProperty(target, name, { value, configurable: true, writable: true });
 
   return () => {
-    if (present) {
-      define(original);
+    if (original) {
+      Object.defineProperty(target, name, original);
 
       return;
     }
