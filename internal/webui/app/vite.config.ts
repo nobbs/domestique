@@ -1,7 +1,13 @@
+/// <reference types="vitest/config" />
+import path from "node:path";
 import { fileURLToPath, URL } from "node:url";
+import { storybookTest } from "@storybook/addon-vitest/vitest-plugin";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
+import { playwright } from "@vitest/browser-playwright";
 import { defineConfig } from "vitest/config";
+
+const dirname = fileURLToPath(new URL(".", import.meta.url));
 
 // The development API from `mise run dev-api` listens here. The dev server proxies
 // to it and forwards a Cloudflare Access assertion, which is the only identity
@@ -65,20 +71,21 @@ export default defineConfig({
     },
   },
   test: {
-    environment: "jsdom",
-    // Vitest would otherwise collect e2e/*.spec.ts, which is Playwright's suite
-    // and needs a browser. The unit suites stay a jsdom-only run that a
-    // contributor with no browser installed can still pass.
-    include: ["src/**/*.test.{ts,tsx}"],
-    setupFiles: ["./src/test/setup.ts"],
-    css: false,
-    restoreMocks: true,
-    // The terminal summary a contributor reads, and the JUnit report CI uploads
-    // to Codecov's test analytics beside the browser suite's own. It is written
-    // on every run rather than behind a flag, so the file a failure is read from
-    // locally is the same one the pull request comment was assembled from.
+    // The terminal summary a contributor reads, and the JUnit report CI
+    // uploads to Codecov's test analytics beside the other suite's own.
+    // Written on every run rather than behind a flag, so the file a failure
+    // is read from locally is the same one the pull request comment was
+    // assembled from.
+    //
+    // `reporters`/`outputFile` are root-level config: Vitest applies them to
+    // the whole invocation, not per project, so filtering with `--project`
+    // still writes here. VITEST_JUNIT_SUFFIX is what keeps `mise run ui-test`
+    // and `ui-storybook-test` from clobbering each other's report — see the
+    // scripts in package.json that set it.
     reporters: ["default", "junit"],
-    outputFile: { junit: "../../../.test-results/ui/vitest.xml" },
+    outputFile: {
+      junit: `../../../.test-results/ui/${process.env.VITEST_JUNIT_SUFFIX ?? "vitest"}.xml`,
+    },
     coverage: {
       provider: "v8",
       // The repository collects Go and UI coverage side by side, so both
@@ -101,7 +108,47 @@ export default defineConfig({
         // The bootstrap mounts React onto a real document and does nothing
         // else; a test of it would assert the framework, not this UI.
         "src/main.tsx",
+        // Storybook fixtures back the component workshop and the Storybook
+        // suite's stories; neither is the jsdom suite's subject, and the
+        // Storybook suite carries no coverage instrumentation of its own —
+        // see the comment on `coverage-ui` in mise-tasks.toml for why.
+        "src/storybook/**",
+        "src/**/*.stories.{ts,tsx}",
       ],
     },
+    projects: [
+      {
+        extends: true,
+        test: {
+          name: "unit",
+          environment: "jsdom",
+          // Vitest would otherwise collect e2e/*.spec.ts, which is Playwright's
+          // suite and needs a browser. The unit suites stay a jsdom-only run
+          // that a contributor with no browser installed can still pass.
+          include: ["src/**/*.test.{ts,tsx}"],
+          setupFiles: ["./src/test/setup.ts"],
+          css: false,
+          restoreMocks: true,
+        },
+      },
+      {
+        extends: true,
+        plugins: [storybookTest({ configDir: path.join(dirname, ".storybook") })],
+        test: {
+          name: "storybook",
+          // Every story, played and checked for markup, interaction and
+          // accessibility in a real browser rather than jsdom's DOM
+          // approximation — see the comment above BasemapPicker.stories.tsx
+          // and its siblings for why some component suites live here instead
+          // of in the jsdom project.
+          browser: {
+            enabled: true,
+            headless: true,
+            provider: playwright({}),
+            instances: [{ browser: "chromium" }],
+          },
+        },
+      },
+    ],
   },
 });

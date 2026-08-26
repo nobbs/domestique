@@ -1,12 +1,12 @@
 /**
- * Every reusable control, put to axe.
+ * Every reusable control with no Storybook story of its own, put to axe.
  *
- * One file rather than an assertion appended to each component's own suite: the
- * check is the same check everywhere, and a component that arrives without one
- * should fail to be listed here rather than quietly go unexamined. Each entry
- * renders the component the way the application does — a card inside its grid
- * inside a router, a chip inside its group — because most of what axe has to say
- * about a control is about the markup around it.
+ * Every component with a story gets this same check automatically from the
+ * Storybook suite's `a11y` parameter — see `.storybook/preview.tsx` — over
+ * every state a story demonstrates, not only the one rendered here. What
+ * remains in this file is what has no story to carry that check yet: a
+ * component that gains one should have its entry here removed rather than
+ * kept alongside it, so a control is examined here exactly once.
  *
  * What this cannot see is in `src/test/axe.ts`. The browser suite carries the
  * rest, over the whole page, with the stylesheet loaded.
@@ -16,8 +16,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { describe, it } from "vitest";
-import { weatherQuery } from "../api/queries";
-import type { Position, Route, WeatherPoint } from "../api/types";
+import type { Position, Route } from "../api/types";
 import { routeKey } from "../api/types";
 import { FilterPanel } from "../features/routes/FilterPanel";
 import { RoutePanel } from "../features/routes/RoutePanel";
@@ -25,17 +24,9 @@ import { RouteProfile } from "../features/routes/RouteProfile";
 import { SearchPanel } from "../features/routes/SearchPanel";
 import { findClimbs } from "../lib/climbs";
 import { EMPTY_FILTERS } from "../lib/filters";
-import { forecastSamples } from "../lib/forecastSamples";
-import { buildProfile, cumulativeMetres, gradientShares } from "../lib/profile";
+import { buildProfile, gradientShares } from "../lib/profile";
 import { summariseSurface } from "../lib/surface";
 import { expectNoAxeViolations } from "../test/axe";
-import { Button } from "./Button";
-import { BasemapPicker } from "./map/BasemapPicker";
-import { MapCredits } from "./map/MapCredits";
-import { ForecastStrip } from "./route/ForecastStrip";
-import { RouteKey } from "./route/RouteKey";
-import { StartTimePicker } from "./StartTimePicker";
-import { StatusMessage } from "./StatusMessage";
 
 const STAGE: Route = {
   provider: "veloplanner",
@@ -152,24 +143,6 @@ describe("accessibility", () => {
     await expectNoAxeViolations(container);
   });
 
-  it("holds for the route key, picked and unpicked", async () => {
-    const bands = gradientShares(CLIMB);
-    for (const highlight of [null, { type: "surface", kind: "gravel" } as const]) {
-      const { container, unmount } = render(
-        <RouteKey
-          surface={surfaceSummary()}
-          surfaceAbsence="Surface not classified yet."
-          bands={bands}
-          highlight={highlight}
-          onHighlightChange={() => {}}
-        />,
-      );
-
-      await expectNoAxeViolations(container);
-      unmount();
-    }
-  });
-
   it("holds for the route panel the search swaps to", async () => {
     const { container } = render(
       <QueryClientProvider client={new QueryClient()}>
@@ -217,58 +190,6 @@ describe("accessibility", () => {
     await expectNoAxeViolations(container);
   });
 
-  it("holds for the map credit, folded and unfolded", async () => {
-    // Both halves, because the folded one is a button standing on its own with
-    // the text it names no longer in the document.
-    for (const expanded of [true, false]) {
-      const { container, unmount } = render(
-        <QueryClientProvider client={new QueryClient()}>
-          <MapCredits
-            styleUrl={undefined}
-            extra="Surface data © OpenStreetMap contributors"
-            choice={expanded}
-            onChoiceChange={() => {}}
-          />
-        </QueryClientProvider>,
-      );
-
-      await expectNoAxeViolations(container);
-      unmount();
-    }
-  });
-
-  it("holds for the basemap chooser, folded and unfolded", async () => {
-    // Both halves, for the same reason the credit is checked both ways: folded
-    // it is a button on its own, and the group it names is not in the document.
-    for (const expanded of [true, false]) {
-      const { container, unmount } = render(
-        <BasemapPicker
-          basemaps={[
-            {
-              name: "Streets",
-              styleUrl: "https://tiles.example.test/bright",
-              darkCartography: false,
-            },
-            {
-              name: "Satellite",
-              styleUrl: "https://imagery.example.test/hybrid",
-              darkCartography: true,
-            },
-          ]}
-          selectedName="Streets"
-          onSelect={() => {}}
-          expanded={expanded}
-          onExpandedChange={() => {}}
-        />,
-      );
-
-      // Unfolded, the names are in a portal rather than under `container`:
-      // the body is what carries them, so the body is what is checked.
-      await expectNoAxeViolations(expanded ? document.body : container);
-      unmount();
-    }
-  });
-
   /*
    * Unfolded as well as folded, because what unfolds is a dialog: the trigger
    * alone passing says nothing about the popup the names are actually in.
@@ -285,58 +206,6 @@ describe("accessibility", () => {
       );
 
       await expectNoAxeViolations(expanded ? document.body : container);
-      unmount();
-    }
-  });
-
-  it("holds for a status message carrying an action", async () => {
-    const { container } = render(
-      <StatusMessage title="Nothing here is called that." detail="Search matches route names.">
-        <Button variant="standard">Clear search</Button>
-      </StatusMessage>,
-    );
-
-    await expectNoAxeViolations(container);
-  });
-
-  it("holds for the forecast strip, drawn with a forecast", async () => {
-    const startAt = new Date("2026-08-25T06:00:00Z");
-    const cumulativeSeconds = CLIMB.map((_, index) => index * 120);
-    const samples = forecastSamples(CLIMB, cumulativeSeconds, startAt);
-    const points: WeatherPoint[] = samples.map((sample, index) => ({
-      time: sample.arrivalAt.toISOString(),
-      temperatureCelsius: 14 + index,
-      apparentTemperatureCelsius: 13 + index,
-      precipitationMillimetres: index % 2 === 0 ? 0 : 1.2,
-      precipitationProbabilityPercent: index % 2 === 0 ? 0 : 40,
-      windSpeedKmh: 18,
-      windDirectionDegrees: 240,
-      weatherCode: index % 2 === 0 ? 1 : 61,
-    }));
-    const distances = cumulativeMetres(CLIMB);
-    const client = new QueryClient();
-    client.setQueryData(weatherQuery(samples).queryKey, { points });
-
-    const { container } = render(
-      <QueryClientProvider client={client}>
-        <ForecastStrip
-          samples={samples}
-          coordinates={CLIMB}
-          startMetres={0}
-          endMetres={distances[distances.length - 1] ?? 0}
-          unitSystem="metric"
-        />
-      </QueryClientProvider>,
-    );
-
-    await expectNoAxeViolations(container);
-  });
-
-  it("holds for the start-time control, empty and filled", async () => {
-    for (const value of [null, new Date("2026-08-25T06:00:00Z")]) {
-      const { container, unmount } = render(<StartTimePicker value={value} onChange={() => {}} />);
-
-      await expectNoAxeViolations(container);
       unmount();
     }
   });

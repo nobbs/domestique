@@ -26,7 +26,7 @@ func graph() []task {
 		{Name: "ci-test", Depends: []string{"vet", "test-race"}},
 		{Name: "ci-security", Depends: []string{"vulncheck", "ui-audit"}},
 		{Name: "ci-ui", Depends: []string{
-			"ui-install", "ui-browser-install", "ui-browser-test",
+			"ui-install", "ui-browser-install", "ui-browser-test", "ui-storybook-test",
 		}},
 		{Name: "build-check", Depends: []string{"ui-build"}, Run: []string{"go build ./..."}},
 		{Name: "hygiene", Run: []string{"prek run --all-files"}},
@@ -36,6 +36,7 @@ func graph() []task {
 		{Name: "ui-audit", Run: []string{"pnpm audit"}},
 		{Name: "ui-browser-install", Run: []string{"pnpm run test:browser:install"}},
 		{Name: "ui-browser-test", Run: []string{"pnpm run test:browser"}},
+		{Name: "ui-storybook-test", Run: []string{"pnpm run test:storybook"}},
 		{Name: "ui-build", Run: []string{"pnpm run build"}},
 		{Name: "ui-install", Run: []string{"pnpm install --frozen-lockfile"}},
 

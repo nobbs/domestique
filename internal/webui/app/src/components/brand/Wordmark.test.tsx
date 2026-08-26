@@ -1,10 +1,6 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router";
 import { describe, expect, it } from "vitest";
-import { statusQuery } from "../../api/queries";
 import type { Status, SyncStatus, TargetStatus } from "../../api/types";
-import { Wordmark, wordmarkState } from "./Wordmark";
+import { wordmarkState } from "./Wordmark";
 
 function status(sync: Partial<SyncStatus> = {}, targets: TargetStatus[] = []): Status {
   return {
@@ -155,59 +151,5 @@ describe("wordmarkState", () => {
 
     expect(state.tone).toBe("good");
     expect(state.label).toMatch(/^In sync · /);
-  });
-});
-
-function renderWordmark(value?: Status) {
-  const client = new QueryClient({
-    defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
-  });
-  if (value) {
-    client.setQueryData(statusQuery().queryKey, value);
-  }
-
-  return render(
-    <QueryClientProvider client={client}>
-      <MemoryRouter>
-        <Wordmark />
-      </MemoryRouter>
-    </QueryClientProvider>,
-  );
-}
-
-describe("Wordmark", () => {
-  it("carries one quiet way to the sync page", () => {
-    renderWordmark(status({ lastCompletedAt: "2026-08-18T06:30:00Z" }));
-
-    const link = screen.getByRole("link", { name: /^Sync/ });
-    expect(link).toHaveAttribute("href", "/sync");
-    // A mark rather than a word, so what says `Sync` is the name it is given.
-    expect(link).toHaveAccessibleName(/^Sync/);
-    expect(screen.getByText("domestique")).toBeInTheDocument();
-  });
-
-  /*
-   * The row has room for one mark, so the state is the link's colour — and a
-   * colour is nothing to a screen reader or to anyone who cannot tell these two
-   * apart. The name says what the colour meant.
-   */
-  it("says in the link's name what its colour means", () => {
-    renderWordmark(status({ lastCompletedAt: "2026-08-18T06:30:00Z" }, [unauthorized()]));
-
-    const link = screen.getByRole("link", { name: "Sync \u00b7 An account is not connected" });
-    expect(link).toHaveAttribute("data-tone", "alert");
-  });
-
-  /*
-   * The map behind this panel is what the reader came for. A status request
-   * still in flight — or one that never arrives — must not paint the corner of
-   * it in a state nobody has.
-   */
-  it("says nothing about a state it does not have", () => {
-    renderWordmark();
-
-    const link = screen.getByRole("link", { name: "Sync" });
-    expect(link).not.toHaveAttribute("data-tone");
-    expect(link).not.toHaveAttribute("title");
   });
 });
