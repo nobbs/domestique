@@ -181,3 +181,33 @@ export function StoryProviders({ children }: { children: ReactNode }) {
     </QueryClientProvider>
   );
 }
+
+/**
+ * Replaces one global for the length of a story, and hands back the undo.
+ *
+ * `vi.stubGlobal` does the same thing, but it comes from Vitest's runtime,
+ * which exists only under the test runner. These stories are also read in the
+ * Storybook dev server, where reaching for it renders the story as an error
+ * instead — so the stub is done here, against nothing but the platform.
+ *
+ * Defined rather than assigned: `localStorage` is an accessor on the window
+ * with no setter, and a plain assignment to it does nothing at all.
+ */
+export function stubGlobal(name: string, value: unknown): () => void {
+  const target = globalThis as unknown as Record<string, unknown>;
+  const present = name in target;
+  const original = target[name];
+  const define = (held: unknown) =>
+    Object.defineProperty(target, name, { value: held, configurable: true, writable: true });
+
+  define(value);
+
+  return () => {
+    if (present) {
+      define(original);
+
+      return;
+    }
+    delete target[name];
+  };
+}

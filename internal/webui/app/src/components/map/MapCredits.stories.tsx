@@ -1,11 +1,13 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
-import { expect, userEvent } from "storybook/test";
-import { vi } from "vitest";
-import { StoryProviders } from "../../storybook/fixtures";
+import { expect, fn, userEvent } from "storybook/test";
+import { StoryProviders, stubGlobal } from "../../storybook/fixtures";
 import { MapCredits, type MapCreditsProps } from "./MapCredits";
 
 const SURFACE_CREDIT = "Surface data © OpenStreetMap contributors (ODbL)";
+
+/** Set by `ReadFromTheStyleDocument`'s render, spent by its play function. */
+let restoreFetch: (() => void) | undefined;
 
 /** What a caller supplies, the fold choice aside: that one is the caller's. */
 type CreditProps = Omit<MapCreditsProps, "choice" | "onChoiceChange">;
@@ -138,9 +140,9 @@ export const ReadFromTheStyleDocument: Story = {
     // component mounts, which for a story is before `play` runs at all — a
     // `render` function's body still runs before that mount, so this is the
     // last point a play function's own stub could still land in time.
-    vi.stubGlobal(
+    restoreFetch = stubGlobal(
       "fetch",
-      vi.fn(
+      fn(
         async () =>
           new Response(
             JSON.stringify({
@@ -163,7 +165,8 @@ export const ReadFromTheStyleDocument: Story = {
       // The provider's own markup is read for its words and never rendered.
       await expect(canvas.queryByRole("link")).not.toBeInTheDocument();
     } finally {
-      vi.unstubAllGlobals();
+      restoreFetch?.();
+      restoreFetch = undefined;
     }
   },
 };

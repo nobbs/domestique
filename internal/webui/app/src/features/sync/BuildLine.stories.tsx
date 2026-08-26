@@ -1,9 +1,8 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { expect } from "storybook/test";
-import { vi } from "vitest";
+import { expect, fn } from "storybook/test";
 import { statusQuery } from "../../api/queries";
-import { StoryProviders, status } from "../../storybook/fixtures";
+import { StoryProviders, status, stubGlobal } from "../../storybook/fixtures";
 import { BuildLine } from "./BuildLine";
 
 const meta = {
@@ -20,6 +19,9 @@ const meta = {
 } satisfies Meta<typeof BuildLine>;
 
 export default meta;
+
+/** Set by the `Pending` decorator below, spent by that story's play function. */
+let restoreFetch: (() => void) | undefined;
 type Story = StoryObj<typeof meta>;
 
 /** The deployed build the fixture status names a revision for. */
@@ -66,9 +68,11 @@ export const DevelopmentBuild: Story = {
 export const Pending: Story = {
   decorators: [
     (Story) => {
-      vi.stubGlobal(
+      // The undo is kept for `play` below: the stub has to be in place before
+      // the query fires on mount, which is well before a play function runs.
+      restoreFetch = stubGlobal(
         "fetch",
-        vi.fn(() => new Promise<Response>(() => {})),
+        fn(() => new Promise<Response>(() => {})),
       );
       const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
@@ -83,7 +87,8 @@ export const Pending: Story = {
     try {
       await expect(canvas.queryByText(/^Running/)).not.toBeInTheDocument();
     } finally {
-      vi.unstubAllGlobals();
+      restoreFetch?.();
+      restoreFetch = undefined;
     }
   },
 };
