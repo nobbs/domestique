@@ -72,9 +72,10 @@ type rules struct {
 // test-race reruns the whole Go suite under the race detector, which needs cgo
 // and costs several times the wall clock of the plain run; vulncheck and
 // ui-audit each need the network and a current advisory database;
-// ui-browser-install downloads a browser, and ui-browser-test and
-// ui-storybook-test then each drive it — one over the demo stack, the other
-// over every story — for minutes. That is why each is deferred.
+// ui-browser-install downloads a browser, and ui-browser-test,
+// ui-storybook-test and ui-storybook-sweep then each drive it — over the demo
+// stack, over every story, and over a built Storybook — for minutes. That is
+// why each is deferred.
 func gateRules() rules {
 	return rules{
 		deferred: []string{
@@ -84,6 +85,7 @@ func gateRules() rules {
 			"ui-browser-install",
 			"ui-browser-test",
 			"ui-storybook-test",
+			"ui-storybook-sweep",
 			"vulncheck",
 		},
 		gate: []string{

@@ -18,6 +18,7 @@
     "test": "vitest run --project=unit",
     "test:coverage": "vitest run --project=unit --coverage",
     "test:storybook": "VITEST_JUNIT_SUFFIX=storybook vitest run --project=storybook",
+    "test:storybook:sweep": "storybook build --quiet && node sweep-storybook.mjs",
     "test:browser": "playwright test",
     "test:browser:install": "playwright install chromium"
   },
@@ -42,6 +43,7 @@
     "@biomejs/biome": "2.5.10",
     "@playwright/test": "1.62.1",
     "@storybook/addon-a11y": "10.5.10",
+    "@storybook/addon-docs": "10.5.10",
     "@storybook/addon-mcp": "0.7.0",
     "@storybook/addon-vitest": "10.5.10",
     "@storybook/react-vite": "10.5.10",

@@ -234,9 +234,10 @@ jobs:
   ui:
     name: UI
     runs-on: ubuntu-24.04
-    # The browser and Storybook suites share one Chromium download, and the
-    # browser suite still builds the demo API and drives a software-rendered
-    # WebGL map on top of that, so this job is minutes rather than seconds.
+    # The browser suite, the Storybook suite and the Storybook sweep share one
+    # Chromium download. The browser suite still builds the demo API and drives
+    # a software-rendered WebGL map on top of that, and the sweep builds the
+    # workshop before reading it, so this job is minutes rather than seconds.
     timeout-minutes: 20
     needs: changes
     if: needs.changes.outputs.ui == 'true'
