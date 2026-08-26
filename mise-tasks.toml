@@ -521,6 +521,19 @@ run = "pnpm --dir internal/webui/app run test:storybook"
 
 # govulncheck does not see npm packages, so the JavaScript tree needs its own
 # advisory check in the same gate.
+# Opens every story and docs page in a built Storybook and fails on any that
+# renders as an error.
+#
+# Neither Vitest project can ask this. Both run under the test runner, so a
+# story reaching for something only the runner provides passes there and shows
+# an error card to anyone who opens Storybook itself — three did, with every
+# check green. Deferred with the other browser-driven checks: it builds the
+# whole workshop first.
+[ui-storybook-sweep]
+description = "Open every story and docs page in a built Storybook"
+wait_for = ["ui-browser-install", "api-generate"]
+run = "pnpm --dir internal/webui/app run test:storybook:sweep"
+
 [ui-audit]
 description = "Check the UI dependency tree against the advisory database"
 wait_for = ["ui-install"]
@@ -654,6 +667,7 @@ depends = [
   "ui-browser-install",
   "ui-browser-test",
   "ui-storybook-test",
+  "ui-storybook-sweep",
 ]
 
 # The routine local loop. It runs every check that reads the tree as it stands
