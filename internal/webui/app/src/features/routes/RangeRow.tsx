@@ -1,3 +1,4 @@
+import { FieldLegend, FieldSet } from "../../components/ui/field";
 import type { NumericRange } from "../../lib/filters";
 import { BoundInput } from "./BoundInput";
 
@@ -21,10 +22,10 @@ export function RangeRow({
   toStored = (value) => value,
 }: RangeRowProps) {
   return (
-    <fieldset className="grid grid-cols-2 gap-2">
-      <legend className="col-span-2 text-sm font-semibold">
+    <FieldSet className="grid grid-cols-2 gap-2">
+      <FieldLegend variant="label" className="col-span-2 font-semibold">
         {legend} ({unit})
-      </legend>
+      </FieldLegend>
       <BoundInput
         label="Min"
         stored={range.min}
@@ -39,6 +40,6 @@ export function RangeRow({
         toDisplay={toDisplay}
         toStored={toStored}
       />
-    </fieldset>
+    </FieldSet>
   );
 }

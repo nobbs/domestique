@@ -1,4 +1,5 @@
 import { useId, useState } from "react";
+import { FieldLabel } from "../../components/ui/field";
 import { Input } from "../../components/ui/input";
 
 /** One field's text, `null` for an empty — and so unbounded — side. */
@@ -54,7 +55,7 @@ export function BoundInput({ label, stored, onChange, toDisplay, toStored }: Bou
   }
 
   return (
-    <label className="grid gap-1 text-xs text-[var(--ink-2)]" htmlFor={id}>
+    <FieldLabel className="grid gap-1 text-xs text-[var(--ink-2)]" htmlFor={id}>
       <span>{label}</span>
       <Input
         id={id}
@@ -71,6 +72,6 @@ export function BoundInput({ label, stored, onChange, toDisplay, toStored }: Bou
           onChange(next);
         }}
       />
-    </label>
+    </FieldLabel>
   );
 }
