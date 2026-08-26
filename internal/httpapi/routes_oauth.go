@@ -4,12 +4,10 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
-
-	openapi "github.com/nobbs/domestique/internal/httpapi/contract"
 )
 
 // StartOAuth redirects the operator's browser to Wahoo for one configured slot.
-func (h *Handler) StartOAuth(writer http.ResponseWriter, request *http.Request, _ openapi.Target) {
+func (h *Handler) StartOAuth(writer http.ResponseWriter, request *http.Request) {
 	login := h.allowedEmail
 	targetID := request.PathValue("target")
 	if targetID == "" || !slices.Contains(h.targetIDs, targetID) {
@@ -52,9 +50,7 @@ func (h *Handler) StartOAuth(writer http.ResponseWriter, request *http.Request, 
 // endpoint would answer the same question in a format nobody came to read. The
 // redirect drops the authorization code and state from the browser URL either
 // way, which is what the 303 is for.
-func (h *Handler) CompleteOAuth(
-	writer http.ResponseWriter, request *http.Request, _ openapi.CompleteOAuthParams,
-) {
+func (h *Handler) CompleteOAuth(writer http.ResponseWriter, request *http.Request) {
 	login := h.allowedEmail
 	query := request.URL.Query()
 	if err := h.oauth.Complete(request.Context(), login, query.Get("state"), query.Get("code")); err != nil {

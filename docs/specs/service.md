@@ -33,11 +33,12 @@ route being read is carried in the address, so the view stays linkable.
 
 ## HTTP wire contract
 
-[`api/openapi.yaml`](../../api/openapi.yaml) is the normative HTTP wire
-contract for every public and loopback-probe route: JSON properties, response
-codes, media types, headers, redirects, assets, and the Access and Origin
-requirements. The prose specifications retain lifecycle, safety, and operating
-rules; they do not define a competing JSON shape.
+[`api/openapi.yaml`](../../api/openapi.yaml) is the normative API contract for
+the browser API, OAuth flow, and loopback probes: JSON properties, response
+codes, media types, headers, redirects, and the Access and Origin requirements.
+The browser document, static assets, and client-side navigation are application
+routes, not API operations. The prose specifications retain lifecycle, safety,
+and operating rules; they do not define a competing JSON shape.
 
 All Domestique JSON is camelCase, apart from the standard Web Manifest's
 specified property names. The one geometry response is a GeoJSON Feature served

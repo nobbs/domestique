@@ -19,18 +19,18 @@ import (
 const (
 	// convergenceUnauthorized means the slot has never completed, or has lost,
 	// its one-time browser onboarding. Nothing can be written until it does.
-	convergenceUnauthorized = openapi.TargetStatusConvergenceUnauthorized
+	convergenceUnauthorized = openapi.TargetStatus_ConvergenceUnauthorized
 	// convergenceFailed means this slot's own last reconciliation did not
 	// succeed. The reason is the safe category in its last run, which for a
 	// blocked run is a safety gate holding rather than a fault.
-	convergenceFailed = openapi.TargetStatusConvergenceFailed
+	convergenceFailed = openapi.TargetStatus_ConvergenceFailed
 	// convergenceLagging means the slot is onboarded and its last run was fine,
 	// but stored stages are still owed to it.
-	convergenceLagging = openapi.TargetStatusConvergenceLagging
+	convergenceLagging = openapi.TargetStatus_ConvergenceLagging
 	// convergenceCurrent means the Wahoo account holds every stored stage at the
 	// revision the library holds now. It is not a claim that any head unit has
 	// downloaded them.
-	convergenceCurrent = openapi.TargetStatusConvergenceCurrent
+	convergenceCurrent = openapi.TargetStatus_ConvergenceCurrent
 )
 
 // succeededOutcome is the one run result that is not something to look into. It
@@ -136,7 +136,7 @@ func (h *Handler) targetRuns(ctx context.Context) (map[string]openapi.TargetRun,
 // convergenceState reduces one target to the word that describes it.
 func convergenceState(
 	authorization string, stages openapi.TargetStages, run *openapi.TargetRun,
-) openapi.TargetStatusConvergence {
+) openapi.TargetStatus_Convergence {
 	if authorization != authorizedState {
 		return convergenceUnauthorized
 	}

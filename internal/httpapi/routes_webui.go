@@ -32,8 +32,8 @@ func (h *Handler) GetWebUIConfig(writer http.ResponseWriter, _ *http.Request) {
 	for index, basemap := range h.basemaps {
 		basemaps[index] = openapi.BrowserBasemap{
 			Name:            basemap.Name,
-			StyleUrl:        basemap.StyleURL,
-			StyleUrlDark:    optionalString(basemap.StyleURLDark),
+			StyleURL:        basemap.StyleURL,
+			StyleURLDark:    optionalString(basemap.StyleURLDark),
 			DarkCartography: optionalBool(basemap.DarkCartography),
 		}
 	}
@@ -89,7 +89,7 @@ func (h *Handler) stableAsset(writer http.ResponseWriter, request *http.Request)
 // GetAsset serves a build artefact the bundler content-hashed. A change of
 // content is a change of name, so these may be cached indefinitely; anything
 // served under a name the bundler did not hash belongs on stableAsset above.
-func (h *Handler) GetAsset(writer http.ResponseWriter, request *http.Request, _ string) {
+func (h *Handler) GetAsset(writer http.ResponseWriter, request *http.Request) {
 	writer.Header().Set("Cache-Control", cacheImmutable)
 	h.assets.Static(writer, request)
 }
@@ -103,10 +103,7 @@ func (h *Handler) GetIndex(writer http.ResponseWriter, request *http.Request) {
 }
 
 // GetRoutePage serves the application document for one stage's address.
-func (h *Handler) GetRoutePage(
-	writer http.ResponseWriter, request *http.Request,
-	_ openapi.Provider, _ openapi.RouteId, _ openapi.Stage,
-) {
+func (h *Handler) GetRoutePage(writer http.ResponseWriter, request *http.Request) {
 	h.index(writer, request)
 }
 
