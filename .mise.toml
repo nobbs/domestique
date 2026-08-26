@@ -3,7 +3,7 @@ go = "1.26.6"
 node = "24.19.0"
 # Kept in step with the `packageManager` field in internal/webui/app/package.json,
 # which is what establishes the same pnpm inside the container build.
-pnpm = "11.22.0"
+pnpm = "11.23.0"
 golangci-lint = "2.13.1"
 prek = "0.4.14"
 actionlint = "1.7.12"
