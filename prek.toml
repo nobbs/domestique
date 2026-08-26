@@ -32,9 +32,6 @@ id = "check-merge-conflict"
 id = "check-toml"
 
 [[repos.hooks]]
-id = "check-yaml"
-
-[[repos.hooks]]
 id = "detect-private-key"
 
 [[repos]]
@@ -54,9 +51,16 @@ language = "system"
 files = "\\.go$"
 pass_filenames = true
 
-# Named files rather than a glob, so `.markdownlint-cli2.yaml`'s `ignores`
-# stops applying. That costs nothing: it excludes `node_modules` and `dist`,
-# which are gitignored, so prek never lists a file from either.
+# The only Markdown lint there is. `mise run hygiene` runs this same hook over
+# every tracked file, so the gate needs no pass of its own; it used to keep one
+# anyway, over a filesystem glob, and the two disagreed about which files
+# existed. Fetched skills are gitignored but still on disk, so the glob walked
+# into third-party Markdown that git never lists and the gate failed on
+# hundreds of defects no commit hook could have seen.
+#
+# `.markdownlint-cli2.yaml` applies either way — `ignores` filters named files
+# as well as globbed ones — so taking the file list from git costs no coverage
+# and leaves one answer to what is linted instead of two.
 [[repos.hooks]]
 id = "markdownlint"
 name = "Markdown lint"
@@ -65,13 +69,17 @@ language = "system"
 files = "\\.md$"
 pass_filenames = true
 
-# OpenAPI accepts JSON flow syntax, but this contract stays readable YAML.
+# Every YAML file, not only the OpenAPI contract this once checked: yamlfmt
+# has to parse a document before it can format it, so it answers the question
+# `check-yaml` used to — is this loadable — and the further one that check
+# never asked, which is whether it is written the way the rest of the tree is.
+# What it will not touch is named in `.yamlfmt`'s own exclude list.
 [[repos.hooks]]
-id = "openapi-yaml-format"
-name = "OpenAPI YAML format"
+id = "yamlfmt"
+name = "YAML format"
 entry = "mise exec -- yamlfmt -conf .yamlfmt -lint"
 language = "system"
-files = "^api/openapi\\.yaml$"
+files = "\\.ya?ml$"
 pass_filenames = true
 
 # yamlfmt preserves flow mappings. Reject nonempty flow nodes separately while

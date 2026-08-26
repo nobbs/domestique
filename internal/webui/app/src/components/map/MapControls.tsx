@@ -7,11 +7,12 @@
  * and not these two controls'.
  */
 
-import { IconCurrentLocation, IconMapPinFilled, IconMinus, IconPlus } from "@tabler/icons-react";
+import { IconCurrentLocation, IconMinus, IconPlus } from "@tabler/icons-react";
 import { type ReactNode, useState } from "react";
 import { Marker, useMap } from "react-map-gl/maplibre";
 import { Button } from "../Button";
 import { ButtonGroup } from "../ButtonGroup";
+import { LocationPin } from "./LocationPin";
 
 const LOCATION_ZOOM = 12;
 
@@ -38,9 +39,7 @@ export function MapControls({ children }: { children?: ReactNode }) {
     <>
       {location ? (
         <Marker longitude={location.longitude} latitude={location.latitude} anchor="bottom">
-          <div className="current-location-marker" role="img" aria-label="Your location">
-            <IconMapPinFilled size={18} aria-hidden="true" />
-          </div>
+          <LocationPin />
         </Marker>
       ) : null}
       {/* Only where the corner is: the controls themselves are the application's own. */}

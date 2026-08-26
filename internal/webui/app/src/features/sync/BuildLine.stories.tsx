@@ -1,9 +1,8 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { expect } from "storybook/test";
-import { vi } from "vitest";
 import { statusQuery } from "../../api/queries";
-import { StoryProviders, status } from "../../storybook/fixtures";
+import { StoryProviders, StubbedFetch, status } from "../../storybook/fixtures";
 import { BuildLine } from "./BuildLine";
 
 const meta = {
@@ -66,24 +65,20 @@ export const DevelopmentBuild: Story = {
 export const Pending: Story = {
   decorators: [
     (Story) => {
-      vi.stubGlobal(
-        "fetch",
-        vi.fn(() => new Promise<Response>(() => {})),
-      );
       const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
       return (
-        <QueryClientProvider client={client}>
-          <Story />
-        </QueryClientProvider>
+        // A request that never answers, so the line is asked what it says while
+        // it still does not know.
+        <StubbedFetch respond={() => new Promise<Response>(() => {})}>
+          <QueryClientProvider client={client}>
+            <Story />
+          </QueryClientProvider>
+        </StubbedFetch>
       );
     },
   ],
   play: async ({ canvas }) => {
-    try {
-      await expect(canvas.queryByText(/^Running/)).not.toBeInTheDocument();
-    } finally {
-      vi.unstubAllGlobals();
-    }
+    await expect(canvas.queryByText(/^Running/)).not.toBeInTheDocument();
   },
 };

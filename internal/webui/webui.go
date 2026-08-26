@@ -13,8 +13,10 @@ import (
 	"net/http"
 )
 
-// bundleRoot is where the bundler writes its output.
-const bundleRoot = "app/dist"
+// bundleRoot is where the bundler writes its output, one level below the
+// embedded directory: see `build.outDir` in the app's vite config for why the
+// two are not the same.
+const bundleRoot = "app/dist/bundle"
 
 // ErrBundleMissing reports a binary built without its browser UI. The build
 // fails loudly rather than serving a placeholder, so a released image can never
@@ -23,6 +25,9 @@ var ErrBundleMissing = errors.New("browser UI bundle is missing: run `mise run u
 
 // The all: prefix keeps the embed valid when the working tree holds only the
 // committed .gitkeep, so the package compiles before the UI has been built.
+// Nothing empties this directory — the bundler writes into `bundle` inside it —
+// so that placeholder is never deleted and restored underneath a concurrent
+// reader of the worktree.
 //
 //go:embed all:app/dist
 var bundle embed.FS

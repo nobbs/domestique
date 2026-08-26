@@ -39,7 +39,8 @@ go.work.sum
 !.env.example
 
 # Browser UI build output and dependencies. The .gitkeep placeholder stays
-# tracked so the go:embed pattern remains valid before the UI has been built.
+# tracked so the go:embed pattern remains valid before the UI has been built;
+# the bundler writes into dist/bundle, so emptying its output never reaches it.
 node_modules/
 /.pnpm-store/
 /internal/webui/app/dist/*

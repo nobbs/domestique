@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { MemoryRouter } from "react-router";
 import { statusQuery, syncRunsQueryKey, weatherQuery, webUIConfigQuery } from "../api/queries";
 import type { Route, Status, SyncRun, WebUIConfig } from "../api/types";
@@ -180,4 +180,71 @@ export function StoryProviders({ children }: { children: ReactNode }) {
       <MemoryRouter>{children}</MemoryRouter>
     </QueryClientProvider>
   );
+}
+
+/**
+ * Replaces one global for the length of a story, and hands back the undo.
+ *
+ * `vi.stubGlobal` does the same thing, but it comes from Vitest's runtime,
+ * which exists only under the test runner. These stories are also read in the
+ * Storybook dev server, where reaching for it renders the story as an error
+ * instead — so the stub is done here, against nothing but the platform.
+ *
+ * The undo puts back the original descriptor rather than the original value.
+ * `localStorage` is a getter-only accessor on the window, so assigning to it
+ * does nothing at all, and restoring it as a plain value would leave a frozen
+ * copy of whatever the getter returned once — writable, where the real one is
+ * not. A name with no own property to begin with is deleted rather than
+ * restored, so nothing on the prototype stays shadowed.
+ */
+export function stubGlobal(name: string, value: unknown): () => void {
+  const target = globalThis as unknown as Record<string, unknown>;
+  const original = Object.getOwnPropertyDescriptor(target, name);
+  Object.defineProperty(target, name, { value, configurable: true, writable: true });
+
+  return () => {
+    if (original) {
+      Object.defineProperty(target, name, original);
+
+      return;
+    }
+    delete target[name];
+  };
+}
+
+/**
+ * Answers the story's `fetch` for as long as the story is on screen.
+ *
+ * Stubbed while rendering rather than from an effect: the components below ask
+ * for their data as they mount, which is before any effect of this one runs,
+ * and well before a play function does. Undone on unmount rather than at the
+ * end of `play`, which is not a promise that the global is ever put back — a
+ * play function that never runs, or is abandoned when the reader moves to
+ * another story, would leave every story after it fetching through this.
+ *
+ * The stub is also taken once per mount, not once per render: `stubGlobal`
+ * captures whatever it replaces, and calling it twice would capture the first
+ * stub as the thing to restore.
+ */
+export function StubbedFetch({
+  respond,
+  children,
+}: {
+  respond: () => Promise<Response>;
+  children: ReactNode;
+}) {
+  const restore = useRef<(() => void) | null>(null);
+  if (!restore.current) {
+    restore.current = stubGlobal("fetch", respond);
+  }
+
+  useEffect(
+    () => () => {
+      restore.current?.();
+      restore.current = null;
+    },
+    [],
+  );
+
+  return <>{children}</>;
 }

@@ -11,15 +11,17 @@ import (
 )
 
 func TestNewReportsAnUnbuiltBundle(t *testing.T) {
+	// The tree as a fresh clone has it: the committed placeholder, and no
+	// bundle directory for the bundler to have written yet.
 	_, err := newFromFS(fstest.MapFS{"app/dist/.gitkeep": {}}, bundleRoot)
 	require.ErrorIs(t, err, ErrBundleMissing)
 }
 
 func TestAssetsServeTheBundle(t *testing.T) {
 	assets, err := newFromFS(fstest.MapFS{
-		"app/dist/index.html":            {Data: []byte("<!doctype html><title>domestique</title>")},
-		"app/dist/assets/app-abc123.js":  {Data: []byte("export default null;")},
-		"app/dist/assets/app-abc123.css": {Data: []byte(":root{}")},
+		"app/dist/bundle/index.html":            {Data: []byte("<!doctype html><title>domestique</title>")},
+		"app/dist/bundle/assets/app-abc123.js":  {Data: []byte("export default null;")},
+		"app/dist/bundle/assets/app-abc123.css": {Data: []byte(":root{}")},
 	}, bundleRoot)
 	require.NoError(t, err)
 

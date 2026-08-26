@@ -1,7 +1,12 @@
 config:
   MD013: false
 ignores:
+  # Fetched skills, reached by either of the two names they answer to: the
+  # directory `mise run skills-sync` writes, and the symlinks it lays beside
+  # them for Claude Code. This glob walks the tree rather than asking git, so
+  # being gitignored is not enough to keep third-party Markdown out of it.
   - ".agents/**"
+  - ".claude/skills/**"
   - ".playwright/**"
   - ".worktrees/**"
   - "**/node_modules/**"

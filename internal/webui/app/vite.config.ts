@@ -56,7 +56,12 @@ export default defineConfig({
   // bundle has to be emitted as an ES module rather than the default IIFE.
   worker: { format: "es" },
   build: {
-    outDir: "dist",
+    // One level below the embedded root. `emptyOutDir` clears whatever it is
+    // pointed at, and the directory Go embeds holds a committed placeholder
+    // that keeps the embed pattern valid before the first build — so the two
+    // cannot be the same directory without the bundler deleting a tracked file
+    // on every run.
+    outDir: "dist/bundle",
     emptyOutDir: true,
     // Fail the build rather than silently shipping an oversized bundle.
     chunkSizeWarningLimit: 1200,

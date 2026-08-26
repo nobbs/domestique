@@ -916,7 +916,7 @@ jobs:
           IMAGE_RESULT: ${{ needs.image.result }}
           PUBLISH_RESULT: ${{ needs.publish.result }}
           DEPLOY_RESULT: ${{ needs.deploy.result }}
-        run: |
+        run: |-
           set -eu
 
           for result in "$CHANGES_RESULT" "$LINT_RESULT" "$TEST_RESULT" \

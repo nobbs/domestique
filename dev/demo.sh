@@ -166,12 +166,9 @@ export CGO_ENABLED=0
 # process this script can signal would not be the one holding the port, and
 # stopping the demo would leave an API behind still serving it.
 # Before the binary, because the bundle is embedded at compile time: building it
-# afterwards would leave the running API serving the previous one. The bundler
-# empties dist, which would remove the placeholder that keeps the go:embed
-# pattern valid, so it is restored the same way `mise run ui-build` does.
+# afterwards would leave the running API serving the previous one.
 if [[ "${WITH_BUNDLE}" == true ]]; then
   "${PNPM}" --dir "${ROOT}/internal/webui/app" run build
-  touch "${ROOT}/internal/webui/app/dist/.gitkeep"
 fi
 
 BIN_DIR="${DEMO_DIR}/bin"

@@ -39,21 +39,24 @@ run = "golangci-lint fmt"
 # prek's own configuration over the whole tree. The installed commit hook runs
 # the same hooks over staged files alone, so this is the repository-wide pass
 # that the hook deliberately does not pay for.
+# Ordered after the generator: `api-generate` rewrites two generated Go files
+# and the browser bindings in the worktree, and this reads them while it works.
+# The UI checks get the same ordering through `api-check`; this one had none,
+# and would intermittently see a file mid-write — prek reports that as its own
+# hooks having modified the tree, which is the one thing they never do.
 [hygiene]
 description = "Run every prek hook over the whole tree"
+wait_for = ["api-generate"]
 run = "prek run --all-files"
 
+# Ordered after the generator for the same reason `hygiene` is: the two
+# contract packages it compiles are written by `api-generate`.
 [lint]
 description = "Lint the Go tree"
+wait_for = ["api-generate"]
 sources = ["**/*.go", "go.mod", "go.sum", ".golangci.yml", "internal/webui/app/dist/**"]
 outputs = { auto = true }
 run = "golangci-lint run ./..."
-
-[markdownlint]
-description = "Lint the Markdown"
-sources = ["**/*.md", ".markdownlint-cli2.yaml"]
-outputs = { auto = true }
-run = 'markdownlint-cli2 "**/*.md"'
 
 # Both scripts run somewhere a mistake is expensive: one against the deployed
 # state, the other as root on the deploying host.
@@ -137,8 +140,11 @@ run = "./dev/check-generated.sh"
 # same ten minutes. It is stated because the CI job that runs this also runs
 # `test-race` after it, and the job's own budget has to exceed both — a number
 # the gate can only check if both tasks say what they are. See dev/gatecheck.
+# Ordered after the generator for the same reason `hygiene` is: the two
+# contract packages it compiles are written by `api-generate`.
 [test]
 description = "Run the Go tests and write their JUnit report"
+wait_for = ["api-generate"]
 sources = ["**/*.go", "go.mod", "go.sum", "**/testdata/**", "internal/webui/app/dist/**"]
 outputs = { auto = true }
 run = "CGO_ENABLED=0 gotestsum --format standard-quiet --junitfile .test-results/go.xml -- -shuffle=on -timeout=10m ./..."
@@ -187,24 +193,36 @@ outputs = { auto = true }
 wait_for = ["test"]
 run = "CGO_ENABLED=1 go test -race -shuffle=on -timeout=10m ./..."
 
+# Ordered after the generator for the same reason `hygiene` is: the two
+# contract packages it compiles are written by `api-generate`.
 [vet]
 description = "Vet the Go tree"
+wait_for = ["api-generate"]
 sources = ["**/*.go", "go.mod", "go.sum", "internal/webui/app/dist/**"]
 outputs = { auto = true }
 run = "CGO_ENABLED=0 go vet ./..."
 
+# Ordered after the generator for the same reason the checks above are: it
+# reads files `api-generate` rewrites in the worktree.
 [mod-check]
 description = "Check the Go module graph is tidy and verified"
+wait_for = ["api-generate"]
 sources = ["**/*.go", "go.mod", "go.sum"]
 outputs = { auto = true }
 run = ["go mod tidy -diff", "go mod verify"]
 
+# Ordered after the generator for the same reason `hygiene` is: the two
+# contract packages it compiles are written by `api-generate`.
 [vulncheck]
 description = "Check the Go tree against the advisory database"
+wait_for = ["api-generate"]
 run = "CGO_ENABLED=0 govulncheck ./..."
 
+# Ordered after the generator: it reads every file in the worktree, generated
+# ones included.
 [secret-scan]
 description = "Scan the working tree for secrets"
+wait_for = ["api-generate"]
 run = "gitleaks dir . --redact --no-banner"
 
 # Coverage is measured on demand and is deliberately not part of `quick`,
@@ -228,8 +246,11 @@ depends = ["coverage-go", "coverage-ui"]
 #
 # The -coverpkg set is the service; dev/ is repository tooling, measured by its
 # own tests but not part of the service's coverage.
+# Ordered after the generator for the same reason `hygiene` is: the two
+# contract packages it compiles are written by `api-generate`.
 [coverage-go]
 description = "Measure Go coverage and summarise it per package"
+wait_for = ["api-generate"]
 run = [
   "mkdir -p .coverage",
   "CGO_ENABLED=0 go test -shuffle=on -coverpkg=./cmd/...,./internal/... -coverprofile=.coverage/go.out ./...",
@@ -246,9 +267,12 @@ run = [
 # real Chromium over the demo stack — to move a status that no longer gates; see
 # the ui block in codecov.yml. What the browser suite is for it still does, in
 # `ui-browser-test`; it is no longer part of a number.
+# Ordered after the generator for the same reason the checks above are: it
+# reads files `api-generate` rewrites in the worktree.
 [coverage-ui]
 description = "Measure UI coverage across the jsdom suite"
 depends = ["ui-install"]
+wait_for = ["api-generate"]
 run = "pnpm --dir internal/webui/app run test:coverage"
 
 # The one coverage verdict that blocks a merge, answered here rather than five
@@ -481,7 +505,7 @@ run = "pnpm --dir internal/webui/app run test:browser:install"
 # internal/webui/app/playwright.config.ts.
 [ui-browser-test]
 description = "Run the browser UI suite over the demo stack"
-wait_for = ["ui-browser-install"]
+wait_for = ["ui-browser-install", "api-generate"]
 run = "pnpm --dir internal/webui/app run test:browser"
 
 # Every story, played in the same real browser: what a component test and a
@@ -492,7 +516,7 @@ run = "pnpm --dir internal/webui/app run test:browser"
 # given component's tests live in and why.
 [ui-storybook-test]
 description = "Run the Storybook component suite"
-wait_for = ["ui-browser-install"]
+wait_for = ["ui-browser-install", "api-generate"]
 run = "pnpm --dir internal/webui/app run test:storybook"
 
 # govulncheck does not see npm packages, so the JavaScript tree needs its own
@@ -502,14 +526,11 @@ description = "Check the UI dependency tree against the advisory database"
 wait_for = ["ui-install"]
 run = "pnpm --dir internal/webui/app audit --prod"
 
-# The bundler empties dist, which would remove the committed placeholder that
-# keeps the go:embed pattern valid before a UI build. Restore it afterwards.
-#
-# It waits for `ci-ui` for the same reason `build-check` does: the browser suite
-# in that group bundles into this same directory. `build-check` waiting is not
-# enough on its own, because a dependency is scheduled independently of what the
-# task depending on it waits for — so the write has to be ordered where it
-# happens.
+# Waits for `ci-ui` for the same reason `build-check` does: the browser suite in
+# that group bundles into this same directory, and two bundlers emptying it at
+# once leave neither's output whole. `build-check` waiting is not enough on its
+# own, because a dependency is scheduled independently of what the task
+# depending on it waits for — so the write has to be ordered where it happens.
 [ui-build]
 description = "Build the UI bundle"
 sources = [
@@ -520,12 +541,12 @@ sources = [
   "internal/webui/app/*.ts",
   "internal/webui/app/*.json",
 ]
-outputs = ["internal/webui/app/dist/**"]
+# The bundle alone. `dist` also holds the committed placeholder that keeps the
+# go:embed pattern valid, and the bundler neither writes nor reads it — naming
+# it here would declare an output the task never produces.
+outputs = ["internal/webui/app/dist/bundle/**"]
 wait_for = ["ui-install", "ci-ui"]
-run = [
-  "pnpm --dir internal/webui/app run build",
-  "touch internal/webui/app/dist/.gitkeep",
-]
+run = "pnpm --dir internal/webui/app run build"
 
 # The running service reports which public commit produced it, and only a
 # trusted build input can say which one that is: a Docker build context carries
@@ -604,7 +625,6 @@ description = "The lint half of the gate, as CI groups it"
 depends = [
   "hygiene",
   "lint",
-  "markdownlint",
   "shell-lint",
   "workflow-lint",
   "hook-check",
@@ -668,7 +688,6 @@ depends = [
   "api-check",
   "hygiene",
   "lint",
-  "markdownlint",
   "shell-lint",
   "workflow-lint",
   "hook-check",

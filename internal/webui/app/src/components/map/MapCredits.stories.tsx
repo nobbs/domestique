@@ -1,8 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
 import { expect, userEvent } from "storybook/test";
-import { vi } from "vitest";
-import { StoryProviders } from "../../storybook/fixtures";
+import { StoryProviders, StubbedFetch } from "../../storybook/fixtures";
 import { MapCredits, type MapCreditsProps } from "./MapCredits";
 
 const SURFACE_CREDIT = "Surface data © OpenStreetMap contributors (ODbL)";
@@ -133,38 +132,26 @@ export const SurvivesMovingIntoTheCluster: Story = {
 
 /** The credit read out of the style document, as text, beside the surface one. */
 export const ReadFromTheStyleDocument: Story = {
-  render: () => {
-    // Stubbed here rather than in `play`: the query fires as soon as the
-    // component mounts, which for a story is before `play` runs at all — a
-    // `render` function's body still runs before that mount, so this is the
-    // last point a play function's own stub could still land in time.
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(
-        async () =>
-          new Response(
-            JSON.stringify({
-              sources: {
-                basemap: { attribution: '<a href="https://example.test">&copy; Tile People</a>' },
-              },
-            }),
-          ),
-      ),
-    );
-
-    return <Credits styleUrl="https://tiles.example.test/style.json" />;
-  },
+  render: () => (
+    <StubbedFetch
+      respond={async () =>
+        new Response(
+          JSON.stringify({
+            sources: {
+              basemap: { attribution: '<a href="https://example.test">&copy; Tile People</a>' },
+            },
+          }),
+        )
+      }
+    >
+      <Credits styleUrl="https://tiles.example.test/style.json" />
+    </StubbedFetch>
+  ),
   play: async ({ canvas }) => {
-    try {
-      await userEvent.click(canvas.getByRole("button", { name: "Show the map credit" }));
-      await expect(
-        await canvas.findByText(`© Tile People · ${SURFACE_CREDIT}`),
-      ).toBeInTheDocument();
-      // The provider's own markup is read for its words and never rendered.
-      await expect(canvas.queryByRole("link")).not.toBeInTheDocument();
-    } finally {
-      vi.unstubAllGlobals();
-    }
+    await userEvent.click(canvas.getByRole("button", { name: "Show the map credit" }));
+    await expect(await canvas.findByText(`© Tile People · ${SURFACE_CREDIT}`)).toBeInTheDocument();
+    // The provider's own markup is read for its words and never rendered.
+    await expect(canvas.queryByRole("link")).not.toBeInTheDocument();
   },
 };
 
