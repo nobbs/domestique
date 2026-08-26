@@ -98,7 +98,24 @@ describe("BasemapPicker", () => {
 
     const toggle = screen.getByRole("button", { name: "Hide the basemap choices" });
     expect(toggle).toHaveAttribute("aria-expanded", "true");
-    expect(toggle).toHaveAttribute("aria-controls", screen.getByRole("radiogroup").id);
+
+    // What it opens is the popover, and the names are inside that: the group
+    // is no longer a sibling the button can name directly.
+    const controls = toggle.getAttribute("aria-controls") ?? "";
+    expect(document.getElementById(controls)).toContainElement(screen.getByRole("radiogroup"));
+  });
+
+  /*
+   * A reader who has seen enough gets out without aiming at the mark again —
+   * the reason this stopped being a panel that unfolds in place.
+   */
+  it("closes to Escape", async () => {
+    render(<Held />);
+    await open();
+
+    await userEvent.keyboard("{Escape}");
+
+    expect(screen.queryByRole("radiogroup")).not.toBeInTheDocument();
   });
 
   it("marks the basemap on screen, and only that one", async () => {

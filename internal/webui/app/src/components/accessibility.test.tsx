@@ -19,6 +19,7 @@ import { describe, it } from "vitest";
 import { weatherQuery } from "../api/queries";
 import type { Position, Route, WeatherPoint } from "../api/types";
 import { routeKey } from "../api/types";
+import { FilterPanel } from "../features/routes/FilterPanel";
 import { RoutePanel } from "../features/routes/RoutePanel";
 import { RouteProfile } from "../features/routes/RouteProfile";
 import { SearchPanel } from "../features/routes/SearchPanel";
@@ -261,7 +262,29 @@ describe("accessibility", () => {
         />,
       );
 
-      await expectNoAxeViolations(container);
+      // Unfolded, the names are in a portal rather than under `container`:
+      // the body is what carries them, so the body is what is checked.
+      await expectNoAxeViolations(expanded ? document.body : container);
+      unmount();
+    }
+  });
+
+  /*
+   * Unfolded as well as folded, because what unfolds is a dialog: the trigger
+   * alone passing says nothing about the popup the names are actually in.
+   */
+  it("holds for the library filters, folded and unfolded", async () => {
+    for (const expanded of [true, false]) {
+      const { container, unmount } = render(
+        <FilterPanel
+          filters={EMPTY_FILTERS}
+          onFiltersChange={() => {}}
+          expanded={expanded}
+          onExpandedChange={() => {}}
+        />,
+      );
+
+      await expectNoAxeViolations(expanded ? document.body : container);
       unmount();
     }
   });
