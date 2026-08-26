@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "storybook",
+      "runtimeExecutable": "mise",
+      "runtimeArgs": ["run", "storybook"],
+      "port": 6006
+    },
+    {
+      "name": "demo",
+      "runtimeExecutable": "mise",
+      "runtimeArgs": ["run", "demo"],
+      "port": 5173
+    }
+  ]
+}
