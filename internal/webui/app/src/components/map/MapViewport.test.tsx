@@ -211,4 +211,28 @@ describe("MapViewport", () => {
 
     expect(map().framings()).toHaveLength(2);
   });
+
+  /*
+   * A change of basemap unmounts this component and mounts it again — MapWidget
+   * holds its children back until the new style has loaded — and a mount that
+   * framed the same subject again would fly the camera home from wherever the
+   * reader had panned to, for a change that was never about the subject at all.
+   */
+  it("does not re-frame the same subject after being mounted again", () => {
+    const { unmount } = show(BOUNDS);
+    expect(map().framings()).toHaveLength(1);
+
+    unmount();
+    render(<MapViewport bounds={BOUNDS} maxZoom={14} />);
+
+    expect(map().framings()).toHaveLength(1);
+  });
+
+  it("frames again after being mounted again with a different subject", () => {
+    const { unmount } = show(BOUNDS);
+    unmount();
+    render(<MapViewport bounds={[8.0, 49.0, 8.1, 49.05]} maxZoom={14} />);
+
+    expect(map().framings()).toHaveLength(2);
+  });
 });
