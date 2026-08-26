@@ -15,6 +15,7 @@
 
 import { IconArrowLeft, IconX } from "@tabler/icons-react";
 import type { Route } from "../../api/types";
+import { Button } from "../../components/Button";
 import { RouteKey } from "../../components/route/RouteKey";
 import { SourceRouteLink } from "../../components/SourceRouteLink";
 import type { Climb } from "../../lib/climbs";
@@ -126,22 +127,15 @@ export function RoutePanel({
        * reading anything, and it sits where every dismissable thing keeps it.
        */}
       <div className="flex items-center justify-between gap-2">
-        <button
-          className="inline-flex items-center gap-1 text-sm text-[var(--ink-2)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
-          type="button"
-          onClick={onClose}
-        >
-          <IconArrowLeft size={16} stroke={2} aria-hidden="true" />
-          <span>{back}</span>
-        </button>
-        <button
-          className="inline-flex size-8 items-center justify-center rounded-lg text-[var(--ink-2)] hover:bg-[var(--base)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
-          type="button"
+        <Button variant="ghost" icon={<IconArrowLeft stroke={2} />} onClick={onClose}>
+          {back}
+        </Button>
+        <Button
+          variant="ghost"
+          icon={<IconX stroke={2} />}
           onClick={onClose}
           aria-label="Close the route"
-        >
-          <IconX size={18} stroke={2} aria-hidden="true" />
-        </button>
+        />
       </div>
       <div>
         <h2 className="text-xl font-semibold tracking-tight">{route.title}</h2>

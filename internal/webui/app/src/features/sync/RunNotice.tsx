@@ -23,8 +23,8 @@ import { useTriggerSourceSync, useTriggerTargetsSync } from "../../api/generated
 import { statusQuery, useSyncRunLookup } from "../../api/queries";
 import type { Status, SyncPhase, SyncRun } from "../../api/types";
 import { SYNC_PHASES } from "../../api/types";
+import { Button } from "../../components/Button";
 import { Alert, AlertDescription, AlertTitle } from "../../components/ui/alert";
-import { Button } from "../../components/ui/button";
 import { Spinner } from "../../components/ui/spinner";
 import { formatTimestamp } from "../../lib/format";
 import { syncGuidance } from "../../lib/syncGuidance";
@@ -189,7 +189,7 @@ export function RunNotice({ reference }: { reference: string | null }) {
         {guidance ? guidance.remediation : "Nothing needs doing. It is in the history below."}
       </AlertDescription>
       <div className="mt-2 flex flex-wrap items-center gap-2">
-        <Button disabled={run.isPending} onClick={() => run.mutate(notice.phase)}>
+        <Button variant="primary" disabled={run.isPending} onClick={() => run.mutate(notice.phase)}>
           {run.isPending ? <Spinner aria-label="Starting run" /> : null}
           {RETRY_LABELS[notice.phase]}
         </Button>

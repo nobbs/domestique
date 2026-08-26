@@ -16,8 +16,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 import { statusQuery, syncRunsQueryKey, useSyncRuns, webUIConfigQuery } from "../../api/queries";
 import type { SyncRun } from "../../api/types";
+import { Button } from "../../components/Button";
 import { Badge } from "../../components/ui/badge";
-import { Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Spinner } from "../../components/ui/spinner";
 import { formatTimestamp } from "../../lib/format";
@@ -163,7 +163,7 @@ export function SyncHistory() {
       </ul>
       {hasNextPage ? (
         <Button
-          variant="outline"
+          variant="standard"
           disabled={isFetchingNextPage}
           onClick={() => void fetchNextPage()}
         >
