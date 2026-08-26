@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { expect } from "storybook/test";
+import { vi } from "vitest";
 import { statusQuery } from "../../api/queries";
 import { StoryProviders, status } from "../../storybook/fixtures";
 import { BuildLine } from "./BuildLine";
@@ -54,5 +55,35 @@ export const DevelopmentBuild: Story = {
   ],
   play: async ({ canvas }) => {
     await expect(canvas.getByRole("link", { name: "a development build" })).toBeInTheDocument();
+  },
+};
+
+/**
+ * Not knowing yet is not the same as knowing there is no revision: naming a
+ * development build on a deployed service, even for one frame, is the exact
+ * wrong answer to the question this line exists to settle.
+ */
+export const Pending: Story = {
+  decorators: [
+    (Story) => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(() => new Promise<Response>(() => {})),
+      );
+      const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+      return (
+        <QueryClientProvider client={client}>
+          <Story />
+        </QueryClientProvider>
+      );
+    },
+  ],
+  play: async ({ canvas }) => {
+    try {
+      await expect(canvas.queryByText(/^Running/)).not.toBeInTheDocument();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   },
 };
