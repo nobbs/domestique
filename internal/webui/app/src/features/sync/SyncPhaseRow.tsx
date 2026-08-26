@@ -12,7 +12,7 @@ import { syncGuidance } from "../../lib/syncGuidance";
  * and what to do about it is the guidance line beneath it, because "held" and
  * "failed" ask opposite things of an operator and neither fits in a count.
  */
-export function runSummary(phase: SyncPhase, run: SyncPhaseRun | undefined): string {
+function runSummary(phase: SyncPhase, run: SyncPhaseRun | undefined): string {
   if (!run) {
     return "Has not run yet";
   }

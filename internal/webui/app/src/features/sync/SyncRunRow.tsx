@@ -4,7 +4,7 @@ import { formatTimestamp } from "../../lib/format";
 import { GUIDANCE_LABELS, syncGuidance } from "../../lib/syncGuidance";
 
 /** How a recorded run ended, in one phrase. */
-export function runResult(run: SyncRun): string {
+function runResult(run: SyncRun): string {
   const guidance = syncGuidance(run.phase, run.result, run.failure);
 
   return guidance ? GUIDANCE_LABELS[guidance.kind] : "Succeeded";
@@ -17,7 +17,7 @@ export function runResult(run: SyncRun): string {
  * waiting for the operator, so it gets its own word and its own colour rather
  * than borrowing the red of a run that broke.
  */
-export function runTone(run: SyncRun): "good" | "hold" | "alert" {
+function runTone(run: SyncRun): "good" | "hold" | "alert" {
   const guidance = syncGuidance(run.phase, run.result, run.failure);
   if (!guidance) {
     return "good";
@@ -35,7 +35,7 @@ export function runTone(run: SyncRun): "good" | "hold" | "alert" {
  * nothing says so by omission, because nought deleted is the ordinary case and
  * a zero on every row makes the one that is not zero harder to see.
  */
-export function runCounts(run: SyncRun): string {
+function runCounts(run: SyncRun): string {
   if (run.phase === "source") {
     return `${run.sourceStages} routes`;
   }

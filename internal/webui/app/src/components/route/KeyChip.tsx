@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import type { SurfaceKind } from "../../api/types";
 import { ToggleGroupItem } from "../ui/toggle-group";
 
 export interface KeyChipProps {
@@ -11,7 +12,7 @@ export interface KeyChipProps {
   label: ReactNode;
   share: string;
   /** Which list the chip is in, and the swatch's own data attribute for it. */
-  swatch: { band: number } | { surface: string };
+  swatch: { band: number } | { surface: SurfaceKind };
 }
 
 /**
