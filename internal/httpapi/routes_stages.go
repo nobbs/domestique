@@ -125,7 +125,7 @@ func (h *Handler) GetRouteGeometry(
 // `202` here — the operator's request has been taken either way.
 func (h *Handler) ReprocessRoute(
 	writer http.ResponseWriter, request *http.Request,
-	_ openapi.Provider, _ openapi.RouteId, _ openapi.Stage, _ openapi.ReprocessRouteParams,
+	_ openapi.Provider, _ openapi.RouteId, _ openapi.Stage,
 ) {
 	provider, routeID, stageOrder, ok := stageKey(request)
 	if !ok {
@@ -218,17 +218,22 @@ func (h *Handler) stageValidationView() *openapi.RouteValidation {
 	}
 }
 
-// stageKey reads the provider and the positive route and stage identifiers
-// from the path. The provider is not checked against a known set here: state
-// is keyed by provider, routeID and stageOrder together, so a provider naming
-// nothing stored is already refused downstream as not found, the same way a
-// well-formed but absent routeID is.
+// stageKey reads the provider and the route and stage identifiers from the
+// path. Their shape is already settled: the contract declares them as a
+// non-empty string and two integers of minimum 1, and the request validator
+// refuses anything else before this runs. The parse is repeated rather than
+// trusted only because the values arrive as path text.
+//
+// The provider is not checked against a known set here: state is keyed by
+// provider, routeID and stageOrder together, so a provider naming nothing
+// stored is already refused downstream as not found, the same way a well-formed
+// but absent routeID is.
 func stageKey(request *http.Request) (provider route.Provider, routeID int64, stageOrder int, ok bool) {
 	provider = route.Provider(request.PathValue("provider"))
 	routeID, routeErr := strconv.ParseInt(request.PathValue("routeId"), 10, 64)
 	stageOrder, stageErr := strconv.Atoi(request.PathValue("stage"))
 
-	return provider, routeID, stageOrder, provider != "" && routeErr == nil && stageErr == nil && routeID > 0 && stageOrder > 0
+	return provider, routeID, stageOrder, routeErr == nil && stageErr == nil
 }
 
 func (h *Handler) notFound(writer http.ResponseWriter) {
@@ -273,8 +278,7 @@ func (h *Handler) RedirectLegacyGeometry(
 
 // RedirectLegacyReprocess does the same for that stage's reprocess request.
 func (h *Handler) RedirectLegacyReprocess(
-	writer http.ResponseWriter, request *http.Request,
-	_ openapi.RouteId, _ openapi.Stage, _ openapi.RedirectLegacyReprocessParams,
+	writer http.ResponseWriter, request *http.Request, _ openapi.RouteId, _ openapi.Stage,
 ) {
 	h.redirectLegacyStagePath(writer, request, "/reprocess")
 }
@@ -297,12 +301,11 @@ func (h *Handler) RedirectLegacyRoutePage(
 	http.Redirect(writer, request, target, http.StatusPermanentRedirect)
 }
 
-// legacyStagePathValues parses and validates the route and stage identifiers
-// from a legacy, provider-less path, the same way stageKey does for the
-// provider-qualified one.
+// legacyStagePathValues reads the route and stage identifiers from a legacy,
+// provider-less path, on the same terms as stageKey above.
 func legacyStagePathValues(request *http.Request) (routeID int64, stageOrder int, ok bool) {
 	routeID, routeErr := strconv.ParseInt(request.PathValue("routeId"), 10, 64)
 	stageOrder, stageErr := strconv.Atoi(request.PathValue("stage"))
 
-	return routeID, stageOrder, routeErr == nil && stageErr == nil && routeID > 0 && stageOrder > 0
+	return routeID, stageOrder, routeErr == nil && stageErr == nil
 }

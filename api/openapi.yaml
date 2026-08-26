@@ -56,7 +56,7 @@ paths:
     post:
       tags: [browser-api]
       operationId: triggerSync
-      parameters: [{$ref: '#/components/parameters/Origin'}]
+      security: [{accessAssertion: [], browserOrigin: []}]
       responses:
         '202': {$ref: '#/components/responses/Accepted'}
         '401': {$ref: '#/components/responses/Unauthorized'}
@@ -66,7 +66,7 @@ paths:
     post:
       tags: [browser-api]
       operationId: triggerSourceSync
-      parameters: [{$ref: '#/components/parameters/Origin'}]
+      security: [{accessAssertion: [], browserOrigin: []}]
       responses:
         '202': {$ref: '#/components/responses/Accepted'}
         '401': {$ref: '#/components/responses/Unauthorized'}
@@ -76,7 +76,7 @@ paths:
     post:
       tags: [browser-api]
       operationId: triggerTargetsSync
-      parameters: [{$ref: '#/components/parameters/Origin'}]
+      security: [{accessAssertion: [], browserOrigin: []}]
       responses:
         '202': {$ref: '#/components/responses/Accepted'}
         '401': {$ref: '#/components/responses/Unauthorized'}
@@ -86,9 +86,9 @@ paths:
     post:
       tags: [browser-api]
       operationId: triggerTargetSync
+      security: [{accessAssertion: [], browserOrigin: []}]
       parameters:
         - {$ref: '#/components/parameters/Target'}
-        - {$ref: '#/components/parameters/Origin'}
       responses:
         '202': {$ref: '#/components/responses/Accepted'}
         '401': {$ref: '#/components/responses/Unauthorized'}
@@ -99,9 +99,9 @@ paths:
     post:
       tags: [browser-api]
       operationId: clearTarget
+      security: [{accessAssertion: [], browserOrigin: []}]
       parameters:
         - {$ref: '#/components/parameters/Target'}
-        - {$ref: '#/components/parameters/Origin'}
       responses:
         '202': {$ref: '#/components/responses/Accepted'}
         '401': {$ref: '#/components/responses/Unauthorized'}
@@ -112,7 +112,7 @@ paths:
     post:
       tags: [browser-api]
       operationId: triggerSurfaceSync
-      parameters: [{$ref: '#/components/parameters/Origin'}]
+      security: [{accessAssertion: [], browserOrigin: []}]
       responses:
         '202': {$ref: '#/components/responses/Accepted'}
         '401': {$ref: '#/components/responses/Unauthorized'}
@@ -122,7 +122,7 @@ paths:
     put:
       tags: [browser-api]
       operationId: setSyncSchedule
-      parameters: [{$ref: '#/components/parameters/Origin'}]
+      security: [{accessAssertion: [], browserOrigin: []}]
       requestBody:
         required: true
         content: {application/json: {schema: {$ref: '#/components/schemas/SyncSchedule'}}}
@@ -186,7 +186,8 @@ paths:
     post:
       tags: [browser-api]
       operationId: reprocessRoute
-      parameters: [{$ref: '#/components/parameters/Provider'}, {$ref: '#/components/parameters/RouteId'}, {$ref: '#/components/parameters/Stage'}, {$ref: '#/components/parameters/Origin'}]
+      parameters: [{$ref: '#/components/parameters/Provider'}, {$ref: '#/components/parameters/RouteId'}, {$ref: '#/components/parameters/Stage'}]
+      security: [{accessAssertion: [], browserOrigin: []}]
       responses:
         '202': {$ref: '#/components/responses/Accepted'}
         '400': {$ref: '#/components/responses/InvalidRequest'}
@@ -207,7 +208,8 @@ paths:
   /v1/routes/{routeId}/stages/{stage}/reprocess:
     post:
       operationId: redirectLegacyReprocess
-      parameters: [{$ref: '#/components/parameters/RouteId'}, {$ref: '#/components/parameters/Stage'}, {$ref: '#/components/parameters/Origin'}]
+      parameters: [{$ref: '#/components/parameters/RouteId'}, {$ref: '#/components/parameters/Stage'}]
+      security: [{accessAssertion: [], browserOrigin: []}]
       responses: {'308': {$ref: '#/components/responses/LegacyRedirect'}, '400': {$ref: '#/components/responses/InvalidRequest'}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}, '404': {$ref: '#/components/responses/NotFound'}}
   /v1/webui/config:
     get:
@@ -227,7 +229,7 @@ paths:
           required: true
           style: form
           explode: true
-          schema: {type: array, minItems: 1, maxItems: 48, items: {type: string, pattern: '^-?[0-9]+(\\.[0-9]+)?,-?[0-9]+(\\.[0-9]+)?,.+$'}}
+          schema: {type: array, minItems: 1, maxItems: 48, items: {type: string, pattern: '^-?[0-9]+(\.[0-9]+)?,-?[0-9]+(\.[0-9]+)?,.+$'}}
       responses:
         '200': {description: Forecast samples in request order., content: {application/json: {schema: {$ref: '#/components/schemas/WeatherForecast'}}}}
         '400': {$ref: '#/components/responses/InvalidRequest'}
@@ -321,8 +323,16 @@ components:
       in: header
       name: Cf-Access-Jwt-Assertion
       description: Signed Cloudflare Access assertion for the configured principal.
+    browserOrigin:
+      type: apiKey
+      in: header
+      name: Origin
+      description: >-
+        Exact browser origin configured for this service. Required by every
+        operation that starts a run or writes state, and modelled as a security
+        scheme rather than a parameter because a request without it is refused
+        rather than misread.
   parameters:
-    Origin: {name: Origin, in: header, required: true, schema: {type: string}, description: Exact browser origin configured for this service.}
     Target: {name: target, in: path, required: true, schema: {type: string, minLength: 1}}
     Provider: {name: provider, in: path, required: true, schema: {type: string, minLength: 1}}
     RouteId: {name: routeId, in: path, required: true, schema: {type: integer, format: int64, minimum: 1}}

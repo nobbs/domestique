@@ -408,11 +408,14 @@ type Basemap struct {
 
 // Handler enforces Cloudflare Access identity and exposes the v1 HTTP surface.
 type Handler struct {
-	oauth               OAuth
-	syncRuns            Sync
-	state               State
-	assets              Assets
-	weather             Weather
+	oauth    OAuth
+	syncRuns Sync
+	state    State
+	assets   Assets
+	weather  Weather
+	// validate holds every request to the document before it reaches a
+	// handler: parameter bounds, request bodies, and provenance.
+	validate            func(http.Handler) http.Handler
 	accessVerifier      AccessVerifier
 	surfaceIndex        func() (string, time.Time, bool)
 	now                 func() time.Time
@@ -539,6 +542,9 @@ func New(
 		accessVerifier: options.AccessVerifier,
 		allowedEmail:   strings.TrimSpace(options.AccessEmail),
 	}
+	if err := handler.useContractValidation(); err != nil {
+		return nil, err
+	}
 	handler.routes()
 
 	return handler, nil
@@ -549,9 +555,10 @@ func New(
 // compiling until it is served.
 var _ openapi.ServerInterface = (*Handler)(nil)
 
-// routes registers the generated OpenAPI surface. Access and Origin checks sit
-// outside generated parameter binding, so malformed requests cannot become an
-// unauthenticated side door and every rejection keeps the shared error shape.
+// routes registers the generated OpenAPI surface. The identity gate sits
+// outside it, so a caller that has proven nothing cannot learn which paths
+// exist; everything else the document declares is enforced by the validator
+// between the two.
 func (h *Handler) routes() {
 	openapi.HandlerWithOptions(h, openapi.StdHTTPServerOptions{
 		BaseRouter:       h.mux,
@@ -579,51 +586,20 @@ func (h *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 
 		return
 	}
-	h.gated(http.HandlerFunc(h.contractDispatch)).ServeHTTP(writer, request)
+	h.gated(h.bounded(h.validate(h.mux))).ServeHTTP(writer, request)
 }
 
-func (h *Handler) contractDispatch(writer http.ResponseWriter, request *http.Request) {
-	if contractStateChange(request) {
-		h.sameOrigin(h.mux).ServeHTTP(writer, request)
-
-		return
-	}
-	h.mux.ServeHTTP(writer, request)
-}
-
-// contractStateChange mirrors the state-changing OpenAPI operations, which are
-// exactly the ones declaring the Origin parameter. Because the generated router
-// registers routes from that document while this list is written out by hand,
-// TestContractStateChangeMatchesTheDocumentedOriginParameter asserts the two
-// agree: an operation added to the contract without a matching case here would
-// otherwise serve with no provenance check at all.
-//
-// OAuth is deliberately absent from both: its cross-site redirect is protected
-// by one-time, identity-bound state rather than Origin.
-//
-// The escaped path is what is classified, because the escaped path is what
-// ServeMux routes on. A target identifier is operator-configured free text and
-// may contain a reserved character, so "/v1/sync/targets/a%2Fb" reaches the
-// {target} route as one segment while its decoded form reads as two — and a
-// segment count taken from the decoded form would wave that request past the
-// Origin check the route it matched requires.
-func contractStateChange(request *http.Request) bool {
-	path := request.URL.EscapedPath()
-	if request.Method == http.MethodPut {
-		return path == "/v1/sync/schedule"
-	}
-	if request.Method != http.MethodPost {
-		return false
-	}
-	switch path {
-	case "/v1/sync", "/v1/sync/source", "/v1/sync/targets", "/v1/sync/surface":
-		return true
-	}
-	return (strings.HasPrefix(path, "/v1/sync/targets/") &&
-		strings.Count(path, "/") == 4) ||
-		(strings.HasPrefix(path, "/v1/targets/") && strings.HasSuffix(path, "/clear")) ||
-		(strings.HasPrefix(path, "/v1/providers/") && strings.HasSuffix(path, "/reprocess")) ||
-		(strings.HasPrefix(path, "/v1/routes/") && strings.HasSuffix(path, "/reprocess"))
+// bounded caps the body before the validator reads it. The validator reads a
+// declared request body whole in order to check it against its schema, and does
+// so without a limit of its own, so the cap has to be in place before it runs
+// rather than in the one handler that decodes a body.
+func (h *Handler) bounded(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.Body != nil && request.Body != http.NoBody {
+			request.Body = http.MaxBytesReader(writer, request.Body, maximumRequestBytes)
+		}
+		next.ServeHTTP(writer, request)
+	})
 }
 
 func (h *Handler) contractRequestError(writer http.ResponseWriter, _ *http.Request, _ error) {
@@ -668,36 +644,6 @@ func (h *Handler) gated(next http.Handler) http.Handler {
 		// configured one only in case, and the routes that need an identity
 		// read h.allowedEmail. OAuth state is bound to that one spelling, so a
 		// flow started in one request stays consumable by the next.
-		next.ServeHTTP(writer, request)
-	})
-}
-
-// sameOrigin refuses a state-changing request that did not come from this
-// service's own browser UI. Every route that starts a run or writes state must
-// be wrapped in it.
-//
-// The identity gate proves who is calling; it does not prove that they meant to
-// call. An Access session lives in an ordinary browser, so a page on any other
-// site could otherwise post to these routes and have that session start a
-// synchronization or reprocess a stage on the operator's behalf.
-//
-// A browser attaches Origin to every request whose method is not GET or HEAD,
-// including a same-origin one, so the UI's own requests always carry it. A
-// missing header is therefore not "same-origin, header omitted" — it is a
-// caller that is not this UI, and it is refused rather than trusted. So is
-// "null", which is what a sandboxed or redirected context sends.
-//
-// The OAuth callback is deliberately not wrapped: it is a cross-site GET the
-// browser is redirected into, and what protects it is its one-time,
-// identity-bound, expiring state rather than its provenance.
-func (h *Handler) sameOrigin(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		if request.Header.Get("Origin") != h.browserOrigin {
-			h.error(writer, http.StatusForbidden, "forbidden", "request origin is not permitted")
-
-			return
-		}
-
 		next.ServeHTTP(writer, request)
 	})
 }
@@ -879,7 +825,7 @@ func originOf(value string) (string, error) {
 		return "", errors.New("tile style URL must be an absolute HTTPS URL")
 	}
 
-	// Lowercased because a host is not case-sensitive, matching sameOrigin's
+	// Lowercased because a host is not case-sensitive, matching the provenance
 	// comparison in the configuration layer: a dark style differing from its
 	// light counterpart only by host case is the same origin a browser would
 	// use, and must not fail here after passing validation there.

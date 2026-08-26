@@ -2,6 +2,9 @@ package: contract
 generate:
   models: true
   std-http-server: true
+  # The document the request validator enforces at runtime, carried in the
+  # binary so it cannot drift from the bindings generated beside it.
+  embedded-spec: true
 output: internal/httpapi/contract/openapi.gen.go
 output-options:
   exclude-tags: [readiness]
