@@ -32,9 +32,6 @@ id = "check-merge-conflict"
 id = "check-toml"
 
 [[repos.hooks]]
-id = "check-yaml"
-
-[[repos.hooks]]
 id = "detect-private-key"
 
 [[repos]]
@@ -72,13 +69,17 @@ language = "system"
 files = "\\.md$"
 pass_filenames = true
 
-# OpenAPI accepts JSON flow syntax, but this contract stays readable YAML.
+# Every YAML file, not only the OpenAPI contract this once checked: yamlfmt
+# has to parse a document before it can format it, so it answers the question
+# `check-yaml` used to — is this loadable — and the further one that check
+# never asked, which is whether it is written the way the rest of the tree is.
+# What it will not touch is named in `.yamlfmt`'s own exclude list.
 [[repos.hooks]]
-id = "openapi-yaml-format"
-name = "OpenAPI YAML format"
+id = "yamlfmt"
+name = "YAML format"
 entry = "mise exec -- yamlfmt -conf .yamlfmt -lint"
 language = "system"
-files = "^api/openapi\\.yaml$"
+files = "\\.ya?ml$"
 pass_filenames = true
 
 # yamlfmt preserves flow mappings. Reject nonempty flow nodes separately while

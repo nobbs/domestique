@@ -50,7 +50,12 @@ services:
     network_mode: "service:tunnel-tailscale"
     depends_on:
       - tunnel-tailscale
-    command: ["tunnel", "--no-autoupdate", "--config", "/etc/cloudflared/config.yml", "run"]
+    command:
+      - "tunnel"
+      - "--no-autoupdate"
+      - "--config"
+      - "/etc/cloudflared/config.yml"
+      - "run"
     volumes:
       # Holds config.yml and the tunnel credentials JSON. Both are secrets in
       # the sense that the credentials file authenticates this tunnel.

@@ -1,7 +1,29 @@
 line_ending: lf
+
 formatter:
   type: basic
   indent: 2
   eof_newline: true
   trim_trailing_whitespace: true
   force_array_style: block
+
+  # Blank lines are load-bearing in this repository's YAML: nearly every block
+  # is preceded by the paragraph explaining it, and without this the formatter
+  # welds each comment to the one before it and every top-level key to its
+  # neighbour. The rule this enforces is indentation and array style, not how
+  # densely a file is allowed to be written.
+  retain_line_breaks: true
+
+  # A folded scalar keeps the line breaks it was written with. Both `>-` blocks
+  # in the CI workflow — a job condition and a `docker buildx` invocation — are
+  # broken across lines so each clause can be read and reviewed on its own, and
+  # folding them back would produce two lines of several hundred characters
+  # that say exactly the same thing.
+  scan_folded_as_literal: true
+
+# pnpm writes this file and rewrites it on every resolution, so its shape is
+# pnpm's to decide. Excluded here rather than in the hook because yamlfmt
+# applies this list to files named on the command line as well as to the ones
+# it discovers, which leaves one answer to what is formatted.
+exclude:
+  - "internal/webui/app/pnpm-lock.yaml"
