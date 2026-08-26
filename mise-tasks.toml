@@ -39,12 +39,21 @@ run = "golangci-lint fmt"
 # prek's own configuration over the whole tree. The installed commit hook runs
 # the same hooks over staged files alone, so this is the repository-wide pass
 # that the hook deliberately does not pay for.
+# Ordered after the generator: `api-generate` rewrites two generated Go files
+# and the browser bindings in the worktree, and this reads them while it works.
+# The UI checks get the same ordering through `api-check`; this one had none,
+# and would intermittently see a file mid-write — prek reports that as its own
+# hooks having modified the tree, which is the one thing they never do.
 [hygiene]
 description = "Run every prek hook over the whole tree"
+wait_for = ["api-generate"]
 run = "prek run --all-files"
 
+# Ordered after the generator for the same reason `hygiene` is: the two
+# contract packages it compiles are written by `api-generate`.
 [lint]
 description = "Lint the Go tree"
+wait_for = ["api-generate"]
 sources = ["**/*.go", "go.mod", "go.sum", ".golangci.yml", "internal/webui/app/dist/**"]
 outputs = { auto = true }
 run = "golangci-lint run ./..."
@@ -131,8 +140,11 @@ run = "./dev/check-generated.sh"
 # same ten minutes. It is stated because the CI job that runs this also runs
 # `test-race` after it, and the job's own budget has to exceed both — a number
 # the gate can only check if both tasks say what they are. See dev/gatecheck.
+# Ordered after the generator for the same reason `hygiene` is: the two
+# contract packages it compiles are written by `api-generate`.
 [test]
 description = "Run the Go tests and write their JUnit report"
+wait_for = ["api-generate"]
 sources = ["**/*.go", "go.mod", "go.sum", "**/testdata/**", "internal/webui/app/dist/**"]
 outputs = { auto = true }
 run = "CGO_ENABLED=0 gotestsum --format standard-quiet --junitfile .test-results/go.xml -- -shuffle=on -timeout=10m ./..."
@@ -181,8 +193,11 @@ outputs = { auto = true }
 wait_for = ["test"]
 run = "CGO_ENABLED=1 go test -race -shuffle=on -timeout=10m ./..."
 
+# Ordered after the generator for the same reason `hygiene` is: the two
+# contract packages it compiles are written by `api-generate`.
 [vet]
 description = "Vet the Go tree"
+wait_for = ["api-generate"]
 sources = ["**/*.go", "go.mod", "go.sum", "internal/webui/app/dist/**"]
 outputs = { auto = true }
 run = "CGO_ENABLED=0 go vet ./..."
@@ -193,12 +208,18 @@ sources = ["**/*.go", "go.mod", "go.sum"]
 outputs = { auto = true }
 run = ["go mod tidy -diff", "go mod verify"]
 
+# Ordered after the generator for the same reason `hygiene` is: the two
+# contract packages it compiles are written by `api-generate`.
 [vulncheck]
 description = "Check the Go tree against the advisory database"
+wait_for = ["api-generate"]
 run = "CGO_ENABLED=0 govulncheck ./..."
 
+# Ordered after the generator: it reads every file in the worktree, generated
+# ones included.
 [secret-scan]
 description = "Scan the working tree for secrets"
+wait_for = ["api-generate"]
 run = "gitleaks dir . --redact --no-banner"
 
 # Coverage is measured on demand and is deliberately not part of `quick`,
@@ -222,8 +243,11 @@ depends = ["coverage-go", "coverage-ui"]
 #
 # The -coverpkg set is the service; dev/ is repository tooling, measured by its
 # own tests but not part of the service's coverage.
+# Ordered after the generator for the same reason `hygiene` is: the two
+# contract packages it compiles are written by `api-generate`.
 [coverage-go]
 description = "Measure Go coverage and summarise it per package"
+wait_for = ["api-generate"]
 run = [
   "mkdir -p .coverage",
   "CGO_ENABLED=0 go test -shuffle=on -coverpkg=./cmd/...,./internal/... -coverprofile=.coverage/go.out ./...",
