@@ -39,11 +39,19 @@ export function MapWidget({
       <MapLibre
         mapStyle={styleUrl}
         onLoad={() => setLoadedStyleUrl(styleUrl)}
-        onStyleData={(event) => {
-          if (event.target.isStyleLoaded()) {
-            setLoadedStyleUrl(styleUrl);
-          }
-        }}
+        // `idle`, not `styledata`, which cannot answer this question. Changing
+        // the basemap fires `styledata` several times, and the only one that
+        // reports `isStyleLoaded()` — the first, microseconds after the swap —
+        // is still describing the style being replaced. So the children came
+        // back on the strength of the outgoing style having been ready, and
+        // every later `styledata` reported false. A swap that missed that one
+        // accidental true never saw another event, and the routes and the
+        // controls stayed gone for good.
+        //
+        // `idle` is emitted once the new style is loaded and everything it
+        // asked for has been drawn, which is the first moment the layers below
+        // can actually be added.
+        onIdle={() => setLoadedStyleUrl(styleUrl)}
         style={{ width: "100%", height: "100%" }}
         aria-label={ariaLabel}
         attributionControl={false}
