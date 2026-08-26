@@ -177,7 +177,7 @@ set, and nothing else is:
 | Not measured | Why |
 | --- | --- |
 | `dev/` | Repository tooling rather than the service. It has its own tests, and they run in the normal suite. |
-| `internal/httpapi/contract/openapi.gen.go` | Generated bindings. Generator freshness and contract tests verify the source of truth; branch coverage would only grade generator output. |
+| `internal/*/contract/openapi.gen.go` | Generated bindings, for the served listener and the readiness one. Generator freshness and contract tests verify the source of truth; branch coverage would only grade generator output. |
 | `src/**/*.test.{ts,tsx}` and `src/test/` | The tests and their harness are the measurement, not its subject. |
 | `src/**/*.d.ts` | Type-only declarations emit no runtime statement to reach. |
 | `src/main.tsx` | It mounts React onto a real document and does nothing else, so a test of it would assert the framework rather than this UI. |

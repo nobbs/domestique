@@ -19,6 +19,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/nobbs/domestique/internal/readiness/contract"
 )
 
 // stateTimeout bounds the one local read a probe performs. A probe that hangs
@@ -97,24 +99,27 @@ func (h *Handler) ready(writer http.ResponseWriter, request *http.Request) {
 	}); err != nil {
 		// The category only. The reason a state read failed can name a path or a
 		// key, and this response is written to whatever asked.
-		unready(writer, "state_unreadable")
+		unready(writer, contract.StateUnreadable)
 
 		return
 	}
 	for _, targetID := range h.targetIDs {
 		if _, found := known[targetID]; !found {
-			unready(writer, "state_incomplete")
+			unready(writer, contract.StateIncomplete)
 
 			return
 		}
 	}
-	writeJSON(writer, http.StatusOK, map[string]string{"status": "ready"})
+	writeJSON(writer, http.StatusOK, contract.Readiness{Status: contract.Ready})
 }
 
-func unready(writer http.ResponseWriter, reason string) {
-	writeJSON(writer, http.StatusServiceUnavailable, map[string]string{
-		"status": "unready",
-		"reason": reason,
+// unready reports why the probe failed, in the contract's own words: the reason
+// is the generated enum rather than a string, so a reason this package can
+// report is a reason api/openapi.yaml declares.
+func unready(writer http.ResponseWriter, reason contract.UnreadyReason) {
+	writeJSON(writer, http.StatusServiceUnavailable, contract.Unready{
+		Status: contract.UnreadyStatusUnready,
+		Reason: reason,
 	})
 }
 

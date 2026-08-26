@@ -240,7 +240,8 @@ func measurableGo(path string) bool {
 	if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
 		return false
 	}
-	if path == "internal/httpapi/contract/openapi.gen.go" {
+	// Generated bindings, for the served listener and the readiness one.
+	if strings.HasSuffix(path, "/contract/openapi.gen.go") {
 		return false
 	}
 

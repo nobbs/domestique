@@ -100,9 +100,11 @@ ignore:
   # Repository tooling rather than the service. It is already outside the
   # profile's -coverpkg set; this keeps it out if that ever widens.
   - "dev/**"
-  # The generated strict OpenAPI bindings are verified by generator freshness
-  # and contract tests, not by handwritten branch coverage.
-  - "internal/httpapi/contract/openapi.gen.go"
+  # The generated OpenAPI bindings, for every listener that has a set. They are
+  # verified by generator freshness and contract tests, not by handwritten
+  # branch coverage. A pattern rather than a list, so a listener added later
+  # does not need this file edited to stay out.
+  - "internal/*/contract/openapi.gen.go"
 
 comment:
   layout: "condensed_header, diff, flags, files"
