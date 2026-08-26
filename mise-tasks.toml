@@ -202,8 +202,11 @@ sources = ["**/*.go", "go.mod", "go.sum", "internal/webui/app/dist/**"]
 outputs = { auto = true }
 run = "CGO_ENABLED=0 go vet ./..."
 
+# Ordered after the generator for the same reason the checks above are: it
+# reads files `api-generate` rewrites in the worktree.
 [mod-check]
 description = "Check the Go module graph is tidy and verified"
+wait_for = ["api-generate"]
 sources = ["**/*.go", "go.mod", "go.sum"]
 outputs = { auto = true }
 run = ["go mod tidy -diff", "go mod verify"]
@@ -264,9 +267,12 @@ run = [
 # real Chromium over the demo stack — to move a status that no longer gates; see
 # the ui block in codecov.yml. What the browser suite is for it still does, in
 # `ui-browser-test`; it is no longer part of a number.
+# Ordered after the generator for the same reason the checks above are: it
+# reads files `api-generate` rewrites in the worktree.
 [coverage-ui]
 description = "Measure UI coverage across the jsdom suite"
 depends = ["ui-install"]
+wait_for = ["api-generate"]
 run = "pnpm --dir internal/webui/app run test:coverage"
 
 # The one coverage verdict that blocks a merge, answered here rather than five
@@ -499,7 +505,7 @@ run = "pnpm --dir internal/webui/app run test:browser:install"
 # internal/webui/app/playwright.config.ts.
 [ui-browser-test]
 description = "Run the browser UI suite over the demo stack"
-wait_for = ["ui-browser-install"]
+wait_for = ["ui-browser-install", "api-generate"]
 run = "pnpm --dir internal/webui/app run test:browser"
 
 # Every story, played in the same real browser: what a component test and a
@@ -510,7 +516,7 @@ run = "pnpm --dir internal/webui/app run test:browser"
 # given component's tests live in and why.
 [ui-storybook-test]
 description = "Run the Storybook component suite"
-wait_for = ["ui-browser-install"]
+wait_for = ["ui-browser-install", "api-generate"]
 run = "pnpm --dir internal/webui/app run test:storybook"
 
 # govulncheck does not see npm packages, so the JavaScript tree needs its own
