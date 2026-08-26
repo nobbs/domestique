@@ -49,12 +49,6 @@ sources = ["**/*.go", "go.mod", "go.sum", ".golangci.yml", "internal/webui/app/d
 outputs = { auto = true }
 run = "golangci-lint run ./..."
 
-[markdownlint]
-description = "Lint the Markdown"
-sources = ["**/*.md", ".markdownlint-cli2.yaml"]
-outputs = { auto = true }
-run = 'markdownlint-cli2 "**/*.md"'
-
 # Both scripts run somewhere a mistake is expensive: one against the deployed
 # state, the other as root on the deploying host.
 [shell-lint]
@@ -604,7 +598,6 @@ description = "The lint half of the gate, as CI groups it"
 depends = [
   "hygiene",
   "lint",
-  "markdownlint",
   "shell-lint",
   "workflow-lint",
   "hook-check",
@@ -668,7 +661,6 @@ depends = [
   "api-check",
   "hygiene",
   "lint",
-  "markdownlint",
   "shell-lint",
   "workflow-lint",
   "hook-check",

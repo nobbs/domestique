@@ -54,9 +54,16 @@ language = "system"
 files = "\\.go$"
 pass_filenames = true
 
-# Named files rather than a glob, so `.markdownlint-cli2.yaml`'s `ignores`
-# stops applying. That costs nothing: it excludes `node_modules` and `dist`,
-# which are gitignored, so prek never lists a file from either.
+# The only Markdown lint there is. `mise run hygiene` runs this same hook over
+# every tracked file, so the gate needs no pass of its own; it used to keep one
+# anyway, over a filesystem glob, and the two disagreed about which files
+# existed. Fetched skills are gitignored but still on disk, so the glob walked
+# into third-party Markdown that git never lists and the gate failed on
+# hundreds of defects no commit hook could have seen.
+#
+# `.markdownlint-cli2.yaml` applies either way — `ignores` filters named files
+# as well as globbed ones — so taking the file list from git costs no coverage
+# and leaves one answer to what is linted instead of two.
 [[repos.hooks]]
 id = "markdownlint"
 name = "Markdown lint"
