@@ -234,9 +234,9 @@ jobs:
   ui:
     name: UI
     runs-on: ubuntu-24.04
-    # The browser suite downloads Chromium and its system libraries, builds the
-    # demo API and then drives a software-rendered WebGL map, so this job is
-    # minutes rather than seconds.
+    # The browser and Storybook suites share one Chromium download, and the
+    # browser suite still builds the demo API and drives a software-rendered
+    # WebGL map on top of that, so this job is minutes rather than seconds.
     timeout-minutes: 20
     needs: changes
     if: needs.changes.outputs.ui == 'true'
@@ -307,18 +307,18 @@ jobs:
         # Cyrillic fonts the suite never renders, and it has spent over five
         # minutes waiting on the apt mirror to serve them.
         run: mise run --force ci-ui
-      # Both UI suites under the `ui` flag, so Codecov distinguishes them from
-      # the Go results the way the coverage flags already do. See the Go upload
-      # above for why this job uploads at all and why it runs when the suite
-      # failed. A step of `ci-ui` before the suites can fail and leave a file
-      # unwritten, which the uploader reports and does not fail the job for.
+      # All three UI suites under the `ui` flag, so Codecov distinguishes them
+      # from the Go results the way the coverage flags already do. See the Go
+      # upload above for why this job uploads at all and why it runs when the
+      # suite failed. A step of `ci-ui` before the suites can fail and leave a
+      # file unwritten, which the uploader reports and does not fail the job for.
       - name: Upload UI test results
         if: ${{ !cancelled() }}
         # v7.0.0
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: .test-results/ui/vitest.xml,.test-results/ui/browser.xml
+          files: .test-results/ui/vitest.xml,.test-results/ui/browser.xml,.test-results/ui/storybook.xml
           flags: ui
           report_type: test_results
           disable_search: true

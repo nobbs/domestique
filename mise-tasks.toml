@@ -456,6 +456,17 @@ description = "Run the browser UI suite over the demo stack"
 wait_for = ["ui-browser-install"]
 run = "pnpm --dir internal/webui/app run test:browser"
 
+# Every story, played in the same real browser: what a component test and a
+# visual review both leave uncovered on their own — an interaction asserted
+# against a component that never grew a jsdom test of its own, or a story that
+# quietly stopped matching the behaviour it was meant to demonstrate. See the
+# comment above BasemapPicker.stories.tsx and its siblings for which suite a
+# given component's tests live in and why.
+[ui-storybook-test]
+description = "Run the Storybook component suite"
+wait_for = ["ui-browser-install"]
+run = "pnpm --dir internal/webui/app run test:storybook"
+
 # govulncheck does not see npm packages, so the JavaScript tree needs its own
 # advisory check in the same gate.
 [ui-audit]
@@ -594,11 +605,12 @@ depends = [
   "ui-test",
   "ui-browser-install",
   "ui-browser-test",
+  "ui-storybook-test",
 ]
 
 # The routine local loop. It runs every check that reads the tree as it stands
-# and needs nothing beyond it, and defers six things to `check` and to GitHub
-# Actions, which is the authoritative gate a merge has to pass:
+# and needs nothing beyond it, and defers seven things to `check` and to
+# GitHub Actions, which is the authoritative gate a merge has to pass:
 #
 #   build-check  rebuilds the UI bundle and compiles the published release
 #                target; the slowest check in the gate whenever the build cache
@@ -613,6 +625,9 @@ depends = [
 #   ui-browser-test
 #                runs that browser over the demo stack: minutes rather than
 #                seconds, and useless without the download above
+#   ui-storybook-test
+#                runs every story in that same browser: minutes rather than
+#                seconds, and equally useless without the download above
 #
 # Nothing is weakened by leaving them out: every one still runs in `check` and
 # on every pull request. `gate-check` asserts that this list is the whole of the

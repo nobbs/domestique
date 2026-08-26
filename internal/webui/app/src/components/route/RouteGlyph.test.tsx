@@ -1,7 +1,6 @@
-import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import type { Position } from "../../api/types";
-import { glyphPoints, RouteGlyph } from "./RouteGlyph";
+import { glyphPoints } from "./RouteGlyph";
 
 function parse(points: string): Array<[number, number]> {
   return points.split(" ").map((pair) => pair.split(",").map(Number) as [number, number]);
@@ -68,46 +67,5 @@ describe("glyphPoints", () => {
     ]);
 
     expect(points).not.toContain("NaN");
-  });
-});
-
-describe("RouteGlyph", () => {
-  it("labels the shape for assistive technology", () => {
-    render(
-      <RouteGlyph
-        coordinates={[
-          [8.0, 49.0],
-          [8.1, 49.1],
-        ]}
-        title="Eich Rundkurs 90"
-        band={2}
-      />,
-    );
-
-    expect(screen.getByRole("img", { name: /Eich Rundkurs 90/ })).toBeInTheDocument();
-  });
-
-  it("renders a presentational placeholder instead of an empty graphic", () => {
-    render(<RouteGlyph coordinates={[]} title="Empty" band={0} />);
-
-    expect(screen.queryByRole("img")).not.toBeInTheDocument();
-    expect(screen.getByRole("presentation")).toBeInTheDocument();
-  });
-});
-
-describe("RouteGlyph", () => {
-  it("carries the band as data, for the ramp in the stylesheet to colour", () => {
-    const { container } = render(
-      <RouteGlyph
-        coordinates={[
-          [8.0, 49.0],
-          [8.1, 49.1],
-        ]}
-        title="Steep one"
-        band={4}
-      />,
-    );
-
-    expect(container.querySelector("polyline")?.getAttribute("data-band")).toBe("4");
   });
 });
