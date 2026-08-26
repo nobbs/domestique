@@ -28,6 +28,22 @@ export interface MapViewportProps {
   insets?: Insets;
 }
 
+/**
+ * What each live map was last framed to.
+ *
+ * The framing below is meant to answer a change of subject and nothing else,
+ * but a change of basemap is not one and still reaches it: `MapWidget` holds
+ * its children back until the new style has loaded, so this component is
+ * unmounted and mounted again, and a fresh mount has no memory of having
+ * already framed anything. It would fly back to the bounds it was given and
+ * throw away wherever the reader had panned to.
+ *
+ * Kept against the map's container, which outlives both the style and this
+ * component and is released with the map, so the memory lasts exactly as long
+ * as the camera it describes.
+ */
+const framedTo = new WeakMap<object, string>();
+
 export function MapViewport({
   bounds,
   maxZoom,
@@ -74,7 +90,15 @@ export function MapViewport({
     // map shows the ground the chart is showing however the stretch was asked
     // for. Only a change of subject moves the camera: panning away to look at
     // the surrounding roads costs nothing and needs no way back.
+    // Every input the framing is computed from, so a reflow that moves the
+    // panels still re-frames while a remount that moved nothing does not.
+    const subject = JSON.stringify([bounds, maxZoom, padding, top, right, bottom, left]);
     const container = map.getContainer();
+    if (framedTo.get(container) === subject) {
+      return;
+    }
+    framedTo.set(container, subject);
+
     map.fitBounds(
       [
         [bounds[0], bounds[1]],
