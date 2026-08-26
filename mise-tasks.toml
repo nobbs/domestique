@@ -529,9 +529,14 @@ run = "pnpm --dir internal/webui/app run test:storybook"
 # an error card to anyone who opens Storybook itself — three did, with every
 # check green. Deferred with the other browser-driven checks: it builds the
 # whole workshop first.
+#
+# Ordered after the story suite rather than beside it. Both build Storybook and
+# drive the same browser, and the suite plays timed interactions — one story
+# closes a popover on Escape and gives it a second to go — which a third
+# browser starting up alongside is enough to make miss.
 [ui-storybook-sweep]
 description = "Open every story and docs page in a built Storybook"
-wait_for = ["ui-browser-install", "api-generate"]
+wait_for = ["ui-browser-install", "ui-storybook-test", "api-generate"]
 run = "pnpm --dir internal/webui/app run test:storybook:sweep"
 
 [ui-audit]
