@@ -21,15 +21,15 @@ import {
   useTriggerTargetsSync,
 } from "../../api/generated";
 import { statusQuery, webUIConfigQuery } from "../../api/queries";
-import type { Status, SyncActive, SyncPhase, SyncPhaseRun } from "../../api/types";
+import type { Status, SyncActive, SyncPhase } from "../../api/types";
 import { SYNC_PHASES } from "../../api/types";
 import { Button } from "../../components/Button";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Spinner } from "../../components/ui/spinner";
-import { Switch } from "../../components/ui/switch";
 import { formatTimestamp } from "../../lib/format";
 import { syncGuidance } from "../../lib/syncGuidance";
 import { phaseLabels, runningPhaseLabels } from "../../lib/syncLabels";
+import { SyncPhaseRow } from "./SyncPhaseRow";
 
 function activeHeadline(
   state: string,
@@ -100,34 +100,6 @@ export function idleSummary(status: Status): string {
   }
 
   return `Nothing is running. Last read ${formatTimestamp(read)}, last write ${formatTimestamp(write)}.`;
-}
-
-/**
- * What one half's last run amounts to, in a line.
- *
- * A run that did not succeed reduces to how it ended and when. What it means
- * and what to do about it is the guidance line beneath it, because "held" and
- * "failed" ask opposite things of an operator and neither fits in a count.
- */
-export function runSummary(phase: SyncPhase, run: SyncPhaseRun | undefined): string {
-  if (!run) {
-    return "Has not run yet";
-  }
-  const when = formatTimestamp(run.lastCompletedAt);
-  const guidance = syncGuidance(phase, run.lastResult, run.lastFailure);
-  if (guidance) {
-    return `${when} · ${guidance.kind === "blocked" ? "held by a gate" : "did not finish"}`;
-  }
-  const counts =
-    phase === "source"
-      ? `${run.sourceStages} routes`
-      : [
-          `${run.created} created`,
-          `${run.updated} updated`,
-          ...(run.deleted > 0 ? [`${run.deleted} deleted`] : []),
-        ].join(", ");
-
-  return `${when} · ${counts}`;
 }
 
 /** The body of the "Now" card: one line, then one row per half. */
@@ -221,65 +193,20 @@ export function SyncControls() {
       ) : null}
       <ul className="grid gap-3">
         {SYNC_PHASES.map((phase) => {
-          const enabled = data.sync.schedule[phase];
           const run = phase === "source" ? sourceRun : targetsRun;
-          const phaseRun = data.sync.phases[phase];
-          const guidance = phaseRun
-            ? syncGuidance(phase, phaseRun.lastResult, phaseRun.lastFailure)
-            : undefined;
 
           return (
-            <li
-              className="flex flex-col gap-3 rounded-lg border border-[var(--rule)] p-3 sm:flex-row sm:items-start sm:justify-between"
+            <SyncPhaseRow
               key={phase}
-            >
-              <div className="flex min-w-0 flex-col gap-1 text-sm">
-                <span className="font-semibold">{labels[phase]}</span>
-                <span className="text-[var(--ink-2)]">{runSummary(phase, phaseRun)}</span>
-                {/*
-                 * A gate that held is not an error the operator caused, so it is
-                 * stated rather than announced: the page is being read, not
-                 * interrupted, and the run it describes finished some time ago.
-                 */}
-                {guidance ? (
-                  <span
-                    className={
-                      guidance.kind === "blocked" ? "text-[var(--hold)]" : "text-[var(--alert)]"
-                    }
-                    data-kind={guidance.kind}
-                  >
-                    <strong>{guidance.headline}</strong> {guidance.remediation}
-                  </span>
-                ) : null}
-              </div>
-              <div className="flex shrink-0 flex-wrap items-center gap-3">
-                {/*
-                 * Both rows carry the same two words, so the visible text alone
-                 * names neither half. The accessible name says which one, since
-                 * a reader arriving at the second switch has no row above it
-                 * to tell them apart. The interval is the service's own and is
-                 * fixed at an hour, so the switch can say what it schedules.
-                 */}
-                <div className="flex items-center gap-2 text-sm">
-                  <Switch
-                    checked={enabled}
-                    disabled={schedule.isPending}
-                    onCheckedChange={() => toggle(phase)}
-                    aria-label={`Hourly: ${labels[phase]}`}
-                  />
-                  <span>Hourly</span>
-                </div>
-                <Button
-                  variant="standard"
-                  disabled={run.isPending}
-                  onClick={() => run.mutate()}
-                  aria-label={`Run now: ${labels[phase]}`}
-                >
-                  {run.isPending ? <Spinner aria-label={`Running ${labels[phase]}`} /> : null}
-                  Run now
-                </Button>
-              </div>
-            </li>
+              phase={phase}
+              label={labels[phase]}
+              lastRun={data.sync.phases[phase]}
+              enabled={data.sync.schedule[phase]}
+              scheduleDisabled={schedule.isPending}
+              onToggle={() => toggle(phase)}
+              running={run.isPending}
+              onRun={() => run.mutate()}
+            />
           );
         })}
       </ul>
