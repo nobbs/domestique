@@ -1,13 +1,10 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
-import { expect, fn, userEvent } from "storybook/test";
-import { StoryProviders, stubGlobal } from "../../storybook/fixtures";
+import { expect, userEvent } from "storybook/test";
+import { StoryProviders, StubbedFetch } from "../../storybook/fixtures";
 import { MapCredits, type MapCreditsProps } from "./MapCredits";
 
 const SURFACE_CREDIT = "Surface data © OpenStreetMap contributors (ODbL)";
-
-/** Set by `ReadFromTheStyleDocument`'s render, spent by its play function. */
-let restoreFetch: (() => void) | undefined;
 
 /** What a caller supplies, the fold choice aside: that one is the caller's. */
 type CreditProps = Omit<MapCreditsProps, "choice" | "onChoiceChange">;
@@ -135,39 +132,26 @@ export const SurvivesMovingIntoTheCluster: Story = {
 
 /** The credit read out of the style document, as text, beside the surface one. */
 export const ReadFromTheStyleDocument: Story = {
-  render: () => {
-    // Stubbed here rather than in `play`: the query fires as soon as the
-    // component mounts, which for a story is before `play` runs at all — a
-    // `render` function's body still runs before that mount, so this is the
-    // last point a play function's own stub could still land in time.
-    restoreFetch = stubGlobal(
-      "fetch",
-      fn(
-        async () =>
-          new Response(
-            JSON.stringify({
-              sources: {
-                basemap: { attribution: '<a href="https://example.test">&copy; Tile People</a>' },
-              },
-            }),
-          ),
-      ),
-    );
-
-    return <Credits styleUrl="https://tiles.example.test/style.json" />;
-  },
+  render: () => (
+    <StubbedFetch
+      respond={async () =>
+        new Response(
+          JSON.stringify({
+            sources: {
+              basemap: { attribution: '<a href="https://example.test">&copy; Tile People</a>' },
+            },
+          }),
+        )
+      }
+    >
+      <Credits styleUrl="https://tiles.example.test/style.json" />
+    </StubbedFetch>
+  ),
   play: async ({ canvas }) => {
-    try {
-      await userEvent.click(canvas.getByRole("button", { name: "Show the map credit" }));
-      await expect(
-        await canvas.findByText(`© Tile People · ${SURFACE_CREDIT}`),
-      ).toBeInTheDocument();
-      // The provider's own markup is read for its words and never rendered.
-      await expect(canvas.queryByRole("link")).not.toBeInTheDocument();
-    } finally {
-      restoreFetch?.();
-      restoreFetch = undefined;
-    }
+    await userEvent.click(canvas.getByRole("button", { name: "Show the map credit" }));
+    await expect(await canvas.findByText(`© Tile People · ${SURFACE_CREDIT}`)).toBeInTheDocument();
+    // The provider's own markup is read for its words and never rendered.
+    await expect(canvas.queryByRole("link")).not.toBeInTheDocument();
   },
 };
 
