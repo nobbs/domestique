@@ -15,7 +15,8 @@ x-domestique-unmatched-path:
   status: 404
   content:
     application/json:
-      schema: {$ref: '#/components/schemas/Error'}
+      schema:
+        $ref: '#/components/schemas/Error'
 tags:
   - name: browser-api
     description: Programmatic same-origin API used by the embedded UI.
@@ -28,199 +29,390 @@ paths:
       operationId: getHealth
       security: []
       responses:
-        '200':
+        "200":
           description: Process is live.
           content:
             application/json:
-              schema: {$ref: '#/components/schemas/Health'}
+              schema:
+                $ref: '#/components/schemas/Health'
   /readyz:
     get:
-      tags: [readiness]
+      tags:
+        - readiness
       operationId: getReadiness
       security: []
       x-domestique-listener: readiness
       responses:
-        '200': {description: Local state is ready., content: {application/json: {schema: {$ref: '#/components/schemas/Readiness'}}}}
-        '503': {description: Local state is unavailable., content: {application/json: {schema: {$ref: '#/components/schemas/Unready'}}}}
+        "200":
+          description: Local state is ready.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Readiness'
+        "503":
+          description: Local state is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Unready'
   /v1/status:
     get:
-      tags: [browser-api]
+      tags:
+        - browser-api
       operationId: getStatus
       responses:
-        '200': {description: Current local status., content: {application/json: {schema: {$ref: '#/components/schemas/Status'}}}}
-        '401': {$ref: '#/components/responses/Unauthorized'}
-        '403': {$ref: '#/components/responses/Forbidden'}
-        '503': {$ref: '#/components/responses/Unavailable'}
+        "200":
+          description: Current local status.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "503":
+          $ref: '#/components/responses/Unavailable'
   /v1/sync:
     post:
-      tags: [browser-api]
+      tags:
+        - browser-api
       operationId: triggerSync
-      security: [{accessAssertion: [], browserOrigin: []}]
+      security:
+        - accessAssertion: []
+          browserOrigin: []
       responses:
-        '202': {$ref: '#/components/responses/Accepted'}
-        '401': {$ref: '#/components/responses/Unauthorized'}
-        '403': {$ref: '#/components/responses/Forbidden'}
-        '409': {$ref: '#/components/responses/SyncInProgress'}
+        "202":
+          $ref: '#/components/responses/Accepted'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "409":
+          $ref: '#/components/responses/SyncInProgress'
   /v1/sync/source:
     post:
-      tags: [browser-api]
+      tags:
+        - browser-api
       operationId: triggerSourceSync
-      security: [{accessAssertion: [], browserOrigin: []}]
+      security:
+        - accessAssertion: []
+          browserOrigin: []
       responses:
-        '202': {$ref: '#/components/responses/Accepted'}
-        '401': {$ref: '#/components/responses/Unauthorized'}
-        '403': {$ref: '#/components/responses/Forbidden'}
-        '409': {$ref: '#/components/responses/SyncInProgress'}
+        "202":
+          $ref: '#/components/responses/Accepted'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "409":
+          $ref: '#/components/responses/SyncInProgress'
   /v1/sync/targets:
     post:
-      tags: [browser-api]
+      tags:
+        - browser-api
       operationId: triggerTargetsSync
-      security: [{accessAssertion: [], browserOrigin: []}]
+      security:
+        - accessAssertion: []
+          browserOrigin: []
       responses:
-        '202': {$ref: '#/components/responses/Accepted'}
-        '401': {$ref: '#/components/responses/Unauthorized'}
-        '403': {$ref: '#/components/responses/Forbidden'}
-        '409': {$ref: '#/components/responses/SyncInProgress'}
+        "202":
+          $ref: '#/components/responses/Accepted'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "409":
+          $ref: '#/components/responses/SyncInProgress'
   /v1/sync/targets/{target}:
     post:
-      tags: [browser-api]
+      tags:
+        - browser-api
       operationId: triggerTargetSync
-      security: [{accessAssertion: [], browserOrigin: []}]
+      security:
+        - accessAssertion: []
+          browserOrigin: []
       parameters:
-        - {$ref: '#/components/parameters/Target'}
+        - $ref: '#/components/parameters/Target'
       responses:
-        '202': {$ref: '#/components/responses/Accepted'}
-        '401': {$ref: '#/components/responses/Unauthorized'}
-        '403': {$ref: '#/components/responses/Forbidden'}
-        '404': {$ref: '#/components/responses/NotFound'}
-        '409': {$ref: '#/components/responses/SyncInProgress'}
+        "202":
+          $ref: '#/components/responses/Accepted'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/SyncInProgress'
   /v1/targets/{target}/clear:
     post:
-      tags: [browser-api]
+      tags:
+        - browser-api
       operationId: clearTarget
-      security: [{accessAssertion: [], browserOrigin: []}]
+      security:
+        - accessAssertion: []
+          browserOrigin: []
       parameters:
-        - {$ref: '#/components/parameters/Target'}
+        - $ref: '#/components/parameters/Target'
       responses:
-        '202': {$ref: '#/components/responses/Accepted'}
-        '401': {$ref: '#/components/responses/Unauthorized'}
-        '403': {$ref: '#/components/responses/Forbidden'}
-        '404': {$ref: '#/components/responses/NotFound'}
-        '409': {$ref: '#/components/responses/SyncInProgress'}
+        "202":
+          $ref: '#/components/responses/Accepted'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/SyncInProgress'
   /v1/sync/surface:
     post:
-      tags: [browser-api]
+      tags:
+        - browser-api
       operationId: triggerSurfaceSync
-      security: [{accessAssertion: [], browserOrigin: []}]
+      security:
+        - accessAssertion: []
+          browserOrigin: []
       responses:
-        '202': {$ref: '#/components/responses/Accepted'}
-        '401': {$ref: '#/components/responses/Unauthorized'}
-        '403': {$ref: '#/components/responses/Forbidden'}
-        '409': {$ref: '#/components/responses/SyncInProgress'}
+        "202":
+          $ref: '#/components/responses/Accepted'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "409":
+          $ref: '#/components/responses/SyncInProgress'
   /v1/sync/schedule:
     put:
-      tags: [browser-api]
+      tags:
+        - browser-api
       operationId: setSyncSchedule
-      security: [{accessAssertion: [], browserOrigin: []}]
+      security:
+        - accessAssertion: []
+          browserOrigin: []
       requestBody:
         required: true
-        content: {application/json: {schema: {$ref: '#/components/schemas/SyncSchedule'}}}
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SyncSchedule'
       responses:
-        '200': {description: Stored schedule., content: {application/json: {schema: {$ref: '#/components/schemas/SyncSchedule'}}}}
-        '400': {$ref: '#/components/responses/InvalidRequest'}
-        '401': {$ref: '#/components/responses/Unauthorized'}
-        '403': {$ref: '#/components/responses/Forbidden'}
-        '503': {$ref: '#/components/responses/Unavailable'}
+        "200":
+          description: Stored schedule.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncSchedule'
+        "400":
+          $ref: '#/components/responses/InvalidRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "503":
+          $ref: '#/components/responses/Unavailable'
   /v1/sync/runs:
     get:
-      tags: [browser-api]
+      tags:
+        - browser-api
       operationId: getSyncRuns
       parameters:
         - name: after
           in: query
-          schema: {type: string}
+          schema:
+            type: string
         - name: limit
           in: query
-          schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
       responses:
-        '200': {description: A newest-first cursor page., content: {application/json: {schema: {$ref: '#/components/schemas/SyncRunPage'}}}}
-        '400': {$ref: '#/components/responses/InvalidRequest'}
-        '401': {$ref: '#/components/responses/Unauthorized'}
-        '403': {$ref: '#/components/responses/Forbidden'}
-        '503': {$ref: '#/components/responses/Unavailable'}
+        "200":
+          description: A newest-first cursor page.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncRunPage'
+        "400":
+          $ref: '#/components/responses/InvalidRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "503":
+          $ref: '#/components/responses/Unavailable'
   /v1/routes:
     get:
-      tags: [browser-api]
+      tags:
+        - browser-api
       operationId: getRoutes
       responses:
-        '200': {description: Stored stage inventory without geometry., content: {application/json: {schema: {$ref: '#/components/schemas/RouteList'}}}}
-        '401': {$ref: '#/components/responses/Unauthorized'}
-        '403': {$ref: '#/components/responses/Forbidden'}
-        '503': {$ref: '#/components/responses/Unavailable'}
+        "200":
+          description: Stored stage inventory without geometry.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RouteList'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "503":
+          $ref: '#/components/responses/Unavailable'
   /v1/providers/{provider}/routes/{routeId}/stages/{stage}:
     get:
-      tags: [browser-api]
+      tags:
+        - browser-api
       operationId: getRoute
-      parameters: [{$ref: '#/components/parameters/Provider'}, {$ref: '#/components/parameters/RouteId'}, {$ref: '#/components/parameters/Stage'}]
+      parameters:
+        - $ref: '#/components/parameters/Provider'
+        - $ref: '#/components/parameters/RouteId'
+        - $ref: '#/components/parameters/Stage'
       responses:
-        '200': {description: Stored stage metadata., content: {application/json: {schema: {$ref: '#/components/schemas/Route'}}}}
-        '400': {$ref: '#/components/responses/InvalidRequest'}
-        '401': {$ref: '#/components/responses/Unauthorized'}
-        '403': {$ref: '#/components/responses/Forbidden'}
-        '404': {$ref: '#/components/responses/NotFound'}
-        '503': {$ref: '#/components/responses/Unavailable'}
+        "200":
+          description: Stored stage metadata.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Route'
+        "400":
+          $ref: '#/components/responses/InvalidRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "503":
+          $ref: '#/components/responses/Unavailable'
   /v1/providers/{provider}/routes/{routeId}/stages/{stage}/geometry:
     get:
-      tags: [browser-api]
+      tags:
+        - browser-api
       operationId: getRouteGeometry
-      parameters: [{$ref: '#/components/parameters/Provider'}, {$ref: '#/components/parameters/RouteId'}, {$ref: '#/components/parameters/Stage'}]
+      parameters:
+        - $ref: '#/components/parameters/Provider'
+        - $ref: '#/components/parameters/RouteId'
+        - $ref: '#/components/parameters/Stage'
       responses:
-        '200': {description: Stored stage geometry., content: {application/geo+json: {schema: {$ref: '#/components/schemas/GeoJSONFeature'}}}}
-        '400': {$ref: '#/components/responses/InvalidRequest'}
-        '401': {$ref: '#/components/responses/Unauthorized'}
-        '403': {$ref: '#/components/responses/Forbidden'}
-        '404': {$ref: '#/components/responses/NotFound'}
-        '503': {$ref: '#/components/responses/Unavailable'}
+        "200":
+          description: Stored stage geometry.
+          content:
+            application/geo+json:
+              schema:
+                $ref: '#/components/schemas/GeoJSONFeature'
+        "400":
+          $ref: '#/components/responses/InvalidRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "503":
+          $ref: '#/components/responses/Unavailable'
   /v1/providers/{provider}/routes/{routeId}/stages/{stage}/reprocess:
     post:
-      tags: [browser-api]
+      tags:
+        - browser-api
       operationId: reprocessRoute
-      parameters: [{$ref: '#/components/parameters/Provider'}, {$ref: '#/components/parameters/RouteId'}, {$ref: '#/components/parameters/Stage'}]
-      security: [{accessAssertion: [], browserOrigin: []}]
+      parameters:
+        - $ref: '#/components/parameters/Provider'
+        - $ref: '#/components/parameters/RouteId'
+        - $ref: '#/components/parameters/Stage'
+      security:
+        - accessAssertion: []
+          browserOrigin: []
       responses:
-        '202': {$ref: '#/components/responses/Accepted'}
-        '400': {$ref: '#/components/responses/InvalidRequest'}
-        '401': {$ref: '#/components/responses/Unauthorized'}
-        '403': {$ref: '#/components/responses/Forbidden'}
-        '404': {$ref: '#/components/responses/NotFound'}
-        '503': {$ref: '#/components/responses/Unavailable'}
+        "202":
+          $ref: '#/components/responses/Accepted'
+        "400":
+          $ref: '#/components/responses/InvalidRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "503":
+          $ref: '#/components/responses/Unavailable'
   /v1/routes/{routeId}/stages/{stage}:
     get:
       operationId: redirectLegacyRoute
-      parameters: [{$ref: '#/components/parameters/RouteId'}, {$ref: '#/components/parameters/Stage'}]
-      responses: {'308': {$ref: '#/components/responses/LegacyRedirect'}, '400': {$ref: '#/components/responses/InvalidRequest'}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}, '404': {$ref: '#/components/responses/NotFound'}}
+      parameters:
+        - $ref: '#/components/parameters/RouteId'
+        - $ref: '#/components/parameters/Stage'
+      responses:
+        "308":
+          $ref: '#/components/responses/LegacyRedirect'
+        "400":
+          $ref: '#/components/responses/InvalidRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
   /v1/routes/{routeId}/stages/{stage}/geometry:
     get:
       operationId: redirectLegacyGeometry
-      parameters: [{$ref: '#/components/parameters/RouteId'}, {$ref: '#/components/parameters/Stage'}]
-      responses: {'308': {$ref: '#/components/responses/LegacyRedirect'}, '400': {$ref: '#/components/responses/InvalidRequest'}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}, '404': {$ref: '#/components/responses/NotFound'}}
+      parameters:
+        - $ref: '#/components/parameters/RouteId'
+        - $ref: '#/components/parameters/Stage'
+      responses:
+        "308":
+          $ref: '#/components/responses/LegacyRedirect'
+        "400":
+          $ref: '#/components/responses/InvalidRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
   /v1/routes/{routeId}/stages/{stage}/reprocess:
     post:
       operationId: redirectLegacyReprocess
-      parameters: [{$ref: '#/components/parameters/RouteId'}, {$ref: '#/components/parameters/Stage'}]
-      security: [{accessAssertion: [], browserOrigin: []}]
-      responses: {'308': {$ref: '#/components/responses/LegacyRedirect'}, '400': {$ref: '#/components/responses/InvalidRequest'}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}, '404': {$ref: '#/components/responses/NotFound'}}
+      parameters:
+        - $ref: '#/components/parameters/RouteId'
+        - $ref: '#/components/parameters/Stage'
+      security:
+        - accessAssertion: []
+          browserOrigin: []
+      responses:
+        "308":
+          $ref: '#/components/responses/LegacyRedirect'
+        "400":
+          $ref: '#/components/responses/InvalidRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
   /v1/webui/config:
     get:
-      tags: [browser-api]
+      tags:
+        - browser-api
       operationId: getWebUIConfig
       responses:
-        '200': {description: Browser-only runtime configuration., content: {application/json: {schema: {$ref: '#/components/schemas/WebUIConfig'}}}}
-        '401': {$ref: '#/components/responses/Unauthorized'}
-        '403': {$ref: '#/components/responses/Forbidden'}
+        "200":
+          description: Browser-only runtime configuration.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebUIConfig'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
   /v1/weather:
     get:
-      tags: [browser-api]
+      tags:
+        - browser-api
       operationId: getWeather
       parameters:
         - name: point
@@ -229,36 +421,69 @@ paths:
           style: form
           explode: true
           allowReserved: true
-          schema: {type: array, minItems: 1, maxItems: 48, items: {type: string, pattern: '^-?[0-9]+(\.[0-9]+)?,-?[0-9]+(\.[0-9]+)?,.+$'}}
+          schema:
+            type: array
+            minItems: 1
+            maxItems: 48
+            items:
+              type: string
+              pattern: ^-?[0-9]+(\.[0-9]+)?,-?[0-9]+(\.[0-9]+)?,.+$
       responses:
-        '200': {description: Forecast samples in request order., content: {application/json: {schema: {$ref: '#/components/schemas/WeatherForecast'}}}}
-        '400': {$ref: '#/components/responses/InvalidRequest'}
-        '401': {$ref: '#/components/responses/Unauthorized'}
-        '403': {$ref: '#/components/responses/Forbidden'}
-        '502': {$ref: '#/components/responses/ProviderUnavailable'}
+        "200":
+          description: Forecast samples in request order.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeatherForecast'
+        "400":
+          $ref: '#/components/responses/InvalidRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "502":
+          $ref: '#/components/responses/ProviderUnavailable'
   /oauth/wahoo/start/{target}:
     get:
-      tags: [oauth]
+      tags:
+        - oauth
       operationId: startOAuth
-      parameters: [{$ref: '#/components/parameters/Target'}]
+      parameters:
+        - $ref: '#/components/parameters/Target'
       responses:
-        '302': {$ref: '#/components/responses/OAuthRedirect'}
-        '400': {$ref: '#/components/responses/AuthorizationFailed'}
-        '401': {$ref: '#/components/responses/Unauthorized'}
-        '403': {$ref: '#/components/responses/Forbidden'}
-        '503': {$ref: '#/components/responses/Unavailable'}
+        "302":
+          $ref: '#/components/responses/OAuthRedirect'
+        "400":
+          $ref: '#/components/responses/AuthorizationFailed'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "503":
+          $ref: '#/components/responses/Unavailable'
   /oauth/wahoo/callback:
     get:
-      tags: [oauth]
+      tags:
+        - oauth
       operationId: completeOAuth
       parameters:
-        - {name: state, in: query, schema: {type: string}}
-        - {name: code, in: query, schema: {type: string}}
+        - name: state
+          in: query
+          schema:
+            type: string
+        - name: code
+          in: query
+          schema:
+            type: string
       responses:
-        '303': {$ref: '#/components/responses/BrowserRedirect'}
-        '400': {$ref: '#/components/responses/AuthorizationFailed'}
-        '401': {$ref: '#/components/responses/Unauthorized'}
-        '403': {$ref: '#/components/responses/Forbidden'}
+        "303":
+          $ref: '#/components/responses/BrowserRedirect'
+        "400":
+          $ref: '#/components/responses/AuthorizationFailed'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
 components:
   securitySchemes:
     accessAssertion:
@@ -270,240 +495,744 @@ components:
       type: apiKey
       in: header
       name: Origin
-      description: >-
-        Exact browser origin configured for this service. Required by every
-        operation that starts a run or writes state, and modelled as a security
-        scheme rather than a parameter because a request without it is refused
-        rather than misread.
+      description: Exact browser origin configured for this service. Required by every operation that starts a run or writes state, and modelled as a security scheme rather than a parameter because a request without it is refused rather than misread.
   parameters:
-    Target: {name: target, in: path, required: true, schema: {type: string, minLength: 1}}
-    Provider: {name: provider, in: path, required: true, schema: {type: string, minLength: 1}}
-    RouteId: {name: routeId, in: path, required: true, schema: {type: integer, format: int64, minimum: 1}}
-    Stage: {name: stage, in: path, required: true, schema: {type: integer, minimum: 1}}
+    Target:
+      name: target
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+    Provider:
+      name: provider
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+    RouteId:
+      name: routeId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+    Stage:
+      name: stage
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
   responses:
-    Accepted: {description: Work was accepted to run asynchronously., content: {application/json: {schema: {$ref: '#/components/schemas/Accepted'}}}}
-    InvalidRequest: {description: Request is malformed., content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
-    Unauthorized: {description: Missing or invalid Access assertion., content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
-    Forbidden: {description: Assertion identity or origin is not permitted., content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
-    NotFound: {description: Resource was not found., content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
-    Unavailable: {description: Local state is unavailable., content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
-    ProviderUnavailable: {description: Provider request failed without exposing provider detail., content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
-    SyncInProgress: {description: A conflicting run is already active., content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
-    AuthorizationFailed: {description: OAuth request failed safely., content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
-    OAuthRedirect: {description: Redirect to Wahoo authorization., headers: {Location: {required: true, schema: {type: string, format: uri}}}}
-    BrowserRedirect: {description: Redirect back to browser UI., headers: {Location: {required: true, schema: {type: string}}}}
-    LegacyRedirect: {description: Permanent method-preserving redirect., headers: {Location: {required: true, schema: {type: string}}}}
+    Accepted:
+      description: Work was accepted to run asynchronously.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Accepted'
+    InvalidRequest:
+      description: Request is malformed.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Missing or invalid Access assertion.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: Assertion identity or origin is not permitted.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Resource was not found.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unavailable:
+      description: Local state is unavailable.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    ProviderUnavailable:
+      description: Provider request failed without exposing provider detail.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    SyncInProgress:
+      description: A conflicting run is already active.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    AuthorizationFailed:
+      description: OAuth request failed safely.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    OAuthRedirect:
+      description: Redirect to Wahoo authorization.
+      headers:
+        Location:
+          required: true
+          schema:
+            type: string
+            format: uri
+    BrowserRedirect:
+      description: Redirect back to browser UI.
+      headers:
+        Location:
+          required: true
+          schema:
+            type: string
+    LegacyRedirect:
+      description: Permanent method-preserving redirect.
+      headers:
+        Location:
+          required: true
+          schema:
+            type: string
   schemas:
     Error:
       type: object
       additionalProperties: false
-      required: [error]
+      required:
+        - error
       properties:
         error:
           type: object
           additionalProperties: false
-          required: [code, message]
-          properties: {code: {type: string}, message: {type: string}}
+          required:
+            - code
+            - message
+          properties:
+            code:
+              type: string
+            message:
+              type: string
     Health:
       type: object
       additionalProperties: false
-      required: [status]
-      properties: {status: {type: string, const: ok}}
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          const: ok
     Readiness:
       type: object
       additionalProperties: false
-      required: [status]
-      properties: {status: {type: string, const: ready}}
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          const: ready
     Unready:
       type: object
       additionalProperties: false
-      required: [status, reason]
-      properties: {status: {type: string, const: unready}, reason: {type: string, enum: [state_unreadable, state_incomplete]}}
+      required:
+        - status
+        - reason
+      properties:
+        status:
+          type: string
+          const: unready
+        reason:
+          type: string
+          enum:
+            - state_unreadable
+            - state_incomplete
     Accepted:
       type: object
       additionalProperties: false
-      required: [status]
-      properties: {status: {type: string, const: accepted}}
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          const: accepted
     TargetStages:
       type: object
       additionalProperties: false
-      required: [current, pending]
-      properties: {current: {type: integer, minimum: 0}, pending: {type: integer, minimum: 0}}
+      required:
+        - current
+        - pending
+      properties:
+        current:
+          type: integer
+          minimum: 0
+        pending:
+          type: integer
+          minimum: 0
     TargetRun:
       type: object
       additionalProperties: false
-      required: [completedAt, result]
-      properties: {completedAt: {type: string, format: date-time}, result: {type: string}, failure: {type: string}}
+      required:
+        - completedAt
+        - result
+      properties:
+        completedAt:
+          type: string
+          format: date-time
+        result:
+          type: string
+        failure:
+          type: string
     TargetStatus:
       type: object
       additionalProperties: false
-      required: [id, authorisation, convergence, stages]
+      required:
+        - id
+        - authorisation
+        - convergence
+        - stages
       properties:
-        id: {type: string}
-        authorisation: {type: string}
-        convergence: {type: string, enum: [current, lagging, failed, unauthorized]}
-        stages: {$ref: '#/components/schemas/TargetStages'}
-        lastRun: {$ref: '#/components/schemas/TargetRun'}
+        id:
+          type: string
+        authorisation:
+          type: string
+        convergence:
+          type: string
+          enum:
+            - current
+            - lagging
+            - failed
+            - unauthorized
+        stages:
+          $ref: '#/components/schemas/TargetStages'
+        lastRun:
+          $ref: '#/components/schemas/TargetRun'
     RouteValidation:
       type: object
       additionalProperties: false
-      required: [biasPercent, maePercent, p90Percent, evaluatedRides]
-      properties: {biasPercent: {type: number, format: double}, maePercent: {type: number, format: double}, p90Percent: {type: number, format: double}, evaluatedRides: {type: integer, minimum: 0}}
+      required:
+        - biasPercent
+        - maePercent
+        - p90Percent
+        - evaluatedRides
+      properties:
+        biasPercent:
+          type: number
+          format: double
+        maePercent:
+          type: number
+          format: double
+        p90Percent:
+          type: number
+          format: double
+        evaluatedRides:
+          type: integer
+          minimum: 0
     Route:
       type: object
       additionalProperties: false
-      required: [provider, routeId, stageOrder, title, routeName, stageName, sourceRevision, contentHash, distanceMetres, ascentMetres, maxGradientPercent, pointCount]
+      required:
+        - provider
+        - routeId
+        - stageOrder
+        - title
+        - routeName
+        - stageName
+        - sourceRevision
+        - contentHash
+        - distanceMetres
+        - ascentMetres
+        - maxGradientPercent
+        - pointCount
       properties:
-        provider: {type: string}
-        routeId: {type: integer, format: int64}
-        stageOrder: {type: integer}
-        title: {type: string}
-        routeName: {type: string}
-        stageName: {type: string}
-        sourceRevision: {type: string}
-        contentHash: {type: string}
-        distanceMetres: {type: number, format: double}
-        ascentMetres: {type: number, format: double}
-        maxGradientPercent: {type: number, format: double}
-        pointCount: {type: integer}
-        movingSeconds: {type: number, format: double}
-        validation: {$ref: '#/components/schemas/RouteValidation'}
+        provider:
+          type: string
+        routeId:
+          type: integer
+          format: int64
+        stageOrder:
+          type: integer
+        title:
+          type: string
+        routeName:
+          type: string
+        stageName:
+          type: string
+        sourceRevision:
+          type: string
+        contentHash:
+          type: string
+        distanceMetres:
+          type: number
+          format: double
+        ascentMetres:
+          type: number
+          format: double
+        maxGradientPercent:
+          type: number
+          format: double
+        pointCount:
+          type: integer
+        movingSeconds:
+          type: number
+          format: double
+        validation:
+          $ref: '#/components/schemas/RouteValidation'
     RouteList:
       type: object
       additionalProperties: false
-      required: [stages]
-      properties: {stages: {type: array, items: {$ref: '#/components/schemas/Route'}}}
+      required:
+        - stages
+      properties:
+        stages:
+          type: array
+          items:
+            $ref: '#/components/schemas/Route'
     SyncSchedule:
       type: object
       additionalProperties: false
-      required: [source, targets]
-      properties: {source: {type: boolean}, targets: {type: boolean}}
+      required:
+        - source
+        - targets
+      properties:
+        source:
+          type: boolean
+        targets:
+          type: boolean
     SyncPhaseRun:
       type: object
       additionalProperties: false
-      required: [lastCompletedAt, lastResult, sourceStages, created, updated, deleted]
-      properties: {lastCompletedAt: {type: string, format: date-time}, lastResult: {type: string}, lastFailure: {type: string}, sourceStages: {type: integer}, created: {type: integer}, updated: {type: integer}, deleted: {type: integer}}
+      required:
+        - lastCompletedAt
+        - lastResult
+        - sourceStages
+        - created
+        - updated
+        - deleted
+      properties:
+        lastCompletedAt:
+          type: string
+          format: date-time
+        lastResult:
+          type: string
+        lastFailure:
+          type: string
+        sourceStages:
+          type: integer
+        created:
+          type: integer
+        updated:
+          type: integer
+        deleted:
+          type: integer
     SyncPhases:
       type: object
       additionalProperties: false
-      properties: {source: {$ref: '#/components/schemas/SyncPhaseRun'}, targets: {$ref: '#/components/schemas/SyncPhaseRun'}}
+      properties:
+        source:
+          $ref: '#/components/schemas/SyncPhaseRun'
+        targets:
+          $ref: '#/components/schemas/SyncPhaseRun'
     SyncActive:
       type: object
       additionalProperties: false
-      required: [targets, stages]
-      properties: {phase: {type: string, enum: [source, targets]}, startsAt: {type: string, format: date-time}, targets: {type: integer, minimum: 0}, stages: {$ref: '#/components/schemas/TargetStages'}}
+      required:
+        - targets
+        - stages
+      properties:
+        phase:
+          type: string
+          enum:
+            - source
+            - targets
+        startsAt:
+          type: string
+          format: date-time
+        targets:
+          type: integer
+          minimum: 0
+        stages:
+          $ref: '#/components/schemas/TargetStages'
     SurfaceCoverage:
       type: object
       additionalProperties: false
-      required: [classified, total, incomplete]
-      properties: {generation: {type: string}, builtAt: {type: string, format: date-time}, classified: {type: integer}, total: {type: integer}, incomplete: {type: integer}}
+      required:
+        - classified
+        - total
+        - incomplete
+      properties:
+        generation:
+          type: string
+        builtAt:
+          type: string
+          format: date-time
+        classified:
+          type: integer
+        total:
+          type: integer
+        incomplete:
+          type: integer
     WahooRateLimit:
       type: object
       additionalProperties: false
-      required: [remaining]
-      properties: {remaining: {type: integer}, resetsAt: {type: string, format: date-time}}
+      required:
+        - remaining
+      properties:
+        remaining:
+          type: integer
+        resetsAt:
+          type: string
+          format: date-time
     TrustedInventory:
       type: object
       additionalProperties: false
-      required: [ageSeconds, maxAgeSeconds, fresh]
-      properties: {lastSuccessAt: {type: string, format: date-time}, ageSeconds: {type: integer}, maxAgeSeconds: {type: integer}, fresh: {type: boolean}}
+      required:
+        - ageSeconds
+        - maxAgeSeconds
+        - fresh
+      properties:
+        lastSuccessAt:
+          type: string
+          format: date-time
+        ageSeconds:
+          type: integer
+        maxAgeSeconds:
+          type: integer
+        fresh:
+          type: boolean
     SyncStatus:
       type: object
       additionalProperties: false
-      required: [state, phases, surface, sourceStages, created, updated, deleted, schedule]
+      required:
+        - state
+        - phases
+        - surface
+        - sourceStages
+        - created
+        - updated
+        - deleted
+        - schedule
       properties:
-        state: {type: string}
-        active: {$ref: '#/components/schemas/SyncActive'}
-        lastResult: {type: string}
-        lastCompletedAt: {type: string, format: date-time}
-        sourceStages: {type: integer}
-        created: {type: integer}
-        updated: {type: integer}
-        deleted: {type: integer}
-        schedule: {$ref: '#/components/schemas/SyncSchedule'}
-        phases: {$ref: '#/components/schemas/SyncPhases'}
-        surface: {$ref: '#/components/schemas/SurfaceCoverage'}
-        wahooRateLimit: {$ref: '#/components/schemas/WahooRateLimit'}
-        trustedInventory: {$ref: '#/components/schemas/TrustedInventory'}
+        state:
+          type: string
+        active:
+          $ref: '#/components/schemas/SyncActive'
+        lastResult:
+          type: string
+        lastCompletedAt:
+          type: string
+          format: date-time
+        sourceStages:
+          type: integer
+        created:
+          type: integer
+        updated:
+          type: integer
+        deleted:
+          type: integer
+        schedule:
+          $ref: '#/components/schemas/SyncSchedule'
+        phases:
+          $ref: '#/components/schemas/SyncPhases'
+        surface:
+          $ref: '#/components/schemas/SurfaceCoverage'
+        wahooRateLimit:
+          $ref: '#/components/schemas/WahooRateLimit'
+        trustedInventory:
+          $ref: '#/components/schemas/TrustedInventory'
     Build:
       type: object
       additionalProperties: false
-      required: [revision]
-      properties: {revision: {type: string}, imageDigest: {type: string}}
+      required:
+        - revision
+      properties:
+        revision:
+          type: string
+        imageDigest:
+          type: string
     Status:
       type: object
       additionalProperties: false
-      required: [ready, converged, targets, sync]
-      properties: {ready: {type: boolean}, converged: {type: boolean}, build: {$ref: '#/components/schemas/Build'}, targets: {type: array, items: {$ref: '#/components/schemas/TargetStatus'}}, sync: {$ref: '#/components/schemas/SyncStatus'}}
+      required:
+        - ready
+        - converged
+        - targets
+        - sync
+      properties:
+        ready:
+          type: boolean
+        converged:
+          type: boolean
+        build:
+          $ref: '#/components/schemas/Build'
+        targets:
+          type: array
+          items:
+            $ref: '#/components/schemas/TargetStatus'
+        sync:
+          $ref: '#/components/schemas/SyncStatus'
     SyncRun:
       type: object
       additionalProperties: false
-      required: [reference, phase, completedAt, result, sourceStages, created, updated, deleted]
-      properties: {reference: {type: string}, phase: {type: string, enum: [source, targets]}, completedAt: {type: string, format: date-time}, result: {type: string}, failure: {type: string}, sourceStages: {type: integer}, created: {type: integer}, updated: {type: integer}, deleted: {type: integer}}
+      required:
+        - reference
+        - phase
+        - completedAt
+        - result
+        - sourceStages
+        - created
+        - updated
+        - deleted
+      properties:
+        reference:
+          type: string
+        phase:
+          type: string
+          enum:
+            - source
+            - targets
+        completedAt:
+          type: string
+          format: date-time
+        result:
+          type: string
+        failure:
+          type: string
+        sourceStages:
+          type: integer
+        created:
+          type: integer
+        updated:
+          type: integer
+        deleted:
+          type: integer
     SyncRunPage:
       type: object
       additionalProperties: false
-      required: [runs]
-      properties: {runs: {type: array, items: {$ref: '#/components/schemas/SyncRun'}}, next: {type: string}}
+      required:
+        - runs
+      properties:
+        runs:
+          type: array
+          items:
+            $ref: '#/components/schemas/SyncRun'
+        next:
+          type: string
     BrowserBasemap:
       type: object
       additionalProperties: false
-      required: [name, styleUrl]
-      properties: {name: {type: string, minLength: 1}, styleUrl: {type: string, format: uri}, styleUrlDark: {type: string, format: uri}, darkCartography: {type: boolean}}
+      required:
+        - name
+        - styleUrl
+      properties:
+        name:
+          type: string
+          minLength: 1
+        styleUrl:
+          type: string
+          format: uri
+        styleUrlDark:
+          type: string
+          format: uri
+        darkCartography:
+          type: boolean
     WebUIConfig:
       type: object
       additionalProperties: false
-      required: [basemaps]
-      properties: {basemaps: {type: array, minItems: 1, items: {$ref: '#/components/schemas/BrowserBasemap'}}, sourceBaseUrls: {$ref: '#/components/schemas/SourceBaseUrls'}}
+      required:
+        - basemaps
+      properties:
+        basemaps:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/BrowserBasemap'
+        sourceBaseUrls:
+          $ref: '#/components/schemas/SourceBaseUrls'
     SourceBaseUrls:
       type: object
       additionalProperties: false
       properties:
-        veloplanner: {type: string, format: uri}
-        komoot: {type: string, format: uri}
+        veloplanner:
+          type: string
+          format: uri
+        komoot:
+          type: string
+          format: uri
     SurfaceRange:
       type: object
       additionalProperties: false
-      required: [kind, startIndex, endIndex]
-      properties: {kind: {type: string, enum: [asphalt, paving, compacted, gravel, ground, unknown]}, startIndex: {type: integer, minimum: 0}, endIndex: {type: integer, minimum: 0}}
+      required:
+        - kind
+        - startIndex
+        - endIndex
+      properties:
+        kind:
+          type: string
+          enum:
+            - asphalt
+            - paving
+            - compacted
+            - gravel
+            - ground
+            - unknown
+        startIndex:
+          type: integer
+          minimum: 0
+        endIndex:
+          type: integer
+          minimum: 0
     GeoJSONLineString:
       type: object
       additionalProperties: false
-      required: [type, coordinates]
-      properties: {type: {type: string, const: LineString}, coordinates: {type: array, minItems: 2, items: {type: array, minItems: 2, maxItems: 3, items: {type: number, format: double}}}}
+      required:
+        - type
+        - coordinates
+      properties:
+        type:
+          type: string
+          const: LineString
+        coordinates:
+          type: array
+          minItems: 2
+          items:
+            type: array
+            minItems: 2
+            maxItems: 3
+            items:
+              type: number
+              format: double
     GeoJSONProperties:
       type: object
       additionalProperties: false
-      required: [provider, routeId, stageOrder, title, routeName, stageName, distanceMetres, ascentMetres, maxGradientPercent, pointCount]
+      required:
+        - provider
+        - routeId
+        - stageOrder
+        - title
+        - routeName
+        - stageName
+        - distanceMetres
+        - ascentMetres
+        - maxGradientPercent
+        - pointCount
       properties:
-        provider: {type: string}
-        routeId: {type: integer, format: int64}
-        stageOrder: {type: integer}
-        title: {type: string}
-        routeName: {type: string}
-        stageName: {type: string}
-        distanceMetres: {type: number, format: double}
-        ascentMetres: {type: number, format: double}
-        maxGradientPercent: {type: number, format: double}
-        pointCount: {type: integer}
+        provider:
+          type: string
+        routeId:
+          type: integer
+          format: int64
+        stageOrder:
+          type: integer
+        title:
+          type: string
+        routeName:
+          type: string
+        stageName:
+          type: string
+        distanceMetres:
+          type: number
+          format: double
+        ascentMetres:
+          type: number
+          format: double
+        maxGradientPercent:
+          type: number
+          format: double
+        pointCount:
+          type: integer
         surface:
           type: object
           additionalProperties: false
-          required: [ranges, matchedMetres]
-          properties: {ranges: {type: array, items: {$ref: '#/components/schemas/SurfaceRange'}}, matchedMetres: {type: number, format: double}}
-        cumulativeSeconds: {type: array, items: {type: number, format: double}}
+          required:
+            - ranges
+            - matchedMetres
+          properties:
+            ranges:
+              type: array
+              items:
+                $ref: '#/components/schemas/SurfaceRange'
+            matchedMetres:
+              type: number
+              format: double
+        cumulativeSeconds:
+          type: array
+          items:
+            type: number
+            format: double
     GeoJSONFeature:
       type: object
       additionalProperties: false
-      required: [type, bbox, geometry, properties]
-      properties: {type: {type: string, const: Feature}, bbox: {type: array, minItems: 4, maxItems: 4, items: {type: number, format: double}}, geometry: {$ref: '#/components/schemas/GeoJSONLineString'}, properties: {$ref: '#/components/schemas/GeoJSONProperties'}}
+      required:
+        - type
+        - bbox
+        - geometry
+        - properties
+      properties:
+        type:
+          type: string
+          const: Feature
+        bbox:
+          type: array
+          minItems: 4
+          maxItems: 4
+          items:
+            type: number
+            format: double
+        geometry:
+          $ref: '#/components/schemas/GeoJSONLineString'
+        properties:
+          $ref: '#/components/schemas/GeoJSONProperties'
     WeatherPoint:
       type: object
       additionalProperties: false
-      required: [time, temperatureCelsius, apparentTemperatureCelsius, precipitationMillimetres, precipitationProbabilityPercent, windSpeedKmh, windDirectionDegrees, weatherCode]
-      properties: {time: {type: string, format: date-time}, temperatureCelsius: {type: number, format: double}, apparentTemperatureCelsius: {type: number, format: double}, precipitationMillimetres: {type: number, format: double}, precipitationProbabilityPercent: {type: number, format: double}, windSpeedKmh: {type: number, format: double}, windDirectionDegrees: {type: number, format: double}, weatherCode: {type: integer}}
+      required:
+        - time
+        - temperatureCelsius
+        - apparentTemperatureCelsius
+        - precipitationMillimetres
+        - precipitationProbabilityPercent
+        - windSpeedKmh
+        - windDirectionDegrees
+        - weatherCode
+      properties:
+        time:
+          type: string
+          format: date-time
+        temperatureCelsius:
+          type: number
+          format: double
+        apparentTemperatureCelsius:
+          type: number
+          format: double
+        precipitationMillimetres:
+          type: number
+          format: double
+        precipitationProbabilityPercent:
+          type: number
+          format: double
+        windSpeedKmh:
+          type: number
+          format: double
+        windDirectionDegrees:
+          type: number
+          format: double
+        weatherCode:
+          type: integer
     WeatherForecast:
       type: object
       additionalProperties: false
-      required: [points]
-      properties: {points: {type: array, items: {$ref: '#/components/schemas/WeatherPoint'}}}
+      required:
+        - points
+      properties:
+        points:
+          type: array
+          items:
+            $ref: '#/components/schemas/WeatherPoint'

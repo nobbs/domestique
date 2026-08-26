@@ -64,3 +64,13 @@ entry = "mise exec -- markdownlint-cli2"
 language = "system"
 files = "\\.md$"
 pass_filenames = true
+
+# OpenAPI accepts JSON flow syntax, but this contract stays readable YAML. The
+# check compares each staged contract to yq's canonical block-style output.
+[[repos.hooks]]
+id = "openapi-yaml-format"
+name = "OpenAPI YAML format"
+entry = "./dev/check-openapi-format.sh"
+language = "script"
+files = "^api/openapi\\.yaml$"
+pass_filenames = true

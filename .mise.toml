@@ -10,6 +10,7 @@ actionlint = "1.7.12"
 gitleaks = "8.30.1"
 markdownlint-cli2 = "0.23.2"
 shellcheck = "0.11.0"
+yq = "4.53.6"
 "go:golang.org/x/vuln/cmd/govulncheck" = "v1.6.0"
 "go:gotest.tools/gotestsum" = "v1.13.0"
 
