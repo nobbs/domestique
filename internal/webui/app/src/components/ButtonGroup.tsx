@@ -29,7 +29,15 @@ export function ButtonGroup({ children, className }: ButtonGroupProps) {
         // laid out as well as drawn: the buttons inside are 32 pixels wide and
         // carry their own edges within that, so a group that added two more
         // would stand two wider than the single button stacked above it.
-        "flex w-fit flex-col divide-y divide-[var(--rule)] overflow-hidden rounded-lg bg-[var(--panel)] shadow-[var(--shadow)] ring-1 ring-[var(--rule)] ring-inset",
+        "flex w-fit flex-col divide-y divide-[var(--rule)] rounded-lg bg-[var(--panel)] shadow-[var(--shadow)] ring-1 ring-[var(--rule)] ring-inset",
+        // The buttons give up the corners that face each other, rather than
+        // the group clipping them off. Clipping took the focus ring with
+        // them: it is drawn outside the button it belongs to, so a focused
+        // button in here showed nothing at all.
+        "[&>*:not(:first-child)]:rounded-t-none [&>*:not(:last-child)]:rounded-b-none",
+        // And the focused one comes forward, so the button it sits against
+        // does not cover the ring.
+        "[&>*:focus-visible]:relative [&>*:focus-visible]:z-10",
         className,
       )}
     >
