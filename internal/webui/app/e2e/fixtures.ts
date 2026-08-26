@@ -32,6 +32,8 @@ import {
 interface StyleUrls {
   light: string;
   dark: string | undefined;
+  /** Every configured style, which is what the chooser's previews load. */
+  others: Set<string>;
 }
 
 /**
@@ -77,7 +79,22 @@ async function styleUrls(
   const first = payload.basemaps?.[0];
   expect(first?.styleUrl, "the service names a basemap style").toBeTruthy();
 
-  return { light: first?.styleUrl ?? "", dark: first?.styleUrlDark };
+  /*
+   * Every other configured entry, because the chooser previews them: opening it
+   * loads each basemap's style document to draw its thumbnail. Unstubbed, those
+   * would reach the public providers and be reported as leaks — which is a real
+   * thing this harness is for, and not what these tests are about.
+   */
+  const others = new Set<string>();
+  for (const basemap of payload.basemaps ?? []) {
+    for (const url of [basemap.styleUrl, basemap.styleUrlDark]) {
+      if (url !== undefined && url !== "") {
+        others.add(url);
+      }
+    }
+  }
+
+  return { light: first?.styleUrl ?? "", dark: first?.styleUrlDark, others };
 }
 
 /** What an offline page may be given beyond the defaults. */
@@ -186,6 +203,18 @@ export async function installOfflineBasemap(
       await route.fulfill({
         contentType: "application/json",
         body: JSON.stringify(url === styles.dark ? darkBasemapStyle : lightBasemapStyle),
+      });
+
+      return;
+    }
+    // A configured basemap the map itself never loaded: the chooser's preview
+    // asked for it. Answered offline like the rest, and deliberately not
+    // recorded — `requested` is how a test knows which ground the map went and
+    // fetched, and a thumbnail is not the map.
+    if (styles.others.has(url)) {
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify(lightBasemapStyle),
       });
 
       return;
