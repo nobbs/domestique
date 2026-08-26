@@ -311,7 +311,7 @@ type Options struct {
 	// and while a first index is still being built.
 	//
 	// It asks the live index rather than the state file on purpose: what the
-	// GetStatus page should say is what is loaded, and a recorded build whose file
+	// status page should say is what is loaded, and a recorded build whose file
 	// did not survive a restart is exactly the case where the two differ.
 	SurfaceIndexFunc func() (generation string, builtAt time.Time, ok bool)
 
