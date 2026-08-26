@@ -71,3 +71,8 @@ config.local.toml
 # Ignore all skills except those that start with "domestique-"
 /.agents/skills/*
 !/.agents/skills/domestique-*
+
+# `mise run skills-sync` symlinks every fetched skill here; only the
+# first-party domestique-* symlinks are committed.
+/.claude/skills/*
+!/.claude/skills/domestique-*

@@ -279,6 +279,34 @@ description = "Report the UI coverage of what this change adds"
 depends = ["coverage-ui"]
 run = "go run ./dev/patchcoverage -flag ui"
 
+# bunx skills only manages .agents/skills/, the portable multi-tool skill
+# folder (see the .gitignore rule above it). It never writes to .claude/skills/,
+# which is what Claude Code actually reads, so a freshly fetched skill stays
+# invisible to it until something bridges the two.
+#
+# No `sources`: what this checks — which symlinks already exist on disk — is
+# not a function of the files it names, so a cached verdict could hide a
+# symlink someone deleted. Run by the SessionStart hook in .claude/settings.json
+# on every session, which is where "invisible to Claude Code" would otherwise
+# go unnoticed.
+[skills-sync]
+description = "Fetch pinned skills and symlink them into .claude/skills for Claude Code"
+run = '''
+if [ -f skills-lock.json ]; then
+  for s in $(jq -r '.skills | keys[]' skills-lock.json); do
+    if [ ! -d ".agents/skills/$s" ]; then
+      bunx skills experimental_install -y
+      break
+    fi
+  done
+fi
+for d in .agents/skills/*/; do
+  [ -d "$d" ] || continue
+  n=$(basename "$d")
+  [ -e ".claude/skills/$n" ] || ln -s "../../.agents/skills/$n" ".claude/skills/$n"
+done
+'''
+
 # Snapshots the deployed SQLite state and writes a development configuration
 # that reads real VeloPlanner data but cannot reach Wahoo. See dev/setup.sh.
 [dev-setup]
