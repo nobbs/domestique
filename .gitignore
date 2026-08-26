@@ -67,3 +67,7 @@ config.local.toml
 # failed `mise run ui-browser-test` leaves behind. No image is committed; the suite
 # compares a page against itself within a run.
 /.playwright/
+
+# Ignore all skills except those that start with "domestique-"
+/.agents/skills/*
+!/.agents/skills/domestique-*
