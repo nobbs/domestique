@@ -19,7 +19,6 @@
  * back to offer, and saying so with an inert control would be saying it worse.
  */
 
-import { IconExternalLink } from "@tabler/icons-react";
 import { sourceRoute } from "../lib/sourceRoute";
 import { ExternalButtonLink } from "./Button";
 
@@ -40,7 +39,6 @@ export function SourceRouteLink({ provider, baseUrl, routeId }: SourceRouteLinkP
 
   return (
     <ExternalButtonLink
-      className="inline-flex items-center gap-1"
       href={source.href}
       target="_blank"
       rel="noreferrer"
@@ -56,11 +54,10 @@ export function SourceRouteLink({ provider, baseUrl, routeId }: SourceRouteLinkP
        * reader cannot work out from context, and it is also the thing that
        * tells them whether following it is worth the tab.
        *
-       * Real text, not decoration: it is what remains if the arrow beside it
-       * fails to paint.
+       * Real text, not decoration: it is what remains if the arrow the link
+       * puts before it fails to paint.
        */}
-      <span>{source.name}</span>
-      <IconExternalLink size={13} stroke={1.6} aria-hidden="true" />
+      {source.name}
     </ExternalButtonLink>
   );
 }

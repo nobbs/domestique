@@ -328,17 +328,15 @@ export function SearchPanel({
             />
           </InputGroup>
         ) : (
-          <button
-            className="inline-flex size-8 items-center justify-center rounded-lg border border-[var(--rule)] bg-[var(--panel)] text-[var(--ink-2)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
-            type="button"
+          <Button
+            variant="panel"
+            icon={<IconSearch stroke={1.6} />}
             aria-label="Search the route library"
             onClick={() => {
               setSearchExpanded(true);
               setFocusSearch(true);
             }}
-          >
-            <IconSearch size={16} stroke={1.6} aria-hidden="true" />
-          </button>
+          />
         )}
         <FilterPanel
           filters={filters}

@@ -11,7 +11,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { forwardRef, type ReactNode, useImperativeHandle } from "react";
-import { createPortal } from "react-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Basemap, BoundingBox, Position } from "../../api/types";
 
@@ -86,8 +85,8 @@ vi.mock("../../components/map/MapViewport", () => ({
 }));
 
 vi.mock("../../components/map/MapControls", () => ({
-  MapControls: () => (
-    <div>
+  MapControls: ({ children }: { children?: ReactNode }) => (
+    <div data-testid="map-controls">
       <button type="button" aria-label="Find my location">
         Find my location
       </button>
@@ -97,20 +96,13 @@ vi.mock("../../components/map/MapControls", () => ({
       <button type="button" aria-label="Zoom out" onClick={() => drawn.map.zoomOut()}>
         Zoom out
       </button>
+      {children}
     </div>
   ),
 }));
 
 vi.mock("../../components/map/MapOverlay", () => ({
   MapOverlay: ({ children }: { children: ReactNode }) => <>{children}</>,
-}));
-
-vi.mock("../../components/map/MapControlCluster", () => ({
-  MapControlCluster: ({ children }: { children: ReactNode }) => {
-    const cluster = drawn.container?.querySelector(".maplibregl-ctrl-bottom-right");
-
-    return cluster ? createPortal(children, cluster) : children;
-  },
 }));
 
 vi.mock("react-map-gl/maplibre", () => ({
@@ -218,12 +210,9 @@ function line(key: string, offset = 0) {
   };
 }
 
-/** A map container with the unobstructed corner the chooser uses. */
-function containerWithCluster(): HTMLElement {
+/** The map's own container, which the overlay reads to place the credit. */
+function mapContainer(): HTMLElement {
   const container = document.createElement("div");
-  const cluster = document.createElement("div");
-  cluster.className = "maplibregl-ctrl-bottom-right";
-  container.append(cluster);
   document.body.append(container);
 
   return container;
@@ -243,7 +232,7 @@ beforeEach(() => {
   drawn.delayLoad = false;
   drawn.onLoad = null;
   drawn.container?.remove();
-  drawn.container = containerWithCluster();
+  drawn.container = mapContainer();
 });
 
 function show(props: Partial<Parameters<typeof LibraryMap>[0]> & { overlay?: ReactNode } = {}) {
@@ -463,14 +452,20 @@ describe("LibraryMap", () => {
   });
 
   /*
-   * The chooser goes into the lower-right map corner, clear of the desktop
-   * library rail. Its absence cannot move the map actions or attribution.
+   * The chooser stacks under the zoom pair, in the map's own corner: one column
+   * of controls rather than two corners a reader has to know to look in. Its
+   * absence cannot move the controls above it.
    */
-  it("puts the basemap chooser in the unobstructed map corner", () => {
+  it("stacks the basemap chooser under the zoom controls", () => {
     show({ basemaps: TWO_BASEMAPS, selectedBasemap: "Satellite", onBasemapChange: () => {} });
 
-    const cluster = drawn.container?.querySelector(".maplibregl-ctrl-bottom-right");
-    expect(cluster?.textContent).toBe("Satellite");
+    const controls = screen.getByTestId("map-controls");
+    const picker = screen.getByTestId("picker");
+    expect(controls).toContainElement(picker);
+    expect(
+      screen.getByRole("button", { name: "Zoom out" }).compareDocumentPosition(picker) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it("hands the layer switcher selection back to its owner", async () => {
@@ -578,11 +573,12 @@ describe("LibraryMap", () => {
   });
 
   /*
-   * A licence obliges the credit to be visible, so a map that reports no corner
-   * to put it in costs it its place in the cluster rather than its place on the
-   * page.
+   * A licence obliges the credit to be visible, so a map that reports nothing
+   * to hang it on costs it its placement rather than its place on the page. The
+   * chooser rides in the control stack and never reads the container at all,
+   * which is what this also holds it to.
    */
-  it("keeps the credit on the page when the map reports no cluster", () => {
+  it("keeps the credit on the page when the map reports no container", () => {
     drawn.container = document.createElement("div");
     show({ basemaps: TWO_BASEMAPS, selectedBasemap: "Streets", onBasemapChange: () => {} });
 

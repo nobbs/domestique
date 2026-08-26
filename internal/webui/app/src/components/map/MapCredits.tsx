@@ -21,7 +21,7 @@
 
 import { IconInfoCircle } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/Button";
 import { cn } from "@/lib/utils";
 
 /** What the button expands, named so the button can point at it. */
@@ -136,9 +136,8 @@ export function MapCredits({ styleUrl, extra, choice, onChoiceChange }: MapCredi
       )}
     >
       <Button
-        variant={expanded ? "ghost" : "outline"}
-        size="icon-xs"
-        type="button"
+        variant={expanded ? "ghost" : "panel"}
+        icon={<IconInfoCircle stroke={1.2} />}
         aria-expanded={expanded}
         // The mark says "there is something to read here" to anyone who can see
         // it; the name says what, for anyone who cannot. `aria-expanded` is what
@@ -150,9 +149,7 @@ export function MapCredits({ styleUrl, extra, choice, onChoiceChange }: MapCredi
         // the document is a reference a screen reader cannot follow.
         {...(expanded ? { "aria-controls": CREDIT_TEXT_ID } : {})}
         onClick={() => onChoiceChange(!expanded)}
-      >
-        <IconInfoCircle data-icon="inline-start" stroke={1.2} aria-hidden="true" />
-      </Button>
+      />
       {expanded ? (
         <p className="text-xs text-muted-foreground" id={CREDIT_TEXT_ID}>
           {credits}

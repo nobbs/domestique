@@ -17,6 +17,7 @@ import { useState } from "react";
 import { useClearTarget, useTriggerTargetSync } from "../../api/generated";
 import { statusQuery } from "../../api/queries";
 import type { TargetStatus } from "../../api/types";
+import { Button } from "../../components/Button";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -28,7 +29,6 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "../../components/ui/alert-dialog";
-import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Spinner } from "../../components/ui/spinner";
@@ -184,7 +184,7 @@ export function TargetConvergence() {
                    * fetching routes from it on its own schedule.
                    */}
                   <Button
-                    variant="outline"
+                    variant="standard"
                     disabled={reconcile.isPending}
                     onClick={() => reconcile.mutate({ target: target.id })}
                     aria-label={`Reconcile now: ${target.id}`}
@@ -235,7 +235,7 @@ export function TargetConvergence() {
                       <AlertDialogFooter>
                         <AlertDialogCancel>Cancel</AlertDialogCancel>
                         <AlertDialogAction
-                          variant="destructive"
+                          variant="danger"
                           disabled={confirmation !== target.id || clear.isPending}
                           onClick={() => clear.mutate({ target: target.id })}
                           aria-label={`Delete every Domestique route from ${target.id}`}

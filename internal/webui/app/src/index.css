@@ -186,23 +186,14 @@ body { margin: 0; background: var(--base); color: var(--ink); font-family: var(-
 .route-map { position: relative; background: var(--ground); user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 .maplibregl-ctrl-bottom-left { display: flex; flex-direction: column; align-items: start; gap: 8px; padding: 24px; padding: 24px 24px calc(24px + env(safe-area-inset-bottom)) calc(24px + env(safe-area-inset-left)); }
 .maplibregl-ctrl-bottom-left .maplibregl-ctrl { margin: 0; box-shadow: var(--shadow); }
-.maplibregl-ctrl-bottom-right { bottom: 38px; display: flex; flex-direction: column; align-items: end; gap: 8px; padding: 24px; padding: 24px calc(24px + env(safe-area-inset-right)) 0 24px; }
 .maplibregl-ctrl-bottom-left .maplibregl-ctrl-scale { position: relative; display: flex; align-items: center; min-height: 0; padding: 0 2px 2px; border: 0; border-bottom: 2px solid currentColor; border-radius: 0; background: repeating-linear-gradient(to right, currentColor 0 1px, transparent 1px 25%) left bottom / 100% 4px no-repeat; box-shadow: none; color: var(--ink-2); font-size: 12px; font-variant-numeric: tabular-nums; }
 .maplibregl-ctrl-bottom-left .maplibregl-ctrl-scale::before, .maplibregl-ctrl-bottom-left .maplibregl-ctrl-scale::after { position: absolute; bottom: -2px; width: 2px; height: 8px; background: currentColor; content: ""; }
 .maplibregl-ctrl-bottom-left .maplibregl-ctrl-scale::before { left: 0; }
 .maplibregl-ctrl-bottom-left .maplibregl-ctrl-scale::after { right: 0; }
 .map-controls { position: absolute; top: calc(24px + env(safe-area-inset-top)); right: calc(24px + env(safe-area-inset-right)); z-index: 1; display: flex; flex-direction: column; gap: 8px; pointer-events: auto; }
-.map-controls__button, .map-controls__zoom { min-height: 32px; border: 1px solid var(--rule); border-radius: var(--radius); background: var(--panel); box-shadow: var(--shadow); }
-.map-controls__button, .map-controls__zoom button { display: grid; width: 32px; height: 32px; place-items: center; padding: 0; border: 0; background: none; color: var(--ink-2); cursor: pointer; }
-.map-controls__zoom { overflow: hidden; }
-.map-controls__zoom button + button { border-top: 1px solid var(--rule); }
-.map-controls__button:hover, .map-controls__button:focus-visible, .map-controls__zoom button:hover, .map-controls__zoom button:focus-visible { color: var(--accent); }
-.map-controls__button:focus-visible, .map-controls__zoom button:focus-visible { position: relative; z-index: 1; outline: 2px solid var(--accent); outline-offset: -2px; }
-.map-controls__button:disabled { cursor: not-allowed; opacity: .5; }
 .current-location-marker { display: grid; width: 28px; height: 28px; place-items: center; border: 2px solid var(--panel); border-radius: 50% 50% 50% 0; background: var(--accent); box-shadow: var(--shadow); color: var(--panel); pointer-events: none; transform: rotate(-45deg); }
 .current-location-marker > svg { transform: rotate(45deg); }
 .route-map > .map-credits { position: absolute; right: calc(24px + env(safe-area-inset-right)); bottom: calc(24px + env(safe-area-inset-bottom)); }
-.route-map > .basemap-picker { position: absolute; bottom: calc(24px + 38px); left: 24px; }
 .route-position-tooltip-marker, .route-terminal-marker, .route-direction-marker { pointer-events: none; }
 .route-direction { display: block; }
 .route-direction--light { filter: drop-shadow(0 0 2px rgb(28 33 38 / 85%)); }
@@ -214,8 +205,6 @@ body { margin: 0; background: var(--base); color: var(--ink); font-family: var(-
 
 @media (max-width: 52rem) {
   .maplibregl-ctrl-bottom-left { top: 0; bottom: auto; padding: calc(16px + env(safe-area-inset-top)) 16px 16px calc(16px + env(safe-area-inset-left)); }
-  .maplibregl-ctrl-bottom-right { bottom: 38px; padding: 16px calc(16px + env(safe-area-inset-right)) 0 16px; }
   .map-controls { top: calc(16px + env(safe-area-inset-top)); right: calc(16px + env(safe-area-inset-right)); }
   .route-map > .map-credits { right: calc(16px + env(safe-area-inset-right)); bottom: calc(64px + env(safe-area-inset-bottom)); }
-  .route-map > .basemap-picker { bottom: calc(16px + 38px); left: 16px; }
 }

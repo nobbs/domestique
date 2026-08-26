@@ -6,7 +6,6 @@ import { ScaleControl } from "react-map-gl/maplibre";
 import type { Basemap, BoundingBox } from "../../api/types";
 import { BasemapPicker } from "../../components/map/BasemapPicker";
 import { LIBRARY_HIT_LAYER, LibraryRoutes, type MapLine } from "../../components/map/LibraryRoutes";
-import { MapControlCluster } from "../../components/map/MapControlCluster";
 import { MapControls } from "../../components/map/MapControls";
 import { MapCredits } from "../../components/map/MapCredits";
 import { MapOverlay } from "../../components/map/MapOverlay";
@@ -87,7 +86,17 @@ export function LibraryMap({
     >
       <MapViewport bounds={bounds} maxZoom={maxZoom} {...(insets ? { insets } : {})} />
       <ScaleControl position="bottom-left" unit={unitSystem} />
-      <MapControls />
+      <MapControls>
+        {onBasemapChange ? (
+          <BasemapPicker
+            basemaps={basemaps}
+            selectedName={selectedBasemap}
+            onSelect={onBasemapChange}
+            expanded={pickerOpen}
+            onExpandedChange={setPickerOpen}
+          />
+        ) : null}
+      </MapControls>
       <LibraryRoutes
         lines={lines}
         darkBasemap={darkBasemap}
@@ -105,17 +114,6 @@ export function LibraryMap({
           onChoiceChange={setCreditChoice}
         />
       </MapOverlay>
-      {onBasemapChange ? (
-        <MapControlCluster>
-          <BasemapPicker
-            basemaps={basemaps}
-            selectedName={selectedBasemap}
-            onSelect={onBasemapChange}
-            expanded={pickerOpen}
-            onExpandedChange={setPickerOpen}
-          />
-        </MapControlCluster>
-      ) : null}
     </MapWidget>
   );
 }

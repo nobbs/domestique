@@ -11,6 +11,11 @@
  * The demo offers several public cartographies. The harness also adds one
  * isolated style, so this test can prove that a choice changes both the style
  * request and the attribution without reaching the public tile provider.
+ *
+ * Opening the chooser loads every configured style, because each entry carries
+ * a preview drawn in it. So a style document having been asked for stops
+ * meaning the map went and fetched it once the list is open — what still means
+ * that is the credit, which follows the ground actually loaded.
  */
 
 import {
@@ -42,12 +47,13 @@ test.describe("the basemap chooser", () => {
     await expect(page.getByText(BASEMAP_ATTRIBUTION_TEXT)).toBeVisible();
 
     await page.getByRole("button", { name: "Choose the basemap" }).click();
-    await page.getByRole("radio", { name: SECOND_BASEMAP_NAME }).check();
+    // The row, not the radio: behind a preview the radio is there for what reads
+    // the page rather than what points at it, and a reader presses the picture
+    // and the name.
+    await page.getByText(SECOND_BASEMAP_NAME, { exact: true }).click();
 
-    // The request is the assertion: a canvas cannot be read back, so what proves
-    // the map changed hands is which document MapLibre went and fetched.
-    await expect.poll(() => askedForSecond(requested)).toBe(true);
-    // And the credit followed it, because a provider's terms are its own.
+    // A canvas cannot be read back, so what proves the map changed hands is the
+    // credit: it names the provider of the ground actually loaded.
     await expect(page.getByText(SECOND_BASEMAP_ATTRIBUTION_TEXT)).toBeVisible();
 
     expect(leaks, "no request left the page for a third-party server").toEqual([]);
@@ -63,8 +69,10 @@ test.describe("the basemap chooser", () => {
     await openLibrary(page);
 
     await page.getByRole("button", { name: "Choose the basemap" }).click();
-    await page.getByRole("radio", { name: SECOND_BASEMAP_NAME }).check();
-    await expect.poll(() => askedForSecond(requested)).toBe(true);
+    await page.getByText(SECOND_BASEMAP_NAME, { exact: true }).click();
+    // The credit is folded away here, so what says the pick landed is the radio
+    // behind the picture: hidden from a pointer, and still the state itself.
+    await expect(page.getByRole("radio", { name: SECOND_BASEMAP_NAME })).toBeChecked();
 
     requested.length = 0;
     await page.reload();

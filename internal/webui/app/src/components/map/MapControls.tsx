@@ -1,12 +1,21 @@
-/** Location and zoom controls placed over a MapWidget. */
+/**
+ * Location and zoom controls placed over a MapWidget.
+ *
+ * Anything else the corner should hold comes in as children and stacks under
+ * the zoom pair — the basemap chooser does. It arrives that way rather than as
+ * props because what a reader may choose as the ground is the map's business
+ * and not these two controls'.
+ */
 
 import { IconCurrentLocation, IconMapPinFilled, IconMinus, IconPlus } from "@tabler/icons-react";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { Marker, useMap } from "react-map-gl/maplibre";
+import { Button } from "../Button";
+import { ButtonGroup } from "../ButtonGroup";
 
 const LOCATION_ZOOM = 12;
 
-export function MapControls() {
+export function MapControls({ children }: { children?: ReactNode }) {
   const { current: map } = useMap();
   const [location, setLocation] = useState<{ longitude: number; latitude: number } | null>(null);
   const geolocationAvailable = typeof navigator !== "undefined" && "geolocation" in navigator;
@@ -34,37 +43,35 @@ export function MapControls() {
           </div>
         </Marker>
       ) : null}
+      {/* Only where the corner is: the controls themselves are the application's own. */}
       <div className="map-controls">
-        <button
-          className="map-controls__button"
-          type="button"
+        <Button
+          variant="panel"
+          icon={<IconCurrentLocation stroke={2} />}
           onClick={locate}
           disabled={!geolocationAvailable || !map}
           aria-label="Find my location"
           title="Find my location"
-        >
-          <IconCurrentLocation size={16} stroke={2} aria-hidden="true" />
-        </button>
-        <div className="map-controls__zoom">
-          <button
-            type="button"
+        />
+        <ButtonGroup>
+          <Button
+            variant="ghost"
+            icon={<IconPlus stroke={2} />}
             onClick={() => map?.zoomIn()}
             disabled={!map}
             aria-label="Zoom in"
             title="Zoom in"
-          >
-            <IconPlus size={16} stroke={2} aria-hidden="true" />
-          </button>
-          <button
-            type="button"
+          />
+          <Button
+            variant="ghost"
+            icon={<IconMinus stroke={2} />}
             onClick={() => map?.zoomOut()}
             disabled={!map}
             aria-label="Zoom out"
             title="Zoom out"
-          >
-            <IconMinus size={16} stroke={2} aria-hidden="true" />
-          </button>
-        </div>
+          />
+        </ButtonGroup>
+        {children}
       </div>
     </>
   );

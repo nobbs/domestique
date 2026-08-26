@@ -23,7 +23,7 @@ import {
 import { statusQuery, webUIConfigQuery } from "../../api/queries";
 import type { Status, SyncActive, SyncPhase, SyncPhaseRun } from "../../api/types";
 import { SYNC_PHASES } from "../../api/types";
-import { Button } from "../../components/ui/button";
+import { Button } from "../../components/Button";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Spinner } from "../../components/ui/spinner";
 import { Switch } from "../../components/ui/switch";
@@ -201,8 +201,7 @@ export function SyncControls() {
               {" "}
               {data.sync.surface.incomplete} could not be classified last time.{" "}
               <Button
-                variant="outline"
-                size="sm"
+                variant="standard"
                 disabled={retryClassification.isPending}
                 onClick={() => retryClassification.mutate()}
               >
@@ -271,7 +270,7 @@ export function SyncControls() {
                   <span>Hourly</span>
                 </div>
                 <Button
-                  variant="outline"
+                  variant="standard"
                   disabled={run.isPending}
                   onClick={() => run.mutate()}
                   aria-label={`Run now: ${labels[phase]}`}

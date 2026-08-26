@@ -11,7 +11,7 @@
 import { IconAdjustmentsHorizontal } from "@tabler/icons-react";
 import { useId, useState } from "react";
 import { SURFACE_KINDS } from "../../api/types";
-import { Button } from "../../components/ui/button";
+import { Button } from "../../components/Button";
 import { Checkbox } from "../../components/ui/checkbox";
 import { FieldLabel } from "../../components/ui/field";
 import { Input } from "../../components/ui/input";
@@ -156,7 +156,13 @@ export function FilterPanel({
   return (
     <Popover open={expanded} onOpenChange={onExpandedChange}>
       <PopoverTrigger
-        className={`inline-flex size-8 items-center justify-center rounded-lg border bg-[var(--panel)] text-[var(--ink-2)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] ${active ? "border-[var(--accent)]" : "border-[var(--rule)]"}`}
+        render={
+          <Button
+            variant="panel"
+            icon={<IconAdjustmentsHorizontal stroke={1.6} />}
+            active={active}
+          />
+        }
         // The mark says "filters are set" to anyone who can see it; the name
         // says so for anyone who cannot, the same split `BasemapPicker` uses.
         aria-label={
@@ -166,10 +172,11 @@ export function FilterPanel({
               ? "Show the library filters — filters are active"
               : "Show the library filters"
         }
-      >
-        <IconAdjustmentsHorizontal size={16} stroke={1.6} aria-hidden="true" />
-      </PopoverTrigger>
+      />
       <PopoverContent
+        // Named for the same reason the basemap popup is: it is a dialog to a
+        // screen reader, and an unnamed one says nothing about what it holds.
+        aria-label="Library filters"
         className="w-[min(23rem,calc(100vw-1.5rem))] gap-4 bg-[var(--panel)] p-3 shadow-[var(--shadow)]"
         id={FILTER_PANEL_ID}
       >
@@ -217,7 +224,7 @@ export function FilterPanel({
             ))}
           </fieldset>
           <Button
-            variant="outline"
+            variant="standard"
             disabled={!active}
             onClick={() => onFiltersChange(EMPTY_FILTERS)}
           >
