@@ -524,6 +524,36 @@ func TestHandlerPublishesTheWayOutWhenOneIsConfigured(t *testing.T) {
 		"a configured way out must reach the page")
 }
 
+func TestNewRefusesAnAccessEmailThatIsNotOne(t *testing.T) {
+	// The contract publishes this to the page as an email, and the gate compares
+	// what an assertion says against it literally, so a display-name form would
+	// be both a response the schema does not describe and an address no
+	// assertion can match.
+	for name, value := range map[string]string{
+		"empty":        "",
+		"blank":        "   ",
+		"no domain":    "rider",
+		"display name": "Rider <rider@example.test>",
+		"two at signs": "rider@@example.test",
+		"with a space": "rider @example.test",
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := New(
+				&Options{
+					TargetIDs:        []string{"rider-a"},
+					Basemaps:         twoProviderBasemaps(),
+					AccessVerifier:   &recordingVerifier{email: testAccessEmail},
+					AccessEmail:      value,
+					BrowserOriginURL: testBrowserOriginURL,
+				},
+				&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{},
+			)
+
+			require.Error(t, err, "New() accepted an access email that is not an address")
+		})
+	}
+}
+
 func TestNewRefusesASignOutURLThatLeavesThisOrigin(t *testing.T) {
 	// Each of these reaches a browser as the href of a link a reader clicks.
 	// None of them is a way out of this session: two are other sites, one is
