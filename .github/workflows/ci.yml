@@ -68,40 +68,13 @@ jobs:
           version: 2026.8.12
           install: true
           cache: true
-      # The module downloads and the compiler cache, which every Go job otherwise
-      # pays for from scratch. They are two entries rather than one because they
-      # go stale on entirely different clocks, and putting them together made
-      # every job rewrite the larger half on every commit.
-      #
-      # The module cache is the downloads, and a download is the same bytes
-      # whoever asked for it: one entry, keyed on `go.sum` alone, shared by every
-      # job here. `.mise.toml` is deliberately not in that key — a toolchain bump
-      # changes which compiler reads these files, not what they contain — and the
-      # single restore-key is what carries most of the tree across a dependency
-      # bump. Six jobs restore it; whichever reaches the end first saves it, and
-      # the other five find the key already written and upload nothing.
-      #
-      # The build cache is per job, because the jobs compile different things:
-      # the race detector's object files are not the plain suite's, and
-      # golangci-lint's cache is neither. Its key is the pinned toolchain, then
-      # `go.sum`, then the Go tree, so an unchanged tree hits exactly and writes
-      # nothing back, and a source change restores the entry built from the same
-      # dependencies and recompiles only what moved. `.mise.toml` leads because
-      # it is what decides which compiler wrote the directory: without it, a
-      # toolchain bump on its own would still hit the old entry exactly, nothing
-      # the new compiler produced would ever be saved, and every run would
-      # recompile cold until some source file happened to move.
-      #
-      # Both paths under `.cache/` are `.mise.toml`'s own choice read back — it
-      # puts GOCACHE and GOLANGCI_LINT_CACHE there — and dev/gatecheck asserts
-      # that the two files still name the same directories, because a cache
-      # pointed at a directory nothing writes is saved on every run and restores
-      # nothing.
-      #
-      # Nothing restored here can make a check pass that would otherwise fail:
-      # every job runs `mise run --force`, and a compiler cache is keyed by the
-      # content it was built from. It is the download and the recompilation that
-      # is skipped, not the work.
+      # Two entries, because they go stale on different clocks. The module
+      # cache is downloads — the same bytes for any job — so `go.sum` alone keys
+      # it, shared by every job here. The build cache is per job, and
+      # `.mise.toml` leads its key: without it a toolchain bump would hit the old
+      # entry exactly, save nothing the new compiler produced, and recompile cold
+      # until a source file happened to move. Both paths are `.mise.toml`'s own
+      # GOCACHE and GOLANGCI_LINT_CACHE, which dev/gatecheck asserts still match.
       - name: Restore the Go module cache
         # v6.1.0
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
@@ -123,24 +96,19 @@ jobs:
             go-lint-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-${{ hashFiles('go.sum') }}-
             go-lint-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-
             go-lint-${{ runner.os }}-
-      # --force here and in every other job: a task that declares `sources` is
-      # skipped locally when its inputs have not moved, and the gate a merge
-      # must satisfy is not the place to trust a cache. It costs nothing on a
-      # fresh runner and keeps the property true if one ever restores state.
+      # --force here and in every other job: a task with `sources` skips itself
+      # when its inputs have not moved, which a merge gate must not do.
       - name: Run linters
         run: mise run --force ci-lint
 
   test:
     name: Test
     runs-on: ubuntu-24.04
-    # The suite runs twice here: once as it normally does, and once instrumented
-    # by the race detector, which compiles and runs several times slower. The
-    # budget is raised rather than the detector given less room, and it clears
-    # both suites' `-timeout` put together — not just the race one's — because
-    # this job runs them back to back and a `-timeout` bounds each test binary
-    # rather than the invocation. A wedged package is then given up on by the
-    # toolchain, which prints every goroutine's stack, rather than by the runner,
-    # which prints nothing. dev/gatecheck asserts that sum against this number.
+    # Must clear both suites' own `-timeout` summed: `-timeout` bounds each test
+    # binary rather than the invocation, and this job runs the plain and the
+    # race-instrumented suite back to back. A wedged package is then given up on
+    # by the toolchain, which prints every goroutine's stack, rather than by the
+    # runner, which prints nothing. dev/gatecheck asserts that sum against this.
     timeout-minutes: 25
     needs: changes
     if: needs.changes.outputs.go == 'true'
@@ -184,25 +152,9 @@ jobs:
             go-test-${{ runner.os }}-
       - name: Run tests
         run: mise run --force ci-test
-      # Test results go to Codecov's test analytics, which is what makes a
-      # failure and a flake readable on the pull request instead of only in a
-      # folded log here. They are uploaded from this job and the UI one rather
-      # than from `coverage`, even though both are path-filtered and that one is
-      # not: nothing compares a test report against a base, and none of these
-      # uploads is a required status, so a commit that skipped a suite is a
-      # commit with nothing to say rather than a missing context. Uploading from
-      # here also means the report describes the suite as it normally runs,
-      # rather than the instrumented variant `coverage` drives.
-      #
-      # A failed suite is exactly the run worth uploading, so the step is
-      # conditioned on the run not being cancelled rather than on the one above
-      # succeeding. It names its file, does not search the tree, and reports an
-      # upload failure without failing the job — the same constraints the
-      # coverage uploads carry, and for the same reasons. It is also the same
-      # action at the same pinned version, with `report_type` telling it these
-      # are test results rather than coverage; the dedicated
-      # `codecov/test-results-action` does the same job but is deprecated in
-      # favour of exactly this.
+      # Uploaded whenever the run was not cancelled, because a failed suite is
+      # exactly the one worth reporting. `report_type` is the supported path for
+      # test results; `codecov/test-results-action` is deprecated in favour of it.
       - name: Upload Go test results
         if: ${{ !cancelled() }}
         # v7.0.0
@@ -266,10 +218,9 @@ jobs:
   ui:
     name: UI
     runs-on: ubuntu-24.04
-    # The browser suite, the Storybook suite and the Storybook sweep share one
-    # Chromium download. The browser suite still builds the demo API and drives
-    # a software-rendered WebGL map on top of that, and the sweep builds the
-    # workshop before reading it, so this job is minutes rather than seconds.
+    # The browser suite builds the demo API and drives a software-rendered WebGL
+    # map on top of it, and the sweep builds the workshop first, so this job is
+    # minutes rather than seconds.
     timeout-minutes: 20
     needs: changes
     if: needs.changes.outputs.ui == 'true'
@@ -288,6 +239,18 @@ jobs:
           # last build it accepted, and a single-commit clone has no ancestry to
           # walk. It would answer by treating every story as new.
           fetch-depth: 0
+          # The branch head, not the merge commit a pull request checks out by
+          # default. Chromatic is told the head SHA but finds that build's
+          # ancestors by walking `git rev-list HEAD`, and `refs/pull/N/merge` is
+          # not a commit its index has ever seen, so every build reported no
+          # ancestor.
+          #
+          # Named as the pull ref rather than as the head SHA, because a bare SHA
+          # is not in the refspec `fetch-depth: 0` fetches — only `refs/heads/*`
+          # and tags are — and a fork's head is on none of those, so checkout
+          # would fail outright. Empty on a push, where the default ref is
+          # already the commit that was pushed.
+          ref: ${{ github.event_name == 'pull_request' && format('refs/pull/{0}/head', github.event.pull_request.number) || '' }}
       - name: Install pinned toolchain
         # v4.2.5
         uses: jdx/mise-action@3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518
@@ -295,16 +258,11 @@ jobs:
           version: 2026.8.12
           install: true
           cache: true
-      # This job compiles Go as well as JavaScript, and used to be the only one
-      # that did so without the caches for it. `api-check` regenerates the
-      # client, and the browser suite's own web server is `dev/demo.sh`, which
-      # builds `dev/demoapi` — modernc.org/sqlite and all — before Playwright
-      # opens a page. Cold, that build took nearly three minutes of this job's
-      # ten, on the critical path of the whole workflow.
-      #
-      # Split and keyed as the Lint job above explains, under its own build-cache
-      # prefix for the reason given there: what this job leaves in the compiler
-      # cache is the demo stack, which is not what any of them compiles.
+      # This job compiles Go too: `api-check` regenerates the client, and the
+      # browser suite's web server is `dev/demo.sh`, which builds `dev/demoapi`
+      # before Playwright opens a page. Keyed as the Lint job above explains,
+      # under its own build-cache prefix — what this job leaves in the compiler
+      # cache is the demo stack, which is not what the others compile.
       - name: Restore the Go module cache
         # v6.1.0
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
@@ -325,17 +283,10 @@ jobs:
             go-ui-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-${{ hashFiles('go.sum') }}-
             go-ui-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-
             go-ui-${{ runner.os }}-
-      # pnpm downloads every package once into a content-addressed store and hard
-      # links it into node_modules, so the store is what makes `ui-install` a
-      # link rather than a download. Its location is asked for rather than
-      # assumed: pnpm derives it from the platform, and a merely probable path
-      # would save an empty directory on every run and never hit.
-      #
-      # Keyed on the pinned toolchain and then the lockfile: the lockfile decides
-      # what the store must hold, and `.mise.toml` decides which pnpm holds it,
-      # and therefore which store layout at which path. The looser fallbacks
-      # still save most of the download when a single dependency moved, or when
-      # the pnpm pin moved without changing the store layout it writes.
+      # pnpm hard-links out of a content-addressed store, so the store is what
+      # makes `ui-install` a link rather than a download. Its location is asked
+      # for rather than assumed: pnpm derives it from the platform, and a merely
+      # probable path would save an empty directory and never hit.
       - name: Locate the pnpm store
         run: echo "PNPM_STORE=$(mise exec -- pnpm store path)" >> "${GITHUB_ENV}"
       - name: Restore the pnpm store
@@ -347,13 +298,10 @@ jobs:
           restore-keys: |
             pnpm-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-
             pnpm-${{ runner.os }}-
-      # `ui-browser-install` is a no-op once the browser is already at this path,
-      # so a cache hit turns it into a check rather than a 184MB download. Keyed
-      # on the pinned `@playwright/test` version, read straight out of
-      # package.json since it is an exact pin rather than a range, so a version
-      # bump misses the cache and installs the new browser instead of running it
-      # against the old one. No restore-keys: an exact-match-only cache cannot
-      # fall back to a stale browser on a miss.
+      # A cache hit turns `ui-browser-install` into a check rather than a 184MB
+      # download. Keyed on the exact `@playwright/test` pin, with no
+      # restore-keys: an exact-match-only cache cannot fall back to a browser the
+      # pinned version did not ask for.
       - name: Resolve the Playwright version
         run: |
           set -euo pipefail
@@ -370,37 +318,15 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ env.PLAYWRIGHT_VERSION }}
       - name: Typecheck, lint and test the UI
-        # Deliberately without --with-deps: the runner image already carries every
-        # shared library Chromium links, so the flag only adds CJK, Thai, and
-        # Cyrillic fonts the suite never renders, and it has spent over five
-        # minutes waiting on the apt mirror to serve them.
+        # Deliberately without --with-deps: the runner image already carries
+        # every library Chromium links, and the flag only adds fonts the suite
+        # never renders, slowly.
         run: mise run --force ci-ui
-      # The one question the suites above cannot answer. They play every story
-      # and assert what they were told to assert, and the sweep proves each page
-      # renders at all; a component that renders perfectly and looks wrong
-      # passes all three. This compares each story's pixels against the last
-      # accepted ones, which is a claim about change and needs a baseline that
-      # outlives a run.
-      #
-      # Over the workshop `ci-ui` already built, rather than building a second
-      # one: `test:storybook:sweep` leaves `storybook-static` behind and this
-      # reads it, so the snapshots are of exactly the bundle the sweep swept.
-      #
-      # `main` accepts its own changes, because the trunk is the baseline by
-      # definition and nobody reviews a change after it has landed. A pull
-      # request does not, so a difference is something to look at before it
-      # becomes the thing everything else is measured against.
-      # Whether there is a baseline to compare against at all: a fork's pull
-      # request cannot read the secret, and a visual baseline is not something
-      # a fork could usefully compare against, so the publish below is skipped
-      # rather than failed there.
-      #
-      # The answer is carried out as an output rather than tested in the
-      # publish step's own `if`. A step's `env` is applied after its condition
-      # is evaluated, and `secrets` is not among the contexts a step condition
-      # may read at all — so asking there would have read an empty string and
-      # skipped the publish on every run, including the ones that can do it.
-      # Only the emptiness of the token leaves this step, never the token.
+      # A step's `env` is applied after its `if` is evaluated, and `secrets` is
+      # not a context a step condition may read at all — so this cannot be an
+      # `if` on the publish below: it would read an empty string and skip every
+      # run, including the ones that can publish. Only the emptiness of the
+      # token leaves this step, never the token.
       - name: Note whether there is a workshop to review
         id: visual
         if: ${{ !cancelled() }}
@@ -408,17 +334,18 @@ jobs:
           CHROMATIC_PROJECT_TOKEN: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
         run: |
           set -euo pipefail
-          # A token, and something built to send with it. The publish runs after
-          # a failed suite on purpose — a test failing is when the picture is
-          # most worth looking at — but `ci-ui` stops at its first failing task,
-          # and one that stops before the sweep leaves no workshop behind. Then
-          # the publish would fail for having nothing to publish, on top of the
-          # failure that is the actual news.
+          # The publish runs even after a failed suite, which is when the
+          # picture is most worth looking at — but a `ci-ui` that stopped before
+          # the sweep left no workshop to publish.
           if [ -n "${CHROMATIC_PROJECT_TOKEN:-}" ] && [ -d internal/webui/app/storybook-static ]; then
             echo "publishable=true" >> "${GITHUB_OUTPUT}"
           else
             echo "publishable=false" >> "${GITHUB_OUTPUT}"
           fi
+      # Over the workshop `ci-ui` already built rather than a second one:
+      # `test:storybook:sweep` leaves `storybook-static` behind, so the snapshots
+      # are of exactly the bundle it swept. `main` accepts its own changes,
+      # because the trunk is the baseline by definition.
       - name: Publish the workshop for visual review
         if: ${{ !cancelled() && steps.visual.outputs.publishable == 'true' }}
         # v18.6.0, the version of the CLI the addon carries in pnpm-lock.yaml.
@@ -428,11 +355,8 @@ jobs:
           workingDir: internal/webui/app
           storybookBuildDir: storybook-static
           autoAcceptChanges: main
-      # All three UI suites under the `ui` flag, so Codecov distinguishes them
-      # from the Go results the way the coverage flags already do. See the Go
-      # upload above for why this job uploads at all and why it runs when the
-      # suite failed. A step of `ci-ui` before the suites can fail and leave a
-      # file unwritten, which the uploader reports and does not fail the job for.
+      # All three UI suites under the `ui` flag. See the Go upload above for why
+      # this runs when the suite failed.
       - name: Upload UI test results
         if: ${{ !cancelled() }}
         # v7.0.0
@@ -445,15 +369,10 @@ jobs:
           disable_search: true
           plugins: noop
           fail_ci_if_error: false
-      # A failed browser test leaves a trace, a failure screenshot and an HTML
-      # report under `.playwright/`, and the runner discards them with itself.
-      # The suite retries nothing on purpose, so a failure here is meant to be
-      # reproducible from what it left rather than by running it again; without
-      # the upload, reproducing it costs a Chromium download and a demo stack.
-      # The path is Playwright's own output directory alone, never the working
-      # tree, which can hold a configuration file, a local database and
-      # `.local/`. Nothing uploads from a green run, and the retention is the
-      # window in which somebody is actually looking at the failure.
+      # The suite retries nothing on purpose, so a failure is meant to be
+      # reproducible from the trace, screenshot and report it left. The path is
+      # Playwright's own output directory alone, never the working tree, which
+      # can hold a configuration file, a local database and `.local/`.
       - name: Upload the browser suite's failure artefacts
         if: failure()
         # v7.0.1
@@ -461,10 +380,8 @@ jobs:
         with:
           name: playwright-ui
           path: .playwright/
-          # The directory is hidden, and the uploader excludes hidden files
-          # unless told otherwise — so without this it found nothing, warned,
-          # and uploaded an empty artefact on every failing run. A failure that
-          # discards its own trace is the one case this step exists for.
+          # The directory is hidden, and the uploader skips hidden files unless
+          # told otherwise: without this it uploaded an empty artefact.
           include-hidden-files: true
           retention-days: 7
 
@@ -473,27 +390,12 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     needs: changes
-    # Deliberately unfiltered: this job runs for every pull request and every
-    # push, including one that touches only documentation.
-    #
-    # The branch ruleset requires `codecov/patch/go` and `codecov/patch/ui`, and
-    # Codecov posts a status only for a commit it received a report for. A path
-    # filter here would mean a documentation-only pull request uploads nothing,
-    # the two required contexts never arrive, and the pull request is blocked
-    # with nothing to un-block it. The same gap read from the other side: a
-    # commit on the default branch with no report is a commit no later pull
-    # request can compare against.
-    #
-    # The job measures both languages in one run because neither flag is carried
-    # forward, so a report that arrived with only one of them would leave the
-    # other's status describing a commit that is no longer the one under review.
-    #
-    # Both halves are unit suites: `go test` and Vitest, no browser and no demo
-    # stack. The UI number used to include the browser suite, measured here
-    # rather than in the path-filtered UI job so that the `ui` flag meant the
-    # same thing on every commit — but that cost around three minutes on every
-    # pull request, this one included, and it is what set the critical path. The
-    # browser suite still runs, in the UI job, for what it is actually for.
+    # Deliberately unfiltered. The branch ruleset requires `codecov/patch/go`
+    # and `codecov/patch/ui`, and Codecov posts a status only for a commit it
+    # received a report for — so a path filter here would block a
+    # documentation-only pull request with nothing to un-block it. Both
+    # languages in one run, because a report carrying one flag would leave the
+    # other's status describing a commit that is no longer under review.
 
     permissions:
       contents: read
@@ -546,16 +448,10 @@ jobs:
             pnpm-${{ runner.os }}-
       - name: Measure coverage
         run: mise run --force coverage
-      # Each upload names exactly the one file it may send. disable_search and
-      # the disabled plugins stop the uploader walking the tree for anything
-      # else it recognises: this repository's working tree can hold a local
-      # database, a configuration file, and secret files, and none of them is
-      # ever an input to a coverage report.
-      #
-      # A failed upload is reported and does not fail the job. Coverage decides
-      # nothing yet, and a pull request from a fork has no token at all, so
-      # reddening CI for it would mean a broken merge gate rather than a
-      # missing report.
+      # Each upload names its one file: `disable_search` and the disabled
+      # plugins stop the uploader walking a tree that can hold a local database,
+      # a configuration file and secrets. A failed upload is reported and does
+      # not fail the job — a fork's pull request has no token at all.
       - name: Upload Go coverage
         # v7.0.0
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f
@@ -650,12 +546,10 @@ jobs:
       - changes
       - lint
       - test
-    # The proving build belongs to the pull request, and only to one that
-    # changes an input of the container build: `container`, not the wider
-    # `image` filter that decides whether a merge publishes. A Go change alone
-    # is covered by `build`, which compiles the same targets far more cheaply.
-    # A push to the default branch goes to `publish` instead, so the same tree
-    # is never built twice.
+    # The proving build belongs to a pull request that moved a container input —
+    # `container`, not the wider `image` filter that decides whether a merge
+    # publishes. A Go change alone is covered by `build`, and a push goes to
+    # `publish`, so the same tree is never built twice.
     if: >-
       !cancelled() &&
       github.event_name == 'pull_request' &&
@@ -705,17 +599,11 @@ jobs:
           registry: dhi.io
           username: ${{ secrets.DHI_USERNAME }}
           password: ${{ secrets.DHI_TOKEN }}
-      # One platform, which is the one that is published and the one this runner
-      # is. That is what lets the result be --load-ed into the local image store
-      # rather than proved and discarded: the smoke test below starts the very
-      # image this step built, instead of a second build of it.
-      #
-      # The build reads the cache the default branch wrote and writes none of
-      # its own: exporting needs `packages: write`, and a pull request must never
-      # hold the permission that writes what a host deploys. A cache miss is a
-      # warning rather than a failure, so a first run needs no bootstrapping.
-      # SOURCE_REVISION is passed here too, so the argument the published build
-      # depends on is exercised by the pull-request build that proves it.
+      # One platform — the published one, and this runner's — which is what lets
+      # the result be --load-ed for the smoke test below rather than built twice.
+      # No cache is exported: that needs `packages: write`, and a pull request
+      # must never hold the permission that writes what a host deploys.
+      # SOURCE_REVISION is passed so the published build's argument is exercised.
       - name: Build production image
         env:
           SOURCE_REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -724,10 +612,10 @@ jobs:
           --build-arg "SOURCE_REVISION=${SOURCE_REVISION}"
           --cache-from "type=registry,ref=${IMAGE}:buildcache"
           --load --tag domestique:smoke .
-      # Runs the image the way docs/compose.example.yml runs it — unprivileged,
-      # read-only root, no capabilities, one tmpfs, one state mount — and asserts
-      # that the service comes up under it. It reaches no provider and mounts no
-      # real secret; see dev/container-smoke.sh.
+      # Runs the image as docs/compose.example.yml does — unprivileged,
+      # read-only root, no capabilities — and asserts the service comes up under
+      # it. It reaches no provider and mounts no real secret; see
+      # dev/container-smoke.sh.
       - name: Smoke-test the production runtime contract
         run: mise run --force container-smoke
 
@@ -736,47 +624,28 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     needs: changes
-    # Everything `publish` will do except the part that has to be gated.
-    #
-    # `publish` cannot start until the whole gate is green, and the gate's long
-    # pole is the UI job's browser suite — ten minutes during which the runner
-    # that will build the image is not yet running. The build itself is another
-    # four to six, almost all of it one `go build` that the Dockerfile's
-    # `--mount=type=cache` cannot help with: a cache mount lives on the builder,
-    # a fresh runner has no builder to have kept one, and no cache exporter
-    # writes mounts. What a registry cache *does* carry is the layer that RUN
-    # produced, so the fix is to have produced it already.
-    #
-    # This job builds the same tree with the same build-args, pushes no tag, and
-    # writes only the build cache. `publish` then runs the identical build, hits
-    # that cache for every expensive layer, and is left with the push.
-    #
-    # It runs beside the gate rather than after it, so a red gate means an image
-    # was built and thrown away — which costs a runner and reaches nobody. It is
-    # keyed to `image`, the same filter that decides whether a merge publishes at
-    # all, so a commit that will not publish does not build either.
+    # Everything `publish` will do except the push, run beside the gate instead
+    # of after it. The expensive layer is one `go build` that the Dockerfile's
+    # `--mount=type=cache` cannot help with — a cache mount lives on the builder,
+    # and a fresh runner has none — so the only way to have it already is to have
+    # produced it. This writes `:buildcache` and no tag; `publish` then runs the
+    # identical build and is left with the push. Keyed to `image`, so a commit
+    # that will not publish does not build either.
     if: >-
       github.event_name == 'push' &&
       needs.changes.outputs.image == 'true'
 
-    # Serialised against itself on the same terms as `publish`: two pushes in
-    # quick succession would otherwise race to write one cache manifest. It is
-    # deliberately not serialised against `publish`, which is guarding a
-    # different thing — the order tags land in — and can legitimately still be
-    # running for an earlier commit. Two writers of `:buildcache` cost at worst a
-    # cache miss: each pushes its own blobs before the manifest, so whichever
-    # manifest lands last is complete, and a layer that is missing from it is
-    # rebuilt rather than read wrong.
+    # Serialised against itself, not against `publish`, which guards a different
+    # thing: two pushes would otherwise race to write one cache manifest. Each
+    # pushes its blobs before the manifest, so the last one to land is complete
+    # and a layer missing from it is rebuilt rather than read wrong.
     concurrency:
       group: prebuild-${{ github.workflow }}-${{ github.ref }}
       cancel-in-progress: false
 
-    # `packages: write` is for the cache manifest and nothing else. No tag a host
-    # could deploy is pushed from here; what reaches the registry from this job
-    # is `:buildcache`, which is not a runnable image and which the gate does not
-    # guard today either — `publish` has always written it. A layer in it can
-    # only ever be reused by a build whose inputs hash the same, which is to say
-    # by this same commit.
+    # `packages: write` is for the cache manifest and nothing else. No tag a
+    # host could deploy is pushed from here, and `:buildcache` is not a runnable
+    # image.
     permissions:
       contents: read
       packages: write
@@ -809,11 +678,9 @@ jobs:
           registry: dhi.io
           username: ${{ secrets.DHI_USERNAME }}
           password: ${{ secrets.DHI_TOKEN }}
-      # The platform, the build-arg and the context must match `publish`'s build
-      # exactly: a layer is reused only by a build that hashes the same, and
-      # SOURCE_REVISION is an input to the last and most expensive one. `push`
-      # and the attestations are deliberately absent — they are what `publish`
-      # is for, and producing them here would be work thrown away twice.
+      # Platform, build-arg and context must match `publish`'s build exactly: a
+      # layer is reused only by a build that hashes the same, and SOURCE_REVISION
+      # is an input to the last and most expensive one.
       - name: Warm the build cache
         # v7.3.0
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a
@@ -838,15 +705,11 @@ jobs:
       - ui
       - build
       - prebuild
-    # Only a push to the default branch publishes, and only behind the whole
-    # gate rather than the subset `image` waits for: what reaches the registry
-    # is what a host will run.
-    #
-    # `prebuild` is in `needs` for ordering, not as a condition: it is not tested
-    # below, so a prebuild that failed leaves this job to do the whole build
-    # itself rather than blocking a merge over a warm cache that did not happen.
-    # In the ordinary case it finished minutes ago, while the gate was still
-    # running, and everything expensive here is already a cache hit.
+    # Only a push to the default branch, and only behind the whole gate rather
+    # than the subset `image` waits for: what reaches the registry is what a host
+    # will run. `prebuild` is in `needs` for ordering, not as a condition — a
+    # prebuild that failed leaves this job to do the whole build itself rather
+    # than blocking a merge over a warm cache that did not happen.
     if: >-
       !cancelled() &&
       github.event_name == 'push' &&
@@ -858,9 +721,8 @@ jobs:
       (needs.build.result == 'success' || needs.build.result == 'skipped') &&
       needs.changes.outputs.image == 'true'
 
-    # The workflow's own group keys a push by commit, so two pushes in quick
-    # succession would publish in parallel and the older commit could land
-    # last. This serialises them instead of cancelling either.
+    # The workflow's own group keys a push by commit, so two in quick succession
+    # would publish in parallel and the older commit could land last.
     concurrency:
       group: publish-${{ github.workflow }}-${{ github.ref }}
       cancel-in-progress: false
@@ -918,25 +780,21 @@ jobs:
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=sha,format=short,prefix=sha-
-      # The image is deliberately unsigned: GitHub artifact attestations need
-      # Enterprise Cloud on a private repository, and this repository stays
-      # private. BuildKit's own SBOM and mode=max provenance travel with the
-      # index instead. `image-manifest` and `oci-mediatypes` are what make the
-      # exported cache a manifest the registry accepts.
+      # Unsigned deliberately: artifact attestations need Enterprise Cloud on a
+      # private repository, and this one stays private. BuildKit's own SBOM and
+      # mode=max provenance travel with the index instead.
       - name: Build and publish image
         id: build
         # v7.3.0
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a
         with:
           context: .
-          # One platform. The push is still an index, because mode=max
-          # provenance and the SBOM travel as their own manifests beside the
-          # image, so the operator instruction to pin the index digest is
-          # unchanged by there being one architecture under it.
+          # One platform. The push is still an index — provenance and the SBOM
+          # travel as their own manifests beside the image — so the instruction
+          # to pin the index digest is unchanged.
           platforms: linux/amd64
-          # The commit is a build input rather than something the build can look
-          # up: .dockerignore excludes .git, so this is the only trusted source
-          # of the revision the running service reports.
+          # .dockerignore excludes .git, so this is the only trusted source of
+          # the revision the running service reports.
           build-args: |
             SOURCE_REVISION=${{ github.sha }}
           push: true
@@ -946,17 +804,11 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           annotations: ${{ steps.meta.outputs.annotations }}
           cache-from: type=registry,ref=${{ env.IMAGE }}:buildcache
-          # Exported only when `prebuild` did not already do it. It is the same
-          # tree hashing to the same layers either way, so a second export writes
-          # what is there — and measured at over forty seconds, all of it on the
-          # critical path between a merge and a deployment. When `prebuild`
-          # failed, this is what stops the cache going stale and every later
-          # build going cold with it.
-          #
-          # The condition is negated so that the string is the *truthy* branch.
-          # `a && b || c` picks `c` whenever `b` is falsy, and the empty string
-          # is falsy, so writing this the other way round — skip-when-success —
-          # would export on every run and quietly buy nothing.
+          # Exported only when `prebuild` did not already do it, which is what
+          # stops the cache going stale when a prebuild failed. The condition is
+          # negated so that the string is the *truthy* branch: `a && b || c`
+          # picks `c` whenever `b` is falsy, and the empty string is falsy, so
+          # the skip-when-success spelling would export on every run.
           cache-to: ${{ needs.prebuild.result != 'success' && format('type=registry,ref={0}:buildcache,mode=max,image-manifest=true,oci-mediatypes=true', env.IMAGE) || '' }}
       # The digest is the deployment instruction, so it belongs where an
       # operator copies it from rather than at the end of a build log.
@@ -988,16 +840,11 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     needs: publish
-    # Only what `publish` actually pushed is deployed. A commit that publishes
-    # nothing leaves the host on the digest it is already running, which is the
-    # same image that commit would have produced.
-    #
-    # `!cancelled()` is what makes that the whole condition. Without a status
-    # function here the implicit gate is `success()` over every ancestor, not
-    # over `publish` alone, so a commit that touched no UI file skipped `ui`,
-    # published an image, and then skipped the deploy of it — green, and the
-    # host left on an older digest than main. `publish` guards itself the same
-    # way for the same reason.
+    # Only what `publish` actually pushed. `!cancelled()` is the whole condition
+    # on purpose: without a status function the implicit gate is `success()` over
+    # every ancestor rather than over `publish` alone, so a commit that skipped
+    # `ui` published an image and then skipped the deploy of it — green, with the
+    # host left on an older digest than main.
     if: >-
       !cancelled() &&
       needs.publish.result == 'success'
@@ -1006,16 +853,14 @@ jobs:
     # it can grow later without touching this workflow.
     environment: production
 
-    # Publishes are serialised in commit order, and deploys follow them in the
-    # same order for the same reason: cancelling one mid-flight would leave the
-    # host between two digests.
+    # Deploys follow publishes in commit order: cancelling one mid-flight would
+    # leave the host between two digests.
     concurrency:
       group: deploy-${{ github.workflow }}-${{ github.ref }}
       cancel-in-progress: false
 
     # Workload identity federation, so the tailnet credential is a short-lived
-    # token GitHub mints for this repository rather than a stored secret. The
-    # read is for the deploy script this job hands to the host.
+    # token GitHub mints for this repository rather than a stored secret.
     permissions:
       contents: read
       id-token: write
@@ -1040,18 +885,11 @@ jobs:
           audience: ${{ vars.TS_DEPLOY_AUDIENCE }}
           tags: tag:github
           ping: ${{ vars.DOMESTIQUE_HOST }}
-      # The host runs its own copy of the script, so a copy left behind is a
-      # deployment whose gates exist only in this repository. Sending it is what
-      # keeps the two the same file; the host refuses anything that does not
-      # arrive as a bash script that parses, and logs that it is already current
-      # when they match.
-      #
-      # A host whose copy predates `--install-self` fails this step, and fails it
-      # before the service is touched. Install the script by hand once; from then
-      # on this step is what keeps it current.
-      #
-      # Before the deploy rather than after it, so the deploy that follows is
-      # already the behaviour this commit describes.
+      # The host runs its own copy, so sending it is what keeps the two the same
+      # file; the host refuses anything that does not arrive as a bash script
+      # that parses. A host whose copy predates `--install-self` fails here,
+      # before the service is touched — install it by hand once. Before the
+      # deploy, so the deploy that follows is what this commit describes.
       - name: Install the deploy script
         env:
           DEPLOY_HOST: ${{ vars.DOMESTIQUE_HOST }}
@@ -1107,9 +945,8 @@ jobs:
 
     steps:
       # A skipped job and a job that never existed look identical on a commit
-      # status, so the one required check reports what each dependency actually
-      # did. This runs before the validation below, so a failing run explains
-      # itself too.
+      # status, so this reports what each dependency actually did. Before the
+      # validation below, so a failing run explains itself too.
       - name: Report what ran
         env:
           CHANGES_RESULT: ${{ needs.changes.result }}
@@ -1147,30 +984,17 @@ jobs:
             echo "| Publish | ${PUBLISH_RESULT} |"
             echo "| Deploy | ${DEPLOY_RESULT} |"
           } >> "$GITHUB_STEP_SUMMARY"
-      # Branch protection requires this single job. It fails unless every
-      # dependency either succeeded or was skipped by a path filter, so a
-      # cancelled or failed job upstream cannot be mistaken for a green run.
-      # `image` and `publish` never both run, and a change that touches no
-      # container input runs neither, so a skip here carries no information
-      # about whether an image exists. `deploy` follows `publish`, so it skips
-      # for the same commits. What this does guarantee is that a failed build,
-      # publish, or deploy — including one that rolled the host back cleanly —
-      # still reddens the commit.
+      # Branch protection requires this single job: it fails unless every
+      # dependency either succeeded or was skipped by a path filter.
       #
-      # `prebuild` is reported but not judged, for the same shape of reason. It
-      # publishes nothing and gates nothing: all it does is put the expensive
-      # layers in the build cache before `publish` asks for them. If it fails,
-      # `publish` builds them itself and the commit ends up in exactly the same
-      # place, a few minutes later — so reddening a commit whose image published
-      # correctly would be reporting a slower run as a broken one. A Dockerfile
-      # that genuinely cannot build fails `publish` too, and that is judged.
+      # `prebuild` is reported but not judged. It publishes nothing and gates
+      # nothing — a failed one only leaves `publish` to build those layers
+      # itself, a few minutes later, so reddening a commit whose image published
+      # correctly would report a slower run as a broken one.
       #
-      # `coverage` is deliberately not in the loop below. It is reported above
-      # so that a failed upload is visible, but this job does not judge the
-      # numbers: the ruleset requires Codecov's own `codecov/patch/*` contexts,
-      # so the verdict arrives from the app that measured it rather than from a
-      # step here polling for it. A failed upload therefore still costs a report
-      # rather than reddening this check.
+      # `coverage` is not judged either: the ruleset requires Codecov's own
+      # `codecov/patch/*` contexts, so the verdict arrives from the app that
+      # measured it rather than from a step here polling for it.
       - name: Validate CI results
         env:
           CHANGES_RESULT: ${{ needs.changes.result }}

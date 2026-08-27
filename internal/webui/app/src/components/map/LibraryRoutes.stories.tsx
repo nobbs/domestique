@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import type { BoundingBox } from "../../api/types";
-import { coordinates, StoryProviders } from "../../storybook/fixtures";
+import { coordinates, liveMap, StoryProviders } from "../../storybook/fixtures";
 import { LibraryRoutes } from "./LibraryRoutes";
 import { MapViewport } from "./MapViewport";
 import { MapWidget } from "./MapWidget";
@@ -10,6 +10,7 @@ const bounds: BoundingBox = [7.995, 48.995, 8.045, 49.025];
 
 const meta = {
   title: "Components/Map/Library Routes",
+  parameters: liveMap,
   component: LibraryRoutes,
   tags: ["autodocs"],
   decorators: [

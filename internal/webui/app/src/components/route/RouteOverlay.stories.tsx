@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import type { BoundingBox } from "../../api/types";
 import { buildProfile } from "../../lib/profile";
-import { coordinates } from "../../storybook/fixtures";
+import { coordinates, liveMap } from "../../storybook/fixtures";
 import { MapViewport } from "../map/MapViewport";
 import { MapWidget } from "../map/MapWidget";
 import { RouteOverlay } from "./RouteOverlay";
@@ -12,6 +12,7 @@ const profile = buildProfile(coordinates);
 
 const meta = {
   title: "Components/Route/Route Overlay",
+  parameters: liveMap,
   component: RouteOverlay,
   tags: ["autodocs"],
   args: { coordinates },

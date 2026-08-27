@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { liveMap } from "../../storybook/fixtures";
 import { MapControls } from "./MapControls";
 import { MapWidget } from "./MapWidget";
 
@@ -6,6 +7,7 @@ const styleUrl = "https://tiles.openfreemap.org/styles/bright";
 
 const meta = {
   title: "Components/Map/Map Controls",
+  parameters: liveMap,
   component: MapControls,
   tags: ["autodocs"],
   decorators: [
