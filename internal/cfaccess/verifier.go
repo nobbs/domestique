@@ -179,15 +179,19 @@ func (v *Verifier) Verify(ctx context.Context, token string) (Identity, error) {
 		return Identity{}, err
 	}
 
-	fetched := v.throttle.fetched.Load()
+	fetched, refused := v.throttle.counts()
 	idToken, err := v.verifier.Verify(ctx, token)
-	// A key set arriving while this verification ran means it read the cache
-	// before that fetch landed, and then found the floor shut behind the
-	// fetch that had already stamped it. Retrying reads the warm cache. Only
-	// a completed fetch justifies the second attempt: a bogus key ID, which
-	// is what the floor is there for, refuses without completing one and so
-	// still costs a single verification.
-	if err != nil && v.throttle.fetched.Load() != fetched {
+	// One verification is retried: the one the floor refused while the very
+	// fetch that had stamped it was landing the keys it needed. That caller
+	// read the cache before those keys arrived, so a second attempt reads
+	// them and succeeds. Both halves of the condition matter. Without the
+	// refusal, an assertion that failed on its own terms — an unknown key ID,
+	// a bad signature — would be retried and have its error replaced by a
+	// floor refusal on the way out. Without the completed fetch, a bogus key
+	// ID, which is what the floor is there for, would cost two verifications
+	// instead of one.
+	if nowFetched, nowRefused := v.throttle.counts(); err != nil &&
+		nowRefused != refused && nowFetched != fetched {
 		idToken, err = v.verifier.Verify(ctx, token)
 	}
 	if err != nil {
@@ -242,10 +246,19 @@ type throttledTransport struct {
 	base        http.RoundTripper
 	now         func() time.Time
 	lastAttempt time.Time
-	// fetched counts the round trips that reached a reply, so a verification
-	// can tell a key set that landed underneath it from one that never came.
+	// fetched counts the round trips that reached a reply and refused the
+	// ones the floor turned away, so a verification can tell a key set that
+	// landed underneath it from one that never came, and its own failure from
+	// a request this floor declined to send.
 	fetched atomic.Uint64
+	refused atomic.Uint64
 	mu      sync.Mutex
+}
+
+// counts reports the fetches that have completed and the ones the floor has
+// turned away.
+func (t *throttledTransport) counts() (fetched, refused uint64) {
+	return t.fetched.Load(), t.refused.Load()
 }
 
 func (t *throttledTransport) RoundTrip(request *http.Request) (*http.Response, error) {
@@ -254,6 +267,7 @@ func (t *throttledTransport) RoundTrip(request *http.Request) (*http.Response, e
 	// still closes the window until minRefreshInterval has passed.
 	if t.now().Sub(t.lastAttempt) < minRefreshInterval {
 		t.mu.Unlock()
+		t.refused.Add(1)
 
 		return nil, errRefreshFloor
 	}
