@@ -36,6 +36,22 @@ const devAssertion = process.env.DOMESTIQUE_DEV_ASSERTION;
 // standing in for, exactly as it states the identity it is standing in for.
 const devOrigin = process.env.DOMESTIQUE_DEV_ORIGIN ?? "https://127.0.0.1:9";
 
+// `dev/demo.sh --tailnet` fronts the dev server with `tailscale serve`, which
+// takes a connection from the tailnet and forwards it to a loopback address.
+// Vite stays on loopback either way — the tailnet is reached by what forwards
+// to it, not by widening what it listens on — and the port is the same on both
+// sides, so hot reload needs nothing.
+//
+// Two things do change. The Host header arrives as this machine's MagicDNS
+// name, and Vite serves only Hosts it trusts — localhost and IP literals on its
+// own, and a MagicDNS name is neither; so the tailnet suffix is named here, the
+// name in front of it being whichever tailnet this machine joined, which a
+// checked-in file cannot know. And `localhost` resolves to ::1 first, which is
+// the only address Vite then listens on, while Serve forwards to 127.0.0.1 and
+// gets nothing: the two are named the same and are not the same socket. So the
+// address is spelled out for as long as something is forwarding to it.
+const tailnet = process.env.DOMESTIQUE_DEV_TAILNET === "true";
+
 const proxy = {
   target: apiTarget,
   changeOrigin: false,
@@ -69,6 +85,7 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: true,
+    ...(tailnet ? { host: "127.0.0.1", allowedHosts: [".ts.net"] } : {}),
     proxy: {
       "/v1": proxy,
       "/oauth": proxy,

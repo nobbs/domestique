@@ -33,17 +33,44 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # suite's bundle project drives. Without the flag the demo is the dev server
 # alone, and the API serves whatever bundle the last build left embedded, if any.
 WITH_BUNDLE=false
+
+# --tailnet publishes the demo on this machine's MagicDNS name, so a phone or a
+# second desktop can open it.
+#
+# `tailscale serve` rather than a wider listening address, for two reasons. It
+# reaches the tailnet and nothing else, where Vite — which binds one address —
+# could only offer every network this machine is on at once. And the macOS
+# application firewall drops incoming connections to binaries it has no rule
+# for, which `node` is and Tailscale's network extension is not: Serve arrives
+# through the extension and dials loopback, so the firewall never sees a
+# connection to the dev server at all and needs no exception for one.
+#
+# Whoever opens it is the demo rider, because the dev server signs every request
+# it proxies with the demo's own assertion. Everything behind that is synthetic
+# and no provider is reachable, so what a tailnet peer is being handed is the
+# invented library and the button that re-seeds it. Serve keeps that inside a
+# set of devices already admitted; Funnel would not, which is why this is Serve.
+TAILNET=false
 for argument in "$@"; do
   case "${argument}" in
   --with-bundle)
     WITH_BUNDLE=true
     ;;
+  --tailnet)
+    TAILNET=true
+    ;;
   *)
-    echo "usage: $(basename "$0") [--with-bundle]" >&2
+    echo "usage: $(basename "$0") [--with-bundle] [--tailnet]" >&2
     exit 2
     ;;
   esac
 done
+
+if [[ "${TAILNET}" == true ]] && ! command -v tailscale > /dev/null 2>&1; then
+  echo "error: --tailnet needs the tailscale CLI on PATH" >&2
+  exit 2
+fi
+
 DEMO_DIR="${ROOT}/.local/demo"
 DEMO_SECRETS="${DEMO_DIR}/secrets"
 CONFIG="${DEMO_DIR}/config.toml"
@@ -60,6 +87,9 @@ PNPM="${PNPM:-pnpm}"
 
 API_PORT="${DOMESTIQUE_DEMO_PORT:-8082}"
 API_URL="http://127.0.0.1:${API_PORT}"
+# Where the dev server answers. `strictPort` in vite.config.ts pins the same
+# number, so this names that port rather than choosing one.
+UI_PORT=5173
 # The origin the API is configured to serve its UI at, which state-changing
 # requests must come from. Unroutable, and only ever named, never fetched.
 BROWSER_ORIGIN="https://127.0.0.1:9"
@@ -182,7 +212,13 @@ rm -f "${DATABASE}" "${DATABASE}-wal" "${DATABASE}-shm" "${ASSERTION_FILE}"
 "${BIN_DIR}/demoapi" -assertion-file "${ASSERTION_FILE}" -states "${SLOT_STATES}" &
 API_PID=$!
 
+SERVE_PID=""
+
 cleanup() {
+  if [[ -n "${SERVE_PID}" ]] && kill -0 "${SERVE_PID}" 2>/dev/null; then
+    kill "${SERVE_PID}" 2>/dev/null || true
+    wait "${SERVE_PID}" 2>/dev/null || true
+  fi
   if kill -0 "${API_PID}" 2>/dev/null; then
     kill "${API_PID}" 2>/dev/null || true
     wait "${API_PID}" 2>/dev/null || true
@@ -206,8 +242,37 @@ if [[ ! -s "${ASSERTION_FILE}" ]]; then
   exit 1
 fi
 
-echo "Demo API on ${API_URL}; starting the UI dev server on http://127.0.0.1:5173"
+# Serve's own foreground mode, not `--bg`. The shell does put the process in the
+# background; what matters is that tailscaled did not, so the configuration is
+# held for as long as this process lives and taken away when it dies — stopping
+# the demo stops publishing it. `--bg` would hand the configuration to tailscaled
+# to keep, outliving the demo and proxying a port with nothing behind it.
+#
+# Started before the dev server because the dev server is this script's
+# foreground process and never returns. The same port on both sides, so hot
+# reload keeps talking to the origin the page came from.
+if [[ "${TAILNET}" == true ]]; then
+  tailscale serve --http="${UI_PORT}" "${UI_PORT}" &
+  SERVE_PID=$!
+
+  # A Serve that took the port prints its URL and stays; one that could not —
+  # Tailscale stopped, the node not logged in, this port already served, a
+  # permission it does not have — prints why and exits at once. `set -e` does
+  # not see a background command fail, so without this the demo would come up
+  # published nowhere and say nothing about it. The reason is already on screen
+  # above, so this says what it means rather than repeating it.
+  for _ in $(seq 20); do
+    if ! kill -0 "${SERVE_PID}" 2>/dev/null; then
+      echo "error: tailscale serve exited; the demo would not be on the tailnet" >&2
+      exit 1
+    fi
+    sleep 0.1
+  done
+fi
+
+echo "Demo API on ${API_URL}; starting the UI dev server on http://127.0.0.1:${UI_PORT}"
 DOMESTIQUE_DEV_API="${API_URL}" \
   DOMESTIQUE_DEV_ASSERTION="$(cat "${ASSERTION_FILE}")" \
   DOMESTIQUE_DEV_ORIGIN="${BROWSER_ORIGIN}" \
+  DOMESTIQUE_DEV_TAILNET="${TAILNET}" \
   "${PNPM}" --dir "${ROOT}/internal/webui/app" run dev
