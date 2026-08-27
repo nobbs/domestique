@@ -340,8 +340,16 @@ export function mapRegion(page: Page): Locator {
  *
  * Returns the settled image, so a caller that wants to compare two states does
  * not have to take a third screenshot to get one.
+ *
+ * The budget is the part that had to be measured rather than chosen. A
+ * developer machine settles a route view in one or two passes; a runner draws
+ * through a software rasteriser, against a cold tile cache, and waits on the
+ * demo API for the geometry the route is made of, and it legitimately takes
+ * longer. Twelve seconds is not a retry — two consecutive identical frames is
+ * still the whole of the criterion, and a map that is genuinely still moving
+ * fails as surely at 48 passes as at 20. It is only the patience that changed.
  */
-export async function settleMap(page: Page, attempts = 20): Promise<Buffer> {
+export async function settleMap(page: Page, attempts = 48): Promise<Buffer> {
   const region = mapRegion(page);
   await expect(region).toBeVisible();
   await expect(page.locator(".maplibregl-canvas")).toBeVisible();
@@ -356,7 +364,7 @@ export async function settleMap(page: Page, attempts = 20): Promise<Buffer> {
     previous = current;
   }
 
-  throw new Error("the map never stopped repainting");
+  throw new Error(`the map never stopped repainting after ${(attempts * 250) / 1000}s`);
 }
 
 /** The elevation chart's scrubber, which is also its keyboard control. */
