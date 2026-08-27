@@ -288,6 +288,12 @@ jobs:
           # last build it accepted, and a single-commit clone has no ancestry to
           # walk. It would answer by treating every story as new.
           fetch-depth: 0
+          # The branch head, not the merge commit a pull request checks out by
+          # default. Chromatic is told the head SHA but finds that build's
+          # ancestors by walking `git rev-list HEAD`, and `refs/pull/N/merge` is
+          # not a commit its index has ever seen, so every build reported no
+          # ancestor. Empty on a push, where the default ref is already correct.
+          ref: ${{ github.event.pull_request.head.sha }}
       - name: Install pinned toolchain
         # v4.2.5
         uses: jdx/mise-action@3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518
