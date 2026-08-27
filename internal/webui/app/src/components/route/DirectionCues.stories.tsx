@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import type { BoundingBox } from "../../api/types";
-import { coordinates } from "../../storybook/fixtures";
+import { coordinates, liveMap } from "../../storybook/fixtures";
 import { MapViewport } from "../map/MapViewport";
 import { MapWidget } from "../map/MapWidget";
 import { DirectionCues } from "./DirectionCues";
@@ -15,6 +15,7 @@ const styles = {
 
 const meta = {
   title: "Components/Route/Direction Cues",
+  parameters: liveMap,
   component: DirectionCues,
   tags: ["autodocs"],
   args: { coordinates, darkBasemap: false, color: casing.light },

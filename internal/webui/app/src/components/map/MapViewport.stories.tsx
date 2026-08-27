@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import type { BoundingBox } from "../../api/types";
+import { liveMap } from "../../storybook/fixtures";
 import { MapViewport } from "./MapViewport";
 import { MapWidget } from "./MapWidget";
 
@@ -8,6 +9,7 @@ const bounds: BoundingBox = [7.995, 48.995, 8.045, 49.025];
 
 const meta = {
   title: "Components/Map/Map Viewport",
+  parameters: liveMap,
   component: MapViewport,
   tags: ["autodocs"],
   args: { bounds, maxZoom: 14 },

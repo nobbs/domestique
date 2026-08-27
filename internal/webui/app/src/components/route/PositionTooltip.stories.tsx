@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import type { BoundingBox } from "../../api/types";
 import type { ProfileSample } from "../../lib/profile";
 import { sampleAt } from "../../lib/profile";
-import { profile as maybeProfile, surface } from "../../storybook/fixtures";
+import { liveMap, profile as maybeProfile, surface } from "../../storybook/fixtures";
 import { MapViewport } from "../map/MapViewport";
 import { MapWidget } from "../map/MapWidget";
 import { PositionTooltip } from "./PositionTooltip";
@@ -30,6 +30,7 @@ const midway = sample(profile.endMetres / 2);
 
 const meta = {
   title: "Components/Route/Position Tooltip",
+  parameters: liveMap,
   component: PositionTooltip,
   tags: ["autodocs"],
   args: {

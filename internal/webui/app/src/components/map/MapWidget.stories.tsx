@@ -1,11 +1,12 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { StoryProviders } from "../../storybook/fixtures";
+import { liveMap, StoryProviders } from "../../storybook/fixtures";
 import { MapWidget } from "./MapWidget";
 
 const styleUrl = "https://tiles.openfreemap.org/styles/bright";
 
 const meta = {
   title: "Components/Map/Map Widget",
+  parameters: liveMap,
   component: MapWidget,
   tags: ["autodocs"],
   decorators: [
