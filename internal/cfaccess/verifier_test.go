@@ -10,6 +10,7 @@ import (
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -120,6 +121,28 @@ func (c *clock) now() time.Time {
 // advance moves the clock forward.
 func (c *clock) advance(by time.Duration) {
 	c.offset.Add(int64(by))
+}
+
+// verifyPastTheFloor runs a verification until it actually reaches the certs
+// endpoint. go-oidc wakes a caller waiting on a key fetch before it clears the
+// finished request, so a verification arriving in that window is answered from
+// the completed fetch and sends nothing of its own — which a test counting
+// fetches would read as the refresh floor having stayed shut. An attempt that
+// sends no request stamps nothing either, so the retry is free of the floor.
+func verifyPastTheFloor(t *testing.T, fetches *atomic.Int64, verify func()) {
+	t.Helper()
+
+	before := fetches.Load()
+	for range 10 {
+		verify()
+		if fetches.Load() > before {
+			return
+		}
+		// The window closes as soon as go-oidc's fetch goroutine is scheduled
+		// again, so hand it the processor rather than spinning against it.
+		runtime.Gosched()
+	}
+	t.Fatal("no refetch reached the certs endpoint")
 }
 
 // newVerifier wires a verifier to a JWKS server backed by the key set and
@@ -401,8 +424,10 @@ func TestVerifyRefetchesAfterKeyRotation(t *testing.T) {
 	// assertion verifies against the newly published key.
 	testClock.advance(2 * time.Minute)
 
-	_, err = verifier.Verify(t.Context(), rotated.sign(t, header, validClaims()))
-	require.NoError(t, err, "expected the rotated key to verify")
+	verifyPastTheFloor(t, fetches, func() {
+		_, err := verifier.Verify(t.Context(), rotated.sign(t, header, validClaims()))
+		require.NoError(t, err, "expected the rotated key to verify")
+	})
 	assert.Equal(t, int64(2), fetches.Load(), "the rotation cost more than one refetch")
 }
 
@@ -532,8 +557,10 @@ func TestVerifyRateLimitsRefetchWhenCertsEndpointFails(t *testing.T) {
 	// recovers on its own.
 	testClock.advance(2 * time.Minute)
 
-	_, err := verifier.Verify(t.Context(), assertion)
-	require.Error(t, err, "expected verification to fail while the certs endpoint is down")
+	verifyPastTheFloor(t, &fetches, func() {
+		_, err := verifier.Verify(t.Context(), assertion)
+		require.Error(t, err, "expected verification to fail while the certs endpoint is down")
+	})
 	assert.Equal(t, int64(2), fetches.Load(), "the elapsed floor did not allow exactly one retry")
 }
 

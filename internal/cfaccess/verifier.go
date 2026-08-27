@@ -21,6 +21,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
@@ -97,6 +98,7 @@ type Options struct {
 // Verifier validates Access assertions against the team's published keys.
 type Verifier struct {
 	verifier *oidc.IDTokenVerifier
+	throttle *throttledTransport
 	now      func() time.Time
 }
 
@@ -141,10 +143,11 @@ func New(options *Options) (*Verifier, error) {
 	// rather than from the one verifying a token, and fetches on that context
 	// too — so it is Background, and the client's timeout is what bounds a fetch.
 	keySetClient := *client
-	keySetClient.Transport = &throttledTransport{
+	throttle := &throttledTransport{
 		base: client.Transport,
 		now:  now,
 	}
+	keySetClient.Transport = throttle
 	keySet := oidc.NewRemoteKeySet(
 		oidc.ClientContext(context.Background(), &keySetClient),
 		"https://"+team+certsPath,
@@ -160,7 +163,8 @@ func New(options *Options) (*Verifier, error) {
 				Now:                  now,
 			},
 		),
-		now: now,
+		throttle: throttle,
+		now:      now,
 	}, nil
 }
 
@@ -175,7 +179,21 @@ func (v *Verifier) Verify(ctx context.Context, token string) (Identity, error) {
 		return Identity{}, err
 	}
 
+	fetched, refused := v.throttle.counts()
 	idToken, err := v.verifier.Verify(ctx, token)
+	// One verification is retried: the one the floor refused while the very
+	// fetch that had stamped it was landing the keys it needed. That caller
+	// read the cache before those keys arrived, so a second attempt reads
+	// them and succeeds. Both halves of the condition matter. Without the
+	// refusal, an assertion that failed on its own terms — an unknown key ID,
+	// a bad signature — would be retried and have its error replaced by a
+	// floor refusal on the way out. Without the completed fetch, a bogus key
+	// ID, which is what the floor is there for, would cost two verifications
+	// instead of one.
+	if nowFetched, nowRefused := v.throttle.counts(); err != nil &&
+		nowRefused != refused && nowFetched != fetched {
+		idToken, err = v.verifier.Verify(ctx, token)
+	}
 	if err != nil {
 		return Identity{}, fmt.Errorf("verifying assertion: %w", err)
 	}
@@ -228,7 +246,19 @@ type throttledTransport struct {
 	base        http.RoundTripper
 	now         func() time.Time
 	lastAttempt time.Time
-	mu          sync.Mutex
+	// fetched counts the round trips that reached a reply and refused the
+	// ones the floor turned away, so a verification can tell a key set that
+	// landed underneath it from one that never came, and its own failure from
+	// a request this floor declined to send.
+	fetched atomic.Uint64
+	refused atomic.Uint64
+	mu      sync.Mutex
+}
+
+// counts reports the fetches that have completed and the ones the floor has
+// turned away.
+func (t *throttledTransport) counts() (fetched, refused uint64) {
+	return t.fetched.Load(), t.refused.Load()
 }
 
 func (t *throttledTransport) RoundTrip(request *http.Request) (*http.Response, error) {
@@ -237,6 +267,7 @@ func (t *throttledTransport) RoundTrip(request *http.Request) (*http.Response, e
 	// still closes the window until minRefreshInterval has passed.
 	if t.now().Sub(t.lastAttempt) < minRefreshInterval {
 		t.mu.Unlock()
+		t.refused.Add(1)
 
 		return nil, errRefreshFloor
 	}
@@ -257,6 +288,7 @@ func (t *throttledTransport) RoundTrip(request *http.Request) (*http.Response, e
 
 		return nil, fmt.Errorf("fetching access certs: %w", err)
 	}
+	t.fetched.Add(1)
 	response.Body = newLimitedBody(response.Body, cancel)
 
 	return response, nil
