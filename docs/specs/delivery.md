@@ -349,12 +349,16 @@ environment guarantees above: the synthetic library, the unroutable providers,
 and the production identity gate in front of them. No test in it reads a real
 route, and no personal data is involved in running it.
 
-That one stack is driven as two projects. The `dev-server` project runs the specs
-in `e2e` against the Vite dev server: the UI as it is being written, which is how
-a change to it should be checked. The `bundle` project runs the specs in
-`e2e/contract` against the Go service directly — the production bundle served by
-`internal/webui`'s embed handler, the real routes behind it, and the cache
-headers, content security policy and gates a deployment applies. It exists
+That one stack is driven as three projects. The `dev-server` project runs the
+specs in `e2e` against the Vite dev server: the UI as it is being written, which
+is how a change to it should be checked. The `bundle` and `mutations` projects
+run the specs in `e2e/contract` against the Go service directly — the production
+bundle served by `internal/webui`'s embed handler, the real routes behind it, and
+the cache headers, content security policy and gates a deployment applies. They
+are two projects rather than one because the suite runs on two workers: reading
+the service concurrently is only two readers, but `mutations` rewrites what the
+others read — its "run now" re-seeds the whole library — so it declares the other
+two as dependencies and runs once they are done. It exists
 because a handler test and generated-client test can both keep passing while the
 bundle or wire contract has drifted: only the shipped client reading a real
 response catches that, so a contract failure there is a real defect rather than a

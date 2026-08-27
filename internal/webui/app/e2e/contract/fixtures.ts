@@ -1,5 +1,5 @@
 /**
- * The harness for the bundle project.
+ * The harness for the `bundle` and `mutations` projects.
  *
  * These tests talk to the Go service itself: the production bundle served by
  * `internal/webui`'s embed handler, the real handlers behind it, and a SQLite

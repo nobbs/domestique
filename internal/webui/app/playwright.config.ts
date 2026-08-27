@@ -17,17 +17,20 @@ import { defineConfig, devices, type ReporterDescription } from "@playwright/tes
  * dev server in front of it. Nothing here reads a real route, and the fixtures in
  * `e2e/fixtures.ts` answer the only third-party request the application makes.
  *
- * That one stack serves the suite twice over, as two projects:
+ * That one stack serves the suite three times over, as three projects:
  *
  *   dev-server  the specs in `e2e`, against the Vite dev server. The UI as it is
  *               being written, which is what a change to it should be checked as.
- *   bundle      the specs in `e2e/contract`, against the Go service directly: the
- *               production bundle from `internal/webui`'s embed handler, the real
- *               routes behind it, and the identity gate, cache headers and content
- *               security policy a deployment applies. A handler test and a parser
- *               test can both pass while the JSON they assume has drifted apart,
- *               and this is the project that reads a real response with the real
- *               client.
+ *   bundle      `e2e/contract/served-bundle.spec.ts`, against the Go service
+ *               directly: the production bundle from `internal/webui`'s embed
+ *               handler, the real routes behind it, and the identity gate, cache
+ *               headers and content security policy a deployment applies. A
+ *               handler test and a parser test can both pass while the JSON they
+ *               assume has drifted apart, and this is the project that reads a
+ *               real response with the real client.
+ *   mutations   `e2e/contract/mutations.spec.ts`, against that same service. Its
+ *               own project only because of what it does rather than what it
+ *               drives: see the `dependencies` on it below.
  *
  * Everything about the environment that a rendered pixel depends on is pinned
  * below — viewport, scale factor, colour scheme, locale, time zone and motion —
@@ -55,17 +58,26 @@ const SERVICE_URL = `http://127.0.0.1:${process.env.DOMESTIQUE_DEMO_PORT ?? "808
  * view, at the file and line the assertion failed on. It narrates the run as
  * `list` does besides, so nothing is lost in the Actions log by swapping one for
  * the other. The documented caveat — that a matrix strategy multiplies each
- * annotation by the number of legs — does not apply: this suite is `workers: 1`,
- * `fullyParallel: false`, and runs under no matrix.
+ * annotation by the number of legs — does not apply: this suite runs under no
+ * matrix, and `fullyParallel: false` keeps one file's tests on one worker.
  */
 const progressReporter: ReporterDescription = process.env.CI ? ["github"] : ["list"];
 
 export default defineConfig({
   testDir: "./e2e",
-  // One demo API, one database, one dev server, and a software WebGL renderer for
-  // every map: the suite is serial on purpose. Its cost is the browser, not the
-  // number of workers.
-  workers: 1,
+  // Two workers, over one demo API, one database and one dev server.
+  //
+  // The cost here is the browser — a software WebGL renderer painting a map for
+  // every test — and that is CPU the runner has spare: this suite is the last
+  // thing left running in the UI job, alone on four vCPUs, and measured at
+  // around 1.6 of them on a single worker. What stopped it being more than one
+  // was never the browser but the shared stack underneath it, and the projects
+  // below are what make that safe rather than this number.
+  //
+  // `fullyParallel: false` is what keeps the two honest: a worker takes a whole
+  // file, so the order within one is still the order it is written in, and only
+  // separate files ever run at the same time.
+  workers: 2,
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   // A flaky browser test that passes on the second attempt is a browser test that
@@ -84,11 +96,23 @@ export default defineConfig({
     ["html", { outputFolder: "../../../.playwright/report", open: "never" }],
     ["junit", { outputFile: "../../../.test-results/ui/browser.xml" }],
   ],
+  // Two read-only projects that may overlap, and one that may not.
+  //
+  // Everything above reads: it opens pages, drives a map, scrubs a chart and
+  // follows links, and two workers doing that at once over one service is only
+  // two readers. `mutations` is the exception — it toggles the schedule, and its
+  // "run now" re-seeds the whole synthetic library — so it is split out of
+  // `e2e/contract` into a project of its own and made to wait for both of the
+  // others. That is the whole of what keeps `workers: 2` safe: a re-seed can
+  // never land under a test that is reading what it rewrites.
+  //
+  // It is one file, and `fullyParallel: false` holds one file to one worker, so
+  // the mutations still run one after another as they are written.
   projects: [
     {
       name: "dev-server",
       testDir: "./e2e",
-      // The bundle project's specs live below this directory and must not be
+      // The contract projects' specs live below this directory and must not be
       // collected twice, once against a server they were not written for.
       testIgnore: "**/contract/**",
       use: { baseURL: DEV_SERVER_URL },
@@ -96,6 +120,14 @@ export default defineConfig({
     {
       name: "bundle",
       testDir: "./e2e/contract",
+      testIgnore: "**/mutations.spec.ts",
+      use: { baseURL: SERVICE_URL },
+    },
+    {
+      name: "mutations",
+      testDir: "./e2e/contract",
+      testMatch: "**/mutations.spec.ts",
+      dependencies: ["dev-server", "bundle"],
       use: { baseURL: SERVICE_URL },
     },
   ],
@@ -131,9 +163,15 @@ export default defineConfig({
     // previous build left embedded.
     command: "./dev/demo.sh --with-bundle",
     cwd: "../../..",
-    // The dev server is the last thing `dev/demo.sh` starts, and it starts it only
-    // after the API answers its own health check, so waiting here waits for both.
-    url: DEV_SERVER_URL,
+    // Through the dev server's proxy rather than at its root, because the root
+    // is served before the proxy behind it can carry a request: `dev/demo.sh`
+    // starts Vite last and only once the API is answering, but Vite answers for
+    // itself while it is still optimising its dependencies, and the suite's very
+    // first act in every test is a proxied `/v1/webui/config`. Waiting on a path
+    // that has to travel the whole way is what makes "ready" mean ready — at any
+    // number of workers, and most visibly at more than one, where two tests ask
+    // at once and a root-only check let them both ask too early.
+    url: `${DEV_SERVER_URL}/healthz`,
     // Locally, a demo already running is the one to test against; in CI there is
     // never one to reuse, and silently using a stale server would be worse than
     // failing to start.
