@@ -390,13 +390,31 @@ jobs:
       # definition and nobody reviews a change after it has landed. A pull
       # request does not, so a difference is something to look at before it
       # becomes the thing everything else is measured against.
-      - name: Publish the workshop for visual review
-        # The action is skipped rather than failed where no token is configured
-        # — a fork's pull request has no access to the secret, and a visual
-        # baseline is not something a fork could usefully compare against.
-        if: ${{ !cancelled() && env.CHROMATIC_PROJECT_TOKEN != '' }}
+      # Whether there is a baseline to compare against at all: a fork's pull
+      # request cannot read the secret, and a visual baseline is not something
+      # a fork could usefully compare against, so the publish below is skipped
+      # rather than failed there.
+      #
+      # The answer is carried out as an output rather than tested in the
+      # publish step's own `if`. A step's `env` is applied after its condition
+      # is evaluated, and `secrets` is not among the contexts a step condition
+      # may read at all — so asking there would have read an empty string and
+      # skipped the publish on every run, including the ones that can do it.
+      # Only the emptiness of the token leaves this step, never the token.
+      - name: Note whether a visual baseline is reachable
+        id: visual
+        if: ${{ !cancelled() }}
         env:
           CHROMATIC_PROJECT_TOKEN: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -n "${CHROMATIC_PROJECT_TOKEN:-}" ]; then
+            echo "configured=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "configured=false" >> "${GITHUB_OUTPUT}"
+          fi
+      - name: Publish the workshop for visual review
+        if: ${{ !cancelled() && steps.visual.outputs.configured == 'true' }}
         # v18.6.0, the version of the CLI the addon carries in pnpm-lock.yaml.
         uses: chromaui/action@fd5e7e8b66d1a6862ed8866c21e93788217f7cf7
         with:
