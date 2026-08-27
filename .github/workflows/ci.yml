@@ -69,37 +69,53 @@ jobs:
           install: true
           cache: true
       # The module downloads and the compiler cache, which every Go job otherwise
-      # pays for from scratch. Two of these paths are `.mise.toml`'s own choice
-      # read back — it puts GOCACHE and GOLANGCI_LINT_CACHE under `.cache/` — and
-      # dev/gatecheck asserts that the two files still name the same directories,
-      # because a cache pointed at a directory nothing writes is saved on every
-      # run and restores nothing.
+      # pays for from scratch. They are two entries rather than one because they
+      # go stale on entirely different clocks, and putting them together made
+      # every job rewrite the larger half on every commit.
       #
-      # The key is the pinned toolchain, then `go.sum`, then the Go tree, so an
-      # unchanged tree hits exactly and writes nothing back, and a source change
-      # restores the entry built from the same dependencies and recompiles only
-      # what moved. `.mise.toml` leads because it is what decides which compiler
-      # wrote these directories: without it, a toolchain bump on its own would
-      # still hit the old entry exactly, nothing the new compiler produced would
-      # ever be saved, and every run would recompile cold until some source file
-      # happened to move. The loosest restore-key drops it again on purpose — a
-      # bump makes the compiler cache useless but not the module downloads, which
-      # are the same bytes whatever compiles them. Each job keys its own entry
-      # rather than sharing one: they compile different things — the race
-      # detector's object files are not the plain suite's, and golangci-lint's
-      # cache is neither — and a shared entry would be whichever job happened to
-      # finish last.
+      # The module cache is the downloads, and a download is the same bytes
+      # whoever asked for it: one entry, keyed on `go.sum` alone, shared by every
+      # job here. `.mise.toml` is deliberately not in that key — a toolchain bump
+      # changes which compiler reads these files, not what they contain — and the
+      # single restore-key is what carries most of the tree across a dependency
+      # bump. Six jobs restore it; whichever reaches the end first saves it, and
+      # the other five find the key already written and upload nothing.
+      #
+      # The build cache is per job, because the jobs compile different things:
+      # the race detector's object files are not the plain suite's, and
+      # golangci-lint's cache is neither. Its key is the pinned toolchain, then
+      # `go.sum`, then the Go tree, so an unchanged tree hits exactly and writes
+      # nothing back, and a source change restores the entry built from the same
+      # dependencies and recompiles only what moved. `.mise.toml` leads because
+      # it is what decides which compiler wrote the directory: without it, a
+      # toolchain bump on its own would still hit the old entry exactly, nothing
+      # the new compiler produced would ever be saved, and every run would
+      # recompile cold until some source file happened to move.
+      #
+      # Both paths under `.cache/` are `.mise.toml`'s own choice read back — it
+      # puts GOCACHE and GOLANGCI_LINT_CACHE there — and dev/gatecheck asserts
+      # that the two files still name the same directories, because a cache
+      # pointed at a directory nothing writes is saved on every run and restores
+      # nothing.
       #
       # Nothing restored here can make a check pass that would otherwise fail:
       # every job runs `mise run --force`, and a compiler cache is keyed by the
       # content it was built from. It is the download and the recompilation that
       # is skipped, not the work.
-      - name: Restore the Go caches
+      - name: Restore the Go module cache
         # v6.1.0
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: |
             ~/go/pkg/mod
+          key: gomod-${{ runner.os }}-${{ hashFiles('go.sum') }}
+          restore-keys: |
+            gomod-${{ runner.os }}-
+      - name: Restore the Go build cache
+        # v6.1.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: |
             .cache/go-build
             .cache/golangci-lint
           key: go-lint-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-${{ hashFiles('go.sum') }}-${{ hashFiles('**/*.go') }}
@@ -146,12 +162,20 @@ jobs:
           install: true
           cache: true
       # The Go caches, as the Lint job above explains them.
-      - name: Restore the Go caches
+      - name: Restore the Go module cache
         # v6.1.0
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: |
             ~/go/pkg/mod
+          key: gomod-${{ runner.os }}-${{ hashFiles('go.sum') }}
+          restore-keys: |
+            gomod-${{ runner.os }}-
+      - name: Restore the Go build cache
+        # v6.1.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: |
             .cache/go-build
           key: go-test-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-${{ hashFiles('go.sum') }}-${{ hashFiles('**/*.go') }}
           restore-keys: |
@@ -216,12 +240,20 @@ jobs:
           install: true
           cache: true
       # The Go caches, as the Lint job above explains them.
-      - name: Restore the Go caches
+      - name: Restore the Go module cache
         # v6.1.0
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: |
             ~/go/pkg/mod
+          key: gomod-${{ runner.os }}-${{ hashFiles('go.sum') }}
+          restore-keys: |
+            gomod-${{ runner.os }}-
+      - name: Restore the Go build cache
+        # v6.1.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: |
             .cache/go-build
           key: go-security-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-${{ hashFiles('go.sum') }}-${{ hashFiles('**/*.go') }}
           restore-keys: |
@@ -258,6 +290,36 @@ jobs:
           version: 2026.8.11
           install: true
           cache: true
+      # This job compiles Go as well as JavaScript, and used to be the only one
+      # that did so without the caches for it. `api-check` regenerates the
+      # client, and the browser suite's own web server is `dev/demo.sh`, which
+      # builds `dev/demoapi` — modernc.org/sqlite and all — before Playwright
+      # opens a page. Cold, that build took nearly three minutes of this job's
+      # ten, on the critical path of the whole workflow.
+      #
+      # Split and keyed as the Lint job above explains, under its own build-cache
+      # prefix for the reason given there: what this job leaves in the compiler
+      # cache is the demo stack, which is not what any of them compiles.
+      - name: Restore the Go module cache
+        # v6.1.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: |
+            ~/go/pkg/mod
+          key: gomod-${{ runner.os }}-${{ hashFiles('go.sum') }}
+          restore-keys: |
+            gomod-${{ runner.os }}-
+      - name: Restore the Go build cache
+        # v6.1.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: |
+            .cache/go-build
+          key: go-ui-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-${{ hashFiles('go.sum') }}-${{ hashFiles('**/*.go') }}
+          restore-keys: |
+            go-ui-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-${{ hashFiles('go.sum') }}-
+            go-ui-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-
+            go-ui-${{ runner.os }}-
       # pnpm downloads every package once into a content-addressed store and hard
       # links it into node_modules, so the store is what makes `ui-install` a
       # link rather than a download. Its location is asked for rather than
@@ -387,12 +449,20 @@ jobs:
           install: true
           cache: true
       # The Go caches, as the Lint job above explains them.
-      - name: Restore the Go caches
+      - name: Restore the Go module cache
         # v6.1.0
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: |
             ~/go/pkg/mod
+          key: gomod-${{ runner.os }}-${{ hashFiles('go.sum') }}
+          restore-keys: |
+            gomod-${{ runner.os }}-
+      - name: Restore the Go build cache
+        # v6.1.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: |
             .cache/go-build
           key: go-coverage-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-${{ hashFiles('go.sum') }}-${{ hashFiles('**/*.go') }}
           restore-keys: |
@@ -468,12 +538,20 @@ jobs:
           install: true
           cache: true
       # The Go caches, as the Lint job above explains them.
-      - name: Restore the Go caches
+      - name: Restore the Go module cache
         # v6.1.0
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: |
             ~/go/pkg/mod
+          key: gomod-${{ runner.os }}-${{ hashFiles('go.sum') }}
+          restore-keys: |
+            gomod-${{ runner.os }}-
+      - name: Restore the Go build cache
+        # v6.1.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: |
             .cache/go-build
           key: go-build-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-${{ hashFiles('go.sum') }}-${{ hashFiles('**/*.go') }}
           restore-keys: |
