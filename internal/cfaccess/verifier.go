@@ -21,6 +21,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
@@ -97,6 +98,7 @@ type Options struct {
 // Verifier validates Access assertions against the team's published keys.
 type Verifier struct {
 	verifier *oidc.IDTokenVerifier
+	throttle *throttledTransport
 	now      func() time.Time
 }
 
@@ -141,10 +143,11 @@ func New(options *Options) (*Verifier, error) {
 	// rather than from the one verifying a token, and fetches on that context
 	// too — so it is Background, and the client's timeout is what bounds a fetch.
 	keySetClient := *client
-	keySetClient.Transport = &throttledTransport{
+	throttle := &throttledTransport{
 		base: client.Transport,
 		now:  now,
 	}
+	keySetClient.Transport = throttle
 	keySet := oidc.NewRemoteKeySet(
 		oidc.ClientContext(context.Background(), &keySetClient),
 		"https://"+team+certsPath,
@@ -160,7 +163,8 @@ func New(options *Options) (*Verifier, error) {
 				Now:                  now,
 			},
 		),
-		now: now,
+		throttle: throttle,
+		now:      now,
 	}, nil
 }
 
@@ -175,7 +179,17 @@ func (v *Verifier) Verify(ctx context.Context, token string) (Identity, error) {
 		return Identity{}, err
 	}
 
+	fetched := v.throttle.fetched.Load()
 	idToken, err := v.verifier.Verify(ctx, token)
+	// A key set arriving while this verification ran means it read the cache
+	// before that fetch landed, and then found the floor shut behind the
+	// fetch that had already stamped it. Retrying reads the warm cache. Only
+	// a completed fetch justifies the second attempt: a bogus key ID, which
+	// is what the floor is there for, refuses without completing one and so
+	// still costs a single verification.
+	if err != nil && v.throttle.fetched.Load() != fetched {
+		idToken, err = v.verifier.Verify(ctx, token)
+	}
 	if err != nil {
 		return Identity{}, fmt.Errorf("verifying assertion: %w", err)
 	}
@@ -228,7 +242,10 @@ type throttledTransport struct {
 	base        http.RoundTripper
 	now         func() time.Time
 	lastAttempt time.Time
-	mu          sync.Mutex
+	// fetched counts the round trips that reached a reply, so a verification
+	// can tell a key set that landed underneath it from one that never came.
+	fetched atomic.Uint64
+	mu      sync.Mutex
 }
 
 func (t *throttledTransport) RoundTrip(request *http.Request) (*http.Response, error) {
@@ -257,6 +274,7 @@ func (t *throttledTransport) RoundTrip(request *http.Request) (*http.Response, e
 
 		return nil, fmt.Errorf("fetching access certs: %w", err)
 	}
+	t.fetched.Add(1)
 	response.Body = newLimitedBody(response.Body, cancel)
 
 	return response, nil
