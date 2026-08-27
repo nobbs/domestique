@@ -283,6 +283,11 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
+          # The whole history, which only this job needs: Chromatic decides what
+          # a story's pixels are compared against by walking ancestry for the
+          # last build it accepted, and a single-commit clone has no ancestry to
+          # walk. It would answer by treating every story as new.
+          fetch-depth: 0
       - name: Install pinned toolchain
         # v4.2.5
         uses: jdx/mise-action@3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518
@@ -370,6 +375,35 @@ jobs:
         # Cyrillic fonts the suite never renders, and it has spent over five
         # minutes waiting on the apt mirror to serve them.
         run: mise run --force ci-ui
+      # The one question the suites above cannot answer. They play every story
+      # and assert what they were told to assert, and the sweep proves each page
+      # renders at all; a component that renders perfectly and looks wrong
+      # passes all three. This compares each story's pixels against the last
+      # accepted ones, which is a claim about change and needs a baseline that
+      # outlives a run.
+      #
+      # Over the workshop `ci-ui` already built, rather than building a second
+      # one: `test:storybook:sweep` leaves `storybook-static` behind and this
+      # reads it, so the snapshots are of exactly the bundle the sweep swept.
+      #
+      # `main` accepts its own changes, because the trunk is the baseline by
+      # definition and nobody reviews a change after it has landed. A pull
+      # request does not, so a difference is something to look at before it
+      # becomes the thing everything else is measured against.
+      - name: Publish the workshop for visual review
+        # The action is skipped rather than failed where no token is configured
+        # — a fork's pull request has no access to the secret, and a visual
+        # baseline is not something a fork could usefully compare against.
+        if: ${{ !cancelled() && env.CHROMATIC_PROJECT_TOKEN != '' }}
+        env:
+          CHROMATIC_PROJECT_TOKEN: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
+        # v18.6.0, the version of the CLI the addon carries in pnpm-lock.yaml.
+        uses: chromaui/action@fd5e7e8b66d1a6862ed8866c21e93788217f7cf7
+        with:
+          projectToken: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
+          workingDir: internal/webui/app
+          storybookBuildDir: storybook-static
+          autoAcceptChanges: main
       # All three UI suites under the `ui` flag, so Codecov distinguishes them
       # from the Go results the way the coverage flags already do. See the Go
       # upload above for why this job uploads at all and why it runs when the

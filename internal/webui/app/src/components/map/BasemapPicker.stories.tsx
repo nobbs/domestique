@@ -37,7 +37,10 @@ const basemaps = [streets, dark];
  *
  * The popover it opens renders through a portal into `document.body`, outside
  * this story's own canvas root — which is why every play function below reads
- * it back with `screen` rather than `canvas`.
+ * it back with `screen` rather than `canvas`, and with `find` rather than
+ * `get`. A portal lands a frame or more after whatever put it there, so a
+ * synchronous query reads the document before the popover is in it: on a fast
+ * machine that is a race these win, and on a slower one it is a failure.
  */
 function Picker({
   basemaps: options = basemaps,
@@ -112,7 +115,7 @@ export const Unfolded: Story = {
   play: async ({ canvas }) => {
     await userEvent.click(canvas.getByRole("button", { name: "Choose the basemap" }));
 
-    const group = screen.getByRole("radiogroup", { name: "Basemap" });
+    const group = await screen.findByRole("radiogroup", { name: "Basemap" });
     await expect(group).toBeInTheDocument();
     await expect(screen.getByRole("radio", { name: "Streets" })).toBeInTheDocument();
     await expect(screen.getByRole("radio", { name: "Dark" })).toBeInTheDocument();
@@ -151,7 +154,7 @@ export const ClosesOnEscape: Story = {
 export const MarksTheLoadedBasemap: Story = {
   render: () => <Picker selectedName={dark.name} />,
   play: async () => {
-    await expect(screen.getByRole("radio", { name: "Dark" })).toBeChecked();
+    await expect(await screen.findByRole("radio", { name: "Dark" })).toBeChecked();
     await expect(screen.getByRole("radio", { name: "Streets" })).not.toBeChecked();
   },
 };
@@ -159,7 +162,7 @@ export const MarksTheLoadedBasemap: Story = {
 export const ReportsAPickByName: Story = {
   render: (args) => <Picker onSelect={args.onSelect} />,
   play: async ({ args }) => {
-    await userEvent.click(screen.getByRole("radio", { name: "Dark" }));
+    await userEvent.click(await screen.findByRole("radio", { name: "Dark" }));
 
     await expect(args.onSelect).toHaveBeenCalledWith("Dark");
   },
