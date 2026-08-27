@@ -537,6 +537,55 @@ func TestVerifyRateLimitsRefetchWhenCertsEndpointFails(t *testing.T) {
 	assert.Equal(t, int64(2), fetches.Load(), "the elapsed floor did not allow exactly one retry")
 }
 
+// A caller may hand in a client with no timeout of its own, and the key set is
+// built on Background, so nothing outside this package would bound the fetch.
+func TestVerifyBoundsAFetchAgainstAClientWithNoTimeout(t *testing.T) {
+	t.Parallel()
+
+	keys := newKeySet(t, testKeyID)
+
+	blocked := make(chan struct{})
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		<-blocked
+		writer.Header().Set("Content-Type", "application/json")
+		_, err := writer.Write(keys.jwks())
+		assert.NoError(t, err, "writing the key set")
+	}))
+	t.Cleanup(func() {
+		close(blocked)
+		server.Close()
+	})
+
+	client := server.Client()
+	client.Timeout = 0
+	client.Transport = rewriteHost{
+		next:   client.Transport,
+		target: strings.TrimPrefix(server.URL, "https://"),
+	}
+
+	verifier, err := cfaccess.New(&cfaccess.Options{
+		TeamDomain: testTeam,
+		Audience:   testAudience,
+		HTTPClient: client,
+		Now:        (&clock{}).now,
+	})
+	require.NoError(t, err, "building verifier")
+
+	assertion := keys.sign(t, validHeader(), validClaims())
+	done := make(chan error, 1)
+	go func() {
+		_, verifyErr := verifier.Verify(t.Context(), assertion)
+		done <- verifyErr
+	}()
+
+	select {
+	case verifyErr := <-done:
+		require.Error(t, verifyErr, "a fetch against a hung endpoint must not be accepted")
+	case <-time.After(30 * time.Second):
+		t.Fatal("the fetch was never bounded")
+	}
+}
+
 func TestNewValidatesOptions(t *testing.T) {
 	t.Parallel()
 

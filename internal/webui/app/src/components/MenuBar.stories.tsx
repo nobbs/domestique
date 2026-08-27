@@ -1,8 +1,8 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { expect } from "storybook/test";
-import { statusQuery } from "../api/queries";
-import type { Status, TargetStatus } from "../api/types";
+import { statusQuery, webUIConfigQuery } from "../api/queries";
+import type { Status, TargetStatus, WebUIConfig } from "../api/types";
 import { StoryProviders } from "../storybook/fixtures";
 import { MenuBar } from "./MenuBar";
 
@@ -61,6 +61,14 @@ function withStatus(value?: Status): NonNullable<Meta<typeof MenuBar>["decorator
           queries: { enabled: false, retry: false, staleTime: Number.POSITIVE_INFINITY },
         },
       });
+      /*
+       * The configuration as well, and in every story rather than only the
+       * ones about it. This provider shadows the fixture's for *all* queries,
+       * not only the one it was opened for, so seeding the status alone left
+       * the session pill with no answer and took it off the end of a bar these
+       * stories are supposed to show whole.
+       */
+      client.setQueryData(webUIConfigQuery().queryKey, CONFIG);
       if (value) {
         client.setQueryData(statusQuery().queryKey, value);
       }
@@ -73,6 +81,13 @@ function withStatus(value?: Status): NonNullable<Meta<typeof MenuBar>["decorator
     },
   ];
 }
+
+/** What the bar is handed about itself, which is the same in every story. */
+const CONFIG: WebUIConfig = {
+  basemaps: [],
+  sourceBaseUrls: {},
+  identity: { email: "rider@example.test" },
+};
 
 /** The three destinations, and the way to the sync page among them. */
 export const LinksToSync: Story = {
@@ -102,6 +117,11 @@ export const LinksToSync: Story = {
       "/settings",
     );
     await expect(canvas.getByText("domestique")).toBeInTheDocument();
+    // The whole bar, end to end: the mark, the three destinations, and the
+    // session at the far end of them.
+    await expect(
+      canvas.getByRole("button", { name: "Signed in as rider@example.test" }),
+    ).toBeVisible();
   },
 };
 

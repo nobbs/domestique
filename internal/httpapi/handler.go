@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/mail"
 	"net/url"
 	"slices"
 	"strings"
@@ -467,8 +468,9 @@ func New(
 	if options.AccessVerifier == nil {
 		return nil, errors.New("an access verifier is required")
 	}
-	if strings.TrimSpace(options.AccessEmail) == "" {
-		return nil, errors.New("an access email is required")
+	accessEmail, err := accessEmailOf(options.AccessEmail)
+	if err != nil {
+		return nil, err
 	}
 	signOutURL, err := signOutPathOf(options.AccessSignOutURL)
 	if err != nil {
@@ -552,7 +554,7 @@ func New(
 		now:                 time.Now,
 
 		accessVerifier: options.AccessVerifier,
-		allowedEmail:   strings.TrimSpace(options.AccessEmail),
+		allowedEmail:   accessEmail,
 		signOutURL:     signOutURL,
 	}
 	if err := handler.useContractValidation(); err != nil {
@@ -752,6 +754,28 @@ func browserOriginOf(value string) (string, error) {
 	}
 
 	return "https://" + strings.TrimSuffix(strings.ToLower(parsed.Host), ":443"), nil
+}
+
+// accessEmailOf returns the one address an assertion may name.
+//
+// It is checked for shape and not only for presence, because the page is now
+// told what it is: the contract publishes it as an email, and a deployment that
+// wrote something else there would have this service serving a response its own
+// schema does not describe. `mail.ParseAddress` is the reading Go already has,
+// and the address it returns has to be the whole of what was configured —
+// otherwise `Rider <rider@example.test>` would pass, and the gate compares the
+// asserted address against this one literally.
+func accessEmailOf(value string) (string, error) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return "", errors.New("an access email is required")
+	}
+	parsed, err := mail.ParseAddress(trimmed)
+	if err != nil || parsed.Address != trimmed {
+		return "", errors.New("the access email must be a bare address")
+	}
+
+	return trimmed, nil
 }
 
 // signOutPathOf returns the path a page may offer as the way out, or empty for
