@@ -11,6 +11,11 @@
  *
  * The links are named rather than drawn, because a bar has the room the pill
  * did not and a glyph is only ever a guess at a word.
+ *
+ * Navigation runs from the left and the session sits at the right end, with the
+ * gap between them doing the separating: where a reader can go and which
+ * session they are in are two different questions, and a row that answers both
+ * in one run of items invites the second to be read as a third destination.
  */
 
 import { useQuery } from "@tanstack/react-query";
@@ -18,6 +23,7 @@ import { NavLink } from "react-router";
 import { statusQuery } from "../api/queries";
 import { syncState } from "../lib/syncState";
 import { Wordmark } from "./brand/Wordmark";
+import { UserPill } from "./UserPill";
 
 /**
  * Which page a link leads to, and whether it is the page being read.
@@ -77,6 +83,9 @@ export function MenuBar() {
           </NavLink>
         ))}
       </nav>
+      <div className="ml-auto">
+        <UserPill />
+      </div>
     </header>
   );
 }

@@ -474,6 +474,48 @@ func TestHandlerServesTileStyleConfiguration(t *testing.T) {
 	}
 }
 
+func TestHandlerNamesTheIdentityTheGateLetThrough(t *testing.T) {
+	handler := newTestHandler(t)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/webui/config"))
+	require.Equal(t, http.StatusOK, response.Code, "config status")
+
+	var body struct {
+		Identity struct {
+			Email      string `json:"email"`
+			SignOutURL string `json:"signOutUrl"`
+		} `json:"identity"`
+	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body), "decoding the config")
+
+	assert.Equal(t, testAccessEmail, body.Identity.Email, "the config must name the one authorised address")
+	// Nothing stands in front of this handler, so there is nowhere to sign out
+	// to. The field is absent rather than empty, which is how the page tells
+	// "no way out exists" from one it was given.
+	assert.Empty(t, body.Identity.SignOutURL, "a handler with no configured way out must not name one")
+}
+
+func TestHandlerPublishesTheWayOutWhenOneIsConfigured(t *testing.T) {
+	handler, err := New(
+		&Options{
+			TargetIDs:        []string{"rider-a"},
+			Basemaps:         twoProviderBasemaps(),
+			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
+			AccessEmail:      testAccessEmail,
+			AccessSignOutURL: "/cdn-cgi/access/logout",
+			BrowserOriginURL: testBrowserOriginURL,
+		},
+		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{},
+	)
+	require.NoError(t, err, "New()")
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/webui/config"))
+	require.Equal(t, http.StatusOK, response.Code, "config status")
+	assert.Contains(t, response.Body.String(), `"signOutUrl":"/cdn-cgi/access/logout"`,
+		"a configured way out must reach the page")
+}
+
 func TestHandlerServesEveryConfiguredBasemapInOrder(t *testing.T) {
 	handler, err := New(
 		&Options{

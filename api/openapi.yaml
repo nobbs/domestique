@@ -1048,6 +1048,7 @@ components:
       additionalProperties: false
       required:
         - basemaps
+        - identity
       properties:
         basemaps:
           type: array
@@ -1056,6 +1057,27 @@ components:
             $ref: '#/components/schemas/BrowserBasemap'
         sourceBaseUrls:
           $ref: '#/components/schemas/SourceBaseUrls'
+        identity:
+          $ref: '#/components/schemas/BrowserIdentity'
+    BrowserIdentity:
+      type: object
+      additionalProperties: false
+      description: >-
+        Who the gate let through. There is one authorised address, so this
+        names the reader rather than identifying them: it is how a session can
+        be seen to be the one intended, and where the way out of it lives.
+      required:
+        - email
+      properties:
+        email:
+          type: string
+          format: email
+        signOutUrl:
+          type: string
+          description: >-
+            Where to end the session, served by whatever fronts this service
+            rather than by the service itself. Absent when nothing does, so
+            the page offers no way out instead of a link that answers 404.
     SourceBaseUrls:
       type: object
       additionalProperties: false

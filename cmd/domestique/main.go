@@ -220,6 +220,11 @@ func run(ctx context.Context) error {
 			BuildImageDigest: buildInfo.ImageDigest,
 			AccessVerifier:   accessVerifier,
 			AccessEmail:      settings.Access.Cloudflare.AllowedEmail,
+			// Cloudflare Access serves this path on the hostname it fronts, and
+			// this binary is the one that is only ever deployed behind it — so
+			// this is where knowing that belongs. It is relative because the
+			// session being ended is the one on the origin the page came from.
+			AccessSignOutURL: "/cdn-cgi/access/logout",
 			// The Wahoo redirect URL is on the hostname a browser reaches this
 			// service at, which is what makes it the origin a state-changing
 			// request has to come from.

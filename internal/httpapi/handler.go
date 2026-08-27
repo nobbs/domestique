@@ -354,6 +354,13 @@ type Options struct {
 	// principal every authenticated request resolves to.
 	AccessEmail string
 
+	// AccessSignOutURL ends the session, and is served by whatever stands in
+	// front of this service rather than by this service. Only a deployment
+	// knows whether anything does, so it is named at the composition root and
+	// left empty everywhere nothing would answer it — the page then offers no
+	// way out rather than a link to a 404.
+	AccessSignOutURL string
+
 	// BrowserOriginURL is an absolute HTTPS URL on the hostname a browser
 	// reaches this service at. Only its scheme and host are read: together they
 	// are the one origin a state-changing request may come from. The Wahoo
@@ -426,6 +433,7 @@ type Handler struct {
 	buildImageDigest    string
 	browserOrigin       string
 	allowedEmail        string
+	signOutURL          string
 	tileOrigins         []string
 	targetIDs           []string
 	basemaps            []Basemap
@@ -541,6 +549,7 @@ func New(
 
 		accessVerifier: options.AccessVerifier,
 		allowedEmail:   strings.TrimSpace(options.AccessEmail),
+		signOutURL:     strings.TrimSpace(options.AccessSignOutURL),
 	}
 	if err := handler.useContractValidation(); err != nil {
 		return nil, err
