@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -403,6 +404,83 @@ func TestVerifyRefetchesAfterKeyRotation(t *testing.T) {
 	_, err = verifier.Verify(t.Context(), rotated.sign(t, header, validClaims()))
 	require.NoError(t, err, "expected the rotated key to verify")
 	assert.Equal(t, int64(2), fetches.Load(), "the rotation cost more than one refetch")
+}
+
+// Every request arriving against a cold cache has to end up with the key, not
+// just the one that happened to look first.
+//
+// The refresh floor is stamped before the fetch rather than after it, so a
+// caller that tested staleness while another was mid-fetch used to rule itself
+// out on the strength of that in-flight attempt and be told the key was unknown
+// a moment before it arrived. That is every process start under concurrent
+// traffic, and it was reproducible as a browser suite failing one test at random
+// once it ran on more than one worker.
+//
+// The ordering is what makes this reproduce rather than depend on scheduling.
+// One caller goes first and is held inside the certs handler, so by the time the
+// rest start the floor is provably stamped and the key set provably not yet
+// published — which is exactly the window the bug lives in. Releasing the
+// handler only after they have all started keeps them in it.
+func TestVerifyAdmitsConcurrentCallersAgainstAColdCache(t *testing.T) {
+	t.Parallel()
+
+	const followers = 7
+
+	keys := newKeySet(t, testKeyID)
+
+	// fetching reports that the first caller is inside the handler: it has
+	// stamped the floor and is waiting on a key set nobody has yet.
+	fetching := make(chan struct{})
+	release := make(chan struct{})
+
+	var fetches atomic.Int64
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/cdn-cgi/access/certs" {
+			writer.WriteHeader(http.StatusNotFound)
+
+			return
+		}
+		if fetches.Add(1) == 1 {
+			close(fetching)
+		}
+		<-release
+		writer.Header().Set("Content-Type", "application/json")
+		_, err := writer.Write(keys.jwks())
+		assert.NoError(t, err, "writing the key set")
+	}))
+	t.Cleanup(server.Close)
+
+	verifier, _ := verifierAgainst(t, server)
+
+	assertion := keys.sign(t, validHeader(), validClaims())
+	errs := make(chan error, followers+1)
+
+	go func() {
+		_, err := verifier.Verify(t.Context(), assertion)
+		errs <- err
+	}()
+
+	// The fetch is in flight, so every caller started below reaches the
+	// staleness test against a floor another attempt has already closed.
+	<-fetching
+
+	var started sync.WaitGroup
+
+	started.Add(followers)
+	for range followers {
+		go func() {
+			started.Done()
+			_, err := verifier.Verify(t.Context(), assertion)
+			errs <- err
+		}()
+	}
+	started.Wait()
+	close(release)
+
+	for range followers + 1 {
+		require.NoError(t, <-errs, "a concurrent caller was refused against a cold cache")
+	}
+	assert.Equal(t, int64(1), fetches.Load(), "a cold cache cost more than one fetch")
 }
 
 // A stream of assertions naming key IDs that do not exist must not become a

@@ -163,14 +163,17 @@ export default defineConfig({
     // previous build left embedded.
     command: "./dev/demo.sh --with-bundle",
     cwd: "../../..",
-    // Through the dev server's proxy rather than at its root, because the root
-    // is served before the proxy behind it can carry a request: `dev/demo.sh`
-    // starts Vite last and only once the API is answering, but Vite answers for
-    // itself while it is still optimising its dependencies, and the suite's very
-    // first act in every test is a proxied `/v1/webui/config`. Waiting on a path
-    // that has to travel the whole way is what makes "ready" mean ready — at any
-    // number of workers, and most visibly at more than one, where two tests ask
-    // at once and a root-only check let them both ask too early.
+    // Through the dev server's proxy rather than at its root, so that "ready"
+    // means a request can travel the whole way rather than that Vite is serving
+    // for itself. `dev/demo.sh` starts Vite last and only once the API answers,
+    // and every test's first act is a proxied call, so this is the path they
+    // actually depend on.
+    //
+    // It is not a gate on the identity check, and cannot be: Playwright counts
+    // any status under 404 as ready, so a 401 here would read as a live server.
+    // The startup rejection this was first reached for was never Vite's — see
+    // TestVerifyAdmitsConcurrentCallersAgainstAColdCache, which covers it where
+    // it belongs.
     url: `${DEV_SERVER_URL}/healthz`,
     // Locally, a demo already running is the one to test against; in CI there is
     // never one to reuse, and silently using a stale server would be worse than
