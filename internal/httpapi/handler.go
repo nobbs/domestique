@@ -470,6 +470,10 @@ func New(
 	if strings.TrimSpace(options.AccessEmail) == "" {
 		return nil, errors.New("an access email is required")
 	}
+	signOutURL, err := signOutPathOf(options.AccessSignOutURL)
+	if err != nil {
+		return nil, err
+	}
 	browserOrigin, err := browserOriginOf(options.BrowserOriginURL)
 	if err != nil {
 		return nil, err
@@ -549,7 +553,7 @@ func New(
 
 		accessVerifier: options.AccessVerifier,
 		allowedEmail:   strings.TrimSpace(options.AccessEmail),
-		signOutURL:     strings.TrimSpace(options.AccessSignOutURL),
+		signOutURL:     signOutURL,
 	}
 	if err := handler.useContractValidation(); err != nil {
 		return nil, err
@@ -748,6 +752,39 @@ func browserOriginOf(value string) (string, error) {
 	}
 
 	return "https://" + strings.TrimSuffix(strings.ToLower(parsed.Host), ":443"), nil
+}
+
+// signOutPathOf returns the path a page may offer as the way out, or empty for
+// a deployment that named none.
+//
+// The value reaches a browser as the href of a link a reader clicks, so what it
+// may be is worth stating rather than assuming. It is a path on this service's
+// own origin: an absolute one is a different site, `//host` is a different site
+// spelled to look like a path, and `javascript:` is script that runs on click.
+// None of those is a way out of this session, and refusing here means a
+// deployment that misnames one fails to start rather than serving a link that
+// leaves — or executes — on press.
+//
+// Nothing configurable reaches this today; `cmd/domestique` passes a constant.
+// The check is here because that is a property of the caller rather than of
+// this option, and the option is what the page trusts.
+func signOutPathOf(value string) (string, error) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return "", nil
+	}
+	if trimmed != value || strings.ContainsAny(trimmed, " \t\r\n") {
+		return "", errors.New("the sign-out URL must not contain whitespace")
+	}
+	if !strings.HasPrefix(trimmed, "/") || strings.HasPrefix(trimmed, "//") {
+		return "", errors.New("the sign-out URL must be a path on this service's own origin")
+	}
+	parsed, err := url.Parse(trimmed)
+	if err != nil || parsed.Scheme != "" || parsed.Host != "" {
+		return "", errors.New("the sign-out URL must be a path on this service's own origin")
+	}
+
+	return trimmed, nil
 }
 
 // publishableRevision returns the commit object name this build may claim, or

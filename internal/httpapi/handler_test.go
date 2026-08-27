@@ -524,6 +524,36 @@ func TestHandlerPublishesTheWayOutWhenOneIsConfigured(t *testing.T) {
 		"a configured way out must reach the page")
 }
 
+func TestNewRefusesASignOutURLThatLeavesThisOrigin(t *testing.T) {
+	// Each of these reaches a browser as the href of a link a reader clicks.
+	// None of them is a way out of this session: two are other sites, one is
+	// another site spelled to look like a path, and one is script that runs on
+	// press.
+	for name, value := range map[string]string{
+		"absolute":          "https://evil.example.test/logout",
+		"protocol relative": "//evil.example.test/logout",
+		"script":            "javascript:alert(1)",
+		"bare word":         "logout",
+		"leading space":     " /cdn-cgi/access/logout",
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := New(
+				&Options{
+					TargetIDs:        []string{"rider-a"},
+					Basemaps:         twoProviderBasemaps(),
+					AccessVerifier:   &recordingVerifier{email: testAccessEmail},
+					AccessEmail:      testAccessEmail,
+					AccessSignOutURL: value,
+					BrowserOriginURL: testBrowserOriginURL,
+				},
+				&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{},
+			)
+
+			require.Error(t, err, "New() accepted a sign-out URL that leaves this origin")
+		})
+	}
+}
+
 func TestHandlerServesEveryConfiguredBasemapInOrder(t *testing.T) {
 	handler, err := New(
 		&Options{

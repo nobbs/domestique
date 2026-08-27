@@ -38,8 +38,14 @@ type Story = StoryObj<typeof meta>;
 function withConfig(value?: WebUIConfig): NonNullable<Meta<typeof UserPill>["decorators"]> {
   return [
     (Story) => {
+      // `enabled: false` because every story here seeds what it wants read.
+      // Without it the story that seeds nothing — the state before an answer
+      // has arrived — is the one story that reaches for the network, and it
+      // would be asking a Storybook that serves no API.
       const client = new QueryClient({
-        defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
+        defaultOptions: {
+          queries: { enabled: false, retry: false, staleTime: Number.POSITIVE_INFINITY },
+        },
       });
       if (value) {
         client.setQueryData(webUIConfigQuery().queryKey, value);
