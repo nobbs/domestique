@@ -38,7 +38,18 @@ func (h *Handler) GetWebUIConfig(writer http.ResponseWriter, _ *http.Request) {
 		}
 	}
 
-	config := openapi.WebUIConfig{Basemaps: basemaps}
+	// The one authorised address, which the gate has already proved this caller
+	// to be. It is not sent so the page can decide anything — there is nothing
+	// to decide — but so a reader can see which session they are in, and leave
+	// it. The way out is omitted where nothing in front of this service would
+	// serve one; see Options.AccessSignOutURL.
+	config := openapi.WebUIConfig{
+		Basemaps: basemaps,
+		Identity: openapi.BrowserIdentity{
+			Email:      h.allowedEmail,
+			SignOutURL: optionalString(h.signOutURL),
+		},
+	}
 	// Omitted entirely when no source named one, so the page offers no link at
 	// all rather than building a broken one.
 	if len(h.sourceBaseURLs) > 0 {

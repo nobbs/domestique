@@ -68,7 +68,9 @@ afterEach(() => {
 });
 
 function configOf(...basemaps: Basemap[]): WebUIConfig {
-  return { basemaps, sourceBaseUrls: {} };
+  // The identity is part of every configuration the service serves; nothing
+  // about choosing a basemap reads it.
+  return { basemaps, sourceBaseUrls: {}, identity: { email: "rider@example.test" } };
 }
 
 const streets: Basemap = {

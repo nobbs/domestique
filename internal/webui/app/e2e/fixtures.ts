@@ -340,23 +340,37 @@ export function mapRegion(page: Page): Locator {
  *
  * Returns the settled image, so a caller that wants to compare two states does
  * not have to take a third screenshot to get one.
+ *
+ * "The same as one of the last two" rather than "the same as the last one",
+ * because a settled canvas does not always read back the same bytes twice. On
+ * a runner drawing through a software rasteriser, a map that has stopped moving
+ * alternates between two renderings of the one scene — measured at four
+ * hundredths of a pixel of total difference across the whole region, with no
+ * pixel differing by even one percent. Nothing is moving; the two are the same
+ * picture drawn twice.
+ *
+ * Demanding byte equality of consecutive frames therefore never succeeded there
+ * however long it waited, and a map that is genuinely still moving does not
+ * return to a frame it has already drawn, so this still fails for the thing the
+ * check exists to catch.
  */
 export async function settleMap(page: Page, attempts = 20): Promise<Buffer> {
   const region = mapRegion(page);
   await expect(region).toBeVisible();
   await expect(page.locator(".maplibregl-canvas")).toBeVisible();
 
-  let previous = await region.screenshot();
+  const recent = [await region.screenshot()];
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     await page.waitForTimeout(250);
     const current = await region.screenshot();
-    if (current.equals(previous)) {
+    if (recent.some((frame) => current.equals(frame))) {
       return current;
     }
-    previous = current;
+    recent.unshift(current);
+    recent.length = Math.min(recent.length, 2);
   }
 
-  throw new Error("the map never stopped repainting");
+  throw new Error(`the map never stopped repainting after ${(attempts * 250) / 1000}s`);
 }
 
 /** The elevation chart's scrubber, which is also its keyboard control. */

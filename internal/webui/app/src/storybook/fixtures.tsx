@@ -146,6 +146,10 @@ export const runs: SyncRun[] = [
 const config: WebUIConfig = {
   basemaps: [],
   sourceBaseUrls: { veloplanner: "https://veloplanner.com" },
+  // A session with a way out of it, which is what a deployment behind
+  // Cloudflare Access has. Stories that need the other deployment — the one
+  // with nothing in front of it to sign out to — override this.
+  identity: { email: "rider@example.test", signOutUrl: "/cdn-cgi/access/logout" },
 };
 
 export function StoryProviders({ children }: { children: ReactNode }) {

@@ -272,10 +272,20 @@ export interface SourceBaseUrls {
   komoot?: string;
 }
 
+/**
+ * Who the gate let through. There is one authorised address, so this names the reader rather than identifying them: it is how a session can be seen to be the one intended, and where the way out of it lives.
+ */
+export interface BrowserIdentity {
+  email: string;
+  /** Where to end the session, served by whatever fronts this service rather than by the service itself. Absent when nothing does, so the page offers no way out instead of a link that answers 404. */
+  signOutUrl?: string;
+}
+
 export interface WebUIConfig {
   /** @minItems 1 */
   basemaps: BrowserBasemap[];
   sourceBaseUrls?: SourceBaseUrls;
+  identity: BrowserIdentity;
 }
 
 export interface WeatherPoint {

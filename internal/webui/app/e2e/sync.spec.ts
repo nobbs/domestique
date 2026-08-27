@@ -31,7 +31,7 @@ test("the page puts notices before the operational questions", async ({ offlineP
 test("the way back is the map itself", async ({ offlinePage: page }) => {
   await openSync(page);
 
-  await page.getByRole("link", { name: /Back to the map/ }).click();
+  await page.getByRole("link", { name: "Map" }).click();
 
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByRole("button", { name: "Search the route library" })).toBeVisible();
@@ -83,7 +83,7 @@ test("the foot of the page names the running build", async ({ offlinePage: page 
   await expect(build).toHaveAttribute("target", "_blank");
 });
 
-test("the map's wordmark is the only way in that a reader needs", async ({ offlinePage: page }) => {
+test("the menu bar is the only way in that a reader needs", async ({ offlinePage: page }) => {
   await openLibrary(page);
 
   await page.getByRole("link", { name: /^Sync/ }).click();

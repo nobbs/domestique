@@ -474,6 +474,116 @@ func TestHandlerServesTileStyleConfiguration(t *testing.T) {
 	}
 }
 
+func TestHandlerNamesTheIdentityTheGateLetThrough(t *testing.T) {
+	handler := newTestHandler(t)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/webui/config"))
+	require.Equal(t, http.StatusOK, response.Code, "config status")
+
+	// A pointer, because the claim below is that the field is absent and a
+	// plain string cannot tell that apart from one sent empty. It leads the
+	// struct rather than following the address it reads worse than, because
+	// `fieldalignment` wants the pointer first.
+	var body struct {
+		Identity struct {
+			SignOutURL *string `json:"signOutUrl"`
+			Email      string  `json:"email"`
+		} `json:"identity"`
+	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body), "decoding the config")
+
+	assert.Equal(t, testAccessEmail, body.Identity.Email, "the config must name the one authorised address")
+	// Nothing stands in front of this handler, so there is nowhere to sign out
+	// to. The field is absent rather than empty, which is how the page tells
+	// "no way out exists" from one it was given — and absence is checked in the
+	// bytes as well, since a `null` would decode to a nil pointer just as
+	// readily as a missing key.
+	assert.Nil(t, body.Identity.SignOutURL, "a handler with no configured way out must not name one")
+	assert.NotContains(t, response.Body.String(), "signOutUrl",
+		"the way out must be omitted from the response rather than sent empty")
+}
+
+func TestHandlerPublishesTheWayOutWhenOneIsConfigured(t *testing.T) {
+	handler, err := New(
+		&Options{
+			TargetIDs:        []string{"rider-a"},
+			Basemaps:         twoProviderBasemaps(),
+			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
+			AccessEmail:      testAccessEmail,
+			AccessSignOutURL: "/cdn-cgi/access/logout",
+			BrowserOriginURL: testBrowserOriginURL,
+		},
+		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{},
+	)
+	require.NoError(t, err, "New()")
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/webui/config"))
+	require.Equal(t, http.StatusOK, response.Code, "config status")
+	assert.Contains(t, response.Body.String(), `"signOutUrl":"/cdn-cgi/access/logout"`,
+		"a configured way out must reach the page")
+}
+
+func TestNewRefusesAnAccessEmailThatIsNotOne(t *testing.T) {
+	// The contract publishes this to the page as an email, and the gate compares
+	// what an assertion says against it literally, so a display-name form would
+	// be both a response the schema does not describe and an address no
+	// assertion can match.
+	for name, value := range map[string]string{
+		"empty":        "",
+		"blank":        "   ",
+		"no domain":    "rider",
+		"display name": "Rider <rider@example.test>",
+		"two at signs": "rider@@example.test",
+		"with a space": "rider @example.test",
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := New(
+				&Options{
+					TargetIDs:        []string{"rider-a"},
+					Basemaps:         twoProviderBasemaps(),
+					AccessVerifier:   &recordingVerifier{email: testAccessEmail},
+					AccessEmail:      value,
+					BrowserOriginURL: testBrowserOriginURL,
+				},
+				&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{},
+			)
+
+			require.Error(t, err, "New() accepted an access email that is not an address")
+		})
+	}
+}
+
+func TestNewRefusesASignOutURLThatLeavesThisOrigin(t *testing.T) {
+	// Each of these reaches a browser as the href of a link a reader clicks.
+	// None of them is a way out of this session: two are other sites, one is
+	// another site spelled to look like a path, and one is script that runs on
+	// press.
+	for name, value := range map[string]string{
+		"absolute":          "https://evil.example.test/logout",
+		"protocol relative": "//evil.example.test/logout",
+		"script":            "javascript:alert(1)",
+		"bare word":         "logout",
+		"leading space":     " /cdn-cgi/access/logout",
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := New(
+				&Options{
+					TargetIDs:        []string{"rider-a"},
+					Basemaps:         twoProviderBasemaps(),
+					AccessVerifier:   &recordingVerifier{email: testAccessEmail},
+					AccessEmail:      testAccessEmail,
+					AccessSignOutURL: value,
+					BrowserOriginURL: testBrowserOriginURL,
+				},
+				&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{},
+			)
+
+			require.Error(t, err, "New() accepted a sign-out URL that leaves this origin")
+		})
+	}
+}
+
 func TestHandlerServesEveryConfiguredBasemapInOrder(t *testing.T) {
 	handler, err := New(
 		&Options{

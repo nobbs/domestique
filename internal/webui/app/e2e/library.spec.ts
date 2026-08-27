@@ -37,11 +37,12 @@ function results(page: Page) {
 test("the entry page is the library, drawn", async ({ offlinePage: page }) => {
   await openLibrary(page);
 
-  // The map is the page: no header over it, and the only panel at rest is the
-  // wordmark and the search pill.
+  // The bar across the top and the map under it, with the search pill the only
+  // panel standing on the map at rest.
   await expect(mapRegion(page)).toBeVisible();
   await expect(page.locator(".maplibregl-canvas")).toBeVisible();
   await expect(page.getByText("domestique")).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Primary" })).toBeVisible();
   await expect(page.getByRole("link", { name: /^Sync/ })).toBeVisible();
   await expect(page.getByRole("button", { name: "Search the route library" })).toBeVisible();
   await expect(await openSearch(page)).toHaveAttribute(
@@ -247,36 +248,81 @@ async function pointAtALine(page: Page): Promise<{ x: number; y: number }> {
  * The map is the library, so a line on it is the route itself — and picking one
  * off the ground takes the same two steps the column does. The first click says
  * which route was hit, and the second is the map's own way of saying yes.
+ *
+ * The two clicks cannot be at the same point: the first one flies the camera to
+ * what it picked, so the line has to be found again afterwards. What is found
+ * is not guaranteed to be the same line — routes in this library overlap, and a
+ * scan returns whichever one is under the first point it tries — and landing on
+ * a neighbour is a first click on that neighbour rather than a second on this
+ * route. That is the map behaving correctly, so the loop below follows the
+ * selection wherever it goes and asks for the second click against whatever the
+ * panel names at the time, instead of assuming the scan came back to the same
+ * route.
  */
 test("pointing at a line on the map picks that route out, twice to open it", async ({
   offlinePage: page,
 }) => {
   await openLibrary(page);
 
+  /** What the card in the column is currently about. */
+  const picked = () => page.getByRole("heading", { level: 2 }).innerText();
+
   const first = await pointAtALine(page);
   await page.mouse.click(first.x, first.y);
+  let title = await picked();
 
-  // The card, in the column the search was in.
-  const title = await page.getByRole("heading", { level: 2 }).innerText();
+  // Bounded: each pass either opens the route or moves the selection to the one
+  // it actually hit, and a library of seven routes cannot hand out new
+  // neighbours for ever.
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    await settleMap(page);
+    const next = await pointAtALine(page);
+    await page.mouse.click(next.x, next.y);
 
-  // The camera flew to the route it picked, so where that line is on the screen
-  // has to be asked again rather than assumed.
-  await settleMap(page);
-  const second = await pointAtALine(page);
-  await page.mouse.click(second.x, second.y);
+    const opened = page.getByRole("region", { name: title });
+    if (await opened.isVisible()) {
+      await expect(opened).toBeVisible();
+      await expect(page.getByRole("img", { name: /^Elevation profile of / })).toBeVisible();
 
-  await expect(page.getByRole("region", { name: title })).toBeVisible();
-  await expect(page.getByRole("img", { name: /^Elevation profile of / })).toBeVisible();
+      return;
+    }
+
+    // Not opened, so that click picked a different line out. It is now the
+    // selected route, and the next pass is its second click.
+    title = await picked();
+  }
+
+  throw new Error("expected two clicks on one line to open it");
 });
 
-test("the wordmark says what sync is doing and is the way to it", async ({ offlinePage: page }) => {
+test("the bar names the session the gate admitted", async ({ offlinePage: page }) => {
+  await openLibrary(page);
+
+  // The demo configures one authorised address and mints its own assertion for
+  // it, so what the gate admitted here is what a deployment's gate admits: the
+  // one address in the configuration.
+  const pill = page.getByRole("button", { name: "Signed in as rider@example.test" });
+  await expect(pill).toBeVisible();
+  await expect(pill).toHaveText("R");
+
+  await pill.click();
+
+  const session = page.getByRole("dialog", { name: "Session" });
+  await expect(session).toContainText("rider@example.test");
+  // Nothing stands in front of the demo, so there is nowhere to sign out to and
+  // the menu offers no way out rather than a link that would answer 404.
+  await expect(page.getByRole("link", { name: /Sign out/ })).toHaveCount(0);
+});
+
+test("the menu bar says what sync is doing and is the way to it", async ({ offlinePage: page }) => {
   await openLibrary(page);
 
   await expect(page.getByText("domestique")).toBeVisible();
   const sync = page.getByRole("link", { name: /^Sync/ });
   await expect(sync).toHaveAttribute("href", "/sync");
-  // One word, and the state is its colour. The demo has one connected slot and
-  // one that never onboarded, so the link is painted and says why.
+  // The word is the destination and the dot beside it is the state. The demo has
+  // one connected slot and one that never onboarded, so the dot is painted and
+  // the link's name says why.
   await expect(sync).toHaveAttribute("data-tone", "alert");
   await expect(sync).toHaveAccessibleName("Sync \u00b7 An account is not connected");
 

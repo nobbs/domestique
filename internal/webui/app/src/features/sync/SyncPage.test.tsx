@@ -63,11 +63,11 @@ afterEach(() => {
 });
 
 describe("SyncPage", () => {
-  it("puts the operational questions in scan order and offers the way back to the map", async () => {
+  it("puts the operational questions in scan order under the bar that leads back", async () => {
     renderPage();
 
     expect(screen.getByRole("heading", { level: 1, name: "Sync" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Back to the map" })).toHaveAttribute("href", "/");
+    expect(screen.getByRole("link", { name: "Map" })).toHaveAttribute("href", "/");
     const headings = (await screen.findAllByRole("heading", { level: 2 })).map(
       (heading) => heading.textContent,
     );

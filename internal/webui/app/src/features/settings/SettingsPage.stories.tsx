@@ -71,9 +71,6 @@ export const PassesTheChosenThemeBack: Story = {
 
 export const ReturnsToTheMap: Story = {
   play: async ({ canvas }) => {
-    await expect(canvas.getByRole("link", { name: "Back to the map" })).toHaveAttribute(
-      "href",
-      "/",
-    );
+    await expect(canvas.getByRole("link", { name: "Map" })).toHaveAttribute("href", "/");
   },
 };

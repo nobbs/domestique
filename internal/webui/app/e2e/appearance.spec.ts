@@ -111,7 +111,7 @@ test.describe("the theme override", () => {
     // recomputing on its own, so this is read back rather than asserted the
     // instant the radio is checked.
     await expect.poll(() => backgroundOfBody(page)).toBe(DARK_SURFACE);
-    await page.getByRole("link", { name: "Back to the map" }).click();
+    await page.getByRole("link", { name: "Map" }).click();
     // The same override reaches the basemap, which cannot follow CSS at all —
     // see the dark-scheme test above for why the request is the proof.
     await expect.poll(() => basemapRequests.some((url) => url.includes("dark"))).toBe(true);

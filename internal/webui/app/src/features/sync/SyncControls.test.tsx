@@ -31,6 +31,7 @@ function config(sourceBaseUrls: Record<string, string> = { veloplanner: "https:/
       { name: "Streets", styleUrl: "https://tiles.example/style", darkCartography: false },
     ],
     sourceBaseUrls,
+    identity: { email: "rider@example.test" },
   };
 
   return value;

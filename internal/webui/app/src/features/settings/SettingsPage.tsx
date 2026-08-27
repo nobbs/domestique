@@ -1,5 +1,3 @@
-import { IconArrowLeft } from "@tabler/icons-react";
-import { Link } from "react-router";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -24,16 +22,7 @@ export function SettingsPage({ themeChoice, onThemeChoiceChange }: SettingsPageP
   return (
     <PageShell>
       <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
-        <header className="flex items-center gap-4">
-          <Link
-            className="inline-flex items-center gap-1 text-sm text-[var(--ink-2)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
-            to="/"
-          >
-            <IconArrowLeft size={16} stroke={2} aria-hidden="true" />
-            Back to the map
-          </Link>
-          <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
-        </header>
+        <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
         <Card className="border-[var(--rule)] bg-[var(--panel)] shadow-[var(--shadow)]">
           <CardHeader>
             <CardTitle role="heading" aria-level={2}>
