@@ -179,6 +179,25 @@ logic. Everything else is an `internal/` package with one responsibility.
 Do not add a `pkg/`, `internal/common`, `interfaces`, `models`, or generic
 repository package. Add a package only when it owns a distinct responsibility.
 
+## Comments
+
+Comment what the code cannot say: a constraint that is not visible locally, a
+unit or invariant a signature does not carry, an upstream quirk a reader would
+take for a mistake. Go doc comments on exported identifiers always belong.
+
+Everything else is noise, and this repository has too much of it. Do not argue
+with yourself in a comment — weighing alternatives and defending the choice
+made is pull-request prose, and it goes stale in the file. Do not restate a
+line that already reads clearly, and do not narrate a test above it when its
+name and assertion messages already say what it proves. A comment longer than
+the code it introduces is the signal to stop; two lines is the working ceiling,
+and going past it needs knowledge a reader could not get from the code — a
+documented upstream behavior, a safety gate's reason, a bug worked around.
+
+When a block needs a paragraph to be comprehensible, make the block
+comprehensible instead: a named helper or intermediate value stays correct as
+the code changes, and a comment does not.
+
 ## Safety rules that must not be weakened
 
 These are the reason the service exists in this shape. A change that relaxes one
