@@ -253,6 +253,20 @@ fi
 if [[ "${TAILNET}" == true ]]; then
   tailscale serve --http="${UI_PORT}" "${UI_PORT}" &
   SERVE_PID=$!
+
+  # A Serve that took the port prints its URL and stays; one that could not —
+  # Tailscale stopped, the node not logged in, this port already served, a
+  # permission it does not have — prints why and exits at once. `set -e` does
+  # not see a background command fail, so without this the demo would come up
+  # published nowhere and say nothing about it. The reason is already on screen
+  # above, so this says what it means rather than repeating it.
+  for _ in $(seq 20); do
+    if ! kill -0 "${SERVE_PID}" 2>/dev/null; then
+      echo "error: tailscale serve exited; the demo would not be on the tailnet" >&2
+      exit 1
+    fi
+    sleep 0.1
+  done
 fi
 
 echo "Demo API on ${API_URL}; starting the UI dev server on http://127.0.0.1:${UI_PORT}"
