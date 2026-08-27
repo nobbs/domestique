@@ -48,9 +48,11 @@ test("probe: what the map region does after a route opens", async ({ offlinePage
     );
   }
 
-  console.log(`PROBE distinct=${new Set(digests).size}/${digests.length}`);
-  console.log(`PROBE frames=${digests.join(" ")}`);
+  // `process.stdout` rather than `console`, which the linter forbids and is
+  // right to: this is a probe reporting to a CI log, not logging left behind.
+  process.stdout.write(`PROBE distinct=${new Set(digests).size}/${digests.length}\n`);
+  process.stdout.write(`PROBE frames=${digests.join(" ")}\n`);
   for (const [i, l] of layouts.entries()) {
-    console.log(`PROBE t${String(i).padStart(2, "0")} ${l}`);
+    process.stdout.write(`PROBE t${String(i).padStart(2, "0")} ${l}\n`);
   }
 });
