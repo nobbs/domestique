@@ -401,20 +401,26 @@ jobs:
       # may read at all — so asking there would have read an empty string and
       # skipped the publish on every run, including the ones that can do it.
       # Only the emptiness of the token leaves this step, never the token.
-      - name: Note whether a visual baseline is reachable
+      - name: Note whether there is a workshop to review
         id: visual
         if: ${{ !cancelled() }}
         env:
           CHROMATIC_PROJECT_TOKEN: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
         run: |
           set -euo pipefail
-          if [ -n "${CHROMATIC_PROJECT_TOKEN:-}" ]; then
-            echo "configured=true" >> "${GITHUB_OUTPUT}"
+          # A token, and something built to send with it. The publish runs after
+          # a failed suite on purpose — a test failing is when the picture is
+          # most worth looking at — but `ci-ui` stops at its first failing task,
+          # and one that stops before the sweep leaves no workshop behind. Then
+          # the publish would fail for having nothing to publish, on top of the
+          # failure that is the actual news.
+          if [ -n "${CHROMATIC_PROJECT_TOKEN:-}" ] && [ -d internal/webui/app/storybook-static ]; then
+            echo "publishable=true" >> "${GITHUB_OUTPUT}"
           else
-            echo "configured=false" >> "${GITHUB_OUTPUT}"
+            echo "publishable=false" >> "${GITHUB_OUTPUT}"
           fi
       - name: Publish the workshop for visual review
-        if: ${{ !cancelled() && steps.visual.outputs.configured == 'true' }}
+        if: ${{ !cancelled() && steps.visual.outputs.publishable == 'true' }}
         # v18.6.0, the version of the CLI the addon carries in pnpm-lock.yaml.
         uses: chromaui/action@fd5e7e8b66d1a6862ed8866c21e93788217f7cf7
         with:
