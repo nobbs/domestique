@@ -151,7 +151,11 @@ export const runs: SyncRun[] = [
 
 /** What the service is set to, as the settings form reads it back. */
 export const settings: Settings = {
-  sync: { allowEmptySourceDeletion: false, staleAfterSeconds: 26 * 3600 },
+  sync: {
+    allowEmptySourceDeletion: false,
+    staleAfterSeconds: 26 * 3600,
+    initialDelaySeconds: 60,
+  },
   notifications: {
     enabled: true,
     successPolicy: "digest",
@@ -160,6 +164,25 @@ export const settings: Settings = {
   },
   basemaps: [{ name: "Streets", styleUrl: "https://tiles.example.test/streets.json" }],
   surface: { regions: ["europe/germany"], rebuildIntervalSeconds: 7 * 24 * 3600 },
+  wahoo: {
+    apiBaseUrl: "https://api.wahooligan.com",
+    oauthBaseUrl: "https://api.wahooligan.com",
+    clientId: "wahoo-client-id",
+    targets: ["rider-a", "rider-b"],
+  },
+  sources: [{ provider: "veloplanner", baseUrl: "https://veloplanner.com" }],
+  rideModel: { coefficientsFile: "/var/lib/domestique/coefficients.json" },
+  // A configured deployment: every credential stored, and nothing outstanding.
+  secretsSet: {
+    "wahoo.client_secret": true,
+    "veloplanner.email": true,
+    "veloplanner.password": true,
+    "komoot.email": false,
+    "komoot.password": false,
+    "notifications.pushover.application_token": true,
+    "notifications.pushover.user_key": true,
+  },
+  missing: [],
 };
 
 const config: WebUIConfig = {

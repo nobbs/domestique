@@ -8,6 +8,8 @@ import {
   type Route,
   type RouteValidation,
   type Settings,
+  type SourceSettings,
+  SourceSettingsProvider,
   type Status,
   type SurfaceRange,
   SurfaceRangeKind,
@@ -33,6 +35,7 @@ export type {
   Route,
   RouteValidation,
   Settings,
+  SourceSettings,
   Status,
   SurfaceRange,
   SyncActive,
@@ -63,6 +66,9 @@ export type SyncPhase = (typeof SYNC_PHASES)[number];
 
 export const SUCCESS_POLICIES = Object.values(NotificationSettingsSuccessPolicy);
 export type SuccessPolicy = (typeof SUCCESS_POLICIES)[number];
+
+export const SOURCE_PROVIDERS = Object.values(SourceSettingsProvider);
+export type SourceProvider = (typeof SOURCE_PROVIDERS)[number];
 
 /** Defaults optional transport fields to the values the UI renders. */
 export type Basemap = Omit<BrowserBasemap, "darkCartography"> & { darkCartography: boolean };

@@ -33,8 +33,10 @@ Install the optional Git hook with `mise exec -- prek install`. Work on the
 browser UI with `mise run ui-dev`, which serves it with hot reload and proxies
 the API to a locally running service. See [CONTRIBUTING.md](CONTRIBUTING.md) for
 the contributor workflow. Copy [`config.example.toml`](config.example.toml)
-outside the repository when preparing a local deployment; it references secret
-files and never embeds secret values.
+outside the repository when preparing a local deployment; it names one secret
+file, the state encryption key, and never embeds a secret value. Everything
+else the service is configured with is entered on its own settings page once it
+is running.
 
 ## Deployment
 

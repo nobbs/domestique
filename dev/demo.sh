@@ -13,8 +13,9 @@
 #     VeloPlanner account is read and no deployed state is copied.
 #   * The database is created here and deleted on the next run. It is never the
 #     deployed file, and the two services never share one.
-#   * VeloPlanner, Wahoo and Pushover all point at an unroutable address, so no
-#     code path can reach them even if one tried.
+#   * VeloPlanner, Wahoo and Pushover are all seeded pointing at this demo's own
+#     origin, which serves the UI and nothing else, so no code path can reach a
+#     provider even if one tried.
 #   * dev/demoapi wires no scheduler, no source client and no reporter. A manual
 #     synchronisation re-seeds the synthetic library instead of contacting
 #     anything, so the run it reports is real and its data still is not.
@@ -100,14 +101,10 @@ SLOT_STATES="${DOMESTIQUE_DEMO_SLOTS:-current,unauthorized}"
 mkdir -p "${DEMO_SECRETS}"
 chmod 700 "${DEMO_DIR}" "${DEMO_SECRETS}"
 
-# Placeholders, spelled out here so it is obvious there is no real credential in
-# a demo. The encryption key is 32 bytes of base64url; the rest are never sent
-# anywhere, because nothing the demo runs has a destination to send them to.
+# A placeholder, spelled out here so it is obvious there is no real credential
+# in a demo: 32 bytes of base64url. Every other credential is a setting now, and
+# dev/demoapi seeds those as placeholders too.
 printf 'A%.0s' $(seq 43) > "${DEMO_SECRETS}/state_encryption_key"
-for placeholder in veloplanner_email veloplanner_password wahoo_client_secret \
-  pushover_application_token pushover_user_key; do
-  printf 'demo-placeholder' > "${DEMO_SECRETS}/${placeholder}"
-done
 chmod 600 "${DEMO_SECRETS}"/*
 
 cat > "${CONFIG}" <<EOF
@@ -116,6 +113,7 @@ cat > "${CONFIG}" <<EOF
 
 [http]
 listen_address = ":${API_PORT}"
+browser_origin_url = "${BROWSER_ORIGIN}"
 
 [access.cloudflare]
 # A local team: dev/demoapi generates the signing key and publishes it to the
@@ -128,34 +126,11 @@ allowed_email = "rider@example.test"
 database_path = "${DATABASE}"
 encryption_key_file = "${DEMO_SECRETS}/state_encryption_key"
 
-[veloplanner]
-base_url = "${BROWSER_ORIGIN}"
-email_file = "${DEMO_SECRETS}/veloplanner_email"
-password_file = "${DEMO_SECRETS}/veloplanner_password"
-
-[wahoo]
-api_base_url = "${BROWSER_ORIGIN}"
-oauth_base_url = "${BROWSER_ORIGIN}"
-client_id = "demo-placeholder"
-client_secret_file = "${DEMO_SECRETS}/wahoo_client_secret"
-redirect_url = "${BROWSER_ORIGIN}/oauth/wahoo/callback"
-
-[[wahoo.targets]]
-id = "rider-a"
-
-[[wahoo.targets]]
-id = "rider-b"
-
-[sync]
-initial_delay = "8760h"
-
-# The basemaps the demo offers, the empty surface region list, and everything
-# about notifications now live in the state database rather than here.
-# dev/demoapi seeds the cartographies at start-up; the rest is what the schema
-# migration seeds, which is what a fresh deployment gets.
-[notifications.pushover]
-application_token_file = "${DEMO_SECRETS}/pushover_application_token"
-user_key_file = "${DEMO_SECRETS}/pushover_user_key"
+# Everything else — the Wahoo application and its two target slots, the library,
+# the cartographies, the credentials and the year-long delay before a scheduled
+# run — lives in the state database now, and dev/demoapi seeds it at start-up.
+# Every address it seeds is this demo's own origin, which serves the UI and
+# nothing else.
 EOF
 chmod 600 "${CONFIG}"
 

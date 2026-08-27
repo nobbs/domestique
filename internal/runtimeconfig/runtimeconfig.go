@@ -16,9 +16,12 @@ package runtimeconfig
 import (
 	"context"
 	"fmt"
+	"maps"
 	"slices"
 	"sync/atomic"
 	"time"
+
+	"github.com/nobbs/domestique/internal/route"
 )
 
 // Values is one complete set of runtime settings. It is copied by value and
@@ -26,13 +29,52 @@ import (
 // submits holds every field.
 type Values struct {
 	Notifications Notifications
+	Wahoo         Wahoo
+	RideModel     RideModel
 	// Basemaps are the cartographies the reader may switch the map between, in
 	// the order they are offered. The first is what a browser that has never
 	// chosen one loads. At least one is required, because the map has to paint
 	// on something.
 	Basemaps []Basemap
-	Surface  Surface
-	Sync     Sync
+	// Sources are the libraries a run reads, in the order it reads them. An
+	// empty list is a service that has not been configured yet, not an error.
+	Sources []Source
+	Surface Surface
+	Sync    Sync
+}
+
+// Wahoo configures the OAuth application and the destination slots it writes.
+type Wahoo struct {
+	APIBaseURL   string
+	OAuthBaseURL string
+	ClientID     string
+
+	// Targets are the destination slot names, in the order they are offered.
+	// A slot name is the identity every stored authorization, target stage and
+	// recorded run carries, so renaming one abandons that slot's state rather
+	// than moving it.
+	Targets []string
+}
+
+// Source is one library a run reads.
+type Source struct {
+	Provider route.Provider
+
+	// BaseURL is both the origin the adapter reaches and the one the page links
+	// a stage back to, so it is the provider's own web application rather than
+	// an API host that happens to answer.
+	BaseURL string
+}
+
+// RideModel configures the predicted moving time internal/ridemodel computes
+// per stage.
+type RideModel struct {
+	// CoefficientsFile names the coefficient file the offline fitting tooling
+	// emits. It is not a secret: it carries fitted physical constants, not a
+	// credential or route data.
+	//
+	// No file switches prediction off entirely, which is also the default.
+	CoefficientsFile string
 }
 
 // Sync holds the reconciliation settings a run reads when it starts.
@@ -45,6 +87,11 @@ type Sync struct {
 	// StaleAfter bounds how long the trusted source inventory may go without a
 	// successful refresh before it is reported and notified as stale.
 	StaleAfter time.Duration
+
+	// InitialDelay is how long after start the first run is attempted. It is
+	// read once, by the start it delays, so an edit reaches the next restart
+	// rather than the next run.
+	InitialDelay time.Duration
 }
 
 // Notifications holds what reaches the operator's phone, and where it is sent.
@@ -135,6 +182,10 @@ type Surface struct {
 type Store interface {
 	RuntimeSettings(ctx context.Context) (Values, error)
 	SetRuntimeSettings(ctx context.Context, values Values) error
+	RuntimeSecrets(ctx context.Context) (map[SecretName]Secret, error)
+	// SetRuntimeSecrets replaces only the credentials it is given. A secret
+	// carrying no bytes is removed rather than stored empty.
+	SetRuntimeSecrets(ctx context.Context, secrets map[SecretName]Secret) error
 }
 
 // Current holds whichever settings are live and hands them to readers.
@@ -143,8 +194,10 @@ type Store interface {
 // notification, so an edit lands between two units of work rather than inside
 // one.
 type Current struct {
-	values atomic.Pointer[Values]
-	store  Store
+	values     atomic.Pointer[Values]
+	secrets    atomic.Pointer[map[SecretName]Secret]
+	store      Store
+	generation atomic.Uint64
 }
 
 // Load reads the stored settings and validates them before anything runs on
@@ -161,10 +214,62 @@ func Load(ctx context.Context, store Store) (*Current, error) {
 		return nil, fmt.Errorf("stored runtime settings: %w", err)
 	}
 
+	secrets, err := store.RuntimeSecrets(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("reading runtime secrets: %w", err)
+	}
+
 	current := &Current{store: store}
 	current.values.Store(&validated)
+	current.secrets.Store(&secrets)
 
 	return current, nil
+}
+
+// Generation counts the edits that have landed. Whoever builds something out of
+// these settings — a client that has to be constructed, a file that has to be
+// read — keeps what it built until this number moves.
+func (c *Current) Generation() uint64 {
+	return c.generation.Load()
+}
+
+// Secret returns one stored credential, or an unset one when it is absent.
+func (c *Current) Secret(name SecretName) Secret {
+	return (*c.secrets.Load())[name]
+}
+
+// SecretIsSet reports whether a credential is stored. It exists so a surface
+// that has to say whether one is configured can be given that alone, without
+// being given a way to read it.
+func (c *Current) SecretIsSet(name SecretName) bool {
+	return c.Secret(name).IsSet()
+}
+
+// SetSecrets stores the credentials it is given and leaves every other one as
+// it was, which is what lets a settings page offer a replacement without ever
+// having been told the current value.
+func (c *Current) SetSecrets(ctx context.Context, secrets map[SecretName]Secret) error {
+	for name := range secrets {
+		if !slices.Contains(SecretNames(), name) {
+			return fmt.Errorf("unknown secret %q", name)
+		}
+	}
+	if err := c.store.SetRuntimeSecrets(ctx, secrets); err != nil {
+		return fmt.Errorf("storing runtime secrets: %w", err)
+	}
+
+	replaced := maps.Clone(*c.secrets.Load())
+	for name, secret := range secrets {
+		if secret.IsSet() {
+			replaced[name] = secret
+		} else {
+			delete(replaced, name)
+		}
+	}
+	c.secrets.Store(&replaced)
+	c.generation.Add(1)
+
+	return nil
 }
 
 // Values returns the live settings. The lists are copied, so a reader holding a
@@ -187,6 +292,7 @@ func (c *Current) Set(ctx context.Context, values Values) error {
 		return fmt.Errorf("storing runtime settings: %w", err)
 	}
 	c.values.Store(&validated)
+	c.generation.Add(1)
 
 	return nil
 }
@@ -197,7 +303,54 @@ func (c *Current) Set(ctx context.Context, values Values) error {
 //nolint:gocritic // value receiver: cloning a snapshot starts from a copy of it.
 func (v Values) clone() Values {
 	v.Basemaps = slices.Clone(v.Basemaps)
+	v.Sources = slices.Clone(v.Sources)
 	v.Surface.Regions = slices.Clone(v.Surface.Regions)
+	v.Wahoo.Targets = slices.Clone(v.Wahoo.Targets)
 
 	return v
+}
+
+// Missing names every setting the service needs before it can do anything, in
+// the order a settings page offers them. An empty result is a service that is
+// configured; anything else is one that starts, serves its settings page, and
+// runs nothing until the list is empty.
+func (c *Current) Missing() []string {
+	values := c.Values()
+	missing := make([]string, 0)
+	for name, value := range map[string]string{
+		"wahoo.api_base_url":   values.Wahoo.APIBaseURL,
+		"wahoo.client_id":      values.Wahoo.ClientID,
+		"wahoo.oauth_base_url": values.Wahoo.OAuthBaseURL,
+	} {
+		if value == "" {
+			missing = append(missing, name)
+		}
+	}
+	if !c.Secret(SecretWahooClientSecret).IsSet() {
+		missing = append(missing, string(SecretWahooClientSecret))
+	}
+	if len(values.Wahoo.Targets) == 0 {
+		missing = append(missing, "wahoo.targets")
+	}
+	if len(values.Sources) == 0 {
+		missing = append(missing, "sources")
+	}
+	for _, source := range values.Sources {
+		email, password, _ := SourceSecretNames(source.Provider)
+		for _, name := range []SecretName{email, password} {
+			if !c.Secret(name).IsSet() {
+				missing = append(missing, string(name))
+			}
+		}
+	}
+	if values.Notifications.Enabled {
+		for _, name := range []SecretName{SecretPushoverApplicationToken, SecretPushoverUserKey} {
+			if !c.Secret(name).IsSet() {
+				missing = append(missing, string(name))
+			}
+		}
+	}
+	slices.Sort(missing)
+
+	return missing
 }

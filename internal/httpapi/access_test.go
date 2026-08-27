@@ -59,7 +59,6 @@ func newAccessHandler(t *testing.T, verifier AccessVerifier, oauthService OAuth)
 
 	handler, err := New(
 		&Options{
-			TargetIDs:        []string{"rider-a"},
 			Settings:         settingsWith(testBasemaps()),
 			AccessVerifier:   verifier,
 			AccessEmail:      testAccessEmail,
@@ -227,13 +226,11 @@ func TestGateResolvesEveryRequestToTheConfiguredPrincipal(t *testing.T) {
 func TestNewRequiresAccessConfiguration(t *testing.T) {
 	cases := map[string]*Options{
 		"no verifier": {
-			TargetIDs:        []string{"rider-a"},
 			Settings:         settingsWith(testBasemaps()),
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
 		},
 		"no email": {
-			TargetIDs:        []string{"rider-a"},
 			Settings:         settingsWith(testBasemaps()),
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			BrowserOriginURL: testBrowserOriginURL,
@@ -251,7 +248,6 @@ func TestNewRequiresAccessConfiguration(t *testing.T) {
 // A handler with nowhere to ask a forecast could not serve GET /v1/weather.
 func TestNewRequiresAWeatherProvider(t *testing.T) {
 	_, err := New(&Options{
-		TargetIDs:        []string{"rider-a"},
 		Settings:         settingsWith(testBasemaps()),
 		AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 		AccessEmail:      testAccessEmail,

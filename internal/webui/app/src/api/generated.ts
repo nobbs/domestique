@@ -259,6 +259,11 @@ export interface GeoJSONFeature {
   properties: GeoJSONProperties;
 }
 
+/**
+ * Whether each credential is stored. This is the whole of what any observable surface is told about one: never the value, only that there is one to replace.
+ */
+export type SettingsSecretsSet = { [key: string]: boolean };
+
 export interface SyncSettings {
   /** Whether a source that reports an empty library may delete the last routes a target holds. It stays on until it is turned off again. */
   allowEmptySourceDeletion: boolean;
@@ -267,6 +272,11 @@ export interface SyncSettings {
    * @minimum 1
    */
   staleAfterSeconds: number;
+  /**
+   * How long after start the first run is attempted. It is read by the start it delays, so an edit reaches the next restart rather than the next run.
+   * @minimum 1
+   */
+  initialDelaySeconds: number;
 }
 
 export type NotificationSettingsSuccessPolicy =
@@ -309,6 +319,39 @@ export interface SurfaceSettings {
   rebuildIntervalSeconds: number;
 }
 
+export interface WahooSettings {
+  /** The origin route reads and writes are sent to. Empty until the application is registered, which is a service that runs nothing rather than one that is broken. */
+  apiBaseUrl: string;
+  /** The origin an authorization and a token refresh are sent to. */
+  oauthBaseUrl: string;
+  /** The registered application's public identifier. Its secret is not here: it is written through secrets and read back only as set. */
+  clientId: string;
+  /**
+   * The destination slots, in the order they are offered. A slot name is the identity every stored authorization, target stage and recorded run already carries, so renaming one abandons that slot's state rather than moving it.
+   * @maxItems 2
+   */
+  targets: string[];
+}
+
+export type SourceSettingsProvider =
+  (typeof SourceSettingsProvider)[keyof typeof SourceSettingsProvider];
+
+export const SourceSettingsProvider = {
+  veloplanner: "veloplanner",
+  komoot: "komoot",
+} as const;
+
+export interface SourceSettings {
+  provider: SourceSettingsProvider;
+  /** The library's own web application, which is both the origin the service reads and the one a stage is linked back to. */
+  baseUrl: string;
+}
+
+export interface RideModelSettings {
+  /** The coefficient file the offline fitting tooling emits, named by an absolute path the service can read. Empty is predicted moving time switched off, which is also the default. */
+  coefficientsFile: string;
+}
+
 /**
  * The settings held in the state database rather than in the configuration file, which take effect on the next run or the next request rather than on the next restart.
  */
@@ -318,6 +361,35 @@ export interface Settings {
   /** @minItems 1 */
   basemaps: BrowserBasemap[];
   surface: SurfaceSettings;
+  wahoo: WahooSettings;
+  /** The libraries a run reads, in the order it reads them. An empty list is a service nobody has configured yet, not an error. */
+  sources: SourceSettings[];
+  rideModel: RideModelSettings;
+  /** Whether each credential is stored. This is the whole of what any observable surface is told about one: never the value, only that there is one to replace. */
+  secretsSet: SettingsSecretsSet;
+  /** The settings still needed before anything will run, in the order the page offers them. Empty is a configured service. */
+  missing: string[];
+}
+
+/**
+ * The credentials to replace, keyed by name. Only the ones sent are written, so a page that was never told a value can leave it alone; an empty value removes the credential. A name outside the known set is refused.
+ */
+export type SettingsUpdateSecrets = { [key: string]: string };
+
+/**
+ * One complete edit of the settings above. It carries the sections an operator fills in rather than the two the service reports back, so a page cannot submit what it only ever read.
+ */
+export interface SettingsUpdate {
+  sync: SyncSettings;
+  notifications: NotificationSettings;
+  /** @minItems 1 */
+  basemaps: BrowserBasemap[];
+  surface: SurfaceSettings;
+  wahoo: WahooSettings;
+  sources: SourceSettings[];
+  rideModel: RideModelSettings;
+  /** The credentials to replace, keyed by name. Only the ones sent are written, so a page that was never told a value can leave it alone; an empty value removes the credential. A name outside the known set is refused. */
+  secrets?: SettingsUpdateSecrets;
 }
 
 export interface SourceBaseUrls {
@@ -2575,7 +2647,7 @@ export const getSetSettingsUrl = () => {
  * Replaces every runtime setting at once. The body is the whole object rather than the parts that changed, because the form that sends it holds every value; a setting left out is a setting the caller never read.
  */
 export const setSettings = async (
-  settings: Settings,
+  settingsUpdate: SettingsUpdate,
   options?: Parameters<typeof domestiqueRequest>[1],
 ): Promise<setSettingsResponseSuccess> => {
   const getHeaders = (
@@ -2590,7 +2662,7 @@ export const setSettings = async (
     ...options,
     method: "PUT",
     headers: { "Content-Type": "application/json", ...getHeaders(options?.headers) },
-    body: JSON.stringify(settings),
+    body: JSON.stringify(settingsUpdate),
   });
 };
 
@@ -2633,11 +2705,11 @@ export const getSetSettingsMutationOptions = <
 };
 
 export type SetSettingsMutationResult = NonNullable<Awaited<ReturnType<typeof setSettings>>>;
-export type SetSettingsMutationBody = Settings;
+export type SetSettingsMutationBody = SettingsUpdate;
 export type SetSettingsMutationError = ErrorType<
   InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
 >;
-export type SetSettingsMutationVariables = { data: Settings };
+export type SetSettingsMutationVariables = { data: SettingsUpdate };
 
 export const useSetSettings = <
   TError = ErrorType<

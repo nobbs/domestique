@@ -57,7 +57,7 @@ func TestKeySetTransportServesOnlyTheLocalTeam(t *testing.T) {
 }
 
 func TestSlotsForPairsConfiguredTargetsWithRequestedStates(t *testing.T) {
-	targets := []config.Target{{ID: "rider-a"}, {ID: "rider-b"}}
+	targets := []string{"rider-a", "rider-b"}
 
 	slots, err := slotsFor(targets, "current, unauthorized")
 	require.NoError(t, err)
@@ -71,7 +71,7 @@ func TestSlotsForPairsConfiguredTargetsWithRequestedStates(t *testing.T) {
 // A state list that does not line up with the configured slots would seed a
 // target the served surface does not know about, or leave one unseeded.
 func TestSlotsForRejectsAMismatchedRequest(t *testing.T) {
-	targets := []config.Target{{ID: "rider-a"}}
+	targets := []string{"rider-a"}
 
 	_, err := slotsFor(targets, "current,failed")
 	require.Error(t, err, "too many states must be rejected")

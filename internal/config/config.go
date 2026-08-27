@@ -1,4 +1,4 @@
-// Package config loads and validates Domestique's static runtime settings.
+// Package config loads and validates Domestique's startup-only configuration.
 package config
 
 import (
@@ -6,13 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/go-viper/mapstructure/v2"
 	"github.com/knadh/koanf/parsers/toml/v2"
@@ -41,7 +39,14 @@ const (
 )
 
 // Settings is the validated, startup-only configuration for one service
-// process. Its sensitive values are held in dedicated types without JSON tags.
+// process: the two listeners, the one identity allowed to reach them, and where
+// durable state lives with the key that encrypts it.
+//
+// Everything else an operator configures — the Wahoo application and its target
+// slots, the source libraries, the credentials all of those are reached with,
+// the ride model, and the reconciliation cadence — is a runtime setting held in
+// that state and edited from the browser. This package refuses a file that
+// still carries one, naming the key.
 type Settings struct {
 	// ImageReference is not configuration: it is the container image the
 	// deploying host pinned, which the host passes in so the running service can
@@ -50,21 +55,13 @@ type Settings struct {
 	// the environment would fail startup. Empty when the host said nothing.
 	ImageReference string
 
-	Wahoo Wahoo
-	// VeloPlanner and Komoot are nil when their section is not configured. At
-	// least one is always non-nil in a Settings a caller actually receives:
-	// build refuses a configuration naming neither.
-	VeloPlanner   *VeloPlanner
-	Komoot        *Komoot
-	Notifications Notifications
-	HTTP          HTTP
-	Access        Access
-	RideModel     RideModel
-	State         State
-	Sync          Sync
+	HTTP   HTTP
+	Access Access
+	State  State
 }
 
-// HTTP configures the service listeners.
+// HTTP configures the service listeners and the origin a browser reaches the
+// served one at.
 type HTTP struct {
 	ListenAddress string
 
@@ -75,6 +72,15 @@ type HTTP struct {
 	// off the served listener is what keeps it off the authenticated public
 	// surface, so the two must never be the same port.
 	ReadinessAddress string
+
+	// BrowserOriginURL is the public origin a browser reaches this service at.
+	// A state-changing request naming any other origin — or none — is refused,
+	// so that an authenticated session cannot be driven from another site, and
+	// the Wahoo OAuth callback is this origin's own path.
+	//
+	// It is startup configuration rather than a runtime setting because it is
+	// the gate: a value the browser could edit is a gate the browser could open.
+	BrowserOriginURL string
 }
 
 // Access identifies the sole user allowed to reach the service.
@@ -100,20 +106,6 @@ type CloudflareAccess struct {
 	AllowedEmail string
 }
 
-// RideModel configures the predicted moving time internal/ridemodel computes
-// per stage.
-type RideModel struct {
-	// CoefficientsFile names the coefficient file #215 fits: mass, power, drag
-	// area, rolling resistance per surface, and the descent constants. It is
-	// deliberately not a secret — it carries no credential and no route data —
-	// so it is a plain path like the OpenStreetMap extract configuration
-	// rather than a *_file secret input.
-	//
-	// The default is no file, which switches prediction off entirely: no
-	// coefficient is loaded, and no stage anywhere carries a predicted time.
-	CoefficientsFile string
-}
-
 // State configures durable service state.
 type State struct {
 	DatabasePath  string
@@ -125,129 +117,16 @@ func (s State) EncryptionKey() [32]byte {
 	return s.encryptionKey
 }
 
-// VeloPlanner configures the source account.
-type VeloPlanner struct {
-	BaseURL  string
-	email    Secret
-	password Secret
-}
-
-// Email returns the VeloPlanner account email as a dedicated secret value.
-func (v VeloPlanner) Email() Secret {
-	return v.email
-}
-
-// Password returns the VeloPlanner account password as a dedicated secret value.
-func (v VeloPlanner) Password() Secret {
-	return v.password
-}
-
-// Komoot configures the source account. Its shape coincides with
-// VeloPlanner's today because both providers settled on the same
-// email-and-password account-credential model; that coincidence is not a
-// reason to share a type between them, since a future source's credentials
-// need not look like either.
-type Komoot struct {
-	BaseURL  string
-	email    Secret
-	password Secret
-}
-
-// Email returns the Komoot account email as a dedicated secret value.
-func (k Komoot) Email() Secret {
-	return k.email
-}
-
-// Password returns the Komoot account password as a dedicated secret value.
-func (k Komoot) Password() Secret {
-	return k.password
-}
-
-// Wahoo configures the OAuth application and destination target slots.
-type Wahoo struct {
-	APIBaseURL   string
-	OAuthBaseURL string
-	ClientID     string
-	RedirectURL  string
-	targets      []Target
-	clientSecret Secret
-}
-
-// Targets returns a copy of the configured Wahoo target slots.
-func (w *Wahoo) Targets() []Target {
-	return append([]Target(nil), w.targets...)
-}
-
-// ClientSecret returns the OAuth client secret as a dedicated secret value.
-func (w *Wahoo) ClientSecret() Secret {
-	return w.clientSecret
-}
-
-// Target is one stable Wahoo destination slot.
-type Target struct {
-	ID string
-}
-
-// Sync configures the one part of the reconciliation cadence a restart is the
-// only way to change: how long after start the first run is attempted. The
-// deletion gate, the staleness bound and the success policy are runtime
-// settings, held in the database and edited from the web UI.
-type Sync struct {
-	InitialDelay time.Duration
-}
-
-// Notifications holds the credentials a notification is sent with. How much
-// reaches them, and the origin they are sent to, are runtime settings.
-type Notifications struct {
-	Pushover Pushover
-}
-
-// Pushover holds the credentials needed to send a notification.
-type Pushover struct {
-	applicationToken Secret
-	userKey          Secret
-}
-
-// ApplicationToken returns the Pushover application token as a secret value.
-func (p Pushover) ApplicationToken() Secret {
-	return p.applicationToken
-}
-
-// UserKey returns the Pushover recipient key as a secret value.
-func (p Pushover) UserKey() Secret {
-	return p.userKey
-}
-
-// Secret carries sensitive bytes without exposing them through formatting or
-// JSON serialization.
-type Secret struct {
-	value []byte
-}
-
-// Bytes returns a defensive copy of the secret bytes.
-func (s Secret) Bytes() []byte {
-	return slices.Clone(s.value)
-}
-
 type rawSettings struct {
-	VeloPlanner   rawVeloPlanner   `koanf:"veloplanner"`
-	Komoot        rawKomoot        `koanf:"komoot"`
-	Notifications rawNotifications `koanf:"notifications"`
-	HTTP          rawHTTP          `koanf:"http"`
-	Access        rawAccess        `koanf:"access"`
-	RideModel     rawRideModel     `koanf:"ridemodel"`
-	State         rawState         `koanf:"state"`
-	Wahoo         rawWahoo         `koanf:"wahoo"`
-	Sync          rawSync          `koanf:"sync"`
+	HTTP   rawHTTP   `koanf:"http"`
+	Access rawAccess `koanf:"access"`
+	State  rawState  `koanf:"state"`
 }
 
 type rawHTTP struct {
 	ListenAddress    string `koanf:"listen_address"`
 	ReadinessAddress string `koanf:"readiness_address"`
-}
-
-type rawRideModel struct {
-	CoefficientsFile string `koanf:"coefficients_file"`
+	BrowserOriginURL string `koanf:"browser_origin_url"`
 }
 
 type rawAccess struct {
@@ -264,51 +143,6 @@ type rawState struct {
 	DatabasePath      string `koanf:"database_path"`
 	EncryptionKeyFile string `koanf:"encryption_key_file"`
 	EncryptionKey     string `koanf:"encryption_key"`
-}
-
-type rawVeloPlanner struct {
-	BaseURL      string `koanf:"base_url"`
-	EmailFile    string `koanf:"email_file"`
-	Email        string `koanf:"email"`
-	PasswordFile string `koanf:"password_file"`
-	Password     string `koanf:"password"`
-}
-
-type rawKomoot struct {
-	BaseURL      string `koanf:"base_url"`
-	EmailFile    string `koanf:"email_file"`
-	Email        string `koanf:"email"`
-	PasswordFile string `koanf:"password_file"`
-	Password     string `koanf:"password"`
-}
-
-type rawWahoo struct {
-	APIBaseURL       string      `koanf:"api_base_url"`
-	OAuthBaseURL     string      `koanf:"oauth_base_url"`
-	ClientID         string      `koanf:"client_id"`
-	ClientSecretFile string      `koanf:"client_secret_file"`
-	ClientSecret     string      `koanf:"client_secret"`
-	RedirectURL      string      `koanf:"redirect_url"`
-	Targets          []rawTarget `koanf:"targets"`
-}
-
-type rawTarget struct {
-	ID string `koanf:"id"`
-}
-
-type rawSync struct {
-	InitialDelay time.Duration `koanf:"initial_delay"`
-}
-
-type rawNotifications struct {
-	Pushover rawPushover `koanf:"pushover"`
-}
-
-type rawPushover struct {
-	ApplicationTokenFile string `koanf:"application_token_file"`
-	ApplicationToken     string `koanf:"application_token"`
-	UserKeyFile          string `koanf:"user_key_file"`
-	UserKey              string `koanf:"user_key"`
 }
 
 type secretInput struct {
@@ -382,7 +216,6 @@ func Load() (settings *Settings, err error) {
 	if err := k.UnmarshalWithConf("", &raw, koanf.UnmarshalConf{
 		Tag: "koanf",
 		DecoderConfig: &mapstructure.DecoderConfig{
-			DecodeHook:       mapstructure.StringToTimeDurationHookFunc(),
 			ErrorUnused:      true,
 			WeaklyTypedInput: false,
 		},
@@ -390,13 +223,7 @@ func Load() (settings *Settings, err error) {
 		return nil, fmt.Errorf("decoding configuration: %w", err)
 	}
 
-	// A section's fields decode to their zero value whether the section was
-	// written or not, so presence has to be asked of Koanf directly, before
-	// build turns the raw zero values into "not configured".
-	veloPlannerConfigured := k.Exists("veloplanner")
-	komootConfigured := k.Exists("komoot")
-
-	built, buildErr := build(&raw, veloPlannerConfigured, komootConfigured)
+	built, buildErr := build(&raw)
 	if buildErr != nil {
 		return nil, buildErr
 	}
@@ -491,44 +318,22 @@ func validateCloudflareAccess(raw *rawCloudflareAccess) error {
 	return fmt.Errorf("access.cloudflare is required; missing %s", strings.Join(missing, ", "))
 }
 
-func build(raw *rawSettings, veloPlannerConfigured, komootConfigured bool) (*Settings, error) {
+func build(raw *rawSettings) (*Settings, error) {
 	if err := validateListenAddress(raw.HTTP.ListenAddress); err != nil {
 		return nil, err
 	}
 	if err := validateReadinessAddress(raw.HTTP.ReadinessAddress, raw.HTTP.ListenAddress); err != nil {
 		return nil, err
 	}
+	browserOrigin := strings.TrimSpace(raw.HTTP.BrowserOriginURL)
+	if err := runtimeconfig.ValidateHTTPSOrigin("http.browser_origin_url", browserOrigin); err != nil {
+		return nil, fmt.Errorf("configuration file: %w", err)
+	}
 	if err := validateCloudflareAccess(&raw.Access.Cloudflare); err != nil {
 		return nil, err
 	}
 	if !filepath.IsAbs(raw.State.DatabasePath) {
 		return nil, errors.New("state.database_path must be an absolute path")
-	}
-	if !veloPlannerConfigured && !komootConfigured {
-		return nil, errors.New("at least one source must be configured: add a [veloplanner] or [komoot] section")
-	}
-	if err := runtimeconfig.ValidateHTTPSURL("wahoo.api_base_url", raw.Wahoo.APIBaseURL); err != nil {
-		return nil, fmt.Errorf("configuration file: %w", err)
-	}
-	if err := runtimeconfig.ValidateHTTPSURL("wahoo.oauth_base_url", raw.Wahoo.OAuthBaseURL); err != nil {
-		return nil, fmt.Errorf("configuration file: %w", err)
-	}
-	if err := requireValue("wahoo.client_id", raw.Wahoo.ClientID); err != nil {
-		return nil, err
-	}
-	if err := validateRedirectURL(raw.Wahoo.RedirectURL); err != nil {
-		return nil, err
-	}
-	if err := validateRideModel(raw.RideModel); err != nil {
-		return nil, err
-	}
-
-	targets, err := validateTargets(raw.Wahoo.Targets)
-	if err != nil {
-		return nil, err
-	}
-	if syncErr := validateSync(raw.Sync); syncErr != nil {
-		return nil, syncErr
 	}
 
 	keySecret, err := resolveSecret(secretInput{
@@ -545,94 +350,11 @@ func build(raw *rawSettings, veloPlannerConfigured, komootConfigured bool) (*Set
 		return nil, err
 	}
 
-	var veloPlanner *VeloPlanner
-	if veloPlannerConfigured {
-		// An origin, not merely an absolute HTTPS URL: the adapter itself
-		// requires no path (or exactly "/"), and rejecting the mismatch here
-		// means a bad value fails at config load with a name and a reason,
-		// rather than later at client construction with neither.
-		if urlErr := runtimeconfig.ValidateHTTPSOrigin("veloplanner.base_url", raw.VeloPlanner.BaseURL); urlErr != nil {
-			return nil, fmt.Errorf("configuration file: %w", urlErr)
-		}
-		email, emailErr := resolveSecret(secretInput{
-			name:      "VeloPlanner email",
-			directEnv: envPrefix + "VELOPLANNER__EMAIL",
-			fileEnv:   envPrefix + "VELOPLANNER__EMAIL_FILE",
-			filePath:  raw.VeloPlanner.EmailFile,
-		})
-		if emailErr != nil {
-			return nil, emailErr
-		}
-		password, passwordErr := resolveSecret(secretInput{
-			name:      "VeloPlanner password",
-			directEnv: envPrefix + "VELOPLANNER__PASSWORD",
-			fileEnv:   envPrefix + "VELOPLANNER__PASSWORD_FILE",
-			filePath:  raw.VeloPlanner.PasswordFile,
-		})
-		if passwordErr != nil {
-			return nil, passwordErr
-		}
-		veloPlanner = &VeloPlanner{BaseURL: raw.VeloPlanner.BaseURL, email: email, password: password}
-	}
-
-	var komoot *Komoot
-	if komootConfigured {
-		// Same reasoning as veloplanner.base_url above.
-		if urlErr := runtimeconfig.ValidateHTTPSOrigin("komoot.base_url", raw.Komoot.BaseURL); urlErr != nil {
-			return nil, fmt.Errorf("configuration file: %w", urlErr)
-		}
-		email, emailErr := resolveSecret(secretInput{
-			name:      "Komoot email",
-			directEnv: envPrefix + "KOMOOT__EMAIL",
-			fileEnv:   envPrefix + "KOMOOT__EMAIL_FILE",
-			filePath:  raw.Komoot.EmailFile,
-		})
-		if emailErr != nil {
-			return nil, emailErr
-		}
-		password, passwordErr := resolveSecret(secretInput{
-			name:      "Komoot password",
-			directEnv: envPrefix + "KOMOOT__PASSWORD",
-			fileEnv:   envPrefix + "KOMOOT__PASSWORD_FILE",
-			filePath:  raw.Komoot.PasswordFile,
-		})
-		if passwordErr != nil {
-			return nil, passwordErr
-		}
-		komoot = &Komoot{BaseURL: raw.Komoot.BaseURL, email: email, password: password}
-	}
-	clientSecret, err := resolveSecret(secretInput{
-		name:      "Wahoo client secret",
-		directEnv: envPrefix + "WAHOO__CLIENT_SECRET",
-		fileEnv:   envPrefix + "WAHOO__CLIENT_SECRET_FILE",
-		filePath:  raw.Wahoo.ClientSecretFile,
-	})
-	if err != nil {
-		return nil, err
-	}
-	applicationToken, err := resolveSecret(secretInput{
-		name:      "Pushover application token",
-		directEnv: envPrefix + "NOTIFICATIONS__PUSHOVER__APPLICATION_TOKEN",
-		fileEnv:   envPrefix + "NOTIFICATIONS__PUSHOVER__APPLICATION_TOKEN_FILE",
-		filePath:  raw.Notifications.Pushover.ApplicationTokenFile,
-	})
-	if err != nil {
-		return nil, err
-	}
-	userKey, err := resolveSecret(secretInput{
-		name:      "Pushover user key",
-		directEnv: envPrefix + "NOTIFICATIONS__PUSHOVER__USER_KEY",
-		fileEnv:   envPrefix + "NOTIFICATIONS__PUSHOVER__USER_KEY_FILE",
-		filePath:  raw.Notifications.Pushover.UserKeyFile,
-	})
-	if err != nil {
-		return nil, err
-	}
-
 	return &Settings{
 		HTTP: HTTP{
 			ListenAddress:    raw.HTTP.ListenAddress,
 			ReadinessAddress: strings.TrimSpace(raw.HTTP.ReadinessAddress),
+			BrowserOriginURL: strings.TrimSuffix(browserOrigin, "/"),
 		},
 		Access: Access{
 			Cloudflare: CloudflareAccess{
@@ -641,31 +363,9 @@ func build(raw *rawSettings, veloPlannerConfigured, komootConfigured bool) (*Set
 				AllowedEmail:   strings.TrimSpace(raw.Access.Cloudflare.AllowedEmail),
 			},
 		},
-		RideModel: RideModel{
-			CoefficientsFile: raw.RideModel.CoefficientsFile,
-		},
 		State: State{
 			DatabasePath:  raw.State.DatabasePath,
 			encryptionKey: key,
-		},
-		VeloPlanner: veloPlanner,
-		Komoot:      komoot,
-		Wahoo: Wahoo{
-			APIBaseURL:   raw.Wahoo.APIBaseURL,
-			OAuthBaseURL: raw.Wahoo.OAuthBaseURL,
-			ClientID:     strings.TrimSpace(raw.Wahoo.ClientID),
-			RedirectURL:  raw.Wahoo.RedirectURL,
-			targets:      targets,
-			clientSecret: clientSecret,
-		},
-		Sync: Sync{
-			InitialDelay: raw.Sync.InitialDelay,
-		},
-		Notifications: Notifications{
-			Pushover: Pushover{
-				applicationToken: applicationToken,
-				userKey:          userKey,
-			},
 		},
 	}, nil
 }
@@ -704,126 +404,56 @@ func validateReadinessAddress(address, listenAddress string) error {
 	return nil
 }
 
-// validateRideModel accepts an unconfigured coefficients file — the operator's
-// switch for leaving every stage without a predicted moving time — or an
-// absolute path to one. The file itself is read, parsed, and validated for
-// physical plausibility by internal/ridemodel at composition, not here: this
-// package validates shape, the way it does for state.database_path, and
-// leaves what the file means to the package that owns the model.
-func validateRideModel(rideModel rawRideModel) error {
-	if rideModel.CoefficientsFile == "" {
-		return nil
-	}
-	if !filepath.IsAbs(rideModel.CoefficientsFile) {
-		return errors.New("ridemodel.coefficients_file must be an absolute path")
-	}
-
-	return nil
-}
-
-func validateRedirectURL(value string) error {
-	if err := runtimeconfig.ValidateHTTPSURL("wahoo.redirect_url", value); err != nil {
-		return fmt.Errorf("configuration file: %w", err)
-	}
-	parsed, err := url.Parse(value)
-	if err != nil {
-		return errors.New("wahoo.redirect_url must be a valid URL")
-	}
-	if parsed.Path != "/oauth/wahoo/callback" {
-		return errors.New("wahoo.redirect_url must end in /oauth/wahoo/callback")
-	}
-
-	return nil
-}
-
-func validateTargets(raw []rawTarget) ([]Target, error) {
-	if len(raw) < 1 || len(raw) > 2 {
-		return nil, errors.New("wahoo.targets must contain between one and two entries")
-	}
-
-	targets := make([]Target, len(raw))
-	seen := make(map[string]struct{}, len(raw))
-	for index, target := range raw {
-		id := strings.TrimSpace(target.ID)
-		if id == "" {
-			return nil, fmt.Errorf("wahoo.targets[%d].id is required", index)
-		}
-		if _, duplicate := seen[id]; duplicate {
-			return nil, fmt.Errorf("wahoo.targets[%d].id is duplicated", index)
-		}
-		seen[id] = struct{}{}
-		targets[index] = Target{ID: id}
-	}
-
-	return targets, nil
-}
-
-func validateSync(sync rawSync) error {
-	if sync.InitialDelay <= 0 {
-		return errors.New("sync.initial_delay must be positive")
-	}
-
-	return nil
-}
-
-func requireValue(name, value string) error {
-	if strings.TrimSpace(value) == "" {
-		return fmt.Errorf("%s is required", name)
-	}
-
-	return nil
-}
-
-func resolveSecret(input secretInput) (Secret, error) {
+func resolveSecret(input secretInput) (runtimeconfig.Secret, error) {
 	directValue, directSet := os.LookupEnv(input.directEnv)
 	_, fileSet := os.LookupEnv(input.fileEnv)
 	if directSet {
 		if err := os.Unsetenv(input.directEnv); err != nil {
-			return Secret{}, fmt.Errorf("clearing %s: %w", input.name, err)
+			return runtimeconfig.Secret{}, fmt.Errorf("clearing %s: %w", input.name, err)
 		}
 	}
 
 	switch {
 	case directSet && fileSet:
-		return Secret{}, fmt.Errorf("%s has both direct and file environment inputs", input.name)
+		return runtimeconfig.Secret{}, fmt.Errorf("%s has both direct and file environment inputs", input.name)
 	case directSet && input.filePath != "":
-		return Secret{}, fmt.Errorf("%s has both direct and file inputs", input.name)
+		return runtimeconfig.Secret{}, fmt.Errorf("%s has both direct and file inputs", input.name)
 	case directSet:
 		return secretFromText(input.name, directValue)
 	case input.filePath == "":
-		return Secret{}, fmt.Errorf("%s is not configured", input.name)
+		return runtimeconfig.Secret{}, fmt.Errorf("%s is not configured", input.name)
 	default:
 		return secretFromFile(input.name, input.filePath)
 	}
 }
 
-func secretFromFile(name, path string) (Secret, error) {
+func secretFromFile(name, path string) (runtimeconfig.Secret, error) {
 	if !filepath.IsAbs(path) {
-		return Secret{}, fmt.Errorf("%s file must be an absolute path", name)
+		return runtimeconfig.Secret{}, fmt.Errorf("%s file must be an absolute path", name)
 	}
 	info, err := os.Stat(path)
 	if err != nil {
-		return Secret{}, fmt.Errorf("%s file is unavailable", name)
+		return runtimeconfig.Secret{}, fmt.Errorf("%s file is unavailable", name)
 	}
 	if !info.Mode().IsRegular() {
-		return Secret{}, fmt.Errorf("%s file is not regular", name)
+		return runtimeconfig.Secret{}, fmt.Errorf("%s file is not regular", name)
 	}
 
 	//nolint:gosec // The path is validated as an absolute, regular operator-managed secret file.
 	contents, err := os.ReadFile(path)
 	if err != nil {
-		return Secret{}, fmt.Errorf("%s file is unreadable", name)
+		return runtimeconfig.Secret{}, fmt.Errorf("%s file is unreadable", name)
 	}
 
 	return secretFromText(name, trimTerminalLineBreak(string(contents)))
 }
 
-func secretFromText(name, value string) (Secret, error) {
+func secretFromText(name, value string) (runtimeconfig.Secret, error) {
 	if value == "" {
-		return Secret{}, fmt.Errorf("%s is empty", name)
+		return runtimeconfig.Secret{}, fmt.Errorf("%s is empty", name)
 	}
 
-	return Secret{value: []byte(value)}, nil
+	return runtimeconfig.NewSecret([]byte(value)), nil
 }
 
 func trimTerminalLineBreak(value string) string {
@@ -846,13 +476,6 @@ func configurationDefaults() map[string]any {
 func secretLiteralPaths() [][]string {
 	return [][]string{
 		{"state", "encryption_key"},
-		{"veloplanner", "email"},
-		{"veloplanner", "password"},
-		{"komoot", "email"},
-		{"komoot", "password"},
-		{"wahoo", "client_secret"},
-		{"notifications", "pushover", "application_token"},
-		{"notifications", "pushover", "user_key"},
 	}
 }
 
@@ -869,17 +492,10 @@ func clearDirectSecretEnvironments() error {
 func directSecretEnvironmentNames() []string {
 	return []string{
 		envPrefix + "STATE__ENCRYPTION_KEY",
-		envPrefix + "VELOPLANNER__EMAIL",
-		envPrefix + "VELOPLANNER__PASSWORD",
-		envPrefix + "KOMOOT__EMAIL",
-		envPrefix + "KOMOOT__PASSWORD",
-		envPrefix + "WAHOO__CLIENT_SECRET",
-		envPrefix + "NOTIFICATIONS__PUSHOVER__APPLICATION_TOKEN",
-		envPrefix + "NOTIFICATIONS__PUSHOVER__USER_KEY",
 	}
 }
 
-func decodeKey(secret Secret) ([32]byte, error) {
+func decodeKey(secret runtimeconfig.Secret) ([32]byte, error) {
 	var key [32]byte
 	encoded := string(secret.Bytes())
 	decoded, err := base64.RawURLEncoding.DecodeString(encoded)

@@ -69,8 +69,8 @@ owns a distinct responsibility in this tree.
 
 | Package | Owns | Must not own |
 | --- | --- | --- |
-| config | TOML and environment layering, file-secret resolution, validation of the file's own fields | HTTP clients, business decisions, provider-specific secret syntax, anything an operator edits while the service runs |
-| runtimeconfig | the settings held in the database: their types, the rules both the write path and startup check them against, and the live snapshot readers copy from | SQL, HTTP routing, the file's fields, and any decision made *from* a setting |
+| config | TOML and environment layering, the state key's file-secret resolution, validation of the file's own fields | HTTP clients, business decisions, provider-specific secret syntax, anything an operator edits while the service runs |
+| runtimeconfig | the settings and credentials held in the database: their types, the rules both the write path and startup check them against, and the live snapshot readers copy from | SQL, HTTP routing, the file's fields, and any decision made *from* a setting |
 | route | source-stage identity — including which provider issued it — geometry, revision, and validation types | SQL, HTTP, FIT, Wahoo details |
 | sync | inventory reconciliation, deletion gates, target progress, aggregate run result, per-target run result | HTTP handlers, SQL queries, Wahoo URLs |
 | oauth | one-time callback state, target onboarding, duplicate-account rejection | HTTP routing, SQL queries, Wahoo URL formatting |
@@ -258,8 +258,9 @@ thing this section already sends to Go. The conclusion moves because the
 premise does, not because it is being worked around.
 
 The guarantee the rule exists to protect survives intact by a different
-route: no endpoint accepts a rider-shaped value. The profile arrives as
-configuration — `ridemodel.coefficients_file` — never as a request field, so
+route: no endpoint accepts a rider-shaped value. The profile arrives as a
+setting naming a file on the host — `ridemodel.coefficients_file` — never as a
+request field, so
 "rider mass, sustained power... are not [sent], and no endpoint accepts them"
 remains true of every HTTP request this service answers. What changed is only
 where the one answer the profile produces is computed and kept.
@@ -322,15 +323,26 @@ adapter-to-adapter coupling.
 
 Main performs the following in order:
 
-1. Load and validate the configuration file, including static secret inputs.
+1. Load and validate the configuration file, including the state key input.
 2. Open SQLite, run migrations, and create the concrete Store.
-3. Load and validate the stored runtime settings into the live snapshot every
-   component below reads through a function rather than a held value, so an
-   edit reaches the next run or the next request instead of the next restart.
-   Settings the migrations seeded are checked here by the rules that guard the
-   write path, so a hand-edited database fails startup naming the setting.
-4. Construct VeloPlanner, FIT, Wahoo, and Pushover clients with explicit HTTP
-   timeouts and the shared structured logger.
+3. Load and validate the stored runtime settings and credentials into the live
+   snapshot every component below reads through a function rather than a held
+   value, so an edit reaches the next run or the next request instead of the
+   next restart. Settings the migrations seeded are checked here by the rules
+   that guard the write path, so a hand-edited database fails startup naming the
+   setting.
+4. Construct the clients whose configuration cannot change: FIT, Open-Meteo,
+   and Pushover, the last reading its origin and credentials through the
+   snapshot on each send.
+
+   The source and Wahoo clients are not among them. They are built from the
+   snapshot per run, by providers `main` owns, because everything they need is
+   an editable setting: the Wahoo client is rebuilt only when those settings
+   actually change, since it carries the request budget observed from Wahoo's
+   own responses and a fresh one would spend real requests rediscovering it.
+   A provider whose settings are not filled in yet builds nothing and reports
+   the run not ready — which is what a service nobody has configured does, and
+   is not a startup failure.
 5. Construct concrete sync and OAuth services from their consumer interfaces.
 6. Construct the scheduler and Tailnet-gated HTTP handler.
 7. Start the HTTP server and scheduler under one signal-derived context.

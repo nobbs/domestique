@@ -26,7 +26,7 @@ one before changing behavior:
 | --- | --- |
 | [service.md](docs/specs/service.md) | The overall contract; it wins over the implementation until deliberately revised |
 | [implementation-architecture.md](docs/specs/implementation-architecture.md) | Package ownership, interface rules, composition root |
-| [configuration.md](docs/specs/configuration.md) | File schema, secret inputs, validation, and the runtime settings held in the database |
+| [configuration.md](docs/specs/configuration.md) | File schema, the one secret input, validation, and the runtime settings and credentials held in the database |
 | [sync-lifecycle.md](docs/specs/sync-lifecycle.md) | State transitions, safety gates, JSON contracts |
 | [delivery.md](docs/specs/delivery.md) | Quality gate, container hardening, published images |
 
@@ -227,7 +227,9 @@ of them needs an explicit specification revision, not a quiet edit.
   and only from local stored state. It must not appear in the inventory listing,
   the status endpoint, logs, or notifications.
 - **Refresh tokens are encrypted at rest** in SQLite with the state-encryption
-  key; access tokens live only in memory.
+  key; access tokens live only in memory. Every credential entered on the
+  settings page is kept the same way, and is write-only: no endpoint serves one
+  back, in any form, to any caller.
 - **All non-OAuth HTTP is read-only and identity-gated to one principal.** The
   only identity the handler accepts is a signed `Cf-Access-Jwt-Assertion` it
   verifies itself, as set out in
@@ -288,8 +290,10 @@ nobody reads a green gate as a change that was looked at.
 `internal/webui/app/dist/` are gitignored local artifacts; the first four may
 hold real credentials and private route data. Do not read them for context, copy
 their values into the repository, or commit them.
-[`config.example.toml`](config.example.toml) is the tracked reference and
-references secret **files** — it never embeds secret values.
+[`config.example.toml`](config.example.toml) is the tracked reference. It names
+one secret **file** — the state encryption key — and never embeds a secret
+value; every other credential is entered on the running service's settings page
+rather than configured.
 
 Never commit credentials, OAuth tokens, the Wahoo client secret, personal route
 fixtures, generated FIT files, SQLite state, or host deployment files.

@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"net/mail"
 	"net/url"
@@ -262,6 +261,16 @@ type RunState interface {
 type SettingsState interface {
 	Values() runtimeconfig.Values
 	Set(ctx context.Context, values runtimeconfig.Values) error
+
+	// SecretIsSet is all this handler is ever told about a credential. The
+	// value itself is never read here, so it cannot reach a response by
+	// accident.
+	SecretIsSet(name runtimeconfig.SecretName) bool
+	SetSecrets(ctx context.Context, secrets map[runtimeconfig.SecretName]runtimeconfig.Secret) error
+
+	// Missing names the settings a run still needs, so the page can say what is
+	// left rather than leaving an operator to find out from a failed run.
+	Missing() []string
 }
 
 // ScheduleState is the pair of switches governing unattended runs.
@@ -331,25 +340,22 @@ type Options struct {
 	// did not survive a restart is exactly the case where the two differ.
 	SurfaceIndexFunc func() (generation string, builtAt time.Time, ok bool)
 
-	// SourceBaseURLs are each configured source's own web application, as the
-	// operator configured it, keyed by the provider it belongs to. Where the
-	// page also knows that provider's route path, it builds an outbound link
-	// to a stage's source route from the matching entry, so an operator can
-	// open the route a stage was made from without hunting for it by name —
-	// today that is VeloPlanner alone; a provider whose path the page does not
-	// yet know offers no link even though its base URL is here.
-	//
-	// A provider with nothing configured for it is simply absent from the
-	// map, rather than present with an empty value.
-	SourceBaseURLs map[route.Provider]string
-
 	// RideModelValidation is the loaded coefficient profile's measured
 	// unseen-route error, when a profile is configured and its file carries
 	// one. It describes the profile as a whole, so every stage response
 	// carries the same value rather than one derived per stage. Nil when no
 	// profile is configured or the loaded file predates #217's validation
 	// fields.
-	RideModelValidation *RideModelValidation
+	RideModelValidationFunc func() *RideModelValidation
+
+	// Settings are the runtime settings this handler both serves and edits.
+	// Required.
+	//
+	// Every read of one goes through here per request rather than being held,
+	// because an operator edits them while the service runs: a basemap added to
+	// the list has to reach the page's configuration and the
+	// Content-Security-Policy header at once, not at the next restart.
+	Settings SettingsState
 
 	// BuildRevision is the public source commit this binary was built from, and
 	// BuildImageDigest the immutable digest of the image running it. Both are
@@ -383,17 +389,6 @@ type Options struct {
 	// redirect URL is that hostname by construction — it is where a browser
 	// returns from Wahoo — which is why it is what the composition root passes.
 	BrowserOriginURL string
-
-	// Settings are the runtime settings this handler both serves and edits.
-	// Required.
-	//
-	// Every read of one goes through here per request rather than being held,
-	// because an operator edits them while the service runs: a basemap added to
-	// the list has to reach the page's configuration and the
-	// Content-Security-Policy header at once, not at the next restart.
-	Settings SettingsState
-
-	TargetIDs []string
 }
 
 // RideModelValidation is the frozen coefficient profile's measured
@@ -419,15 +414,13 @@ type Handler struct {
 	surfaceIndex        func() (string, time.Time, bool)
 	now                 func() time.Time
 	mux                 *http.ServeMux
-	sourceBaseURLs      map[route.Provider]string
-	rideModelValidation *RideModelValidation
+	rideModelValidation func() *RideModelValidation
+	settings            SettingsState
 	buildRevision       string
 	buildImageDigest    string
 	browserOrigin       string
 	allowedEmail        string
 	signOutURL          string
-	settings            SettingsState
-	targetIDs           []string
 }
 
 // New creates a handler. Health checks are intentionally unauthenticated;
@@ -442,17 +435,6 @@ func New(
 ) (*Handler, error) {
 	if options == nil || oauthService == nil || state == nil || syncRuns == nil || assets == nil || weather == nil {
 		return nil, errors.New("http options, oauth service, state, sync process, assets, and weather are required")
-	}
-	if len(options.TargetIDs) < 1 || len(options.TargetIDs) > 2 {
-		return nil, errors.New("between one and two target IDs are required")
-	}
-	for index, targetID := range options.TargetIDs {
-		if strings.TrimSpace(targetID) == "" {
-			return nil, errors.New("target IDs must not be empty")
-		}
-		if slices.Contains(options.TargetIDs[:index], targetID) {
-			return nil, errors.New("target IDs must be unique")
-		}
 	}
 	if options.AccessVerifier == nil {
 		return nil, errors.New("an access verifier is required")
@@ -477,38 +459,6 @@ func New(
 		return nil, errors.New("the runtime settings are required")
 	}
 
-	// Validated here rather than trusted, because it leaves the service as a
-	// link a browser will follow. A configured value that cannot be one is a
-	// mistake worth refusing at startup; the absent case is the supported one.
-	// Trimmed before validating and then stored trimmed, so the value the page
-	// receives is the one that was checked: surrounding whitespace survives a
-	// hand-edited config file, and a browser will not parse it back into a URL.
-	sourceBaseURLs := make(map[route.Provider]string, len(options.SourceBaseURLs))
-	for provider, value := range options.SourceBaseURLs {
-		if provider != route.ProviderVeloPlanner && provider != route.ProviderKomoot {
-			return nil, fmt.Errorf("source base URL provider %q is not in the HTTP contract", provider)
-		}
-		trimmed := strings.TrimSpace(value)
-		if trimmed == "" {
-			continue
-		}
-		if err := validateSourceBaseURL(trimmed); err != nil {
-			return nil, fmt.Errorf("source base URL for %s: %w", provider, err)
-		}
-		sourceBaseURLs[provider] = trimmed
-	}
-
-	// Copied rather than stored by reference, on the same terms as Basemaps
-	// and TargetIDs below: the handler serves concurrently, and a caller
-	// that mutated its own Options value after New returned — even
-	// inadvertently, in a test — must not be able to race the handler that
-	// reads it on every request.
-	var rideModelValidation *RideModelValidation
-	if options.RideModelValidation != nil {
-		copied := *options.RideModelValidation
-		rideModelValidation = &copied
-	}
-
 	handler := &Handler{
 		mux:                 http.NewServeMux(),
 		oauth:               oauthService,
@@ -517,13 +467,11 @@ func New(
 		assets:              assets,
 		weather:             weather,
 		settings:            options.Settings,
-		sourceBaseURLs:      sourceBaseURLs,
 		buildRevision:       publishableRevision(options.BuildRevision),
 		buildImageDigest:    publishableDigest(options.BuildImageDigest),
 		browserOrigin:       browserOrigin,
-		targetIDs:           append([]string(nil), options.TargetIDs...),
 		surfaceIndex:        options.SurfaceIndexFunc,
-		rideModelValidation: rideModelValidation,
+		rideModelValidation: options.RideModelValidationFunc,
 		now:                 time.Now,
 
 		accessVerifier: options.AccessVerifier,
@@ -850,24 +798,22 @@ func isLowerHex(value string) bool {
 	return true
 }
 
-// validateSourceBaseURL checks a provider base URL before it is handed to the
-// browser. It is stricter than originOf, and deliberately so: this value is
-// echoed in a response rather than only compared against another, so anything
-// riding on it is observable. Credentials would be a secret in a JSON body, and
-// a query or fragment would be something the operator's configuration sends to
-// the provider on every visit. A path prefix is allowed — a provider may be
-// hosted under one — and nothing else is.
-func validateSourceBaseURL(value string) error {
-	invalid := errors.New("source base URL must be an absolute HTTPS URL without credentials, query, or fragment")
+// targetIDs are the destination slots configured right now. They are read per
+// request rather than held, because the list is a setting an operator edits.
+func (h *Handler) targetIDs() []string {
+	return h.settings.Values().Wahoo.Targets
+}
 
-	parsed, err := url.Parse(value)
-	if err != nil || parsed.Scheme != "https" || parsed.Host == "" ||
-		parsed.User != nil || parsed.RawQuery != "" || parsed.ForceQuery ||
-		parsed.Fragment != "" || parsed.Opaque != "" {
-		return invalid
+// sourceBaseURL is one provider's own web application, or empty when that
+// provider is not configured.
+func sourceBaseURL(sources []runtimeconfig.Source, provider route.Provider) string {
+	for _, source := range sources {
+		if source.Provider == provider {
+			return source.BaseURL
+		}
 	}
 
-	return nil
+	return ""
 }
 
 // tileOriginsOf reduces the configured basemaps to the distinct origins the page

@@ -53,10 +53,10 @@ func (h *Handler) GetWebUIConfig(writer http.ResponseWriter, _ *http.Request) {
 	}
 	// Omitted entirely when no source named one, so the page offers no link at
 	// all rather than building a broken one.
-	if len(h.sourceBaseURLs) > 0 {
+	if sources := h.settings.Values().Sources; len(sources) > 0 {
 		config.SourceBaseUrls = &openapi.SourceBaseUrls{
-			Komoot:      optionalString(h.sourceBaseURLs[route.ProviderKomoot]),
-			Veloplanner: optionalString(h.sourceBaseURLs[route.ProviderVeloPlanner]),
+			Komoot:      optionalString(sourceBaseURL(sources, route.ProviderKomoot)),
+			Veloplanner: optionalString(sourceBaseURL(sources, route.ProviderVeloPlanner)),
 		}
 	}
 	h.writeJSON(writer, http.StatusOK, config)

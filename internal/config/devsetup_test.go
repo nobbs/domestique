@@ -32,11 +32,6 @@ func TestDevSetupGeneratesALoadableConfiguration(t *testing.T) {
 		"CF_ALLOWED_EMAIL":   "rider@example.test",
 	}
 	writeSecretFile(t, directory, "state_encryption_key", base64.RawURLEncoding.EncodeToString(key[:]))
-	writeSecretFile(t, directory, "veloplanner_email", "rider@example.test")
-	writeSecretFile(t, directory, "veloplanner_password", "password")
-	writeSecretFile(t, directory, "wahoo_client_secret", "client-secret")
-	writeSecretFile(t, directory, "pushover_application_token", "application-token")
-	writeSecretFile(t, directory, "pushover_user_key", "user-key")
 
 	configPath := filepath.Join(directory, "config.toml")
 	require.NoError(t, os.WriteFile(configPath, []byte(devSetupConfiguration(t, values)), 0o600))

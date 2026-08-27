@@ -20,21 +20,16 @@ import (
 	"github.com/nobbs/domestique/internal/elevation"
 	"github.com/nobbs/domestique/internal/fit"
 	"github.com/nobbs/domestique/internal/httpapi"
-	"github.com/nobbs/domestique/internal/komoot"
 	"github.com/nobbs/domestique/internal/oauth"
 	"github.com/nobbs/domestique/internal/openmeteo"
 	"github.com/nobbs/domestique/internal/osmindex"
 	"github.com/nobbs/domestique/internal/pushover"
 	"github.com/nobbs/domestique/internal/readiness"
-	"github.com/nobbs/domestique/internal/ridemodel"
-	"github.com/nobbs/domestique/internal/route"
 	"github.com/nobbs/domestique/internal/runtimeconfig"
 	"github.com/nobbs/domestique/internal/schedule"
 	"github.com/nobbs/domestique/internal/sqlite"
 	"github.com/nobbs/domestique/internal/surface"
 	syncservice "github.com/nobbs/domestique/internal/sync"
-	"github.com/nobbs/domestique/internal/veloplanner"
-	"github.com/nobbs/domestique/internal/wahoo"
 	"github.com/nobbs/domestique/internal/webui"
 )
 
@@ -71,50 +66,30 @@ func run(ctx context.Context) error {
 			slog.Error("closing state store", "error", closeErr)
 		}
 	}()
-	targetIDs := make([]string, 0, len(settings.Wahoo.Targets()))
-	for _, target := range settings.Wahoo.Targets() {
-		targetIDs = append(targetIDs, target.ID)
-	}
-	if ensureErr := store.EnsureTargets(ctx, targetIDs); ensureErr != nil {
-		return fmt.Errorf("initializing targets: %w", ensureErr)
-	}
-	// The settings an operator edits from the web UI. Every component below
-	// that reads one takes a function rather than a value, so an edit reaches
-	// the next run or the next request instead of the next restart.
+	// Everything an operator edits from the web UI. Only the listeners, the
+	// identity gate and the state file come from the configuration file; each
+	// component below reads the rest through a function, so an edit reaches the
+	// next run or the next request instead of the next restart.
 	runtimeSettings, err := runtimeconfig.Load(ctx, store)
 	if err != nil {
 		return fmt.Errorf("loading runtime settings: %w", err)
 	}
-
-	// config.Load guarantees at least one source is configured; each client
-	// built here is appended only when its own section is present.
-	sources := make([]syncservice.Source, 0, 2)
-	if settings.VeloPlanner != nil {
-		veloPlannerSource, sourceErr := veloplanner.New(&veloplanner.Options{BaseURL: settings.VeloPlanner.BaseURL, Email: settings.VeloPlanner.Email().Bytes(), Password: settings.VeloPlanner.Password().Bytes()})
-		if sourceErr != nil {
-			return fmt.Errorf("creating VeloPlanner client: %w", sourceErr)
-		}
-		sources = append(sources, veloPlannerSource)
-	}
-	if settings.Komoot != nil {
-		komootSource, sourceErr := komoot.New(&komoot.Options{BaseURL: settings.Komoot.BaseURL, Email: settings.Komoot.Email().Bytes(), Password: settings.Komoot.Password().Bytes()})
-		if sourceErr != nil {
-			return fmt.Errorf("creating Komoot client: %w", sourceErr)
-		}
-		sources = append(sources, komootSource)
+	if missing := runtimeSettings.Missing(); len(missing) > 0 {
+		slog.Warn("settings are still needed before anything will run", "settings", missing)
 	}
 
-	destination, err := wahoo.New(&wahoo.Options{APIBaseURL: settings.Wahoo.APIBaseURL, OAuthBaseURL: settings.Wahoo.OAuthBaseURL, ClientID: settings.Wahoo.ClientID, RedirectURL: settings.Wahoo.RedirectURL, ClientSecret: settings.Wahoo.ClientSecret().Bytes()})
-	if err != nil {
-		return fmt.Errorf("creating Wahoo client: %w", err)
-	}
+	destination := newWahooProvider(runtimeSettings, settings.HTTP.BrowserOriginURL)
 	oauthService, err := oauth.New(store, destination)
 	if err != nil {
 		return fmt.Errorf("creating oauth service: %w", err)
 	}
-	notifier, err := pushover.New(&pushover.Options{BaseURL: func() string {
-		return runtimeSettings.Values().Notifications.PushoverBaseURL
-	}, ApplicationToken: settings.Notifications.Pushover.ApplicationToken().Bytes(), UserKey: settings.Notifications.Pushover.UserKey().Bytes()})
+	notifier, err := pushover.New(&pushover.Options{
+		BaseURL: func() string { return runtimeSettings.Values().Notifications.PushoverBaseURL },
+		ApplicationToken: func() []byte {
+			return runtimeSettings.Secret(runtimeconfig.SecretPushoverApplicationToken).Bytes()
+		},
+		UserKey: func() []byte { return runtimeSettings.Secret(runtimeconfig.SecretPushoverUserKey).Bytes() },
+	})
 	if err != nil {
 		return fmt.Errorf("creating Pushover client: %w", err)
 	}
@@ -155,13 +130,20 @@ func run(ctx context.Context) error {
 	// Ride model prediction is equally optional. An operator who configures no
 	// coefficients file keeps every stage exactly as it is today: no rider
 	// figure is ever guessed, and no endpoint gains a field nobody asked for.
-	predictor, rideModelValidation, err := loadRidePredictor(ctx, settings, store)
-	if err != nil {
-		return err
+	// A file that will not load is reported here and again by the run that next
+	// needs it, rather than keeping the service from starting: the setting
+	// naming it is edited through a page this process has to be up to serve.
+	rideModel := newRideModelProvider(store)
+	if reloadErr := rideModel.reload(ctx, runtimeSettings); reloadErr != nil {
+		slog.Error("the ride model could not be loaded", "error", reloadErr)
 	}
-	reconciler, err := syncservice.New(&syncservice.Options{TargetIDs: targetIDs, AllowEmptySourceDeletion: func() bool {
-		return runtimeSettings.Values().Sync.AllowEmptySourceDeletion
-	}}, store, sources, elevation.New(), fit.New(), destination, annotator, predictor)
+	reconciler, err := syncservice.New(&syncservice.Options{
+		TargetIDs: destination.targetIDs,
+		Sources:   func() ([]syncservice.Source, error) { return sources(runtimeSettings) },
+		AllowEmptySourceDeletion: func() bool {
+			return runtimeSettings.Values().Sync.AllowEmptySourceDeletion
+		},
+	}, store, elevation.New(), fit.New(), destination, annotator, predictorFor(rideModel, runtimeSettings))
 	if err != nil {
 		return fmt.Errorf("creating sync service: %w", err)
 	}
@@ -183,7 +165,10 @@ func run(ctx context.Context) error {
 	// The reporter answers with a result nobody on this path consumes; the
 	// scheduler wants a runner that answers with nothing.
 	scheduler, err := schedule.New(
-		schedule.Options{InitialDelay: settings.Sync.InitialDelay, Interval: syncservice.Interval},
+		schedule.Options{
+			InitialDelay: runtimeSettings.Values().Sync.InitialDelay,
+			Interval:     syncservice.Interval,
+		},
 		schedule.RunnerFunc(func(ctx context.Context) { _ = reporter.Run(ctx) }),
 	)
 	if err != nil {
@@ -226,11 +211,7 @@ func run(ctx context.Context) error {
 
 	handler, err := httpapi.New(
 		&httpapi.Options{
-			TargetIDs: targetIDs,
-			Settings:  runtimeSettings,
-			// The page links a stage back to the source route it was made from,
-			// which is on the provider the library is read from.
-			SourceBaseURLs:   sourceBaseURLs(settings),
+			Settings:         runtimeSettings,
 			BuildRevision:    buildInfo.Revision,
 			BuildImageDigest: buildInfo.ImageDigest,
 			AccessVerifier:   accessVerifier,
@@ -240,10 +221,7 @@ func run(ctx context.Context) error {
 			// this is where knowing that belongs. It is relative because the
 			// session being ended is the one on the origin the page came from.
 			AccessSignOutURL: "/cdn-cgi/access/logout",
-			// The Wahoo redirect URL is on the hostname a browser reaches this
-			// service at, which is what makes it the origin a state-changing
-			// request has to come from.
-			BrowserOriginURL: settings.Wahoo.RedirectURL,
+			BrowserOriginURL: settings.HTTP.BrowserOriginURL,
 			// What the page reports is the map build classifications are
 			// actually being read from, not the one the state database last
 			// wrote down — those differ exactly when a recorded build's file did
@@ -253,7 +231,7 @@ func run(ctx context.Context) error {
 
 				return metadata.Generation, metadata.BuiltAt, ok
 			},
-			RideModelValidation: rideModelValidation,
+			RideModelValidationFunc: rideModel.validationView,
 		},
 		oauthService,
 		store,
@@ -305,7 +283,7 @@ func run(ctx context.Context) error {
 	// The served listener is what Tailscale Serve and the tunnel front, so a
 	// probe on a second port is how readiness stays off the authenticated public
 	// surface without a second gate to get wrong.
-	readinessHandler, err := readiness.New(targetIDs, store)
+	readinessHandler, err := readiness.New(destination.targetIDs, store)
 	if err != nil {
 		return fmt.Errorf("creating readiness handler: %w", err)
 	}
@@ -330,46 +308,6 @@ func run(ctx context.Context) error {
 	}
 	return serve(runCtx, cancel, server, readinessServer,
 		[]schedulerRunner{scheduler, indexScheduler}, reporter)
-}
-
-// loadRidePredictor loads the ride-model coefficient file and builds a
-// predictor over it, or returns a nil predictor when no file is configured —
-// the operator's switch for leaving every stage without a predicted moving
-// time. A malformed or physically implausible file is a startup failure: the
-// service refuses to serve a prediction it cannot stand behind rather than
-// falling back to silence.
-func loadRidePredictor(
-	ctx context.Context, settings *config.Settings, store *sqlite.Store,
-) (syncservice.Predictor, *httpapi.RideModelValidation, error) {
-	var fingerprint string
-	var predictor syncservice.Predictor
-	var validation *httpapi.RideModelValidation
-	if settings.RideModel.CoefficientsFile != "" {
-		coefficients, err := ridemodel.Load(settings.RideModel.CoefficientsFile)
-		if err != nil {
-			return nil, nil, fmt.Errorf("loading ride model coefficients: %w", err)
-		}
-		fingerprint = coefficients.Fingerprint
-		predictor = ridemodel.NewPredictor(store, store, coefficients)
-		if coefficients.HasValidation() {
-			validation = &httpapi.RideModelValidation{
-				BiasPercent:    coefficients.BiasPercent,
-				MAEPercent:     coefficients.MAEPercent,
-				P90Percent:     coefficients.P90Percent,
-				EvaluatedRides: coefficients.EvaluatedRides,
-			}
-		}
-	}
-
-	// A coefficient file edited or removed since the last restart must not
-	// leave the previous file's predictions being served as current: they
-	// address the same geometry, so nothing else would ever notice they no
-	// longer match what is loaded now.
-	if err := store.PruneStageDurationsWithDifferentFingerprint(ctx, fingerprint); err != nil {
-		return nil, nil, fmt.Errorf("pruning stale ride model predictions: %w", err)
-	}
-
-	return predictor, validation, nil
 }
 
 // startSurfaceIndex prepares the surface index and the schedule that rebuilds
@@ -485,20 +423,6 @@ func serve(
 	}
 
 	return errors.Join(servingErr, shutdownErr)
-}
-
-// sourceBaseURLs restates each configured source's base URL keyed by
-// provider, so the HTTP surface keeps depending on nothing but its options.
-func sourceBaseURLs(settings *config.Settings) map[route.Provider]string {
-	urls := make(map[route.Provider]string, 2)
-	if settings.VeloPlanner != nil {
-		urls[route.ProviderVeloPlanner] = settings.VeloPlanner.BaseURL
-	}
-	if settings.Komoot != nil {
-		urls[route.ProviderKomoot] = settings.Komoot.BaseURL
-	}
-
-	return urls
 }
 
 // weatherCoordinates pairs the httpapi boundary's parallel latitude/longitude

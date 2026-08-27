@@ -19,29 +19,148 @@ import (
 	"github.com/nobbs/domestique/internal/route"
 	"github.com/nobbs/domestique/internal/runtimeconfig"
 	"github.com/nobbs/domestique/internal/sqlite"
+	"github.com/nobbs/domestique/internal/wahoo"
 )
 
-func TestSourceBaseURLsIncludesOnlyConfiguredSources(t *testing.T) {
+// A run reads the libraries that are configured now, with the credentials that
+// are stored now, so adding a library is an edit rather than a restart.
+func TestSourcesFollowTheConfiguredLibraries(t *testing.T) {
 	t.Parallel()
 
-	both := sourceBaseURLs(&config.Settings{
-		VeloPlanner: &config.VeloPlanner{BaseURL: "https://veloplanner.example.test"},
-		Komoot:      &config.Komoot{BaseURL: "https://komoot.example.test"},
-	})
-	assert.Equal(t, map[route.Provider]string{
-		route.ProviderVeloPlanner: "https://veloplanner.example.test",
-		route.ProviderKomoot:      "https://komoot.example.test",
-	}, both)
+	current := testSettings(t, testStore(t, t.TempDir()))
+	built, err := sources(current)
+	require.NoError(t, err, "sources() with nothing configured")
+	assert.Empty(t, built, "a client was built for a library that has not been configured")
 
-	veloPlannerOnly := sourceBaseURLs(&config.Settings{
-		VeloPlanner: &config.VeloPlanner{BaseURL: "https://veloplanner.example.test"},
-	})
-	assert.Equal(t, map[route.Provider]string{route.ProviderVeloPlanner: "https://veloplanner.example.test"}, veloPlannerOnly)
+	values := current.Values()
+	values.Sources = []runtimeconfig.Source{
+		{Provider: route.ProviderVeloPlanner, BaseURL: "https://veloplanner.example.test"},
+		{Provider: route.ProviderKomoot, BaseURL: "https://komoot.example.test"},
+	}
+	require.NoError(t, current.Set(t.Context(), values), "Set()")
 
-	komootOnly := sourceBaseURLs(&config.Settings{
-		Komoot: &config.Komoot{BaseURL: "https://komoot.example.test"},
-	})
-	assert.Equal(t, map[route.Provider]string{route.ProviderKomoot: "https://komoot.example.test"}, komootOnly)
+	// Reading part of a library and calling it the whole inventory is what the
+	// deletion gate exists to prevent, so a source missing its credentials
+	// fails the lot rather than quietly dropping itself.
+	_, err = sources(current)
+	require.Error(t, err, "sources() with no credentials stored")
+
+	require.NoError(t, current.SetSecrets(t.Context(), map[runtimeconfig.SecretName]runtimeconfig.Secret{
+		runtimeconfig.SecretVeloPlannerEmail:    runtimeconfig.NewSecret([]byte("rider@example.test")),
+		runtimeconfig.SecretVeloPlannerPassword: runtimeconfig.NewSecret([]byte("secret")),
+		runtimeconfig.SecretKomootEmail:         runtimeconfig.NewSecret([]byte("rider@example.test")),
+		runtimeconfig.SecretKomootPassword:      runtimeconfig.NewSecret([]byte("secret")),
+	}), "SetSecrets()")
+
+	built, err = sources(current)
+	require.NoError(t, err, "sources()")
+	require.Len(t, built, 2, "sources()")
+	assert.Equal(t, route.ProviderVeloPlanner, built[0].Provider(), "first source")
+	assert.Equal(t, route.ProviderKomoot, built[1].Provider(), "second source")
+}
+
+// Until the Wahoo application is entered there is nothing to reconcile against,
+// so a run is told it has no targets instead of failing against an application
+// that does not exist.
+func TestWahooProviderOffersNoTargetsUntilItsApplicationIsConfigured(t *testing.T) {
+	t.Parallel()
+
+	current := testSettings(t, testStore(t, t.TempDir()))
+	values := current.Values()
+	values.Wahoo.Targets = []string{"rider"}
+	require.NoError(t, current.Set(t.Context(), values), "Set()")
+
+	provider := newWahooProvider(current, "https://domestique.example.test")
+	assert.Empty(t, provider.targetIDs(), "a target was offered before the Wahoo application was configured")
+	_, err := provider.current()
+	require.ErrorIs(t, err, errNotConfigured, "current()")
+
+	configureWahoo(t, current)
+
+	assert.Equal(t, []string{"rider"}, provider.targetIDs(), "targetIDs()")
+	client, err := provider.current()
+	require.NoError(t, err, "current()")
+	assert.NotNil(t, client, "no client was built from a configured application")
+}
+
+// The client carries the request budget observed from Wahoo's own responses, so
+// it survives every use that did not change the settings it was built from.
+func TestWahooProviderRebuildsOnlyWhenItsSettingsChange(t *testing.T) {
+	t.Parallel()
+
+	current := testSettings(t, testStore(t, t.TempDir()))
+	configureWahoo(t, current)
+	provider := newWahooProvider(current, "https://domestique.example.test")
+
+	first, err := provider.current()
+	require.NoError(t, err, "current()")
+	again, err := provider.current()
+	require.NoError(t, err, "current()")
+	assert.Same(t, first, again, "the client was rebuilt without a settings change")
+
+	values := current.Values()
+	values.Wahoo.ClientID = "another-application"
+	require.NoError(t, current.Set(t.Context(), values), "Set()")
+
+	rebuilt, err := provider.current()
+	require.NoError(t, err, "current()")
+	assert.NotSame(t, first, rebuilt, "an edited application was still served by the old client")
+}
+
+func configureWahoo(t *testing.T, current *runtimeconfig.Current) {
+	t.Helper()
+
+	values := current.Values()
+	values.Wahoo.APIBaseURL = "https://api.wahoo.example.test"
+	values.Wahoo.OAuthBaseURL = "https://oauth.wahoo.example.test"
+	values.Wahoo.ClientID = "an-application"
+	require.NoError(t, current.Set(t.Context(), values), "Set()")
+	require.NoError(t, current.SetSecrets(t.Context(), map[runtimeconfig.SecretName]runtimeconfig.Secret{
+		runtimeconfig.SecretWahooClientSecret: runtimeconfig.NewSecret([]byte("a-client-secret")),
+	}), "SetSecrets()")
+}
+
+// A library client is only ever built from settings that describe one: a
+// provider nothing reads, and an origin no client would accept, are refused
+// here rather than by the first run that tried to read from them.
+func TestNoSourceIsBuiltFromSettingsNoClientAccepts(t *testing.T) {
+	t.Parallel()
+
+	email, password := []byte("rider@example.test"), []byte("secret")
+	_, err := newSource(runtimeconfig.Source{Provider: "nowhere", BaseURL: "https://example.test"}, email, password)
+	require.Error(t, err, "newSource() for a provider nothing reads")
+
+	for _, provider := range []route.Provider{route.ProviderVeloPlanner, route.ProviderKomoot} {
+		_, err := newSource(runtimeconfig.Source{Provider: provider, BaseURL: "http://example.test"}, email, password)
+		require.Error(t, err, string(provider))
+	}
+}
+
+// Nothing this provider hands out is answered by the provider itself, so every
+// call an unconfigured service makes reports that rather than failing against
+// an application that does not exist.
+func TestWahooProviderRefusesEveryCallUntilItsApplicationIsConfigured(t *testing.T) {
+	t.Parallel()
+
+	provider := newWahooProvider(testSettings(t, testStore(t, t.TempDir())), "https://domestique.example.test")
+	calls := map[string]func() error{
+		"AuthorizationURL":          func() error { _, err := provider.AuthorizationURL("state"); return err },
+		"ExchangeAuthorizationCode": func() error { _, _, err := provider.ExchangeAuthorizationCode(t.Context(), "code"); return err },
+		"AuthenticatedUser":         func() error { _, err := provider.AuthenticatedUser(t.Context(), "token"); return err },
+		"RefreshAccessToken":        func() error { _, _, err := provider.RefreshAccessToken(t.Context(), "token"); return err },
+		"ListOwnedRoutes":           func() error { _, err := provider.ListOwnedRoutes(t.Context(), "token"); return err },
+		"DeleteOwnedRoutes":         func() error { _, err := provider.DeleteOwnedRoutes(t.Context(), "token"); return err },
+		"CreateRoute":               func() error { _, err := provider.CreateRoute(t.Context(), "token", nil, nil); return err },
+		"UpdateRoute":               func() error { _, err := provider.UpdateRoute(t.Context(), 1, "token", nil, nil); return err },
+		"DeleteRoute":               func() error { return provider.DeleteRoute(t.Context(), 1, "token") },
+	}
+	for name, call := range calls {
+		require.ErrorIs(t, call(), errNotConfigured, name)
+	}
+
+	_, _, ok := provider.RateLimit()
+	assert.False(t, ok, "a request budget was reported for an application that does not exist")
+	assert.True(t, provider.IsUnauthorized(wahoo.ErrUnauthorized), "IsUnauthorized()")
 }
 
 func TestWeatherCoordinatesPairsParallelSlices(t *testing.T) {
@@ -302,12 +421,21 @@ func stateSettings(directory string) *config.Settings {
 // settings are written and again where they are read back.
 func surfaceSettings(t *testing.T, store *sqlite.Store) *runtimeconfig.Current {
 	t.Helper()
-	current, err := runtimeconfig.Load(t.Context(), store)
-	require.NoError(t, err, "runtimeconfig.Load()")
+	current := testSettings(t, store)
 
 	values := current.Values()
 	values.Surface.Regions = []string{"europe/germany"}
 	require.NoError(t, current.Set(t.Context(), values), "Set()")
+
+	return current
+}
+
+// testSettings publishes what a service that has never been configured starts
+// with: everything seeded, nothing entered.
+func testSettings(t *testing.T, store *sqlite.Store) *runtimeconfig.Current {
+	t.Helper()
+	current, err := runtimeconfig.Load(t.Context(), store)
+	require.NoError(t, err, "runtimeconfig.Load()")
 
 	return current
 }
@@ -330,8 +458,8 @@ func testNotifier(t *testing.T) *pushover.Client {
 	t.Helper()
 
 	notifier, err := pushover.New(&pushover.Options{
-		ApplicationToken: []byte("token"),
-		UserKey:          []byte("user"),
+		ApplicationToken: func() []byte { return []byte("token") },
+		UserKey:          func() []byte { return []byte("user") },
 	})
 	require.NoError(t, err, "pushover.New()")
 
@@ -340,31 +468,32 @@ func testNotifier(t *testing.T) *pushover.Client {
 
 // An operator who configures no coefficients file keeps every stage exactly
 // as it is today: no rider figure is ever guessed.
-func TestLoadRidePredictorReturnsNilWithNoCoefficientsFileConfigured(t *testing.T) {
+func TestRideModelIsAbsentWithNoCoefficientsFileConfigured(t *testing.T) {
 	t.Parallel()
 
-	directory := t.TempDir()
-	predictor, validation, err := loadRidePredictor(t.Context(), &config.Settings{}, testStore(t, directory))
-	require.NoError(t, err, "loadRidePredictor()")
-	assert.Nil(t, predictor, "a predictor was built with no coefficients file configured")
-	assert.Nil(t, validation, "validation metadata was built with no coefficients file configured")
+	store := testStore(t, t.TempDir())
+	provider := newRideModelProvider(store)
+	require.NoError(t, provider.reload(t.Context(), testSettings(t, store)), "reload()")
+	assert.Nil(t, provider.current(), "a predictor was built with no coefficients file configured")
+	assert.Nil(t, provider.validationView(), "validation metadata was built with no coefficients file configured")
 }
 
-func TestLoadRidePredictorBuildsAPredictorFromAValidFile(t *testing.T) {
+func TestRideModelLoadsAPredictorFromAValidFile(t *testing.T) {
 	t.Parallel()
 
 	directory := t.TempDir()
-	settings := &config.Settings{RideModel: config.RideModel{CoefficientsFile: writeTestCoefficients(t, directory)}}
+	store := testStore(t, directory)
+	provider := newRideModelProvider(store)
+	settings := rideModelSettings(t, store, writeTestCoefficients(t, directory))
 
-	predictor, validation, err := loadRidePredictor(t.Context(), settings, testStore(t, directory))
-	require.NoError(t, err, "loadRidePredictor()")
-	assert.NotNil(t, predictor, "no predictor was built from a valid coefficients file")
-	assert.Nil(t, validation, "validation metadata was built from a file with no measured benchmark result")
+	require.NoError(t, provider.reload(t.Context(), settings), "reload()")
+	assert.NotNil(t, provider.current(), "no predictor was built from a valid coefficients file")
+	assert.Nil(t, provider.validationView(), "validation metadata was built from a file with no measured benchmark result")
 }
 
 // A file that does carry the optional benchmark fields makes its measured
 // unseen-route error available to the HTTP layer.
-func TestLoadRidePredictorSurfacesValidationFromAFileThatHasIt(t *testing.T) {
+func TestRideModelSurfacesValidationFromAFileThatHasIt(t *testing.T) {
 	t.Parallel()
 
 	directory := t.TempDir()
@@ -383,11 +512,12 @@ mae_percent = 6.80
 p90_percent = 14.10
 `
 	require.NoError(t, os.WriteFile(path, []byte(document), 0o600), "writing coefficient file")
-	settings := &config.Settings{RideModel: config.RideModel{CoefficientsFile: path}}
+	store := testStore(t, directory)
+	provider := newRideModelProvider(store)
 
-	predictor, validation, err := loadRidePredictor(t.Context(), settings, testStore(t, directory))
-	require.NoError(t, err, "loadRidePredictor()")
-	assert.NotNil(t, predictor, "no predictor was built from a valid coefficients file")
+	require.NoError(t, provider.reload(t.Context(), rideModelSettings(t, store, path)), "reload()")
+	assert.NotNil(t, provider.current(), "no predictor was built from a valid coefficients file")
+	validation := provider.validationView()
 	require.NotNil(t, validation, "no validation metadata was built from a file that carries it")
 	assert.Equal(t, 42, validation.EvaluatedRides, "EvaluatedRides")
 	assert.InDelta(t, -1.20, validation.BiasPercent, 1e-9, "BiasPercent")
@@ -395,25 +525,27 @@ p90_percent = 14.10
 	assert.InDelta(t, 14.10, validation.P90Percent, 1e-9, "P90Percent")
 }
 
-// A malformed or physically implausible file is a startup failure: the
-// service refuses to serve a prediction it cannot stand behind.
-func TestLoadRidePredictorRefusesAnImplausibleFile(t *testing.T) {
+// A malformed or physically implausible file leaves nothing loaded: the service
+// refuses to serve a prediction it cannot stand behind.
+func TestRideModelRefusesAnImplausibleFile(t *testing.T) {
 	t.Parallel()
 
 	directory := t.TempDir()
 	path := filepath.Join(directory, "ridemodel.toml")
 	require.NoError(t, os.WriteFile(path, []byte("mass_kg = 1.0\n"), 0o600), "writing coefficient file")
-	settings := &config.Settings{RideModel: config.RideModel{CoefficientsFile: path}}
+	store := testStore(t, directory)
+	provider := newRideModelProvider(store)
 
-	_, _, err := loadRidePredictor(t.Context(), settings, testStore(t, directory))
-	require.Error(t, err, "loadRidePredictor() with an implausible coefficient file")
+	require.Error(t, provider.reload(t.Context(), rideModelSettings(t, store, path)),
+		"reload() with an implausible coefficient file")
+	assert.Nil(t, provider.current(), "a predictor was built from an implausible coefficients file")
 }
 
-// A coefficient file edited or removed since the last restart must not leave
-// the previous file's predictions being served as current: nothing else
-// would ever notice they no longer match what is loaded now, since they
-// still address the same, unchanged geometry.
-func TestLoadRidePredictorPrunesPredictionsFromADifferentCoefficientFile(t *testing.T) {
+// A coefficient file pointed somewhere else must not leave the previous file's
+// predictions being served as current: nothing else would ever notice they no
+// longer match what is loaded now, since they still address the same,
+// unchanged geometry.
+func TestRideModelPrunesPredictionsFromADifferentCoefficientFile(t *testing.T) {
 	t.Parallel()
 
 	directory := t.TempDir()
@@ -423,9 +555,9 @@ func TestLoadRidePredictorPrunesPredictionsFromADifferentCoefficientFile(t *test
 		t.Context(), route.ProviderVeloPlanner, 1, 1, "hash", "", "an-earlier-coefficient-file", &seconds, nil,
 	), "seeding a stale prediction")
 
-	settings := &config.Settings{RideModel: config.RideModel{CoefficientsFile: writeTestCoefficients(t, directory)}}
-	_, _, err := loadRidePredictor(t.Context(), settings, store)
-	require.NoError(t, err, "loadRidePredictor()")
+	provider := newRideModelProvider(store)
+	settings := rideModelSettings(t, store, writeTestCoefficients(t, directory))
+	require.NoError(t, provider.reload(t.Context(), settings), "reload()")
 
 	_, _, _, found, err := store.StageDurationFingerprint(t.Context(), route.ProviderVeloPlanner, 1, 1)
 	require.NoError(t, err, "StageDurationFingerprint()")
@@ -434,7 +566,7 @@ func TestLoadRidePredictorPrunesPredictionsFromADifferentCoefficientFile(t *test
 
 // The mirror case: switching ride model prediction off entirely must not
 // leave a previous configuration's predictions being served either.
-func TestLoadRidePredictorPrunesEverythingWhenUnconfigured(t *testing.T) {
+func TestRideModelPrunesEverythingWhenUnconfigured(t *testing.T) {
 	t.Parallel()
 
 	directory := t.TempDir()
@@ -444,12 +576,23 @@ func TestLoadRidePredictorPrunesEverythingWhenUnconfigured(t *testing.T) {
 		t.Context(), route.ProviderVeloPlanner, 1, 1, "hash", "", "a-since-removed-coefficient-file", &seconds, nil,
 	), "seeding a stale prediction")
 
-	_, _, err := loadRidePredictor(t.Context(), &config.Settings{}, store)
-	require.NoError(t, err, "loadRidePredictor()")
+	provider := newRideModelProvider(store)
+	require.NoError(t, provider.reload(t.Context(), testSettings(t, store)), "reload()")
 
 	_, _, _, found, err := store.StageDurationFingerprint(t.Context(), route.ProviderVeloPlanner, 1, 1)
 	require.NoError(t, err, "StageDurationFingerprint()")
 	assert.False(t, found, "a prediction survived switching ride model prediction off")
+}
+
+func rideModelSettings(t *testing.T, store *sqlite.Store, path string) *runtimeconfig.Current {
+	t.Helper()
+
+	current := testSettings(t, store)
+	values := current.Values()
+	values.RideModel.CoefficientsFile = path
+	require.NoError(t, current.Set(t.Context(), values), "Set()")
+
+	return current
 }
 
 func writeTestCoefficients(t *testing.T, directory string) string {
@@ -468,4 +611,37 @@ seconds_per_ascent_m = 3.2190
 	require.NoError(t, os.WriteFile(path, []byte(document), 0o600), "writing coefficient file")
 
 	return path
+}
+
+// Synchronization sees nothing but Predict, and what it predicts with is the
+// coefficient file in force at the time of the run rather than the one the
+// process started with.
+func TestPredictorFollowsTheConfiguredCoefficientFile(t *testing.T) {
+	t.Parallel()
+
+	directory := t.TempDir()
+	store := testStore(t, directory)
+	current := testSettings(t, store)
+	predictor := predictorFor(newRideModelProvider(store), current)
+
+	predicted, failed, err := predictor.Predict(t.Context(), nil)
+	require.NoError(t, err, "Predict() with prediction switched off")
+	assert.Zero(t, predicted, "a stage was predicted with no coefficient file configured")
+	assert.Zero(t, failed, "a prediction failed with no coefficient file configured")
+
+	values := current.Values()
+	values.RideModel.CoefficientsFile = writeTestCoefficients(t, directory)
+	require.NoError(t, current.Set(t.Context(), values), "Set()")
+
+	_, _, err = predictor.Predict(t.Context(), nil)
+	require.NoError(t, err, "Predict() after a coefficient file was configured")
+
+	// A file that will not load is a failed prediction rather than a
+	// substituted one: nothing is served that the loaded model does not
+	// stand behind.
+	values.RideModel.CoefficientsFile = filepath.Join(directory, "not-a-file.toml")
+	require.NoError(t, current.Set(t.Context(), values), "Set()")
+
+	_, _, err = predictor.Predict(t.Context(), nil)
+	require.Error(t, err, "Predict() with a coefficient file that will not load")
 }

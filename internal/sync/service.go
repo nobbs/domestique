@@ -53,7 +53,8 @@ const (
 type Outcome string
 
 const (
-	// OutcomeNotReady means at least one configured target needs OAuth onboarding.
+	// OutcomeNotReady means the run had nothing it could safely do: a target
+	// needs OAuth onboarding, or the settings a run needs are not entered yet.
 	OutcomeNotReady Outcome = "not_ready"
 	// OutcomeSucceeded means every target was reconciled successfully.
 	OutcomeSucceeded Outcome = "succeeded"
@@ -148,7 +149,14 @@ type Options struct {
 	// per source, as that source is read, so turning it off reaches the sources
 	// a run has not read yet.
 	AllowEmptySourceDeletion func() bool
-	TargetIDs                []string
+
+	// Sources and TargetIDs are functions for the same reason: both are
+	// settings an operator edits while the service runs, so a run reads them as
+	// it starts rather than inheriting what was configured at composition.
+	// Both answer with what has already been validated; an empty answer is a
+	// service that has not been configured yet, and a run says so.
+	Sources   func() ([]Source, error)
+	TargetIDs func() []string
 }
 
 // Source provides a complete, validated inventory of one provider's stages.
@@ -229,14 +237,14 @@ type State interface {
 // It has no dependency on HTTP, static configuration, or concrete adapters.
 type Service struct {
 	state                    State
-	sources                  []Source
+	sources                  func() ([]Source, error)
 	processor                Processor
 	encoder                  Encoder
 	target                   Target
 	annotator                Annotator
 	predictor                Predictor
 	allowEmptySourceDeletion func() bool
-	targetIDs                []string
+	targetIDs                func() []string
 	running                  atomic.Bool
 }
 
@@ -247,60 +255,31 @@ type Service struct {
 func New(
 	options *Options,
 	state State,
-	sources []Source,
 	processor Processor,
 	encoder Encoder,
 	target Target,
 	annotator Annotator,
 	predictor Predictor,
 ) (*Service, error) {
-	if options == nil || state == nil || len(sources) == 0 || processor == nil || encoder == nil || target == nil {
+	if options == nil || state == nil || processor == nil || encoder == nil || target == nil {
 		return nil, errors.New("sync options and dependencies are required")
 	}
-	if len(options.TargetIDs) < 1 || len(options.TargetIDs) > 2 {
-		return nil, errors.New("sync requires between one and two targets")
+	if options.Sources == nil || options.TargetIDs == nil {
+		return nil, errors.New("sync requires its sources and targets to be readable")
 	}
 	if options.AllowEmptySourceDeletion == nil {
 		return nil, errors.New("sync requires an empty-source deletion gate")
 	}
 
-	targetIDs := append([]string(nil), options.TargetIDs...)
-	seenTargetIDs := make(map[string]struct{}, len(targetIDs))
-	for _, targetID := range targetIDs {
-		if targetID == "" {
-			return nil, errors.New("sync target IDs are required")
-		}
-		if _, found := seenTargetIDs[targetID]; found {
-			return nil, errors.New("sync target IDs must be unique")
-		}
-		seenTargetIDs[targetID] = struct{}{}
-	}
-
-	sourcesCopy := append([]Source(nil), sources...)
-	seenProviders := make(map[route.Provider]struct{}, len(sourcesCopy))
-	for _, source := range sourcesCopy {
-		if source == nil {
-			return nil, errors.New("sync sources must not be nil")
-		}
-		provider := source.Provider()
-		if provider == "" {
-			return nil, errors.New("sync source providers are required")
-		}
-		if _, found := seenProviders[provider]; found {
-			return nil, errors.New("sync source providers must be unique")
-		}
-		seenProviders[provider] = struct{}{}
-	}
-
 	return &Service{
 		state:                    state,
-		sources:                  sourcesCopy,
+		sources:                  options.Sources,
 		processor:                processor,
 		encoder:                  encoder,
 		target:                   target,
 		annotator:                annotator,
 		predictor:                predictor,
-		targetIDs:                targetIDs,
+		targetIDs:                options.TargetIDs,
 		allowEmptySourceDeletion: options.AllowEmptySourceDeletion,
 	}, nil
 }
@@ -325,8 +304,13 @@ func (s *Service) RunSource(ctx context.Context) Result {
 	}
 	defer s.running.Store(false)
 
-	result := Result{Phase: PhaseSource, Sources: make([]SourceResult, 0, len(s.sources))}
-	for _, source := range s.sources {
+	sources, err := s.sources()
+	if err != nil || len(sources) == 0 {
+		return Result{Phase: PhaseSource, Outcome: OutcomeNotReady}
+	}
+
+	result := Result{Phase: PhaseSource, Sources: make([]SourceResult, 0, len(sources))}
+	for _, source := range sources {
 		provider := source.Provider()
 		outcome, failure, stageCount := s.runOneSource(ctx, source, provider)
 		result.Sources = append(result.Sources, SourceResult{
@@ -413,7 +397,12 @@ func (s *Service) RunTargets(ctx context.Context) Result {
 	}
 	defer s.running.Store(false)
 
-	for _, targetID := range s.targetIDs {
+	targetIDs := s.targetIDs()
+	if len(targetIDs) == 0 {
+		return Result{Phase: PhaseTargets, Outcome: OutcomeNotReady}
+	}
+
+	for _, targetID := range targetIDs {
 		authorization, err := s.state.TargetAuthorization(ctx, targetID)
 		if err != nil {
 			return Result{Phase: PhaseTargets, Outcome: OutcomeFailed, Failure: FailureState}
@@ -435,9 +424,9 @@ func (s *Service) RunTargets(ctx context.Context) Result {
 	result := Result{
 		Phase:        PhaseTargets,
 		SourceStages: len(ordered),
-		Targets:      make([]TargetResult, 0, len(s.targetIDs)),
+		Targets:      make([]TargetResult, 0, len(targetIDs)),
 	}
-	for _, targetID := range s.targetIDs {
+	for _, targetID := range targetIDs {
 		counts, failure := s.reconcileTarget(ctx, targetID, desired, ordered)
 		result.Created += counts.created
 		result.Updated += counts.updated
@@ -480,7 +469,7 @@ func (s *Service) RunTargets(ctx context.Context) Result {
 // concurrent run gives, because the caller is expected to have already
 // refused a slot this service was never given.
 func (s *Service) RunTarget(ctx context.Context, targetID string) Result {
-	if !slices.Contains(s.targetIDs, targetID) {
+	if !slices.Contains(s.targetIDs(), targetID) {
 		return Result{Phase: PhaseTargets, Outcome: OutcomeSkipped}
 	}
 	if !s.running.CompareAndSwap(false, true) {
@@ -539,7 +528,7 @@ func (s *Service) RunTarget(ctx context.Context, targetID string) Result {
 // inventory are untouched, because clearing a destination is not forgetting
 // what should be on it.
 func (s *Service) ClearTarget(ctx context.Context, targetID string) Result {
-	if !slices.Contains(s.targetIDs, targetID) {
+	if !slices.Contains(s.targetIDs(), targetID) {
 		return Result{Phase: PhaseTargets, Outcome: OutcomeSkipped}
 	}
 	if !s.running.CompareAndSwap(false, true) {
