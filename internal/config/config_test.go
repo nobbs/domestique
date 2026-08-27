@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -22,7 +21,6 @@ func TestLoadUsesFileSecretsAndDefaults(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, key, settings.State.EncryptionKey(), "State.EncryptionKey()")
-	assert.Equal(t, EmptySourceDeletionDeny, settings.Sync.EmptySourceDeletion, "Sync.EmptySourceDeletion")
 	assert.Equal(t, []Target{{ID: "rider-a"}, {ID: "rider-b"}}, settings.Wahoo.Targets())
 	assert.Equal(t, "rider@example.test", string(settings.VeloPlanner.Email().Bytes()), "VeloPlanner.Email()")
 }
@@ -159,186 +157,6 @@ func TestLoadReportsNoImageReferenceWhenTheHostNamedNone(t *testing.T) {
 	assert.Empty(t, settings.ImageReference, "a host that pinned no image must report none")
 }
 
-func TestLoadDefaultsToAKeylessTileStyle(t *testing.T) {
-	configPath, _ := writeValidConfiguration(t, t.TempDir())
-	t.Setenv(configFileEnv, configPath)
-
-	settings, err := Load()
-	require.NoError(t, err)
-	// One entry: a deployment that configured no basemap gets a map, and the
-	// page offers no choice because there is nothing to choose between.
-	require.Len(t, settings.WebUI.Basemaps, 1, "WebUI.Basemaps")
-	basemap := settings.WebUI.Basemaps[0]
-	assert.Equal(t, defaultBasemapName, basemap.Name, "Basemap.Name")
-	assert.Equal(t, defaultBasemapStyleURL, basemap.StyleURL, "Basemap.StyleURL")
-	// The dark default is the same provider's other style, so a default
-	// deployment follows the colour scheme without reaching a second origin.
-	assert.Equal(t, defaultBasemapStyleURLDark, basemap.StyleURLDark, "Basemap.StyleURLDark")
-	assert.Truef(t, sameOrigin(basemap.StyleURL, basemap.StyleURLDark),
-		"default styles are on different origins: %q and %q", basemap.StyleURL, basemap.StyleURLDark)
-	assert.False(t, basemap.DarkCartography, "the default cartography follows the colour scheme")
-}
-
-func TestLoadReadsAListOfBasemaps(t *testing.T) {
-	configPath, _ := writeValidConfiguration(t, t.TempDir())
-	appendToFile(t, configPath, `
-[[webui.basemaps]]
-name = "Streets"
-style_url = "https://tiles.example.test/styles/bright"
-style_url_dark = "https://tiles.example.test/styles/dark"
-
-[[webui.basemaps]]
-name = "Satellite"
-style_url = "https://imagery.example.test/maps/hybrid/style.json?key=abc"
-dark_cartography = true
-`)
-	t.Setenv(configFileEnv, configPath)
-
-	settings, err := Load()
-	require.NoError(t, err)
-	// The configured list replaces the default outright rather than extending
-	// it, so what an operator wrote down is the whole of what the page offers.
-	require.Len(t, settings.WebUI.Basemaps, 2, "WebUI.Basemaps")
-	assert.Equal(t, "Streets", settings.WebUI.Basemaps[0].Name, "the first entry keeps its place")
-	assert.Equal(t, "Satellite", settings.WebUI.Basemaps[1].Name, "the second entry keeps its place")
-	assert.True(t, settings.WebUI.Basemaps[1].DarkCartography, "imagery is dark ground in either scheme")
-}
-
-// The old two-key shape is refused rather than quietly ignored: a deployment
-// that upgrades without editing its file would otherwise keep the default map
-// and never learn that its configured style went unread.
-func TestLoadRefusesTheReplacedTileStyleKeys(t *testing.T) {
-	configPath, _ := writeValidConfiguration(t, t.TempDir())
-	appendToFile(t, configPath, "\n[webui]\ntile_style_url = \"https://tiles.example.test/styles/bright\"\n")
-	t.Setenv(configFileEnv, configPath)
-
-	_, err := Load()
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "tile_style_url", "the error names the key that is no longer read")
-}
-
-func TestValidateBasemaps(t *testing.T) {
-	const light = "https://tiles.example.test/styles/liberty"
-
-	tests := []struct {
-		name    string
-		wantErr string
-		raw     []rawBasemap
-	}{
-		{
-			name:    "an empty list leaves the map nothing to paint",
-			raw:     nil,
-			wantErr: "at least one entry",
-		},
-		{
-			name:    "a nameless entry cannot be picked",
-			raw:     []rawBasemap{{Name: "  ", StyleURL: light}},
-			wantErr: "name is required",
-		},
-		{
-			name: "a repeated name is two entries with one identity",
-			raw: []rawBasemap{
-				{Name: "Streets", StyleURL: light},
-				{Name: "Streets", StyleURL: "https://other.example.test/style.json"},
-			},
-			wantErr: "duplicated",
-		},
-		{
-			name:    "a style that is not an absolute HTTPS URL",
-			raw:     []rawBasemap{{Name: "Streets", StyleURL: "http://tiles.example.test/style.json"}},
-			wantErr: "webui.basemaps[0].style_url",
-		},
-		{
-			name: "a dark twin on a second origin widens the policy",
-			raw: []rawBasemap{
-				{Name: "Streets", StyleURL: light, StyleURLDark: "https://dark.example.test/styles/dark"},
-			},
-			wantErr: "same origin",
-		},
-		{
-			name: "dark cartography and a dark twin contradict each other",
-			raw: []rawBasemap{
-				{
-					Name:            "Streets",
-					StyleURL:        light,
-					StyleURLDark:    "https://tiles.example.test/styles/dark",
-					DarkCartography: true,
-				},
-			},
-			wantErr: "must not set both",
-		},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			_, err := validateBasemaps(test.raw)
-			require.Error(t, err)
-			assert.Contains(t, err.Error(), test.wantErr)
-		})
-	}
-}
-
-func TestValidateBasemapsAcceptsAMixedList(t *testing.T) {
-	basemaps, err := validateBasemaps([]rawBasemap{
-		{
-			Name:         "  Streets  ",
-			StyleURL:     "  https://tiles.example.test/styles/bright  ",
-			StyleURLDark: "  https://TILES.example.test/styles/dark  ",
-		},
-		{
-			Name:            "Satellite",
-			StyleURL:        "https://imagery.example.test/maps/hybrid/style.json?key=abc",
-			DarkCartography: true,
-		},
-	})
-
-	require.NoError(t, err)
-	// Trimmed on the way in, because a hand-edited file carries whitespace and
-	// what the page receives has to be the value that was checked.
-	assert.Equal(t, "Streets", basemaps[0].Name)
-	assert.Equal(t, "https://tiles.example.test/styles/bright", basemaps[0].StyleURL)
-	assert.Equal(t, "https://TILES.example.test/styles/dark", basemaps[0].StyleURLDark)
-	assert.True(t, basemaps[1].DarkCartography)
-}
-
-func TestValidateStyleURL(t *testing.T) {
-	tests := []struct {
-		name    string
-		value   string
-		wantErr bool
-	}{
-		{name: "keyless default", value: defaultBasemapStyleURL},
-		{name: "keyed provider query is permitted", value: "https://tiles.example.test/style.json?key=abc"},
-		{name: "plaintext is rejected", value: "http://tiles.example.test/style.json", wantErr: true},
-		//nolint:gosec // A rejection fixture for URL userinfo, not a real credential.
-		{name: "credentials are rejected", value: "https://user:pass@tiles.example.test/s.json", wantErr: true},
-		{name: "relative is rejected", value: "/styles/liberty", wantErr: true},
-		{name: "empty is rejected", value: "", wantErr: true},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			err := validateStyleURL("webui.basemaps[0].style_url", test.value)
-			if test.wantErr {
-				require.Errorf(t, err, "validateStyleURL(%q)", test.value)
-
-				return
-			}
-			require.NoErrorf(t, err, "validateStyleURL(%q)", test.value)
-		})
-	}
-}
-
-func TestLoadDefaultsToNoRegionsAndAWeeklyRebuild(t *testing.T) {
-	configPath, _ := writeValidConfiguration(t, t.TempDir())
-	t.Setenv(configFileEnv, configPath)
-
-	settings, err := Load()
-	require.NoError(t, err)
-	assert.Empty(t, settings.Surface.Regions, "surface classification is off until regions are named")
-	assert.Equal(t, defaultRebuildInterval, settings.Surface.RebuildInterval, "Surface.RebuildInterval")
-}
-
 func TestLoadDefaultsToNoRideModelCoefficients(t *testing.T) {
 	configPath, _ := writeValidConfiguration(t, t.TempDir())
 	t.Setenv(configFileEnv, configPath)
@@ -356,150 +174,6 @@ func TestLoadReadsTheRideModelCoefficientsFile(t *testing.T) {
 	settings, err := Load()
 	require.NoError(t, err)
 	assert.Equal(t, "/etc/domestique/ridemodel.toml", settings.RideModel.CoefficientsFile, "RideModel.CoefficientsFile")
-}
-
-func TestLoadDefaultsToPushoversOwnOrigin(t *testing.T) {
-	configPath, _ := writeValidConfiguration(t, t.TempDir())
-	t.Setenv(configFileEnv, configPath)
-
-	settings, err := Load()
-	require.NoError(t, err)
-	assert.Equal(t, defaultPushoverURL, settings.Notifications.Pushover.BaseURL, "Notifications.Pushover.BaseURL")
-}
-
-// An operator who says nothing about notification volume keeps the per-run
-// message this service has always sent. A quiet default would silently change
-// how much a running deployment reports.
-func TestLoadDefaultsToNotifyingEverySuccess(t *testing.T) {
-	configPath, _ := writeValidConfiguration(t, t.TempDir())
-	t.Setenv(configFileEnv, configPath)
-
-	settings, err := Load()
-	require.NoError(t, err)
-	assert.Equal(t, SuccessPolicyEvery, settings.Notifications.Success.Policy, "Notifications.Success.Policy")
-	assert.Equal(t, defaultDigestInterval, settings.Notifications.Success.DigestInterval, "Notifications.Success.DigestInterval")
-}
-
-func TestLoadReadsAConfiguredSuccessPolicy(t *testing.T) {
-	configPath, _ := writeValidConfiguration(t, t.TempDir())
-	appendToFile(t, configPath, "\n[notifications]\nsuccess_policy = \"digest\"\ndigest_interval = \"12h\"\n")
-	t.Setenv(configFileEnv, configPath)
-
-	settings, err := Load()
-	require.NoError(t, err)
-	assert.Equal(t, SuccessPolicyDigest, settings.Notifications.Success.Policy, "Notifications.Success.Policy")
-	assert.Equal(t, 12*time.Hour, settings.Notifications.Success.DigestInterval, "Notifications.Success.DigestInterval")
-}
-
-// A development environment overrides the origin to keep a placeholder token off
-// the real service, so an override has to survive loading intact.
-func TestLoadKeepsAnOverriddenPushoverOrigin(t *testing.T) {
-	configPath, _ := writeValidConfiguration(t, t.TempDir())
-	replaceInFile(t, configPath, "[notifications.pushover]", "[notifications.pushover]\nbase_url = \"https://pushover.example.test\"")
-	t.Setenv(configFileEnv, configPath)
-
-	settings, err := Load()
-	require.NoError(t, err)
-	assert.Equal(t, "https://pushover.example.test", settings.Notifications.Pushover.BaseURL, "Notifications.Pushover.BaseURL")
-}
-
-// Regions are what an operator actually configures, so they have to survive
-// loading in the order and shape they were written.
-func TestLoadKeepsConfiguredRegions(t *testing.T) {
-	configPath, _ := writeValidConfiguration(t, t.TempDir())
-	appendToFile(t, configPath,
-		"\n[surface]\nregions = [\"europe/germany/rheinland-pfalz\", \" europe/germany/hessen \"]\n"+
-			"rebuild_interval = \"72h\"\n")
-	t.Setenv(configFileEnv, configPath)
-
-	settings, err := Load()
-	require.NoError(t, err)
-	assert.Equal(t,
-		[]string{"europe/germany/rheinland-pfalz", "europe/germany/hessen"},
-		settings.Surface.Regions,
-		"surrounding whitespace is not part of a slug",
-	)
-	assert.Equal(t, 72*time.Hour, settings.Surface.RebuildInterval, "Surface.RebuildInterval")
-}
-
-// A region named twice is a typo that would otherwise be paid for twice, in
-// download, decode, and index size, for an index that answers identically.
-func TestLoadNamesEachRegionOnce(t *testing.T) {
-	configPath, _ := writeValidConfiguration(t, t.TempDir())
-	appendToFile(t, configPath,
-		"\n[surface]\nregions = [\"europe/germany/rheinland-pfalz\", \"europe/germany/hessen\", "+
-			"\" europe/germany/rheinland-pfalz \"]\nrebuild_interval = \"72h\"\n")
-	t.Setenv(configFileEnv, configPath)
-
-	settings, err := Load()
-	require.NoError(t, err)
-	assert.Equal(t,
-		[]string{"europe/germany/rheinland-pfalz", "europe/germany/hessen"},
-		settings.Surface.Regions,
-		"a repeat is dropped and the first position kept",
-	)
-}
-
-// An empty list is how an operator declines the whole feature, so it must load
-// rather than fail as a missing setting.
-func TestLoadTreatsNoRegionsAsDisabled(t *testing.T) {
-	configPath, _ := writeValidConfiguration(t, t.TempDir())
-	appendToFile(t, configPath, "\n[surface]\nregions = []\n")
-	t.Setenv(configFileEnv, configPath)
-
-	settings, err := Load()
-	require.NoError(t, err)
-	assert.Empty(t, settings.Surface.Regions, "no regions declines classification")
-}
-
-func TestValidateSurface(t *testing.T) {
-	tests := []struct {
-		name    string
-		surface rawSurface
-		wantErr bool
-	}{
-		{name: "no regions at all", surface: rawSurface{}},
-		{
-			name:    "a region path",
-			surface: rawSurface{Regions: []string{"europe/germany/rheinland-pfalz"}, RebuildInterval: time.Hour},
-		},
-		{
-			name:    "a top-level region",
-			surface: rawSurface{Regions: []string{"antarctica"}, RebuildInterval: time.Hour},
-		},
-		{
-			name:    "a traversal is rejected",
-			surface: rawSurface{Regions: []string{"europe/../../etc/passwd"}, RebuildInterval: time.Hour},
-			wantErr: true,
-		},
-		{
-			name:    "an absolute URL is rejected",
-			surface: rawSurface{Regions: []string{"https://example.test/x.osm.pbf"}, RebuildInterval: time.Hour},
-			wantErr: true,
-		},
-		{
-			name:    "uppercase is rejected",
-			surface: rawSurface{Regions: []string{"europe/Germany"}, RebuildInterval: time.Hour},
-			wantErr: true,
-		},
-		{
-			name:    "a region without a cadence is rejected",
-			surface: rawSurface{Regions: []string{"antarctica"}},
-			wantErr: true,
-		},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			err := validateSurface(test.surface)
-			if test.wantErr {
-				require.Errorf(t, err, "validateSurface(%v)", test.surface)
-
-				return
-			}
-			require.NoErrorf(t, err, "validateSurface(%v)", test.surface)
-		})
-	}
 }
 
 func TestValidateRideModel(t *testing.T) {
@@ -566,6 +240,18 @@ func TestLoadRejectsInvalidConfiguration(t *testing.T) {
 			want: "literal secret",
 		},
 		{
+			// The settings that moved into the database left the file schema
+			// entirely. An upgraded deployment whose config.toml still names one
+			// has to be told, because the value it holds is no longer read and a
+			// silent start would run on whatever the database says instead.
+			name: "a setting that moved to the database",
+			mutate: func(t *testing.T, path string) {
+				t.Helper()
+				replaceInFile(t, path, "initial_delay = \"1m\"", "initial_delay = \"1m\"\nempty_source_deletion = \"allow\"")
+			},
+			want: "empty_source_deletion",
+		},
+		{
 			name: "unknown setting",
 			mutate: func(t *testing.T, path string) {
 				t.Helper()
@@ -583,46 +269,12 @@ func TestLoadRejectsInvalidConfiguration(t *testing.T) {
 			want: "between one and two",
 		},
 		{
-			name: "a region that is not a region path",
-			mutate: func(t *testing.T, path string) {
-				t.Helper()
-				appendToFile(t, path, "\n[surface]\nregions = [\"../../etc/passwd\"]\n")
-			},
-			want: "surface.regions",
-		},
-		{
 			name: "a relative ride model coefficients file",
 			mutate: func(t *testing.T, path string) {
 				t.Helper()
 				appendToFile(t, path, "\n[ridemodel]\ncoefficients_file = \"ridemodel.toml\"\n")
 			},
 			want: "ridemodel.coefficients_file",
-		},
-		{
-			name: "plaintext notification origin",
-			mutate: func(t *testing.T, path string) {
-				t.Helper()
-				replaceInFile(t, path, "[notifications.pushover]", "[notifications.pushover]\nbase_url = \"http://pushover.example.test\"")
-			},
-			want: "notifications.pushover.base_url",
-		},
-		{
-			name: "notification origin carrying a path",
-			mutate: func(t *testing.T, path string) {
-				t.Helper()
-				replaceInFile(t, path, "[notifications.pushover]", "[notifications.pushover]\nbase_url = \"https://pushover.example.test/1/messages.json\"")
-			},
-			want: "must be an origin",
-		},
-		{
-			name: "dark tile style on another origin",
-			mutate: func(t *testing.T, path string) {
-				t.Helper()
-				appendToFile(t, path, "\n[[webui.basemaps]]\nname = \"Streets\"\n"+
-					"style_url = \"https://tiles.example.test/styles/bright\"\n"+
-					"style_url_dark = \"https://dark.example.test/styles/dark\"\n")
-			},
-			want: "same origin",
 		},
 		{
 			name: "readiness address sharing the served port",
@@ -647,58 +299,6 @@ func TestLoadRejectsInvalidConfiguration(t *testing.T) {
 				replaceInFile(t, path, "listen_address = \":8080\"", "listen_address = \":8080\"\nreadiness_address = \":0\"")
 			},
 			want: "valid port",
-		},
-		{
-			name: "non canonical schedule",
-			mutate: func(t *testing.T, path string) {
-				t.Helper()
-				replaceInFile(t, path, "interval = \"1h\"", "interval = \"2h\"")
-			},
-			want: "must equal 1h",
-		},
-		{
-			name: "non-positive stale-after bound",
-			mutate: func(t *testing.T, path string) {
-				t.Helper()
-				replaceInFile(t, path, "max_deletions_per_target = 5", "max_deletions_per_target = 5\nstale_after = \"0s\"")
-			},
-			want: "sync.stale_after must be at least 1s",
-		},
-		{
-			// Sub-second truncates to a zero max_age_seconds in the status
-			// response, which would flag every service as permanently stale.
-			name: "sub-second stale-after bound",
-			mutate: func(t *testing.T, path string) {
-				t.Helper()
-				replaceInFile(t, path, "max_deletions_per_target = 5", "max_deletions_per_target = 5\nstale_after = \"500ms\"")
-			},
-			want: "sync.stale_after must be at least 1s",
-		},
-		{
-			name: "unknown success policy",
-			mutate: func(t *testing.T, path string) {
-				t.Helper()
-				appendToFile(t, path, "\n[notifications]\nsuccess_policy = \"silent\"\n")
-			},
-			want: "notifications.success_policy must be every, quiet, or digest",
-		},
-		{
-			name: "digest policy without a period",
-			mutate: func(t *testing.T, path string) {
-				t.Helper()
-				appendToFile(t, path, "\n[notifications]\nsuccess_policy = \"digest\"\ndigest_interval = \"0s\"\n")
-			},
-			want: "notifications.digest_interval must be positive",
-		},
-		{
-			// A period the recorded run history does not reach back over would
-			// report a total missing every run already pruned from under it.
-			name: "digest period beyond the recorded history",
-			mutate: func(t *testing.T, path string) {
-				t.Helper()
-				appendToFile(t, path, "\n[notifications]\nsuccess_policy = \"digest\"\ndigest_interval = \"169h\"\n")
-			},
-			want: "notifications.digest_interval must not exceed 168h0m0s",
 		},
 		{
 			name: "komoot missing email",
@@ -813,12 +413,12 @@ func TestLoadRejectsAmbiguousSecretEnvironment(t *testing.T) {
 
 func TestLoadClearsDirectSecretsWhenValidationFails(t *testing.T) {
 	configPath, _ := writeValidConfiguration(t, t.TempDir())
-	replaceInFile(t, configPath, `interval = "1h"`, `interval = "2h"`)
+	replaceInFile(t, configPath, `initial_delay = "1m"`, `initial_delay = "0s"`)
 	t.Setenv(configFileEnv, configPath)
 	t.Setenv(envPrefix+"WAHOO__CLIENT_SECRET", "direct-client-secret")
 
 	_, err := Load()
-	require.ErrorContains(t, err, "must equal 1h")
+	require.ErrorContains(t, err, "sync.initial_delay must be positive")
 
 	_, found := os.LookupEnv(envPrefix + "WAHOO__CLIENT_SECRET")
 	assert.False(t, found, "the direct secret environment value remains after a failed Load()")
@@ -870,8 +470,6 @@ id = "rider-b"
 
 [sync]
 initial_delay = "1m"
-interval = "1h"
-max_deletions_per_target = 5
 
 [notifications.pushover]
 application_token_file = %q

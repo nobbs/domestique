@@ -17,6 +17,7 @@ import (
 	"github.com/nobbs/domestique/internal/openmeteo"
 	"github.com/nobbs/domestique/internal/pushover"
 	"github.com/nobbs/domestique/internal/route"
+	"github.com/nobbs/domestique/internal/runtimeconfig"
 	"github.com/nobbs/domestique/internal/sqlite"
 )
 
@@ -262,10 +263,10 @@ func TestStartSurfaceIndexOnAHostThatHasNeverBuilt(t *testing.T) {
 	t.Parallel()
 
 	directory := t.TempDir()
-	settings := surfaceSettings(directory, time.Hour)
+	store := testStore(t, directory)
 
 	current, scheduler, err := startSurfaceIndex(
-		t.Context(), settings, testStore(t, directory), testNotifier(t),
+		t.Context(), stateSettings(directory), surfaceSettings(t, store), store, testNotifier(t),
 	)
 	require.NoError(t, err, "startSurfaceIndex()")
 	t.Cleanup(func() { assert.NoError(t, current.Close(), "Close()") })
@@ -282,7 +283,7 @@ func TestStartSurfaceIndexWhenTheRememberedIndexIsGone(t *testing.T) {
 	require.NoError(t, store.RecordSurfaceIndexBuild(t.Context(), time.Now().UTC(), "abcdef012345"))
 
 	current, scheduler, err := startSurfaceIndex(
-		t.Context(), surfaceSettings(directory, time.Hour), store, testNotifier(t),
+		t.Context(), stateSettings(directory), surfaceSettings(t, store), store, testNotifier(t),
 	)
 	require.NoError(t, err, "a remembered index that is no longer on disk is not an error")
 	t.Cleanup(func() { assert.NoError(t, current.Close(), "Close()") })
@@ -291,25 +292,24 @@ func TestStartSurfaceIndexWhenTheRememberedIndexIsGone(t *testing.T) {
 	assert.Empty(t, current.Generation(), "a generation was served from a file that does not exist")
 }
 
-// The rebuild interval comes from configuration, so a value the scheduler will
-// not accept has to stop the process here rather than leave it running with
-// surface enrichment silently switched off.
-func TestStartSurfaceIndexRefusesAScheduleItCannotKeep(t *testing.T) {
-	t.Parallel()
-
-	directory := t.TempDir()
-	_, _, err := startSurfaceIndex(
-		t.Context(), surfaceSettings(directory, 0), testStore(t, directory), testNotifier(t),
-	)
-	require.Error(t, err, "an interval the scheduler cannot keep was accepted")
-	assert.Contains(t, err.Error(), "surface index scheduler", "which step failed")
+func stateSettings(directory string) *config.Settings {
+	return &config.Settings{State: config.State{DatabasePath: filepath.Join(directory, "state.db")}}
 }
 
-func surfaceSettings(directory string, rebuildInterval time.Duration) *config.Settings {
-	return &config.Settings{
-		State:   config.State{DatabasePath: filepath.Join(directory, "state.db")},
-		Surface: config.Surface{Regions: []string{"europe/germany"}, RebuildInterval: rebuildInterval},
-	}
+// surfaceSettings publishes a live snapshot naming one region, which is the
+// state a host that builds an index restarts into. An interval the scheduler
+// could not keep is not among the states reachable here: it is refused where the
+// settings are written and again where they are read back.
+func surfaceSettings(t *testing.T, store *sqlite.Store) *runtimeconfig.Current {
+	t.Helper()
+	current, err := runtimeconfig.Load(t.Context(), store)
+	require.NoError(t, err, "runtimeconfig.Load()")
+
+	values := current.Values()
+	values.Surface.Regions = []string{"europe/germany"}
+	require.NoError(t, current.Set(t.Context(), values), "Set()")
+
+	return current
 }
 
 func testStore(t *testing.T, directory string) *sqlite.Store {

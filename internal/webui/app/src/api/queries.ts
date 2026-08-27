@@ -6,6 +6,7 @@ import {
   getGetRouteGeometryQueryOptions,
   getGetRouteQueryOptions,
   getGetRoutesQueryOptions,
+  getGetSettingsQueryOptions,
   getGetStatusQueryOptions,
   getGetSyncRunsInfiniteQueryKey,
   getGetWeatherQueryOptions,
@@ -17,6 +18,7 @@ import {
   type Route,
   type RouteGeometry,
   routeGeometry,
+  type Settings,
   type Status,
   type SyncRunPage,
   type WeatherForecast,
@@ -70,6 +72,20 @@ export const statusQuery = () =>
         query.state.data && payload<Status>(query.state.data)?.sync?.active
           ? ACTIVE_POLL_MS
           : false,
+    },
+  });
+
+/**
+ * The settings the service holds, which an operator edits on this page.
+ *
+ * Not cached for the session the way the page's own configuration is: this one
+ * is written from the same screen it is read on, and the answer to a write is
+ * what the form shows next.
+ */
+export const settingsQuery = () =>
+  getGetSettingsQueryOptions({
+    query: {
+      select: (response) => payload<Settings>(response),
     },
   });
 

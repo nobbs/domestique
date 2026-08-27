@@ -41,6 +41,7 @@ import (
 	"github.com/nobbs/domestique/internal/httpapi"
 	"github.com/nobbs/domestique/internal/oauth"
 	"github.com/nobbs/domestique/internal/route"
+	"github.com/nobbs/domestique/internal/runtimeconfig"
 	"github.com/nobbs/domestique/internal/sqlite"
 	"github.com/nobbs/domestique/internal/wahoo"
 	"github.com/nobbs/domestique/internal/webui"
@@ -94,6 +95,14 @@ func run(ctx context.Context, assertionFile, states string) error {
 		}
 	}()
 
+	runtimeSettings, err := runtimeconfig.Load(ctx, store)
+	if err != nil {
+		return fmt.Errorf("loading runtime settings: %w", err)
+	}
+	if err := seedBasemaps(ctx, runtimeSettings); err != nil {
+		return err
+	}
+
 	slots, err := slotsFor(settings.Wahoo.Targets(), states)
 	if err != nil {
 		return err
@@ -116,7 +125,7 @@ func run(ctx context.Context, assertionFile, states string) error {
 		}
 	}
 
-	handler, err := newHandler(settings, store, team, slots)
+	handler, err := newHandler(settings, runtimeSettings, store, team, slots)
 	if err != nil {
 		return err
 	}
@@ -164,6 +173,7 @@ func run(ctx context.Context, assertionFile, states string) error {
 // destination client behind the sync routes.
 func newHandler(
 	settings *config.Settings,
+	runtimeSettings *runtimeconfig.Current,
 	store *sqlite.Store,
 	team *team,
 	slots []demo.Slot,
@@ -211,7 +221,7 @@ func newHandler(
 	handler, err := httpapi.New(
 		&httpapi.Options{
 			TargetIDs:        targetIDs,
-			Basemaps:         basemapOptions(settings.WebUI.Basemaps),
+			Settings:         runtimeSettings,
 			SourceBaseURLs:   sourceBaseURLs(settings),
 			BuildRevision:    "demo",
 			AccessVerifier:   team,
@@ -494,24 +504,40 @@ func (t *team) mint() (string, error) {
 	return signingInput + "." + base64.RawURLEncoding.EncodeToString(signature), nil
 }
 
-// basemapOptions restates the configured basemaps in the HTTP surface's own
-// type, so that package keeps depending on nothing but its options.
-func basemapOptions(basemaps []config.Basemap) []httpapi.Basemap {
-	options := make([]httpapi.Basemap, len(basemaps))
-	for index, basemap := range basemaps {
-		options[index] = httpapi.Basemap{
-			Name:            basemap.Name,
-			StyleURL:        basemap.StyleURL,
-			StyleURLDark:    basemap.StyleURLDark,
-			DarkCartography: basemap.DarkCartography,
-		}
+// seedBasemaps puts the demo's several cartographies where the runtime settings
+// now hold them, replacing the single keyless entry the migration seeds.
+//
+// A demo is where the map is actually looked at, and the picker appears only
+// when there is more than one entry to pick from. These are one provider's
+// distinct styles, so offering five widens nothing the demo may reach. They are
+// written on every start rather than once: the settings page can edit them, and
+// a demo restarted is a demo expected to be back as it ships.
+func seedBasemaps(ctx context.Context, current *runtimeconfig.Current) error {
+	values := current.Values()
+	values.Basemaps = []runtimeconfig.Basemap{
+		{
+			Name:         "Streets",
+			StyleURL:     "https://tiles.openfreemap.org/styles/bright",
+			StyleURLDark: "https://tiles.openfreemap.org/styles/dark",
+		},
+		{Name: "Positron", StyleURL: "https://tiles.openfreemap.org/styles/positron"},
+		{Name: "Liberty", StyleURL: "https://tiles.openfreemap.org/styles/liberty"},
+		{
+			Name:            "Dark",
+			StyleURL:        "https://tiles.openfreemap.org/styles/dark",
+			DarkCartography: true,
+		},
+		{Name: "Fiord", StyleURL: "https://tiles.openfreemap.org/styles/fiord"},
+	}
+	if err := current.Set(ctx, values); err != nil {
+		return fmt.Errorf("seeding the demo basemaps: %w", err)
 	}
 
-	return options
+	return nil
 }
 
 // sourceBaseURLs restates each configured source's base URL keyed by
-// provider, for the same reason basemapOptions restates the basemaps.
+// provider, so the HTTP surface keeps depending on nothing but its options.
 func sourceBaseURLs(settings *config.Settings) map[route.Provider]string {
 	urls := make(map[route.Provider]string, 2)
 	if settings.VeloPlanner != nil {

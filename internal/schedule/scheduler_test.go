@@ -39,6 +39,42 @@ func TestSchedulerRunsAfterDelayAndOnEachTick(t *testing.T) {
 	assert.True(t, fakeTicker.stopped, "Scheduler.Run() did not stop the ticker")
 }
 
+// A gap an operator edits is honoured after the next run rather than at the
+// next restart, which is the whole reason it is a function.
+func TestSchedulerPicksUpAnEditedInterval(t *testing.T) {
+	initial := make(chan time.Time, 1)
+	ticks := make(chan time.Time, 1)
+	interval := &atomic.Int64{}
+	interval.Store(int64(time.Hour))
+	runner := newFakeRunner()
+	scheduler, err := New(Options{
+		InitialDelay: time.Second,
+		IntervalFunc: func() time.Duration { return time.Duration(interval.Load()) },
+	}, runner)
+	require.NoError(t, err)
+
+	created := make(chan time.Duration, 2)
+	scheduler.after = func(time.Duration) <-chan time.Time { return initial }
+	scheduler.ticker = func(period time.Duration) ticker {
+		created <- period
+
+		return &fakeTicker{ticks: ticks}
+	}
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	go scheduler.Run(ctx)
+
+	initial <- time.Now()
+	waitForRun(t, runner.called)
+	require.Equal(t, time.Hour, <-created, "the first ticker's period")
+
+	interval.Store(int64(15 * time.Minute))
+	ticks <- time.Now()
+	waitForRun(t, runner.called)
+	assert.Equal(t, 15*time.Minute, <-created, "the ticker created after the edit")
+}
+
 func TestSchedulerStopsBeforeInitialRunWhenCancelled(t *testing.T) {
 	initial := make(chan time.Time)
 	runner := newFakeRunner()

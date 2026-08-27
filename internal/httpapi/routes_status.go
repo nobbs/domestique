@@ -211,7 +211,7 @@ func (h *Handler) GetStatus(writer http.ResponseWriter, request *http.Request) {
 
 		return
 	}
-	if h.sourceStaleAfter > 0 {
+	if h.settings.Values().Sync.StaleAfter > 0 {
 		trustedInventory, inventoryErr := h.trustedInventoryFreshness(request.Context())
 		if inventoryErr != nil {
 			h.unavailable(writer)
@@ -444,7 +444,7 @@ func (h *Handler) TriggerSurfaceSync(writer http.ResponseWriter, _ *http.Request
 // reported as fresh: a service that has never completed a source run has no
 // trusted inventory yet, which is not the same claim as a stale one.
 func (h *Handler) trustedInventoryFreshness(ctx context.Context) (*openapi.TrustedInventory, error) {
-	view := &openapi.TrustedInventory{Fresh: true, MaxAgeSeconds: int(h.sourceStaleAfter / time.Second)}
+	view := &openapi.TrustedInventory{Fresh: true, MaxAgeSeconds: int(h.settings.Values().Sync.StaleAfter / time.Second)}
 	lastSuccess, found, err := h.state.LastSuccessfulPhaseCompletion(ctx, string(SyncPhaseSource))
 	if err != nil {
 		return nil, fmt.Errorf("reading the trusted inventory's last success: %w", err)

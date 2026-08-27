@@ -53,6 +53,7 @@ implementation detail.
 | sync schedule | whether the timer may start each half | none |
 | reprocess request | one stage an operator has asked to have redone | none |
 | notification state | last delivered failure category and suppression deadline | none |
+| runtime settings | the settings an operator edits while the service runs, including the basemap list and the surface regions | none |
 
 Every recorded run carries an opaque reference: random bytes, meaningless on
 their own, and the one thing about a run that may be said out loud. It is what a
@@ -453,10 +454,11 @@ A target deletion is permitted only when all conditions hold:
 - the target has completed all required creates and updates in the run; and
 - the deletion plan contains at most five routes for that target.
 
-A previously populated source inventory that becomes empty is blocked when
-sync.empty_source_deletion equals "deny". Setting it to "allow" is a deliberate
-static deployment action for removing the final source routes; it does not
-bypass the remaining checks.
+A previously populated source inventory that becomes empty is blocked while the
+empty-source deletion gate denies it, which is how it is seeded and where an
+operator leaves it. Opening it is a deliberate act for removing the final source
+routes, taken on the settings page and in force from the next run; it does not
+bypass the remaining checks, and it stays open until it is closed again.
 
 Any larger shrink, missing source authentication, malformed geometry, or
 incomplete listing blocks all deletions and yields a safe failure category. The
@@ -706,13 +708,15 @@ break.
 
 #### Trusted inventory freshness
 
-`trusted_inventory` is present only when `sync.stale_after` is configured. It
-reports the age of the trusted source inventory — the stored stages the source
-phase last replaced wholesale — against that bound, derived from local state
-alone: the last source-phase run that recorded a success, compared to the
-current instant. Reading it starts no provider work and is evaluated on every
-scheduled tick, whether or not the source phase ran on that tick, because the
-inventory can go stale while the schedule has that half switched off.
+`trusted_inventory` is always present: `sync.stale_after` is a runtime setting
+carrying a default rather than an optional key, so there is always a bound to
+report against. It reports the age of the trusted source inventory — the stored
+stages the source phase last replaced wholesale — against that bound, derived
+from local state alone: the last source-phase run that recorded a success,
+compared to the current instant. Reading it starts no provider work and is
+evaluated on every scheduled tick, whether or not the source phase ran on that
+tick, because the inventory can go stale while the schedule has that half
+switched off.
 
 `last_success_at` is absent until a source phase has ever succeeded: a service
 with no trusted inventory yet has nothing to call stale, which is a different
@@ -823,10 +827,14 @@ identity uses 403; a request that does not come from the browser UI's origin
 also uses 403; malformed client input uses 400.
 
 The OAuth start, callback, the protected `POST /v1/sync` triggers, the protected
-`PUT /v1/sync/schedule` switch, and the protected
+`PUT /v1/sync/schedule` switch, the protected
 `POST /v1/providers/{provider}/routes/{source-route-id}/stages/{stage}/reprocess`
-request are the only state-changing endpoints. There is no HTTP or CLI endpoint
-for route deletion, configuration mutation, or Wahoo target removal.
+request, and the protected `PUT /v1/settings` write are the only state-changing
+endpoints. The settings write changes what the service does next and nothing it
+has stored about a route; it reaches the runtime settings
+[the configuration specification](configuration.md#runtime-settings) defines and
+no other configuration. There is no HTTP or CLI endpoint for route deletion,
+static configuration or secret mutation, or Wahoo target removal.
 
 Every one of them except the OAuth start and callback is refused with 403 unless
 its `Origin` header equals the browser UI's origin. Identity is settled first, so
@@ -841,6 +849,19 @@ failure category in a half sends one failure message; matching failures in that
 half are suppressed for six hours. The first following success is the recovery
 signal. Suppression is keyed by half and category together: the same category
 failing in both halves is two problems, and each is worth one alert.
+
+### The channel switch
+
+`notifications.enabled` is a runtime setting rather than a policy, and it is the
+one thing that suppresses every signal below. While it is off nothing is sent: a
+failure, a blocked run, a recovery, and a stale inventory are held back exactly
+as a routine success is. It is written down here as plainly as it is offered on
+the settings page, because an operator reading it as a quieter success policy
+would be switching off the alerts notifications exist for.
+
+Nothing is written down as sent while it is off, either. A suppression window is
+recorded only by a message that actually went out, so turning the channel back
+on cannot find a six-hour window standing behind an alert nobody ever heard.
 
 ### Trusted inventory staleness
 
@@ -867,7 +888,8 @@ succeeded has no trusted inventory to call stale, and is never notified as one.
 `notifications.success_policy` decides what a *routine* success sends. A routine
 success is one whose half's previous recorded run also succeeded; the recovery
 signal is not routine, and neither is a failure or a blocked run. No policy can
-suppress those three, which is the point of separating them.
+suppress those three, which is the point of separating them; only the channel
+switch above can.
 
 | Policy | A routine success sends |
 | --- | --- |
@@ -967,7 +989,9 @@ The implementation test suite must cover at least:
   data;
 - each success policy delivering what it states for a routine success, while
   `quiet` and `digest` still deliver failures, blocked runs, and the first
-  success that ends one — including across a half left needing onboarding; and
+  success that ends one — including across a half left needing onboarding;
+- a switched-off channel sending none of those, staleness included, and leaving
+  no suppression window behind for the moment it is switched back on; and
 - a digest totalling one interval of successful runs, carrying no run reference
   or target identity, starting its clock without reporting prior history, and
   passing over an interval that nothing succeeded in without leaving its runs to

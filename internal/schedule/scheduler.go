@@ -28,17 +28,25 @@ func (f RunnerFunc) Run(ctx context.Context) { f(ctx) }
 // Options configures delayed startup and periodic execution.
 type Options struct {
 	InitialDelay time.Duration
-	Interval     time.Duration
+	// Interval is the gap between runs. It is fixed for the life of the
+	// scheduler.
+	Interval time.Duration
+	// IntervalFunc supersedes Interval where the gap is a setting an operator
+	// edits while the service runs. It is read again after every run, so an
+	// edit takes effect at the next gap rather than at the next restart. New
+	// wraps a constant Interval into one when it is unset.
+	IntervalFunc func() time.Duration
 }
 
 // Scheduler starts one delayed run and then runs on an interval. It never
 // starts concurrent work; each Runner invocation finishes before the next tick
 // is considered.
 type Scheduler struct {
-	runner Runner
-	after  func(time.Duration) <-chan time.Time
-	ticker func(time.Duration) ticker
-	now    func() time.Time
+	runner   Runner
+	interval func() time.Duration
+	after    func(time.Duration) <-chan time.Time
+	ticker   func(time.Duration) ticker
+	now      func() time.Time
 	// startsAt holds the instant the first run is due, and only while it is
 	// still due. Nil is the ordinary state of a scheduler that has started.
 	startsAt atomic.Pointer[time.Time]
@@ -53,16 +61,22 @@ type ticker interface {
 // New creates an inert scheduler. Run starts its lifecycle under the caller's
 // context; the constructor never starts a goroutine.
 func New(options Options, runner Runner) (*Scheduler, error) {
-	if runner == nil || options.InitialDelay <= 0 || options.Interval <= 0 {
+	interval := options.IntervalFunc
+	if interval == nil {
+		constant := options.Interval
+		interval = func() time.Duration { return constant }
+	}
+	if runner == nil || options.InitialDelay <= 0 || interval() <= 0 {
 		return nil, errors.New("scheduler runner, initial delay, and interval are required")
 	}
 
 	return &Scheduler{
-		runner:  runner,
-		options: options,
-		after:   time.After,
-		ticker:  newTicker,
-		now:     time.Now,
+		runner:   runner,
+		interval: interval,
+		options:  options,
+		after:    time.After,
+		ticker:   newTicker,
+		now:      time.Now,
 	}, nil
 }
 
@@ -78,14 +92,23 @@ func (s *Scheduler) Run(ctx context.Context) {
 	}
 	s.runner.Run(ctx)
 
-	intervalTicker := s.ticker(s.options.Interval)
-	defer intervalTicker.Stop()
+	interval := s.interval()
+	intervalTicker := s.ticker(interval)
+	defer func() { intervalTicker.Stop() }()
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-intervalTicker.Chan():
 			s.runner.Run(ctx)
+			// A gap that has been edited is honoured from here on. The ticker is
+			// replaced rather than reconfigured because a ticker whose period
+			// changed under it would still be counting the old one.
+			if edited := s.interval(); edited != interval && edited > 0 {
+				intervalTicker.Stop()
+				interval = edited
+				intervalTicker = s.ticker(interval)
+			}
 		}
 	}
 }

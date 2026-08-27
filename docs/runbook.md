@@ -28,9 +28,11 @@ easily from the browser at `/v1/status`.
 
 **Pushover.** A new failure notifies — the same one again is suppressed for the
 six hours described below — and a success notifies as far as
-`notifications.success_policy` allows: `every` sends one message per successful
-run, `quiet` sends none while the service is healthy, and `digest` replaces them
-with one aggregate message per `notifications.digest_interval`. A success
+the success policy allows: `every` sends one message per successful run, `quiet`
+sends none while the service is healthy, and `digest` replaces them with one
+aggregate message per digest period. Both, and the switch for the whole channel,
+are on the settings page — and that switch is not a quieter policy: off, a
+failure goes unsent too. A success
 carries its counts. A failure arrives titled `Domestique sync failed` with a
 body naming the half and one stable category:
 
@@ -114,36 +116,42 @@ are static configuration and need a restart.
 ## A deletion was blocked
 
 **You will have seen** a `blocked` result and, on the status page, **Held by a
-safety gate**. Neither gate can be opened from the browser, deliberately: the
-UI can show you the gate and run the half again, and the decision to widen a
-deletion lives in static configuration on the host.
+safety gate**. The two gates differ in what you can do about them: the
+empty-source gate is a switch on the settings page, deliberately behind a
+confirmation, and the per-run deletion limit is a constant nothing can raise.
 
 ### `empty_source` — the library came back empty
 
 The source half read zero stages from a library that previously held some, and
-`sync.empty_source_deletion` is `"deny"`. The empty inventory was **not
+the empty-source deletion gate denies it. The empty inventory was **not
 stored**, so the last inventory validated as whole is still what the targets
 reconcile against: both accounts are intact and stay intact.
 
 Treat this as the source being wrong until you know otherwise. Open the library
 and confirm what is actually there. If it really is meant to be empty — you are
-removing the final routes on purpose — set `empty_source_deletion = "allow"` on
-the host, restart, run the source half, then set it back to `"deny"`. Nothing
-else about the gate is bypassed by that setting.
+removing the final routes on purpose — open **Settings → Service settings**,
+turn on *Let an empty library delete a target's routes*, confirm the dialog, run
+the source half, and turn it off again. It takes effect on that next run, with
+no restart, and it stays on until you turn it off: nothing closes it for you.
+Nothing else about the gate is bypassed by it.
 
 ### `deletion_limit` — more removals than the per-run maximum
 
-One target's reconciliation would have removed more owned routes than
-`sync.max_deletions_per_target`. The gate is checked before any create or
-update, so **that target was not written to at all** in that run; it stays
-behind until the situation is resolved. The other target is reconciled
-independently.
+One target's reconciliation would have removed more than five owned routes,
+which is the per-run limit. It is a constant rather than a setting: a limit that
+exists to make a runaway deletion stop is not one to raise in the moment it
+stops something. The gate is checked before any create or update, so **that
+target was not written to at all** in that run; it stays behind until the
+situation is resolved. The other target is reconciled independently.
 
 Satisfy yourself that the removals are intended. If they are not — routes
 vanished from the library by accident — restore them at the source and run the
-target half again; no host change is needed and nothing was lost. If they are,
-raise `max_deletions_per_target` on the host, restart, run the target half, then
-put the value back to what it was.
+target half again; nothing was lost. If they are, and the removals are more than
+five, the way through is **Delete all routes…** on that account: it deletes
+every route this service owns from that slot, which the limit does not bound,
+and the next run rebuilds the slot from the stored library. That costs a full
+re-upload of the routes that were meant to stay, so it is worth being sure
+first.
 
 ## The library is not being read
 
@@ -278,9 +286,11 @@ no index is live yet: either the first build has not run (it waits a few minutes
 after start), or the last build's file did not survive. Either way the next
 scheduled build fills it in.
 
-**When nothing is classified on purpose**, `regions` in the host's `[surface]`
-configuration is empty. That is the default, and it switches the whole feature
-off: no extract is downloaded and no index is built.
+**When nothing is classified on purpose**, the region list under **Settings →
+Service settings** is empty. That is the default, and it switches the whole
+feature off: no extract is downloaded and no index is built. Adding a region
+there does not build anything by itself: the next rebuild on the configured
+schedule does, and stages are classified on the pass after that.
 
 A single stage classified wrongly is a **Reprocess** away; re-planning a stage
 reclassifies it automatically, because the cached ranges describe coordinates
@@ -289,7 +299,9 @@ that were replaced.
 ## What this runbook does not cover
 
 There is no state backup, no key rotation, and no remote route cleanup.
-There is also no HTTP or CLI path to delete a route, mutate configuration, or
-remove a target: everything in this guide is either a browser action the service
-already offers or a change to static configuration on the host followed by a
-restart.
+There is also no HTTP or CLI path to delete a route, change a secret or an
+endpoint, or remove a target: everything in this guide is either a browser
+action the service already offers — including the settings page, which reaches
+the deletion gate, the staleness bound, the notification settings, the basemap
+list, and the surface regions — or a change to the host's configuration file
+followed by a restart.

@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/nobbs/domestique/internal/route"
+	"github.com/nobbs/domestique/internal/runtimeconfig"
 )
 
 func TestStoreAuthorizesAndEncryptsRefreshToken(t *testing.T) {
@@ -681,6 +682,79 @@ func TestStoreSchedulesBothPhasesUntilChanged(t *testing.T) {
 	assert.True(t, targets, "the target half was switched off")
 }
 
+// The seeded settings are the defaults the configuration file documented for
+// the same keys, so an upgraded deployment that changes nothing runs on exactly
+// what it ran on before.
+func TestStoreSeedsTheDocumentedRuntimeSettings(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+
+	values, err := store.RuntimeSettings(t.Context())
+	require.NoError(t, err, "RuntimeSettings()")
+
+	assert.False(t, values.Sync.AllowEmptySourceDeletion, "final-library deletion is denied until asked for")
+	assert.Equal(t, 24*time.Hour, values.Sync.StaleAfter, "Sync.StaleAfter")
+	assert.True(t, values.Notifications.Enabled, "notifications are on")
+	assert.Equal(t, runtimeconfig.SuccessPolicyEvery, values.Notifications.Policy, "Notifications.Policy")
+	assert.Equal(t, 24*time.Hour, values.Notifications.DigestInterval, "Notifications.DigestInterval")
+	assert.Equal(t, "https://api.pushover.net", values.Notifications.PushoverBaseURL, "Notifications.PushoverBaseURL")
+	require.Len(t, values.Basemaps, 1, "Basemaps")
+	assert.Equal(t, "Streets", values.Basemaps[0].Name, "Basemaps[0].Name")
+	assert.Equal(t, "https://tiles.openfreemap.org/styles/bright", values.Basemaps[0].StyleURL, "Basemaps[0].StyleURL")
+	assert.Empty(t, values.Surface.Regions, "surface classification is off until regions are named")
+	assert.Equal(t, 7*24*time.Hour, values.Surface.RebuildInterval, "Surface.RebuildInterval")
+}
+
+func TestStoreKeepsTheRuntimeSettingsItWasGiven(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+
+	next := runtimeconfig.Values{
+		Sync: runtimeconfig.Sync{AllowEmptySourceDeletion: true, StaleAfter: 90 * time.Minute},
+		Notifications: runtimeconfig.Notifications{
+			Enabled:         false,
+			Policy:          runtimeconfig.SuccessPolicyDigest,
+			DigestInterval:  6 * time.Hour,
+			PushoverBaseURL: "https://pushover.example.test",
+		},
+		Basemaps: []runtimeconfig.Basemap{
+			{Name: "Streets", StyleURL: "https://tiles.example.test/bright"},
+			{Name: "Satellite", StyleURL: "https://imagery.example.test/style.json", DarkCartography: true},
+		},
+		Surface: runtimeconfig.Surface{
+			Regions:         []string{"europe/germany/rheinland-pfalz", "europe/france"},
+			RebuildInterval: 48 * time.Hour,
+		},
+	}
+	require.NoError(t, store.SetRuntimeSettings(t.Context(), next), "SetRuntimeSettings()")
+
+	stored, err := store.RuntimeSettings(t.Context())
+	require.NoError(t, err, "RuntimeSettings() after the write")
+	assert.Equal(t, next, stored, "what was written is what is read back, in the order it was arranged in")
+}
+
+// A shorter list is the whole list. Rewriting it must remove the entries that
+// are gone rather than leave them behind at their old positions.
+func TestStoreReplacesTheRuntimeListsWhole(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	values, err := store.RuntimeSettings(t.Context())
+	require.NoError(t, err, "RuntimeSettings()")
+
+	values.Basemaps = append(values.Basemaps, runtimeconfig.Basemap{
+		Name:     "Satellite",
+		StyleURL: "https://imagery.example.test/style.json",
+	})
+	values.Surface.Regions = []string{"europe/germany", "europe/france"}
+	require.NoError(t, store.SetRuntimeSettings(t.Context(), values), "SetRuntimeSettings()")
+
+	values.Basemaps = values.Basemaps[:1]
+	values.Surface.Regions = nil
+	require.NoError(t, store.SetRuntimeSettings(t.Context(), values), "SetRuntimeSettings() with shorter lists")
+
+	stored, err := store.RuntimeSettings(t.Context())
+	require.NoError(t, err, "RuntimeSettings() after the second write")
+	assert.Len(t, stored.Basemaps, 1, "the removed basemap is gone")
+	assert.Empty(t, stored.Surface.Regions, "the removed regions are gone")
+}
+
 // Each phase's own last run is what an operator reads; the newest run of the
 // other phase answers a different question.
 func TestStoreReportsTheLastRunOfEachPhase(t *testing.T) {
@@ -1089,7 +1163,11 @@ func TestStoreCachesStageSurfaceAgainstTheGeometryItDescribes(t *testing.T) {
 
 func TestStoreMigratesStoredSurfaceRangesToCamelCase(t *testing.T) {
 	databasePath := filepath.Join(t.TempDir(), "state.db")
-	seedSchemaVersion(t, databasePath, len(schemaMigrations())-1)
+	// The state is seeded one short of the migration that rewrites the field
+	// names, which is 16 and stays 16 however many migrations are appended after
+	// it. Counting back from the end of the list instead would quietly stop
+	// testing this migration the moment another one shipped.
+	seedSchemaVersion(t, databasePath, 15)
 
 	database, err := sql.Open(driverName, databasePath)
 	require.NoError(t, err, "opening state before the range migration")

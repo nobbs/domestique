@@ -21,8 +21,10 @@ const (
 
 // Options configures a Pushover client with resolved static credentials.
 type Options struct {
-	Transport        http.RoundTripper
-	BaseURL          string
+	Transport http.RoundTripper
+	// BaseURL is read again before each send rather than resolved once, because
+	// an operator edits it while the service runs.
+	BaseURL          func() string
 	ApplicationToken []byte
 	UserKey          []byte
 	Timeout          time.Duration
@@ -31,7 +33,7 @@ type Options struct {
 // Client sends a bounded Pushover notification request.
 type Client struct {
 	client           *http.Client
-	baseURL          *url.URL
+	baseURL          func() string
 	applicationToken []byte
 	userKey          []byte
 }
@@ -42,11 +44,12 @@ func New(options *Options) (*Client, error) {
 		return nil, errors.New("pushover: options and credentials are required")
 	}
 	baseURL := options.BaseURL
-	if baseURL == "" {
-		baseURL = defaultBaseURL
+	if baseURL == nil {
+		baseURL = func() string { return defaultBaseURL }
 	}
-	parsedBaseURL, err := parseOrigin(baseURL)
-	if err != nil {
+	// Checked once, against what it says now. A later edit is refused where it
+	// is written, which is the only place that can still report the refusal.
+	if _, err := parseOrigin(baseURL()); err != nil {
 		return nil, fmt.Errorf("pushover: base url: %w", err)
 	}
 	timeout := options.Timeout
@@ -66,7 +69,7 @@ func New(options *Options) (*Client, error) {
 			Timeout:   timeout,
 			Transport: transport,
 		},
-		baseURL:          parsedBaseURL,
+		baseURL:          baseURL,
 		applicationToken: append([]byte(nil), options.ApplicationToken...),
 		userKey:          append([]byte(nil), options.UserKey...),
 	}, nil
@@ -84,7 +87,11 @@ func (c *Client) Send(ctx context.Context, title, message string) (err error) {
 		"title":   {title},
 		"message": {message},
 	}
-	endpoint := *c.baseURL
+	parsedBaseURL, err := parseOrigin(c.baseURL())
+	if err != nil {
+		return fmt.Errorf("pushover: base url: %w", err)
+	}
+	endpoint := *parsedBaseURL
 	endpoint.Path = "/1/messages.json"
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.String(), strings.NewReader(values.Encode()))
 	if err != nil {

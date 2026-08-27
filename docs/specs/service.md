@@ -23,13 +23,14 @@ small Linux cloud VM. It has no CLI.
 
 The service serves a read-only browser UI for route preview. Its HTTP surface is
 read-only JSON for status, route data, and route geometry, except for the
-protected Wahoo OAuth onboarding flow and the manual triggers over
-synchronisation and surface enrichment. The UI is a
-view onto stored state: it draws the whole stored library on one map, opens any
-one source route stage over that same map, and reports synchronisation on a
-second view. A route is not a page of its own — it takes over the panel the
-search occupies and adds its own layers to the map already on screen — but the
-route being read is carried in the address, so the view stays linkable.
+protected Wahoo OAuth onboarding flow, the manual triggers over synchronisation
+and surface enrichment, and the runtime settings the UI reads and writes back.
+The UI is a view onto stored state: it draws the whole stored library on one
+map, opens any one source route stage over that same map, and reports
+synchronisation on a second view. A route is not a page of its own — it takes
+over the panel the search occupies and adds its own layers to the map already on
+screen — but the route being read is carried in the address, so the view stays
+linkable.
 
 ## HTTP wire contract
 
@@ -294,6 +295,13 @@ reclassifying stages already stored — and shares the same single-flight guard
 as the other four triggers. Every one of them is limited to the same principal
 as the rest of the surface.
 
+Beside those is the one write that changes what the service *is* rather than
+what it does next: the settings write stores the runtime settings an operator
+edits from the UI, defined in
+[the configuration specification](configuration.md#runtime-settings). It reaches
+no route and no secret either, and what it writes is validated by the same rules
+that would have been applied to it at startup.
+
 A synchronization has two halves, and each is separately switched, triggered,
 and reported:
 
@@ -370,6 +378,14 @@ The read-only JSON surface is deliberately small:
   one. That link is only useful to the operator whose account holds the route:
   the source route is private to that account, and following it as anyone else
   reaches the provider's own refusal, not the route.
+- `GET /v1/settings` returns every setting an operator may change while the
+  service is running, in the same shape the write below takes back: the two
+  synchronisation settings, the notification settings, the basemap list, and
+  the surface settings. It is the whole object every time, because a form
+  showing only part of what it is about to replace would silently revert the
+  rest. It carries no secret and no static configuration — [the configuration
+  specification](configuration.md#runtime-settings) states which settings live
+  here and which stay in the file.
 - `GET /v1/weather` returns an hourly forecast for up to 48 repeated `point`
   values, so the page can show a ride's weather without reaching Open-Meteo
   itself. Each `point` is `latitude,longitude,time`: decimal-degree latitude
@@ -380,9 +396,10 @@ The read-only JSON surface is deliberately small:
   a window Open-Meteo could not answer is refused as `400` before any
   outbound call; a provider failure is `502`, carrying no upstream response
   text.
-The seven endpoints below that change state — the four sync triggers, the
-schedule switch, the reprocess request, and the enrichment retry — additionally
-require the browser origin described above, and answer 403 without it.
+The endpoints below that change state — the sync triggers, the schedule switch,
+the reprocess request, the enrichment retry, and the settings write —
+additionally require the browser origin described above, and answer 403 without
+it.
 
 - `POST /v1/sync` queues one immediate synchronization of both halves through
   the same reporting path as the schedule. It returns `202 Accepted`, or `409
@@ -412,13 +429,24 @@ require the browser origin described above, and answer 403 without it.
   Conflict` when a synchronization or another such pass is already running. It
   never reads VeloPlanner or writes a Wahoo target, so it carries none of the
   other triggers' provider risk.
+- `PUT /v1/settings` replaces every runtime setting at once and answers with
+  what it stored. A body naming only some of them is refused for the reason the
+  schedule switch is: the rest would be left at whatever the caller assumed.
+  A value the service would have refused at startup is refused here as `400`,
+  in a message naming the setting, and what it stores is in force for the next
+  request and the next run without a restart. It changes what the service does
+  next; it changes nothing it has stored about a route, and it cannot reach a
+  secret, a listener, or a provider endpoint, because none of those is a
+  runtime setting.
 
 The browser UI is served from the same origin and the same authenticated
 listener: an application entry document and immutable hashed static assets.
-`/`, `/sync`, and `/settings` are authenticated browser entry routes; Settings
-stores the selected theme and units only in the authenticated browser's local
-storage. It introduces no JSON endpoint, does not alter the route or moving-time
-contracts, and unknown paths remain JSON `404` responses.
+`/`, `/sync`, and `/settings` are authenticated browser entry routes. Settings
+holds two kinds of preference and keeps them apart: the theme and the units are
+this browser's alone and stay in its local storage, while the service's runtime
+settings are read and written over the endpoints above and are the same for
+every browser. It does not alter the route or moving-time contracts, and unknown
+paths remain JSON `404` responses.
 
 The response schemas are defined in
 [the sync lifecycle specification](sync-lifecycle.md). They must never expose
@@ -440,8 +468,13 @@ The service has a provider-neutral configuration contract:
 
 - One read-only static configuration file holds non-secret values: VeloPlanner
   account identity and endpoint, Wahoo client ID and API endpoints, target slot
-  labels, Access team domain, application audience tag and allowed address, sync
-  cadence, deletion limit, data path, and public callback URL.
+  labels, Access team domain, application audience tag and allowed address,
+  initial run delay, data path, and public callback URL.
+- The settings an operator has reason to change while the service runs are not
+  in that file. They are held in the state database, edited over the settings
+  endpoints, and in force without a restart; the
+  [configuration specification](configuration.md#runtime-settings) defines them.
+  No secret is among them.
 - Sensitive static values are loaded by Koanf from Docker-style files or the
   documented direct environment variables: VeloPlanner credentials, Wahoo
   client secret, Pushover application token and user key, and a 32-byte
@@ -726,16 +759,20 @@ secret files remain outside Git.
   service verifies itself. Beyond OAuth, the only ones
   that change anything are the synchronization triggers, the two schedule
   switches, the reprocess request, which discards derived answers so they are
-  worked out again, and the surface-enrichment retry, which reclassifies stored
-  stages without reading VeloPlanner or writing a Wahoo target. Nothing on the
-  surface edits route data, in this service or at the source.
+  worked out again, the surface-enrichment retry, which reclassifies stored
+  stages without reading VeloPlanner or writing a Wahoo target, and the settings
+  write, which changes how the service behaves next and nothing it holds about a
+  route. Nothing on the surface edits route data, in this service or at the
+  source.
 - The browser UI renders stored source stages on a map, is reachable only by
-  the configured identity, and offers no editing affordance. Selecting a surface
-  class or gradient band in its key only changes what the map and the chart
-  emphasise. Searching the library does the same for the listing it already
-  holds: it is decided in the browser, over the safe display names the inventory
-  listing already carries, and it adds no query parameter or any other
-  server-side query surface.
+  the configured identity, and offers no affordance for editing a route. The
+  settings it does offer are the service's own runtime settings and this
+  browser's display preferences, neither of which touches stored route data.
+  Selecting a surface class or gradient band in its key only changes what the
+  map and the chart emphasise. Searching the library does the same for the
+  listing it already holds: it is decided in the browser, over the safe display
+  names the inventory listing already carries, and it adds no query parameter or
+  any other server-side query surface.
 - The only outbound link the UI offers is to the public source repository, and
   following it discloses neither the origin nor anything about the route on
   screen.

@@ -11,11 +11,29 @@ import (
 	"slices"
 	"sort"
 	"sync/atomic"
+	"time"
 
 	"github.com/nobbs/domestique/internal/route"
 )
 
 const authorizedState = "authorized"
+
+// maxDeletionsPerTarget bounds how many owned routes one reconciliation may
+// remove from one target.
+//
+// It was an operator setting only in name: the configuration file accepted the
+// key and then refused every value but five, so the number was never anything
+// else. A limit that exists to make a runaway deletion stop is not a dial an
+// operator has a use for, and naming it here says so.
+const maxDeletionsPerTarget = 5
+
+// Interval is how often a scheduled reconciliation runs.
+//
+// Like maxDeletionsPerTarget it was a file key that accepted exactly one value.
+// An hour is the cadence the whole design is sized for — the rate limits, the
+// staleness bound, and the digest window are all expressed against it — so it
+// is stated here rather than asked for.
+const Interval = time.Hour
 
 const encoderContentVersion = "fit-v4-elevation-profile"
 
@@ -120,11 +138,17 @@ type Result struct {
 }
 
 // Options configures safety rules for a synchronizer. It contains no secrets
-// and is intentionally independent of the static configuration package.
+// and is intentionally independent of the configuration packages.
 type Options struct {
-	TargetIDs                []string
-	MaxDeletionsPerTarget    int
-	AllowEmptySourceDeletion bool
+	TargetIDs []string
+	// AllowEmptySourceDeletion reports whether a trusted but empty source may
+	// delete the final owned destination routes.
+	//
+	// It is a function rather than a value because it is the switch an operator
+	// turns on for one deliberate run and off again afterwards. Each source is
+	// asked as it is read, so a run already in flight keeps the answer it
+	// started with and the next one gets the new one.
+	AllowEmptySourceDeletion func() bool
 }
 
 // Source provides a complete, validated inventory of one provider's stages.
@@ -212,8 +236,7 @@ type Service struct {
 	annotator                Annotator
 	predictor                Predictor
 	targetIDs                []string
-	maxDeletionsPerTarget    int
-	allowEmptySourceDeletion bool
+	allowEmptySourceDeletion func() bool
 	running                  atomic.Bool
 }
 
@@ -234,8 +257,11 @@ func New(
 	if options == nil || state == nil || len(sources) == 0 || processor == nil || encoder == nil || target == nil {
 		return nil, errors.New("sync options and dependencies are required")
 	}
-	if len(options.TargetIDs) < 1 || len(options.TargetIDs) > 2 || options.MaxDeletionsPerTarget <= 0 || options.MaxDeletionsPerTarget > 5 {
-		return nil, errors.New("sync requires between one and two targets and a deletion limit from one through five")
+	if len(options.TargetIDs) < 1 || len(options.TargetIDs) > 2 {
+		return nil, errors.New("sync requires between one and two targets")
+	}
+	if options.AllowEmptySourceDeletion == nil {
+		return nil, errors.New("sync requires an empty-source deletion gate")
 	}
 
 	targetIDs := append([]string(nil), options.TargetIDs...)
@@ -275,7 +301,6 @@ func New(
 		annotator:                annotator,
 		predictor:                predictor,
 		targetIDs:                targetIDs,
-		maxDeletionsPerTarget:    options.MaxDeletionsPerTarget,
 		allowEmptySourceDeletion: options.AllowEmptySourceDeletion,
 	}, nil
 }
@@ -357,7 +382,7 @@ func (s *Service) runOneSource(
 	if err != nil {
 		return OutcomeFailed, FailureSource, 0
 	}
-	if len(ordered) == 0 && trustedCount > 0 && !s.allowEmptySourceDeletion {
+	if len(ordered) == 0 && trustedCount > 0 && !s.allowEmptySourceDeletion() {
 		return OutcomeBlocked, FailureEmptySource, 0
 	}
 	exported := s.exportProfiles(ordered)
@@ -757,7 +782,7 @@ func (s *Service) reconcileTarget(
 		return counts{}, FailureState
 	}
 	deletions := missingStages(mappings, desired)
-	if len(deletions) > s.maxDeletionsPerTarget {
+	if len(deletions) > maxDeletionsPerTarget {
 		return counts{}, FailureDeletionLimit
 	}
 

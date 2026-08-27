@@ -72,111 +72,26 @@ id = "rider-a"
 id = "rider-b"
 
 [sync]
+# How long after start the first run is attempted. It is a file setting because
+# it is consumed once, at the start it delays: a value edited later would change
+# nothing until the restart an editable setting exists to avoid.
 initial_delay = "1m"
-interval = "1h"
-max_deletions_per_target = 5
-empty_source_deletion = "deny"
-stale_after = "24h"
 
-[notifications]
-# How much a routine successful run tells you. A failure, a blocked run, and the
-# first success that ends one are always sent, whatever this says: they are the
-# signals notifications exist for, and no policy here can hold them back.
-#
-#   every  — one message per successful run. The default, and what a deployment
-#            that says nothing about this keeps.
-#   quiet  — say nothing while the service is healthy.
-#   digest — replace the per-run message with one aggregate message per period.
-#
-# A digest carries counts alone: how many runs of each half succeeded and how
-# many routes they created, updated and deleted. It names no route, no target
-# and no run.
-success_policy = "every"
-
-# The period one digest covers, read only by the digest policy. It is sent by
-# the first pass to finish after the period elapses — a whole pass, so a window
-# never closes between the two halves of one — and so a service that is not
-# running sends nothing rather than an empty message. At most seven days: a
-# digest totals the recorded run history, and a longer period would report a
-# total missing every run already pruned from under it.
-digest_interval = "24h"
-
+# The credentials a notification is sent with. Whether notifications are sent at
+# all, how much a routine success reports, and the origin they are sent to are
+# settings you edit on the service's own settings page — they live in the state
+# database and take effect on the next run rather than the next restart.
 [notifications.pushover]
 application_token_file = "/run/secrets/pushover_application_token"
 user_key_file = "/run/secrets/pushover_user_key"
 
-# The cartographies the route map view offers, in the order you want them. The
-# first is what a browser that has never chosen one loads; list only one and the
-# map shows it with no picker, which is what every deployment did before this
-# setting was a list.
-#
-# Each entry's host is added to the page's Content-Security-Policy, so listing a
-# second provider is a deliberate widening: the page still requests only the map
-# on screen, but it is now allowed to reach either. Your browser requests tiles
-# for the area of a route you open, or for an area centred on your own live
-# position if you press the map's locate button — the one thing your browser
-# sends outside the Tailnet on this service's behalf. Your raw position never
-# leaves the browser: it is never sent to this service, logged, or stored, only
-# used to work out which area the next batch of tiles has to cover.
-[[webui.basemaps]]
-# The label the picker shows, and what your browser remembers your choice by.
-# Renaming an entry forgets that choice, which is a fair price for a clear name.
-name = "Streets"
-
-# The MapLibre style to load. The default is a keyless provider, so nothing
-# identifies you to it and no credential reaches the page.
-#
-# A provider requiring an API key would carry it in this URL's query, where it is
-# visible to anyone who can load the UI. Self-hosted tiles avoid both concerns.
-style_url = "https://tiles.openfreemap.org/styles/bright"
-
-# The style loaded instead when your system asks for a dark colour scheme, which
-# is how the map follows the rest of the UI after dark. It must be on the same
-# host as this entry's style_url. Leave it out for a provider that publishes one
-# style, and the map keeps that style in both schemes.
-style_url_dark = "https://tiles.openfreemap.org/styles/dark"
-
-# A second entry adds satellite imagery with roads and labels drawn over it.
-# Commented out because it needs an account: MapTiler's free plan covers a
-# personal deployment, and the key goes in this URL's query, where anyone who can
-# load the UI can read it. Their terms also ask for their logo on the map, which
-# this service does not draw — worth knowing before you use a free key.
-#
-# [[webui.basemaps]]
-# name = "Satellite"
-# style_url = "https://api.maptiler.com/maps/hybrid/style.json?key=YOUR_KEY"
-#
-# Imagery is dark ground whatever your system asks for, so routes drawn over it
-# have to be inked for the dark. That is what this says; it is not a dark twin of
-# a light style, and setting both is refused.
-# dark_cartography = true
-
-[surface]
-# The OpenStreetMap regions the service builds its own surface index from, so it
-# can tell asphalt from paving, gravel, or a forest track. Each entry is a
-# Geofabrik region path.
-#
-# Name the regions you actually ride. Naming more only costs disk and build time
-# for map nobody will be matched against. The default is an empty list, which
-# switches classification off entirely: nothing is downloaded, no index is built,
-# and stages carry no surface.
-#
-# No route shape ever leaves this host — classification reads a local file. The
-# only thing that goes out is the scheduled download of each region's published
-# extract, which tells the extract host which regions you care about and nothing
-# about any route.
-regions = []
-# regions = ["europe/germany/rheinland-pfalz", "europe/germany/hessen"]
-
-# How often the index is rebuilt. This is time between builds, not time since
-# this process started, so restarting the service does not restart the clock.
-#
-# A rebuild fetches each region's published checksum first and stops there when
-# nothing upstream has changed, so a weekly cadence costs one small request per
-# region on most weeks. The index is written beside the state database, and a
-# build needs about half a gigabyte of memory and a few hundred megabytes of
-# disk for the extract it stages.
-rebuild_interval = "168h"
+# The map cartographies the page offers, the OpenStreetMap regions the surface
+# index is built from, how often it is rebuilt, how long the source inventory may
+# go unrefreshed before it is reported stale, and whether a trusted empty source
+# may delete a target's last routes are all settings you edit on the service's
+# own settings page. They live in the state database, so a change takes effect on
+# the next run or the next request rather than on the next restart, and this file
+# refuses them by name if an older copy of it still carries them.
 
 [ridemodel]
 # The coefficient file the offline fitting tooling emits: total riding mass,

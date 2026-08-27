@@ -4,8 +4,10 @@ import {
   type Build,
   type WebUIConfig as GeneratedWebUIConfig,
   type GeoJSONFeature,
+  NotificationSettingsSuccessPolicy,
   type Route,
   type RouteValidation,
+  type Settings,
   type Status,
   type SurfaceRange,
   SurfaceRangeKind,
@@ -25,10 +27,12 @@ import {
 } from "./generated";
 
 export type {
+  BrowserBasemap,
   Build as BuildInfo,
   GeoJSONFeature,
   Route,
   RouteValidation,
+  Settings,
   Status,
   SurfaceRange,
   SyncActive,
@@ -56,6 +60,9 @@ export type TargetConvergence = TargetStatusConvergence;
 
 export const SYNC_PHASES = ["source", "targets"] as const;
 export type SyncPhase = (typeof SYNC_PHASES)[number];
+
+export const SUCCESS_POLICIES = Object.values(NotificationSettingsSuccessPolicy);
+export type SuccessPolicy = (typeof SUCCESS_POLICIES)[number];
 
 /** Defaults optional transport fields to the values the UI renders. */
 export type Basemap = Omit<BrowserBasemap, "darkCartography"> & { darkCartography: boolean };

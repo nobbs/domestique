@@ -9,7 +9,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -21,6 +20,8 @@ import (
 	"github.com/knadh/koanf/providers/env/v2"
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
+
+	"github.com/nobbs/domestique/internal/runtimeconfig"
 )
 
 const (
@@ -37,55 +38,6 @@ const (
 	// The image the deploying host pinned. Named for what the host already calls
 	// it, so the compose passthrough needs no translation table.
 	imageReferenceEnv = envPrefix + "IMAGE"
-
-	// defaultBasemapName labels the one basemap a deployment gets without
-	// configuring any. It is never shown on its own — the picker appears only
-	// where there is something to pick between — but it is still the entry's
-	// identity, so it is a word an operator would recognise rather than a slug.
-	defaultBasemapName = "Streets"
-
-	// defaultBasemapStyleURL is a keyless MapLibre style, so the default
-	// deployment exposes no credential to the browser and sends no account
-	// identity to the tile origin.
-	defaultBasemapStyleURL = "https://tiles.openfreemap.org/styles/bright"
-
-	// defaultBasemapStyleURLDark is the same provider's dark style. It shares the
-	// light default's origin, so following the operator's system colour scheme
-	// costs a default deployment no second tile origin.
-	defaultBasemapStyleURLDark = "https://tiles.openfreemap.org/styles/dark"
-
-	// defaultRebuildInterval is how often the surface index is rebuilt when an
-	// operator has named regions but not a cadence. OpenStreetMap extracts are
-	// republished daily and a road's surface changes on the timescale of
-	// resurfacing work, so a week is frequent enough to be current and rare
-	// enough that the cost of a build never matters.
-	defaultRebuildInterval = 7 * 24 * time.Hour
-
-	// defaultPushoverURL is Pushover's own origin. It is a default rather than a
-	// compiled-in constant so a development or demo environment can point it at
-	// an address that goes nowhere instead of reaching the real service with a
-	// placeholder token.
-	defaultPushoverURL = "https://api.pushover.net"
-	// defaultDigestInterval is the period a success digest covers when the
-	// operator selects one without naming a period. A day is the cadence a
-	// digest exists for: short enough to still describe a run, long enough that
-	// it is not the per-run push it replaces.
-	defaultDigestInterval = 24 * time.Hour
-	// maxDigestInterval bounds the period one digest may cover.
-	//
-	// A digest totals the recorded run history, and that history is a bounded
-	// window: the store keeps the last few hundred runs, which an hourly
-	// deployment fills in a little over a week. A longer period would not fail —
-	// it would quietly report a total missing every run already pruned from
-	// under it, which is worse than refusing the setting.
-	maxDigestInterval = 7 * 24 * time.Hour
-
-	// defaultStaleAfter is how long the trusted source inventory may go without
-	// a successful refresh before it is reported and notified as stale, when the
-	// operator names no bound of their own. A day tolerates a bad run or two at
-	// the hourly cadence while still catching a source that has quietly stopped
-	// refreshing.
-	defaultStaleAfter = 24 * time.Hour
 )
 
 // Settings is the validated, startup-only configuration for one service
@@ -107,8 +59,6 @@ type Settings struct {
 	Notifications Notifications
 	HTTP          HTTP
 	Access        Access
-	WebUI         WebUI
-	Surface       Surface
 	RideModel     RideModel
 	Sync          Sync
 	State         State
@@ -148,62 +98,6 @@ type CloudflareAccess struct {
 
 	// AllowedEmail is the single address an assertion may name.
 	AllowedEmail string
-}
-
-// WebUI configures the read-only browser route map view.
-type WebUI struct {
-	// Basemaps are the cartographies the reader may switch the map between, in
-	// the order they are offered. The first is what a browser that has never
-	// chosen one loads. At least one is required, because the map has to paint
-	// on something.
-	Basemaps []Basemap
-}
-
-// Basemap is one cartography the map can load.
-type Basemap struct {
-	// Name labels the entry in the picker and is the identity a browser
-	// remembers its choice by, so it is required and unique across the list.
-	Name string
-
-	// StyleURL is the MapLibre style document the operator's browser loads. It
-	// is deliberately not a secret: it is served to the page and is visible to
-	// anyone who can reach the UI. The default is a keyless provider, so no
-	// credential is exposed. A provider that requires an API key would place it
-	// in this URL's query and thereby publish it to the browser.
-	StyleURL string
-
-	// StyleURLDark is loaded in place of StyleURL when the browser reports a
-	// dark system colour scheme. It must share this entry's StyleURL origin. An
-	// empty value keeps one style in both schemes.
-	StyleURLDark string
-
-	// DarkCartography says this entry's ground is dark whatever the system
-	// colour scheme is, which is what satellite imagery is. Anything the page
-	// paints over the map reads this rather than the scheme, because a route
-	// drawn in the dark-ground ink over light cartography — or the reverse —
-	// is the one that cannot be seen.
-	//
-	// It contradicts StyleURLDark: a provider publishing a dark twin has light
-	// cartography to switch away from. Configuring both is refused.
-	DarkCartography bool
-}
-
-// Surface configures the local map the road surface of a stage is read from.
-type Surface struct {
-	// Regions are the OpenStreetMap extracts to index, as Geofabrik slugs such
-	// as "europe/germany/rheinland-pfalz". They have to cover the ground the
-	// operator actually rides: a stage outside every configured region is served
-	// without a surface rather than wrongly.
-	//
-	// An empty list switches surface classification off entirely. Nothing is
-	// downloaded, nothing is built, and stages simply carry no surface — which
-	// is also what a deployment gets by default, because the right regions are
-	// a property of where somebody rides and cannot be guessed.
-	Regions []string
-	// RebuildInterval is how often the index is rebuilt from freshly published
-	// extracts. A rebuild that finds every extract unchanged costs one small
-	// request per region and stops there.
-	RebuildInterval time.Duration
 }
 
 // RideModel configures the predicted moving time internal/ridemodel computes
@@ -294,68 +188,22 @@ type Target struct {
 	ID string
 }
 
-// Sync configures the automatic reconciliation cadence and deletion gates.
+// Sync configures the one part of the reconciliation cadence a restart is the
+// only way to change: how long after start the first run is attempted. The
+// deletion gate, the staleness bound and the success policy are runtime
+// settings, held in the database and edited from the web UI.
 type Sync struct {
-	EmptySourceDeletion   EmptySourceDeletion
-	InitialDelay          time.Duration
-	Interval              time.Duration
-	MaxDeletionsPerTarget int
-	// StaleAfter bounds how long the trusted source inventory may go without a
-	// successful refresh before it is reported as stale and notified. Defaults
-	// to 24h.
-	StaleAfter time.Duration
+	InitialDelay time.Duration
 }
 
-// EmptySourceDeletion controls whether a trusted empty source can delete the
-// final owned destination routes.
-type EmptySourceDeletion string
-
-const (
-	// EmptySourceDeletionDeny blocks final-library deletion unless an operator
-	// deliberately changes static configuration.
-	EmptySourceDeletionDeny EmptySourceDeletion = "deny"
-	// EmptySourceDeletionAllow permits final-library deletion while retaining
-	// every other deletion safety gate.
-	EmptySourceDeletionAllow EmptySourceDeletion = "allow"
-)
-
-// Notifications configures supported notification destinations and how much
-// routine success reaches them.
+// Notifications holds the credentials a notification is sent with. How much
+// reaches them, and the origin they are sent to, are runtime settings.
 type Notifications struct {
 	Pushover Pushover
-	Success  SuccessNotifications
 }
 
-// SuccessNotifications controls routine-success delivery. It never governs a
-// failure, a blocked run, or the first success that ends one: those are the
-// signals the operator installed notifications for.
-type SuccessNotifications struct {
-	Policy SuccessPolicy
-	// DigestInterval is how much time separates two digests. It is read only by
-	// SuccessPolicyDigest.
-	DigestInterval time.Duration
-}
-
-// SuccessPolicy names what a routine successful run notifies.
-type SuccessPolicy string
-
-const (
-	// SuccessPolicyEvery pushes one message per successful run.
-	SuccessPolicyEvery SuccessPolicy = "every"
-	// SuccessPolicyQuiet pushes nothing for a routine success.
-	SuccessPolicyQuiet SuccessPolicy = "quiet"
-	// SuccessPolicyDigest replaces routine success pushes with one aggregate
-	// message per interval.
-	SuccessPolicyDigest SuccessPolicy = "digest"
-)
-
-// Pushover holds the credentials needed to send a notification, and the origin
-// they are sent to. The origin is configurable for the same reason every other
-// provider's is: a development or demo environment has to be able to point it at
-// an address that goes nowhere, and the alternative is a compiled-in host that
-// such an environment would quietly reach with a placeholder token.
+// Pushover holds the credentials needed to send a notification.
 type Pushover struct {
-	BaseURL          string
 	applicationToken Secret
 	userKey          Secret
 }
@@ -388,8 +236,6 @@ type rawSettings struct {
 	Notifications rawNotifications `koanf:"notifications"`
 	HTTP          rawHTTP          `koanf:"http"`
 	Access        rawAccess        `koanf:"access"`
-	WebUI         rawWebUI         `koanf:"webui"`
-	Surface       rawSurface       `koanf:"surface"`
 	RideModel     rawRideModel     `koanf:"ridemodel"`
 	State         rawState         `koanf:"state"`
 	Sync          rawSync          `koanf:"sync"`
@@ -398,22 +244,6 @@ type rawSettings struct {
 type rawHTTP struct {
 	ListenAddress    string `koanf:"listen_address"`
 	ReadinessAddress string `koanf:"readiness_address"`
-}
-
-type rawWebUI struct {
-	Basemaps []rawBasemap `koanf:"basemaps"`
-}
-
-type rawBasemap struct {
-	Name            string `koanf:"name"`
-	StyleURL        string `koanf:"style_url"`
-	StyleURLDark    string `koanf:"style_url_dark"`
-	DarkCartography bool   `koanf:"dark_cartography"`
-}
-
-type rawSurface struct {
-	Regions         []string      `koanf:"regions"`
-	RebuildInterval time.Duration `koanf:"rebuild_interval"`
 }
 
 type rawRideModel struct {
@@ -467,21 +297,14 @@ type rawTarget struct {
 }
 
 type rawSync struct {
-	EmptySourceDeletion   string        `koanf:"empty_source_deletion"`
-	InitialDelay          time.Duration `koanf:"initial_delay"`
-	Interval              time.Duration `koanf:"interval"`
-	MaxDeletionsPerTarget int           `koanf:"max_deletions_per_target"`
-	StaleAfter            time.Duration `koanf:"stale_after"`
+	InitialDelay time.Duration `koanf:"initial_delay"`
 }
 
 type rawNotifications struct {
-	Pushover       rawPushover   `koanf:"pushover"`
-	SuccessPolicy  string        `koanf:"success_policy"`
-	DigestInterval time.Duration `koanf:"digest_interval"`
+	Pushover rawPushover `koanf:"pushover"`
 }
 
 type rawPushover struct {
-	BaseURL              string `koanf:"base_url"`
 	ApplicationTokenFile string `koanf:"application_token_file"`
 	ApplicationToken     string `koanf:"application_token"`
 	UserKeyFile          string `koanf:"user_key_file"`
@@ -684,10 +507,10 @@ func build(raw *rawSettings, veloPlannerConfigured, komootConfigured bool) (*Set
 	if !veloPlannerConfigured && !komootConfigured {
 		return nil, errors.New("at least one source must be configured: add a [veloplanner] or [komoot] section")
 	}
-	if err := validateHTTPSURL("wahoo.api_base_url", raw.Wahoo.APIBaseURL); err != nil {
+	if err := runtimeconfig.ValidateHTTPSURL("wahoo.api_base_url", raw.Wahoo.APIBaseURL); err != nil {
 		return nil, err
 	}
-	if err := validateHTTPSURL("wahoo.oauth_base_url", raw.Wahoo.OAuthBaseURL); err != nil {
+	if err := runtimeconfig.ValidateHTTPSURL("wahoo.oauth_base_url", raw.Wahoo.OAuthBaseURL); err != nil {
 		return nil, err
 	}
 	if err := requireValue("wahoo.client_id", raw.Wahoo.ClientID); err != nil {
@@ -696,21 +519,7 @@ func build(raw *rawSettings, veloPlannerConfigured, komootConfigured bool) (*Set
 	if err := validateRedirectURL(raw.Wahoo.RedirectURL); err != nil {
 		return nil, err
 	}
-	if err := validateSurface(raw.Surface); err != nil {
-		return nil, err
-	}
 	if err := validateRideModel(raw.RideModel); err != nil {
-		return nil, err
-	}
-	if err := validateHTTPSOrigin("notifications.pushover.base_url", raw.Notifications.Pushover.BaseURL); err != nil {
-		return nil, err
-	}
-	if err := validateNotifications(&raw.Notifications); err != nil {
-		return nil, err
-	}
-
-	basemaps, err := validateBasemaps(raw.WebUI.Basemaps)
-	if err != nil {
 		return nil, err
 	}
 
@@ -718,8 +527,7 @@ func build(raw *rawSettings, veloPlannerConfigured, komootConfigured bool) (*Set
 	if err != nil {
 		return nil, err
 	}
-	err = validateSync(raw.Sync)
-	if err != nil {
+	if err := validateSync(raw.Sync); err != nil {
 		return nil, err
 	}
 
@@ -743,7 +551,7 @@ func build(raw *rawSettings, veloPlannerConfigured, komootConfigured bool) (*Set
 		// requires no path (or exactly "/"), and rejecting the mismatch here
 		// means a bad value fails at config load with a name and a reason,
 		// rather than later at client construction with neither.
-		if urlErr := validateHTTPSOrigin("veloplanner.base_url", raw.VeloPlanner.BaseURL); urlErr != nil {
+		if urlErr := runtimeconfig.ValidateHTTPSOrigin("veloplanner.base_url", raw.VeloPlanner.BaseURL); urlErr != nil {
 			return nil, urlErr
 		}
 		email, emailErr := resolveSecret(secretInput{
@@ -770,7 +578,7 @@ func build(raw *rawSettings, veloPlannerConfigured, komootConfigured bool) (*Set
 	var komoot *Komoot
 	if komootConfigured {
 		// Same reasoning as veloplanner.base_url above.
-		if urlErr := validateHTTPSOrigin("komoot.base_url", raw.Komoot.BaseURL); urlErr != nil {
+		if urlErr := runtimeconfig.ValidateHTTPSOrigin("komoot.base_url", raw.Komoot.BaseURL); urlErr != nil {
 			return nil, urlErr
 		}
 		email, emailErr := resolveSecret(secretInput{
@@ -833,13 +641,6 @@ func build(raw *rawSettings, veloPlannerConfigured, komootConfigured bool) (*Set
 				AllowedEmail:   strings.TrimSpace(raw.Access.Cloudflare.AllowedEmail),
 			},
 		},
-		WebUI: WebUI{
-			Basemaps: basemaps,
-		},
-		Surface: Surface{
-			Regions:         trimmedRegions(raw.Surface.Regions),
-			RebuildInterval: raw.Surface.RebuildInterval,
-		},
 		RideModel: RideModel{
 			CoefficientsFile: raw.RideModel.CoefficientsFile,
 		},
@@ -858,19 +659,10 @@ func build(raw *rawSettings, veloPlannerConfigured, komootConfigured bool) (*Set
 			clientSecret: clientSecret,
 		},
 		Sync: Sync{
-			InitialDelay:          raw.Sync.InitialDelay,
-			Interval:              raw.Sync.Interval,
-			MaxDeletionsPerTarget: raw.Sync.MaxDeletionsPerTarget,
-			EmptySourceDeletion:   EmptySourceDeletion(raw.Sync.EmptySourceDeletion),
-			StaleAfter:            raw.Sync.StaleAfter,
+			InitialDelay: raw.Sync.InitialDelay,
 		},
 		Notifications: Notifications{
-			Success: SuccessNotifications{
-				Policy:         SuccessPolicy(raw.Notifications.SuccessPolicy),
-				DigestInterval: raw.Notifications.DigestInterval,
-			},
 			Pushover: Pushover{
-				BaseURL:          raw.Notifications.Pushover.BaseURL,
 				applicationToken: applicationToken,
 				userKey:          userKey,
 			},
@@ -912,127 +704,6 @@ func validateReadinessAddress(address, listenAddress string) error {
 	return nil
 }
 
-// validateStyleURL accepts an absolute HTTPS style document URL. Unlike the
-// service's own endpoints it permits a query string, because providers that
-// require an API key carry it there; such a key is published to the browser and
-// is the operator's deliberate choice, not a managed secret.
-func validateStyleURL(name, value string) error {
-	parsed, err := url.ParseRequestURI(strings.TrimSpace(value))
-	if err != nil || parsed.Scheme != "https" || parsed.Host == "" ||
-		parsed.User != nil || parsed.Fragment != "" {
-		return fmt.Errorf("%s must be an absolute HTTPS URL without credentials or fragment", name)
-	}
-
-	return nil
-}
-
-// validateBasemaps checks the list the map may be switched between. At least one
-// entry is required, because a map with no cartography paints nothing; each is
-// named, because the name is both the label the reader picks by and the identity
-// a browser remembers its choice by, and a repeated name would make those two
-// disagree.
-//
-// The same-origin rule on a dark twin holds per entry rather than across the
-// list, and that is the whole of what this change widened. One entry still
-// reaches one third-party origin, and the page still requests only the entry
-// currently on screen; what grew is the set of providers the operator has
-// offered, which is the point of the setting.
-func validateBasemaps(raw []rawBasemap) ([]Basemap, error) {
-	if len(raw) == 0 {
-		return nil, errors.New("webui.basemaps must contain at least one entry")
-	}
-
-	basemaps := make([]Basemap, len(raw))
-	seen := make(map[string]struct{}, len(raw))
-	for index, entry := range raw {
-		name := strings.TrimSpace(entry.Name)
-		if name == "" {
-			return nil, fmt.Errorf("webui.basemaps[%d].name is required", index)
-		}
-		if _, duplicate := seen[name]; duplicate {
-			return nil, fmt.Errorf("webui.basemaps[%d].name is duplicated", index)
-		}
-		seen[name] = struct{}{}
-
-		styleURL := strings.TrimSpace(entry.StyleURL)
-		if err := validateStyleURL(fmt.Sprintf("webui.basemaps[%d].style_url", index), styleURL); err != nil {
-			return nil, err
-		}
-
-		styleURLDark := strings.TrimSpace(entry.StyleURLDark)
-		if styleURLDark != "" {
-			if entry.DarkCartography {
-				return nil, fmt.Errorf(
-					"webui.basemaps[%d] must not set both style_url_dark and dark_cartography", index)
-			}
-			darkName := fmt.Sprintf("webui.basemaps[%d].style_url_dark", index)
-			if err := validateStyleURL(darkName, styleURLDark); err != nil {
-				return nil, err
-			}
-			if !sameOrigin(styleURLDark, styleURL) {
-				return nil, fmt.Errorf("%s must be on the same origin as webui.basemaps[%d].style_url", darkName, index)
-			}
-		}
-
-		basemaps[index] = Basemap{
-			Name:            name,
-			StyleURL:        styleURL,
-			StyleURLDark:    styleURLDark,
-			DarkCartography: entry.DarkCartography,
-		}
-	}
-
-	return basemaps, nil
-}
-
-// sameOrigin reports whether two URLs share a scheme and host. Hosts are
-// compared case-insensitively because a host is not case-sensitive, and a
-// difference in case would otherwise reject a pair the browser treats as one
-// origin.
-func sameOrigin(left, right string) bool {
-	first, err := url.ParseRequestURI(left)
-	if err != nil {
-		return false
-	}
-	second, err := url.ParseRequestURI(right)
-	if err != nil {
-		return false
-	}
-
-	return first.Scheme == second.Scheme && strings.EqualFold(first.Host, second.Host)
-}
-
-// regionSlug is one Geofabrik region path, such as
-// "europe/germany/rheinland-pfalz".
-//
-// A slug becomes a path under a fixed download host, so its shape is checked
-// here rather than trusted: lowercase segments of letters, digits, and single
-// hyphens can introduce neither a host nor a traversal. The index builder
-// applies the same rule again before it composes a URL — this one exists so a
-// mistyped region is a startup error the operator reads, rather than a download
-// that fails a week later.
-var regionSlug = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*(?:/[a-z0-9]+(?:-[a-z0-9]+)*)*$`)
-
-// validateSurface accepts a set of regions to index, or no regions at all. An
-// empty list is the operator's switch for leaving stages unclassified, so it is
-// a valid setting rather than a missing one.
-func validateSurface(surface rawSurface) error {
-	regions := trimmedRegions(surface.Regions)
-	for _, region := range regions {
-		if !regionSlug.MatchString(region) {
-			return fmt.Errorf(
-				"surface.regions entry %q must be a region path such as "+
-					"\"europe/germany/rheinland-pfalz\"", region,
-			)
-		}
-	}
-	if len(regions) > 0 && surface.RebuildInterval <= 0 {
-		return errors.New("surface.rebuild_interval must be positive")
-	}
-
-	return nil
-}
-
 // validateRideModel accepts an unconfigured coefficients file — the operator's
 // switch for leaving every stage without a predicted moving time — or an
 // absolute path to one. The file itself is read, parsed, and validated for
@@ -1050,58 +721,8 @@ func validateRideModel(rideModel rawRideModel) error {
 	return nil
 }
 
-// trimmedRegions drops blank entries and repeats, keeping the order they were
-// written in.
-//
-// A repeat is dropped rather than rejected because it asks for nothing that is
-// not already being done: the second copy of a region downloads the same
-// extract and appends the same ways a second time, which cannot change what the
-// index answers but does pay for that region twice in build time, memory, and
-// size. Silently doing the work once is the useful reading of a typo.
-func trimmedRegions(regions []string) []string {
-	trimmed := make([]string, 0, len(regions))
-	seen := make(map[string]bool, len(regions))
-	for _, region := range regions {
-		if region = strings.TrimSpace(region); region != "" && !seen[region] {
-			seen[region] = true
-			trimmed = append(trimmed, region)
-		}
-	}
-	if len(trimmed) == 0 {
-		return nil
-	}
-
-	return trimmed
-}
-
-func validateHTTPSURL(name, value string) error {
-	parsed, err := url.ParseRequestURI(value)
-	if err != nil || parsed.Scheme != "https" || parsed.Host == "" ||
-		parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
-		return fmt.Errorf("%s must be an absolute HTTPS URL without credentials, query, or fragment", name)
-	}
-
-	return nil
-}
-
-// validateHTTPSOrigin is validateHTTPSURL plus the absence of a path, which is
-// what a setting the client parses as an origin has to be. Rejecting a path here
-// rather than letting the client reject it keeps the failure where every other
-// configuration failure is: before a listener opens, naming the setting.
-func validateHTTPSOrigin(name, value string) error {
-	if err := validateHTTPSURL(name, value); err != nil {
-		return err
-	}
-	parsed, err := url.Parse(value)
-	if err != nil || (parsed.Path != "" && parsed.Path != "/") {
-		return fmt.Errorf("%s must be an origin, without a path", name)
-	}
-
-	return nil
-}
-
 func validateRedirectURL(value string) error {
-	if err := validateHTTPSURL("wahoo.redirect_url", value); err != nil {
+	if err := runtimeconfig.ValidateHTTPSURL("wahoo.redirect_url", value); err != nil {
 		return err
 	}
 	parsed, err := url.Parse(value)
@@ -1137,47 +758,9 @@ func validateTargets(raw []rawTarget) ([]Target, error) {
 	return targets, nil
 }
 
-// validateNotifications checks the success policy and the period a digest
-// covers. A digest with no positive interval would either never be sent or be
-// sent on every run, and neither is what the setting means.
-func validateNotifications(notifications *rawNotifications) error {
-	switch SuccessPolicy(notifications.SuccessPolicy) {
-	case SuccessPolicyEvery, SuccessPolicyQuiet, SuccessPolicyDigest:
-	default:
-		return errors.New("notifications.success_policy must be every, quiet, or digest")
-	}
-	// The period is checked whatever the policy reads it. A setting that is only
-	// consulted by one policy is still a setting an operator will switch to, and
-	// finding out then that it was never valid is the wrong moment.
-	if notifications.DigestInterval <= 0 {
-		return errors.New("notifications.digest_interval must be positive")
-	}
-	if notifications.DigestInterval > maxDigestInterval {
-		return fmt.Errorf(
-			"notifications.digest_interval must not exceed %s, which is as far back as the recorded run history reaches",
-			maxDigestInterval,
-		)
-	}
-
-	return nil
-}
-
 func validateSync(sync rawSync) error {
 	if sync.InitialDelay <= 0 {
 		return errors.New("sync.initial_delay must be positive")
-	}
-	if sync.Interval != time.Hour {
-		return errors.New("sync.interval must equal 1h")
-	}
-	if sync.MaxDeletionsPerTarget != 5 {
-		return errors.New("sync.max_deletions_per_target must equal 5")
-	}
-	if sync.EmptySourceDeletion != string(EmptySourceDeletionDeny) &&
-		sync.EmptySourceDeletion != string(EmptySourceDeletionAllow) {
-		return errors.New("sync.empty_source_deletion must be deny or allow")
-	}
-	if sync.StaleAfter < time.Second {
-		return errors.New("sync.stale_after must be at least 1s")
 	}
 
 	return nil
@@ -1256,29 +839,6 @@ func configurationDefaults() map[string]any {
 	return map[string]any{
 		"http": map[string]any{
 			"readiness_address": defaultReadinessAddress,
-		},
-		"sync": map[string]any{
-			"empty_source_deletion": string(EmptySourceDeletionDeny),
-			"stale_after":           defaultStaleAfter.String(),
-		},
-		"webui": map[string]any{
-			"basemaps": []any{
-				map[string]any{
-					"name":           defaultBasemapName,
-					"style_url":      defaultBasemapStyleURL,
-					"style_url_dark": defaultBasemapStyleURLDark,
-				},
-			},
-		},
-		"surface": map[string]any{
-			"rebuild_interval": defaultRebuildInterval.String(),
-		},
-		"notifications": map[string]any{
-			"success_policy":  string(SuccessPolicyEvery),
-			"digest_interval": defaultDigestInterval.String(),
-			"pushover": map[string]any{
-				"base_url": defaultPushoverURL,
-			},
 		},
 	}
 }

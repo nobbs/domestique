@@ -4,6 +4,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { PageShell } from "../../components/Layout";
 import { THEME_CHOICES, type ThemeChoice } from "../../lib/theme";
 import { useUnitSystem } from "../../lib/units";
+import { ServiceSettings } from "./ServiceSettings";
 
 const THEME_LABELS: Record<ThemeChoice, string> = {
   system: "System",
@@ -80,6 +81,13 @@ export function SettingsPage({ themeChoice, onThemeChoiceChange }: SettingsPageP
             </FieldSet>
           </CardContent>
         </Card>
+        {/*
+         * Below the browser's own preferences, and after them on the way down
+         * the page: what this card changes is the service itself, and it is
+         * read by whoever opens this page next rather than by this browser
+         * alone.
+         */}
+        <ServiceSettings />
       </div>
     </PageShell>
   );
