@@ -470,7 +470,10 @@ func assertRouteForm(t *testing.T, request *http.Request, externalID string, exp
 	}
 }
 
+// writeJSON answers with a Content-Type because x/oauth2 reads it to choose
+// between decoding JSON and a form body, as RFC 6749 requires of a token reply.
 func writeJSON(t *testing.T, writer http.ResponseWriter, value any) {
 	t.Helper()
+	writer.Header().Set("Content-Type", "application/json")
 	assert.NoError(t, json.NewEncoder(writer).Encode(value), "writing the JSON response")
 }

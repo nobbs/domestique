@@ -11,10 +11,13 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/oauth2"
 
 	"github.com/nobbs/domestique/internal/route"
 )
@@ -84,6 +87,8 @@ type Client struct {
 	oauthBaseURL       *url.URL
 	now                func() time.Time
 	wait               func(context.Context, time.Duration) error
+	oauth              *oauth2.Config
+	oauthClient        *http.Client
 	clientID           string
 	redirectURL        string
 	clientSecret       []byte
@@ -124,7 +129,7 @@ func New(options *Options) (*Client, error) {
 		transport = http.DefaultTransport
 	}
 
-	return &Client{
+	client := &Client{
 		client: &http.Client{
 			Timeout:   timeout,
 			Transport: transport,
@@ -136,7 +141,82 @@ func New(options *Options) (*Client, error) {
 		clientSecret: append([]byte(nil), options.ClientSecret...),
 		now:          time.Now,
 		wait:         waitFor,
-	}, nil
+	}
+
+	// AuthStyle is stated rather than detected: Wahoo takes the credentials as
+	// form parameters, and autodetection probes, which spends a request out of a
+	// daily quota this client exists to husband.
+	client.oauth = &oauth2.Config{
+		ClientID:     options.ClientID,
+		ClientSecret: string(options.ClientSecret),
+		RedirectURL:  options.RedirectURL,
+		Scopes:       []string{"routes_read", "routes_write", "user_read"},
+		Endpoint: oauth2.Endpoint{
+			AuthURL:   client.endpoint(oauthBaseURL, "/oauth/authorize").String(),
+			TokenURL:  client.endpoint(oauthBaseURL, "/oauth/token").String(),
+			AuthStyle: oauth2.AuthStyleInParams,
+		},
+	}
+	// x/oauth2 drives its own requests, so it gets a client whose transport puts
+	// them through the same throttle as every other call.
+	client.oauthClient = &http.Client{
+		Timeout:   timeout,
+		Transport: &oauthTransport{client: client, base: transport},
+	}
+
+	return client, nil
+}
+
+// oauthTransport gates the token endpoint on the same mutex and quota as
+// doJSON. Nothing nests: doJSON sends through the plain transport, only
+// x/oauth2 sends through this one.
+type oauthTransport struct {
+	client *Client
+	base   http.RoundTripper
+}
+
+func (t *oauthTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	client := t.client
+
+	client.mutex.Lock()
+	defer client.mutex.Unlock()
+
+	if waitFor := client.notBefore.Sub(client.now()); waitFor > 0 {
+		if waitFor > waitBudget(request.Context()) {
+			return nil, ErrRateLimited
+		}
+		if waitErr := client.wait(request.Context(), waitFor); waitErr != nil {
+			return nil, fmt.Errorf("wahoo: waiting for rate limit: %w", waitErr)
+		}
+	}
+
+	response, err := t.base.RoundTrip(request)
+	if err != nil {
+		return nil, fmt.Errorf("wahoo: token request failed: %w", err)
+	}
+	client.observeRateLimit(response)
+
+	return response, nil
+}
+
+// classifyTokenError maps x/oauth2's failures onto this package's sentinels.
+// Wahoo answers a spent or withdrawn refresh token with 400 rather than 401,
+// and sync reads ErrUnauthorized to know a target needs reauthorizing.
+func classifyTokenError(err error) error {
+	var retrieve *oauth2.RetrieveError
+	if errors.As(err, &retrieve) && retrieve.Response != nil {
+		switch retrieve.Response.StatusCode {
+		case http.StatusBadRequest, http.StatusUnauthorized:
+			return ErrUnauthorized
+		case http.StatusTooManyRequests:
+			return ErrRateLimited
+		}
+	}
+	if errors.Is(err, ErrRateLimited) {
+		return ErrRateLimited
+	}
+
+	return fmt.Errorf("wahoo: token request failed: %w", err)
 }
 
 // AuthorizationURL returns a confidential-client Wahoo authorization URL for a
@@ -146,16 +226,7 @@ func (c *Client) AuthorizationURL(state string) (string, error) {
 		return "", errors.New("wahoo: oauth state is required")
 	}
 
-	endpoint := c.endpoint(c.oauthBaseURL, "/oauth/authorize")
-	query := endpoint.Query()
-	query.Set("client_id", c.clientID)
-	query.Set("redirect_uri", c.redirectURL)
-	query.Set("response_type", "code")
-	query.Set("scope", "routes_read routes_write user_read")
-	query.Set("state", state)
-	endpoint.RawQuery = query.Encode()
-
-	return endpoint.String(), nil
+	return c.oauth.AuthCodeURL(state), nil
 }
 
 // ExchangeAuthorizationCode trades a Wahoo authorization code for fresh tokens.
@@ -164,13 +235,12 @@ func (c *Client) ExchangeAuthorizationCode(ctx context.Context, code string) (ac
 		return "", "", errors.New("wahoo: authorization code is required")
 	}
 
-	return c.requestToken(ctx, url.Values{
-		"client_id":     {c.clientID},
-		"client_secret": {string(c.clientSecret)},
-		"code":          {code},
-		"grant_type":    {"authorization_code"},
-		"redirect_uri":  {c.redirectURL},
-	})
+	token, err := c.oauth.Exchange(c.oauthContext(ctx), code)
+	if err != nil {
+		return "", "", classifyTokenError(err)
+	}
+
+	return tokenPair(token)
 }
 
 // RefreshAccessToken obtains a replacement access and refresh token immediately
@@ -180,12 +250,30 @@ func (c *Client) RefreshAccessToken(ctx context.Context, refreshToken string) (a
 		return "", "", errors.New("wahoo: refresh token is required")
 	}
 
-	return c.requestToken(ctx, url.Values{
-		"client_id":     {c.clientID},
-		"client_secret": {string(c.clientSecret)},
-		"grant_type":    {"refresh_token"},
-		"refresh_token": {refreshToken},
-	})
+	// With no access token to reuse, the source always refreshes.
+	token, err := c.oauth.
+		TokenSource(c.oauthContext(ctx), &oauth2.Token{RefreshToken: refreshToken}).
+		Token()
+	if err != nil {
+		return "", "", classifyTokenError(err)
+	}
+
+	return tokenPair(token)
+}
+
+func (c *Client) oauthContext(ctx context.Context) context.Context {
+	return context.WithValue(ctx, oauth2.HTTPClient, c.oauthClient)
+}
+
+// tokenPair enforces that Wahoo returned both halves. x/oauth2 carries the old
+// refresh token forward when a reply omits one, which would otherwise read as a
+// rotation that happened.
+func tokenPair(token *oauth2.Token) (accessToken, refreshToken string, err error) {
+	if token == nil || token.AccessToken == "" || token.RefreshToken == "" {
+		return "", "", errors.New("wahoo: token response was incomplete")
+	}
+
+	return token.AccessToken, token.RefreshToken, nil
 }
 
 // AuthenticatedUser returns the stable Wahoo user identity for an access token.
@@ -347,41 +435,10 @@ func (c *Client) deleteRoute(ctx context.Context, routeID int64, accessToken str
 	return c.doJSON(request, nil)
 }
 
-type tokenResponse struct {
-	//nolint:tagliatelle // Wahoo's API uses snake_case.
-	AccessToken string `json:"access_token"`
-	//nolint:tagliatelle // Wahoo's API uses snake_case.
-	RefreshToken string `json:"refresh_token"`
-}
-
 type routeResponse struct {
 	//nolint:tagliatelle // Wahoo's API uses snake_case.
 	ExternalID string `json:"external_id"`
 	ID         int64  `json:"id"`
-}
-
-func (c *Client) requestToken(ctx context.Context, values url.Values) (accessToken, refreshToken string, err error) {
-	request, err := c.newRequest(
-		ctx,
-		http.MethodPost,
-		c.endpoint(c.oauthBaseURL, "/oauth/token"),
-		strings.NewReader(values.Encode()),
-		"",
-	)
-	if err != nil {
-		return "", "", err
-	}
-	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-
-	var response tokenResponse
-	if err := c.doJSON(request, &response); err != nil {
-		return "", "", err
-	}
-	if response.AccessToken == "" || response.RefreshToken == "" {
-		return "", "", errors.New("wahoo: token response was incomplete")
-	}
-
-	return response.AccessToken, response.RefreshToken, nil
 }
 
 func (c *Client) writeRoute(
