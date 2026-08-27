@@ -8,24 +8,23 @@
 // Tailscale-User-Login at all, and Serve strips any the client tried to supply.
 // The signed assertion Cloudflare Access adds is the only identity such a
 // request carries, so it is the only thing worth trusting on that path.
+//
+// The JOSE work is github.com/coreos/go-oidc's, which is what Cloudflare's
+// documentation points at for this.
 package cfaccess
 
 import (
 	"context"
-	"crypto"
-	"crypto/rsa"
-	"crypto/sha256"
-	"crypto/subtle"
-	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"math/big"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/coreos/go-oidc/v3/oidc"
+	jose "github.com/go-jose/go-jose/v4"
 )
 
 const (
@@ -38,7 +37,7 @@ const (
 	// here, rather than reading it from the token, is what makes algorithm
 	// confusion impossible: an attacker cannot downgrade a token to "none" or
 	// to an HMAC verified with the public key as its secret.
-	signingAlgorithm = "RS256"
+	signingAlgorithm = jose.RS256
 
 	// certsPath is the JWKS endpoint every Access team domain exposes.
 	certsPath = "/cdn-cgi/access/certs"
@@ -58,11 +57,14 @@ const (
 	minRefreshInterval = time.Minute
 
 	// clockSkew tolerates a small amount of clock drift on the not-before and
-	// issued-at claims. Expiry is checked strictly: accepting an expired token
-	// is a real weakening, whereas rejecting a token issued a few seconds into
-	// this host's future is merely inconvenient.
+	// issued-at claims. Expiry is checked strictly by go-oidc: accepting an
+	// expired token is a real weakening, whereas rejecting a token issued a few
+	// seconds into this host's future is merely inconvenient.
 	clockSkew = 30 * time.Second
 )
+
+// errRefreshFloor stands in for a request the floor below refused to send.
+var errRefreshFloor = errors.New("cfaccess: key endpoint asked too recently")
 
 // Identity is the verified caller a valid assertion names.
 type Identity struct {
@@ -94,29 +96,12 @@ type Options struct {
 
 // Verifier validates Access assertions against the team's published keys.
 type Verifier struct {
-	client *http.Client
-	now    func() time.Time
-
-	// keys and lastAttempt are guarded by mu.
-	keys        map[string]*rsa.PublicKey
-	lastAttempt time.Time
-
-	issuer   string
-	audience string
-	certsURL string
-
-	mu sync.Mutex
-
-	// refreshing serialises refresh attempts. It is separate from mu, which is
-	// only ever held for the map and the timestamp: a fetch takes up to
-	// fetchTimeout, and holding mu across it would block every verification
-	// that already has its key and needs nothing fetched at all.
-	refreshing sync.Mutex
+	verifier *oidc.IDTokenVerifier
+	now      func() time.Time
 }
 
 // New validates the options and returns a Verifier. It contacts nothing: the
-// key set is fetched lazily on the first assertion, under that request's
-// context.
+// key set is fetched lazily on the first assertion.
 func New(options *Options) (*Verifier, error) {
 	if options == nil {
 		return nil, errors.New("cfaccess options are required")
@@ -152,42 +137,63 @@ func New(options *Options) (*Verifier, error) {
 		now = time.Now
 	}
 
+	// go-oidc takes the key set's HTTP client from the context it is built with
+	// rather than from the one verifying a token, and fetches on that context
+	// too — so it is Background, and the client's timeout is what bounds a fetch.
+	keySetClient := *client
+	keySetClient.Transport = &throttledTransport{
+		base: client.Transport,
+		now:  now,
+	}
+	keySet := oidc.NewRemoteKeySet(
+		oidc.ClientContext(context.Background(), &keySetClient),
+		"https://"+team+certsPath,
+	)
+
 	return &Verifier{
-		issuer:   "https://" + team,
-		audience: audience,
-		certsURL: "https://" + team + certsPath,
-		client:   client,
-		now:      now,
-		keys:     map[string]*rsa.PublicKey{},
+		verifier: oidc.NewVerifier(
+			"https://"+team,
+			keySet,
+			&oidc.Config{
+				ClientID:             audience,
+				SupportedSigningAlgs: []string{string(signingAlgorithm)},
+				Now:                  now,
+			},
+		),
+		now: now,
 	}, nil
 }
 
 // Verify checks the assertion's signature and claims and returns the identity
 // it names. Every failure returns the same opaque error category to the caller;
 // the detail stays here rather than being reflected to a client.
+//
+// go-oidc checks the signature, issuer, audience and expiry; not-before and
+// issued-at are checked here because it does not look at them.
 func (v *Verifier) Verify(ctx context.Context, token string) (Identity, error) {
-	header, claims, signingInput, signature, err := split(token)
-	if err != nil {
-		return Identity{}, err
-	}
-	if header.Algorithm != signingAlgorithm {
-		return Identity{}, fmt.Errorf("unexpected signing algorithm %q", header.Algorithm)
-	}
-	if header.KeyID == "" {
-		return Identity{}, errors.New("assertion has no key ID")
-	}
-
-	key, err := v.key(ctx, header.KeyID)
-	if err != nil {
+	if err := requireKeyID(token); err != nil {
 		return Identity{}, err
 	}
 
-	digest := sha256.Sum256(signingInput)
-	if err = rsa.VerifyPKCS1v15(key, crypto.SHA256, digest[:], signature); err != nil {
-		return Identity{}, fmt.Errorf("assertion signature is invalid: %w", err)
+	idToken, err := v.verifier.Verify(ctx, token)
+	if err != nil {
+		return Identity{}, fmt.Errorf("verifying assertion: %w", err)
 	}
-	if claimsErr := v.checkClaims(claims); claimsErr != nil {
-		return Identity{}, claimsErr
+
+	var claims struct {
+		Email     string `json:"email"`
+		NotBefore int64  `json:"nbf"`
+	}
+	if err := idToken.Claims(&claims); err != nil {
+		return Identity{}, fmt.Errorf("decoding assertion claims: %w", err)
+	}
+
+	now := v.now()
+	if claims.NotBefore != 0 && now.Add(clockSkew).Before(time.Unix(claims.NotBefore, 0)) {
+		return Identity{}, errors.New("assertion is not yet valid")
+	}
+	if !idToken.IssuedAt.IsZero() && now.Add(clockSkew).Before(idToken.IssuedAt) {
+		return Identity{}, errors.New("assertion was issued in the future")
 	}
 
 	email := strings.TrimSpace(claims.Email)
@@ -195,263 +201,87 @@ func (v *Verifier) Verify(ctx context.Context, token string) (Identity, error) {
 		return Identity{}, errors.New("assertion carries no email claim")
 	}
 
-	return Identity{Email: email, Subject: claims.Subject}, nil
+	return Identity{Email: email, Subject: idToken.Subject}, nil
 }
 
-// checkClaims enforces issuer, audience, and the time window.
-func (v *Verifier) checkClaims(claims *claimSet) error {
-	if claims.Issuer != v.issuer {
-		return fmt.Errorf("assertion issuer %q is not this team", claims.Issuer)
+// requireKeyID rejects an assertion whose header names no key. Access always
+// names one; go-oidc does not insist, and tries every published key instead.
+func requireKeyID(token string) error {
+	parsed, err := jose.ParseSigned(token, []jose.SignatureAlgorithm{signingAlgorithm})
+	if err != nil {
+		return fmt.Errorf("parsing assertion: %w", err)
 	}
-	if !claims.Audience.contains(v.audience) {
-		return errors.New("assertion audience does not match this application")
+	if len(parsed.Signatures) != 1 {
+		return errors.New("assertion does not carry exactly one signature")
 	}
-
-	now := v.now()
-	if claims.ExpiresAt == 0 {
-		return errors.New("assertion has no expiry")
-	}
-	if now.After(time.Unix(claims.ExpiresAt, 0)) {
-		return errors.New("assertion has expired")
-	}
-	if claims.NotBefore != 0 && now.Add(clockSkew).Before(time.Unix(claims.NotBefore, 0)) {
-		return errors.New("assertion is not yet valid")
-	}
-	if claims.IssuedAt != 0 && now.Add(clockSkew).Before(time.Unix(claims.IssuedAt, 0)) {
-		return errors.New("assertion was issued in the future")
+	if parsed.Signatures[0].Header.KeyID == "" {
+		return errors.New("assertion has no key ID")
 	}
 
 	return nil
 }
 
-// key returns the public key for a key ID, refreshing the cached set once if
-// the ID is unknown. Access rotates its signing key every six weeks and serves
-// the previous key for a further seven days, so an unknown ID normally means a
-// rotation this process has not seen yet.
-//
-// Callers that find the ID unknown queue behind one another rather than each
-// deciding for itself whether a refresh is due. The staleness test reads a
-// timestamp that refresh stamps before it fetches, so a caller that tested it
-// while another was mid-fetch would rule itself out on the strength of the very
-// attempt it should have been waiting for — and be told the key is unknown a
-// moment before that attempt supplied it. That is what a cold cache under
-// concurrent requests looks like: the first request populates the keys and every
-// other one in flight is rejected. Taking the lock first and re-reading the map
-// after it means a waiter returns what the fetch it waited for found.
-func (v *Verifier) key(ctx context.Context, keyID string) (*rsa.PublicKey, error) {
-	v.mu.Lock()
-	key, ok := v.keys[keyID]
-	v.mu.Unlock()
-
-	if ok {
-		return key, nil
-	}
-
-	v.refreshing.Lock()
-	defer v.refreshing.Unlock()
-
-	// Both are re-read under the refresh lock: whoever held it may have filled
-	// the map, and if it did the rate limit below is irrelevant to this caller.
-	v.mu.Lock()
-	key, ok = v.keys[keyID]
-	stale := v.now().Sub(v.lastAttempt) >= minRefreshInterval
-	v.mu.Unlock()
-
-	if ok {
-		return key, nil
-	}
-	if !stale {
-		return nil, fmt.Errorf("unknown assertion key ID %q", keyID)
-	}
-	if err := v.refresh(ctx); err != nil {
-		return nil, err
-	}
-
-	v.mu.Lock()
-	key, ok = v.keys[keyID]
-	v.mu.Unlock()
-
-	if !ok {
-		return nil, fmt.Errorf("unknown assertion key ID %q", keyID)
-	}
-
-	return key, nil
+// throttledTransport is the refresh floor, and the cap on how much of a reply
+// is read. It sits here rather than around the key set because oidc.KeySet is a
+// whole verification, which cannot tell an unknown key ID from any other failure.
+type throttledTransport struct {
+	base        http.RoundTripper
+	now         func() time.Time
+	lastAttempt time.Time
+	mu          sync.Mutex
 }
 
-// refresh replaces the cached key set from the team's JWKS endpoint.
-func (v *Verifier) refresh(ctx context.Context) (err error) {
+func (t *throttledTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	t.mu.Lock()
 	// Stamped before the request rather than after it, so a failing endpoint
 	// still closes the window until minRefreshInterval has passed.
-	v.mu.Lock()
-	v.lastAttempt = v.now()
-	v.mu.Unlock()
+	if t.now().Sub(t.lastAttempt) < minRefreshInterval {
+		t.mu.Unlock()
 
-	ctx, cancel := context.WithTimeout(ctx, fetchTimeout)
-	defer cancel()
+		return nil, errRefreshFloor
+	}
+	t.lastAttempt = t.now()
+	t.mu.Unlock()
 
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, v.certsURL, http.NoBody)
+	base := t.base
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	// The deadline is applied here rather than left to the client, because the
+	// key set is built on Background and a caller may supply a client with no
+	// timeout of its own; without this such a fetch would never give up.
+	ctx, cancel := context.WithTimeout(request.Context(), fetchTimeout)
+	response, err := base.RoundTrip(request.WithContext(ctx))
 	if err != nil {
-		return fmt.Errorf("building access certs request: %w", err)
-	}
+		cancel()
 
-	response, err := v.client.Do(request)
-	if err != nil {
-		return fmt.Errorf("fetching access certs: %w", err)
+		return nil, fmt.Errorf("fetching access certs: %w", err)
 	}
-	defer func() {
-		err = errors.Join(err, response.Body.Close())
-	}()
+	response.Body = newLimitedBody(response.Body, cancel)
 
-	if response.StatusCode != http.StatusOK {
-		return fmt.Errorf("access certs endpoint returned status %d", response.StatusCode)
-	}
-
-	var document struct {
-		Keys []jsonWebKey `json:"keys"`
-	}
-	if err = json.NewDecoder(io.LimitReader(response.Body, maxCertsBytes)).Decode(&document); err != nil {
-		return fmt.Errorf("decoding access certs: %w", err)
-	}
-
-	keys := make(map[string]*rsa.PublicKey, len(document.Keys))
-	for index := range document.Keys {
-		webKey := &document.Keys[index]
-		if webKey.KeyType != "RSA" || webKey.KeyID == "" {
-			continue
-		}
-		if webKey.Algorithm != "" && webKey.Algorithm != signingAlgorithm {
-			continue
-		}
-		parsed, keyErr := webKey.publicKey()
-		if keyErr != nil {
-			continue
-		}
-		keys[webKey.KeyID] = parsed
-	}
-	if len(keys) == 0 {
-		return errors.New("access certs endpoint returned no usable RSA keys")
-	}
-
-	v.mu.Lock()
-	v.keys = keys
-	v.mu.Unlock()
-
-	return nil
+	return response, nil
 }
 
-// jsonWebKey is the subset of a JWK this verifier needs.
-type jsonWebKey struct {
-	KeyType   string `json:"kty"`
-	KeyID     string `json:"kid"`
-	Algorithm string `json:"alg"`
-	Modulus   string `json:"n"`
-	Exponent  string `json:"e"`
+// newLimitedBody caps the reply and releases the deadline once it is closed.
+// Cancelling any earlier would cut off the read the deadline exists to bound.
+func newLimitedBody(body io.ReadCloser, cancel context.CancelFunc) io.ReadCloser {
+	return struct {
+		io.Reader
+		io.Closer
+	}{
+		Reader: io.LimitReader(body, maxCertsBytes),
+		Closer: closerFunc(func() error {
+			err := body.Close()
+			cancel()
+			if err != nil {
+				return fmt.Errorf("closing access certs response: %w", err)
+			}
+
+			return nil
+		}),
+	}
 }
 
-// publicKey converts the JWK's base64url big-endian fields into an RSA key.
-func (k *jsonWebKey) publicKey() (*rsa.PublicKey, error) {
-	modulus, err := base64.RawURLEncoding.DecodeString(k.Modulus)
-	if err != nil {
-		return nil, fmt.Errorf("decoding key modulus: %w", err)
-	}
-	exponent, err := base64.RawURLEncoding.DecodeString(k.Exponent)
-	if err != nil {
-		return nil, fmt.Errorf("decoding key exponent: %w", err)
-	}
-	if len(modulus) == 0 || len(exponent) == 0 || len(exponent) > 8 {
-		return nil, errors.New("key parameters are out of range")
-	}
+type closerFunc func() error
 
-	value := new(big.Int).SetBytes(exponent).Int64()
-	if value < 3 || value > 1<<31 {
-		return nil, errors.New("key exponent is out of range")
-	}
-
-	return &rsa.PublicKey{N: new(big.Int).SetBytes(modulus), E: int(value)}, nil
-}
-
-// jwtHeader is the decoded JOSE header.
-type jwtHeader struct {
-	Algorithm string `json:"alg"`
-	KeyID     string `json:"kid"`
-}
-
-// claimSet is the subset of the payload this verifier enforces or reads.
-type claimSet struct {
-	Issuer    string   `json:"iss"`
-	Subject   string   `json:"sub"`
-	Email     string   `json:"email"`
-	Audience  audience `json:"aud"`
-	ExpiresAt int64    `json:"exp"`
-	NotBefore int64    `json:"nbf"`
-	IssuedAt  int64    `json:"iat"`
-}
-
-// audience accepts the aud claim in either of its permitted JSON shapes.
-type audience []string
-
-// UnmarshalJSON decodes aud from a single string or an array of strings.
-func (a *audience) UnmarshalJSON(data []byte) error {
-	var single string
-	if err := json.Unmarshal(data, &single); err == nil {
-		*a = audience{single}
-
-		return nil
-	}
-
-	var many []string
-	if err := json.Unmarshal(data, &many); err != nil {
-		return fmt.Errorf("decoding aud claim: %w", err)
-	}
-	*a = many
-
-	return nil
-}
-
-// contains reports whether the wanted tag is present, compared in constant time
-// so the check does not leak the expected value through timing.
-func (a audience) contains(wanted string) bool {
-	found := false
-	for _, candidate := range a {
-		if len(candidate) == len(wanted) &&
-			subtle.ConstantTimeCompare([]byte(candidate), []byte(wanted)) == 1 {
-			found = true
-		}
-	}
-
-	return found
-}
-
-// split parses the compact serialisation into its verified-together parts.
-func split(token string) (header *jwtHeader, claims *claimSet, signingInput, signature []byte, err error) {
-	parts := strings.Split(token, ".")
-	if len(parts) != 3 {
-		return nil, nil, nil, nil, errors.New("assertion is not a compact JWT")
-	}
-
-	headerBytes, err := base64.RawURLEncoding.DecodeString(parts[0])
-	if err != nil {
-		return nil, nil, nil, nil, fmt.Errorf("decoding assertion header: %w", err)
-	}
-	claimBytes, err := base64.RawURLEncoding.DecodeString(parts[1])
-	if err != nil {
-		return nil, nil, nil, nil, fmt.Errorf("decoding assertion claims: %w", err)
-	}
-	signature, err = base64.RawURLEncoding.DecodeString(parts[2])
-	if err != nil {
-		return nil, nil, nil, nil, fmt.Errorf("decoding assertion signature: %w", err)
-	}
-
-	header = &jwtHeader{}
-	if err = json.Unmarshal(headerBytes, header); err != nil {
-		return nil, nil, nil, nil, fmt.Errorf("parsing assertion header: %w", err)
-	}
-	claims = &claimSet{}
-	if err = json.Unmarshal(claimBytes, claims); err != nil {
-		return nil, nil, nil, nil, fmt.Errorf("parsing assertion claims: %w", err)
-	}
-
-	signingInput = []byte(parts[0] + "." + parts[1])
-
-	return header, claims, signingInput, signature, nil
-}
+func (c closerFunc) Close() error { return c() }
