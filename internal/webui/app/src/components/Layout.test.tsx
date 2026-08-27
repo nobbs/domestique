@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useNarrowViewport } from "../lib/mediaQuery";
 
 vi.mock("../lib/mediaQuery", () => ({ useNarrowViewport: vi.fn() }));
-vi.mock("./brand/Wordmark", () => ({ Wordmark: () => <span>Domestique</span> }));
+vi.mock("./MenuBar", () => ({ MenuBar: () => <span>Domestique</span> }));
 
 const { Layout } = await import("./Layout");
 

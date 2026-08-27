@@ -5,15 +5,14 @@
  * history a reader scrolled past to get to their routes. Nothing about
  * synchronisation is urgent enough to sit over the map every day, and everything
  * about it needs more room than a strip when it does need attention, so it is a
- * page of its own that the wordmark links to and a notification lands on.
+ * page of its own that the menu bar links to and a notification lands on.
  *
  * A notice comes first when attention is needed, followed by three cards in
  * the order the questions come: what is happening now, what the accounts
  * hold, and what has happened.
  */
 
-import { IconArrowLeft } from "@tabler/icons-react";
-import { Link, useSearchParams } from "react-router";
+import { useSearchParams } from "react-router";
 import { PageShell } from "../../components/Layout";
 import { BuildLine } from "./BuildLine";
 import { RunNotice } from "./RunNotice";
@@ -33,16 +32,7 @@ export function SyncPage() {
   return (
     <PageShell>
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-5">
-        <header className="flex items-center gap-4">
-          <Link
-            className="inline-flex items-center gap-1 text-sm text-[var(--ink-2)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
-            to="/"
-          >
-            <IconArrowLeft size={16} stroke={2} aria-hidden="true" />
-            <span>Back to the map</span>
-          </Link>
-          <h1 className="text-2xl font-semibold tracking-tight">Sync</h1>
-        </header>
+        <h1 className="text-2xl font-semibold tracking-tight">Sync</h1>
         <RunNotice reference={reference} />
         <SyncCard id="now" heading="Now">
           <SyncControls />

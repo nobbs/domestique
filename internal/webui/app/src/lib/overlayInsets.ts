@@ -68,9 +68,8 @@ const LEAST_PANEL = 4;
  */
 export function insetsFrom(frame: Box, panels: Box[]): Insets {
   const insets = { ...NO_INSETS };
-  // Largest area first, so the column is read before the wordmark standing in
-  // it: a panel already behind another panel's strip is asking for nothing the
-  // map has not given up already.
+  // Largest area first: a panel already behind another panel's strip is asking
+  // for nothing the map has not given up already.
   const standing = [...panels].sort(
     (one, other) => other.width * other.height - one.width * one.height,
   );

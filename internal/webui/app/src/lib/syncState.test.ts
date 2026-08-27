@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { Status, SyncStatus, TargetStatus } from "../../api/types";
-import { wordmarkState } from "./Wordmark";
+import type { Status, SyncStatus, TargetStatus } from "../api/types";
+import { syncState } from "./syncState";
 
 function status(sync: Partial<SyncStatus> = {}, targets: TargetStatus[] = []): Status {
   return {
@@ -42,10 +42,10 @@ function phaseRun(overrides: Record<string, unknown> = {}) {
   };
 }
 
-describe("wordmarkState", () => {
+describe("syncState", () => {
   it("says what is happening while it happens", () => {
     expect(
-      wordmarkState(
+      syncState(
         status({
           state: "running",
           active: { phase: "targets", targets: 1, stages: { current: 0, pending: 4 } },
@@ -58,7 +58,7 @@ describe("wordmarkState", () => {
   // and a line that says nothing at all reads as a line that is out of date.
   it("says a run has started before it says which half", () => {
     expect(
-      wordmarkState(
+      syncState(
         status({ state: "running", active: { targets: 1, stages: { current: 0, pending: 0 } } }),
       ).label,
     ).toBe("Starting");
@@ -66,7 +66,7 @@ describe("wordmarkState", () => {
 
   it("separates a run being held back from a run under way", () => {
     expect(
-      wordmarkState(
+      syncState(
         status({
           state: "delayed",
           active: {
@@ -86,7 +86,7 @@ describe("wordmarkState", () => {
    * because they ask for different things.
    */
   it("tells a held gate apart from a fault", () => {
-    const held = wordmarkState(
+    const held = syncState(
       status({
         lastCompletedAt: "2026-08-18T06:30:00Z",
         phases: {
@@ -94,7 +94,7 @@ describe("wordmarkState", () => {
         },
       }),
     );
-    const broken = wordmarkState(
+    const broken = syncState(
       status({
         lastCompletedAt: "2026-08-18T06:30:00Z",
         phases: { targets: phaseRun({ lastResult: "failed", lastFailure: "destination" }) },
@@ -111,7 +111,7 @@ describe("wordmarkState", () => {
   // to go wrong, and one line has room for one of the two.
   it("names the read before the write when both need attention", () => {
     expect(
-      wordmarkState(
+      syncState(
         status({
           phases: {
             source: phaseRun({ lastResult: "failed", lastFailure: "source" }),
@@ -124,12 +124,12 @@ describe("wordmarkState", () => {
 
   it("raises an account that cannot be written to at all", () => {
     expect(
-      wordmarkState(status({ lastCompletedAt: "2026-08-18T06:30:00Z" }, [unauthorized()])),
+      syncState(status({ lastCompletedAt: "2026-08-18T06:30:00Z" }, [unauthorized()])),
     ).toEqual({ label: "An account is not connected", tone: "alert" });
   });
 
   it("says nothing has run rather than that everything is in sync", () => {
-    expect(wordmarkState(status())).toEqual({ label: "Has not run yet", tone: undefined });
+    expect(syncState(status())).toEqual({ label: "Has not run yet", tone: undefined });
   });
 
   /*
@@ -137,7 +137,7 @@ describe("wordmarkState", () => {
    * state between two runs. It is not green, and it is emphatically not red.
    */
   it("keeps a library that is merely behind unpainted", () => {
-    const behind = wordmarkState({
+    const behind = syncState({
       ...status({ lastCompletedAt: "2026-08-18T06:30:00Z" }),
       converged: false,
     });
@@ -147,7 +147,7 @@ describe("wordmarkState", () => {
   });
 
   it("paints only a library every account holds", () => {
-    const state = wordmarkState(status({ lastCompletedAt: "2026-08-18T06:30:00Z" }));
+    const state = syncState(status({ lastCompletedAt: "2026-08-18T06:30:00Z" }));
 
     expect(state.tone).toBe("good");
     expect(state.label).toMatch(/^In sync · /);
