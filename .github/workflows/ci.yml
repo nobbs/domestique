@@ -403,6 +403,11 @@ jobs:
         with:
           name: playwright-ui
           path: .playwright/
+          # The directory is hidden, and the uploader excludes hidden files
+          # unless told otherwise — so without this it found nothing, warned,
+          # and uploaded an empty artefact on every failing run. A failure that
+          # discards its own trace is the one case this step exists for.
+          include-hidden-files: true
           retention-days: 7
 
   coverage:
