@@ -416,17 +416,23 @@ func TestVerifyRefetchesAfterKeyRotation(t *testing.T) {
 // traffic, and it was reproducible as a browser suite failing one test at random
 // once it ran on more than one worker.
 //
-// The endpoint is held until every caller is inside, so the test fails against a
-// verifier that lets them decide independently rather than depending on them
-// being scheduled closely enough to collide.
+// The ordering is what makes this reproduce rather than depend on scheduling.
+// One caller goes first and is held inside the certs handler, so by the time the
+// rest start the floor is provably stamped and the key set provably not yet
+// published — which is exactly the window the bug lives in. Releasing the
+// handler only after they have all started keeps them in it.
 func TestVerifyAdmitsConcurrentCallersAgainstAColdCache(t *testing.T) {
 	t.Parallel()
 
-	const callers = 8
+	const followers = 7
 
 	keys := newKeySet(t, testKeyID)
 
+	// fetching reports that the first caller is inside the handler: it has
+	// stamped the floor and is waiting on a key set nobody has yet.
+	fetching := make(chan struct{})
 	release := make(chan struct{})
+
 	var fetches atomic.Int64
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if request.URL.Path != "/cdn-cgi/access/certs" {
@@ -434,7 +440,9 @@ func TestVerifyAdmitsConcurrentCallersAgainstAColdCache(t *testing.T) {
 
 			return
 		}
-		fetches.Add(1)
+		if fetches.Add(1) == 1 {
+			close(fetching)
+		}
 		<-release
 		writer.Header().Set("Content-Type", "application/json")
 		_, err := writer.Write(keys.jwks())
@@ -445,24 +453,31 @@ func TestVerifyAdmitsConcurrentCallersAgainstAColdCache(t *testing.T) {
 	verifier, _ := verifierAgainst(t, server)
 
 	assertion := keys.sign(t, validHeader(), validClaims())
-	errs := make(chan error, callers)
-	var ready sync.WaitGroup
+	errs := make(chan error, followers+1)
 
-	ready.Add(callers)
-	for range callers {
+	go func() {
+		_, err := verifier.Verify(t.Context(), assertion)
+		errs <- err
+	}()
+
+	// The fetch is in flight, so every caller started below reaches the
+	// staleness test against a floor another attempt has already closed.
+	<-fetching
+
+	var started sync.WaitGroup
+
+	started.Add(followers)
+	for range followers {
 		go func() {
-			ready.Done()
+			started.Done()
 			_, err := verifier.Verify(t.Context(), assertion)
 			errs <- err
 		}()
 	}
-
-	// Every caller has entered Verify, so the fetch below is one they are all
-	// waiting behind rather than one they each raced to start.
-	ready.Wait()
+	started.Wait()
 	close(release)
 
-	for range callers {
+	for range followers + 1 {
 		require.NoError(t, <-errs, "a concurrent caller was refused against a cold cache")
 	}
 	assert.Equal(t, int64(1), fetches.Load(), "a cold cache cost more than one fetch")
