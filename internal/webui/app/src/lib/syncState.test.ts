@@ -122,6 +122,39 @@ describe("syncState", () => {
     ).toMatch(/^Did not finish · /);
   });
 
+  /*
+   * A half that never started is not a half that broke. `syncGuidance` speaks
+   * for both, and reading anything it returns as a fault paints the ordinary
+   * overlap of two schedules in the colour reserved for something being wrong.
+   */
+  it("does not read a run that never started as one that failed", () => {
+    const skipped = syncState(
+      status({
+        lastCompletedAt: "2026-08-18T06:30:00Z",
+        phases: { targets: phaseRun({ lastResult: "skipped" }) },
+      }),
+    );
+
+    expect(skipped.tone).not.toBe("alert");
+    expect(skipped.label).not.toMatch(/^Did not finish/);
+  });
+
+  // The same for a half held back until an account is connected: that is the
+  // unconnected account, and the account is what the line should say.
+  it("names the unconnected account rather than the run it held back", () => {
+    expect(
+      syncState(
+        status(
+          {
+            lastCompletedAt: "2026-08-18T06:30:00Z",
+            phases: { targets: phaseRun({ lastResult: "not_ready" }) },
+          },
+          [unauthorized()],
+        ),
+      ),
+    ).toEqual({ label: "An account is not connected", tone: "alert" });
+  });
+
   it("raises an account that cannot be written to at all", () => {
     expect(
       syncState(status({ lastCompletedAt: "2026-08-18T06:30:00Z" }, [unauthorized()])),
