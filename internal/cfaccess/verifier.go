@@ -247,18 +247,41 @@ func (t *throttledTransport) RoundTrip(request *http.Request) (*http.Response, e
 	if base == nil {
 		base = http.DefaultTransport
 	}
-	response, err := base.RoundTrip(request)
+	// The deadline is applied here rather than left to the client, because the
+	// key set is built on Background and a caller may supply a client with no
+	// timeout of its own; without this such a fetch would never give up.
+	ctx, cancel := context.WithTimeout(request.Context(), fetchTimeout)
+	response, err := base.RoundTrip(request.WithContext(ctx))
 	if err != nil {
+		cancel()
+
 		return nil, fmt.Errorf("fetching access certs: %w", err)
 	}
-	response.Body = newLimitedBody(response.Body)
+	response.Body = newLimitedBody(response.Body, cancel)
 
 	return response, nil
 }
 
-func newLimitedBody(body io.ReadCloser) io.ReadCloser {
+// newLimitedBody caps the reply and releases the deadline once it is closed.
+// Cancelling any earlier would cut off the read the deadline exists to bound.
+func newLimitedBody(body io.ReadCloser, cancel context.CancelFunc) io.ReadCloser {
 	return struct {
 		io.Reader
 		io.Closer
-	}{Reader: io.LimitReader(body, maxCertsBytes), Closer: body}
+	}{
+		Reader: io.LimitReader(body, maxCertsBytes),
+		Closer: closerFunc(func() error {
+			err := body.Close()
+			cancel()
+			if err != nil {
+				return fmt.Errorf("closing access certs response: %w", err)
+			}
+
+			return nil
+		}),
+	}
 }
+
+type closerFunc func() error
+
+func (c closerFunc) Close() error { return c() }

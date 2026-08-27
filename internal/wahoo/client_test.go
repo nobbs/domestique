@@ -408,6 +408,101 @@ func TestClientClassifiesRejectedRefreshToken(t *testing.T) {
 	require.ErrorIs(t, err, ErrUnauthorized)
 }
 
+// The token endpoint spends the same quota as everything else, so it has to
+// wait out an advertised reset rather than going straight to Wahoo.
+func TestClientThrottlesTheTokenEndpoint(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path == "/v1/user" {
+			writer.Header().Set("X-RateLimit-Remaining", "10, 5, 0")
+			writer.Header().Set("X-RateLimit-Reset", "5")
+			writeJSON(t, writer, map[string]int64{"id": 42})
+
+			return
+		}
+		writeJSON(t, writer, map[string]string{
+			"access_token":  "access-token",
+			"refresh_token": "refresh-token",
+		})
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	now := time.Date(2026, time.August, 17, 7, 0, 0, 0, time.UTC)
+	client.now = func() time.Time { return now }
+	var waited time.Duration
+	client.wait = func(_ context.Context, duration time.Duration) error {
+		waited = duration
+		now = now.Add(duration)
+
+		return nil
+	}
+
+	// Spends the quota, which arms the throttle for whatever asks next.
+	_, err := client.AuthenticatedUser(t.Context(), "access-token")
+	require.NoError(t, err, "priming the rate limit")
+
+	_, _, err = client.RefreshAccessToken(t.Context(), "refresh-token")
+	require.NoError(t, err, "refreshing")
+	assert.Equal(t, 5*time.Second, waited, "the token request did not wait out the advertised reset")
+}
+
+// Wahoo answers a rate-limited token request with 429, which reaches sync as
+// ErrRateLimited rather than as an opaque failure.
+func TestClientClassifiesRateLimitedTokenRequest(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer server.Close()
+
+	_, _, err := newTestClient(t, server).RefreshAccessToken(t.Context(), "refresh-token")
+	require.ErrorIs(t, err, ErrRateLimited)
+}
+
+// x/oauth2 carries the refresh token it was given forward when a reply omits
+// one, so a rotation that did not happen would otherwise be stored as if it had.
+func TestClientRejectsATokenReplyMissingHalfOfIt(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writeJSON(t, writer, map[string]string{"access_token": "access-token"})
+	}))
+	defer server.Close()
+
+	_, _, err := newTestClient(t, server).ExchangeAuthorizationCode(t.Context(), "authorization-code")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "incomplete")
+}
+
+func TestClientRefusesIncompleteOAuthArguments(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		assert.Fail(t, "an incomplete argument must be refused before a request is sent")
+		writer.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+
+	_, err := client.AuthorizationURL("")
+	require.Error(t, err, "authorization URL without state")
+
+	_, _, err = client.ExchangeAuthorizationCode(t.Context(), "")
+	require.Error(t, err, "exchange without a code")
+
+	_, _, err = client.RefreshAccessToken(t.Context(), "")
+	require.Error(t, err, "refresh without a token")
+}
+
+// A token endpoint that cannot be reached is neither a rejection nor a rate
+// limit, so it must not be reported as one.
+func TestClientDoesNotMisclassifyAnUnreachableTokenEndpoint(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	client := newTestClient(t, server)
+	server.Close()
+
+	_, _, err := client.RefreshAccessToken(t.Context(), "refresh-token")
+	require.Error(t, err)
+	require.NotErrorIs(t, err, ErrUnauthorized)
+	require.NotErrorIs(t, err, ErrRateLimited)
+}
+
 func newTestClient(t *testing.T, server *httptest.Server) *Client {
 	t.Helper()
 	client, err := New(&Options{

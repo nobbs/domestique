@@ -89,9 +89,6 @@ type Client struct {
 	wait               func(context.Context, time.Duration) error
 	oauth              *oauth2.Config
 	oauthClient        *http.Client
-	clientID           string
-	redirectURL        string
-	clientSecret       []byte
 	rateLimitRemaining int
 	mutex              sync.Mutex
 	rateLimitKnown     bool
@@ -136,9 +133,6 @@ func New(options *Options) (*Client, error) {
 		},
 		apiBaseURL:   apiBaseURL,
 		oauthBaseURL: oauthBaseURL,
-		clientID:     options.ClientID,
-		redirectURL:  options.RedirectURL,
-		clientSecret: append([]byte(nil), options.ClientSecret...),
 		now:          time.Now,
 		wait:         waitFor,
 	}
