@@ -3,6 +3,8 @@ module github.com/nobbs/domestique
 go 1.26.6
 
 require (
+	github.com/coreos/go-oidc/v3 v3.20.0
+	github.com/go-jose/go-jose/v4 v4.1.4
 	github.com/go-viper/mapstructure/v2 v2.5.0
 	github.com/knadh/koanf/parsers/toml/v2 v2.2.2
 	github.com/knadh/koanf/providers/confmap v1.0.1
@@ -16,6 +18,7 @@ require (
 	github.com/pelletier/go-toml/v2 v2.4.3
 	github.com/stretchr/testify v1.12.1
 	go.yaml.in/yaml/v3 v3.0.5
+	golang.org/x/oauth2 v0.36.0
 	modernc.org/sqlite v1.57.0
 )
 
