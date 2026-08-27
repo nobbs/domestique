@@ -242,10 +242,11 @@ if [[ ! -s "${ASSERTION_FILE}" ]]; then
   exit 1
 fi
 
-# In the foreground, not `--bg`: a foreground Serve holds its configuration for
-# as long as the process lives and takes it away again when the process dies, so
-# stopping the demo stops publishing it. `--bg` would outlive the demo and keep
-# proxying a port with nothing behind it.
+# Serve's own foreground mode, not `--bg`. The shell does put the process in the
+# background; what matters is that tailscaled did not, so the configuration is
+# held for as long as this process lives and taken away when it dies — stopping
+# the demo stops publishing it. `--bg` would hand the configuration to tailscaled
+# to keep, outliving the demo and proxying a port with nothing behind it.
 #
 # Started before the dev server because the dev server is this script's
 # foreground process and never returns. The same port on both sides, so hot
