@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -403,6 +404,68 @@ func TestVerifyRefetchesAfterKeyRotation(t *testing.T) {
 	_, err = verifier.Verify(t.Context(), rotated.sign(t, header, validClaims()))
 	require.NoError(t, err, "expected the rotated key to verify")
 	assert.Equal(t, int64(2), fetches.Load(), "the rotation cost more than one refetch")
+}
+
+// Every request arriving against a cold cache has to end up with the key, not
+// just the one that happened to look first.
+//
+// The refresh floor is stamped before the fetch rather than after it, so a
+// caller that tested staleness while another was mid-fetch used to rule itself
+// out on the strength of that in-flight attempt and be told the key was unknown
+// a moment before it arrived. That is every process start under concurrent
+// traffic, and it was reproducible as a browser suite failing one test at random
+// once it ran on more than one worker.
+//
+// The endpoint is held until every caller is inside, so the test fails against a
+// verifier that lets them decide independently rather than depending on them
+// being scheduled closely enough to collide.
+func TestVerifyAdmitsConcurrentCallersAgainstAColdCache(t *testing.T) {
+	t.Parallel()
+
+	const callers = 8
+
+	keys := newKeySet(t, testKeyID)
+
+	release := make(chan struct{})
+	var fetches atomic.Int64
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/cdn-cgi/access/certs" {
+			writer.WriteHeader(http.StatusNotFound)
+
+			return
+		}
+		fetches.Add(1)
+		<-release
+		writer.Header().Set("Content-Type", "application/json")
+		_, err := writer.Write(keys.jwks())
+		assert.NoError(t, err, "writing the key set")
+	}))
+	t.Cleanup(server.Close)
+
+	verifier, _ := verifierAgainst(t, server)
+
+	assertion := keys.sign(t, validHeader(), validClaims())
+	errs := make(chan error, callers)
+	var ready sync.WaitGroup
+
+	ready.Add(callers)
+	for range callers {
+		go func() {
+			ready.Done()
+			_, err := verifier.Verify(t.Context(), assertion)
+			errs <- err
+		}()
+	}
+
+	// Every caller has entered Verify, so the fetch below is one they are all
+	// waiting behind rather than one they each raced to start.
+	ready.Wait()
+	close(release)
+
+	for range callers {
+		require.NoError(t, <-errs, "a concurrent caller was refused against a cold cache")
+	}
+	assert.Equal(t, int64(1), fetches.Load(), "a cold cache cost more than one fetch")
 }
 
 // A stream of assertions naming key IDs that do not exist must not become a

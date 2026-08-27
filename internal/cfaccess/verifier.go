@@ -106,6 +106,12 @@ type Verifier struct {
 	certsURL string
 
 	mu sync.Mutex
+
+	// refreshing serialises refresh attempts. It is separate from mu, which is
+	// only ever held for the map and the timestamp: a fetch takes up to
+	// fetchTimeout, and holding mu across it would block every verification
+	// that already has its key and needs nothing fetched at all.
+	refreshing sync.Mutex
 }
 
 // New validates the options and returns a Verifier. It contacts nothing: the
@@ -222,9 +228,32 @@ func (v *Verifier) checkClaims(claims *claimSet) error {
 // the ID is unknown. Access rotates its signing key every six weeks and serves
 // the previous key for a further seven days, so an unknown ID normally means a
 // rotation this process has not seen yet.
+//
+// Callers that find the ID unknown queue behind one another rather than each
+// deciding for itself whether a refresh is due. The staleness test reads a
+// timestamp that refresh stamps before it fetches, so a caller that tested it
+// while another was mid-fetch would rule itself out on the strength of the very
+// attempt it should have been waiting for — and be told the key is unknown a
+// moment before that attempt supplied it. That is what a cold cache under
+// concurrent requests looks like: the first request populates the keys and every
+// other one in flight is rejected. Taking the lock first and re-reading the map
+// after it means a waiter returns what the fetch it waited for found.
 func (v *Verifier) key(ctx context.Context, keyID string) (*rsa.PublicKey, error) {
 	v.mu.Lock()
 	key, ok := v.keys[keyID]
+	v.mu.Unlock()
+
+	if ok {
+		return key, nil
+	}
+
+	v.refreshing.Lock()
+	defer v.refreshing.Unlock()
+
+	// Both are re-read under the refresh lock: whoever held it may have filled
+	// the map, and if it did the rate limit below is irrelevant to this caller.
+	v.mu.Lock()
+	key, ok = v.keys[keyID]
 	stale := v.now().Sub(v.lastAttempt) >= minRefreshInterval
 	v.mu.Unlock()
 
