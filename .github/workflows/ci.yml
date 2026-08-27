@@ -69,37 +69,53 @@ jobs:
           install: true
           cache: true
       # The module downloads and the compiler cache, which every Go job otherwise
-      # pays for from scratch. Two of these paths are `.mise.toml`'s own choice
-      # read back — it puts GOCACHE and GOLANGCI_LINT_CACHE under `.cache/` — and
-      # dev/gatecheck asserts that the two files still name the same directories,
-      # because a cache pointed at a directory nothing writes is saved on every
-      # run and restores nothing.
+      # pays for from scratch. They are two entries rather than one because they
+      # go stale on entirely different clocks, and putting them together made
+      # every job rewrite the larger half on every commit.
       #
-      # The key is the pinned toolchain, then `go.sum`, then the Go tree, so an
-      # unchanged tree hits exactly and writes nothing back, and a source change
-      # restores the entry built from the same dependencies and recompiles only
-      # what moved. `.mise.toml` leads because it is what decides which compiler
-      # wrote these directories: without it, a toolchain bump on its own would
-      # still hit the old entry exactly, nothing the new compiler produced would
-      # ever be saved, and every run would recompile cold until some source file
-      # happened to move. The loosest restore-key drops it again on purpose — a
-      # bump makes the compiler cache useless but not the module downloads, which
-      # are the same bytes whatever compiles them. Each job keys its own entry
-      # rather than sharing one: they compile different things — the race
-      # detector's object files are not the plain suite's, and golangci-lint's
-      # cache is neither — and a shared entry would be whichever job happened to
-      # finish last.
+      # The module cache is the downloads, and a download is the same bytes
+      # whoever asked for it: one entry, keyed on `go.sum` alone, shared by every
+      # job here. `.mise.toml` is deliberately not in that key — a toolchain bump
+      # changes which compiler reads these files, not what they contain — and the
+      # single restore-key is what carries most of the tree across a dependency
+      # bump. Six jobs restore it; whichever reaches the end first saves it, and
+      # the other five find the key already written and upload nothing.
+      #
+      # The build cache is per job, because the jobs compile different things:
+      # the race detector's object files are not the plain suite's, and
+      # golangci-lint's cache is neither. Its key is the pinned toolchain, then
+      # `go.sum`, then the Go tree, so an unchanged tree hits exactly and writes
+      # nothing back, and a source change restores the entry built from the same
+      # dependencies and recompiles only what moved. `.mise.toml` leads because
+      # it is what decides which compiler wrote the directory: without it, a
+      # toolchain bump on its own would still hit the old entry exactly, nothing
+      # the new compiler produced would ever be saved, and every run would
+      # recompile cold until some source file happened to move.
+      #
+      # Both paths under `.cache/` are `.mise.toml`'s own choice read back — it
+      # puts GOCACHE and GOLANGCI_LINT_CACHE there — and dev/gatecheck asserts
+      # that the two files still name the same directories, because a cache
+      # pointed at a directory nothing writes is saved on every run and restores
+      # nothing.
       #
       # Nothing restored here can make a check pass that would otherwise fail:
       # every job runs `mise run --force`, and a compiler cache is keyed by the
       # content it was built from. It is the download and the recompilation that
       # is skipped, not the work.
-      - name: Restore the Go caches
+      - name: Restore the Go module cache
         # v6.1.0
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: |
             ~/go/pkg/mod
+          key: gomod-${{ runner.os }}-${{ hashFiles('go.sum') }}
+          restore-keys: |
+            gomod-${{ runner.os }}-
+      - name: Restore the Go build cache
+        # v6.1.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: |
             .cache/go-build
             .cache/golangci-lint
           key: go-lint-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-${{ hashFiles('go.sum') }}-${{ hashFiles('**/*.go') }}
@@ -146,12 +162,20 @@ jobs:
           install: true
           cache: true
       # The Go caches, as the Lint job above explains them.
-      - name: Restore the Go caches
+      - name: Restore the Go module cache
         # v6.1.0
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: |
             ~/go/pkg/mod
+          key: gomod-${{ runner.os }}-${{ hashFiles('go.sum') }}
+          restore-keys: |
+            gomod-${{ runner.os }}-
+      - name: Restore the Go build cache
+        # v6.1.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: |
             .cache/go-build
           key: go-test-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-${{ hashFiles('go.sum') }}-${{ hashFiles('**/*.go') }}
           restore-keys: |
@@ -216,12 +240,20 @@ jobs:
           install: true
           cache: true
       # The Go caches, as the Lint job above explains them.
-      - name: Restore the Go caches
+      - name: Restore the Go module cache
         # v6.1.0
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: |
             ~/go/pkg/mod
+          key: gomod-${{ runner.os }}-${{ hashFiles('go.sum') }}
+          restore-keys: |
+            gomod-${{ runner.os }}-
+      - name: Restore the Go build cache
+        # v6.1.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: |
             .cache/go-build
           key: go-security-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-${{ hashFiles('go.sum') }}-${{ hashFiles('**/*.go') }}
           restore-keys: |
@@ -258,6 +290,36 @@ jobs:
           version: 2026.8.11
           install: true
           cache: true
+      # This job compiles Go as well as JavaScript, and used to be the only one
+      # that did so without the caches for it. `api-check` regenerates the
+      # client, and the browser suite's own web server is `dev/demo.sh`, which
+      # builds `dev/demoapi` — modernc.org/sqlite and all — before Playwright
+      # opens a page. Cold, that build took nearly three minutes of this job's
+      # ten, on the critical path of the whole workflow.
+      #
+      # Split and keyed as the Lint job above explains, under its own build-cache
+      # prefix for the reason given there: what this job leaves in the compiler
+      # cache is the demo stack, which is not what any of them compiles.
+      - name: Restore the Go module cache
+        # v6.1.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: |
+            ~/go/pkg/mod
+          key: gomod-${{ runner.os }}-${{ hashFiles('go.sum') }}
+          restore-keys: |
+            gomod-${{ runner.os }}-
+      - name: Restore the Go build cache
+        # v6.1.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: |
+            .cache/go-build
+          key: go-ui-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-${{ hashFiles('go.sum') }}-${{ hashFiles('**/*.go') }}
+          restore-keys: |
+            go-ui-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-${{ hashFiles('go.sum') }}-
+            go-ui-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-
+            go-ui-${{ runner.os }}-
       # pnpm downloads every package once into a content-addressed store and hard
       # links it into node_modules, so the store is what makes `ui-install` a
       # link rather than a download. Its location is asked for rather than
@@ -387,12 +449,20 @@ jobs:
           install: true
           cache: true
       # The Go caches, as the Lint job above explains them.
-      - name: Restore the Go caches
+      - name: Restore the Go module cache
         # v6.1.0
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: |
             ~/go/pkg/mod
+          key: gomod-${{ runner.os }}-${{ hashFiles('go.sum') }}
+          restore-keys: |
+            gomod-${{ runner.os }}-
+      - name: Restore the Go build cache
+        # v6.1.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: |
             .cache/go-build
           key: go-coverage-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-${{ hashFiles('go.sum') }}-${{ hashFiles('**/*.go') }}
           restore-keys: |
@@ -468,12 +538,20 @@ jobs:
           install: true
           cache: true
       # The Go caches, as the Lint job above explains them.
-      - name: Restore the Go caches
+      - name: Restore the Go module cache
         # v6.1.0
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: |
             ~/go/pkg/mod
+          key: gomod-${{ runner.os }}-${{ hashFiles('go.sum') }}
+          restore-keys: |
+            gomod-${{ runner.os }}-
+      - name: Restore the Go build cache
+        # v6.1.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: |
             .cache/go-build
           key: go-build-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-${{ hashFiles('go.sum') }}-${{ hashFiles('**/*.go') }}
           restore-keys: |
@@ -590,6 +668,101 @@ jobs:
       - name: Smoke-test the production runtime contract
         run: mise run --force container-smoke
 
+  prebuild:
+    name: Prebuild
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    needs: changes
+    # Everything `publish` will do except the part that has to be gated.
+    #
+    # `publish` cannot start until the whole gate is green, and the gate's long
+    # pole is the UI job's browser suite — ten minutes during which the runner
+    # that will build the image is not yet running. The build itself is another
+    # four to six, almost all of it one `go build` that the Dockerfile's
+    # `--mount=type=cache` cannot help with: a cache mount lives on the builder,
+    # a fresh runner has no builder to have kept one, and no cache exporter
+    # writes mounts. What a registry cache *does* carry is the layer that RUN
+    # produced, so the fix is to have produced it already.
+    #
+    # This job builds the same tree with the same build-args, pushes no tag, and
+    # writes only the build cache. `publish` then runs the identical build, hits
+    # that cache for every expensive layer, and is left with the push.
+    #
+    # It runs beside the gate rather than after it, so a red gate means an image
+    # was built and thrown away — which costs a runner and reaches nobody. It is
+    # keyed to `image`, the same filter that decides whether a merge publishes at
+    # all, so a commit that will not publish does not build either.
+    if: >-
+      github.event_name == 'push' &&
+      needs.changes.outputs.image == 'true'
+
+    # Serialised against itself on the same terms as `publish`: two pushes in
+    # quick succession would otherwise race to write one cache manifest. It is
+    # deliberately not serialised against `publish`, which is guarding a
+    # different thing — the order tags land in — and can legitimately still be
+    # running for an earlier commit. Two writers of `:buildcache` cost at worst a
+    # cache miss: each pushes its own blobs before the manifest, so whichever
+    # manifest lands last is complete, and a layer that is missing from it is
+    # rebuilt rather than read wrong.
+    concurrency:
+      group: prebuild-${{ github.workflow }}-${{ github.ref }}
+      cancel-in-progress: false
+
+    # `packages: write` is for the cache manifest and nothing else. No tag a host
+    # could deploy is pushed from here; what reaches the registry from this job
+    # is `:buildcache`, which is not a runnable image and which the gate does not
+    # guard today either — `publish` has always written it. A layer in it can
+    # only ever be reused by a build whose inputs hash the same, which is to say
+    # by this same commit.
+    permissions:
+      contents: read
+      packages: write
+
+    env:
+      IMAGE: ghcr.io/${{ github.repository }}
+
+    steps:
+      - name: Check out repository
+        # v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Set up Docker Buildx
+        # v4.2.0
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c
+      - name: Log in to GitHub Container Registry
+        # v4.6.0
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # Docker Hardened Images require authentication even on the free
+      # Community tier, so the image cannot build without these secrets.
+      - name: Authenticate to Docker Hardened Images
+        # v4.6.0
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f
+        with:
+          registry: dhi.io
+          username: ${{ secrets.DHI_USERNAME }}
+          password: ${{ secrets.DHI_TOKEN }}
+      # The platform, the build-arg and the context must match `publish`'s build
+      # exactly: a layer is reused only by a build that hashes the same, and
+      # SOURCE_REVISION is an input to the last and most expensive one. `push`
+      # and the attestations are deliberately absent — they are what `publish`
+      # is for, and producing them here would be work thrown away twice.
+      - name: Warm the build cache
+        # v7.3.0
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a
+        with:
+          context: .
+          platforms: linux/amd64
+          build-args: |
+            SOURCE_REVISION=${{ github.sha }}
+          push: false
+          cache-from: type=registry,ref=${{ env.IMAGE }}:buildcache
+          cache-to: type=registry,ref=${{ env.IMAGE }}:buildcache,mode=max,image-manifest=true,oci-mediatypes=true
+
   publish:
     name: Publish
     runs-on: ubuntu-24.04
@@ -601,9 +774,16 @@ jobs:
       - security
       - ui
       - build
+      - prebuild
     # Only a push to the default branch publishes, and only behind the whole
     # gate rather than the subset `image` waits for: what reaches the registry
     # is what a host will run.
+    #
+    # `prebuild` is in `needs` for ordering, not as a condition: it is not tested
+    # below, so a prebuild that failed leaves this job to do the whole build
+    # itself rather than blocking a merge over a warm cache that did not happen.
+    # In the ordinary case it finished minutes ago, while the gate was still
+    # running, and everything expensive here is already a cache hit.
     if: >-
       !cancelled() &&
       github.event_name == 'push' &&
@@ -703,7 +883,18 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           annotations: ${{ steps.meta.outputs.annotations }}
           cache-from: type=registry,ref=${{ env.IMAGE }}:buildcache
-          cache-to: type=registry,ref=${{ env.IMAGE }}:buildcache,mode=max,image-manifest=true,oci-mediatypes=true
+          # Exported only when `prebuild` did not already do it. It is the same
+          # tree hashing to the same layers either way, so a second export writes
+          # what is there — and measured at over forty seconds, all of it on the
+          # critical path between a merge and a deployment. When `prebuild`
+          # failed, this is what stops the cache going stale and every later
+          # build going cold with it.
+          #
+          # The condition is negated so that the string is the *truthy* branch.
+          # `a && b || c` picks `c` whenever `b` is falsy, and the empty string
+          # is falsy, so writing this the other way round — skip-when-success —
+          # would export on every run and quietly buy nothing.
+          cache-to: ${{ needs.prebuild.result != 'success' && format('type=registry,ref={0}:buildcache,mode=max,image-manifest=true,oci-mediatypes=true', env.IMAGE) || '' }}
       # The digest is the deployment instruction, so it belongs where an
       # operator copies it from rather than at the end of a build log.
       - name: Report the published digest
@@ -844,6 +1035,7 @@ jobs:
       - coverage
       - build
       - image
+      - prebuild
       - publish
       - deploy
     if: always()
@@ -865,6 +1057,7 @@ jobs:
           COVERAGE_RESULT: ${{ needs.coverage.result }}
           BUILD_RESULT: ${{ needs.build.result }}
           IMAGE_RESULT: ${{ needs.image.result }}
+          PREBUILD_RESULT: ${{ needs.prebuild.result }}
           PUBLISH_RESULT: ${{ needs.publish.result }}
           DEPLOY_RESULT: ${{ needs.deploy.result }}
         run: |
@@ -887,6 +1080,7 @@ jobs:
             echo "| Coverage | ${COVERAGE_RESULT} |"
             echo "| Build | ${BUILD_RESULT} |"
             echo "| Image | ${IMAGE_RESULT} |"
+            echo "| Prebuild | ${PREBUILD_RESULT} |"
             echo "| Publish | ${PUBLISH_RESULT} |"
             echo "| Deploy | ${DEPLOY_RESULT} |"
           } >> "$GITHUB_STEP_SUMMARY"
@@ -899,6 +1093,14 @@ jobs:
       # for the same commits. What this does guarantee is that a failed build,
       # publish, or deploy — including one that rolled the host back cleanly —
       # still reddens the commit.
+      #
+      # `prebuild` is reported but not judged, for the same shape of reason. It
+      # publishes nothing and gates nothing: all it does is put the expensive
+      # layers in the build cache before `publish` asks for them. If it fails,
+      # `publish` builds them itself and the commit ends up in exactly the same
+      # place, a few minutes later — so reddening a commit whose image published
+      # correctly would be reporting a slower run as a broken one. A Dockerfile
+      # that genuinely cannot build fails `publish` too, and that is judged.
       #
       # `coverage` is deliberately not in the loop below. It is reported above
       # so that a failed upload is visible, but this job does not judge the
