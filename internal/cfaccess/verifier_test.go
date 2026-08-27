@@ -10,6 +10,7 @@ import (
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -137,6 +138,9 @@ func verifyPastTheFloor(t *testing.T, fetches *atomic.Int64, verify func()) {
 		if fetches.Load() > before {
 			return
 		}
+		// The window closes as soon as go-oidc's fetch goroutine is scheduled
+		// again, so hand it the processor rather than spinning against it.
+		runtime.Gosched()
 	}
 	t.Fatal("no refetch reached the certs endpoint")
 }
