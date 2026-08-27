@@ -480,10 +480,12 @@ func TestHandlerNamesTheIdentityTheGateLetThrough(t *testing.T) {
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/webui/config"))
 	require.Equal(t, http.StatusOK, response.Code, "config status")
 
+	// A pointer, because the claim below is that the field is absent and a
+	// plain string cannot tell that apart from one sent empty.
 	var body struct {
 		Identity struct {
-			Email      string `json:"email"`
-			SignOutURL string `json:"signOutUrl"`
+			Email      string  `json:"email"`
+			SignOutURL *string `json:"signOutUrl"`
 		} `json:"identity"`
 	}
 	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body), "decoding the config")
@@ -491,8 +493,12 @@ func TestHandlerNamesTheIdentityTheGateLetThrough(t *testing.T) {
 	assert.Equal(t, testAccessEmail, body.Identity.Email, "the config must name the one authorised address")
 	// Nothing stands in front of this handler, so there is nowhere to sign out
 	// to. The field is absent rather than empty, which is how the page tells
-	// "no way out exists" from one it was given.
-	assert.Empty(t, body.Identity.SignOutURL, "a handler with no configured way out must not name one")
+	// "no way out exists" from one it was given — and absence is checked in the
+	// bytes as well, since a `null` would decode to a nil pointer just as
+	// readily as a missing key.
+	assert.Nil(t, body.Identity.SignOutURL, "a handler with no configured way out must not name one")
+	assert.NotContains(t, response.Body.String(), "signOutUrl",
+		"the way out must be omitted from the response rather than sent empty")
 }
 
 func TestHandlerPublishesTheWayOutWhenOneIsConfigured(t *testing.T) {
