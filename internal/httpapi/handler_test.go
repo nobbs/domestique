@@ -481,11 +481,13 @@ func TestHandlerNamesTheIdentityTheGateLetThrough(t *testing.T) {
 	require.Equal(t, http.StatusOK, response.Code, "config status")
 
 	// A pointer, because the claim below is that the field is absent and a
-	// plain string cannot tell that apart from one sent empty.
+	// plain string cannot tell that apart from one sent empty. It leads the
+	// struct rather than following the address it reads worse than, because
+	// `fieldalignment` wants the pointer first.
 	var body struct {
 		Identity struct {
-			Email      string  `json:"email"`
 			SignOutURL *string `json:"signOutUrl"`
+			Email      string  `json:"email"`
 		} `json:"identity"`
 	}
 	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body), "decoding the config")
