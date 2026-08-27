@@ -99,8 +99,8 @@ func run(ctx context.Context, assertionFile, states string) error {
 	if err != nil {
 		return fmt.Errorf("loading runtime settings: %w", err)
 	}
-	if err := seedBasemaps(ctx, runtimeSettings); err != nil {
-		return err
+	if seedErr := seedBasemaps(ctx, runtimeSettings); seedErr != nil {
+		return seedErr
 	}
 
 	slots, err := slotsFor(settings.Wahoo.Targets(), states)

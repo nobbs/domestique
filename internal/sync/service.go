@@ -140,7 +140,6 @@ type Result struct {
 // Options configures safety rules for a synchronizer. It contains no secrets
 // and is intentionally independent of the configuration packages.
 type Options struct {
-	TargetIDs []string
 	// AllowEmptySourceDeletion reports whether a trusted but empty source may
 	// delete the final owned destination routes.
 	//
@@ -149,6 +148,7 @@ type Options struct {
 	// asked as it is read, so a run already in flight keeps the answer it
 	// started with and the next one gets the new one.
 	AllowEmptySourceDeletion func() bool
+	TargetIDs                []string
 }
 
 // Source provides a complete, validated inventory of one provider's stages.
@@ -235,8 +235,8 @@ type Service struct {
 	target                   Target
 	annotator                Annotator
 	predictor                Predictor
-	targetIDs                []string
 	allowEmptySourceDeletion func() bool
+	targetIDs                []string
 	running                  atomic.Bool
 }
 

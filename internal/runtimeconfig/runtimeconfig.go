@@ -27,7 +27,6 @@ import (
 // replaced whole: an edit writes every field, because the form the operator
 // submits holds every field.
 type Values struct {
-	Sync          Sync
 	Notifications Notifications
 	// Basemaps are the cartographies the reader may switch the map between, in
 	// the order they are offered. The first is what a browser that has never
@@ -35,6 +34,7 @@ type Values struct {
 	// on something.
 	Basemaps []Basemap
 	Surface  Surface
+	Sync     Sync
 }
 
 // Sync holds the reconciliation settings a run reads when it starts.
@@ -52,19 +52,8 @@ type Sync struct {
 
 // Notifications holds what reaches the operator's phone, and where it is sent.
 type Notifications struct {
-	// Enabled is the switch for the whole channel. Off suppresses failures too,
-	// not only routine success, which is why every surface that offers it has to
-	// say so.
-	Enabled bool
-
 	// Policy names what a routine successful run notifies.
 	Policy SuccessPolicy
-
-	// DigestInterval is how much time separates two digests. It is read only by
-	// SuccessPolicyDigest, and validated whatever the policy is: a setting an
-	// operator will one day switch to should not turn out to have been invalid
-	// all along at the moment they switch.
-	DigestInterval time.Duration
 
 	// PushoverBaseURL is the origin the application token and user key are sent
 	// to. It is configurable because a development or demo environment has to be
@@ -72,6 +61,17 @@ type Notifications struct {
 	// compiled-in host such an environment would quietly reach with a
 	// placeholder token.
 	PushoverBaseURL string
+
+	// DigestInterval is how much time separates two digests. It is read only by
+	// SuccessPolicyDigest, and validated whatever the policy is: a setting an
+	// operator will one day switch to should not turn out to have been invalid
+	// all along at the moment they switch.
+	DigestInterval time.Duration
+
+	// Enabled is the switch for the whole channel. Off suppresses failures too,
+	// not only routine success, which is why every surface that offers it has to
+	// say so.
+	Enabled bool
 }
 
 // SuccessPolicy names what a routine successful run notifies. It never governs
@@ -184,6 +184,8 @@ func (c *Current) Values() Values {
 // Set validates, persists, and then publishes a complete new set of settings.
 // The order is what makes the snapshot and the database agree: a set of values
 // that fails validation or fails to be written never becomes live.
+//
+//nolint:gocritic // value param: a pointer would let the caller mutate what became live after validation.
 func (c *Current) Set(ctx context.Context, values Values) error {
 	validated, err := values.Validate()
 	if err != nil {
@@ -199,6 +201,8 @@ func (c *Current) Set(ctx context.Context, values Values) error {
 
 // clone copies the slice-valued fields so no two holders of a Values share a
 // backing array.
+//
+//nolint:gocritic // value receiver: cloning a snapshot starts from a copy of it.
 func (v Values) clone() Values {
 	v.Basemaps = slices.Clone(v.Basemaps)
 	v.Surface.Regions = slices.Clone(v.Surface.Regions)

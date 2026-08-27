@@ -426,8 +426,8 @@ type Handler struct {
 	browserOrigin       string
 	allowedEmail        string
 	signOutURL          string
-	targetIDs           []string
 	settings            SettingsState
+	targetIDs           []string
 }
 
 // New creates a handler. Health checks are intentionally unauthenticated;

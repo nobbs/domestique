@@ -129,6 +129,11 @@ func TestValidateSurface(t *testing.T) {
 		{name: "no regions at all", surface: Surface{RebuildInterval: 7 * 24 * time.Hour}},
 		{name: "no cadence at all is rejected", surface: Surface{}, wantErr: true},
 		{
+			name:    "a cadence below the second it is stored in is rejected",
+			surface: Surface{RebuildInterval: 500 * time.Millisecond},
+			wantErr: true,
+		},
+		{
 			name:    "a region path",
 			surface: Surface{Regions: []string{"europe/germany/rheinland-pfalz"}, RebuildInterval: time.Hour},
 		},

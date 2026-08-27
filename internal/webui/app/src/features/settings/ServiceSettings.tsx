@@ -206,6 +206,7 @@ function SettingsForm({ settings }: { settings: Settings }) {
               id={`${id}-stale`}
               type="number"
               min={1}
+              step="any"
               value={inHours(values.sync.staleAfterSeconds)}
               onChange={(event) =>
                 edit({
@@ -274,6 +275,7 @@ function SettingsForm({ settings }: { settings: Settings }) {
               id={`${id}-digest`}
               type="number"
               min={1}
+              step="any"
               value={inHours(values.notifications.digestIntervalSeconds)}
               onChange={(event) =>
                 edit({
@@ -420,6 +422,7 @@ function SettingsForm({ settings }: { settings: Settings }) {
               id={`${id}-rebuild`}
               type="number"
               min={1}
+              step="any"
               value={inHours(values.surface.rebuildIntervalSeconds)}
               onChange={(event) =>
                 edit({

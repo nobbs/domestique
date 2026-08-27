@@ -96,16 +96,16 @@ type Runner interface {
 // It is supplied as a function and read at each decision rather than held,
 // because these are settings an operator changes while the service runs.
 type Notifications struct {
-	// Enabled is the switch for the whole channel. Off suppresses a failure and
-	// a stale inventory as surely as it suppresses a routine success, which is
-	// why every surface offering it has to say so in as many words.
-	Enabled bool
-
 	Success SuccessNotification
 
 	// StaleAfter bounds how long the trusted source inventory may go without a
 	// successful refresh before it is reported and notified as stale.
 	StaleAfter time.Duration
+
+	// Enabled is the switch for the whole channel. Off suppresses a failure and
+	// a stale inventory as surely as it suppresses a routine success, which is
+	// why every surface offering it has to say so in as many words.
+	Enabled bool
 }
 
 // NewReporter creates a reporting runner with explicit dependencies.

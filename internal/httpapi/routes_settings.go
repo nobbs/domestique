@@ -106,6 +106,8 @@ func settingsValues(
 }
 
 // settingsView is the wire form of the settings in force.
+//
+//nolint:gocritic // value param: the view is rendered from a snapshot copy.
 func settingsView(values runtimeconfig.Values) openapi.Settings {
 	view := openapi.Settings{
 		Sync: openapi.SyncSettings{

@@ -13,9 +13,9 @@ import (
 // stubStore stands in for the SQLite store: it remembers the last values
 // written and can be made to fail either half.
 type stubStore struct {
-	values   Values
 	readErr  error
 	writeErr error
+	values   Values
 	writes   int
 }
 
@@ -27,6 +27,7 @@ func (s *stubStore) RuntimeSettings(context.Context) (Values, error) {
 	return s.values, nil
 }
 
+//nolint:gocritic // value param: this double conforms to the Store contract.
 func (s *stubStore) SetRuntimeSettings(_ context.Context, values Values) error {
 	if s.writeErr != nil {
 		return s.writeErr
@@ -167,7 +168,12 @@ func TestValidateNotifications(t *testing.T) {
 		wantErr string
 	}{
 		{name: "a policy that is not one of the three", mutate: func(n *Notifications) { n.Policy = "sometimes" }, wantErr: "success_policy"},
-		{name: "a digest with no period", mutate: func(n *Notifications) { n.DigestInterval = 0 }, wantErr: "must be positive"},
+		{name: "a digest with no period", mutate: func(n *Notifications) { n.DigestInterval = 0 }, wantErr: "at least 1s"},
+		{
+			name:    "a period below the second these settings are stored in",
+			mutate:  func(n *Notifications) { n.DigestInterval = 500 * time.Millisecond },
+			wantErr: "at least 1s",
+		},
 		{
 			name:    "a period reaching past the recorded history",
 			mutate:  func(n *Notifications) { n.DigestInterval = 8 * 24 * time.Hour },
@@ -235,7 +241,7 @@ func TestValidateHTTPSOrigin(t *testing.T) {
 	require.NoError(t, ValidateHTTPSOrigin("origin", "https://api.example.test/"))
 	require.Error(t, ValidateHTTPSOrigin("origin", "https://api.example.test/v1"))
 	require.Error(t, ValidateHTTPSOrigin("origin", "https://api.example.test?key=abc"))
-	//nolint:gosec // A rejection fixture for URL userinfo, not a real credential.
+	// A rejection fixture for URL userinfo, not a real credential.
 	require.Error(t, ValidateHTTPSOrigin("origin", "https://user:pass@api.example.test"))
 	require.Error(t, ValidateHTTPSOrigin("origin", "api.example.test"))
 }

@@ -18,12 +18,23 @@ import (
 // is worse than refusing the setting.
 const maxDigestInterval = 7 * 24 * time.Hour
 
+// minimumInterval is the floor under every duration here.
+//
+// A second is not an arbitrary lower bound: it is the resolution these settings
+// have. They cross the wire as whole seconds and are stored as whole seconds, so
+// anything shorter would be written down as zero — a value this same function
+// then refuses when it is read back at startup, leaving the service unable to
+// start on a setting its own write path accepted.
+const minimumInterval = time.Second
+
 // Validate checks every rule and returns the normalised settings: lists trimmed
 // of whitespace and repeats, so what is stored is exactly what was checked.
 //
 // It is the one entry point both edges use. Load calls it on what the database
 // returned and Set calls it on what the browser submitted, which is what keeps
 // the two from ever disagreeing about what a valid setting is.
+//
+//nolint:gocritic // value receiver: validation returns a normalised copy rather than editing the caller's.
 func (v Values) Validate() (Values, error) {
 	if err := ValidateSync(v.Sync); err != nil {
 		return Values{}, err
@@ -51,7 +62,7 @@ func (v Values) Validate() (Values, error) {
 // ValidateSync checks the reconciliation settings. The deletion gate is a
 // boolean and cannot be wrong; the staleness bound can.
 func ValidateSync(sync Sync) error {
-	if sync.StaleAfter < time.Second {
+	if sync.StaleAfter < minimumInterval {
 		return errors.New("sync.stale_after must be at least 1s")
 	}
 
@@ -71,8 +82,8 @@ func ValidateNotifications(notifications Notifications) error {
 	// The period is checked whatever the policy reads it. A setting that is only
 	// consulted by one policy is still a setting an operator will switch to, and
 	// finding out then that it was never valid is the wrong moment.
-	if notifications.DigestInterval <= 0 {
-		return errors.New("notifications.digest_interval must be positive")
+	if notifications.DigestInterval < minimumInterval {
+		return errors.New("notifications.digest_interval must be at least 1s")
 	}
 	if notifications.DigestInterval > maxDigestInterval {
 		return fmt.Errorf(
@@ -202,8 +213,8 @@ func ValidateSurface(surface Surface) (Surface, error) {
 	// so a cadence of zero would be a schedule that could not be started, and an
 	// operator naming their first region would find out only at the next
 	// restart.
-	if surface.RebuildInterval <= 0 {
-		return Surface{}, errors.New("surface.rebuild_interval must be positive")
+	if surface.RebuildInterval < minimumInterval {
+		return Surface{}, errors.New("surface.rebuild_interval must be at least 1s")
 	}
 
 	surface.Regions = regions

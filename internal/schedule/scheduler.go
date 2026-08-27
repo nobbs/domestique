@@ -27,15 +27,15 @@ func (f RunnerFunc) Run(ctx context.Context) { f(ctx) }
 
 // Options configures delayed startup and periodic execution.
 type Options struct {
-	InitialDelay time.Duration
-	// Interval is the gap between runs. It is fixed for the life of the
-	// scheduler.
-	Interval time.Duration
 	// IntervalFunc supersedes Interval where the gap is a setting an operator
 	// edits while the service runs. It is read again after every run, so an
 	// edit takes effect at the next gap rather than at the next restart. New
 	// wraps a constant Interval into one when it is unset.
 	IntervalFunc func() time.Duration
+	InitialDelay time.Duration
+	// Interval is the gap between runs. It is fixed for the life of the
+	// scheduler.
+	Interval time.Duration
 }
 
 // Scheduler starts one delayed run and then runs on an interval. It never

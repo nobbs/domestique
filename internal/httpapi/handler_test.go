@@ -35,12 +35,13 @@ const (
 // staticSettings stands in for the live snapshot, holding one set of settings
 // for the length of a test and recording what an edit wrote.
 type staticSettings struct {
-	values    runtimeconfig.Values
 	storeFail error
+	values    runtimeconfig.Values
 }
 
 func (s *staticSettings) Values() runtimeconfig.Values { return s.values }
 
+//nolint:gocritic // value param: this double conforms to the settings seam.
 func (s *staticSettings) Set(_ context.Context, values runtimeconfig.Values) error {
 	if s.storeFail != nil {
 		return s.storeFail

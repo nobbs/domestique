@@ -386,11 +386,11 @@ above can.
 [The sync lifecycle specification](sync-lifecycle.md#notifications) states what
 each policy delivers.
 
-`notifications.digest_interval` is positive, at most seven days, and defaults to
-24 hours. The upper bound is the reach of the recorded run history: a longer
-period would silently total a window whose earliest runs have already been
-pruned. It is checked whatever the policy is, because a setting an operator will
-one day switch to should not turn out to have been invalid all along at the
+`notifications.digest_interval` is at least a second, at most seven days, and
+defaults to 24 hours. The upper bound is the reach of the recorded run history:
+a longer period would silently total a window whose earliest runs have already
+been pruned. It is checked whatever the policy is, because a setting an operator
+will one day switch to should not turn out to have been invalid all along at the
 moment they switch.
 
 `notifications.pushover.base_url` is an absolute HTTPS origin without a path,
@@ -502,8 +502,8 @@ only outbound traffic is the scheduled download of each region's published
 extract, which tells the extract host which regions this deployment cares about
 and nothing about any route.
 
-`surface.rebuild_interval` is how often the index is rebuilt. It must be
-positive and defaults to one week — roughly the pace at which a region's surface
+`surface.rebuild_interval` is how often the index is rebuilt. It is at least a
+second and defaults to one week — roughly the pace at which a region's surface
 tagging changes enough to matter. It is required whether or not a region is
 named, because the rebuild schedule is created either way and simply builds
 nothing when there are no regions; a cadence of zero would be a schedule that

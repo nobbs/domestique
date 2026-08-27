@@ -1095,6 +1095,8 @@ func (s *Store) RuntimeSettings(ctx context.Context) (runtimeconfig.Values, erro
 // The lists are deleted and rewritten rather than reconciled row by row. They
 // are short, they arrive complete, and an edit that reorders one changes every
 // position in it anyway.
+//
+//nolint:gocritic // value param: this method conforms to the runtimeconfig.Store contract.
 func (s *Store) SetRuntimeSettings(ctx context.Context, values runtimeconfig.Values) error {
 	transaction, err := s.database.BeginTx(ctx, nil)
 	if err != nil {

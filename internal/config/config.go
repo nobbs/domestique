@@ -60,8 +60,8 @@ type Settings struct {
 	HTTP          HTTP
 	Access        Access
 	RideModel     RideModel
-	Sync          Sync
 	State         State
+	Sync          Sync
 }
 
 // HTTP configures the service listeners.
@@ -230,7 +230,6 @@ func (s Secret) Bytes() []byte {
 }
 
 type rawSettings struct {
-	Wahoo         rawWahoo         `koanf:"wahoo"`
 	VeloPlanner   rawVeloPlanner   `koanf:"veloplanner"`
 	Komoot        rawKomoot        `koanf:"komoot"`
 	Notifications rawNotifications `koanf:"notifications"`
@@ -238,6 +237,7 @@ type rawSettings struct {
 	Access        rawAccess        `koanf:"access"`
 	RideModel     rawRideModel     `koanf:"ridemodel"`
 	State         rawState         `koanf:"state"`
+	Wahoo         rawWahoo         `koanf:"wahoo"`
 	Sync          rawSync          `koanf:"sync"`
 }
 
@@ -508,10 +508,10 @@ func build(raw *rawSettings, veloPlannerConfigured, komootConfigured bool) (*Set
 		return nil, errors.New("at least one source must be configured: add a [veloplanner] or [komoot] section")
 	}
 	if err := runtimeconfig.ValidateHTTPSURL("wahoo.api_base_url", raw.Wahoo.APIBaseURL); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("configuration file: %w", err)
 	}
 	if err := runtimeconfig.ValidateHTTPSURL("wahoo.oauth_base_url", raw.Wahoo.OAuthBaseURL); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("configuration file: %w", err)
 	}
 	if err := requireValue("wahoo.client_id", raw.Wahoo.ClientID); err != nil {
 		return nil, err
@@ -527,8 +527,8 @@ func build(raw *rawSettings, veloPlannerConfigured, komootConfigured bool) (*Set
 	if err != nil {
 		return nil, err
 	}
-	if err := validateSync(raw.Sync); err != nil {
-		return nil, err
+	if syncErr := validateSync(raw.Sync); syncErr != nil {
+		return nil, syncErr
 	}
 
 	keySecret, err := resolveSecret(secretInput{
@@ -552,7 +552,7 @@ func build(raw *rawSettings, veloPlannerConfigured, komootConfigured bool) (*Set
 		// means a bad value fails at config load with a name and a reason,
 		// rather than later at client construction with neither.
 		if urlErr := runtimeconfig.ValidateHTTPSOrigin("veloplanner.base_url", raw.VeloPlanner.BaseURL); urlErr != nil {
-			return nil, urlErr
+			return nil, fmt.Errorf("configuration file: %w", urlErr)
 		}
 		email, emailErr := resolveSecret(secretInput{
 			name:      "VeloPlanner email",
@@ -579,7 +579,7 @@ func build(raw *rawSettings, veloPlannerConfigured, komootConfigured bool) (*Set
 	if komootConfigured {
 		// Same reasoning as veloplanner.base_url above.
 		if urlErr := runtimeconfig.ValidateHTTPSOrigin("komoot.base_url", raw.Komoot.BaseURL); urlErr != nil {
-			return nil, urlErr
+			return nil, fmt.Errorf("configuration file: %w", urlErr)
 		}
 		email, emailErr := resolveSecret(secretInput{
 			name:      "Komoot email",
@@ -723,7 +723,7 @@ func validateRideModel(rideModel rawRideModel) error {
 
 func validateRedirectURL(value string) error {
 	if err := runtimeconfig.ValidateHTTPSURL("wahoo.redirect_url", value); err != nil {
-		return err
+		return fmt.Errorf("configuration file: %w", err)
 	}
 	parsed, err := url.Parse(value)
 	if err != nil {
