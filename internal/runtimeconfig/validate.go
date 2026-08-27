@@ -18,21 +18,13 @@ import (
 // is worse than refusing the setting.
 const maxDigestInterval = 7 * 24 * time.Hour
 
-// minimumInterval is the floor under every duration here.
-//
-// A second is not an arbitrary lower bound: it is the resolution these settings
-// have. They cross the wire as whole seconds and are stored as whole seconds, so
-// anything shorter would be written down as zero — a value this same function
-// then refuses when it is read back at startup, leaving the service unable to
-// start on a setting its own write path accepted.
+// minimumInterval is the floor under every duration here. These settings cross
+// the wire and are stored as whole seconds, so anything shorter is written down
+// as zero and then refused when it is read back at startup.
 const minimumInterval = time.Second
 
 // Validate checks every rule and returns the normalised settings: lists trimmed
 // of whitespace and repeats, so what is stored is exactly what was checked.
-//
-// It is the one entry point both edges use. Load calls it on what the database
-// returned and Set calls it on what the browser submitted, which is what keeps
-// the two from ever disagreeing about what a valid setting is.
 //
 //nolint:gocritic // value receiver: validation returns a normalised copy rather than editing the caller's.
 func (v Values) Validate() (Values, error) {
@@ -223,13 +215,8 @@ func ValidateSurface(surface Surface) (Surface, error) {
 }
 
 // TrimmedRegions drops blank entries and repeats, keeping the order they were
-// written in.
-//
-// A repeat is dropped rather than rejected because it asks for nothing that is
-// not already being done: the second copy of a region downloads the same
-// extract and appends the same ways a second time, which cannot change what the
-// index answers but does pay for that region twice in build time, memory, and
-// size. Silently doing the work once is the useful reading of a typo.
+// written in. A repeated region downloads the same extract and appends the same
+// ways twice, which costs a build but cannot change what the index answers.
 func TrimmedRegions(regions []string) []string {
 	trimmed := make([]string, 0, len(regions))
 	seen := make(map[string]bool, len(regions))

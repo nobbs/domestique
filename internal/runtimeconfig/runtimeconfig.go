@@ -8,11 +8,9 @@
 // held in the database, edited from the browser, and read from a live snapshot
 // by whoever needs them.
 //
-// The validation is here rather than at either edge on purpose. Both the write
-// path and the read-back at startup call the same functions, so a value that
-// reaches the database is one that would have passed the check a file-loaded
-// value passes. Two copies of these rules, drifting apart, is the failure this
-// package is shaped to prevent.
+// The validation is here rather than at either edge: both the write path and
+// the read-back at startup call the same functions, so a value that reaches the
+// database is one that would have passed the check a file-loaded value passes.
 package runtimeconfig
 
 import (
@@ -40,9 +38,8 @@ type Values struct {
 // Sync holds the reconciliation settings a run reads when it starts.
 type Sync struct {
 	// AllowEmptySourceDeletion permits a trusted but empty source to delete the
-	// final owned destination routes. It is the switch an operator turns on for
-	// one deliberate run and off again afterwards, which is the whole reason it
-	// stopped being a file key.
+	// final owned destination routes. It is turned on for one deliberate run and
+	// off again afterwards.
 	AllowEmptySourceDeletion bool
 
 	// StaleAfter bounds how long the trusted source inventory may go without a
@@ -56,9 +53,8 @@ type Notifications struct {
 	Policy SuccessPolicy
 
 	// PushoverBaseURL is the origin the application token and user key are sent
-	// to. It is configurable because a development or demo environment has to be
-	// able to point it at an address that goes nowhere, and the alternative is a
-	// compiled-in host such an environment would quietly reach with a
+	// to. It is a setting so a development or demo environment can point it at
+	// an address that goes nowhere rather than reaching the real one with a
 	// placeholder token.
 	PushoverBaseURL string
 
@@ -110,9 +106,7 @@ type Basemap struct {
 
 	// DarkCartography says this entry's ground is dark whatever the system
 	// colour scheme is, which is what satellite imagery is. Anything the page
-	// paints over the map reads this rather than the scheme, because a route
-	// drawn in the dark-ground ink over light cartography — or the reverse —
-	// is the one that cannot be seen.
+	// paints over the map reads this rather than the scheme.
 	//
 	// It contradicts StyleURLDark: a provider publishing a dark twin has light
 	// cartography to switch away from. Configuring both is refused.
@@ -126,10 +120,9 @@ type Surface struct {
 	// operator actually rides: a stage outside every configured region is served
 	// without a surface rather than wrongly.
 	//
-	// An empty list switches surface classification off entirely. Nothing is
-	// downloaded, nothing is built, and stages simply carry no surface — which
-	// is also what a deployment gets by default, because the right regions are
-	// a property of where somebody rides and cannot be guessed.
+	// An empty list switches surface classification off entirely, which is also
+	// the default: nothing is downloaded, nothing is built, and stages carry no
+	// surface.
 	Regions []string
 
 	// RebuildInterval is how often the index is rebuilt from freshly published
@@ -148,8 +141,7 @@ type Store interface {
 //
 // Every reader takes a copy for the length of one run, one request, or one
 // notification, so an edit lands between two units of work rather than inside
-// one. It mirrors osmindex.Current, the holder this service already uses for
-// state that is replaced under running readers.
+// one.
 type Current struct {
 	values atomic.Pointer[Values]
 	store  Store
