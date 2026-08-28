@@ -59,6 +59,12 @@ service says provider; a sentence about *reading* says source.
 the wire and in types, and it is the word the interface should use as well. It
 is not a *slot* and not, on its own, an *account*.
 
+**slot** — one entry in the configured `wahoo.targets` list, which is a name
+rather than a Wahoo identity. Naming a slot creates a target's durable record,
+and removing it leaves that record standing, so a slot and the target it names
+are not the same thing (see [configuration.md](specs/configuration.md)). This is
+configuration's word alone; the wire and the interface say *target*.
+
 **account** — a set of credentials. A source has one (a library is read with a
 login of its own) and a target has one (an authorised Wahoo connection). Because
 both have accounts, "account" alone never identifies which side is meant: say

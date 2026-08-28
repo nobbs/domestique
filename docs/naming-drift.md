@@ -38,20 +38,35 @@ a reader calls it. The provider's parent becomes `sourceRoute`.
 | From | To |
 | --- | --- |
 | `Route.routeId` | `Route.sourceRouteId` |
+| `Route.routeName` | `Route.sourceRouteName` |
+| `Route.stageName` | `Route.routeName` |
 | `RouteList.stages` | `RouteList.routes` |
 | `Stage` (`lib/seenStages.ts`) | `Route` |
 | `StageChange`, `seenStages` | `RouteChange`, `seenRoutes` |
 | `internal/route/stage.go` | `internal/route/route.go` |
 | `internal/httpapi/routes_stages.go` | `internal/httpapi/routes_routes.go`, or split by verb |
 
+`routeName` and `stageName` are the same whole-and-part pair as `routeId` and
+`stageOrder`: `routeName` is the *source route's* name and `stageName` is the
+piece's. So that pair is a swap rather than a rename — `routeName` means one
+thing before and the other after — and it has to move in the same pass as
+`routeId`, or the schema spends the interval carrying a `sourceRouteId` beside a
+`routeName` that still means the source route.
+
 `stageOrder` keeps its name: it is an ordinal within a source route, which is
 genuinely a stage concept.
 
 This one crosses the wire, so it is the only item here that needs a coordinated
-change: `api/openapi.yaml`, the Go handlers, `pnpm api:generate`, and the
-`localStorage` key (which needs either a migration or a deliberate reset).
+change: `api/openapi.yaml`, the Go handlers, `pnpm api:generate`, the
+`localStorage` key (which needs either a migration or a deliberate reset), and
+[`docs/specs`](specs). *Stage* is the word in the accepted contracts too — most
+of all [service.md](specs/service.md), whose "Each VeloPlanner route stage is a
+separate Wahoo route" is a contract sentence rather than a comment, and
+[sync-lifecycle.md](specs/sync-lifecycle.md), which uses it throughout. Those
+specifications are normative, so revising them is part of this change and not a
+follow-up to it.
 
-## 2. Eight names for one string
+## 2. Seven names for one string
 
 `routeKey()` (`src/api/types.ts`) produces `provider/routeId/stageOrder`. The
 same value is then held as `selectedKey`, `openKey`, `focusKey`, `accentKey`,
@@ -86,13 +101,19 @@ per line", "That account could not be reconciled."
 
 `AccountRow` straddles the two — the component is named for the interface and
 its prop (`AccountRow.tsx:68`) is `target: TargetStatus`.
-`docs/specs/configuration.md:292` introduces a third word, *slot*.
+`docs/specs/configuration.md` uses a third word, *slot*, from line 74 onward.
 
 **Proposed:** *target* wins, because it is already the wire word and because the
 credentials are a property of the target rather than the thing itself. Rename
-the interface strings and `AccountRow` → `TargetRow`; drop *slot* from the
-configuration spec. See the glossary entry for *account*, which stays a real
-word for the credentials on both sides.
+the interface strings and `AccountRow` → `TargetRow`. See the glossary entry
+for *account*, which stays a real word for the credentials on both sides.
+
+*Slot* stays, and is a glossary entry rather than drift. It is not a loose third
+spelling of *target*: `configuration.md` uses it for the configured list entry
+as distinct from the durable record that entry creates — "Removing a slot from
+the list keeps that record" — and no other word in the vocabulary draws that
+line. It is configuration's word alone; the wire and the interface say
+*target*.
 
 ## 5. `TargetConvergence` is both a component and a type
 
@@ -177,8 +198,10 @@ synchronisation".
 ## 11. Phases are called halves in prose
 
 `SyncPhase` is `"source" | "targets"` — singular for one, plural for the other —
-while every doc comment and label calls a phase a *half*. No identifier uses
-"half", and no comment uses "phase".
+while the prose around it calls a phase a *half*. No identifier uses "half",
+and the comments mix the two: `internal/sync/reporter.go:61` reads "phase names
+the half being run right now", and `:277` reads "The phase is a parameter so
+each call".
 
 **Proposed:** *phase* in both, and make the enum consistently singular or
 consistently plural.
@@ -188,7 +211,7 @@ consistently plural.
 `lib/targetAuthorisation.ts` (British) exports `TARGET_AUTHORISATIONS` whose
 members are `"not_authorized"`, `"authorized"`, `"needs_reauthorization"`.
 `TargetStatus.authorisation` is a British field whose sibling `convergence`
-enum includes `"unauthorized"`. `ServiceSettings.tsx:466` shows the reader
+enum includes `"unauthorized"`. `ServiceSettings.tsx:472` shows the reader
 "every authorization, route and recorded run" while `AccountRow` says
 "authorisation".
 
@@ -230,7 +253,11 @@ considered.
 
 - **`PROVIDER_LABELS` is defined twice**, with identical contents, in
   `lib/provider.ts:10` and `features/settings/ServiceSettings.tsx:78`. The
-  second should import the first.
+  second should import the first — not quite a pure delete, since the types
+  differ: `provider.ts` is a `Record<string, string>` behind a `providerLabel()`
+  that falls back to the wire value, while `ServiceSettings` is a
+  `Record<SourceProvider, string>` and exhaustive. Sharing one trades
+  exhaustiveness for the fallback.
 - **`components/route/` and `features/routes/`** both hold route UI with no
   stated rule for which belongs where — `RouteProfile` is in the feature
   directory, `ElevationProfile` in the component one. Meanwhile `LibraryRoutes`,
@@ -245,13 +272,17 @@ considered.
 - **Storybook titles are three-way inconsistent** for one feature:
   `Features/Routes/*`, `Features/Route library`, `Features/Route Library/Map`.
 - **`components/Button.tsx` renames variants the primitive already names.**
-  `primary`, `standard` and `danger` map straight onto shadcn's `default`,
-  `outline` and `destructive` and add nothing but a second spelling; `panel` and
-  `warning` are genuine additions with no primitive equivalent. Aligning the
-  first three would leave the wrapper purely additive — the icon slot, the size
-  inferred from the children, the two extra variants and the link forms — rather
-  than a naming layer as well. That is the stronger boundary, because "do not
-  bypass the icon slot" is an invariant while "we spell it `standard`" is not.
+  Of the six — `primary`, `standard`, `panel`, `ghost`, `danger`, `warning` —
+  three are pure respellings: `primary`, `standard` and `danger` map straight
+  onto shadcn's `default`, `outline` and `destructive` and add nothing but a
+  second word. `ghost` already shares its name. `panel` and `warning` are the
+  genuine additions: each routes through a primitive (`outline` and `ghost`) but
+  layers its own classes over it, which no primitive variant offers. Aligning
+  the three respellings would leave the wrapper purely additive — the icon slot,
+  the size inferred from the children, the two extra variants and the link forms
+  — rather than a naming layer as well. That is the stronger boundary, because
+  "do not bypass the icon slot" is an invariant while "we spell it `standard`"
+  is not.
   Costs roughly 28 call sites, which is why it belongs here rather than in the
   refactor that drew the layer line.
 - **No page sets a document title.** `<title>` is the static string
@@ -263,5 +294,6 @@ considered.
    each is independently reviewable.
 2. The interface wording (4, 10, 12) — user-visible strings, one pass.
 3. `route` versus `source route` (1, 2) — last, because it crosses
-   `api/openapi.yaml`, the Go handlers and a `localStorage` key, and because
-   settling it first would make every earlier rename conflict with it.
+   `api/openapi.yaml`, the Go handlers, a `localStorage` key and the normative
+   specifications, and because settling it first would make every earlier rename
+   conflict with it.
