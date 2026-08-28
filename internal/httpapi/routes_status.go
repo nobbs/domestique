@@ -69,6 +69,9 @@ func liveSyncState(activity SyncActivityState) (string, bool) {
 
 // GetStatus reports readiness, per-target convergence, and the last terminal run.
 func (h *Handler) GetStatus(writer http.ResponseWriter, request *http.Request) {
+	// One snapshot for the whole response. Reading the setting again further down
+	// would let a document report a list of targets and a count of them that an
+	// edit made while it was being assembled had already put out of step.
 	targetIDs := h.targetIDs()
 	authorizations := make(map[string]string, len(targetIDs))
 	if err := h.state.ForEachTarget(request.Context(), func(id, authorization string) error {
@@ -107,7 +110,7 @@ func (h *Handler) GetStatus(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 
-	targets := make([]openapi.TargetStatus, 0, len(h.targetIDs()))
+	targets := make([]openapi.TargetStatus, 0, len(targetIDs))
 	// The aggregate of the per-target counts, which is the only progress a run
 	// in flight reports: how much of the library is already on the configured
 	// accounts, and how much of it is still owed to them.
@@ -240,7 +243,7 @@ func (h *Handler) GetStatus(writer http.ResponseWriter, request *http.Request) {
 	if state, live := liveSyncState(activity); live {
 		view.Sync.State = state
 		view.Sync.Active = &openapi.SyncActive{
-			Targets: len(h.targetIDs()),
+			Targets: len(targetIDs),
 			Stages:  allStages,
 		}
 		if activity.Phase != "" {
