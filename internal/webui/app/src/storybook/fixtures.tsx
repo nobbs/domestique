@@ -2,13 +2,23 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { MemoryRouter } from "react-router";
 import {
+  routeGeometryQuery,
+  routesQuery,
   settingsQuery,
   statusQuery,
   syncRunsQueryKey,
   weatherQuery,
   webUIConfigQuery,
 } from "../api/queries";
-import type { Route, Settings, Status, SyncRun, WebUIConfig } from "../api/types";
+import type {
+  BoundingBox,
+  Route,
+  RouteGeometry,
+  Settings,
+  Status,
+  SyncRun,
+  WebUIConfig,
+} from "../api/types";
 import type { Climb } from "../lib/climbs";
 import type { ForecastSample } from "../lib/forecastSamples";
 import { buildProfile, gradientShares } from "../lib/profile";
@@ -36,6 +46,20 @@ export const route: Route = {
   movingSeconds: 6_420,
   validation: { biasPercent: -1.2, maePercent: 6.8, p90Percent: 14.1, evaluatedRides: 42 },
 };
+
+/** The box every coordinate above fits inside, for the entry-page story's geometry. */
+export const routeBoundingBox: BoundingBox = coordinates.reduce<BoundingBox>(
+  ([minLon, minLat, maxLon, maxLat], [lon, lat]) => [
+    Math.min(minLon, lon),
+    Math.min(minLat, lat),
+    Math.max(maxLon, lon),
+    Math.max(maxLat, lat),
+  ],
+  [8, 49, 8, 49],
+);
+
+/** `route`'s own geometry, seeded for stories that render the map that fetches it. */
+export const routeGeometryFixture: RouteGeometry = { bbox: routeBoundingBox, coordinates };
 
 export const profile = buildProfile(coordinates);
 export const bands = gradientShares(coordinates);
@@ -186,7 +210,13 @@ export const settings: Settings = {
 };
 
 const config: WebUIConfig = {
-  basemaps: [],
+  basemaps: [
+    {
+      name: "Streets",
+      styleUrl: "https://tiles.openfreemap.org/styles/bright",
+      darkCartography: false,
+    },
+  ],
   sourceBaseUrls: { veloplanner: "https://veloplanner.com" },
   // A session with a way out of it, which is what a deployment behind
   // Cloudflare Access has. Stories that need the other deployment — the one
@@ -202,6 +232,11 @@ export function StoryProviders({ children }: { children: ReactNode }) {
     next.setQueryData(statusQuery().queryKey, status);
     next.setQueryData(webUIConfigQuery().queryKey, config);
     next.setQueryData(settingsQuery().queryKey, settings);
+    next.setQueryData(routesQuery().queryKey, [route]);
+    next.setQueryData(
+      routeGeometryQuery(route.provider, route.routeId, route.stageOrder).queryKey,
+      routeGeometryFixture,
+    );
     next.setQueryData(syncRunsQueryKey(), {
       pages: [{ runs }],
       pageParams: [undefined],
