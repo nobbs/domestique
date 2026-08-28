@@ -22,7 +22,7 @@ var mutableRoutes = []struct { //nolint:gochecknoglobals // test fixture, read-o
 	{method: http.MethodPost, target: "/v1/sync/targets"},
 	{method: http.MethodPut, target: "/v1/sync/schedule", body: `{"source":true,"targets":true}`},
 	{method: http.MethodPost, target: "/v1/routes/12/stages/1/reprocess"},
-	{method: http.MethodPut, target: "/v1/settings", body: settingsBody},
+	{method: http.MethodPut, target: "/v1/settings", body: settingsSubmission},
 }
 
 // An Access session lives in an ordinary browser, so identity alone would let a
@@ -188,7 +188,6 @@ func TestBrowserOriginNormalisation(t *testing.T) {
 func TestNewRequiresABrowserOrigin(t *testing.T) {
 	_, err := New(
 		&Options{
-			TargetIDs:      []string{"rider-a"},
 			Settings:       settingsWith(testBasemaps()),
 			AccessVerifier: &recordingVerifier{email: testAccessEmail},
 			AccessEmail:    testAccessEmail,

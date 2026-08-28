@@ -422,8 +422,8 @@ func TestServiceRewritesAStageWhosePushedRevisionWasForgotten(t *testing.T) {
 		wahooRouteID:   101,
 	}
 	service, err := New(
-		&Options{TargetIDs: []string{"a"}, AllowEmptySourceDeletion: emptySourceDeletion(false)},
-		state, []Source{&fakeSource{}}, identityProcessor{}, &fakeEncoder{}, target, nil, nil,
+		syncOptions(false, []Source{&fakeSource{}}, "a"),
+		state, identityProcessor{}, &fakeEncoder{}, target, nil, nil,
 	)
 	require.NoError(t, err, "New()")
 
@@ -566,7 +566,10 @@ func TestServiceSupportsOneTarget(t *testing.T) {
 	desired := testStage(t, 1, 1, "current", "current-hash")
 	state := newFakeState("a")
 	target := newFakeTarget()
-	service, err := New(&Options{TargetIDs: []string{"a"}, AllowEmptySourceDeletion: emptySourceDeletion(false)}, state, []Source{&fakeSource{stages: []route.Stage{desired}}}, identityProcessor{}, &fakeEncoder{}, target, nil, nil)
+	service, err := New(
+		syncOptions(false, []Source{&fakeSource{stages: []route.Stage{desired}}}, "a"),
+		state, identityProcessor{}, &fakeEncoder{}, target, nil, nil,
+	)
 	require.NoError(t, err, "New()")
 
 	result := runBoth(t.Context(), service)
@@ -584,7 +587,10 @@ func TestServiceUpdatesLegacyEncoderOutput(t *testing.T) {
 		contentHash:    desired.ContentHash(),
 		wahooRouteID:   101,
 	}
-	service, err := New(&Options{TargetIDs: []string{"a"}, AllowEmptySourceDeletion: emptySourceDeletion(false)}, state, []Source{&fakeSource{stages: []route.Stage{desired}}}, identityProcessor{}, &fakeEncoder{}, target, nil, nil)
+	service, err := New(
+		syncOptions(false, []Source{&fakeSource{stages: []route.Stage{desired}}}, "a"),
+		state, identityProcessor{}, &fakeEncoder{}, target, nil, nil,
+	)
 	require.NoError(t, err, "New()")
 
 	result := runBoth(t.Context(), service)
@@ -678,14 +684,8 @@ func newAnnotatedService(
 ) *Service {
 	t.Helper()
 	service, err := New(
-		&Options{TargetIDs: []string{"a"}, AllowEmptySourceDeletion: emptySourceDeletion(false)},
-		state,
-		[]Source{source},
-		exportProcessor{},
-		&fakeEncoder{},
-		target,
-		annotator,
-		nil,
+		syncOptions(false, []Source{source}, "a"),
+		state, exportProcessor{}, &fakeEncoder{}, target, annotator, nil,
 	)
 	require.NoError(t, err, "New()")
 
@@ -724,9 +724,8 @@ func TestServicePredictsTheStoredInventoryAfterReconciling(t *testing.T) {
 	target := newFakeTarget()
 	predictor := &fakePredictor{}
 	service, err := New(
-		&Options{TargetIDs: []string{"a"}, AllowEmptySourceDeletion: emptySourceDeletion(false)},
-		state, []Source{&fakeSource{stages: []route.Stage{desired}}}, exportProcessor{}, &fakeEncoder{}, target,
-		nil, predictor,
+		syncOptions(false, []Source{&fakeSource{stages: []route.Stage{desired}}}, "a"),
+		state, exportProcessor{}, &fakeEncoder{}, target, nil, predictor,
 	)
 	require.NoError(t, err, "New()")
 
@@ -746,9 +745,8 @@ func TestServiceSucceedsWhenPredictionFails(t *testing.T) {
 	target := newFakeTarget()
 	predictor := &fakePredictor{err: errors.New("coefficient file unavailable")}
 	service, err := New(
-		&Options{TargetIDs: []string{"a"}, AllowEmptySourceDeletion: emptySourceDeletion(false)},
-		state, []Source{&fakeSource{stages: []route.Stage{desired}}}, exportProcessor{}, &fakeEncoder{}, target,
-		nil, predictor,
+		syncOptions(false, []Source{&fakeSource{stages: []route.Stage{desired}}}, "a"),
+		state, exportProcessor{}, &fakeEncoder{}, target, nil, predictor,
 	)
 	require.NoError(t, err, "New()")
 
@@ -766,9 +764,8 @@ func TestServiceAnnotatesAndPredictsInTheSamePass(t *testing.T) {
 	annotator := &fakeAnnotator{}
 	predictor := &fakePredictor{}
 	service, err := New(
-		&Options{TargetIDs: []string{"a"}, AllowEmptySourceDeletion: emptySourceDeletion(false)},
-		state, []Source{&fakeSource{stages: []route.Stage{desired}}}, exportProcessor{}, &fakeEncoder{}, target,
-		annotator, predictor,
+		syncOptions(false, []Source{&fakeSource{stages: []route.Stage{desired}}}, "a"),
+		state, exportProcessor{}, &fakeEncoder{}, target, annotator, predictor,
 	)
 	require.NoError(t, err, "New()")
 
@@ -844,12 +841,60 @@ func emptySourceDeletion(allowed bool) func() bool {
 	return func() bool { return allowed }
 }
 
+// A service nobody has configured yet still runs on its schedule. It has
+// nothing it can safely do, and that is what it reports rather than a failure
+// somebody would be notified about.
+func TestServiceReportsNotReadyUntilItIsConfigured(t *testing.T) {
+	service, err := New(
+		syncOptions(false, nil),
+		newFakeState(), identityProcessor{}, &fakeEncoder{}, newFakeTarget(), nil, nil,
+	)
+	require.NoError(t, err, "New()")
+
+	assert.Equal(t, OutcomeNotReady, service.RunSource(t.Context()).Outcome, "RunSource()")
+	assert.Equal(t, OutcomeNotReady, service.RunTargets(t.Context()).Outcome, "RunTargets()")
+}
+
+// The libraries a run reads are the ones in force when it starts, so one added
+// from the settings page is read by the next run rather than after a restart.
+func TestServiceReadsTheLibrariesConfiguredWhenARunStarts(t *testing.T) {
+	state := newFakeState("a")
+	var sources []Source
+	service, err := New(
+		&Options{
+			AllowEmptySourceDeletion: emptySourceDeletion(false),
+			Sources:                  func() ([]Source, error) { return sources, nil },
+			TargetIDs:                func() []string { return []string{"a"} },
+		},
+		state, identityProcessor{}, &fakeEncoder{}, newFakeTarget(), nil, nil,
+	)
+	require.NoError(t, err, "New()")
+	require.Equal(t, OutcomeNotReady, service.RunSource(t.Context()).Outcome,
+		"RunSource() before a library was configured")
+
+	sources = []Source{&fakeSource{stages: []route.Stage{testStage(t, 1, 1, "current", "current-hash")}}}
+
+	result := service.RunSource(t.Context())
+	assert.Equal(t, OutcomeSucceeded, result.Outcome, "RunSource() outcome")
+	assert.Len(t, state.trusted, 1, "stored inventory")
+}
+
+// syncOptions is what a service whose settings nobody edits mid-test runs with:
+// the same libraries and the same slots every time it reads them.
+func syncOptions(allowEmpty bool, sources []Source, targetIDs ...string) *Options {
+	return &Options{
+		AllowEmptySourceDeletion: emptySourceDeletion(allowEmpty),
+		Sources:                  func() ([]Source, error) { return sources, nil },
+		TargetIDs:                func() []string { return targetIDs },
+	}
+}
+
 func newService(t *testing.T, state *fakeState, source *fakeSource, encoder *fakeEncoder, target *fakeTarget, allowEmpty bool) *Service {
 	t.Helper()
-	service, err := New(&Options{
-		TargetIDs:                []string{"a", "b"},
-		AllowEmptySourceDeletion: emptySourceDeletion(allowEmpty),
-	}, state, []Source{source}, identityProcessor{}, encoder, target, nil, nil)
+	service, err := New(
+		syncOptions(allowEmpty, []Source{source}, "a", "b"),
+		state, identityProcessor{}, encoder, target, nil, nil,
+	)
 	require.NoError(t, err, "New()")
 
 	return service
@@ -1238,10 +1283,10 @@ func testProviderStage(t *testing.T, provider route.Provider, routeID int64, sta
 
 func newMultiSourceService(t *testing.T, state *fakeState, sources []Source, target *fakeTarget, allowEmpty bool) *Service {
 	t.Helper()
-	service, err := New(&Options{
-		TargetIDs:                []string{"a"},
-		AllowEmptySourceDeletion: emptySourceDeletion(allowEmpty),
-	}, state, sources, identityProcessor{}, &fakeEncoder{}, target, nil, nil)
+	service, err := New(
+		syncOptions(allowEmpty, sources, "a"),
+		state, identityProcessor{}, &fakeEncoder{}, target, nil, nil,
+	)
 	require.NoError(t, err, "New()")
 
 	return service
@@ -1394,46 +1439,6 @@ func TestServiceFailsASourceWhenItsShareCannotBeStored(t *testing.T) {
 	assert.Equal(t, OutcomeFailed, result.Outcome, "RunSource() outcome")
 	assert.Equal(t, FailureState, result.Failure, "RunSource() failure")
 }
-
-func TestNewRejectsAnEmptySourceSet(t *testing.T) {
-	_, err := New(
-		&Options{TargetIDs: []string{"a"}, AllowEmptySourceDeletion: emptySourceDeletion(false)},
-		newFakeState("a"), nil, identityProcessor{}, &fakeEncoder{}, newFakeTarget(), nil, nil,
-	)
-	assert.Error(t, err, "New() with no configured sources")
-}
-
-func TestNewRejectsANilSource(t *testing.T) {
-	_, err := New(
-		&Options{TargetIDs: []string{"a"}, AllowEmptySourceDeletion: emptySourceDeletion(false)},
-		newFakeState("a"), []Source{nil}, identityProcessor{}, &fakeEncoder{}, newFakeTarget(), nil, nil,
-	)
-	assert.Error(t, err, "New() with a nil source")
-}
-
-func TestNewRejectsASourceWithNoProvider(t *testing.T) {
-	_, err := New(
-		&Options{TargetIDs: []string{"a"}, AllowEmptySourceDeletion: emptySourceDeletion(false)},
-		newFakeState("a"), []Source{unnamedSource{}}, identityProcessor{}, &fakeEncoder{}, newFakeTarget(), nil, nil,
-	)
-	assert.Error(t, err, "New() with a source that names no provider")
-}
-
-func TestNewRejectsDuplicateSourceProviders(t *testing.T) {
-	_, err := New(
-		&Options{TargetIDs: []string{"a"}, AllowEmptySourceDeletion: emptySourceDeletion(false)},
-		newFakeState("a"), []Source{&fakeSource{}, &fakeSource{}}, identityProcessor{}, &fakeEncoder{}, newFakeTarget(), nil, nil,
-	)
-	assert.Error(t, err, "New() with two sources naming the same provider")
-}
-
-// unnamedSource is a minimal Source whose Provider is deliberately empty,
-// which fakeSource cannot express since it defaults an unset provider.
-type unnamedSource struct{}
-
-func (unnamedSource) Provider() route.Provider { return "" }
-
-func (unnamedSource) Inventory(_ context.Context) ([]route.Stage, error) { return nil, nil }
 
 // A run is recorded once, so its outcome is the worst of what happened. The
 // operator's question is about one Wahoo account, and a run that wrote one slot

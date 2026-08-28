@@ -72,8 +72,9 @@ func (h *Handler) targetStageCounts(ctx context.Context) (map[string]openapi.Tar
 		return nil, fmt.Errorf("read stored stages: %w", err)
 	}
 
-	counts := make(map[string]openapi.TargetStages, len(h.targetIDs))
-	for _, targetID := range h.targetIDs {
+	targetIDs := h.targetIDs()
+	counts := make(map[string]openapi.TargetStages, len(targetIDs))
+	for _, targetID := range targetIDs {
 		var current, orphaned int
 		if err := h.state.ForEachTargetStage(
 			ctx,
@@ -110,13 +111,14 @@ func (h *Handler) targetStageCounts(ctx context.Context) (map[string]openapi.Tar
 // no row has never been reconciled, and is reported as absent rather than as a
 // run that succeeded with nothing to do.
 func (h *Handler) targetRuns(ctx context.Context) (map[string]openapi.TargetRun, error) {
-	runs := make(map[string]openapi.TargetRun, len(h.targetIDs))
+	targetIDs := h.targetIDs()
+	runs := make(map[string]openapi.TargetRun, len(targetIDs))
 	if err := h.state.ForEachTargetRun(
 		ctx,
 		func(targetID string, finishedAt time.Time, outcome, detail string) error {
 			// A slot left over from an earlier configuration is not part of this
 			// deployment and is not reported.
-			if slices.Contains(h.targetIDs, targetID) {
+			if slices.Contains(targetIDs, targetID) {
 				runs[targetID] = openapi.TargetRun{
 					CompletedAt: wireTime(finishedAt),
 					Result:      outcome,

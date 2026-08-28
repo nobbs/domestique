@@ -63,8 +63,8 @@ func newTestClient(t *testing.T, server *httptest.Server) *Client {
 	t.Helper()
 	client, err := New(&Options{
 		BaseURL:          func() string { return server.URL },
-		ApplicationToken: []byte("application-token"),
-		UserKey:          []byte("user-key"),
+		ApplicationToken: func() []byte { return []byte("application-token") },
+		UserKey:          func() []byte { return []byte("user-key") },
 		Timeout:          time.Second,
 		Transport:        server.Client().Transport,
 	})
@@ -94,8 +94,8 @@ func TestClientReadsItsBaseURLAgainBeforeEachSend(t *testing.T) {
 	baseURL := "https://api.pushover.net"
 	client, err := New(&Options{
 		BaseURL:          func() string { return baseURL },
-		ApplicationToken: []byte("application-token"),
-		UserKey:          []byte("user-key"),
+		ApplicationToken: func() []byte { return []byte("application-token") },
+		UserKey:          func() []byte { return []byte("user-key") },
 		Timeout:          time.Second,
 		Transport:        server.Client().Transport,
 	})

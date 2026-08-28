@@ -162,9 +162,9 @@ unexpired, and an `aud` equal to the configured application's audience tag. The
 Identity is not provenance. An Access session lives in an ordinary browser, so
 proving who is calling does not prove that they meant to call. Every
 state-changing endpoint therefore also requires an `Origin` header exactly equal
-to the origin the browser UI is served from — the scheme and host of
-`wahoo.redirect_url`, which is by construction the hostname a browser reaches
-this service at. A missing, malformed, `null`, or cross-site origin is refused
+to the origin the browser UI is served from — `http.browser_origin_url`, which
+is by declaration the hostname a browser reaches this service at, and from which
+the Wahoo callback is derived. A missing, malformed, `null`, or cross-site origin is refused
 with 403 before any trigger runs or any state is written; a browser attaches
 `Origin` to every request whose method is not GET or HEAD, including a
 same-origin one, so absent means "not this UI" rather than "same origin". This
@@ -299,8 +299,10 @@ Beside those is the one write that changes what the service *is* rather than
 what it does next: the settings write stores the runtime settings an operator
 edits from the UI, defined in
 [the configuration specification](configuration.md#runtime-settings). It reaches
-no route and no secret either, and what it writes is validated by the same rules
-that would have been applied to it at startup.
+no route, and what it writes is validated by the same rules that would have been
+applied to it at startup. It is also the only endpoint that accepts a credential,
+and it is write-only in both directions of that word: a submitted credential is
+stored encrypted and is never read back out, by this endpoint or any other.
 
 A synchronization has two halves, and each is separately switched, triggered,
 and reported:
@@ -379,11 +381,18 @@ The read-only JSON surface is deliberately small:
   the source route is private to that account, and following it as anyone else
   reaches the provider's own refusal, not the route.
 - `GET /v1/settings` returns every setting an operator may change while the
-  service is running, in the same shape the write below takes back: the two
-  synchronisation settings, the notification settings, the basemap list, and
-  the surface settings. It is the whole object every time, because a form
-  showing only part of what it is about to replace would silently revert the
-  rest. It carries no secret and no static configuration — [the configuration
+  service is running, in the same shape the write below takes back: the
+  synchronisation settings, the notification settings, the basemap list, the
+  surface settings, the Wahoo application and its target slots, the source
+  libraries, and the ride model. It is the whole object every time, because a
+  form showing only part of what it is about to replace would silently revert
+  the rest.
+
+  It carries **no credential value**. Instead it reports, per stored credential,
+  whether one is set at all, so the page can offer to replace one it was never
+  told; and it names what is still to be entered — everything a run needs, and
+  the Pushover credentials while notifications are on — so a service nobody has
+  finished configuring says so rather than being quietly idle. It carries no static configuration — [the configuration
   specification](configuration.md#runtime-settings) states which settings live
   here and which stay in the file.
 - `GET /v1/weather` returns an hourly forecast for up to 48 repeated `point`
@@ -436,8 +445,14 @@ it.
   in a message naming the setting, and what it stores is in force for the next
   request and the next run without a restart. It changes what the service does
   next; it changes nothing it has stored about a route, and it cannot reach a
-  secret, a listener, or a provider endpoint, because none of those is a
-  runtime setting.
+  listener address, the browser origin, or the identity gate, because none of
+  those is a runtime setting.
+
+  Credentials are the one part of the body that is not whole-object: it carries
+  only the ones actually typed into the form, and one left out keeps its stored
+  value rather than being cleared. A credential naming something no part of the
+  service reads is refused as `400` naming it. The response is the same document
+  `GET` returns, so nothing that was submitted as a credential appears in it.
 
 The browser UI is served from the same origin and the same authenticated
 listener: an application entry document and immutable hashed static assets.
@@ -466,19 +481,22 @@ The concrete file schema and validation rules are defined in the
 
 The service has a provider-neutral configuration contract:
 
-- One read-only static configuration file holds non-secret values: VeloPlanner
-  account identity and endpoint, Wahoo client ID and API endpoints, target slot
-  labels, Access team domain, application audience tag and allowed address,
-  initial run delay, data path, and public callback URL.
-- The settings an operator has reason to change while the service runs are not
-  in that file. They are held in the state database, edited over the settings
+- One read-only static configuration file holds what the host has to know
+  before the process can serve anything: the two listener addresses, the origin
+  a browser reaches the service at, the Access team domain, application audience
+  tag and allowed address, and the state database's path and key file.
+- Everything that decides what work the service does is not in that file. The
+  provider endpoints, target slots, source libraries, ride model, schedule and
+  credentials are held in the state database, edited over the settings
   endpoints, and in force without a restart; the
   [configuration specification](configuration.md#runtime-settings) defines them.
-  No secret is among them.
-- Sensitive static values are loaded by Koanf from Docker-style files or the
-  documented direct environment variables: VeloPlanner credentials, Wahoo
-  client secret, Pushover application token and user key, and a 32-byte
-  state-encryption key.
+  A deployment that has configured none of them starts, serves the settings
+  page, and runs nothing.
+- One sensitive static value is loaded by Koanf from a Docker-style file or the
+  documented direct environment variables: the 32-byte state-encryption key.
+  Every other credential — the source accounts, the Wahoo client secret, and
+  the Pushover pair — is entered on the settings page and encrypted under that
+  key.
 - Dynamic Wahoo refresh tokens are not static configuration. They are encrypted
   at rest in the local state database with an authenticated cipher and the
   state-encryption key. Access tokens are held only in memory.
@@ -745,6 +763,11 @@ secret files remain outside Git.
 
 ## Acceptance criteria
 
+- A deployment that has been configured with nothing but its listeners, its
+  identity gate and its state starts, answers both probes, serves the settings
+  page, and runs nothing until an operator has finished configuring it there.
+- A credential entered on the settings page is stored encrypted and is never
+  served back, in any form, to any caller.
 - Two Wahoo accounts can be authorised through the Tailnet-only OAuth flow.
 - An hourly run mirrors every valid VeloPlanner stage to every configured target as FIT.
 - Edits preserve the stage's `external_id`; source deletions remove only owned

@@ -292,6 +292,12 @@ loopback_only() {
 # Pushover is reserved for the cases an operator has to know about: the app
 # already notifies on every sync, and a routine deployment does not belong in
 # that stream.
+#
+# These two files are this script's own. The service keeps its Pushover
+# credentials in its state database now, which this script cannot read and
+# should not: a deployment that has to report a failed start has to be able to
+# report one that never got far enough to open that database. A host without
+# them deploys exactly the same way and says nothing.
 notify() {
   local title="$1" message="$2"
   local token_file="${DOMESTIQUE_DIR}/secrets/pushover_application_token"

@@ -55,6 +55,41 @@ export const AsksBeforeAnEmptyLibraryMayDelete: Story = {
   },
 };
 
+/**
+ * A credential is offered for replacement rather than shown, because the page
+ * is never told what the service holds — only that it holds one.
+ */
+export const OffersToReplaceACredentialItWasNeverTold: Story = {
+  play: async ({ canvas }) => {
+    const stored = canvas.getByLabelText("Client secret");
+    await expect(stored).toHaveValue("");
+    await expect(stored).toHaveAttribute("placeholder", "Stored — type to replace");
+
+    await expect(canvas.getByLabelText("Pushover application token")).toHaveValue("");
+  },
+};
+
+/** Only the credentials typed into are sent; the rest are left as they are. */
+export const SendsOnlyTheCredentialThatWasTyped: Story = {
+  decorators: [
+    (Story) => (
+      <StubbedFetch respond={respond}>
+        <Story />
+      </StubbedFetch>
+    ),
+  ],
+  play: async ({ canvas }) => {
+    sent.length = 0;
+    await userEvent.type(canvas.getByLabelText("Client secret"), "replacement");
+
+    await userEvent.click(canvas.getByRole("button", { name: "Save settings" }));
+
+    await waitFor(() => expect(sent).toHaveLength(1));
+    const body = JSON.parse(String(sent[0]?.body));
+    await expect(body.secrets).toEqual({ "wahoo.client_secret": "replacement" });
+  },
+};
+
 /** Nothing is changed until it is saved, and what is saved is the whole object. */
 export const SavesEverySettingAtOnce: Story = {
   decorators: [
@@ -77,8 +112,11 @@ export const SavesEverySettingAtOnce: Story = {
     await expect(Object.keys(body).sort()).toEqual([
       "basemaps",
       "notifications",
+      "rideModel",
+      "sources",
       "surface",
       "sync",
+      "wahoo",
     ]);
     // Hours on the page, seconds on the wire.
     await expect(body.sync.staleAfterSeconds).toBe(30 * 3600);

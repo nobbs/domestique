@@ -2,7 +2,10 @@
 
 package contract
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 type Error_Error struct {
 	Code    string `json:"code"`
@@ -200,12 +203,133 @@ type SyncRunPage struct {
 	Next *string   `json:"next,omitempty"`
 }
 
+// Settings_SecretsSet Whether each credential is stored. This is the whole of what any observable surface is told about one: never the value, only that there is one to replace.
+type Settings_SecretsSet struct {
+	AdditionalProperties map[string]bool `json:"-"`
+}
+
+func (m *Settings_SecretsSet) UnmarshalJSON(data []byte) error {
+	type Alias Settings_SecretsSet
+	var known Alias
+	if err := json.Unmarshal(data, &known); err != nil {
+		return err
+	}
+	*m = Settings_SecretsSet(known)
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	if len(raw) == 0 {
+		return nil
+	}
+	m.AdditionalProperties = make(map[string]bool, len(raw))
+	for key, value := range raw {
+		var decoded bool
+		if err := json.Unmarshal(value, &decoded); err != nil {
+			return err
+		}
+		m.AdditionalProperties[key] = decoded
+	}
+	return nil
+}
+
+func (m Settings_SecretsSet) MarshalJSON() ([]byte, error) {
+	type Alias Settings_SecretsSet
+	encoded, err := json.Marshal(Alias(m))
+	if err != nil {
+		return nil, err
+	}
+	var object map[string]json.RawMessage
+	if err := json.Unmarshal(encoded, &object); err != nil {
+		return nil, err
+	}
+	for key, value := range m.AdditionalProperties {
+		encodedValue, err := json.Marshal(value)
+		if err != nil {
+			return nil, err
+		}
+		object[key] = encodedValue
+	}
+	return json.Marshal(object)
+}
+
 // Settings The settings held in the state database rather than in the configuration file, which take effect on the next run or the next request rather than on the next restart.
 type Settings struct {
 	Sync          SyncSettings         `json:"sync"`
 	Notifications NotificationSettings `json:"notifications"`
 	Basemaps      []BrowserBasemap     `json:"basemaps"`
 	Surface       SurfaceSettings      `json:"surface"`
+	Wahoo         WahooSettings        `json:"wahoo"`
+	// Sources The libraries a run reads, in the order it reads them. An empty list is a service nobody has configured yet, not an error.
+	Sources   []SourceSettings  `json:"sources"`
+	RideModel RideModelSettings `json:"rideModel"`
+	// SecretsSet Whether each credential is stored. This is the whole of what any observable surface is told about one: never the value, only that there is one to replace.
+	SecretsSet map[string]bool `json:"secretsSet"`
+	// Missing The settings still to be entered, in the order the page offers them. Everything a run needs is here, and so are the Pushover credentials while notifications are on, which no run needs but every notification does. Empty is a configured service.
+	Missing []string `json:"missing"`
+}
+
+// SettingsUpdate_Secrets The credentials to replace, keyed by name. Only the ones sent are written, so a page that was never told a value can leave it alone; an empty value removes the credential. A name outside the known set is refused.
+type SettingsUpdate_Secrets struct {
+	AdditionalProperties map[string]string `json:"-"`
+}
+
+func (m *SettingsUpdate_Secrets) UnmarshalJSON(data []byte) error {
+	type Alias SettingsUpdate_Secrets
+	var known Alias
+	if err := json.Unmarshal(data, &known); err != nil {
+		return err
+	}
+	*m = SettingsUpdate_Secrets(known)
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	if len(raw) == 0 {
+		return nil
+	}
+	m.AdditionalProperties = make(map[string]string, len(raw))
+	for key, value := range raw {
+		var decoded string
+		if err := json.Unmarshal(value, &decoded); err != nil {
+			return err
+		}
+		m.AdditionalProperties[key] = decoded
+	}
+	return nil
+}
+
+func (m SettingsUpdate_Secrets) MarshalJSON() ([]byte, error) {
+	type Alias SettingsUpdate_Secrets
+	encoded, err := json.Marshal(Alias(m))
+	if err != nil {
+		return nil, err
+	}
+	var object map[string]json.RawMessage
+	if err := json.Unmarshal(encoded, &object); err != nil {
+		return nil, err
+	}
+	for key, value := range m.AdditionalProperties {
+		encodedValue, err := json.Marshal(value)
+		if err != nil {
+			return nil, err
+		}
+		object[key] = encodedValue
+	}
+	return json.Marshal(object)
+}
+
+// SettingsUpdate One complete edit of the settings above. It carries the sections an operator fills in rather than the two the service reports back, so a page cannot submit what it only ever read.
+type SettingsUpdate struct {
+	Sync          SyncSettings         `json:"sync"`
+	Notifications NotificationSettings `json:"notifications"`
+	Basemaps      []BrowserBasemap     `json:"basemaps"`
+	Surface       SurfaceSettings      `json:"surface"`
+	Wahoo         WahooSettings        `json:"wahoo"`
+	Sources       []SourceSettings     `json:"sources"`
+	RideModel     RideModelSettings    `json:"rideModel"`
+	// Secrets The credentials to replace, keyed by name. Only the ones sent are written, so a page that was never told a value can leave it alone; an empty value removes the credential. A name outside the known set is refused.
+	Secrets map[string]string `json:"secrets,omitempty"`
 }
 
 type SyncSettings struct {
@@ -213,6 +337,8 @@ type SyncSettings struct {
 	AllowEmptySourceDeletion bool `json:"allowEmptySourceDeletion"`
 	// StaleAfterSeconds How long the trusted source inventory may go without a successful refresh before it is reported and notified as stale.
 	StaleAfterSeconds int `json:"staleAfterSeconds"`
+	// InitialDelaySeconds How long after start the first run is attempted. It is read by the start it delays, so an edit reaches the next restart rather than the next run.
+	InitialDelaySeconds int `json:"initialDelaySeconds"`
 }
 
 type NotificationSettings_SuccessPolicy string
@@ -231,6 +357,35 @@ type NotificationSettings struct {
 	DigestIntervalSeconds int `json:"digestIntervalSeconds"`
 	// PushoverBaseURL The origin the application token and user key are sent to.
 	PushoverBaseURL string `json:"pushoverBaseUrl"`
+}
+
+type WahooSettings struct {
+	// APIBaseURL The origin route reads and writes are sent to. Empty until the application is registered, which is a service that runs nothing rather than one that is broken.
+	APIBaseURL string `json:"apiBaseUrl"`
+	// OauthBaseURL The origin an authorization and a token refresh are sent to.
+	OauthBaseURL string `json:"oauthBaseUrl"`
+	// ClientID The registered application's public identifier. Its secret is not here: it is written through secrets and read back only as set.
+	ClientID string `json:"clientId"`
+	// Targets The destination slots, in the order they are offered. A slot name is the identity every stored authorization, target stage and recorded run already carries, so renaming one abandons that slot's state rather than moving it.
+	Targets []string `json:"targets"`
+}
+
+type SourceSettings_Provider string
+
+const (
+	SourceSettings_ProviderVeloplanner SourceSettings_Provider = "veloplanner"
+	SourceSettings_ProviderKomoot      SourceSettings_Provider = "komoot"
+)
+
+type SourceSettings struct {
+	Provider SourceSettings_Provider `json:"provider"`
+	// BaseURL The library's own web application, which is both the origin the service reads and the one a stage is linked back to.
+	BaseURL string `json:"baseUrl"`
+}
+
+type RideModelSettings struct {
+	// CoefficientsFile The coefficient file the offline fitting tooling emits, named by an absolute path the service can read. Empty is predicted moving time switched off, which is also the default.
+	CoefficientsFile string `json:"coefficientsFile"`
 }
 
 type SurfaceSettings struct {

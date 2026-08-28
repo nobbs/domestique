@@ -24,9 +24,12 @@ type Options struct {
 	Transport http.RoundTripper
 	// BaseURL is read again before each send rather than resolved once, because
 	// an operator edits it while the service runs.
-	BaseURL          func() string
-	ApplicationToken []byte
-	UserKey          []byte
+	BaseURL func() string
+	// ApplicationToken and UserKey are read per send for the same reason as
+	// BaseURL. Either may answer empty, which is a service whose notifications
+	// have not been set up yet rather than a misconfigured one.
+	ApplicationToken func() []byte
+	UserKey          func() []byte
 	Timeout          time.Duration
 }
 
@@ -34,13 +37,13 @@ type Options struct {
 type Client struct {
 	client           *http.Client
 	baseURL          func() string
-	applicationToken []byte
-	userKey          []byte
+	applicationToken func() []byte
+	userKey          func() []byte
 }
 
 // New creates a Pushover client without contacting the upstream service.
 func New(options *Options) (*Client, error) {
-	if options == nil || len(options.ApplicationToken) == 0 || len(options.UserKey) == 0 {
+	if options == nil || options.ApplicationToken == nil || options.UserKey == nil {
 		return nil, errors.New("pushover: options and credentials are required")
 	}
 	baseURL := options.BaseURL
@@ -70,8 +73,8 @@ func New(options *Options) (*Client, error) {
 			Transport: transport,
 		},
 		baseURL:          baseURL,
-		applicationToken: append([]byte(nil), options.ApplicationToken...),
-		userKey:          append([]byte(nil), options.UserKey...),
+		applicationToken: options.ApplicationToken,
+		userKey:          options.UserKey,
 	}, nil
 }
 
@@ -81,9 +84,13 @@ func (c *Client) Send(ctx context.Context, title, message string) (err error) {
 	if strings.TrimSpace(title) == "" || strings.TrimSpace(message) == "" {
 		return errors.New("pushover: title and message are required")
 	}
+	applicationToken, userKey := c.applicationToken(), c.userKey()
+	if len(applicationToken) == 0 || len(userKey) == 0 {
+		return errors.New("pushover: credentials are not set")
+	}
 	values := url.Values{
-		"token":   {string(c.applicationToken)},
-		"user":    {string(c.userKey)},
+		"token":   {string(applicationToken)},
+		"user":    {string(userKey)},
 		"title":   {title},
 		"message": {message},
 	}

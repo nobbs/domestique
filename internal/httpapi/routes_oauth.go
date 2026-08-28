@@ -10,7 +10,7 @@ import (
 func (h *Handler) StartOAuth(writer http.ResponseWriter, request *http.Request) {
 	login := h.allowedEmail
 	targetID := request.PathValue("target")
-	if targetID == "" || !slices.Contains(h.targetIDs, targetID) {
+	if targetID == "" || !slices.Contains(h.targetIDs(), targetID) {
 		h.notFound(writer)
 
 		return

@@ -15,6 +15,7 @@
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type FormEvent, type ReactNode, useId, useRef, useState } from "react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -47,17 +48,36 @@ import { settingsQuery, webUIConfigQuery } from "../../api/queries";
 import {
   type BrowserBasemap,
   type Settings,
+  SOURCE_PROVIDERS,
+  type SourceProvider,
+  type SourceSettings,
   SUCCESS_POLICIES,
   type SuccessPolicy,
 } from "../../api/types";
 import { Button } from "../../components/Button";
 
 const SECONDS_PER_HOUR = 3600;
+const SECONDS_PER_MINUTE = 60;
 
 const POLICY_LABELS: Record<SuccessPolicy, string> = {
   every: "One message per successful run",
   quiet: "Nothing — leaving failures and recoveries as the only traffic",
   digest: "One summary per period",
+};
+
+const PROVIDER_LABELS: Record<SourceProvider, string> = {
+  veloplanner: "VeloPlanner",
+  komoot: "Komoot",
+};
+
+/**
+ * Where a library is reached when it is first turned on, which is the address
+ * each provider publishes. It is editable afterwards, so this is a starting
+ * point rather than a rule.
+ */
+const PROVIDER_BASE_URLS: Record<SourceProvider, string> = {
+  veloplanner: "https://veloplanner.com",
+  komoot: "https://api.komoot.de",
 };
 
 /**
@@ -73,6 +93,23 @@ function fromHours(hours: number): number {
   return Math.round(hours * SECONDS_PER_HOUR);
 }
 
+function inMinutes(seconds: number): number {
+  return seconds / SECONDS_PER_MINUTE;
+}
+
+function fromMinutes(minutes: number): number {
+  return Math.round(minutes * SECONDS_PER_MINUTE);
+}
+
+/**
+ * The lines of a list typed one per line. They are kept as typed while they are
+ * being typed, so the newline that starts an entry survives; the blanks are
+ * dropped on the way out.
+ */
+function entered(lines: string[]): string[] {
+  return lines.map((line) => line.trim()).filter(Boolean);
+}
+
 /**
  * An entry with no dark style omits the field rather than carrying an empty
  * one: the contract types it as a URL, and "unset" is not one.
@@ -81,6 +118,40 @@ function withDarkStyle(basemap: BrowserBasemap, styleUrlDark: string): BrowserBa
   const { styleUrlDark: _cleared, ...rest } = basemap;
 
   return styleUrlDark ? { ...rest, styleUrlDark } : rest;
+}
+
+/**
+ * One credential. The service never says what it holds, only whether it holds
+ * one, so this offers a replacement rather than a value: an empty box leaves
+ * the stored credential exactly as it is.
+ */
+function SecretField({
+  id,
+  label,
+  isSet,
+  value,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  isSet: boolean;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <Field>
+      <FieldLabel htmlFor={id}>{label}</FieldLabel>
+      <Input
+        id={id}
+        type="password"
+        autoComplete="off"
+        value={value}
+        placeholder={isSet ? "Stored — type to replace" : "Not set"}
+        onChange={(event) => onChange(event.target.value)}
+      />
+      <FieldDescription>{isSet ? "Stored." : "Not set."}</FieldDescription>
+    </Field>
+  );
 }
 
 /** The card chrome, shared by the form and by the two states before it. */
@@ -130,6 +201,9 @@ function SettingsForm({ settings }: { settings: Settings }) {
   // Null until the reader touches something, so an answer that arrives while
   // the form is untouched is simply what the form shows.
   const [draft, setDraft] = useState<Settings | null>(null);
+  // Only the credentials typed into this form, keyed the way the service stores
+  // them. What it already holds is never in here: it is never sent to the page.
+  const [secrets, setSecrets] = useState<Record<string, string>>({});
   const [confirmingDeletion, setConfirmingDeletion] = useState(false);
   // A basemap row has no identity in the settings — two rows are both blank
   // while they are being typed — so one is kept beside them, or removing the
@@ -141,6 +215,7 @@ function SettingsForm({ settings }: { settings: Settings }) {
     mutation: {
       onSuccess: async () => {
         setDraft(null);
+        setSecrets({});
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: settingsQuery().queryKey }),
           // The basemap list is served to the page from here as well, and the
@@ -155,17 +230,37 @@ function SettingsForm({ settings }: { settings: Settings }) {
   const edit = (change: Partial<Settings>) => setDraft({ ...values, ...change });
   const replaceBasemap = (index: number, next: BrowserBasemap) =>
     edit({ basemaps: values.basemaps.map((basemap, at) => (at === index ? next : basemap)) });
+  const secretOf = (name: string) => secrets[name] ?? "";
+  const editSecret = (name: string, value: string) => setSecrets({ ...secrets, [name]: value });
+
+  const sourceOf = (provider: SourceProvider) =>
+    values.sources.find((source) => source.provider === provider);
+  // Rebuilt from the whole list rather than spliced, so the libraries stay in
+  // the order this page offers them however they are turned on and off.
+  const editSource = (provider: SourceProvider, next: SourceSettings | undefined) =>
+    edit({
+      sources: SOURCE_PROVIDERS.map((each) => (each === provider ? next : sourceOf(each))).filter(
+        (source): source is SourceSettings => source !== undefined,
+      ),
+    });
 
   const submit = () => {
+    // Only the credentials that were typed into are sent: the rest are left
+    // exactly as they are, which is the whole reason this form can be shown
+    // without ever having been told them.
+    const replaced = Object.fromEntries(
+      Object.entries(secrets).filter(([, value]) => value !== ""),
+    );
     save.mutate({
       data: {
-        ...values,
-        // The lines the reader typed are kept as typed while they type, so the
-        // newline that starts a region survives; the blanks are dropped here.
-        surface: {
-          ...values.surface,
-          regions: values.surface.regions.map((region) => region.trim()).filter(Boolean),
-        },
+        sync: values.sync,
+        notifications: values.notifications,
+        basemaps: values.basemaps,
+        surface: { ...values.surface, regions: entered(values.surface.regions) },
+        wahoo: { ...values.wahoo, targets: entered(values.wahoo.targets) },
+        sources: values.sources,
+        rideModel: values.rideModel,
+        ...(Object.keys(replaced).length > 0 ? { secrets: replaced } : {}),
       },
     });
   };
@@ -178,6 +273,149 @@ function SettingsForm({ settings }: { settings: Settings }) {
         submit();
       }}
     >
+      {/*
+       * What the service is waiting for, said where it is filled in. Until this
+       * is empty the schedule runs and does nothing, which is a state an
+       * operator should read here rather than infer from a run that did.
+       */}
+      {values.missing.length > 0 ? (
+        <Alert
+          variant="destructive"
+          className="border-[var(--rule)] bg-[var(--panel)] p-4"
+          aria-labelledby={`${id}-missing`}
+        >
+          <AlertTitle id={`${id}-missing`}>Not finished configuring</AlertTitle>
+          <AlertDescription>These are still needed: {values.missing.join(", ")}.</AlertDescription>
+        </Alert>
+      ) : null}
+
+      <FieldSet>
+        <FieldLegend>Wahoo</FieldLegend>
+        <FieldDescription>
+          The registered application this service writes routes with, and the accounts it writes
+          them to.
+        </FieldDescription>
+        <FieldGroup>
+          <Field>
+            <FieldLabel htmlFor={`${id}-wahoo-api`}>API address</FieldLabel>
+            <Input
+              id={`${id}-wahoo-api`}
+              type="url"
+              value={values.wahoo.apiBaseUrl}
+              onChange={(event) =>
+                edit({ wahoo: { ...values.wahoo, apiBaseUrl: event.target.value } })
+              }
+            />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor={`${id}-wahoo-oauth`}>Authorization address</FieldLabel>
+            <Input
+              id={`${id}-wahoo-oauth`}
+              type="url"
+              value={values.wahoo.oauthBaseUrl}
+              onChange={(event) =>
+                edit({ wahoo: { ...values.wahoo, oauthBaseUrl: event.target.value } })
+              }
+            />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor={`${id}-wahoo-client`}>Client ID</FieldLabel>
+            <Input
+              id={`${id}-wahoo-client`}
+              value={values.wahoo.clientId}
+              onChange={(event) =>
+                edit({ wahoo: { ...values.wahoo, clientId: event.target.value } })
+              }
+            />
+          </Field>
+          <SecretField
+            id={`${id}-wahoo-secret`}
+            label="Client secret"
+            isSet={values.secretsSet["wahoo.client_secret"] ?? false}
+            value={secretOf("wahoo.client_secret")}
+            onChange={(value) => editSecret("wahoo.client_secret", value)}
+          />
+          <Field>
+            <FieldLabel htmlFor={`${id}-targets`}>Accounts, one per line</FieldLabel>
+            <Textarea
+              id={`${id}-targets`}
+              rows={2}
+              value={values.wahoo.targets.join("\n")}
+              onChange={(event) =>
+                edit({ wahoo: { ...values.wahoo, targets: event.target.value.split("\n") } })
+              }
+            />
+            <FieldDescription>
+              A name here is the identity every authorization, route and recorded run is stored
+              under, so renaming one leaves that account's history behind rather than moving it. Two
+              at most.
+            </FieldDescription>
+          </Field>
+        </FieldGroup>
+      </FieldSet>
+
+      <FieldSet>
+        <FieldLegend>Libraries</FieldLegend>
+        <FieldDescription>
+          Where the routes come from. A library is read with an account of its own, and the address
+          is both what is read and what a stage is linked back to.
+        </FieldDescription>
+        <FieldGroup>
+          {SOURCE_PROVIDERS.map((provider) => {
+            const source = sourceOf(provider);
+
+            return (
+              <div key={provider} className="grid gap-3 rounded-lg border border-[var(--rule)] p-3">
+                <Field orientation="horizontal">
+                  <FieldContent>
+                    <FieldTitle>{PROVIDER_LABELS[provider]}</FieldTitle>
+                  </FieldContent>
+                  <Switch
+                    checked={source !== undefined}
+                    aria-label={`Read ${PROVIDER_LABELS[provider]}`}
+                    onCheckedChange={(read) =>
+                      editSource(
+                        provider,
+                        read ? { provider, baseUrl: PROVIDER_BASE_URLS[provider] } : undefined,
+                      )
+                    }
+                  />
+                </Field>
+                {source ? (
+                  <>
+                    <Field>
+                      <FieldLabel htmlFor={`${id}-${provider}-url`}>Address</FieldLabel>
+                      <Input
+                        id={`${id}-${provider}-url`}
+                        type="url"
+                        value={source.baseUrl}
+                        onChange={(event) =>
+                          editSource(provider, { ...source, baseUrl: event.target.value })
+                        }
+                      />
+                    </Field>
+                    <SecretField
+                      id={`${id}-${provider}-email`}
+                      label="Email"
+                      isSet={values.secretsSet[`${provider}.email`] ?? false}
+                      value={secretOf(`${provider}.email`)}
+                      onChange={(value) => editSecret(`${provider}.email`, value)}
+                    />
+                    <SecretField
+                      id={`${id}-${provider}-password`}
+                      label="Password"
+                      isSet={values.secretsSet[`${provider}.password`] ?? false}
+                      value={secretOf(`${provider}.password`)}
+                      onChange={(value) => editSecret(`${provider}.password`, value)}
+                    />
+                  </>
+                ) : null}
+              </div>
+            );
+          })}
+        </FieldGroup>
+      </FieldSet>
+
       <FieldSet>
         <FieldLegend>Synchronisation</FieldLegend>
         <FieldGroup>
@@ -220,6 +458,48 @@ function SettingsForm({ settings }: { settings: Settings }) {
             <FieldDescription>
               How long the last successful read may stand before the status page reports the
               inventory as stale, and says so.
+            </FieldDescription>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor={`${id}-initial-delay`}>
+              Wait before the first run (minutes)
+            </FieldLabel>
+            <Input
+              id={`${id}-initial-delay`}
+              type="number"
+              min={1}
+              step="any"
+              value={inMinutes(values.sync.initialDelaySeconds)}
+              onChange={(event) =>
+                edit({
+                  sync: {
+                    ...values.sync,
+                    initialDelaySeconds: fromMinutes(Number(event.target.value)),
+                  },
+                })
+              }
+            />
+            <FieldDescription>
+              Read by the start it delays, so this one takes effect on the next restart rather than
+              the next run.
+            </FieldDescription>
+          </Field>
+        </FieldGroup>
+      </FieldSet>
+
+      <FieldSet>
+        <FieldLegend>Ride model</FieldLegend>
+        <FieldGroup>
+          <Field>
+            <FieldLabel htmlFor={`${id}-coefficients`}>Coefficient file</FieldLabel>
+            <Input
+              id={`${id}-coefficients`}
+              value={values.rideModel.coefficientsFile}
+              onChange={(event) => edit({ rideModel: { coefficientsFile: event.target.value } })}
+            />
+            <FieldDescription>
+              An absolute path, on the machine the service runs on, to the file the fitting tooling
+              produced. Empty leaves stages without a predicted moving time.
             </FieldDescription>
           </Field>
         </FieldGroup>
@@ -304,6 +584,20 @@ function SettingsForm({ settings }: { settings: Settings }) {
               The origin the application token and user key are sent to.
             </FieldDescription>
           </Field>
+          <SecretField
+            id={`${id}-pushover-token`}
+            label="Pushover application token"
+            isSet={values.secretsSet["notifications.pushover.application_token"] ?? false}
+            value={secretOf("notifications.pushover.application_token")}
+            onChange={(value) => editSecret("notifications.pushover.application_token", value)}
+          />
+          <SecretField
+            id={`${id}-pushover-user`}
+            label="Pushover user key"
+            isSet={values.secretsSet["notifications.pushover.user_key"] ?? false}
+            value={secretOf("notifications.pushover.user_key")}
+            onChange={(value) => editSecret("notifications.pushover.user_key", value)}
+          />
         </FieldGroup>
       </FieldSet>
 

@@ -276,12 +276,15 @@ answering every request with a 401.
 
 ### The Wahoo redirect moves
 
-The OAuth callback lands in an ordinary browser. Set both `wahoo.redirect_url`
-and the callback registered with Wahoo to:
+The OAuth callback lands in an ordinary browser. Set `http.browser_origin_url`
+to `https://domestique.nobbs.dev`, and the callback registered with Wahoo to:
 
 ```text
 https://domestique.nobbs.dev/oauth/wahoo/callback
 ```
+
+The service derives the second from the first, so only the Wahoo application
+has to be told it separately.
 
 The OAuth state is bound to the calling identity, so the flow's two requests
 must agree on who the caller is. The gate hands downstream the configured

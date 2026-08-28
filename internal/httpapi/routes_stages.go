@@ -200,12 +200,16 @@ func (h *Handler) stageValidationView() *openapi.RouteValidation {
 	if h.rideModelValidation == nil {
 		return nil
 	}
+	validation := h.rideModelValidation()
+	if validation == nil {
+		return nil
+	}
 
 	return &openapi.RouteValidation{
-		BiasPercent:    h.rideModelValidation.BiasPercent,
-		MaePercent:     h.rideModelValidation.MAEPercent,
-		P90percent:     h.rideModelValidation.P90Percent,
-		EvaluatedRides: h.rideModelValidation.EvaluatedRides,
+		BiasPercent:    validation.BiasPercent,
+		MaePercent:     validation.MAEPercent,
+		P90percent:     validation.P90Percent,
+		EvaluatedRides: validation.EvaluatedRides,
 	}
 }
 

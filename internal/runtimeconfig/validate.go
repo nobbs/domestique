@@ -4,7 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 )
@@ -23,6 +25,11 @@ const maxDigestInterval = 7 * 24 * time.Hour
 // as zero and then refused when it is read back at startup.
 const minimumInterval = time.Second
 
+// maxTargets bounds the destination slots one deployment reconciles onto. Two
+// is what internal/sync accepts, and the number exists so a mistyped list
+// cannot quietly become a fleet.
+const maxTargets = 2
+
 // Validate checks every rule and returns the normalised settings: lists trimmed
 // of whitespace and repeats, so what is stored is exactly what was checked.
 //
@@ -31,7 +38,13 @@ func (v Values) Validate() (Values, error) {
 	if err := ValidateSync(v.Sync); err != nil {
 		return Values{}, err
 	}
-	if err := ValidateNotifications(v.Notifications); err != nil {
+	notifications, err := ValidateNotifications(v.Notifications)
+	if err != nil {
+		return Values{}, err
+	}
+
+	rideModel, err := ValidateRideModel(v.RideModel)
+	if err != nil {
 		return Values{}, err
 	}
 
@@ -45,10 +58,105 @@ func (v Values) Validate() (Values, error) {
 		return Values{}, err
 	}
 
+	wahoo, err := ValidateWahoo(v.Wahoo)
+	if err != nil {
+		return Values{}, err
+	}
+
+	sources, err := ValidateSources(v.Sources)
+	if err != nil {
+		return Values{}, err
+	}
+
+	v.Notifications = notifications
+	v.RideModel = rideModel
 	v.Basemaps = basemaps
 	v.Surface = surface
+	v.Wahoo = wahoo
+	v.Sources = sources
 
 	return v, nil
+}
+
+// ValidateWahoo checks the OAuth application and the destination slots, and
+// returns them trimmed. Every part of it may be empty: a service that has not
+// been configured yet is a state this validation accepts and a run refuses.
+func ValidateWahoo(wahoo Wahoo) (Wahoo, error) {
+	wahoo.APIBaseURL = strings.TrimSpace(wahoo.APIBaseURL)
+	wahoo.OAuthBaseURL = strings.TrimSpace(wahoo.OAuthBaseURL)
+	wahoo.ClientID = strings.TrimSpace(wahoo.ClientID)
+
+	if wahoo.APIBaseURL != "" {
+		if err := ValidateHTTPSOrigin("wahoo.api_base_url", wahoo.APIBaseURL); err != nil {
+			return Wahoo{}, err
+		}
+	}
+	if wahoo.OAuthBaseURL != "" {
+		if err := ValidateHTTPSOrigin("wahoo.oauth_base_url", wahoo.OAuthBaseURL); err != nil {
+			return Wahoo{}, err
+		}
+	}
+	if len(wahoo.Targets) > maxTargets {
+		return Wahoo{}, fmt.Errorf("wahoo.targets must not contain more than %d entries", maxTargets)
+	}
+
+	targets := make([]string, 0, len(wahoo.Targets))
+	for index, target := range wahoo.Targets {
+		target = strings.TrimSpace(target)
+		if target == "" {
+			return Wahoo{}, fmt.Errorf("wahoo.targets[%d] is required", index)
+		}
+		if slices.Contains(targets, target) {
+			return Wahoo{}, fmt.Errorf("wahoo.targets[%d] is duplicated", index)
+		}
+		targets = append(targets, target)
+	}
+	wahoo.Targets = targets
+
+	return wahoo, nil
+}
+
+// ValidateSources checks the libraries a run reads and returns them trimmed. An
+// empty list is a service with nothing to read yet rather than a mistake; a
+// provider named twice is a mistake, because a run reads each provider once and
+// stores its inventory under that provider's name.
+func ValidateSources(raw []Source) ([]Source, error) {
+	sources := make([]Source, 0, len(raw))
+	for index, source := range raw {
+		if _, _, known := SourceSecretNames(source.Provider); !known {
+			return nil, fmt.Errorf("sources[%d].provider %q is not a known source", index, source.Provider)
+		}
+		if slices.ContainsFunc(sources, func(seen Source) bool { return seen.Provider == source.Provider }) {
+			return nil, fmt.Errorf("sources[%d].provider is duplicated", index)
+		}
+		baseURL := strings.TrimSpace(source.BaseURL)
+		name := fmt.Sprintf("sources[%d].base_url", index)
+		if err := ValidateHTTPSOrigin(name, baseURL); err != nil {
+			return nil, err
+		}
+		sources = append(sources, Source{Provider: source.Provider, BaseURL: baseURL})
+	}
+	if len(sources) == 0 {
+		return nil, nil
+	}
+
+	return sources, nil
+}
+
+// ValidateRideModel accepts no coefficient file — the operator's switch for
+// leaving every stage without a predicted moving time — or an absolute path to
+// one. What the file contains is internal/ridemodel's business, and a file that
+// cannot be read or believed fails when it is loaded, not here.
+func ValidateRideModel(rideModel RideModel) (RideModel, error) {
+	rideModel.CoefficientsFile = strings.TrimSpace(rideModel.CoefficientsFile)
+	if rideModel.CoefficientsFile == "" {
+		return rideModel, nil
+	}
+	if !filepath.IsAbs(rideModel.CoefficientsFile) {
+		return RideModel{}, errors.New("ridemodel.coefficients_file must be an absolute path")
+	}
+
+	return rideModel, nil
 }
 
 // ValidateSync checks the reconciliation settings. The deletion gate is a
@@ -56,6 +164,9 @@ func (v Values) Validate() (Values, error) {
 func ValidateSync(sync Sync) error {
 	if sync.StaleAfter < minimumInterval {
 		return errors.New("sync.stale_after must be at least 1s")
+	}
+	if sync.InitialDelay < minimumInterval {
+		return errors.New("sync.initial_delay must be at least 1s")
 	}
 
 	return nil
@@ -65,26 +176,31 @@ func ValidateSync(sync Sync) error {
 // and the origin the credentials are sent to. A digest with no positive
 // interval would either never be sent or be sent on every run, and neither is
 // what the setting means.
-func ValidateNotifications(notifications Notifications) error {
+func ValidateNotifications(notifications Notifications) (Notifications, error) {
 	switch notifications.Policy {
 	case SuccessPolicyEvery, SuccessPolicyQuiet, SuccessPolicyDigest:
 	default:
-		return errors.New("notifications.success_policy must be every, quiet, or digest")
+		return Notifications{}, errors.New("notifications.success_policy must be every, quiet, or digest")
 	}
 	// The period is checked whatever the policy reads it. A setting that is only
 	// consulted by one policy is still a setting an operator will switch to, and
 	// finding out then that it was never valid is the wrong moment.
 	if notifications.DigestInterval < minimumInterval {
-		return errors.New("notifications.digest_interval must be at least 1s")
+		return Notifications{}, errors.New("notifications.digest_interval must be at least 1s")
 	}
 	if notifications.DigestInterval > maxDigestInterval {
-		return fmt.Errorf(
+		return Notifications{}, fmt.Errorf(
 			"notifications.digest_interval must not exceed %s, which is as far back as the recorded run history reaches",
 			maxDigestInterval,
 		)
 	}
 
-	return ValidateHTTPSOrigin("notifications.pushover.base_url", notifications.PushoverBaseURL)
+	notifications.PushoverBaseURL = strings.TrimSpace(notifications.PushoverBaseURL)
+	if err := ValidateHTTPSOrigin("notifications.pushover.base_url", notifications.PushoverBaseURL); err != nil {
+		return Notifications{}, err
+	}
+
+	return notifications, nil
 }
 
 // ValidateBasemaps checks the list the map may be switched between and returns

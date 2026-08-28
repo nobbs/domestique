@@ -1,5 +1,11 @@
 # Copy this file outside the repository, then replace every placeholder and
-# provide each referenced secret file. The file itself contains no secret value.
+# provide the referenced secret file. The file itself contains no secret value.
+#
+# This is the whole of it: where to listen, who may call, and where the state
+# lives. Every provider, credential and schedule the service works with is a
+# setting you edit on its own settings page, stored in the state database. A
+# copy of this file that still carries one of those sections is refused at
+# startup, naming the section, rather than silently ignored.
 
 [http]
 listen_address = ":8080"
@@ -10,6 +16,17 @@ listen_address = ":8080"
 # checking and off the authenticated public surface. Its port must differ from
 # listen_address above.
 readiness_address = ":8081"
+
+# The address a browser reaches this service at. Use the public hostname when
+# the Cloudflare path is deployed, because the OAuth redirect lands in an
+# ordinary browser that may not be on the Tailnet; use the Tailnet URL
+# otherwise. It must be an absolute HTTPS origin with no path.
+#
+# It is the one origin a state-changing request may come from, and the Wahoo
+# callback is derived from it. A request to a sync trigger, the schedule switch,
+# or a stage reprocess that names any other origin — or none — is refused, so
+# that an authenticated session cannot be driven from another site.
+browser_origin_url = "https://domestique.example.com"
 
 # Cloudflare Access is the only way in. Every request must carry an assertion
 # this service can verify, including requests that reach Tailscale Serve from
@@ -26,83 +43,9 @@ team_domain = "yourteam.cloudflareaccess.com"
 application_aud = "the AUD tag of the Access application"
 allowed_email = "you@example.com"
 
+# The database every runtime setting and every credential is stored in, and the
+# key the credentials are encrypted with. Losing the key means re-entering the
+# credentials on the settings page; it does not lose the routes.
 [state]
 database_path = "/var/lib/domestique/state.db"
 encryption_key_file = "/run/secrets/state_encryption_key"
-
-# At least one source must be configured below: [veloplanner], [komoot], or
-# both. Each is independent — configuring one does not require the other, and
-# neither is a special case of the other in this file's schema.
-
-[veloplanner]
-base_url = "https://veloplanner.com"
-email_file = "/run/secrets/veloplanner_email"
-password_file = "/run/secrets/veloplanner_password"
-
-# Komoot reads the operator's own account through the unofficial
-# api.komoot.de interface, exchanging email and password for a session token
-# at runtime — the partner OAuth2 interface needs credentials issued only
-# under a partner contract, so it is not what this reads.
-[komoot]
-base_url = "https://api.komoot.de"
-email_file = "/run/secrets/komoot_email"
-password_file = "/run/secrets/komoot_password"
-
-[wahoo]
-api_base_url = "https://api.sandbox.wahooligan.com"
-oauth_base_url = "https://api.sandbox.wahooligan.com"
-client_id = "replace-with-client-id"
-client_secret_file = "/run/secrets/wahoo_client_secret"
-# Must be the URL a browser returns to after authorising Wahoo, and must match
-# the callback registered with Wahoo. Use the public hostname when the
-# Cloudflare path is deployed, because the redirect lands in an ordinary browser
-# that may not be on the Tailnet; use the Tailnet URL otherwise.
-#
-# Its origin is also the one a state-changing request must come from, because it
-# is the hostname a browser reaches this service at. A request to a sync trigger,
-# the schedule switch, or a stage reprocess that names any other origin — or
-# none — is refused, so that an authenticated session cannot be driven from
-# another site.
-redirect_url = "https://domestique.example.com/oauth/wahoo/callback"
-
-[[wahoo.targets]]
-id = "rider-a"
-
-[[wahoo.targets]]
-id = "rider-b"
-
-[sync]
-# How long after start the first run is attempted. It is a file setting because
-# it is consumed once, at the start it delays: a value edited later would change
-# nothing until the restart an editable setting exists to avoid.
-initial_delay = "1m"
-
-# The credentials a notification is sent with. Whether notifications are sent at
-# all, how much a routine success reports, and the origin they are sent to are
-# settings you edit on the service's own settings page — they live in the state
-# database and take effect on the next run rather than the next restart.
-[notifications.pushover]
-application_token_file = "/run/secrets/pushover_application_token"
-user_key_file = "/run/secrets/pushover_user_key"
-
-# The map cartographies the page offers, the OpenStreetMap regions the surface
-# index is built from, how often it is rebuilt, how long the source inventory may
-# go unrefreshed before it is reported stale, and whether a trusted empty source
-# may delete a target's last routes are all settings you edit on the service's
-# own settings page. They live in the state database, so a change takes effect on
-# the next run or the next request rather than on the next restart, and this file
-# refuses them by name if an older copy of it still carries them.
-
-[ridemodel]
-# The coefficient file the offline fitting tooling emits: total riding mass,
-# sustained power, drag area, and rolling resistance per surface class, fitted
-# to a corpus of your own recorded rides rather than guessed. The service
-# reads it once at startup and computes a predicted moving time per stage.
-#
-# Unlike every other file path in this example, this one is not a secret: it
-# carries fitted physical constants, not a credential or route data.
-#
-# The default is no file, which switches prediction off entirely: no stage
-# anywhere carries a predicted time. A missing, malformed, or physically
-# implausible file is a startup failure rather than a silent fallback.
-# coefficients_file = "/etc/domestique/ridemodel.toml"

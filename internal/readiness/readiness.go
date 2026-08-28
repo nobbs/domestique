@@ -17,7 +17,6 @@ import (
 	"errors"
 	"net/http"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/nobbs/domestique/internal/readiness/contract"
@@ -39,27 +38,28 @@ type State interface {
 type Handler struct {
 	mux       *http.ServeMux
 	state     State
-	targetIDs []string
+	targetIDs func() []string
 }
 
-// New creates the readiness handler for the configured target slots.
-func New(targetIDs []string, state State) (*Handler, error) {
+// New creates the readiness handler over the target slots configured right now.
+//
+// The slots are read per probe rather than held, because they are a setting an
+// operator edits. A deployment that has none yet is ready: it is running
+// exactly as deployed, waiting to be configured through the browser, and a
+// probe that called that unhealthy would roll the deploy back before anyone
+// could configure it.
+func New(targetIDs func() []string, state State) (*Handler, error) {
 	if state == nil {
 		return nil, errors.New("readiness requires state")
 	}
-	if len(targetIDs) < 1 {
-		return nil, errors.New("readiness requires at least one target ID")
-	}
-	for _, targetID := range targetIDs {
-		if strings.TrimSpace(targetID) == "" {
-			return nil, errors.New("readiness target IDs must not be empty")
-		}
+	if targetIDs == nil {
+		return nil, errors.New("readiness requires its target IDs to be readable")
 	}
 
 	handler := &Handler{
 		mux:       http.NewServeMux(),
 		state:     state,
-		targetIDs: append([]string(nil), targetIDs...),
+		targetIDs: targetIDs,
 	}
 	handler.mux.HandleFunc("GET /readyz", handler.ready)
 	// Anything else, including the liveness path, is not served here. The two
@@ -89,9 +89,10 @@ func (h *Handler) ready(writer http.ResponseWriter, request *http.Request) {
 	ctx, cancel := context.WithTimeout(request.Context(), stateTimeout)
 	defer cancel()
 
-	known := make(map[string]struct{}, len(h.targetIDs))
+	targetIDs := h.targetIDs()
+	known := make(map[string]struct{}, len(targetIDs))
 	if err := h.state.ForEachTarget(ctx, func(id, _ string) error {
-		if slices.Contains(h.targetIDs, id) {
+		if slices.Contains(targetIDs, id) {
 			known[id] = struct{}{}
 		}
 
@@ -103,7 +104,7 @@ func (h *Handler) ready(writer http.ResponseWriter, request *http.Request) {
 
 		return
 	}
-	for _, targetID := range h.targetIDs {
+	for _, targetID := range targetIDs {
 		if _, found := known[targetID]; !found {
 			unready(writer, contract.Unready_ReasonStateIncomplete)
 

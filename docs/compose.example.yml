@@ -31,27 +31,15 @@ services:
     volumes:
       - domestique-state:/var/lib/domestique
       - ./config.toml:/etc/domestique/config.toml:ro
+    # The only secret the host hands the process. Every other credential the
+    # service holds is entered on its settings page and stored encrypted under
+    # this key.
     secrets:
       - state_encryption_key
-      - veloplanner_email
-      - veloplanner_password
-      - wahoo_client_secret
-      - pushover_application_token
-      - pushover_user_key
 
 secrets:
   state_encryption_key:
     file: ./secrets/state_encryption_key
-  veloplanner_email:
-    file: ./secrets/veloplanner_email
-  veloplanner_password:
-    file: ./secrets/veloplanner_password
-  wahoo_client_secret:
-    file: ./secrets/wahoo_client_secret
-  pushover_application_token:
-    file: ./secrets/pushover_application_token
-  pushover_user_key:
-    file: ./secrets/pushover_user_key
 
 volumes:
   domestique-state:

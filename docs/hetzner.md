@@ -66,18 +66,23 @@ Create a directory owned by the operator, for example `/srv/domestique`:
 ├── compose.yml   # docs/compose.example.yml, unmodified
 ├── .env          # DOMESTIQUE_IMAGE=ghcr.io/nobbs/domestique@sha256:<digest>
 ├── config.toml   # config.example.toml with every placeholder replaced
-├── secrets/      # the six secret files
+├── secrets/      # the state key, and the deploy script's own Pushover pair
 └── src/          # optional checkout, for development against real data
 ```
 
 Copy [`config.example.toml`](../config.example.toml) to `config.toml` and
-replace all placeholders. `wahoo.redirect_url` must be the HTTPS URL this host
-serves and must end in `/oauth/wahoo/callback`.
+replace all placeholders. `http.browser_origin_url` must be the HTTPS URL this
+host serves, with no path.
 
-Create the six files in `secrets/`, each containing exactly one value:
-`state_encryption_key` (base64url of 32 random bytes), `veloplanner_email`,
-`veloplanner_password`, `wahoo_client_secret`, `pushover_application_token`,
-and `pushover_user_key`.
+Create `secrets/state_encryption_key`, containing base64url of 32 random bytes.
+It is the only secret the service reads from the host: every credential it
+reaches an upstream with is entered on its settings page after it is running,
+and stored encrypted under this key.
+
+Add `secrets/pushover_application_token` and `secrets/pushover_user_key` too if
+this host should alert on a failed deployment. Those two are the deploy
+script's own — it has to be able to report a service that never started, which
+is exactly when it cannot read the service's database.
 
 **File ownership matters on Linux.** Compose bind-mounts each secret into the
 container, where the unprivileged runtime user reads it directly, so the files
@@ -200,25 +205,29 @@ configuration but the Tailnet DNS name does not resolve and `Self.Services`
 stays empty in `tailscale status --json`. Approve the host for the service in
 the admin console, then re-check.
 
-Put the exact served URL plus `/oauth/wahoo/callback` into both
-`wahoo.redirect_url` and the Wahoo application's registered callback. Ensure
+Put the exact served URL into `http.browser_origin_url`, and that URL plus
+`/oauth/wahoo/callback` into the Wahoo application's registered callback. Ensure
 the Tailnet policy permits only the configured user to reach the host.
 
-Open the service URL in the configured user's browser, then authorise each fixed
-target slot from `/oauth/wahoo/start/<target-id>` and check `/v1/status` after
-each one. A tagged device is not a member identity and cannot complete the
+Open the service URL in the configured user's browser. A host reaching this
+point has a running service that is not configured yet: fill in the source
+libraries and their accounts, the Wahoo application and its client secret, and
+the target slots on the settings page, which names what is still missing. Then
+authorise each slot from `/oauth/wahoo/start/<target-id>` and check `/v1/status`
+after each one. A tagged device is not a member identity and cannot complete the
 protected OAuth flow.
 
 ## Move an existing deployment to this host
 
 Keeping the same Tailnet service name means the served URL, and therefore
-`wahoo.redirect_url`, does not change, so no Wahoo slot needs reauthorising if
-the state and its key travel together.
+`http.browser_origin_url`, does not change, so no Wahoo slot needs reauthorising
+if the state and its key travel together. The settings travel with the state, so
+nothing is retyped either.
 
 1. Stop the container on the old host with `docker compose down` — **never**
    `-v`. A clean stop checkpoints the SQLite WAL into the database file.
-2. Stream the state volume to the new host, and copy `config.toml` and the six
-   secret files across:
+2. Stream the state volume to the new host, and copy `config.toml` and the
+   `secrets/` directory across:
 
    ```sh
    docker run --rm -v <project>_domestique-state:/s:ro alpine tar -cf - -C /s . \

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -36,6 +37,8 @@ const (
 // for the length of a test and recording what an edit wrote.
 type staticSettings struct {
 	storeFail error
+	secrets   map[runtimeconfig.SecretName]runtimeconfig.Secret
+	missing   []string
 	values    runtimeconfig.Values
 }
 
@@ -51,11 +54,44 @@ func (s *staticSettings) Set(_ context.Context, values runtimeconfig.Values) err
 	return nil
 }
 
+func (s *staticSettings) SecretIsSet(name runtimeconfig.SecretName) bool {
+	return s.secrets[name].IsSet()
+}
+
+func (s *staticSettings) SetSecrets(_ context.Context, secrets map[runtimeconfig.SecretName]runtimeconfig.Secret) error {
+	if s.storeFail != nil {
+		return s.storeFail
+	}
+	if s.secrets == nil {
+		s.secrets = make(map[runtimeconfig.SecretName]runtimeconfig.Secret, len(secrets))
+	}
+	maps.Copy(s.secrets, secrets)
+
+	return nil
+}
+
+func (s *staticSettings) Missing() []string { return s.missing }
+
+// withTargets and withSources name the destination slots and the libraries a
+// test is about. Both are settings now, so this is where a handler is told
+// about them.
+func withTargets(settings *staticSettings, targetIDs ...string) *staticSettings {
+	settings.values.Wahoo.Targets = targetIDs
+
+	return settings
+}
+
+func withSources(settings *staticSettings, sources ...runtimeconfig.Source) *staticSettings {
+	settings.values.Sources = sources
+
+	return settings
+}
+
 // settingsWith is the valid set of settings these tests configure, carrying
 // whichever basemap list the test is about.
 func settingsWith(basemaps []runtimeconfig.Basemap) *staticSettings {
 	return &staticSettings{values: runtimeconfig.Values{
-		Sync: runtimeconfig.Sync{StaleAfter: 26 * time.Hour},
+		Sync: runtimeconfig.Sync{StaleAfter: 26 * time.Hour, InitialDelay: time.Minute},
 		Notifications: runtimeconfig.Notifications{
 			Enabled:         true,
 			Policy:          runtimeconfig.SuccessPolicyEvery,
@@ -63,6 +99,7 @@ func settingsWith(basemaps []runtimeconfig.Basemap) *staticSettings {
 			PushoverBaseURL: "https://api.pushover.net",
 		},
 		Basemaps: basemaps,
+		Wahoo:    runtimeconfig.Wahoo{Targets: []string{"rider-a"}},
 		Surface:  runtimeconfig.Surface{RebuildInterval: 7 * 24 * time.Hour},
 	}}
 }
@@ -473,11 +510,11 @@ func TestHandlerOmitsValidationWhenNoneIsConfigured(t *testing.T) {
 	assert.NotContains(t, response.Body.String(), "validation", "no profile is configured in this handler")
 }
 
-// New copies RideModelValidation on the same terms Basemaps and TargetIDs
-// already are: the handler serves it on every request, so a caller that
-// mutates its own Options value after New returns must not be able to
-// change what a concurrent handler serves.
-func TestHandlerIsUnaffectedByMutatingTheOptionsAfterConstruction(t *testing.T) {
+// The profile is read per request rather than copied at construction, because
+// the coefficient file it was loaded from is a setting an operator edits: a
+// model reloaded after that edit qualifies the very next response, without a
+// restart in between.
+func TestHandlerServesTheProfileLoadedNow(t *testing.T) {
 	movingSeconds := 1234.5
 	state := &fakeState{summaries: []route.Summary{{
 		RouteID: 3, StageOrder: 1, RouteName: "Sunday", PointCount: 2, DistanceMetres: 900,
@@ -491,7 +528,7 @@ func TestHandlerIsUnaffectedByMutatingTheOptionsAfterConstruction(t *testing.T) 
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/routes"))
 	require.Equal(t, http.StatusOK, response.Code, "routes status")
-	assert.Contains(t, response.Body.String(), `"maePercent":6.8`, "the handler must not see a post-construction mutation")
+	assert.Contains(t, response.Body.String(), `"maePercent":99.9`, "the handler served a profile that is no longer loaded")
 }
 
 func TestHandlerServesTileStyleConfiguration(t *testing.T) {
@@ -542,7 +579,6 @@ func TestHandlerNamesTheIdentityTheGateLetThrough(t *testing.T) {
 func TestHandlerPublishesTheWayOutWhenOneIsConfigured(t *testing.T) {
 	handler, err := New(
 		&Options{
-			TargetIDs:        []string{"rider-a"},
 			Settings:         settingsWith(twoProviderBasemaps()),
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
@@ -576,7 +612,6 @@ func TestNewRefusesAnAccessEmailThatIsNotOne(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			_, err := New(
 				&Options{
-					TargetIDs:        []string{"rider-a"},
 					Settings:         settingsWith(twoProviderBasemaps()),
 					AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 					AccessEmail:      value,
@@ -605,7 +640,6 @@ func TestNewRefusesASignOutURLThatLeavesThisOrigin(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			_, err := New(
 				&Options{
-					TargetIDs:        []string{"rider-a"},
 					Settings:         settingsWith(twoProviderBasemaps()),
 					AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 					AccessEmail:      testAccessEmail,
@@ -623,7 +657,6 @@ func TestNewRefusesASignOutURLThatLeavesThisOrigin(t *testing.T) {
 func TestHandlerServesEveryConfiguredBasemapInOrder(t *testing.T) {
 	handler, err := New(
 		&Options{
-			TargetIDs:        []string{"rider-a"},
 			Settings:         settingsWith(twoProviderBasemaps()),
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
@@ -659,7 +692,6 @@ func TestHandlerServesEveryConfiguredBasemapInOrder(t *testing.T) {
 func TestHandlerOmitsAnUnconfiguredDarkTileStyle(t *testing.T) {
 	handler, err := New(
 		&Options{
-			TargetIDs:        []string{"rider-a"},
 			Settings:         settingsWith(testBasemaps()),
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
@@ -679,7 +711,6 @@ func TestHandlerOmitsAnUnconfiguredDarkTileStyle(t *testing.T) {
 func TestHandlerOmitsAnUnconfiguredSourceBaseURL(t *testing.T) {
 	handler, err := New(
 		&Options{
-			TargetIDs:        []string{"rider-a"},
 			Settings:         settingsWith(testBasemaps()),
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
@@ -696,137 +727,13 @@ func TestHandlerOmitsAnUnconfiguredSourceBaseURL(t *testing.T) {
 	assert.NotContains(t, response.Body.String(), "sourceBaseUrls", "the config body carries a source base URLs key")
 }
 
-func TestHandlerOmitsAProviderConfiguredWithABlankSourceBaseURL(t *testing.T) {
-	// A provider present in the map with a blank value is the same "not
-	// configured" case as a provider absent from the map entirely — it must
-	// not reach the page as an empty, unusable entry.
-	handler, err := New(
-		&Options{
-			TargetIDs: []string{"rider-a"},
-			Settings:  settingsWith(testBasemaps()),
-			SourceBaseURLs: map[route.Provider]string{
-				route.ProviderVeloPlanner: testSourceBaseURL,
-				route.ProviderKomoot:      "   ",
-			},
-			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
-			AccessEmail:      testAccessEmail,
-			BrowserOriginURL: testBrowserOriginURL,
-		},
-		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{},
-	)
-	require.NoError(t, err, "New()")
-
-	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/webui/config"))
-	var payload struct {
-		SourceBaseURLs map[string]string `json:"sourceBaseUrls"`
-	}
-	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &payload), "decoding config body")
-	assert.Equal(t, testSourceBaseURL, payload.SourceBaseURLs["veloplanner"], "veloplanner source base URL")
-	_, hasKomoot := payload.SourceBaseURLs["komoot"]
-	assert.False(t, hasKomoot, "a blank source base URL must not reach the page")
-}
-
-func TestHandlerRefusesASourceBaseURLThatIsNotOne(t *testing.T) {
-	// The value is echoed to the browser rather than only compared, so anything
-	// riding on it is observable: credentials would be a secret in a JSON body,
-	// and a query or fragment would be sent to the provider on every visit.
-	for _, value := range []string{
-		"http://source.example.test",
-		"source.example.test",
-		"/user-routes",
-		"https://rider:hunter2@source.example.test",
-		"https://source.example.test?utm_source=domestique",
-		"https://source.example.test/#fragment",
-		"https://",
-	} {
-		_, err := New(
-			&Options{
-				TargetIDs:        []string{"rider-a"},
-				Settings:         settingsWith(testBasemaps()),
-				SourceBaseURLs:   map[route.Provider]string{route.ProviderVeloPlanner: value},
-				AccessVerifier:   &recordingVerifier{email: testAccessEmail},
-				AccessEmail:      testAccessEmail,
-				BrowserOriginURL: testBrowserOriginURL,
-			},
-			&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{},
-		)
-		require.Errorf(t, err, "New() accepted the source base URL %q", value)
-	}
-}
-
-func TestNewRejectsASourceBaseURLForAnUndocumentedProvider(t *testing.T) {
-	_, err := New(
-		&Options{
-			TargetIDs:        []string{"rider-a"},
-			Settings:         settingsWith(testBasemaps()),
-			SourceBaseURLs:   map[route.Provider]string{"another-provider": testSourceBaseURL},
-			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
-			AccessEmail:      testAccessEmail,
-			BrowserOriginURL: testBrowserOriginURL,
-		},
-		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{},
-	)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "not in the HTTP contract")
-}
-
-func TestHandlerSendsASourceBaseURLWithoutSurroundingWhitespace(t *testing.T) {
-	handler, err := New(
-		&Options{
-			TargetIDs:        []string{"rider-a"},
-			Settings:         settingsWith(testBasemaps()),
-			SourceBaseURLs:   map[route.Provider]string{route.ProviderVeloPlanner: "  " + testSourceBaseURL + "\n"},
-			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
-			AccessEmail:      testAccessEmail,
-			BrowserOriginURL: testBrowserOriginURL,
-		},
-		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{},
-	)
-	require.NoError(t, err, "New()")
-
-	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/webui/config"))
-	// The page must receive the value that was validated, not a wider one: a
-	// browser cannot parse a URL with whitespace around it, so an accepted
-	// configuration would silently produce no link.
-	var payload struct {
-		SourceBaseURLs map[string]string `json:"sourceBaseUrls"`
-	}
-	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &payload), "decoding config body")
-	assert.Equal(t, testSourceBaseURL, payload.SourceBaseURLs["veloplanner"], "source base URL")
-}
-
-func TestHandlerAcceptsASourceBaseURLHostedUnderAPath(t *testing.T) {
-	// A provider need not sit at the root of its host, and the page builds the
-	// route path underneath whatever prefix it is given.
-	handler, err := New(
-		&Options{
-			TargetIDs:        []string{"rider-a"},
-			Settings:         settingsWith(testBasemaps()),
-			SourceBaseURLs:   map[route.Provider]string{route.ProviderVeloPlanner: testSourceBaseURL + "/planner"},
-			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
-			AccessEmail:      testAccessEmail,
-			BrowserOriginURL: testBrowserOriginURL,
-		},
-		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{},
-	)
-	require.NoError(t, err, "New()")
-
-	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/webui/config"))
-	assert.Contains(t, response.Body.String(), testSourceBaseURL+"/planner", "the config body omits the planner link")
-}
-
 func TestHandlerServesEveryConfiguredSourceKeyedByProvider(t *testing.T) {
 	handler, err := New(
 		&Options{
-			TargetIDs: []string{"rider-a"},
-			Settings:  settingsWith(testBasemaps()),
-			SourceBaseURLs: map[route.Provider]string{
-				route.ProviderVeloPlanner: testSourceBaseURL,
-				route.ProviderKomoot:      testKomootBaseURL,
-			},
+			Settings: withSources(settingsWith(testBasemaps()),
+				runtimeconfig.Source{Provider: route.ProviderVeloPlanner, BaseURL: testSourceBaseURL},
+				runtimeconfig.Source{Provider: route.ProviderKomoot, BaseURL: testKomootBaseURL},
+			),
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
@@ -915,7 +822,6 @@ func newHandlerWithBuild(t *testing.T, revision, imageDigest string) *Handler {
 
 	handler, err := New(
 		&Options{
-			TargetIDs:        []string{"rider-a"},
 			Settings:         settingsWith(testBasemaps()),
 			BuildRevision:    revision,
 			BuildImageDigest: imageDigest,
@@ -936,7 +842,6 @@ func newHandlerWithBuild(t *testing.T, revision, imageDigest string) *Handler {
 func TestHandlerNamesEveryBasemapOriginInThePolicy(t *testing.T) {
 	handler, err := New(
 		&Options{
-			TargetIDs:        []string{"rider-a"},
 			Settings:         settingsWith(twoProviderBasemaps()),
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
@@ -968,7 +873,6 @@ func TestHandlerNamesEveryBasemapOriginInThePolicy(t *testing.T) {
 func TestHandlerNamesOneOriginOnceForTwoBasemapsSharingIt(t *testing.T) {
 	handler, err := New(
 		&Options{
-			TargetIDs: []string{"rider-a"},
 			Settings: settingsWith([]runtimeconfig.Basemap{
 				{Name: "Streets", StyleURL: testTileStyleURL},
 				{Name: "Outdoors", StyleURL: "https://tiles.example.test/styles/outdoors"},
@@ -996,7 +900,6 @@ func TestHandlerNamesOneOriginOnceForTwoBasemapsSharingIt(t *testing.T) {
 func TestHandlerAcceptsADarkStyleOnItsOriginRegardlessOfHostCase(t *testing.T) {
 	handler, err := New(
 		&Options{
-			TargetIDs: []string{"rider-a"},
 			Settings: settingsWith([]runtimeconfig.Basemap{{
 				Name:         "Streets",
 				StyleURL:     testTileStyleURL,
@@ -1950,24 +1853,10 @@ func TestNewRejectsIncompleteOptions(t *testing.T) {
 		name    string
 	}{
 		{name: "nil options"},
-		{name: "no targets", options: &Options{
-			Settings:         settingsWith(testBasemaps()),
-			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
-			AccessEmail:      testAccessEmail,
-			BrowserOriginURL: testBrowserOriginURL,
-		}},
-		{name: "duplicate targets", options: &Options{
-			TargetIDs:        []string{"rider-a", "rider-a"},
-			Settings:         settingsWith(testBasemaps()),
-			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
-			AccessEmail:      testAccessEmail,
-			BrowserOriginURL: testBrowserOriginURL,
-		}},
-		// The basemap list, the staleness bound and the rest are checked where
-		// an edit is written and where the stored values are read back, not a
-		// third time here; see internal/runtimeconfig.
+		// The target slots, the basemap list, the staleness bound and the rest
+		// are checked where an edit is written and where the stored values are
+		// read back, not a third time here; see internal/runtimeconfig.
 		{name: "no settings", options: &Options{
-			TargetIDs:        []string{"rider-a"},
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
@@ -1990,7 +1879,6 @@ func newHandlerWithVerifier(t *testing.T, verifier AccessVerifier) *Handler {
 	t.Helper()
 	handler, err := New(
 		&Options{
-			TargetIDs:        []string{"rider-a"},
 			Settings:         settingsWith(testBasemaps()),
 			AccessVerifier:   verifier,
 			AccessEmail:      testAccessEmail,
@@ -2009,7 +1897,6 @@ func newHandlerWithSurfaceIndex(t *testing.T, index func() (string, time.Time, b
 	t.Helper()
 	handler, err := New(
 		&Options{
-			TargetIDs:        []string{"rider-a"},
 			Settings:         settingsWith(testBasemaps()),
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
@@ -2030,7 +1917,6 @@ func newHandlerWithWeather(t *testing.T, weather Weather) *Handler {
 	t.Helper()
 	handler, err := New(
 		&Options{
-			TargetIDs:        []string{"rider-a"},
 			Settings:         settingsWith(testBasemaps()),
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
@@ -2056,7 +1942,6 @@ func newHandlerWithStaleAfter(t *testing.T, state State, staleAfter time.Duratio
 	settings.values.Sync.StaleAfter = staleAfter
 	handler, err := New(
 		&Options{
-			TargetIDs:        []string{"rider-a"},
 			Settings:         settings,
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
@@ -2076,8 +1961,7 @@ func newHandlerWithTargets(t *testing.T, state State, targetIDs ...string) *Hand
 	t.Helper()
 	handler, err := New(
 		&Options{
-			TargetIDs:        targetIDs,
-			Settings:         settingsWith(testBasemaps()),
+			Settings:         withTargets(settingsWith(testBasemaps()), targetIDs...),
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
@@ -2095,8 +1979,7 @@ func newHandlerWithLiveSync(t *testing.T, state State, activity SyncActivityStat
 	t.Helper()
 	handler, err := New(
 		&Options{
-			TargetIDs:        []string{"rider-a", "rider-b"},
-			Settings:         settingsWith(testBasemaps()),
+			Settings:         withTargets(settingsWith(testBasemaps()), "rider-a", "rider-b"),
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
@@ -2115,12 +1998,11 @@ func newHandlerWithRideModelValidation(t *testing.T, state State, validation *Ri
 	t.Helper()
 	handler, err := New(
 		&Options{
-			TargetIDs:           []string{"rider-a"},
-			Settings:            settingsWith(testBasemaps()),
-			AccessVerifier:      &recordingVerifier{email: testAccessEmail},
-			AccessEmail:         testAccessEmail,
-			BrowserOriginURL:    testBrowserOriginURL,
-			RideModelValidation: validation,
+			Settings:                settingsWith(testBasemaps()),
+			AccessVerifier:          &recordingVerifier{email: testAccessEmail},
+			AccessEmail:             testAccessEmail,
+			BrowserOriginURL:        testBrowserOriginURL,
+			RideModelValidationFunc: func() *RideModelValidation { return validation },
 		},
 		&fakeOAuth{}, state, &fakeSync{accepted: true}, &fakeAssets{}, &fakeWeather{},
 	)
@@ -2133,9 +2015,8 @@ func newHandlerWithSync(t *testing.T, oauthService OAuth, state State, syncRuns 
 	t.Helper()
 	handler, err := New(
 		&Options{
-			TargetIDs:        []string{"rider-a"},
-			Settings:         settingsWith(testBasemapsWithDark()),
-			SourceBaseURLs:   map[route.Provider]string{route.ProviderVeloPlanner: testSourceBaseURL},
+			Settings: withSources(settingsWith(testBasemapsWithDark()),
+				runtimeconfig.Source{Provider: route.ProviderVeloPlanner, BaseURL: testSourceBaseURL}),
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,

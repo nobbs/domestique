@@ -108,10 +108,36 @@ starting a second one invalidates the first. It expires ten minutes after it was
 started, after which the account reads as it did before and the link comes back
 — start it again rather than reloading the callback URL.
 
-**On the host**, only if reconnecting fails outright: `wahoo.redirect_url` must
-be exactly the public hostname plus `/oauth/wahoo/callback` and must match the
-callback registered with Wahoo, and `wahoo_client_secret` must be current. Both
-are static configuration and need a restart.
+**On the settings page**, only if reconnecting fails outright: the Wahoo client
+ID and client secret must be current, and the callback registered with Wahoo
+must be exactly `http.browser_origin_url` plus `/oauth/wahoo/callback`. The
+first two are settings and take effect on the next attempt; the origin is on the
+host and needs a restart.
+
+## Nothing runs, and nothing failed
+
+**You will have seen** a service that answers both probes and shows a settings
+page saying what is still missing, with no run in its history and no
+notification of any kind. That is a deployment that has not been configured yet
+rather than one that broke, and it is the state every new deployment starts in:
+the host's file carries only the listeners, the identity gate and the state, and
+everything a run needs — the source libraries and their accounts, the Wahoo
+application and its client secret, and at least one target slot — is entered on
+the settings page.
+
+**What the service has already guaranteed.** A scheduled run finds nothing
+configured and does nothing, rather than reaching an upstream as nobody or
+treating an unread library as an empty one. No inventory is stored, so the
+deletion gate is never approached. The readiness probe reports ready throughout,
+because a service waiting to be configured through a browser is running exactly
+as deployed, and a probe that called that unhealthy would roll the deployment
+back before anyone could configure it.
+
+**The way forward** is the settings page, which names each missing setting.
+Filling them in takes effect on the next run — there is no restart, and nothing
+to edit on the host. A target slot named there is ready for the one-time OAuth
+onboarding immediately; see [Reconnect a Wahoo account](#reconnect-a-wahoo-account)
+for what that looks like.
 
 ## A deletion was blocked
 
@@ -173,8 +199,9 @@ VeloPlanner**. A manual trigger runs its half whether the switch is on or off.
 
 **At the source.** A route whose detail will not parse holds up every route:
 correct it in VeloPlanner, then read again. If the credentials themselves are
-rejected, they are secret files on the host and need a restart after they
-change.
+rejected, retype them on the settings page: the page never shows you the stored
+one, so a rotated password is entered rather than corrected, and the next run
+uses it.
 
 ## A write to Wahoo did not complete
 
@@ -299,9 +326,15 @@ that were replaced.
 ## What this runbook does not cover
 
 There is no state backup, no key rotation, and no remote route cleanup.
-There is also no HTTP or CLI path to delete a route, change a secret or an
-endpoint, or remove a target: everything in this guide is either a browser
-action the service already offers — including the settings page, which reaches
-the deletion gate, the staleness bound, the notification settings, the basemap
-list, and the surface regions — or a change to the host's configuration file
-followed by a restart.
+There is also no HTTP or CLI path to delete a route: everything in this guide is
+either a browser action the service already offers — including the settings
+page, which reaches the deletion gate, the staleness bound, the notification
+settings, the basemap list, the surface regions, the source libraries, the Wahoo
+application and its target slots, the ride model, and every credential those
+reach their upstreams with — or a change to the host's configuration file,
+which now holds only the listeners, the identity gate and the state, followed by
+a restart.
+
+A credential can be replaced from that page but not read from it, and removing
+one is not offered at all: a blank field is what an operator who changed nothing
+leaves behind, so it means "keep" rather than "clear".

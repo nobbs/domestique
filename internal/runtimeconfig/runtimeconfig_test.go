@@ -1,13 +1,20 @@
 package runtimeconfig
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"log/slog"
+	"maps"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/nobbs/domestique/internal/route"
 )
 
 // stubStore stands in for the SQLite store: it remembers the last values
@@ -15,6 +22,7 @@ import (
 type stubStore struct {
 	readErr  error
 	writeErr error
+	secrets  map[SecretName]Secret
 	values   Values
 	writes   int
 }
@@ -38,9 +46,30 @@ func (s *stubStore) SetRuntimeSettings(_ context.Context, values Values) error {
 	return nil
 }
 
+func (s *stubStore) RuntimeSecrets(context.Context) (map[SecretName]Secret, error) {
+	if s.readErr != nil {
+		return nil, s.readErr
+	}
+
+	return maps.Clone(s.secrets), nil
+}
+
+func (s *stubStore) SetRuntimeSecrets(_ context.Context, secrets map[SecretName]Secret) error {
+	if s.writeErr != nil {
+		return s.writeErr
+	}
+	s.writes++
+	if s.secrets == nil {
+		s.secrets = make(map[SecretName]Secret, len(secrets))
+	}
+	maps.Copy(s.secrets, secrets)
+
+	return nil
+}
+
 func validValues() Values {
 	return Values{
-		Sync: Sync{StaleAfter: 24 * time.Hour},
+		Sync: Sync{StaleAfter: 24 * time.Hour, InitialDelay: time.Minute},
 		Notifications: Notifications{
 			Enabled:         true,
 			Policy:          SuccessPolicyDigest,
@@ -154,9 +183,12 @@ func TestValuesHandsOutIndependentLists(t *testing.T) {
 }
 
 func TestValidateSync(t *testing.T) {
-	require.NoError(t, ValidateSync(Sync{StaleAfter: time.Second}))
+	valid := Sync{StaleAfter: time.Second, InitialDelay: time.Second}
+	require.NoError(t, ValidateSync(valid))
 	require.Error(t, ValidateSync(Sync{}), "a bound of zero would report every inventory stale")
-	require.Error(t, ValidateSync(Sync{StaleAfter: time.Millisecond}))
+	require.Error(t, ValidateSync(Sync{StaleAfter: time.Millisecond, InitialDelay: time.Second}))
+	require.Error(t, ValidateSync(Sync{StaleAfter: time.Second}),
+		"a first run with no delay would start before the listeners are up")
 }
 
 func TestValidateNotifications(t *testing.T) {
@@ -195,7 +227,7 @@ func TestValidateNotifications(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			notifications := valid
 			test.mutate(&notifications)
-			err := ValidateNotifications(notifications)
+			_, err := ValidateNotifications(notifications)
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), test.wantErr)
 		})
@@ -206,9 +238,14 @@ func TestValidateNotifications(t *testing.T) {
 	quiet := valid
 	quiet.Policy = SuccessPolicyQuiet
 	quiet.DigestInterval = 0
-	require.Error(t, ValidateNotifications(quiet))
+	_, err := ValidateNotifications(quiet)
+	require.Error(t, err)
 
-	require.NoError(t, ValidateNotifications(valid))
+	trailing := valid
+	trailing.PushoverBaseURL = " " + valid.PushoverBaseURL + " "
+	normalised, err := ValidateNotifications(trailing)
+	require.NoError(t, err)
+	assert.Equal(t, valid.PushoverBaseURL, normalised.PushoverBaseURL, "the origin is stored trimmed")
 }
 
 // Validate reports the first rule that fails whichever field holds it, because
@@ -251,4 +288,291 @@ func TestSameOriginRejectsWhatItCannotParse(t *testing.T) {
 		"a host differs in case only, which the browser treats as one origin")
 	assert.False(t, SameOrigin("/relative", "https://tiles.example.test/b"))
 	assert.False(t, SameOrigin("https://tiles.example.test/a", "/relative"))
+}
+
+func TestValidateWahoo(t *testing.T) {
+	// Every part empty is the state a deployment starts in, and is accepted
+	// here so it can be reported as missing rather than refused as invalid.
+	empty, err := ValidateWahoo(Wahoo{})
+	require.NoError(t, err)
+	assert.Empty(t, empty.Targets, "an unconfigured application has no slots")
+
+	valid := Wahoo{
+		APIBaseURL:   " https://api.wahooligan.com ",
+		OAuthBaseURL: "https://api.wahooligan.com",
+		ClientID:     " client-id ",
+		Targets:      []string{" rider-a ", "rider-b"},
+	}
+	normalised, err := ValidateWahoo(valid)
+	require.NoError(t, err)
+	assert.Equal(t, "https://api.wahooligan.com", normalised.APIBaseURL, "APIBaseURL")
+	assert.Equal(t, "client-id", normalised.ClientID, "ClientID")
+	assert.Equal(t, []string{"rider-a", "rider-b"}, normalised.Targets, "Targets")
+
+	tests := []struct {
+		mutate  func(*Wahoo)
+		name    string
+		wantErr string
+	}{
+		{name: "a plaintext API address", mutate: func(w *Wahoo) { w.APIBaseURL = "http://api.wahooligan.com" }, wantErr: "wahoo.api_base_url"},
+		{name: "an OAuth address that is not a URL", mutate: func(w *Wahoo) { w.OAuthBaseURL = "wahooligan.com" }, wantErr: "wahoo.oauth_base_url"},
+		// The client parses both as origins, so a path is refused here, where the
+		// message can name the setting, rather than when the client is built.
+		{
+			name:    "an API address carrying a path",
+			mutate:  func(w *Wahoo) { w.APIBaseURL = "https://api.wahooligan.com/v1" },
+			wantErr: "wahoo.api_base_url must be an origin",
+		},
+		{name: "a slot with no name", mutate: func(w *Wahoo) { w.Targets = []string{" "} }, wantErr: "is required"},
+		{name: "the same slot twice", mutate: func(w *Wahoo) { w.Targets = []string{"rider-a", "rider-a"} }, wantErr: "duplicated"},
+		{
+			name:    "more slots than a run reconciles",
+			mutate:  func(w *Wahoo) { w.Targets = []string{"a", "b", "c"} },
+			wantErr: "more than 2",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			wahoo := valid
+			test.mutate(&wahoo)
+			_, err := ValidateWahoo(wahoo)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), test.wantErr)
+		})
+	}
+}
+
+func TestValidateSources(t *testing.T) {
+	none, err := ValidateSources(nil)
+	require.NoError(t, err)
+	assert.Empty(t, none, "a service with nothing to read yet is not a mistake")
+
+	sources, err := ValidateSources([]Source{
+		{Provider: route.ProviderVeloPlanner, BaseURL: " https://veloplanner.com "},
+		{Provider: route.ProviderKomoot, BaseURL: "https://api.komoot.de"},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "https://veloplanner.com", sources[0].BaseURL, "the address is stored trimmed")
+
+	tests := []struct {
+		name    string
+		wantErr string
+		sources []Source
+	}{
+		{
+			name:    "a provider nothing can read",
+			sources: []Source{{Provider: "strava", BaseURL: "https://www.strava.com"}},
+			wantErr: "is not a known source",
+		},
+		{
+			name: "the same provider twice",
+			sources: []Source{
+				{Provider: route.ProviderKomoot, BaseURL: "https://api.komoot.de"},
+				{Provider: route.ProviderKomoot, BaseURL: "https://api.komoot.de"},
+			},
+			wantErr: "duplicated",
+		},
+		{
+			name:    "an address carrying a path",
+			sources: []Source{{Provider: route.ProviderKomoot, BaseURL: "https://api.komoot.de/v007"}},
+			wantErr: "without a path",
+		},
+		{
+			name:    "a plaintext address",
+			sources: []Source{{Provider: route.ProviderKomoot, BaseURL: "http://api.komoot.de"}},
+			wantErr: "absolute HTTPS URL",
+		},
+		{
+			name:    "no address at all",
+			sources: []Source{{Provider: route.ProviderKomoot}},
+			wantErr: "sources[0].base_url",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := ValidateSources(test.sources)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), test.wantErr)
+		})
+	}
+}
+
+func TestValidateRideModel(t *testing.T) {
+	_, err := ValidateRideModel(RideModel{})
+	require.NoError(t, err, "no file is prediction switched off")
+
+	// The path arrives from a form field, so it is trimmed like every other one.
+	normalised, err := ValidateRideModel(RideModel{CoefficientsFile: " /etc/domestique/ridemodel.toml "})
+	require.NoError(t, err)
+	assert.Equal(t, "/etc/domestique/ridemodel.toml", normalised.CoefficientsFile)
+
+	_, err = ValidateRideModel(RideModel{CoefficientsFile: "ridemodel.toml"})
+	require.Error(t, err,
+		"a relative path would resolve against whatever directory the process happens to run in")
+}
+
+// A settings page has to be able to store a credential it was never told the
+// current value of, and has to leave every other one alone while it does.
+func TestSetSecretsReplacesOnlyWhatItWasGiven(t *testing.T) {
+	store := &stubStore{
+		values:  validValues(),
+		secrets: map[SecretName]Secret{SecretKomootEmail: NewSecret([]byte("rider@example.test"))},
+	}
+	current, err := Load(t.Context(), store)
+	require.NoError(t, err)
+
+	require.NoError(t, current.SetSecrets(t.Context(), map[SecretName]Secret{
+		SecretKomootPassword: NewSecret([]byte("opensesame")),
+	}))
+
+	assert.Equal(t, []byte("opensesame"), current.Secret(SecretKomootPassword).Bytes(), "the new credential is live")
+	assert.True(t, current.SecretIsSet(SecretKomootEmail), "the one that was not submitted is untouched")
+	assert.False(t, current.SecretIsSet(SecretWahooClientSecret), "one that was never stored stays unset")
+}
+
+// The first credential a deployment stores arrives when there are none, which
+// is the state a new database is in.
+func TestSetSecretsStoresTheFirstCredentialAServiceIsGiven(t *testing.T) {
+	current, err := Load(t.Context(), &stubStore{values: validValues()})
+	require.NoError(t, err)
+
+	require.NoError(t, current.SetSecrets(t.Context(), map[SecretName]Secret{
+		SecretWahooClientSecret: NewSecret([]byte("opensesame")),
+	}))
+
+	assert.True(t, current.SecretIsSet(SecretWahooClientSecret))
+}
+
+// Every save of the settings page sends only the credentials that were typed,
+// so a save that typed none must not move the generation everything holding
+// something built from these settings watches.
+func TestSetSecretsWritesNothingWhenNoCredentialWasSubmitted(t *testing.T) {
+	store := &stubStore{values: validValues()}
+	current, err := Load(t.Context(), store)
+	require.NoError(t, err)
+	generation := current.Generation()
+
+	require.NoError(t, current.SetSecrets(t.Context(), nil))
+
+	assert.Zero(t, store.writes, "writes")
+	assert.Equal(t, generation, current.Generation(), "generation")
+}
+
+func TestSetSecretsRefusesACredentialNothingReads(t *testing.T) {
+	store := &stubStore{values: validValues()}
+	current, err := Load(t.Context(), store)
+	require.NoError(t, err)
+
+	err = current.SetSecrets(t.Context(), map[SecretName]Secret{"strava.email": NewSecret([]byte("rider"))})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "strava.email")
+	assert.Zero(t, store.writes, "a refused credential is not written")
+}
+
+func TestParseSecretName(t *testing.T) {
+	name, err := ParseSecretName("wahoo.client_secret")
+	require.NoError(t, err)
+	assert.Equal(t, SecretWahooClientSecret, name)
+
+	_, err = ParseSecretName("wahoo.client_id")
+	require.Error(t, err, "a setting is not a credential, however much it looks like one")
+}
+
+// The type exists to keep a credential out of anything observable, so the two
+// ways a value usually escapes have to be closed. %s is the one that would
+// otherwise print it in full: an unexported []byte is still rendered as text by
+// that verb, and by the %+v slog reaches for. %#v reaches past String into the
+// field itself, so it is checked here too.
+func TestSecretDoesNotRenderItsValue(t *testing.T) {
+	secret := NewSecret([]byte("opensesame"))
+
+	encoded, err := json.Marshal(struct {
+		Value Secret `json:"value"`
+	}{Value: secret})
+	require.NoError(t, err)
+	assert.NotContains(t, string(encoded), "opensesame", "JSON")
+
+	var logged bytes.Buffer
+	slog.New(slog.NewTextHandler(&logged, nil)).Info("stored", "secret", secret)
+	assert.NotContains(t, logged.String(), "opensesame", "slog")
+
+	for _, verb := range []string{"%v", "%+v", "%#v", "%s", "%q"} {
+		assert.NotContains(t, fmt.Sprintf(verb, secret), "opensesame", verb)
+	}
+}
+
+// A credential handed out has to be a copy, or the caller that decrypts it once
+// can rewrite what every later reader gets.
+func TestSecretHandsOutACopy(t *testing.T) {
+	secret := NewSecret([]byte("opensesame"))
+	secret.Bytes()[0] = 'X'
+
+	assert.Equal(t, []byte("opensesame"), secret.Bytes())
+}
+
+// Missing is what a service that has never been configured says about itself,
+// and it is the whole of what a settings page needs to say it.
+func TestMissingNamesEverySettingARunNeeds(t *testing.T) {
+	current, err := Load(t.Context(), &stubStore{values: validValues()})
+	require.NoError(t, err)
+
+	// In the order the settings page offers them, which is the order the list is
+	// read back to the operator in.
+	assert.Equal(t, []string{
+		"wahoo.api_base_url",
+		"wahoo.oauth_base_url",
+		"wahoo.client_id",
+		"wahoo.client_secret",
+		"wahoo.targets",
+		"sources",
+		"notifications.pushover.application_token",
+		"notifications.pushover.user_key",
+	}, current.Missing())
+}
+
+func TestMissingIsEmptyOnceEverythingIsConfigured(t *testing.T) {
+	values := validValues()
+	values.Wahoo = Wahoo{
+		APIBaseURL:   "https://api.wahooligan.com",
+		OAuthBaseURL: "https://api.wahooligan.com",
+		ClientID:     "client-id",
+		Targets:      []string{"rider-a"},
+	}
+	values.Sources = []Source{{Provider: route.ProviderKomoot, BaseURL: "https://api.komoot.de"}}
+
+	store := &stubStore{values: values, secrets: map[SecretName]Secret{}}
+	for _, name := range SecretNames() {
+		store.secrets[name] = NewSecret([]byte("configured"))
+	}
+	current, err := Load(t.Context(), store)
+	require.NoError(t, err)
+
+	assert.Empty(t, current.Missing())
+}
+
+// A source whose account is not entered is named, because a run refuses rather
+// than reading part of a library and calling it the whole inventory.
+func TestMissingNamesAConfiguredSourceWithNoAccount(t *testing.T) {
+	values := validValues()
+	values.Sources = []Source{{Provider: route.ProviderVeloPlanner, BaseURL: "https://veloplanner.com"}}
+
+	current, err := Load(t.Context(), &stubStore{values: values})
+	require.NoError(t, err)
+
+	assert.Contains(t, current.Missing(), "veloplanner.email")
+	assert.Contains(t, current.Missing(), "veloplanner.password")
+}
+
+// Notifications that are switched off need no credentials, so a deployment that
+// does not want them is not told it is incomplete.
+func TestMissingSkipsPushoverWhenNotificationsAreOff(t *testing.T) {
+	values := validValues()
+	values.Notifications.Enabled = false
+
+	current, err := Load(t.Context(), &stubStore{values: values})
+	require.NoError(t, err)
+
+	assert.NotContains(t, current.Missing(), "notifications.pushover.user_key")
 }

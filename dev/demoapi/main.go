@@ -99,11 +99,11 @@ func run(ctx context.Context, assertionFile, states string) error {
 	if err != nil {
 		return fmt.Errorf("loading runtime settings: %w", err)
 	}
-	if seedErr := seedBasemaps(ctx, runtimeSettings); seedErr != nil {
+	if seedErr := seedSettings(ctx, runtimeSettings, settings.HTTP.BrowserOriginURL); seedErr != nil {
 		return seedErr
 	}
 
-	slots, err := slotsFor(settings.Wahoo.Targets(), states)
+	slots, err := slotsFor(runtimeSettings.Values().Wahoo.Targets, states)
 	if err != nil {
 		return err
 	}
@@ -178,17 +178,15 @@ func newHandler(
 	team *team,
 	slots []demo.Slot,
 ) (http.Handler, error) {
-	targetIDs := make([]string, 0, len(settings.Wahoo.Targets()))
-	for _, target := range settings.Wahoo.Targets() {
-		targetIDs = append(targetIDs, target.ID)
-	}
-
+	// Built once from the seeded settings rather than per request: a demo has
+	// nobody editing them, and nothing here ever reaches the address anyway.
+	values := runtimeSettings.Values()
 	destination, err := wahoo.New(&wahoo.Options{
-		APIBaseURL:   settings.Wahoo.APIBaseURL,
-		OAuthBaseURL: settings.Wahoo.OAuthBaseURL,
-		ClientID:     settings.Wahoo.ClientID,
-		RedirectURL:  settings.Wahoo.RedirectURL,
-		ClientSecret: settings.Wahoo.ClientSecret().Bytes(),
+		APIBaseURL:   values.Wahoo.APIBaseURL,
+		OAuthBaseURL: values.Wahoo.OAuthBaseURL,
+		ClientID:     values.Wahoo.ClientID,
+		RedirectURL:  settings.HTTP.BrowserOriginURL + "/oauth/wahoo/callback",
+		ClientSecret: runtimeSettings.Secret(runtimeconfig.SecretWahooClientSecret).Bytes(),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("creating Wahoo client: %w", err)
@@ -220,13 +218,11 @@ func newHandler(
 	}
 	handler, err := httpapi.New(
 		&httpapi.Options{
-			TargetIDs:        targetIDs,
 			Settings:         runtimeSettings,
-			SourceBaseURLs:   sourceBaseURLs(settings),
 			BuildRevision:    "demo",
 			AccessVerifier:   team,
 			AccessEmail:      settings.Access.Cloudflare.AllowedEmail,
-			BrowserOriginURL: settings.Wahoo.RedirectURL,
+			BrowserOriginURL: settings.HTTP.BrowserOriginURL,
 		},
 		oauthService,
 		store,
@@ -339,12 +335,12 @@ func seed(ctx context.Context, store *sqlite.Store, slots []demo.Slot) error {
 }
 
 // slotsFor pairs each configured target with the state it was asked for. The
-// slots come from the configuration rather than from the flag alone, so a seeded
+// slots come from the settings rather than from the flag alone, so a seeded
 // state cannot address a target the served surface does not know about.
-func slotsFor(targets []config.Target, states string) ([]demo.Slot, error) {
+func slotsFor(targets []string, states string) ([]demo.Slot, error) {
 	requested := strings.Split(states, ",")
 	if len(requested) != len(targets) {
-		return nil, fmt.Errorf("configuration has %d target slots but %d states were given",
+		return nil, fmt.Errorf("the demo has %d target slots but %d states were given",
 			len(targets), len(requested))
 	}
 
@@ -354,7 +350,7 @@ func slotsFor(targets []config.Target, states string) ([]demo.Slot, error) {
 		if err != nil {
 			return nil, err
 		}
-		slots = append(slots, demo.Slot{ID: target.ID, State: state})
+		slots = append(slots, demo.Slot{ID: target, State: state})
 	}
 
 	return slots, nil
@@ -504,16 +500,42 @@ func (t *team) mint() (string, error) {
 	return signingInput + "." + base64.RawURLEncoding.EncodeToString(signature), nil
 }
 
-// seedBasemaps puts the demo's several cartographies where the runtime settings
-// now hold them, replacing the single keyless entry the migration seeds.
+// demoYear is how far out the demo pushes its first run: far enough that the
+// schedule never fires, so the only synchronisation is one somebody asked for.
+const demoYear = 365 * 24 * time.Hour
+
+// seedSettings writes everything the demo is configured with, which is now
+// everything but its listener, its identity gate and its state file.
 //
-// A demo is where the map is actually looked at, and the picker appears only
-// when there is more than one entry to pick from. These are one provider's
-// distinct styles, so offering five widens nothing the demo may reach. They are
-// written on every start rather than once: the settings page can edit them, and
+// The cartographies are the reason this exists: a demo is where the map is
+// actually looked at, and the picker appears only when there is more than one
+// entry to pick from. These are one provider's distinct styles, so offering
+// five widens nothing the demo may reach. The rest is what makes the service
+// report itself configured — every address is the demo's own origin, which
+// serves the UI and nothing else, and every credential is a placeholder.
+//
+// Written on every start rather than once: the settings page can edit them, and
 // a demo restarted is a demo expected to be back as it ships.
-func seedBasemaps(ctx context.Context, current *runtimeconfig.Current) error {
+func seedSettings(ctx context.Context, current *runtimeconfig.Current, origin string) error {
+	secrets := make(map[runtimeconfig.SecretName]runtimeconfig.Secret, len(runtimeconfig.SecretNames()))
+	for _, name := range runtimeconfig.SecretNames() {
+		secrets[name] = runtimeconfig.NewSecret([]byte("demo-placeholder"))
+	}
+	if err := current.SetSecrets(ctx, secrets); err != nil {
+		return fmt.Errorf("seeding the demo credentials: %w", err)
+	}
+
 	values := current.Values()
+	values.Wahoo = runtimeconfig.Wahoo{
+		APIBaseURL:   origin,
+		OAuthBaseURL: origin,
+		ClientID:     "demo-placeholder",
+		Targets:      []string{"rider-a", "rider-b"},
+	}
+	values.Sources = []runtimeconfig.Source{
+		{Provider: route.ProviderVeloPlanner, BaseURL: origin},
+	}
+	values.Sync.InitialDelay = demoYear
 	values.Basemaps = []runtimeconfig.Basemap{
 		{
 			Name:         "Streets",
@@ -530,22 +552,8 @@ func seedBasemaps(ctx context.Context, current *runtimeconfig.Current) error {
 		{Name: "Fiord", StyleURL: "https://tiles.openfreemap.org/styles/fiord"},
 	}
 	if err := current.Set(ctx, values); err != nil {
-		return fmt.Errorf("seeding the demo basemaps: %w", err)
+		return fmt.Errorf("seeding the demo settings: %w", err)
 	}
 
 	return nil
-}
-
-// sourceBaseURLs restates each configured source's base URL keyed by
-// provider, so the HTTP surface keeps depending on nothing but its options.
-func sourceBaseURLs(settings *config.Settings) map[route.Provider]string {
-	urls := make(map[route.Provider]string, 2)
-	if settings.VeloPlanner != nil {
-		urls[route.ProviderVeloPlanner] = settings.VeloPlanner.BaseURL
-	}
-	if settings.Komoot != nil {
-		urls[route.ProviderKomoot] = settings.Komoot.BaseURL
-	}
-
-	return urls
 }

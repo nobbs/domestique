@@ -108,19 +108,40 @@ func TestTheProbeBoundsItsStateRead(t *testing.T) {
 }
 
 func TestNewRefusesAnIncompleteWiring(t *testing.T) {
-	_, err := New([]string{"rider-a"}, nil)
+	_, err := New(func() []string { return []string{"rider-a"} }, nil)
 	require.Error(t, err)
 
 	_, err = New(nil, &fakeState{})
 	require.Error(t, err)
+}
 
-	_, err = New([]string{" "}, &fakeState{})
-	require.Error(t, err)
+// A deployment nobody has configured yet is running exactly as deployed, and a
+// probe that called that unhealthy would roll it back before its operator could
+// reach the page that configures it.
+func TestAnUnconfiguredServiceIsReady(t *testing.T) {
+	handler := newHandler(t, &fakeState{})
+
+	assert.Equal(t, http.StatusOK, probe(t, handler, "/readyz").Code)
+}
+
+// The slots are read per probe, so authorizing the first one a service is given
+// is answered without a restart.
+func TestTheProbeReadsTheSlotsConfiguredNow(t *testing.T) {
+	state := &fakeState{authorizations: map[string]string{"rider-a": "authorized"}}
+	var targetIDs []string
+	handler, err := New(func() []string { return targetIDs }, state)
+	require.NoError(t, err)
+
+	targetIDs = []string{"rider-a", "rider-b"}
+	assert.Equal(t, http.StatusServiceUnavailable, probe(t, handler, "/readyz").Code)
+
+	targetIDs = []string{"rider-a"}
+	assert.Equal(t, http.StatusOK, probe(t, handler, "/readyz").Code)
 }
 
 func newHandler(t *testing.T, state State, targetIDs ...string) *Handler {
 	t.Helper()
-	handler, err := New(targetIDs, state)
+	handler, err := New(func() []string { return targetIDs }, state)
 	require.NoError(t, err)
 
 	return handler

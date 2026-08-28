@@ -69,9 +69,13 @@ func liveSyncState(activity SyncActivityState) (string, bool) {
 
 // GetStatus reports readiness, per-target convergence, and the last terminal run.
 func (h *Handler) GetStatus(writer http.ResponseWriter, request *http.Request) {
-	authorizations := make(map[string]string, len(h.targetIDs))
+	// One snapshot for the whole response. Reading the setting again further down
+	// would let a document report a list of targets and a count of them that an
+	// edit made while it was being assembled had already put out of step.
+	targetIDs := h.targetIDs()
+	authorizations := make(map[string]string, len(targetIDs))
 	if err := h.state.ForEachTarget(request.Context(), func(id, authorization string) error {
-		if slices.Contains(h.targetIDs, id) {
+		if slices.Contains(targetIDs, id) {
 			authorizations[id] = authorization
 		}
 
@@ -82,7 +86,7 @@ func (h *Handler) GetStatus(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 
-	inFlight := make(map[string]bool, len(h.targetIDs))
+	inFlight := make(map[string]bool, len(targetIDs))
 	if err := h.state.ForEachPendingAuthorization(request.Context(), func(targetID string) error {
 		inFlight[targetID] = true
 
@@ -106,13 +110,13 @@ func (h *Handler) GetStatus(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 
-	targets := make([]openapi.TargetStatus, 0, len(h.targetIDs))
+	targets := make([]openapi.TargetStatus, 0, len(targetIDs))
 	// The aggregate of the per-target counts, which is the only progress a run
 	// in flight reports: how much of the library is already on the configured
 	// accounts, and how much of it is still owed to them.
 	allStages := openapi.TargetStages{}
 	ready, converged := true, true
-	for _, targetID := range h.targetIDs {
+	for _, targetID := range targetIDs {
 		stored, found := authorizations[targetID]
 		if !found {
 			h.unavailable(writer)
@@ -239,7 +243,7 @@ func (h *Handler) GetStatus(writer http.ResponseWriter, request *http.Request) {
 	if state, live := liveSyncState(activity); live {
 		view.Sync.State = state
 		view.Sync.Active = &openapi.SyncActive{
-			Targets: len(h.targetIDs),
+			Targets: len(targetIDs),
 			Stages:  allStages,
 		}
 		if activity.Phase != "" {
@@ -379,7 +383,7 @@ func (h *Handler) TriggerTargetsSync(writer http.ResponseWriter, _ *http.Request
 // not found, not a target this request could ever reconcile.
 func (h *Handler) TriggerTargetSync(writer http.ResponseWriter, request *http.Request) {
 	targetID := request.PathValue("target")
-	if targetID == "" || !slices.Contains(h.targetIDs, targetID) {
+	if targetID == "" || !slices.Contains(h.targetIDs(), targetID) {
 		h.notFound(writer)
 
 		return
@@ -402,7 +406,7 @@ func (h *Handler) TriggerTargetSync(writer http.ResponseWriter, request *http.Re
 // like every other state-changing route.
 func (h *Handler) ClearTarget(writer http.ResponseWriter, request *http.Request) {
 	targetID := request.PathValue("target")
-	if targetID == "" || !slices.Contains(h.targetIDs, targetID) {
+	if targetID == "" || !slices.Contains(h.targetIDs(), targetID) {
 		h.notFound(writer)
 
 		return
