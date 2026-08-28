@@ -148,42 +148,12 @@ id = "rider-b"
 
 [sync]
 initial_delay = "8760h"
-interval = "1h"
-max_deletions_per_target = 5
-empty_source_deletion = "deny"
 
-[surface]
-# Empty: the demo's classifications are seeded, so no map extract is ever
-# downloaded and no surface index is ever built.
-regions = []
-
-# A single tile provider with several distinct cartographies makes the desktop
-# map reviewable without widening the demo's network boundary. These are demo
-# choices only; production keeps its own configured default.
-[[webui.basemaps]]
-name = "Streets"
-style_url = "https://tiles.openfreemap.org/styles/bright"
-style_url_dark = "https://tiles.openfreemap.org/styles/dark"
-
-[[webui.basemaps]]
-name = "Positron"
-style_url = "https://tiles.openfreemap.org/styles/positron"
-
-[[webui.basemaps]]
-name = "Liberty"
-style_url = "https://tiles.openfreemap.org/styles/liberty"
-
-[[webui.basemaps]]
-name = "Dark"
-style_url = "https://tiles.openfreemap.org/styles/dark"
-dark_cartography = true
-
-[[webui.basemaps]]
-name = "Fiord"
-style_url = "https://tiles.openfreemap.org/styles/fiord"
-
+# The basemaps the demo offers, the empty surface region list, and everything
+# about notifications now live in the state database rather than here.
+# dev/demoapi seeds the cartographies at start-up; the rest is what the schema
+# migration seeds, which is what a fresh deployment gets.
 [notifications.pushover]
-base_url = "${BROWSER_ORIGIN}"
 application_token_file = "${DEMO_SECRETS}/pushover_application_token"
 user_key_file = "${DEMO_SECRETS}/pushover_user_key"
 EOF

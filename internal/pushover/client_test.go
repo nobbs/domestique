@@ -62,7 +62,7 @@ func TestClientRejectsUnacceptedSuccessResponse(t *testing.T) {
 func newTestClient(t *testing.T, server *httptest.Server) *Client {
 	t.Helper()
 	client, err := New(&Options{
-		BaseURL:          server.URL,
+		BaseURL:          func() string { return server.URL },
 		ApplicationToken: []byte("application-token"),
 		UserKey:          []byte("user-key"),
 		Timeout:          time.Second,
@@ -78,4 +78,30 @@ func writeResponse(t *testing.T, writer http.ResponseWriter, status int, body st
 	writer.WriteHeader(status)
 	_, err := writer.Write([]byte(body))
 	assert.NoError(t, err, "writing the response")
+}
+
+// The base URL an operator edits takes effect on the next notification, not on
+// the next restart, so it cannot be resolved once at construction.
+func TestClientReadsItsBaseURLAgainBeforeEachSend(t *testing.T) {
+	requests := 0
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		requests++
+		writer.Header().Set("Content-Type", "application/json")
+		writeResponse(t, writer, http.StatusOK, `{"status":1}`)
+	}))
+	defer server.Close()
+
+	baseURL := "https://api.pushover.net"
+	client, err := New(&Options{
+		BaseURL:          func() string { return baseURL },
+		ApplicationToken: []byte("application-token"),
+		UserKey:          []byte("user-key"),
+		Timeout:          time.Second,
+		Transport:        server.Client().Transport,
+	})
+	require.NoError(t, err)
+
+	baseURL = server.URL
+	require.NoError(t, client.Send(t.Context(), "Domestique sync", "succeeded"), "Send()")
+	assert.Equal(t, 1, requests, "the send went somewhere other than the edited base url")
 }

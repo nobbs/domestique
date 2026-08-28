@@ -88,7 +88,7 @@ func (d digest) message(since time.Time) string {
 // routine is what a policy may hold back — a digest reports it later, from the
 // record, rather than from here.
 func (r *Reporter) notifySuccess(ctx context.Context, result *Result, reference string, recovered bool) {
-	if !recovered && r.success.Policy != SuccessEvery {
+	if !recovered && r.notifications().Success.Policy != SuccessEvery {
 		return
 	}
 	if err := r.notifier.Send(ctx, "Domestique sync", successMessage(result, reference)); err != nil {
@@ -110,7 +110,7 @@ func (r *Reporter) notifySuccess(ctx context.Context, result *Result, reference 
 // policy might hold the success back; under SuccessEvery the message goes out
 // either way and the query would buy nothing.
 func (r *Reporter) recovered(ctx context.Context, phase Phase) bool {
-	if r.success.Policy == SuccessEvery {
+	if r.notifications().Success.Policy == SuccessEvery {
 		return false
 	}
 	outcome, found, err := r.state.LastPhaseOutcome(ctx, string(phase))
@@ -140,7 +140,7 @@ func (r *Reporter) notifyDigest(ctx context.Context, now time.Time) {
 	if err != nil {
 		return
 	}
-	if found && now.Sub(since) < r.success.Interval {
+	if found && now.Sub(since) < r.notifications().Success.Interval {
 		return
 	}
 	totals, latest, err := r.totalSuccessesAfter(ctx, after)

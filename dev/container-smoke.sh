@@ -31,9 +31,12 @@
 #
 #   * Every credential is written here, by this script, as an obvious
 #     placeholder. Nothing in .local is read and no deployed secret is mounted.
-#   * VeloPlanner, Wahoo and Pushover point at an unroutable address, the
-#     surface index is switched off, and the first scheduled synchronisation
-#     is a year away, so no code path has anywhere to send anything.
+#   * VeloPlanner and Wahoo point at an unroutable address, no surface region is
+#     configured, and the first scheduled synchronisation is a year away, so no
+#     code path has anywhere to send anything. Pushover's origin is a runtime
+#     setting rather than a file key now, so this container holds the seeded
+#     real one and never reaches it: only a terminal run notifies, and no run
+#     starts here.
 #   * Cloudflare's signing keys are fetched lazily, on the first request that
 #     presents an assertion. No request here presents one, so the identity gate
 #     is exercised by the answer it gives an anonymous caller and Cloudflare is
@@ -231,19 +234,15 @@ redirect_url = "${UNROUTABLE}/oauth/wahoo/callback"
 id = "rider-a"
 
 [sync]
-# A year out, so the scheduler never runs while this does. The interval is
-# fixed at an hour by the configuration layer, and never elapses here.
+# A year out, so the scheduler never runs while this does. The run interval is
+# a constant of an hour, and never elapses here.
 initial_delay = "8760h"
-interval = "1h"
-max_deletions_per_target = 5
-empty_source_deletion = "deny"
 
-[surface]
-# Off: this container downloads no map extract and builds no surface index.
-regions = []
-
+# The deletion gate, the staleness bound, the notification settings, the basemap
+# list, and the surface regions are runtime settings: this container gets the
+# seeded defaults, which download no map extract, build no surface index, and
+# reach no provider, because nothing here ever completes a run.
 [notifications.pushover]
-base_url = "${UNROUTABLE}"
 application_token_file = "${SECRETS_PATH}/pushover_application_token"
 user_key_file = "${SECRETS_PATH}/pushover_user_key"
 EOF

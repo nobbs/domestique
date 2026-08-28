@@ -28,6 +28,7 @@ import (
 	"github.com/nobbs/domestique/internal/readiness"
 	"github.com/nobbs/domestique/internal/ridemodel"
 	"github.com/nobbs/domestique/internal/route"
+	"github.com/nobbs/domestique/internal/runtimeconfig"
 	"github.com/nobbs/domestique/internal/schedule"
 	"github.com/nobbs/domestique/internal/sqlite"
 	"github.com/nobbs/domestique/internal/surface"
@@ -77,6 +78,13 @@ func run(ctx context.Context) error {
 	if ensureErr := store.EnsureTargets(ctx, targetIDs); ensureErr != nil {
 		return fmt.Errorf("initializing targets: %w", ensureErr)
 	}
+	// The settings an operator edits from the web UI. Every component below
+	// that reads one takes a function rather than a value, so an edit reaches
+	// the next run or the next request instead of the next restart.
+	runtimeSettings, err := runtimeconfig.Load(ctx, store)
+	if err != nil {
+		return fmt.Errorf("loading runtime settings: %w", err)
+	}
 
 	// config.Load guarantees at least one source is configured; each client
 	// built here is appended only when its own section is present.
@@ -104,7 +112,9 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("creating oauth service: %w", err)
 	}
-	notifier, err := pushover.New(&pushover.Options{BaseURL: settings.Notifications.Pushover.BaseURL, ApplicationToken: settings.Notifications.Pushover.ApplicationToken().Bytes(), UserKey: settings.Notifications.Pushover.UserKey().Bytes()})
+	notifier, err := pushover.New(&pushover.Options{BaseURL: func() string {
+		return runtimeSettings.Values().Notifications.PushoverBaseURL
+	}, ApplicationToken: settings.Notifications.Pushover.ApplicationToken().Bytes(), UserKey: settings.Notifications.Pushover.UserKey().Bytes()})
 	if err != nil {
 		return fmt.Errorf("creating Pushover client: %w", err)
 	}
@@ -126,26 +136,21 @@ func run(ctx context.Context) error {
 		return weatherSeriesOf(hourlies), nil
 	})
 
-	// Surface enrichment is optional. An operator who configures no region keeps
-	// this host from downloading map extracts at all, and the annotator stays
-	// nil, which synchronization supports as a normal state.
-	var (
-		annotator      syncservice.Annotator
-		surfaceIndex   *osmindex.Current
-		indexScheduler *schedule.Scheduler
-	)
-	if len(settings.Surface.Regions) > 0 {
-		surfaceIndex, indexScheduler, err = startSurfaceIndex(ctx, settings, store, notifier)
-		if err != nil {
-			return err
-		}
-		defer func() {
-			if closeErr := surfaceIndex.Close(); closeErr != nil {
-				slog.Error("closing the surface index", "error", closeErr)
-			}
-		}()
-		annotator = surface.NewAnnotator(surfaceIndex, store)
+	// Surface enrichment is built whether or not a region is named, because
+	// naming the first one is now an edit rather than a restart. A deployment
+	// with no regions downloads nothing: the holder stays empty, every scheduled
+	// build returns without work, and stages are served without a surface, which
+	// synchronization supports as a normal state.
+	surfaceIndex, indexScheduler, err := startSurfaceIndex(ctx, settings, runtimeSettings, store, notifier)
+	if err != nil {
+		return err
 	}
+	defer func() {
+		if closeErr := surfaceIndex.Close(); closeErr != nil {
+			slog.Error("closing the surface index", "error", closeErr)
+		}
+	}()
+	annotator := surface.NewAnnotator(surfaceIndex, store)
 
 	// Ride model prediction is equally optional. An operator who configures no
 	// coefficients file keeps every stage exactly as it is today: no rider
@@ -154,21 +159,31 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	reconciler, err := syncservice.New(&syncservice.Options{TargetIDs: targetIDs, MaxDeletionsPerTarget: settings.Sync.MaxDeletionsPerTarget, AllowEmptySourceDeletion: settings.Sync.EmptySourceDeletion == config.EmptySourceDeletionAllow}, store, sources, elevation.New(), fit.New(), destination, annotator, predictor)
+	reconciler, err := syncservice.New(&syncservice.Options{TargetIDs: targetIDs, AllowEmptySourceDeletion: func() bool {
+		return runtimeSettings.Values().Sync.AllowEmptySourceDeletion
+	}}, store, sources, elevation.New(), fit.New(), destination, annotator, predictor)
 	if err != nil {
 		return fmt.Errorf("creating sync service: %w", err)
 	}
-	reporter, err := syncservice.NewReporter(reconciler, store, notifier, syncservice.SuccessNotification{
-		Policy:   syncservice.SuccessPolicy(settings.Notifications.Success.Policy),
-		Interval: settings.Notifications.Success.DigestInterval,
-	}, settings.Sync.StaleAfter)
+	reporter, err := syncservice.NewReporter(reconciler, store, notifier, func() syncservice.Notifications {
+		values := runtimeSettings.Values()
+
+		return syncservice.Notifications{
+			Enabled: values.Notifications.Enabled,
+			Success: syncservice.SuccessNotification{
+				Policy:   syncservice.SuccessPolicy(values.Notifications.Policy),
+				Interval: values.Notifications.DigestInterval,
+			},
+			StaleAfter: values.Sync.StaleAfter,
+		}
+	})
 	if err != nil {
 		return fmt.Errorf("creating sync reporter: %w", err)
 	}
 	// The reporter answers with a result nobody on this path consumes; the
 	// scheduler wants a runner that answers with nothing.
 	scheduler, err := schedule.New(
-		schedule.Options{InitialDelay: settings.Sync.InitialDelay, Interval: settings.Sync.Interval},
+		schedule.Options{InitialDelay: settings.Sync.InitialDelay, Interval: syncservice.Interval},
 		schedule.RunnerFunc(func(ctx context.Context) { _ = reporter.Run(ctx) }),
 	)
 	if err != nil {
@@ -212,7 +227,7 @@ func run(ctx context.Context) error {
 	handler, err := httpapi.New(
 		&httpapi.Options{
 			TargetIDs: targetIDs,
-			Basemaps:  basemapOptions(settings.WebUI.Basemaps),
+			Settings:  runtimeSettings,
 			// The page links a stage back to the source route it was made from,
 			// which is on the provider the library is read from.
 			SourceBaseURLs:   sourceBaseURLs(settings),
@@ -234,14 +249,10 @@ func run(ctx context.Context) error {
 			// wrote down — those differ exactly when a recorded build's file did
 			// not survive to this start, which is the case worth seeing.
 			SurfaceIndexFunc: func() (string, time.Time, bool) {
-				if surfaceIndex == nil {
-					return "", time.Time{}, false
-				}
 				metadata, ok := surfaceIndex.Metadata()
 
 				return metadata.Generation, metadata.BuiltAt, ok
 			},
-			SourceStaleAfter:    settings.Sync.StaleAfter,
 			RideModelValidation: rideModelValidation,
 		},
 		oauthService,
@@ -317,12 +328,8 @@ func run(ctx context.Context) error {
 		ReadTimeout:       httpReadTimeout,
 		WriteTimeout:      httpWriteTimeout,
 	}
-	schedulers := []schedulerRunner{scheduler}
-	if indexScheduler != nil {
-		schedulers = append(schedulers, indexScheduler)
-	}
-
-	return serve(runCtx, cancel, server, readinessServer, schedulers, reporter)
+	return serve(runCtx, cancel, server, readinessServer,
+		[]schedulerRunner{scheduler, indexScheduler}, reporter)
 }
 
 // loadRidePredictor loads the ride-model coefficient file and builds a
@@ -380,6 +387,7 @@ func loadRidePredictor(
 func startSurfaceIndex(
 	ctx context.Context,
 	settings *config.Settings,
+	runtimeSettings *runtimeconfig.Current,
 	store *sqlite.Store,
 	notifier *pushover.Client,
 ) (*osmindex.Current, *schedule.Scheduler, error) {
@@ -402,9 +410,10 @@ func startSurfaceIndex(
 	}
 
 	runner, err := osmindex.NewRunner(osmindex.Options{
-		Regions:     settings.Surface.Regions,
 		Directory:   directory,
 		MemoryLimit: osmindex.DefaultMemoryLimit,
+	}, func() []string {
+		return runtimeSettings.Values().Surface.Regions
 	}, current, store, notifier)
 	if err != nil {
 		return nil, nil, fmt.Errorf("creating the surface index builder: %w", err)
@@ -412,9 +421,12 @@ func startSurfaceIndex(
 
 	scheduler, err := schedule.New(schedule.Options{
 		InitialDelay: osmindex.InitialDelay(
-			lastBuiltAt, settings.Surface.RebuildInterval, osmindex.InitialBuildDelay, time.Now().UTC(),
+			lastBuiltAt, runtimeSettings.Values().Surface.RebuildInterval,
+			osmindex.InitialBuildDelay, time.Now().UTC(),
 		),
-		Interval: settings.Surface.RebuildInterval,
+		IntervalFunc: func() time.Duration {
+			return runtimeSettings.Values().Surface.RebuildInterval
+		},
 	}, runner)
 	if err != nil {
 		return nil, nil, fmt.Errorf("creating the surface index scheduler: %w", err)
@@ -475,24 +487,8 @@ func serve(
 	return errors.Join(servingErr, shutdownErr)
 }
 
-// basemapOptions restates the configured basemaps in the HTTP surface's own
-// type, so that package keeps depending on nothing but its options.
-func basemapOptions(basemaps []config.Basemap) []httpapi.Basemap {
-	options := make([]httpapi.Basemap, len(basemaps))
-	for index, basemap := range basemaps {
-		options[index] = httpapi.Basemap{
-			Name:            basemap.Name,
-			StyleURL:        basemap.StyleURL,
-			StyleURLDark:    basemap.StyleURLDark,
-			DarkCartography: basemap.DarkCartography,
-		}
-	}
-
-	return options
-}
-
 // sourceBaseURLs restates each configured source's base URL keyed by
-// provider, for the same reason basemapOptions restates the basemaps.
+// provider, so the HTTP surface keeps depending on nothing but its options.
 func sourceBaseURLs(settings *config.Settings) map[route.Provider]string {
 	urls := make(map[route.Provider]string, 2)
 	if settings.VeloPlanner != nil {

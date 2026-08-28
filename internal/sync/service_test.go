@@ -422,7 +422,7 @@ func TestServiceRewritesAStageWhosePushedRevisionWasForgotten(t *testing.T) {
 		wahooRouteID:   101,
 	}
 	service, err := New(
-		&Options{TargetIDs: []string{"a"}, MaxDeletionsPerTarget: 5},
+		&Options{TargetIDs: []string{"a"}, AllowEmptySourceDeletion: emptySourceDeletion(false)},
 		state, []Source{&fakeSource{}}, identityProcessor{}, &fakeEncoder{}, target, nil, nil,
 	)
 	require.NoError(t, err, "New()")
@@ -566,7 +566,7 @@ func TestServiceSupportsOneTarget(t *testing.T) {
 	desired := testStage(t, 1, 1, "current", "current-hash")
 	state := newFakeState("a")
 	target := newFakeTarget()
-	service, err := New(&Options{TargetIDs: []string{"a"}, MaxDeletionsPerTarget: 5}, state, []Source{&fakeSource{stages: []route.Stage{desired}}}, identityProcessor{}, &fakeEncoder{}, target, nil, nil)
+	service, err := New(&Options{TargetIDs: []string{"a"}, AllowEmptySourceDeletion: emptySourceDeletion(false)}, state, []Source{&fakeSource{stages: []route.Stage{desired}}}, identityProcessor{}, &fakeEncoder{}, target, nil, nil)
 	require.NoError(t, err, "New()")
 
 	result := runBoth(t.Context(), service)
@@ -584,7 +584,7 @@ func TestServiceUpdatesLegacyEncoderOutput(t *testing.T) {
 		contentHash:    desired.ContentHash(),
 		wahooRouteID:   101,
 	}
-	service, err := New(&Options{TargetIDs: []string{"a"}, MaxDeletionsPerTarget: 5}, state, []Source{&fakeSource{stages: []route.Stage{desired}}}, identityProcessor{}, &fakeEncoder{}, target, nil, nil)
+	service, err := New(&Options{TargetIDs: []string{"a"}, AllowEmptySourceDeletion: emptySourceDeletion(false)}, state, []Source{&fakeSource{stages: []route.Stage{desired}}}, identityProcessor{}, &fakeEncoder{}, target, nil, nil)
 	require.NoError(t, err, "New()")
 
 	result := runBoth(t.Context(), service)
@@ -678,7 +678,7 @@ func newAnnotatedService(
 ) *Service {
 	t.Helper()
 	service, err := New(
-		&Options{TargetIDs: []string{"a"}, MaxDeletionsPerTarget: 5},
+		&Options{TargetIDs: []string{"a"}, AllowEmptySourceDeletion: emptySourceDeletion(false)},
 		state,
 		[]Source{source},
 		exportProcessor{},
@@ -724,7 +724,7 @@ func TestServicePredictsTheStoredInventoryAfterReconciling(t *testing.T) {
 	target := newFakeTarget()
 	predictor := &fakePredictor{}
 	service, err := New(
-		&Options{TargetIDs: []string{"a"}, MaxDeletionsPerTarget: 5},
+		&Options{TargetIDs: []string{"a"}, AllowEmptySourceDeletion: emptySourceDeletion(false)},
 		state, []Source{&fakeSource{stages: []route.Stage{desired}}}, exportProcessor{}, &fakeEncoder{}, target,
 		nil, predictor,
 	)
@@ -746,7 +746,7 @@ func TestServiceSucceedsWhenPredictionFails(t *testing.T) {
 	target := newFakeTarget()
 	predictor := &fakePredictor{err: errors.New("coefficient file unavailable")}
 	service, err := New(
-		&Options{TargetIDs: []string{"a"}, MaxDeletionsPerTarget: 5},
+		&Options{TargetIDs: []string{"a"}, AllowEmptySourceDeletion: emptySourceDeletion(false)},
 		state, []Source{&fakeSource{stages: []route.Stage{desired}}}, exportProcessor{}, &fakeEncoder{}, target,
 		nil, predictor,
 	)
@@ -766,7 +766,7 @@ func TestServiceAnnotatesAndPredictsInTheSamePass(t *testing.T) {
 	annotator := &fakeAnnotator{}
 	predictor := &fakePredictor{}
 	service, err := New(
-		&Options{TargetIDs: []string{"a"}, MaxDeletionsPerTarget: 5},
+		&Options{TargetIDs: []string{"a"}, AllowEmptySourceDeletion: emptySourceDeletion(false)},
 		state, []Source{&fakeSource{stages: []route.Stage{desired}}}, exportProcessor{}, &fakeEncoder{}, target,
 		annotator, predictor,
 	)
@@ -838,12 +838,17 @@ func elevationOf(t *testing.T, stage *route.Stage) float64 {
 	return *points[0].Elevation
 }
 
+// emptySourceDeletion is the gate the service reads, fixed for the length of a
+// test. Live it is a settings read, so it is a function here too.
+func emptySourceDeletion(allowed bool) func() bool {
+	return func() bool { return allowed }
+}
+
 func newService(t *testing.T, state *fakeState, source *fakeSource, encoder *fakeEncoder, target *fakeTarget, allowEmpty bool) *Service {
 	t.Helper()
 	service, err := New(&Options{
 		TargetIDs:                []string{"a", "b"},
-		MaxDeletionsPerTarget:    5,
-		AllowEmptySourceDeletion: allowEmpty,
+		AllowEmptySourceDeletion: emptySourceDeletion(allowEmpty),
 	}, state, []Source{source}, identityProcessor{}, encoder, target, nil, nil)
 	require.NoError(t, err, "New()")
 
@@ -1235,8 +1240,7 @@ func newMultiSourceService(t *testing.T, state *fakeState, sources []Source, tar
 	t.Helper()
 	service, err := New(&Options{
 		TargetIDs:                []string{"a"},
-		MaxDeletionsPerTarget:    5,
-		AllowEmptySourceDeletion: allowEmpty,
+		AllowEmptySourceDeletion: emptySourceDeletion(allowEmpty),
 	}, state, sources, identityProcessor{}, &fakeEncoder{}, target, nil, nil)
 	require.NoError(t, err, "New()")
 
@@ -1393,7 +1397,7 @@ func TestServiceFailsASourceWhenItsShareCannotBeStored(t *testing.T) {
 
 func TestNewRejectsAnEmptySourceSet(t *testing.T) {
 	_, err := New(
-		&Options{TargetIDs: []string{"a"}, MaxDeletionsPerTarget: 5},
+		&Options{TargetIDs: []string{"a"}, AllowEmptySourceDeletion: emptySourceDeletion(false)},
 		newFakeState("a"), nil, identityProcessor{}, &fakeEncoder{}, newFakeTarget(), nil, nil,
 	)
 	assert.Error(t, err, "New() with no configured sources")
@@ -1401,7 +1405,7 @@ func TestNewRejectsAnEmptySourceSet(t *testing.T) {
 
 func TestNewRejectsANilSource(t *testing.T) {
 	_, err := New(
-		&Options{TargetIDs: []string{"a"}, MaxDeletionsPerTarget: 5},
+		&Options{TargetIDs: []string{"a"}, AllowEmptySourceDeletion: emptySourceDeletion(false)},
 		newFakeState("a"), []Source{nil}, identityProcessor{}, &fakeEncoder{}, newFakeTarget(), nil, nil,
 	)
 	assert.Error(t, err, "New() with a nil source")
@@ -1409,7 +1413,7 @@ func TestNewRejectsANilSource(t *testing.T) {
 
 func TestNewRejectsASourceWithNoProvider(t *testing.T) {
 	_, err := New(
-		&Options{TargetIDs: []string{"a"}, MaxDeletionsPerTarget: 5},
+		&Options{TargetIDs: []string{"a"}, AllowEmptySourceDeletion: emptySourceDeletion(false)},
 		newFakeState("a"), []Source{unnamedSource{}}, identityProcessor{}, &fakeEncoder{}, newFakeTarget(), nil, nil,
 	)
 	assert.Error(t, err, "New() with a source that names no provider")
@@ -1417,7 +1421,7 @@ func TestNewRejectsASourceWithNoProvider(t *testing.T) {
 
 func TestNewRejectsDuplicateSourceProviders(t *testing.T) {
 	_, err := New(
-		&Options{TargetIDs: []string{"a"}, MaxDeletionsPerTarget: 5},
+		&Options{TargetIDs: []string{"a"}, AllowEmptySourceDeletion: emptySourceDeletion(false)},
 		newFakeState("a"), []Source{&fakeSource{}, &fakeSource{}}, identityProcessor{}, &fakeEncoder{}, newFakeTarget(), nil, nil,
 	)
 	assert.Error(t, err, "New() with two sources naming the same provider")

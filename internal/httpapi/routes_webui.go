@@ -28,8 +28,9 @@ func (h *Handler) GetWebUIConfig(writer http.ResponseWriter, _ *http.Request) {
 	// from the response rather than sent as an empty string or false, which is
 	// how the page tells "keep this entry's one style in both colour schemes"
 	// from a value it was given.
-	basemaps := make([]openapi.BrowserBasemap, len(h.basemaps))
-	for index, basemap := range h.basemaps {
+	live := h.settings.Values().Basemaps
+	basemaps := make([]openapi.BrowserBasemap, len(live))
+	for index, basemap := range live {
 		basemaps[index] = openapi.BrowserBasemap{
 			Name:            basemap.Name,
 			StyleURL:        basemap.StyleURL,

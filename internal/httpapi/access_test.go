@@ -60,7 +60,7 @@ func newAccessHandler(t *testing.T, verifier AccessVerifier, oauthService OAuth)
 	handler, err := New(
 		&Options{
 			TargetIDs:        []string{"rider-a"},
-			Basemaps:         testBasemaps(),
+			Settings:         settingsWith(testBasemaps()),
 			AccessVerifier:   verifier,
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
@@ -228,13 +228,13 @@ func TestNewRequiresAccessConfiguration(t *testing.T) {
 	cases := map[string]*Options{
 		"no verifier": {
 			TargetIDs:        []string{"rider-a"},
-			Basemaps:         testBasemaps(),
+			Settings:         settingsWith(testBasemaps()),
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
 		},
 		"no email": {
 			TargetIDs:        []string{"rider-a"},
-			Basemaps:         testBasemaps(),
+			Settings:         settingsWith(testBasemaps()),
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			BrowserOriginURL: testBrowserOriginURL,
 		},
@@ -252,7 +252,7 @@ func TestNewRequiresAccessConfiguration(t *testing.T) {
 func TestNewRequiresAWeatherProvider(t *testing.T) {
 	_, err := New(&Options{
 		TargetIDs:        []string{"rider-a"},
-		Basemaps:         testBasemaps(),
+		Settings:         settingsWith(testBasemaps()),
 		AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 		AccessEmail:      testAccessEmail,
 		BrowserOriginURL: testBrowserOriginURL,

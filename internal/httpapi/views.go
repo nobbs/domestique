@@ -46,6 +46,20 @@ func optionalString(value string) *string {
 	return &value
 }
 
+// boolValue and stringValue read an omitted field back as the value its
+// absence stands for, which is the direction a submitted body travels.
+func boolValue(value *bool) bool {
+	return value != nil && *value
+}
+
+func stringValue(value *string) string {
+	if value == nil {
+		return ""
+	}
+
+	return *value
+}
+
 // The wire shapes come from api/openapi.yaml through the generated contract
 // package, so there is one definition of every response body. What stays here
 // is the geometry Feature, which cannot: its coordinates, surface ranges, and

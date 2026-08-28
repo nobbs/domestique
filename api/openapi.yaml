@@ -393,6 +393,56 @@ paths:
           $ref: '#/components/responses/Forbidden'
         "404":
           $ref: '#/components/responses/NotFound'
+  /v1/settings:
+    get:
+      tags:
+        - browser-api
+      operationId: getSettings
+      responses:
+        "200":
+          description: The settings in force right now.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Settings'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "503":
+          $ref: '#/components/responses/Unavailable'
+    put:
+      tags:
+        - browser-api
+      operationId: setSettings
+      security:
+        - accessAssertion: []
+          browserOrigin: []
+      description: >-
+        Replaces every runtime setting at once. The body is the whole object
+        rather than the parts that changed, because the form that sends it holds
+        every value; a setting left out is a setting the caller never read.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Settings'
+      responses:
+        "200":
+          description: The settings now in force.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Settings'
+        "400":
+          $ref: '#/components/responses/InvalidRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "503":
+          $ref: '#/components/responses/Unavailable'
   /v1/webui/config:
     get:
       tags:
@@ -1025,6 +1075,98 @@ components:
             $ref: '#/components/schemas/SyncRun'
         next:
           type: string
+    Settings:
+      type: object
+      additionalProperties: false
+      description: >-
+        The settings held in the state database rather than in the
+        configuration file, which take effect on the next run or the next
+        request rather than on the next restart.
+      required:
+        - sync
+        - notifications
+        - basemaps
+        - surface
+      properties:
+        sync:
+          $ref: '#/components/schemas/SyncSettings'
+        notifications:
+          $ref: '#/components/schemas/NotificationSettings'
+        basemaps:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/BrowserBasemap'
+        surface:
+          $ref: '#/components/schemas/SurfaceSettings'
+    SyncSettings:
+      type: object
+      additionalProperties: false
+      required:
+        - allowEmptySourceDeletion
+        - staleAfterSeconds
+      properties:
+        allowEmptySourceDeletion:
+          type: boolean
+          description: >-
+            Whether a source that reports an empty library may delete the last
+            routes a target holds. It stays on until it is turned off again.
+        staleAfterSeconds:
+          type: integer
+          minimum: 1
+          description: >-
+            How long the trusted source inventory may go without a successful
+            refresh before it is reported and notified as stale.
+    NotificationSettings:
+      type: object
+      additionalProperties: false
+      required:
+        - enabled
+        - successPolicy
+        - digestIntervalSeconds
+        - pushoverBaseUrl
+      properties:
+        enabled:
+          type: boolean
+          description: >-
+            The switch for the whole channel. Off suppresses a failure and a
+            stale inventory as surely as it suppresses a routine success.
+        successPolicy:
+          type: string
+          enum:
+            - every
+            - quiet
+            - digest
+        digestIntervalSeconds:
+          type: integer
+          minimum: 1
+          description: The period one digest covers, read only by the digest policy.
+        pushoverBaseUrl:
+          type: string
+          format: uri
+          description: >-
+            The origin the application token and user key are sent to.
+    SurfaceSettings:
+      type: object
+      additionalProperties: false
+      required:
+        - regions
+        - rebuildIntervalSeconds
+      properties:
+        regions:
+          type: array
+          items:
+            type: string
+          description: >-
+            The Geofabrik region paths the surface index is built from. An empty
+            list switches classification off.
+        rebuildIntervalSeconds:
+          type: integer
+          minimum: 1
+          description: >-
+            How often the index is rebuilt. Required whether or not a region is
+            named: the rebuild schedule runs either way, and with no region it
+            simply builds nothing.
     BrowserBasemap:
       type: object
       additionalProperties: false

@@ -69,12 +69,13 @@ owns a distinct responsibility in this tree.
 
 | Package | Owns | Must not own |
 | --- | --- | --- |
-| config | TOML and environment layering, file-secret resolution, validation, immutable runtime settings | HTTP clients, business decisions, provider-specific secret syntax |
+| config | TOML and environment layering, file-secret resolution, validation of the file's own fields | HTTP clients, business decisions, provider-specific secret syntax, anything an operator edits while the service runs |
+| runtimeconfig | the settings held in the database: their types, the rules both the write path and startup check them against, and the live snapshot readers copy from | SQL, HTTP routing, the file's fields, and any decision made *from* a setting |
 | route | source-stage identity — including which provider issued it — geometry, revision, and validation types | SQL, HTTP, FIT, Wahoo details |
 | sync | inventory reconciliation, deletion gates, target progress, aggregate run result, per-target run result | HTTP handlers, SQL queries, Wahoo URLs |
 | oauth | one-time callback state, target onboarding, duplicate-account rejection | HTTP routing, SQL queries, Wahoo URL formatting |
 | schedule | startup delay, hourly cadence, no-overlap guard, cancellation | sync decisions or notification content |
-| httpapi | Tailnet identity gate, routing, request parsing, JSON status and error mapping, per-target convergence derived from stored revisions, response security and cache headers | OAuth exchange, sync logic, how a course is encoded, or how the UI is built |
+| httpapi | Tailnet identity gate, routing, request parsing, JSON status and error mapping, per-target convergence derived from stored revisions, serving and writing the runtime settings, response security and cache headers | OAuth exchange, sync logic, how a course is encoded, or how the UI is built |
 | readiness | the loopback readiness probe: whether local configuration and state are usable | any upstream call, identity, routing of the served surface, or authorisation state |
 | webui | the embedded browser bundle and serving it; the TypeScript application | HTTP routing, identity, or any knowledge of persistence |
 | elevation | sampling and median-filtering the exported elevation profile | source fetching, storage, FIT bytes |
@@ -147,7 +148,15 @@ The schedule package owns a one-method Runner interface so its tests can observe
 triggering without starting a sync. The HTTP package depends on concrete sync
 and OAuth application services unless a test requires a smaller local interface.
 It also declares a two-method `Assets` interface for serving the browser bundle,
-so it stays independent of how that bundle is built or embedded.
+so it stays independent of how that bundle is built or embedded, and a
+two-method settings seam — read the live values, replace them whole — satisfied
+by `runtimeconfig.Current`. The handler reads through that seam on every request
+rather than holding a copy, because an edit has to reach the page's
+configuration and the Content-Security-Policy header at once.
+
+`runtimeconfig` declares its own one-pair store interface for the same reason,
+satisfied by `*sqlite.Store`: the settings package owns the rules, and the
+adapter owns the rows.
 
 Read models that cross the persistence boundary — the stage summary served by
 the routes endpoints — are declared in `route`, not exported from `sqlite`. That
@@ -277,6 +286,7 @@ the frozen profile, not a value this service computes at serve time —
 ~~~mermaid
 flowchart LR
     Main["cmd/domestique"] --> Config
+    Main --> RuntimeConfig["runtimeconfig"]
     Main --> HTTP
     Main --> Schedule
     Main --> Sync
@@ -312,14 +322,19 @@ adapter-to-adapter coupling.
 
 Main performs the following in order:
 
-1. Load and validate configuration, including static secret inputs.
+1. Load and validate the configuration file, including static secret inputs.
 2. Open SQLite, run migrations, and create the concrete Store.
-3. Construct VeloPlanner, FIT, Wahoo, and Pushover clients with explicit HTTP
+3. Load and validate the stored runtime settings into the live snapshot every
+   component below reads through a function rather than a held value, so an
+   edit reaches the next run or the next request instead of the next restart.
+   Settings the migrations seeded are checked here by the rules that guard the
+   write path, so a hand-edited database fails startup naming the setting.
+4. Construct VeloPlanner, FIT, Wahoo, and Pushover clients with explicit HTTP
    timeouts and the shared structured logger.
-4. Construct concrete sync and OAuth services from their consumer interfaces.
-5. Construct the scheduler and Tailnet-gated HTTP handler.
-6. Start the HTTP server and scheduler under one signal-derived context.
-7. On cancellation, stop scheduling new runs, let bounded in-flight work observe
+5. Construct concrete sync and OAuth services from their consumer interfaces.
+6. Construct the scheduler and Tailnet-gated HTTP handler.
+7. Start the HTTP server and scheduler under one signal-derived context.
+8. On cancellation, stop scheduling new runs, let bounded in-flight work observe
    context cancellation, shut down HTTP, and close SQLite.
 
 No constructor starts a goroutine, reads global configuration, calls an upstream,

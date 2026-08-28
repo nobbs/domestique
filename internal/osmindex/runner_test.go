@@ -50,22 +50,44 @@ func TestInitialDelay(t *testing.T) {
 }
 
 func TestNewRunnerRequiresItsCollaborators(t *testing.T) {
-	options := Options{Regions: []string{"europe/germany"}, Directory: t.TempDir()}
+	options := Options{Directory: t.TempDir()}
+	regions := staticRegions("europe/germany")
 
-	_, err := NewRunner(options, nil, &fakeState{}, &fakeNotifier{})
+	_, err := NewRunner(options, regions, nil, &fakeState{}, &fakeNotifier{})
 	require.Error(t, err, "NewRunner() without an index holder")
 
-	_, err = NewRunner(options, NewCurrent(), nil, &fakeNotifier{})
+	_, err = NewRunner(options, regions, NewCurrent(), nil, &fakeNotifier{})
 	require.Error(t, err, "NewRunner() without state")
 
-	_, err = NewRunner(options, NewCurrent(), &fakeState{}, nil)
+	_, err = NewRunner(options, regions, NewCurrent(), &fakeState{}, nil)
 	require.Error(t, err, "NewRunner() without a notifier")
 
-	_, err = NewRunner(Options{Directory: t.TempDir()}, NewCurrent(), &fakeState{}, &fakeNotifier{})
-	require.Error(t, err, "NewRunner() with no regions; the caller decides not to build at all")
+	_, err = NewRunner(options, nil, NewCurrent(), &fakeState{}, &fakeNotifier{})
+	require.Error(t, err, "NewRunner() without a region list")
 
-	_, err = NewRunner(Options{Regions: []string{"europe/germany"}}, NewCurrent(), &fakeState{}, &fakeNotifier{})
+	_, err = NewRunner(Options{}, regions, NewCurrent(), &fakeState{}, &fakeNotifier{})
 	require.Error(t, err, "NewRunner() without a directory")
+}
+
+// staticRegions pins the list one test builds from, standing in for the live
+// read a running service does.
+func staticRegions(regions ...string) func() []string {
+	return func() []string { return regions }
+}
+
+// No region is how classification is switched off, and it is a state the
+// schedule keeps running in: an operator naming their first region must not
+// have to restart the service for the build to become possible.
+func TestRunBuildsNothingWhileNoRegionIsConfigured(t *testing.T) {
+	state := &fakeState{}
+	notifier := &fakeNotifier{}
+	runner, err := NewRunner(Options{Directory: t.TempDir()}, staticRegions(),
+		NewCurrent(), state, notifier)
+	require.NoError(t, err, "NewRunner()")
+
+	runner.Run(t.Context())
+	assert.True(t, state.builtAt.IsZero(), "a run with no regions recorded a build")
+	assert.Empty(t, notifier.sent, "a run with no regions notified")
 }
 
 // A failed build is worth one message. The same message every week afterwards is
@@ -204,11 +226,10 @@ func testRunnerIn(
 	t.Helper()
 
 	runner, err := NewRunner(Options{
-		Regions:   []string{"europe/germany"},
 		Directory: directory,
 		BaseURL:   server.URL,
 		Client:    server.Client(),
-	}, current, state, notifier)
+	}, staticRegions("europe/germany"), current, state, notifier)
 	require.NoError(t, err, "NewRunner()")
 
 	return runner

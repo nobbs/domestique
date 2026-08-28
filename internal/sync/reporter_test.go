@@ -215,7 +215,8 @@ func TestReporterComparesStalenessInWholeSecondsLikeStatusDoes(t *testing.T) {
 	state := &fakeRunState{lastSuccessAt: map[string]time.Time{"source": lastSuccess}}
 	notifier := &fakeNotifier{}
 	reporter, err := NewReporter(
-		&reportingRunner{}, state, notifier, SuccessNotification{Policy: SuccessEvery}, 1500*time.Millisecond,
+		&reportingRunner{}, state, notifier,
+		staticNotifications(SuccessNotification{Policy: SuccessEvery}, 1500*time.Millisecond),
 	)
 	require.NoError(t, err, "NewReporter()")
 	reporter.now = func() time.Time { return now }
@@ -804,6 +805,15 @@ func newReporter(t *testing.T, runner Runner, state RunState, notifier Notifier)
 	return newPolicyReporter(t, runner, state, notifier, SuccessNotification{Policy: SuccessEvery})
 }
 
+// staticNotifications is the settings read a test pins, standing in for the
+// live one a running service does. Enabled, because a test that meant to
+// examine a policy would otherwise be silenced by the switch above it.
+func staticNotifications(success SuccessNotification, staleAfter time.Duration) func() Notifications {
+	return func() Notifications {
+		return Notifications{Enabled: true, Success: success, StaleAfter: staleAfter}
+	}
+}
+
 func newPolicyReporter(
 	t *testing.T,
 	runner Runner,
@@ -812,7 +822,7 @@ func newPolicyReporter(
 	success SuccessNotification,
 ) *Reporter {
 	t.Helper()
-	reporter, err := NewReporter(runner, state, notifier, success, 24*time.Hour)
+	reporter, err := NewReporter(runner, state, notifier, staticNotifications(success, 24*time.Hour))
 	require.NoError(t, err, "NewReporter()")
 
 	return reporter
@@ -1076,7 +1086,10 @@ func TestNewReporterRejectsAnUnusablePolicy(t *testing.T) {
 		{name: "digest without an interval", success: SuccessNotification{Policy: SuccessDigest}},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
-			_, err := NewReporter(&reportingRunner{}, &fakeRunState{}, &fakeNotifier{}, testCase.success, 24*time.Hour)
+			_, err := NewReporter(
+				&reportingRunner{}, &fakeRunState{}, &fakeNotifier{},
+				staticNotifications(testCase.success, 24*time.Hour),
+			)
 			require.Error(t, err, "NewReporter() accepted %s", testCase.name)
 		})
 	}
@@ -1087,7 +1100,8 @@ func TestNewReporterRejectsAnUnusablePolicy(t *testing.T) {
 func TestNewReporterRejectsANonPositiveStaleAfter(t *testing.T) {
 	for _, staleAfter := range []time.Duration{0, -time.Hour} {
 		_, err := NewReporter(
-			&reportingRunner{}, &fakeRunState{}, &fakeNotifier{}, SuccessNotification{Policy: SuccessEvery}, staleAfter,
+			&reportingRunner{}, &fakeRunState{}, &fakeNotifier{},
+			staticNotifications(SuccessNotification{Policy: SuccessEvery}, staleAfter),
 		)
 		require.Error(t, err, "NewReporter() accepted a stale-after bound of %s", staleAfter)
 	}
@@ -1395,4 +1409,31 @@ func TestReporterDigestCountsAWholePassInOneInterval(t *testing.T) {
 			message: "since 2026-08-17T12:00:00Z: source_runs=1 target_runs=1 created=7 updated=0 deleted=0",
 		},
 	}, notifier.messages, "digest notifications")
+}
+
+// Switching notifications off is the whole channel, not the routine half of it.
+// An operator who has turned the push channel off is not asking to still be
+// pushed at when a run fails.
+func TestReporterSendsNothingWhileNotificationsAreOff(t *testing.T) {
+	runner := &reportingRunner{targets: Result{Phase: PhaseTargets, Outcome: OutcomeFailed, Failure: FailureDestination}}
+	state := &fakeRunState{targets: true, lastSuccessAt: map[string]time.Time{}}
+	notifier := &fakeNotifier{}
+	reporter, err := NewReporter(runner, state, notifier, func() Notifications {
+		return Notifications{Success: SuccessNotification{Policy: SuccessEvery}, StaleAfter: 24 * time.Hour}
+	})
+	require.NoError(t, err, "NewReporter()")
+
+	reporter.Run(t.Context())
+	assert.Empty(t, notifier.messages, "messages sent while the channel was off")
+	// Nor is the failure written down as notified: switching the channel back on
+	// must not land inside a suppression window for an alert never delivered.
+	assert.Empty(t, state.lastFailure, "suppression recorded for an unsent alert")
+	assert.Equal(t, []string{"targets"}, state.phases, "the run itself must still be recorded")
+}
+
+// The settings read is a dependency like any other, and a missing one is a
+// miswired composition root rather than a reason to invent a default.
+func TestNewReporterRejectsMissingNotificationSettings(t *testing.T) {
+	_, err := NewReporter(&reportingRunner{}, &fakeRunState{}, &fakeNotifier{}, nil)
+	require.Error(t, err, "NewReporter() accepted no notification settings")
 }

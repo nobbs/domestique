@@ -12,9 +12,10 @@ accounts as device-ready FIT courses. It is a single-tenant, CGO-free Linux
 Docker workload for a Tailnet host, published for `linux/amd64` alone, with no
 CLI. It also serves a **read-only browser UI** that
 draws the whole stored library on one map and gives each route a page of its
-own. Its only state-changing HTTP
-surface is the Wahoo OAuth onboarding flow and the manual `POST /v1/sync`
-trigger.
+own, plus a settings page. Its state-changing HTTP surface is the Wahoo OAuth
+onboarding flow, the manual run triggers, and `PUT /v1/settings`, which stores
+the runtime settings the operator edits from that page. Nothing on the surface
+edits a route.
 
 ## Specifications are normative
 
@@ -25,7 +26,7 @@ one before changing behavior:
 | --- | --- |
 | [service.md](docs/specs/service.md) | The overall contract; it wins over the implementation until deliberately revised |
 | [implementation-architecture.md](docs/specs/implementation-architecture.md) | Package ownership, interface rules, composition root |
-| [configuration.md](docs/specs/configuration.md) | File schema, secret inputs, validation |
+| [configuration.md](docs/specs/configuration.md) | File schema, secret inputs, validation, and the runtime settings held in the database |
 | [sync-lifecycle.md](docs/specs/sync-lifecycle.md) | State transitions, safety gates, JSON contracts |
 | [delivery.md](docs/specs/delivery.md) | Quality gate, container hardening, published images |
 

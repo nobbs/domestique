@@ -60,11 +60,12 @@ type Reporter struct {
 	now      func() time.Time
 	// phase names the half being run right now, and is nil between the moment a
 	// run is accepted and the moment its first half starts.
-	phase      atomic.Pointer[Phase]
-	success    SuccessNotification
-	running    atomic.Bool
-	triggered  stdsync.WaitGroup
-	staleAfter time.Duration
+	phase atomic.Pointer[Phase]
+	// notifications is read at the moment a message would go out rather than
+	// captured, because an operator edits these while the service runs.
+	notifications func() Notifications
+	running       atomic.Bool
+	triggered     stdsync.WaitGroup
 	// surfaceIncomplete is how many stages the most recently completed
 	// annotation pass could not classify. It is read back by SurfaceIncomplete
 	// and is what tells a stage that keeps failing apart from one nobody has
@@ -90,24 +91,44 @@ type Runner interface {
 	AnnotateStored(ctx context.Context) (classified, failed int)
 }
 
-// NewReporter creates a reporting runner with explicit dependencies. staleAfter
-// bounds how long the trusted source inventory may go without a successful
-// refresh before it is reported and notified as stale.
+// Notifications is everything the reporter reads before it reports a run.
+//
+// It is supplied as a function and read at each decision rather than held,
+// because these are settings an operator changes while the service runs.
+type Notifications struct {
+	Success SuccessNotification
+
+	// StaleAfter bounds how long the trusted source inventory may go without a
+	// successful refresh before it is reported and notified as stale.
+	StaleAfter time.Duration
+
+	// Enabled is the switch for the whole channel. Off suppresses a failure and
+	// a stale inventory as surely as it suppresses a routine success, which is
+	// why every surface offering it has to say so in as many words.
+	Enabled bool
+}
+
+// NewReporter creates a reporting runner with explicit dependencies.
+//
+// The settings it will read are checked once here, against what they say right
+// now. A later edit cannot be refused from inside the reporter, so the rules
+// that admit one live where the edit is written.
 func NewReporter(
-	runner Runner, state RunState, notifier Notifier, success SuccessNotification, staleAfter time.Duration,
+	runner Runner, state RunState, notifier Notifier, notifications func() Notifications,
 ) (*Reporter, error) {
-	if runner == nil || state == nil || notifier == nil {
-		return nil, errors.New("sync runner, run state, and notifier are required")
+	if runner == nil || state == nil || notifier == nil || notifications == nil {
+		return nil, errors.New("sync runner, run state, notifier, and notification settings are required")
 	}
-	if err := success.validate(); err != nil {
+	current := notifications()
+	if err := current.Success.validate(); err != nil {
 		return nil, err
 	}
-	if staleAfter <= 0 {
+	if current.StaleAfter <= 0 {
 		return nil, errors.New("a stale-inventory bound must be positive")
 	}
 
 	return &Reporter{
-		runner: runner, state: state, notifier: notifier, success: success, staleAfter: staleAfter, now: time.Now,
+		runner: runner, state: state, notifier: notifier, notifications: notifications, now: time.Now,
 	}, nil
 }
 
@@ -292,13 +313,18 @@ func (r *Reporter) runPhasesWith(ctx context.Context, source, targets bool, runT
 	now := r.now().UTC()
 	// The digest is considered once the pass has recorded everything it did, so
 	// its window closes on a whole pass rather than between two halves.
-	if r.success.Policy == SuccessDigest {
-		r.notifyDigest(ctx, now)
+	//
+	// Both of the messages below are held back entirely when the operator has
+	// switched notifications off, failure and staleness included.
+	if notifications := r.notifications(); notifications.Enabled {
+		if notifications.Success.Policy == SuccessDigest {
+			r.notifyDigest(ctx, now)
+		}
+		// Checked every pass, whether or not the source phase ran this tick: the
+		// inventory can go stale while the schedule has it switched off, and this
+		// reads only local state, so it costs no provider call either way.
+		r.checkStaleness(ctx, now, sourceStored)
 	}
-	// Checked every pass, whether or not the source phase ran this tick: the
-	// inventory can go stale while the schedule has it switched off, and this
-	// reads only local state, so it costs no provider call either way.
-	r.checkStaleness(ctx, now, sourceStored)
 	// Enrichment comes after everything a rider is waiting for. It runs on any
 	// successful source refresh, whether or not that refresh actually changed
 	// the stored inventory — an unchanged library can still hold stages an
@@ -357,11 +383,16 @@ func (r *Reporter) record(ctx context.Context, startedAt time.Time, result *Resu
 	}
 	r.recordTargetRuns(ctx, finishedAt, result.Targets)
 
-	switch result.Outcome {
-	case OutcomeSucceeded:
-		r.notifySuccess(ctx, result, reference, recovered)
-	case OutcomeFailed, OutcomeBlocked:
-		r.notifyFailure(ctx, result, reference, finishedAt)
+	// Nothing is sent, and nothing is written down as sent, while the channel is
+	// switched off: turning it back on must not find a suppression window it
+	// never heard the alert behind.
+	if r.notifications().Enabled {
+		switch result.Outcome {
+		case OutcomeSucceeded:
+			r.notifySuccess(ctx, result, reference, recovered)
+		case OutcomeFailed, OutcomeBlocked:
+			r.notifyFailure(ctx, result, reference, finishedAt)
+		}
 	}
 
 	return *result
@@ -452,7 +483,7 @@ func (r *Reporter) checkStaleness(ctx context.Context, now time.Time, sourceStor
 	// Compared in whole seconds, the same precision GET /v1/status reports
 	// age_seconds and max_age_seconds in: a sub-second remainder must not let
 	// this alert and that response disagree on whether the inventory is stale.
-	if age/time.Second < r.staleAfter/time.Second || (notified && now.Sub(lastSentAt) < failureNotificationSuppression) {
+	if age/time.Second < r.notifications().StaleAfter/time.Second || (notified && now.Sub(lastSentAt) < failureNotificationSuppression) {
 		return
 	}
 	if err := r.notifier.Send(ctx, "Domestique sync failed", staleMessage(age)); err != nil {

@@ -54,6 +54,7 @@ type Runner struct {
 	current  *Current
 	state    State
 	notifier Notifier
+	regions  func() []string
 	now      func() time.Time
 	options  Options
 	running  atomic.Bool
@@ -61,18 +62,25 @@ type Runner struct {
 
 // NewRunner creates a runner over an index holder, durable state, and a
 // notifier.
-func NewRunner(options Options, current *Current, state State, notifier Notifier) (*Runner, error) {
-	if current == nil || state == nil || notifier == nil {
-		return nil, errors.New("osmindex: index holder, state, and notifier are required")
-	}
-	if len(options.Regions) == 0 {
-		return nil, errors.New("osmindex: at least one region is required")
+//
+// The regions are a function rather than a list because they are a setting an
+// operator edits while the service runs. Options.Regions is ignored: each run
+// asks for the list as it stands, and a run that finds it empty builds nothing.
+// That empty list is a supported state rather than a misconfiguration — it is
+// how classification is switched off — so it is not refused here.
+func NewRunner(
+	options Options, regions func() []string, current *Current, state State, notifier Notifier,
+) (*Runner, error) {
+	if current == nil || state == nil || notifier == nil || regions == nil {
+		return nil, errors.New("osmindex: index holder, state, notifier, and regions are required")
 	}
 	if options.Directory == "" {
 		return nil, errors.New("osmindex: an index directory is required")
 	}
 
-	return &Runner{options: options, current: current, state: state, notifier: notifier, now: time.Now}, nil
+	return &Runner{
+		options: options, regions: regions, current: current, state: state, notifier: notifier, now: time.Now,
+	}, nil
 }
 
 // Run performs one scheduled rebuild.
@@ -88,8 +96,19 @@ func (r *Runner) Run(ctx context.Context) {
 	}
 	defer r.running.Store(false)
 
+	// No region is the operator's switch for leaving stages unclassified. The
+	// schedule still runs — turning regions on must not need a restart — and a
+	// run with nothing to index is over here.
+	options := r.options
+	options.Regions = r.regions()
+	if len(options.Regions) == 0 {
+		slog.Info("surface index build skipped", "reason", "no regions are configured")
+
+		return
+	}
+
 	startedAt := r.now().UTC()
-	result, err := Build(ctx, r.options, r.current.Generation())
+	result, err := Build(ctx, options, r.current.Generation())
 	if err != nil {
 		// A cancelled build is a shutdown, not a fault. Announcing it would send
 		// a notification every time the service is restarted.
@@ -127,7 +146,7 @@ func (r *Runner) Run(ctx context.Context) {
 
 	slog.Info("surface index rebuilt",
 		"generation", result.Generation,
-		"regions", len(r.options.Regions),
+		"regions", len(options.Regions),
 		"built_in", finishedAt.Sub(startedAt).Round(time.Second),
 	)
 }

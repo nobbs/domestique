@@ -200,6 +200,46 @@ type SyncRunPage struct {
 	Next *string   `json:"next,omitempty"`
 }
 
+// Settings The settings held in the state database rather than in the configuration file, which take effect on the next run or the next request rather than on the next restart.
+type Settings struct {
+	Sync          SyncSettings         `json:"sync"`
+	Notifications NotificationSettings `json:"notifications"`
+	Basemaps      []BrowserBasemap     `json:"basemaps"`
+	Surface       SurfaceSettings      `json:"surface"`
+}
+
+type SyncSettings struct {
+	// AllowEmptySourceDeletion Whether a source that reports an empty library may delete the last routes a target holds. It stays on until it is turned off again.
+	AllowEmptySourceDeletion bool `json:"allowEmptySourceDeletion"`
+	// StaleAfterSeconds How long the trusted source inventory may go without a successful refresh before it is reported and notified as stale.
+	StaleAfterSeconds int `json:"staleAfterSeconds"`
+}
+
+type NotificationSettings_SuccessPolicy string
+
+const (
+	NotificationSettings_SuccessPolicyEvery  NotificationSettings_SuccessPolicy = "every"
+	NotificationSettings_SuccessPolicyQuiet  NotificationSettings_SuccessPolicy = "quiet"
+	NotificationSettings_SuccessPolicyDigest NotificationSettings_SuccessPolicy = "digest"
+)
+
+type NotificationSettings struct {
+	// Enabled The switch for the whole channel. Off suppresses a failure and a stale inventory as surely as it suppresses a routine success.
+	Enabled       bool                               `json:"enabled"`
+	SuccessPolicy NotificationSettings_SuccessPolicy `json:"successPolicy"`
+	// DigestIntervalSeconds The period one digest covers, read only by the digest policy.
+	DigestIntervalSeconds int `json:"digestIntervalSeconds"`
+	// PushoverBaseURL The origin the application token and user key are sent to.
+	PushoverBaseURL string `json:"pushoverBaseUrl"`
+}
+
+type SurfaceSettings struct {
+	// Regions The Geofabrik region paths the surface index is built from. An empty list switches classification off.
+	Regions []string `json:"regions"`
+	// RebuildIntervalSeconds How often the index is rebuilt. Required whether or not a region is named: the rebuild schedule runs either way, and with no region it simply builds nothing.
+	RebuildIntervalSeconds int `json:"rebuildIntervalSeconds"`
+}
+
 type BrowserBasemap struct {
 	Name            string  `json:"name"`
 	StyleURL        string  `json:"styleUrl"`

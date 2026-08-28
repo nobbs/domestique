@@ -1,8 +1,14 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { MemoryRouter } from "react-router";
-import { statusQuery, syncRunsQueryKey, weatherQuery, webUIConfigQuery } from "../api/queries";
-import type { Route, Status, SyncRun, WebUIConfig } from "../api/types";
+import {
+  settingsQuery,
+  statusQuery,
+  syncRunsQueryKey,
+  weatherQuery,
+  webUIConfigQuery,
+} from "../api/queries";
+import type { Route, Settings, Status, SyncRun, WebUIConfig } from "../api/types";
 import type { Climb } from "../lib/climbs";
 import type { ForecastSample } from "../lib/forecastSamples";
 import { buildProfile, gradientShares } from "../lib/profile";
@@ -143,6 +149,19 @@ export const runs: SyncRun[] = [
   },
 ];
 
+/** What the service is set to, as the settings form reads it back. */
+export const settings: Settings = {
+  sync: { allowEmptySourceDeletion: false, staleAfterSeconds: 26 * 3600 },
+  notifications: {
+    enabled: true,
+    successPolicy: "digest",
+    digestIntervalSeconds: 24 * 3600,
+    pushoverBaseUrl: "https://api.pushover.net",
+  },
+  basemaps: [{ name: "Streets", styleUrl: "https://tiles.example.test/streets.json" }],
+  surface: { regions: ["europe/germany"], rebuildIntervalSeconds: 7 * 24 * 3600 },
+};
+
 const config: WebUIConfig = {
   basemaps: [],
   sourceBaseUrls: { veloplanner: "https://veloplanner.com" },
@@ -159,6 +178,7 @@ export function StoryProviders({ children }: { children: ReactNode }) {
     });
     next.setQueryData(statusQuery().queryKey, status);
     next.setQueryData(webUIConfigQuery().queryKey, config);
+    next.setQueryData(settingsQuery().queryKey, settings);
     next.setQueryData(syncRunsQueryKey(), {
       pages: [{ runs }],
       pageParams: [undefined],
@@ -234,7 +254,7 @@ export function StubbedFetch({
   respond,
   children,
 }: {
-  respond: () => Promise<Response>;
+  respond: typeof fetch;
   children: ReactNode;
 }) {
   const restore = useRef<(() => void) | null>(null);

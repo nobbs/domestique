@@ -15,6 +15,7 @@ import (
 
 	openapi "github.com/nobbs/domestique/internal/httpapi/contract"
 	"github.com/nobbs/domestique/internal/route"
+	"github.com/nobbs/domestique/internal/runtimeconfig"
 )
 
 // assertionHeader carries the signed Cloudflare Access token. It is the only
@@ -30,6 +31,11 @@ const assertionHeader = "Cf-Access-Jwt-Assertion"
 // maximumRequestBytes bounds the only request bodies this service reads. They
 // carry two booleans, so anything larger is a mistake or an attempt.
 const maximumRequestBytes = 1 << 10
+
+// maximumSettingsBytes bounds the one body that is larger by design. The
+// settings carry a list of basemaps, each with two URLs, so the cap every other
+// route is right to have would refuse a legitimate edit.
+const maximumSettingsBytes = 16 << 10
 
 const (
 	cacheAPI       = "no-store"
@@ -249,6 +255,15 @@ type RunState interface {
 	LastSuccessfulPhaseCompletion(ctx context.Context, phase string) (completedAt time.Time, found bool, err error)
 }
 
+// SettingsState is the settings an operator edits while the service runs, held
+// live and replaced whole. It is satisfied by *runtimeconfig.Current, which
+// validates before it persists, so what is read back here has passed the same
+// rules startup applies.
+type SettingsState interface {
+	Values() runtimeconfig.Values
+	Set(ctx context.Context, values runtimeconfig.Values) error
+}
+
 // ScheduleState is the pair of switches governing unattended runs.
 type ScheduleState interface {
 	SyncSchedule(ctx context.Context) (source, targets bool, err error)
@@ -369,18 +384,16 @@ type Options struct {
 	// returns from Wahoo — which is why it is what the composition root passes.
 	BrowserOriginURL string
 
-	// Basemaps are the cartographies the page may switch the map between, in
-	// the order they are offered. At least one is required. Each entry's dark
-	// style, where it has one, must be on that entry's own origin.
-	Basemaps []Basemap
+	// Settings are the runtime settings this handler both serves and edits.
+	// Required.
+	//
+	// Every read of one goes through here per request rather than being held,
+	// because an operator edits them while the service runs: a basemap added to
+	// the list has to reach the page's configuration and the
+	// Content-Security-Policy header at once, not at the next restart.
+	Settings SettingsState
 
 	TargetIDs []string
-
-	// SourceStaleAfter bounds how long the trusted source inventory may go
-	// without a successful refresh before the status response reports it as
-	// stale. Optional: zero omits trusted-inventory freshness from the response
-	// entirely, which is what a caller supplying no bound gets.
-	SourceStaleAfter time.Duration
 }
 
 // RideModelValidation is the frozen coefficient profile's measured
@@ -390,28 +403,6 @@ type RideModelValidation struct {
 	MAEPercent     float64
 	P90Percent     float64
 	EvaluatedRides int
-}
-
-// Basemap is one cartography the page may load, as the operator configured it.
-type Basemap struct {
-	// Name labels the entry in the page's picker and is the identity a browser
-	// remembers its choice by. Required, and unique across the list.
-	Name string
-
-	// StyleURL is the MapLibre style document. Absolute HTTPS; its origin joins
-	// the Content-Security-Policy.
-	StyleURL string
-
-	// StyleURLDark is loaded instead under a dark system colour scheme.
-	// Optional, and on StyleURL's origin when set.
-	StyleURLDark string
-
-	// DarkCartography marks ground that is dark in either colour scheme, such
-	// as satellite imagery. The page paints its route ink to match.
-	//
-	// It contradicts StyleURLDark: a provider publishing a dark twin has light
-	// cartography to switch away from. Configuring both is refused.
-	DarkCartography bool
 }
 
 // Handler enforces Cloudflare Access identity and exposes the v1 HTTP surface.
@@ -435,10 +426,8 @@ type Handler struct {
 	browserOrigin       string
 	allowedEmail        string
 	signOutURL          string
-	tileOrigins         []string
+	settings            SettingsState
 	targetIDs           []string
-	basemaps            []Basemap
-	sourceStaleAfter    time.Duration
 }
 
 // New creates a handler. Health checks are intentionally unauthenticated;
@@ -480,26 +469,12 @@ func New(
 	if err != nil {
 		return nil, err
 	}
-	// Checked here as well as in the configuration, for the reason the target
-	// IDs above are: this struct's own documentation promises it, and the name
-	// is the identity a browser remembers a reader's choice by. Two entries
-	// sharing one would make that memory ambiguous.
-	for index, basemap := range options.Basemaps {
-		if strings.TrimSpace(basemap.Name) == "" {
-			return nil, errors.New("basemap names must not be empty")
-		}
-		if slices.ContainsFunc(options.Basemaps[:index], func(earlier Basemap) bool {
-			return earlier.Name == basemap.Name
-		}) {
-			return nil, errors.New("basemap names must be unique")
-		}
-		if basemap.DarkCartography && basemap.StyleURLDark != "" {
-			return nil, errors.New("a basemap must not set both dark cartography and a dark style")
-		}
-	}
-	tileOrigins, err := tileOriginsOf(options.Basemaps)
-	if err != nil {
-		return nil, err
+	// The settings themselves are not re-checked here. They reach this handler
+	// already validated, by the same rules an edit written through it is held
+	// to, and a second copy of those rules here is the drift the runtime
+	// settings package exists to prevent.
+	if options.Settings == nil {
+		return nil, errors.New("the runtime settings are required")
 	}
 
 	// Validated here rather than trusted, because it leaves the service as a
@@ -541,15 +516,13 @@ func New(
 		syncRuns:            syncRuns,
 		assets:              assets,
 		weather:             weather,
-		basemaps:            append([]Basemap(nil), options.Basemaps...),
+		settings:            options.Settings,
 		sourceBaseURLs:      sourceBaseURLs,
 		buildRevision:       publishableRevision(options.BuildRevision),
 		buildImageDigest:    publishableDigest(options.BuildImageDigest),
-		tileOrigins:         tileOrigins,
 		browserOrigin:       browserOrigin,
 		targetIDs:           append([]string(nil), options.TargetIDs...),
 		surfaceIndex:        options.SurfaceIndexFunc,
-		sourceStaleAfter:    options.SourceStaleAfter,
 		rideModelValidation: rideModelValidation,
 		now:                 time.Now,
 
@@ -585,6 +558,8 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("GET /v1/routes/{routeId}/stages/{stage}", h.RedirectLegacyRoute)
 	h.mux.HandleFunc("GET /v1/routes/{routeId}/stages/{stage}/geometry", h.RedirectLegacyGeometry)
 	h.mux.HandleFunc("POST /v1/routes/{routeId}/stages/{stage}/reprocess", h.RedirectLegacyReprocess)
+	h.mux.HandleFunc("GET /v1/settings", h.GetSettings)
+	h.mux.HandleFunc("PUT /v1/settings", h.SetSettings)
 	h.mux.HandleFunc("GET /v1/webui/config", h.GetWebUIConfig)
 	h.mux.HandleFunc("GET /v1/weather", h.GetWeather)
 	h.mux.HandleFunc("GET /oauth/wahoo/start/{target}", h.StartOAuth)
@@ -637,10 +612,19 @@ func (h *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 func (h *Handler) bounded(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if request.Body != nil && request.Body != http.NoBody {
-			request.Body = http.MaxBytesReader(writer, request.Body, maximumRequestBytes)
+			request.Body = http.MaxBytesReader(writer, request.Body, requestLimit(request.URL.Path))
 		}
 		next.ServeHTTP(writer, request)
 	})
+}
+
+// requestLimit is how large a body one path may carry.
+func requestLimit(path string) int64 {
+	if path == settingsPath {
+		return maximumSettingsBytes
+	}
+
+	return maximumRequestBytes
 }
 
 // gated rejects any caller that is not the single configured identity.
@@ -706,6 +690,15 @@ func (h *Handler) gated(next http.Handler) http.Handler {
 //   - img-src and connect-src need the tile origins for sprites, glyphs, and
 //     tiles.
 func (h *Handler) contentSecurityPolicy() string {
+	// A list that cannot be reduced to origins is one that was never allowed to
+	// be stored, so the error is a bug rather than a state to serve around. The
+	// header then names no tile origin at all, which blanks the map rather than
+	// opening the policy.
+	tileOrigins, err := tileOriginsOf(h.settings.Values().Basemaps)
+	if err != nil {
+		tileOrigins = nil
+	}
+
 	return strings.Join([]string{
 		"default-src 'self'",
 		"base-uri 'none'",
@@ -717,8 +710,8 @@ func (h *Handler) contentSecurityPolicy() string {
 		"font-src 'self'",
 		"worker-src 'self' blob:",
 		"child-src 'self' blob:",
-		"img-src 'self' data: blob: " + strings.Join(h.tileOrigins, " "),
-		"connect-src 'self' " + strings.Join(h.tileOrigins, " "),
+		"img-src 'self' data: blob: " + strings.Join(tileOrigins, " "),
+		"connect-src 'self' " + strings.Join(tileOrigins, " "),
 	}, "; ")
 }
 
@@ -886,7 +879,7 @@ func validateSourceBaseURL(value string) error {
 // nor its own would be served to the page and then blocked by the header it was
 // served with. Refusing it at construction makes that a startup error rather
 // than a map that goes blank after dark.
-func tileOriginsOf(basemaps []Basemap) ([]string, error) {
+func tileOriginsOf(basemaps []runtimeconfig.Basemap) ([]string, error) {
 	if len(basemaps) == 0 {
 		return nil, errors.New("at least one basemap is required")
 	}

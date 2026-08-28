@@ -17,6 +17,7 @@ import (
 
 	openapi "github.com/nobbs/domestique/internal/httpapi/contract"
 	"github.com/nobbs/domestique/internal/route"
+	"github.com/nobbs/domestique/internal/runtimeconfig"
 )
 
 const (
@@ -31,16 +32,51 @@ const (
 	testBrowserOrigin    = "https://domestique.example.test"
 )
 
+// staticSettings stands in for the live snapshot, holding one set of settings
+// for the length of a test and recording what an edit wrote.
+type staticSettings struct {
+	storeFail error
+	values    runtimeconfig.Values
+}
+
+func (s *staticSettings) Values() runtimeconfig.Values { return s.values }
+
+//nolint:gocritic // value param: this double conforms to the settings seam.
+func (s *staticSettings) Set(_ context.Context, values runtimeconfig.Values) error {
+	if s.storeFail != nil {
+		return s.storeFail
+	}
+	s.values = values
+
+	return nil
+}
+
+// settingsWith is the valid set of settings these tests configure, carrying
+// whichever basemap list the test is about.
+func settingsWith(basemaps []runtimeconfig.Basemap) *staticSettings {
+	return &staticSettings{values: runtimeconfig.Values{
+		Sync: runtimeconfig.Sync{StaleAfter: 26 * time.Hour},
+		Notifications: runtimeconfig.Notifications{
+			Enabled:         true,
+			Policy:          runtimeconfig.SuccessPolicyEvery,
+			DigestInterval:  24 * time.Hour,
+			PushoverBaseURL: "https://api.pushover.net",
+		},
+		Basemaps: basemaps,
+		Surface:  runtimeconfig.Surface{RebuildInterval: 7 * 24 * time.Hour},
+	}}
+}
+
 // testBasemaps is the one-entry list most of these tests configure: a map to
 // paint on, and no choice to make about it.
-func testBasemaps() []Basemap {
-	return []Basemap{{Name: "Streets", StyleURL: testTileStyleURL}}
+func testBasemaps() []runtimeconfig.Basemap {
+	return []runtimeconfig.Basemap{{Name: "Streets", StyleURL: testTileStyleURL}}
 }
 
 // twoProviderBasemaps is the shape this change exists for: two cartographies
 // from two providers, which is also two origins in the policy.
-func twoProviderBasemaps() []Basemap {
-	return []Basemap{
+func twoProviderBasemaps() []runtimeconfig.Basemap {
+	return []runtimeconfig.Basemap{
 		{Name: "Streets", StyleURL: testTileStyleURL, StyleURLDark: testTileStyleURLDark},
 		{Name: "Satellite", StyleURL: testImageryStyleURL, DarkCartography: true},
 	}
@@ -48,8 +84,8 @@ func twoProviderBasemaps() []Basemap {
 
 // testBasemapsWithDark adds the provider's dark twin, which is the shape that
 // exercises the colour scheme without adding a second origin.
-func testBasemapsWithDark() []Basemap {
-	return []Basemap{{
+func testBasemapsWithDark() []runtimeconfig.Basemap {
+	return []runtimeconfig.Basemap{{
 		Name:         "Streets",
 		StyleURL:     testTileStyleURL,
 		StyleURLDark: testTileStyleURLDark,
@@ -507,7 +543,7 @@ func TestHandlerPublishesTheWayOutWhenOneIsConfigured(t *testing.T) {
 	handler, err := New(
 		&Options{
 			TargetIDs:        []string{"rider-a"},
-			Basemaps:         twoProviderBasemaps(),
+			Settings:         settingsWith(twoProviderBasemaps()),
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
 			AccessSignOutURL: "/cdn-cgi/access/logout",
@@ -541,7 +577,7 @@ func TestNewRefusesAnAccessEmailThatIsNotOne(t *testing.T) {
 			_, err := New(
 				&Options{
 					TargetIDs:        []string{"rider-a"},
-					Basemaps:         twoProviderBasemaps(),
+					Settings:         settingsWith(twoProviderBasemaps()),
 					AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 					AccessEmail:      value,
 					BrowserOriginURL: testBrowserOriginURL,
@@ -570,7 +606,7 @@ func TestNewRefusesASignOutURLThatLeavesThisOrigin(t *testing.T) {
 			_, err := New(
 				&Options{
 					TargetIDs:        []string{"rider-a"},
-					Basemaps:         twoProviderBasemaps(),
+					Settings:         settingsWith(twoProviderBasemaps()),
 					AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 					AccessEmail:      testAccessEmail,
 					AccessSignOutURL: value,
@@ -588,7 +624,7 @@ func TestHandlerServesEveryConfiguredBasemapInOrder(t *testing.T) {
 	handler, err := New(
 		&Options{
 			TargetIDs:        []string{"rider-a"},
-			Basemaps:         twoProviderBasemaps(),
+			Settings:         settingsWith(twoProviderBasemaps()),
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
@@ -624,7 +660,7 @@ func TestHandlerOmitsAnUnconfiguredDarkTileStyle(t *testing.T) {
 	handler, err := New(
 		&Options{
 			TargetIDs:        []string{"rider-a"},
-			Basemaps:         testBasemaps(),
+			Settings:         settingsWith(testBasemaps()),
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
@@ -644,7 +680,7 @@ func TestHandlerOmitsAnUnconfiguredSourceBaseURL(t *testing.T) {
 	handler, err := New(
 		&Options{
 			TargetIDs:        []string{"rider-a"},
-			Basemaps:         testBasemaps(),
+			Settings:         settingsWith(testBasemaps()),
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
@@ -667,7 +703,7 @@ func TestHandlerOmitsAProviderConfiguredWithABlankSourceBaseURL(t *testing.T) {
 	handler, err := New(
 		&Options{
 			TargetIDs: []string{"rider-a"},
-			Basemaps:  testBasemaps(),
+			Settings:  settingsWith(testBasemaps()),
 			SourceBaseURLs: map[route.Provider]string{
 				route.ProviderVeloPlanner: testSourceBaseURL,
 				route.ProviderKomoot:      "   ",
@@ -707,7 +743,7 @@ func TestHandlerRefusesASourceBaseURLThatIsNotOne(t *testing.T) {
 		_, err := New(
 			&Options{
 				TargetIDs:        []string{"rider-a"},
-				Basemaps:         testBasemaps(),
+				Settings:         settingsWith(testBasemaps()),
 				SourceBaseURLs:   map[route.Provider]string{route.ProviderVeloPlanner: value},
 				AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 				AccessEmail:      testAccessEmail,
@@ -723,7 +759,7 @@ func TestNewRejectsASourceBaseURLForAnUndocumentedProvider(t *testing.T) {
 	_, err := New(
 		&Options{
 			TargetIDs:        []string{"rider-a"},
-			Basemaps:         testBasemaps(),
+			Settings:         settingsWith(testBasemaps()),
 			SourceBaseURLs:   map[route.Provider]string{"another-provider": testSourceBaseURL},
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
@@ -739,7 +775,7 @@ func TestHandlerSendsASourceBaseURLWithoutSurroundingWhitespace(t *testing.T) {
 	handler, err := New(
 		&Options{
 			TargetIDs:        []string{"rider-a"},
-			Basemaps:         testBasemaps(),
+			Settings:         settingsWith(testBasemaps()),
 			SourceBaseURLs:   map[route.Provider]string{route.ProviderVeloPlanner: "  " + testSourceBaseURL + "\n"},
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
@@ -767,7 +803,7 @@ func TestHandlerAcceptsASourceBaseURLHostedUnderAPath(t *testing.T) {
 	handler, err := New(
 		&Options{
 			TargetIDs:        []string{"rider-a"},
-			Basemaps:         testBasemaps(),
+			Settings:         settingsWith(testBasemaps()),
 			SourceBaseURLs:   map[route.Provider]string{route.ProviderVeloPlanner: testSourceBaseURL + "/planner"},
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
@@ -786,7 +822,7 @@ func TestHandlerServesEveryConfiguredSourceKeyedByProvider(t *testing.T) {
 	handler, err := New(
 		&Options{
 			TargetIDs: []string{"rider-a"},
-			Basemaps:  testBasemaps(),
+			Settings:  settingsWith(testBasemaps()),
 			SourceBaseURLs: map[route.Provider]string{
 				route.ProviderVeloPlanner: testSourceBaseURL,
 				route.ProviderKomoot:      testKomootBaseURL,
@@ -880,7 +916,7 @@ func newHandlerWithBuild(t *testing.T, revision, imageDigest string) *Handler {
 	handler, err := New(
 		&Options{
 			TargetIDs:        []string{"rider-a"},
-			Basemaps:         testBasemaps(),
+			Settings:         settingsWith(testBasemaps()),
 			BuildRevision:    revision,
 			BuildImageDigest: imageDigest,
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
@@ -901,7 +937,7 @@ func TestHandlerNamesEveryBasemapOriginInThePolicy(t *testing.T) {
 	handler, err := New(
 		&Options{
 			TargetIDs:        []string{"rider-a"},
-			Basemaps:         twoProviderBasemaps(),
+			Settings:         settingsWith(twoProviderBasemaps()),
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
@@ -933,10 +969,10 @@ func TestHandlerNamesOneOriginOnceForTwoBasemapsSharingIt(t *testing.T) {
 	handler, err := New(
 		&Options{
 			TargetIDs: []string{"rider-a"},
-			Basemaps: []Basemap{
+			Settings: settingsWith([]runtimeconfig.Basemap{
 				{Name: "Streets", StyleURL: testTileStyleURL},
 				{Name: "Outdoors", StyleURL: "https://tiles.example.test/styles/outdoors"},
-			},
+			}),
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
@@ -961,11 +997,11 @@ func TestHandlerAcceptsADarkStyleOnItsOriginRegardlessOfHostCase(t *testing.T) {
 	handler, err := New(
 		&Options{
 			TargetIDs: []string{"rider-a"},
-			Basemaps: []Basemap{{
+			Settings: settingsWith([]runtimeconfig.Basemap{{
 				Name:         "Streets",
 				StyleURL:     testTileStyleURL,
 				StyleURLDark: "https://TILES.example.test/styles/dark",
-			}},
+			}}),
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
@@ -1565,7 +1601,7 @@ func TestHandlerNamesNoMapBuildBeforeOneIsLoaded(t *testing.T) {
 // A deployment that names no staleness bound gets no freshness claim at all,
 // rather than one derived from a bound nobody configured.
 func TestHandlerOmitsTrustedInventoryFreshnessWithNoConfiguredBound(t *testing.T) {
-	handler := newHandler(t, &fakeOAuth{}, &fakeState{})
+	handler := newHandlerWithStaleAfter(t, &fakeState{}, 0, time.Date(2026, time.August, 17, 8, 0, 0, 0, time.UTC))
 
 	view := statusOf(t, handler)
 	assert.Nil(t, view.Sync.TrustedInventory, "a service with no stale-after bound reported a freshness claim")
@@ -1915,78 +1951,23 @@ func TestNewRejectsIncompleteOptions(t *testing.T) {
 	}{
 		{name: "nil options"},
 		{name: "no targets", options: &Options{
-			Basemaps:         testBasemaps(),
+			Settings:         settingsWith(testBasemaps()),
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
 		}},
 		{name: "duplicate targets", options: &Options{
 			TargetIDs:        []string{"rider-a", "rider-a"},
-			Basemaps:         testBasemaps(),
+			Settings:         settingsWith(testBasemaps()),
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
 		}},
-		{name: "no basemap at all", options: &Options{
+		// The basemap list, the staleness bound and the rest are checked where
+		// an edit is written and where the stored values are read back, not a
+		// third time here; see internal/runtimeconfig.
+		{name: "no settings", options: &Options{
 			TargetIDs:        []string{"rider-a"},
-			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
-			AccessEmail:      testAccessEmail,
-			BrowserOriginURL: testBrowserOriginURL,
-		}},
-		{name: "plaintext tile style", options: &Options{
-			TargetIDs:        []string{"rider-a"},
-			Basemaps:         []Basemap{{Name: "Streets", StyleURL: "http://tiles.example.test/style.json"}},
-			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
-			AccessEmail:      testAccessEmail,
-			BrowserOriginURL: testBrowserOriginURL,
-		}},
-		{name: "dark tile style on another origin", options: &Options{
-			TargetIDs: []string{"rider-a"},
-			Basemaps: []Basemap{{
-				Name:         "Streets",
-				StyleURL:     testTileStyleURL,
-				StyleURLDark: "https://dark.example.test/styles/dark",
-			}},
-			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
-			AccessEmail:      testAccessEmail,
-			BrowserOriginURL: testBrowserOriginURL,
-		}},
-		{name: "unnamed basemap", options: &Options{
-			TargetIDs:        []string{"rider-a"},
-			Basemaps:         []Basemap{{Name: "  ", StyleURL: testTileStyleURL}},
-			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
-			AccessEmail:      testAccessEmail,
-			BrowserOriginURL: testBrowserOriginURL,
-		}},
-		{name: "two basemaps under one name", options: &Options{
-			TargetIDs: []string{"rider-a"},
-			Basemaps: []Basemap{
-				{Name: "Streets", StyleURL: testTileStyleURL},
-				{Name: "Streets", StyleURL: "https://imagery.example.test/styles/hybrid"},
-			},
-			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
-			AccessEmail:      testAccessEmail,
-			BrowserOriginURL: testBrowserOriginURL,
-		}},
-		{name: "plaintext dark tile style", options: &Options{
-			TargetIDs: []string{"rider-a"},
-			Basemaps: []Basemap{{
-				Name:         "Streets",
-				StyleURL:     testTileStyleURL,
-				StyleURLDark: "http://tiles.example.test/styles/dark",
-			}},
-			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
-			AccessEmail:      testAccessEmail,
-			BrowserOriginURL: testBrowserOriginURL,
-		}},
-		{name: "dark cartography with a dark style of its own", options: &Options{
-			TargetIDs: []string{"rider-a"},
-			Basemaps: []Basemap{{
-				Name:            "Satellite",
-				StyleURL:        testTileStyleURL,
-				StyleURLDark:    "https://tiles.example.test/styles/dark",
-				DarkCartography: true,
-			}},
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
@@ -2010,7 +1991,7 @@ func newHandlerWithVerifier(t *testing.T, verifier AccessVerifier) *Handler {
 	handler, err := New(
 		&Options{
 			TargetIDs:        []string{"rider-a"},
-			Basemaps:         testBasemaps(),
+			Settings:         settingsWith(testBasemaps()),
 			AccessVerifier:   verifier,
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
@@ -2029,7 +2010,7 @@ func newHandlerWithSurfaceIndex(t *testing.T, index func() (string, time.Time, b
 	handler, err := New(
 		&Options{
 			TargetIDs:        []string{"rider-a"},
-			Basemaps:         testBasemaps(),
+			Settings:         settingsWith(testBasemaps()),
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
@@ -2050,7 +2031,7 @@ func newHandlerWithWeather(t *testing.T, weather Weather) *Handler {
 	handler, err := New(
 		&Options{
 			TargetIDs:        []string{"rider-a"},
-			Basemaps:         testBasemaps(),
+			Settings:         settingsWith(testBasemaps()),
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
@@ -2071,14 +2052,15 @@ func newHandler(t *testing.T, oauthService OAuth, state State) *Handler {
 // freshness, with now fixed so the reported age is deterministic.
 func newHandlerWithStaleAfter(t *testing.T, state State, staleAfter time.Duration, now time.Time) *Handler {
 	t.Helper()
+	settings := settingsWith(testBasemaps())
+	settings.values.Sync.StaleAfter = staleAfter
 	handler, err := New(
 		&Options{
 			TargetIDs:        []string{"rider-a"},
-			Basemaps:         testBasemaps(),
+			Settings:         settings,
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
-			SourceStaleAfter: staleAfter,
 		},
 		&fakeOAuth{}, state, &fakeSync{accepted: true}, &fakeAssets{}, &fakeWeather{},
 	)
@@ -2095,7 +2077,7 @@ func newHandlerWithTargets(t *testing.T, state State, targetIDs ...string) *Hand
 	handler, err := New(
 		&Options{
 			TargetIDs:        targetIDs,
-			Basemaps:         testBasemaps(),
+			Settings:         settingsWith(testBasemaps()),
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
@@ -2114,7 +2096,7 @@ func newHandlerWithLiveSync(t *testing.T, state State, activity SyncActivityStat
 	handler, err := New(
 		&Options{
 			TargetIDs:        []string{"rider-a", "rider-b"},
-			Basemaps:         testBasemaps(),
+			Settings:         settingsWith(testBasemaps()),
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
@@ -2134,7 +2116,7 @@ func newHandlerWithRideModelValidation(t *testing.T, state State, validation *Ri
 	handler, err := New(
 		&Options{
 			TargetIDs:           []string{"rider-a"},
-			Basemaps:            testBasemaps(),
+			Settings:            settingsWith(testBasemaps()),
 			AccessVerifier:      &recordingVerifier{email: testAccessEmail},
 			AccessEmail:         testAccessEmail,
 			BrowserOriginURL:    testBrowserOriginURL,
@@ -2152,7 +2134,7 @@ func newHandlerWithSync(t *testing.T, oauthService OAuth, state State, syncRuns 
 	handler, err := New(
 		&Options{
 			TargetIDs:        []string{"rider-a"},
-			Basemaps:         testBasemapsWithDark(),
+			Settings:         settingsWith(testBasemapsWithDark()),
 			SourceBaseURLs:   map[route.Provider]string{route.ProviderVeloPlanner: testSourceBaseURL},
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,

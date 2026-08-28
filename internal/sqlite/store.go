@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/nobbs/domestique/internal/route"
+	"github.com/nobbs/domestique/internal/runtimeconfig"
 
 	_ "modernc.org/sqlite" // Pure Go SQLite driver registration.
 )
@@ -1043,6 +1044,161 @@ func (s *Store) SetSyncSchedule(ctx context.Context, source, targets bool) error
 	}
 
 	return nil
+}
+
+// RuntimeSettings reads the settings an operator edits while the service is
+// running. It satisfies runtimeconfig.Store.
+//
+// The two lists come back in the order they were arranged in, because both mean
+// something different rearranged: the first basemap is the one a browser that
+// has never chosen loads.
+func (s *Store) RuntimeSettings(ctx context.Context) (runtimeconfig.Values, error) {
+	var (
+		values                 runtimeconfig.Values
+		staleAfterSeconds      int64
+		digestIntervalSeconds  int64
+		rebuildIntervalSeconds int64
+	)
+	if err := s.database.QueryRowContext(ctx, `
+		SELECT allow_empty_source_deletion, stale_after_seconds,
+			notifications_enabled, success_policy, digest_interval_seconds,
+			pushover_base_url, surface_rebuild_interval_seconds
+		FROM runtime_settings
+		WHERE id = 1
+	`).Scan(
+		&values.Sync.AllowEmptySourceDeletion, &staleAfterSeconds,
+		&values.Notifications.Enabled, &values.Notifications.Policy, &digestIntervalSeconds,
+		&values.Notifications.PushoverBaseURL, &rebuildIntervalSeconds,
+	); err != nil {
+		return runtimeconfig.Values{}, fmt.Errorf("reading the runtime settings: %w", err)
+	}
+	values.Sync.StaleAfter = time.Duration(staleAfterSeconds) * time.Second
+	values.Notifications.DigestInterval = time.Duration(digestIntervalSeconds) * time.Second
+	values.Surface.RebuildInterval = time.Duration(rebuildIntervalSeconds) * time.Second
+
+	basemaps, err := s.runtimeBasemaps(ctx)
+	if err != nil {
+		return runtimeconfig.Values{}, err
+	}
+	regions, err := s.runtimeSurfaceRegions(ctx)
+	if err != nil {
+		return runtimeconfig.Values{}, err
+	}
+	values.Basemaps = basemaps
+	values.Surface.Regions = regions
+
+	return values, nil
+}
+
+// SetRuntimeSettings replaces every runtime setting in one transaction.
+//
+// The lists are deleted and rewritten rather than reconciled row by row. They
+// are short, they arrive complete, and an edit that reorders one changes every
+// position in it anyway.
+//
+//nolint:gocritic // value param: this method conforms to the runtimeconfig.Store contract.
+func (s *Store) SetRuntimeSettings(ctx context.Context, values runtimeconfig.Values) error {
+	transaction, err := s.database.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("starting the runtime settings write: %w", err)
+	}
+	defer rollback(transaction)
+
+	if _, err := transaction.ExecContext(ctx, `
+		UPDATE runtime_settings
+		SET allow_empty_source_deletion = ?, stale_after_seconds = ?,
+			notifications_enabled = ?, success_policy = ?, digest_interval_seconds = ?,
+			pushover_base_url = ?, surface_rebuild_interval_seconds = ?, updated_at_unix = ?
+		WHERE id = 1
+	`,
+		values.Sync.AllowEmptySourceDeletion, int64(values.Sync.StaleAfter/time.Second),
+		values.Notifications.Enabled, string(values.Notifications.Policy),
+		int64(values.Notifications.DigestInterval/time.Second),
+		values.Notifications.PushoverBaseURL,
+		int64(values.Surface.RebuildInterval/time.Second),
+		time.Now().Unix(),
+	); err != nil {
+		return fmt.Errorf("storing the runtime settings: %w", err)
+	}
+
+	if _, err := transaction.ExecContext(ctx, `DELETE FROM runtime_basemap`); err != nil {
+		return fmt.Errorf("clearing the basemaps: %w", err)
+	}
+	for position, basemap := range values.Basemaps {
+		if _, err := transaction.ExecContext(ctx, `
+			INSERT INTO runtime_basemap (position, name, style_url, style_url_dark, dark_cartography)
+			VALUES (?, ?, ?, ?, ?)
+		`, position, basemap.Name, basemap.StyleURL, basemap.StyleURLDark, basemap.DarkCartography); err != nil {
+			return fmt.Errorf("storing a basemap: %w", err)
+		}
+	}
+
+	if _, err := transaction.ExecContext(ctx, `DELETE FROM runtime_surface_region`); err != nil {
+		return fmt.Errorf("clearing the surface regions: %w", err)
+	}
+	for position, region := range values.Surface.Regions {
+		if _, err := transaction.ExecContext(ctx, `
+			INSERT INTO runtime_surface_region (position, region) VALUES (?, ?)
+		`, position, region); err != nil {
+			return fmt.Errorf("storing a surface region: %w", err)
+		}
+	}
+
+	if err := transaction.Commit(); err != nil {
+		return fmt.Errorf("committing the runtime settings: %w", err)
+	}
+
+	return nil
+}
+
+func (s *Store) runtimeBasemaps(ctx context.Context) ([]runtimeconfig.Basemap, error) {
+	rows, err := s.database.QueryContext(ctx, `
+		SELECT name, style_url, style_url_dark, dark_cartography
+		FROM runtime_basemap
+		ORDER BY position
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("reading the basemaps: %w", err)
+	}
+	defer closeRows(rows)
+
+	var basemaps []runtimeconfig.Basemap
+	for rows.Next() {
+		var basemap runtimeconfig.Basemap
+		if err := rows.Scan(&basemap.Name, &basemap.StyleURL, &basemap.StyleURLDark, &basemap.DarkCartography); err != nil {
+			return nil, fmt.Errorf("scanning a basemap: %w", err)
+		}
+		basemaps = append(basemaps, basemap)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("reading the basemaps: %w", err)
+	}
+
+	return basemaps, nil
+}
+
+func (s *Store) runtimeSurfaceRegions(ctx context.Context) ([]string, error) {
+	rows, err := s.database.QueryContext(ctx, `
+		SELECT region FROM runtime_surface_region ORDER BY position
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("reading the surface regions: %w", err)
+	}
+	defer closeRows(rows)
+
+	var regions []string
+	for rows.Next() {
+		var region string
+		if err := rows.Scan(&region); err != nil {
+			return nil, fmt.Errorf("scanning a surface region: %w", err)
+		}
+		regions = append(regions, region)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("reading the surface regions: %w", err)
+	}
+
+	return regions, nil
 }
 
 // Target returns one target slot without exposing its refresh token.
@@ -2561,6 +2717,64 @@ func schemaMigrations() [][]string {
 			// re-encoding them on every response.
 			`UPDATE stage_surface
 				SET ranges = REPLACE(REPLACE(ranges, '"start_index"', '"startIndex"'), '"end_index"', '"endIndex"')`,
+		},
+		{
+			// The settings an operator changes while the service runs, in the
+			// manner sync_schedule established: one row, read at startup and on
+			// every edit, so a deletion gate flipped for one deliberate run or a
+			// notification quieted for a week costs no restart.
+			//
+			// The values seeded here are the defaults the configuration file
+			// documented for the same keys, so a deployment that upgrades and
+			// changes nothing else runs on exactly what it ran on before.
+			//
+			// Durations are whole seconds rather than the Go strings the file
+			// carried: the column is then a number the database can check, and
+			// the one place a duration has to be parsed from text is the file
+			// loader that no longer reads these keys.
+			`CREATE TABLE runtime_settings (
+				id                               INTEGER PRIMARY KEY CHECK (id = 1),
+				allow_empty_source_deletion      INTEGER NOT NULL CHECK (allow_empty_source_deletion IN (0, 1)),
+				stale_after_seconds              INTEGER NOT NULL CHECK (stale_after_seconds > 0),
+				notifications_enabled            INTEGER NOT NULL CHECK (notifications_enabled IN (0, 1)),
+				success_policy                   TEXT    NOT NULL CHECK (success_policy IN ('every', 'quiet', 'digest')),
+				digest_interval_seconds          INTEGER NOT NULL CHECK (digest_interval_seconds > 0),
+				pushover_base_url                TEXT    NOT NULL,
+				surface_rebuild_interval_seconds INTEGER NOT NULL CHECK (surface_rebuild_interval_seconds > 0),
+				updated_at_unix                  INTEGER NOT NULL
+			)`,
+			`INSERT INTO runtime_settings (
+				id, allow_empty_source_deletion, stale_after_seconds,
+				notifications_enabled, success_policy, digest_interval_seconds,
+				pushover_base_url, surface_rebuild_interval_seconds, updated_at_unix
+			) VALUES (1, 0, 86400, 1, 'every', 86400, 'https://api.pushover.net', 604800, 0)`,
+			// The cartographies the map may be switched between, ordered by the
+			// position they are offered in. Its own table rather than a column of
+			// packed JSON, because a list an operator edits is a list the database
+			// can hold a row at a time.
+			//
+			// Seeded with the keyless default the file shipped: a deployment that
+			// never opens the settings page still gets a map, on a provider that
+			// needs no credential.
+			`CREATE TABLE runtime_basemap (
+				position         INTEGER PRIMARY KEY,
+				name             TEXT    NOT NULL,
+				style_url        TEXT    NOT NULL,
+				style_url_dark   TEXT    NOT NULL,
+				dark_cartography INTEGER NOT NULL CHECK (dark_cartography IN (0, 1))
+			)`,
+			`INSERT INTO runtime_basemap (position, name, style_url, style_url_dark, dark_cartography)
+				VALUES (0, 'Streets', 'https://tiles.openfreemap.org/styles/bright',
+					'https://tiles.openfreemap.org/styles/dark', 0)`,
+			// The OpenStreetMap extracts to index, ordered the way they were
+			// entered. Seeded empty, which is surface classification switched off
+			// and is what a deployment that named no region already has: the
+			// regions somebody rides are a property of where they live and cannot
+			// be guessed.
+			`CREATE TABLE runtime_surface_region (
+				position INTEGER PRIMARY KEY,
+				region   TEXT    NOT NULL
+			)`,
 		},
 	}
 }

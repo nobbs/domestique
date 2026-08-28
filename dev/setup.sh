@@ -137,9 +137,6 @@ id = "rider-b"
 [sync]
 # A year out, so nothing synchronises unless you ask for it explicitly.
 initial_delay = "8760h"
-interval = "1h"
-max_deletions_per_target = 5
-empty_source_deletion = "deny"
 
 [notifications.pushover]
 application_token_file = "${DEV_SECRETS}/pushover_application_token"

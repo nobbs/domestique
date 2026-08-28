@@ -259,12 +259,65 @@ export interface GeoJSONFeature {
   properties: GeoJSONProperties;
 }
 
+export interface SyncSettings {
+  /** Whether a source that reports an empty library may delete the last routes a target holds. It stays on until it is turned off again. */
+  allowEmptySourceDeletion: boolean;
+  /**
+   * How long the trusted source inventory may go without a successful refresh before it is reported and notified as stale.
+   * @minimum 1
+   */
+  staleAfterSeconds: number;
+}
+
+export type NotificationSettingsSuccessPolicy =
+  (typeof NotificationSettingsSuccessPolicy)[keyof typeof NotificationSettingsSuccessPolicy];
+
+export const NotificationSettingsSuccessPolicy = {
+  every: "every",
+  quiet: "quiet",
+  digest: "digest",
+} as const;
+
+export interface NotificationSettings {
+  /** The switch for the whole channel. Off suppresses a failure and a stale inventory as surely as it suppresses a routine success. */
+  enabled: boolean;
+  successPolicy: NotificationSettingsSuccessPolicy;
+  /**
+   * The period one digest covers, read only by the digest policy.
+   * @minimum 1
+   */
+  digestIntervalSeconds: number;
+  /** The origin the application token and user key are sent to. */
+  pushoverBaseUrl: string;
+}
+
 export interface BrowserBasemap {
   /** @minLength 1 */
   name: string;
   styleUrl: string;
   styleUrlDark?: string;
   darkCartography?: boolean;
+}
+
+export interface SurfaceSettings {
+  /** The Geofabrik region paths the surface index is built from. An empty list switches classification off. */
+  regions: string[];
+  /**
+   * How often the index is rebuilt. Required whether or not a region is named: the rebuild schedule runs either way, and with no region it simply builds nothing.
+   * @minimum 1
+   */
+  rebuildIntervalSeconds: number;
+}
+
+/**
+ * The settings held in the state database rather than in the configuration file, which take effect on the next run or the next request rather than on the next restart.
+ */
+export interface Settings {
+  sync: SyncSettings;
+  notifications: NotificationSettings;
+  /** @minItems 1 */
+  basemaps: BrowserBasemap[];
+  surface: SurfaceSettings;
 }
 
 export interface SourceBaseUrls {
@@ -2335,6 +2388,280 @@ export const useReprocessRoute = <
   TContext
 > => {
   return useMutation(getReprocessRouteMutationOptions(options), queryClient);
+};
+
+export type getSettingsResponse200 = {
+  data: Settings;
+  status: 200;
+};
+
+export type getSettingsResponse401 = {
+  data: UnauthorizedResponse;
+  status: 401;
+};
+
+export type getSettingsResponse403 = {
+  data: ForbiddenResponse;
+  status: 403;
+};
+
+export type getSettingsResponse503 = {
+  data: UnavailableResponse;
+  status: 503;
+};
+
+export type getSettingsResponseSuccess = getSettingsResponse200 & {
+  headers: Headers;
+};
+export type getSettingsResponseError = (
+  | getSettingsResponse401
+  | getSettingsResponse403
+  | getSettingsResponse503
+) & {
+  headers: Headers;
+};
+
+export const getGetSettingsUrl = () => {
+  return `/v1/settings`;
+};
+
+export const getSettings = async (
+  options?: Parameters<typeof domestiqueRequest>[1],
+): Promise<getSettingsResponseSuccess> => {
+  return domestiqueRequest<getSettingsResponseSuccess>(getGetSettingsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetSettingsQueryKey = () => {
+  return [`/v1/settings`] as const;
+};
+
+export const getGetSettingsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getSettings>>,
+  TError = ErrorType<UnauthorizedResponse | ForbiddenResponse | UnavailableResponse>,
+>(options?: {
+  query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getSettings>>, TError, TData>>;
+  request?: SecondParameter<typeof domestiqueRequest>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetSettingsQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getSettings>>> = ({ signal }) =>
+    getSettings({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getSettings>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type GetSettingsQueryResult = NonNullable<Awaited<ReturnType<typeof getSettings>>>;
+export type GetSettingsQueryError = ErrorType<
+  UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
+>;
+
+export function useGetSettings<
+  TData = Awaited<ReturnType<typeof getSettings>>,
+  TError = ErrorType<UnauthorizedResponse | ForbiddenResponse | UnavailableResponse>,
+>(
+  options: {
+    query: Partial<UseQueryOptions<Awaited<ReturnType<typeof getSettings>>, TError, TData>> &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getSettings>>,
+          TError,
+          Awaited<ReturnType<typeof getSettings>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetSettings<
+  TData = Awaited<ReturnType<typeof getSettings>>,
+  TError = ErrorType<UnauthorizedResponse | ForbiddenResponse | UnavailableResponse>,
+>(
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getSettings>>, TError, TData>> &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getSettings>>,
+          TError,
+          Awaited<ReturnType<typeof getSettings>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetSettings<
+  TData = Awaited<ReturnType<typeof getSettings>>,
+  TError = ErrorType<UnauthorizedResponse | ForbiddenResponse | UnavailableResponse>,
+>(
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getSettings>>, TError, TData>>;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+export function useGetSettings<
+  TData = Awaited<ReturnType<typeof getSettings>>,
+  TError = ErrorType<UnauthorizedResponse | ForbiddenResponse | UnavailableResponse>,
+>(
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getSettings>>, TError, TData>>;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getGetSettingsQueryOptions(options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export type setSettingsResponse200 = {
+  data: Settings;
+  status: 200;
+};
+
+export type setSettingsResponse400 = {
+  data: InvalidRequestResponse;
+  status: 400;
+};
+
+export type setSettingsResponse401 = {
+  data: UnauthorizedResponse;
+  status: 401;
+};
+
+export type setSettingsResponse403 = {
+  data: ForbiddenResponse;
+  status: 403;
+};
+
+export type setSettingsResponse503 = {
+  data: UnavailableResponse;
+  status: 503;
+};
+
+export type setSettingsResponseSuccess = setSettingsResponse200 & {
+  headers: Headers;
+};
+export type setSettingsResponseError = (
+  | setSettingsResponse400
+  | setSettingsResponse401
+  | setSettingsResponse403
+  | setSettingsResponse503
+) & {
+  headers: Headers;
+};
+
+export const getSetSettingsUrl = () => {
+  return `/v1/settings`;
+};
+
+/**
+ * Replaces every runtime setting at once. The body is the whole object rather than the parts that changed, because the form that sends it holds every value; a setting left out is a setting the caller never read.
+ */
+export const setSettings = async (
+  settings: Settings,
+  options?: Parameters<typeof domestiqueRequest>[1],
+): Promise<setSettingsResponseSuccess> => {
+  const getHeaders = (
+    h?: NonNullable<RequestInit["headers"]>,
+  ): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Array.isArray(h)) return Object.fromEntries(h);
+    return h;
+  };
+  return domestiqueRequest<setSettingsResponseSuccess>(getSetSettingsUrl(), {
+    ...options,
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...getHeaders(options?.headers) },
+    body: JSON.stringify(settings),
+  });
+};
+
+export const getSetSettingsMutationOptions = <
+  TError = ErrorType<
+    InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof setSettings>>,
+    TError,
+    SetSettingsMutationVariables,
+    TContext
+  >;
+  request?: SecondParameter<typeof domestiqueRequest>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof setSettings>>,
+  TError,
+  SetSettingsMutationVariables,
+  TContext
+> => {
+  const mutationKey = ["setSettings"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof setSettings>>,
+    SetSettingsMutationVariables
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return setSettings(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SetSettingsMutationResult = NonNullable<Awaited<ReturnType<typeof setSettings>>>;
+export type SetSettingsMutationBody = Settings;
+export type SetSettingsMutationError = ErrorType<
+  InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
+>;
+export type SetSettingsMutationVariables = { data: Settings };
+
+export const useSetSettings = <
+  TError = ErrorType<
+    InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
+  >,
+  TContext = unknown,
+>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof setSettings>>,
+      TError,
+      SetSettingsMutationVariables,
+      TContext
+    >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof setSettings>>,
+  TError,
+  SetSettingsMutationVariables,
+  TContext
+> => {
+  return useMutation(getSetSettingsMutationOptions(options), queryClient);
 };
 
 export type getWebUIConfigResponse200 = {
