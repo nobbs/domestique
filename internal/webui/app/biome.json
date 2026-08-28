@@ -21,6 +21,19 @@
       "suspicious": {
         "noExplicitAny": "error",
         "noConsole": { "level": "error", "options": { "allow": ["error", "warn"] } }
+      },
+      "style": {
+        "noRestrictedImports": {
+          "level": "error",
+          "options": {
+            "patterns": [
+              {
+                "group": ["**/ui/button"],
+                "message": "Import Button from components/Button; ui/button's vocabulary is not this application's."
+              }
+            ]
+          }
+        }
       }
     }
   },
@@ -30,5 +43,17 @@
         "organizeImports": "on"
       }
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["src/components/Button.tsx", "src/components/ui/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": "off"
+          }
+        }
+      }
+    }
+  ]
 }

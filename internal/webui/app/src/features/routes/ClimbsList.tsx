@@ -10,6 +10,7 @@
 
 import { IconChevronsRight } from "@tabler/icons-react";
 import { useState } from "react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import type { Climb } from "../../lib/climbs";
 import { formatAscent, formatDistance, formatGradient } from "../../lib/format";
 import type { UnitSystem } from "../../lib/units";
@@ -28,15 +29,16 @@ export function ClimbsList({ climbs, onSelect, unitSystem }: ClimbsListProps) {
   }
 
   return (
-    <section className="border-t border-[var(--rule)] pt-4" aria-labelledby="climbs-heading">
+    <Collapsible
+      open={expanded}
+      onOpenChange={setExpanded}
+      className="border-t border-[var(--rule)] pt-4"
+      render={<section aria-labelledby="climbs-heading" />}
+    >
       <h3 id="climbs-heading">
-        <button
+        <CollapsibleTrigger
           className="flex w-full items-center gap-2 text-left font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
-          type="button"
-          aria-expanded={expanded}
           aria-label={`${expanded ? "Hide" : "Show"} ${climbs.length} ${climbs.length === 1 ? "climb" : "climbs"}`}
-          {...(expanded ? { "aria-controls": "climbs-list" } : {})}
-          onClick={() => setExpanded((current) => !current)}
         >
           <span>Climbs</span>
           <span className="rounded-full bg-[var(--base)] px-1.5 py-0.5 text-xs text-[var(--ink-2)]">
@@ -48,30 +50,28 @@ export function ClimbsList({ climbs, onSelect, unitSystem }: ClimbsListProps) {
             size={16}
             stroke={2}
           />
-        </button>
+        </CollapsibleTrigger>
       </h3>
-      {expanded ? (
-        <ol className="mt-2 grid gap-1" id="climbs-list">
-          {climbs.map((climb) => (
-            <li key={climb.startMetres}>
-              <button
-                className="grid w-full grid-cols-[auto_1fr] gap-x-3 rounded-lg p-2 text-left text-sm hover:bg-[var(--base)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
-                type="button"
-                onClick={() => onSelect(climb)}
-              >
-                <span className="font-semibold tabular-nums">
-                  {formatDistance(climb.distanceMetres, unitSystem)}
-                </span>
-                <span className="text-[var(--ink-2)]">
-                  {formatAscent(climb.ascentMetres, unitSystem)} · avg{" "}
-                  {formatGradient(climb.averageGradePercent)} · max{" "}
-                  {formatGradient(climb.maxGradePercent)}
-                </span>
-              </button>
-            </li>
-          ))}
-        </ol>
-      ) : null}
-    </section>
+      <CollapsibleContent render={<ol className="mt-2 grid gap-1" />}>
+        {climbs.map((climb) => (
+          <li key={climb.startMetres}>
+            <button
+              className="grid w-full grid-cols-[auto_1fr] gap-x-3 rounded-lg p-2 text-left text-sm hover:bg-[var(--base)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
+              type="button"
+              onClick={() => onSelect(climb)}
+            >
+              <span className="font-semibold tabular-nums">
+                {formatDistance(climb.distanceMetres, unitSystem)}
+              </span>
+              <span className="text-[var(--ink-2)]">
+                {formatAscent(climb.ascentMetres, unitSystem)} · avg{" "}
+                {formatGradient(climb.averageGradePercent)} · max{" "}
+                {formatGradient(climb.maxGradePercent)}
+              </span>
+            </button>
+          </li>
+        ))}
+      </CollapsibleContent>
+    </Collapsible>
   );
 }

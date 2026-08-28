@@ -22,10 +22,8 @@
 import { IconInfoCircle } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/Button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
-
-/** What the button expands, named so the button can point at it. */
-const CREDIT_TEXT_ID = "map-credit-text";
 
 /**
  * Reduces an attribution string to plain text.
@@ -129,32 +127,30 @@ export function MapCredits({ styleUrl, extra, choice, onChoiceChange }: MapCredi
   }
 
   return (
-    <div
+    <Collapsible
+      open={expanded}
+      onOpenChange={onChoiceChange}
       className={cn(
         "map-credits z-[1] flex max-w-[min(100%,380px)] items-center gap-1 pointer-events-auto",
         expanded && "rounded-md border border-border bg-background p-1 shadow-sm",
       )}
     >
-      <Button
-        variant={expanded ? "ghost" : "panel"}
-        icon={<IconInfoCircle stroke={1.2} />}
-        aria-expanded={expanded}
-        // The mark says "there is something to read here" to anyone who can see
-        // it; the name says what, for anyone who cannot. `aria-expanded` is what
-        // reports the state — the glyph does not change and must not be the only
-        // thing carrying it.
-        aria-label={expanded ? "Hide the map credit" : "Show the map credit"}
-        // Only while there is text to point at, because the credit is unmounted
-        // rather than hidden when folded and a control naming an element outside
-        // the document is a reference a screen reader cannot follow.
-        {...(expanded ? { "aria-controls": CREDIT_TEXT_ID } : {})}
-        onClick={() => onChoiceChange(!expanded)}
+      <CollapsibleTrigger
+        render={
+          <Button
+            variant={expanded ? "ghost" : "panel"}
+            icon={<IconInfoCircle stroke={1.2} />}
+            // The mark says "there is something to read here" to anyone who can
+            // see it; the name says what. The primitive reports the state and
+            // points at the text it expands, which is a pairing this used to
+            // keep in step by hand.
+            aria-label={expanded ? "Hide the map credit" : "Show the map credit"}
+          />
+        }
       />
-      {expanded ? (
-        <p className="text-xs text-muted-foreground" id={CREDIT_TEXT_ID}>
-          {credits}
-        </p>
-      ) : null}
-    </div>
+      <CollapsibleContent render={<p className="text-xs text-muted-foreground" />}>
+        {credits}
+      </CollapsibleContent>
+    </Collapsible>
   );
 }

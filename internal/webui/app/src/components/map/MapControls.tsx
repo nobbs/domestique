@@ -10,8 +10,8 @@
 import { IconCurrentLocation, IconMinus, IconPlus } from "@tabler/icons-react";
 import { type ReactNode, useState } from "react";
 import { Marker, useMap } from "react-map-gl/maplibre";
+import { ButtonGroup } from "@/components/ui/button-group";
 import { Button } from "../Button";
-import { ButtonGroup } from "../ButtonGroup";
 import { LocationPin } from "./LocationPin";
 
 const LOCATION_ZOOM = 12;
@@ -52,7 +52,18 @@ export function MapControls({ children }: { children?: ReactNode }) {
           aria-label="Find my location"
           title="Find my location"
         />
-        <ButtonGroup>
+        {/*
+         * The frame belongs to the group rather than to each button: one edge,
+         * one radius, one shadow, and a rule between the buttons instead of
+         * around them. It is a ring rather than a border because a border
+         * would be laid out as well as drawn, and these buttons are 32 pixels
+         * wide including their own edges — a group adding two more would stand
+         * two wider than the single button above it.
+         */}
+        <ButtonGroup
+          orientation="vertical"
+          className="divide-y divide-[var(--rule)] rounded-lg bg-[var(--panel)] shadow-[var(--shadow)] ring-1 ring-[var(--rule)] ring-inset [&>*:not(:first-child)]:rounded-t-none [&>*:not(:last-child)]:rounded-b-none"
+        >
           <Button
             variant="ghost"
             icon={<IconPlus stroke={2} />}

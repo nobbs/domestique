@@ -20,7 +20,6 @@ import { type FormEvent, type ReactNode, useId, useRef, useState } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
-  AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
@@ -929,13 +928,21 @@ function Synchronisation({ settings }: { settings: Settings }) {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
+            <AlertDialogCancel render={<Button variant="standard" />}>Cancel</AlertDialogCancel>
+            {/*
+             * Closes as well as edits: the dialog is controlled, and neither
+             * this nor the `AlertDialogAction` it replaced is a `Close`, so
+             * nothing else would put it away after the reader has answered.
+             */}
+            <Button
               variant="danger"
-              onClick={() => edit({ allowEmptySourceDeletion: true })}
+              onClick={() => {
+                edit({ allowEmptySourceDeletion: true });
+                setConfirmingDeletion(false);
+              }}
             >
               Allow it
-            </AlertDialogAction>
+            </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

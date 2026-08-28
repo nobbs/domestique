@@ -28,7 +28,7 @@ import type { BoundingBox, Position, RouteGeometry, SurfaceKind } from "../../ap
 import { routeKey } from "../../api/types";
 import { Layout } from "../../components/Layout";
 import { RouteOverlay, SURFACE_ATTRIBUTION } from "../../components/route/RouteOverlay";
-import { ErrorMessage, StatusMessage } from "../../components/StatusMessage";
+import { Alert, AlertDescription, AlertTitle } from "../../components/ui/alert";
 import { basemapFor, useBasemapChoice, usePrefersDarkScheme } from "../../lib/basemap";
 import type { Climb } from "../../lib/climbs";
 import { findClimbs } from "../../lib/climbs";
@@ -151,6 +151,22 @@ function convergedPhrase(targetCount: number): string {
 export interface RoutesPageProps {
   /** The reader's colour-scheme pick. Held by `App` — see there for why. */
   themeChoice: ThemeChoice;
+}
+
+/**
+ * A query that did not arrive, said the same way wherever one does not. The
+ * detail is the failure's own message when it has one, since a reader deciding
+ * whether to retry is better served by what went wrong than by that it did.
+ */
+function loadFailure(what: string, error: unknown) {
+  const detail = error instanceof Error ? error.message : null;
+
+  return (
+    <Alert variant="destructive">
+      <AlertTitle>Could not load {what}.</AlertTitle>
+      {detail === null ? null : <AlertDescription>{detail}</AlertDescription>}
+    </Alert>
+  );
 }
 
 export function RoutesPage({ themeChoice }: RoutesPageProps) {
@@ -563,18 +579,20 @@ export function RoutesPage({ themeChoice }: RoutesPageProps) {
        * into the middle of a hierarchy. It is not drawn: the map is the title.
        */}
       <h1 className="visually-hidden">Route library</h1>
-      {routes.isError ? <ErrorMessage what="the route library" error={routes.error} /> : null}
-      {config.isError ? <ErrorMessage what="the map configuration" error={config.error} /> : null}
+      {routes.isError ? loadFailure("the route library", routes.error) : null}
+      {config.isError ? loadFailure("the map configuration", config.error) : null}
       {/*
        * Nothing while the library is on its way: the map with no traces on it is
        * the loading state, and a panel saying so would cover the ground it is
        * waiting to draw.
        */}
       {routes.isSuccess && library.length === 0 ? (
-        <StatusMessage
-          title="No routes yet."
-          detail="Routes appear here after the first successful read of the library."
-        />
+        <Alert role="status">
+          <AlertTitle>No routes yet.</AlertTitle>
+          <AlertDescription>
+            Routes appear here after the first successful read of the library.
+          </AlertDescription>
+        </Alert>
       ) : null}
       {/*
        * An address naming a route this library does not have. It is the one
@@ -582,18 +600,21 @@ export function RoutesPage({ themeChoice }: RoutesPageProps) {
        * happened instead of silently showing the library.
        */}
       {routes.isSuccess && library.length > 0 && openKey !== null && openRoute === null ? (
-        <StatusMessage
-          tone="error"
-          title="No route at that address."
-          detail="It may have been removed from the library since the link was made."
-        />
+        <Alert variant="destructive">
+          <AlertTitle>No route at that address.</AlertTitle>
+          <AlertDescription>
+            It may have been removed from the library since the link was made.
+          </AlertDescription>
+        </Alert>
       ) : null}
       {openFailed ? (
-        <StatusMessage
-          tone="error"
-          title="Could not load that route's geometry."
-          detail="The library still lists it, so this is worth retrying; search below for another route in the meantime."
-        />
+        <Alert variant="destructive">
+          <AlertTitle>Could not load that route's geometry.</AlertTitle>
+          <AlertDescription>
+            The library still lists it, so this is worth retrying; search below for another route in
+            the meantime.
+          </AlertDescription>
+        </Alert>
       ) : null}
       {shownRoute ? (
         <RoutePanel

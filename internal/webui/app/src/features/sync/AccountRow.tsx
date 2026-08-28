@@ -2,7 +2,6 @@ import type { TargetStatus } from "../../api/types";
 import { Button } from "../../components/Button";
 import {
   AlertDialog,
-  AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
@@ -182,8 +181,14 @@ export function AccountRow({ target, reconciling, onReconcile, clear }: AccountR
                 />
               </label>
               <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction
+                {/*
+                 * The application's own button, handed to the primitive rather
+                 * than reached for inside it: `ui/alert-dialog` stays the
+                 * vendored file the registry wrote, and this file decides what
+                 * its footer is made of.
+                 */}
+                <AlertDialogCancel render={<Button variant="standard" />}>Cancel</AlertDialogCancel>
+                <Button
                   variant="danger"
                   disabled={clear.confirmation !== target.id || clear.pending}
                   onClick={clear.onConfirm}
@@ -191,7 +196,7 @@ export function AccountRow({ target, reconciling, onReconcile, clear }: AccountR
                 >
                   {clear.pending ? <Spinner aria-label="Deleting" /> : null}
                   Delete them
-                </AlertDialogAction>
+                </Button>
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>

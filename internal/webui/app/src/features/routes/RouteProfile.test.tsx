@@ -190,7 +190,11 @@ describe("RouteProfile", () => {
     const fold = screen.getByRole("button", { name: "Hide the profile" });
 
     expect(fold).toHaveAttribute("aria-expanded", "true");
-    expect(fold).toHaveAttribute("aria-controls", "elevation-plot");
+    // The primitive names the panel it opens; what this is about is that the
+    // control points at something holding the plot, not at a particular id.
+    expect(document.getElementById(fold.getAttribute("aria-controls") ?? "")).toContainElement(
+      document.querySelector("#elevation-plot"),
+    );
 
     await userEvent.click(fold);
 
