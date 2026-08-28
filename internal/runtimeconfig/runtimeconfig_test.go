@@ -420,6 +420,34 @@ func TestSetSecretsReplacesOnlyWhatItWasGiven(t *testing.T) {
 	assert.False(t, current.SecretIsSet(SecretWahooClientSecret), "one that was never stored stays unset")
 }
 
+// The first credential a deployment stores arrives when there are none, which
+// is the state a new database is in.
+func TestSetSecretsStoresTheFirstCredentialAServiceIsGiven(t *testing.T) {
+	current, err := Load(t.Context(), &stubStore{values: validValues()})
+	require.NoError(t, err)
+
+	require.NoError(t, current.SetSecrets(t.Context(), map[SecretName]Secret{
+		SecretWahooClientSecret: NewSecret([]byte("opensesame")),
+	}))
+
+	assert.True(t, current.SecretIsSet(SecretWahooClientSecret))
+}
+
+// Every save of the settings page sends only the credentials that were typed,
+// so a save that typed none must not move the generation everything holding
+// something built from these settings watches.
+func TestSetSecretsWritesNothingWhenNoCredentialWasSubmitted(t *testing.T) {
+	store := &stubStore{values: validValues()}
+	current, err := Load(t.Context(), store)
+	require.NoError(t, err)
+	generation := current.Generation()
+
+	require.NoError(t, current.SetSecrets(t.Context(), nil))
+
+	assert.Zero(t, store.writes, "writes")
+	assert.Equal(t, generation, current.Generation(), "generation")
+}
+
 func TestSetSecretsRefusesACredentialNothingReads(t *testing.T) {
 	store := &stubStore{values: validValues()}
 	current, err := Load(t.Context(), store)

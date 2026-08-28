@@ -249,6 +249,13 @@ func (c *Current) SecretIsSet(name SecretName) bool {
 // it was, which is what lets a settings page offer a replacement without ever
 // having been told the current value.
 func (c *Current) SetSecrets(ctx context.Context, secrets map[SecretName]Secret) error {
+	// An edit that replaced no credential is not a write. The settings page sends
+	// only the credentials that were typed, so every other save would otherwise
+	// open a transaction and move the generation that tells everything holding
+	// something built from these settings to look again.
+	if len(secrets) == 0 {
+		return nil
+	}
 	for name := range secrets {
 		if !slices.Contains(SecretNames(), name) {
 			return fmt.Errorf("unknown secret %q", name)
@@ -258,7 +265,9 @@ func (c *Current) SetSecrets(ctx context.Context, secrets map[SecretName]Secret)
 		return fmt.Errorf("storing runtime secrets: %w", err)
 	}
 
-	replaced := maps.Clone(*c.secrets.Load())
+	stored := *c.secrets.Load()
+	replaced := make(map[SecretName]Secret, len(stored)+len(secrets))
+	maps.Copy(replaced, stored)
 	for name, secret := range secrets {
 		if secret.IsSet() {
 			replaced[name] = secret
