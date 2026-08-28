@@ -326,13 +326,13 @@ func (v Values) clone() Values {
 func (c *Current) Missing() []string {
 	values := c.Values()
 	missing := make([]string, 0)
-	for name, value := range map[string]string{
-		"wahoo.api_base_url":   values.Wahoo.APIBaseURL,
-		"wahoo.client_id":      values.Wahoo.ClientID,
-		"wahoo.oauth_base_url": values.Wahoo.OAuthBaseURL,
+	for _, setting := range []struct{ name, value string }{
+		{"wahoo.api_base_url", values.Wahoo.APIBaseURL},
+		{"wahoo.oauth_base_url", values.Wahoo.OAuthBaseURL},
+		{"wahoo.client_id", values.Wahoo.ClientID},
 	} {
-		if value == "" {
-			missing = append(missing, name)
+		if setting.value == "" {
+			missing = append(missing, setting.name)
 		}
 	}
 	if !c.Secret(SecretWahooClientSecret).IsSet() {
@@ -359,7 +359,6 @@ func (c *Current) Missing() []string {
 			}
 		}
 	}
-	slices.Sort(missing)
 
 	return missing
 }

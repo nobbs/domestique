@@ -505,15 +505,17 @@ func TestMissingNamesEverySettingARunNeeds(t *testing.T) {
 	current, err := Load(t.Context(), &stubStore{values: validValues()})
 	require.NoError(t, err)
 
+	// In the order the settings page offers them, which is the order the list is
+	// read back to the operator in.
 	assert.Equal(t, []string{
-		"notifications.pushover.application_token",
-		"notifications.pushover.user_key",
-		"sources",
 		"wahoo.api_base_url",
+		"wahoo.oauth_base_url",
 		"wahoo.client_id",
 		"wahoo.client_secret",
-		"wahoo.oauth_base_url",
 		"wahoo.targets",
+		"sources",
+		"notifications.pushover.application_token",
+		"notifications.pushover.user_key",
 	}, current.Missing())
 }
 
