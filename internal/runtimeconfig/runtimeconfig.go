@@ -319,10 +319,10 @@ func (v Values) clone() Values {
 	return v
 }
 
-// Missing names every setting the service needs before it can do anything, in
-// the order a settings page offers them. An empty result is a service that is
-// configured; anything else is one that starts, serves its settings page, and
-// runs nothing until the list is empty.
+// Missing names every setting still to be entered, in the order a settings page
+// offers them. Everything a run needs is here, and so are the Pushover
+// credentials while notifications are on, which no run needs but every
+// notification does. An empty result is a service that is configured.
 func (c *Current) Missing() []string {
 	values := c.Values()
 	missing := make([]string, 0)

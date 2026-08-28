@@ -284,7 +284,7 @@ function SettingsForm({ settings }: { settings: Settings }) {
           className="border-[var(--rule)] bg-[var(--panel)] p-4"
           aria-labelledby={`${id}-missing`}
         >
-          <AlertTitle id={`${id}-missing`}>Nothing will run yet</AlertTitle>
+          <AlertTitle id={`${id}-missing`}>Not finished configuring</AlertTitle>
           <AlertDescription>These are still needed: {values.missing.join(", ")}.</AlertDescription>
         </Alert>
       ) : null}

@@ -390,9 +390,9 @@ The read-only JSON surface is deliberately small:
 
   It carries **no credential value**. Instead it reports, per stored credential,
   whether one is set at all, so the page can offer to replace one it was never
-  told; and it names the settings a run still needs before it can do anything,
-  so a service nobody has finished configuring says so rather than being quietly
-  idle. It carries no static configuration — [the configuration
+  told; and it names what is still to be entered — everything a run needs, and
+  the Pushover credentials while notifications are on — so a service nobody has
+  finished configuring says so rather than being quietly idle. It carries no static configuration — [the configuration
   specification](configuration.md#runtime-settings) states which settings live
   here and which stay in the file.
 - `GET /v1/weather` returns an hourly forecast for up to 48 repeated `point`

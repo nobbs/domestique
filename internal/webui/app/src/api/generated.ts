@@ -367,7 +367,7 @@ export interface Settings {
   rideModel: RideModelSettings;
   /** Whether each credential is stored. This is the whole of what any observable surface is told about one: never the value, only that there is one to replace. */
   secretsSet: SettingsSecretsSet;
-  /** The settings still needed before anything will run, in the order the page offers them. Empty is a configured service. */
+  /** The settings still to be entered, in the order the page offers them. Everything a run needs is here, and so are the Pushover credentials while notifications are on, which no run needs but every notification does. Empty is a configured service. */
   missing: string[];
 }
 
