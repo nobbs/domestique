@@ -3,10 +3,15 @@
  *
  * It is a thin naming layer over `ui/button`: the shadcn primitive owns the
  * shape, the focus treatment and the icon handling, and this file decides
- * which of its many variants and sizes this application actually uses. Nothing
- * outside `components/ui` imports the primitive directly — a single vocabulary
- * is the whole point, and the last time there were two, half the application
- * was 28 pixels tall and the other half 32.
+ * which of its many variants and sizes this application actually uses.
+ *
+ * This is the only file allowed to import `ui/button`, and `biome.json`
+ * enforces it — a single vocabulary is the whole point, and the last time there
+ * were two, half the application was 28 pixels tall and the other half 32. It
+ * is also the only primitive treated this way. Every other one — `field`,
+ * `popover`, `card`, `alert` — is imported wherever it is used, because none of
+ * them was renamed and a wrapper around an unrenamed primitive is just a second
+ * name for it.
  *
  * Text, a glyph, or both: the label is the children and the glyph is `icon`.
  * Splitting them is what lets this decide the shape — a button with no label is

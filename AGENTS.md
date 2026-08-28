@@ -180,6 +180,31 @@ logic. Everything else is an `internal/` package with one responsibility.
 Do not add a `pkg/`, `internal/common`, `interfaces`, `models`, or generic
 repository package. Add a package only when it owns a distinct responsibility.
 
+## Browser UI component layers
+
+`internal/webui/app/src/components/ui` is shadcn registry output for the
+`base-nova` style, on Base UI. **Never edit a file in it.** Needing different
+behaviour is not a reason to: compose above the primitive, or hand it what you
+want through its `render` prop. A vendored file that imports application code
+inverts the dependency and conflicts with every later `shadcn add`.
+
+Application code imports primitives directly — `field`, `popover`, `card`,
+`alert` and the rest are used where they are needed, with no wrapper. A wrapper
+around a primitive whose vocabulary was not renamed is only a second name for
+it.
+
+`ui/button` is the one exception. Only `components/Button.tsx` may import it,
+because that file renames the variants (`panel` and `warning` have no primitive
+equivalent) and a second button vocabulary has cost this UI before. Biome's
+`noRestrictedImports` enforces this; the exemption list in `biome.json` is the
+whole of it.
+
+Before hand-rolling a control, check whether the registry ships one — several
+here were built by hand beside a component that already did the job. The
+opposite also holds: the map and chart layer (`components/map`,
+`components/route`) owes shadcn nothing, and a MapLibre layer or an SVG chart
+should not be forced through a primitive that does not fit it.
+
 ## Comments
 
 Comment what the code cannot say: a constraint that is not visible locally, a
