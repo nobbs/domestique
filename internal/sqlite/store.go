@@ -2740,7 +2740,7 @@ func schemaMigrations() [][]string {
 				success_policy                   TEXT    NOT NULL CHECK (success_policy IN ('every', 'quiet', 'digest')),
 				digest_interval_seconds          INTEGER NOT NULL CHECK (digest_interval_seconds > 0),
 				pushover_base_url                TEXT    NOT NULL,
-				surface_rebuild_interval_seconds INTEGER NOT NULL CHECK (surface_rebuild_interval_seconds >= 0),
+				surface_rebuild_interval_seconds INTEGER NOT NULL CHECK (surface_rebuild_interval_seconds > 0),
 				updated_at_unix                  INTEGER NOT NULL
 			)`,
 			`INSERT INTO runtime_settings (
