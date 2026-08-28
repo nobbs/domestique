@@ -108,13 +108,13 @@ const CATEGORY_GUIDANCE: Record<SyncFailureCategory, CategoryGuidance> = {
   },
   course: {
     kind: "failed",
-    what: "a stage could not be encoded as a course",
+    what: "a route could not be encoded as a course",
     remediation:
-      "The stage was not written and the rest of the run continued. Read the library again once the stage has been corrected at the source.",
+      "The route was not written and the rest of the run continued. Read the library again once the route has been corrected at the source.",
   },
   empty_source: {
     kind: "blocked",
-    what: "the library came back empty after previously holding stages",
+    what: "the library came back empty after previously holding routes",
     remediation:
       "Nothing was deleted. If the library really is meant to be empty, set the empty-source deletion acknowledgement deliberately and run this half again; if it is not, treat this as the source being wrong and leave the gate closed.",
   },

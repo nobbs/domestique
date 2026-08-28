@@ -24,7 +24,7 @@ const DEMO_TITLES = [
 /** The demo's loop, which the map is asked to fly to. */
 const LOOP = {
   provider: "veloplanner",
-  routeId: 4102,
+  sourceRouteId: 4102,
   stageOrder: 1,
   title: "Synthetic Kaiserstuhl Loop",
 };
@@ -177,7 +177,7 @@ test("the card is the way into a route, and the route takes the same column", as
   // The route is a panel over the same map, not a page of its own — but it is in
   // the address, so it is still a view that can be sent to someone else.
   await expect(page).toHaveURL(
-    new RegExp(`/\\?route=${LOOP.provider}%2F${LOOP.routeId}%2F${LOOP.stageOrder}$`),
+    new RegExp(`/\\?route=${LOOP.provider}%2F${LOOP.sourceRouteId}%2F${LOOP.stageOrder}$`),
   );
   await expect(page.getByRole("region", { name: LOOP.title })).toBeVisible();
   await expect(page.getByRole("searchbox", { name: "Search the route library" })).toBeHidden();
@@ -188,29 +188,29 @@ test("the card is the way into a route, and the route takes the same column", as
 // This is the link the service itself hands out, so it is the one that has to
 // land before any of the older spellings below do.
 test("a link to the route page lands on the route", async ({ offlinePage: page }) => {
-  await page.goto(`/routes/${LOOP.provider}/${LOOP.routeId}/${LOOP.stageOrder}`);
+  await page.goto(`/routes/${LOOP.provider}/${LOOP.sourceRouteId}/${LOOP.stageOrder}`);
 
   await expect(page.getByRole("region", { name: LOOP.title })).toBeVisible();
   await expect(page).toHaveURL(
-    new RegExp(`/\\?route=${LOOP.provider}%2F${LOOP.routeId}%2F${LOOP.stageOrder}$`),
+    new RegExp(`/\\?route=${LOOP.provider}%2F${LOOP.sourceRouteId}%2F${LOOP.stageOrder}$`),
   );
 });
 
 // The address routes were linked by before they became a panel. Old links and
 // bookmarks have to land on the route rather than on the library.
 test("a link to the old route page lands on the route", async ({ offlinePage: page }) => {
-  await page.goto(`/routes/${LOOP.routeId}/${LOOP.stageOrder}`);
+  await page.goto(`/routes/${LOOP.sourceRouteId}/${LOOP.stageOrder}`);
 
   await expect(page.getByRole("region", { name: LOOP.title })).toBeVisible();
   await expect(page).toHaveURL(
-    new RegExp(`/\\?route=${LOOP.provider}%2F${LOOP.routeId}%2F${LOOP.stageOrder}$`),
+    new RegExp(`/\\?route=${LOOP.provider}%2F${LOOP.sourceRouteId}%2F${LOOP.stageOrder}$`),
   );
 });
 
 // The query form that address redirects into, as a link of its own — the shape
 // a bookmark actually holds, in the two-part spelling it held before providers.
 test("a bookmarked two-part address lands on the route", async ({ offlinePage: page }) => {
-  await page.goto(`/?route=${LOOP.routeId}%2F${LOOP.stageOrder}`);
+  await page.goto(`/?route=${LOOP.sourceRouteId}%2F${LOOP.stageOrder}`);
 
   await expect(page.getByRole("region", { name: LOOP.title })).toBeVisible();
 });

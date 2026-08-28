@@ -25,7 +25,7 @@ import { providerLabel } from "./provider";
  * library to one source.
  */
 function haystack(route: Route): string {
-  return `${route.title} ${route.routeName} ${route.stageName} ${providerLabel(route.provider)}`;
+  return `${route.title} ${route.sourceRouteName} ${route.routeName} ${providerLabel(route.provider)}`;
 }
 
 /**
@@ -77,7 +77,7 @@ export function matchingRoutes(routes: Route[], query: string): Route[] {
     .sort(
       (left, right) =>
         left.title.localeCompare(right.title) ||
-        left.routeId - right.routeId ||
+        left.sourceRouteId - right.sourceRouteId ||
         left.stageOrder - right.stageOrder,
     );
 }

@@ -308,10 +308,10 @@ export async function openSearch(page: Page): Promise<Locator> {
 export async function openRoute(
   page: Page,
   provider: string,
-  routeId: number,
+  sourceRouteId: number,
   stageOrder: number,
 ): Promise<void> {
-  await page.goto(`/?route=${provider}%2F${routeId}%2F${stageOrder}`);
+  await page.goto(`/?route=${provider}%2F${sourceRouteId}%2F${stageOrder}`);
   await openWorkspace(page);
   await expect(page.getByRole("button", { name: /^Search \d+ routes?$/ })).toBeVisible();
   await settleMap(page);

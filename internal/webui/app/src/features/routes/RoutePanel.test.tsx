@@ -7,11 +7,11 @@ import { RoutePanel, type RoutePanelProps } from "./RoutePanel";
 function route(overrides: Partial<Route> = {}): Route {
   return {
     provider: "veloplanner",
-    routeId: 12,
+    sourceRouteId: 12,
     stageOrder: 2,
     title: "Alpine loop — Descent",
-    routeName: "Alpine loop",
-    stageName: "Descent",
+    sourceRouteName: "Alpine loop",
+    routeName: "Descent",
     sourceRevision: "2026-08-17",
     contentHash: "hash",
     distanceMetres: 42_500,
@@ -78,17 +78,17 @@ describe("RoutePanel", () => {
 
   /*
    * The acceptance criterion this exists to prove: selecting a stretch of the
-   * profile swaps the whole-stage figure for the stretch's own, and clearing
-   * the selection — an undefined override — restores the whole-stage figure.
+   * profile swaps the whole-route figure for the stretch's own, and clearing
+   * the selection — an undefined override — restores the whole-route figure.
    */
-  it("shows the selection's moving time in place of the whole-stage figure", () => {
+  it("shows the selection's moving time in place of the whole-route figure", () => {
     renderPanel({ route: route({ movingSeconds: 6420 }), movingSecondsOverride: 300 });
 
     expect(screen.getByText("5 min")).toBeInTheDocument();
     expect(screen.queryByText("1 h 45 min")).toBeNull();
   });
 
-  it("restores the whole-stage figure once the override is cleared", () => {
+  it("restores the whole-route figure once the override is cleared", () => {
     const { rerender } = renderPanel({
       route: route({ movingSeconds: 6420 }),
       movingSecondsOverride: 300,

@@ -504,9 +504,18 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("PUT /v1/sync/schedule", h.SetSyncSchedule)
 	h.mux.HandleFunc("GET /v1/sync/runs", h.GetSyncRuns)
 	h.mux.HandleFunc("GET /v1/routes", h.GetRoutes)
-	h.mux.HandleFunc("GET /v1/providers/{provider}/routes/{routeId}/stages/{stage}", h.GetRoute)
-	h.mux.HandleFunc("GET /v1/providers/{provider}/routes/{routeId}/stages/{stage}/geometry", h.GetRouteGeometry)
-	h.mux.HandleFunc("POST /v1/providers/{provider}/routes/{routeId}/stages/{stage}/reprocess", h.ReprocessRoute)
+	h.mux.HandleFunc("GET /v1/providers/{provider}/sourceRoutes/{sourceRouteId}/routes/{stageOrder}", h.GetRoute)
+	h.mux.HandleFunc(
+		"GET /v1/providers/{provider}/sourceRoutes/{sourceRouteId}/routes/{stageOrder}/geometry",
+		h.GetRouteGeometry)
+	h.mux.HandleFunc(
+		"POST /v1/providers/{provider}/sourceRoutes/{sourceRouteId}/routes/{stageOrder}/reprocess",
+		h.ReprocessRoute)
+	h.mux.HandleFunc("GET /v1/providers/{provider}/routes/{routeId}/stages/{stage}", h.RedirectStageRoute)
+	h.mux.HandleFunc(
+		"GET /v1/providers/{provider}/routes/{routeId}/stages/{stage}/geometry", h.RedirectStageGeometry)
+	h.mux.HandleFunc(
+		"POST /v1/providers/{provider}/routes/{routeId}/stages/{stage}/reprocess", h.RedirectStageReprocess)
 	h.mux.HandleFunc("GET /v1/routes/{routeId}/stages/{stage}", h.RedirectLegacyRoute)
 	h.mux.HandleFunc("GET /v1/routes/{routeId}/stages/{stage}/geometry", h.RedirectLegacyGeometry)
 	h.mux.HandleFunc("POST /v1/routes/{routeId}/stages/{stage}/reprocess", h.RedirectLegacyReprocess)

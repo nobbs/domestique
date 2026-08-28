@@ -1,7 +1,7 @@
 /**
- * Which stage revisions this reader has already looked at, remembered locally.
+ * Which route revisions this reader has already looked at, remembered locally.
  *
- * A stage is "new" until the reader opens it once, and "updated" again
+ * A route is "new" until the reader opens it once, and "updated" again
  * whenever its safe source revision moves on from the one they last saw — the
  * same revision the service already uses to decide a target needs rewriting.
  * This never reaches the service: it exists only to tell a returning reader
@@ -16,47 +16,47 @@ import type { Route } from "../api/types";
 import { routeKey } from "../api/types";
 
 /** Namespaced the same way the basemap choice is. */
-const STORAGE_KEY = "domestique.seen-stages";
+const STORAGE_KEY = "domestique.seen-routes";
 
-export type StageChange = "new" | "updated" | null;
+export type RouteChange = "new" | "updated" | null;
 
 type SeenRevisions = Record<string, string>;
 
-type Stage = Pick<Route, "provider" | "routeId" | "stageOrder" | "sourceRevision">;
+type Seen = Pick<Route, "provider" | "sourceRouteId" | "stageOrder" | "sourceRevision">;
 
 /**
  * What a reader has already seen, and the one way to update it.
  *
- * markSeen is the sole write, and is called from exactly the moment a stage's
+ * markSeen is the sole write, and is called from exactly the moment a route's
  * own panel is shown — never from rendering a card in the list — so looking at
- * the library is never itself the trigger, only opening a stage is.
+ * the library is never itself the trigger, only opening a route is.
  */
-export function useSeenStages(): {
-  changeOf(stage: Stage): StageChange;
-  markSeen(stage: Stage): void;
+export function useSeenRoutes(): {
+  changeOf(route: Seen): RouteChange;
+  markSeen(route: Seen): void;
 } {
   const [seen, setSeen] = useState<SeenRevisions>(readSeen);
 
   const changeOf = useCallback(
-    (stage: Stage): StageChange => {
-      const key = routeKey(stage);
+    (route: Seen): RouteChange => {
+      const key = routeKey(route);
       const last = seen[key];
       if (last === undefined) {
         return "new";
       }
 
-      return last === stage.sourceRevision ? null : "updated";
+      return last === route.sourceRevision ? null : "updated";
     },
     [seen],
   );
 
-  const markSeen = useCallback((stage: Stage) => {
-    const key = routeKey(stage);
+  const markSeen = useCallback((route: Seen) => {
+    const key = routeKey(route);
     setSeen((current) => {
-      if (current[key] === stage.sourceRevision) {
+      if (current[key] === route.sourceRevision) {
         return current;
       }
-      const next = { ...current, [key]: stage.sourceRevision };
+      const next = { ...current, [key]: route.sourceRevision };
       writeSeen(next);
 
       return next;

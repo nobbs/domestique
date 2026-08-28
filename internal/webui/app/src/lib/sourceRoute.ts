@@ -1,10 +1,10 @@
 /**
- * The way back from a stored stage to the route it was made from.
+ * The way back from a stored route to the source route it was made from.
  *
- * Domestique shows a stage read-only and writes nothing back, so the route in
+ * Domestique shows a route read-only and writes nothing back, so the source route in
  * the provider's own web application is where an operator goes to change
  * anything. Until now getting there meant remembering the route's name and
- * finding it by hand, even though the stage has carried the provider's own
+ * finding it by hand, even though the route has carried the provider's own
  * immutable route identifier all along.
  *
  * The link is built from the identifier and the configured base URL, never
@@ -55,7 +55,7 @@ export interface SourceRoute {
 }
 
 /**
- * The source route link for one stage, or null when there is none to give.
+ * The source route link for one route, or null when there is none to give.
  *
  * Null rather than a best effort, in every case where the answer would be a
  * guess: an unconfigured base URL, one that is not an absolute HTTPS URL, or an
@@ -74,10 +74,10 @@ export interface SourceRoute {
 export function sourceRoute(
   provider: string,
   baseUrl: string | undefined,
-  routeId: number,
+  sourceRouteId: number,
 ): SourceRoute | null {
   const path = SOURCE_ROUTE_PATHS[provider];
-  if (!path || !baseUrl || !Number.isInteger(routeId) || routeId <= 0) {
+  if (!path || !baseUrl || !Number.isInteger(sourceRouteId) || sourceRouteId <= 0) {
     return null;
   }
   let base: URL;
@@ -93,7 +93,7 @@ export function sourceRoute(
     return null;
   }
   const url = new URL(base.origin);
-  url.pathname = `${base.pathname.replace(/\/+$/, "")}/${path}/${routeId}`;
+  url.pathname = `${base.pathname.replace(/\/+$/, "")}/${path}/${sourceRouteId}`;
 
   return {
     href: url.toString(),

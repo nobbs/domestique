@@ -28,11 +28,11 @@ export interface SourceRouteLinkProps {
   /** That provider's web application, as configured. Undefined offers no link. */
   baseUrl: string | undefined;
   /** The provider's own identifier for the route, as stored with the stage. */
-  routeId: number;
+  sourceRouteId: number;
 }
 
-export function SourceRouteLink({ provider, baseUrl, routeId }: SourceRouteLinkProps) {
-  const source = sourceRoute(provider, baseUrl, routeId);
+export function SourceRouteLink({ provider, baseUrl, sourceRouteId }: SourceRouteLinkProps) {
+  const source = sourceRoute(provider, baseUrl, sourceRouteId);
   if (!source) {
     return null;
   }
@@ -46,7 +46,7 @@ export function SourceRouteLink({ provider, baseUrl, routeId }: SourceRouteLinkP
       // left to a title a keyboard never sees. The route number is in it because
       // it is what the destination is addressed by, and the host because a
       // reader deserves to know a link leaves before they follow it.
-      aria-label={`Open source route ${routeId} on ${source.host} in a new tab`}
+      aria-label={`Open source route ${sourceRouteId} on ${source.host} in a new tab`}
     >
       {/*
        * The provider names itself. "Source route" described the link's job,

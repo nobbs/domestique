@@ -4,8 +4,8 @@
  * A route is a panel over the library rather than a page of its own, so every
  * path that names one is answered by a redirect into the query the library
  * reads. The address each path lands on is the thing worth asserting: it is what
- * a bookmark holds, and both spellings of it have to keep naming the same stage
- * now that a stage's identity carries its provider.
+ * a bookmark holds, and both spellings of it have to keep naming the same route
+ * now that a route's identity carries its provider.
  */
 
 import { render, screen } from "@testing-library/react";
@@ -77,7 +77,7 @@ describe("the client routes", () => {
   });
 
   // The spelling a link had before providers existed. Only VeloPlanner ever
-  // handed one out, so it names that provider and lands on the same stage.
+  // handed one out, so it names that provider and lands on the same route.
   it("answers the two-segment path with the provider it always meant", () => {
     open("/routes/12/1");
 

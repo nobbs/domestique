@@ -19,8 +19,8 @@ import {
   type SyncRunPage,
   type SyncSchedule,
   type SyncStatus,
+  type TargetRoutes,
   type TargetRun,
-  type TargetStages,
   type TargetStatus,
   type TargetStatusConvergence,
   type WahooRateLimit,
@@ -44,8 +44,8 @@ export type {
   SyncRunPage,
   SyncSchedule,
   SyncStatus,
+  TargetRoutes,
   TargetRun,
-  TargetStages,
   TargetStatus,
   WahooRateLimit,
   WeatherForecast,
@@ -122,6 +122,6 @@ export function webUIConfig(config: GeneratedWebUIConfig): WebUIConfig {
 }
 
 /** A route's stable identity, used for routing and list keys. */
-export function routeKey(route: Pick<Route, "provider" | "routeId" | "stageOrder">): string {
-  return `${route.provider}/${route.routeId}/${route.stageOrder}`;
+export function routeKey(route: Pick<Route, "provider" | "sourceRouteId" | "stageOrder">): string {
+  return `${route.provider}/${route.sourceRouteId}/${route.stageOrder}`;
 }

@@ -16,13 +16,13 @@ import (
 // still applies, it just never repeats within one tour.
 const tourStageOrder = 1
 
-func convertTour(tour *tourDetail) (route.Stage, error) {
+func convertTour(tour *tourDetail) (route.Route, error) {
 	if tour.ID <= 0 {
-		return route.Stage{}, errors.New("komoot: tour has an invalid id")
+		return route.Route{}, errors.New("komoot: tour has an invalid id")
 	}
 	revision := strings.TrimSpace(tour.ChangedAt)
 	if revision == "" {
-		return route.Stage{}, fmt.Errorf("komoot: tour %d has no source revision", tour.ID)
+		return route.Route{}, fmt.Errorf("komoot: tour %d has no source revision", tour.ID)
 	}
 
 	routeName := strings.TrimSpace(tour.Name)
@@ -34,7 +34,7 @@ func convertTour(tour *tourDetail) (route.Stage, error) {
 	geometry := make([]route.Point, 0, len(items))
 	for index, item := range items {
 		if item.Latitude == nil || item.Longitude == nil || item.Elevation == nil {
-			return route.Stage{}, fmt.Errorf("komoot: tour %d point %d is missing a coordinate field", tour.ID, index)
+			return route.Route{}, fmt.Errorf("komoot: tour %d point %d is missing a coordinate field", tour.ID, index)
 		}
 		elevation := *item.Elevation
 		geometry = append(geometry, route.Point{
@@ -44,7 +44,7 @@ func convertTour(tour *tourDetail) (route.Stage, error) {
 		})
 	}
 
-	stage, err := route.NewStage(
+	stage, err := route.NewRoute(
 		route.ProviderKomoot,
 		tour.ID,
 		tourStageOrder,
@@ -55,15 +55,15 @@ func convertTour(tour *tourDetail) (route.Stage, error) {
 		"pending",
 	)
 	if err != nil {
-		return route.Stage{}, fmt.Errorf("komoot: tour %d: %w", tour.ID, err)
+		return route.Route{}, fmt.Errorf("komoot: tour %d: %w", tour.ID, err)
 	}
 
 	contentHash, err := stageHash(&stage)
 	if err != nil {
-		return route.Stage{}, fmt.Errorf("komoot: tour %d: calculating content hash: %w", tour.ID, err)
+		return route.Route{}, fmt.Errorf("komoot: tour %d: calculating content hash: %w", tour.ID, err)
 	}
 
-	stage, err = route.NewStage(
+	stage, err = route.NewRoute(
 		route.ProviderKomoot,
 		tour.ID,
 		tourStageOrder,
@@ -74,13 +74,13 @@ func convertTour(tour *tourDetail) (route.Stage, error) {
 		contentHash,
 	)
 	if err != nil {
-		return route.Stage{}, fmt.Errorf("komoot: tour %d: %w", tour.ID, err)
+		return route.Route{}, fmt.Errorf("komoot: tour %d: %w", tour.ID, err)
 	}
 
 	return stage, nil
 }
 
-func stageHash(stage *route.Stage) (string, error) {
+func stageHash(stage *route.Route) (string, error) {
 	geometry := stage.Geometry()
 	points := make([]contentHashPoint, 0, len(geometry))
 	for _, point := range geometry {
@@ -91,11 +91,11 @@ func stageHash(stage *route.Stage) (string, error) {
 		})
 	}
 	payload := contentHashPayload{
-		RouteID:    stage.Key().RouteID(),
-		StageOrder: stage.Key().StageOrder(),
-		Revision:   stage.Revision(),
-		Title:      stage.Title(),
-		Geometry:   points,
+		SourceRouteID: stage.Key().SourceRouteID(),
+		StageOrder:    stage.Key().StageOrder(),
+		Revision:      stage.Revision(),
+		Title:         stage.Title(),
+		Geometry:      points,
 	}
 	encoded, err := json.Marshal(payload)
 	if err != nil {
@@ -107,11 +107,11 @@ func stageHash(stage *route.Stage) (string, error) {
 }
 
 type contentHashPayload struct {
-	Revision   string             `json:"revision"`
-	Title      string             `json:"title"`
-	Geometry   []contentHashPoint `json:"geometry"`
-	RouteID    int64              `json:"routeId"`
-	StageOrder int                `json:"stageOrder"`
+	Revision      string             `json:"revision"`
+	Title         string             `json:"title"`
+	Geometry      []contentHashPoint `json:"geometry"`
+	SourceRouteID int64              `json:"routeId"`
+	StageOrder    int                `json:"stageOrder"`
 }
 
 type contentHashPoint struct {

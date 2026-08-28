@@ -37,7 +37,7 @@ function runTone(run: SyncRun): "good" | "hold" | "alert" {
  */
 function runCounts(run: SyncRun): string {
   if (run.phase === "source") {
-    return `${run.sourceStages} routes`;
+    return `${run.sourceRoutes} routes`;
   }
 
   return [

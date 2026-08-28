@@ -39,8 +39,8 @@ export interface RoutePanelProps {
   route: Route;
   /**
    * The moving time for the elevation-profile stretch currently on show, in
-   * place of the whole stage's. Undefined restores the whole-stage figure —
-   * clearing the selection, or a stage nothing has predicted, both read the
+   * place of the whole route's. Undefined restores the whole-route figure —
+   * clearing the selection, or a route nothing has predicted, both read the
    * same way here.
    */
   movingSecondsOverride?: number | undefined;
@@ -140,7 +140,7 @@ export function RoutePanel({
       <div>
         <h2 className="text-xl font-semibold tracking-tight">{route.title}</h2>
         {/*
-         * Which source this stage came from. A quiet label rather than a logo:
+         * Which source this route came from. A quiet label rather than a logo:
          * this is a private tool with two sources, not a marketplace, and real
          * text is what makes it distinguishable by accessible name alone.
          */}
@@ -210,11 +210,11 @@ export function RoutePanel({
         <SourceRouteLink
           provider={route.provider}
           baseUrl={sourceBaseUrls[route.provider]}
-          routeId={route.routeId}
+          sourceRouteId={route.sourceRouteId}
         />
         <ReprocessButton
           provider={route.provider}
-          routeId={route.routeId}
+          sourceRouteId={route.sourceRouteId}
           stageOrder={route.stageOrder}
         />
       </div>

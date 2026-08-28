@@ -13,10 +13,10 @@ import (
 	"github.com/nobbs/domestique/internal/surface"
 )
 
-func stageWithElevation(t *testing.T, contentHash string) route.Stage {
+func stageWithElevation(t *testing.T, contentHash string) route.Route {
 	t.Helper()
 	elevationA, elevationB := 100.0, 110.0
-	stage, err := route.NewStage(
+	stage, err := route.NewRoute(
 		route.ProviderVeloPlanner, 1, 1, "revision", "Route", "",
 		[]route.Point{
 			{Longitude: 8.4, Latitude: 49.0, Elevation: &elevationA},
@@ -24,19 +24,19 @@ func stageWithElevation(t *testing.T, contentHash string) route.Stage {
 		},
 		contentHash,
 	)
-	require.NoError(t, err, "route.NewStage()")
+	require.NoError(t, err, "route.NewRoute()")
 
 	return stage
 }
 
-func stageWithoutElevation(t *testing.T, contentHash string) route.Stage {
+func stageWithoutElevation(t *testing.T, contentHash string) route.Route {
 	t.Helper()
-	stage, err := route.NewStage(
+	stage, err := route.NewRoute(
 		route.ProviderVeloPlanner, 2, 1, "revision", "Route", "",
 		[]route.Point{{Longitude: 8.4, Latitude: 49.0}, {Longitude: 8.401, Latitude: 49.001}},
 		contentHash,
 	)
-	require.NoError(t, err, "route.NewStage()")
+	require.NoError(t, err, "route.NewRoute()")
 
 	return stage
 }
@@ -137,7 +137,7 @@ func TestPredictorPredictsAStageNotYetCached(t *testing.T) {
 	cache := newFakeDurationCache()
 	predictor := NewPredictor(&fakeSurfaceSource{}, cache, testCoefficients())
 
-	predicted, failed, err := predictor.Predict(t.Context(), []route.Stage{stage})
+	predicted, failed, err := predictor.Predict(t.Context(), []route.Route{stage})
 	require.NoError(t, err, "Predict()")
 	assert.Equal(t, 1, predicted, "predicted")
 	assert.Zero(t, failed, "failed")
@@ -158,7 +158,7 @@ func TestPredictorSkipsAStageAlreadyCurrent(t *testing.T) {
 	}
 	predictor := NewPredictor(&fakeSurfaceSource{}, cache, coefficients)
 
-	predicted, failed, err := predictor.Predict(t.Context(), []route.Stage{stage})
+	predicted, failed, err := predictor.Predict(t.Context(), []route.Route{stage})
 	require.NoError(t, err, "Predict()")
 	assert.Zero(t, predicted, "predicted")
 	assert.Zero(t, failed, "failed")
@@ -174,7 +174,7 @@ func TestPredictorRecomputesWhenGeometryChanges(t *testing.T) {
 	}
 	predictor := NewPredictor(&fakeSurfaceSource{}, cache, coefficients)
 
-	predicted, _, err := predictor.Predict(t.Context(), []route.Stage{stage})
+	predicted, _, err := predictor.Predict(t.Context(), []route.Route{stage})
 	require.NoError(t, err, "Predict()")
 	assert.Equal(t, 1, predicted, "a changed content hash should be recomputed")
 }
@@ -188,7 +188,7 @@ func TestPredictorRecomputesWhenCoefficientFingerprintChanges(t *testing.T) {
 	}
 	predictor := NewPredictor(&fakeSurfaceSource{}, cache, coefficients)
 
-	predicted, _, err := predictor.Predict(t.Context(), []route.Stage{stage})
+	predicted, _, err := predictor.Predict(t.Context(), []route.Route{stage})
 	require.NoError(t, err, "Predict()")
 	assert.Equal(t, 1, predicted, "a re-fitted coefficient file should be recomputed")
 }
@@ -205,7 +205,7 @@ func TestPredictorRecomputesWhenSurfaceClassificationChanges(t *testing.T) {
 	}}
 	predictor := NewPredictor(source, cache, coefficients)
 
-	predicted, _, err := predictor.Predict(t.Context(), []route.Stage{stage})
+	predicted, _, err := predictor.Predict(t.Context(), []route.Route{stage})
 	require.NoError(t, err, "Predict()")
 	assert.Equal(t, 1, predicted, "a new surface index generation should be recomputed")
 }
@@ -216,7 +216,7 @@ func TestPredictorFallsBackToAsphaltWhenNoSurfaceIsCached(t *testing.T) {
 	cache := newFakeDurationCache()
 	predictor := NewPredictor(&fakeSurfaceSource{}, cache, coefficients)
 
-	predicted, failed, err := predictor.Predict(t.Context(), []route.Stage{stage})
+	predicted, failed, err := predictor.Predict(t.Context(), []route.Route{stage})
 	require.NoError(t, err, "Predict()")
 	assert.Equal(t, 1, predicted, "predicted")
 	assert.Zero(t, failed, "failed")
@@ -247,7 +247,7 @@ func TestPredictorDoesNotLockInAnAsphaltFallbackWhenSurfaceRangesFailToRead(t *t
 	cache := newFakeDurationCache()
 	predictor := NewPredictor(source, cache, coefficients)
 
-	predicted, failed, err := predictor.Predict(t.Context(), []route.Stage{stage})
+	predicted, failed, err := predictor.Predict(t.Context(), []route.Route{stage})
 	require.NoError(t, err, "Predict()")
 	assert.Equal(t, 1, predicted, "predicted")
 	assert.Zero(t, failed, "failed")
@@ -261,7 +261,7 @@ func TestPredictorDoesNotLockInAnAsphaltFallbackWhenSurfaceRangesFailToRead(t *t
 	// generation must trigger a recompute rather than being skipped as current.
 	source.surfaceReadErr = nil
 	source.entries[stage.Key()] = surfaceEntry{contentHash: "hash-1", generation: "generation-1"}
-	predicted, _, err = predictor.Predict(t.Context(), []route.Stage{stage})
+	predicted, _, err = predictor.Predict(t.Context(), []route.Route{stage})
 	require.NoError(t, err, "second Predict()")
 	assert.Equal(t, 1, predicted, "a readable classification should trigger a recompute")
 }
@@ -277,7 +277,7 @@ func TestPredictorReadsCachedSurfaceClassification(t *testing.T) {
 	cache := newFakeDurationCache()
 	predictor := NewPredictor(source, cache, coefficients)
 
-	_, _, err = predictor.Predict(t.Context(), []route.Stage{stage})
+	_, _, err = predictor.Predict(t.Context(), []route.Route{stage})
 	require.NoError(t, err, "Predict()")
 
 	stored := cache.stored[stage.Key()]
@@ -293,7 +293,7 @@ func TestPredictorRecordsNoPredictionForAStageWithNoElevation(t *testing.T) {
 	cache := newFakeDurationCache()
 	predictor := NewPredictor(&fakeSurfaceSource{}, cache, testCoefficients())
 
-	predicted, failed, err := predictor.Predict(t.Context(), []route.Stage{stage})
+	predicted, failed, err := predictor.Predict(t.Context(), []route.Route{stage})
 	require.NoError(t, err, "Predict()")
 	assert.Equal(t, 1, predicted, "predicted")
 	assert.Zero(t, failed, "failed")
@@ -310,7 +310,7 @@ func TestPredictorReportsAnErrorWhenTheCacheIsUnavailable(t *testing.T) {
 	cache.hashErr = errors.New("state unavailable")
 	predictor := NewPredictor(&fakeSurfaceSource{}, cache, testCoefficients())
 
-	_, _, err := predictor.Predict(t.Context(), []route.Stage{stage})
+	_, _, err := predictor.Predict(t.Context(), []route.Route{stage})
 	require.Error(t, err, "Predict()")
 }
 
@@ -320,6 +320,6 @@ func TestPredictorStopsOnACancelledContext(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	_, _, err := predictor.Predict(ctx, []route.Stage{stage})
+	_, _, err := predictor.Predict(ctx, []route.Route{stage})
 	require.Error(t, err, "Predict() on a cancelled context")
 }

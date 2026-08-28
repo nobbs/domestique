@@ -1,16 +1,16 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Route } from "../api/types";
-import { useSeenStages } from "./seenStages";
+import { useSeenRoutes } from "./seenRoutes";
 
 function stage(overrides: Partial<Route> = {}): Route {
   return {
     provider: "veloplanner",
-    routeId: 12,
+    sourceRouteId: 12,
     stageOrder: 1,
     title: "Alpine loop",
-    routeName: "Alpine loop",
-    stageName: "Ascent",
+    sourceRouteName: "Alpine loop",
+    routeName: "Ascent",
     sourceRevision: "2026-08-17",
     contentHash: "hash",
     distanceMetres: 42_500,
@@ -41,17 +41,17 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("useSeenStages", () => {
+describe("useSeenRoutes", () => {
   it("calls a stage new before it has ever been marked seen", () => {
     stubStorage();
-    const { result } = renderHook(() => useSeenStages());
+    const { result } = renderHook(() => useSeenRoutes());
 
     expect(result.current.changeOf(stage())).toBe("new");
   });
 
   it("calls a marked stage unchanged once its revision has been seen", () => {
     stubStorage();
-    const { result } = renderHook(() => useSeenStages());
+    const { result } = renderHook(() => useSeenRoutes());
 
     act(() => {
       result.current.markSeen(stage());
@@ -64,7 +64,7 @@ describe("useSeenStages", () => {
   // so a stage the source has revised is the same signal this reads.
   it("calls a marked stage updated once its revision moves on", () => {
     stubStorage();
-    const { result } = renderHook(() => useSeenStages());
+    const { result } = renderHook(() => useSeenRoutes());
 
     act(() => {
       result.current.markSeen(stage({ sourceRevision: "2026-08-17" }));
@@ -75,18 +75,18 @@ describe("useSeenStages", () => {
 
   it("remembers a mark for the next visit", () => {
     stubStorage();
-    const { result } = renderHook(() => useSeenStages());
+    const { result } = renderHook(() => useSeenRoutes());
 
     act(() => {
       result.current.markSeen(stage());
     });
 
-    expect(renderHook(() => useSeenStages()).result.current.changeOf(stage())).toBeNull();
+    expect(renderHook(() => useSeenRoutes()).result.current.changeOf(stage())).toBeNull();
   });
 
   it("tells two stages apart by their full identity, not just a route id", () => {
     stubStorage();
-    const { result } = renderHook(() => useSeenStages());
+    const { result } = renderHook(() => useSeenRoutes());
 
     act(() => {
       result.current.markSeen(stage({ stageOrder: 1 }));
@@ -99,30 +99,30 @@ describe("useSeenStages", () => {
   // never wrote anything back — must read exactly as a first visit does.
   it("treats cleared storage as a first visit", () => {
     const entries = stubStorage();
-    const { result: first } = renderHook(() => useSeenStages());
+    const { result: first } = renderHook(() => useSeenRoutes());
     act(() => {
       first.current.markSeen(stage());
     });
     entries.clear();
 
-    const { result: second } = renderHook(() => useSeenStages());
+    const { result: second } = renderHook(() => useSeenRoutes());
     expect(second.current.changeOf(stage())).toBe("new");
   });
 
   it("ignores a corrupted stored value rather than throwing", () => {
     const entries = stubStorage();
-    entries.set("domestique.seen-stages", "not json");
+    entries.set("domestique.seen-routes", "not json");
 
-    const { result } = renderHook(() => useSeenStages());
+    const { result } = renderHook(() => useSeenRoutes());
 
     expect(result.current.changeOf(stage())).toBe("new");
   });
 
   it("ignores a stored value that parses but is not the shape this reads", () => {
     const entries = stubStorage();
-    entries.set("domestique.seen-stages", JSON.stringify({ "veloplanner/12/1": 42 }));
+    entries.set("domestique.seen-routes", JSON.stringify({ "veloplanner/12/1": 42 }));
 
-    const { result } = renderHook(() => useSeenStages());
+    const { result } = renderHook(() => useSeenRoutes());
 
     expect(result.current.changeOf(stage())).toBe("new");
   });
@@ -142,7 +142,7 @@ describe("useSeenStages", () => {
         throw new Error("denied");
       },
     });
-    const { result } = renderHook(() => useSeenStages());
+    const { result } = renderHook(() => useSeenRoutes());
     expect(result.current.changeOf(stage())).toBe("new");
 
     act(() => {

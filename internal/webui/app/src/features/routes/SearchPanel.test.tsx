@@ -10,11 +10,11 @@ import { SearchPanel, type SearchPanelProps } from "./SearchPanel";
 function route(overrides: Partial<Route> = {}): Route {
   return {
     provider: "veloplanner",
-    routeId: 12,
+    sourceRouteId: 12,
     stageOrder: 2,
     title: "Alpine loop — Descent",
-    routeName: "Alpine loop",
-    stageName: "Descent",
+    sourceRouteName: "Alpine loop",
+    routeName: "Descent",
     sourceRevision: "2026-08-17",
     contentHash: "hash",
     distanceMetres: 42_500,
@@ -226,7 +226,7 @@ describe("SearchPanel", () => {
   // Picking a route opens its card without turning the whole library into a
   // result list: selection names one answer, while typing asks for many.
   it("shows only the picked route without a search", () => {
-    const other = route({ routeId: 13, title: "Valley loop" });
+    const other = route({ sourceRouteId: 13, title: "Valley loop" });
     renderPanel({ pickedKey: routeKey(route()), shown: [route(), other] });
 
     expect(screen.getByRole("heading", { name: "Alpine loop — Descent" })).toBeInTheDocument();
@@ -244,8 +244,8 @@ describe("SearchPanel", () => {
   // has no time to give.
   it("leaves out a second line it has nothing to put on", () => {
     renderPanel({
-      shown: [route({ title: "Alpine loop", routeName: "Alpine loop" })],
-      pickedKey: routeKey(route({ title: "Alpine loop", routeName: "Alpine loop" })),
+      shown: [route({ title: "Alpine loop", sourceRouteName: "Alpine loop" })],
+      pickedKey: routeKey(route({ title: "Alpine loop", sourceRouteName: "Alpine loop" })),
       readAt: null,
       shapes: new Map(),
     });

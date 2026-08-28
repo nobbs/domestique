@@ -166,8 +166,8 @@ func TestHandlerGatesEveryNonHealthRoute(t *testing.T) {
 		"/v1/status",
 		"/v1/sync/runs",
 		"/v1/routes",
-		"/v1/providers/veloplanner/routes/1/stages/1",
-		"/v1/providers/veloplanner/routes/1/stages/1/geometry",
+		"/v1/providers/veloplanner/sourceRoutes/1/routes/1",
+		"/v1/providers/veloplanner/sourceRoutes/1/routes/1/geometry",
 		"/v1/webui/config",
 		"/v1/weather?point=50.11,8.68,2026-08-24T06:00:00Z",
 		"/oauth/wahoo/start/rider-a",
@@ -225,8 +225,8 @@ func TestBrowserUIRoutesAreRegistered(t *testing.T) {
 func TestHandlerServesStageGeometryAsGeoJSON(t *testing.T) {
 	state := &fakeState{
 		summaries: []route.Summary{{
-			Provider: route.ProviderVeloPlanner,
-			RouteID:  12, StageOrder: 1, RouteName: "Alpine loop", StageName: "Descent",
+			Provider:      route.ProviderVeloPlanner,
+			SourceRouteID: 12, StageOrder: 1, SourceRouteName: "Alpine loop", RouteName: "Descent",
 			SourceRevision: "revision", ContentHash: "hash", PointCount: 2, DistanceMetres: 1234.5,
 			Bounds: route.Bounds{MinLongitude: 8.4, MinLatitude: 49.0, MaxLongitude: 8.5, MaxLatitude: 49.2},
 		}},
@@ -235,7 +235,7 @@ func TestHandlerServesStageGeometryAsGeoJSON(t *testing.T) {
 	handler := newHandler(t, &fakeOAuth{}, state)
 
 	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/providers/veloplanner/routes/12/stages/1/geometry"))
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/providers/veloplanner/sourceRoutes/12/routes/1/geometry"))
 	require.Equal(t, http.StatusOK, response.Code, "geometry status")
 
 	var view geometryView
@@ -255,8 +255,8 @@ func TestHandlerServesStageGeometryAsGeoJSON(t *testing.T) {
 func TestHandlerServesCumulativeSecondsWithGeometry(t *testing.T) {
 	state := &fakeState{
 		summaries: []route.Summary{{
-			Provider: route.ProviderVeloPlanner,
-			RouteID:  12, StageOrder: 1, RouteName: "Alpine loop", StageName: "Descent",
+			Provider:      route.ProviderVeloPlanner,
+			SourceRouteID: 12, StageOrder: 1, SourceRouteName: "Alpine loop", RouteName: "Descent",
 			SourceRevision: "revision", ContentHash: "hash", PointCount: 2, DistanceMetres: 1234.5,
 			Bounds: route.Bounds{MinLongitude: 8.4, MinLatitude: 49.0, MaxLongitude: 8.5, MaxLatitude: 49.2},
 		}},
@@ -266,7 +266,7 @@ func TestHandlerServesCumulativeSecondsWithGeometry(t *testing.T) {
 	handler := newHandler(t, &fakeOAuth{}, state)
 
 	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/providers/veloplanner/routes/12/stages/1/geometry"))
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/providers/veloplanner/sourceRoutes/12/routes/1/geometry"))
 	require.Equal(t, http.StatusOK, response.Code, "geometry status")
 
 	var view geometryView
@@ -280,8 +280,8 @@ func TestHandlerServesCumulativeSecondsWithGeometry(t *testing.T) {
 func TestHandlerOmitsCumulativeSecondsWhenNothingHasPredictedThem(t *testing.T) {
 	state := &fakeState{
 		summaries: []route.Summary{{
-			Provider: route.ProviderVeloPlanner,
-			RouteID:  12, StageOrder: 1, RouteName: "Alpine loop", StageName: "Descent",
+			Provider:      route.ProviderVeloPlanner,
+			SourceRouteID: 12, StageOrder: 1, SourceRouteName: "Alpine loop", RouteName: "Descent",
 			SourceRevision: "revision", ContentHash: "hash", PointCount: 2, DistanceMetres: 1234.5,
 			Bounds: route.Bounds{MinLongitude: 8.4, MinLatitude: 49.0, MaxLongitude: 8.5, MaxLatitude: 49.2},
 		}},
@@ -290,7 +290,7 @@ func TestHandlerOmitsCumulativeSecondsWhenNothingHasPredictedThem(t *testing.T) 
 	handler := newHandler(t, &fakeOAuth{}, state)
 
 	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/providers/veloplanner/routes/12/stages/1/geometry"))
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/providers/veloplanner/sourceRoutes/12/routes/1/geometry"))
 	require.Equal(t, http.StatusOK, response.Code, "geometry status")
 	assert.NotContains(t, response.Body.String(), "cumulativeSeconds", "the geometry claimed a cumulative series nothing predicted")
 }
@@ -300,7 +300,7 @@ func TestHandlerServesTheStoredSurfaceWithGeometry(t *testing.T) {
 	handler := newHandler(t, &fakeOAuth{}, state)
 
 	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/providers/veloplanner/routes/12/stages/1/geometry"))
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/providers/veloplanner/sourceRoutes/12/routes/1/geometry"))
 	require.Equal(t, http.StatusOK, response.Code, "geometry status")
 
 	var view geometryView
@@ -321,7 +321,7 @@ func TestHandlerServesAnUnsurveyedSurfaceAsClassified(t *testing.T) {
 	handler := newHandler(t, &fakeOAuth{}, state)
 
 	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/providers/veloplanner/routes/12/stages/1/geometry"))
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/providers/veloplanner/sourceRoutes/12/routes/1/geometry"))
 	require.Equal(t, http.StatusOK, response.Code, "geometry status")
 
 	var view geometryView
@@ -340,7 +340,7 @@ func TestHandlerOmitsASurfaceMeasuredAgainstOtherGeometry(t *testing.T) {
 	handler := newHandler(t, &fakeOAuth{}, state)
 
 	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/providers/veloplanner/routes/12/stages/1/geometry"))
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/providers/veloplanner/sourceRoutes/12/routes/1/geometry"))
 	require.Equal(t, http.StatusOK, response.Code, "geometry status")
 	assert.NotContains(t, response.Body.String(), "surface", "the geometry carried a stale surface")
 }
@@ -351,7 +351,7 @@ func TestHandlerReportsUnreadableSurfaceStateAsUnavailable(t *testing.T) {
 	handler := newHandler(t, &fakeOAuth{}, state)
 
 	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/providers/veloplanner/routes/12/stages/1/geometry"))
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/providers/veloplanner/sourceRoutes/12/routes/1/geometry"))
 	assert.Equal(t, http.StatusServiceUnavailable, response.Code, "geometry status")
 }
 
@@ -360,8 +360,8 @@ func TestHandlerReportsUnreadableSurfaceStateAsUnavailable(t *testing.T) {
 func surfaceState() *fakeState {
 	return &fakeState{
 		summaries: []route.Summary{{
-			Provider: route.ProviderVeloPlanner,
-			RouteID:  12, StageOrder: 1, RouteName: "Alpine loop", StageName: "Descent",
+			Provider:      route.ProviderVeloPlanner,
+			SourceRouteID: 12, StageOrder: 1, SourceRouteName: "Alpine loop", RouteName: "Descent",
 			SourceRevision: "revision", ContentHash: "hash", PointCount: 2,
 			Bounds: route.Bounds{MinLongitude: 8.4, MinLatitude: 49.0, MaxLongitude: 8.5, MaxLatitude: 49.2},
 		}},
@@ -375,7 +375,7 @@ func surfaceState() *fakeState {
 func TestHandlerReportsMissingGeometryAsNotFound(t *testing.T) {
 	handler := newHandler(t, &fakeOAuth{}, &fakeState{})
 	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/providers/veloplanner/routes/99/stages/1/geometry"))
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/providers/veloplanner/sourceRoutes/99/routes/1/geometry"))
 	assert.Equal(t, http.StatusNotFound, response.Code, "geometry status")
 }
 
@@ -385,13 +385,13 @@ func TestHandlerReportsMissingGeometryAsNotFound(t *testing.T) {
 // naming one the handler has not special-cased.
 func TestHandlerServesAStageStoredUnderAnyProvider(t *testing.T) {
 	state := &fakeState{summaries: []route.Summary{{
-		Provider: route.ProviderKomoot,
-		RouteID:  7, StageOrder: 1, RouteName: "Trail", PointCount: 2,
+		Provider:      route.ProviderKomoot,
+		SourceRouteID: 7, StageOrder: 1, SourceRouteName: "Trail", PointCount: 2,
 	}}}
 	handler := newHandler(t, &fakeOAuth{}, state)
 
 	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/providers/komoot/routes/7/stages/1"))
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/providers/komoot/sourceRoutes/7/routes/1"))
 	assert.Equal(t, http.StatusOK, response.Code, "stage status")
 	assert.Contains(t, response.Body.String(), `"provider":"komoot"`, "the stage names its provider")
 }
@@ -403,11 +403,11 @@ func TestHandlerServesAStageStoredUnderAnyProvider(t *testing.T) {
 func TestHandlerRejectsMalformedStageIdentifiers(t *testing.T) {
 	handler := newTestHandler(t)
 	for path, want := range map[string]int{
-		"/v1/providers/veloplanner/routes/0/stages/1":           http.StatusBadRequest,
-		"/v1/providers/veloplanner/routes/-1/stages/1/geometry": http.StatusBadRequest,
-		"/v1/providers/veloplanner/routes/abc/stages/1":         http.StatusBadRequest,
-		"/v1/providers/veloplanner/routes/1/stages/0/geometry":  http.StatusBadRequest,
-		"/v1/providers/komoot/routes/1/stages/1":                http.StatusNotFound,
+		"/v1/providers/veloplanner/sourceRoutes/0/routes/1":           http.StatusBadRequest,
+		"/v1/providers/veloplanner/sourceRoutes/-1/routes/1/geometry": http.StatusBadRequest,
+		"/v1/providers/veloplanner/sourceRoutes/abc/routes/1":         http.StatusBadRequest,
+		"/v1/providers/veloplanner/sourceRoutes/1/routes/0/geometry":  http.StatusBadRequest,
+		"/v1/providers/komoot/sourceRoutes/1/routes/1":                http.StatusNotFound,
 	} {
 		t.Run(path, func(t *testing.T) {
 			response := httptest.NewRecorder()
@@ -420,7 +420,7 @@ func TestHandlerRejectsMalformedStageIdentifiers(t *testing.T) {
 
 func TestHandlerListsStagesWithoutGeometry(t *testing.T) {
 	state := &fakeState{summaries: []route.Summary{{
-		RouteID: 3, StageOrder: 1, RouteName: "Sunday", PointCount: 2, DistanceMetres: 900,
+		SourceRouteID: 3, StageOrder: 1, SourceRouteName: "Sunday", PointCount: 2, DistanceMetres: 900,
 	}}}
 	handler := newHandler(t, &fakeOAuth{}, state)
 
@@ -438,7 +438,7 @@ func TestHandlerListsStagesWithoutGeometry(t *testing.T) {
 func TestHandlerServesPredictedMovingTimeWhenPresent(t *testing.T) {
 	movingSeconds := 1234.5
 	state := &fakeState{summaries: []route.Summary{{
-		RouteID: 3, StageOrder: 1, RouteName: "Sunday", PointCount: 2, DistanceMetres: 900,
+		SourceRouteID: 3, StageOrder: 1, SourceRouteName: "Sunday", PointCount: 2, DistanceMetres: 900,
 		MovingSeconds: &movingSeconds,
 	}}}
 	handler := newHandler(t, &fakeOAuth{}, state)
@@ -451,7 +451,7 @@ func TestHandlerServesPredictedMovingTimeWhenPresent(t *testing.T) {
 
 func TestHandlerOmitsMovingTimeWhenNothingHasPredictedIt(t *testing.T) {
 	state := &fakeState{summaries: []route.Summary{{
-		RouteID: 3, StageOrder: 1, RouteName: "Sunday", PointCount: 2, DistanceMetres: 900,
+		SourceRouteID: 3, StageOrder: 1, SourceRouteName: "Sunday", PointCount: 2, DistanceMetres: 900,
 	}}}
 	handler := newHandler(t, &fakeOAuth{}, state)
 
@@ -467,7 +467,7 @@ func TestHandlerOmitsMovingTimeWhenNothingHasPredictedIt(t *testing.T) {
 func TestHandlerServesValidationAlongsideAPredictedStage(t *testing.T) {
 	movingSeconds := 1234.5
 	state := &fakeState{summaries: []route.Summary{{
-		RouteID: 3, StageOrder: 1, RouteName: "Sunday", PointCount: 2, DistanceMetres: 900,
+		SourceRouteID: 3, StageOrder: 1, SourceRouteName: "Sunday", PointCount: 2, DistanceMetres: 900,
 		MovingSeconds: &movingSeconds,
 	}}}
 	handler := newHandlerWithRideModelValidation(t, state, &RideModelValidation{
@@ -479,18 +479,18 @@ func TestHandlerServesValidationAlongsideAPredictedStage(t *testing.T) {
 	require.Equal(t, http.StatusOK, response.Code, "routes status")
 	var view openapi.RouteList
 	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &view), "decoding the routes")
-	require.Len(t, view.Stages, 1, "stages")
-	require.NotNil(t, view.Stages[0].Validation, "validation")
+	require.Len(t, view.Routes, 1, "stages")
+	require.NotNil(t, view.Routes[0].Validation, "validation")
 	assert.Equal(t, openapi.RouteValidation{
 		BiasPercent: -1.2, MaePercent: 6.8, P90percent: 14.1, EvaluatedRides: 42,
-	}, *view.Stages[0].Validation, "validation")
+	}, *view.Routes[0].Validation, "validation")
 }
 
 // A stage nothing has predicted has no number for the validation to qualify,
 // even when the loaded profile carries one.
 func TestHandlerOmitsValidationWhenTheStageHasNoPrediction(t *testing.T) {
 	state := &fakeState{summaries: []route.Summary{{
-		RouteID: 3, StageOrder: 1, RouteName: "Sunday", PointCount: 2, DistanceMetres: 900,
+		SourceRouteID: 3, StageOrder: 1, SourceRouteName: "Sunday", PointCount: 2, DistanceMetres: 900,
 	}}}
 	handler := newHandlerWithRideModelValidation(t, state, &RideModelValidation{
 		BiasPercent: -1.2, MAEPercent: 6.8, P90Percent: 14.1, EvaluatedRides: 42,
@@ -507,7 +507,7 @@ func TestHandlerOmitsValidationWhenTheStageHasNoPrediction(t *testing.T) {
 func TestHandlerOmitsValidationWhenNoneIsConfigured(t *testing.T) {
 	movingSeconds := 1234.5
 	state := &fakeState{summaries: []route.Summary{{
-		RouteID: 3, StageOrder: 1, RouteName: "Sunday", PointCount: 2, DistanceMetres: 900,
+		SourceRouteID: 3, StageOrder: 1, SourceRouteName: "Sunday", PointCount: 2, DistanceMetres: 900,
 		MovingSeconds: &movingSeconds,
 	}}}
 	handler := newHandler(t, &fakeOAuth{}, state)
@@ -525,7 +525,7 @@ func TestHandlerOmitsValidationWhenNoneIsConfigured(t *testing.T) {
 func TestHandlerServesTheProfileLoadedNow(t *testing.T) {
 	movingSeconds := 1234.5
 	state := &fakeState{summaries: []route.Summary{{
-		RouteID: 3, StageOrder: 1, RouteName: "Sunday", PointCount: 2, DistanceMetres: 900,
+		SourceRouteID: 3, StageOrder: 1, SourceRouteName: "Sunday", PointCount: 2, DistanceMetres: 900,
 		MovingSeconds: &movingSeconds,
 	}}}
 	validation := &RideModelValidation{BiasPercent: -1.2, MAEPercent: 6.8, P90Percent: 14.1, EvaluatedRides: 42}
@@ -1020,7 +1020,7 @@ func TestHandlerReprocessesOneStageAndStartsARun(t *testing.T) {
 	handler := newHandlerWithSync(t, &fakeOAuth{}, state, trigger)
 
 	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/providers/veloplanner/routes/12/stages/1/reprocess"))
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/providers/veloplanner/sourceRoutes/12/routes/1/reprocess"))
 	require.Equal(t, http.StatusAccepted, response.Code, "reprocess status")
 	assert.Equal(t, [][2]int64{{12, 1}}, state.reprocessed, "reprocessed stages")
 	assert.Equal(t, []SyncPhase{SyncPhaseAll}, trigger.phases, "triggered phases")
@@ -1033,7 +1033,7 @@ func TestHandlerKeepsAReprocessRequestWhenARunIsAlreadyActive(t *testing.T) {
 	handler := newHandlerWithSync(t, &fakeOAuth{}, state, &fakeSync{})
 
 	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/providers/veloplanner/routes/12/stages/1/reprocess"))
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/providers/veloplanner/sourceRoutes/12/routes/1/reprocess"))
 	assert.Equal(t, http.StatusAccepted, response.Code, "reprocess status")
 	assert.Len(t, state.reprocessed, 1, "the request was not recorded")
 }
@@ -1043,7 +1043,7 @@ func TestHandlerReportsAnUnknownStageForReprocessingAsNotFound(t *testing.T) {
 	handler := newHandlerWithSync(t, &fakeOAuth{}, &fakeState{}, trigger)
 
 	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/providers/veloplanner/routes/99/stages/1/reprocess"))
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/providers/veloplanner/sourceRoutes/99/routes/1/reprocess"))
 	assert.Equal(t, http.StatusNotFound, response.Code, "reprocess status")
 	assert.Empty(t, trigger.phases, "a stage that is not stored triggered a run")
 }
@@ -1062,17 +1062,32 @@ func TestHandlerRedirectsLegacyStagePaths(t *testing.T) {
 		{
 			method: http.MethodGet,
 			target: "/v1/routes/12/stages/1",
-			want:   "/v1/providers/veloplanner/routes/12/stages/1",
+			want:   "/v1/providers/veloplanner/sourceRoutes/12/routes/1",
 		},
 		{
 			method: http.MethodGet,
 			target: "/v1/routes/12/stages/1/geometry",
-			want:   "/v1/providers/veloplanner/routes/12/stages/1/geometry",
+			want:   "/v1/providers/veloplanner/sourceRoutes/12/routes/1/geometry",
 		},
 		{
 			method: http.MethodPost,
 			target: "/v1/routes/12/stages/1/reprocess",
-			want:   "/v1/providers/veloplanner/routes/12/stages/1/reprocess",
+			want:   "/v1/providers/veloplanner/sourceRoutes/12/routes/1/reprocess",
+		},
+		{
+			method: http.MethodGet,
+			target: "/v1/providers/veloplanner/routes/12/stages/1",
+			want:   "/v1/providers/veloplanner/sourceRoutes/12/routes/1",
+		},
+		{
+			method: http.MethodGet,
+			target: "/v1/providers/komoot/routes/12/stages/1/geometry",
+			want:   "/v1/providers/komoot/sourceRoutes/12/routes/1/geometry",
+		},
+		{
+			method: http.MethodPost,
+			target: "/v1/providers/veloplanner/routes/12/stages/1/reprocess",
+			want:   "/v1/providers/veloplanner/sourceRoutes/12/routes/1/reprocess",
 		},
 	} {
 		response := httptest.NewRecorder()
@@ -1279,7 +1294,7 @@ func TestHandlerReportsTheScheduleAndEachPhaseInStatus(t *testing.T) {
 	assert.False(t, view.Sync.Schedule.Targets, "the reported schedule has the target half on")
 	require.NotNil(t, view.Sync.Phases.Source, "the status reports no source run")
 	require.NotNil(t, view.Sync.Phases.Targets, "the status reports no target run")
-	assert.Equal(t, 12, view.Sync.Phases.Source.SourceStages, "source stages")
+	assert.Equal(t, 12, view.Sync.Phases.Source.SourceRoutes, "source stages")
 	assert.Equal(t, "destination", value(view.Sync.Phases.Targets.LastFailure), "target failure")
 	assert.Equal(t, wireInstant(completedAt), wireInstant(view.Sync.Phases.Source.LastCompletedAt), "source completion")
 }
@@ -1329,7 +1344,7 @@ func TestHandlerServesTheRecordedHistoryOnePageAtATime(t *testing.T) {
 	assert.Equal(t, "failed", first.Runs[0].Result, "result")
 	assert.Equal(t, "destination", value(first.Runs[0].Failure), "failure")
 	assert.Equal(t, "2026-08-18T06:30:00Z", wireInstant(first.Runs[0].CompletedAt), "completion")
-	assert.Equal(t, 12, first.Runs[1].SourceStages, "source stages")
+	assert.Equal(t, 12, first.Runs[1].SourceRoutes, "source stages")
 	require.NotEmpty(t, first.Next, "a cursor for the page after the first")
 
 	second := historyPage(t, handler, "?limit=2&after="+*first.Next)
@@ -1358,7 +1373,7 @@ func TestHandlerServesNothingAboutWhatARunTouched(t *testing.T) {
 	}
 	slices.Sort(fields)
 	assert.Equal(t, []string{
-		"completedAt", "created", "deleted", "failure", "phase", "reference", "result", "sourceStages", "updated",
+		"completedAt", "created", "deleted", "failure", "phase", "reference", "result", "sourceRoutes", "updated",
 	}, fields, "the fields a recorded run is served as")
 }
 
@@ -1628,7 +1643,7 @@ func TestHandlerReportsARunInFlightRatherThanTheLastResult(t *testing.T) {
 	assert.Equal(t, 2, view.Sync.Active.Targets, "configured targets")
 	// The aggregate of the two slots in the fixture: one holds both stages, the
 	// other owes both.
-	assert.Equal(t, openapi.TargetStages{Current: 2, Pending: 2}, view.Sync.Active.Stages, "active stages")
+	assert.Equal(t, openapi.TargetRoutes{Current: 2, Pending: 2}, view.Sync.Active.Routes, "active stages")
 	assert.Empty(t, view.Sync.Active.StartsAt, "a run under way is being held back")
 }
 
@@ -2355,7 +2370,7 @@ func (s *fakeState) StageGeometry(
 ) (summary route.Summary, coordinates, cumulativeSeconds json.RawMessage, found bool, err error) {
 	for index := range s.summaries {
 		candidate := s.summaries[index]
-		if candidate.Provider == provider && candidate.RouteID == routeID && candidate.StageOrder == stageOrder {
+		if candidate.Provider == provider && candidate.SourceRouteID == routeID && candidate.StageOrder == stageOrder {
 			return candidate, s.coordinates, s.cumulativeSeconds, true, nil
 		}
 	}
@@ -2377,7 +2392,7 @@ func (s *fakeState) StageSurface(
 	}
 	for index := range s.summaries {
 		summary := s.summaries[index]
-		if summary.Provider != provider || summary.RouteID != routeID || summary.StageOrder != stageOrder {
+		if summary.Provider != provider || summary.SourceRouteID != routeID || summary.StageOrder != stageOrder {
 			continue
 		}
 		if s.surfaceRanges == nil || contentHash != s.surfaceHash {
@@ -2473,7 +2488,7 @@ func (s *fakeState) RequestStageReprocess(_ context.Context, provider route.Prov
 		return false, s.reprocessErr
 	}
 	for index := range s.summaries {
-		if s.summaries[index].Provider == provider && s.summaries[index].RouteID == routeID && s.summaries[index].StageOrder == stageOrder {
+		if s.summaries[index].Provider == provider && s.summaries[index].SourceRouteID == routeID && s.summaries[index].StageOrder == stageOrder {
 			s.reprocessed = append(s.reprocessed, [2]int64{routeID, int64(stageOrder)})
 
 			return true, nil
@@ -2559,13 +2574,13 @@ func TestHandlerReportsPerTargetConvergence(t *testing.T) {
 
 	require.Len(t, view.Targets, 2)
 	assert.Equal(t, convergenceCurrent, view.Targets[0].Convergence)
-	assert.Equal(t, openapi.TargetStages{Current: 2, Pending: 0}, view.Targets[0].Stages)
+	assert.Equal(t, openapi.TargetRoutes{Current: 2, Pending: 0}, view.Targets[0].Routes)
 	require.NotNil(t, view.Targets[0].LastRun)
 	assert.Equal(t, "succeeded", view.Targets[0].LastRun.Result)
 	assert.Equal(t, "2026-08-18T06:00:00Z", wireInstant(view.Targets[0].LastRun.CompletedAt))
 
 	assert.Equal(t, convergenceLagging, view.Targets[1].Convergence)
-	assert.Equal(t, openapi.TargetStages{Current: 0, Pending: 2}, view.Targets[1].Stages)
+	assert.Equal(t, openapi.TargetRoutes{Current: 0, Pending: 2}, view.Targets[1].Routes)
 	// A slot that has never been reconciled is not a slot whose run succeeded
 	// with nothing to do.
 	assert.Nil(t, view.Targets[1].LastRun)
@@ -2583,7 +2598,7 @@ func TestHandlerReportsOverallConvergenceOnlyWhenEveryTargetIsCurrent(t *testing
 	assert.True(t, view.Converged)
 	for _, target := range view.Targets {
 		assert.Equal(t, convergenceCurrent, target.Convergence)
-		assert.Equal(t, openapi.TargetStages{Current: 2, Pending: 0}, target.Stages)
+		assert.Equal(t, openapi.TargetRoutes{Current: 2, Pending: 0}, target.Routes)
 	}
 }
 
@@ -2620,9 +2635,9 @@ func TestHandlerCountsARouteTheLibraryNoLongerHasAsPending(t *testing.T) {
 	view := statusOf(t, newHandlerWithTargets(t, state, "rider-a", "rider-b"))
 
 	require.Len(t, view.Targets, 2)
-	assert.Equal(t, openapi.TargetStages{Current: 1, Pending: 1}, view.Targets[0].Stages)
+	assert.Equal(t, openapi.TargetRoutes{Current: 1, Pending: 1}, view.Targets[0].Routes)
 	assert.Equal(t, convergenceLagging, view.Targets[0].Convergence)
-	assert.Equal(t, openapi.TargetStages{Current: 1, Pending: 0}, view.Targets[1].Stages)
+	assert.Equal(t, openapi.TargetRoutes{Current: 1, Pending: 0}, view.Targets[1].Routes)
 	assert.Equal(t, convergenceCurrent, view.Targets[1].Convergence)
 	assert.False(t, view.Converged)
 }
@@ -2638,7 +2653,7 @@ func TestHandlerReportsAnEmptyLibraryAsCurrentEverywhere(t *testing.T) {
 
 	require.Len(t, view.Targets, 1)
 	assert.Equal(t, convergenceCurrent, view.Targets[0].Convergence)
-	assert.Equal(t, openapi.TargetStages{}, view.Targets[0].Stages)
+	assert.Equal(t, openapi.TargetRoutes{}, view.Targets[0].Routes)
 	assert.True(t, view.Converged)
 }
 
@@ -2677,7 +2692,7 @@ func TestHandlerReportsUnreadableConvergenceStateAsUnavailable(t *testing.T) {
 func TestHandlerReportsConvergenceWithoutNamingAnything(t *testing.T) {
 	state := convergenceStateFixture()
 	state.summaries = []route.Summary{{
-		RouteID: 12, StageOrder: 1, RouteName: "Alpine loop", StageName: "Descent",
+		SourceRouteID: 12, StageOrder: 1, SourceRouteName: "Alpine loop", RouteName: "Descent",
 		SourceRevision: "r2",
 	}}
 	response := httptest.NewRecorder()
@@ -2730,7 +2745,7 @@ func TestStageHandlersRefuseAnIdentifierTheyCannotParse(t *testing.T) {
 	assert.Empty(t, response.Header().Get("Location"), "a redirect built from an unparsed identifier")
 
 	qualified := httptest.NewRequestWithContext(
-		t.Context(), http.MethodGet, "/v1/providers/veloplanner/routes/12/stages/1", http.NoBody,
+		t.Context(), http.MethodGet, "/v1/providers/veloplanner/sourceRoutes/12/routes/1", http.NoBody,
 	)
 	qualified.SetPathValue("provider", "veloplanner")
 	qualified.SetPathValue("routeId", "not-a-number")

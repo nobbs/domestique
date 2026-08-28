@@ -344,7 +344,7 @@ func haversineMetres(left, right *point) float64 {
 // error rather than terrain. Doubling how densely a ride is sampled leaves
 // these materially unchanged, because the window is a physical distance, not
 // a point count: the same expanding-trailing-window technique
-// internal/route.Stage.MaxGradientPercent uses, adapted to report every
+// internal/route.Route.MaxGradientPercent uses, adapted to report every
 // point's own value instead of only the steepest.
 func windowedGradients(records []point, cumulative []float64) []float64 {
 	gradients := make([]float64, len(records))
@@ -369,7 +369,7 @@ func windowedGradients(records []point, cumulative []float64) []float64 {
 
 // sumRawRise sums every positive altitude step between consecutive records
 // that both carry one, ignoring any without — the same "sum of positive
-// steps" internal/route.Stage.AscentMetres computes, over whichever records
+// steps" internal/route.Route.AscentMetres computes, over whichever records
 // this ride actually has altitude for.
 func sumRawRise(records []point) float64 {
 	rise := 0.0

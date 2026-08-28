@@ -14,7 +14,7 @@ function renderButton() {
     client,
     ...render(
       <QueryClientProvider client={client}>
-        <ReprocessButton provider="veloplanner" routeId={12} stageOrder={1} />
+        <ReprocessButton provider="veloplanner" sourceRouteId={12} stageOrder={1} />
       </QueryClientProvider>,
     ),
   };
@@ -36,7 +36,7 @@ describe("ReprocessButton", () => {
     await userEvent.click(screen.getByRole("button", { name: "Reprocess" }));
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "/v1/providers/veloplanner/routes/12/stages/1/reprocess",
+      "/v1/providers/veloplanner/sourceRoutes/12/routes/1/reprocess",
       expect.objectContaining({ method: "POST" }),
     );
     expect(await screen.findByRole("status")).toHaveTextContent(/Queued/);

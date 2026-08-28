@@ -5,11 +5,11 @@ import { matchesQuery, matchingRoutes } from "./library";
 function stage(overrides: Partial<Route> = {}): Route {
   return {
     provider: "veloplanner",
-    routeId: 12,
+    sourceRouteId: 12,
     stageOrder: 1,
     title: "Alpine loop — Descent",
-    routeName: "Alpine loop",
-    stageName: "Descent",
+    sourceRouteName: "Alpine loop",
+    routeName: "Descent",
     sourceRevision: "2026-08-17",
     contentHash: "hash",
     distanceMetres: 42_500,
@@ -20,13 +20,18 @@ function stage(overrides: Partial<Route> = {}): Route {
   };
 }
 
-function named(routeId: number, stageOrder: number, routeName: string, stageName: string): Route {
+function named(
+  sourceRouteId: number,
+  stageOrder: number,
+  sourceRouteName: string,
+  routeName: string,
+): Route {
   return stage({
-    routeId,
+    sourceRouteId,
     stageOrder,
+    sourceRouteName,
     routeName,
-    stageName,
-    title: stageName ? `${routeName} — ${stageName}` : routeName,
+    title: routeName ? `${sourceRouteName} — ${routeName}` : sourceRouteName,
   });
 }
 
@@ -82,7 +87,8 @@ describe("matchingRoutes", () => {
       named(1, 1, "First", "Early"),
       named(2, 1, "Second", "Early"),
     ].map((entry) => stage({ ...entry, title: "Same" }));
-    const keys = (routes: Route[]) => routes.map((entry) => `${entry.routeId}/${entry.stageOrder}`);
+    const keys = (routes: Route[]) =>
+      routes.map((entry) => `${entry.sourceRouteId}/${entry.stageOrder}`);
 
     expect(keys(matchingRoutes(tied, ""))).toEqual(["1/1", "2/1", "2/2"]);
     expect(keys(matchingRoutes([...tied].reverse(), ""))).toEqual(["1/1", "2/1", "2/2"]);

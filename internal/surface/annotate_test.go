@@ -75,9 +75,9 @@ func TestAnnotateReclassifiesAStageMeasuredAgainstAnOlderIndex(t *testing.T) {
 	assert.Equal(t, "def456", cache.generations[testKey(1)], "the cached generation was not moved forward")
 }
 
-func testStages(t *testing.T, routeIDs ...int64) []route.Stage {
+func testStages(t *testing.T, routeIDs ...int64) []route.Route {
 	t.Helper()
-	stages := make([]route.Stage, 0, len(routeIDs))
+	stages := make([]route.Route, 0, len(routeIDs))
 	for _, routeID := range routeIDs {
 		// Each stage sits at its own latitude, which is how the fake source
 		// below tells them apart: it is handed geometry, not identity.
@@ -85,7 +85,7 @@ func testStages(t *testing.T, routeIDs ...int64) []route.Stage {
 			{Longitude: 8.0, Latitude: float64(routeID)},
 			{Longitude: 8.001, Latitude: float64(routeID)},
 		}
-		stage, err := route.NewStage(
+		stage, err := route.NewRoute(
 			route.ProviderVeloPlanner, routeID, 1, "revision", "Route", "Stage", geometry, "hash-"+strconv.FormatInt(routeID, 10),
 		)
 		require.NoError(t, err)

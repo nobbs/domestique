@@ -1,8 +1,8 @@
 import { Badge } from "../../components/ui/badge";
-import type { StageChange } from "../../lib/seenStages";
+import type { RouteChange } from "../../lib/seenRoutes";
 
 /** New or changed since this reader last opened it. Text, never colour alone. */
-export function StageChangeBadge({ change }: { change: StageChange }) {
+export function RouteChangeBadge({ change }: { change: RouteChange }) {
   if (!change) {
     return null;
   }

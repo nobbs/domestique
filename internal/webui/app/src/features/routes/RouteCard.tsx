@@ -10,10 +10,10 @@ import {
 } from "../../lib/format";
 import { gradientMix } from "../../lib/profile";
 import { providerLabel } from "../../lib/provider";
-import type { StageChange } from "../../lib/seenStages";
+import type { RouteChange } from "../../lib/seenRoutes";
 import type { UnitSystem } from "../../lib/units";
+import { RouteChangeBadge } from "./RouteChangeBadge";
 import type { RouteShape } from "./SearchPanel";
-import { StageChangeBadge } from "./StageChangeBadge";
 
 /**
  * One route, opened.
@@ -34,7 +34,7 @@ export function RouteCard({
   route: Route;
   shape: RouteShape | undefined;
   readAt: string | null;
-  change: StageChange;
+  change: RouteChange;
   onOpen: () => void;
   unitSystem: UnitSystem;
 }) {
@@ -52,7 +52,7 @@ export function RouteCard({
     card.current?.scrollIntoView({ block: "nearest" });
   }, []);
 
-  const where = route.routeName !== route.title ? route.routeName : null;
+  const where = route.sourceRouteName !== route.title ? route.sourceRouteName : null;
   const second = [where, readAt ? `read ${readAt}` : null].filter(Boolean).join(" · ");
   const mix = shape ? gradientMix(shape.coordinates) : [];
   // A run's place along the route is its identity — two runs of the same band
@@ -69,7 +69,7 @@ export function RouteCard({
   return (
     <li className="rounded-lg border border-[var(--rule)] bg-[var(--base)] p-3" ref={card}>
       <h2 className="text-base font-semibold">{route.title}</h2>
-      <StageChangeBadge change={change} />
+      <RouteChangeBadge change={change} />
       <span className="ml-1 text-xs font-semibold tracking-[0.06em] text-[var(--ink-2)] uppercase">
         {providerLabel(route.provider)}
       </span>

@@ -27,9 +27,9 @@ func New() *Normalizer {
 
 // Process returns a stage with a normalized elevation profile while retaining
 // its source identity, revision, title, and source content hash.
-func (n *Normalizer) Process(stage *route.Stage) (route.Stage, error) {
+func (n *Normalizer) Process(stage *route.Route) (route.Route, error) {
 	if stage == nil {
-		return route.Stage{}, fmt.Errorf("elevation: route stage is required")
+		return route.Route{}, fmt.Errorf("elevation: route stage is required")
 	}
 	geometry := stage.Geometry()
 	if !hasCompleteElevation(geometry) {
@@ -40,18 +40,18 @@ func (n *Normalizer) Process(stage *route.Stage) (route.Stage, error) {
 	applyMovingMedian(profile)
 	applyElevations(geometry, profile)
 
-	processed, err := route.NewStage(
+	processed, err := route.NewRoute(
 		stage.Key().Provider(),
-		stage.Key().RouteID(),
+		stage.Key().SourceRouteID(),
 		stage.Key().StageOrder(),
 		stage.Revision(),
+		stage.SourceRouteName(),
 		stage.RouteName(),
-		stage.StageName(),
 		geometry,
 		stage.ContentHash(),
 	)
 	if err != nil {
-		return route.Stage{}, fmt.Errorf("elevation: creating normalized stage: %w", err)
+		return route.Route{}, fmt.Errorf("elevation: creating normalized stage: %w", err)
 	}
 
 	return processed, nil

@@ -317,7 +317,7 @@ request. Pushover credentials are placeholders, so no notification is delivered.
 needs no account, no snapshot, and nobody's routes. It writes a throwaway
 configuration under `.local/demo`, seeds a fresh database with the synthetic
 library in `internal/demo`, serves it with `dev/demoapi`, and runs the UI dev
-server in front of it. Every stage, surface, run and target state it shows is
+server in front of it. Every route, surface, run and target state it shows is
 generated; VeloPlanner, Wahoo and Pushover all point at an unroutable address;
 and no scheduler, source client or reporter is wired, so a manual
 synchronisation re-seeds the synthetic library at the current instant instead of
@@ -341,7 +341,7 @@ the reusable components and the API client, and are the routine cost. The
 Playwright suite in `internal/webui/app/e2e` runs the whole page in a real
 Chromium, and exists for what jsdom cannot observe: the map, which needs WebGL,
 and the interactions that span components — scrubbing the elevation chart,
-selecting a stretch off the map, following a card into a stage. It is not a
+selecting a stretch off the map, following a card into a route. It is not a
 second home for logic that a component test could reach.
 
 The suite runs against `mise run demo`, so it is subject to everything that
@@ -530,7 +530,7 @@ The two are gated by different path filters, and deliberately so. Publishing
 follows every input of the running binary, because a source change must reach a
 new digest. The pull-request build follows only the container inputs — the
 Dockerfile, what it copies in, and the dependency manifests that resolve inside
-a build stage — because re-proving an untouched Dockerfile against changed Go
+a build route — because re-proving an untouched Dockerfile against changed Go
 source repeats what the compile check has already established. A container
 break that reaches the default branch costs a red run and no new image; it costs
 no availability, because a deploying host is pinned to a digest that keeps
@@ -600,7 +600,7 @@ What is not automerged is what the gate cannot answer for:
   nothing about whether the map still draws correctly, and looking at it remains
   a human act.
 - **The Go and Node toolchains.** The compiler and runtime in `.mise.toml`, the
-  language version in `go.mod`, the types in `@types/node` and the build stages'
+  language version in `go.mod`, the types in `@types/node` and the build routes'
   base image tags each describe one decision spread across several files, so
   each is grouped and moved by a person. It is what everything else is built
   with.
@@ -638,18 +638,18 @@ environment, are the two places to intervene if that trade stops being worth it.
 
 ## Container contract
 
-The production image is a multi-stage build that produces a statically linked
+The production image is a multi-route build that produces a statically linked
 Linux binary with `CGO_ENABLED=0`, published for `linux/amd64` alone. That is
 the architecture of the deployed host, and of the runner that builds it, so no
-stage needs emulation. The accepted cost is that the published image does not
+route needs emulation. The accepted cost is that the published image does not
 run on an arm64 host without it; the `TARGETOS`/`TARGETARCH` parameterisation in
 the Dockerfile is kept, so restoring a second platform is a build argument at
-each build site rather than a rewrite. A first stage builds the browser UI
-bundle with Node.js, which the Go stage then embeds; Node reaches no further
-than that stage and is absent from the runtime image.
+each build site rather than a rewrite. A first route builds the browser UI
+bundle with Node.js, which the Go route then embeds; Node reaches no further
+than that route and is absent from the runtime image.
 
 Every base image is a **Docker Hardened Image** from `dhi.io`, pinned by digest:
-the `-dev` variants for the Node and Go build stages, which need a shell and a
+the `-dev` variants for the Node and Go build routes, which need a shell and a
 toolchain, and the minimal `static` image for the runtime. They carry SBOMs,
 SLSA Build Level 3 provenance, and signatures. Because the images this project
 publishes are themselves unsigned, that is the strongest verifiable link in the

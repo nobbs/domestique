@@ -13,9 +13,10 @@ account to two separately authorised Wahoo accounts. It runs automatically and
 uploads device-ready FIT courses directly to Wahoo; Ride with GPS is not part
 of the service.
 
-Each VeloPlanner route stage is a separate Wahoo route. A single-stage route
-keeps its route name. A multi-stage route uses `Route — Stage` so its stages are
-individually identifiable on a device.
+Each stage of a VeloPlanner source route is one route here, and each is a
+separate Wahoo route. A source route with one stage keeps its own name. One
+with several uses `Source route — Route` so its routes are individually
+identifiable on a device.
 
 The service is a single-tenant Docker workload for an amd64 Tailnet host, which
 is the only architecture the image is published for. The long-running target is a
@@ -26,7 +27,7 @@ read-only JSON for status, route data, and route geometry, except for the
 protected Wahoo OAuth onboarding flow, the manual triggers over synchronisation
 and surface enrichment, and the runtime settings the UI reads and writes back.
 The UI is a view onto stored state: it draws the whole stored library on one
-map, opens any one source route stage over that same map, and reports
+map, opens any one route over that same map, and reports
 synchronisation on a second view. A route is not a page of its own — it takes
 over the panel the search occupies and adds its own layers to the map already on
 screen — but the route being read is carried in the address, so the view stays
@@ -69,19 +70,19 @@ route identifier is an int64, which is exactly what a double could not carry.
 Every timestamp is RFC 3339 in UTC, at second resolution, so one instant has
 one spelling on the wire regardless of the timezone the service runs in.
 
-Where a stage's surface classification has been cached, that view draws it: the
-route is banded by ground class on the map, and the stage's split is summarised
-beside its stored facts. A stage with no cached classification is drawn plainly
+Where a route's surface classification has been cached, that view draws it: the
+route is banded by ground class on the map, and the route's split is summarised
+beside its stored facts. A route with no cached classification is drawn plainly
 and said to be unclassified, never presented as unsurveyed ground. Because the
 classification is a derived OpenStreetMap database, the map view carries the
 ODbL attribution its share-alike terms require.
 
 The drawn route says where a ride goes and nothing about which end it begins at,
 so the view marks both terminals and the direction of travel. The start and the
-finish are marked distinctly, and stay distinguishable on a stage that finishes
+finish are marked distinctly, and stay distinguishable on a route that finishes
 where it started: the two markers are separated on screen rather than drawn on
 one point. Direction cues are placed along the route at a spacing measured on
-screen, so a stage gets the same restrained handful of them whatever its length
+screen, so a route gets the same restrained handful of them whatever its length
 and however far the camera is pulled back. Every cue is derived from the stored
 geometry already drawn — no request is made to answer it — and every cue has a
 textual equivalent stating which way the ride leaves, whether it returns to its
@@ -116,7 +117,7 @@ long as the tab and is deliberately not stored.
 
 The UI carries one outbound link, to this service's public source repository. It
 is the only navigation that leaves the authenticated origin, it opens in a new
-context without a referrer, and it sends nothing: no route, stage, geometry, or
+context without a referrer, and it sends nothing: no route, geometry, or
 origin address accompanies it.
 
 Route editing remains explicitly out of scope. The UI presents no editing
@@ -230,18 +231,18 @@ refuses storage still switches; it simply starts again from the first entry on
 the next visit.
 
 Surface classification introduces **no** such exception. To learn whether a
-stage runs on asphalt, paving, gravel, or a forest track, the service reads a
+route runs on asphalt, paving, gravel, or a forest track, the service reads a
 surface index it builds itself from OpenStreetMap regional extracts, and the
 whole classification then happens on the host with no request leaving it. No
 route shape is ever sent anywhere. The only outbound traffic is the scheduled
 rebuild: on its own cadence the service downloads the configured regions'
 published extracts from the extract host, which learns which regions this
 deployment is interested in and nothing about any route. An operator who
-configures no region downloads nothing at all and leaves stages unclassified.
+configures no region downloads nothing at all and leaves routes unclassified.
 
-Each stage is classified once per geometry per index build: the answer is cached
-against both the stage's content hash and the generation of the index it was
-read from, so a stage is reclassified when its shape changes and when the map
+Each route is classified once per geometry per index build: the answer is cached
+against both the route's content hash and the generation of the index it was
+read from, so a route is reclassified when its shape changes and when the map
 underneath it is rebuilt, and at no other time.
 
 Open-Meteo is the second service the deployment itself reaches outbound, after
@@ -286,12 +287,12 @@ target slots.
 
 Alongside it are the operator controls over synchronization: the manual
 triggers, the two switches that decide what the timer is allowed to start, the
-per-stage reprocess request, and the surface-enrichment retry.
+per-route reprocess request, and the surface-enrichment retry.
 They change what the service does next; they change nothing it has stored about
 routes, and they cannot make a run less safe than a scheduled one, because a
 triggered run is the same run through the same gates. The enrichment retry is
 narrower still — it never reads VeloPlanner or writes a Wahoo target, only
-reclassifying stages already stored — and shares the same single-flight guard
+reclassifying routes already stored — and shares the same single-flight guard
 as the other four triggers. Every one of them is limited to the same principal
 as the rest of the surface.
 
@@ -334,7 +335,7 @@ The read-only JSON surface is deliberately small:
   aggregate counts, target authorisation state, the two schedule switches, the
   last run of each half, and how much of the library carries a current surface
   classification together with which map build it was read from. It also reports
-  whether every stored stage at its current
+  whether every stored route at its current
   revision has reached every configured target: one convergence word, safe
   aggregate current and pending counts, and the last reconciliation result per
   target, plus one overall answer that is true only when every target is
@@ -355,18 +356,20 @@ The read-only JSON surface is deliberately small:
   one read that takes query parameters — a bounded page size, and the cursor the
   previous page ended with — because a page of history cannot be decided in the
   browser from a listing it already holds.
-- `GET /v1/routes` lists known source routes and stages with their titles,
+- `GET /v1/routes` lists every stored route with its source route and titles,
   aggregate geometry facts, and — when a ride-model coefficient file is
   configured and has predicted this exact geometry — a predicted moving time.
-  It is omitted, never zero, for a stage nothing has predicted yet.
-- `GET /v1/providers/{provider}/routes/{source-route-id}/stages/{stage}` returns stored route
-  metadata, not edit controls.
-- `GET /v1/providers/{provider}/routes/{source-route-id}/stages/{stage}/geometry` returns the stored
-  geometry of one stage for map rendering, together with the surface
+  It is omitted, never zero, for a route nothing has predicted yet.
+- `GET /v1/providers/{provider}/sourceRoutes/{source-route-id}/routes/{stage-order}`
+  returns stored route metadata, not edit controls. The two earlier shapes of
+  this address redirect to it with `308`.
+- `GET /v1/providers/{provider}/sourceRoutes/{source-route-id}/routes/{stage-order}/geometry`
+  returns the stored
+  geometry of one route for map rendering, together with the surface
   classification of that geometry when one has been cached, and — when a
   ride-model coefficient file is configured and has predicted this exact
   geometry — the predicted cumulative moving time at each coordinate, indexed
-  1:1 with the geometry. It is omitted, never empty, for a stage nothing has
+  1:1 with the geometry. It is omitted, never empty, for a route nothing has
   predicted yet.
 - `GET /v1/webui/config` returns the settings the browser UI needs at runtime so
   the built assets stay static: the list of basemaps the map may be switched
@@ -374,8 +377,8 @@ The read-only JSON surface is deliberately small:
   its cartography is dark in either colour scheme — and the source provider's
   base URL. The list is never empty, and its first entry is what a browser that
   has chosen nothing loads. The base URL is the whole of what is sent about the
-  provider — the page builds a stage's link back to its source route from it,
-  rather than the service repeating a route URL on every stage it serves. It is
+  provider — the page builds a route's link back to its source route from it,
+  rather than the service repeating a route URL on every route it serves. It is
   omitted when unconfigured, so the page shows no such link rather than a broken
   one. That link is only useful to the operator whose account holds the route:
   the source route is private to that account, and following it as anyone else
@@ -419,7 +422,7 @@ it.
   slot, on the same terms as `POST /v1/sync/targets` scoped to that slot alone.
   `{target}` must name a configured slot, or the request is refused as `404`.
 - `POST /v1/targets/{target}/clear` deletes every route this service owns from
-  exactly one configured slot and forgets that slot's stage mappings. It is the
+  exactly one configured slot and forgets that slot's route mappings. It is the
   one deletion the per-target deletion limit does not bound, and is reachable
   only this way — nothing schedules it. It still deletes only routes carrying
   an external ID this service issued, and leaves the stored library untouched,
@@ -429,9 +432,10 @@ it.
 - `PUT /v1/sync/schedule` sets both switches, and answers with the state it
   stored. A body that names only one switch is refused: the other would be left
   at whatever the caller assumed it was.
-- `POST /v1/routes/{source-route-id}/stages/{stage}/reprocess` asks for one
-  stage to be worked out again from scratch and starts the synchronization that
-  will do it. It returns `202 Accepted`, or `404` for a stage that is not in the
+- `POST /v1/providers/{provider}/sourceRoutes/{source-route-id}/routes/{stage-order}/reprocess`
+  asks for one
+  route to be worked out again from scratch and starts the synchronization that
+  will do it. It returns `202 Accepted`, or `404` for a route that is not in the
   stored inventory.
 - `POST /v1/sync/surface` queues one immediate surface-classification pass,
   independently of either sync half. It returns `202 Accepted`, or `409
@@ -538,17 +542,17 @@ Sync remains disabled until every configured target is authorised.
 A SQLite database on a Docker volume stores:
 
 - Wahoo target identities and encrypted refresh tokens;
-- source route/stage identity, source revision, content hash, and Wahoo
+- source route/route identity, source revision, content hash, and Wahoo
   `external_id`;
-- a cache of source stage titles and geometry for the route map view, written
-  only when a stage's content hash changes and kept in its own table so it can
+- a cache of route titles and geometry for the route map view, written
+  only when a route's content hash changes and kept in its own table so it can
   be dropped without touching deletion-safety state;
 - a cache of the surface classification of that geometry, in its own table for
   the same reason, recorded against both the content hash and the surface-index
   generation it was measured for. The two are not acted on alike: a changed
   content hash withdraws the cached answer, whose ranges are positions in a
-  geometry the stage no longer has, while a newer index leaves it on display and
-  marks the stage for re-measurement on the next enrichment pass — those ranges
+  geometry the route no longer has, while a newer index leaves it on display and
+  marks the route for re-measurement on the next enrichment pass — those ranges
   still fit, so a rebuild costs the library nothing while the rare road that was
   actually resurfaced is still corrected;
 - when the last surface index build finished and which generation it produced, so
@@ -581,7 +585,7 @@ the previous image usable against a state file the failed deploy migrated.
 
 One migration is a deliberate exception to the first rule, and it is recorded
 here rather than left to be discovered during an incident. The migration that
-gave a stage's identity its provider widened the primary key of
+gave a route's identity its provider widened the primary key of
 `target_stages`, `stage_geometry`, `stage_surface`, and `stage_reprocess` to
 include the new column. A previous release's binary writes those four tables
 through `ON CONFLICT (route_id, stage_order)`, and SQLite requires that column
@@ -590,7 +594,7 @@ longer prepare against the widened key. A rollback onto that binary can still
 **read** all four tables — no state is lost or rewritten — but cannot write
 them, which leaves synchronisation failing until the deployment rolls forward
 again. The narrower alternative, leaving provider out of those keys, would stop
-four of the six stage-keyed tables from holding two providers' stages at once
+four of the six stage-keyed tables from holding two providers' routes at once
 and so defeat the migration's purpose. A future migration carries the same
 obligation to be additive; this exception licenses that one change, not a
 general relaxation.
@@ -627,7 +631,7 @@ baseline behaviour for route geometry:
 - use the source route ID and stage order as stable identity, never the route
   title.
 
-The service normalizes fully-elevated source-stage elevations before device
+The service normalizes fully-elevated route elevations before device
 export: it samples the elevation profile at 25-metre intervals and applies a
 centred 100-metre moving median to remove isolated altitude spikes. It retains
 the original route geometry. The resulting profile is the single source for
@@ -657,8 +661,8 @@ because Komoot's OAuth2 partner interface is issued only under a partner
 contract and is not available to an individual operator; the unofficial and
 partner interfaces serve the same documented resource shapes, so only the
 authentication differs. A Komoot tour has no stage subdivision, so it maps to
-exactly one stage — order 1, no stage name — rather than leaving the concept
-unused. The adapter issues no HTTP method other than `GET`: the session token
+exactly one route — stage order 1, with no name of its own beyond the tour's —
+rather than leaving the concept unused. The adapter issues no HTTP method other than `GET`: the session token
 Komoot returns is not read-scoped, and a write against it would delete a route
 from the operator's own library with no undo.
 
@@ -678,10 +682,10 @@ Cloud application with `routes_read`, `routes_write`, and `user_read` scopes.
 The configured Wahoo environment may be sandbox; it is valid for this service
 within its lower rate limits.
 
-For every source stage and Wahoo target, Domestique derives a deterministic
+For every route and Wahoo target, Domestique derives a deterministic
 `external_id` from the source route ID and stage order. It supplies that ID and
 the source revision as `provider_updated_at` when it creates or updates a FIT
-route. A changed source stage updates the existing owned Wahoo route rather
+route. A changed route updates the existing owned Wahoo route rather
 than using an upload-and-delete replacement.
 
 OAuth refresh is serialised per Wahoo account. A refresh token returned by a
@@ -691,7 +695,7 @@ all configured targets: API calls are serial, obey advertised limits, and resume
 when safe to do so.
 
 Domestique deletes only Wahoo routes it owns through its `external_id`. A
-source-stage deletion removes the corresponding owned Wahoo route from both
+route deletion removes the corresponding owned Wahoo route from both
 targets. It never deletes manually created Wahoo routes.
 
 ## Sync lifecycle and safety
@@ -790,8 +794,8 @@ secret files remain outside Git.
 - A credential entered on the settings page is stored encrypted and is never
   served back, in any form, to any caller.
 - Two Wahoo accounts can be authorised through the Tailnet-only OAuth flow.
-- An hourly run mirrors every valid VeloPlanner stage to every configured target as FIT.
-- Edits preserve the stage's `external_id`; source deletions remove only owned
+- An hourly run mirrors every valid VeloPlanner route to every configured target as FIT.
+- Edits preserve the route's `external_id`; source deletions remove only owned
   destination routes and respect the deletion guard.
 - A failed source inventory cannot cause a destructive Wahoo deletion.
 - Lost state cannot cause deletion of unknown Wahoo routes.
@@ -804,11 +808,11 @@ secret files remain outside Git.
   that change anything are the synchronization triggers, the two schedule
   switches, the reprocess request, which discards derived answers so they are
   worked out again, the surface-enrichment retry, which reclassifies stored
-  stages without reading VeloPlanner or writing a Wahoo target, and the settings
+  routes without reading VeloPlanner or writing a Wahoo target, and the settings
   write, which changes how the service behaves next and nothing it holds about a
   route. Nothing on the surface edits route data, in this service or at the
   source.
-- The browser UI renders stored source stages on a map, is reachable only by
+- The browser UI renders stored routes on a map, is reachable only by
   the configured identity, and offers no affordance for editing a route. The
   settings it does offer are the service's own runtime settings and this
   browser's display preferences, neither of which touches stored route data.
@@ -820,7 +824,7 @@ secret files remain outside Git.
 - The only outbound link the UI offers is to the public source repository, and
   following it discloses neither the origin nor anything about the route on
   screen.
-- Stage geometry is cached locally and rewritten only when a stage's content
+- Route geometry is cached locally and rewritten only when a route's content
   hash changes, so an unchanged library does not rewrite the cache on every run.
 - Losing the geometry cache degrades only the map view; it cannot affect sync
   safety or cause a destructive Wahoo operation.

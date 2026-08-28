@@ -16,7 +16,7 @@ import (
 // the package that consumes it, so a test can seed a fake and the demo does not
 // drag the SQLite adapter into anything that only wants the fixtures.
 type State interface {
-	StoreTrustedInventory(ctx context.Context, provider route.Provider, stages []route.Stage) error
+	StoreTrustedInventory(ctx context.Context, provider route.Provider, stages []route.Route) error
 	StoreStageSurface(ctx context.Context, provider route.Provider, routeID int64, stageOrder int, contentHash, indexGeneration string, ranges []byte, matchedMetres float64) error
 	StoreStageDuration(ctx context.Context, provider route.Provider, routeID int64, stageOrder int, contentHash, surfaceGeneration, coefficientFingerprint string, movingSeconds *float64, cumulativeSeconds []byte) error
 	EnsureTargets(ctx context.Context, targetIDs []string) error
@@ -112,7 +112,7 @@ func Seed(ctx context.Context, state State, slots []Slot, now time.Time) error {
 		return errors.New("demo: at least one target slot is required")
 	}
 
-	stages, err := Stages()
+	stages, err := Routes()
 	if err != nil {
 		return err
 	}
@@ -134,7 +134,7 @@ func Seed(ctx context.Context, state State, slots []Slot, now time.Time) error {
 		if err := state.StoreStageSurface(
 			ctx,
 			classification.Provider,
-			classification.RouteID,
+			classification.SourceRouteID,
 			classification.StageOrder,
 			classification.ContentHash,
 			demoIndexGeneration,
@@ -142,7 +142,7 @@ func Seed(ctx context.Context, state State, slots []Slot, now time.Time) error {
 			classification.MatchedMetres,
 		); err != nil {
 			return fmt.Errorf("demo: storing surface for %d/%d: %w",
-				classification.RouteID, classification.StageOrder, err)
+				classification.SourceRouteID, classification.StageOrder, err)
 		}
 	}
 
@@ -187,7 +187,7 @@ func Seed(ctx context.Context, state State, slots []Slot, now time.Time) error {
 // are stored as nil, nil, exactly what Predict itself would have this package
 // cache for a real stage it could not answer, rather than a fabricated time
 // that would misrepresent what the model can and cannot do.
-func seedDurations(ctx context.Context, state State, stages []route.Stage) error {
+func seedDurations(ctx context.Context, state State, stages []route.Route) error {
 	kindsByStage := stageSurfaceKinds(stages)
 	for index := range stages {
 		stage := &stages[index]
@@ -201,17 +201,17 @@ func seedDurations(ctx context.Context, state State, stages []route.Stage) error
 			encoded, encodeErr := json.Marshal(result.CumulativeSeconds)
 			if encodeErr != nil {
 				return fmt.Errorf("demo: encoding cumulative series for %d/%d: %w",
-					key.RouteID(), key.StageOrder(), encodeErr)
+					key.SourceRouteID(), key.StageOrder(), encodeErr)
 			}
 			cumulativeSeconds = encoded
 		}
 
 		if err := state.StoreStageDuration(
-			ctx, key.Provider(), key.RouteID(), key.StageOrder(),
+			ctx, key.Provider(), key.SourceRouteID(), key.StageOrder(),
 			stage.ContentHash(), demoIndexGeneration, demoCoefficientFingerprint,
 			movingSeconds, cumulativeSeconds,
 		); err != nil {
-			return fmt.Errorf("demo: storing duration for %d/%d: %w", key.RouteID(), key.StageOrder(), err)
+			return fmt.Errorf("demo: storing duration for %d/%d: %w", key.SourceRouteID(), key.StageOrder(), err)
 		}
 	}
 
@@ -219,7 +219,7 @@ func seedDurations(ctx context.Context, state State, stages []route.Stage) error
 }
 
 // seedSlot leaves one target in the state its slot asks for.
-func seedSlot(ctx context.Context, state State, slot Slot, stages []route.Stage, now time.Time) error {
+func seedSlot(ctx context.Context, state State, slot Slot, stages []route.Route, now time.Time) error {
 	if slot.State == SlotUnauthorized {
 		// Ensuring the target was the whole of it: an un-onboarded slot has no
 		// token, no applied stages, and no run of its own.
@@ -235,15 +235,15 @@ func seedSlot(ctx context.Context, state State, slot Slot, stages []route.Stage,
 	for index := range stages {
 		stage := &stages[index]
 		key := stage.Key()
-		revision := Revision(key.RouteID(), key.StageOrder())
+		revision := Revision(key.SourceRouteID(), key.StageOrder())
 		// One stage left a revision behind, so the slot reads as owing work
 		// rather than as a wall of identical rows.
 		if slot.State == SlotFailed && index == len(stages)-1 {
-			revision = EarlierRevision(key.RouteID(), key.StageOrder())
+			revision = EarlierRevision(key.SourceRouteID(), key.StageOrder())
 		}
 		if err := state.UpsertTargetStage(
-			ctx, slot.ID, key.Provider(), key.RouteID(), key.StageOrder(), revision,
-			"demo-encoded-"+revision, wahooRouteID(key.RouteID(), key.StageOrder()),
+			ctx, slot.ID, key.Provider(), key.SourceRouteID(), key.StageOrder(), revision,
+			"demo-encoded-"+revision, wahooRouteID(key.SourceRouteID(), key.StageOrder()),
 		); err != nil {
 			return fmt.Errorf("demo: applying stage to %s: %w", slot.ID, err)
 		}
@@ -273,14 +273,14 @@ func seedSlot(ctx context.Context, state State, slot Slot, stages []route.Stage,
 // providerStages is one source's own slice of the synthetic inventory.
 type providerStages struct {
 	provider route.Provider
-	stages   []route.Stage
+	stages   []route.Route
 }
 
 // stagesByProvider splits the library by source, in the order each source's
 // first stage appears. StoreTrustedInventory now isolates one source's write
 // from another's, so seeding has to call it once per source rather than once
 // for stages of more than one.
-func stagesByProvider(stages []route.Stage) []providerStages {
+func stagesByProvider(stages []route.Route) []providerStages {
 	var groups []providerStages
 	index := make(map[route.Provider]int, 2)
 	for _, stage := range stages {
@@ -291,7 +291,7 @@ func stagesByProvider(stages []route.Stage) []providerStages {
 			continue
 		}
 		index[provider] = len(groups)
-		groups = append(groups, providerStages{provider: provider, stages: []route.Stage{stage}})
+		groups = append(groups, providerStages{provider: provider, stages: []route.Route{stage}})
 	}
 
 	return groups

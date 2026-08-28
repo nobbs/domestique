@@ -30,9 +30,9 @@ function stagesSummary(target: TargetStatus): string {
   }
 
   const held =
-    target.stages.pending === 0
-      ? `All ${target.stages.current} ${target.stages.current === 1 ? "route" : "routes"}`
-      : `${target.stages.current} of ${target.stages.current + target.stages.pending} routes`;
+    target.routes.pending === 0
+      ? `All ${target.routes.current} ${target.routes.current === 1 ? "route" : "routes"}`
+      : `${target.routes.current} of ${target.routes.current + target.routes.pending} routes`;
   const written = target.lastRun ? `written ${formatTimestamp(target.lastRun.completedAt)}` : null;
 
   return written ? `${held} · ${written}` : held;

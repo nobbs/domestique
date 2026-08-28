@@ -22,7 +22,7 @@ import { Button } from "../../components/Button";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "../../components/ui/input-group";
 import type { LibraryFilters } from "../../lib/filters";
 import { hasActiveFilters } from "../../lib/filters";
-import type { StageChange } from "../../lib/seenStages";
+import type { RouteChange } from "../../lib/seenRoutes";
 import type { UnitSystem } from "../../lib/units";
 import { FilterPanel } from "./FilterPanel";
 import { ResultRow } from "./ResultRow";
@@ -67,7 +67,7 @@ export interface SearchPanelProps {
    */
   readAt: string | null;
   /** Whether a route is new or changed since this reader last opened it. */
-  changeOf: (route: Route) => StageChange;
+  changeOf: (route: Route) => RouteChange;
   /** The units the figures report distance and elevation in. */
   unitSystem: UnitSystem;
 }

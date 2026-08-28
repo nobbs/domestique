@@ -16,9 +16,9 @@ import (
 func TestLibraryIsTheSameOnEveryRun(t *testing.T) {
 	t.Parallel()
 
-	first, err := demo.Stages()
+	first, err := demo.Routes()
 	require.NoError(t, err)
-	second, err := demo.Stages()
+	second, err := demo.Routes()
 	require.NoError(t, err)
 
 	require.Len(t, second, len(first))
@@ -33,7 +33,7 @@ func TestLibraryIsTheSameOnEveryRun(t *testing.T) {
 func TestLibraryCoversTheShapesTheUIHasToDraw(t *testing.T) {
 	t.Parallel()
 
-	stages, err := demo.Stages()
+	stages, err := demo.Routes()
 	require.NoError(t, err)
 
 	routes := map[int64]int{}
@@ -42,7 +42,7 @@ func TestLibraryCoversTheShapesTheUIHasToDraw(t *testing.T) {
 	longestMetres := 0.0
 	for index := range stages {
 		stage := &stages[index]
-		routes[stage.Key().RouteID()]++
+		routes[stage.Key().SourceRouteID()]++
 
 		geometry := stage.Geometry()
 		start, finish := geometry[0], geometry[len(geometry)-1]
@@ -68,7 +68,7 @@ func TestLibraryCoversTheShapesTheUIHasToDraw(t *testing.T) {
 func TestLibraryCoversEveryElevationCase(t *testing.T) {
 	t.Parallel()
 
-	stages, err := demo.Stages()
+	stages, err := demo.Routes()
 	require.NoError(t, err)
 
 	var none, partial, complete int
@@ -112,7 +112,7 @@ func TestLibraryCoversEveryElevationCase(t *testing.T) {
 func TestClassificationsCoverEverySurfaceOutcome(t *testing.T) {
 	t.Parallel()
 
-	stages, err := demo.Stages()
+	stages, err := demo.Routes()
 	require.NoError(t, err)
 	classifications, err := demo.Classifications(stages)
 	require.NoError(t, err)
@@ -122,13 +122,13 @@ func TestClassificationsCoverEverySurfaceOutcome(t *testing.T) {
 
 	kinds := map[string]bool{}
 	partiallyMatched := 0
-	byKey := map[[2]int64]*route.Stage{}
+	byKey := map[[2]int64]*route.Route{}
 	for index := range stages {
 		key := stages[index].Key()
-		byKey[[2]int64{key.RouteID(), int64(key.StageOrder())}] = &stages[index]
+		byKey[[2]int64{key.SourceRouteID(), int64(key.StageOrder())}] = &stages[index]
 	}
 	for _, classification := range classifications {
-		stage := byKey[[2]int64{classification.RouteID, int64(classification.StageOrder)}]
+		stage := byKey[[2]int64{classification.SourceRouteID, int64(classification.StageOrder)}]
 		require.NotNil(t, stage, "a classification addresses a stage that is not in the library")
 		assert.Equal(t, stage.ContentHash(), classification.ContentHash,
 			"a surface stored against another revision's geometry is pruned on the next read")

@@ -59,7 +59,7 @@ type sourceStageKey struct {
 // records is the encoded course's, derived by the layer that writes it, and this
 // layer has no business knowing how a course is encoded. A stage whose content
 // changed changes revision with it.
-func (h *Handler) targetStageCounts(ctx context.Context) (map[string]openapi.TargetStages, error) {
+func (h *Handler) targetStageCounts(ctx context.Context) (map[string]openapi.TargetRoutes, error) {
 	revisions := make(map[sourceStageKey]string)
 	if err := h.state.ForEachSourceStage(
 		ctx,
@@ -73,7 +73,7 @@ func (h *Handler) targetStageCounts(ctx context.Context) (map[string]openapi.Tar
 	}
 
 	targetIDs := h.targetIDs()
-	counts := make(map[string]openapi.TargetStages, len(targetIDs))
+	counts := make(map[string]openapi.TargetRoutes, len(targetIDs))
 	for _, targetID := range targetIDs {
 		var current, orphaned int
 		if err := h.state.ForEachTargetStage(
@@ -98,7 +98,7 @@ func (h *Handler) targetStageCounts(ctx context.Context) (map[string]openapi.Tar
 		); err != nil {
 			return nil, fmt.Errorf("read applied stages: %w", err)
 		}
-		counts[targetID] = openapi.TargetStages{
+		counts[targetID] = openapi.TargetRoutes{
 			Current: current,
 			Pending: len(revisions) - current + orphaned,
 		}
@@ -137,7 +137,7 @@ func (h *Handler) targetRuns(ctx context.Context) (map[string]openapi.TargetRun,
 
 // convergenceState reduces one target to the word that describes it.
 func convergenceState(
-	authorization string, stages openapi.TargetStages, run *openapi.TargetRun,
+	authorization string, stages openapi.TargetRoutes, run *openapi.TargetRun,
 ) openapi.TargetStatus_Convergence {
 	if authorization != authorizedState {
 		return convergenceUnauthorized

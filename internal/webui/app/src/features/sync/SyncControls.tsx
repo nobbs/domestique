@@ -64,13 +64,13 @@ export function activeSummary(
   runningLabels: Record<SyncPhase, string> = runningPhaseLabels([]),
 ): string {
   const headline = activeHeadline(state, active, runningLabels);
-  const total = active.stages.current + active.stages.pending;
+  const total = active.routes.current + active.routes.pending;
   if (total === 0) {
     return headline;
   }
   const targets = active.targets === 1 ? "target" : "targets";
 
-  return `${headline} · ${active.stages.current} of ${total} routes across ${active.targets} ${targets}`;
+  return `${headline} · ${active.routes.current} of ${total} routes across ${active.targets} ${targets}`;
 }
 
 /**

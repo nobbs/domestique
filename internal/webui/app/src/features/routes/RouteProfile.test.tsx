@@ -234,12 +234,12 @@ describe("RouteProfile", () => {
   });
 
   /*
-   * A stage with a profile but no predicted moving time has no timeline for a
+   * A route with a profile but no predicted moving time has no timeline for a
    * forecast to hang on. The reader has asked for one by picking a start, so
    * the absence is owed a reason rather than an empty space where a strip
    * would be — and never a guessed speed to fill the gap.
    */
-  it("explains an absent forecast on a stage nothing has predicted", () => {
+  it("explains an absent forecast on a route nothing has predicted", () => {
     show({ startAt: soon(), samples: [], movingSeconds: undefined });
 
     expect(screen.getByText(/no predicted moving time/i)).toBeInTheDocument();
@@ -248,12 +248,12 @@ describe("RouteProfile", () => {
 
   /*
    * A start time is remembered across visits, so the common path is opening a
-   * stage with one already set. `movingSeconds` is undefined while the geometry
+   * route with one already set. `movingSeconds` is undefined while the geometry
    * is in flight and also when the answer carries no prediction, and announcing
-   * the second during the first would tell a reader their stage has no
+   * the second during the first would tell a reader their route has no
    * prediction for as long as the fetch takes.
    */
-  it("waits for the geometry before declaring a stage unpredicted", () => {
+  it("waits for the geometry before declaring a route unpredicted", () => {
     show({
       startAt: new Date(Date.now() + 60 * 60 * 1000),
       samples: [],
@@ -268,7 +268,7 @@ describe("RouteProfile", () => {
    * A prediction of no time at all is not a timeline: the sampler returns
    * nothing for it, so a strip mounted against it renders null and the reader
    * is left with no explanation at all. It is the same absence as an
-   * unpredicted stage.
+   * unpredicted route.
    */
   it("treats a prediction of no time at all as no timeline", () => {
     show({ startAt: new Date(Date.now() + 60 * 60 * 1000), samples: [], movingSeconds: 0 });
@@ -278,26 +278,26 @@ describe("RouteProfile", () => {
 
   /*
    * The picker keeps its refusal in local state and this section is reused
-   * rather than remounted as the reader moves between stages, so it is keyed
-   * by the stage. By identity, not by title: two stages may legitimately carry
-   * the same title, and an alert about one stage's horizon sitting over
+   * rather than remounted as the reader moves between routes, so it is keyed
+   * by the route. By identity, not by title: two routes may legitimately carry
+   * the same title, and an alert about one route's horizon sitting over
    * another is an alert about nothing.
    */
-  it("gives the start-time control a fresh identity per stage, not per title", () => {
-    const { moveTo } = show({ stageKey: "veloplanner/1/1", title: "Same" });
+  it("gives the start-time control a fresh identity per route, not per title", () => {
+    const { moveTo } = show({ routeKey: "veloplanner/1/1", title: "Same" });
     // A start the endpoint would refuse, so the control raises its alert.
     fireEvent.change(screen.getByLabelText("Ride start"), {
       target: { value: "2020-01-01T07:00" },
     });
     expect(screen.getByRole("alert")).toBeInTheDocument();
 
-    // The same title, a different stage: the alert was about the other one.
-    moveTo({ stageKey: "veloplanner/2/1", title: "Same" });
+    // The same title, a different route: the alert was about the other one.
+    moveTo({ routeKey: "veloplanner/2/1", title: "Same" });
 
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
-  it("says nothing of the sort once the stage has a prediction", () => {
+  it("says nothing of the sort once the route has a prediction", () => {
     show({ startAt: soon(), samples: [], movingSeconds: 3600 });
 
     expect(screen.queryByText(/no predicted moving time/i)).not.toBeInTheDocument();
@@ -307,7 +307,7 @@ describe("RouteProfile", () => {
    * The picker's bounds constrain what a reader can type, and say nothing
    * about a value handed back from storage. A start remembered from an earlier
    * visit can age past the 24-hour allowance while a page sits open, and one
-   * that fits a short stage can put a long stage's finish past the horizon.
+   * that fits a short route can put a long route's finish past the horizon.
    * Sending it earns a 400 the strip can only report as the provider being
    * down, so it is caught here and explained instead.
    */
@@ -323,7 +323,7 @@ describe("RouteProfile", () => {
     expect(screen.queryByRole("img", { name: /Forecast along the way/ })).toBeNull();
   });
 
-  it("explains a start whose finish falls past the horizon on this stage", () => {
+  it("explains a start whose finish falls past the horizon on this route", () => {
     // Inside the window at the start line, and past it ten hours later.
     const nearlyTheHorizon = new Date(Date.now() + 16 * 24 * 60 * 60 * 1000 - 60 * 60 * 1000);
 
@@ -333,10 +333,10 @@ describe("RouteProfile", () => {
   });
 
   /*
-   * Weather needs no terrain; only the shared axis does. A stage with a
+   * Weather needs no terrain; only the shared axis does. A route with a
    * timeline but no profile therefore falls back to the whole route rather
    * than a window of zero length, which nothing would overlap and every cell
-   * would be dropped against. Today no such stage exists — a prediction needs
+   * would be dropped against. Today no such route exists — a prediction needs
    * complete elevation — so this pins the fallback before something else
    * starts producing timelines.
    */

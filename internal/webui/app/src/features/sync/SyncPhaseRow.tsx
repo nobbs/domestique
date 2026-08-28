@@ -23,7 +23,7 @@ function runSummary(phase: SyncPhase, run: SyncPhaseRun | undefined): string {
   }
   const counts =
     phase === "source"
-      ? `${run.sourceStages} routes`
+      ? `${run.sourceRoutes} routes`
       : [
           `${run.created} created`,
           `${run.updated} updated`,

@@ -63,27 +63,28 @@ export interface RouteProfileProps {
   /** The whole route's own geometry, which the forecast strip's wind reading is measured against. */
   coordinates: Position[];
   /**
-   * The stage's whole predicted moving time, or undefined for a stage nothing
+   * The route's whole predicted moving time, or undefined for a route nothing
    * has predicted one for. Absent is a state the page has to say out loud
    * rather than draw as an empty space: the reader has asked for a forecast
    * and is owed the reason they are not getting one.
    */
   movingSeconds?: number | undefined;
   /**
-   * What identifies the stage on show — `routeKey`'s provider/route/stage
-   * triple. The title cannot stand in for it: two stages may legitimately
-   * carry the same one, and this is used to tell them apart.
+   * What identifies the route on show — the provider, source route and stage
+   * order triple `routeKey()` renders. The title cannot stand in for it: two
+   * routes may legitimately carry the same one, and this is used to tell them
+   * apart.
    */
-  stageKey?: string | undefined;
+  routeKey?: string | undefined;
   /**
-   * Whether the stage's prediction is settled — that is, whether its geometry
+   * Whether the route's prediction is settled — that is, whether its geometry
    * has actually been answered for.
    *
    * `movingSeconds` alone cannot say: it is undefined both while the geometry is
    * still being fetched and when the answer came back without a prediction. A
    * remembered start time makes that difference visible, because the page
    * would otherwise announce "no predicted moving time" for the second or two
-   * a fetch takes, on a stage that has one.
+   * a fetch takes, on a route that has one.
    */
   predictionKnown?: boolean;
 }
@@ -107,7 +108,7 @@ export function RouteProfile({
   coordinates,
   movingSeconds,
   predictionKnown = true,
-  stageKey,
+  routeKey,
 }: RouteProfileProps) {
   /*
    * A finger cannot hover, and a card that scrolls cannot give every downward
@@ -119,7 +120,7 @@ export function RouteProfile({
   /*
    * A remembered start time is checked again here, not only where it was
    * typed. It can go stale on a page left open past the endpoint's 24-hour
-   * allowance, and a time that fits a short stage can put a long one's finish
+   * allowance, and a time that fits a short route can put a long one's finish
    * past the 16-day horizon — the picker's own bounds say nothing about a
    * value it was handed rather than asked for. Sending it anyway would earn a
    * `400` that the strip can only report as the provider being unavailable,
@@ -130,7 +131,7 @@ export function RouteProfile({
    * returns nothing for a non-positive total, so treating it as drawable
    * mounts a strip that immediately renders null and leaves the reader with no
    * explanation at all. It is the same "nothing to hang a forecast on" state
-   * as an unpredicted stage, and it says so.
+   * as an unpredicted route, and it says so.
    */
   const hasTimeline = movingSeconds !== undefined && movingSeconds > 0;
   const refusal = startAt === null ? null : startTimeRefusal(startAt, movingSeconds);
@@ -138,7 +139,7 @@ export function RouteProfile({
     refusal === "past"
       ? "That start time is more than a day in the past. Choose another to see a forecast."
       : refusal === "horizon"
-        ? "That start time is outside the 16-day forecast window for this stage — this ride would finish past it. Choose another to see a forecast."
+        ? "That start time is outside the 16-day forecast window for this route — this ride would finish past it. Choose another to see a forecast."
         : null;
   const startFits = startAt !== null && startRefusal === null;
   const range = profile
@@ -203,22 +204,22 @@ export function RouteProfile({
           />
         </div>
         {/*
-         * Keyed by the stage, so its refusal does not outlive the stage it
+         * Keyed by the route, so its refusal does not outlive the route it
          * was about: this section is reused rather than remounted as the
-         * reader moves between routes, and an alert about one stage's
+         * reader moves between routes, and an alert about one route's
          * horizon attached to the next one would be about nothing. By the
-         * stage's identity rather than its title, which two stages may
+         * route's identity rather than its title, which two routes may
          * legitimately share.
          */}
         <StartTimePicker
-          key={stageKey ?? title}
+          key={routeKey ?? title}
           value={startAt}
           onChange={onStartAtChange}
           movingSeconds={movingSeconds}
         />
         {startAt && predictionKnown && !hasTimeline ? (
           <p className="text-sm text-[var(--hold)]">
-            This stage has no predicted moving time, so there is no timeline to hang a forecast on.
+            This route has no predicted moving time, so there is no timeline to hang a forecast on.
           </p>
         ) : null}
         {startAt && hasTimeline && startRefusal !== null ? (
@@ -234,7 +235,7 @@ export function RouteProfile({
              * the strip falls back to the whole route — the last sample sits
              * at the finish, so it carries that distance. Zero would be a
              * window nothing overlaps, and every cell would be dropped as
-             * off-screen: a stage with a timeline but no terrain is exactly
+             * off-screen: a route with a timeline but no terrain is exactly
              * the case that is supposed to still get a forecast.
              */
             endMetres={profile?.endMetres ?? samples[samples.length - 1]?.distanceMetres ?? 0}

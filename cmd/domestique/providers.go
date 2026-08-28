@@ -170,7 +170,7 @@ func (p *wahooProvider) DeleteOwnedRoutes(ctx context.Context, accessToken strin
 	return client.DeleteOwnedRoutes(ctx, accessToken) //nolint:wrapcheck // forwarding to the client this holds
 }
 
-func (p *wahooProvider) CreateRoute(ctx context.Context, accessToken string, stage *route.Stage, fitData []byte) (routeID int64, err error) {
+func (p *wahooProvider) CreateRoute(ctx context.Context, accessToken string, stage *route.Route, fitData []byte) (routeID int64, err error) {
 	client, err := p.current()
 	if err != nil {
 		return 0, err
@@ -179,7 +179,7 @@ func (p *wahooProvider) CreateRoute(ctx context.Context, accessToken string, sta
 	return client.CreateRoute(ctx, accessToken, stage, fitData) //nolint:wrapcheck // forwarding to the client this holds
 }
 
-func (p *wahooProvider) UpdateRoute(ctx context.Context, routeID int64, accessToken string, stage *route.Stage, fitData []byte) (updatedRouteID int64, err error) {
+func (p *wahooProvider) UpdateRoute(ctx context.Context, routeID int64, accessToken string, stage *route.Route, fitData []byte) (updatedRouteID int64, err error) {
 	client, err := p.current()
 	if err != nil {
 		return 0, err
@@ -347,7 +347,7 @@ func (p *rideModelProvider) validationView() *httpapi.RideModelValidation {
 // predictorFor binds a provider to the settings it reloads from, so that
 // synchronization keeps seeing nothing but Predict.
 func predictorFor(provider *rideModelProvider, settings *runtimeconfig.Current) syncservice.Predictor {
-	return predictorFunc(func(ctx context.Context, stages []route.Stage) (predicted, failed int, err error) {
+	return predictorFunc(func(ctx context.Context, stages []route.Route) (predicted, failed int, err error) {
 		if reloadErr := provider.reload(ctx, settings); reloadErr != nil {
 			return 0, 0, reloadErr
 		}
@@ -360,8 +360,8 @@ func predictorFor(provider *rideModelProvider, settings *runtimeconfig.Current) 
 	})
 }
 
-type predictorFunc func(ctx context.Context, stages []route.Stage) (predicted, failed int, err error)
+type predictorFunc func(ctx context.Context, stages []route.Route) (predicted, failed int, err error)
 
-func (f predictorFunc) Predict(ctx context.Context, stages []route.Stage) (predicted, failed int, err error) {
+func (f predictorFunc) Predict(ctx context.Context, stages []route.Route) (predicted, failed int, err error) {
 	return f(ctx, stages)
 }

@@ -76,17 +76,22 @@ vi.mock("./LibraryMap", () => ({
 
 const { AtlasPage } = await import("./AtlasPage");
 
-function route(routeId: number, stageOrder: number, routeName: string, stageName: string): Route {
+function route(
+  sourceRouteId: number,
+  stageOrder: number,
+  sourceRouteName: string,
+  routeName: string,
+): Route {
   return {
     provider: "veloplanner",
-    routeId,
+    sourceRouteId,
     stageOrder,
+    sourceRouteName,
     routeName,
-    stageName,
-    title: stageName ? `${routeName} — ${stageName}` : routeName,
+    title: routeName ? `${sourceRouteName} — ${routeName}` : sourceRouteName,
     sourceRevision: "2026-08-17",
-    contentHash: `hash-${routeId}-${stageOrder}`,
-    distanceMetres: 10_000 * stageOrder + routeId,
+    contentHash: `hash-${sourceRouteId}-${stageOrder}`,
+    distanceMetres: 10_000 * stageOrder + sourceRouteId,
     ascentMetres: 100 * stageOrder,
     maxGradientPercent: 8,
     pointCount: 100,
@@ -146,7 +151,7 @@ function renderPage(
     targets: [],
     sync: {
       state: "idle",
-      sourceStages: library.length,
+      sourceRoutes: library.length,
       created: 0,
       updated: 0,
       deleted: 0,
@@ -156,7 +161,7 @@ function renderPage(
             source: {
               lastCompletedAt: options.readAt,
               lastResult: "succeeded",
-              sourceStages: library.length,
+              sourceRoutes: library.length,
               created: 0,
               updated: 0,
               deleted: 0,
@@ -168,7 +173,7 @@ function renderPage(
   });
   (options.geometryFor ?? library).forEach((entry, index) => {
     client.setQueryData(
-      routeGeometryQuery(entry.provider, entry.routeId, entry.stageOrder).queryKey,
+      routeGeometryQuery(entry.provider, entry.sourceRouteId, entry.stageOrder).queryKey,
       {
         ...geometry(entry, index * 0.4),
         surface: options.surfaceFor?.[routeKey(entry)],
@@ -577,8 +582,8 @@ describe("AtlasPage", () => {
   });
 
   // An identifier made of digits that still numbers nothing. Reading it as a
-  // route would send the page looking for stage zero of route zero; it is not a
-  // route the library is missing, it is not an address at all.
+  // route would send the page looking for route zero of source route zero; it
+  // is not a route the library is missing, it is not an address at all.
   it("ignores an address whose numbers name no route", () => {
     renderPage(LIBRARY, { at: "/?route=veloplanner%2F0%2F1" });
 

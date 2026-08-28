@@ -68,8 +68,8 @@ describe("sourceRoute", () => {
   });
 
   it("offers nothing for an identifier that is not one", () => {
-    for (const routeId of [0, -3, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
-      expect(sourceRoute(VELOPLANNER, BASE, routeId)).toBeNull();
+    for (const sourceRouteId of [0, -3, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(sourceRoute(VELOPLANNER, BASE, sourceRouteId)).toBeNull();
     }
   });
 

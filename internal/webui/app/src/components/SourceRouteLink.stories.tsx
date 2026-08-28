@@ -19,7 +19,7 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const VeloPlanner: Story = {
-  args: { provider: "veloplanner", baseUrl: "https://veloplanner.com", routeId: 12 },
+  args: { provider: "veloplanner", baseUrl: "https://veloplanner.com", sourceRouteId: 12 },
 };
 
 /**
@@ -32,7 +32,7 @@ export const Asserted: Story = {
   args: {
     provider: "veloplanner",
     baseUrl: "https://source.example.test",
-    routeId: 4212,
+    sourceRouteId: 4212,
   },
   play: async ({ canvas }) => {
     const link = canvas.getByRole("link", {
@@ -64,7 +64,7 @@ export const WwwAndPort: Story = {
   args: {
     provider: "veloplanner",
     baseUrl: "https://www.source.example.test:8443",
-    routeId: 4212,
+    sourceRouteId: 4212,
   },
   play: async ({ canvas }) => {
     const link = canvas.getByRole("link");
@@ -76,7 +76,7 @@ export const WwwAndPort: Story = {
 
 /** No configured base URL: nothing to offer, so nothing is drawn. */
 export const NoConfiguredProvider: Story = {
-  args: { provider: "veloplanner", baseUrl: undefined, routeId: 4212 },
+  args: { provider: "veloplanner", baseUrl: undefined, sourceRouteId: 4212 },
   play: async ({ canvas }) => {
     await expect(canvas.queryByRole("link")).not.toBeInTheDocument();
   },
@@ -84,7 +84,7 @@ export const NoConfiguredProvider: Story = {
 
 /** A base URL configured but unusable: still nothing, rather than a dead link. */
 export const UnusableBaseUrl: Story = {
-  args: { provider: "veloplanner", baseUrl: "not-a-url", routeId: 4212 },
+  args: { provider: "veloplanner", baseUrl: "not-a-url", sourceRouteId: 4212 },
   play: async ({ canvas }) => {
     await expect(canvas.queryByRole("link")).toBeNull();
   },
@@ -92,7 +92,7 @@ export const UnusableBaseUrl: Story = {
 
 /** A configured base URL is not enough on its own: an unknown provider gets no guessed link either. */
 export const UnknownProvider: Story = {
-  args: { provider: "komoot", baseUrl: "https://source.example.test", routeId: 4212 },
+  args: { provider: "komoot", baseUrl: "https://source.example.test", sourceRouteId: 4212 },
   play: async ({ canvas }) => {
     await expect(canvas.queryByRole("link")).toBeNull();
   },

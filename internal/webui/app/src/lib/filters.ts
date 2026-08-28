@@ -66,7 +66,7 @@ function inRange(value: number, range: NumericRange): boolean {
  * class among the ones checked.
  *
  * A numeric bound is compared exactly as the field is stored, including
- * zero: a stage with no elevation data reports zero ascent and zero max
+ * zero: a route with no elevation data reports zero ascent and zero max
  * gradient the same way a genuinely flat one does, and a filter that
  * excluded zero specially would need information neither this page nor the
  * service has.

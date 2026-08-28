@@ -63,7 +63,7 @@ func NewPredictor(source SurfaceSource, cache Cache, coefficients Coefficients) 
 // its geometry, its surface classification, and the loaded coefficients. It
 // reports how many it predicted and how many it could not, on the same terms
 // surface.Annotator does: a stage that failed is not a stage silently skipped.
-func (p *Predictor) Predict(ctx context.Context, stages []route.Stage) (predicted, failed int, err error) {
+func (p *Predictor) Predict(ctx context.Context, stages []route.Route) (predicted, failed int, err error) {
 	for index := range stages {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return predicted, failed, fmt.Errorf("ridemodel: predicting stages: %w", ctxErr)
@@ -74,7 +74,7 @@ func (p *Predictor) Predict(ctx context.Context, stages []route.Stage) (predicte
 		surfaceGeneration := p.currentSurfaceGeneration(ctx, stage)
 
 		cachedHash, cachedSurfaceGeneration, cachedFingerprint, found, hashErr := p.cache.StageDurationFingerprint(
-			ctx, key.Provider(), key.RouteID(), key.StageOrder(),
+			ctx, key.Provider(), key.SourceRouteID(), key.StageOrder(),
 		)
 		if hashErr != nil {
 			return predicted, failed, fmt.Errorf("ridemodel: reading cached duration: %w", hashErr)
@@ -95,7 +95,7 @@ func (p *Predictor) Predict(ctx context.Context, stages []route.Stage) (predicte
 	return predicted, failed, nil
 }
 
-func (p *Predictor) predictStage(ctx context.Context, stage *route.Stage, surfaceGeneration string) error {
+func (p *Predictor) predictStage(ctx context.Context, stage *route.Route, surfaceGeneration string) error {
 	geometry := stage.Geometry()
 	kinds := p.surfaceKinds(ctx, stage, len(geometry))
 	if kinds == nil {
@@ -125,7 +125,7 @@ func (p *Predictor) predictStage(ctx context.Context, stage *route.Stage, surfac
 
 	key := stage.Key()
 	if err := p.cache.StoreStageDuration(
-		ctx, key.Provider(), key.RouteID(), key.StageOrder(),
+		ctx, key.Provider(), key.SourceRouteID(), key.StageOrder(),
 		stage.ContentHash(), surfaceGeneration, p.coefficients.Fingerprint,
 		movingSeconds, cumulative,
 	); err != nil {
@@ -141,9 +141,9 @@ func (p *Predictor) predictStage(ctx context.Context, stage *route.Stage, surfac
 // itself could not answer — a prediction is never blocked on surface
 // classification being available, so any of those three reads as "no current
 // classification", which is exactly what "timed as asphalt throughout" means.
-func (p *Predictor) currentSurfaceGeneration(ctx context.Context, stage *route.Stage) string {
+func (p *Predictor) currentSurfaceGeneration(ctx context.Context, stage *route.Route) string {
 	key := stage.Key()
-	contentHash, generation, found, err := p.source.StageSurfaceHash(ctx, key.Provider(), key.RouteID(), key.StageOrder())
+	contentHash, generation, found, err := p.source.StageSurfaceHash(ctx, key.Provider(), key.SourceRouteID(), key.StageOrder())
 	if err != nil || !found || contentHash != stage.ContentHash() {
 		return ""
 	}
@@ -155,9 +155,9 @@ func (p *Predictor) currentSurfaceGeneration(ctx context.Context, stage *route.S
 // nil when none is cached — read by Predict as asphalt throughout. A read or
 // decode failure degrades the same way rather than failing the prediction:
 // surface classification is an enrichment this pass does not depend on.
-func (p *Predictor) surfaceKinds(ctx context.Context, stage *route.Stage, pointCount int) []surface.Kind {
+func (p *Predictor) surfaceKinds(ctx context.Context, stage *route.Route, pointCount int) []surface.Kind {
 	key := stage.Key()
-	ranges, _, found, err := p.source.StageSurface(ctx, key.Provider(), key.RouteID(), key.StageOrder(), stage.ContentHash())
+	ranges, _, found, err := p.source.StageSurface(ctx, key.Provider(), key.SourceRouteID(), key.StageOrder(), stage.ContentHash())
 	if err != nil || !found {
 		return nil
 	}

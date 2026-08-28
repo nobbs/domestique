@@ -48,7 +48,7 @@ func TestServiceSkipsFailedTargetDeletionButContinuesOtherTarget(t *testing.T) {
 		target.seedRoute(targetID, &stale, remoteID(targetID, 2))
 	}
 	target.failUpdateAccess = accessFor("a")
-	service := newService(t, state, &fakeSource{stages: []route.Stage{desired}}, &fakeEncoder{}, target, false)
+	service := newService(t, state, &fakeSource{stages: []route.Route{desired}}, &fakeEncoder{}, target, false)
 
 	result := runBoth(t.Context(), service)
 	assert.Equal(t, OutcomeFailed, result.Outcome, "runBoth() outcome")
@@ -69,7 +69,7 @@ func TestServiceBlocksSixthDeletionWithoutDeleting(t *testing.T) {
 			target.seedRoute(targetID, &stale, remoteID(targetID, routeID))
 		}
 	}
-	service := newService(t, state, &fakeSource{stages: []route.Stage{desired}}, &fakeEncoder{}, target, false)
+	service := newService(t, state, &fakeSource{stages: []route.Route{desired}}, &fakeEncoder{}, target, false)
 
 	result := runBoth(t.Context(), service)
 	assert.Equal(t, OutcomeBlocked, result.Outcome, "runBoth() outcome")
@@ -84,7 +84,7 @@ func TestServiceAdoptsOwnedRoutesAfterStateLoss(t *testing.T) {
 	for _, targetID := range []string{"a", "b"} {
 		target.seedRoute(targetID, &desired, remoteID(targetID, 1))
 	}
-	service := newService(t, state, &fakeSource{stages: []route.Stage{desired}}, &fakeEncoder{}, target, false)
+	service := newService(t, state, &fakeSource{stages: []route.Route{desired}}, &fakeEncoder{}, target, false)
 
 	result := runBoth(t.Context(), service)
 	assert.Equal(t, OutcomeSucceeded, result.Outcome, "runBoth() outcome")
@@ -106,7 +106,7 @@ func TestServiceRecreatesMissingOwnedRoutesWithoutDeletingManualRoutes(t *testin
 		seedMapping(state, targetID, &desired, remoteID(targetID, 1))
 		target.ensureAccess(accessFor(targetID))["manual-route"] = remoteID(targetID, 99)
 	}
-	service := newService(t, state, &fakeSource{stages: []route.Stage{desired}}, &fakeEncoder{}, target, false)
+	service := newService(t, state, &fakeSource{stages: []route.Route{desired}}, &fakeEncoder{}, target, false)
 
 	result := runBoth(t.Context(), service)
 	assert.Equal(t, OutcomeSucceeded, result.Outcome, "runBoth() outcome")
@@ -122,7 +122,7 @@ func TestServiceMarksOnlyRejectedTargetForReauthorization(t *testing.T) {
 	state := newFakeState("a", "b")
 	target := newFakeTarget()
 	target.rejectRefreshToken["a"] = true
-	service := newService(t, state, &fakeSource{stages: []route.Stage{desired}}, &fakeEncoder{}, target, false)
+	service := newService(t, state, &fakeSource{stages: []route.Route{desired}}, &fakeEncoder{}, target, false)
 
 	result := runBoth(t.Context(), service)
 	assert.Equal(t, OutcomeFailed, result.Outcome, "runBoth() outcome")
@@ -135,7 +135,7 @@ func TestServiceMarksOnlyRejectedTargetForReauthorization(t *testing.T) {
 func TestServiceBlocksUnexpectedEmptySourceWithoutDeleting(t *testing.T) {
 	previous := testStage(t, 1, 1, "old", "old-hash")
 	state := newFakeState("a", "b")
-	state.trusted = []route.Stage{previous}
+	state.trusted = []route.Route{previous}
 	target := newFakeTarget()
 	for _, targetID := range []string{"a", "b"} {
 		seedMapping(state, targetID, &previous, remoteID(targetID, 1))
@@ -163,7 +163,7 @@ func TestServiceDeletesUpToFiveOwnedRoutesPerTarget(t *testing.T) {
 			target.seedRoute(targetID, &stale, remoteID(targetID, routeID))
 		}
 	}
-	service := newService(t, state, &fakeSource{stages: []route.Stage{desired}}, &fakeEncoder{}, target, false)
+	service := newService(t, state, &fakeSource{stages: []route.Route{desired}}, &fakeEncoder{}, target, false)
 
 	result := runBoth(t.Context(), service)
 	assert.Equal(t, OutcomeSucceeded, result.Outcome, "runBoth() outcome")
@@ -177,7 +177,7 @@ func TestServiceReadsTheSourceWhileATargetNeedsReauthorization(t *testing.T) {
 	state := newFakeState("a", "b")
 	state.authorizations["b"] = "needs_reauthorization"
 	target := newFakeTarget()
-	service := newService(t, state, &fakeSource{stages: []route.Stage{desired}}, &fakeEncoder{}, target, false)
+	service := newService(t, state, &fakeSource{stages: []route.Route{desired}}, &fakeEncoder{}, target, false)
 
 	source := service.RunSource(t.Context())
 	assert.Equal(t, OutcomeSucceeded, source.Outcome, "RunSource() outcome")
@@ -193,7 +193,7 @@ func TestServiceReconcilesStoredInventoryWithoutReadingTheSource(t *testing.T) {
 	state := newFakeState("a", "b")
 	source := &fakeSource{err: errors.New("source unavailable")}
 	service := newService(t, state, source, &fakeEncoder{}, newFakeTarget(), false)
-	state.trusted = []route.Stage{desired}
+	state.trusted = []route.Route{desired}
 
 	result := service.RunTargets(t.Context())
 	assert.Equal(t, OutcomeSucceeded, result.Outcome, "RunTargets() outcome")
@@ -209,9 +209,9 @@ func TestServiceReconcilingAnUnchangedLibraryCostsOneListingPerTarget(t *testing
 	second := testStage(t, 2, 1, "current", "current-hash")
 	state := newFakeState("a", "b")
 	target := newFakeTarget()
-	state.trusted = []route.Stage{first, second}
+	state.trusted = []route.Route{first, second}
 	for _, targetID := range []string{"a", "b"} {
-		for index, stage := range []*route.Stage{&first, &second} {
+		for index, stage := range []*route.Route{&first, &second} {
 			routeID := int64(100 + index)
 			target.seedRoute(targetID, stage, routeID)
 			seedMapping(state, targetID, stage, routeID)
@@ -236,7 +236,7 @@ func TestServiceWritesNothingWhenTheTargetListingFails(t *testing.T) {
 	stale := testStage(t, 2, 1, "old", "old-hash")
 	state := newFakeState("a", "b")
 	seedMapping(state, "a", &stale, 101)
-	state.trusted = []route.Stage{desired}
+	state.trusted = []route.Route{desired}
 	target := newFakeTarget()
 	target.listErr = errDestination
 	service := newService(t, state, &fakeSource{}, &fakeEncoder{}, target, false)
@@ -253,8 +253,8 @@ func TestServiceClearTargetRemovesEveryOwnedRouteAndItsMappings(t *testing.T) {
 	second := testStage(t, 2, 1, "current", "current-hash")
 	state := newFakeState("a", "b")
 	target := newFakeTarget()
-	state.trusted = []route.Stage{first, second}
-	for _, stage := range []*route.Stage{&first, &second} {
+	state.trusted = []route.Route{first, second}
+	for _, stage := range []*route.Route{&first, &second} {
 		for index, targetID := range []string{"a", "b"} {
 			routeID := int64(100 + index)
 			target.seedRoute(targetID, stage, routeID)
@@ -415,7 +415,7 @@ func TestServiceRewritesAStageWhosePushedRevisionWasForgotten(t *testing.T) {
 	state := newFakeState("a")
 	target := newFakeTarget()
 	target.seedRoute("a", &desired, 101)
-	state.trusted = []route.Stage{desired}
+	state.trusted = []route.Route{desired}
 	state.mappings["a"][keyFor(&desired)] = targetStage{
 		sourceRevision: "reprocess-requested",
 		contentHash:    "reprocess-requested",
@@ -454,7 +454,7 @@ func TestServiceRunTargetReconcilesOnlyTheNamedTarget(t *testing.T) {
 		seedMapping(state, targetID, &previous, remoteID(targetID, 1))
 		target.seedRoute(targetID, &previous, remoteID(targetID, 1))
 	}
-	state.trusted = []route.Stage{desired}
+	state.trusted = []route.Route{desired}
 	service := newService(t, state, &fakeSource{}, &fakeEncoder{}, target, false)
 
 	result := service.RunTarget(t.Context(), "a")
@@ -476,7 +476,7 @@ func TestServiceRunTargetKeepsTheDeletionLimit(t *testing.T) {
 		seedMapping(state, "a", &stale, remoteID("a", routeID))
 		target.seedRoute("a", &stale, remoteID("a", routeID))
 	}
-	state.trusted = []route.Stage{desired}
+	state.trusted = []route.Route{desired}
 	service := newService(t, state, &fakeSource{}, &fakeEncoder{}, target, false)
 
 	result := service.RunTarget(t.Context(), "a")
@@ -544,7 +544,7 @@ func TestServiceRunTargetFailsWhenTheStoredInventoryCannotBeRead(t *testing.T) {
 func TestServiceRunTargetFailsOnADuplicateStoredStage(t *testing.T) {
 	desired := testStage(t, 1, 1, "current", "current-hash")
 	state := newFakeState("a", "b")
-	state.trusted = []route.Stage{desired, desired}
+	state.trusted = []route.Route{desired, desired}
 	target := newFakeTarget()
 	service := newService(t, state, &fakeSource{}, &fakeEncoder{}, target, false)
 
@@ -567,7 +567,7 @@ func TestServiceSupportsOneTarget(t *testing.T) {
 	state := newFakeState("a")
 	target := newFakeTarget()
 	service, err := New(
-		syncOptions(false, []Source{&fakeSource{stages: []route.Stage{desired}}}, "a"),
+		syncOptions(false, []Source{&fakeSource{stages: []route.Route{desired}}}, "a"),
 		state, identityProcessor{}, &fakeEncoder{}, target, nil, nil,
 	)
 	require.NoError(t, err, "New()")
@@ -588,7 +588,7 @@ func TestServiceUpdatesLegacyEncoderOutput(t *testing.T) {
 		wahooRouteID:   101,
 	}
 	service, err := New(
-		syncOptions(false, []Source{&fakeSource{stages: []route.Stage{desired}}}, "a"),
+		syncOptions(false, []Source{&fakeSource{stages: []route.Route{desired}}}, "a"),
 		state, identityProcessor{}, &fakeEncoder{}, target, nil, nil,
 	)
 	require.NoError(t, err, "New()")
@@ -607,7 +607,7 @@ func TestServiceAnnotatesTheStoredInventoryAfterReconciling(t *testing.T) {
 	target := newFakeTarget()
 	annotator := &fakeAnnotator{}
 	annotator.observe = func() { annotator.createdOnEntry = len(target.routes[accessFor("a")]) }
-	service := newAnnotatedService(t, state, &fakeSource{stages: []route.Stage{desired}}, target, annotator)
+	service := newAnnotatedService(t, state, &fakeSource{stages: []route.Route{desired}}, target, annotator)
 
 	result := runBoth(t.Context(), service)
 	require.Equal(t, OutcomeSucceeded, result.Outcome, "runBoth() outcome")
@@ -626,7 +626,7 @@ func TestServiceSucceedsWhenAnnotationFails(t *testing.T) {
 	state := newFakeState("a")
 	target := newFakeTarget()
 	annotator := &fakeAnnotator{err: errors.New("endpoint unavailable")}
-	service := newAnnotatedService(t, state, &fakeSource{stages: []route.Stage{desired}}, target, annotator)
+	service := newAnnotatedService(t, state, &fakeSource{stages: []route.Route{desired}}, target, annotator)
 
 	result := runBoth(t.Context(), service)
 	assert.Equal(t, OutcomeSucceeded, result.Outcome, "runBoth() outcome")
@@ -637,7 +637,7 @@ func TestServiceSucceedsWhenAnnotationFails(t *testing.T) {
 func TestServiceSkipsAnnotationWhenNothingWasStored(t *testing.T) {
 	previous := testStage(t, 1, 1, "old", "old-hash")
 	state := newFakeState("a")
-	state.trusted = []route.Stage{previous}
+	state.trusted = []route.Route{previous}
 	target := newFakeTarget()
 	seedMapping(state, "a", &previous, remoteID("a", 1))
 	target.seedRoute("a", &previous, remoteID("a", 1))
@@ -655,7 +655,7 @@ func TestServiceSkipsAnnotationWhenNothingWasStored(t *testing.T) {
 func TestServiceAnnotateStoredReportsTheAnnotatorsCounts(t *testing.T) {
 	stage := testStage(t, 1, 1, "current", "current-hash")
 	state := newFakeState("a")
-	state.trusted = []route.Stage{stage}
+	state.trusted = []route.Route{stage}
 	service := newAnnotatedService(t, state, &fakeSource{}, newFakeTarget(), &fakeAnnotator{})
 
 	classified, failed := service.AnnotateStored(t.Context())
@@ -695,19 +695,19 @@ func newAnnotatedService(
 type fakeAnnotator struct {
 	err            error
 	observe        func()
-	stages         []route.Stage
+	stages         []route.Route
 	calls          int
 	createdOnEntry int
 }
 
 func (a *fakeAnnotator) Annotate(
-	_ context.Context, stages []route.Stage,
+	_ context.Context, stages []route.Route,
 ) (classified, failed int, err error) {
 	if a.observe != nil {
 		a.observe()
 	}
 	a.calls++
-	a.stages = append([]route.Stage(nil), stages...)
+	a.stages = append([]route.Route(nil), stages...)
 	if a.err != nil {
 		return 0, len(stages), a.err
 	}
@@ -724,7 +724,7 @@ func TestServicePredictsTheStoredInventoryAfterReconciling(t *testing.T) {
 	target := newFakeTarget()
 	predictor := &fakePredictor{}
 	service, err := New(
-		syncOptions(false, []Source{&fakeSource{stages: []route.Stage{desired}}}, "a"),
+		syncOptions(false, []Source{&fakeSource{stages: []route.Route{desired}}}, "a"),
 		state, exportProcessor{}, &fakeEncoder{}, target, nil, predictor,
 	)
 	require.NoError(t, err, "New()")
@@ -745,7 +745,7 @@ func TestServiceSucceedsWhenPredictionFails(t *testing.T) {
 	target := newFakeTarget()
 	predictor := &fakePredictor{err: errors.New("coefficient file unavailable")}
 	service, err := New(
-		syncOptions(false, []Source{&fakeSource{stages: []route.Stage{desired}}}, "a"),
+		syncOptions(false, []Source{&fakeSource{stages: []route.Route{desired}}}, "a"),
 		state, exportProcessor{}, &fakeEncoder{}, target, nil, predictor,
 	)
 	require.NoError(t, err, "New()")
@@ -759,12 +759,12 @@ func TestServiceSucceedsWhenPredictionFails(t *testing.T) {
 func TestServiceAnnotatesAndPredictsInTheSamePass(t *testing.T) {
 	desired := testStage(t, 1, 1, "current", "current-hash")
 	state := newFakeState("a")
-	state.trusted = []route.Stage{desired}
+	state.trusted = []route.Route{desired}
 	target := newFakeTarget()
 	annotator := &fakeAnnotator{}
 	predictor := &fakePredictor{}
 	service, err := New(
-		syncOptions(false, []Source{&fakeSource{stages: []route.Stage{desired}}}, "a"),
+		syncOptions(false, []Source{&fakeSource{stages: []route.Route{desired}}}, "a"),
 		state, exportProcessor{}, &fakeEncoder{}, target, annotator, predictor,
 	)
 	require.NoError(t, err, "New()")
@@ -778,15 +778,15 @@ func TestServiceAnnotatesAndPredictsInTheSamePass(t *testing.T) {
 
 type fakePredictor struct {
 	err    error
-	stages []route.Stage
+	stages []route.Route
 	calls  int
 }
 
 func (p *fakePredictor) Predict(
-	_ context.Context, stages []route.Stage,
+	_ context.Context, stages []route.Route,
 ) (predicted, failed int, err error) {
 	p.calls++
-	p.stages = append([]route.Stage(nil), stages...)
+	p.stages = append([]route.Route(nil), stages...)
 	if p.err != nil {
 		return 0, len(stages), p.err
 	}
@@ -802,31 +802,31 @@ const exportedElevation = 111.0
 // test can tell the exported inventory from the raw one.
 type exportProcessor struct{}
 
-func (exportProcessor) Process(stage *route.Stage) (route.Stage, error) {
+func (exportProcessor) Process(stage *route.Route) (route.Route, error) {
 	points := stage.Geometry()
 	for index := range points {
 		elevation := exportedElevation
 		points[index].Elevation = &elevation
 	}
 	key := stage.Key()
-	exported, err := route.NewStage(
+	exported, err := route.NewRoute(
 		key.Provider(),
-		key.RouteID(),
+		key.SourceRouteID(),
 		key.StageOrder(),
 		stage.Revision(),
+		stage.SourceRouteName(),
 		stage.RouteName(),
-		stage.StageName(),
 		points,
 		stage.ContentHash(),
 	)
 	if err != nil {
-		return route.Stage{}, fmt.Errorf("deriving the exported stage: %w", err)
+		return route.Route{}, fmt.Errorf("deriving the exported stage: %w", err)
 	}
 
 	return exported, nil
 }
 
-func elevationOf(t *testing.T, stage *route.Stage) float64 {
+func elevationOf(t *testing.T, stage *route.Route) float64 {
 	t.Helper()
 	points := stage.Geometry()
 	require.NotEmpty(t, points, "the stage carries no geometry")
@@ -872,7 +872,7 @@ func TestServiceReadsTheLibrariesConfiguredWhenARunStarts(t *testing.T) {
 	require.Equal(t, OutcomeNotReady, service.RunSource(t.Context()).Outcome,
 		"RunSource() before a library was configured")
 
-	sources = []Source{&fakeSource{stages: []route.Stage{testStage(t, 1, 1, "current", "current-hash")}}}
+	sources = []Source{&fakeSource{stages: []route.Route{testStage(t, 1, 1, "current", "current-hash")}}}
 
 	result := service.RunSource(t.Context())
 	assert.Equal(t, OutcomeSucceeded, result.Outcome, "RunSource() outcome")
@@ -903,7 +903,7 @@ func newService(t *testing.T, state *fakeState, source *fakeSource, encoder *fak
 type fakeSource struct {
 	provider route.Provider
 	err      error
-	stages   []route.Stage
+	stages   []route.Route
 	calls    int
 }
 
@@ -915,13 +915,13 @@ func (s *fakeSource) Provider() route.Provider {
 	return s.provider
 }
 
-func (s *fakeSource) Inventory(_ context.Context) ([]route.Stage, error) {
+func (s *fakeSource) Inventory(_ context.Context) ([]route.Route, error) {
 	s.calls++
 	if s.err != nil {
 		return nil, s.err
 	}
 
-	return append([]route.Stage(nil), s.stages...), nil
+	return append([]route.Route(nil), s.stages...), nil
 }
 
 type fakeEncoder struct {
@@ -930,12 +930,12 @@ type fakeEncoder struct {
 
 type identityProcessor struct{}
 
-func (identityProcessor) Process(stage *route.Stage) (route.Stage, error) {
+func (identityProcessor) Process(stage *route.Route) (route.Route, error) {
 	return *stage, nil
 }
 
 //nolint:gocritic // This test double conforms to the production encoder contract.
-func (e *fakeEncoder) Encode(_ context.Context, _ route.Stage) ([]byte, error) {
+func (e *fakeEncoder) Encode(_ context.Context, _ route.Route) ([]byte, error) {
 	if e.err != nil {
 		return nil, e.err
 	}
@@ -953,7 +953,7 @@ type fakeState struct {
 	authorizations      map[string]string
 	refreshTokens       map[string]string
 	mappings            map[string]map[route.Key]targetStage
-	trusted             []route.Stage
+	trusted             []route.Route
 	storeInventoryCalls int
 }
 
@@ -1032,12 +1032,12 @@ func (s *fakeState) TrustedInventoryCount(_ context.Context, provider route.Prov
 	return count, nil
 }
 
-func (s *fakeState) StoreTrustedInventory(_ context.Context, provider route.Provider, stages []route.Stage) error {
+func (s *fakeState) StoreTrustedInventory(_ context.Context, provider route.Provider, stages []route.Route) error {
 	if s.storeErr != nil {
 		return s.storeErr
 	}
 	s.storeInventoryCalls++
-	kept := make([]route.Stage, 0, len(s.trusted))
+	kept := make([]route.Route, 0, len(s.trusted))
 	for _, stage := range s.trusted {
 		if stage.Key().Provider() != provider {
 			kept = append(kept, stage)
@@ -1049,12 +1049,12 @@ func (s *fakeState) StoreTrustedInventory(_ context.Context, provider route.Prov
 	return nil
 }
 
-func (s *fakeState) TrustedInventory(_ context.Context) ([]route.Stage, error) {
+func (s *fakeState) TrustedInventory(_ context.Context) ([]route.Route, error) {
 	if s.trustedErr != nil {
 		return nil, s.trustedErr
 	}
 
-	return append([]route.Stage(nil), s.trusted...), nil
+	return append([]route.Route(nil), s.trusted...), nil
 }
 
 func (s *fakeState) ForEachTargetStage(
@@ -1070,15 +1070,15 @@ func (s *fakeState) ForEachTargetStage(
 		if keys[left].Provider() != keys[right].Provider() {
 			return keys[left].Provider() < keys[right].Provider()
 		}
-		if keys[left].RouteID() != keys[right].RouteID() {
-			return keys[left].RouteID() < keys[right].RouteID()
+		if keys[left].SourceRouteID() != keys[right].SourceRouteID() {
+			return keys[left].SourceRouteID() < keys[right].SourceRouteID()
 		}
 
 		return keys[left].StageOrder() < keys[right].StageOrder()
 	})
 	for _, key := range keys {
 		mapping := s.mappings[targetID][key]
-		if err := visit(key.Provider(), key.RouteID(), key.StageOrder(), mapping.sourceRevision, mapping.contentHash, mapping.wahooRouteID); err != nil {
+		if err := visit(key.Provider(), key.SourceRouteID(), key.StageOrder(), mapping.sourceRevision, mapping.contentHash, mapping.wahooRouteID); err != nil {
 			return err
 		}
 	}
@@ -1180,14 +1180,14 @@ func (t *fakeTarget) DeleteOwnedRoutes(ctx context.Context, accessToken string) 
 	return deleted, nil
 }
 
-func (t *fakeTarget) CreateRoute(_ context.Context, accessToken string, stage *route.Stage, _ []byte) (routeID int64, err error) {
+func (t *fakeTarget) CreateRoute(_ context.Context, accessToken string, stage *route.Route, _ []byte) (routeID int64, err error) {
 	t.nextRouteID++
 	t.ensureAccess(accessToken)[stage.Key().ExternalID()] = t.nextRouteID
 
 	return t.nextRouteID, nil
 }
 
-func (t *fakeTarget) UpdateRoute(_ context.Context, routeID int64, accessToken string, _ *route.Stage, _ []byte) (updatedRouteID int64, err error) {
+func (t *fakeTarget) UpdateRoute(_ context.Context, routeID int64, accessToken string, _ *route.Route, _ []byte) (updatedRouteID int64, err error) {
 	if accessToken == t.failUpdateAccess {
 		return 0, errDestination
 	}
@@ -1216,7 +1216,7 @@ func (t *fakeTarget) IsUnauthorized(err error) bool {
 	return errors.Is(err, errUnauthorized)
 }
 
-func (t *fakeTarget) seedRoute(targetID string, stage *route.Stage, routeID int64) {
+func (t *fakeTarget) seedRoute(targetID string, stage *route.Route, routeID int64) {
 	t.ensureAccess(accessFor(targetID))[stage.Key().ExternalID()] = routeID
 }
 
@@ -1230,7 +1230,7 @@ func (t *fakeTarget) ensureAccess(accessToken string) map[string]int64 {
 	return routes
 }
 
-func seedMapping(state *fakeState, targetID string, stage *route.Stage, wahooRouteID int64) {
+func seedMapping(state *fakeState, targetID string, stage *route.Route, wahooRouteID int64) {
 	state.mappings[targetID][keyFor(stage)] = targetStage{
 		sourceRevision: stage.Revision(),
 		contentHash:    encodedContentHash(stage),
@@ -1238,7 +1238,7 @@ func seedMapping(state *fakeState, targetID string, stage *route.Stage, wahooRou
 	}
 }
 
-func keyFor(stage *route.Stage) route.Key {
+func keyFor(stage *route.Route) route.Key {
 	return stage.Key()
 }
 
@@ -1254,7 +1254,7 @@ func remoteID(targetID string, routeID int64) int64 {
 	return 200 + routeID
 }
 
-func testStage(t *testing.T, routeID int64, stageOrder int, revision, contentHash string) route.Stage {
+func testStage(t *testing.T, routeID int64, stageOrder int, revision, contentHash string) route.Route {
 	t.Helper()
 
 	return testProviderStage(t, route.ProviderVeloPlanner, routeID, stageOrder, revision, contentHash)
@@ -1264,9 +1264,9 @@ func testStage(t *testing.T, routeID int64, stageOrder int, revision, contentHas
 // used to exercise multi-source behavior without a second real provider existing.
 const testProviderStage2 route.Provider = "second-provider"
 
-func testProviderStage(t *testing.T, provider route.Provider, routeID int64, stageOrder int, revision, contentHash string) route.Stage {
+func testProviderStage(t *testing.T, provider route.Provider, routeID int64, stageOrder int, revision, contentHash string) route.Route {
 	t.Helper()
-	stage, err := route.NewStage(
+	stage, err := route.NewRoute(
 		provider,
 		routeID,
 		stageOrder,
@@ -1276,7 +1276,7 @@ func testProviderStage(t *testing.T, provider route.Provider, routeID int64, sta
 		[]route.Point{{Longitude: 8.4, Latitude: 49.0}, {Longitude: 8.401, Latitude: 49.001}},
 		contentHash,
 	)
-	require.NoError(t, err, "NewStage()")
+	require.NoError(t, err, "NewRoute()")
 
 	return stage
 }
@@ -1298,12 +1298,12 @@ func TestServiceIsolatesOneSourceFailureFromTheOthers(t *testing.T) {
 	stale := testStage(t, 1, 1, "old", "old-hash")
 	fresh := testProviderStage(t, testProviderStage2, 1, 1, "new", "new-hash")
 	state := newFakeState("a")
-	state.trusted = []route.Stage{stale}
+	state.trusted = []route.Route{stale}
 	seedMapping(state, "a", &stale, 101)
 	target := newFakeTarget()
 	target.seedRoute("a", &stale, 101)
 	failing := &fakeSource{provider: route.ProviderVeloPlanner, err: errors.New("source unavailable")}
-	healthy := &fakeSource{provider: testProviderStage2, stages: []route.Stage{fresh}}
+	healthy := &fakeSource{provider: testProviderStage2, stages: []route.Route{fresh}}
 	service := newMultiSourceService(t, state, []Source{failing, healthy}, target, false)
 
 	result := service.RunSource(t.Context())
@@ -1313,7 +1313,7 @@ func TestServiceIsolatesOneSourceFailureFromTheOthers(t *testing.T) {
 		{Provider: route.ProviderVeloPlanner, Outcome: OutcomeFailed, Failure: FailureSource},
 		{Provider: testProviderStage2, Outcome: OutcomeSucceeded, StageCount: 1},
 	}, result.Sources, "RunSource() sources")
-	assert.ElementsMatch(t, []route.Stage{stale, fresh}, state.trusted, "the failing source's stages must be kept as last known")
+	assert.ElementsMatch(t, []route.Route{stale, fresh}, state.trusted, "the failing source's stages must be kept as last known")
 
 	// The target phase reads the merged inventory back regardless of the source
 	// outcome, exactly as it does when a single source fails outright.
@@ -1330,14 +1330,14 @@ func TestServiceStoresTheUnionOfMultipleSuccessfulSources(t *testing.T) {
 	second := testProviderStage(t, testProviderStage2, 1, 1, "current", "current-hash")
 	state := newFakeState("a")
 	target := newFakeTarget()
-	sourceOne := &fakeSource{provider: route.ProviderVeloPlanner, stages: []route.Stage{first}}
-	sourceTwo := &fakeSource{provider: testProviderStage2, stages: []route.Stage{second}}
+	sourceOne := &fakeSource{provider: route.ProviderVeloPlanner, stages: []route.Route{first}}
+	sourceTwo := &fakeSource{provider: testProviderStage2, stages: []route.Route{second}}
 	service := newMultiSourceService(t, state, []Source{sourceOne, sourceTwo}, target, false)
 
 	result := service.RunSource(t.Context())
 	assert.Equal(t, OutcomeSucceeded, result.Outcome, "RunSource() outcome")
 	assert.Equal(t, 2, result.SourceStages, "RunSource() aggregate stage count")
-	assert.ElementsMatch(t, []route.Stage{first, second}, state.trusted, "stored inventory must be the union of both sources")
+	assert.ElementsMatch(t, []route.Route{first, second}, state.trusted, "stored inventory must be the union of both sources")
 }
 
 // The empty-source deletion gate blocks the source that emptied out, but a
@@ -1346,10 +1346,10 @@ func TestServiceBlocksOnlyTheSourceThatBecameEmpty(t *testing.T) {
 	staleVelo := testStage(t, 1, 1, "old", "old-hash")
 	freshSecond := testProviderStage(t, testProviderStage2, 2, 1, "current", "current-hash")
 	state := newFakeState("a")
-	state.trusted = []route.Stage{staleVelo}
+	state.trusted = []route.Route{staleVelo}
 	target := newFakeTarget()
 	emptied := &fakeSource{provider: route.ProviderVeloPlanner}
-	healthy := &fakeSource{provider: testProviderStage2, stages: []route.Stage{freshSecond}}
+	healthy := &fakeSource{provider: testProviderStage2, stages: []route.Route{freshSecond}}
 	service := newMultiSourceService(t, state, []Source{emptied, healthy}, target, false)
 
 	result := service.RunSource(t.Context())
@@ -1359,7 +1359,7 @@ func TestServiceBlocksOnlyTheSourceThatBecameEmpty(t *testing.T) {
 		{Provider: route.ProviderVeloPlanner, Outcome: OutcomeBlocked, Failure: FailureEmptySource},
 		{Provider: testProviderStage2, Outcome: OutcomeSucceeded, StageCount: 1},
 	}, result.Sources, "RunSource() sources")
-	assert.ElementsMatch(t, []route.Stage{staleVelo, freshSecond}, state.trusted, "the blocked source's stages must be kept as last known")
+	assert.ElementsMatch(t, []route.Route{staleVelo, freshSecond}, state.trusted, "the blocked source's stages must be kept as last known")
 }
 
 // A real failure always outranks an empty-source block in the aggregate
@@ -1369,7 +1369,7 @@ func TestServiceBlocksOnlyTheSourceThatBecameEmpty(t *testing.T) {
 func TestServiceReportsARealFailureOverAnEarlierEmptySourceBlock(t *testing.T) {
 	staleVelo := testStage(t, 1, 1, "old", "old-hash")
 	state := newFakeState("a")
-	state.trusted = []route.Stage{staleVelo}
+	state.trusted = []route.Route{staleVelo}
 	emptied := &fakeSource{provider: route.ProviderVeloPlanner}
 	failing := &fakeSource{provider: testProviderStage2, err: errors.New("source unavailable")}
 	service := newMultiSourceService(t, state, []Source{emptied, failing}, newFakeTarget(), false)
@@ -1383,7 +1383,7 @@ func TestServiceReportsARealFailureOverAnEarlierEmptySourceBlock(t *testing.T) {
 func TestServiceEmptySourceAcknowledgementReleasesTheBlockedSource(t *testing.T) {
 	staleVelo := testStage(t, 1, 1, "old", "old-hash")
 	state := newFakeState("a")
-	state.trusted = []route.Stage{staleVelo}
+	state.trusted = []route.Route{staleVelo}
 	target := newFakeTarget()
 	emptied := &fakeSource{provider: route.ProviderVeloPlanner}
 	service := newMultiSourceService(t, state, []Source{emptied}, target, true)
@@ -1410,7 +1410,7 @@ func TestServiceFailsASourceWhenItsPriorCountCannotBeRead(t *testing.T) {
 // source's read corrupt another's stored share, so it is refused outright.
 func TestServiceFailsASourceThatReportsAnotherProvidersStage(t *testing.T) {
 	mismatched := testProviderStage(t, testProviderStage2, 1, 1, "current", "current-hash")
-	source := &fakeSource{provider: route.ProviderVeloPlanner, stages: []route.Stage{mismatched}}
+	source := &fakeSource{provider: route.ProviderVeloPlanner, stages: []route.Route{mismatched}}
 	service := newMultiSourceService(t, newFakeState("a"), []Source{source}, newFakeTarget(), false)
 
 	result := service.RunSource(t.Context())
@@ -1421,7 +1421,7 @@ func TestServiceFailsASourceThatReportsAnotherProvidersStage(t *testing.T) {
 func TestServiceFailsASourceReportingADuplicateStage(t *testing.T) {
 	one := testStage(t, 1, 1, "current", "current-hash")
 	duplicate := testStage(t, 1, 1, "other", "other-hash")
-	source := &fakeSource{stages: []route.Stage{one, duplicate}}
+	source := &fakeSource{stages: []route.Route{one, duplicate}}
 	service := newMultiSourceService(t, newFakeState("a"), []Source{source}, newFakeTarget(), false)
 
 	result := service.RunSource(t.Context())
@@ -1432,7 +1432,7 @@ func TestServiceFailsASourceReportingADuplicateStage(t *testing.T) {
 func TestServiceFailsASourceWhenItsShareCannotBeStored(t *testing.T) {
 	state := newFakeState("a")
 	state.storeErr = errors.New("state unavailable")
-	source := &fakeSource{stages: []route.Stage{testStage(t, 1, 1, "current", "current-hash")}}
+	source := &fakeSource{stages: []route.Route{testStage(t, 1, 1, "current", "current-hash")}}
 	service := newMultiSourceService(t, state, []Source{source}, newFakeTarget(), false)
 
 	result := service.RunSource(t.Context())
@@ -1453,7 +1453,7 @@ func TestServiceReportsEachTargetsOwnOutcome(t *testing.T) {
 		target.seedRoute(targetID, &previous, remoteID(targetID, 1))
 	}
 	target.failUpdateAccess = accessFor("a")
-	service := newService(t, state, &fakeSource{stages: []route.Stage{desired}}, &fakeEncoder{}, target, false)
+	service := newService(t, state, &fakeSource{stages: []route.Route{desired}}, &fakeEncoder{}, target, false)
 
 	result := runBoth(t.Context(), service)
 	assert.Equal(t, []TargetResult{
@@ -1475,7 +1475,7 @@ func TestServiceReportsABlockedTargetAsBlocked(t *testing.T) {
 			target.seedRoute(targetID, &stale, remoteID(targetID, routeID))
 		}
 	}
-	service := newService(t, state, &fakeSource{stages: []route.Stage{desired}}, &fakeEncoder{}, target, false)
+	service := newService(t, state, &fakeSource{stages: []route.Route{desired}}, &fakeEncoder{}, target, false)
 
 	result := runBoth(t.Context(), service)
 	assert.Equal(t, []TargetResult{
@@ -1488,7 +1488,7 @@ func TestServiceReportsABlockedTargetAsBlocked(t *testing.T) {
 func TestServiceReportsNoTargetOutcomesForASourceRun(t *testing.T) {
 	desired := testStage(t, 1, 1, "current", "current-hash")
 	state := newFakeState("a", "b")
-	service := newService(t, state, &fakeSource{stages: []route.Stage{desired}}, &fakeEncoder{}, newFakeTarget(), false)
+	service := newService(t, state, &fakeSource{stages: []route.Route{desired}}, &fakeEncoder{}, newFakeTarget(), false)
 
 	assert.Empty(t, service.RunSource(t.Context()).Targets)
 }

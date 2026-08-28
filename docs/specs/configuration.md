@@ -128,7 +128,7 @@ application dependency.
   otherwise.
 
   It is the one origin a state-changing request may come from. A request to a
-  sync trigger, the schedule switch, or a stage reprocess that names any other
+  sync trigger, the schedule switch, or a route reprocess that names any other
   origin — or none — is refused, so that an authenticated session cannot be
   driven from another site.
 
@@ -266,7 +266,7 @@ requires. A provider may appear at most once, because a run reads each provider
 once and stores its inventory under that provider's name.
 
 The base URL also reaches the browser through `GET /v1/webui/config`, keyed by
-provider, as the base of a stage's link back to its source route, so pointing it
+provider, as the base of a route's link back to its source route, so pointing it
 at a different deployment moves both the inventory that is read and the link
 that is offered. The authenticated account's user ID is discovered from the
 credentials, never configured.
@@ -289,7 +289,7 @@ than fail against an application that does not exist.
 `wahoo.targets` holds up to two destination slots. Each is a non-empty name,
 unique within the list, and stable across deployments; it is a configured slot,
 not a Wahoo user identifier, and it is the identity every stored authorization,
-target stage, and recorded run already carries. Naming a slot creates its
+target route, and recorded run already carries. Naming a slot creates its
 durable record on the save rather than at the next startup, so the one-time
 OAuth onboarding that follows has a row to authorise. Removing a slot from the
 list keeps that record, which is what a slot renamed back would want, and
@@ -447,7 +447,7 @@ provider's choice to require one; Open-Meteo's is not to.
 ### Surface classification
 
 `surface.regions` names the OpenStreetMap extracts the **service** builds its
-surface index from, so it can classify a stage's ground as asphalt, paving,
+surface index from, so it can classify a route's ground as asphalt, paving,
 compacted, gravel, or unsurfaced. Each entry is a Geofabrik region path such as
 `europe/germany/rheinland-pfalz`: lowercase path segments of letters, digits, and
 single hyphens, and nothing else. The shape is validated where it is entered
@@ -457,7 +457,7 @@ and a repeat are dropped rather than refused: a repeat asks for nothing that is
 not already being done, and doing it once is the useful reading of a typo.
 
 The default is **no regions**, which switches surface classification off: nothing
-is downloaded, no index is built, and stages carry no surface. An operator who
+is downloaded, no index is built, and routes carry no surface. An operator who
 wants classification names the regions they actually ride. Naming more costs disk
 and build time for map nobody will ever be matched against.
 
@@ -515,7 +515,7 @@ training_window_months = 12
 `evaluated_rides`, `bias_percent`, `mae_percent` and `p90_percent` are the
 profile's measured unseen-route error. They are optional — a file written
 before [#217](https://github.com/nobbs/domestique/issues/217) added them
-still loads — and, when present, are served alongside a stage's predicted
+still loads — and, when present, are served alongside a route's predicted
 moving time so the browser can qualify the estimate rather than present it
 as a bare number. `dev/fitter -recalibrate` prints them as part of its
 copy-ready profile, computed from the same evaluation pass that prints the
@@ -565,17 +565,17 @@ drivetrain efficiency, standard air density, and the descent cap do
 not appear in the file at all — they are fixed constants a code upgrade can
 change, which is why an upgrade to them still invalidates a cached prediction
 even when the operator's file is unchanged. The service reads the file when the setting names one and computes a predicted
-moving time per stage from it, in the manner surface classification is computed — see [the implementation architecture
+moving time per route from it, in the manner surface classification is computed — see [the implementation architecture
 specification's tier ownership
 section](implementation-architecture.md#predicted-moving-time-is-a-deliberate-departure)
 for why that placement is correct despite depending on rider mass and power.
 
 The default is **no file**, which switches prediction off entirely: no
-coefficient is loaded, no stage anywhere carries a predicted time, and the
+coefficient is loaded, no route anywhere carries a predicted time, and the
 routes endpoints omit the field rather than reporting zero. When set, the path
 must be absolute, and the file is read and validated for physical plausibility —
 not merely parsed — rather than trusted. A path that will not load leaves the
-stages that would have carried a prediction without one; it does not substitute
+routes that would have carried a prediction without one; it does not substitute
 a guess, and it does not stop the service, because the file lives on the host
 and the setting that names it is edited from a browser that cannot see whether
 it is there.

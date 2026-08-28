@@ -114,7 +114,7 @@ func (h *Handler) GetStatus(writer http.ResponseWriter, request *http.Request) {
 	// The aggregate of the per-target counts, which is the only progress a run
 	// in flight reports: how much of the library is already on the configured
 	// accounts, and how much of it is still owed to them.
-	allStages := openapi.TargetStages{}
+	allStages := openapi.TargetRoutes{}
 	ready, converged := true, true
 	for _, targetID := range targetIDs {
 		stored, found := authorizations[targetID]
@@ -134,7 +134,7 @@ func (h *Handler) GetStatus(writer http.ResponseWriter, request *http.Request) {
 			ID:            targetID,
 			Authorisation: authorization,
 			Convergence:   convergence,
-			Stages:        stages,
+			Routes:        stages,
 			LastRun:       lastRun,
 		})
 		allStages.Current += stages.Current
@@ -197,7 +197,7 @@ func (h *Handler) GetStatus(writer http.ResponseWriter, request *http.Request) {
 			LastCompletedAt: wireTime(completedAt),
 			LastResult:      outcome,
 			LastFailure:     optionalString(detail),
-			SourceStages:    sourceStages,
+			SourceRoutes:    sourceStages,
 			Created:         created,
 			Updated:         updated,
 			Deleted:         deleted,
@@ -233,7 +233,7 @@ func (h *Handler) GetStatus(writer http.ResponseWriter, request *http.Request) {
 	if found {
 		view.Sync.State, view.Sync.LastResult = outcome, optionalString(outcome)
 		view.Sync.LastCompletedAt = optionalTime(completedAt)
-		view.Sync.SourceStages, view.Sync.Created, view.Sync.Updated, view.Sync.Deleted =
+		view.Sync.SourceRoutes, view.Sync.Created, view.Sync.Updated, view.Sync.Deleted =
 			sourceStages, created, updated, deleted
 	}
 	// A run that has not finished outranks the last one that did. Reporting
@@ -244,7 +244,7 @@ func (h *Handler) GetStatus(writer http.ResponseWriter, request *http.Request) {
 		view.Sync.State = state
 		view.Sync.Active = &openapi.SyncActive{
 			Targets: len(targetIDs),
-			Stages:  allStages,
+			Routes:  allStages,
 		}
 		if activity.Phase != "" {
 			phase := openapi.SyncActive_Phase(activity.Phase)
@@ -331,7 +331,7 @@ func (h *Handler) GetSyncRuns(writer http.ResponseWriter, request *http.Request)
 			CompletedAt:  wireTime(completedAt),
 			Result:       outcome,
 			Failure:      optionalString(detail),
-			SourceStages: sourceStages,
+			SourceRoutes: sourceStages,
 			Created:      created,
 			Updated:      updated,
 			Deleted:      deleted,

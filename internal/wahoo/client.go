@@ -294,12 +294,12 @@ func (c *Client) AuthenticatedUser(ctx context.Context, accessToken string) (str
 }
 
 // CreateRoute uploads a FIT course as a Wahoo route owned by Domestique.
-func (c *Client) CreateRoute(ctx context.Context, accessToken string, stage *route.Stage, fitData []byte) (routeID int64, err error) {
+func (c *Client) CreateRoute(ctx context.Context, accessToken string, stage *route.Route, fitData []byte) (routeID int64, err error) {
 	return c.writeRoute(ctx, http.MethodPost, 0, accessToken, stage, fitData)
 }
 
 // UpdateRoute replaces the FIT course and mutable metadata of an owned route.
-func (c *Client) UpdateRoute(ctx context.Context, routeID int64, accessToken string, stage *route.Stage, fitData []byte) (updatedRouteID int64, err error) {
+func (c *Client) UpdateRoute(ctx context.Context, routeID int64, accessToken string, stage *route.Route, fitData []byte) (updatedRouteID int64, err error) {
 	if routeID <= 0 {
 		return 0, errors.New("wahoo: route id must be positive")
 	}
@@ -440,7 +440,7 @@ func (c *Client) writeRoute(
 	method string,
 	existingRouteID int64,
 	accessToken string,
-	stage *route.Stage,
+	stage *route.Route,
 	fitData []byte,
 ) (routeID int64, err error) {
 	if accessToken == "" || stage == nil || len(fitData) == 0 {

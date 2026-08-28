@@ -68,7 +68,7 @@ func NewAnnotator(source Source, cache Cache) *Annotator {
 // whatever happened to the last, so one unreadable stage cannot starve every
 // stage behind it — the inventory is always walked in the same order, and an
 // early failure that stopped the pass would stop it at the same place forever.
-func (a *Annotator) Annotate(ctx context.Context, stages []route.Stage) (classified, failed int, err error) {
+func (a *Annotator) Annotate(ctx context.Context, stages []route.Route) (classified, failed int, err error) {
 	// A source with no map behind it has nothing to say. Running anyway would
 	// record every stage as unsurveyed and then reclassify the lot as soon as
 	// the first index lands, which is worse than waiting.
@@ -84,7 +84,7 @@ func (a *Annotator) Annotate(ctx context.Context, stages []route.Stage) (classif
 
 		stage := &stages[index]
 		key := stage.Key()
-		cachedHash, cachedGeneration, found, hashErr := a.cache.StageSurfaceHash(ctx, key.Provider(), key.RouteID(), key.StageOrder())
+		cachedHash, cachedGeneration, found, hashErr := a.cache.StageSurfaceHash(ctx, key.Provider(), key.SourceRouteID(), key.StageOrder())
 		if hashErr != nil {
 			return classified, failed, fmt.Errorf("surface: reading cached classification: %w", hashErr)
 		}
@@ -104,7 +104,7 @@ func (a *Annotator) Annotate(ctx context.Context, stages []route.Stage) (classif
 }
 
 // annotateStage classifies one stage and caches the result.
-func (a *Annotator) annotateStage(ctx context.Context, stage *route.Stage, generation string) error {
+func (a *Annotator) annotateStage(ctx context.Context, stage *route.Route, generation string) error {
 	geometry := stage.Geometry()
 	ways, err := a.source.Ways(ctx, geometry)
 	if err != nil {
@@ -121,7 +121,7 @@ func (a *Annotator) annotateStage(ctx context.Context, stage *route.Stage, gener
 	if err := a.cache.StoreStageSurface(
 		ctx,
 		key.Provider(),
-		key.RouteID(),
+		key.SourceRouteID(),
 		key.StageOrder(),
 		stage.ContentHash(),
 		generation,

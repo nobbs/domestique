@@ -13,7 +13,7 @@ import (
 	"github.com/nobbs/domestique/internal/route"
 )
 
-func convertRoute(source sourceRoute) ([]route.Stage, error) {
+func convertRoute(source sourceRoute) ([]route.Route, error) {
 	if source.ID <= 0 {
 		return nil, errors.New("veloplanner: source route has an invalid id")
 	}
@@ -28,7 +28,7 @@ func convertRoute(source sourceRoute) ([]route.Stage, error) {
 	}
 	multiStage := len(source.RouteState.Stages) > 1
 	seenOrders := make(map[int]struct{}, len(source.RouteState.Stages))
-	stages := make([]route.Stage, 0, len(source.RouteState.Stages))
+	stages := make([]route.Route, 0, len(source.RouteState.Stages))
 
 	for _, sourceStage := range source.RouteState.Stages {
 		if sourceStage.Order <= 0 {
@@ -55,7 +55,7 @@ func convertRoute(source sourceRoute) ([]route.Stage, error) {
 			}
 		}
 
-		stage, err := route.NewStage(
+		stage, err := route.NewRoute(
 			route.ProviderVeloPlanner,
 			source.ID,
 			sourceStage.Order,
@@ -72,7 +72,7 @@ func convertRoute(source sourceRoute) ([]route.Stage, error) {
 		if err != nil {
 			return nil, fmt.Errorf("veloplanner: route %d stage %d: calculating content hash: %w", source.ID, sourceStage.Order, err)
 		}
-		stage, err = route.NewStage(
+		stage, err = route.NewRoute(
 			route.ProviderVeloPlanner,
 			source.ID,
 			sourceStage.Order,
@@ -141,7 +141,7 @@ func pointIndex(index *int) int {
 	return *index
 }
 
-func stageHash(stage *route.Stage) (string, error) {
+func stageHash(stage *route.Route) (string, error) {
 	geometry := stage.Geometry()
 	points := make([]contentHashPoint, 0, len(geometry))
 	for _, point := range geometry {
@@ -152,11 +152,11 @@ func stageHash(stage *route.Stage) (string, error) {
 		})
 	}
 	payload := contentHashPayload{
-		RouteID:    stage.Key().RouteID(),
-		StageOrder: stage.Key().StageOrder(),
-		Revision:   stage.Revision(),
-		Title:      stage.Title(),
-		Geometry:   points,
+		SourceRouteID: stage.Key().SourceRouteID(),
+		StageOrder:    stage.Key().StageOrder(),
+		Revision:      stage.Revision(),
+		Title:         stage.Title(),
+		Geometry:      points,
 	}
 	encoded, err := json.Marshal(payload)
 	if err != nil {
@@ -168,11 +168,11 @@ func stageHash(stage *route.Stage) (string, error) {
 }
 
 type contentHashPayload struct {
-	Revision   string             `json:"revision"`
-	Title      string             `json:"title"`
-	Geometry   []contentHashPoint `json:"geometry"`
-	RouteID    int64              `json:"routeId"`
-	StageOrder int                `json:"stageOrder"`
+	Revision      string             `json:"revision"`
+	Title         string             `json:"title"`
+	Geometry      []contentHashPoint `json:"geometry"`
+	SourceRouteID int64              `json:"routeId"`
+	StageOrder    int                `json:"stageOrder"`
 }
 
 type contentHashPoint struct {
