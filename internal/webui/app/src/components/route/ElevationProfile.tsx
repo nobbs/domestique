@@ -158,13 +158,28 @@ function bandRunsOf(samples: ProfileSample[]): BandRun[] {
   const runs: BandRun[] = [];
   for (const sample of samples) {
     const open = runs[runs.length - 1];
-    if (open && open.band === sample.band) {
+    if (!open) {
+      runs.push({
+        band: sample.band,
+        startMetres: sample.distanceMetres,
+        endMetres: sample.distanceMetres,
+      });
+      continue;
+    }
+    if (open.band === sample.band) {
       open.endMetres = sample.distanceMetres;
       continue;
     }
+    /*
+     * The sample that changed band belongs to both runs: the outgoing one is
+     * carried up to it and the incoming one begins there. Ending the outgoing
+     * run at the sample before instead would step the colour a sample early and
+     * leave the two runs meeting at a distance neither of them is.
+     */
+    open.endMetres = sample.distanceMetres;
     runs.push({
       band: sample.band,
-      startMetres: open ? open.endMetres : sample.distanceMetres,
+      startMetres: sample.distanceMetres,
       endMetres: sample.distanceMetres,
     });
   }
@@ -493,11 +508,19 @@ export function ElevationProfile({
 
   return (
     <div className="relative" ref={ref} data-zoomed={zoomed ? "true" : undefined}>
-      <div role="img" aria-label={summary}>
+      <div>
         <AreaChart
           data={profile.samples}
           width={plotWidth + PADDING.left + PADDING.right}
           height={height}
+          /*
+           * The labelled graphic is the chart's own `<svg>` rather than a
+           * wrapper around it, because the strip below is checked against this
+           * one's `viewBox` — the two plot the same stretch and must measure it
+           * identically, which is a claim only the drawn surfaces can make.
+           */
+          role="img"
+          aria-label={summary}
           // Pinned to the shared axis; see the note at the top of this file.
           margin={{ top: PADDING.top, right: PADDING.right, bottom: 0, left: 0 }}
           /*
@@ -516,6 +539,10 @@ export function ElevationProfile({
                   key={stop.key}
                   offset={stop.offset}
                   stopColor={BAND_COLOURS[stop.band] ?? BAND_COLOURS[0]}
+                  // Which band this stop carries. The terrain is one shape, so
+                  // these are the only marks that hold the ramp: they are what
+                  // the forced-colours audit reads the encoding off.
+                  data-band={stop.band}
                 />
               ))}
             </linearGradient>
@@ -563,6 +590,14 @@ export function ElevationProfile({
             // would be a second one nothing else knows about.
             activeDot={false}
             dot={false}
+            /*
+             * A forced palette repaints everything in two colours, which here
+             * would replace the encoding with a flat block: the colour of a
+             * stretch *is* which band it is. This is one of the few marks whose
+             * colour carries the information rather than decorating it, so it
+             * keeps its own.
+             */
+            style={{ forcedColorAdjust: "none" }}
           />
 
           {/*
@@ -578,6 +613,7 @@ export function ElevationProfile({
               x2={gap.endMetres}
               fill="var(--panel)"
               fillOpacity={0.6}
+              data-veil=""
               ifOverflow="hidden"
               data-testid="profile-veil"
             />
@@ -597,6 +633,7 @@ export function ElevationProfile({
                 x2={selection.startMetres}
                 fill="var(--panel)"
                 fillOpacity={0.6}
+                data-veil=""
                 data-testid="profile-veil"
               />
               <ReferenceArea
@@ -604,6 +641,7 @@ export function ElevationProfile({
                 x2={profile.endMetres}
                 fill="var(--panel)"
                 fillOpacity={0.6}
+                data-veil=""
                 data-testid="profile-veil"
               />
               {[selection.startMetres, selection.endMetres].map((metres) => (
@@ -628,6 +666,10 @@ export function ElevationProfile({
                 fill={BAND_COLOURS[active.band] ?? BAND_COLOURS[0]}
                 stroke="var(--panel)"
                 strokeWidth={2}
+                // The marker carries the band of the position it marks, so its
+                // colour is information too — exempted for the same reason the
+                // terrain is.
+                style={{ forcedColorAdjust: "none" }}
               />
             </>
           ) : null}

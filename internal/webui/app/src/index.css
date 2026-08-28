@@ -203,6 +203,19 @@ body { margin: 0; background: var(--base); color: var(--ink); font-family: var(-
 .route-terminal--finish { background: #fff; }
 .route-position-tooltip { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; max-width: 220px; margin: 0; padding: 3px 8px; border-radius: 6px; background: var(--panel); box-shadow: var(--shadow); color: var(--ink); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 
+/*
+ * The veil over the ground a picked class does not cover. A forced palette has
+ * no translucent panel to dim with and would paint it as solid text colour,
+ * hiding the terrain it is only meant to hold back — so it becomes the page's
+ * own ground instead, which is what dimming means when there are two colours.
+ * Keyed on a data attribute rather than a class because Recharts draws these
+ * marks and writes its own `class` over anything handed to it; `data-*` it
+ * passes through untouched.
+ */
+@media (forced-colors: active) {
+  [data-veil] { fill: Canvas; }
+}
+
 @media (max-width: 52rem) {
   .maplibregl-ctrl-bottom-left { top: 0; bottom: auto; padding: calc(16px + env(safe-area-inset-top)) 16px 16px calc(16px + env(safe-area-inset-left)); }
   .map-controls { top: calc(16px + env(safe-area-inset-top)); right: calc(16px + env(safe-area-inset-right)); }

@@ -88,14 +88,25 @@ test.describe("in a forced-colours palette", () => {
 
     // A forced palette repaints everything in two colours, which for the
     // gradient ramp would replace the encoding with a flat block: the colour of
-    // a column *is* which band it is. These are the only marks exempted, and the
-    // exemption is worth nothing unless they really do still differ.
-    const fills = await page
-      .getByRole("img", { name: /^Elevation profile of / })
+    // a stretch *is* which band it is. These are the only marks exempted, and
+    // the exemption is worth nothing unless they really do still differ.
+    //
+    // The terrain is one shape filled by one gradient, so the ramp lives in that
+    // gradient's stops rather than in a mark per band, and it is their colours
+    // that have to stay apart.
+    const chart = page.getByRole("img", { name: /^Elevation profile of / });
+    const bandColours = await chart
       .locator("[data-band]")
-      .evaluateAll((columns) => columns.map((column) => getComputedStyle(column).fill));
-    expect(fills.length).toBeGreaterThan(1);
-    expect(new Set(fills).size).toBeGreaterThan(1);
+      .evaluateAll((stops) => stops.map((stop) => getComputedStyle(stop).stopColor));
+    expect(bandColours.length).toBeGreaterThan(1);
+    expect(new Set(bandColours).size).toBeGreaterThan(1);
+
+    // What keeps them: without the exemption the forced palette would flatten
+    // the whole shape to one colour whatever its gradient said.
+    const terrain = await chart
+      .locator("path.recharts-area-area")
+      .evaluate((path) => getComputedStyle(path).forcedColorAdjust);
+    expect(terrain).toBe("none");
 
     // The chart's own ground has to stay behind them rather than being painted
     // over them, and the key's swatches have to keep the colours they explain.
