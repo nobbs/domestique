@@ -2,8 +2,9 @@ package httpapi
 
 import (
 	"encoding/json"
-	"fmt"
+	"errors"
 	"net/http"
+	"slices"
 	"time"
 
 	openapi "github.com/nobbs/domestique/internal/httpapi/contract"
@@ -11,9 +12,9 @@ import (
 	"github.com/nobbs/domestique/internal/runtimeconfig"
 )
 
-// settingsPath is the one route whose body is allowed to be larger than every
+// basemapsPath is the one route whose body is allowed to be larger than every
 // other; see requestLimit.
-const settingsPath = "/v1/settings"
+const basemapsPath = "/v1/settings/basemaps"
 
 // GetSettings serves the settings that are in force right now, which is what
 // the form the operator edits is filled from.
@@ -21,24 +22,184 @@ func (h *Handler) GetSettings(writer http.ResponseWriter, _ *http.Request) {
 	h.writeJSON(writer, http.StatusOK, h.settingsView())
 }
 
-// SetSettings replaces every runtime setting at once.
+// The settings are written one section at a time, and each of these replaces
+// the whole of the section it names.
 //
-// The body is the whole object rather than the fields that changed. The form
-// that sends it holds every value, and a merge would let a page that had gone
-// stale reinstate a setting its reader never looked at. Each section is
-// therefore required, and the response echoes what is now stored, normalised —
-// so the page's copy is the service's copy without a second read.
+// The page is a form per section rather than one form, so a save carries what
+// its own form holds and touches nothing else. That is what keeps the whole
+// object rule: a section left out of a request is not a section merged from a
+// page that had gone stale, it is a section this request was never about.
 //
-// Credentials are the exception: only the ones sent are written, because the
-// page is never told what the others are and so has nothing to send back.
-func (h *Handler) SetSettings(writer http.ResponseWriter, request *http.Request) {
-	var body settingsBody
-	decoder := json.NewDecoder(http.MaxBytesReader(writer, request.Body, maximumSettingsBytes))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&body); err != nil || !body.complete() {
-		h.error(writer, http.StatusBadRequest, "invalid_request", "every settings section is required")
+// Credentials travel with the section that owns them, and only the ones typed
+// in: a credential left out keeps its stored value, and one sent empty is
+// removed. The page is never told what is stored, so it has nothing else to
+// send.
 
+// SetWahooApplication replaces the registered application. The slots it writes
+// to are their own section: an application is edited when it is registered or
+// rotated, and a slot when a rider is added.
+func (h *Handler) SetWahooApplication(writer http.ResponseWriter, request *http.Request) {
+	body, ok := settingsBody[openapi.WahooApplicationUpdate](h, writer, request)
+	if !ok {
 		return
+	}
+	h.storeSection(writer, request, func(values runtimeconfig.Values) runtimeconfig.Values {
+		values.Wahoo.APIBaseURL = body.APIBaseURL
+		values.Wahoo.OAuthBaseURL = body.OauthBaseURL
+		values.Wahoo.ClientID = body.ClientID
+
+		return values
+	}, submitted(map[runtimeconfig.SecretName]*string{
+		runtimeconfig.SecretWahooClientSecret: body.ClientSecret,
+	}))
+}
+
+// SetTargets replaces the destination slots.
+func (h *Handler) SetTargets(writer http.ResponseWriter, request *http.Request) {
+	body, ok := settingsBody[openapi.TargetsUpdate](h, writer, request)
+	if !ok {
+		return
+	}
+	h.storeSection(writer, request, func(values runtimeconfig.Values) runtimeconfig.Values {
+		values.Wahoo.Targets = slices.Clone(body.Targets)
+
+		return values
+	}, nil)
+}
+
+// SetSource replaces one library and the account it is read with, leaving the
+// other libraries as they are.
+func (h *Handler) SetSource(writer http.ResponseWriter, request *http.Request) {
+	// The contract names the libraries this path accepts, and a request for any
+	// other is refused before it reaches here.
+	provider := route.Provider(request.PathValue("provider"))
+	email, password, _ := runtimeconfig.SourceSecretNames(provider)
+	body, ok := settingsBody[openapi.SourceUpdate](h, writer, request)
+	if !ok {
+		return
+	}
+	h.storeSection(writer, request, func(values runtimeconfig.Values) runtimeconfig.Values {
+		// Rebuilt from the list of every library rather than spliced, so the
+		// libraries stay in the order a run reads them however they are turned
+		// on and off.
+		read := make([]runtimeconfig.Source, 0, len(runtimeconfig.SourceProviders()))
+		for _, each := range runtimeconfig.SourceProviders() {
+			switch {
+			case each == provider && body.Read:
+				read = append(read, runtimeconfig.Source{Provider: provider, BaseURL: body.BaseURL})
+			case each == provider:
+			default:
+				if stored := sourceOf(values.Sources, each); stored != nil {
+					read = append(read, *stored)
+				}
+			}
+		}
+		values.Sources = read
+
+		return values
+	}, submitted(map[runtimeconfig.SecretName]*string{email: body.Email, password: body.Password}))
+}
+
+// SetNotifications replaces what reaches the operator's phone, and where it is
+// sent.
+func (h *Handler) SetNotifications(writer http.ResponseWriter, request *http.Request) {
+	body, ok := settingsBody[openapi.NotificationsUpdate](h, writer, request)
+	if !ok {
+		return
+	}
+	h.storeSection(writer, request, func(values runtimeconfig.Values) runtimeconfig.Values {
+		values.Notifications = runtimeconfig.Notifications{
+			Enabled:         body.Enabled,
+			Policy:          runtimeconfig.SuccessPolicy(body.SuccessPolicy),
+			DigestInterval:  time.Duration(body.DigestIntervalSeconds) * time.Second,
+			PushoverBaseURL: body.PushoverBaseURL,
+		}
+
+		return values
+	}, submitted(map[runtimeconfig.SecretName]*string{
+		runtimeconfig.SecretPushoverApplicationToken: body.ApplicationToken,
+		runtimeconfig.SecretPushoverUserKey:          body.UserKey,
+	}))
+}
+
+// SetBasemaps replaces the cartographies the reader may switch the map between.
+func (h *Handler) SetBasemaps(writer http.ResponseWriter, request *http.Request) {
+	body, ok := settingsBody[openapi.BasemapsUpdate](h, writer, request)
+	if !ok {
+		return
+	}
+	h.storeSection(writer, request, func(values runtimeconfig.Values) runtimeconfig.Values {
+		values.Basemaps = make([]runtimeconfig.Basemap, len(body.Basemaps))
+		for index, basemap := range body.Basemaps {
+			values.Basemaps[index] = runtimeconfig.Basemap{
+				Name:            basemap.Name,
+				StyleURL:        basemap.StyleURL,
+				StyleURLDark:    stringValue(basemap.StyleURLDark),
+				DarkCartography: boolValue(basemap.DarkCartography),
+			}
+		}
+
+		return values
+	}, nil)
+}
+
+// SetSurface replaces the regions the surface index is built from and how often
+// it is rebuilt.
+func (h *Handler) SetSurface(writer http.ResponseWriter, request *http.Request) {
+	body, ok := settingsBody[openapi.SurfaceSettings](h, writer, request)
+	if !ok {
+		return
+	}
+	h.storeSection(writer, request, func(values runtimeconfig.Values) runtimeconfig.Values {
+		values.Surface = runtimeconfig.Surface{
+			Regions:         slices.Clone(body.Regions),
+			RebuildInterval: time.Duration(body.RebuildIntervalSeconds) * time.Second,
+		}
+
+		return values
+	}, nil)
+}
+
+// SetRideModel replaces the coefficient file predicted moving time is computed
+// from.
+func (h *Handler) SetRideModel(writer http.ResponseWriter, request *http.Request) {
+	body, ok := settingsBody[openapi.RideModelSettings](h, writer, request)
+	if !ok {
+		return
+	}
+	h.storeSection(writer, request, func(values runtimeconfig.Values) runtimeconfig.Values {
+		values.RideModel = runtimeconfig.RideModel{CoefficientsFile: body.CoefficientsFile}
+
+		return values
+	}, nil)
+}
+
+// SetSync replaces the settings a run reads when it starts.
+func (h *Handler) SetSync(writer http.ResponseWriter, request *http.Request) {
+	body, ok := settingsBody[openapi.SyncSettings](h, writer, request)
+	if !ok {
+		return
+	}
+	h.storeSection(writer, request, func(values runtimeconfig.Values) runtimeconfig.Values {
+		values.Sync = runtimeconfig.Sync{
+			AllowEmptySourceDeletion: body.AllowEmptySourceDeletion,
+			StaleAfter:               time.Duration(body.StaleAfterSeconds) * time.Second,
+			InitialDelay:             time.Duration(body.InitialDelaySeconds) * time.Second,
+		}
+
+		return values
+	}, nil)
+}
+
+// settingsBody reads one section's submitted edit.
+func settingsBody[Body any](h *Handler, writer http.ResponseWriter, request *http.Request) (Body, bool) {
+	var body Body
+	decoder := json.NewDecoder(request.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil {
+		h.error(writer, http.StatusBadRequest, "invalid_request", "the request body is not this section")
+
+		return body, false
 	}
 	// One object, and nothing after it, for the reason SetSyncSchedule gives:
 	// acting on the first half of a body the caller believes was read whole is
@@ -46,120 +207,68 @@ func (h *Handler) SetSettings(writer http.ResponseWriter, request *http.Request)
 	if decoder.More() {
 		h.error(writer, http.StatusBadRequest, "invalid_request", "the request body must be one object")
 
-		return
+		return body, false
 	}
 
-	// Checked before it is written, so the message names the setting that is
-	// wrong. These rules are the runtime settings package's own — the same ones
-	// the stored values were read back through at startup.
-	submitted, err := body.values().Validate()
-	if err != nil {
-		h.error(writer, http.StatusBadRequest, "invalid_request", err.Error())
+	return body, true
+}
 
-		return
-	}
-	secrets, err := body.secrets()
-	if err != nil {
-		h.error(writer, http.StatusBadRequest, "invalid_request", err.Error())
-
-		return
-	}
-
+// storeSection writes one section's credentials and then the section itself,
+// and answers with every setting now in force.
+//
+// The change is applied to the settings as they are at the moment of the write
+// rather than to a copy read here, so a section saved while another is being
+// saved replaces its own part of a current object.
+func (h *Handler) storeSection(
+	writer http.ResponseWriter,
+	request *http.Request,
+	change func(runtimeconfig.Values) runtimeconfig.Values,
+	secrets map[runtimeconfig.SecretName]runtimeconfig.Secret,
+) {
 	if err := h.settings.SetSecrets(request.Context(), secrets); err != nil {
 		h.unavailable(writer)
 
 		return
 	}
-	if err := h.settings.Set(request.Context(), submitted); err != nil {
-		h.unavailable(writer)
+	// The rules are the runtime settings package's own — the same ones the
+	// stored values were read back through at startup — so the message names
+	// the setting that is wrong rather than the section it was in.
+	if err := h.settings.Update(request.Context(), change); err != nil {
+		if errors.Is(err, runtimeconfig.ErrStore) {
+			h.unavailable(writer)
+
+			return
+		}
+		h.error(writer, http.StatusBadRequest, "invalid_request", err.Error())
 
 		return
 	}
 	h.writeJSON(writer, http.StatusOK, h.settingsView())
 }
 
-// settingsBody is one submitted edit. Every section is a pointer so that a body
-// which left one out is refused rather than quietly storing that section's zero
-// values.
-type settingsBody struct {
-	Sync          *openapi.SyncSettings         `json:"sync"`
-	Notifications *openapi.NotificationSettings `json:"notifications"`
-	Basemaps      *[]openapi.BrowserBasemap     `json:"basemaps"`
-	Surface       *openapi.SurfaceSettings      `json:"surface"`
-	Wahoo         *openapi.WahooSettings        `json:"wahoo"`
-	Sources       *[]openapi.SourceSettings     `json:"sources"`
-	RideModel     *openapi.RideModelSettings    `json:"rideModel"`
-	Secrets       map[string]string             `json:"secrets"`
-}
-
-// complete reports whether every section the service replaces whole is present.
-func (b *settingsBody) complete() bool {
-	return b.Sync != nil && b.Notifications != nil && b.Basemaps != nil && b.Surface != nil &&
-		b.Wahoo != nil && b.Sources != nil && b.RideModel != nil
-}
-
-// values reads one submitted body into the settings the service holds.
-// Durations cross the wire as whole seconds, the unit the status response
-// already reports an age in.
-func (b *settingsBody) values() runtimeconfig.Values {
-	values := runtimeconfig.Values{
-		Sync: runtimeconfig.Sync{
-			AllowEmptySourceDeletion: b.Sync.AllowEmptySourceDeletion,
-			StaleAfter:               time.Duration(b.Sync.StaleAfterSeconds) * time.Second,
-			InitialDelay:             time.Duration(b.Sync.InitialDelaySeconds) * time.Second,
-		},
-		Notifications: runtimeconfig.Notifications{
-			Enabled:         b.Notifications.Enabled,
-			Policy:          runtimeconfig.SuccessPolicy(b.Notifications.SuccessPolicy),
-			DigestInterval:  time.Duration(b.Notifications.DigestIntervalSeconds) * time.Second,
-			PushoverBaseURL: b.Notifications.PushoverBaseURL,
-		},
-		Wahoo: runtimeconfig.Wahoo{
-			APIBaseURL:   b.Wahoo.APIBaseURL,
-			OAuthBaseURL: b.Wahoo.OauthBaseURL,
-			ClientID:     b.Wahoo.ClientID,
-			Targets:      append([]string(nil), b.Wahoo.Targets...),
-		},
-		RideModel: runtimeconfig.RideModel{CoefficientsFile: b.RideModel.CoefficientsFile},
-		Basemaps:  make([]runtimeconfig.Basemap, len(*b.Basemaps)),
-		Sources:   make([]runtimeconfig.Source, len(*b.Sources)),
-		Surface: runtimeconfig.Surface{
-			Regions:         append([]string(nil), b.Surface.Regions...),
-			RebuildInterval: time.Duration(b.Surface.RebuildIntervalSeconds) * time.Second,
-		},
-	}
-	for index, basemap := range *b.Basemaps {
-		values.Basemaps[index] = runtimeconfig.Basemap{
-			Name:            basemap.Name,
-			StyleURL:        basemap.StyleURL,
-			StyleURLDark:    stringValue(basemap.StyleURLDark),
-			DarkCartography: boolValue(basemap.DarkCartography),
-		}
-	}
-	for index, source := range *b.Sources {
-		values.Sources[index] = runtimeconfig.Source{
-			Provider: route.Provider(source.Provider),
-			BaseURL:  source.BaseURL,
+// submitted collects the credentials an edit actually carried. One left out is
+// absent here rather than empty, because absent keeps what is stored and empty
+// removes it.
+func submitted(values map[runtimeconfig.SecretName]*string) map[runtimeconfig.SecretName]runtimeconfig.Secret {
+	secrets := make(map[runtimeconfig.SecretName]runtimeconfig.Secret, len(values))
+	for name, value := range values {
+		if value != nil {
+			secrets[name] = runtimeconfig.NewSecret([]byte(*value))
 		}
 	}
 
-	return values
+	return secrets
 }
 
-// secrets reads the credentials this edit replaces. A name nothing reads is
-// refused here rather than stored somewhere nothing would look for it, and an
-// empty value is the credential being removed.
-func (b *settingsBody) secrets() (map[runtimeconfig.SecretName]runtimeconfig.Secret, error) {
-	secrets := make(map[runtimeconfig.SecretName]runtimeconfig.Secret, len(b.Secrets))
-	for submitted, value := range b.Secrets {
-		name, err := runtimeconfig.ParseSecretName(submitted)
-		if err != nil {
-			return nil, fmt.Errorf("reading the credentials to replace: %w", err)
+// sourceOf finds one library in the list a run reads, or nil if it is off.
+func sourceOf(sources []runtimeconfig.Source, provider route.Provider) *runtimeconfig.Source {
+	for index, source := range sources {
+		if source.Provider == provider {
+			return &sources[index]
 		}
-		secrets[name] = runtimeconfig.NewSecret([]byte(value))
 	}
 
-	return secrets, nil
+	return nil
 }
 
 // settingsView is the wire form of the settings in force. The credentials are

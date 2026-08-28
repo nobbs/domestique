@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"maps"
 	"net/http"
 	"net/http/httptest"
@@ -44,10 +45,17 @@ type staticSettings struct {
 
 func (s *staticSettings) Values() runtimeconfig.Values { return s.values }
 
-//nolint:gocritic // value param: this double conforms to the settings seam.
-func (s *staticSettings) Set(_ context.Context, values runtimeconfig.Values) error {
+// Update validates and stores where the live settings do, so a handler here
+// meets the same two refusals it meets in the service: a value the rules will
+// never accept, and a store that cannot answer.
+func (s *staticSettings) Update(_ context.Context, change func(runtimeconfig.Values) runtimeconfig.Values) error {
+	values, err := change(s.values).Validate()
+	if err != nil {
+		//nolint:wrapcheck // the double answers with the settings package's own message, as the live settings do.
+		return err
+	}
 	if s.storeFail != nil {
-		return s.storeFail
+		return fmt.Errorf("%w: %w", runtimeconfig.ErrStore, s.storeFail)
 	}
 	s.values = values
 

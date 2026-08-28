@@ -67,6 +67,14 @@ func (s *stubStore) SetRuntimeSecrets(_ context.Context, secrets map[SecretName]
 	return nil
 }
 
+// replaceWith is the whole-object edit: every test here replaces all of the
+// settings, where the service replaces one section at a time.
+//
+//nolint:gocritic // value param: mirrors Update's own copy-in.
+func replaceWith(values Values) func(Values) Values {
+	return func(Values) Values { return values }
+}
+
 func validValues() Values {
 	return Values{
 		Sync: Sync{StaleAfter: 24 * time.Hour, InitialDelay: time.Minute},
@@ -123,7 +131,7 @@ func TestLoadNormalisesWhatItPublishes(t *testing.T) {
 	assert.Equal(t, []string{"europe/germany"}, current.Values().Surface.Regions, "the repeat is dropped")
 }
 
-func TestSetPersistsThenPublishes(t *testing.T) {
+func TestUpdatePersistsThenPublishes(t *testing.T) {
 	store := &stubStore{values: validValues()}
 	current, err := Load(t.Context(), store)
 	require.NoError(t, err)
@@ -131,7 +139,7 @@ func TestSetPersistsThenPublishes(t *testing.T) {
 	next := validValues()
 	next.Sync.AllowEmptySourceDeletion = true
 	next.Notifications.Enabled = false
-	require.NoError(t, current.Set(t.Context(), next))
+	require.NoError(t, current.Update(t.Context(), replaceWith(next)))
 
 	assert.Equal(t, 1, store.writes, "the edit is written once")
 	assert.True(t, store.values.Sync.AllowEmptySourceDeletion, "the store holds the new value")
@@ -140,14 +148,14 @@ func TestSetPersistsThenPublishes(t *testing.T) {
 }
 
 // Validation runs before the write, so a refused edit changes neither half.
-func TestSetRefusesInvalidValuesWithoutWriting(t *testing.T) {
+func TestUpdateRefusesInvalidValuesWithoutWriting(t *testing.T) {
 	store := &stubStore{values: validValues()}
 	current, err := Load(t.Context(), store)
 	require.NoError(t, err)
 
 	invalid := validValues()
 	invalid.Basemaps = nil
-	require.Error(t, current.Set(t.Context(), invalid))
+	require.Error(t, current.Update(t.Context(), replaceWith(invalid)))
 
 	assert.Zero(t, store.writes, "a refused edit is not written")
 	assert.Len(t, current.Values().Basemaps, 1, "the live settings are untouched")
@@ -162,9 +170,8 @@ func TestSetKeepsTheLiveValuesWhenTheStoreFails(t *testing.T) {
 
 	next := validValues()
 	next.Sync.StaleAfter = time.Hour
-	err = current.Set(t.Context(), next)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "storing runtime settings")
+	err = current.Update(t.Context(), replaceWith(next))
+	require.ErrorIs(t, err, ErrStore)
 	assert.Equal(t, 24*time.Hour, current.Values().Sync.StaleAfter, "the live settings are untouched")
 }
 
@@ -469,15 +476,6 @@ func TestSetSecretsRefusesACredentialNothingReads(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "strava.email")
 	assert.Zero(t, store.writes, "a refused credential is not written")
-}
-
-func TestParseSecretName(t *testing.T) {
-	name, err := ParseSecretName("wahoo.client_secret")
-	require.NoError(t, err)
-	assert.Equal(t, SecretWahooClientSecret, name)
-
-	_, err = ParseSecretName("wahoo.client_id")
-	require.Error(t, err, "a setting is not a credential, however much it looks like one")
 }
 
 // The type exists to keep a credential out of anything observable, so the two

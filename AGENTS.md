@@ -13,8 +13,8 @@ Docker workload for a Tailnet host, published for `linux/amd64` alone, with no
 CLI. It also serves a **read-only browser UI** that
 draws the whole stored library on one map and gives each route a page of its
 own, plus a settings page. Its state-changing HTTP surface is the Wahoo OAuth
-onboarding flow, the manual run triggers, and `PUT /v1/settings`, which stores
-the runtime settings the operator edits from that page. Nothing on the surface
+onboarding flow, the manual run triggers, and the `PUT /v1/settings/*` section
+writes, which store the runtime settings the operator edits from that page. Nothing on the surface
 edits a route.
 
 ## Specifications are normative

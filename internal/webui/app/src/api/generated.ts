@@ -372,24 +372,70 @@ export interface Settings {
 }
 
 /**
- * The credentials to replace, keyed by name. Only the ones sent are written, so a page that was never told a value can leave it alone; an empty value removes the credential. A name outside the known set is refused.
+ * The registered application, without the slots it writes to. Those are replaced on their own.
  */
-export type SettingsUpdateSecrets = { [key: string]: string };
+export interface WahooApplicationUpdate {
+  /** The origin route reads and writes are sent to. */
+  apiBaseUrl: string;
+  /** The origin an authorization and a token refresh are sent to. */
+  oauthBaseUrl: string;
+  /** The registered application's public identifier. */
+  clientId: string;
+  /** The application's secret, sent only when it was typed into the form. Left out it keeps the stored value, which is how a page that was never told the secret can save the rest of the application; sent empty it removes the credential. */
+  clientSecret?: string;
+}
+
+export interface TargetsUpdate {
+  /**
+   * The destination slots, in the order they are offered. A slot name is the identity every stored authorization, target stage and recorded run already carries, so renaming one abandons that slot's state rather than moving it.
+   * @maxItems 2
+   */
+  targets: string[];
+}
 
 /**
- * One complete edit of the settings above. It carries the sections an operator fills in rather than the two the service reports back, so a page cannot submit what it only ever read.
+ * One library, and the account it is read with.
  */
-export interface SettingsUpdate {
-  sync: SyncSettings;
-  notifications: NotificationSettings;
+export interface SourceUpdate {
+  /** Whether a run reads this library at all. Off takes it out of the list without forgetting the account it was read with. */
+  read: boolean;
+  /** The library's own web application, which is both the origin the service reads and the one a stage is linked back to. */
+  baseUrl: string;
+  /** The account's email address, sent only when it was typed. The rules the application secret follows apply here too. */
+  email?: string;
+  /** The account's password, on the same terms as the email address. */
+  password?: string;
+}
+
+export type NotificationsUpdateSuccessPolicy =
+  (typeof NotificationsUpdateSuccessPolicy)[keyof typeof NotificationsUpdateSuccessPolicy];
+
+export const NotificationsUpdateSuccessPolicy = {
+  every: "every",
+  quiet: "quiet",
+  digest: "digest",
+} as const;
+
+export interface NotificationsUpdate {
+  /** The switch for the whole channel. Off suppresses a failure and a stale inventory as surely as it suppresses a routine success. */
+  enabled: boolean;
+  successPolicy: NotificationsUpdateSuccessPolicy;
+  /**
+   * The period one digest covers, read only by the digest policy.
+   * @minimum 1
+   */
+  digestIntervalSeconds: number;
+  /** The origin the application token and user key are sent to. */
+  pushoverBaseUrl: string;
+  /** The Pushover application's token, sent only when it was typed. The rules the application secret follows apply here too. */
+  applicationToken?: string;
+  /** The recipient key, on the same terms as the application token. */
+  userKey?: string;
+}
+
+export interface BasemapsUpdate {
   /** @minItems 1 */
   basemaps: BrowserBasemap[];
-  surface: SurfaceSettings;
-  wahoo: WahooSettings;
-  sources: SourceSettings[];
-  rideModel: RideModelSettings;
-  /** The credentials to replace, keyed by name. Only the ones sent are written, so a page that was never told a value can leave it alone; an empty value removes the credential. A name outside the known set is refused. */
-  secrets?: SettingsUpdateSecrets;
 }
 
 export interface SourceBaseUrls {
@@ -476,6 +522,11 @@ export type NotFoundResponse = Error;
  * Request is malformed.
  */
 export type InvalidRequestResponse = Error;
+
+/**
+ * Every setting now in force, not only the section this request replaced, so one answer refills the whole page.
+ */
+export type SettingsStoredResponse = Settings;
 
 /**
  * Provider request failed without exposing provider detail.
@@ -2602,54 +2653,54 @@ export function useGetSettings<
   return withQueryKey(query, queryOptions.queryKey);
 }
 
-export type setSettingsResponse200 = {
-  data: Settings;
+export type setWahooApplicationResponse200 = {
+  data: SettingsStoredResponse;
   status: 200;
 };
 
-export type setSettingsResponse400 = {
+export type setWahooApplicationResponse400 = {
   data: InvalidRequestResponse;
   status: 400;
 };
 
-export type setSettingsResponse401 = {
+export type setWahooApplicationResponse401 = {
   data: UnauthorizedResponse;
   status: 401;
 };
 
-export type setSettingsResponse403 = {
+export type setWahooApplicationResponse403 = {
   data: ForbiddenResponse;
   status: 403;
 };
 
-export type setSettingsResponse503 = {
+export type setWahooApplicationResponse503 = {
   data: UnavailableResponse;
   status: 503;
 };
 
-export type setSettingsResponseSuccess = setSettingsResponse200 & {
+export type setWahooApplicationResponseSuccess = setWahooApplicationResponse200 & {
   headers: Headers;
 };
-export type setSettingsResponseError = (
-  | setSettingsResponse400
-  | setSettingsResponse401
-  | setSettingsResponse403
-  | setSettingsResponse503
+export type setWahooApplicationResponseError = (
+  | setWahooApplicationResponse400
+  | setWahooApplicationResponse401
+  | setWahooApplicationResponse403
+  | setWahooApplicationResponse503
 ) & {
   headers: Headers;
 };
 
-export const getSetSettingsUrl = () => {
-  return `/v1/settings`;
+export const getSetWahooApplicationUrl = () => {
+  return `/v1/settings/wahoo`;
 };
 
 /**
- * Replaces every runtime setting at once. The body is the whole object rather than the parts that changed, because the form that sends it holds every value; a setting left out is a setting the caller never read.
+ * Replaces the registered Wahoo application. The target slots are written separately: they are the accounts this application writes to, not part of the application itself.
  */
-export const setSettings = async (
-  settingsUpdate: SettingsUpdate,
+export const setWahooApplication = async (
+  wahooApplicationUpdate: WahooApplicationUpdate,
   options?: Parameters<typeof domestiqueRequest>[1],
-): Promise<setSettingsResponseSuccess> => {
+): Promise<setWahooApplicationResponseSuccess> => {
   const getHeaders = (
     h?: NonNullable<RequestInit["headers"]>,
   ): Record<string, string | readonly string[]> => {
@@ -2658,34 +2709,34 @@ export const setSettings = async (
     if (Array.isArray(h)) return Object.fromEntries(h);
     return h;
   };
-  return domestiqueRequest<setSettingsResponseSuccess>(getSetSettingsUrl(), {
+  return domestiqueRequest<setWahooApplicationResponseSuccess>(getSetWahooApplicationUrl(), {
     ...options,
     method: "PUT",
     headers: { "Content-Type": "application/json", ...getHeaders(options?.headers) },
-    body: JSON.stringify(settingsUpdate),
+    body: JSON.stringify(wahooApplicationUpdate),
   });
 };
 
-export const getSetSettingsMutationOptions = <
+export const getSetWahooApplicationMutationOptions = <
   TError = ErrorType<
     InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
   >,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof setSettings>>,
+    Awaited<ReturnType<typeof setWahooApplication>>,
     TError,
-    SetSettingsMutationVariables,
+    SetWahooApplicationMutationVariables,
     TContext
   >;
   request?: SecondParameter<typeof domestiqueRequest>;
 }): UseMutationOptions<
-  Awaited<ReturnType<typeof setSettings>>,
+  Awaited<ReturnType<typeof setWahooApplication>>,
   TError,
-  SetSettingsMutationVariables,
+  SetWahooApplicationMutationVariables,
   TContext
 > => {
-  const mutationKey = ["setSettings"];
+  const mutationKey = ["setWahooApplication"];
   const { mutation: mutationOptions, request: requestOptions } = options
     ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
       ? options
@@ -2693,25 +2744,27 @@ export const getSetSettingsMutationOptions = <
     : { mutation: { mutationKey }, request: undefined };
 
   const mutationFn: MutationFunction<
-    Awaited<ReturnType<typeof setSettings>>,
-    SetSettingsMutationVariables
+    Awaited<ReturnType<typeof setWahooApplication>>,
+    SetWahooApplicationMutationVariables
   > = (props) => {
     const { data } = props ?? {};
 
-    return setSettings(data, requestOptions);
+    return setWahooApplication(data, requestOptions);
   };
 
   return { mutationFn, ...mutationOptions };
 };
 
-export type SetSettingsMutationResult = NonNullable<Awaited<ReturnType<typeof setSettings>>>;
-export type SetSettingsMutationBody = SettingsUpdate;
-export type SetSettingsMutationError = ErrorType<
+export type SetWahooApplicationMutationResult = NonNullable<
+  Awaited<ReturnType<typeof setWahooApplication>>
+>;
+export type SetWahooApplicationMutationBody = WahooApplicationUpdate;
+export type SetWahooApplicationMutationError = ErrorType<
   InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
 >;
-export type SetSettingsMutationVariables = { data: SettingsUpdate };
+export type SetWahooApplicationMutationVariables = { data: WahooApplicationUpdate };
 
-export const useSetSettings = <
+export const useSetWahooApplication = <
   TError = ErrorType<
     InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
   >,
@@ -2719,21 +2772,962 @@ export const useSetSettings = <
 >(
   options?: {
     mutation?: UseMutationOptions<
-      Awaited<ReturnType<typeof setSettings>>,
+      Awaited<ReturnType<typeof setWahooApplication>>,
       TError,
-      SetSettingsMutationVariables,
+      SetWahooApplicationMutationVariables,
       TContext
     >;
     request?: SecondParameter<typeof domestiqueRequest>;
   },
   queryClient?: QueryClient,
 ): UseMutationResult<
-  Awaited<ReturnType<typeof setSettings>>,
+  Awaited<ReturnType<typeof setWahooApplication>>,
   TError,
-  SetSettingsMutationVariables,
+  SetWahooApplicationMutationVariables,
   TContext
 > => {
-  return useMutation(getSetSettingsMutationOptions(options), queryClient);
+  return useMutation(getSetWahooApplicationMutationOptions(options), queryClient);
+};
+
+export type setTargetsResponse200 = {
+  data: SettingsStoredResponse;
+  status: 200;
+};
+
+export type setTargetsResponse400 = {
+  data: InvalidRequestResponse;
+  status: 400;
+};
+
+export type setTargetsResponse401 = {
+  data: UnauthorizedResponse;
+  status: 401;
+};
+
+export type setTargetsResponse403 = {
+  data: ForbiddenResponse;
+  status: 403;
+};
+
+export type setTargetsResponse503 = {
+  data: UnavailableResponse;
+  status: 503;
+};
+
+export type setTargetsResponseSuccess = setTargetsResponse200 & {
+  headers: Headers;
+};
+export type setTargetsResponseError = (
+  | setTargetsResponse400
+  | setTargetsResponse401
+  | setTargetsResponse403
+  | setTargetsResponse503
+) & {
+  headers: Headers;
+};
+
+export const getSetTargetsUrl = () => {
+  return `/v1/settings/targets`;
+};
+
+/**
+ * Replaces the destination slots whole, in the order they are offered. A slot name is the identity every stored authorization, target stage and recorded run already carries, so renaming one abandons that slot's state rather than moving it.
+ */
+export const setTargets = async (
+  targetsUpdate: TargetsUpdate,
+  options?: Parameters<typeof domestiqueRequest>[1],
+): Promise<setTargetsResponseSuccess> => {
+  const getHeaders = (
+    h?: NonNullable<RequestInit["headers"]>,
+  ): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Array.isArray(h)) return Object.fromEntries(h);
+    return h;
+  };
+  return domestiqueRequest<setTargetsResponseSuccess>(getSetTargetsUrl(), {
+    ...options,
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...getHeaders(options?.headers) },
+    body: JSON.stringify(targetsUpdate),
+  });
+};
+
+export const getSetTargetsMutationOptions = <
+  TError = ErrorType<
+    InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof setTargets>>,
+    TError,
+    SetTargetsMutationVariables,
+    TContext
+  >;
+  request?: SecondParameter<typeof domestiqueRequest>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof setTargets>>,
+  TError,
+  SetTargetsMutationVariables,
+  TContext
+> => {
+  const mutationKey = ["setTargets"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof setTargets>>,
+    SetTargetsMutationVariables
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return setTargets(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SetTargetsMutationResult = NonNullable<Awaited<ReturnType<typeof setTargets>>>;
+export type SetTargetsMutationBody = TargetsUpdate;
+export type SetTargetsMutationError = ErrorType<
+  InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
+>;
+export type SetTargetsMutationVariables = { data: TargetsUpdate };
+
+export const useSetTargets = <
+  TError = ErrorType<
+    InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
+  >,
+  TContext = unknown,
+>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof setTargets>>,
+      TError,
+      SetTargetsMutationVariables,
+      TContext
+    >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof setTargets>>,
+  TError,
+  SetTargetsMutationVariables,
+  TContext
+> => {
+  return useMutation(getSetTargetsMutationOptions(options), queryClient);
+};
+
+export type setSourceResponse200 = {
+  data: SettingsStoredResponse;
+  status: 200;
+};
+
+export type setSourceResponse400 = {
+  data: InvalidRequestResponse;
+  status: 400;
+};
+
+export type setSourceResponse401 = {
+  data: UnauthorizedResponse;
+  status: 401;
+};
+
+export type setSourceResponse403 = {
+  data: ForbiddenResponse;
+  status: 403;
+};
+
+export type setSourceResponse503 = {
+  data: UnavailableResponse;
+  status: 503;
+};
+
+export type setSourceResponseSuccess = setSourceResponse200 & {
+  headers: Headers;
+};
+export type setSourceResponseError = (
+  | setSourceResponse400
+  | setSourceResponse401
+  | setSourceResponse403
+  | setSourceResponse503
+) & {
+  headers: Headers;
+};
+
+export const getSetSourceUrl = (provider: "veloplanner" | "komoot") => {
+  return `/v1/settings/sources/${encodeURIComponent(String(provider))}`;
+};
+
+/**
+ * Replaces one library and the account it is read with, leaving the other libraries exactly as they are. Turning a library off removes it from the list a run reads; the account it was read with stays stored, so turning it back on does not ask for the credentials again.
+ */
+export const setSource = async (
+  provider: "veloplanner" | "komoot",
+  sourceUpdate: SourceUpdate,
+  options?: Parameters<typeof domestiqueRequest>[1],
+): Promise<setSourceResponseSuccess> => {
+  const getHeaders = (
+    h?: NonNullable<RequestInit["headers"]>,
+  ): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Array.isArray(h)) return Object.fromEntries(h);
+    return h;
+  };
+  return domestiqueRequest<setSourceResponseSuccess>(getSetSourceUrl(provider), {
+    ...options,
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...getHeaders(options?.headers) },
+    body: JSON.stringify(sourceUpdate),
+  });
+};
+
+export const getSetSourceMutationOptions = <
+  TError = ErrorType<
+    InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof setSource>>,
+    TError,
+    SetSourceMutationVariables,
+    TContext
+  >;
+  request?: SecondParameter<typeof domestiqueRequest>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof setSource>>,
+  TError,
+  SetSourceMutationVariables,
+  TContext
+> => {
+  const mutationKey = ["setSource"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof setSource>>,
+    SetSourceMutationVariables
+  > = (props) => {
+    const { provider, data } = props ?? {};
+
+    return setSource(provider, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SetSourceMutationResult = NonNullable<Awaited<ReturnType<typeof setSource>>>;
+export type SetSourceMutationBody = SourceUpdate;
+export type SetSourceMutationError = ErrorType<
+  InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
+>;
+export type SetSourceMutationVariables = { provider: "veloplanner" | "komoot"; data: SourceUpdate };
+
+export const useSetSource = <
+  TError = ErrorType<
+    InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
+  >,
+  TContext = unknown,
+>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof setSource>>,
+      TError,
+      SetSourceMutationVariables,
+      TContext
+    >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof setSource>>,
+  TError,
+  SetSourceMutationVariables,
+  TContext
+> => {
+  return useMutation(getSetSourceMutationOptions(options), queryClient);
+};
+
+export type setNotificationsResponse200 = {
+  data: SettingsStoredResponse;
+  status: 200;
+};
+
+export type setNotificationsResponse400 = {
+  data: InvalidRequestResponse;
+  status: 400;
+};
+
+export type setNotificationsResponse401 = {
+  data: UnauthorizedResponse;
+  status: 401;
+};
+
+export type setNotificationsResponse403 = {
+  data: ForbiddenResponse;
+  status: 403;
+};
+
+export type setNotificationsResponse503 = {
+  data: UnavailableResponse;
+  status: 503;
+};
+
+export type setNotificationsResponseSuccess = setNotificationsResponse200 & {
+  headers: Headers;
+};
+export type setNotificationsResponseError = (
+  | setNotificationsResponse400
+  | setNotificationsResponse401
+  | setNotificationsResponse403
+  | setNotificationsResponse503
+) & {
+  headers: Headers;
+};
+
+export const getSetNotificationsUrl = () => {
+  return `/v1/settings/notifications`;
+};
+
+/**
+ * Replaces the notification settings and the Pushover credentials.
+ */
+export const setNotifications = async (
+  notificationsUpdate: NotificationsUpdate,
+  options?: Parameters<typeof domestiqueRequest>[1],
+): Promise<setNotificationsResponseSuccess> => {
+  const getHeaders = (
+    h?: NonNullable<RequestInit["headers"]>,
+  ): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Array.isArray(h)) return Object.fromEntries(h);
+    return h;
+  };
+  return domestiqueRequest<setNotificationsResponseSuccess>(getSetNotificationsUrl(), {
+    ...options,
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...getHeaders(options?.headers) },
+    body: JSON.stringify(notificationsUpdate),
+  });
+};
+
+export const getSetNotificationsMutationOptions = <
+  TError = ErrorType<
+    InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof setNotifications>>,
+    TError,
+    SetNotificationsMutationVariables,
+    TContext
+  >;
+  request?: SecondParameter<typeof domestiqueRequest>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof setNotifications>>,
+  TError,
+  SetNotificationsMutationVariables,
+  TContext
+> => {
+  const mutationKey = ["setNotifications"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof setNotifications>>,
+    SetNotificationsMutationVariables
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return setNotifications(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SetNotificationsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof setNotifications>>
+>;
+export type SetNotificationsMutationBody = NotificationsUpdate;
+export type SetNotificationsMutationError = ErrorType<
+  InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
+>;
+export type SetNotificationsMutationVariables = { data: NotificationsUpdate };
+
+export const useSetNotifications = <
+  TError = ErrorType<
+    InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
+  >,
+  TContext = unknown,
+>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof setNotifications>>,
+      TError,
+      SetNotificationsMutationVariables,
+      TContext
+    >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof setNotifications>>,
+  TError,
+  SetNotificationsMutationVariables,
+  TContext
+> => {
+  return useMutation(getSetNotificationsMutationOptions(options), queryClient);
+};
+
+export type setBasemapsResponse200 = {
+  data: SettingsStoredResponse;
+  status: 200;
+};
+
+export type setBasemapsResponse400 = {
+  data: InvalidRequestResponse;
+  status: 400;
+};
+
+export type setBasemapsResponse401 = {
+  data: UnauthorizedResponse;
+  status: 401;
+};
+
+export type setBasemapsResponse403 = {
+  data: ForbiddenResponse;
+  status: 403;
+};
+
+export type setBasemapsResponse503 = {
+  data: UnavailableResponse;
+  status: 503;
+};
+
+export type setBasemapsResponseSuccess = setBasemapsResponse200 & {
+  headers: Headers;
+};
+export type setBasemapsResponseError = (
+  | setBasemapsResponse400
+  | setBasemapsResponse401
+  | setBasemapsResponse403
+  | setBasemapsResponse503
+) & {
+  headers: Headers;
+};
+
+export const getSetBasemapsUrl = () => {
+  return `/v1/settings/basemaps`;
+};
+
+/**
+ * Replaces the basemap list whole, in the order it is offered. The first is what a browser that has never chosen one loads.
+ */
+export const setBasemaps = async (
+  basemapsUpdate: BasemapsUpdate,
+  options?: Parameters<typeof domestiqueRequest>[1],
+): Promise<setBasemapsResponseSuccess> => {
+  const getHeaders = (
+    h?: NonNullable<RequestInit["headers"]>,
+  ): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Array.isArray(h)) return Object.fromEntries(h);
+    return h;
+  };
+  return domestiqueRequest<setBasemapsResponseSuccess>(getSetBasemapsUrl(), {
+    ...options,
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...getHeaders(options?.headers) },
+    body: JSON.stringify(basemapsUpdate),
+  });
+};
+
+export const getSetBasemapsMutationOptions = <
+  TError = ErrorType<
+    InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof setBasemaps>>,
+    TError,
+    SetBasemapsMutationVariables,
+    TContext
+  >;
+  request?: SecondParameter<typeof domestiqueRequest>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof setBasemaps>>,
+  TError,
+  SetBasemapsMutationVariables,
+  TContext
+> => {
+  const mutationKey = ["setBasemaps"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof setBasemaps>>,
+    SetBasemapsMutationVariables
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return setBasemaps(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SetBasemapsMutationResult = NonNullable<Awaited<ReturnType<typeof setBasemaps>>>;
+export type SetBasemapsMutationBody = BasemapsUpdate;
+export type SetBasemapsMutationError = ErrorType<
+  InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
+>;
+export type SetBasemapsMutationVariables = { data: BasemapsUpdate };
+
+export const useSetBasemaps = <
+  TError = ErrorType<
+    InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
+  >,
+  TContext = unknown,
+>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof setBasemaps>>,
+      TError,
+      SetBasemapsMutationVariables,
+      TContext
+    >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof setBasemaps>>,
+  TError,
+  SetBasemapsMutationVariables,
+  TContext
+> => {
+  return useMutation(getSetBasemapsMutationOptions(options), queryClient);
+};
+
+export type setSurfaceResponse200 = {
+  data: SettingsStoredResponse;
+  status: 200;
+};
+
+export type setSurfaceResponse400 = {
+  data: InvalidRequestResponse;
+  status: 400;
+};
+
+export type setSurfaceResponse401 = {
+  data: UnauthorizedResponse;
+  status: 401;
+};
+
+export type setSurfaceResponse403 = {
+  data: ForbiddenResponse;
+  status: 403;
+};
+
+export type setSurfaceResponse503 = {
+  data: UnavailableResponse;
+  status: 503;
+};
+
+export type setSurfaceResponseSuccess = setSurfaceResponse200 & {
+  headers: Headers;
+};
+export type setSurfaceResponseError = (
+  | setSurfaceResponse400
+  | setSurfaceResponse401
+  | setSurfaceResponse403
+  | setSurfaceResponse503
+) & {
+  headers: Headers;
+};
+
+export const getSetSurfaceUrl = () => {
+  return `/v1/settings/surface`;
+};
+
+/**
+ * Replaces the surface index's regions and rebuild cadence.
+ */
+export const setSurface = async (
+  surfaceSettings: SurfaceSettings,
+  options?: Parameters<typeof domestiqueRequest>[1],
+): Promise<setSurfaceResponseSuccess> => {
+  const getHeaders = (
+    h?: NonNullable<RequestInit["headers"]>,
+  ): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Array.isArray(h)) return Object.fromEntries(h);
+    return h;
+  };
+  return domestiqueRequest<setSurfaceResponseSuccess>(getSetSurfaceUrl(), {
+    ...options,
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...getHeaders(options?.headers) },
+    body: JSON.stringify(surfaceSettings),
+  });
+};
+
+export const getSetSurfaceMutationOptions = <
+  TError = ErrorType<
+    InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof setSurface>>,
+    TError,
+    SetSurfaceMutationVariables,
+    TContext
+  >;
+  request?: SecondParameter<typeof domestiqueRequest>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof setSurface>>,
+  TError,
+  SetSurfaceMutationVariables,
+  TContext
+> => {
+  const mutationKey = ["setSurface"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof setSurface>>,
+    SetSurfaceMutationVariables
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return setSurface(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SetSurfaceMutationResult = NonNullable<Awaited<ReturnType<typeof setSurface>>>;
+export type SetSurfaceMutationBody = SurfaceSettings;
+export type SetSurfaceMutationError = ErrorType<
+  InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
+>;
+export type SetSurfaceMutationVariables = { data: SurfaceSettings };
+
+export const useSetSurface = <
+  TError = ErrorType<
+    InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
+  >,
+  TContext = unknown,
+>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof setSurface>>,
+      TError,
+      SetSurfaceMutationVariables,
+      TContext
+    >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof setSurface>>,
+  TError,
+  SetSurfaceMutationVariables,
+  TContext
+> => {
+  return useMutation(getSetSurfaceMutationOptions(options), queryClient);
+};
+
+export type setRideModelResponse200 = {
+  data: SettingsStoredResponse;
+  status: 200;
+};
+
+export type setRideModelResponse400 = {
+  data: InvalidRequestResponse;
+  status: 400;
+};
+
+export type setRideModelResponse401 = {
+  data: UnauthorizedResponse;
+  status: 401;
+};
+
+export type setRideModelResponse403 = {
+  data: ForbiddenResponse;
+  status: 403;
+};
+
+export type setRideModelResponse503 = {
+  data: UnavailableResponse;
+  status: 503;
+};
+
+export type setRideModelResponseSuccess = setRideModelResponse200 & {
+  headers: Headers;
+};
+export type setRideModelResponseError = (
+  | setRideModelResponse400
+  | setRideModelResponse401
+  | setRideModelResponse403
+  | setRideModelResponse503
+) & {
+  headers: Headers;
+};
+
+export const getSetRideModelUrl = () => {
+  return `/v1/settings/ridemodel`;
+};
+
+/**
+ * Replaces the coefficient file predicted moving time is computed from.
+ */
+export const setRideModel = async (
+  rideModelSettings: RideModelSettings,
+  options?: Parameters<typeof domestiqueRequest>[1],
+): Promise<setRideModelResponseSuccess> => {
+  const getHeaders = (
+    h?: NonNullable<RequestInit["headers"]>,
+  ): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Array.isArray(h)) return Object.fromEntries(h);
+    return h;
+  };
+  return domestiqueRequest<setRideModelResponseSuccess>(getSetRideModelUrl(), {
+    ...options,
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...getHeaders(options?.headers) },
+    body: JSON.stringify(rideModelSettings),
+  });
+};
+
+export const getSetRideModelMutationOptions = <
+  TError = ErrorType<
+    InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof setRideModel>>,
+    TError,
+    SetRideModelMutationVariables,
+    TContext
+  >;
+  request?: SecondParameter<typeof domestiqueRequest>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof setRideModel>>,
+  TError,
+  SetRideModelMutationVariables,
+  TContext
+> => {
+  const mutationKey = ["setRideModel"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof setRideModel>>,
+    SetRideModelMutationVariables
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return setRideModel(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SetRideModelMutationResult = NonNullable<Awaited<ReturnType<typeof setRideModel>>>;
+export type SetRideModelMutationBody = RideModelSettings;
+export type SetRideModelMutationError = ErrorType<
+  InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
+>;
+export type SetRideModelMutationVariables = { data: RideModelSettings };
+
+export const useSetRideModel = <
+  TError = ErrorType<
+    InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
+  >,
+  TContext = unknown,
+>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof setRideModel>>,
+      TError,
+      SetRideModelMutationVariables,
+      TContext
+    >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof setRideModel>>,
+  TError,
+  SetRideModelMutationVariables,
+  TContext
+> => {
+  return useMutation(getSetRideModelMutationOptions(options), queryClient);
+};
+
+export type setSyncResponse200 = {
+  data: SettingsStoredResponse;
+  status: 200;
+};
+
+export type setSyncResponse400 = {
+  data: InvalidRequestResponse;
+  status: 400;
+};
+
+export type setSyncResponse401 = {
+  data: UnauthorizedResponse;
+  status: 401;
+};
+
+export type setSyncResponse403 = {
+  data: ForbiddenResponse;
+  status: 403;
+};
+
+export type setSyncResponse503 = {
+  data: UnavailableResponse;
+  status: 503;
+};
+
+export type setSyncResponseSuccess = setSyncResponse200 & {
+  headers: Headers;
+};
+export type setSyncResponseError = (
+  | setSyncResponse400
+  | setSyncResponse401
+  | setSyncResponse403
+  | setSyncResponse503
+) & {
+  headers: Headers;
+};
+
+export const getSetSyncUrl = () => {
+  return `/v1/settings/sync`;
+};
+
+/**
+ * Replaces the settings a run reads when it starts, including the gate that lets an empty library delete a target's routes.
+ */
+export const setSync = async (
+  syncSettings: SyncSettings,
+  options?: Parameters<typeof domestiqueRequest>[1],
+): Promise<setSyncResponseSuccess> => {
+  const getHeaders = (
+    h?: NonNullable<RequestInit["headers"]>,
+  ): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Array.isArray(h)) return Object.fromEntries(h);
+    return h;
+  };
+  return domestiqueRequest<setSyncResponseSuccess>(getSetSyncUrl(), {
+    ...options,
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...getHeaders(options?.headers) },
+    body: JSON.stringify(syncSettings),
+  });
+};
+
+export const getSetSyncMutationOptions = <
+  TError = ErrorType<
+    InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof setSync>>,
+    TError,
+    SetSyncMutationVariables,
+    TContext
+  >;
+  request?: SecondParameter<typeof domestiqueRequest>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof setSync>>,
+  TError,
+  SetSyncMutationVariables,
+  TContext
+> => {
+  const mutationKey = ["setSync"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof setSync>>,
+    SetSyncMutationVariables
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return setSync(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SetSyncMutationResult = NonNullable<Awaited<ReturnType<typeof setSync>>>;
+export type SetSyncMutationBody = SyncSettings;
+export type SetSyncMutationError = ErrorType<
+  InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
+>;
+export type SetSyncMutationVariables = { data: SyncSettings };
+
+export const useSetSync = <
+  TError = ErrorType<
+    InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
+  >,
+  TContext = unknown,
+>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof setSync>>,
+      TError,
+      SetSyncMutationVariables,
+      TContext
+    >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof setSync>>,
+  TError,
+  SetSyncMutationVariables,
+  TContext
+> => {
+  return useMutation(getSetSyncMutationOptions(options), queryClient);
 };
 
 export type getWebUIConfigResponse200 = {

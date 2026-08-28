@@ -37,7 +37,7 @@ func TestSourcesFollowTheConfiguredLibraries(t *testing.T) {
 		{Provider: route.ProviderVeloPlanner, BaseURL: "https://veloplanner.example.test"},
 		{Provider: route.ProviderKomoot, BaseURL: "https://komoot.example.test"},
 	}
-	require.NoError(t, current.Set(t.Context(), values), "Set()")
+	storeSettings(t, current, values)
 
 	// Reading part of a library and calling it the whole inventory is what the
 	// deletion gate exists to prevent, so a source missing its credentials
@@ -68,7 +68,7 @@ func TestWahooProviderOffersNoTargetsUntilItsApplicationIsConfigured(t *testing.
 	current := testSettings(t, testStore(t, t.TempDir()))
 	values := current.Values()
 	values.Wahoo.Targets = []string{"rider"}
-	require.NoError(t, current.Set(t.Context(), values), "Set()")
+	storeSettings(t, current, values)
 
 	provider := newWahooProvider(current, "https://domestique.example.test")
 	assert.Empty(t, provider.targetIDs(), "a target was offered before the Wahoo application was configured")
@@ -102,14 +102,14 @@ func TestWahooProviderRebuildsOnlyWhenItsSettingsChange(t *testing.T) {
 	// observed budget away.
 	values := current.Values()
 	values.Surface.Regions = []string{"europe/germany"}
-	require.NoError(t, current.Set(t.Context(), values), "Set()")
+	storeSettings(t, current, values)
 
 	kept, err := provider.current()
 	require.NoError(t, err, "current()")
 	assert.Same(t, first, kept, "an unrelated settings edit discarded the client")
 
 	values.Wahoo.ClientID = "another-application"
-	require.NoError(t, current.Set(t.Context(), values), "Set()")
+	storeSettings(t, current, values)
 
 	rebuilt, err := provider.current()
 	require.NoError(t, err, "current()")
@@ -131,7 +131,7 @@ func configureWahoo(t *testing.T, current *runtimeconfig.Current) {
 	values.Wahoo.APIBaseURL = "https://api.wahoo.example.test"
 	values.Wahoo.OAuthBaseURL = "https://oauth.wahoo.example.test"
 	values.Wahoo.ClientID = "an-application"
-	require.NoError(t, current.Set(t.Context(), values), "Set()")
+	storeSettings(t, current, values)
 	require.NoError(t, current.SetSecrets(t.Context(), map[runtimeconfig.SecretName]runtimeconfig.Secret{
 		runtimeconfig.SecretWahooClientSecret: runtimeconfig.NewSecret([]byte("a-client-secret")),
 	}), "SetSecrets()")
@@ -442,13 +442,24 @@ func surfaceSettings(t *testing.T, store *sqlite.Store) *runtimeconfig.Current {
 
 	values := current.Values()
 	values.Surface.Regions = []string{"europe/germany"}
-	require.NoError(t, current.Set(t.Context(), values), "Set()")
+	storeSettings(t, current, values)
 
 	return current
 }
 
 // testSettings publishes what a service that has never been configured starts
 // with: everything seeded, nothing entered.
+// storeSettings replaces the settings whole, which is what a test holding a
+// complete set of values wants; the service replaces one section at a time.
+//
+//nolint:gocritic // value param: mirrors Update's own copy-in.
+func storeSettings(t *testing.T, current *runtimeconfig.Current, values runtimeconfig.Values) {
+	t.Helper()
+	require.NoError(t, current.Update(t.Context(), func(runtimeconfig.Values) runtimeconfig.Values {
+		return values
+	}), "Update()")
+}
+
 func testSettings(t *testing.T, store *sqlite.Store) *runtimeconfig.Current {
 	t.Helper()
 	current, err := runtimeconfig.Load(t.Context(), store)
@@ -607,7 +618,7 @@ func rideModelSettings(t *testing.T, store *sqlite.Store, path string) *runtimec
 	current := testSettings(t, store)
 	values := current.Values()
 	values.RideModel.CoefficientsFile = path
-	require.NoError(t, current.Set(t.Context(), values), "Set()")
+	storeSettings(t, current, values)
 
 	return current
 }
@@ -648,7 +659,7 @@ func TestPredictorFollowsTheConfiguredCoefficientFile(t *testing.T) {
 
 	values := current.Values()
 	values.RideModel.CoefficientsFile = writeTestCoefficients(t, directory)
-	require.NoError(t, current.Set(t.Context(), values), "Set()")
+	storeSettings(t, current, values)
 
 	_, _, err = predictor.Predict(t.Context(), nil)
 	require.NoError(t, err, "Predict() after a coefficient file was configured")
@@ -657,7 +668,7 @@ func TestPredictorFollowsTheConfiguredCoefficientFile(t *testing.T) {
 	// substituted one: nothing is served that the loaded model does not
 	// stand behind.
 	values.RideModel.CoefficientsFile = filepath.Join(directory, "not-a-file.toml")
-	require.NoError(t, current.Set(t.Context(), values), "Set()")
+	storeSettings(t, current, values)
 
 	_, _, err = predictor.Predict(t.Context(), nil)
 	require.Error(t, err, "Predict() with a coefficient file that will not load")

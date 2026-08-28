@@ -19,7 +19,7 @@ const STALE_AFTER = "Call the library stale after (hours)";
 /** The settings page, once the service has answered what it is set to. */
 async function openSettings(page: Page): Promise<void> {
   await page.goto("/settings");
-  await expect(page.getByRole("heading", { level: 2, name: "Service settings" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 3, name: "Synchronisation" })).toBeVisible();
 }
 
 test("changing the schedule is stored and read back", async ({ bundlePage: page, apiCalls }) => {
@@ -50,9 +50,12 @@ test("changing the schedule is stored and read back", async ({ bundlePage: page,
 });
 
 /**
- * The settings form, which is the one page that writes to the service's own
+ * The settings page, which is the one page that writes to the service's own
  * configuration. What proves it is a `reload()`: the page's cache is discarded
  * with it, so a value that survives came back from SQLite.
+ *
+ * One section is saved, and it is the only section written: the other cards
+ * hold their own edits and their own buttons.
  */
 test("changing a setting is stored and read back", async ({ bundlePage: page, apiCalls }) => {
   await openSettings(page);
@@ -62,16 +65,17 @@ test("changing a setting is stored and read back", async ({ bundlePage: page, ap
   const after = String(Number(before) + 1);
 
   await hours.fill(after);
-  await page.getByRole("button", { name: "Save settings" }).click();
+  await page.getByRole("button", { name: "Save Synchronisation" }).click();
 
   await expect(page.getByText(/^Saved\./)).toBeVisible();
-  expect(callsTo(apiCalls, "PUT", "/v1/settings").map((call) => call.status)).toEqual([200]);
+  expect(callsTo(apiCalls, "PUT", "/v1/settings/sync").map((call) => call.status)).toEqual([200]);
+  expect(callsTo(apiCalls, "PUT", "/v1/settings/surface")).toHaveLength(0);
 
   await page.reload();
   await expect(page.getByLabel(STALE_AFTER)).toHaveValue(after);
 
   await page.getByLabel(STALE_AFTER).fill(before);
-  await page.getByRole("button", { name: "Save settings" }).click();
+  await page.getByRole("button", { name: "Save Synchronisation" }).click();
   await expect(page.getByText(/^Saved\./)).toBeVisible();
 });
 

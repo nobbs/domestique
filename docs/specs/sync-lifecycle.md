@@ -829,9 +829,9 @@ also uses 403; malformed client input uses 400.
 The OAuth start, callback, the protected `POST /v1/sync` triggers, the protected
 `PUT /v1/sync/schedule` switch, the protected
 `POST /v1/providers/{provider}/routes/{source-route-id}/stages/{stage}/reprocess`
-request, and the protected `PUT /v1/settings` write are the only state-changing
-endpoints. The settings write changes what the service does next and nothing it
-has stored about a route; it reaches the runtime settings
+request, and the protected `PUT /v1/settings/*` section writes are the only
+state-changing endpoints. A settings write changes what the service does next and
+nothing it has stored about a route; it reaches the runtime settings
 [the configuration specification](configuration.md#runtime-settings) defines and
 no other configuration. There is no HTTP or CLI endpoint for route deletion,
 static configuration or secret mutation, or Wahoo target removal.

@@ -269,67 +269,59 @@ type Settings struct {
 	Missing []string `json:"missing"`
 }
 
-// SettingsUpdate_Secrets The credentials to replace, keyed by name. Only the ones sent are written, so a page that was never told a value can leave it alone; an empty value removes the credential. A name outside the known set is refused.
-type SettingsUpdate_Secrets struct {
-	AdditionalProperties map[string]string `json:"-"`
+// WahooApplicationUpdate The registered application, without the slots it writes to. Those are replaced on their own.
+type WahooApplicationUpdate struct {
+	// APIBaseURL The origin route reads and writes are sent to.
+	APIBaseURL string `json:"apiBaseUrl"`
+	// OauthBaseURL The origin an authorization and a token refresh are sent to.
+	OauthBaseURL string `json:"oauthBaseUrl"`
+	// ClientID The registered application's public identifier.
+	ClientID string `json:"clientId"`
+	// ClientSecret The application's secret, sent only when it was typed into the form. Left out it keeps the stored value, which is how a page that was never told the secret can save the rest of the application; sent empty it removes the credential.
+	ClientSecret *string `json:"clientSecret,omitempty"`
 }
 
-func (m *SettingsUpdate_Secrets) UnmarshalJSON(data []byte) error {
-	type Alias SettingsUpdate_Secrets
-	var known Alias
-	if err := json.Unmarshal(data, &known); err != nil {
-		return err
-	}
-	*m = SettingsUpdate_Secrets(known)
-	var raw map[string]json.RawMessage
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return err
-	}
-	if len(raw) == 0 {
-		return nil
-	}
-	m.AdditionalProperties = make(map[string]string, len(raw))
-	for key, value := range raw {
-		var decoded string
-		if err := json.Unmarshal(value, &decoded); err != nil {
-			return err
-		}
-		m.AdditionalProperties[key] = decoded
-	}
-	return nil
+type TargetsUpdate struct {
+	// Targets The destination slots, in the order they are offered. A slot name is the identity every stored authorization, target stage and recorded run already carries, so renaming one abandons that slot's state rather than moving it.
+	Targets []string `json:"targets"`
 }
 
-func (m SettingsUpdate_Secrets) MarshalJSON() ([]byte, error) {
-	type Alias SettingsUpdate_Secrets
-	encoded, err := json.Marshal(Alias(m))
-	if err != nil {
-		return nil, err
-	}
-	var object map[string]json.RawMessage
-	if err := json.Unmarshal(encoded, &object); err != nil {
-		return nil, err
-	}
-	for key, value := range m.AdditionalProperties {
-		encodedValue, err := json.Marshal(value)
-		if err != nil {
-			return nil, err
-		}
-		object[key] = encodedValue
-	}
-	return json.Marshal(object)
+// SourceUpdate One library, and the account it is read with.
+type SourceUpdate struct {
+	// Read Whether a run reads this library at all. Off takes it out of the list without forgetting the account it was read with.
+	Read bool `json:"read"`
+	// BaseURL The library's own web application, which is both the origin the service reads and the one a stage is linked back to.
+	BaseURL string `json:"baseUrl"`
+	// Email The account's email address, sent only when it was typed. The rules the application secret follows apply here too.
+	Email *string `json:"email,omitempty"`
+	// Password The account's password, on the same terms as the email address.
+	Password *string `json:"password,omitempty"`
 }
 
-// SettingsUpdate One complete edit of the settings above. It carries the sections an operator fills in rather than the two the service reports back, so a page cannot submit what it only ever read.
-type SettingsUpdate struct {
-	Sync          SyncSettings         `json:"sync"`
-	Notifications NotificationSettings `json:"notifications"`
-	Basemaps      []BrowserBasemap     `json:"basemaps"`
-	Surface       SurfaceSettings      `json:"surface"`
-	Wahoo         WahooSettings        `json:"wahoo"`
-	Sources       []SourceSettings     `json:"sources"`
-	RideModel     RideModelSettings    `json:"rideModel"`
-	// Secrets The credentials to replace, keyed by name. Only the ones sent are written, so a page that was never told a value can leave it alone; an empty value removes the credential. A name outside the known set is refused.
-	Secrets map[string]string `json:"secrets,omitempty"`
+type NotificationsUpdate_SuccessPolicy string
+
+const (
+	NotificationsUpdate_SuccessPolicyEvery  NotificationsUpdate_SuccessPolicy = "every"
+	NotificationsUpdate_SuccessPolicyQuiet  NotificationsUpdate_SuccessPolicy = "quiet"
+	NotificationsUpdate_SuccessPolicyDigest NotificationsUpdate_SuccessPolicy = "digest"
+)
+
+type NotificationsUpdate struct {
+	// Enabled The switch for the whole channel. Off suppresses a failure and a stale inventory as surely as it suppresses a routine success.
+	Enabled       bool                              `json:"enabled"`
+	SuccessPolicy NotificationsUpdate_SuccessPolicy `json:"successPolicy"`
+	// DigestIntervalSeconds The period one digest covers, read only by the digest policy.
+	DigestIntervalSeconds int `json:"digestIntervalSeconds"`
+	// PushoverBaseURL The origin the application token and user key are sent to.
+	PushoverBaseURL string `json:"pushoverBaseUrl"`
+	// ApplicationToken The Pushover application's token, sent only when it was typed. The rules the application secret follows apply here too.
+	ApplicationToken *string `json:"applicationToken,omitempty"`
+	// UserKey The recipient key, on the same terms as the application token.
+	UserKey *string `json:"userKey,omitempty"`
+}
+
+type BasemapsUpdate struct {
+	Basemaps []BrowserBasemap `json:"basemaps"`
 }
 
 type SyncSettings struct {

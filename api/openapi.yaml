@@ -411,30 +411,231 @@ paths:
           $ref: '#/components/responses/Forbidden'
         "503":
           $ref: '#/components/responses/Unavailable'
+  /v1/settings/wahoo:
     put:
       tags:
         - browser-api
-      operationId: setSettings
+      operationId: setWahooApplication
       security:
         - accessAssertion: []
           browserOrigin: []
       description: >-
-        Replaces every runtime setting at once. The body is the whole object
-        rather than the parts that changed, because the form that sends it holds
-        every value; a setting left out is a setting the caller never read.
+        Replaces the registered Wahoo application. The target slots are written
+        separately: they are the accounts this application writes to, not part
+        of the application itself.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/SettingsUpdate'
+              $ref: '#/components/schemas/WahooApplicationUpdate'
       responses:
         "200":
-          description: The settings now in force.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Settings'
+          $ref: '#/components/responses/SettingsStored'
+        "400":
+          $ref: '#/components/responses/InvalidRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "503":
+          $ref: '#/components/responses/Unavailable'
+  /v1/settings/targets:
+    put:
+      tags:
+        - browser-api
+      operationId: setTargets
+      security:
+        - accessAssertion: []
+          browserOrigin: []
+      description: >-
+        Replaces the destination slots whole, in the order they are offered. A
+        slot name is the identity every stored authorization, target stage and
+        recorded run already carries, so renaming one abandons that slot's state
+        rather than moving it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TargetsUpdate'
+      responses:
+        "200":
+          $ref: '#/components/responses/SettingsStored'
+        "400":
+          $ref: '#/components/responses/InvalidRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "503":
+          $ref: '#/components/responses/Unavailable'
+  /v1/settings/sources/{provider}:
+    put:
+      tags:
+        - browser-api
+      operationId: setSource
+      security:
+        - accessAssertion: []
+          browserOrigin: []
+      description: >-
+        Replaces one library and the account it is read with, leaving the other
+        libraries exactly as they are. Turning a library off removes it from the
+        list a run reads; the account it was read with stays stored, so turning
+        it back on does not ask for the credentials again.
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          description: The library this edit is about.
+          schema:
+            type: string
+            enum:
+              - veloplanner
+              - komoot
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SourceUpdate'
+      responses:
+        "200":
+          $ref: '#/components/responses/SettingsStored'
+        "400":
+          $ref: '#/components/responses/InvalidRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "503":
+          $ref: '#/components/responses/Unavailable'
+  /v1/settings/notifications:
+    put:
+      tags:
+        - browser-api
+      operationId: setNotifications
+      security:
+        - accessAssertion: []
+          browserOrigin: []
+      description: Replaces the notification settings and the Pushover credentials.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationsUpdate'
+      responses:
+        "200":
+          $ref: '#/components/responses/SettingsStored'
+        "400":
+          $ref: '#/components/responses/InvalidRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "503":
+          $ref: '#/components/responses/Unavailable'
+  /v1/settings/basemaps:
+    put:
+      tags:
+        - browser-api
+      operationId: setBasemaps
+      security:
+        - accessAssertion: []
+          browserOrigin: []
+      description: >-
+        Replaces the basemap list whole, in the order it is offered. The first
+        is what a browser that has never chosen one loads.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BasemapsUpdate'
+      responses:
+        "200":
+          $ref: '#/components/responses/SettingsStored'
+        "400":
+          $ref: '#/components/responses/InvalidRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "503":
+          $ref: '#/components/responses/Unavailable'
+  /v1/settings/surface:
+    put:
+      tags:
+        - browser-api
+      operationId: setSurface
+      security:
+        - accessAssertion: []
+          browserOrigin: []
+      description: Replaces the surface index's regions and rebuild cadence.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SurfaceSettings'
+      responses:
+        "200":
+          $ref: '#/components/responses/SettingsStored'
+        "400":
+          $ref: '#/components/responses/InvalidRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "503":
+          $ref: '#/components/responses/Unavailable'
+  /v1/settings/ridemodel:
+    put:
+      tags:
+        - browser-api
+      operationId: setRideModel
+      security:
+        - accessAssertion: []
+          browserOrigin: []
+      description: Replaces the coefficient file predicted moving time is computed from.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RideModelSettings'
+      responses:
+        "200":
+          $ref: '#/components/responses/SettingsStored'
+        "400":
+          $ref: '#/components/responses/InvalidRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "503":
+          $ref: '#/components/responses/Unavailable'
+  /v1/settings/sync:
+    put:
+      tags:
+        - browser-api
+      operationId: setSync
+      security:
+        - accessAssertion: []
+          browserOrigin: []
+      description: >-
+        Replaces the settings a run reads when it starts, including the gate
+        that lets an empty library delete a target's routes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SyncSettings'
+      responses:
+        "200":
+          $ref: '#/components/responses/SettingsStored'
         "400":
           $ref: '#/components/responses/InvalidRequest'
         "401":
@@ -577,6 +778,14 @@ components:
         type: integer
         minimum: 1
   responses:
+    SettingsStored:
+      description: >-
+        Every setting now in force, not only the section this request replaced,
+        so one answer refills the whole page.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Settings'
     Accepted:
       description: Work was accepted to run asynchronously.
       content:
@@ -1132,50 +1341,123 @@ components:
             them. Everything a run needs is here, and so are the Pushover
             credentials while notifications are on, which no run needs but every
             notification does. Empty is a configured service.
-    SettingsUpdate:
+    WahooApplicationUpdate:
       type: object
       additionalProperties: false
       description: >-
-        One complete edit of the settings above. It carries the sections an
-        operator fills in rather than the two the service reports back, so a
-        page cannot submit what it only ever read.
+        The registered application, without the slots it writes to. Those are
+        replaced on their own.
       required:
-        - sync
-        - notifications
-        - basemaps
-        - surface
-        - wahoo
-        - sources
-        - rideModel
+        - apiBaseUrl
+        - oauthBaseUrl
+        - clientId
       properties:
-        sync:
-          $ref: '#/components/schemas/SyncSettings'
-        notifications:
-          $ref: '#/components/schemas/NotificationSettings'
+        apiBaseUrl:
+          type: string
+          description: The origin route reads and writes are sent to.
+        oauthBaseUrl:
+          type: string
+          description: The origin an authorization and a token refresh are sent to.
+        clientId:
+          type: string
+          description: The registered application's public identifier.
+        clientSecret:
+          type: string
+          description: >-
+            The application's secret, sent only when it was typed into the form.
+            Left out it keeps the stored value, which is how a page that was
+            never told the secret can save the rest of the application; sent
+            empty it removes the credential.
+    TargetsUpdate:
+      type: object
+      additionalProperties: false
+      required:
+        - targets
+      properties:
+        targets:
+          type: array
+          maxItems: 2
+          items:
+            type: string
+          description: >-
+            The destination slots, in the order they are offered. A slot name is
+            the identity every stored authorization, target stage and recorded
+            run already carries, so renaming one abandons that slot's state
+            rather than moving it.
+    SourceUpdate:
+      type: object
+      additionalProperties: false
+      description: One library, and the account it is read with.
+      required:
+        - read
+        - baseUrl
+      properties:
+        read:
+          type: boolean
+          description: >-
+            Whether a run reads this library at all. Off takes it out of the
+            list without forgetting the account it was read with.
+        baseUrl:
+          type: string
+          description: >-
+            The library's own web application, which is both the origin the
+            service reads and the one a stage is linked back to.
+        email:
+          type: string
+          description: >-
+            The account's email address, sent only when it was typed. The rules
+            the application secret follows apply here too.
+        password:
+          type: string
+          description: The account's password, on the same terms as the email address.
+    NotificationsUpdate:
+      type: object
+      additionalProperties: false
+      required:
+        - enabled
+        - successPolicy
+        - digestIntervalSeconds
+        - pushoverBaseUrl
+      properties:
+        enabled:
+          type: boolean
+          description: >-
+            The switch for the whole channel. Off suppresses a failure and a
+            stale inventory as surely as it suppresses a routine success.
+        successPolicy:
+          type: string
+          enum:
+            - every
+            - quiet
+            - digest
+        digestIntervalSeconds:
+          type: integer
+          minimum: 1
+          description: The period one digest covers, read only by the digest policy.
+        pushoverBaseUrl:
+          type: string
+          format: uri
+          description: >-
+            The origin the application token and user key are sent to.
+        applicationToken:
+          type: string
+          description: >-
+            The Pushover application's token, sent only when it was typed. The
+            rules the application secret follows apply here too.
+        userKey:
+          type: string
+          description: The recipient key, on the same terms as the application token.
+    BasemapsUpdate:
+      type: object
+      additionalProperties: false
+      required:
+        - basemaps
+      properties:
         basemaps:
           type: array
           minItems: 1
           items:
             $ref: '#/components/schemas/BrowserBasemap'
-        surface:
-          $ref: '#/components/schemas/SurfaceSettings'
-        wahoo:
-          $ref: '#/components/schemas/WahooSettings'
-        sources:
-          type: array
-          items:
-            $ref: '#/components/schemas/SourceSettings'
-        rideModel:
-          $ref: '#/components/schemas/RideModelSettings'
-        secrets:
-          type: object
-          additionalProperties:
-            type: string
-          description: >-
-            The credentials to replace, keyed by name. Only the ones sent are
-            written, so a page that was never told a value can leave it alone;
-            an empty value removes the credential. A name outside the known set
-            is refused.
     SyncSettings:
       type: object
       additionalProperties: false
