@@ -41,6 +41,9 @@ terms that already mean several things got that way because each was defined
 locally, in the module that needed it. Where the code disagrees with the
 glossary today, [`docs/naming-drift.md`](docs/naming-drift.md) records the
 disagreement; add to it rather than quietly renaming across a boundary.
+[`docs/backend-layout.md`](docs/backend-layout.md) does the same for the Go
+tree: which files have outgrown their package, and which parts of the
+architecture specification's layout no longer match the repository.
 
 ## Commands
 
