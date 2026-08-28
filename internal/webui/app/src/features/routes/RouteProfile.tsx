@@ -24,6 +24,7 @@
  */
 
 import { IconChevronsRight } from "@tabler/icons-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import type { Position } from "../../api/types";
 import { ElevationProfile } from "../../components/route/ElevationProfile";
 import { ForecastStrip } from "../../components/route/ForecastStrip";
@@ -156,15 +157,16 @@ export function RouteProfile({
         : `${range} · ${coarse ? "press and hold to look closer" : "drag across to look closer"}`;
 
   return (
-    <section className="border-t border-[var(--rule)] pt-4" aria-labelledby="elevation-heading">
+    <Collapsible
+      open={!collapsed}
+      onOpenChange={(open) => onCollapsedChange(!open)}
+      className="border-t border-[var(--rule)] pt-4"
+      render={<section aria-labelledby="elevation-heading" />}
+    >
       <h3>
-        <button
+        <CollapsibleTrigger
           className="flex w-full items-center gap-2 text-left font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
-          type="button"
-          aria-expanded={!collapsed}
           aria-label={collapsed ? "Show the profile" : "Hide the profile"}
-          {...(collapsed ? {} : { "aria-controls": "elevation-plot" })}
-          onClick={() => onCollapsedChange(!collapsed)}
         >
           <span id="elevation-heading">Elevation</span>
           {summary === "" ? null : (
@@ -178,70 +180,68 @@ export function RouteProfile({
             size={16}
             stroke={2}
           />
-        </button>
+        </CollapsibleTrigger>
       </h3>
       {/*
        * Unmounted rather than hidden when the section is a row: the chart holds
        * a pointer listener over its whole plot area, and a plot nobody can see
-       * must not be a plot a stray drag can still select a stretch of.
+       * must not be a plot a stray drag can still select a stretch of. That is
+       * the panel's own default — it keeps nothing in the document while shut.
        */}
-      {collapsed ? null : (
-        <div className="mt-3 grid gap-3">
-          <div id="elevation-plot">
-            <ElevationProfile
-              profile={profile}
-              title={title}
-              surface={surface}
-              activeMetres={activeMetres}
-              onActiveChange={onActiveChange}
-              zoomWindow={zoomWindow}
-              onZoomChange={onZoomChange}
-              highlight={highlight}
-              unitSystem={unitSystem}
-            />
-          </div>
-          {/*
-           * Keyed by the stage, so its refusal does not outlive the stage it
-           * was about: this section is reused rather than remounted as the
-           * reader moves between routes, and an alert about one stage's
-           * horizon attached to the next one would be about nothing. By the
-           * stage's identity rather than its title, which two stages may
-           * legitimately share.
-           */}
-          <StartTimePicker
-            key={stageKey ?? title}
-            value={startAt}
-            onChange={onStartAtChange}
-            rideSeconds={rideSeconds}
+      <CollapsibleContent className="mt-3 grid gap-3">
+        <div id="elevation-plot">
+          <ElevationProfile
+            profile={profile}
+            title={title}
+            surface={surface}
+            activeMetres={activeMetres}
+            onActiveChange={onActiveChange}
+            zoomWindow={zoomWindow}
+            onZoomChange={onZoomChange}
+            highlight={highlight}
+            unitSystem={unitSystem}
           />
-          {startAt && predictionKnown && !hasTimeline ? (
-            <p className="text-sm text-[var(--hold)]">
-              This stage has no predicted moving time, so there is no timeline to hang a forecast
-              on.
-            </p>
-          ) : null}
-          {startAt && hasTimeline && startRefusal !== null ? (
-            <p className="text-sm text-[var(--hold)]">{startRefusal}</p>
-          ) : null}
-          {startAt && hasTimeline && startFits ? (
-            <ForecastStrip
-              samples={samples}
-              coordinates={coordinates}
-              startMetres={profile?.startMetres ?? 0}
-              /*
-               * Without a profile there is no chart to share an axis with, so
-               * the strip falls back to the whole route — the last sample sits
-               * at the finish, so it carries that distance. Zero would be a
-               * window nothing overlaps, and every cell would be dropped as
-               * off-screen: a stage with a timeline but no terrain is exactly
-               * the case that is supposed to still get a forecast.
-               */
-              endMetres={profile?.endMetres ?? samples[samples.length - 1]?.distanceMetres ?? 0}
-              unitSystem={unitSystem}
-            />
-          ) : null}
         </div>
-      )}
-    </section>
+        {/*
+         * Keyed by the stage, so its refusal does not outlive the stage it
+         * was about: this section is reused rather than remounted as the
+         * reader moves between routes, and an alert about one stage's
+         * horizon attached to the next one would be about nothing. By the
+         * stage's identity rather than its title, which two stages may
+         * legitimately share.
+         */}
+        <StartTimePicker
+          key={stageKey ?? title}
+          value={startAt}
+          onChange={onStartAtChange}
+          rideSeconds={rideSeconds}
+        />
+        {startAt && predictionKnown && !hasTimeline ? (
+          <p className="text-sm text-[var(--hold)]">
+            This stage has no predicted moving time, so there is no timeline to hang a forecast on.
+          </p>
+        ) : null}
+        {startAt && hasTimeline && startRefusal !== null ? (
+          <p className="text-sm text-[var(--hold)]">{startRefusal}</p>
+        ) : null}
+        {startAt && hasTimeline && startFits ? (
+          <ForecastStrip
+            samples={samples}
+            coordinates={coordinates}
+            startMetres={profile?.startMetres ?? 0}
+            /*
+             * Without a profile there is no chart to share an axis with, so
+             * the strip falls back to the whole route — the last sample sits
+             * at the finish, so it carries that distance. Zero would be a
+             * window nothing overlaps, and every cell would be dropped as
+             * off-screen: a stage with a timeline but no terrain is exactly
+             * the case that is supposed to still get a forecast.
+             */
+            endMetres={profile?.endMetres ?? samples[samples.length - 1]?.distanceMetres ?? 0}
+            unitSystem={unitSystem}
+          />
+        ) : null}
+      </CollapsibleContent>
+    </Collapsible>
   );
 }

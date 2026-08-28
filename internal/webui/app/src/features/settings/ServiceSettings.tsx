@@ -20,7 +20,6 @@ import { type FormEvent, type ReactNode, useId, useRef, useState } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
-  AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
@@ -929,13 +928,10 @@ function Synchronisation({ settings }: { settings: Settings }) {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              variant="danger"
-              onClick={() => edit({ allowEmptySourceDeletion: true })}
-            >
+            <AlertDialogCancel render={<Button variant="standard" />}>Cancel</AlertDialogCancel>
+            <Button variant="danger" onClick={() => edit({ allowEmptySourceDeletion: true })}>
               Allow it
-            </AlertDialogAction>
+            </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

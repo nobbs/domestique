@@ -2,9 +2,8 @@
  * When the ride starts, which is what turns a stage's predicted moving time
  * into real moments worth asking `GET /v1/weather` about.
  *
- * The first date input in this codebase, so it gets a proper `<label>` rather
- * than borrowing a pattern that does not exist yet. It takes a value and a
- * callback, with nothing held here.
+ * A `ui/field` around a `ui/input`, like every other labelled control here. It
+ * takes a value and a callback, with nothing held here.
  *
  * There is no default. An invented start time would draw a confident forecast
  * for a ride nobody actually planned, so the field opens empty and stays that
@@ -18,6 +17,8 @@
  */
 
 import { useState } from "react";
+import { Field, FieldError, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import {
   FORECAST_HORIZON_MS,
   FORECAST_PAST_ALLOWANCE_MS,
@@ -64,13 +65,12 @@ export function StartTimePicker({ value, onChange, rideSeconds }: StartTimePicke
   );
 
   return (
-    <div className="grid gap-1">
-      <label className="text-sm font-semibold" htmlFor={INPUT_ID}>
+    <Field>
+      <FieldLabel className="font-semibold" htmlFor={INPUT_ID}>
         Ride start
-      </label>
-      <input
+      </FieldLabel>
+      <Input
         id={INPUT_ID}
-        className="h-8 rounded-lg border border-[var(--rule)] bg-[var(--panel)] px-2 text-sm"
         type="datetime-local"
         // The browser's own hint for the same window this refuses by hand —
         // cheap to offer, and it steers a picker away from the refusal before
@@ -119,11 +119,7 @@ export function StartTimePicker({ value, onChange, rideSeconds }: StartTimePicke
           onChange(parsed);
         }}
       />
-      {refusal ? (
-        <p className="text-xs text-[var(--alert)]" id="start-time-refusal" role="alert">
-          {refusal}
-        </p>
-      ) : null}
-    </div>
+      {refusal ? <FieldError id="start-time-refusal">{refusal}</FieldError> : null}
+    </Field>
   );
 }

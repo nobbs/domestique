@@ -1,6 +1,5 @@
 import { useLayoutEffect } from "react";
 import { Navigate, Route, Routes, useParams } from "react-router";
-import { TooltipProvider } from "./components/ui/tooltip";
 import { RoutesPage } from "./features/routes/RoutesPage";
 import { SettingsPage } from "./features/settings/SettingsPage";
 import { SyncPage } from "./features/sync/SyncPage";
@@ -66,18 +65,16 @@ export function App() {
   }, [themeChoice]);
 
   return (
-    <TooltipProvider>
-      <Routes>
-        <Route path="/" element={<RoutesPage themeChoice={themeChoice} />} />
-        <Route path="routes/:provider/:routeId/:stage" element={<OpenedRoute />} />
-        <Route path="routes/:routeId/:stage" element={<OpenedLegacyRoute />} />
-        <Route path="sync" element={<SyncPage />} />
-        <Route
-          path="settings"
-          element={<SettingsPage themeChoice={themeChoice} onThemeChoiceChange={setThemeChoice} />}
-        />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </TooltipProvider>
+    <Routes>
+      <Route path="/" element={<RoutesPage themeChoice={themeChoice} />} />
+      <Route path="routes/:provider/:routeId/:stage" element={<OpenedRoute />} />
+      <Route path="routes/:routeId/:stage" element={<OpenedLegacyRoute />} />
+      <Route path="sync" element={<SyncPage />} />
+      <Route
+        path="settings"
+        element={<SettingsPage themeChoice={themeChoice} onThemeChoiceChange={setThemeChoice} />}
+      />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
   );
 }

@@ -43,9 +43,11 @@ describe("ClimbsList", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Show 1 climb" }));
 
+    // The primitive names the panel, so what matters is that the control points
+    // at the list it opened rather than at any particular id.
     expect(screen.getByRole("button", { name: "Hide 1 climb" })).toHaveAttribute(
       "aria-controls",
-      "climbs-list",
+      screen.getByRole("list").id,
     );
     expect(screen.getByText("600 m")).toBeInTheDocument();
     expect(screen.getByText(/54 m · avg 9\.0% · max 11%/)).toBeInTheDocument();
