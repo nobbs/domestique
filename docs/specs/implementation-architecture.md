@@ -35,26 +35,45 @@ private to this service.
 │       └── main.go                 process composition and lifecycle only
 ├── internal/
 │   ├── config/                     Koanf loading, secret input, validation
+│   ├── runtimeconfig/              the settings held in the database, live
 │   ├── route/                      route value types and invariants
 │   ├── sync/                       reconciliation use case and its interfaces
 │   ├── oauth/                      Wahoo OAuth use case and its interfaces
 │   ├── schedule/                   delayed-start and hourly execution
 │   ├── httpapi/                    Tailnet-gated handlers and JSON mapping
+│   ├── cfaccess/                   Cloudflare Access assertion verification
 │   ├── readiness/                  loopback readiness probe, local state only
 │   ├── elevation/                  device-export elevation normalization
 │   ├── surface/                    OSM surface classification and snapping
 │   ├── osmindex/                   OSM extract download, index build, schedule
+│   ├── ridemodel/                  predicted moving time from geometry
 │   ├── veloplanner/                VeloPlanner HTTP source adapter
 │   ├── komoot/                     Komoot HTTP source adapter
+│   ├── openmeteo/                  weather forecast HTTP adapter
 │   ├── fit/                        FIT encoding adapter
 │   ├── wahoo/                      Wahoo OAuth and route HTTP adapter
 │   ├── sqlite/                     encrypted durable-state adapter
 │   ├── pushover/                   notification adapter
+│   ├── build/                      revision and image digest, stamped at link
+│   ├── demo/                       synthetic library, reached only from dev/
 │   └── webui/                      embedded browser UI
 │       └── app/                    TypeScript source and its build output
-├── docs/
-│   └── specs/
-└── testdata/                       non-personal, sanitised fixtures only
+├── api/
+│   ├── openapi.yaml                the contract both sides generate from
+│   ├── generate.go                 the generator both halves are run through
+│   └── spec.go                     the embedded document the service serves
+├── dev/
+│   ├── demoapi/                    the demo service, over internal/demo
+│   ├── fitter/                     offline ride-model calibration
+│   ├── gatecheck/                  asserts what `quick` defers against `check`
+│   ├── patchcoverage/              grades a patch the way Codecov will
+│   ├── coveragesummary/            prints a profile's summary
+│   ├── ridemodel/                  ride-corpus ingestion for the fitter
+│   └── *.sh                        the scripts the Mise tasks call
+├── deploy/
+│   └── domestique-deploy.sh        the host-side deploy, run over SSH
+└── docs/
+    └── specs/
 ~~~
 
 The browser UI is compiled into the binary with `go:embed`, so the service ships
@@ -88,6 +107,10 @@ owns a distinct responsibility in this tree.
 | wahoo | authorisation URL, exchange, refresh, user lookup, FIT route operations, rate headers | route-source parsing, SQLite queries, Pushover |
 | sqlite | migrations, encrypted token storage, snapshots and commits | Wahoo, VeloPlanner, or Komoot HTTP |
 | pushover | delivery of an already safe notification | run aggregation or secret resolution |
+| cfaccess | verifying a Cloudflare Access assertion against the issuer's keys, and the one identity it accepts | routing, what a verified caller may then do, or any other identity source |
+| openmeteo | the forecast HTTP adapter: requesting points along a route and decoding the reply | which points are worth asking about, caching, or what the UI draws |
+| demo | the synthetic library and the state it seeds, for development against no data | anything the shipped binary links: it is reached only from `dev/demoapi` |
+| build | the revision and image digest stamped in at link time | reading them from anywhere but the linker, or deciding what they are used for |
 
 Config, route, and the use-case packages have no dependency on concrete
 infrastructure adapters. Adapters may depend on route types only where

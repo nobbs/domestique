@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"log/slog"
 	"slices"
-	"sort"
 	"sync/atomic"
 	"time"
 
@@ -37,107 +36,6 @@ const Interval = time.Hour
 
 const encoderContentVersion = "fit-v4-elevation-profile"
 
-// Phase is one half of a synchronization. The halves are switched, triggered,
-// recorded, and reported separately, because they fail for unrelated reasons and
-// an operator has reason to want one without the other.
-type Phase string
-
-const (
-	// PhaseSource reads the VeloPlanner library into stored state.
-	PhaseSource Phase = "source"
-	// PhaseTargets reconciles stored state onto the Wahoo targets.
-	PhaseTargets Phase = "targets"
-)
-
-// Outcome is the terminal result of one attempted synchronization run.
-type Outcome string
-
-const (
-	// OutcomeNotReady means the run had nothing it could safely do: a target
-	// needs OAuth onboarding, or the settings a run needs are not entered yet.
-	OutcomeNotReady Outcome = "not_ready"
-	// OutcomeSucceeded means every target was reconciled successfully.
-	OutcomeSucceeded Outcome = "succeeded"
-	// OutcomeFailed means a safe failure stopped one or more target reconciliations.
-	OutcomeFailed Outcome = "failed"
-	// OutcomeBlocked means a deletion safety gate prevented destination mutation.
-	OutcomeBlocked Outcome = "blocked"
-	// OutcomeSkipped means another synchronization run was already active.
-	OutcomeSkipped Outcome = "skipped"
-)
-
-// FailureCategory is a stable, safe-to-display reason for a failed or blocked
-// synchronization run. It never contains provider response text.
-type FailureCategory string
-
-const (
-	// FailureNone means the run completed without a failure category.
-	FailureNone FailureCategory = ""
-	// FailureState means encrypted state could not be read or updated safely.
-	FailureState FailureCategory = "state"
-	// FailureSource means the VeloPlanner inventory was not fully valid.
-	FailureSource FailureCategory = "source"
-	// FailureAuthorization means one Wahoo target needs interactive OAuth again.
-	FailureAuthorization FailureCategory = "authorization"
-	// FailureDestination means a Wahoo route operation did not complete.
-	FailureDestination FailureCategory = "destination"
-	// FailureCourse means a FIT course could not be encoded safely.
-	FailureCourse FailureCategory = "course"
-	// FailureEmptySource means a previously populated library became empty while
-	// the explicit empty-source deletion acknowledgement remains disabled.
-	FailureEmptySource FailureCategory = "empty_source"
-	// FailureDeletionLimit means a target would delete more than the configured
-	// maximum owned routes in one automatic run.
-	FailureDeletionLimit FailureCategory = "deletion_limit"
-)
-
-// TargetResult is one target's own share of a reconciliation.
-//
-// A run is recorded once, so its outcome is the worst of what happened across
-// the slots. That is the wrong answer to the question an operator asks about one
-// Wahoo account, which is why each slot reports its own here: a run that wrote
-// one account and could not write the other is a partial failure, and both
-// halves of that fact are worth keeping.
-type TargetResult struct {
-	// ID is the configured target slot. It is never a Wahoo user identifier.
-	ID      string
-	Outcome Outcome
-	Failure FailureCategory
-}
-
-// SourceResult is one configured source's own share of a source-phase read.
-//
-// One source's failure must not read as a claim about another: a run that
-// read one library and could not read the other is a partial failure, and
-// naming which source is which is what lets an operator tell them apart.
-type SourceResult struct {
-	Provider route.Provider
-	Outcome  Outcome
-	Failure  FailureCategory
-	// StageCount is how many stages this source contributed when it was read
-	// successfully. It stays zero for a source that failed or was blocked.
-	StageCount int
-}
-
-// Result contains aggregate, non-sensitive counts for one synchronization run.
-type Result struct {
-	// Phase names the half of a synchronization this result describes. The
-	// counts a phase does not produce stay zero.
-	Phase   Phase
-	Outcome Outcome
-	Failure FailureCategory
-	// Targets carries each slot's own outcome, in configured order. Only the
-	// target phase produces it, and only for the slots it actually attempted.
-	Targets []TargetResult
-	// Sources carries each configured source's own outcome, in configured
-	// order. Only the source phase produces it.
-	Sources      []SourceResult
-	SourceStages int
-	Created      int
-	Updated      int
-	Deleted      int
-}
-
 // Options configures safety rules for a synchronizer. It contains no secrets
 // and is intentionally independent of the configuration packages.
 type Options struct {
@@ -157,80 +55,6 @@ type Options struct {
 	// service that has not been configured yet, and a run says so.
 	Sources   func() ([]Source, error)
 	TargetIDs func() []string
-}
-
-// Source provides a complete, validated inventory of one provider's stages.
-type Source interface {
-	// Provider names the upstream this source reads. Every stage Inventory
-	// returns must carry this same provider.
-	Provider() route.Provider
-	Inventory(ctx context.Context) ([]route.Route, error)
-}
-
-// Encoder produces a FIT course for one source stage.
-type Encoder interface {
-	Encode(ctx context.Context, stage route.Route) ([]byte, error)
-}
-
-// Processor derives a device-export route without changing source identity or
-// source-content state.
-type Processor interface {
-	Process(original *route.Route) (route.Route, error)
-}
-
-// Target performs serial Wahoo OAuth refresh and route operations.
-type Target interface {
-	RefreshAccessToken(ctx context.Context, refreshToken string) (accessToken, replacementRefreshToken string, err error)
-	// ListOwnedRoutes returns every route the target holds that carries an
-	// external ID this service issued, keyed by it. Reconciliation asks once
-	// per run and answers every stage from the result, so an unchanged library
-	// costs one request per target rather than one per stage.
-	ListOwnedRoutes(ctx context.Context, accessToken string) (map[string]int64, error)
-	// DeleteOwnedRoutes removes every route the target holds that this service
-	// issued the external ID for, and reports how many it removed. Only
-	// clearing a target uses it. It owns its own pacing, because a clear is
-	// finished only when the target is empty and may have to wait out a spent
-	// request quota to get there.
-	DeleteOwnedRoutes(ctx context.Context, accessToken string) (int, error)
-	CreateRoute(ctx context.Context, accessToken string, stage *route.Route, fitData []byte) (routeID int64, err error)
-	UpdateRoute(ctx context.Context, routeID int64, accessToken string, stage *route.Route, fitData []byte) (updatedRouteID int64, err error)
-	DeleteRoute(ctx context.Context, routeID int64, accessToken string) error
-	IsUnauthorized(err error) bool
-}
-
-// Annotator enriches the stored inventory with the surface classification of the
-// ground each stage covers. It is optional, and deliberately narrow: whatever it
-// learns it records itself, so synchronization never has to carry it.
-//
-// It reports counts rather than nothing, because a pass that classified nothing
-// and a pass that had nothing to classify look identical from the outside, and
-// an operator wondering why a route has no surface deserves the difference.
-type Annotator interface {
-	Annotate(ctx context.Context, stages []route.Route) (classified, failed int, err error)
-}
-
-// Predictor computes and caches predicted moving time for the stored
-// inventory, from internal/ridemodel. It is optional and read on the same
-// terms as Annotator: whatever it learns it records itself, and a nil
-// predictor leaves stored stages carrying no prediction and changes nothing
-// else about a run.
-type Predictor interface {
-	Predict(ctx context.Context, stages []route.Route) (predicted, failed int, err error)
-}
-
-// State owns the minimum durable state operations required by synchronization.
-// Callback iteration avoids sharing persistence record types with adapters.
-type State interface {
-	TargetAuthorization(ctx context.Context, targetID string) (string, error)
-	RefreshToken(ctx context.Context, targetID string) (string, error)
-	ReplaceRefreshToken(ctx context.Context, targetID, refreshToken string) error
-	MarkNeedsReauthorization(ctx context.Context, targetID string) error
-	TrustedInventoryCount(ctx context.Context, provider route.Provider) (int, error)
-	StoreTrustedInventory(ctx context.Context, provider route.Provider, stages []route.Route) error
-	TrustedInventory(ctx context.Context) ([]route.Route, error)
-	ForEachTargetStage(ctx context.Context, targetID string, visit func(provider route.Provider, routeID int64, stageOrder int, sourceRevision, contentHash string, wahooRouteID int64) error) error
-	UpsertTargetStage(ctx context.Context, targetID string, provider route.Provider, routeID int64, stageOrder int, sourceRevision, contentHash string, wahooRouteID int64) error
-	DeleteTargetStage(ctx context.Context, targetID string, provider route.Provider, routeID int64, stageOrder int) error
 }
 
 // Service reconciles a complete source inventory to each configured target.
@@ -427,10 +251,10 @@ func (s *Service) RunTargets(ctx context.Context) Result {
 		Targets:      make([]TargetResult, 0, len(targetIDs)),
 	}
 	for _, targetID := range targetIDs {
-		counts, failure := s.reconcileTarget(ctx, targetID, desired, ordered)
-		result.Created += counts.created
-		result.Updated += counts.updated
-		result.Deleted += counts.deleted
+		applied, failure := s.reconcileTarget(ctx, targetID, desired, ordered)
+		result.Created += applied.created
+		result.Updated += applied.updated
+		result.Deleted += applied.deleted
 		result.Targets = append(result.Targets, TargetResult{
 			ID:      targetID,
 			Outcome: targetOutcome(failure),
@@ -702,45 +526,6 @@ func (s *Service) exportProfiles(ordered []route.Route) []route.Route {
 	return stages
 }
 
-type targetStage struct {
-	sourceRevision string
-	contentHash    string
-	wahooRouteID   int64
-}
-
-type counts struct {
-	created int
-	updated int
-	deleted int
-}
-
-func normalizeInventory(stages []route.Route) (map[route.Key]route.Route, []route.Route, error) {
-	ordered := append([]route.Route(nil), stages...)
-	sort.Slice(ordered, func(left, right int) bool {
-		leftKey := ordered[left].Key()
-		rightKey := ordered[right].Key()
-		if leftKey.Provider() != rightKey.Provider() {
-			return leftKey.Provider() < rightKey.Provider()
-		}
-		if leftKey.SourceRouteID() != rightKey.SourceRouteID() {
-			return leftKey.SourceRouteID() < rightKey.SourceRouteID()
-		}
-
-		return leftKey.StageOrder() < rightKey.StageOrder()
-	})
-
-	desired := make(map[route.Key]route.Route, len(ordered))
-	for _, stage := range ordered {
-		key := stage.Key()
-		if _, exists := desired[key]; exists {
-			return nil, nil, errors.New("source inventory contains a duplicate stage")
-		}
-		desired[key] = stage
-	}
-
-	return desired, ordered, nil
-}
-
 // reconcileTarget brings one target in line with the stored inventory.
 //
 // The stages it is given are the export profiles the source phase derived and
@@ -903,27 +688,6 @@ func (s *Service) targetStages(ctx context.Context, targetID string) (map[route.
 	}
 
 	return mappings, nil
-}
-
-func missingStages(mappings map[route.Key]targetStage, desired map[route.Key]route.Route) []route.Key {
-	missing := make([]route.Key, 0)
-	for key := range mappings {
-		if _, exists := desired[key]; !exists {
-			missing = append(missing, key)
-		}
-	}
-	sort.Slice(missing, func(left, right int) bool {
-		if missing[left].Provider() != missing[right].Provider() {
-			return missing[left].Provider() < missing[right].Provider()
-		}
-		if missing[left].SourceRouteID() != missing[right].SourceRouteID() {
-			return missing[left].SourceRouteID() < missing[right].SourceRouteID()
-		}
-
-		return missing[left].StageOrder() < missing[right].StageOrder()
-	})
-
-	return missing
 }
 
 func (s *Service) storeTargetStage(ctx context.Context, targetID string, stage *route.Route, wahooRouteID int64) error {
