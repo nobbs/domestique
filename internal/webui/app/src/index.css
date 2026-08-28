@@ -201,20 +201,6 @@ body { margin: 0; background: var(--base); color: var(--ink); font-family: var(-
 .route-terminal { display: grid; width: 28px; height: 28px; place-items: center; border: 2.5px solid #fff; border-radius: 50%; filter: drop-shadow(0 1px 2px rgb(28 33 38 / 35%)); }
 .route-terminal--start { background: #188b45; }
 .route-terminal--finish { background: #fff; }
-/*
- * Inverted against the cartography, not against the page — the rule everything
- * else painted on the map already follows, see `LoadedBasemap.dark`. The page's
- * scheme and the ground actually loaded are different questions: an operator
- * may publish no dark style, and satellite imagery is dark in either scheme.
- *
- * Two colours rather than a panel is also what tells this apart from the
- * controls and the credit. Those stay; this follows the pointer and leaves with
- * it, and reading as a tooltip rather than as another panel says so without a
- * word. The shadow stays either way: over cartography the box needs an edge.
- */
-.route-position-tooltip { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; max-width: 220px; margin: 0; padding: 3px 8px; border-radius: calc(var(--radius) - 2px); box-shadow: var(--shadow); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.route-position-tooltip--light { background: #1c2126; color: #f3f5f6; }
-.route-position-tooltip--dark { background: #eef0f3; color: #101316; }
 
 /*
  * The veil over the ground a picked class does not cover. A forced palette has

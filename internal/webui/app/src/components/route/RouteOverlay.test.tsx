@@ -8,6 +8,7 @@
  * a canvas that never draws anything.
  */
 
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
@@ -136,19 +137,24 @@ function show(
   const profile = props.activeMetres != null ? buildProfile(coordinates) : null;
   const surfaceSummary =
     props.withSurfaceSummary && props.surface ? summariseSurface(coordinates, props.surface) : null;
+  // The position tooltip reads the forecast for its wind line, so the overlay
+  // now needs a client in scope even where a test offers no samples at all.
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const jsx = (activeMetres: number | null) => (
-    <RouteOverlay
-      coordinates={coordinates}
-      surface={props.surface}
-      surfaceSummary={surfaceSummary}
-      darkBasemap={props.darkBasemap ?? false}
-      profile={profile}
-      activeProfile={props.activeProfile ?? profile}
-      activeMetres={activeMetres}
-      profileCollapsed={props.profileCollapsed ?? false}
-      zoomWindow={props.zoomWindow ?? null}
-      onZoomChange={onZoomChange}
-    />
+    <QueryClientProvider client={client}>
+      <RouteOverlay
+        coordinates={coordinates}
+        surface={props.surface}
+        surfaceSummary={surfaceSummary}
+        darkBasemap={props.darkBasemap ?? false}
+        profile={profile}
+        activeProfile={props.activeProfile ?? profile}
+        activeMetres={activeMetres}
+        profileCollapsed={props.profileCollapsed ?? false}
+        zoomWindow={props.zoomWindow ?? null}
+        onZoomChange={onZoomChange}
+      />
+    </QueryClientProvider>
   );
   const { rerender } = render(jsx(props.activeMetres ?? null));
 
@@ -280,14 +286,9 @@ describe("the position tooltip", () => {
       return;
     }
 
-    expect(
-      screen.getByText(`${formatDistance(active.distanceMetres, "metric")} from start`),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        `${formatDistance(profile.endMetres - active.distanceMetres, "metric")} to end`,
-      ),
-    ).toBeInTheDocument();
+    // How far along is the figure; how far is left is the bar under it, which
+    // is why there is no second distance here to read.
+    expect(screen.getByText(formatDistance(active.distanceMetres, "metric"))).toBeInTheDocument();
     expect(screen.getByText(formatElevation(active.elevationMetres, "metric"))).toBeInTheDocument();
     expect(screen.getByText(`${active.gradientPercent.toFixed(1)}%`)).toBeInTheDocument();
   });
@@ -305,8 +306,6 @@ describe("the position tooltip", () => {
   it("shows the other four fields and no placeholder for an unclassified stage", () => {
     show({ activeMetres: ACTIVE_METRES });
 
-    expect(screen.getByText(/from start/)).toBeInTheDocument();
-    expect(screen.getByText(/to end/)).toBeInTheDocument();
     expect(screen.queryByText("—")).not.toBeInTheDocument();
     // No surface line at all, rather than an empty one.
     for (const label of ["Asphalt", "Paving", "Compacted", "Gravel", "Ground", "Unsurveyed"]) {
@@ -348,19 +347,7 @@ describe("the position tooltip", () => {
   it("shows zero, not an em dash, for ground already ridden at the very start", () => {
     show({ activeMetres: 0 });
 
-    expect(screen.getByText("0 m from start")).toBeInTheDocument();
-  });
-
-  it("shows zero, not an em dash, for ground left to ride at the very finish", () => {
-    const whole = buildProfile(COORDINATES);
-    expect(whole).not.toBeNull();
-    if (!whole) {
-      return;
-    }
-
-    show({ activeMetres: whole.endMetres });
-
-    expect(screen.getByText("0 m to end")).toBeInTheDocument();
+    expect(screen.getByText("0 m")).toBeInTheDocument();
   });
 
   it("reads its sample from the profile the chart is displaying, not the whole route's", () => {
@@ -475,18 +462,70 @@ describe("the position tooltip", () => {
     expect(view.marker()?.longitude).not.toBeCloseTo(wholeSample.longitude + 1);
   });
 
-  it("opens down and to the right from a point with room on every side", () => {
-    drawn.projected = { x: 100, y: 100 };
+  /*
+   * The box is centred over the dot and sits above it, and the arrow is what
+   * points at it. Where the pane's edge pushes the box sideways, the arrow
+   * slides the other way by the same amount so it stays over the dot — which is
+   * the whole reason it is not fixed to the middle. jsdom lays nothing out, so
+   * the box keeps its default guessed width of 232 and the arithmetic below is
+   * exact.
+   */
+  const HALF = 116;
+
+  function arrowLeft(): string | undefined {
+    const arrow = document.querySelector<HTMLElement>(".route-position-tooltip-arrow");
+
+    return arrow?.style.left;
+  }
+
+  it("opens above the dot, centred on it, where there is room", () => {
+    drawn.projected = { x: 400, y: 300 };
     const view = show({ activeMetres: ACTIVE_METRES });
 
-    expect(view.marker()).toMatchObject({ anchor: "top-left", offset: [14, 14] });
+    expect(view.marker()).toMatchObject({ anchor: "bottom", offset: [0, -10] });
+    expect(arrowLeft()).toBe(`${HALF}px`);
   });
 
-  it("opens up and to the left once neither side near the bottom-right corner has room", () => {
-    drawn.projected = { x: 780, y: 580 };
+  it("opens below the dot when there is no room above it", () => {
+    drawn.projected = { x: 400, y: 20 };
     const view = show({ activeMetres: ACTIVE_METRES });
 
-    expect(view.marker()).toMatchObject({ anchor: "bottom-right", offset: [-14, -14] });
+    expect(view.marker()).toMatchObject({ anchor: "top", offset: [0, 10] });
+  });
+
+  it("slides back inside the pane near its left edge, and the arrow stays on the dot", () => {
+    drawn.projected = { x: 100, y: 300 };
+    const view = show({ activeMetres: ACTIVE_METRES });
+
+    // Centred would hang the box 16px off the left edge, so it is pushed right.
+    expect(view.marker()?.offset).toEqual([24, -10]);
+    // 8px is where the box's left edge now is, so the dot is 92px along it.
+    expect(arrowLeft()).toBe("92px");
+  });
+
+  it("slides back inside the pane near its right edge, the other way round", () => {
+    drawn.projected = { x: 760, y: 300 };
+    const view = show({ activeMetres: ACTIVE_METRES });
+
+    expect(view.marker()?.offset).toEqual([-84, -10]);
+    expect(arrowLeft()).toBe("200px");
+  });
+
+  /*
+   * A pane narrower than the box itself: there is no position that both centres
+   * the box and keeps it inside, so the clamp has nothing to satisfy. It must
+   * still place the box rather than fold, and the arrow must stay within the
+   * box's own corners rather than run off the end of it.
+   */
+  it("still places the box, and keeps the arrow inside it, in a pane narrower than itself", () => {
+    drawn.containerSize = { clientWidth: 100, clientHeight: 600 };
+    drawn.projected = { x: 60, y: 300 };
+    const view = show({ activeMetres: ACTIVE_METRES });
+
+    expect(view.marker()?.anchor).toBe("bottom");
+    const left = Number.parseFloat(arrowLeft() ?? "");
+    expect(left).toBeGreaterThanOrEqual(14);
+    expect(left).toBeLessThanOrEqual(232 - 14);
   });
 
   it("draws nothing before the map instance has resolved", () => {
@@ -494,27 +533,6 @@ describe("the position tooltip", () => {
 
     expect(() => show({ activeMetres: ACTIVE_METRES })).not.toThrow();
     expect(document.querySelector(".route-position-tooltip")).not.toBeInTheDocument();
-  });
-
-  /*
-   * A pane narrower than the tooltip itself, so neither side has the room the
-   * box asks for. Both points sit in the same pane; only which one has more
-   * room changes, which is what decides the side chosen.
-   */
-  it("opens toward whichever side has more room, when neither side fully fits", () => {
-    drawn.containerSize = { clientWidth: 100, clientHeight: 600 };
-    drawn.projected = { x: 60, y: 100 };
-    const view = show({ activeMetres: ACTIVE_METRES });
-
-    expect(view.marker()?.anchor).toBe("top-right");
-  });
-
-  it("opens toward the other side with more room, the other way round", () => {
-    drawn.containerSize = { clientWidth: 100, clientHeight: 600 };
-    drawn.projected = { x: 30, y: 100 };
-    const view = show({ activeMetres: ACTIVE_METRES });
-
-    expect(view.marker()?.anchor).toBe("top-left");
   });
 
   it("measures its own rendered box once mounted, replacing the default guess", () => {

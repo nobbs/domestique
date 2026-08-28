@@ -58,6 +58,25 @@ export const GRADIENT_BANDS = [
   { limit: Number.POSITIVE_INFINITY, label: "12%+", description: "12% and steeper" },
 ] as const;
 
+/**
+ * What each band is drawn in, on light and on dark cartography.
+ *
+ * Keyed by the ground the mark is painted on rather than by the page's scheme,
+ * for the reason `surfaceColour` is: an operator may publish no dark style, and
+ * satellite imagery is dark in either. Indexed by `gradientBand` above.
+ */
+const BAND_COLOURS = {
+  light: ["#8e979f", "#22a94e", "#e8b70a", "#f2811d", "#dc2b21"],
+  dark: ["#a9b3bc", "#3fd074", "#f7d13f", "#ff9e46", "#f95a4c"],
+} as const;
+
+/** The colour for one gradient band on the ground actually loaded. */
+export function bandColour(band: number, dark: boolean): string {
+  const scale = BAND_COLOURS[dark ? "dark" : "light"];
+
+  return scale[band] ?? scale[0];
+}
+
 /** The shortest span a gradient is measured over, matching the service. */
 export const GRADIENT_WINDOW_METRES = 100;
 

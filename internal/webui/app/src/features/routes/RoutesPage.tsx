@@ -557,6 +557,7 @@ export function RoutesPage({ themeChoice }: RoutesPageProps) {
                 coordinates={openCoordinates}
                 surface={surfaceSummary ? surface?.ranges : undefined}
                 surfaceSummary={surfaceSummary}
+                samples={samples}
                 profile={routeProfile}
                 activeProfile={windowed ?? routeProfile}
                 activeMetres={activeMetres}
