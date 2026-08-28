@@ -2,7 +2,7 @@
 
 Where the Go tree has drifted from [the architecture
 specification](specs/implementation-architecture.md), what is oversized, and
-what regrouping `internal/` would actually cost.
+the shape `internal/` should take instead.
 
 **Nothing here has been applied.** This is a survey and a proposal, in the same
 shape as [naming-drift.md](naming-drift.md): the work is listed so a later
@@ -136,34 +136,83 @@ and geometry maths (`calculateMetrics`, `haversine`, `formatFloat`).
 maths into `metrics.go` — or deleted in favour of an existing helper, since
 `haversine` is unlikely to be the only one in the tree.
 
-## 3. Grouping `internal/`, and what it costs
+## 3. Grouping `internal/`
 
-Every grouping proposed below needs
-[implementation-architecture.md](specs/implementation-architecture.md) revised
-first. Its tree and its "no generic repository package" rule are both normative,
-and AGENTS.md says the specification wins until deliberately changed. This is
-not a formality: the rule exists to stop exactly the `domain/`, `adapters/`,
-`delivery/` split that a flat list of 23 directories invites.
+`internal/` becomes four groups by role, with four packages left flat.
 
-The generic split is the one to refuse. `internal/domain/route/` and
-`internal/adapter/sqlite/` lengthen every import path in the tree, and they
-encode a layering that the fan-in table above already shows without them.
+~~~text
+internal/
+├── core/            route, sync, oauth, schedule,
+│                    elevation, surface, ridemodel, readiness
+├── upstream/        veloplanner, komoot, wahoo,
+│                    openmeteo, pushover, osmindex
+├── adapter/         sqlite, fit, cfaccess
+├── serve/           httpapi, webui
+├── config/          runtimeconfig/
+└── build/           demo/
+~~~
 
-The one grouping with a real case is the upstream adapters. Six packages —
-`veloplanner`, `komoot`, `wahoo`, `openmeteo`, `pushover`, `osmindex` — share a
-crisp membership rule: each makes outbound calls to somebody else's service, and
-each is imported by one or two callers. Collapsing them to
-`internal/upstream/…` takes a quarter of the directory listing down to one line
-and gives the rule a place to be stated.
+### The membership rules
 
-Against it: Go import paths get a segment longer for six packages, `git log`
-follows the moves but blame gets noisier for a while, and the fan-in table is
-already a better map of the tree than the directory listing was. The gain is
-legibility of the listing, which is real but small.
+Each group needs a rule crisp enough that the next package has a home without a
+debate:
 
-**Proposed:** take the file splits, which need no specification change and buy
-the most. Decide the upstream grouping separately and on its own merits, with
-the specification revision as part of that change rather than after it.
+- **`core/`** — owns a rule about routes or synchronisation and performs no I/O
+  of its own. This is the set the specification already describes as
+  "independent of HTTP, SQLite, and upstream protocols".
+- **`upstream/`** — makes outbound calls to somebody else's service. Six
+  packages, and the rule admits no argument about any of them.
+- **`adapter/`** — wraps infrastructure this service depends on but does not
+  own: the database, the FIT encoding, the identity check.
+- **`serve/`** — what the service exposes to a caller.
+
+`config`, `runtimeconfig`, `build` and `demo` stay flat. They are the residue:
+configuration is read by every layer and belongs to none, and `build` and `demo`
+are not product code at all. A two-member group named for what its members are
+*not* would read worse than four flat entries.
+
+### What the specification must say first
+
+Three edits to
+[implementation-architecture.md](specs/implementation-architecture.md), in the
+same change as the move and not after it:
+
+1. The directory tree, replaced with the one above — including the `api/`,
+   `deploy/` and `dev/` corrections from the top of this document.
+2. The sentence at line 64. As written it forbids this grouping outright, and
+   its purpose — keeping out `common`, `models` and `repository` packages that
+   own nothing — survives a rewrite that permits grouping by role while still
+   refusing grouping by nothing.
+3. The responsibility table, which covers 19 packages and omits four:
+   `build`, `cfaccess`, `demo` and `openmeteo`. `cfaccess` is the identity gate
+   and its absence from the normative table is the more serious of the four.
+
+### What it costs
+
+The Go half is mechanical and safe: **61 of 147 files** import at least one
+moved package, across **110 import lines**. A rename tool plus `goimports`
+handles it, and the compiler proves the result.
+
+The non-Go half is not evenly spread, and one package carries almost all of it:
+
+| Package | Non-Go references |
+| --- | --- |
+| `webui` | 86, across 11 files |
+| `httpapi` | 5 |
+| `route` | 1 |
+| `sqlite` | 0 |
+
+`internal/webui` is named in `.github/workflows/ci.yml`,
+`.github/paths-filter.yml`, `codecov.yml`, `.gitleaks.toml`, `.mise.toml`,
+`mise-tasks.toml`, `playwright.config.ts`, the e2e fixtures, `AGENTS.md`, and
+both [delivery.md](specs/delivery.md) and
+[implementation-architecture.md](specs/implementation-architecture.md). Nothing
+there is hard, but a missed path in `paths-filter.yml` or `codecov.yml` fails
+open — the job simply stops running against those files — so it is the one move
+that cannot be proved by compiling.
+
+That is why `serve/webui` is sequenced last and alone. Every other package in
+the tree moves under compiler protection.
 
 ## Suggested order
 
@@ -175,4 +224,8 @@ the specification revision as part of that change rather than after it.
 3. `handler.go`, `service.go` and `client.go` — the interface-and-type headers
    move out of each. Independently reviewable, one package at a time.
 4. `config.go` and `route/stage.go` if they still read long afterwards.
-5. The upstream grouping, or a decision not to, with its specification revision.
+5. The specification revision from section 3 — tree, the line-64 rule, and the
+   four missing table rows — followed by the moves under compiler protection:
+   `core/`, `upstream/`, `adapter/`, and `serve/httpapi`.
+6. `serve/webui` last and on its own, with the eleven non-Go files it is named
+   in. It is the only move whose correctness the compiler cannot check.
