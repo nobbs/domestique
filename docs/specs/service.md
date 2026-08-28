@@ -467,7 +467,8 @@ it.
   notifications — and are the one part of a body that is not whole-object: a
   request carries only the ones actually typed into the form, one left out keeps
   its stored value, and one sent empty removes it. A credential offered to a
-  section that does not own it is refused as `400`.
+  section that does not own it is refused as `400`. A section refused for any of
+  these reasons stores neither its values nor the credentials it carried.
 
   Every one of these answers with the same document `GET` returns — every
   setting now in force, not only the section the request replaced, so one answer

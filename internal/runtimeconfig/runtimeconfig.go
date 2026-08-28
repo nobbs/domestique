@@ -206,8 +206,9 @@ type Current struct {
 	values  atomic.Pointer[Values]
 	secrets atomic.Pointer[map[SecretName]Secret]
 	store   Store
-	// writing serialises the edits that read the live settings before they
-	// replace them, which every edit to one section does.
+	// writing serialises the edits that read what is stored before they replace
+	// it, which every edit to one section does, to its settings and to its
+	// credentials alike.
 	writing    sync.Mutex
 	generation atomic.Uint64
 }
@@ -273,6 +274,13 @@ func (c *Current) SetSecrets(ctx context.Context, secrets map[SecretName]Secret)
 	if len(secrets) == 0 {
 		return nil
 	}
+	// The stored credentials are read, added to and written back, which is the
+	// same read-modify-write Update holds this lock for: two sections saved at
+	// once each carry their own credentials, and without it the later write puts
+	// back a map that never had the earlier one in it.
+	c.writing.Lock()
+	defer c.writing.Unlock()
+
 	for name := range secrets {
 		if !slices.Contains(SecretNames(), name) {
 			return fmt.Errorf("unknown secret %q", name)

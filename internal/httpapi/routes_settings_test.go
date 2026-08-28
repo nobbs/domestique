@@ -343,6 +343,35 @@ func TestASectionRefusesACredentialItDoesNotOwn(t *testing.T) {
 	assert.Empty(t, settings.secrets, "a refused body reached the credentials")
 }
 
+// The libraries this path accepts are named in the contract, so a request for
+// anything else is refused before a handler is reached and cannot store a
+// library nothing reads or an account nothing owns.
+func TestASourceThatIsNotALibraryIsRefused(t *testing.T) {
+	handler, settings := settingsHandler(t)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response,
+		authenticatedRequestWithBody(http.MethodPut, "/v1/settings/sources/strava", komootSubmission))
+	require.Equal(t, http.StatusBadRequest, response.Code, response.Body.String())
+	assert.Empty(t, settings.Values().Sources, "the libraries read")
+	assert.Empty(t, settings.secrets, "a refused body reached the credentials")
+}
+
+// The section is written before its credentials, so a section the rules refuse
+// leaves the account it carried unwritten: the page shows the failure and there
+// is nothing stored behind it.
+func TestARefusedSectionStoresNoCredential(t *testing.T) {
+	handler, settings := settingsHandler(t)
+	body := strings.Replace(komootSubmission, `"https://komoot.example.test"`,
+		`"https://komoot.example.test/library"`, 1)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequestWithBody(http.MethodPut, settingsKomootPath, body))
+	require.Equal(t, http.StatusBadRequest, response.Code, response.Body.String())
+	assert.Contains(t, response.Body.String(), "base_url", "the message names the setting")
+	assert.Empty(t, settings.secrets, "a refused section reached the credentials")
+}
+
 // A value the document allows but the rules refuse is refused here, naming the
 // setting — the same rules, and the same message, the stored values are read
 // back through at startup.

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"maps"
+	"sync"
 	"testing"
 	"time"
 
@@ -24,6 +25,7 @@ type stubStore struct {
 	writeErr error
 	secrets  map[SecretName]Secret
 	values   Values
+	writing  sync.Mutex
 	writes   int
 }
 
@@ -58,6 +60,11 @@ func (s *stubStore) SetRuntimeSecrets(_ context.Context, secrets map[SecretName]
 	if s.writeErr != nil {
 		return s.writeErr
 	}
+	// The real store is a database and serialises its own writes; this one is a
+	// map, and the test that saves several sections at once writes to it from
+	// every goroutine at the same moment.
+	s.writing.Lock()
+	defer s.writing.Unlock()
 	s.writes++
 	if s.secrets == nil {
 		s.secrets = make(map[SecretName]Secret, len(secrets))
@@ -465,6 +472,38 @@ func TestSetSecretsWritesNothingWhenNoCredentialWasSubmitted(t *testing.T) {
 
 	assert.Zero(t, store.writes, "writes")
 	assert.Equal(t, generation, current.Generation(), "generation")
+}
+
+// Each section of the settings page saves its own credentials, so several
+// credentials can be on their way at the same moment. Every one of them has to
+// survive: a save that reads the stored credentials, adds its own and writes
+// them back must not put back a copy the save beside it is missing from.
+func TestSetSecretsKeepsEveryCredentialSavedAtOnce(t *testing.T) {
+	names := SecretNames()
+	// Losing one is a matter of how two saves interleave, so the same race is run
+	// several times over rather than once.
+	for round := range 8 {
+		current, err := Load(t.Context(), &stubStore{values: validValues()})
+		require.NoError(t, err)
+
+		// The saves are held until every goroutine is ready so that they read the
+		// stored credentials at the same moment, which is when one can be lost.
+		start := make(chan struct{})
+		var saving sync.WaitGroup
+		for _, name := range names {
+			saving.Go(func() {
+				<-start
+				assert.NoError(t, current.SetSecrets(t.Context(),
+					map[SecretName]Secret{name: NewSecret([]byte("opensesame"))}))
+			})
+		}
+		close(start)
+		saving.Wait()
+
+		for _, name := range names {
+			require.True(t, current.SecretIsSet(name), "%s, round %d", name, round)
+		}
+	}
 }
 
 func TestSetSecretsRefusesACredentialNothingReads(t *testing.T) {
