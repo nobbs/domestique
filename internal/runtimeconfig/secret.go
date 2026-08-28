@@ -89,9 +89,15 @@ func (s Secret) IsSet() bool {
 	return len(s.value) > 0
 }
 
-// String is what every formatting verb but %#v renders, so a credential
-// interpolated into a message or handed to slog reads as this rather than as
-// the bytes an unexported field would otherwise still print.
+// String is what every formatting verb renders, so a credential interpolated
+// into a message or handed to slog reads as this rather than as the bytes an
+// unexported field would otherwise still print.
 func (s Secret) String() string {
+	return "[redacted]"
+}
+
+// GoString is the same for %#v, the one verb that would otherwise reach past
+// String into the field itself.
+func (s Secret) GoString() string {
 	return "[redacted]"
 }

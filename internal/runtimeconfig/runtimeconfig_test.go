@@ -471,7 +471,8 @@ func TestParseSecretName(t *testing.T) {
 // The type exists to keep a credential out of anything observable, so the two
 // ways a value usually escapes have to be closed. %s is the one that would
 // otherwise print it in full: an unexported []byte is still rendered as text by
-// that verb, and by the %+v slog reaches for.
+// that verb, and by the %+v slog reaches for. %#v reaches past String into the
+// field itself, so it is checked here too.
 func TestSecretDoesNotRenderItsValue(t *testing.T) {
 	secret := NewSecret([]byte("opensesame"))
 
@@ -485,7 +486,7 @@ func TestSecretDoesNotRenderItsValue(t *testing.T) {
 	slog.New(slog.NewTextHandler(&logged, nil)).Info("stored", "secret", secret)
 	assert.NotContains(t, logged.String(), "opensesame", "slog")
 
-	for _, verb := range []string{"%v", "%+v", "%s", "%q"} {
+	for _, verb := range []string{"%v", "%+v", "%#v", "%s", "%q"} {
 		assert.NotContains(t, fmt.Sprintf(verb, secret), "opensesame", verb)
 	}
 }
