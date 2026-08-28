@@ -38,11 +38,13 @@ func (v Values) Validate() (Values, error) {
 	if err := ValidateSync(v.Sync); err != nil {
 		return Values{}, err
 	}
-	if err := ValidateNotifications(v.Notifications); err != nil {
+	notifications, err := ValidateNotifications(v.Notifications)
+	if err != nil {
 		return Values{}, err
 	}
 
-	if err := ValidateRideModel(v.RideModel); err != nil {
+	rideModel, err := ValidateRideModel(v.RideModel)
+	if err != nil {
 		return Values{}, err
 	}
 
@@ -66,6 +68,8 @@ func (v Values) Validate() (Values, error) {
 		return Values{}, err
 	}
 
+	v.Notifications = notifications
+	v.RideModel = rideModel
 	v.Basemaps = basemaps
 	v.Surface = surface
 	v.Wahoo = wahoo
@@ -143,15 +147,16 @@ func ValidateSources(raw []Source) ([]Source, error) {
 // leaving every stage without a predicted moving time — or an absolute path to
 // one. What the file contains is internal/ridemodel's business, and a file that
 // cannot be read or believed fails when it is loaded, not here.
-func ValidateRideModel(rideModel RideModel) error {
+func ValidateRideModel(rideModel RideModel) (RideModel, error) {
+	rideModel.CoefficientsFile = strings.TrimSpace(rideModel.CoefficientsFile)
 	if rideModel.CoefficientsFile == "" {
-		return nil
+		return rideModel, nil
 	}
 	if !filepath.IsAbs(rideModel.CoefficientsFile) {
-		return errors.New("ridemodel.coefficients_file must be an absolute path")
+		return RideModel{}, errors.New("ridemodel.coefficients_file must be an absolute path")
 	}
 
-	return nil
+	return rideModel, nil
 }
 
 // ValidateSync checks the reconciliation settings. The deletion gate is a
@@ -171,26 +176,31 @@ func ValidateSync(sync Sync) error {
 // and the origin the credentials are sent to. A digest with no positive
 // interval would either never be sent or be sent on every run, and neither is
 // what the setting means.
-func ValidateNotifications(notifications Notifications) error {
+func ValidateNotifications(notifications Notifications) (Notifications, error) {
 	switch notifications.Policy {
 	case SuccessPolicyEvery, SuccessPolicyQuiet, SuccessPolicyDigest:
 	default:
-		return errors.New("notifications.success_policy must be every, quiet, or digest")
+		return Notifications{}, errors.New("notifications.success_policy must be every, quiet, or digest")
 	}
 	// The period is checked whatever the policy reads it. A setting that is only
 	// consulted by one policy is still a setting an operator will switch to, and
 	// finding out then that it was never valid is the wrong moment.
 	if notifications.DigestInterval < minimumInterval {
-		return errors.New("notifications.digest_interval must be at least 1s")
+		return Notifications{}, errors.New("notifications.digest_interval must be at least 1s")
 	}
 	if notifications.DigestInterval > maxDigestInterval {
-		return fmt.Errorf(
+		return Notifications{}, fmt.Errorf(
 			"notifications.digest_interval must not exceed %s, which is as far back as the recorded run history reaches",
 			maxDigestInterval,
 		)
 	}
 
-	return ValidateHTTPSOrigin("notifications.pushover.base_url", notifications.PushoverBaseURL)
+	notifications.PushoverBaseURL = strings.TrimSpace(notifications.PushoverBaseURL)
+	if err := ValidateHTTPSOrigin("notifications.pushover.base_url", notifications.PushoverBaseURL); err != nil {
+		return Notifications{}, err
+	}
+
+	return notifications, nil
 }
 
 // ValidateBasemaps checks the list the map may be switched between and returns

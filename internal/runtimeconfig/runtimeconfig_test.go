@@ -227,7 +227,7 @@ func TestValidateNotifications(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			notifications := valid
 			test.mutate(&notifications)
-			err := ValidateNotifications(notifications)
+			_, err := ValidateNotifications(notifications)
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), test.wantErr)
 		})
@@ -238,9 +238,14 @@ func TestValidateNotifications(t *testing.T) {
 	quiet := valid
 	quiet.Policy = SuccessPolicyQuiet
 	quiet.DigestInterval = 0
-	require.Error(t, ValidateNotifications(quiet))
+	_, err := ValidateNotifications(quiet)
+	require.Error(t, err)
 
-	require.NoError(t, ValidateNotifications(valid))
+	trailing := valid
+	trailing.PushoverBaseURL = " " + valid.PushoverBaseURL + " "
+	normalised, err := ValidateNotifications(trailing)
+	require.NoError(t, err)
+	assert.Equal(t, valid.PushoverBaseURL, normalised.PushoverBaseURL, "the origin is stored trimmed")
 }
 
 // Validate reports the first rule that fails whichever field holds it, because
@@ -395,9 +400,16 @@ func TestValidateSources(t *testing.T) {
 }
 
 func TestValidateRideModel(t *testing.T) {
-	require.NoError(t, ValidateRideModel(RideModel{}), "no file is prediction switched off")
-	require.NoError(t, ValidateRideModel(RideModel{CoefficientsFile: "/etc/domestique/ridemodel.toml"}))
-	require.Error(t, ValidateRideModel(RideModel{CoefficientsFile: "ridemodel.toml"}),
+	_, err := ValidateRideModel(RideModel{})
+	require.NoError(t, err, "no file is prediction switched off")
+
+	// The path arrives from a form field, so it is trimmed like every other one.
+	normalised, err := ValidateRideModel(RideModel{CoefficientsFile: " /etc/domestique/ridemodel.toml "})
+	require.NoError(t, err)
+	assert.Equal(t, "/etc/domestique/ridemodel.toml", normalised.CoefficientsFile)
+
+	_, err = ValidateRideModel(RideModel{CoefficientsFile: "ridemodel.toml"})
+	require.Error(t, err,
 		"a relative path would resolve against whatever directory the process happens to run in")
 }
 
