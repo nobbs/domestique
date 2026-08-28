@@ -1,13 +1,25 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { useQueryClient } from "@tanstack/react-query";
+import { type ReactNode, useState } from "react";
+import { Marker } from "react-map-gl/maplibre";
+import { weatherQuery } from "../../api/queries";
 import type { BoundingBox } from "../../api/types";
 import type { ProfileSample } from "../../lib/profile";
 import { sampleAt } from "../../lib/profile";
-import { liveMap, profile as maybeProfile, surface } from "../../storybook/fixtures";
+import {
+  coordinates,
+  liveMap,
+  profile as maybeProfile,
+  StoryProviders,
+  surface,
+  weatherSamples,
+} from "../../storybook/fixtures";
 import { MapViewport } from "../map/MapViewport";
 import { MapWidget } from "../map/MapWidget";
 import { PositionTooltip } from "./PositionTooltip";
 
 const styleUrl = "https://tiles.openfreemap.org/styles/bright";
+const darkStyleUrl = "https://tiles.openfreemap.org/styles/dark";
 const bounds: BoundingBox = [7.995, 48.995, 8.045, 49.025];
 
 // The fixture coordinates always build a profile; narrowed once here so the
@@ -28,6 +40,74 @@ function sample(metres: number): ProfileSample {
 
 const midway = sample(profile.endMetres / 2);
 
+/**
+ * A forecast for the fixture's own samples, seeded rather than fetched.
+ *
+ * Where the wind blows from is what decides the relation, so a story asks for a
+ * headwind or a tailwind by choosing that rather than by faking the reading —
+ * the classification stays the shipping code path.
+ */
+function SeedForecast({ fromDegrees, children }: { fromDegrees: number; children: ReactNode }) {
+  const client = useQueryClient();
+  // Seeded once on mount rather than on every render, the way `StoryProviders`
+  // seeds its own: writing to the cache while rendering is a side effect, and
+  // under StrictMode it is one that repeats.
+  useState(() => {
+    client.setQueryData(weatherQuery(weatherSamples).queryKey, {
+      points: weatherSamples.map((entry) => ({
+        time: entry.arrivalAt.toISOString(),
+        temperatureCelsius: 18,
+        apparentTemperatureCelsius: 17,
+        precipitationMillimetres: 0,
+        precipitationProbabilityPercent: 5,
+        windSpeedKmh: 18,
+        windDirectionDegrees: fromDegrees,
+        weatherCode: 1,
+      })),
+    });
+  });
+
+  return children;
+}
+
+/**
+ * Stands in for `RouteOverlay`'s `route-position-dot` layer, which is drawn
+ * into the canvas and so is not here. Without it there is nothing for the arrow
+ * to be seen pointing at.
+ */
+function Dot({ dark }: { dark: boolean }) {
+  return (
+    <Marker
+      longitude={midway.longitude}
+      latitude={midway.latitude}
+      className="route-position-tooltip-marker"
+    >
+      <span
+        className="block size-2.5 rounded-full"
+        style={{ background: dark ? "#70adfb" : "#236fc7" }}
+      />
+    </Marker>
+  );
+}
+
+function OnMap({
+  children,
+  style = styleUrl,
+  dark = false,
+}: {
+  children: ReactNode;
+  style?: string;
+  dark?: boolean;
+}) {
+  return (
+    <MapWidget styleUrl={style}>
+      <MapViewport bounds={bounds} maxZoom={14} />
+      <Dot dark={dark} />
+      {children}
+    </MapWidget>
+  );
+}
+
 const meta = {
   title: "Components/Route/Position Tooltip",
   parameters: liveMap,
@@ -38,14 +118,19 @@ const meta = {
     content: midway,
     endMetres: profile.endMetres,
     surfaceSummary: surface,
+    coordinates,
+    samples: [],
     announce: false,
+    darkBasemap: false,
     unitSystem: "metric",
   },
   decorators: [
     (Story) => (
-      <div className="h-[34rem] overflow-hidden rounded-xl">
-        <Story />
-      </div>
+      <StoryProviders>
+        <div className="h-[34rem] overflow-hidden rounded-xl">
+          <Story />
+        </div>
+      </StoryProviders>
     ),
   ],
 } satisfies Meta<typeof PositionTooltip>;
@@ -53,15 +138,7 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-function OnMap({ children }: { children: React.ReactNode }) {
-  return (
-    <MapWidget styleUrl={styleUrl}>
-      <MapViewport bounds={bounds} maxZoom={14} />
-      {children}
-    </MapWidget>
-  );
-}
-
+/** No start time picked, so no forecast and no second row: one line and the bar. */
 export const Default: Story = {
   render: (args) => (
     <OnMap>
@@ -70,36 +147,54 @@ export const Default: Story = {
   ),
 };
 
-/**
- * The corner the box opens from follows the room it has, so the same tooltip
- * at either end of the route hangs off opposite sides of its dot.
- */
-export const AtBothEnds: Story = {
+/** A wind behind the rider here, which the arrow runs away from the reader to say. */
+export const Tailwind: Story = {
   render: (args) => (
-    <OnMap>
-      <PositionTooltip {...args} position={sample(0)} content={sample(0)} />
-      <PositionTooltip
-        {...args}
-        position={sample(profile.endMetres)}
-        content={sample(profile.endMetres)}
-      />
-    </OnMap>
+    <SeedForecast fromDegrees={250}>
+      <OnMap>
+        <PositionTooltip {...args} samples={weatherSamples} />
+      </OnMap>
+    </SeedForecast>
   ),
 };
 
-/** Imperial units, and no surface to name — the last line drops out entirely. */
-export const ImperialWithoutSurface: Story = {
+/** The same wind from the opposite quarter: the arrow turns back, and reddens. */
+export const Headwind: Story = {
   render: (args) => (
-    <OnMap>
-      <PositionTooltip {...args} surfaceSummary={null} unitSystem="imperial" />
-    </OnMap>
+    <SeedForecast fromDegrees={70}>
+      <OnMap>
+        <PositionTooltip {...args} samples={weatherSamples} />
+      </OnMap>
+    </SeedForecast>
   ),
 };
 
 /**
- * Standing in for the profile readout while it is folded away, which is the
- * one case where this tooltip carries the `aria-live` announcement itself.
+ * A wind square across the road, which pushes the rider neither way — so the
+ * figure is the wind's own speed rather than a component of nought.
  */
+export const Crosswind: Story = {
+  render: (args) => (
+    <SeedForecast fromDegrees={160}>
+      <OnMap>
+        <PositionTooltip {...args} samples={weatherSamples} />
+      </OnMap>
+    </SeedForecast>
+  ),
+};
+
+/** On dark cartography every colour swaps, the box included. */
+export const OnDarkCartography: Story = {
+  render: (args) => (
+    <SeedForecast fromDegrees={250}>
+      <OnMap style={darkStyleUrl} dark={true}>
+        <PositionTooltip {...args} samples={weatherSamples} darkBasemap={true} />
+      </OnMap>
+    </SeedForecast>
+  ),
+};
+
+/** Carrying the announcement itself, for a reader who has folded the profile away. */
 export const Announcing: Story = {
   render: (args) => (
     <OnMap>

@@ -201,7 +201,6 @@ body { margin: 0; background: var(--base); color: var(--ink); font-family: var(-
 .route-terminal { display: grid; width: 28px; height: 28px; place-items: center; border: 2.5px solid #fff; border-radius: 50%; filter: drop-shadow(0 1px 2px rgb(28 33 38 / 35%)); }
 .route-terminal--start { background: #188b45; }
 .route-terminal--finish { background: #fff; }
-.route-position-tooltip { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; max-width: 220px; margin: 0; padding: 3px 8px; border-radius: 6px; background: var(--panel); box-shadow: var(--shadow); color: var(--ink); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 /*
  * The veil over the ground a picked class does not cover. A forced palette has

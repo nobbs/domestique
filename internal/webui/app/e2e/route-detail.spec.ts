@@ -238,10 +238,11 @@ test("hovering the route labels the position while the profile is folded away", 
   await collapse.press("Enter");
   await expect(page.getByRole("img", { name: /^Elevation profile of / })).toBeHidden();
 
-  const tooltip = page.getByText(/from start/).locator("xpath=ancestor::p");
+  // How far along, how high, how steep — the distance still to ride is the bar
+  // under them rather than a second figure beside them.
+  const tooltip = page.locator(".route-position-tooltip");
   await expect(tooltip).toBeVisible();
-  await expect(tooltip).toContainText("from start");
-  await expect(tooltip).toContainText("to end");
+  await expect(tooltip).toContainText(/\d/);
   await expect(tooltip).toContainText("%");
   // The stage's one classified band, named from the same styles the key uses.
   await expect(tooltip).toContainText("Asphalt");
