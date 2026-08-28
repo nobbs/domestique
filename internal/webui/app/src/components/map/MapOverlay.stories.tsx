@@ -7,6 +7,10 @@ const styleUrl = "https://tiles.openfreemap.org/styles/bright";
 
 const meta = {
   title: "Components/Map/Map Overlay",
+  // `MapOverlay` portals into the container `useMap()` reports, which only a
+  // real `<Map>` provides — the deterministic placeholder never mounts one,
+  // so this stays with the live canvas, the same way the stories reviewing
+  // real cartography do, rather than joining the other "chrome" stories.
   parameters: liveMap,
   component: MapOverlay,
   tags: ["autodocs"],

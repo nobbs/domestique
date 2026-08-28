@@ -7,12 +7,64 @@
  * DOM standing beside the canvas and is never taken down at all.
  */
 
-import { type ReactNode, useState } from "react";
+import {
+  type ComponentType,
+  type CSSProperties,
+  createContext,
+  type ReactNode,
+  useContext,
+  useState,
+} from "react";
 import type { MapLayerMouseEvent } from "react-map-gl/maplibre";
 import { Map as MapLibre } from "react-map-gl/maplibre";
 import "maplibre-gl/dist/maplibre-gl.css";
 // Configures the shared worker pool; without it this map renders no tiles.
 import "../../lib/maplibre";
+
+/** What `MapWidget` hands whichever canvas implementation it renders. */
+export interface MapImplementationProps {
+  mapStyle: string;
+  onLoad?: () => void;
+  onIdle?: () => void;
+  style?: CSSProperties;
+  "aria-label"?: string;
+  attributionControl?: false;
+  interactiveLayerIds?: string[];
+  cursor?: string;
+  onClick?: (event: MapLayerMouseEvent) => void;
+  onMouseMove?: (event: MapLayerMouseEvent) => void;
+  onMouseOut?: () => void;
+  children?: ReactNode;
+}
+
+/**
+ * The canvas `MapWidget` renders, real MapLibre unless a story overrides it.
+ *
+ * Live tiles and WebGL rasterization make the real canvas non-deterministic
+ * across runs, so Chromatic cannot snapshot a story that mounts it. Storybook
+ * cannot mock `react-map-gl/maplibre` itself — its entry file re-exports
+ * everything via `export *`, a shape Storybook's automock explicitly refuses
+ * to transform — so the seam lives here instead: `ChromeMap` in
+ * `src/storybook/mapMock.tsx` provides a deterministic placeholder through
+ * this context for the stories that opt in via that decorator; every other
+ * consumer (the app itself, and stories reviewing real route geometry) gets
+ * the real canvas untouched.
+ */
+export const MapImplementationContext = createContext<ComponentType<MapImplementationProps> | null>(
+  null,
+);
+
+/**
+ * The real canvas, wrapped rather than handed to the context directly: MapLibre's
+ * export is a `ForwardRefExoticComponent`, not the plain `ComponentType` the context
+ * expects. Forwarding `MapImplementationProps` through a typed function fits the
+ * default implementation to the context type without a cast — so a prop the two
+ * share but disagree on the type of is still caught at compile time, the way a
+ * plain `unknown` cast to `ComponentType` would not catch it.
+ */
+function RealMap(props: MapImplementationProps) {
+  return <MapLibre {...props} />;
+}
 
 export interface MapWidgetProps {
   /** The cartography to load. The map never chooses a style for its caller. */
@@ -55,10 +107,11 @@ export function MapWidget({
   onMouseOut,
 }: MapWidgetProps) {
   const [loadedStyleUrl, setLoadedStyleUrl] = useState<string | null>(null);
+  const MapComponent = useContext(MapImplementationContext) ?? RealMap;
 
   return (
     <div className="route-map">
-      <MapLibre
+      <MapComponent
         mapStyle={styleUrl}
         onLoad={() => setLoadedStyleUrl(styleUrl)}
         // `idle`, not `styledata`, which cannot answer this question. Changing
@@ -85,7 +138,7 @@ export function MapWidget({
       >
         {furniture}
         {loadedStyleUrl === styleUrl ? children : null}
-      </MapLibre>
+      </MapComponent>
     </div>
   );
 }
