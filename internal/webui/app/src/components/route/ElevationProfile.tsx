@@ -23,11 +23,14 @@
  * stepping, and the spoken value at each step, and buys nothing back.
  *
  * The chart's geometry is pinned to the shared `plotAxis` rather than left to
- * Recharts to decide: `margin` is `PADDING`, `YAxis width` is `PADDING.left`,
- * and `XAxis height` is `PADDING.bottom`. That lands the plot area on exactly
- * the pixels the shared axis computes, which is what lets the forecast strip
- * below keep landing its cells under the terrain they describe — and what lets
- * the overlay be positioned from the same numbers.
+ * Recharts to decide, and `PADDING` reaches it by two routes: the top and right
+ * are margins, while the left and bottom are the room the axes reserve for
+ * themselves — `YAxis width` is `PADDING.left` and `XAxis height` is
+ * `PADDING.bottom`, so those two margins are zero rather than counting the same
+ * space twice. Together that lands the plot area on exactly the pixels the
+ * shared axis computes, which is what lets the forecast strip below keep
+ * landing its cells under the terrain they describe — and what lets the overlay
+ * be positioned from the same numbers.
  *
  * The width is measured and passed explicitly rather than handed to Recharts'
  * `ResponsiveContainer`. One measurement, taken once, serves the chart and the
