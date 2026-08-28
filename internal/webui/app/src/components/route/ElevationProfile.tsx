@@ -11,9 +11,45 @@
  * A drag across the plot picks a stretch of the route and the chart redraws it
  * across the full width. On a ninety kilometre stage a single climb is a few
  * millimetres of ink, and the question a rider actually has is about one climb.
+ *
+ * The division of labour here is the thing to understand before changing it:
+ * **Recharts draws, the overlay interacts.** Every mark — axes, gridlines,
+ * terrain, veils, cursor — is a declarative Recharts child. Everything a reader
+ * *does* belongs to the `role="slider"` overlay at the foot of this file, which
+ * reads its position off its own bounding box and so neither knows nor cares
+ * what drew the terrain beneath it. Recharts' own mouse handlers are
+ * deliberately unused: routing interaction through them costs the long-press
+ * that keeps a finger's swipe belonging to the scrolling card, arrow-key
+ * stepping, and the spoken value at each step, and buys nothing back.
+ *
+ * The chart's geometry is pinned to the shared `plotAxis` rather than left to
+ * Recharts to decide, and `PADDING` reaches it by two routes: the top and right
+ * are margins, while the left and bottom are the room the axes reserve for
+ * themselves — `YAxis width` is `PADDING.left` and `XAxis height` is
+ * `PADDING.bottom`, so those two margins are zero rather than counting the same
+ * space twice. Together that lands the plot area on exactly the pixels the
+ * shared axis computes, which is what lets the forecast strip below keep
+ * landing its cells under the terrain they describe — and what lets the overlay
+ * be positioned from the same numbers.
+ *
+ * The width is measured and passed explicitly rather than handed to Recharts'
+ * `ResponsiveContainer`. One measurement, taken once, serves the chart and the
+ * overlay, so the two cannot disagree; and `ResponsiveContainer` renders
+ * nothing at all in a layout-less DOM, which would leave the jsdom suite
+ * asserting against an empty chart.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import {
+  Area,
+  AreaChart,
+  CartesianGrid,
+  ReferenceArea,
+  ReferenceDot,
+  ReferenceLine,
+  XAxis,
+  YAxis,
+} from "recharts";
 import type { Highlight } from "../../lib/highlight";
 import { gapsOutside, highlightLabel } from "../../lib/highlight";
 import { useNarrowViewport } from "../../lib/mediaQuery";
@@ -38,19 +74,20 @@ import { Button } from "../Button";
 /**
  * How tall the drawn terrain is, in the two layouts there are.
  *
- * The chart is an SVG, so its height is also its coordinate system and cannot be
- * a rule in the stylesheet. It is one row of a card now rather than a panel of
- * its own, so both numbers are what a card can spare: enough for the ride to be
- * a shape rather than a smear, and no more than the four figures above it and
- * the two mixes below it can be read alongside.
+ * It is one row of a card rather than a panel of its own, so both numbers are
+ * what a card can spare: enough for the ride to be a shape rather than a smear,
+ * and no more than the four figures above it and the two mixes below it can be
+ * read alongside.
  */
 const PLOT_HEIGHT = { wide: 92, narrow: 74 } as const;
-const bandPaint = [
-  "fill-[var(--grade-0)] stroke-[var(--grade-0)]",
-  "fill-[var(--grade-1)] stroke-[var(--grade-1)]",
-  "fill-[var(--grade-2)] stroke-[var(--grade-2)]",
-  "fill-[var(--grade-3)] stroke-[var(--grade-3)]",
-  "fill-[var(--grade-4)] stroke-[var(--grade-4)]",
+
+/** The ordinal ramp the terrain is banded with, as values a gradient can take. */
+const BAND_COLOURS = [
+  "var(--grade-0)",
+  "var(--grade-1)",
+  "var(--grade-2)",
+  "var(--grade-3)",
+  "var(--grade-4)",
 ] as const;
 
 /**
@@ -70,10 +107,9 @@ export interface ElevationProfileProps {
    * The ground under the route: reported for the hovered position, and veiled
    * around whichever class the reader picked out of the chips.
    *
-   * Nothing of it is drawn along the chart. It used to have a lane of its own at
-   * the foot of the plot, back when the plot was a panel with room to spare;
-   * inside the card it would be a second chart on the same axis, two rows above
-   * the surface mix bar that already says the same thing at a glance.
+   * Nothing of it is drawn along the chart — inside the card it would be a
+   * second chart on the same axis, two rows above the surface mix bar that
+   * already says the same thing at a glance.
    *
    * This is the whole route's classification, not the window's: the readout asks
    * it about an absolute distance.
@@ -106,65 +142,68 @@ export interface ElevationProfileProps {
   unitSystem?: UnitSystem;
 }
 
-/**
- * One stretch of ground of a single band: the shape to fill, and where along the
- * route it sits, which is what lets the same run be lit or veiled by name.
- */
-interface Run {
+/** One stretch of ground of a single steepness band. */
+interface BandRun {
   band: number;
-  column: string;
   startMetres: number;
   endMetres: number;
 }
 
 /**
- * Splits the ground under the profile into columns of one gradient band each.
+ * Groups consecutive samples of one band into runs.
  *
- * A column follows the terrain along its top and drops to the baseline, so the
- * chart reads as a cross-section of the ride: the steep parts are visibly
- * darker blocks of ground rather than a recoloured hairline.
- *
- * Runs share their boundary sample, so neighbouring columns meet exactly —
- * neither overlapping into a darker seam nor leaving a sliver of surface.
+ * A run only has to know where it starts and ends, because the terrain is
+ * filled by one gradient across the whole plot rather than by a shape per run.
+ * Runs share their boundary, so neighbouring bands meet exactly — neither
+ * overlapping into a darker seam nor leaving a sliver of surface.
  */
-function runsOf(
-  samples: ProfileSample[],
-  x: (metres: number) => number,
-  y: (metres: number) => number,
-  plotHeight: number,
-): Run[] {
-  // The samples carry the stage's classification; the chart does not re-derive
-  // one from its own spacing, or it could paint a band the key has no chip for.
-  const bands = samples.map((sample) => sample.band);
-  const runs: Run[] = [];
-  let start = 0;
-
-  for (let index = 1; index <= samples.length; index++) {
-    if (index < samples.length && bands[index] === bands[start]) {
+function bandRunsOf(samples: ProfileSample[]): BandRun[] {
+  const runs: BandRun[] = [];
+  for (const sample of samples) {
+    const open = runs[runs.length - 1];
+    if (!open) {
+      runs.push({
+        band: sample.band,
+        startMetres: sample.distanceMetres,
+        endMetres: sample.distanceMetres,
+      });
       continue;
     }
-    const slice = samples.slice(start, Math.min(index + 1, samples.length));
-    const first = slice[0];
-    const last = slice[slice.length - 1];
-    if (slice.length >= 2 && first && last) {
-      const crest = slice
-        .map(
-          (sample, offset) =>
-            `${offset === 0 ? "M" : "L"}${x(sample.distanceMetres).toFixed(1)},${y(sample.elevationMetres).toFixed(1)}`,
-        )
-        .join(" ");
-
-      runs.push({
-        band: bands[start] ?? 0,
-        column: `${crest} L${x(last.distanceMetres).toFixed(1)},${plotHeight.toFixed(1)} L${x(first.distanceMetres).toFixed(1)},${plotHeight.toFixed(1)} Z`,
-        startMetres: first.distanceMetres,
-        endMetres: last.distanceMetres,
-      });
+    if (open.band === sample.band) {
+      open.endMetres = sample.distanceMetres;
+      continue;
     }
-    start = index;
+    /*
+     * The sample that changed band belongs to both runs: the outgoing one is
+     * carried up to it and the incoming one begins there. Ending the outgoing
+     * run at the sample before instead would step the colour a sample early and
+     * leave the two runs meeting at a distance neither of them is.
+     */
+    open.endMetres = sample.distanceMetres;
+    runs.push({
+      band: sample.band,
+      startMetres: sample.distanceMetres,
+      endMetres: sample.distanceMetres,
+    });
   }
 
   return runs;
+}
+
+/**
+ * The runs, as hard-edged stops across the plotted stretch.
+ *
+ * Two stops land on every boundary — the outgoing colour and the incoming one —
+ * which is what makes the ramp step rather than blend.
+ */
+function stopsOf(runs: BandRun[], startMetres: number, endMetres: number) {
+  const span = Math.max(endMetres - startMetres, 1);
+  const at = (metres: number) => `${(((metres - startMetres) / span) * 100).toFixed(3)}%`;
+
+  return runs.flatMap((run, index) => [
+    { key: `${index}-in`, offset: at(run.startMetres), band: run.band },
+    { key: `${index}-out`, offset: at(run.endMetres), band: run.band },
+  ]);
 }
 
 /**
@@ -194,6 +233,7 @@ export function ElevationProfile({
   highlight = null,
   unitSystem = "metric",
 }: ElevationProfileProps) {
+  const gradientId = useId();
   const { ref, width } = useElementWidth<HTMLDivElement>();
 
   const plotHeight = useNarrowViewport() ? PLOT_HEIGHT.narrow : PLOT_HEIGHT.wide;
@@ -218,42 +258,39 @@ export function ElevationProfile({
   const [selection, setSelection] = useState<DistanceWindow | null>(null);
 
   const geometry = useMemo(() => {
-    if (!profile || plotWidth <= 0) {
+    if (!profile) {
       return null;
     }
     // A flat route still needs a band to draw in, so give it one.
     const span = Math.max(profile.maxElevationMetres - profile.minElevationMetres, 10);
     const low = profile.minElevationMetres;
-    // A window of no length cannot happen, but dividing by one would put every
-    // mark on the chart at the same place rather than say so — the same
-    // shortfall `plotAxis` itself guards against for `x`.
     const shown = Math.max(profile.endMetres - profile.startMetres, 1);
-
-    // The same axis the forecast strip draws its cells against, so the two
-    // never disagree about where a distance sits by a rounding error.
-    const { x } = plotAxis(width, profile.startMetres, profile.endMetres);
-    const y = (metres: number) => plotHeight - ((metres - low) / span) * plotHeight;
+    const runs = bandRunsOf(profile.samples);
 
     return {
-      x,
-      y,
-      runs: runsOf(profile.samples, x, y, plotHeight),
+      low,
+      high: low + span,
+      runs,
+      stops: stopsOf(runs, profile.startMetres, profile.endMetres),
       elevationTicks: ticksFor(low, low + span, 3),
-      distanceTicks: ticksFor(profile.startMetres / 1000, profile.endMetres / 1000, 5),
+      // The axis carries metres, so its ticks do too.
+      distanceTicks: ticksFor(profile.startMetres / 1000, profile.endMetres / 1000, 5).map(
+        (kilometres) => kilometres * 1000,
+      ),
       distanceStep: niceStep(shown / 1000, 5),
       surfaceBands: surface
         ? surfaceBandsWithin(surface, profile.startMetres, profile.endMetres)
         : [],
     };
-  }, [profile, surface, width, plotWidth, plotHeight]);
+  }, [profile, surface]);
 
   /**
    * The ground the picked class does not cover, which is what gets veiled.
    *
    * Kept apart from `geometry` so that picking a class redraws no terrain: the
-   * columns and the strip are the same marks either way, and only the light on
-   * them changes. Whichever kind of class was picked, the answer is a list of
-   * stretches, so both are veiled by one rule.
+   * bands are the same marks either way, and only the light on them changes.
+   * Whichever kind of class was picked, the answer is a list of stretches, so
+   * both are veiled by one rule.
    */
   const veiled = useMemo(() => {
     if (!highlight || !geometry || !profile) {
@@ -474,77 +511,114 @@ export function ElevationProfile({
 
   return (
     <div className="relative" ref={ref} data-zoomed={zoomed ? "true" : undefined}>
-      <svg
-        className="block overflow-visible"
-        width="100%"
-        height={height}
-        viewBox={`0 0 ${plotWidth + PADDING.left + PADDING.right} ${height}`}
-        role="img"
-        aria-label={summary}
-      >
-        <title>{summary}</title>
-        <g transform={`translate(${PADDING.left} ${PADDING.top})`}>
-          {geometry.elevationTicks.map((metres) => (
-            <g key={metres}>
-              <line
-                className="stroke-[var(--rule)] [stroke-width:1]"
-                x1={0}
-                x2={plotWidth}
-                y1={geometry.y(metres)}
-                y2={geometry.y(metres)}
-              />
-              <text
-                className="fill-[var(--ink-2)] text-xs [font-variant-numeric:tabular-nums]"
-                x={-8}
-                y={geometry.y(metres)}
-                textAnchor="end"
-                dominantBaseline="middle"
-              >
-                {Math.round(elevationValue(metres, unitSystem))}
-              </text>
-            </g>
-          ))}
+      <div>
+        <AreaChart
+          data={profile.samples}
+          width={plotWidth + PADDING.left + PADDING.right}
+          height={height}
+          /*
+           * The labelled graphic is the chart's own `<svg>` rather than a
+           * wrapper around it, because the strip below is checked against this
+           * one's `viewBox` — the two plot the same stretch and must measure it
+           * identically, which is a claim only the drawn surfaces can make.
+           */
+          role="img"
+          aria-label={summary}
+          // Pinned to the shared axis; see the note at the top of this file.
+          margin={{ top: PADDING.top, right: PADDING.right, bottom: 0, left: 0 }}
+          /*
+           * The slider below is this chart's accessibility layer, and it is the
+           * one that knows the position is shared with the map. Recharts' own
+           * puts a second tab stop in front of it with a second keyboard model
+           * for the same instrument, which is one control too many however it
+           * is spelled.
+           */
+          accessibilityLayer={false}
+        >
+          <defs>
+            <linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="0">
+              {geometry.stops.map((stop) => (
+                <stop
+                  key={stop.key}
+                  offset={stop.offset}
+                  stopColor={BAND_COLOURS[stop.band] ?? BAND_COLOURS[0]}
+                  // Which band this stop carries. The terrain is one shape, so
+                  // these are the only marks that hold the ramp: they are what
+                  // the forced-colours audit reads the encoding off.
+                  data-band={stop.band}
+                />
+              ))}
+            </linearGradient>
+          </defs>
 
-          {geometry.runs.map((run, index) => (
-            <path
-              // Runs are positional slices of one profile; there is no id to key on.
-              // biome-ignore lint/suspicious/noArrayIndexKey: positional by nature
-              key={`column-${index}`}
-              className={`[fill-opacity:0.5] [stroke-linejoin:round] [stroke-width:2.4] forced-colors:forced-color-adjust-none ${bandPaint[run.band] ?? bandPaint[0]}`}
-              data-band={run.band}
-              d={run.column}
-            />
-          ))}
-          {geometry.distanceTicks.map((kilometres) => (
-            <text
-              key={kilometres}
-              className="fill-[var(--ink-2)] text-xs [font-variant-numeric:tabular-nums]"
-              x={geometry.x(kilometres * 1000)}
-              y={plotHeight + 15}
-              textAnchor="middle"
-            >
-              {distanceLabel(kilometres * 1000, geometry.distanceStep, unitSystem)}
-            </text>
-          ))}
+          <CartesianGrid vertical={false} stroke="var(--rule)" />
+          <XAxis
+            dataKey="distanceMetres"
+            type="number"
+            domain={[profile.startMetres, profile.endMetres]}
+            ticks={geometry.distanceTicks}
+            tickFormatter={(metres: number) =>
+              distanceLabel(metres, geometry.distanceStep, unitSystem)
+            }
+            tick={{ fill: "var(--ink-2)", fontSize: 12 }}
+            tickLine={false}
+            axisLine={false}
+            height={PADDING.bottom}
+          />
+          <YAxis
+            type="number"
+            domain={[geometry.low, geometry.high]}
+            ticks={geometry.elevationTicks}
+            tickFormatter={(metres: number) =>
+              String(Math.round(elevationValue(metres, unitSystem)))
+            }
+            tick={{ fill: "var(--ink-2)", fontSize: 12 }}
+            tickLine={false}
+            axisLine={false}
+            width={PADDING.left}
+            // Recharts thins explicit ticks it thinks will collide; the axis was
+            // asked for three and must draw three.
+            interval={0}
+          />
+
+          <Area
+            dataKey="elevationMetres"
+            type="linear"
+            fill={`url(#${gradientId})`}
+            fillOpacity={0.5}
+            stroke={`url(#${gradientId})`}
+            strokeWidth={2.4}
+            isAnimationActive={false}
+            // The cursor below is ours, and shared with the map; Recharts' own
+            // would be a second one nothing else knows about.
+            activeDot={false}
+            dot={false}
+            /*
+             * A forced palette repaints everything in two colours, which here
+             * would replace the encoding with a flat block: the colour of a
+             * stretch *is* which band it is. This is one of the few marks whose
+             * colour carries the information rather than decorating it, so it
+             * keeps its own.
+             */
+            style={{ forcedColorAdjust: "none" }}
+          />
 
           {/*
            * Everything the picked class does not cover, veiled. The marks keep
-           * the colour and the pattern that give them their meaning — brightening
-           * a band's column would change the very thing being asked about — so
-           * what the selection changes is the light on the rest.
+           * the colour that gives them their meaning — brightening a band would
+           * change the very thing being asked about — so what the selection
+           * changes is the light on the rest.
            */}
           {veiled.map((gap) => (
-            <rect
+            <ReferenceArea
               key={gap.startMetres}
-              className="fill-[var(--panel)] opacity-60 forced-colors:fill-[Canvas]"
+              x1={gap.startMetres}
+              x2={gap.endMetres}
+              fill="var(--panel)"
+              fillOpacity={0.6}
+              data-veil=""
+              ifOverflow="hidden"
               data-testid="profile-veil"
-              x={Math.max(geometry.x(gap.startMetres), 0)}
-              y={0}
-              width={Math.max(
-                geometry.x(gap.endMetres) - Math.max(geometry.x(gap.startMetres), 0),
-                0,
-              )}
-              height={plotHeight}
             />
           ))}
 
@@ -556,62 +630,60 @@ export function ElevationProfile({
            * outside the window, so the two views say one thing one way.
            */}
           {selection ? (
-            <g>
-              <rect
-                className="fill-[var(--panel)] opacity-60 forced-colors:fill-[Canvas]"
+            <>
+              <ReferenceArea
+                x1={profile.startMetres}
+                x2={selection.startMetres}
+                fill="var(--panel)"
+                fillOpacity={0.6}
+                data-veil=""
                 data-testid="profile-veil"
-                x={0}
-                y={0}
-                width={Math.max(geometry.x(selection.startMetres), 0)}
-                height={plotHeight}
               />
-              <rect
-                className="fill-[var(--panel)] opacity-60 forced-colors:fill-[Canvas]"
+              <ReferenceArea
+                x1={selection.endMetres}
+                x2={profile.endMetres}
+                fill="var(--panel)"
+                fillOpacity={0.6}
+                data-veil=""
                 data-testid="profile-veil"
-                x={geometry.x(selection.endMetres)}
-                y={0}
-                width={Math.max(plotWidth - geometry.x(selection.endMetres), 0)}
-                height={plotHeight}
               />
               {[selection.startMetres, selection.endMetres].map((metres) => (
-                <line
+                <ReferenceLine
                   key={metres}
-                  className="stroke-[var(--accent)] [stroke-dasharray:3_3] [stroke-width:1.5]"
-                  x1={geometry.x(metres)}
-                  x2={geometry.x(metres)}
-                  y1={0}
-                  y2={plotHeight}
+                  x={metres}
+                  stroke="var(--accent)"
+                  strokeWidth={1.5}
+                  strokeDasharray="3 3"
                 />
               ))}
-            </g>
+            </>
           ) : null}
 
           {active ? (
-            <g data-testid="profile-cursor">
-              <line
-                className="stroke-[var(--ink-2)] [stroke-width:1]"
-                x1={geometry.x(active.distanceMetres)}
-                x2={geometry.x(active.distanceMetres)}
-                y1={0}
-                y2={plotHeight}
-              />
-              <circle
-                cx={geometry.x(active.distanceMetres)}
-                cy={geometry.y(active.elevationMetres)}
+            <>
+              <ReferenceLine x={active.distanceMetres} stroke="var(--ink-2)" strokeWidth={1} />
+              <ReferenceDot
+                x={active.distanceMetres}
+                y={active.elevationMetres}
                 r={4}
-                data-band={active.band}
-                className={`stroke-[var(--panel)] [paint-order:stroke] [stroke-width:2] forced-colors:forced-color-adjust-none ${bandPaint[active.band] ?? bandPaint[0]}`}
+                fill={BAND_COLOURS[active.band] ?? BAND_COLOURS[0]}
+                stroke="var(--panel)"
+                strokeWidth={2}
+                // The marker carries the band of the position it marks, so its
+                // colour is information too — exempted for the same reason the
+                // terrain is.
+                style={{ forcedColorAdjust: "none" }}
               />
-            </g>
+            </>
           ) : null}
-        </g>
-      </svg>
+        </AreaChart>
+      </div>
 
       {/*
        * The scrubbing surface is a slider rather than a decorated graphic: it
        * genuinely picks a position along the route, so that role gives keyboard
        * users arrow-key stepping and screen readers the value at each step,
-       * which a non-interactive <svg> cannot carry. The drag that zooms is a
+       * which a non-interactive chart cannot carry. The drag that zooms is a
        * pointer shortcut layered over it, not a second control — the way back is
        * the button in the footer, which is the half a keyboard can reach.
        */}

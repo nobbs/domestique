@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import type { Position } from "../../api/types";
 import type { Highlight } from "../../lib/highlight";
+import { PADDING } from "../../lib/plotAxis";
 import type { DistanceWindow } from "../../lib/profile";
 import { buildProfile, buildWindowedProfile } from "../../lib/profile";
 import type { SurfaceSummary } from "../../lib/surface";
@@ -466,8 +467,11 @@ describe("ElevationProfile zooming", () => {
     const veils = screen.getAllByTestId("profile-veil");
     expect(veils).toHaveLength(2);
     // Over what is being left behind on either side, and nothing in between.
+    // A veil's `x` is in the chart surface's own coordinates, where the plot
+    // starts `PADDING.left` in — a pointer coordinate is measured from the plot
+    // itself, so the two differ by exactly that margin.
     expect(Number(veils[0]?.getAttribute("width"))).toBeCloseTo(20, 0);
-    expect(Number(veils[1]?.getAttribute("x"))).toBeCloseTo(120, 0);
+    expect(Number(veils[1]?.getAttribute("x"))).toBeCloseTo(PADDING.left + 120, 0);
 
     await user.pointer({ keys: "[/MouseLeft]", target: scrub, coords: { clientX: 120 } });
     expect(screen.queryByTestId("profile-veil")).toBeNull();
