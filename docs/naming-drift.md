@@ -58,13 +58,22 @@ genuinely a stage concept.
 
 This one crosses the wire, so it is the only item here that needs a coordinated
 change: `api/openapi.yaml`, the Go handlers, `pnpm api:generate`, the
-`localStorage` key (which needs either a migration or a deliberate reset), and
+`localStorage` key (a deliberate reset, not a migration — see below), and
 [`docs/specs`](specs). *Stage* is the word in the accepted contracts too — most
 of all [service.md](specs/service.md), whose "Each VeloPlanner route stage is a
 separate Wahoo route" is a contract sentence rather than a comment, and
 [sync-lifecycle.md](specs/sync-lifecycle.md), which uses it throughout. Those
 specifications are normative, so revising them is part of this change and not a
 follow-up to it.
+
+The `domestique.seen-stages` value is reset rather than migrated. The cost is
+not free and should be taken deliberately: `seenStages.ts` reads a key it has
+never seen as `"new"`, and `markSeen` runs only for the route the reader has
+opened (`RoutesPage.tsx:296`), so a reset badges the whole library at once and
+each badge clears only when that route is opened. Migrating instead would be
+about five lines — the stored map is `Record<routeKey, sourceRevision>` and
+`routeKey()` is built from field *values*, so the rename leaves it
+byte-identical — which is the trade being declined, not one that was missed.
 
 ## 2. Seven names for one string
 
@@ -137,9 +146,10 @@ it renders. The type keeps the bare name.
 Reading `ServiceSettings` you cannot tell from the name whether `Library`
 configures the local collection or a remote service. It is the latter.
 
-**Proposed:** `function Library` → `function SourceSettingsSection` (or
-`SourceLibrary`), and the OpenAPI description reworded to "the source's own web
-application". Meaning 1 keeps the word.
+**Proposed:** `function Library` → `function SourceSettingsSection`, and the
+OpenAPI description reworded to "the source's own web application". Meaning 1
+keeps the word. Not `SourceLibrary`: that keeps *library* for a remote service,
+which is the collision this item exists to remove.
 
 ## 7. `selection`, `window` and `highlight`
 
@@ -154,10 +164,20 @@ picked legend class "the selection" as well, though its type is `Highlight`.
 (`window.matchMedia`, `refetchOnWindowFocus`) with nothing distinguishing them
 at the identifier level.
 
-**Proposed:** `selectedKey` → `pickedKey` (or `activeKey`) so *selection* means
-only the distance stretch; fold `mapSelection.ts` into `selection.ts` or rename
-it `selectionGesture.ts`; correct the `highlight.ts` doc comment. Keep
-`DistanceWindow` spelled in full and never abbreviate it to `window`.
+**Proposed:** `selectedKey` → `pickedKey`, so *selection* means only the
+distance stretch. Not `activeKey`, because `active` is already a `Button` prop,
+and not `focusedKey`, which would collide both with DOM focus in a
+keyboard-navigable list and with the existing `focusKey`.
+
+Rename `mapSelection.ts` to `selectionGesture.ts` rather than folding it into
+`selection.ts`. The two are split by view, but they are also split by kind:
+`selection.ts` is 86 lines of pure geometry over `DistanceWindow`, while
+`mapSelection.ts` is 325 lines of imperative MapLibre wiring — a `SelectableMap`
+interface and a `routeSelection()` that returns a teardown. Folding them would
+give the pure half a MapLibre dependency it does not have today.
+
+Correct the `highlight.ts` doc comment. Keep `DistanceWindow` spelled in full
+and never abbreviate it to `window`.
 
 ## 8. Four names for moving time
 
