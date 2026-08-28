@@ -181,6 +181,23 @@ export function PositionTooltip({
 
   const distances = useMemo(() => cumulativeMetres(coordinates), [coordinates]);
 
+  const point = map ? map.project([position.longitude, position.latitude]) : null;
+  const pane = map?.getContainer();
+  /*
+   * Above the dot wherever there is room for it, and below where there is not.
+   * The box is never placed diagonally: a tooltip's arrow sits on the edge that
+   * faces what it points at, and a corner has no such edge.
+   *
+   * Worked out before the effects rather than beside the rest of the placement,
+   * because the observer below has to know when it changes.
+   */
+  const above = point === null || point.y - GAP_PIXELS - size.height >= EDGE_PIXELS;
+
+  // Re-attached whenever the box changes which side it opens from, rather than
+  // only once: the marker below is keyed on that and rebuilds its whole subtree
+  // when it flips, which would otherwise leave this observing a box that has
+  // just left the document — measuring nothing, and never released.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `above` is read nowhere in the body; it is the remount signal, not a value the effect needs.
   useEffect(() => {
     const element = boxRef.current;
     if (!element || typeof ResizeObserver === "undefined") {
@@ -192,7 +209,7 @@ export function PositionTooltip({
     observer.observe(element);
 
     return () => observer.disconnect();
-  }, []);
+  }, [above]);
 
   useEffect(() => {
     if (!map) {
@@ -208,19 +225,9 @@ export function PositionTooltip({
     };
   }, [map]);
 
-  if (!map) {
+  if (!map || point === null || !pane) {
     return null;
   }
-
-  const point = map.project([position.longitude, position.latitude]);
-  const pane = map.getContainer();
-
-  /*
-   * Above the dot wherever there is room for it, and below where there is not.
-   * The box is never placed diagonally: a tooltip's arrow sits on the edge that
-   * faces what it points at, and a corner has no such edge.
-   */
-  const above = point.y - GAP_PIXELS - size.height >= EDGE_PIXELS;
 
   /*
    * The box is centred on the dot until that would hang it over the edge of the

@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useQueryClient } from "@tanstack/react-query";
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import { Marker } from "react-map-gl/maplibre";
 import { weatherQuery } from "../../api/queries";
 import type { BoundingBox } from "../../api/types";
@@ -49,17 +49,22 @@ const midway = sample(profile.endMetres / 2);
  */
 function SeedForecast({ fromDegrees, children }: { fromDegrees: number; children: ReactNode }) {
   const client = useQueryClient();
-  client.setQueryData(weatherQuery(weatherSamples).queryKey, {
-    points: weatherSamples.map((entry) => ({
-      time: entry.arrivalAt.toISOString(),
-      temperatureCelsius: 18,
-      apparentTemperatureCelsius: 17,
-      precipitationMillimetres: 0,
-      precipitationProbabilityPercent: 5,
-      windSpeedKmh: 18,
-      windDirectionDegrees: fromDegrees,
-      weatherCode: 1,
-    })),
+  // Seeded once on mount rather than on every render, the way `StoryProviders`
+  // seeds its own: writing to the cache while rendering is a side effect, and
+  // under StrictMode it is one that repeats.
+  useState(() => {
+    client.setQueryData(weatherQuery(weatherSamples).queryKey, {
+      points: weatherSamples.map((entry) => ({
+        time: entry.arrivalAt.toISOString(),
+        temperatureCelsius: 18,
+        apparentTemperatureCelsius: 17,
+        precipitationMillimetres: 0,
+        precipitationProbabilityPercent: 5,
+        windSpeedKmh: 18,
+        windDirectionDegrees: fromDegrees,
+        weatherCode: 1,
+      })),
+    });
   });
 
   return children;
