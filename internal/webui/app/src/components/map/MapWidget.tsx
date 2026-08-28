@@ -57,9 +57,10 @@ export const MapImplementationContext = createContext<ComponentType<MapImplement
 /**
  * The real canvas, wrapped rather than handed to the context directly: MapLibre's
  * export is a `ForwardRefExoticComponent`, not the plain `ComponentType` the context
- * expects, and forwarding its props through a typed function catches a prop this
- * component starts relying on that MapLibre no longer accepts — a plain cast to
- * `ComponentType` would not.
+ * expects. Forwarding `MapImplementationProps` through a typed function fits the
+ * default implementation to the context type without a cast — so a prop the two
+ * share but disagree on the type of is still caught at compile time, the way a
+ * plain `unknown` cast to `ComponentType` would not catch it.
  */
 function RealMap(props: MapImplementationProps) {
   return <MapLibre {...props} />;
