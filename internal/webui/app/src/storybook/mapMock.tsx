@@ -19,31 +19,34 @@ import { MapImplementationContext, type MapImplementationProps } from "../compon
 
 function FakeMap({
   children,
+  mapStyle,
   onLoad,
   onIdle,
   style,
   "aria-label": ariaLabel,
 }: MapImplementationProps) {
-  const reported = useRef(false);
+  const loaded = useRef(false);
 
+  // `onIdle`, not just `onLoad`, fires on every run: a story whose controls
+  // swap `mapStyle` needs `MapWidget` to see that style reported loaded again,
+  // and it is `onIdle` that does that (see the comment on `MapWidget`'s own).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: mapStyle is read nowhere in the body; it is the re-run signal, not a value the effect needs.
   useEffect(() => {
-    if (reported.current) {
-      return;
+    if (!loaded.current) {
+      loaded.current = true;
+      onLoad?.();
     }
-    reported.current = true;
-    onLoad?.();
     onIdle?.();
-  }, [onLoad, onIdle]);
+  }, [mapStyle, onLoad, onIdle]);
 
   return (
-    <div
-      role="img"
+    <section
       aria-label={ariaLabel ?? "Map"}
       style={style}
       className="relative h-full w-full bg-[repeating-linear-gradient(45deg,var(--muted),var(--muted)_10px,var(--border)_10px,var(--border)_20px)]"
     >
       {children}
-    </div>
+    </section>
   );
 }
 

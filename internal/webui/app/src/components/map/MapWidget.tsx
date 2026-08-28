@@ -28,7 +28,7 @@ export interface MapImplementationProps {
   onIdle?: () => void;
   style?: CSSProperties;
   "aria-label"?: string;
-  attributionControl?: boolean;
+  attributionControl?: false;
   interactiveLayerIds?: string[];
   cursor?: string;
   onClick?: (event: MapLayerMouseEvent) => void;
@@ -53,6 +53,17 @@ export interface MapImplementationProps {
 export const MapImplementationContext = createContext<ComponentType<MapImplementationProps> | null>(
   null,
 );
+
+/**
+ * The real canvas, wrapped rather than handed to the context directly: MapLibre's
+ * export is a `ForwardRefExoticComponent`, not the plain `ComponentType` the context
+ * expects, and forwarding its props through a typed function catches a prop this
+ * component starts relying on that MapLibre no longer accepts — a plain cast to
+ * `ComponentType` would not.
+ */
+function RealMap(props: MapImplementationProps) {
+  return <MapLibre {...props} />;
+}
 
 export interface MapWidgetProps {
   /** The cartography to load. The map never chooses a style for its caller. */
@@ -95,9 +106,7 @@ export function MapWidget({
   onMouseOut,
 }: MapWidgetProps) {
   const [loadedStyleUrl, setLoadedStyleUrl] = useState<string | null>(null);
-  const MapComponent =
-    useContext(MapImplementationContext) ??
-    (MapLibre as unknown as ComponentType<MapImplementationProps>);
+  const MapComponent = useContext(MapImplementationContext) ?? RealMap;
 
   return (
     <div className="route-map">

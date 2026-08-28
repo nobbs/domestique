@@ -48,6 +48,7 @@ export const route: Route = {
 };
 
 /** The box every coordinate above fits inside, for the entry-page story's geometry. */
+const [firstLon, firstLat] = coordinates[0] ?? [8, 49, 100];
 export const routeBoundingBox: BoundingBox = coordinates.reduce<BoundingBox>(
   ([minLon, minLat, maxLon, maxLat], [lon, lat]) => [
     Math.min(minLon, lon),
@@ -55,7 +56,7 @@ export const routeBoundingBox: BoundingBox = coordinates.reduce<BoundingBox>(
     Math.max(maxLon, lon),
     Math.max(maxLat, lat),
   ],
-  [8, 49, 8, 49],
+  [firstLon, firstLat, firstLon, firstLat],
 );
 
 /** `route`'s own geometry, seeded for stories that render the map that fetches it. */
