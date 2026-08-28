@@ -929,7 +929,18 @@ function Synchronisation({ settings }: { settings: Settings }) {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel render={<Button variant="standard" />}>Cancel</AlertDialogCancel>
-            <Button variant="danger" onClick={() => edit({ allowEmptySourceDeletion: true })}>
+            {/*
+             * Closes as well as edits: the dialog is controlled, and neither
+             * this nor the `AlertDialogAction` it replaced is a `Close`, so
+             * nothing else would put it away after the reader has answered.
+             */}
+            <Button
+              variant="danger"
+              onClick={() => {
+                edit({ allowEmptySourceDeletion: true });
+                setConfirmingDeletion(false);
+              }}
+            >
               Allow it
             </Button>
           </AlertDialogFooter>

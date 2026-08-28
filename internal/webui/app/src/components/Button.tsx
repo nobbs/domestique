@@ -5,10 +5,11 @@
  * shape, the focus treatment and the icon handling, and this file decides
  * which of its many variants and sizes this application actually uses.
  *
- * This is the only file allowed to import `ui/button`, and `biome.json`
- * enforces it — a single vocabulary is the whole point, and the last time there
- * were two, half the application was 28 pixels tall and the other half 32. It
- * is also the only primitive treated this way. Every other one — `field`,
+ * Outside `components/ui` this is the only file allowed to import `ui/button`,
+ * and `biome.json` enforces it — the vendored primitives are exempt because
+ * some of them are built out of it. A single vocabulary is the whole point, and
+ * the last time there were two, half the application was 28 pixels tall and the
+ * other half 32. It is also the only primitive treated this way. Every other one — `field`,
  * `popover`, `card`, `alert` — is imported wherever it is used, because none of
  * them was renamed and a wrapper around an unrenamed primitive is just a second
  * name for it.
