@@ -32,8 +32,8 @@ const assertionHeader = "Cf-Access-Jwt-Assertion"
 const maximumRequestBytes = 1 << 10
 
 // maximumSettingsBytes bounds the one body that is larger by design. The
-// settings carry a list of basemaps, each with two URLs, so the cap every other
-// route is right to have would refuse a legitimate edit.
+// basemap list carries two URLs per entry, so the cap every other route is
+// right to have would refuse a legitimate edit.
 const maximumSettingsBytes = 16 << 10
 
 const (
@@ -255,12 +255,16 @@ type RunState interface {
 }
 
 // SettingsState is the settings an operator edits while the service runs, held
-// live and replaced whole. It is satisfied by *runtimeconfig.Current, which
-// validates before it persists, so what is read back here has passed the same
-// rules startup applies.
+// live and replaced a section at a time. It is satisfied by
+// *runtimeconfig.Current, which validates before it persists, so what is read
+// back here has passed the same rules startup applies.
 type SettingsState interface {
 	Values() runtimeconfig.Values
-	Set(ctx context.Context, values runtimeconfig.Values) error
+
+	// Update replaces the part of the settings one edit names. The change is
+	// handed the settings as they are at the moment of the write, so two
+	// sections saved at once do not each undo the other.
+	Update(ctx context.Context, change func(runtimeconfig.Values) runtimeconfig.Values) error
 
 	// SecretIsSet is all this handler is ever told about a credential. The
 	// value itself is never read here, so it cannot reach a response by
@@ -507,7 +511,14 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("GET /v1/routes/{routeId}/stages/{stage}/geometry", h.RedirectLegacyGeometry)
 	h.mux.HandleFunc("POST /v1/routes/{routeId}/stages/{stage}/reprocess", h.RedirectLegacyReprocess)
 	h.mux.HandleFunc("GET /v1/settings", h.GetSettings)
-	h.mux.HandleFunc("PUT /v1/settings", h.SetSettings)
+	h.mux.HandleFunc("PUT /v1/settings/wahoo", h.SetWahooApplication)
+	h.mux.HandleFunc("PUT /v1/settings/targets", h.SetTargets)
+	h.mux.HandleFunc("PUT /v1/settings/sources/{provider}", h.SetSource)
+	h.mux.HandleFunc("PUT /v1/settings/notifications", h.SetNotifications)
+	h.mux.HandleFunc("PUT /v1/settings/basemaps", h.SetBasemaps)
+	h.mux.HandleFunc("PUT /v1/settings/surface", h.SetSurface)
+	h.mux.HandleFunc("PUT /v1/settings/ridemodel", h.SetRideModel)
+	h.mux.HandleFunc("PUT /v1/settings/sync", h.SetSync)
 	h.mux.HandleFunc("GET /v1/webui/config", h.GetWebUIConfig)
 	h.mux.HandleFunc("GET /v1/weather", h.GetWeather)
 	h.mux.HandleFunc("GET /oauth/wahoo/start/{target}", h.StartOAuth)
@@ -568,7 +579,7 @@ func (h *Handler) bounded(next http.Handler) http.Handler {
 
 // requestLimit is how large a body one path may carry.
 func requestLimit(path string) int64 {
-	if path == settingsPath {
+	if path == basemapsPath {
 		return maximumSettingsBytes
 	}
 

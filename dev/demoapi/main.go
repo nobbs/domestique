@@ -551,7 +551,7 @@ func seedSettings(ctx context.Context, current *runtimeconfig.Current, origin st
 		},
 		{Name: "Fiord", StyleURL: "https://tiles.openfreemap.org/styles/fiord"},
 	}
-	if err := current.Set(ctx, values); err != nil {
+	if err := current.Update(ctx, func(runtimeconfig.Values) runtimeconfig.Values { return values }); err != nil {
 		return fmt.Errorf("seeding the demo settings: %w", err)
 	}
 

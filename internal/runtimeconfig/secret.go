@@ -1,7 +1,6 @@
 package runtimeconfig
 
 import (
-	"fmt"
 	"slices"
 
 	"github.com/nobbs/domestique/internal/route"
@@ -41,17 +40,6 @@ func SecretNames() []SecretName {
 		SecretPushoverApplicationToken,
 		SecretPushoverUserKey,
 	}
-}
-
-// ParseSecretName reads a submitted name, refusing one no part of the service
-// reads: an unknown name is a page asking for a credential to be stored where
-// nothing would ever look for it.
-func ParseSecretName(name string) (SecretName, error) {
-	if slices.Contains(SecretNames(), SecretName(name)) {
-		return SecretName(name), nil
-	}
-
-	return "", fmt.Errorf("unknown secret %q", name)
 }
 
 // SourceSecretNames returns the account credentials one provider's library is

@@ -83,7 +83,7 @@ export function SettingsPage({ themeChoice, onThemeChoiceChange }: SettingsPageP
         </Card>
         {/*
          * Below the browser's own preferences, and after them on the way down
-         * the page: what this card changes is the service itself, and it is
+         * the page: what these cards change is the service itself, and each is
          * read by whoever opens this page next rather than by this browser
          * alone.
          */}

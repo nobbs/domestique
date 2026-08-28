@@ -15,9 +15,11 @@ package runtimeconfig
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"slices"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -54,6 +56,13 @@ type Wahoo struct {
 	// recorded run carries, so renaming one abandons that slot's state rather
 	// than moving it.
 	Targets []string
+}
+
+// SourceProviders lists the libraries a run can read, in the order it reads them
+// and the order a settings page offers them. A library turned on takes its place
+// in this order rather than the order it happened to be turned on in.
+func SourceProviders() []route.Provider {
+	return []route.Provider{route.ProviderVeloPlanner, route.ProviderKomoot}
 }
 
 // Source is one library a run reads.
@@ -194,11 +203,20 @@ type Store interface {
 // notification, so an edit lands between two units of work rather than inside
 // one.
 type Current struct {
-	values     atomic.Pointer[Values]
-	secrets    atomic.Pointer[map[SecretName]Secret]
-	store      Store
+	values  atomic.Pointer[Values]
+	secrets atomic.Pointer[map[SecretName]Secret]
+	store   Store
+	// writing serialises the edits that read what is stored before they replace
+	// it, which every edit to one section does, to its settings and to its
+	// credentials alike.
+	writing    sync.Mutex
 	generation atomic.Uint64
 }
+
+// ErrStore reports that the store refused a write. It separates a service that
+// cannot answer right now from a value the rules will never accept, which are
+// two different answers to whoever submitted the edit.
+var ErrStore = errors.New("the settings could not be stored")
 
 // Load reads the stored settings and validates them before anything runs on
 // them. A database edited by hand into something the write path would have
@@ -256,13 +274,20 @@ func (c *Current) SetSecrets(ctx context.Context, secrets map[SecretName]Secret)
 	if len(secrets) == 0 {
 		return nil
 	}
+	// The stored credentials are read, added to and written back, which is the
+	// same read-modify-write Update holds this lock for: two sections saved at
+	// once each carry their own credentials, and without it the later write puts
+	// back a map that never had the earlier one in it.
+	c.writing.Lock()
+	defer c.writing.Unlock()
+
 	for name := range secrets {
 		if !slices.Contains(SecretNames(), name) {
 			return fmt.Errorf("unknown secret %q", name)
 		}
 	}
 	if err := c.store.SetRuntimeSecrets(ctx, secrets); err != nil {
-		return fmt.Errorf("storing runtime secrets: %w", err)
+		return fmt.Errorf("%w: %w", ErrStore, err)
 	}
 
 	stored := *c.secrets.Load()
@@ -287,18 +312,25 @@ func (c *Current) Values() Values {
 	return c.values.Load().clone()
 }
 
-// Set validates, persists, and then publishes a complete new set of settings.
-// The order is what makes the snapshot and the database agree: a set of values
-// that fails validation or fails to be written never becomes live.
+// Update validates, persists, and then publishes the settings the change
+// returns. The order is what makes the snapshot and the database agree: a set
+// of values that fails validation or fails to be written never becomes live.
 //
-//nolint:gocritic // value param: a pointer would let the caller mutate what became live after validation.
-func (c *Current) Set(ctx context.Context, values Values) error {
-	validated, err := values.Validate()
+// The change is handed the settings as they are right now rather than as its
+// caller last read them, and the read, the change and the write are one
+// critical section. Two sections of one page saved at the same moment would
+// otherwise each build a whole object from the settings as they were before the
+// other's edit, and the later write would put the earlier one back.
+func (c *Current) Update(ctx context.Context, change func(Values) Values) error {
+	c.writing.Lock()
+	defer c.writing.Unlock()
+
+	validated, err := change(c.values.Load().clone()).Validate()
 	if err != nil {
 		return err
 	}
 	if err := c.store.SetRuntimeSettings(ctx, validated); err != nil {
-		return fmt.Errorf("storing runtime settings: %w", err)
+		return fmt.Errorf("%w: %w", ErrStore, err)
 	}
 	c.values.Store(&validated)
 	c.generation.Add(1)

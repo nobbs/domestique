@@ -69,7 +69,42 @@ export const OffersToReplaceACredentialItWasNeverTold: Story = {
   },
 };
 
-/** Only the credentials typed into are sent; the rest are left as they are. */
+/**
+ * A section is saved on its own, to the endpoint that owns it, carrying the
+ * whole of that section and nothing from any other.
+ */
+export const SavesOneSectionOnItsOwn: Story = {
+  decorators: [
+    (Story) => (
+      <StubbedFetch respond={respond}>
+        <Story />
+      </StubbedFetch>
+    ),
+  ],
+  play: async ({ canvas }) => {
+    written.length = 0;
+    const hours = canvas.getByLabelText("Call the library stale after (hours)");
+    await userEvent.clear(hours);
+    await userEvent.type(hours, "30");
+
+    await userEvent.click(canvas.getByRole("button", { name: "Save Synchronisation" }));
+
+    await waitFor(() => expect(written).toHaveLength(1));
+    await expect(written[0]?.url).toContain("/v1/settings/sync");
+    // Hours on the page, seconds on the wire.
+    await expect(written[0]?.body).toEqual({
+      allowEmptySourceDeletion: false,
+      staleAfterSeconds: 30 * 3600,
+      initialDelaySeconds: 60,
+    });
+    await expect(await canvas.findByText(/^Saved\./)).toBeVisible();
+  },
+};
+
+/**
+ * Only the credential that was typed into is sent, and it goes to the section
+ * that owns it rather than to a page-wide list of credentials.
+ */
 export const SendsOnlyTheCredentialThatWasTyped: Story = {
   decorators: [
     (Story) => (
@@ -79,57 +114,30 @@ export const SendsOnlyTheCredentialThatWasTyped: Story = {
     ),
   ],
   play: async ({ canvas }) => {
-    sent.length = 0;
-    await userEvent.type(canvas.getByLabelText("Client secret"), "replacement");
+    written.length = 0;
+    await userEvent.type(canvas.getByLabelText("Komoot password"), "opensesame");
 
-    await userEvent.click(canvas.getByRole("button", { name: "Save settings" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Save Komoot" }));
 
-    await waitFor(() => expect(sent).toHaveLength(1));
-    const body = JSON.parse(String(sent[0]?.body));
-    await expect(body.secrets).toEqual({ "wahoo.client_secret": "replacement" });
+    await waitFor(() => expect(written).toHaveLength(1));
+    await expect(written[0]?.url).toContain("/v1/settings/sources/komoot");
+    await expect(written[0]?.body.password).toBe("opensesame");
+    await expect(written[0]?.body.email).toBeUndefined();
   },
 };
 
-/** Nothing is changed until it is saved, and what is saved is the whole object. */
-export const SavesEverySettingAtOnce: Story = {
-  decorators: [
-    (Story) => (
-      <StubbedFetch respond={respond}>
-        <Story />
-      </StubbedFetch>
-    ),
-  ],
-  play: async ({ canvas }) => {
-    sent.length = 0;
-    const hours = canvas.getByLabelText("Call the library stale after (hours)");
-    await userEvent.clear(hours);
-    await userEvent.type(hours, "30");
+interface Written {
+  url: string;
+  // biome-ignore lint/suspicious/noExplicitAny: the body under assertion is one section of a settings document
+  body: any;
+}
 
-    await userEvent.click(canvas.getByRole("button", { name: "Save settings" }));
-
-    await waitFor(() => expect(sent).toHaveLength(1));
-    const body = JSON.parse(String(sent[0]?.body));
-    await expect(Object.keys(body).sort()).toEqual([
-      "basemaps",
-      "notifications",
-      "rideModel",
-      "sources",
-      "surface",
-      "sync",
-      "wahoo",
-    ]);
-    // Hours on the page, seconds on the wire.
-    await expect(body.sync.staleAfterSeconds).toBe(30 * 3600);
-    await expect(await canvas.findByText(/^Saved\./)).toBeVisible();
-  },
-};
-
-const sent: RequestInit[] = [];
+const written: Written[] = [];
 
 /** Records the write and answers both it and the read that follows it. */
-const respond: typeof fetch = async (_input, init) => {
+const respond: typeof fetch = async (input, init) => {
   if (init?.method === "PUT") {
-    sent.push(init);
+    written.push({ url: String(input), body: JSON.parse(String(init.body)) });
   }
 
   return new Response(JSON.stringify(settings), {

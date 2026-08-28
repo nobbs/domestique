@@ -381,10 +381,10 @@ The read-only JSON surface is deliberately small:
   the source route is private to that account, and following it as anyone else
   reaches the provider's own refusal, not the route.
 - `GET /v1/settings` returns every setting an operator may change while the
-  service is running, in the same shape the write below takes back: the
-  synchronisation settings, the notification settings, the basemap list, the
-  surface settings, the Wahoo application and its target slots, the source
-  libraries, and the ride model. It is the whole object every time, because a
+  service is running: the synchronisation settings, the notification settings,
+  the basemap list, the surface settings, the Wahoo application and its target
+  slots, the source libraries, and the ride model. It is one document and the
+  whole of it every time, whichever section is about to be edited, because a
   form showing only part of what it is about to replace would silently revert
   the rest.
 
@@ -438,21 +438,42 @@ it.
   Conflict` when a synchronization or another such pass is already running. It
   never reads VeloPlanner or writes a Wahoo target, so it carries none of the
   other triggers' provider risk.
-- `PUT /v1/settings` replaces every runtime setting at once and answers with
-  what it stored. A body naming only some of them is refused for the reason the
-  schedule switch is: the rest would be left at whatever the caller assumed.
+- The settings are written one section at a time, over one endpoint per
+  section: `PUT /v1/settings/wahoo` for the registered application,
+  `/v1/settings/targets` for the slots it writes to,
+  `/v1/settings/sources/{provider}` for one library and the account it is read
+  with, and `/v1/settings/notifications`, `/v1/settings/basemaps`,
+  `/v1/settings/surface`, `/v1/settings/ridemodel` and `/v1/settings/sync` for
+  the rest. The `{provider}` a source path names is one of the libraries the
+  service reads; any other is refused.
+
+  Each replaces the whole of the section it names. A body naming only some of
+  that section's fields is refused for the reason the schedule switch is: the
+  rest would be left at whatever the caller assumed. Sections the request does
+  not name are not merged and not touched — a section is edited by the endpoint
+  that owns it or not at all, which is what lets one page save each section on
+  its own. The edit is applied to the settings as they are at the moment of the
+  write, so two sections saved at once do not each undo the other.
+
   A value the service would have refused at startup is refused here as `400`,
   in a message naming the setting, and what it stores is in force for the next
-  request and the next run without a restart. It changes what the service does
-  next; it changes nothing it has stored about a route, and it cannot reach a
+  request and the next run without a restart. Each changes what the service does
+  next; none changes anything it has stored about a route, and none can reach a
   listener address, the browser origin, or the identity gate, because none of
   those is a runtime setting.
 
-  Credentials are the one part of the body that is not whole-object: it carries
-  only the ones actually typed into the form, and one left out keeps its stored
-  value rather than being cleared. A credential naming something no part of the
-  service reads is refused as `400` naming it. The response is the same document
-  `GET` returns, so nothing that was submitted as a credential appears in it.
+  Credentials travel with the section that owns them — the client secret with
+  the application, an account with its library, the Pushover pair with the
+  notifications — and are the one part of a body that is not whole-object: a
+  request carries only the ones actually typed into the form, one left out keeps
+  its stored value, and one sent empty removes it. A credential offered to a
+  section that does not own it is refused as `400`. A section refused for any of
+  these reasons stores neither its values nor the credentials it carried.
+
+  Every one of these answers with the same document `GET` returns — every
+  setting now in force, not only the section the request replaced, so one answer
+  refills the whole page — and nothing that was submitted as a credential
+  appears in it.
 
 The browser UI is served from the same origin and the same authenticated
 listener: an application entry document and immutable hashed static assets.

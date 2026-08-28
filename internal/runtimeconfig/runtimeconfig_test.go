@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"maps"
+	"sync"
 	"testing"
 	"time"
 
@@ -24,6 +25,7 @@ type stubStore struct {
 	writeErr error
 	secrets  map[SecretName]Secret
 	values   Values
+	writing  sync.Mutex
 	writes   int
 }
 
@@ -58,6 +60,11 @@ func (s *stubStore) SetRuntimeSecrets(_ context.Context, secrets map[SecretName]
 	if s.writeErr != nil {
 		return s.writeErr
 	}
+	// The real store is a database and serialises its own writes; this one is a
+	// map, and the test that saves several sections at once writes to it from
+	// every goroutine at the same moment.
+	s.writing.Lock()
+	defer s.writing.Unlock()
 	s.writes++
 	if s.secrets == nil {
 		s.secrets = make(map[SecretName]Secret, len(secrets))
@@ -65,6 +72,14 @@ func (s *stubStore) SetRuntimeSecrets(_ context.Context, secrets map[SecretName]
 	maps.Copy(s.secrets, secrets)
 
 	return nil
+}
+
+// replaceWith is the whole-object edit: every test here replaces all of the
+// settings, where the service replaces one section at a time.
+//
+//nolint:gocritic // value param: mirrors Update's own copy-in.
+func replaceWith(values Values) func(Values) Values {
+	return func(Values) Values { return values }
 }
 
 func validValues() Values {
@@ -123,7 +138,7 @@ func TestLoadNormalisesWhatItPublishes(t *testing.T) {
 	assert.Equal(t, []string{"europe/germany"}, current.Values().Surface.Regions, "the repeat is dropped")
 }
 
-func TestSetPersistsThenPublishes(t *testing.T) {
+func TestUpdatePersistsThenPublishes(t *testing.T) {
 	store := &stubStore{values: validValues()}
 	current, err := Load(t.Context(), store)
 	require.NoError(t, err)
@@ -131,7 +146,7 @@ func TestSetPersistsThenPublishes(t *testing.T) {
 	next := validValues()
 	next.Sync.AllowEmptySourceDeletion = true
 	next.Notifications.Enabled = false
-	require.NoError(t, current.Set(t.Context(), next))
+	require.NoError(t, current.Update(t.Context(), replaceWith(next)))
 
 	assert.Equal(t, 1, store.writes, "the edit is written once")
 	assert.True(t, store.values.Sync.AllowEmptySourceDeletion, "the store holds the new value")
@@ -140,14 +155,14 @@ func TestSetPersistsThenPublishes(t *testing.T) {
 }
 
 // Validation runs before the write, so a refused edit changes neither half.
-func TestSetRefusesInvalidValuesWithoutWriting(t *testing.T) {
+func TestUpdateRefusesInvalidValuesWithoutWriting(t *testing.T) {
 	store := &stubStore{values: validValues()}
 	current, err := Load(t.Context(), store)
 	require.NoError(t, err)
 
 	invalid := validValues()
 	invalid.Basemaps = nil
-	require.Error(t, current.Set(t.Context(), invalid))
+	require.Error(t, current.Update(t.Context(), replaceWith(invalid)))
 
 	assert.Zero(t, store.writes, "a refused edit is not written")
 	assert.Len(t, current.Values().Basemaps, 1, "the live settings are untouched")
@@ -162,9 +177,8 @@ func TestSetKeepsTheLiveValuesWhenTheStoreFails(t *testing.T) {
 
 	next := validValues()
 	next.Sync.StaleAfter = time.Hour
-	err = current.Set(t.Context(), next)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "storing runtime settings")
+	err = current.Update(t.Context(), replaceWith(next))
+	require.ErrorIs(t, err, ErrStore)
 	assert.Equal(t, 24*time.Hour, current.Values().Sync.StaleAfter, "the live settings are untouched")
 }
 
@@ -460,6 +474,38 @@ func TestSetSecretsWritesNothingWhenNoCredentialWasSubmitted(t *testing.T) {
 	assert.Equal(t, generation, current.Generation(), "generation")
 }
 
+// Each section of the settings page saves its own credentials, so several
+// credentials can be on their way at the same moment. Every one of them has to
+// survive: a save that reads the stored credentials, adds its own and writes
+// them back must not put back a copy the save beside it is missing from.
+func TestSetSecretsKeepsEveryCredentialSavedAtOnce(t *testing.T) {
+	names := SecretNames()
+	// Losing one is a matter of how two saves interleave, so the same race is run
+	// several times over rather than once.
+	for round := range 8 {
+		current, err := Load(t.Context(), &stubStore{values: validValues()})
+		require.NoError(t, err)
+
+		// The saves are held until every goroutine is ready so that they read the
+		// stored credentials at the same moment, which is when one can be lost.
+		start := make(chan struct{})
+		var saving sync.WaitGroup
+		for _, name := range names {
+			saving.Go(func() {
+				<-start
+				assert.NoError(t, current.SetSecrets(t.Context(),
+					map[SecretName]Secret{name: NewSecret([]byte("opensesame"))}))
+			})
+		}
+		close(start)
+		saving.Wait()
+
+		for _, name := range names {
+			require.True(t, current.SecretIsSet(name), "%s, round %d", name, round)
+		}
+	}
+}
+
 func TestSetSecretsRefusesACredentialNothingReads(t *testing.T) {
 	store := &stubStore{values: validValues()}
 	current, err := Load(t.Context(), store)
@@ -469,15 +515,6 @@ func TestSetSecretsRefusesACredentialNothingReads(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "strava.email")
 	assert.Zero(t, store.writes, "a refused credential is not written")
-}
-
-func TestParseSecretName(t *testing.T) {
-	name, err := ParseSecretName("wahoo.client_secret")
-	require.NoError(t, err)
-	assert.Equal(t, SecretWahooClientSecret, name)
-
-	_, err = ParseSecretName("wahoo.client_id")
-	require.Error(t, err, "a setting is not a credential, however much it looks like one")
 }
 
 // The type exists to keep a credential out of anything observable, so the two
