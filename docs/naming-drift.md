@@ -223,8 +223,12 @@ and the comments mix the two: `internal/sync/reporter.go:61` reads "phase names
 the half being run right now", and `:277` reads "The phase is a parameter so
 each call".
 
-**Proposed:** *phase* in both, and make the enum consistently singular or
-consistently plural.
+**Proposed:** *phase* in both the comments and the identifiers. The enum keeps
+`"source" | "targets"`: the asymmetry reflects the domain — one configured
+source section, up to two target slots — and `SyncPhases` holds exactly one
+`SyncPhaseRun` for each, so nothing reads the plural as a count. Making it
+grammatically consistent would break `api/openapi.yaml`, `SYNC_PHASES` and Go's
+`PhaseSource`/`PhaseTargets` for a cosmetic gain.
 
 ## 12. British identifiers over American values
 
@@ -281,9 +285,19 @@ considered.
 - **`components/route/` and `features/routes/`** both hold route UI with no
   stated rule for which belongs where — `RouteProfile` is in the feature
   directory, `ElevationProfile` in the component one. Meanwhile `LibraryRoutes`,
-  which is library-specific, lives in `components/map/`.
+  which is library-specific, lives in `components/map/`. The rule to state:
+  `components/` is presentational and reusable across pages, `features/` is
+  page-bound composition and the data access feeding it. `LibraryRoutes` moves
+  out of `components/map/` under that rule, and `RouteProfile` and
+  `ElevationProfile` are each placed by the test rather than by where they
+  happened to land.
 - **`components.json` declares an alias `"hooks": "@/hooks"`** for a directory
-  that does not exist; the ten hooks live in `lib/`.
+  that does not exist. Ten `lib/` modules export a `use*` hook, but only three
+  are hook-only files (`useEscapeKey`, `useInView`, `useElementWidth`); the
+  other seven — `basemap`, `mediaQuery`, `overlayInsets`, `seenStages`,
+  `startTime`, `units` and `theme` — export a hook beside non-hook helpers.
+  Delete the alias rather than create the directory: honouring a shadcn default
+  nothing uses is not worth splitting seven modules in half.
 - **`lib/useInView.ts`'s doc comment** describes "the library grid". There is no
   grid; the library is a column of `ResultRow`s.
 - **`PageShell.stories.tsx` and `RouteLibrary.stories.tsx`** have no
@@ -291,6 +305,7 @@ considered.
   from `Layout.tsx`, and `RouteLibrary` is a name no component has.
 - **Storybook titles are three-way inconsistent** for one feature:
   `Features/Routes/*`, `Features/Route library`, `Features/Route Library/Map`.
+  Item 13 settles the word, so they become `Features/Library/*`.
 - **`components/Button.tsx` renames variants the primitive already names.**
   Of the six — `primary`, `standard`, `panel`, `ghost`, `danger`, `warning` —
   three are pure respellings: `primary`, `standard` and `danger` map straight
@@ -302,9 +317,9 @@ considered.
   the size inferred from the children, the two extra variants and the link forms
   — rather than a naming layer as well. That is the stronger boundary, because
   "do not bypass the icon slot" is an invariant while "we spell it `standard`"
-  is not.
-  Costs roughly 28 call sites, which is why it belongs here rather than in the
-  refactor that drew the layer line.
+  is not. Align them: this is a proposal, not a note. The roughly 28 call sites
+  are why it belongs here rather than in the refactor that drew the layer line,
+  but unlike item 14 the cost buys a boundary that holds afterwards.
 - **No page sets a document title.** `<title>` is the static string
   `domestique`, so all four pages read identically in history and tabs.
 
