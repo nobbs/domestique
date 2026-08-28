@@ -94,20 +94,6 @@ export const Danger: Story = {
 /** The waiting tone, for an action held up by something the reader has to settle. */
 export const Warning: Story = {
   args: { variant: "warning", icon: <IconAlertTriangle stroke={2} />, children: "Reconnect first" },
-  parameters: {
-    a11y: {
-      config: {
-        // `--hold` at 10% over the page background renders text at a 4.33:1
-        // contrast ratio, short of the 4.5:1 this rule wants — pre-existing,
-        // not something this migration to the Storybook suite introduced,
-        // and narrow enough (one shared colour token, several call sites) to
-        // want its own fix rather than a silent tweak here. Scoped to this
-        // one story rather than turned off suite-wide, so every other
-        // control's contrast still gates.
-        rules: [{ id: "color-contrast", enabled: false }],
-      },
-    },
-  },
 };
 
 export const Disabled: Story = {

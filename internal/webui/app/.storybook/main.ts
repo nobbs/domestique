@@ -19,7 +19,6 @@ const config: StorybookConfig = {
     // and the sweep are unaffected either way, which is what keeps this
     // addition free for anyone who never signs in.
     "@chromatic-com/storybook",
-    "@storybook/addon-a11y",
     "@storybook/addon-docs",
     "@storybook/addon-mcp",
     "@storybook/addon-vitest",
