@@ -106,8 +106,11 @@ func TestSetSettingsRejectsAnythingButOneWholeObject(t *testing.T) {
 	bodies := map[string]string{
 		"a missing section": strings.Replace(settingsBody, `"sync"`, `"unread"`, 1),
 		"an unknown field":  partial,
-		"not json":          "not json",
-		"two objects":       settingsBody + settingsBody,
+		"a missing field within a section": strings.Replace(
+			settingsBody, `"regions": ["europe/germany"], `, "", 1,
+		),
+		"not json":    "not json",
+		"two objects": settingsBody + settingsBody,
 	}
 	for name, body := range bodies {
 		t.Run(name, func(t *testing.T) {
