@@ -279,7 +279,8 @@ deletion gate exists to prevent.
 
 ### Wahoo
 
-`wahoo.api_base_url` and `wahoo.oauth_base_url` are absolute HTTPS URLs, and
+`wahoo.api_base_url` and `wahoo.oauth_base_url` are absolute HTTPS origins
+without a path, matching what the adapter itself requires, and
 `wahoo.client_id` is non-secret. Together with the client secret they are the
 OAuth application, and the service builds no Wahoo client at all until all four
 are set: an unconfigured application makes runs report they are not ready rather

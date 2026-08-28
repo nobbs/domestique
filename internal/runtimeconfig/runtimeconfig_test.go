@@ -311,6 +311,13 @@ func TestValidateWahoo(t *testing.T) {
 	}{
 		{name: "a plaintext API address", mutate: func(w *Wahoo) { w.APIBaseURL = "http://api.wahooligan.com" }, wantErr: "wahoo.api_base_url"},
 		{name: "an OAuth address that is not a URL", mutate: func(w *Wahoo) { w.OAuthBaseURL = "wahooligan.com" }, wantErr: "wahoo.oauth_base_url"},
+		// The client parses both as origins, so a path is refused here, where the
+		// message can name the setting, rather than when the client is built.
+		{
+			name:    "an API address carrying a path",
+			mutate:  func(w *Wahoo) { w.APIBaseURL = "https://api.wahooligan.com/v1" },
+			wantErr: "wahoo.api_base_url must be an origin",
+		},
 		{name: "a slot with no name", mutate: func(w *Wahoo) { w.Targets = []string{" "} }, wantErr: "is required"},
 		{name: "the same slot twice", mutate: func(w *Wahoo) { w.Targets = []string{"rider-a", "rider-a"} }, wantErr: "duplicated"},
 		{

@@ -83,12 +83,12 @@ func ValidateWahoo(wahoo Wahoo) (Wahoo, error) {
 	wahoo.ClientID = strings.TrimSpace(wahoo.ClientID)
 
 	if wahoo.APIBaseURL != "" {
-		if err := ValidateHTTPSURL("wahoo.api_base_url", wahoo.APIBaseURL); err != nil {
+		if err := ValidateHTTPSOrigin("wahoo.api_base_url", wahoo.APIBaseURL); err != nil {
 			return Wahoo{}, err
 		}
 	}
 	if wahoo.OAuthBaseURL != "" {
-		if err := ValidateHTTPSURL("wahoo.oauth_base_url", wahoo.OAuthBaseURL); err != nil {
+		if err := ValidateHTTPSOrigin("wahoo.oauth_base_url", wahoo.OAuthBaseURL); err != nil {
 			return Wahoo{}, err
 		}
 	}
