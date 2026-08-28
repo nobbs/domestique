@@ -1,15 +1,15 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { liveMap, StoryProviders } from "../../storybook/fixtures";
-import { RoutesPage } from "./RoutesPage";
+import { AtlasPage } from "./AtlasPage";
 
-// `RoutesPage` renders the real `LibraryMap` — the same route geometry drawn via
+// `AtlasPage` renders the real `LibraryMap` — the same route geometry drawn via
 // live `Source`/`Layer` that the other "content" stories (`LibraryMap`,
 // `RouteOverlay`, ...) already keep real, plus a `ScaleControl` that assumes a
 // live map context and crashes without one. So this stays live too, same as
 // those, rather than joining the chrome stories' deterministic placeholder.
 const meta = {
-  title: "Features/Route library/Entry page",
-  component: RoutesPage,
+  title: "Features/Atlas/Entry Page",
+  component: AtlasPage,
   tags: ["autodocs"],
   parameters: liveMap,
   args: { themeChoice: "system" },
@@ -22,7 +22,7 @@ const meta = {
       </StoryProviders>
     ),
   ],
-} satisfies Meta<typeof RoutesPage>;
+} satisfies Meta<typeof AtlasPage>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;

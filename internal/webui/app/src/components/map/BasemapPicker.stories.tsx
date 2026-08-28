@@ -13,7 +13,7 @@
  * WebGL canvas neither jsdom nor this browser can meaningfully render; that
  * isolation is the point, and it stays in Testing Library. So does anything
  * whose real assertions are geometry or gesture math with dozens of cases
- * (`ElevationProfile`, `RouteKey`, `RouteOverlay`) — a real browser proves
+ * (`ElevationProfile`, `RouteLegend`, `RouteOverlay`) — a real browser proves
  * nothing more about arithmetic than jsdom already does, at several times the
  * cost per case.
  */

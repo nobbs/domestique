@@ -44,8 +44,8 @@ import {
   buildProfile,
   buildWindowedProfile,
   coordinateRange,
-  elapsedSecondsForWindow,
   gradientShares,
+  movingSecondsForWindow,
   rangeBounds,
 } from "../../lib/profile";
 import { useSeenStages } from "../../lib/seenStages";
@@ -148,7 +148,7 @@ function convergedPhrase(targetCount: number): string {
   return targetCount === 2 ? "on both accounts" : "on every account";
 }
 
-export interface RoutesPageProps {
+export interface AtlasPageProps {
   /** The reader's colour-scheme pick. Held by `App` — see there for why. */
   themeChoice: ThemeChoice;
 }
@@ -169,7 +169,7 @@ function loadFailure(what: string, error: unknown) {
   );
 }
 
-export function RoutesPage({ themeChoice }: RoutesPageProps) {
+export function AtlasPage({ themeChoice }: AtlasPageProps) {
   const routes = useQuery(routesQuery());
   const config = useQuery(webUIConfigQuery());
   const status = useQuery(statusQuery());
@@ -197,7 +197,7 @@ export function RoutesPage({ themeChoice }: RoutesPageProps) {
   const [query, setQuery] = useState("");
   const [filters, setFilters] = useState<LibraryFilters>(EMPTY_FILTERS);
   const [filtersExpanded, setFiltersExpanded] = useState(false);
-  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [pickedKey, setPickedKey] = useState<string | null>(null);
 
   /*
    * The open route lives in the address rather than in state, so one is still a
@@ -341,7 +341,7 @@ export function RoutesPage({ themeChoice }: RoutesPageProps) {
   // forecast has to reach the arrival, not just the departure — and it is what
   // tells the page to explain an absent strip rather than draw nothing.
   const cumulativeSeconds = openGeometry.data?.cumulativeSeconds;
-  const rideSeconds = cumulativeSeconds?.[cumulativeSeconds.length - 1];
+  const movingSeconds = cumulativeSeconds?.[cumulativeSeconds.length - 1];
   // Rebuilt from the original geometry rather than from the last window, so
   // zooming inside a zoom compounds no rounding error and needs no stack.
   const windowed = useMemo(
@@ -356,7 +356,7 @@ export function RoutesPage({ themeChoice }: RoutesPageProps) {
   // whole-stage figure — clearing the selection, or a stage nothing has
   // predicted, both fall back the same way.
   const selectionMovingSeconds = useMemo(
-    () => elapsedSecondsForWindow(openCoordinates, cumulativeSeconds, shownWindow),
+    () => movingSecondsForWindow(openCoordinates, cumulativeSeconds, shownWindow),
     [openCoordinates, cumulativeSeconds, shownWindow],
   );
 
@@ -393,7 +393,7 @@ export function RoutesPage({ themeChoice }: RoutesPageProps) {
    * and a position in a list of what has arrived is not a position in the
    * library.
    */
-  const focusKey = openKey ?? selectedKey;
+  const focusKey = openKey ?? pickedKey;
 
   /**
    * A route picked off the map, by pointing at where it goes.
@@ -424,7 +424,7 @@ export function RoutesPage({ themeChoice }: RoutesPageProps) {
 
         return;
       }
-      if (key === selectedKey) {
+      if (key === pickedKey) {
         open(key);
 
         return;
@@ -436,14 +436,14 @@ export function RoutesPage({ themeChoice }: RoutesPageProps) {
       if (!shown.some((route) => routeKey(route) === key)) {
         setQuery("");
       }
-      setSelectedKey(key);
+      setPickedKey(key);
     },
-    [open, openKey, selectedKey, shown],
+    [open, openKey, pickedKey, shown],
   );
 
   const close = useCallback(() => {
     forget();
-    setSelectedKey(null);
+    setPickedKey(null);
     setParams((current) => {
       const next = new URLSearchParams(current);
       next.delete("route");
@@ -543,7 +543,7 @@ export function RoutesPage({ themeChoice }: RoutesPageProps) {
             onBasemapChange={chooseBasemap}
             unitSystem={unitSystem}
             lines={drawn.lines}
-            selectedKey={focusKey}
+            pickedKey={focusKey}
             bounds={bounds}
             insets={insets}
             maxZoom={windowBounds ? WINDOW_MAX_ZOOM : ROUTE_MAX_ZOOM}
@@ -639,7 +639,7 @@ export function RoutesPage({ themeChoice }: RoutesPageProps) {
               onStartAtChange={setStartAt}
               samples={samples}
               coordinates={openCoordinates}
-              rideSeconds={rideSeconds}
+              movingSeconds={movingSeconds}
               predictionKnown={openGeometry.isSuccess}
               stageKey={openKey ?? undefined}
             />
@@ -671,19 +671,19 @@ export function RoutesPage({ themeChoice }: RoutesPageProps) {
             setQuery(next);
             // A search that no longer holds the open route would leave the card
             // expanded off the bottom of a column it is not in.
-            setSelectedKey(null);
+            setPickedKey(null);
           }}
           filters={filters}
           onFiltersChange={(next) => {
             setFilters(next);
             // Same reasoning as a changed search: a filter that no longer holds
             // the open route must not leave its card expanded regardless.
-            setSelectedKey(null);
+            setPickedKey(null);
           }}
           filtersExpanded={filtersExpanded}
           onFiltersExpandedChange={setFiltersExpanded}
-          selectedKey={selectedKey}
-          onSelect={setSelectedKey}
+          pickedKey={pickedKey}
+          onSelect={setPickedKey}
           onOpen={open}
           shapes={drawn.shapes}
           readAt={readAt ? formatReadTime(readAt) : null}

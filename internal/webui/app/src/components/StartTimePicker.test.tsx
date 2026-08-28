@@ -71,7 +71,7 @@ describe("StartTimePicker", () => {
   it("refuses a start whose finish would fall past the horizon", () => {
     const onChange = vi.fn();
     const sixHours = 6 * 60 * 60;
-    render(<StartTimePicker value={null} onChange={onChange} rideSeconds={sixHours} />);
+    render(<StartTimePicker value={null} onChange={onChange} movingSeconds={sixHours} />);
 
     // Just inside the 16-day window at the start line, and past it at the finish.
     const nearlyTheHorizon = new Date(Date.now() + 16 * 24 * 60 * 60 * 1000 - 60 * 60 * 1000);
@@ -85,12 +85,12 @@ describe("StartTimePicker", () => {
 
   it("offers a later start for a short ride than for a long one", () => {
     const { unmount } = render(
-      <StartTimePicker value={null} onChange={() => {}} rideSeconds={60 * 60} />,
+      <StartTimePicker value={null} onChange={() => {}} movingSeconds={60 * 60} />,
     );
     const shortRideMax = input().getAttribute("max") ?? "";
     unmount();
 
-    render(<StartTimePicker value={null} onChange={() => {}} rideSeconds={10 * 60 * 60} />);
+    render(<StartTimePicker value={null} onChange={() => {}} movingSeconds={10 * 60 * 60} />);
 
     expect(input().getAttribute("max") ?? "").not.toBe("");
     expect((input().getAttribute("max") ?? "") < shortRideMax).toBe(true);

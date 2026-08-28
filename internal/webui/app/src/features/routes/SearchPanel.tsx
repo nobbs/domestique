@@ -45,7 +45,7 @@ export interface SearchPanelProps {
   filtersExpanded: boolean;
   onFiltersExpandedChange: (expanded: boolean) => void;
   /** The expanded route, by `routeKey`. */
-  selectedKey: string | null;
+  pickedKey: string | null;
   onSelect: (key: string | null) => void;
   /**
    * Opens a route, which swaps this whole panel for the route's own.
@@ -81,7 +81,7 @@ export function SearchPanel({
   onFiltersChange,
   filtersExpanded,
   onFiltersExpandedChange,
-  selectedKey,
+  pickedKey,
   onSelect,
   onOpen,
   shapes,
@@ -92,7 +92,7 @@ export function SearchPanel({
   const filtersActive = hasActiveFilters(filters);
   const hasQuery = query.trim() !== "";
   const [searchExpanded, setSearchExpanded] = useState(
-    hasQuery || selectedKey !== null || filtersActive,
+    hasQuery || pickedKey !== null || filtersActive,
   );
   const [focusSearch, setFocusSearch] = useState(false);
   const field = useRef<HTMLInputElement>(null);
@@ -100,10 +100,10 @@ export function SearchPanel({
   // A route picked from the map still needs its card to appear in this panel.
   // Typing only becomes possible after the reader has explicitly opened search.
   useEffect(() => {
-    if (hasQuery || selectedKey !== null) {
+    if (hasQuery || pickedKey !== null) {
       setSearchExpanded(true);
     }
-  }, [hasQuery, selectedKey]);
+  }, [hasQuery, pickedKey]);
 
   useEffect(() => {
     if (focusSearch && searchExpanded) {
@@ -116,11 +116,11 @@ export function SearchPanel({
   // same results column and counts against the same total. Selecting from the
   // map is different: it names one route, not a reason to list the library.
   const hasResults = hasQuery || filtersActive;
-  const selectedRoute = selectedKey
-    ? (shown.find((route) => routeKey(route) === selectedKey) ?? null)
+  const pickedRoute = pickedKey
+    ? (shown.find((route) => routeKey(route) === pickedKey) ?? null)
     : null;
 
-  const compactWorkspace = !searchExpanded && !hasResults && selectedRoute === null;
+  const compactWorkspace = !searchExpanded && !hasResults && pickedRoute === null;
   const workspaceWidth = compactWorkspace ? "w-fit" : "w-[32.5rem] max-w-full";
 
   return (
@@ -164,7 +164,7 @@ export function SearchPanel({
           onExpandedChange={onFiltersExpandedChange}
         />
       </div>
-      {hasResults || selectedRoute ? (
+      {hasResults || pickedRoute ? (
         <div className="rounded-lg border border-[var(--rule)] bg-[var(--panel)] p-2 shadow-[var(--shadow)]">
           {hasResults && shown.length === 0 ? (
             <p className="p-2 text-sm text-[var(--ink-2)]">
@@ -187,7 +187,7 @@ export function SearchPanel({
                 const key = routeKey(route);
                 const shape = shapes.get(key);
 
-                return key === selectedKey ? (
+                return key === pickedKey ? (
                   <RouteCard
                     key={key}
                     route={route}
@@ -210,14 +210,14 @@ export function SearchPanel({
               })}
             </ul>
           ) : null}
-          {!hasResults && selectedRoute ? (
+          {!hasResults && pickedRoute ? (
             <ul className="grid gap-1">
               <RouteCard
-                route={selectedRoute}
-                shape={shapes.get(routeKey(selectedRoute))}
+                route={pickedRoute}
+                shape={shapes.get(routeKey(pickedRoute))}
                 readAt={readAt}
-                change={changeOf(selectedRoute)}
-                onOpen={() => onOpen(routeKey(selectedRoute))}
+                change={changeOf(pickedRoute)}
+                onOpen={() => onOpen(routeKey(pickedRoute))}
                 unitSystem={unitSystem}
               />
             </ul>

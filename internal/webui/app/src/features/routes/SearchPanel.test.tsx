@@ -41,7 +41,7 @@ function renderPanel(overrides: Partial<SearchPanelProps> = {}) {
     onFiltersChange: () => {},
     filtersExpanded: false,
     onFiltersExpandedChange: () => {},
-    selectedKey: null,
+    pickedKey: null,
     onSelect: () => {},
     onOpen: () => {},
     shapes: new Map([[routeKey(route()), { coordinates: CLIMB }]]),
@@ -161,7 +161,7 @@ describe("SearchPanel", () => {
   });
 
   it("carries the badge onto the route's own card once it is opened", () => {
-    renderPanel({ query: "alpine", selectedKey: routeKey(route()), changeOf: () => "new" });
+    renderPanel({ query: "alpine", pickedKey: routeKey(route()), changeOf: () => "new" });
 
     expect(screen.getByRole("heading", { name: "Alpine loop — Descent" })).toBeInTheDocument();
     expect(screen.getByText("New")).toBeInTheDocument();
@@ -172,7 +172,7 @@ describe("SearchPanel", () => {
    * closed one and the opened one — would be the same route said twice.
    */
   it("replaces the picked row with the route's card", () => {
-    renderPanel({ query: "alpine", selectedKey: routeKey(route()) });
+    renderPanel({ query: "alpine", pickedKey: routeKey(route()) });
 
     expect(screen.getByRole("heading", { name: "Alpine loop — Descent" })).toBeInTheDocument();
     expect(screen.getByText("42.5 km")).toBeInTheDocument();
@@ -182,7 +182,7 @@ describe("SearchPanel", () => {
   it("reports the card's figures in miles and feet for the imperial system", () => {
     renderPanel({
       query: "alpine",
-      selectedKey: routeKey(route()),
+      pickedKey: routeKey(route()),
       unitSystem: "imperial",
     });
 
@@ -202,7 +202,7 @@ describe("SearchPanel", () => {
   });
 
   it("shows nothing for a route nothing has predicted", () => {
-    renderPanel({ query: "alpine", shown: [route()], selectedKey: routeKey(route()) });
+    renderPanel({ query: "alpine", shown: [route()], pickedKey: routeKey(route()) });
 
     expect(screen.getByText("—")).toBeInTheDocument();
     expect(screen.queryByText("±", { exact: false })).toBeNull();
@@ -215,7 +215,7 @@ describe("SearchPanel", () => {
    */
   it("opens the route in place rather than linking away to a page", async () => {
     const onOpen = vi.fn();
-    renderPanel({ query: "alpine", selectedKey: routeKey(route()), onOpen });
+    renderPanel({ query: "alpine", pickedKey: routeKey(route()), onOpen });
 
     expect(screen.queryByRole("link", { name: "Open route" })).toBeNull();
     await userEvent.click(screen.getByRole("button", { name: "Open route" }));
@@ -227,14 +227,14 @@ describe("SearchPanel", () => {
   // result list: selection names one answer, while typing asks for many.
   it("shows only the picked route without a search", () => {
     const other = route({ routeId: 13, title: "Valley loop" });
-    renderPanel({ selectedKey: routeKey(route()), shown: [route(), other] });
+    renderPanel({ pickedKey: routeKey(route()), shown: [route(), other] });
 
     expect(screen.getByRole("heading", { name: "Alpine loop — Descent" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Valley loop/ })).toBeNull();
   });
 
   it("says when the library was read, beside where the route is", () => {
-    renderPanel({ selectedKey: routeKey(route()) });
+    renderPanel({ pickedKey: routeKey(route()) });
 
     expect(screen.getByText("Alpine loop · read 19:38")).toBeInTheDocument();
   });
@@ -245,7 +245,7 @@ describe("SearchPanel", () => {
   it("leaves out a second line it has nothing to put on", () => {
     renderPanel({
       shown: [route({ title: "Alpine loop", routeName: "Alpine loop" })],
-      selectedKey: routeKey(route({ title: "Alpine loop", routeName: "Alpine loop" })),
+      pickedKey: routeKey(route({ title: "Alpine loop", routeName: "Alpine loop" })),
       readAt: null,
       shapes: new Map(),
     });
@@ -259,7 +259,7 @@ describe("SearchPanel", () => {
    * three figures above it already say what it says.
    */
   it("divides the mix bar by the share each band covers", () => {
-    renderPanel({ selectedKey: routeKey(route()) });
+    renderPanel({ pickedKey: routeKey(route()) });
 
     const bar = screen.getByTestId("gradient-mix");
     expect(bar).toHaveAttribute("aria-hidden", "true");

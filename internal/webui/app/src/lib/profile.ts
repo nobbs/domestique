@@ -668,7 +668,7 @@ export function coordinateRange(
  * predicted series for this geometry, or a selection too short to span two
  * distinct coordinates.
  */
-export function elapsedSecondsForWindow(
+export function movingSecondsForWindow(
   coordinates: Position[],
   cumulativeSeconds: number[] | undefined,
   window: DistanceWindow | null,

@@ -5,7 +5,7 @@ import { StartTimePicker } from "./StartTimePicker";
 function Picker() {
   const [value, setValue] = useState<Date | null>(null);
 
-  return <StartTimePicker value={value} onChange={setValue} rideSeconds={6_420} />;
+  return <StartTimePicker value={value} onChange={setValue} movingSeconds={6_420} />;
 }
 
 const meta = {

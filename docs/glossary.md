@@ -8,10 +8,10 @@ are good individually, and they are exactly how `key`, `library`, `selection`,
 noticing — a term defined locally cannot see the other definition. This file is
 the one place that can.
 
-It describes the vocabulary the code should use. Where the code disagrees today,
+It describes the vocabulary the code should use. Where the code still disagrees,
 [naming-drift.md](naming-drift.md) records the disagreement and what the fix
-would be; nothing in this file has been applied as a rename yet, so read it as
-the target rather than as a description of `main`.
+would be — an entry is deleted from it as the rename lands, so what remains
+there is the gap between this file and `main`.
 
 Definitions that carry contractual weight live in
 [`docs/specs`](specs) and are linked from here rather than restated.
@@ -42,8 +42,9 @@ concept.
 **course** — the FIT-file rendering of a route, and only that. It belongs to the
 encoder boundary and to Wahoo, never to the browser UI.
 
-**ride** — what a person does with a route. It names durations and predictions
-(`rideSeconds`, ride model, "Ride start"), never a stored entity.
+**ride** — what a person does with a route. It names the model and the reader's
+own inputs (ride model, "Ride start"), never a stored entity and never a
+duration: a duration is *moving time*.
 
 ## Where routes come from and go
 
@@ -84,18 +85,19 @@ UI word only — the API has no atlas.
 
 **route key** — the string `provider/sourceRouteId/stageOrder` that identifies
 one route. Produced by `routeKey()`. Every variable holding one is a *key*, and
-the qualifier says which route it is: `openKey`, `hoveredKey`, `selectedKey`.
+the qualifier says which route it is: `openKey`, `hoveredKey`, `pickedKey`.
 There is no *stage key*; it is the same string.
 
 **legend** — the colour reference for gradient bands and surface classes, which
-is also the control that filters by them. The component is `RouteKey` only for
-historical reasons; a legend is not a key.
+is also the control that filters by them. The component is `RouteLegend` and its
+swatch is a `LegendChip`; a legend is not a key, and `routeKey()` produces the
+other thing entirely.
 
 ## Reading a route
 
 **selection** — a stretch of the route the reader has picked out, expressed as a
-`DistanceWindow`. Selecting a *row* in the library is not a selection; that
-route is *open*, or *hovered*, or *focused*.
+`DistanceWindow`. Picking a *row* in the library is not a selection; that route
+is *picked*, or *open*, or *hovered*, or *focused*.
 
 **distance window** — a start and end distance along one route. Always written
 in full, because `window` on its own is the browser's.
@@ -109,7 +111,7 @@ the wire. `cumulativeSeconds` is the same quantity accumulated per coordinate.
 There is no separate "ride time" or "elapsed time" — those are the same thing
 under other names.
 
-**ascent** — total metres climbed over a route, shown as "Climbing".
+**ascent** — total metres climbed over a route, shown as "Ascent".
 
 **climb** — one named sustained ascent within a route, of the kind `ClimbsList`
 enumerates. A route's total ascent is not a climb.

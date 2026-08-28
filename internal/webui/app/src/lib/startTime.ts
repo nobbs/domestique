@@ -71,7 +71,7 @@ function readStartTime(): Date | null {
 }
 
 /**
- * Why a start time cannot be forecast for a ride of `rideSeconds`, or null
+ * Why a start time cannot be forecast for a ride of `movingSeconds`, or null
  * when it can.
  *
  * One classifier for the two places that ask. The control asks before it
@@ -86,13 +86,13 @@ function readStartTime(): Date | null {
  */
 export function startTimeRefusal(
   startAt: Date,
-  rideSeconds: number | undefined,
+  movingSeconds: number | undefined,
   now: Date = new Date(),
 ): StartTimeRefusal | null {
   if (startAt.getTime() < now.getTime() - FORECAST_PAST_ALLOWANCE_MS) {
     return "past";
   }
-  const arrival = new Date(startAt.getTime() + Math.max(rideSeconds ?? 0, 0) * 1000);
+  const arrival = new Date(startAt.getTime() + Math.max(movingSeconds ?? 0, 0) * 1000);
   if (!isWithinForecastWindow(startAt, now) || !isWithinForecastWindow(arrival, now)) {
     return "horizon";
   }

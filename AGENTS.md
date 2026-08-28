@@ -204,10 +204,18 @@ around a primitive whose vocabulary was not renamed is only a second name for
 it.
 
 `ui/button` is the one exception. Only `components/Button.tsx` may import it,
-because that file renames the variants (`panel` and `warning` have no primitive
-equivalent) and a second button vocabulary has cost this UI before. Biome's
-`noRestrictedImports` enforces this; the exemption list in `biome.json` is the
-whole of it.
+because that file adds to the primitive — the icon slot, the size inferred from
+the children, the `panel` and `warning` variants no primitive offers, and the
+link forms — and a second button vocabulary has cost this UI before. It adds
+only: the variants the primitive already names keep its spelling. Biome's
+`noRestrictedImports` enforces the import rule; the exemption list in
+`biome.json` is the whole of it.
+
+`components/` is presentational and reusable across pages; `features/` is
+page-bound composition and the data access feeding it. A component that only
+one page can use belongs in that page's feature directory however little it
+does, and a chart or control that any page could mount belongs in
+`components/` however much.
 
 Before hand-rolling a control, check whether the registry ships one — several
 here were built by hand beside a component that already did the job. The

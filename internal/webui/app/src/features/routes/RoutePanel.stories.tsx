@@ -1,7 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
-import { routeKey } from "../../api/types";
-import { EMPTY_FILTERS } from "../../lib/filters";
 import type { Highlight } from "../../lib/highlight";
 import {
   bands,
@@ -12,61 +10,18 @@ import {
   StoryProviders,
   surface,
 } from "../../storybook/fixtures";
-import { ClimbsList } from "./ClimbsList";
-import { FilterPanel } from "./FilterPanel";
 import { RoutePanel } from "./RoutePanel";
 import { RouteProfile } from "./RouteProfile";
-import { SearchPanel } from "./SearchPanel";
 
-const meta = { title: "Features/Route library", tags: ["autodocs"] } satisfies Meta;
+// The story holds the state the component reads back, so it renders rather
+// than taking args — which is what `component` here would require.
+const meta = {
+  title: "Features/Atlas/Route Panel",
+  tags: ["autodocs"],
+} satisfies Meta;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
-
-export const FilteringAndResults: Story = {
-  render: () => {
-    const [query, setQuery] = useState("alpine");
-    const [filters, setFilters] = useState(EMPTY_FILTERS);
-    const [filtersExpanded, setFiltersExpanded] = useState(false);
-    const [selectedKey, setSelectedKey] = useState<string | null>(null);
-
-    return (
-      <SearchPanel
-        shown={query ? [route] : []}
-        total={47}
-        query={query}
-        onQueryChange={setQuery}
-        filters={filters}
-        onFiltersChange={setFilters}
-        filtersExpanded={filtersExpanded}
-        onFiltersExpandedChange={setFiltersExpanded}
-        selectedKey={selectedKey}
-        onSelect={setSelectedKey}
-        onOpen={() => {}}
-        shapes={new Map([[routeKey(route), { coordinates }]])}
-        readAt="19:38"
-        changeOf={() => "new"}
-        unitSystem="metric"
-      />
-    );
-  },
-};
-
-export const Filters: Story = {
-  render: () => {
-    const [filters, setFilters] = useState(EMPTY_FILTERS);
-    const [expanded, setExpanded] = useState(true);
-
-    return (
-      <FilterPanel
-        filters={filters}
-        onFiltersChange={setFilters}
-        expanded={expanded}
-        onExpandedChange={setExpanded}
-      />
-    );
-  },
-};
 
 export const RouteDetail: Story = {
   render: () => {
@@ -95,7 +50,7 @@ export const RouteDetail: Story = {
               onStartAtChange={() => {}}
               samples={[]}
               coordinates={coordinates}
-              rideSeconds={route.movingSeconds}
+              movingSeconds={route.movingSeconds}
             />
           }
           highestMetres={295}
@@ -115,8 +70,4 @@ export const RouteDetail: Story = {
       </StoryProviders>
     );
   },
-};
-
-export const Climbs: Story = {
-  render: () => <ClimbsList climbs={climbs} onSelect={() => {}} unitSystem="metric" />,
 };

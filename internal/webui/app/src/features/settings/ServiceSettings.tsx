@@ -64,6 +64,7 @@ import {
   type SuccessPolicy,
 } from "../../api/types";
 import { Button } from "../../components/Button";
+import { providerLabel } from "../../lib/provider";
 
 const SECONDS_PER_HOUR = 3600;
 const SECONDS_PER_MINUTE = 60;
@@ -72,11 +73,6 @@ const POLICY_LABELS: Record<SuccessPolicy, string> = {
   every: "One message per successful run",
   quiet: "Nothing — leaving failures and recoveries as the only traffic",
   digest: "One summary per period",
-};
-
-const PROVIDER_LABELS: Record<SourceProvider, string> = {
-  veloplanner: "VeloPlanner",
-  komoot: "Komoot",
 };
 
 /**
@@ -251,7 +247,7 @@ function Section({
           <FieldGroup>{children}</FieldGroup>
           <div className="flex flex-wrap items-center gap-3">
             <Button
-              variant="primary"
+              variant="default"
               aria-label={`Save ${title}`}
               disabled={save.isPending}
               onClick={onSave}
@@ -327,7 +323,7 @@ export function ServiceSettings() {
       <WahooApplication settings={data} />
       <Targets settings={data} />
       {SOURCE_PROVIDERS.map((provider) => (
-        <Library key={provider} provider={provider} settings={data} />
+        <SourceSettingsSection key={provider} provider={provider} settings={data} />
       ))}
       <Notifications settings={data} />
       <Basemaps settings={data} />
@@ -477,11 +473,17 @@ function Targets({ settings }: { settings: Settings }) {
 }
 
 /**
- * One library, with the account it is read with. Turning it off stops it being
+ * One source, with the account it is read with. Turning it off stops it being
  * read and leaves the account stored, so turning it back on does not ask for
  * the credentials again.
  */
-function Library({ provider, settings }: { provider: SourceProvider; settings: Settings }) {
+function SourceSettingsSection({
+  provider,
+  settings,
+}: {
+  provider: SourceProvider;
+  settings: Settings;
+}) {
   const id = useId();
   const invalidate = useSettingsInvalidation();
   const stored = settings.sources.find((source) => source.provider === provider);
@@ -500,12 +502,12 @@ function Library({ provider, settings }: { provider: SourceProvider; settings: S
     read: stored !== undefined,
     baseUrl: stored?.baseUrl ?? PROVIDER_BASE_URLS[provider],
   };
-  const label = PROVIDER_LABELS[provider];
+  const label = providerLabel(provider);
 
   return (
     <Section
       title={label}
-      description="A library is read with an account of its own, and the address is both what is read and what a stage is linked back to."
+      description="A source is read with an account of its own, and the address is both what is read and what a stage is linked back to."
       save={save}
       edited={draft !== null}
       onSave={() =>
@@ -737,7 +739,7 @@ function Basemaps({ settings }: { settings: Settings }) {
           </Field>
           <div>
             <Button
-              variant="danger"
+              variant="destructive"
               disabled={basemaps.length === 1}
               aria-label={`Remove basemap ${index + 1}`}
               onClick={() => {
@@ -752,7 +754,7 @@ function Basemaps({ settings }: { settings: Settings }) {
       ))}
       <div>
         <Button
-          variant="standard"
+          variant="outline"
           onClick={() => {
             setDraft([...basemaps, { name: "", styleUrl: "" }]);
             setRowKeys([...rowKeys, nextRowKey.current]);
@@ -928,14 +930,14 @@ function Synchronisation({ settings }: { settings: Settings }) {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel render={<Button variant="standard" />}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel render={<Button variant="outline" />}>Cancel</AlertDialogCancel>
             {/*
              * Closes as well as edits: the dialog is controlled, and neither
              * this nor the `AlertDialogAction` it replaced is a `Close`, so
              * nothing else would put it away after the reader has answered.
              */}
             <Button
-              variant="danger"
+              variant="destructive"
               onClick={() => {
                 edit({ allowEmptySourceDeletion: true });
                 setConfirmingDeletion(false);

@@ -1400,7 +1400,7 @@ components:
         baseUrl:
           type: string
           description: >-
-            The library's own web application, which is both the origin the
+            The source's own web application, which is both the origin the
             service reads and the one a stage is linked back to.
         email:
           type: string
@@ -1561,7 +1561,7 @@ components:
         baseUrl:
           type: string
           description: >-
-            The library's own web application, which is both the origin the
+            The source's own web application, which is both the origin the
             service reads and the one a stage is linked back to.
     RideModelSettings:
       type: object

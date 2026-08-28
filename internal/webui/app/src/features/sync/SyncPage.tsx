@@ -19,7 +19,7 @@ import { RunNotice } from "./RunNotice";
 import { SyncCard } from "./SyncCard";
 import { SyncControls } from "./SyncControls";
 import { SyncHistory } from "./SyncHistory";
-import { TargetConvergence } from "./TargetConvergence";
+import { TargetConvergenceCard } from "./TargetConvergenceCard";
 
 export function SyncPage() {
   const [params] = useSearchParams();
@@ -38,7 +38,7 @@ export function SyncPage() {
           <SyncControls />
         </SyncCard>
         <SyncCard id="accounts" heading="What the accounts hold">
-          <TargetConvergence />
+          <TargetConvergenceCard />
         </SyncCard>
         <SyncCard id="history" heading="What has happened">
           <SyncHistory />

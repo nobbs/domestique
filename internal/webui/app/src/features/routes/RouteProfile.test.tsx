@@ -240,7 +240,7 @@ describe("RouteProfile", () => {
    * would be — and never a guessed speed to fill the gap.
    */
   it("explains an absent forecast on a stage nothing has predicted", () => {
-    show({ startAt: soon(), samples: [], rideSeconds: undefined });
+    show({ startAt: soon(), samples: [], movingSeconds: undefined });
 
     expect(screen.getByText(/no predicted moving time/i)).toBeInTheDocument();
     expect(screen.queryByRole("img", { name: /Forecast along the way/ })).toBeNull();
@@ -248,7 +248,7 @@ describe("RouteProfile", () => {
 
   /*
    * A start time is remembered across visits, so the common path is opening a
-   * stage with one already set. `rideSeconds` is undefined while the geometry
+   * stage with one already set. `movingSeconds` is undefined while the geometry
    * is in flight and also when the answer carries no prediction, and announcing
    * the second during the first would tell a reader their stage has no
    * prediction for as long as the fetch takes.
@@ -257,7 +257,7 @@ describe("RouteProfile", () => {
     show({
       startAt: new Date(Date.now() + 60 * 60 * 1000),
       samples: [],
-      rideSeconds: undefined,
+      movingSeconds: undefined,
       predictionKnown: false,
     });
 
@@ -271,7 +271,7 @@ describe("RouteProfile", () => {
    * unpredicted stage.
    */
   it("treats a prediction of no time at all as no timeline", () => {
-    show({ startAt: new Date(Date.now() + 60 * 60 * 1000), samples: [], rideSeconds: 0 });
+    show({ startAt: new Date(Date.now() + 60 * 60 * 1000), samples: [], movingSeconds: 0 });
 
     expect(screen.getByText(/no predicted moving time/i)).toBeInTheDocument();
   });
@@ -298,7 +298,7 @@ describe("RouteProfile", () => {
   });
 
   it("says nothing of the sort once the stage has a prediction", () => {
-    show({ startAt: soon(), samples: [], rideSeconds: 3600 });
+    show({ startAt: soon(), samples: [], movingSeconds: 3600 });
 
     expect(screen.queryByText(/no predicted moving time/i)).not.toBeInTheDocument();
   });
@@ -314,7 +314,7 @@ describe("RouteProfile", () => {
   it("explains a remembered start the forecast window has moved past", () => {
     const longAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
 
-    show({ startAt: longAgo, samples: [], rideSeconds: 3600 });
+    show({ startAt: longAgo, samples: [], movingSeconds: 3600 });
 
     // The remedy for a stale start is a later one, so it must not be told its
     // ride finishes past the horizon — that would send the reader backwards.
@@ -327,7 +327,7 @@ describe("RouteProfile", () => {
     // Inside the window at the start line, and past it ten hours later.
     const nearlyTheHorizon = new Date(Date.now() + 16 * 24 * 60 * 60 * 1000 - 60 * 60 * 1000);
 
-    show({ startAt: nearlyTheHorizon, samples: [], rideSeconds: 10 * 60 * 60 });
+    show({ startAt: nearlyTheHorizon, samples: [], movingSeconds: 10 * 60 * 60 });
 
     expect(screen.getByText(/outside the 16-day forecast window/i)).toBeInTheDocument();
   });
@@ -355,7 +355,7 @@ describe("RouteProfile", () => {
       profile: null,
       startAt: soon(),
       samples,
-      rideSeconds: 3600,
+      movingSeconds: 3600,
       coordinates,
     });
 

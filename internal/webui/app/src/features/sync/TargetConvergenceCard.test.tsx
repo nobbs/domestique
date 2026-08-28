@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { statusQuery } from "../../api/queries";
 import type { Status, TargetStatus } from "../../api/types";
-import { TargetConvergence } from "./TargetConvergence";
+import { TargetConvergenceCard } from "./TargetConvergenceCard";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -50,12 +50,12 @@ function renderConvergence(value: Status) {
 
   return render(
     <QueryClientProvider client={client}>
-      <TargetConvergence />
+      <TargetConvergenceCard />
     </QueryClientProvider>,
   );
 }
 
-describe("TargetConvergence", () => {
+describe("TargetConvergenceCard", () => {
   it("reports each account's own state", () => {
     renderConvergence(
       status(false, [

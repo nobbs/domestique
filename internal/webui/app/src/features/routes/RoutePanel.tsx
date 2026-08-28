@@ -16,7 +16,7 @@
 import { IconArrowLeft, IconX } from "@tabler/icons-react";
 import type { Route } from "../../api/types";
 import { Button } from "../../components/Button";
-import { RouteKey } from "../../components/route/RouteKey";
+import { RouteLegend } from "../../components/route/RouteLegend";
 import { SourceRouteLink } from "../../components/SourceRouteLink";
 import type { Climb } from "../../lib/climbs";
 import {
@@ -155,7 +155,7 @@ export function RoutePanel({
           <dd>{formatDistance(route.distanceMetres, unitSystem)}</dd>
         </div>
         <div>
-          <dt>Climbing</dt>
+          <dt>Ascent</dt>
           <dd>{formatAscent(route.ascentMetres, unitSystem)}</dd>
         </div>
         <div>
@@ -199,7 +199,7 @@ export function RoutePanel({
        * travelled with it would take the surface mix — which the chart does not
        * draw at all — away with it.
        */}
-      <RouteKey
+      <RouteLegend
         surface={surface}
         surfaceAbsence={surfaceAbsence}
         bands={bands}

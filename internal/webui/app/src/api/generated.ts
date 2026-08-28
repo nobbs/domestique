@@ -343,7 +343,7 @@ export const SourceSettingsProvider = {
 
 export interface SourceSettings {
   provider: SourceSettingsProvider;
-  /** The library's own web application, which is both the origin the service reads and the one a stage is linked back to. */
+  /** The source's own web application, which is both the origin the service reads and the one a stage is linked back to. */
   baseUrl: string;
 }
 
@@ -399,7 +399,7 @@ export interface TargetsUpdate {
 export interface SourceUpdate {
   /** Whether a run reads this library at all. Off takes it out of the list without forgetting the account it was read with. */
   read: boolean;
-  /** The library's own web application, which is both the origin the service reads and the one a stage is linked back to. */
+  /** The source's own web application, which is both the origin the service reads and the one a stage is linked back to. */
   baseUrl: string;
   /** The account's email address, sent only when it was typed. The rules the application secret follows apply here too. */
   email?: string;

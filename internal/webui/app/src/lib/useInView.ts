@@ -4,9 +4,9 @@ import { useEffect, useRef, useState } from "react";
  * Reports whether an element has come near the viewport, and stays true once it
  * has.
  *
- * The library grid uses this to avoid building a map for every card at once: a
- * browser allows only a limited number of live WebGL contexts, so a long
- * library would otherwise start blanking its own maps.
+ * The library's result list uses this to avoid building a map for every row at
+ * once: a browser allows only a limited number of live WebGL contexts, so a
+ * long library would otherwise start blanking its own maps.
  */
 export function useInView<T extends HTMLElement>(rootMargin = "200px") {
   const ref = useRef<T | null>(null);

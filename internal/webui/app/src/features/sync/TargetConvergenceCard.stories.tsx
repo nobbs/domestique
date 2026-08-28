@@ -3,11 +3,11 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { expect } from "storybook/test";
 import { StoryProviders, StubbedFetch } from "../../storybook/fixtures";
 import { SyncCard } from "./SyncCard";
-import { TargetConvergence } from "./TargetConvergence";
+import { TargetConvergenceCard } from "./TargetConvergenceCard";
 
 const meta = {
-  title: "Features/Sync/Target Convergence",
-  component: TargetConvergence,
+  title: "Features/Sync/Target Convergence Card",
+  component: TargetConvergenceCard,
   tags: ["autodocs"],
   decorators: [
     (Story) => (
@@ -16,7 +16,7 @@ const meta = {
       </SyncCard>
     ),
   ],
-} satisfies Meta<typeof TargetConvergence>;
+} satisfies Meta<typeof TargetConvergenceCard>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;

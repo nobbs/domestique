@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useMap } from "react-map-gl/maplibre";
-import { routeSelection } from "../../lib/mapSelection";
 import type { DistanceWindow, Profile } from "../../lib/profile";
+import { routeSelection } from "../../lib/selectionGesture";
 
 /**
  * Lets a drag along the painted route pick the stretch it covers.

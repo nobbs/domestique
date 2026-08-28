@@ -1,6 +1,6 @@
 import { useLayoutEffect } from "react";
 import { Navigate, Route, Routes, useParams } from "react-router";
-import { RoutesPage } from "./features/routes/RoutesPage";
+import { AtlasPage } from "./features/routes/AtlasPage";
 import { SettingsPage } from "./features/settings/SettingsPage";
 import { SyncPage } from "./features/sync/SyncPage";
 import { useThemeChoice } from "./lib/theme";
@@ -44,7 +44,7 @@ function OpenedLegacyRoute() {
  * The client routes. These mirror the paths the Go handler serves the entry
  * document for, so a deep link and an in-app navigation resolve identically.
  *
- * The theme choice lives here rather than in `RoutesPage`, even though only
+ * The theme choice lives here rather than in `AtlasPage`, even though only
  * Settings offers the control for it: the palette it switches is `index.css`'s
  * own, read by every page, and `data-theme` is a document-level attribute —
  * there is exactly one of it, whichever page happens to be mounted.
@@ -66,7 +66,7 @@ export function App() {
 
   return (
     <Routes>
-      <Route path="/" element={<RoutesPage themeChoice={themeChoice} />} />
+      <Route path="/" element={<AtlasPage themeChoice={themeChoice} />} />
       <Route path="routes/:provider/:routeId/:stage" element={<OpenedRoute />} />
       <Route path="routes/:routeId/:stage" element={<OpenedLegacyRoute />} />
       <Route path="sync" element={<SyncPage />} />

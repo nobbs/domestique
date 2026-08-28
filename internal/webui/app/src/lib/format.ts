@@ -43,7 +43,7 @@ export function formatCount(value: number, singular: string, plural = `${singula
   return `${value.toLocaleString()} ${value === 1 ? singular : plural}`;
 }
 
-/** Total climbing. Zero means the source had no usable elevation profile. */
+/** Total ascent. Zero means the source had no usable elevation profile. */
 export function formatAscent(metres: number, system: UnitSystem): string {
   if (!Number.isFinite(metres) || metres <= 0) {
     return "—";

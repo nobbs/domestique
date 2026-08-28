@@ -19,7 +19,7 @@ function Field({ initial }: { initial: number | null }) {
 }
 
 const meta = {
-  title: "Features/Routes/Bound Input",
+  title: "Features/Atlas/Bound Input",
   component: BoundInput,
   tags: ["autodocs"],
   args: {

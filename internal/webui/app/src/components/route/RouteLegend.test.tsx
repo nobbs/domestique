@@ -8,7 +8,7 @@ import type { BandShare } from "../../lib/profile";
 import { gradientShares } from "../../lib/profile";
 import type { SurfaceSummary } from "../../lib/surface";
 import { summariseSurface } from "../../lib/surface";
-import { RouteKey } from "./RouteKey";
+import { RouteLegend } from "./RouteLegend";
 
 function route(pointCount: number): Position[] {
   return Array.from({ length: pointCount }, (_, index) => [8, 49 + index * 0.001] as Position);
@@ -43,10 +43,10 @@ function segmentWidths(label: string): number[] {
   );
 }
 
-describe("RouteKey", () => {
+describe("RouteLegend", () => {
   it("names every class present and the share it covers", () => {
     render(
-      <RouteKey
+      <RouteLegend
         surface={halfGravel()}
         surfaceAbsence="none"
         bands={[]}
@@ -67,7 +67,7 @@ describe("RouteKey", () => {
    */
   it("says which of the two things each half of the key is about", () => {
     render(
-      <RouteKey
+      <RouteLegend
         surface={halfGravel()}
         surfaceAbsence="none"
         bands={[band(0)]}
@@ -85,7 +85,7 @@ describe("RouteKey", () => {
   // rather than a stray line in a card.
   it("keeps the surface heading over the reason there is no surface key", () => {
     render(
-      <RouteKey
+      <RouteLegend
         surface={null}
         surfaceAbsence="Surface not classified yet."
         bands={[]}
@@ -105,7 +105,7 @@ describe("RouteKey", () => {
    */
   it("draws each mix as a bar in the proportions it just named", () => {
     render(
-      <RouteKey
+      <RouteLegend
         surface={halfGravel()}
         surfaceAbsence="none"
         bands={[band(0, 0.25), band(3, 0.75)]}
@@ -120,7 +120,7 @@ describe("RouteKey", () => {
 
   it("keeps each gradient segment tied to its named band", () => {
     render(
-      <RouteKey
+      <RouteLegend
         surface={halfGravel()}
         surfaceAbsence="none"
         bands={[band(0, 0.25), band(3, 0.75)]}
@@ -145,7 +145,7 @@ describe("RouteKey", () => {
     }
 
     render(
-      <RouteKey
+      <RouteLegend
         surface={summary}
         surfaceAbsence="none"
         bands={[]}
@@ -167,7 +167,7 @@ describe("RouteKey", () => {
     }
 
     render(
-      <RouteKey
+      <RouteLegend
         surface={summary}
         surfaceAbsence="none"
         bands={[]}
@@ -181,7 +181,7 @@ describe("RouteKey", () => {
 
   it("says why there is no surface key rather than leaving a gap", () => {
     render(
-      <RouteKey
+      <RouteLegend
         surface={null}
         surfaceAbsence="Surface not classified yet."
         bands={[band(0), band(2)]}
@@ -197,7 +197,7 @@ describe("RouteKey", () => {
   // lights nothing.
   it("lists only the bands it was told the stage has", () => {
     render(
-      <RouteKey
+      <RouteLegend
         surface={null}
         surfaceAbsence="none"
         bands={[band(0), band(3)]}
@@ -218,7 +218,7 @@ describe("RouteKey", () => {
    */
   it("says the span a band covers, and how much of the route it is", () => {
     render(
-      <RouteKey
+      <RouteLegend
         surface={null}
         surfaceAbsence="none"
         bands={[band(2, 0.22)]}
@@ -252,7 +252,7 @@ describe("RouteKey", () => {
     expect(bands.map((entry) => entry.band)).toEqual([0, 1, 4]);
 
     render(
-      <RouteKey
+      <RouteLegend
         surface={null}
         surfaceAbsence="none"
         bands={bands}
@@ -273,7 +273,7 @@ describe("RouteKey", () => {
     const user = userEvent.setup();
     const onHighlightChange = vi.fn();
     render(
-      <RouteKey
+      <RouteLegend
         surface={halfGravel()}
         surfaceAbsence="none"
         bands={[band(2)]}
@@ -294,7 +294,7 @@ describe("RouteKey", () => {
     const user = userEvent.setup();
     const onHighlightChange = vi.fn();
     render(
-      <RouteKey
+      <RouteLegend
         surface={halfGravel()}
         surfaceAbsence="none"
         bands={[]}
@@ -315,7 +315,7 @@ describe("RouteKey", () => {
   it("holds the whole key on one tab stop and moves inside it with the arrows", async () => {
     const user = userEvent.setup();
     render(
-      <RouteKey
+      <RouteLegend
         surface={halfGravel()}
         surfaceAbsence="none"
         bands={[band(2)]}
@@ -350,7 +350,7 @@ describe("RouteKey", () => {
     const user = userEvent.setup();
     const onHighlightChange = vi.fn();
     render(
-      <RouteKey
+      <RouteLegend
         surface={halfGravel()}
         surfaceAbsence="none"
         bands={[band(2)]}
@@ -381,7 +381,7 @@ describe("RouteKey", () => {
       });
 
       return (
-        <RouteKey
+        <RouteLegend
           surface={halfGravel()}
           surfaceAbsence="none"
           bands={[band(2)]}
@@ -415,7 +415,7 @@ describe("RouteKey", () => {
 
   it("explains what a class name means, in the name a screen reader hears", () => {
     render(
-      <RouteKey
+      <RouteLegend
         surface={halfGravel()}
         surfaceAbsence="none"
         bands={[]}

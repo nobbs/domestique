@@ -18,7 +18,7 @@ const basemaps = [streets, dark];
 const bounds: BoundingBox = [7.995, 48.995, 8.045, 49.025];
 
 const meta = {
-  title: "Features/Route Library/Map",
+  title: "Features/Atlas/Map",
   parameters: liveMap,
   component: LibraryMap,
   tags: ["autodocs"],
@@ -38,9 +38,9 @@ type Story = StoryObj<typeof meta>;
 
 /** The assembled route-library map, over the same live style as the demo. */
 export const Library: Story = {
-  args: { styleUrl: streets.styleUrl, lines: [], selectedKey: null, bounds },
+  args: { styleUrl: streets.styleUrl, lines: [], pickedKey: null, bounds },
   render: () => {
-    const [selectedKey, setSelectedKey] = useState<string | null>(null);
+    const [pickedKey, setPickedKey] = useState<string | null>(null);
     const [basemap, setBasemap] = useState(streets);
 
     return (
@@ -63,9 +63,9 @@ export const Library: Story = {
             ]),
           },
         ]}
-        selectedKey={selectedKey}
+        pickedKey={pickedKey}
         bounds={bounds}
-        onPick={setSelectedKey}
+        onPick={setPickedKey}
       />
     );
   },

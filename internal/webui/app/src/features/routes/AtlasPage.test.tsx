@@ -26,7 +26,7 @@ import type { ThemeChoice } from "../../lib/theme";
 
 interface Drawing {
   keys: string[];
-  selectedKey: string | null;
+  pickedKey: string | null;
   bounds: BoundingBox | null;
   /** Whether the selected route's own layers were handed to the map. */
   overlaid: boolean;
@@ -42,7 +42,7 @@ const drawn = vi.hoisted(() => ({ maps: [] as Drawing[] }));
 vi.mock("./LibraryMap", () => ({
   LibraryMap: (props: {
     lines: Array<{ key: string }>;
-    selectedKey: string | null;
+    pickedKey: string | null;
     bounds: BoundingBox | null;
     children?: unknown;
     onPick?: (key: string) => void;
@@ -52,7 +52,7 @@ vi.mock("./LibraryMap", () => ({
   }) => {
     drawn.maps.push({
       keys: props.lines.map((line) => line.key),
-      selectedKey: props.selectedKey,
+      pickedKey: props.pickedKey,
       bounds: props.bounds,
       overlaid: Boolean(props.children),
       inertKey: props.inertKey ?? null,
@@ -74,7 +74,7 @@ vi.mock("./LibraryMap", () => ({
   },
 }));
 
-const { RoutesPage } = await import("./RoutesPage");
+const { AtlasPage } = await import("./AtlasPage");
 
 function route(routeId: number, stageOrder: number, routeName: string, stageName: string): Route {
   return {
@@ -179,7 +179,7 @@ function renderPage(
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[options.at ?? "/"]}>
-        <RoutesPage themeChoice={options.themeChoice ?? "system"} />
+        <AtlasPage themeChoice={options.themeChoice ?? "system"} />
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -232,7 +232,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("RoutesPage", () => {
+describe("AtlasPage", () => {
   it("draws every route in the library on one map", () => {
     renderPage();
 
@@ -366,7 +366,7 @@ describe("RoutesPage", () => {
     await userEvent.type(await searchBox(), "kaiserstuhl");
     await userEvent.click(screen.getByRole("button", { name: /Kaiserstuhl Loop/ }));
 
-    expect(lastDrawing().selectedKey).toBe("veloplanner/2/1");
+    expect(lastDrawing().pickedKey).toBe("veloplanner/2/1");
     expect(lastDrawing().bounds).toEqual([8.8, 49, 8.9, 49.1]);
     expect(screen.getByRole("button", { name: "Open route" })).toBeInTheDocument();
   });
@@ -379,7 +379,7 @@ describe("RoutesPage", () => {
     await userEvent.click(screen.getByRole("button", { name: /Kaiserstuhl Loop/ }));
     await userEvent.clear(await searchBox());
 
-    expect(lastDrawing().selectedKey).toBeNull();
+    expect(lastDrawing().pickedKey).toBeNull();
     expect(screen.queryByRole("button", { name: "Open route" })).toBeNull();
   });
 
@@ -431,7 +431,7 @@ describe("RoutesPage", () => {
     await userEvent.type(await searchBox(), "kaiserstuhl");
     await userEvent.click(screen.getByRole("button", { name: /Kaiserstuhl Loop/ }));
 
-    expect(lastDrawing().selectedKey).toBe("veloplanner/2/1");
+    expect(lastDrawing().pickedKey).toBe("veloplanner/2/1");
     expect(lastDrawing().bounds).toEqual([8.4, 49, 8.5, 49.1]);
   });
 
@@ -445,7 +445,7 @@ describe("RoutesPage", () => {
     renderPage();
     await userEvent.click(screen.getByRole("button", { name: "point at veloplanner/2/1" }));
 
-    expect(lastDrawing().selectedKey).toBe("veloplanner/2/1");
+    expect(lastDrawing().pickedKey).toBe("veloplanner/2/1");
     expect(lastDrawing().bounds).toEqual([8.8, 49, 8.9, 49.1]);
     expect(screen.getByRole("button", { name: "Open route" })).toBeInTheDocument();
     expect(screen.getByRole("searchbox")).toBeInTheDocument();
@@ -476,7 +476,7 @@ describe("RoutesPage", () => {
     await userEvent.click(screen.getByRole("button", { name: "point at veloplanner/1/2" }));
 
     expect(screen.getByRole("searchbox")).toHaveValue("");
-    expect(lastDrawing().selectedKey).toBe("veloplanner/1/2");
+    expect(lastDrawing().pickedKey).toBe("veloplanner/1/2");
     expect(screen.getByRole("button", { name: "Open route" })).toBeInTheDocument();
   });
 
@@ -488,7 +488,7 @@ describe("RoutesPage", () => {
     await userEvent.click(screen.getByRole("button", { name: "point at veloplanner/1/2" }));
 
     expect(screen.getByRole("searchbox")).toHaveValue("rhine");
-    expect(lastDrawing().selectedKey).toBe("veloplanner/1/2");
+    expect(lastDrawing().pickedKey).toBe("veloplanner/1/2");
   });
 
   // With a route open there is no column for a card to be in, so the map's own

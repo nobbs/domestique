@@ -45,7 +45,7 @@ import { GRADIENT_BANDS } from "../../lib/profile";
 import type { SurfaceSummary } from "../../lib/surface";
 import { SURFACE_STYLES } from "../../lib/surface";
 import { ToggleGroup } from "../ui/toggle-group";
-import { KeyChip } from "./KeyChip";
+import { LegendChip } from "./LegendChip";
 import { MixBar } from "./MixBar";
 
 const paintClasses = {
@@ -103,7 +103,7 @@ function chipValue(highlight: Highlight): string {
   return highlight.type === "surface" ? `surface:${highlight.kind}` : `band:${highlight.band}`;
 }
 
-export interface RouteKeyProps {
+export interface RouteLegendProps {
   /** Null for a route nobody has classified, which is said in words instead. */
   surface: SurfaceSummary | null;
   surfaceAbsence: string;
@@ -120,13 +120,13 @@ export interface RouteKeyProps {
   onHighlightChange: (highlight: Highlight | null) => void;
 }
 
-export function RouteKey({
+export function RouteLegend({
   surface,
   surfaceAbsence,
   bands,
   highlight,
   onHighlightChange,
-}: RouteKeyProps) {
+}: RouteLegendProps) {
   // What each chip in the group stands for, built from the classes actually
   // offered. Reading the selection back out of this rather than parsing the
   // string means a value the key never offered cannot become a highlight.
@@ -180,7 +180,7 @@ export function RouteKey({
               const share = formatShare(entry.share);
 
               return (
-                <KeyChip
+                <LegendChip
                   key={entry.band}
                   value={chipValue(bandHighlight(entry.band))}
                   paintClassName={paintClasses[`band:${entry.band}` as keyof typeof paintClasses]}
@@ -221,7 +221,7 @@ export function RouteKey({
                 const share = formatShare(entry.share);
 
                 return (
-                  <KeyChip
+                  <LegendChip
                     key={entry.kind}
                     value={chipValue(surfaceHighlight(entry.kind))}
                     paintClassName={

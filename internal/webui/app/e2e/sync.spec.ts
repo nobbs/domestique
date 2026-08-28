@@ -31,7 +31,7 @@ test("the page puts notices before the operational questions", async ({ offlineP
 test("the way back is the map itself", async ({ offlinePage: page }) => {
   await openSync(page);
 
-  await page.getByRole("link", { name: "Map" }).click();
+  await page.getByRole("link", { name: "Atlas" }).click();
 
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByRole("button", { name: "Search the route library" })).toBeVisible();

@@ -107,7 +107,7 @@ export function FilterPanel({
             ))}
           </fieldset>
           <Button
-            variant="standard"
+            variant="outline"
             disabled={!active}
             onClick={() => onFiltersChange(EMPTY_FILTERS)}
           >

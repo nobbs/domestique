@@ -11,7 +11,7 @@ function Field() {
 }
 
 const meta = {
-  title: "Features/Routes/Range Row",
+  title: "Features/Atlas/Range Row",
   component: RangeRow,
   tags: ["autodocs"],
   args: {
