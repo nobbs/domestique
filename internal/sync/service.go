@@ -144,9 +144,9 @@ type Options struct {
 	// delete the final owned destination routes.
 	//
 	// It is a function rather than a value because it is the switch an operator
-	// turns on for one deliberate run and off again afterwards. Each source is
-	// asked as it is read, so a run already in flight keeps the answer it
-	// started with and the next one gets the new one.
+	// turns on for one deliberate run and off again afterwards. It is asked once
+	// per source, as that source is read, so turning it off reaches the sources
+	// a run has not read yet.
 	AllowEmptySourceDeletion func() bool
 	TargetIDs                []string
 }
