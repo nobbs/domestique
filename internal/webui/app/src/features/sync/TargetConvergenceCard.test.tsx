@@ -56,7 +56,7 @@ function renderConvergence(value: Status) {
 }
 
 describe("TargetConvergenceCard", () => {
-  it("reports each account's own state", () => {
+  it("reports each target's own state", () => {
     renderConvergence(
       status(false, [
         target(),
@@ -83,10 +83,10 @@ describe("TargetConvergenceCard", () => {
     expect(screen.getByText(/a Wahoo operation did not complete/)).toBeInTheDocument();
   });
 
-  // "All 4 routes" is a claim about the Wahoo account. Whether a head unit has
+  // "All 4 routes" is a claim about the target. Whether a head unit has
   // fetched those routes is not something the service can see, and the card
   // must not be readable as though it were.
-  it("says this is the account and not the device", () => {
+  it("says this is the target and not the device", () => {
     renderConvergence(status(true, [target()]));
 
     expect(screen.getByText(/not what a head unit has downloaded/)).toBeInTheDocument();
@@ -106,12 +106,12 @@ describe("TargetConvergenceCard", () => {
     renderConvergence(value);
 
     expect(
-      screen.getByText(/Wahoo has 187 requests left, shared by every account here\./),
+      screen.getByText(/Wahoo has 187 requests left, shared by every target here\./),
     ).toBeInTheDocument();
     expect(screen.getByText(/Resets /)).toBeInTheDocument();
   });
 
-  it("says an account is waiting to be connected rather than merely behind", () => {
+  it("says a target is waiting to be connected rather than merely behind", () => {
     renderConvergence(
       status(false, [
         target({
@@ -124,34 +124,34 @@ describe("TargetConvergenceCard", () => {
 
     expect(screen.getByText("Not connected")).toBeInTheDocument();
     expect(screen.getByText(/has never been connected to Wahoo/)).toBeInTheDocument();
-    // The counts are not repeated beside it: an account that cannot be written
+    // The counts are not repeated beside it: a target that cannot be written
     // to at all has nothing to say about how far behind it is.
     expect(screen.queryByText(/routes/)).not.toBeInTheDocument();
   });
 
   /*
    * The point of the whole section, for an operator who has just deployed: the
-   * flow that fixes an unconnected account is a redirect, and until now the
+   * flow that fixes an unconnected target is a redirect, and until now the
    * page named no way to it at all.
    */
   it.each([
     ["not_authorized", "Connect rider-a"],
     ["needs_reauthorization", "Reconnect rider-a"],
-  ])("offers the protected flow for a %s account", (authorisation, name) => {
+  ])("offers the protected flow for a %s target", (authorisation, name) => {
     renderConvergence(
       status(false, [
         target({ authorisation, convergence: "unauthorized", stages: { current: 0, pending: 4 } }),
       ]),
     );
 
-    // The slot is in the link text because two accounts sit in this list.
+    // The slot is in the link text because two targets sit in this list.
     const connect = screen.getByRole("link", { name });
     // The service's own protected route, reached by leaving the application:
     // the flow goes to Wahoo and comes back, so it cannot be a client-side one.
     expect(connect).toHaveAttribute("href", "/oauth/wahoo/start/rider-a");
   });
 
-  it("separates an account Wahoo rejected from one never connected", () => {
+  it("separates a target Wahoo rejected from one never connected", () => {
     renderConvergence(
       status(false, [
         target({
@@ -175,7 +175,7 @@ describe("TargetConvergenceCard", () => {
   });
 
   /*
-   * A second flow invalidates the first, so an account midway through
+   * A second flow invalidates the first, so a target midway through
    * connecting must be told to finish the one it has rather than handed a
    * control that quietly destroys it.
    */
@@ -212,8 +212,8 @@ describe("TargetConvergenceCard", () => {
 
   /*
    * The service reduces every unsuccessful run to `failed` in its one word, so
-   * an account held by a deletion gate arrives here looking exactly like an
-   * account that broke. It is the opposite situation: nothing was removed, and
+   * a target held by a deletion gate arrives here looking exactly like a
+   * target that broke. It is the opposite situation: nothing was removed, and
    * running it again changes nothing until the operator decides it should.
    */
   it.each([
@@ -250,19 +250,19 @@ describe("TargetConvergenceCard", () => {
     expect(screen.queryByText(/^Held by a safety gate · /)).not.toBeInTheDocument();
   });
 
-  // The action names the account it reconciles, not a physical device: an
+  // The action names the target it reconciles, not a physical device: a
   // operator reading two rows must be able to tell which one a press affects.
-  it("offers to reconcile a connected account by name", () => {
+  it("offers to reconcile a connected target by name", () => {
     renderConvergence(status(true, [target(), target({ id: "rider-b" })]));
 
     expect(screen.getByRole("button", { name: "Reconcile now: rider-a" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Reconcile now: rider-b" })).toBeInTheDocument();
   });
 
-  // An account that cannot be written to has nothing here worth reconciling:
+  // A target that cannot be written to has nothing here worth reconciling:
   // the connect or reconnect flow is the only action offered instead.
   it.each(["not_authorized", "pending", "needs_reauthorization"])(
-    "offers no reconcile action for a %s account",
+    "offers no reconcile action for a %s target",
     (authorisation) => {
       renderConvergence(status(false, [target({ authorisation, convergence: "unauthorized" })]));
 
@@ -270,7 +270,7 @@ describe("TargetConvergenceCard", () => {
     },
   );
 
-  it("triggers exactly the pressed account's reconciliation", async () => {
+  it("triggers exactly the pressed target's reconciliation", async () => {
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
       if (init?.method === "POST") {
         return new Response(JSON.stringify({ status: "accepted" }), { status: 202 });
@@ -293,9 +293,9 @@ describe("TargetConvergenceCard", () => {
     expect(fetchMock.mock.calls.some((call) => call[0] === "/v1/sync/targets/rider-a")).toBe(false);
   });
 
-  // Deleting everything an account holds must not be one click away, and the
-  // one thing a stray click cannot produce is the account's own name.
-  it("will not delete an account's routes until its name is typed", async () => {
+  // Deleting everything a target holds must not be one click away, and the
+  // one thing a stray click cannot produce is the target's own name.
+  it("will not delete a target's routes until its name is typed", async () => {
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
       if (init?.method === "POST") {
         return new Response(JSON.stringify({ status: "accepted" }), { status: 202 });
@@ -329,7 +329,7 @@ describe("TargetConvergenceCard", () => {
     );
   });
 
-  it("says what clearing an account will and will not touch", async () => {
+  it("says what clearing a target will and will not touch", async () => {
     renderConvergence(status(true, [target()]));
 
     await userEvent.click(screen.getByRole("button", { name: "Delete all routes…" }));

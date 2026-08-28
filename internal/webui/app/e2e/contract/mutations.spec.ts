@@ -19,7 +19,7 @@ const STALE_AFTER = "Call the library stale after (hours)";
 /** The settings page, once the service has answered what it is set to. */
 async function openSettings(page: Page): Promise<void> {
   await page.goto("/settings");
-  await expect(page.getByRole("heading", { level: 3, name: "Synchronisation" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 3, name: "Sync" })).toBeVisible();
 }
 
 test("changing the schedule is stored and read back", async ({ bundlePage: page, apiCalls }) => {
@@ -65,7 +65,7 @@ test("changing a setting is stored and read back", async ({ bundlePage: page, ap
   const after = String(Number(before) + 1);
 
   await hours.fill(after);
-  await page.getByRole("button", { name: "Save Synchronisation" }).click();
+  await page.getByRole("button", { name: "Save Sync" }).click();
 
   await expect(page.getByText(/^Saved\./)).toBeVisible();
   expect(callsTo(apiCalls, "PUT", "/v1/settings/sync").map((call) => call.status)).toEqual([200]);
@@ -75,7 +75,7 @@ test("changing a setting is stored and read back", async ({ bundlePage: page, ap
   await expect(page.getByLabel(STALE_AFTER)).toHaveValue(after);
 
   await page.getByLabel(STALE_AFTER).fill(before);
-  await page.getByRole("button", { name: "Save Synchronisation" }).click();
+  await page.getByRole("button", { name: "Save Sync" }).click();
   await expect(page.getByText(/^Saved\./)).toBeVisible();
 });
 

@@ -1,5 +1,5 @@
 /**
- * The name each half of a synchronisation goes by, on the sync page and in its
+ * The name each half of a sync goes by, on the sync page and in its
  * history.
  *
  * Writing is always to Wahoo, so that half is fixed. Reading is from whichever

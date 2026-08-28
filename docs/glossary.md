@@ -66,10 +66,12 @@ and removing it leaves that record standing, so a slot and the target it names
 are not the same thing (see [configuration.md](specs/configuration.md)). This is
 configuration's word alone; the wire and the interface say *target*.
 
-**account** — a set of credentials. A source has one (a library is read with a
-login of its own) and a target has one (an authorised Wahoo connection). Because
-both have accounts, "account" alone never identifies which side is meant: say
-*source account* or *target account*, or name the side directly.
+**account** — a set of credentials, and only that. A source has one (a library
+is read with a login of its own) and a target has one (an authorised Wahoo
+connection). Because both have accounts, "account" alone never identifies which
+side is meant: say *source account* or *target account*, or name the side
+directly. The destination itself is a *target*, in the interface as on the
+wire — "what the targets hold", not "what the accounts hold".
 
 ## The library
 

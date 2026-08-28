@@ -1,8 +1,8 @@
 /**
  * What is happening now, and the controls over each half.
  *
- * A synchronisation has two halves — reading the VeloPlanner library, and
- * writing what was read onto the Wahoo accounts — and each has its own switch
+ * A sync has two halves — reading the VeloPlanner library, and
+ * writing what was read onto the Wahoo targets — and each has its own switch
  * and its own button. They are one row per half rather than a settings list,
  * because the question an operator actually has is about a half: is it on, when
  * did it last run, and can I run it now.
@@ -54,7 +54,7 @@ function activeHeadline(
  * What is happening right now, in a sentence.
  *
  * The counts are the aggregate the service reports and nothing beyond it: how
- * much of what the accounts are owed they already hold. A run cannot say which
+ * much of what the targets are owed they already hold. A run cannot say which
  * route it is on without naming one, so it does not try, and an empty library
  * is left to the headline alone rather than told it is nought of nought.
  */
@@ -68,9 +68,9 @@ export function activeSummary(
   if (total === 0) {
     return headline;
   }
-  const accounts = active.targets === 1 ? "account" : "accounts";
+  const targets = active.targets === 1 ? "target" : "targets";
 
-  return `${headline} · ${active.stages.current} of ${total} routes across ${active.targets} ${accounts}`;
+  return `${headline} · ${active.stages.current} of ${total} routes across ${active.targets} ${targets}`;
 }
 
 /**

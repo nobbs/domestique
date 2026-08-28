@@ -4,7 +4,7 @@
  * The service keeps three answers per stage — the derived geometry, the pushed
  * revision on each target, and the surface classification — and skips the work
  * whenever they still look current. This is the operator saying that one of them
- * is wrong: it drops all three for this stage and starts a synchronisation that
+ * is wrong: it drops all three for this stage and starts a sync that
  * has to produce them again.
  *
  * It rewrites the route the service already owns on each target. It never

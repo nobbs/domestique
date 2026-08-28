@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
 import { expect, fn, screen, userEvent } from "storybook/test";
 import type { TargetStatus } from "../../api/types";
-import { AccountRow } from "./AccountRow";
+import { TargetRow } from "./TargetRow";
 
 const connected: TargetStatus = {
   id: "rider-a",
@@ -32,7 +32,7 @@ function Held({
   const [confirmation, setConfirmation] = useState("");
 
   return (
-    <AccountRow
+    <TargetRow
       target={target}
       reconciling={reconciling}
       onReconcile={onReconcile}
@@ -54,8 +54,8 @@ function Held({
 }
 
 const meta = {
-  title: "Features/Sync/Account Row",
-  component: AccountRow,
+  title: "Features/Sync/Target Row",
+  component: TargetRow,
   tags: ["autodocs"],
   args: {
     target: connected,
@@ -77,7 +77,7 @@ const meta = {
       </ul>
     ),
   ],
-} satisfies Meta<typeof AccountRow>;
+} satisfies Meta<typeof TargetRow>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
@@ -123,8 +123,8 @@ export const ReconcileReportsItself: Story = {
   },
 };
 
-/** The confirmation asks for the account's own name, and disables until it matches. */
-export const DeletionNeedsTheAccountName: Story = {
+/** The confirmation asks for the target's own name, and disables until it matches. */
+export const DeletionNeedsTheTargetName: Story = {
   render: () => <Held />,
   play: async ({ canvas }) => {
     await userEvent.click(canvas.getByRole("button", { name: "Delete all routes…" }));

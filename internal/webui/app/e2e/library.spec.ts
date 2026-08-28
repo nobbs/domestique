@@ -335,7 +335,7 @@ test("the menu bar says what sync is doing and is the way to it", async ({ offli
   // one connected slot and one that never onboarded, so the dot is painted and
   // the link's name says why.
   await expect(sync).toHaveAttribute("data-tone", "alert");
-  await expect(sync).toHaveAccessibleName("Sync \u00b7 An account is not connected");
+  await expect(sync).toHaveAccessibleName("Sync \u00b7 A target is not connected");
 
   await sync.click();
 

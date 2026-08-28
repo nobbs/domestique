@@ -1,12 +1,13 @@
 /**
- * What each Wahoo account holds.
+ * What each target holds.
  *
  * This is the question an operator actually has after a sync: not "did the run
- * succeed" but "is what I planned now on both accounts". The two are different —
- * a run that wrote one account and could not write the other is recorded once,
- * as failed, and says nothing about which account is behind.
+ * succeed" but "is what I planned now on both targets". The two are different —
+ * a run that wrote one target and could not write the other is recorded once,
+ * as failed, and says nothing about which target is behind.
  *
- * It is deliberately a claim about the Wahoo account and nothing further:
+ * It is deliberately a claim about the Wahoo account behind the target and
+ * nothing further:
  * whether a head unit has since downloaded those routes is not something the
  * service can see, so the card says so rather than letting "up to date" be read
  * as "on the device".
@@ -18,9 +19,9 @@ import { useClearTarget, useTriggerTargetSync } from "../../api/generated";
 import { statusQuery } from "../../api/queries";
 import { Skeleton } from "../../components/ui/skeleton";
 import { formatCount, formatTimestamp } from "../../lib/format";
-import { AccountRow } from "./AccountRow";
+import { TargetRow } from "./TargetRow";
 
-/** The body of the "What the accounts hold" card: one row per account. */
+/** The body of the "What the targets hold" card: one row per target. */
 export function TargetConvergenceCard() {
   const queryClient = useQueryClient();
   const { data, isPending, isError } = useQuery(statusQuery());
@@ -29,7 +30,7 @@ export function TargetConvergenceCard() {
       onSuccess: () => queryClient.invalidateQueries({ queryKey: statusQuery().queryKey }),
     },
   });
-  // Which account is being cleared, and what has been typed to confirm it.
+  // Which target is being cleared, and what has been typed to confirm it.
   // Holding the slot here rather than per row is what keeps two confirmations
   // from ever being open at once.
   const [clearing, setClearing] = useState<string | null>(null);
@@ -46,11 +47,11 @@ export function TargetConvergenceCard() {
   });
 
   if (isPending) {
-    return <Skeleton className="h-24 w-full" role="status" aria-label="Loading accounts" />;
+    return <Skeleton className="h-24 w-full" role="status" aria-label="Loading targets" />;
   }
   if (isError) {
     return (
-      <p className="text-sm text-[var(--alert)]">The service did not say what the accounts hold.</p>
+      <p className="text-sm text-[var(--alert)]">The service did not say what the targets hold.</p>
     );
   }
 
@@ -58,7 +59,7 @@ export function TargetConvergenceCard() {
     <>
       <ul className="grid gap-3">
         {data.targets.map((target) => (
-          <AccountRow
+          <TargetRow
             key={target.id}
             target={target}
             reconciling={reconcile.isPending}
@@ -80,18 +81,18 @@ export function TargetConvergenceCard() {
         ))}
       </ul>
       <p className="text-sm text-[var(--ink-2)]">
-        This is what the accounts hold, not what a head unit has downloaded.
+        This is what the targets hold, not what a head unit has downloaded.
       </p>
       {/*
        * Wahoo's own live reading, not a count this service keeps itself: the
-       * quota is shared across every configured account, so nothing local
+       * quota is shared across every configured target, so nothing local
        * could total it correctly on its own. Absent until a request has
        * actually reached Wahoo and reported one.
        */}
       {data.sync.wahooRateLimit ? (
         <p className="text-sm text-[var(--ink-2)]">
           Wahoo has {formatCount(data.sync.wahooRateLimit.remaining, "request")} left, shared by
-          every account here.
+          every target here.
           {data.sync.wahooRateLimit.resetsAt
             ? ` Resets ${formatTimestamp(data.sync.wahooRateLimit.resetsAt)}.`
             : null}
@@ -101,7 +102,7 @@ export function TargetConvergenceCard() {
         <p className="text-sm text-[var(--alert)]" role="alert">
           {reconcile.error instanceof Error && reconcile.error.message
             ? reconcile.error.message
-            : "That account could not be reconciled."}
+            : "That target could not be reconciled."}
         </p>
       ) : null}
       {clear.isError ? (

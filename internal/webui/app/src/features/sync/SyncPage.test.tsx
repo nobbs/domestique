@@ -71,7 +71,7 @@ describe("SyncPage", () => {
     const headings = (await screen.findAllByRole("heading", { level: 2 })).map(
       (heading) => heading.textContent,
     );
-    expect(headings).toEqual(["Now", "What the accounts hold", "What has happened"]);
+    expect(headings).toEqual(["Now", "What the targets hold", "What has happened"]);
     expect(screen.queryByRole("radio", { name: "Metric (km)" })).toBeNull();
   });
 

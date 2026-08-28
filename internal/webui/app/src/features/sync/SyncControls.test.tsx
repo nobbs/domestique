@@ -64,7 +64,7 @@ afterEach(() => {
 describe("SyncControls", () => {
   // The whole point of the line: a run under way says so, rather than leaving
   // the last finished run on the page as though it were the answer.
-  it("says which half is running and how much the accounts already hold", () => {
+  it("says which half is running and how much the targets already hold", () => {
     renderControls(
       status({
         state: "running",
@@ -73,7 +73,7 @@ describe("SyncControls", () => {
     );
 
     expect(
-      screen.getByText("Writing to Wahoo · 11 of 12 routes across 2 accounts"),
+      screen.getByText("Writing to Wahoo · 11 of 12 routes across 2 targets"),
     ).toBeInTheDocument();
   });
 
@@ -102,7 +102,7 @@ describe("SyncControls", () => {
     );
 
     expect(
-      screen.getByText(/^First run at .* · 3 of 4 routes across 1 account$/),
+      screen.getByText(/^First run at .* · 3 of 4 routes across 1 target$/),
     ).toBeInTheDocument();
   });
 
@@ -421,7 +421,7 @@ describe("activeSummary", () => {
   // not give one is still waiting rather than idle.
   it("says a held-back run is waiting when nothing said until when", () => {
     expect(activeSummary("delayed", { targets: 1, stages: { current: 1, pending: 1 } })).toBe(
-      "Waiting to start · 1 of 2 routes across 1 account",
+      "Waiting to start · 1 of 2 routes across 1 target",
     );
   });
 });

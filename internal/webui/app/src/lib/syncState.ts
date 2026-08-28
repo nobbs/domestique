@@ -1,5 +1,5 @@
 /**
- * The state of synchronisation, in as few words as a line allows.
+ * The state of a sync, in as few words as a line allows.
  *
  * It lives beside `syncGuidance` rather than with the component that shows it,
  * because it is a reading of the service's status and not a property of any one
@@ -29,8 +29,8 @@ const RUNNING_LABELS: Record<SyncPhase, string> = {
 /**
  * The order is the order an operator would want it in: what is happening now
  * outranks what happened last, a run that needs them outranks a run that does
- * not, and an account that cannot be written to at all outranks how far behind
- * the accounts are. Only the last of those is a state worth painting green.
+ * not, and a target that cannot be written to at all outranks how far behind
+ * the targets are. Only the last of those is a state worth painting green.
  */
 export function syncState(status: Status): SyncState {
   const { sync } = status;
@@ -48,9 +48,9 @@ export function syncState(status: Status): SyncState {
     }
     // Only a run that went wrong. `syncGuidance` also speaks for a run that
     // never started — a half skipped because the other was already going, or
-    // one held back until an account is connected — and neither is a fault:
+    // one held back until a target is connected — and neither is a fault:
     // the first says "nothing is wrong" in its own remediation, and the second
-    // is the unconnected account, which the check below names for what it is.
+    // is the unconnected target, which the check below names for what it is.
     // Painting either red would teach an operator to go looking on a morning
     // when the schedule simply overlapped itself.
     if (guidance?.kind === "failed") {
@@ -59,7 +59,7 @@ export function syncState(status: Status): SyncState {
   }
 
   if (status.targets.some((target) => target.convergence === "unauthorized")) {
-    return { label: "An account is not connected", tone: "alert" };
+    return { label: "A target is not connected", tone: "alert" };
   }
   if (!sync.lastCompletedAt) {
     return { label: "Has not run yet", tone: undefined };

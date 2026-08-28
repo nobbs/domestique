@@ -130,7 +130,7 @@ export const LinksToSync: Story = {
  * saying which page is being read. A dot is nothing to a screen reader or to
  * anyone who cannot tell these two apart, so the name says what it meant.
  */
-export const UnauthorizedAccount: Story = {
+export const UnauthorizedTarget: Story = {
   decorators: withStatus({
     ready: true,
     converged: true,
@@ -148,7 +148,7 @@ export const UnauthorizedAccount: Story = {
     },
   }),
   play: async ({ canvas }) => {
-    const link = canvas.getByRole("link", { name: "Sync · An account is not connected" });
+    const link = canvas.getByRole("link", { name: "Sync · A target is not connected" });
     await expect(link).toHaveAttribute("data-tone", "alert");
   },
 };

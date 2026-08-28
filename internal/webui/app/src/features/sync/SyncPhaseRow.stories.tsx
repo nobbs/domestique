@@ -8,7 +8,7 @@ const meta = {
   tags: ["autodocs"],
   args: {
     phase: "targets",
-    label: "Wahoo accounts",
+    label: "Wahoo targets",
     lastRun: {
       lastCompletedAt: "2026-08-18T06:30:00Z",
       lastResult: "succeeded",
@@ -58,7 +58,7 @@ export const Running: Story = { args: { running: true } };
 
 export const TogglesTheSchedule: Story = {
   play: async ({ canvas, args }) => {
-    await userEvent.click(canvas.getByRole("switch", { name: "Hourly: Wahoo accounts" }));
+    await userEvent.click(canvas.getByRole("switch", { name: "Hourly: Wahoo targets" }));
 
     await expect(args.onToggle).toHaveBeenCalled();
   },
@@ -66,7 +66,7 @@ export const TogglesTheSchedule: Story = {
 
 export const RunsNow: Story = {
   play: async ({ canvas, args }) => {
-    await userEvent.click(canvas.getByRole("button", { name: "Run now: Wahoo accounts" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Run now: Wahoo targets" }));
 
     await expect(args.onRun).toHaveBeenCalled();
   },

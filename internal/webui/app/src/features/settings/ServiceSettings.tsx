@@ -329,7 +329,7 @@ export function ServiceSettings() {
       <Basemaps settings={data} />
       <SurfaceClassification settings={data} />
       <RideModel settings={data} />
-      <Synchronisation settings={data} />
+      <Sync settings={data} />
     </Sections>
   );
 }
@@ -449,14 +449,14 @@ function Targets({ settings }: { settings: Settings }) {
 
   return (
     <Section
-      title="Wahoo accounts"
-      description="The accounts this application writes routes to."
+      title="Wahoo targets"
+      description="The targets this application writes routes to."
       save={save}
       edited={draft !== null}
       onSave={() => save.mutate({ data: { targets: entered(targets) } })}
     >
       <Field>
-        <FieldLabel htmlFor={`${id}-targets`}>Accounts, one per line</FieldLabel>
+        <FieldLabel htmlFor={`${id}-targets`}>Targets, one per line</FieldLabel>
         <Textarea
           id={`${id}-targets`}
           rows={2}
@@ -464,8 +464,8 @@ function Targets({ settings }: { settings: Settings }) {
           onChange={(event) => setDraft(event.target.value.split("\n"))}
         />
         <FieldDescription>
-          A name here is the identity every authorization, route and recorded run is stored under,
-          so renaming one leaves that account's history behind rather than moving it. Two at most.
+          A name here is the identity every authorisation, route and recorded run is stored under,
+          so renaming one leaves that target's history behind rather than moving it. Two at most.
         </FieldDescription>
       </Field>
     </Section>
@@ -848,7 +848,7 @@ function RideModel({ settings }: { settings: Settings }) {
   );
 }
 
-function Synchronisation({ settings }: { settings: Settings }) {
+function Sync({ settings }: { settings: Settings }) {
   const id = useId();
   const invalidate = useSettingsInvalidation();
   const [draft, setDraft] = useState<Settings["sync"] | null>(null);
@@ -860,7 +860,7 @@ function Synchronisation({ settings }: { settings: Settings }) {
 
   return (
     <Section
-      title="Synchronisation"
+      title="Sync"
       save={save}
       edited={draft !== null}
       onSave={() => save.mutate({ data: values })}
@@ -916,7 +916,7 @@ function Synchronisation({ settings }: { settings: Settings }) {
 
       {/*
        * The one switch on this page that asks first. It is the one that lets a
-       * synchronisation delete an entire library, and it is a switch rather than
+       * sync delete an entire library, and it is a switch rather than
        * a run, so the confirmation is about what it will keep permitting.
        */}
       <AlertDialog open={confirmingDeletion} onOpenChange={setConfirmingDeletion}>

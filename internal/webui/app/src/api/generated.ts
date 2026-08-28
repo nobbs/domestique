@@ -2695,7 +2695,7 @@ export const getSetWahooApplicationUrl = () => {
 };
 
 /**
- * Replaces the registered Wahoo application. The target slots are written separately: they are the accounts this application writes to, not part of the application itself.
+ * Replaces the registered Wahoo application. The target slots are written separately: they are the targets this application writes to, not part of the application itself.
  */
 export const setWahooApplication = async (
   wahooApplicationUpdate: WahooApplicationUpdate,

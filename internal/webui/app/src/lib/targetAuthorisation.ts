@@ -1,5 +1,5 @@
 /**
- * What one Wahoo account's authorisation state means, and how it is left.
+ * What one target's authorisation state means, and how it is left.
  *
  * The service serves four words and the page has to turn them into an operator
  * decision, because three of the four are only ever fixed the same way: by one
@@ -10,7 +10,7 @@
  * `pending` is the reason this is a module rather than a label table. It is a
  * flow the operator has already started and not finished, and it is the one
  * state where the right affordance is none at all: starting a second flow
- * invalidates the first, so an account midway through connecting deliberately
+ * invalidates the first, so a target midway through connecting deliberately
  * offers nothing to press.
  *
  * Every string here is a constant. Nothing from the service is interpolated
@@ -24,7 +24,7 @@
  * Mirrors the constants in `internal/httpapi/routes_status.go`. Three are
  * stored on the target slot; `pending` is derived from an OAuth transaction
  * that has neither expired nor been consumed, which is why it can appear and
- * disappear without anything about the account having changed.
+ * disappear without anything about the target having changed.
  */
 export const TARGET_AUTHORISATIONS = [
   "not_authorized",
@@ -36,7 +36,7 @@ export const TARGET_AUTHORISATIONS = [
 export type TargetAuthorisation = (typeof TARGET_AUTHORISATIONS)[number];
 
 export interface AuthorisationGuidance {
-  /** The word this account gets, in place of the convergence one. */
+  /** The word this target gets, in place of the convergence one. */
   label: string;
   /** What the state is and what happens next, in operator language. */
   detail: string;
@@ -52,18 +52,18 @@ export interface AuthorisationGuidance {
 const GUIDANCE: Record<Exclude<TargetAuthorisation, "authorized">, AuthorisationGuidance> = {
   not_authorized: {
     label: "Not connected",
-    detail: "This account has never been connected to Wahoo. Nothing is written to it until it is.",
+    detail: "This target has never been connected to Wahoo. Nothing is written to it until it is.",
     action: "Connect",
   },
   pending: {
     label: "Connecting",
     detail:
-      "A connection was started and has not come back yet. Finish it in the Wahoo tab it opened; it expires ten minutes after it was started, and this account then reads as it did before.",
+      "A connection was started and has not come back yet. Finish it in the Wahoo tab it opened; it expires ten minutes after it was started, and this target then reads as it did before.",
   },
   needs_reauthorization: {
     label: "Reconnect needed",
     detail:
-      "Wahoo stopped accepting this service's authorisation. Nothing was deleted and nothing has been lost — the account has to be connected again before it can be written to.",
+      "Wahoo stopped accepting this service's authorisation. Nothing was deleted and nothing has been lost — the target has to be connected again before it can be written to.",
     action: "Reconnect",
   },
 };
@@ -87,7 +87,7 @@ function isRecognised(value: string): value is TargetAuthorisation {
 }
 
 /**
- * What one account's authorisation should tell the operator, or `undefined`
+ * What one target's authorisation should tell the operator, or `undefined`
  * when it is connected and there is nothing to act on.
  */
 export function authorisationGuidance(authorisation: string): AuthorisationGuidance | undefined {
@@ -104,7 +104,7 @@ export function authorisationGuidance(authorisation: string): AuthorisationGuida
 }
 
 /**
- * Where the protected OAuth flow for one account starts.
+ * Where the protected OAuth flow for one target starts.
  *
  * A full-page navigation to the service's own path, deliberately: the flow
  * leaves for Wahoo and comes back to this application, so it is not something a
