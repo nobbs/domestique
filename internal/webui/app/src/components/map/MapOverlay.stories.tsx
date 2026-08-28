@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { liveMap } from "../../storybook/fixtures";
+import { ChromeMap } from "../../storybook/mapMock";
 import { MapOverlay } from "./MapOverlay";
 import { MapWidget } from "./MapWidget";
 
@@ -7,15 +7,16 @@ const styleUrl = "https://tiles.openfreemap.org/styles/bright";
 
 const meta = {
   title: "Components/Map/Map Overlay",
-  parameters: liveMap,
   component: MapOverlay,
   tags: ["autodocs"],
   args: { children: null },
   decorators: [
     (Story) => (
-      <div className="relative h-[34rem] overflow-hidden rounded-xl">
-        <Story />
-      </div>
+      <ChromeMap>
+        <div className="relative h-[34rem] overflow-hidden rounded-xl">
+          <Story />
+        </div>
+      </ChromeMap>
     ),
   ],
 } satisfies Meta<typeof MapOverlay>;
