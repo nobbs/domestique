@@ -75,6 +75,11 @@ both have accounts, "account" alone never identifies which side is meant: say
 **library** — the collection of routes this service holds. Nothing else. A
 remote service is a *source* or a *provider*; MapLibre is *MapLibre*.
 
+**atlas** — the entry page: the whole library drawn on one map, with one route
+opened over it. This is the reader's word for that page and its nav label. What
+the atlas draws is the *library*; what it draws on is a *map*. It is a browser
+UI word only — the API has no atlas.
+
 ## Identity and the map
 
 **route key** — the string `provider/sourceRouteId/stageOrder` that identifies

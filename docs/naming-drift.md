@@ -62,8 +62,10 @@ contents, and the sibling files — `routes_oauth.go`, `routes_settings.go`,
 `routes_status.go`, `routes_weather.go` — are already named by subject. The
 unambiguous cut is the five `RedirectLegacy*` handlers, about a third of the
 file, which become `routes_redirects.go`. What remains — `GetRoutes`,
-`GetRoute`, `GetRouteGeometry`, `ReprocessRoute` and their helpers — takes the
-subject word item 13 settles on.
+`GetRoute`, `GetRouteGeometry`, `ReprocessRoute` and their helpers — becomes
+`routes_library.go`, after the glossary's word for the stored collection. Not
+after item 13's *atlas*: that is the browser page's word, and the API has no
+atlas.
 
 This one crosses the wire, so it is the only item here that needs a coordinated
 change: `api/openapi.yaml`, the Go handlers, `pnpm api:generate`, the
@@ -252,21 +254,26 @@ enum includes `"unauthorized"`. `ServiceSettings.tsx:472` shows the reader
 project owns, American only where quoting a wire value. The one real fix is the
 user-visible "authorization" in `ServiceSettings.tsx`.
 
-## 13. The entry page has five names
+## 13. The entry page has three competing names
 
 | Layer | Name |
 | --- | --- |
-| route | `/` |
 | component | `RoutesPage` |
 | nav label | "Map" |
-| heading | "Route library" (visually hidden) |
-| drawer trigger | "Browse routes" |
-| Go handler | `GetIndex` |
 | Storybook | `Features/Route library` |
 
-**Proposed:** pick one — "Library" reads best, since the page is the library and
-the map is how it is drawn — and use it for the nav label, the heading, the
-drawer trigger, the component (`LibraryPage`) and the Storybook title.
+**Proposed:** the page is the **atlas** — the whole library drawn on one map.
+`RoutesPage` → `AtlasPage`, the nav label becomes "Atlas", and the Storybook
+title becomes `Features/Atlas/*`. The glossary gains the word.
+
+Four further names on this page are *not* drift and keep their wording. The
+visually hidden `<h1>` says "Route library" because a screen reader needs the
+page's contents named rather than the widget that draws them — and *library* is
+exactly the glossary's word for that collection. The drawer trigger "Browse
+routes" names an action on the list inside the page. `GetIndex` serves the
+application document at the root and, by its own doc comment, for the other
+pages too, so it names the document rather than this page. The route `/` is a
+path.
 
 Related: `/routes/:provider/:routeId/:stage` is no longer a page. It redirects
 to `/?route=…`, but the Go handler is still `GetRoutePage` and its doc comment
@@ -313,11 +320,11 @@ considered.
   `PageShell.tsx` or `RouteLibrary.tsx` beside them — `PageShell` is exported
   from `Layout.tsx`, and `RouteLibrary` is a name no component has. Name each
   story file for the component it renders: `RouteLibrary.stories.tsx` becomes
-  `LibraryPage.stories.tsx`, following item 13, and `PageShell.stories.tsx`
+  `AtlasPage.stories.tsx`, following item 13, and `PageShell.stories.tsx`
   folds into the existing `Layout.stories.tsx`.
 - **Storybook titles are three-way inconsistent** for one feature:
   `Features/Routes/*`, `Features/Route library`, `Features/Route Library/Map`.
-  Item 13 settles the word, so they become `Features/Library/*`.
+  Item 13 settles the word, so they become `Features/Atlas/*`.
 - **`components/Button.tsx` renames variants the primitive already names.**
   Of the six — `primary`, `standard`, `panel`, `ghost`, `danger`, `warning` —
   three are pure respellings: `primary`, `standard` and `danger` map straight
