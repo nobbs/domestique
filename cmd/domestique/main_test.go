@@ -98,13 +98,30 @@ func TestWahooProviderRebuildsOnlyWhenItsSettingsChange(t *testing.T) {
 	require.NoError(t, err, "current()")
 	assert.Same(t, first, again, "the client was rebuilt without a settings change")
 
+	// An edit anywhere else on the settings page is not a reason to throw the
+	// observed budget away.
 	values := current.Values()
+	values.Surface.Regions = []string{"europe/germany"}
+	require.NoError(t, current.Set(t.Context(), values), "Set()")
+
+	kept, err := provider.current()
+	require.NoError(t, err, "current()")
+	assert.Same(t, first, kept, "an unrelated settings edit discarded the client")
+
 	values.Wahoo.ClientID = "another-application"
 	require.NoError(t, current.Set(t.Context(), values), "Set()")
 
 	rebuilt, err := provider.current()
 	require.NoError(t, err, "current()")
 	assert.NotSame(t, first, rebuilt, "an edited application was still served by the old client")
+
+	require.NoError(t, current.SetSecrets(t.Context(), map[runtimeconfig.SecretName]runtimeconfig.Secret{
+		runtimeconfig.SecretWahooClientSecret: runtimeconfig.NewSecret([]byte("a-rotated-secret")),
+	}), "SetSecrets()")
+
+	rotated, err := provider.current()
+	require.NoError(t, err, "current()")
+	assert.NotSame(t, rebuilt, rotated, "a rotated client secret was still served by the old client")
 }
 
 func configureWahoo(t *testing.T, current *runtimeconfig.Current) {

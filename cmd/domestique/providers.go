@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"sync"
@@ -39,8 +40,20 @@ type wahooProvider struct {
 	settings    *runtimeconfig.Current
 	client      *wahoo.Client
 	redirectURL string
+	built       wahooApplication
 	generation  uint64
 	mutex       sync.Mutex
+}
+
+// wahooApplication is the whole of what a client is built from, compared so
+// that an edit to a setting the client never reads keeps the one already built.
+// The secret is held as a digest because the only question ever asked of it
+// here is whether it is still the one the client holds.
+type wahooApplication struct {
+	apiBaseURL   string
+	oauthBaseURL string
+	clientID     string
+	secret       [sha256.Size]byte
 }
 
 // newWahooProvider builds the provider for one browser origin. The redirect URL
@@ -60,21 +73,33 @@ func (p *wahooProvider) current() (*wahoo.Client, error) {
 		return p.client, nil
 	}
 	values := p.settings.Values().Wahoo
+	secret := p.settings.Secret(runtimeconfig.SecretWahooClientSecret)
 	if values.APIBaseURL == "" || values.OAuthBaseURL == "" || values.ClientID == "" ||
-		!p.settings.SecretIsSet(runtimeconfig.SecretWahooClientSecret) {
+		!secret.IsSet() {
 		return nil, errNotConfigured
+	}
+	application := wahooApplication{
+		apiBaseURL:   values.APIBaseURL,
+		oauthBaseURL: values.OAuthBaseURL,
+		clientID:     values.ClientID,
+		secret:       sha256.Sum256(secret.Bytes()),
+	}
+	if p.client != nil && p.built == application {
+		p.generation = generation
+
+		return p.client, nil
 	}
 	client, err := wahoo.New(&wahoo.Options{
 		APIBaseURL:   values.APIBaseURL,
 		OAuthBaseURL: values.OAuthBaseURL,
 		ClientID:     values.ClientID,
 		RedirectURL:  p.redirectURL,
-		ClientSecret: p.settings.Secret(runtimeconfig.SecretWahooClientSecret).Bytes(),
+		ClientSecret: secret.Bytes(),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("creating Wahoo client: %w", err)
 	}
-	p.client, p.generation = client, generation
+	p.client, p.built, p.generation = client, application, generation
 
 	return client, nil
 }
