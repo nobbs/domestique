@@ -259,9 +259,20 @@ async function pointAtALine(page: Page): Promise<{ x: number; y: number }> {
  * panel names at the time, instead of assuming the scan came back to the same
  * route.
  */
+/*
+ * Longer than the default, because this test's own bounds are longer than it.
+ * `pointAtALine` hunts for a line by walking a grid of 4 rows by 39 steps,
+ * pausing 60ms at each to ask the canvas what is under the pointer — up to 9.4s
+ * to find one. The search below runs it once, then up to five more times with a
+ * `settleMap` (up to 5s) before each, which puts the bounded worst case around
+ * 81s. It usually lands in a fraction of that, which is why 60s held for so
+ * long, but a run that has to hunt was always going to exceed it. A slower
+ * machine only decides how often that happens.
+ */
 test("pointing at a line on the map picks that route out, twice to open it", async ({
   offlinePage: page,
 }) => {
+  test.setTimeout(120_000);
   await openLibrary(page);
 
   /** What the card in the column is currently about. */
