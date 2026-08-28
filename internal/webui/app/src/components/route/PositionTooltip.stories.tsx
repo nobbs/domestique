@@ -8,6 +8,7 @@ import { MapWidget } from "../map/MapWidget";
 import { PositionTooltip } from "./PositionTooltip";
 
 const styleUrl = "https://tiles.openfreemap.org/styles/bright";
+const darkStyleUrl = "https://tiles.openfreemap.org/styles/dark";
 const bounds: BoundingBox = [7.995, 48.995, 8.045, 49.025];
 
 // The fixture coordinates always build a profile; narrowed once here so the
@@ -39,6 +40,7 @@ const meta = {
     endMetres: profile.endMetres,
     surfaceSummary: surface,
     announce: false,
+    darkBasemap: false,
     unitSystem: "metric",
   },
   decorators: [
@@ -53,9 +55,9 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-function OnMap({ children }: { children: React.ReactNode }) {
+function OnMap({ children, style = styleUrl }: { children: React.ReactNode; style?: string }) {
   return (
-    <MapWidget styleUrl={styleUrl}>
+    <MapWidget styleUrl={style}>
       <MapViewport bounds={bounds} maxZoom={14} />
       {children}
     </MapWidget>
@@ -104,6 +106,20 @@ export const Announcing: Story = {
   render: (args) => (
     <OnMap>
       <PositionTooltip {...args} announce={true} />
+    </OnMap>
+  ),
+};
+
+/**
+ * On dark cartography the two colours swap, because what the box has to stand
+ * out from is the ground the map actually painted rather than the scheme the
+ * page is in — an operator may publish no dark style, and satellite imagery is
+ * dark either way.
+ */
+export const OnDarkCartography: Story = {
+  render: (args) => (
+    <OnMap style={darkStyleUrl}>
+      <PositionTooltip {...args} darkBasemap={true} />
     </OnMap>
   ),
 };

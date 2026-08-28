@@ -102,6 +102,7 @@ export function PositionTooltip({
   endMetres,
   surfaceSummary,
   announce,
+  darkBasemap,
   unitSystem,
 }: {
   /**
@@ -118,6 +119,8 @@ export function PositionTooltip({
   endMetres: number;
   surfaceSummary: SurfaceSummary | null | undefined;
   announce: boolean;
+  /** Whether the ground under this is dark, which is what its two colours follow. */
+  darkBasemap: boolean;
   unitSystem: UnitSystem;
 }) {
   const { current: map } = useMap();
@@ -186,7 +189,7 @@ export function PositionTooltip({
     >
       <p
         ref={boxRef}
-        className="route-position-tooltip"
+        className={`route-position-tooltip route-position-tooltip--${darkBasemap ? "dark" : "light"}`}
         aria-hidden={announce ? undefined : true}
         aria-live={announce ? "polite" : undefined}
       >

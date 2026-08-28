@@ -574,6 +574,7 @@ export function RouteOverlay({
           // it: the profile card is folded away, or — even open — a windowed
           // chart has no sample to announce for a hover outside its window.
           announce={profileCollapsed || windowedSample === null}
+          darkBasemap={darkBasemap}
           unitSystem={unitSystem}
         />
       ) : null}
