@@ -158,8 +158,8 @@ export default defineConfig({
         plugins: [storybookTest({ configDir: path.join(dirname, ".storybook") })],
         test: {
           name: "storybook",
-          // Every story, played and checked for markup, interaction and
-          // accessibility in a real browser rather than jsdom's DOM
+          // Every story, played and checked for markup and interaction in a
+          // real browser rather than jsdom's DOM
           // approximation — see the comment above BasemapPicker.stories.tsx
           // and its siblings for why some component suites live here instead
           // of in the jsdom project.
