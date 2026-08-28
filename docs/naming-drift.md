@@ -44,7 +44,7 @@ a reader calls it. The provider's parent becomes `sourceRoute`.
 | `Stage` (`lib/seenStages.ts`) | `Route` |
 | `StageChange`, `seenStages` | `RouteChange`, `seenRoutes` |
 | `internal/route/stage.go` | `internal/route/route.go` |
-| `internal/httpapi/routes_stages.go` | `internal/httpapi/routes_routes.go`, or split by verb |
+| `internal/httpapi/routes_stages.go` | split by verb — see below |
 
 `routeName` and `stageName` are the same whole-and-part pair as `routeId` and
 `stageOrder`: `routeName` is the *source route's* name and `stageName` is the
@@ -55,6 +55,15 @@ thing before and the other after — and it has to move in the same pass as
 
 `stageOrder` keeps its name: it is an ordinal within a source route, which is
 genuinely a stage concept.
+
+`routes_stages.go` is split rather than renamed. `routes_routes.go` would trade
+a confusing name for a stuttering one that still says nothing about the
+contents, and the sibling files — `routes_oauth.go`, `routes_settings.go`,
+`routes_status.go`, `routes_weather.go` — are already named by subject. The
+unambiguous cut is the five `RedirectLegacy*` handlers, about a third of the
+file, which become `routes_redirects.go`. What remains — `GetRoutes`,
+`GetRoute`, `GetRouteGeometry`, `ReprocessRoute` and their helpers — takes the
+subject word item 13 settles on.
 
 This one crosses the wire, so it is the only item here that needs a coordinated
 change: `api/openapi.yaml`, the Go handlers, `pnpm api:generate`, the
@@ -302,7 +311,10 @@ considered.
   grid; the library is a column of `ResultRow`s.
 - **`PageShell.stories.tsx` and `RouteLibrary.stories.tsx`** have no
   `PageShell.tsx` or `RouteLibrary.tsx` beside them — `PageShell` is exported
-  from `Layout.tsx`, and `RouteLibrary` is a name no component has.
+  from `Layout.tsx`, and `RouteLibrary` is a name no component has. Name each
+  story file for the component it renders: `RouteLibrary.stories.tsx` becomes
+  `LibraryPage.stories.tsx`, following item 13, and `PageShell.stories.tsx`
+  folds into the existing `Layout.stories.tsx`.
 - **Storybook titles are three-way inconsistent** for one feature:
   `Features/Routes/*`, `Features/Route library`, `Features/Route Library/Map`.
   Item 13 settles the word, so they become `Features/Library/*`.
@@ -320,8 +332,6 @@ considered.
   is not. Align them: this is a proposal, not a note. The roughly 28 call sites
   are why it belongs here rather than in the refactor that drew the layer line,
   but unlike item 14 the cost buys a boundary that holds afterwards.
-- **No page sets a document title.** `<title>` is the static string
-  `domestique`, so all four pages read identically in history and tabs.
 
 ## Suggested order
 
