@@ -35,6 +35,12 @@ const TONE = {
   hold: { light: "#8f6100", dark: "#e5b562" },
 } as const;
 
+/*
+ * All three keyed the same way — by the cartography, not by what the box turns
+ * out to be — so that reading one tells you how to read the others. `TRACK` is
+ * `INK` at thirty per cent, and has to be picked with the same key or it lands
+ * the ground's colour on the ground.
+ */
 const GROUND = { light: "#1c2126", dark: "#eef0f3" } as const;
 const INK = { light: "#f3f5f6", dark: "#101316" } as const;
 const TRACK = { light: "#f3f5f64d", dark: "#1013164d" } as const;
@@ -244,7 +250,6 @@ export function PositionTooltip({
   // What is *inside* the box stands on the opposite ground from the map, the
   // box having already inverted against the cartography.
   const onDarkGround = !darkBasemap;
-  const inner = onDarkGround ? "dark" : "light";
 
   const kind = surfaceSummary ? surfaceKindAt(surfaceSummary, content.distanceMetres) : null;
   const grade = bandColour(gradientBand(content.gradientPercent), onDarkGround);
@@ -352,7 +357,7 @@ export function PositionTooltip({
               </div>
             ) : null}
           </div>
-          <div className="h-[3px] w-full" style={{ backgroundColor: TRACK[inner] }}>
+          <div className="h-[3px] w-full" style={{ backgroundColor: TRACK[ground] }}>
             <div
               className="h-full"
               style={{ width: `${travelled * 100}%`, backgroundColor: grade }}
