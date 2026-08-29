@@ -1289,15 +1289,18 @@ func historyStateFixture() *fakeState {
 	endedAt := time.Date(2026, time.August, 18, 6, 30, 0, 0, time.UTC)
 
 	return &fakeState{history: []recordedRun{
-		{reference: "aaaaaaaaaaaa", phaseRun: phaseRun{
-			phase: "targets", completedAt: endedAt, outcome: "failed", detail: "destination", created: 1,
-		}},
-		{reference: "bbbbbbbbbbbb", phaseRun: phaseRun{
-			phase: "source", completedAt: endedAt.Add(-time.Hour), outcome: "succeeded", sourceStages: 12,
-		}},
-		{reference: "cccccccccccc", phaseRun: phaseRun{
-			phase: "targets", completedAt: endedAt.Add(-2 * time.Hour), outcome: "succeeded", updated: 2,
-		}},
+		{
+			reference: "aaaaaaaaaaaa",
+			phase:     "targets", completedAt: endedAt, outcome: "failed", detail: "destination", created: 1,
+		},
+		{
+			reference: "bbbbbbbbbbbb",
+			phase:     "source", completedAt: endedAt.Add(-time.Hour), outcome: "succeeded", sourceStages: 12,
+		},
+		{
+			reference: "cccccccccccc",
+			phase:     "targets", completedAt: endedAt.Add(-2 * time.Hour), outcome: "succeeded", updated: 2,
+		},
 	}}
 }
 
