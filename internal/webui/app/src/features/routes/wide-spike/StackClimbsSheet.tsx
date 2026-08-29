@@ -27,6 +27,7 @@
  */
 
 import { IconChevronsRight } from "@tabler/icons-react";
+import type { ReactNode } from "react";
 import { useState } from "react";
 import { ElevationProfile } from "../../../components/route/ElevationProfile";
 import { FilmstripBand } from "../../../components/route/forecast-spike/FilmstripBand";
@@ -44,6 +45,7 @@ import { WeatherFrame } from "./WeatherFrame";
 
 export function StackClimbsSheet({
   weatherFrame = "card",
+  lead,
   route,
   profile,
   surface,
@@ -56,7 +58,14 @@ export function StackClimbsSheet({
   highlight,
   onHighlightChange,
   unitSystem,
-}: SheetProps & { weatherFrame?: WeatherFrameVariant }) {
+}: SheetProps & {
+  weatherFrame?: WeatherFrameVariant;
+  /**
+   * What the route is, where a composition puts it in the dock rather than in
+   * a card of its own. Absent leaves the sheet as it was.
+   */
+  lead?: ReactNode;
+}) {
   const { ref, width } = useElementWidth<HTMLDivElement>();
   /*
    * Held here rather than by each part, and local rather than remembered. In
@@ -72,6 +81,9 @@ export function StackClimbsSheet({
   return (
     <Sheet>
       <div className="flex items-stretch gap-4">
+        {lead === undefined ? null : (
+          <div className="w-[13.5rem] shrink-0 border-r border-[var(--rule)] pr-4">{lead}</div>
+        )}
         <div className="min-w-0 flex-1">
           <div className="mb-2">
             <RideWindow startAt={startAt} samples={samples} />
