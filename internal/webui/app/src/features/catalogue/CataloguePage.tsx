@@ -25,7 +25,7 @@
 import { IconArrowDown, IconArrowUp, IconSearch, IconSelector } from "@tabler/icons-react";
 import type { UseQueryResult } from "@tanstack/react-query";
 import { useQueries, useQuery } from "@tanstack/react-query";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { routeGeometryQuery, routesQuery, statusQuery } from "../../api/queries";
 import type { Position, Route, RouteGeometry, SurfaceKind } from "../../api/types";
@@ -277,30 +277,64 @@ export function CataloguePage() {
   const view = useMemo(() => readView(params), [params]);
 
   /*
+   * What is in the search field, held here as well as in the address.
+   *
+   * The field cannot be driven by the address alone. A keystroke reaches the
+   * address through the router and comes back a render later, and typing
+   * faster than that round trip leaves the input showing the value it had
+   * before the last letter — so the letter after that is typed onto a stale
+   * string and the ones before it are lost. Typed quickly enough, an eight
+   * letter search arrives as its last letter alone.
+   *
+   * So the field reads from here, which changes as fast as it is typed, and
+   * the address follows. The effect below carries the traffic the other way,
+   * for an address that changed without this field: the reader pressing Back,
+   * or a link opened into the page.
+   */
+  const [typed, setTyped] = useState(view.query);
+  useEffect(() => {
+    setTyped(view.query);
+  }, [view.query]);
+
+  /*
    * Replaced rather than pushed. Every keystroke in the search field is a
    * change of view, and a history with one entry per letter typed would take a
    * dozen presses of Back to leave the page — while one entry holding the
    * latest view is exactly what makes coming back from an opened route land on
    * the table the reader left.
+   *
+   * The change is asked for as a function of the address being changed, rather
+   * than merged into the view this render happened to read. Two keystrokes
+   * inside one frame both see that render's view, so the second would write
+   * the first back out: type quickly and the field keeps only the last letter.
+   * Reading the address inside the updater means each change applies to the
+   * one before it, however fast they arrive.
    */
   const update = useCallback(
-    (next: Partial<CatalogueView>) => {
-      setParams(writeView({ ...view, ...next }), { replace: true });
+    (next: (current: CatalogueView) => Partial<CatalogueView>) => {
+      setParams(
+        (params) => {
+          const current = readView(params);
+
+          return writeView({ ...current, ...next(current) });
+        },
+        { replace: true },
+      );
     },
-    [view, setParams],
+    [setParams],
   );
 
   // The first press of a heading ranks by it; pressing the one already in force
   // turns the ranking around.
   const sortBy = useCallback(
     (column: SortColumn) => {
-      update(
-        column === view.sort
-          ? { direction: view.direction === "asc" ? "desc" : "asc" }
+      update((current) =>
+        column === current.sort
+          ? { direction: current.direction === "asc" ? "desc" : "asc" }
           : { sort: column, direction: initialDirection(column) },
       );
     },
-    [update, view.sort, view.direction],
+    [update],
   );
 
   const library = useMemo(() => routes.data ?? [], [routes.data]);
@@ -375,15 +409,19 @@ export function CataloguePage() {
             </InputGroupAddon>
             <InputGroupInput
               type="search"
-              value={view.query}
-              onChange={(event) => update({ query: event.target.value })}
+              value={typed}
+              onChange={(event) => {
+                const { value } = event.target;
+                setTyped(value);
+                update(() => ({ query: value }));
+              }}
               placeholder="Search the catalogue"
               aria-label="Search the route library"
             />
           </InputGroup>
           <FilterPanel
             filters={view.filters}
-            onFiltersChange={(filters) => update({ filters })}
+            onFiltersChange={(filters) => update(() => ({ filters }))}
             expanded={filtersExpanded}
             onExpandedChange={setFiltersExpanded}
           />

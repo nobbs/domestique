@@ -199,6 +199,24 @@ describe("CataloguePage", () => {
     expect(screen.getByText(/1 of 3 routes/)).toBeInTheDocument();
   });
 
+  it("keeps every character of a search", async () => {
+    /*
+     * This states the outcome; it cannot catch the bug that made it worth
+     * stating. The field lost every letter but the last when typing outran the
+     * router, and jsdom flushes between keystrokes, so the race has no room to
+     * happen here — every suite in this repository was green while a real
+     * browser showed "l" for "montreal". The story that guards it is
+     * `NothingMatches`, which types with no delay in a real browser.
+     */
+    const user = userEvent.setup({ delay: null });
+    show();
+
+    await user.type(screen.getByRole("searchbox"), "coast");
+
+    expect(screen.getByRole("searchbox")).toHaveValue("coast");
+    expect(screen.getByTestId("address")).toHaveTextContent("q=coast");
+  });
+
   it("says a search matched nothing rather than showing an empty table", async () => {
     const user = userEvent.setup();
     show();
