@@ -224,6 +224,7 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("GET /{$}", h.GetIndex)
 	h.mux.HandleFunc("GET /routes/{provider}/{routeId}/{stage}", h.GetRoutePage)
 	h.mux.HandleFunc("GET /routes/{routeId}/{stage}", h.RedirectLegacyRoutePage)
+	h.mux.HandleFunc("GET /catalogue", h.GetCataloguePage)
 	h.mux.HandleFunc("GET /sync", h.GetSyncPage)
 	h.mux.HandleFunc("GET /settings", h.GetSettingsPage)
 	// Browser routes are explicit application navigation, not OpenAPI operations.

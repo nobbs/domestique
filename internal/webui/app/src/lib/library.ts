@@ -63,10 +63,17 @@ export function matchesQuery(route: Route, query: string): boolean {
 /**
  * What a search leaves, by name.
  *
- * There is one order and no control to change it. The results column is read by
- * eye, from the top, while the map beside it answers where each route goes; a
- * sort by distance would be a second way to ask a question the figures in each
- * row already answer.
+ * One order, and on the atlas no control to change it: that column is read by
+ * eye, from the top, while the map beside it answers where each route goes, so
+ * a sort by distance would be a second way to ask a question the figures in
+ * each row already answer.
+ *
+ * The catalogue does offer that control, because the argument above does not
+ * survive the map being taken away — ranking the library by a measurement is
+ * the whole reason that page exists. It ranks what this returns rather than
+ * ordering the library itself; see `lib/catalogue.ts`, which relies on the
+ * order below being total and on `sort` being stable to inherit it as a
+ * tiebreak.
  *
  * The order is total: two routes that share a name fall back to their own stable
  * identity, so nothing swaps places between renders.

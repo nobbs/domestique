@@ -83,7 +83,7 @@ func (h *Handler) GetAsset(writer http.ResponseWriter, request *http.Request) {
 	h.assets.Static(writer, request)
 }
 
-// GetIndex serves the application document at the root. It and the three
+// GetIndex serves the application document at the root. It and the four
 // methods below are separate operations because each is a page a reader can be
 // linked straight to; they serve the same document because the routing that
 // follows is the application's own.
@@ -93,6 +93,11 @@ func (h *Handler) GetIndex(writer http.ResponseWriter, request *http.Request) {
 
 // GetRoutePage serves the application document for one stage's address.
 func (h *Handler) GetRoutePage(writer http.ResponseWriter, request *http.Request) {
+	h.index(writer, request)
+}
+
+// GetCataloguePage serves the application document for the catalogue view.
+func (h *Handler) GetCataloguePage(writer http.ResponseWriter, request *http.Request) {
 	h.index(writer, request)
 }
 

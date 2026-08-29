@@ -179,6 +179,7 @@ func TestHandlerGatesEveryNonHealthRoute(t *testing.T) {
 		"/manifest.webmanifest",
 		"/",
 		"/routes/veloplanner/1/1",
+		"/catalogue",
 		"/settings",
 		"/sync",
 		"/unknown",
@@ -209,6 +210,7 @@ func TestBrowserUIRoutesAreRegistered(t *testing.T) {
 		"/",
 		"/routes/veloplanner/1/1",
 		"/routes/1/1",
+		"/catalogue",
 		"/sync",
 		"/settings",
 	}
@@ -969,7 +971,7 @@ func TestHandlerSetsPolicyAndCacheHeaders(t *testing.T) {
 
 func TestHandlerServesTheApplicationDocumentForDeepLinks(t *testing.T) {
 	handler := newTestHandler(t)
-	for _, path := range []string{"/", "/routes/veloplanner/12/1", "/settings", "/sync"} {
+	for _, path := range []string{"/", "/routes/veloplanner/12/1", "/catalogue", "/settings", "/sync"} {
 		t.Run(path, func(t *testing.T) {
 			response := httptest.NewRecorder()
 			handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, path))

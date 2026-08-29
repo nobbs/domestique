@@ -432,7 +432,10 @@ it.
 
 The browser UI is served from the same origin and the same authenticated
 listener: an application entry document and immutable hashed static assets.
-`/`, `/sync`, and `/settings` are authenticated browser entry routes. Settings
+`/`, `/catalogue`, `/sync`, and `/settings` are authenticated browser entry
+routes. The catalogue reads the same inventory listing `/` does and asks the
+service for nothing of its own: it is the library as a sortable table, and the
+ordering, searching and narrowing it offers all happen in the browser. Settings
 holds two kinds of preference and keeps them apart: the theme and the units are
 this browser's alone and stay in its local storage, while the service's runtime
 settings are read and written over the endpoints above and are the same for
