@@ -313,10 +313,8 @@ func (s *Store) ForEachTargetRun(
 }
 
 // LastPhaseOutcome returns the outcome of the most recent run recorded for one
-// phase.
-//
-// Runs recorded before phases existed carry no phase and are not attributed to
-// one, which is the same rule ForEachPhaseRun applies.
+// phase. Runs recorded before phases existed carry none and are not attributed
+// to one, the same rule ForEachPhaseRun applies.
 func (s *Store) LastPhaseOutcome(ctx context.Context, phase string) (outcome string, found bool, err error) {
 	if phase == "" {
 		return "", false, errors.New("phase is required")
