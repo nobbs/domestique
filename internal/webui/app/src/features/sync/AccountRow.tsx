@@ -142,7 +142,7 @@ export function AccountRow({ target, reconciling, onReconcile, clear }: AccountR
            * from it on its own schedule.
            */}
           <Button
-            variant="standard"
+            variant="outline"
             disabled={reconciling}
             onClick={onReconcile}
             aria-label={`Reconcile now: ${target.id}`}
@@ -187,9 +187,9 @@ export function AccountRow({ target, reconciling, onReconcile, clear }: AccountR
                  * vendored file the registry wrote, and this file decides what
                  * its footer is made of.
                  */}
-                <AlertDialogCancel render={<Button variant="standard" />}>Cancel</AlertDialogCancel>
+                <AlertDialogCancel render={<Button variant="outline" />}>Cancel</AlertDialogCancel>
                 <Button
-                  variant="danger"
+                  variant="destructive"
                   disabled={clear.confirmation !== target.id || clear.pending}
                   onClick={clear.onConfirm}
                   aria-label={`Delete every Domestique route from ${target.id}`}

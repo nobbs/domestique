@@ -54,14 +54,14 @@ export interface StartTimePickerProps {
    * refused, and the refusal would arrive as a `400` the page can only report
    * as the provider being unavailable — which it would not be.
    */
-  rideSeconds?: number | undefined;
+  movingSeconds?: number | undefined;
 }
 
-export function StartTimePicker({ value, onChange, rideSeconds }: StartTimePickerProps) {
+export function StartTimePicker({ value, onChange, movingSeconds }: StartTimePickerProps) {
   const [refusal, setRefusal] = useState<string | null>(null);
   const now = new Date();
   const latestStart = new Date(
-    now.getTime() + FORECAST_HORIZON_MS - Math.max(rideSeconds ?? 0, 0) * 1000,
+    now.getTime() + FORECAST_HORIZON_MS - Math.max(movingSeconds ?? 0, 0) * 1000,
   );
 
   return (
@@ -105,7 +105,7 @@ export function StartTimePicker({ value, onChange, rideSeconds }: StartTimePicke
           // Classified by the same function the page uses on a remembered
           // value, so a keystroke and a stored time can never be told two
           // different things about the same trouble.
-          const refusal = startTimeRefusal(parsed, rideSeconds, asOf);
+          const refusal = startTimeRefusal(parsed, movingSeconds, asOf);
           if (refusal !== null) {
             setRefusal(
               refusal === "past"

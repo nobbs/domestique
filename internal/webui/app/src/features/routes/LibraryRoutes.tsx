@@ -23,7 +23,7 @@ export interface LibraryRoutesProps {
   lines: MapLine[];
   darkBasemap?: boolean;
   /** The route that makes the rest of the library contextual. */
-  selectedKey: string | null;
+  pickedKey: string | null;
   /** The route painted in the accent while its full overlay is absent. */
   accentKey?: string | null;
   hoveredKey?: string | null;
@@ -47,8 +47,8 @@ function collectionOf(lines: MapLine[]) {
 export function LibraryRoutes({
   lines,
   darkBasemap = false,
-  selectedKey,
-  accentKey = selectedKey,
+  pickedKey,
+  accentKey = pickedKey,
   hoveredKey = null,
   hitLayerId,
 }: LibraryRoutesProps) {
@@ -64,7 +64,7 @@ export function LibraryRoutes({
         paint={{
           "line-color": LIBRARY_INK[theme],
           "line-width": 2,
-          "line-opacity": selectedKey === null ? LIBRARY_OPACITY : CONTEXT_OPACITY,
+          "line-opacity": pickedKey === null ? LIBRARY_OPACITY : CONTEXT_OPACITY,
         }}
       />
       {accentKey !== null ? (

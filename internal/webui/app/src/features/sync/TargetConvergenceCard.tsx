@@ -21,7 +21,7 @@ import { formatCount, formatTimestamp } from "../../lib/format";
 import { AccountRow } from "./AccountRow";
 
 /** The body of the "What the accounts hold" card: one row per account. */
-export function TargetConvergence() {
+export function TargetConvergenceCard() {
   const queryClient = useQueryClient();
   const { data, isPending, isError } = useQuery(statusQuery());
   const reconcile = useTriggerTargetSync({

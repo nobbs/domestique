@@ -13,7 +13,7 @@ const connected: TargetStatus = {
 };
 
 /**
- * Holds the delete-confirmation state, as `TargetConvergence` does — one
+ * Holds the delete-confirmation state, as `TargetConvergenceCard` does — one
  * slot shared across every row, so only one row's dialog can be open. The
  * popover it opens renders through a portal into `document.body`, outside
  * this story's own canvas root, which is why the interactive stories below

@@ -1,11 +1,14 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { StoryProviders } from "../storybook/fixtures";
-import { Layout } from "./Layout";
+import { Layout, PageShell } from "./Layout";
 
 const meta = {
   title: "Components/Layout",
   component: Layout,
   tags: ["autodocs"],
+  // Both layouts carry the menu bar, which asks the service what sync is
+  // doing — so each needs a client and a router the same way a page mounted
+  // inside it does.
   decorators: [
     (Story) => (
       <StoryProviders>
@@ -27,4 +30,13 @@ export const Workspace: Story = {
       </div>
     ),
   },
+};
+
+/** The other layout this module exports: a readable page, outside the map workspace. */
+export const Shell: Story = {
+  render: () => (
+    <PageShell>
+      <p className="text-sm">A readable page, outside the map workspace.</p>
+    </PageShell>
+  ),
 };

@@ -68,7 +68,7 @@ export interface RouteProfileProps {
    * rather than draw as an empty space: the reader has asked for a forecast
    * and is owed the reason they are not getting one.
    */
-  rideSeconds?: number | undefined;
+  movingSeconds?: number | undefined;
   /**
    * What identifies the stage on show — `routeKey`'s provider/route/stage
    * triple. The title cannot stand in for it: two stages may legitimately
@@ -79,7 +79,7 @@ export interface RouteProfileProps {
    * Whether the stage's prediction is settled — that is, whether its geometry
    * has actually been answered for.
    *
-   * `rideSeconds` alone cannot say: it is undefined both while the geometry is
+   * `movingSeconds` alone cannot say: it is undefined both while the geometry is
    * still being fetched and when the answer came back without a prediction. A
    * remembered start time makes that difference visible, because the page
    * would otherwise announce "no predicted moving time" for the second or two
@@ -105,7 +105,7 @@ export function RouteProfile({
   onStartAtChange,
   samples,
   coordinates,
-  rideSeconds,
+  movingSeconds,
   predictionKnown = true,
   stageKey,
 }: RouteProfileProps) {
@@ -132,8 +132,8 @@ export function RouteProfile({
    * explanation at all. It is the same "nothing to hang a forecast on" state
    * as an unpredicted stage, and it says so.
    */
-  const hasTimeline = rideSeconds !== undefined && rideSeconds > 0;
-  const refusal = startAt === null ? null : startTimeRefusal(startAt, rideSeconds);
+  const hasTimeline = movingSeconds !== undefined && movingSeconds > 0;
+  const refusal = startAt === null ? null : startTimeRefusal(startAt, movingSeconds);
   const startRefusal =
     refusal === "past"
       ? "That start time is more than a day in the past. Choose another to see a forecast."
@@ -214,7 +214,7 @@ export function RouteProfile({
           key={stageKey ?? title}
           value={startAt}
           onChange={onStartAtChange}
-          rideSeconds={rideSeconds}
+          movingSeconds={movingSeconds}
         />
         {startAt && predictionKnown && !hasTimeline ? (
           <p className="text-sm text-[var(--hold)]">

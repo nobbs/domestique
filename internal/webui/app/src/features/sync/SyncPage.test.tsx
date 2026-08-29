@@ -67,7 +67,7 @@ describe("SyncPage", () => {
     renderPage();
 
     expect(screen.getByRole("heading", { level: 1, name: "Sync" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Map" })).toHaveAttribute("href", "/");
+    expect(screen.getByRole("link", { name: "Atlas" })).toHaveAttribute("href", "/");
     const headings = (await screen.findAllByRole("heading", { level: 2 })).map(
       (heading) => heading.textContent,
     );

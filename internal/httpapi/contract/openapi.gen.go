@@ -290,7 +290,7 @@ type TargetsUpdate struct {
 type SourceUpdate struct {
 	// Read Whether a run reads this library at all. Off takes it out of the list without forgetting the account it was read with.
 	Read bool `json:"read"`
-	// BaseURL The library's own web application, which is both the origin the service reads and the one a stage is linked back to.
+	// BaseURL The source's own web application, which is both the origin the service reads and the one a stage is linked back to.
 	BaseURL string `json:"baseUrl"`
 	// Email The account's email address, sent only when it was typed. The rules the application secret follows apply here too.
 	Email *string `json:"email,omitempty"`
@@ -371,7 +371,7 @@ const (
 
 type SourceSettings struct {
 	Provider SourceSettings_Provider `json:"provider"`
-	// BaseURL The library's own web application, which is both the origin the service reads and the one a stage is linked back to.
+	// BaseURL The source's own web application, which is both the origin the service reads and the one a stage is linked back to.
 	BaseURL string `json:"baseUrl"`
 }
 

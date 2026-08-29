@@ -54,46 +54,46 @@ export interface ForecastSample {
 
 /**
  * Picks the samples worth a forecast request: evenly spaced across the ride's
- * elapsed time, then thinned so no two sit closer than
+ * moving time, then thinned so no two sit closer than
  * `MIN_SAMPLE_SPACING_METRES` apart on the ground.
  *
- * `elapsedSeconds` is the predicted moving time at each coordinate — the
- * `cumulativeSeconds` the API attaches to a stage's geometry — indexed 1:1
- * with `coordinates` and assumed non-decreasing. It is optional for the same
+ * `cumulativeSeconds` is the predicted moving time at each coordinate, as the
+ * API attaches it to a stage's geometry — indexed 1:1 with `coordinates` and
+ * assumed non-decreasing. It is optional for the same
  * reason that field is: a stage nothing has predicted a time for has no clock
  * to sample against, and this never guesses one. It returns `[]` for an
- * absent or empty series, mismatched lengths, or a total elapsed time of
+ * absent or empty series, mismatched lengths, or a total moving time of
  * zero, leaving the caller to decide what an unpredicted stage shows.
  */
 export function forecastSamples(
   coordinates: Position[],
-  elapsedSeconds: number[] | undefined,
+  cumulativeSeconds: number[] | undefined,
   startAt: Date,
 ): ForecastSample[] {
   if (
-    elapsedSeconds === undefined ||
+    cumulativeSeconds === undefined ||
     coordinates.length === 0 ||
-    elapsedSeconds.length === 0 ||
-    coordinates.length !== elapsedSeconds.length
+    cumulativeSeconds.length === 0 ||
+    coordinates.length !== cumulativeSeconds.length
   ) {
     return [];
   }
 
-  const total = elapsedSeconds[elapsedSeconds.length - 1] ?? 0;
+  const total = cumulativeSeconds[cumulativeSeconds.length - 1] ?? 0;
   if (total <= 0) {
     return [];
   }
 
   const slots = Math.min(MAX_SAMPLES, Math.max(2, Math.floor(total / SAMPLE_INTERVAL_SECONDS) + 1));
 
-  // One forward pass: the target elapsed time rises monotonically with the
+  // One forward pass: the target moving time rises monotonically with the
   // slot, and so does the first coordinate index that reaches it, so the same
   // cursor serves every slot rather than rescanning from the start each time.
   const candidates: number[] = [];
   let cursor = 0;
   for (let slot = 0; slot < slots; slot++) {
     const target = (total * slot) / (slots - 1);
-    while (cursor < elapsedSeconds.length - 1 && (elapsedSeconds[cursor] ?? 0) < target) {
+    while (cursor < cumulativeSeconds.length - 1 && (cumulativeSeconds[cursor] ?? 0) < target) {
       cursor++;
     }
     if (candidates[candidates.length - 1] !== cursor) {
@@ -101,7 +101,7 @@ export function forecastSamples(
     }
   }
 
-  // A ride whose last coordinates share one elapsed time — a stage ending in a
+  // A ride whose last coordinates share one moving time — a stage ending in a
   // zero-length segment — leaves the cursor on the first of them, so the finish
   // itself would never be sampled. It is the point a rider most wants, so it
   // replaces the sample before it once the cap is already full.
@@ -138,6 +138,6 @@ export function forecastSamples(
   return kept.map((coordinateIndex) => ({
     position: coordinates[coordinateIndex] as Position,
     distanceMetres: distances[coordinateIndex] ?? 0,
-    arrivalAt: new Date(startAt.getTime() + (elapsedSeconds[coordinateIndex] ?? 0) * 1000),
+    arrivalAt: new Date(startAt.getTime() + (cumulativeSeconds[coordinateIndex] ?? 0) * 1000),
   }));
 }

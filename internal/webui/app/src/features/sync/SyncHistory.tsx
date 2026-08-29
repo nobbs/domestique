@@ -76,7 +76,7 @@ export function SyncHistory() {
       </ul>
       {hasNextPage ? (
         <Button
-          variant="standard"
+          variant="outline"
           disabled={isFetchingNextPage}
           onClick={() => void fetchNextPage()}
         >

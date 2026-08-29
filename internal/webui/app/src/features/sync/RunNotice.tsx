@@ -189,7 +189,7 @@ export function RunNotice({ reference }: { reference: string | null }) {
         {guidance ? guidance.remediation : "Nothing needs doing. It is in the history below."}
       </AlertDescription>
       <div className="mt-2 flex flex-wrap items-center gap-2">
-        <Button variant="primary" disabled={run.isPending} onClick={() => run.mutate(notice.phase)}>
+        <Button variant="default" disabled={run.isPending} onClick={() => run.mutate(notice.phase)}>
           {run.isPending ? <Spinner aria-label="Starting run" /> : null}
           {RETRY_LABELS[notice.phase]}
         </Button>

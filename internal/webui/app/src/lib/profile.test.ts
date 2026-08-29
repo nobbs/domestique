@@ -5,13 +5,13 @@ import {
   buildWindowedProfile,
   coordinateRange,
   cumulativeMetres,
-  elapsedSecondsForWindow,
   GRADIENT_BANDS,
   GRADIENT_WINDOW_METRES,
   gradientBand,
   gradientMix,
   gradientRanges,
   gradientShares,
+  movingSecondsForWindow,
   nearestSample,
   niceStep,
   rangeBounds,
@@ -337,47 +337,47 @@ describe("coordinateRange", () => {
   });
 });
 
-describe("elapsedSecondsForWindow", () => {
+describe("movingSecondsForWindow", () => {
   const coordinates = route([100, 200, 300, 400, 500]);
-  // Ten seconds per point, so the window's own elapsed time is easy to check
+  // Ten seconds per point, so the window's own moving time is easy to check
   // against coordinateRange's own start/end indices.
   const cumulativeSeconds = [0, 10, 20, 30, 40];
 
   it("subtracts the cumulative series at the selection's rounded-outward boundaries", () => {
-    const elapsed = elapsedSecondsForWindow(coordinates, cumulativeSeconds, {
+    const moving = movingSecondsForWindow(coordinates, cumulativeSeconds, {
       startMetres: 150,
       endMetres: 250,
     });
 
     // coordinateRange rounds this stretch out to indices 1 and 3.
-    expect(elapsed).toBe((cumulativeSeconds[3] ?? 0) - (cumulativeSeconds[1] ?? 0));
+    expect(moving).toBe((cumulativeSeconds[3] ?? 0) - (cumulativeSeconds[1] ?? 0));
   });
 
   it("is undefined with no selection", () => {
-    expect(elapsedSecondsForWindow(coordinates, cumulativeSeconds, null)).toBeUndefined();
+    expect(movingSecondsForWindow(coordinates, cumulativeSeconds, null)).toBeUndefined();
   });
 
   it("is undefined with no predicted series", () => {
     expect(
-      elapsedSecondsForWindow(coordinates, undefined, { startMetres: 150, endMetres: 250 }),
+      movingSecondsForWindow(coordinates, undefined, { startMetres: 150, endMetres: 250 }),
     ).toBeUndefined();
   });
 
   it("is undefined for a selection too short to span two coordinates", () => {
     expect(
-      elapsedSecondsForWindow(coordinates, cumulativeSeconds, { startMetres: 100, endMetres: 100 }),
+      movingSecondsForWindow(coordinates, cumulativeSeconds, { startMetres: 100, endMetres: 100 }),
     ).toBeUndefined();
   });
 
-  it("is undefined for a non-monotonic or duplicated series rather than a zero or negative elapsed time", () => {
+  it("is undefined for a non-monotonic or duplicated series rather than a zero or negative moving time", () => {
     const flat = [0, 10, 10, 10, 40];
     expect(
-      elapsedSecondsForWindow(coordinates, flat, { startMetres: 150, endMetres: 250 }),
+      movingSecondsForWindow(coordinates, flat, { startMetres: 150, endMetres: 250 }),
     ).toBeUndefined();
 
     const nonMonotonic = [0, 20, 20, 10, 40];
     expect(
-      elapsedSecondsForWindow(coordinates, nonMonotonic, { startMetres: 150, endMetres: 250 }),
+      movingSecondsForWindow(coordinates, nonMonotonic, { startMetres: 150, endMetres: 250 }),
     ).toBeUndefined();
   });
 });

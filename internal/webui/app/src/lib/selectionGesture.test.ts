@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Position } from "../api/types";
-import { routeSelection, type SelectableMap } from "./mapSelection";
 import { buildProfile, type DistanceWindow, type Profile } from "./profile";
 import { MIN_WINDOW_METRES } from "./selection";
+import { routeSelection, type SelectableMap } from "./selectionGesture";
 
 /**
  * A route drawn due east along one line of latitude, so a pixel across the fake

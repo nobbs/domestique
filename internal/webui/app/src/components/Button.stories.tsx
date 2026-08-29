@@ -28,19 +28,19 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-export const Standard: Story = {
+export const Outline: Story = {
   play: async ({ canvas }) => {
     const button = canvas.getByRole("button", { name: "Reprocess" });
     // A shared control that could quietly become a submit button is a trap, so
     // the type is not among the props a call site can pass.
     await expect(button).toHaveAttribute("type", "button");
-    // The weight `Primary`'s own play compares itself against.
+    // The weight `Default`'s own play compares itself against.
     await expect(button).toHaveClass("bg-background");
   },
 };
 
-export const Primary: Story = {
-  args: { variant: "primary", children: "Run now" },
+export const Default: Story = {
+  args: { variant: "default", children: "Run now" },
   play: async ({ canvas }) => {
     await expect(canvas.getByRole("button", { name: "Run now" })).toHaveClass("bg-primary");
   },
@@ -87,8 +87,8 @@ export const Ghost: Story = {
 };
 
 /** A press that destroys something. Tinted, not filled: it is not the happy path. */
-export const Danger: Story = {
-  args: { variant: "danger", icon: <IconTrash stroke={2} />, children: "Delete them" },
+export const Destructive: Story = {
+  args: { variant: "destructive", icon: <IconTrash stroke={2} />, children: "Delete them" },
 };
 
 /** The waiting tone, for an action held up by something the reader has to settle. */
@@ -122,10 +122,10 @@ export const CustomClassName: Story = {
 export const Link: Story = {
   render: () => (
     <div className="flex flex-wrap items-center gap-2">
-      <ButtonLink variant="primary" to="/routes/12/2">
+      <ButtonLink variant="default" to="/routes/12/2">
         Open route
       </ButtonLink>
-      <Button variant="primary">Run now</Button>
+      <Button variant="default">Run now</Button>
       <ButtonLink to="/sync" icon={<IconRefresh stroke={2} />}>
         Sync
       </ButtonLink>

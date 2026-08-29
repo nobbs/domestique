@@ -1,9 +1,11 @@
 /**
  * The one button this application reaches for.
  *
- * It is a thin naming layer over `ui/button`: the shadcn primitive owns the
- * shape, the focus treatment and the icon handling, and this file decides
- * which of its many variants and sizes this application actually uses.
+ * It is purely additive over `ui/button`: the shadcn primitive owns the shape,
+ * the focus treatment and the icon handling, and this file adds the icon slot,
+ * the size inferred from the children, the two variants no primitive offers,
+ * and the link forms. The variants a primitive already names keep its
+ * spelling, so there is one vocabulary rather than two spellings of one.
  *
  * Outside `components/ui` this is the only file allowed to import `ui/button`,
  * and `biome.json` enforces it — the vendored primitives are exempt because
@@ -27,28 +29,32 @@ import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 /**
- * `primary` is the filled one action a card is about; `standard` is every
- * other action; `panel` floats over the map, where the page's own ground would
- * show the map through it; `ghost` sits inside something that already has a
- * ground and shows itself by filling on hover.
+ * `default` is the filled one action a card is about; `outline` is every other
+ * action; `panel` floats over the map, where the page's own ground would show
+ * the map through it; `ghost` sits inside something that already has a ground
+ * and shows itself by filling on hover.
  *
  * Both tones follow the theme without a `dark:` utility anywhere: the tokens
  * themselves are what a theme swaps.
  *
- * `danger` and `warning` are tinted rather than filled, and take the two tones
- * this application already says things in — `--alert` for what cannot be undone,
- * `--hold` for what is waiting on somebody. A tone is a claim about the action,
- * not decoration: reach for `danger` where a press destroys something, and let
- * everything else stay `standard`, or the two stop meaning anything.
+ * `destructive` and `warning` are tinted rather than filled, and take the two
+ * tones this application already says things in — `--alert` for what cannot be
+ * undone, `--hold` for what is waiting on somebody. A tone is a claim about the
+ * action, not decoration: reach for `destructive` where a press destroys
+ * something, and let everything else stay `outline`, or the two stop meaning
+ * anything.
+ *
+ * Only `panel` and `warning` are this application's own. The rest are the
+ * primitive's names, kept so a reader who knows shadcn already knows these.
  */
-export type ButtonVariant = "primary" | "standard" | "panel" | "ghost" | "danger" | "warning";
+export type ButtonVariant = "default" | "outline" | "panel" | "ghost" | "destructive" | "warning";
 
 const PRIMITIVE_VARIANT = {
-  primary: "default",
-  standard: "outline",
+  default: "default",
+  outline: "outline",
   panel: "outline",
   ghost: "ghost",
-  danger: "destructive",
+  destructive: "destructive",
   warning: "ghost",
 } as const;
 
@@ -95,7 +101,7 @@ export interface ButtonStyleProps {
  * a caller has to keep consistent with them.
  */
 function classes(
-  variant: ButtonVariant = "standard",
+  variant: ButtonVariant = "outline",
   children: ReactNode,
   active = false,
   className?: string,

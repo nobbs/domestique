@@ -11,7 +11,7 @@ import { cumulativeMetres } from "./profile";
 const START_AT = new Date("2026-08-24T06:00:00Z");
 
 /**
- * Points spaced evenly by latitude, paired with an elapsed-time series spaced
+ * Points spaced evenly by latitude, paired with a moving-time series spaced
  * evenly by point index. A synthetic, unrealistic pairing of ground and clock
  * — real predictions never march in lockstep with point index — but an exact
  * one, which is what makes the sample indices this test expects predictable
@@ -22,13 +22,16 @@ function evenlyTimedRoute(pointCount: number, latitudeStep: number, secondsPerPo
     8,
     49 + index * latitudeStep,
   ]);
-  const elapsedSeconds = Array.from({ length: pointCount }, (_, index) => index * secondsPerPoint);
+  const cumulativeSeconds = Array.from(
+    { length: pointCount },
+    (_, index) => index * secondsPerPoint,
+  );
 
-  return { coordinates, elapsedSeconds };
+  return { coordinates, cumulativeSeconds };
 }
 
 /**
- * A ride at constant speed: elapsed time is the real great-circle distance
+ * A ride at constant speed: moving time is the real great-circle distance
  * between consecutive points divided by the speed, using the same
  * `cumulativeMetres` `forecastSamples` measures with — so this fixture can
  * never disagree with the function under test about where the ground is.
@@ -42,21 +45,21 @@ function constantSpeedRoute(
     8,
     49 + index * latitudeStep,
   ]);
-  const elapsedSeconds = cumulativeMetres(coordinates).map(
+  const cumulativeSeconds = cumulativeMetres(coordinates).map(
     (metres) => metres / speedMetresPerSecond,
   );
 
-  return { coordinates, elapsedSeconds };
+  return { coordinates, cumulativeSeconds };
 }
 
 describe("forecastSamples", () => {
-  it("lands a sample every 30 minutes of elapsed time, with the first and last coordinate always present", () => {
-    // 13 points, 10 minutes apart in elapsed time and about 2.2 km apart on
+  it("lands a sample every 30 minutes of moving time, with the first and last coordinate always present", () => {
+    // 13 points, 10 minutes apart in moving time and about 2.2 km apart on
     // the ground — comfortably clear of the 5 km floor, so only the timing
     // rule decides which points are kept.
-    const { coordinates, elapsedSeconds } = evenlyTimedRoute(13, 0.02, 600);
+    const { coordinates, cumulativeSeconds } = evenlyTimedRoute(13, 0.02, 600);
 
-    const samples = forecastSamples(coordinates, elapsedSeconds, START_AT);
+    const samples = forecastSamples(coordinates, cumulativeSeconds, START_AT);
 
     expect(samples).toHaveLength(5);
     expect(samples[0]?.position).toEqual(coordinates[0]);
@@ -74,9 +77,9 @@ describe("forecastSamples", () => {
     // 361 points, 10 seconds and about 20 metres apart — so the 30-minute mark
     // (180 points in) sits only about 3.6 km from the start, inside the floor,
     // while the full hour (360 points in) clears it.
-    const { coordinates, elapsedSeconds } = evenlyTimedRoute(361, 0.00018, 10);
+    const { coordinates, cumulativeSeconds } = evenlyTimedRoute(361, 0.00018, 10);
 
-    const samples = forecastSamples(coordinates, elapsedSeconds, START_AT);
+    const samples = forecastSamples(coordinates, cumulativeSeconds, START_AT);
 
     // Without the floor this would be three samples (0, 30 and 60 minutes in);
     // the 30-minute mark is thinned out because it lies too close to the start.
@@ -108,15 +111,15 @@ describe("forecastSamples", () => {
     ]);
   });
 
-  it("sets each arrival time to the start plus the elapsed time at that coordinate, ending at the whole moving time", () => {
-    const { coordinates, elapsedSeconds } = evenlyTimedRoute(13, 0.02, 600);
-    const totalSeconds = elapsedSeconds[elapsedSeconds.length - 1] ?? 0;
+  it("sets each arrival time to the start plus the moving time at that coordinate, ending at the whole moving time", () => {
+    const { coordinates, cumulativeSeconds } = evenlyTimedRoute(13, 0.02, 600);
+    const totalSeconds = cumulativeSeconds[cumulativeSeconds.length - 1] ?? 0;
 
-    const samples = forecastSamples(coordinates, elapsedSeconds, START_AT);
+    const samples = forecastSamples(coordinates, cumulativeSeconds, START_AT);
 
     for (const sample of samples) {
       const coordinateIndex = coordinates.indexOf(sample.position);
-      const expectedSeconds = elapsedSeconds[coordinateIndex] ?? 0;
+      const expectedSeconds = cumulativeSeconds[coordinateIndex] ?? 0;
       expect(sample.arrivalAt.getTime()).toBe(START_AT.getTime() + expectedSeconds * 1000);
     }
     expect(samples.at(-1)?.arrivalAt.getTime()).toBe(START_AT.getTime() + totalSeconds * 1000);
@@ -129,8 +132,8 @@ describe("forecastSamples", () => {
     const sparse = constantSpeedRoute(601, 0.001, speedMetresPerSecond);
     const dense = constantSpeedRoute(1201, 0.0005, speedMetresPerSecond);
 
-    const sparseSamples = forecastSamples(sparse.coordinates, sparse.elapsedSeconds, START_AT);
-    const denseSamples = forecastSamples(dense.coordinates, dense.elapsedSeconds, START_AT);
+    const sparseSamples = forecastSamples(sparse.coordinates, sparse.cumulativeSeconds, START_AT);
+    const denseSamples = forecastSamples(dense.coordinates, dense.cumulativeSeconds, START_AT);
 
     expect(denseSamples).toHaveLength(sparseSamples.length);
     sparseSamples.forEach((sample, index) => {
@@ -150,9 +153,9 @@ describe("forecastSamples", () => {
     // ~1111 km at 6 m/s is a touch over 51 hours moving — more than the 48
     // half-hour slots the cap allows for, and the ~1.1 km between points
     // stays well clear of the 5 km floor.
-    const { coordinates, elapsedSeconds } = constantSpeedRoute(1000, 0.01, 6);
+    const { coordinates, cumulativeSeconds } = constantSpeedRoute(1000, 0.01, 6);
 
-    const samples = forecastSamples(coordinates, elapsedSeconds, START_AT);
+    const samples = forecastSamples(coordinates, cumulativeSeconds, START_AT);
 
     expect(samples).toHaveLength(MAX_SAMPLES);
     expect(samples[0]?.position).toEqual(coordinates[0]);
@@ -160,7 +163,7 @@ describe("forecastSamples", () => {
     const firstGapSeconds =
       ((samples[1]?.arrivalAt.getTime() ?? 0) - (samples[0]?.arrivalAt.getTime() ?? 0)) / 1000;
     expect(firstGapSeconds).toBeGreaterThan(SAMPLE_INTERVAL_SECONDS);
-    const totalSeconds = elapsedSeconds[elapsedSeconds.length - 1] ?? 0;
+    const totalSeconds = cumulativeSeconds[cumulativeSeconds.length - 1] ?? 0;
     expect(samples.at(-1)?.arrivalAt.getTime()).toBeCloseTo(
       START_AT.getTime() + totalSeconds * 1000,
       -3,
@@ -175,7 +178,7 @@ describe("forecastSamples", () => {
     ]);
   });
 
-  it("returns an empty list rather than throwing for a stage with zero total elapsed time", () => {
+  it("returns an empty list rather than throwing for a stage with zero total moving time", () => {
     expect(forecastSamples([[8, 49]], [0], START_AT)).toEqual([]);
     expect(
       forecastSamples(
@@ -208,7 +211,7 @@ describe("forecastSamples", () => {
     ]);
   });
 
-  it("samples the finish even when the last coordinates share one elapsed time", () => {
+  it("samples the finish even when the last coordinates share one moving time", () => {
     // A stage ending in a zero-length segment: the clock stops before the
     // geometry does, so the naive cursor would stop on the second-to-last
     // coordinate and never sample the point the rider finishes at.
@@ -230,9 +233,9 @@ describe("forecastSamples", () => {
     // segment the clock does not advance over. The finish must still be the
     // last sample, and the cap must still hold — 49 points would be refused by
     // the weather endpoint outright.
-    const { coordinates, elapsedSeconds } = constantSpeedRoute(1000, 0.01, 6);
+    const { coordinates, cumulativeSeconds } = constantSpeedRoute(1000, 0.01, 6);
     const stalled: Position[] = [...coordinates, coordinates[999] as Position];
-    const stalledSeconds = [...elapsedSeconds, elapsedSeconds[999] as number];
+    const stalledSeconds = [...cumulativeSeconds, cumulativeSeconds[999] as number];
 
     const samples = forecastSamples(stalled, stalledSeconds, START_AT);
 
@@ -266,13 +269,13 @@ describe("forecastSamples", () => {
       [stalledFinish, [0, 0, 0, 5400]],
     ];
 
-    for (const [coordinates, elapsedSeconds] of cases) {
-      const samples = forecastSamples(coordinates, elapsedSeconds, START_AT);
+    for (const [coordinates, cumulativeSeconds] of cases) {
+      const samples = forecastSamples(coordinates, cumulativeSeconds, START_AT);
       const keys = samples.map(
         (sample) => `${sample.distanceMetres}-${sample.arrivalAt.getTime()}`,
       );
 
-      expect(new Set(keys).size, `distinct keys for ${JSON.stringify(elapsedSeconds)}`).toBe(
+      expect(new Set(keys).size, `distinct keys for ${JSON.stringify(cumulativeSeconds)}`).toBe(
         keys.length,
       );
     }
@@ -288,9 +291,9 @@ describe("forecastSamples", () => {
   it("keeps the finish on a stage shorter than the sample spacing floor", () => {
     // Four kilometres, twenty minutes: inside the floor and inside one slot.
     const coordinates = evenlyTimedRoute(5, 0.009, 300).coordinates;
-    const elapsedSeconds = [0, 300, 600, 900, 1200];
+    const cumulativeSeconds = [0, 300, 600, 900, 1200];
 
-    const samples = forecastSamples(coordinates, elapsedSeconds, START_AT);
+    const samples = forecastSamples(coordinates, cumulativeSeconds, START_AT);
 
     expect(samples).toHaveLength(2);
     expect(samples[0]?.position).toEqual(coordinates[0]);
@@ -310,7 +313,7 @@ describe("forecastSamples", () => {
     ).toEqual([]);
   });
 
-  it("returns an empty list rather than throwing for an empty elapsed-time series", () => {
+  it("returns an empty list rather than throwing for an empty moving-time series", () => {
     expect(
       forecastSamples(
         [
@@ -323,7 +326,7 @@ describe("forecastSamples", () => {
     ).toEqual([]);
   });
 
-  it("returns an empty list rather than throwing when coordinates and elapsed times disagree in length", () => {
+  it("returns an empty list rather than throwing when coordinates and moving times disagree in length", () => {
     expect(
       forecastSamples(
         [

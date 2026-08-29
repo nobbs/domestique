@@ -2,10 +2,10 @@ import type { ReactNode } from "react";
 import type { SurfaceKind } from "../../api/types";
 import { ToggleGroupItem } from "../ui/toggle-group";
 
-export interface KeyChipProps {
+export interface LegendChipProps {
   /** What this chip is called within the toggle group it presses in. */
   value: string;
-  /** The swatch's fill — one of `RouteKey`'s `paintClasses` entries. */
+  /** The swatch's fill — one of `RouteLegend`'s `paintClasses` entries. */
   paintClassName: string;
   title: string | undefined;
   ariaLabel: string;
@@ -16,12 +16,12 @@ export interface KeyChipProps {
 }
 
 /**
- * One chip in the route key: a swatch, a class name, and the share of the
+ * One chip in the route legend: a swatch, a class name, and the share of the
  * route it covers. A control, not a caption — see the module doc on
- * `RouteKey` for why it presses as a toggle rather than sitting there as
+ * `RouteLegend` for why it presses as a toggle rather than sitting there as
  * text, and why it has to live inside a `ToggleGroup` to do that.
  */
-export function KeyChip({
+export function LegendChip({
   value,
   paintClassName,
   title,
@@ -29,7 +29,7 @@ export function KeyChip({
   label,
   share,
   swatch,
-}: KeyChipProps) {
+}: LegendChipProps) {
   return (
     <li>
       <ToggleGroupItem

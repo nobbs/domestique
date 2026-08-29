@@ -68,7 +68,7 @@ describe("LibraryRoutes", () => {
             [8.3, 49.3],
           ]),
         ]}
-        selectedKey="selected"
+        pickedKey="selected"
         hoveredKey="hovered"
         hitLayerId={LIBRARY_HIT_LAYER}
       />,

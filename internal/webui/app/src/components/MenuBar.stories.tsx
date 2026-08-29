@@ -111,7 +111,7 @@ export const LinksToSync: Story = {
     const link = canvas.getByRole("link", { name: /^Sync/ });
     await expect(link).toHaveAttribute("href", "/sync");
     await expect(link).toHaveAccessibleName(/^Sync/);
-    await expect(canvas.getByRole("link", { name: "Map" })).toHaveAttribute("href", "/");
+    await expect(canvas.getByRole("link", { name: "Atlas" })).toHaveAttribute("href", "/");
     await expect(canvas.getByRole("link", { name: "Settings" })).toHaveAttribute(
       "href",
       "/settings",

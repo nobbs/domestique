@@ -1,10 +1,10 @@
 /**
  * The one class a reader has picked out, and the ground it covers.
  *
- * The key beneath the chart is not only a legend: a class can be clicked, and
+ * The legend beneath the chart is not only a caption: a class can be clicked, and
  * the stretches of route made of it stay lit while the rest of the ride fades.
  * The question it answers — "where is the gravel", "where does it hit twelve
- * percent" — is asked of the map and of the chart at once, so the selection is
+ * percent" — is asked of the map and of the chart at once, so the highlight is
  * held above both and turned into ground here, once, in the two units the two
  * views address ground in: metres along the route for the chart, and point
  * indices for the map.
@@ -23,7 +23,7 @@ import { SURFACE_STYLES } from "./surface";
 /** A gradient band, or a surface class. Never both, and never several. */
 export type Highlight = { type: "band"; band: number } | { type: "surface"; kind: SurfaceKind };
 
-/** Whether two selections mean the same class, so a key can press its own chip. */
+/** Whether two highlights mean the same class, so the legend can press its own chip. */
 export function sameHighlight(left: Highlight | null, right: Highlight | null): boolean {
   if (!left || !right) {
     return left === right;
@@ -39,13 +39,13 @@ export function sameHighlight(left: Highlight | null, right: Highlight | null): 
  * What the picked class is called.
  *
  * One name, taken from the palette that draws it, so the chart's spoken summary,
- * the collapsed overview's hint, and the pressed chip in the key cannot come to
- * call the same selection three different things.
+ * the collapsed overview's hint, and the pressed chip in the legend cannot come
+ * to call the same highlight three different things.
  *
  * A band is named here by the span it covers rather than by the chip's own
  * label: the chips are read as a row and can be terse about it, but "the 3%
  * stretches are lit" in the middle of a sentence would be a different claim
- * from the one the key is making.
+ * from the one the legend is making.
  */
 export function highlightLabel(highlight: Highlight): string {
   return highlight.type === "surface"

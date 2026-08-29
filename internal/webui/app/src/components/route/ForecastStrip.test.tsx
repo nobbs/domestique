@@ -1,7 +1,7 @@
 /**
  * The strip, without a real Open-Meteo behind it.
  *
- * The weather query is seeded into the cache the way `RoutesPage.test.tsx`
+ * The weather query is seeded into the cache the way `AtlasPage.test.tsx`
  * seeds the route library — `weatherQuery`'s own key, so the component's own
  * `useQuery` call reads exactly what this test put there — with a catch-all
  * 404 `fetch` stub underneath so an unseeded request is loud rather than a

@@ -173,7 +173,7 @@ export function SyncControls() {
               {" "}
               {data.sync.surface.incomplete} could not be classified last time.{" "}
               <Button
-                variant="standard"
+                variant="outline"
                 disabled={retryClassification.isPending}
                 onClick={() => retryClassification.mutate()}
               >

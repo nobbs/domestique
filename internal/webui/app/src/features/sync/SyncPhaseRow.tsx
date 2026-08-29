@@ -102,7 +102,7 @@ export function SyncPhaseRow({
           <span>Hourly</span>
         </div>
         <Button
-          variant="standard"
+          variant="outline"
           disabled={running}
           onClick={onRun}
           aria-label={`Run now: ${label}`}

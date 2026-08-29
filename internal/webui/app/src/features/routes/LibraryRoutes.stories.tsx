@@ -1,15 +1,15 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import type { BoundingBox } from "../../api/types";
+import { MapViewport } from "../../components/map/MapViewport";
+import { MapWidget } from "../../components/map/MapWidget";
 import { coordinates, liveMap, StoryProviders } from "../../storybook/fixtures";
 import { LibraryRoutes } from "./LibraryRoutes";
-import { MapViewport } from "./MapViewport";
-import { MapWidget } from "./MapWidget";
 
 const styleUrl = "https://tiles.openfreemap.org/styles/bright";
 const bounds: BoundingBox = [7.995, 48.995, 8.045, 49.025];
 
 const meta = {
-  title: "Components/Map/Library Routes",
+  title: "Features/Atlas/Library Routes",
   parameters: liveMap,
   component: LibraryRoutes,
   tags: ["autodocs"],
@@ -29,7 +29,7 @@ type Story = StoryObj<typeof meta>;
 
 /** Library lines layered over the base map without page controls or route panels. */
 export const Lines: Story = {
-  args: { lines: [], selectedKey: null },
+  args: { lines: [], pickedKey: null },
   render: () => (
     <MapWidget styleUrl={styleUrl} ariaLabel="Map with route-library lines">
       <MapViewport bounds={bounds} maxZoom={14} />
@@ -45,7 +45,7 @@ export const Lines: Story = {
             ]),
           },
         ]}
-        selectedKey={null}
+        pickedKey={null}
       />
     </MapWidget>
   ),

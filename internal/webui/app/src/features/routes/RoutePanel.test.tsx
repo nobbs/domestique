@@ -81,7 +81,7 @@ describe("RoutePanel", () => {
    * profile swaps the whole-stage figure for the stretch's own, and clearing
    * the selection — an undefined override — restores the whole-stage figure.
    */
-  it("shows the selection's elapsed time in place of the whole-stage figure", () => {
+  it("shows the selection's moving time in place of the whole-stage figure", () => {
     renderPanel({ route: route({ movingSeconds: 6420 }), movingSecondsOverride: 300 });
 
     expect(screen.getByText("5 min")).toBeInTheDocument();

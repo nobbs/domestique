@@ -5,7 +5,6 @@ import type { MapLayerMouseEvent } from "react-map-gl/maplibre";
 import { ScaleControl } from "react-map-gl/maplibre";
 import type { Basemap, BoundingBox } from "../../api/types";
 import { BasemapPicker } from "../../components/map/BasemapPicker";
-import { LIBRARY_HIT_LAYER, LibraryRoutes, type MapLine } from "../../components/map/LibraryRoutes";
 import { MapControls } from "../../components/map/MapControls";
 import { MapCredits } from "../../components/map/MapCredits";
 import { MapOverlay } from "../../components/map/MapOverlay";
@@ -13,8 +12,9 @@ import { MapViewport } from "../../components/map/MapViewport";
 import { MapWidget } from "../../components/map/MapWidget";
 import type { Insets } from "../../lib/overlayInsets";
 import type { UnitSystem } from "../../lib/units";
+import { LIBRARY_HIT_LAYER, LibraryRoutes, type MapLine } from "./LibraryRoutes";
 
-export type { MapLine } from "../../components/map/LibraryRoutes";
+export type { MapLine } from "./LibraryRoutes";
 
 const DEFAULT_MAX_ZOOM = 14;
 
@@ -26,7 +26,7 @@ export interface LibraryMapProps {
   onBasemapChange?: (name: string) => void;
   unitSystem?: UnitSystem;
   lines: MapLine[];
-  selectedKey: string | null;
+  pickedKey: string | null;
   bounds: BoundingBox | null;
   insets?: Insets;
   maxZoom?: number;
@@ -51,7 +51,7 @@ export function LibraryMap({
   onBasemapChange,
   unitSystem = "metric",
   lines,
-  selectedKey,
+  pickedKey,
   bounds,
   insets,
   maxZoom = DEFAULT_MAX_ZOOM,
@@ -115,8 +115,8 @@ export function LibraryMap({
       <LibraryRoutes
         lines={lines}
         darkBasemap={darkBasemap}
-        selectedKey={selectedKey}
-        accentKey={hasOverlay ? null : selectedKey}
+        pickedKey={pickedKey}
+        accentKey={hasOverlay ? null : pickedKey}
         hoveredKey={hoveredKey}
         {...(onPick ? { hitLayerId: LIBRARY_HIT_LAYER } : {})}
       />

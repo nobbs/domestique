@@ -2,13 +2,13 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
 import type { Highlight } from "../../lib/highlight";
 import { bands, surface } from "../../storybook/fixtures";
-import { RouteKey } from "./RouteKey";
+import { RouteLegend } from "./RouteLegend";
 
 function Key() {
   const [highlight, setHighlight] = useState<Highlight | null>(null);
 
   return (
-    <RouteKey
+    <RouteLegend
       surface={surface}
       surfaceAbsence="Surface not classified yet."
       bands={bands}
@@ -19,8 +19,8 @@ function Key() {
 }
 
 const meta = {
-  title: "Components/Route/Route Key",
-  component: RouteKey,
+  title: "Components/Route/Route Legend",
+  component: RouteLegend,
   tags: ["autodocs"],
   args: {
     surface: null,
@@ -36,7 +36,7 @@ const meta = {
       </div>
     ),
   ],
-} satisfies Meta<typeof RouteKey>;
+} satisfies Meta<typeof RouteLegend>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;

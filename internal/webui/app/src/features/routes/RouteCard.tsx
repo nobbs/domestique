@@ -80,7 +80,7 @@ export function RouteCard({
           <dd>{formatDistance(route.distanceMetres, unitSystem)}</dd>
         </div>
         <div>
-          <dt>Climbing</dt>
+          <dt>Ascent</dt>
           <dd>{formatAscent(route.ascentMetres, unitSystem)}</dd>
         </div>
         <div>
@@ -122,7 +122,7 @@ export function RouteCard({
        * there is no route page to go to — so it says what it will show rather
        * than where it will take anybody.
        */}
-      <Button className="mt-3" variant="primary" onClick={onOpen}>
+      <Button className="mt-3" variant="default" onClick={onOpen}>
         Open route
       </Button>
     </li>

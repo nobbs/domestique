@@ -1,11 +1,11 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, userEvent } from "storybook/test";
 import { ToggleGroup } from "../ui/toggle-group";
-import { KeyChip } from "./KeyChip";
+import { LegendChip } from "./LegendChip";
 
 const meta = {
-  title: "Components/Route/Key Chip",
-  component: KeyChip,
+  title: "Components/Route/Legend Chip",
+  component: LegendChip,
   tags: ["autodocs"],
   args: {
     value: "band:2",
@@ -25,7 +25,7 @@ const meta = {
       </ToggleGroup>
     ),
   ],
-} satisfies Meta<typeof KeyChip>;
+} satisfies Meta<typeof LegendChip>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;

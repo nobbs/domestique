@@ -15,8 +15,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 // The pages behind these routes are a WebGL map and a query client; neither is
 // what is under test. Standing both in reduces each route to the address it
 // resolved to.
-vi.mock("./features/routes/RoutesPage", () => ({
-  RoutesPage: () => <p>the library</p>,
+vi.mock("./features/routes/AtlasPage", () => ({
+  AtlasPage: () => <p>the library</p>,
 }));
 vi.mock("./features/sync/SyncPage", () => ({
   SyncPage: () => <p>the sync page</p>,

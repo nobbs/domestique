@@ -764,7 +764,7 @@ export function ElevationProfile({
          * being left as well as where it goes.
          */}
         {zoomed && onZoomChange ? (
-          <Button variant="standard" aria-keyshortcuts="Escape" onClick={() => onZoomChange(null)}>
+          <Button variant="outline" aria-keyshortcuts="Escape" onClick={() => onZoomChange(null)}>
             Whole route
             <span className="tabular-nums"> · showing {shownLabel}</span>
           </Button>

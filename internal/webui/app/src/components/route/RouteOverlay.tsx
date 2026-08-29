@@ -414,7 +414,7 @@ export function RouteOverlay({
    * Escape too, by dropping the selection — but only when there is no stretch
    * to leave first, so one press never undoes two things.
    *
-   * A stretch still being drawn is neither: `mapSelection` takes Escape in the
+   * A stretch still being drawn is neither: `selectionGesture` takes Escape in the
    * capture phase and marks it handled, so abandoning a half-drawn window never
    * also throws away the view it was being drawn on.
    */

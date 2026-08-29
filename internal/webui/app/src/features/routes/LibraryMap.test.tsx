@@ -247,7 +247,7 @@ function show(props: Partial<Parameters<typeof LibraryMap>[0]> & { overlay?: Rea
       <LibraryMap
         styleUrl="https://tiles.example/style.json"
         lines={[line("1/1"), line("2/1", 0.4)]}
-        selectedKey={null}
+        pickedKey={null}
         bounds={BOUNDS}
         {...mapProps}
       >
@@ -308,7 +308,7 @@ describe("LibraryMap", () => {
    * answer, and selection is the only thing that is allowed to stand out.
    */
   it("draws the library in one ink", () => {
-    show({ selectedKey: null });
+    show({ pickedKey: null });
 
     expect(layer("library-line").paint["line-color"]).toBe("#1c2126");
     expect(layer("library-line").paint["line-opacity"]).toBe(0.68);
@@ -320,7 +320,7 @@ describe("LibraryMap", () => {
    * off.
    */
   it("drops the rest of the library back once one route is the answer", () => {
-    show({ selectedKey: "2/1" });
+    show({ pickedKey: "2/1" });
 
     expect(layer("library-line").paint["line-opacity"]).toBe(0.14);
   });
@@ -331,7 +331,7 @@ describe("LibraryMap", () => {
    * rest, and the camera flies to a line that is no longer there to look at.
    */
   it("paints the route picked out of the column in the accent", () => {
-    show({ selectedKey: "2/1" });
+    show({ pickedKey: "2/1" });
 
     expect(layer("library-selected-line").paint["line-color"]).toBe("#236fc7");
     expect(layer("library-selected-line").paint["line-opacity"]).toBe(1);
@@ -339,7 +339,7 @@ describe("LibraryMap", () => {
   });
 
   it("takes the selection's ink from the basemap too", () => {
-    show({ selectedKey: "2/1", darkBasemap: true });
+    show({ pickedKey: "2/1", darkBasemap: true });
 
     expect(layer("library-selected-line").paint["line-color"]).toBe("#70adfb");
   });
@@ -347,13 +347,13 @@ describe("LibraryMap", () => {
   // The opened route is drawn by the overlay's own stack, several times wider:
   // a second line underneath it would be paint nobody ever sees.
   it("leaves the accent to the overlay once the route is opened", () => {
-    show({ selectedKey: "2/1", overlay: <div data-testid="overlay" /> });
+    show({ pickedKey: "2/1", overlay: <div data-testid="overlay" /> });
 
     expect(drawn.layers.find((entry) => entry.id === "library-selected-line")).toBeUndefined();
   });
 
   it("draws nothing in the accent while no route is picked", () => {
-    show({ selectedKey: null });
+    show({ pickedKey: null });
 
     expect(drawn.layers.find((entry) => entry.id === "library-selected-line")).toBeUndefined();
   });
@@ -362,7 +362,7 @@ describe("LibraryMap", () => {
   // underneath is exactly covered by the overlay, and cutting would rebuild the
   // whole collection on every selection.
   it("leaves the selected route in the library beneath it", () => {
-    show({ selectedKey: "2/1" });
+    show({ pickedKey: "2/1" });
 
     expect(source("library-lines").data.features).toHaveLength(2);
   });
@@ -370,13 +370,13 @@ describe("LibraryMap", () => {
   // The route itself is a stack of a dozen layers built from one route's
   // geometry, so it is the page's to hand over rather than this map's to draw.
   it("draws the selected route from the stack it was handed", () => {
-    show({ selectedKey: "2/1", overlay: <div data-testid="overlay" /> });
+    show({ pickedKey: "2/1", overlay: <div data-testid="overlay" /> });
 
     expect(screen.getByTestId("overlay")).toBeInTheDocument();
   });
 
   it("takes its ink from the basemap that is actually loaded", () => {
-    show({ darkBasemap: true, selectedKey: null });
+    show({ darkBasemap: true, pickedKey: null });
 
     expect(layer("library-line").paint["line-color"]).toBe("#eef0f3");
   });
@@ -554,7 +554,7 @@ describe("LibraryMap", () => {
    * The cursor stays, because a second click on a picked route opens it.
    */
   it("leaves the route it is already showing unlit, but still offered", async () => {
-    show({ selectedKey: "2/1", onPick: () => {} });
+    show({ pickedKey: "2/1", onPick: () => {} });
 
     await userEvent.click(screen.getByRole("button", { name: "point at a line" }));
 
@@ -565,7 +565,7 @@ describe("LibraryMap", () => {
   // The cursor is a promise, and there is nothing left for a click on the open
   // route to do: it is the answer already.
   it("offers no cursor for the line a pick would do nothing to", async () => {
-    show({ selectedKey: "2/1", inertKey: "2/1", onPick: () => {} });
+    show({ pickedKey: "2/1", inertKey: "2/1", onPick: () => {} });
 
     await userEvent.click(screen.getByRole("button", { name: "point at a line" }));
 

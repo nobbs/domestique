@@ -4,7 +4,7 @@ import { coordinates, route } from "../../storybook/fixtures";
 import { ResultRow } from "./ResultRow";
 
 const meta = {
-  title: "Features/Routes/Result Row",
+  title: "Features/Atlas/Result Row",
   component: ResultRow,
   tags: ["autodocs"],
   args: {

@@ -52,7 +52,7 @@ export function ReprocessButton({
   return (
     <div className="grid gap-1">
       <Button
-        variant="standard"
+        variant="outline"
         disabled={reprocess.isPending}
         onClick={() => reprocess.mutate({ provider, routeId, stage: stageOrder })}
       >

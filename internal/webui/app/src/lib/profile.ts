@@ -668,7 +668,7 @@ export function coordinateRange(
  * predicted series for this geometry, or a selection too short to span two
  * distinct coordinates.
  */
-export function elapsedSecondsForWindow(
+export function movingSecondsForWindow(
   coordinates: Position[],
   cumulativeSeconds: number[] | undefined,
   window: DistanceWindow | null,
@@ -685,16 +685,16 @@ export function elapsedSecondsForWindow(
   if (start === undefined || end === undefined) {
     return undefined;
   }
-  const elapsed = end - start;
+  const moving = end - start;
   // A non-monotonic or duplicated series is a drift this client cannot
   // trust, not a stretch that took no time or ran backwards — reading it as
   // absence lets the panel fall back to the whole-stage figure instead of
   // rendering a zero or negative one.
-  if (!Number.isFinite(elapsed) || elapsed <= 0) {
+  if (!Number.isFinite(moving) || moving <= 0) {
     return undefined;
   }
 
-  return elapsed;
+  return moving;
 }
 
 /**

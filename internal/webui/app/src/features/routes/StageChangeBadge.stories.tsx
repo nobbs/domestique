@@ -3,7 +3,7 @@ import { expect } from "storybook/test";
 import { StageChangeBadge } from "./StageChangeBadge";
 
 const meta = {
-  title: "Features/Routes/Stage Change Badge",
+  title: "Features/Atlas/Stage Change Badge",
   component: StageChangeBadge,
   tags: ["autodocs"],
   decorators: [
