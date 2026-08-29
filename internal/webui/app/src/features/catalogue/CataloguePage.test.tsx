@@ -71,18 +71,32 @@ function geometryFor(index: number): RouteGeometry {
   };
 }
 
-function show(library: LibraryRoute[] = LIBRARY, entry = "/catalogue") {
+function show(
+  library: LibraryRoute[] = LIBRARY,
+  entry = "/catalogue",
+  {
+    geometry = true,
+    nothingToDivide = false,
+  }: { geometry?: boolean; nothingToDivide?: boolean } = {},
+) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   client.setQueryData(routesQuery().queryKey, library);
   client.setQueryData(statusQuery().queryKey, STATUS);
   // Seeded rather than fetched: the glyphs and the surface filter both read
   // this, under the same keys the atlas caches it with.
-  library.forEach((route, index) => {
-    client.setQueryData(
-      routeGeometryQuery(route.provider, route.sourceRouteId, route.stageOrder).queryKey,
-      geometryFor(index),
-    );
-  });
+  if (geometry) {
+    library.forEach((route, index) => {
+      const seeded = geometryFor(index);
+      client.setQueryData(
+        routeGeometryQuery(route.provider, route.sourceRouteId, route.stageOrder).queryKey,
+        // A geometry that arrived and holds one point: nothing to classify and
+        // nothing to band, which is a different answer from not having arrived.
+        nothingToDivide
+          ? { ...seeded, coordinates: seeded.coordinates.slice(0, 1), surface: undefined }
+          : seeded,
+      );
+    });
+  }
 
   return render(
     <QueryClientProvider client={client}>
@@ -172,7 +186,7 @@ describe("CataloguePage", () => {
     const user = userEvent.setup();
     show();
 
-    await user.click(screen.getByRole("button", { name: "Climbing" }));
+    await user.click(screen.getByRole("button", { name: "Ascent" }));
     await user.type(screen.getByRole("searchbox"), "r");
 
     expect(screen.getByTestId("address")).toHaveTextContent("sort=ascent");
@@ -242,6 +256,56 @@ describe("CataloguePage", () => {
 
     expect(screen.getByRole("img", { name: "Shape of Alpine loop" })).toBeInTheDocument();
     expect(screen.getAllByRole("img", { name: /^Shape of / })).toHaveLength(3);
+  });
+
+  it("divides each route by surface and by gradient, from that same geometry", () => {
+    show();
+
+    const [first] = screen.getAllByRole("row").slice(1);
+    // The seeded geometry makes the first route wholly gravel and, with every
+    // point at one elevation, wholly flat.
+    expect(within(first as HTMLElement).getByText(/Gravel 100%/)).toBeInTheDocument();
+    expect(within(first as HTMLElement).getByText(/flat 100%/)).toBeInTheDocument();
+  });
+
+  it("says so rather than dividing a route nothing has measured", () => {
+    // Geometry present and flat throughout, with no surface on it: the page
+    // has its answer and the answer is that there is nothing to divide.
+    show([libraryRoute("Unmeasured", { sourceRouteId: 9 })], "/catalogue", {
+      nothingToDivide: true,
+    });
+
+    expect(screen.getByText("surface not classified")).toBeInTheDocument();
+    expect(screen.getByText("no elevation data")).toBeInTheDocument();
+  });
+
+  it("claims nothing about a route whose geometry has not arrived", () => {
+    // Nothing seeded, so the divisions are empty for want of an answer rather
+    // than because there is none. Saying "no elevation data" here would state
+    // a result the page does not have.
+    show([libraryRoute("Pending", { sourceRouteId: 8 })], "/catalogue", { geometry: false });
+
+    expect(screen.getByText("Pending")).toBeInTheDocument();
+    expect(screen.queryByText("surface not classified")).not.toBeInTheDocument();
+    expect(screen.queryByText("no elevation data")).not.toBeInTheDocument();
+  });
+
+  it("dashes only the marker on an updated row, never the rule above it", () => {
+    show();
+    const row = screen.getAllByRole("row")[1] as HTMLElement;
+
+    // `border-dashed` is every edge at once, and the row draws a top rule of
+    // its own; the dash belongs to the left marker alone.
+    expect(row.className).toContain("[border-left-style:dashed]");
+    expect(row.className).not.toMatch(/(?:^|\s)data-\[change=updated\]:border-dashed(?:\s|$)/);
+  });
+
+  it("marks a route that is new or updated on the row itself", () => {
+    show();
+
+    const rows = screen.getAllByRole("row").slice(1);
+    expect(rows.every((row) => row.getAttribute("data-change") === "new")).toBe(true);
+    expect(screen.getAllByText("New")).toHaveLength(3);
   });
 
   it("narrows by surface, which the same geometry classifies", async () => {

@@ -32,17 +32,31 @@ export interface CatalogueView {
   filters: LibraryFilters;
 }
 
-/** The columns, in the order the table draws them. */
+/**
+ * The measures the table ranks by, in the order it draws them.
+ *
+ * Two names each, because they are read in two places. `label` is the measure
+ * spelled out, which is what a sentence about the order needs — "ranked by
+ * moving time" rather than "ranked by time". `short` is what fits in a header
+ * cell that holds two controls side by side. Both live here so the control and
+ * the sentence describing it cannot drift apart.
+ */
 export const SORT_COLUMNS: ReadonlyArray<{
   readonly column: SortColumn;
   readonly label: string;
+  readonly short: string;
 }> = [
-  { column: "title", label: "Route" },
-  { column: "distance", label: "Distance" },
-  { column: "ascent", label: "Climbing" },
-  { column: "gradient", label: "Max gradient" },
-  { column: "movingTime", label: "Moving time" },
+  { column: "title", label: "Route", short: "Route" },
+  { column: "distance", label: "Distance", short: "Distance" },
+  { column: "ascent", label: "Climbing", short: "Ascent" },
+  { column: "gradient", label: "Max gradient", short: "Max" },
+  { column: "movingTime", label: "Moving time", short: "Time" },
 ];
+
+/** One measure's names, or undefined for a column that is not ranked by. */
+export function sortColumn(column: SortColumn) {
+  return SORT_COLUMNS.find((entry) => entry.column === column);
+}
 
 /**
  * What each measured column reads off a route.
