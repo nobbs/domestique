@@ -26,16 +26,6 @@ export interface FilterPanelProps {
   onFiltersChange: (next: LibraryFilters) => void;
   expanded: boolean;
   onExpandedChange: (expanded: boolean) => void;
-  /**
-   * Whether to offer the surface filter.
-   *
-   * It is the one control here that does not read the listing: a route's
-   * ground classes come from its geometry, which only a page already fetching
-   * every route's geometry has. Offered on a page without it, ticking a class
-   * would empty the results with no way for the reader to tell why — see
-   * `matchesFilters`, which refuses a route it has no classification for.
-   */
-  surfaces?: boolean;
 }
 
 export function FilterPanel({
@@ -43,7 +33,6 @@ export function FilterPanel({
   onFiltersChange,
   expanded,
   onExpandedChange,
-  surfaces = true,
 }: FilterPanelProps) {
   const active = hasActiveFilters(filters);
 
@@ -100,25 +89,23 @@ export function FilterPanel({
             range={filters.maxGradientPercent}
             onChange={(next) => onFiltersChange({ ...filters, maxGradientPercent: next })}
           />
-          {surfaces ? (
-            <fieldset className="grid gap-2">
-              <legend className="text-sm font-semibold">Surface</legend>
-              {SURFACE_KINDS.map((kind) => (
-                <FieldLabel className="flex items-center gap-2 text-sm" key={kind}>
-                  <Checkbox
-                    checked={filters.surfaces.includes(kind)}
-                    onCheckedChange={(checked) => {
-                      const picked = checked
-                        ? [...filters.surfaces, kind]
-                        : filters.surfaces.filter((selected) => selected !== kind);
-                      onFiltersChange({ ...filters, surfaces: picked });
-                    }}
-                  />
-                  {SURFACE_STYLES[kind].label}
-                </FieldLabel>
-              ))}
-            </fieldset>
-          ) : null}
+          <fieldset className="grid gap-2">
+            <legend className="text-sm font-semibold">Surface</legend>
+            {SURFACE_KINDS.map((kind) => (
+              <FieldLabel className="flex items-center gap-2 text-sm" key={kind}>
+                <Checkbox
+                  checked={filters.surfaces.includes(kind)}
+                  onCheckedChange={(checked) => {
+                    const surfaces = checked
+                      ? [...filters.surfaces, kind]
+                      : filters.surfaces.filter((selected) => selected !== kind);
+                    onFiltersChange({ ...filters, surfaces });
+                  }}
+                />
+                {SURFACE_STYLES[kind].label}
+              </FieldLabel>
+            ))}
+          </fieldset>
           <Button
             variant="outline"
             disabled={!active}

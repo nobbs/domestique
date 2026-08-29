@@ -7,25 +7,31 @@
  * means comparing every route against every other one — which is a table, and a
  * table needs the width the atlas spends on cartography.
  *
- * It asks the service for nothing the atlas does not already ask for, and
- * deliberately for less: the listing alone, with no geometry. The atlas fetches
- * one geometry per route because it has to draw a line for each; here that would
- * be a request per route to decorate a cell. The cost of that is visible and
- * intended — no route glyph, and no surface filter, since a route's ground
- * classes are carried by its geometry rather than by the listing.
+ * It asks the service for exactly what the atlas asks for, under the same keys:
+ * the listing, and one geometry per route. The listing carries no coordinates,
+ * so a row's glyph — the shape that says at a glance whether a ride is a loop or
+ * an out-and-back — has nowhere else to come from. Arriving from the atlas those
+ * requests are already answered; arriving here first answers them for the atlas
+ * in turn. Rows render without geometry and gain their glyph as it lands, so a
+ * cold catalogue is readable before any of it arrives.
+ *
+ * Having it is also what lets the surface filter stand here: a route's ground
+ * classes ride with its geometry rather than with the listing.
  *
  * Opening a route hands it to the atlas at `/?route=…` rather than showing it
  * here. There is one place a route is read, and this is a way into it.
  */
 
 import { IconArrowDown, IconArrowUp, IconSearch, IconSelector } from "@tabler/icons-react";
-import { useQuery } from "@tanstack/react-query";
+import type { UseQueryResult } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router";
-import { routesQuery, statusQuery } from "../../api/queries";
-import type { Route } from "../../api/types";
+import { routeGeometryQuery, routesQuery, statusQuery } from "../../api/queries";
+import type { Position, Route, RouteGeometry, SurfaceKind } from "../../api/types";
 import { routeKey } from "../../api/types";
 import { PageShell } from "../../components/Layout";
+import { RouteGlyph } from "../../components/route/RouteGlyph";
 import { Alert, AlertDescription, AlertTitle } from "../../components/ui/alert";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "../../components/ui/input-group";
 import type { CatalogueView, SortColumn } from "../../lib/catalogue";
@@ -48,6 +54,7 @@ import {
 } from "../../lib/format";
 import { matchingRoutes } from "../../lib/library";
 import { useNarrowViewport } from "../../lib/mediaQuery";
+import { gradientBand } from "../../lib/profile";
 import { providerLabel } from "../../lib/provider";
 import type { RouteChange } from "../../lib/seenRoutes";
 import { useSeenRoutes } from "../../lib/seenRoutes";
@@ -151,10 +158,12 @@ function SortHeader({
 /** One route as a row of a table. */
 function CatalogueRow({
   route,
+  coordinates,
   change,
   unitSystem,
 }: {
   route: Route;
+  coordinates: Position[];
   change: RouteChange;
   unitSystem: UnitSystem;
 }) {
@@ -162,6 +171,15 @@ function CatalogueRow({
 
   return (
     <tr className="border-[var(--rule)] border-t hover:bg-[var(--base)]">
+      <td className="py-2 pl-3">
+        <span className="block size-8">
+          <RouteGlyph
+            coordinates={coordinates}
+            title={route.title}
+            band={gradientBand(route.maxGradientPercent)}
+          />
+        </span>
+      </td>
       <td className="px-3 py-2">
         <Link
           to={atlasLink(route)}
@@ -196,10 +214,12 @@ function CatalogueRow({
  */
 function CatalogueCard({
   route,
+  coordinates,
   change,
   unitSystem,
 }: {
   route: Route;
+  coordinates: Position[];
   change: RouteChange;
   unitSystem: UnitSystem;
 }) {
@@ -209,25 +229,34 @@ function CatalogueCard({
     <li>
       <Link
         to={atlasLink(route)}
-        className="block rounded-lg border border-[var(--rule)] p-3 hover:bg-[var(--base)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
+        className="flex items-start gap-3 rounded-lg border border-[var(--rule)] p-3 hover:bg-[var(--base)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
       >
-        <span className="block font-semibold">{route.title}</span>
-        {/*
-         * The badge rides on the second line rather than after the title: a
-         * card is as wide as the phone, titles here run to two lines of it,
-         * and a mark chasing the end of a wrapped title lands alone in the
-         * middle of the card.
-         */}
-        {change === null && where === null ? null : (
-          <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-[var(--ink-2)]">
-            <RouteChangeBadge change={change} />
-            {where}
+        <span className="mt-0.5 block size-10 shrink-0">
+          <RouteGlyph
+            coordinates={coordinates}
+            title={route.title}
+            band={gradientBand(route.maxGradientPercent)}
+          />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block font-semibold">{route.title}</span>
+          {/*
+           * The badge rides on the second line rather than after the title: a
+           * card is as wide as the phone, titles here run to two lines of it,
+           * and a mark chasing the end of a wrapped title lands alone in the
+           * middle of the card.
+           */}
+          {change === null && where === null ? null : (
+            <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-[var(--ink-2)]">
+              <RouteChangeBadge change={change} />
+              {where}
+            </span>
+          )}
+          <span className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-[var(--ink-2)] tabular-nums">
+            {measures(route, unitSystem).map(({ key, figure }) => (
+              <span key={key}>{figure}</span>
+            ))}
           </span>
-        )}
-        <span className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-[var(--ink-2)] tabular-nums">
-          {measures(route, unitSystem).map(({ key, figure }) => (
-            <span key={key}>{figure}</span>
-          ))}
         </span>
       </Link>
     </li>
@@ -275,19 +304,55 @@ export function CataloguePage() {
   );
 
   const library = useMemo(() => routes.data ?? [], [routes.data]);
+
+  /*
+   * One request per route, in parallel, under the same keys the atlas uses —
+   * so whichever page the reader opens first pays for both. Combined against
+   * the results rather than in a memo over them, for the reason the atlas
+   * gives: `useQueries` hands back a new array every render, and a memo keyed
+   * on it would rebuild the collection each time.
+   */
+  const combine = useCallback(
+    (results: Array<UseQueryResult<RouteGeometry>>) => {
+      const shapes = new Map<string, Position[]>();
+      const surfaces = new Map<string, Set<SurfaceKind>>();
+      library.forEach((route, index) => {
+        const geometry = results[index]?.data;
+        if (!geometry) {
+          return;
+        }
+        const key = routeKey(route);
+        shapes.set(key, geometry.coordinates);
+        // The distinct kinds a filter checks against, not a share of the
+        // route — the same reading the atlas takes off the same fetch.
+        const surface = geometry.surface;
+        if (surface && surface.matchedMetres > 0 && surface.ranges.length > 0) {
+          surfaces.set(key, new Set(surface.ranges.map((range) => range.kind)));
+        }
+      });
+
+      return { shapes, surfaces };
+    },
+    [library],
+  );
+
+  const drawn = useQueries({
+    queries: library.map((route) =>
+      routeGeometryQuery(route.provider, route.sourceRouteId, route.stageOrder),
+    ),
+    combine,
+  });
+
   const shown = useMemo(
     () =>
       sortRoutes(
-        // No classified surfaces to offer: this page fetches no geometry, and
-        // `readView` never reads a surface filter back, so nothing is being
-        // silently refused here.
         matchingRoutes(library, view.query).filter((route) =>
-          matchesFilters(route, view.filters, undefined),
+          matchesFilters(route, view.filters, drawn.surfaces.get(routeKey(route))),
         ),
         view.sort,
         view.direction,
       ),
-    [library, view.query, view.filters, view.sort, view.direction],
+    [library, view.query, view.filters, view.sort, view.direction, drawn.surfaces],
   );
 
   const hasQuery = view.query.trim() !== "";
@@ -321,7 +386,6 @@ export function CataloguePage() {
             onFiltersChange={(filters) => update({ filters })}
             expanded={filtersExpanded}
             onExpandedChange={setFiltersExpanded}
-            surfaces={false}
           />
         </div>
         <p className="text-sm text-[var(--ink-2)]">
@@ -364,6 +428,7 @@ export function CataloguePage() {
               <CatalogueCard
                 key={routeKey(route)}
                 route={route}
+                coordinates={drawn.shapes.get(routeKey(route)) ?? []}
                 change={changeOf(route)}
                 unitSystem={unitSystem}
               />
@@ -385,6 +450,13 @@ export function CataloguePage() {
               </caption>
               <thead>
                 <tr>
+                  {/*
+                   * The shapes have no heading of their own: the column ranks
+                   * by nothing and repeats the route the cell beside it names.
+                   */}
+                  <th scope="col">
+                    <span className="sr-only">Shape</span>
+                  </th>
                   {SORT_COLUMNS.map(({ column, label }) => (
                     <SortHeader
                       key={column}
@@ -402,6 +474,7 @@ export function CataloguePage() {
                   <CatalogueRow
                     key={routeKey(route)}
                     route={route}
+                    coordinates={drawn.shapes.get(routeKey(route)) ?? []}
                     change={changeOf(route)}
                     unitSystem={unitSystem}
                   />

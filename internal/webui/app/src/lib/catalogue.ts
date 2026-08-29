@@ -15,7 +15,8 @@
  * catalogue is also the one view on this UI worth sending to somebody.
  */
 
-import type { Route } from "../api/types";
+import type { Route, SurfaceKind } from "../api/types";
+import { SURFACE_KINDS } from "../api/types";
 import type { LibraryFilters, NumericRange } from "./filters";
 import { EMPTY_FILTERS } from "./filters";
 
@@ -122,6 +123,10 @@ function isSortColumn(value: string | null): value is SortColumn {
   return value !== null && SORT_COLUMN_NAMES.has(value);
 }
 
+function isSurfaceKind(value: string): value is SurfaceKind {
+  return (SURFACE_KINDS as readonly string[]).includes(value);
+}
+
 /** A bound, or null for anything that is not a finite number. */
 function readBound(value: string | null): number | null {
   if (value === null || value.trim() === "") {
@@ -157,8 +162,9 @@ function writeRange(params: URLSearchParams, prefix: string, range: NumericRange
  * — because this address is a bookmark rather than a document, and a
  * kilometre figure here would have to round twice to survive the round trip.
  *
- * Surfaces are absent by design: classifying them needs the geometry this page
- * deliberately does not fetch. See `CataloguePage`.
+ * Surfaces are named rather than numbered, and anything the build does not know
+ * is dropped: a link written by a later version must narrow this one by the
+ * classes it does understand rather than by none.
  */
 export function readView(params: URLSearchParams): CatalogueView {
   const sort = params.get("sort");
@@ -172,7 +178,7 @@ export function readView(params: URLSearchParams): CatalogueView {
       distanceMetres: readRange(params, "distance"),
       ascentMetres: readRange(params, "ascent"),
       maxGradientPercent: readRange(params, "gradient"),
-      surfaces: [],
+      surfaces: params.getAll("surface").filter(isSurfaceKind),
     },
   };
 }
@@ -196,6 +202,11 @@ export function writeView(view: CatalogueView): URLSearchParams {
   writeRange(params, "distance", view.filters.distanceMetres);
   writeRange(params, "ascent", view.filters.ascentMetres);
   writeRange(params, "gradient", view.filters.maxGradientPercent);
+  // One parameter per class rather than one joined list, so a reader editing
+  // the address by hand drops a class by deleting its own `&surface=`.
+  for (const kind of view.filters.surfaces) {
+    params.append("surface", kind);
+  }
 
   return params;
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Route } from "../api/types";
+import type { CatalogueView } from "./catalogue";
 import { DEFAULT_VIEW, initialDirection, readView, sortRoutes, writeView } from "./catalogue";
 import { EMPTY_FILTERS } from "./filters";
 
@@ -118,8 +119,10 @@ describe("readView", () => {
     expect(view.filters.distanceMetres.min).toBeNull();
   });
 
-  it("never reads a surface filter, which needs geometry this page has not fetched", () => {
-    expect(readView(new URLSearchParams("surfaces=paved")).filters.surfaces).toEqual([]);
+  it("reads each named surface class, and drops one it does not know", () => {
+    const view = readView(new URLSearchParams("surface=asphalt&surface=gravel&surface=lunar"));
+
+    expect(view.filters.surfaces).toEqual(["asphalt", "gravel"]);
   });
 });
 
@@ -129,7 +132,7 @@ describe("writeView", () => {
   });
 
   it("round-trips a view through the address", () => {
-    const view = {
+    const view: CatalogueView = {
       query: "rhine",
       sort: "gradient",
       direction: "asc",
@@ -137,8 +140,9 @@ describe("writeView", () => {
         ...EMPTY_FILTERS,
         distanceMetres: { min: 8_000, max: 120_000 },
         ascentMetres: { min: null, max: 900 },
+        surfaces: ["asphalt", "gravel"],
       },
-    } as const;
+    };
 
     expect(readView(writeView(view))).toEqual(view);
   });

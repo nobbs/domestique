@@ -11,8 +11,8 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { routesQuery, statusQuery } from "../../api/queries";
-import type { Route as LibraryRoute, Status } from "../../api/types";
+import { routeGeometryQuery, routesQuery, statusQuery } from "../../api/queries";
+import type { Route as LibraryRoute, RouteGeometry, Status } from "../../api/types";
 import { CataloguePage } from "./CataloguePage";
 
 function libraryRoute(
@@ -53,10 +53,36 @@ function Address() {
   return <span data-testid="address">{`${location.pathname}${location.search}`}</span>;
 }
 
+/** A short line, enough for a glyph to have a shape and a surface to classify. */
+function geometryFor(index: number): RouteGeometry {
+  const coordinates = Array.from({ length: 8 }, (_, step): [number, number, number] => [
+    8 + step * 0.01,
+    49 + index * 0.1 + step * 0.005,
+    100,
+  ]);
+
+  return {
+    bbox: [8, 49, 8.07, 49.5],
+    coordinates,
+    surface: {
+      matchedMetres: 1_000,
+      ranges: [{ kind: index === 0 ? "gravel" : "asphalt", startIndex: 0, endIndex: 7 }],
+    },
+  };
+}
+
 function show(library: LibraryRoute[] = LIBRARY, entry = "/catalogue") {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   client.setQueryData(routesQuery().queryKey, library);
   client.setQueryData(statusQuery().queryKey, STATUS);
+  // Seeded rather than fetched: the glyphs and the surface filter both read
+  // this, under the same keys the atlas caches it with.
+  library.forEach((route, index) => {
+    client.setQueryData(
+      routeGeometryQuery(route.provider, route.sourceRouteId, route.stageOrder).queryKey,
+      geometryFor(index),
+    );
+  });
 
   return render(
     <QueryClientProvider client={client}>
@@ -71,12 +97,15 @@ function show(library: LibraryRoute[] = LIBRARY, entry = "/catalogue") {
   );
 }
 
-/** The route names in the order the table has them. */
+/**
+ * The route names in the order the table has them, read off each row's own
+ * link rather than off a column index — the shape column has no name in it.
+ */
 function shownTitles(): string[] {
   return screen
     .getAllByRole("row")
     .slice(1)
-    .map((row) => within(row).getAllByRole("cell")[0]?.textContent ?? "");
+    .map((row) => within(row).getByRole("link").textContent ?? "");
 }
 
 /**
@@ -190,14 +219,22 @@ describe("CataloguePage", () => {
     expect(screen.getByTestId("address")).toHaveTextContent("route=veloplanner%2F3%2F1");
   });
 
-  it("offers no surface filter, which would need geometry it does not fetch", async () => {
+  it("draws each route's shape from the geometry the atlas caches", () => {
+    show();
+
+    expect(screen.getByRole("img", { name: "Shape of Alpine loop" })).toBeInTheDocument();
+    expect(screen.getAllByRole("img", { name: /^Shape of / })).toHaveLength(3);
+  });
+
+  it("narrows by surface, which the same geometry classifies", async () => {
     const user = userEvent.setup();
     show();
 
     await user.click(screen.getByRole("button", { name: /Show the library filters/ }));
+    await user.click(screen.getByRole("checkbox", { name: /gravel/i }));
 
-    expect(screen.getByText("Distance")).toBeInTheDocument();
-    expect(screen.queryByText("Surface")).not.toBeInTheDocument();
+    expect(shownTitles()).toEqual([expect.stringContaining("Alpine loop")]);
+    expect(screen.getByTestId("address")).toHaveTextContent("surface=gravel");
   });
 
   it("says so when the library is empty", () => {
