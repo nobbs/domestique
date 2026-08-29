@@ -37,6 +37,82 @@ function Figure({ term, children }: { term: string; children: React.ReactNode })
   );
 }
 
+/** Who the route is: its name, where it came from, and when it was read. */
+export function RouteHeading({
+  route,
+  subtitle,
+  named = false,
+}: {
+  route: Route;
+  subtitle: string;
+  /** Off where a pill above is already carrying the name. */
+  named?: boolean;
+}) {
+  return (
+    <div className="min-w-0">
+      {!named ? null : (
+        <h2 className="truncate text-base leading-tight font-semibold tracking-tight">
+          {route.title}
+        </h2>
+      )}
+      <p className="text-xs text-[var(--ink-2)]">
+        <span className="font-semibold tracking-[0.06em] uppercase">
+          {providerLabel(route.provider)}
+        </span>
+        {subtitle === "" ? null : ` · ${subtitle}`}
+      </p>
+    </div>
+  );
+}
+
+/** What the route measures, as a block that can stand on its own. */
+export function RouteFigures({
+  route,
+  movingSeconds,
+  highestMetres,
+  unitSystem,
+  layout = "column",
+  columns = 2,
+  className,
+}: {
+  route: Route;
+  movingSeconds: number | undefined;
+  highestMetres: number | null;
+  unitSystem: UnitSystem;
+  layout?: "column" | "row";
+  columns?: 2 | 3;
+  className?: string;
+}) {
+  return (
+    <dl
+      className={`${
+        layout === "row"
+          ? "flex shrink-0 items-baseline gap-5"
+          : `grid gap-x-3 gap-y-1.5 ${columns === 3 ? "grid-cols-3" : "grid-cols-2"}`
+      } ${className ?? ""}`}
+    >
+      <Figure term="Distance">{formatDistance(route.distanceMetres, unitSystem)}</Figure>
+      <Figure term="Ascent">{formatAscent(route.ascentMetres, unitSystem)}</Figure>
+      <Figure term="Max gradient">{formatGradient(route.maxGradientPercent)}</Figure>
+      <Figure term="Highest">
+        {highestMetres === null ? "—" : formatElevation(highestMetres, unitSystem)}
+      </Figure>
+      <div className={layout === "row" || columns === 3 ? undefined : "col-span-2"}>
+        <dt className="text-[11px] leading-none text-[var(--ink-2)]">Moving time</dt>
+        <dd className="text-sm leading-tight tabular-nums">
+          {formatMovingTime(movingSeconds)}
+          {movingSeconds !== undefined && route.validation ? (
+            <span className="ml-1 text-[11px] text-[var(--ink-2)]">
+              {formatMovingTimeUncertainty(route.validation)}
+            </span>
+          ) : null}
+        </dd>
+      </div>
+    </dl>
+  );
+}
+
+/** The two together, for an arrangement that wants them stacked. */
 export function RouteIdentity({
   route,
   subtitle,
@@ -55,72 +131,24 @@ export function RouteIdentity({
   highestMetres: number | null;
   climbs: Climb[];
   unitSystem: UnitSystem;
-  /** Down a card, or along the head of a dock. */
   layout?: "column" | "row";
-  /** Whether the route's name is here, or on a pill above that already has it. */
   named?: boolean;
-  /**
-   * Whether the climbs summary is drawn here.
-   *
-   * Off where a foldable climbs section follows, since that section's own
-   * trigger *is* this line — printing it twice would put a summary directly
-   * above the control that repeats it.
-   */
   climbLine?: boolean;
-  /**
-   * How many figures share a row in the column layout.
-   *
-   * Three where the card also carries the mixes and a climbs list: five
-   * figures over two rows instead of three is a row of height back, and the
-   * card is competing with the dock for the same screen.
-   */
   columns?: 2 | 3;
 }) {
   const summary = climbLine ? climbSentence(climbs, unitSystem) : null;
 
   return (
-    // `min-w-0` on both: a grid or flex item defaults to its content's minimum
-    // width, so without it the title refuses to truncate and shoulders its way
-    // out of whatever column it was given.
     <div className={layout === "row" ? "flex min-w-0 items-baseline gap-5" : "grid min-w-0 gap-2"}>
-      <div className="min-w-0">
-        {!named ? null : (
-          <h2 className="truncate text-base leading-tight font-semibold tracking-tight">
-            {route.title}
-          </h2>
-        )}
-        <p className="text-xs text-[var(--ink-2)]">
-          <span className="font-semibold tracking-[0.06em] uppercase">
-            {providerLabel(route.provider)}
-          </span>
-          {subtitle === "" ? null : ` · ${subtitle}`}
-        </p>
-      </div>
-      <dl
-        className={
-          layout === "row"
-            ? "flex shrink-0 items-baseline gap-5"
-            : `grid gap-x-3 gap-y-1.5 ${columns === 3 ? "grid-cols-3" : "grid-cols-2"}`
-        }
-      >
-        <Figure term="Distance">{formatDistance(route.distanceMetres, unitSystem)}</Figure>
-        <Figure term="Ascent">{formatAscent(route.ascentMetres, unitSystem)}</Figure>
-        <Figure term="Max gradient">{formatGradient(route.maxGradientPercent)}</Figure>
-        <Figure term="Highest">
-          {highestMetres === null ? "—" : formatElevation(highestMetres, unitSystem)}
-        </Figure>
-        <div className={layout === "row" || columns === 3 ? undefined : "col-span-2"}>
-          <dt className="text-[11px] leading-none text-[var(--ink-2)]">Moving time</dt>
-          <dd className="text-sm leading-tight tabular-nums">
-            {formatMovingTime(movingSeconds)}
-            {movingSeconds !== undefined && route.validation ? (
-              <span className="ml-1 text-[11px] text-[var(--ink-2)]">
-                {formatMovingTimeUncertainty(route.validation)}
-              </span>
-            ) : null}
-          </dd>
-        </div>
-      </dl>
+      <RouteHeading route={route} subtitle={subtitle} named={named} />
+      <RouteFigures
+        route={route}
+        movingSeconds={movingSeconds}
+        highestMetres={highestMetres}
+        unitSystem={unitSystem}
+        layout={layout}
+        columns={columns}
+      />
       {summary === null ? null : (
         <p
           className={

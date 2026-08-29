@@ -40,12 +40,13 @@ import { cellAt, clockAt } from "./shared";
  * snapping has somewhere to land, and the list always rests showing whole
  * climbs.
  *
- * Three of them, because the card above this is carrying the two mixes as
- * well: five opened it past the dock, and a list that pushes its own panel
- * under another one has not really been capped.
+ * Five of them. The card above carries the two mixes as well, and with those
+ * stacked under the figures there was only room for three — read across on one
+ * line instead, they cost a row rather than a block, and the height that buys
+ * goes here.
  */
 const ROW_HEIGHT = 44;
-const VISIBLE_ROWS = 3;
+const VISIBLE_ROWS = 5;
 
 export function ClimbsSection({
   climbs,

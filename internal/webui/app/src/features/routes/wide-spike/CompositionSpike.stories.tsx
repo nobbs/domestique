@@ -41,7 +41,7 @@ import { StackedColumn } from "../panel-spike/SidewaysCard";
 import { SpikePanel } from "../panel-spike/SpikePanel";
 import { bandEntries, surfaceEntries } from "../panel-spike/shared";
 import { ClimbsSection } from "./ClimbsSection";
-import { RouteIdentity } from "./RouteIdentity";
+import { RouteFigures, RouteHeading, RouteIdentity } from "./RouteIdentity";
 import { StackClimbsSheet } from "./StackClimbsSheet";
 
 const PAGE = { width: 1440, height: 900 };
@@ -146,17 +146,33 @@ export const Negotiated: StoryObj = {
             // `aside` is `max-h-[calc(100%-1.5rem)] overflow-y-auto`. Kept here
             // as the same safety net, so a route with more to say scrolls its
             // card rather than sliding it under the dock.
-            className="grid max-h-[calc(100%-0.75rem)] w-[21rem] gap-2 overflow-y-auto rounded-xl bg-[var(--panel)] p-3 shadow-[var(--shadow)] ring-1 ring-black/5"
+            // The height bound the real shell already puts on this panel: its
+            // `aside` is `max-h-[calc(100%-1.5rem)] overflow-y-auto`. Kept here
+            // as the same safety net, so a route with more to say scrolls its
+            // card rather than sliding it under the dock.
+            className="grid max-h-[calc(100%-0.75rem)] w-[30rem] gap-2 overflow-y-auto rounded-xl bg-[var(--panel)] p-3 shadow-[var(--shadow)] ring-1 ring-black/5"
           >
-            <RouteIdentity {...identity} named climbLine={false} columns={3} />
+            <RouteHeading route={spikeRoute} subtitle={spikeSubtitle} named />
             {/*
+             * The figures and the two bars on one line, which is where the
+             * sideways card put them and what makes that card short: read
+             * across, the block is one row of the card rather than two blocks
+             * stacked. It is also the height that pays for the climbs list
+             * underneath.
+             *
              * The mixes as lengths, which is a different question from the one
              * the dock's ribbon answers. `gradientShares` and `gradientMix`
              * were split for exactly this: how much of the ride is gravel, and
-             * where the gravel is. Thirteen kilometres of it decides the bike;
-             * its falling on the second col decides the day.
+             * where the gravel is.
              */}
-            <div className="flex items-start gap-3 border-t border-[var(--rule)] pt-2">
+            <div className="flex items-start gap-3">
+              <RouteFigures
+                route={spikeRoute}
+                movingSeconds={spikeRoute.movingSeconds}
+                highestMetres={spikeHighestMetres}
+                unitSystem="metric"
+                className="w-[9.5rem] shrink-0"
+              />
               <StackedColumn
                 name="Gradient"
                 entries={bandEntries(spikeBands, spikeRoute.distanceMetres)}
