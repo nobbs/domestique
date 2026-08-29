@@ -13,9 +13,11 @@
  * says "seven climbs, the biggest thirteen kilometres at six percent" needs no
  * separate word to press.
  *
- * Each row still carries the weather waiting on that col, which is the join
- * the split alternative found and the one thing here neither panel could say
- * on its own.
+ * Each row carries the chance of rain on that col — the join the split
+ * alternative found, and the one thing here neither panel could say on its
+ * own. Only that: the condition and the temperature are drawn along the
+ * forecast band a few hundred pixels below, tile by tile, and a glyph repeated
+ * per climb was the same reading in a worse place.
  */
 
 import { IconChevronsRight } from "@tabler/icons-react";
@@ -24,7 +26,6 @@ import type { Cell } from "../../../components/route/forecast-spike/cells";
 import type { Climb } from "../../../lib/climbs";
 import { formatAscent, formatDistance, formatGradient } from "../../../lib/format";
 import type { UnitSystem } from "../../../lib/units";
-import { weatherIcon } from "../../../lib/weather";
 import { climbSentence } from "../panel-spike/shared";
 import { cellAt, clockAt } from "./shared";
 
@@ -49,8 +50,7 @@ const ROW_HEIGHT = 28;
 
 /**
  * The row's columns: ordinal, length, average gradient, steepest gradient,
- * ascent, where and when, then the weather waiting there and the chance of
- * rain on it.
+ * ascent, where and when, and the chance of rain there.
  *
  * Fixed tracks rather than a flex row, so a figure sits under the figure above
  * it. Laid out by content, each row starts its second fact wherever its first
@@ -63,7 +63,7 @@ const ROW_HEIGHT = 28;
  * no explaining; two adjacent ones are a riddle, and the answer — which is the
  * average and which the wall — is the whole reason for carrying both.
  */
-const ROW_COLUMNS = "0.75rem 3.5rem 2.5rem 2.5rem 3.5rem minmax(0,1fr) 3.25rem 2.5rem";
+const ROW_COLUMNS = "0.75rem 3.5rem 2.5rem 2.5rem 3.5rem minmax(0,1fr) 2.5rem";
 
 /**
  * Above this chance of rain, the figure stops being muted.
@@ -141,7 +141,6 @@ export function ClimbsSection({
             <span className="text-right">Max</span>
             <span className="text-right">Ascent</span>
             <span>Starts</span>
-            <span />
             <span className="text-right">Rain</span>
           </div>
           <ol
@@ -149,11 +148,10 @@ export function ClimbsSection({
             style={{ maxHeight: ROW_HEIGHT * VISIBLE_ROWS }}
           >
             {climbs.map((climb, index) => {
-              // The middle of the climb rather than its foot: the weather a
-              // rider remembers about a col is the weather on it.
+              // The middle of the climb rather than its foot: the rain a rider
+              // gets on a col is the rain over the col, not at the bottom of it.
               const middle = (climb.startMetres + climb.endMetres) / 2;
               const cell = cellAt(cells, middle);
-              const Glyph = cell ? weatherIcon(cell.point.weatherCode) : null;
 
               return (
                 <li key={climb.startMetres} className="snap-start" style={{ height: ROW_HEIGHT }}>
@@ -184,16 +182,6 @@ export function ClimbsSection({
                       {formatDistance(climb.startMetres, unitSystem)}
                       {cell === null ? null : ` · ${clockAt(cell.sample.arrivalAt)}`}
                     </span>
-                    {cell === null ? null : (
-                      <span className="flex items-center justify-end gap-1 text-xs tabular-nums">
-                        {Glyph === null ? null : (
-                          <Glyph size={14} stroke={1.8} aria-hidden="true" />
-                        )}
-                        <span className="font-semibold">
-                          {Math.round(cell.point.temperatureCelsius)}°
-                        </span>
-                      </span>
-                    )}
                     {cell === null ? null : (
                       <span
                         className={`text-right text-xs tabular-nums ${
