@@ -6,8 +6,8 @@ two-point route in a **Wahoo sandbox** account, retrieves it, verifies the
 remote route ID, external ID, and FIT file URL, then deletes the temporary
 route during test cleanup.
 
-It intentionally uses neither VeloPlanner data nor a configured service token.
-Provide a short-lived sandbox access token only through the process environment:
+It uses neither VeloPlanner data nor a configured service token. Provide a
+short-lived sandbox access token only through the process environment:
 
 ```sh
 DOMESTIQUE_WAHOO_ENVIRONMENT=sandbox \
@@ -20,7 +20,6 @@ The API origin defaults to `https://api.wahooligan.com`. Set
 sandbox origin. The test rejects non-HTTPS origins and refuses to run unless
 the explicit environment value is `sandbox`.
 
-Do not run the harness against a production account. The later Wahoo adapter
-will supply the same direct-route operation to the service through encrypted
-refresh-token state; this harness stays an independent manual check of encoder
-compatibility.
+Do not run the harness against a production account. It is an independent
+manual check of encoder compatibility, separate from the Wahoo adapter the
+service runs.

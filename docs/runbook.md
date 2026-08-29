@@ -5,16 +5,16 @@ the uncommon moments when it stops and asks for a person: what you will have
 seen, what the service has already guaranteed by stopping, and the smallest safe
 way forward.
 
-Every scenario below starts from an observable answer rather than a symptom,
-because the service says what it did in stable words that are safe to log and
-safe to notify on. Nothing here asks you to open the database, edit stored
-state, or delete a Wahoo route by hand.
+Every scenario below starts from an observable answer rather than a symptom. The
+service says what it did in stable words that are safe to log and safe to notify
+on. Nothing here asks you to open the database, edit stored state, or delete a
+Wahoo route by hand.
 
 ## Where the answers are
 
 **The status page.** The browser UI at the public hostname is the status page,
 and everything it shows comes from `GET /v1/status`, which reads local state
-alone — it can be answered while VeloPlanner and Wahoo are both unreachable. The
+alone and can be answered while VeloPlanner and Wahoo are both unreachable. The
 page says things in plain language: an account reads **Not connected**,
 **Behind**, **Last write failed**, or **Up to date**, and a half that did not
 succeed reads **Held by a safety gate**, **Did not finish**, or **Did not
@@ -27,14 +27,13 @@ needs the same Cloudflare Access assertion the page carries, so it is read most
 easily from the browser at `/v1/status`.
 
 **Pushover.** A new failure notifies — the same one again is suppressed for the
-six hours described below — and a success notifies as far as
-the success policy allows: `every` sends one message per successful run, `quiet`
-sends none while the service is healthy, and `digest` replaces them with one
-aggregate message per digest period. Both, and the switch for the whole channel,
-are on the settings page — and that switch is not a quieter policy: off, a
-failure goes unsent too. A success
-carries its counts. A failure arrives titled `Domestique sync failed` with a
-body naming the half and one stable category:
+six hours described below — and a success notifies as far as the success policy
+allows: `every` sends one message per successful run, `quiet` sends none while
+the service is healthy, and `digest` replaces them with one aggregate message
+per digest period. Both, and the switch for the whole channel, are on the
+settings page. The switch is not a quieter policy: off, a failure goes unsent
+too. A success carries its counts. A failure arrives titled
+`Domestique sync failed` with a body naming the half and one stable category:
 
 ```text
 targets failed: deletion_limit
@@ -44,9 +43,8 @@ The first occurrence of a category in a half is sent; matching failures in that
 half are then suppressed for six hours, and the first following success is the
 recovery signal. The recovery signal is sent under every success policy, so a
 quiet deployment still tells you when an alert is over. **Silence is not
-health** — after a first alert, the status page's timestamps are the only thing
-that tells you whether anything has run, and under `quiet` or `digest` silence
-is also what a healthy service sounds like.
+health** — under `quiet` or `digest`, silence is also what a healthy service
+sounds like, and the status page's timestamps are what tell the two apart.
 
 **The readiness probe**, on the host, over loopback:
 
@@ -71,26 +69,25 @@ stays ready while a target waits for its one-time authorisation.
 Two of those are gates rather than faults. A **blocked** run is the service
 working correctly: nothing was written, nothing was removed, and the way past it
 is a deliberate decision. Re-running a blocked half without making that decision
-just reaches the same gate again, which is the point of it.
+reaches the same gate again.
 
 ## Reconnect a Wahoo account
 
 **You will have seen** `targets failed: authorization`, and that account reading
 **Reconnect needed** on the status page. An account that has never been
-connected reads **Not connected** instead; both are fixed by the same visit, but
-they are different situations and the page says which it is. `authorisation` in
-`GET /v1/status` is `needs_reauthorization` for the first and `not_authorized`
-for the second.
+connected reads **Not connected** instead. Both are fixed by the same visit, and
+the page says which it is. `authorisation` in `GET /v1/status` is
+`needs_reauthorization` for the first and `not_authorized` for the second.
 
 **What already held.** Only that slot is affected: the other target is still
 attempted in the same run, and a rejected token deletes nothing anywhere. The
 refresh token stays encrypted at rest, and access tokens never leave memory.
 
 **In the browser.** The account carries a **Connect** or **Reconnect** link
-under **Wahoo accounts** on the status page. It is a link rather than a button
-because authorisation is a redirect flow: following it leaves for Wahoo and
-comes back. The same flow is reachable directly at the public hostname, which is
-what to use when the page itself will not load:
+under **Wahoo accounts** on the status page. It is a link rather than a button:
+authorisation is a redirect flow that leaves for Wahoo and comes back. The same
+flow is reachable directly at the public hostname, which is what to use when the
+page itself will not load:
 
 ```text
 https://<your-public-hostname>/oauth/wahoo/start/<target-id>
@@ -100,13 +97,13 @@ Sign in as the account that slot belongs to. Wahoo returns to the callback URL
 and the service redirects back to the status page. Confirm that the account has
 stopped asking to be connected, then press **Write to Wahoo** rather than
 waiting for the hour: the run reconciles from what the account actually holds,
-so it will catch that target up without replaying anything destructive.
+and catches that target up without replaying anything destructive.
 
 An account reading **Connecting** afterwards means the callback never completed.
-That is also why it offers nothing to press: the transaction is single-use, and
-starting a second one invalidates the first. It expires ten minutes after it was
-started, after which the account reads as it did before and the link comes back
-— start it again rather than reloading the callback URL.
+It offers nothing to press: the transaction is single-use, and starting a second
+one invalidates the first. It expires ten minutes after it was started, after
+which the account reads as it did before and the link comes back. Start it again
+rather than reloading the callback URL.
 
 **On the settings page**, only if reconnecting fails outright: the Wahoo client
 ID and client secret must be current, and the callback registered with Wahoo
@@ -119,8 +116,8 @@ host and needs a restart.
 **You will have seen** a service that answers both probes and shows a settings
 page saying what is still missing, with no run in its history and no
 notification of any kind. That is a deployment that has not been configured yet
-rather than one that broke, and it is the state every new deployment starts in:
-the host's file carries only the listeners, the identity gate and the state, and
+rather than one that broke, and it is the state every new deployment starts in.
+The host's file carries only the listeners, the identity gate and the state, and
 everything a run needs — the source libraries and their accounts, the Wahoo
 application and its client secret, and at least one target slot — is entered on
 the settings page.
@@ -128,13 +125,10 @@ the settings page.
 **What the service has already guaranteed.** A scheduled run finds nothing
 configured and does nothing, rather than reaching an upstream as nobody or
 treating an unread library as an empty one. No inventory is stored, so the
-deletion gate is never approached. The readiness probe reports ready throughout,
-because a service waiting to be configured through a browser is running exactly
-as deployed, and a probe that called that unhealthy would roll the deployment
-back before anyone could configure it.
+deletion gate is never approached. The readiness probe reports ready throughout.
 
 **The way forward** is the settings page, which names each missing setting.
-Filling them in takes effect on the next run — there is no restart, and nothing
+Filling them in takes effect on the next run: there is no restart, and nothing
 to edit on the host. A target slot named there is ready for the one-time OAuth
 onboarding immediately; see [Reconnect a Wahoo account](#reconnect-a-wahoo-account)
 for what that looks like.
@@ -143,8 +137,8 @@ for what that looks like.
 
 **You will have seen** a `blocked` result and, on the status page, **Held by a
 safety gate**. The two gates differ in what you can do about them: the
-empty-source gate is a switch on the settings page, deliberately behind a
-confirmation, and the per-run deletion limit is a constant nothing can raise.
+empty-source gate is a switch on the settings page, behind a confirmation, and
+the per-run deletion limit is a constant nothing can raise.
 
 ### `empty_source` — the library came back empty
 
@@ -158,17 +152,16 @@ and confirm what is actually there. If it really is meant to be empty — you ar
 removing the final routes on purpose — open **Settings → Service settings**,
 turn on *Let an empty library delete a target's routes*, confirm the dialog, run
 the source half, and turn it off again. It takes effect on that next run, with
-no restart, and it stays on until you turn it off: nothing closes it for you.
+no restart, and it stays on until you turn it off; nothing closes it for you.
 Nothing else about the gate is bypassed by it.
 
 ### `deletion_limit` — more removals than the per-run maximum
 
 One target's reconciliation would have removed more than five owned routes,
-which is the per-run limit. It is a constant rather than a setting: a limit that
-exists to make a runaway deletion stop is not one to raise in the moment it
-stops something. The gate is checked before any create or update, so **that
-target was not written to at all** in that run; it stays behind until the
-situation is resolved. The other target is reconciled independently.
+which is the per-run limit. It is a constant rather than a setting and cannot be
+raised. The gate is checked before any create or update, so **that target was
+not written to at all** in that run; it stays behind until the situation is
+resolved. The other target is reconciled independently.
 
 Satisfy yourself that the removals are intended. If they are not — routes
 vanished from the library by accident — restore them at the source and run the
@@ -176,32 +169,32 @@ target half again; nothing was lost. If they are, and the removals are more than
 five, the way through is **Delete all routes…** on that account: it deletes
 every route this service owns from that slot, which the limit does not bound,
 and the next run rebuilds the slot from the stored library. That costs a full
-re-upload of the routes that were meant to stay, so it is worth being sure
-first.
+re-upload of the routes that were meant to stay.
 
 ## The library is not being read
 
-**You will have seen** `source failed: source`, or nothing at all — this is the
-scenario where you have to read a timestamp. There is no staleness alert today:
-after the first notification, six hours of quiet look exactly like six hours of
-success. `sync.phases.source.last_completed_at` on the status page is what says
-when the library was last read, and the source half's schedule switch is what
-says whether the timer is even trying.
+**You will have seen** `source failed: source`, or a staleness alert once the
+trusted inventory has gone longer than `sync.stale_after` — 24 hours by default
+— without a successful source run. That alert is sent once, then suppressed for
+six hours, and the next successful source run sends an unconditional recovery
+message. `sync.phases.source.last_completed_at` on the status page is what says
+when the library was last read, `sync.trusted_inventory` reports the same age
+against its bound, and the source half's schedule switch says whether the timer
+is trying.
 
 **What already held.** An incomplete or malformed read is never treated as
 routes going away: a single invalid route invalidates the whole inventory and no
-deletion follows from it. Meanwhile the target half keeps reconciling the last
-inventory known to be whole, so an unreadable library does not stop a lagging
-account from catching up.
+deletion follows from it. The target half keeps reconciling the last inventory
+known to be whole, so an unreadable library does not stop a lagging account from
+catching up.
 
 **In the browser.** Check that the source switch is on, then press **Read from
 VeloPlanner**. A manual trigger runs its half whether the switch is on or off.
 
 **At the source.** A route whose detail will not parse holds up every route:
 correct it in VeloPlanner, then read again. If the credentials themselves are
-rejected, retype them on the settings page: the page never shows you the stored
-one, so a rotated password is entered rather than corrected, and the next run
-uses it.
+rejected, retype them on the settings page. The page never shows you the stored
+one, so a rotated password is entered in full, and the next run uses it.
 
 ## A write to Wahoo did not complete
 
@@ -223,9 +216,8 @@ already owns rather than deleting and recreating it.
 **You will have seen** `/readyz` answering `503` with `state_unreadable` or
 `state_incomplete`, a `state` category on either half, or a status page showing
 every account as **Not connected** and each half as **Did not start**. An
-unreadable schedule is reported the same way — as a failed source run — because
-"switched off" and "cannot be read" are different answers and a timer must not
-act on the second as the first.
+unreadable schedule is reported the same way, as a failed source run: switched
+off and cannot be read are different answers.
 
 **What already held.** Lost state is never authority to delete. When the service
 comes back without state, sync stays disabled until every slot is authorised
@@ -233,7 +225,7 @@ again; the first trusted inventory then adopts matching remote routes by their
 deterministic external ID, creates what is missing, and removes nothing it does
 not recognise.
 
-**On the host.** This is entirely a host scenario — the browser has no control
+**On the host.** This is entirely a host scenario; the browser has no control
 over any of it.
 
 - The state volume must be present and writable by UID and GID `65532`.
@@ -243,15 +235,15 @@ over any of it.
 - Never `docker compose down -v`, and never `docker system prune --volumes`:
   both delete the named state volume.
 
-Losing the geometry or surface caches is harmless — they are rebuilt from the
+Losing the geometry or surface caches is harmless: they are rebuilt from the
 next run and can never authorise a deletion. Losing targets or their route
 mappings is the case above.
 
 **After genuine state loss**, authorise every slot in the browser as in
 [Reconnect a Wahoo account](#reconnect-a-wahoo-account), then read the library.
-Routes the service can no longer recognise stay on the account: there is
-deliberately no feature that removes an unmatched remote route, so anything left
-over is removed by hand in Wahoo, by you, or left alone.
+Routes the service can no longer recognise stay on the account. There is no
+feature that removes an unmatched remote route, so anything left over is removed
+by hand in Wahoo, by you, or left alone.
 
 ## A deployment did not come up
 
@@ -280,8 +272,7 @@ digest and run `docker compose --env-file .env up -d` from the deployment
 directory.
 
 **No rollback restores old state.** Every path leaves the named state volume
-alone, which is what makes going back safe and also what means a rollback
-undoes the code and nothing the code wrote.
+alone. A rollback undoes the code and nothing the code wrote.
 
 ## Surface classification is not completing
 
@@ -303,38 +294,36 @@ a new map reclassifies itself over the next run or two.
 **When a shortfall persists**, the index is what to look at. `sync.surface` on
 the status page names the `generation` and `built_at` of the build the
 classifications were read from; both are absent when no index is loaded. Compare
-that against the build log — the service writes one line when an index is
+that against the build log: the service writes one line when an index is
 rebuilt, one when it finds every region unchanged, and one when a build fails.
 A build that fails sends a single notification and then stays quiet for a week,
 so the log is where a run of failures is visible.
 
 An empty `sync.surface` generation on a service that has regions configured means
-no index is live yet: either the first build has not run (it waits a few minutes
-after start), or the last build's file did not survive. Either way the next
+no index is live yet: either the first build has not run — it waits a few minutes
+after start — or the last build's file did not survive. Either way the next
 scheduled build fills it in.
 
 **When nothing is classified on purpose**, the region list under **Settings →
 Service settings** is empty. That is the default, and it switches the whole
 feature off: no extract is downloaded and no index is built. Adding a region
-there does not build anything by itself: the next rebuild on the configured
+there does not build anything by itself; the next rebuild on the configured
 schedule does, and routes are classified on the pass after that.
 
-A single route classified wrongly is a **Reprocess** away; re-planning a route
-reclassifies it automatically, because the cached ranges describe coordinates
-that were replaced.
+A single route classified wrongly is a **Reprocess** away. Re-planning a route
+reclassifies it automatically.
 
 ## What this runbook does not cover
 
 There is no state backup, no key rotation, and no remote route cleanup.
-There is also no HTTP or CLI path to delete a route: everything in this guide is
+There is also no HTTP or CLI path to delete a route. Everything in this guide is
 either a browser action the service already offers — including the settings
 page, which reaches the deletion gate, the staleness bound, the notification
 settings, the basemap list, the surface regions, the source libraries, the Wahoo
 application and its target slots, the ride model, and every credential those
-reach their upstreams with — or a change to the host's configuration file,
-which now holds only the listeners, the identity gate and the state, followed by
-a restart.
+reach their upstreams with — or a change to the host's configuration file, which
+holds only the listeners, the identity gate and the state, followed by a
+restart.
 
 A credential can be replaced from that page but not read from it, and removing
-one is not offered at all: a blank field is what an operator who changed nothing
-leaves behind, so it means "keep" rather than "clear".
+one is not offered at all. A blank field means keep rather than clear.

@@ -7,7 +7,7 @@ browser, and the service publishes no listener.
 
 This applies to Tailnet browsers too. Tailscale Serve still fronts the
 listener, because `cloudflared` reaches it by Service name, and Tailnet members
-can still reach that URL — but the service reads no Tailnet identity, so such a
+can still reach that URL. The service reads no Tailnet identity, so such a
 request answers 401 like any other without an assertion. There is one front
 door.
 
@@ -24,40 +24,33 @@ flowchart LR
   loopback --> app["Domestique container"]
 ```
 
-The origin is the **Tailscale Service name**, not a node name. That indirection
-is why the service can move hosts without the tunnel changing, and it is also
-what keeps the deployment safe — see [Why the Service name is load-bearing](#why-the-service-name-is-load-bearing).
+The origin is the **Tailscale Service name**, not a node name. See
+[The Service name](#the-service-name).
 
-## Why not Tailscale Funnel
+Cloudflare terminates TLS at its edge and can therefore see plaintext.
 
-Funnel is the obvious-looking answer and it does not work here.
+## Constraints
+
+Tailscale Funnel cannot serve this deployment:
 
 - Funnel binds to the **node's** MagicDNS name. It cannot serve a Tailscale
-  Service name; `--service=svc:` is a Serve-only flag that Funnel ignores. The
-  whole point of `svc:domestique` is that the name outlives the host.
+  Service name; `--service=svc:` is a Serve-only flag that Funnel ignores.
 - Funnel has **no authentication and no authorization**. The `funnel` nodeAttr
   in the policy file controls who may *publish*, not who may *connect*. An
   internet client carries no tailnet identity, so a grant has nothing to
   evaluate.
 - Funnel injects no identity headers, and this service's gate needs an identity.
 
-The trade this makes is real and worth stating: Cloudflare terminates TLS and
-can therefore see plaintext, where Funnel proxies TCP without terminating it.
-For a route-mirroring service whose sensitive payload is already gated behind a
-verified identity, that is an acceptable price for having authentication at all.
-
 ## The trust model
 
 One kind of evidence reaches the handler, and it is checked on every request.
 
-| Evidence | Why it can be trusted |
+| Evidence | What makes it trustworthy |
 | --- | --- |
 | `Cf-Access-Jwt-Assertion` | RS256 signature over Cloudflare's published keys, bound to this application's audience tag |
 
 It resolves to the single configured principal,
 `access.cloudflare.allowed_email`, and the service stays single-tenant.
-
-Three consequences are worth holding on to.
 
 **cloudflared has no identity of its own.** It runs on a tagged node, and
 Tailscale Serve never populates identity headers for a tagged device. A request
@@ -66,32 +59,30 @@ assertion is the only identity it carries.
 
 **The application verifies the assertion itself**, rather than trusting that
 something upstream did. Verification checks the signature, the issuer, the
-expiry, and — critically — that `aud` matches this application's audience tag.
-Without the audience check, a token minted for any other Access application in
-the same Cloudflare team would verify against the same signing key.
+expiry, and that `aud` matches this application's audience tag. Without the
+audience check, a token minted for any other Access application in the same
+Cloudflare team would verify against the same signing key.
 `Cf-Access-Authenticated-User-Email` is never consulted: it is unsigned.
 
-**`Tailscale-User-Login` is not read.** This is deliberate and must stay that
-way. Serve is still listening and Tailnet members can still reach it, so
-honouring that header would mean a second front door with a second identity
-source behind it. Worse, a tunnel forwards client headers verbatim: the moment
-anything other than Serve reaches the listener, the header becomes forgeable and
-the gate becomes a formality. One identity, verified by signature, on every
-request.
+**`Tailscale-User-Login` is not read.** This must stay that way. Serve is still
+listening and Tailnet members can still reach it, so honouring that header would
+be a second front door with a second identity source behind it. A tunnel
+forwards client headers verbatim: the moment anything other than Serve reaches
+the listener, the header is forgeable. One identity, verified by signature, on
+every request.
 
-### Why the Service name is load-bearing
+### The Service name
 
-The ingress rule names `svc:domestique`, not a node and not loopback. Two
-reasons:
+The ingress rule names `svc:domestique`, not a node and not loopback.
 
 - The Service name outlives the host. Moving the service to another machine is
   a Serve change on the new host, not a tunnel change.
 - The tunnel node's grant is written against that Service, so `tag:cloudflared`
-  can reach exactly one Service on exactly one port and cannot address the host
-  it happens to run beside. Pointing the ingress rule at `127.0.0.1:8080` would
-  discard that containment for nothing.
+  reaches exactly one Service on exactly one port and cannot address the host it
+  runs beside. Pointing the ingress rule at `127.0.0.1:8080` discards that
+  containment.
 
-Do not "simplify" the ingress rule to loopback.
+Do not simplify the ingress rule to loopback.
 
 ## Tailnet policy
 
@@ -116,10 +107,10 @@ These changes belong to the `infrastructure` repository, in
 ],
 ```
 
-The tunnel node is deliberately absent from every other rule. It is not a
-`tag:homelab` peer, it advertises nothing, and it has no SSH grant.
+The tunnel node is absent from every other rule. It is not a `tag:homelab`
+peer, it advertises nothing, and it has no SSH grant.
 
-Add a policy test that pins the negative case, which is the one that matters:
+Add a policy test that pins the negative case:
 
 ```hujson
 "tests": [
@@ -136,19 +127,17 @@ support for `svc:` destinations should be checked against the current syntax
 rather than assumed.
 
 The `services` map in `stacks/tailscale/terraform.tfvars` publishes
-`svc:domestique` on `tcp:443` only. It used to carry `tcp:8080` as well, from
-when the app was dialled directly; the grant confined the tunnel node to 443
-either way, but a port nothing dials is a port worth not publishing.
+`svc:domestique` on `tcp:443` only.
 
 ## Cloudflare setup
 
 Everything on the Cloudflare side is Terraform, in
 `infrastructure/stacks/cloudflare/domestique.tf`: the tunnel, the hostname's
 `CNAME`, the Access group, policy and application, and a redirect rule scoped to
-this hostname. The one thing that stack deliberately does not own is the ingress
-rule, which lives in [`cloudflared.example.yml`](cloudflared.example.yml) beside
-the compose file that deploys it — because the origin is a Tailscale Service
-name, and that is the line least worth having two copies of.
+this hostname. That stack does not own the ingress rule, which lives in
+[`cloudflared.example.yml`](cloudflared.example.yml) beside the compose file
+that deploys it. The origin is a Tailscale Service name, and that line has one
+copy.
 
 Two prerequisites are one-time dashboard work, not Terraform:
 
@@ -162,8 +151,8 @@ Two prerequisites are one-time dashboard work, not Terraform:
   `var.domestique.allowed_emails` *and* in `access.cloudflare.allowed_email`; if
   the Cloudflare account's login address differs from the operator's, nothing
   matches and nobody gets in.
-- **Both Cloudflare API tokens widened.** They were zone-scoped; the tunnel and
-  the Access resources are account-scoped, and the redirect rule needs
+- **Both Cloudflare API tokens widened.** The tunnel and the Access resources
+  are account-scoped rather than zone-scoped, and the redirect rule needs
   `Single Redirect`. The exact permissions are in that stack's README.
 
 Then:
@@ -178,13 +167,13 @@ Then:
    - `domestique_access_aud` — the AUD tag, for
      `access.cloudflare.application_aud` below.
    - `domestique_access_team_domain` — for `access.cloudflare.team_domain`. The
-     organization stays dashboard-managed, but the stack reads it, so this is
+     organization stays dashboard-managed, and the stack reads it, so this is
      not transcribed by hand either.
-3. **Fetch the connector credentials.** `tunnel_secret` is intentionally left
-   unset in Terraform, so Cloudflare generates it and it never enters the state
-   file. The dashboard offers no download for it either — a locally configured
-   tunnel has no *Configure* tab, only a *Migrate* one — so ask `cloudflared`
-   for it, which is the one path that writes the credentials file directly:
+3. **Fetch the connector credentials.** `tunnel_secret` is left unset in
+   Terraform, so Cloudflare generates it and it never enters the state file. The
+   dashboard offers no download for it either — a locally configured tunnel has
+   no *Configure* tab, only a *Migrate* one — so ask `cloudflared` for it, which
+   writes the credentials file directly:
 
    ```sh
    # Once per host, if there is no ~/.cloudflared/cert.pem yet.
@@ -192,18 +181,17 @@ Then:
    cloudflared tunnel token --cred-file /etc/cloudflared/<TUNNEL_ID>.json <TUNNEL_ID>
    ```
 
-   That page's **Start migration** button is not the way in, and must not be
-   pressed: it is irreversible, and it moves the ingress rules to dashboard
-   management. The ingress is what names `svc:domestique`, so migrating it
-   would take the load-bearing line out of this repository.
+   That page's **Start migration** button must not be pressed. It is
+   irreversible, and it moves the ingress rules to dashboard management. The
+   ingress is what names `svc:domestique`.
 4. **Deploy the connector.** Copy
    [`cloudflared.example.yml`](cloudflared.example.yml) to
    `./cloudflared/config.yml`, fill in the tunnel ID, and place the credentials
    JSON beside it. Bring up
    [`compose.cloudflare.example.yml`](compose.cloudflare.example.yml) alongside
    the service's own compose file. Its Tailscale sidecar must join with an auth
-   key carrying `tag:cloudflared`, since that tag is what the grant above is
-   written against.
+   key carrying `tag:cloudflared`, which is the tag the grant above is written
+   against.
 5. **Approve the tunnel node** for the Service if the tailnet requires it, then
    confirm from inside the namespace that the Service resolves:
 
@@ -212,50 +200,43 @@ Then:
    docker compose exec tunnel-tailscale tailscale ping domestique.fluffy-sargas.ts.net
    ```
 
-### What the Terraform sets, and why
+### What the Terraform sets
 
-The resources are small enough to read, but four of the choices in them are
-decisions rather than defaults:
+Four of the choices in it are decisions rather than defaults:
 
 - **A group, not a list of addresses on the policy.** The allowed people are
   named once in `var.domestique.allowed_emails`, and the policy references the
-  group. Membership then changes in one place.
-- **A session duration of a day.** Cloudflare's default is short for a service
-  one person uses daily; a day or a week is appropriate for a single trusted
-  operator.
+  group. Membership changes in one place.
+- **A session duration of a day.**
 - **The app launcher left visible**, so the service appears on a single page
   listing what the account can reach.
 - **`allowed_idps` left unset**, so the application accepts every login method
-  the organization offers. Today that is one — the Cloudflare identity provider,
-  which admits only members of the Cloudflare account — so pinning the list
-  would name the same single method. Pin it when a second provider is added: two
-  providers can assert two different addresses for one person, and only one of
-  those matches `access.cloudflare.allowed_email`, so an unpinned application
-  quietly gains a login path that authenticates and is then refused.
+  the organization offers. Today that is one, the Cloudflare identity provider,
+  which admits only members of the Cloudflare account. Pin the list when a
+  second provider is added: two providers can assert two different addresses for
+  one person, only one of those matches `access.cloudflare.allowed_email`, and
+  an unpinned application gains a login path that authenticates and is then
+  refused.
 
-Access is the outer of two gates in any case. Widening the group does not widen
-who the application will serve: Domestique still verifies each request's signed
+Access is the outer of two gates. Widening the group does not widen who the
+application will serve: Domestique still verifies each request's signed
 assertion against its own `allowed_email`.
 
-### Only one application, deliberately
+### One application
 
-The general shape of this setup often has three applications — a Bypass path for
-webhooks, a Service Auth path for machine clients, and an Allow path for the UI.
-This service needs only the third, and adding the others would be a mistake
-here.
+This service needs one Access application, an Allow path for the UI.
 
 - **No Bypass path.** Domestique exposes no webhook endpoint. A Bypass rule is
-  genuinely public and unlogged, so creating one without an endpoint that needs
-  it is pure attack surface.
+  public and unlogged.
 - **No Service Auth path.** Service Auth is satisfied by
   `Cf-Access-Client-Id` / `Cf-Access-Client-Secret` headers, and **not** by the
   browser's Access cookie. The browser UI calls `/v1/*` on this same origin, so
-  putting `/v1/*` behind Service Auth would lock the UI out of its own API. If a
-  machine client is ever wanted, give it a path prefix of its own rather than
+  putting `/v1/*` behind Service Auth locks the UI out of its own API. A machine
+  client, if one is ever wanted, gets a path prefix of its own rather than
   reusing `/v1/*`.
 
-If a path-scoped application is added later, remember that the more specific
-path wins and inherits nothing from the domain-level application.
+If a path-scoped application is added later, the more specific path wins and
+inherits nothing from the domain-level application.
 
 ## Service configuration
 
@@ -270,11 +251,11 @@ allowed_email = "<the IdP address of the operator>"
 
 `team_domain` and `application_aud` are the `domestique_access_team_domain` and
 `domestique_access_aud` outputs of the Cloudflare stack. None of these is a
-secret, so they live in `config.toml` rather than in `secrets/`. The section is required in full: it is the only gate the service
-has, so a missing or partly filled one is refused at startup rather than left
-answering every request with a 401.
+secret, so they live in `config.toml` rather than in `secrets/`. The section is
+required in full: it is the only gate the service has, and a missing or partly
+filled one is refused at startup.
 
-### The Wahoo redirect moves
+### The Wahoo redirect
 
 The OAuth callback lands in an ordinary browser. Set `http.browser_origin_url`
 to `https://domestique.nobbs.dev`, and the callback registered with Wahoo to:
@@ -288,9 +269,9 @@ has to be told it separately.
 
 The OAuth state is bound to the calling identity, so the flow's two requests
 must agree on who the caller is. The gate hands downstream the configured
-address rather than the spelling the assertion happened to use, which keeps that
-true if Access varies the case between assertions. Do not replace that with the
-raw claim value.
+address rather than the spelling the assertion happened to use, which holds if
+Access varies the case between assertions. Do not replace that with the raw
+claim value.
 
 ## Verify the result
 
@@ -318,36 +299,35 @@ docker compose exec tunnel-tailscale tailscale ping homelab
 Then, from a browser off the Tailnet, sign in and confirm `/v1/status` answers.
 From a Tailnet browser, confirm it still answers without a Cloudflare session.
 
-A useful negative test: temporarily set `application_aud` to another
-application's tag and confirm the service returns 401 to an otherwise valid
-session. That proves the audience check is actually running.
+A negative test: temporarily set `application_aud` to another application's tag
+and confirm the service returns 401 to an otherwise valid session. That proves
+the audience check is running.
 
 ## Cost and limits
 
-Cloudflare Zero Trust's free tier covers 50 users at no charge, which is far
-more than this needs; pay-as-you-go is $7 per user per month beyond it. A seat
-is consumed by an authentication event and held until the user is removed or
-auto-expires. Log retention on the free tier is 24 hours, and support is the
-community forum — so the Cloudflare audit log is not a durable record, and
-anything worth keeping should be observable from the service itself.
+Cloudflare Zero Trust's free tier covers 50 users at no charge; pay-as-you-go is
+$7 per user per month beyond it. A seat is consumed by an authentication event
+and held until the user is removed or auto-expires. Log retention on the free
+tier is 24 hours, and support is the community forum. The Cloudflare audit log
+is not a durable record, and anything worth keeping is observable from the
+service itself.
 
 WebSockets and server-sent events pass through Tunnel and Access without
-additional configuration, should the UI ever want a live stream.
+additional configuration.
 
 ## A caveat about this deployment
 
-The task this setup was designed against calls for `cloudflared` on a dedicated
-node, so that compromising the public-facing process is not compromising the
-service. Here it runs in its own container, with its own tailnet identity and
-its own tag, but on the **same physical host** as the service it fronts.
+`cloudflared` belongs on a dedicated node, so that compromising the
+public-facing process is not compromising the service. Here it runs in its own
+container, with its own tailnet identity and its own tag, but on the **same
+physical host** as the service it fronts.
 
-That is a real weakening and it should be named rather than glossed. The
-`tag:cloudflared` grant genuinely limits what the tunnel node can reach *over
-the tailnet*, but a process that escapes its container is already on the host
-that terminates the Service. The isolation is meaningful against a compromised
-`cloudflared` process, and not against a container escape.
+That is a real weakening. The `tag:cloudflared` grant limits what the tunnel
+node can reach *over the tailnet*, but a process that escapes its container is
+already on the host that terminates the Service. The isolation is meaningful
+against a compromised `cloudflared` process, and not against a container escape.
 
-Moving these two containers to their own small VM in the `hetzner` stack would
-close that gap and would change nothing else in this guide — the config, the
-grants, and the service configuration are all written to be placement
-independent. It is the recommended next step if this path is kept.
+Moving these two containers to their own small VM in the `hetzner` stack closes
+that gap and changes nothing else in this guide: the config, the grants, and the
+service configuration are all placement independent. It is the recommended next
+step if this path is kept.
