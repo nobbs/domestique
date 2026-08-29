@@ -19,6 +19,7 @@
  * are pushed in to where the plotted terrain starts, for the same reason.
  */
 
+import { IconChevronsRight } from "@tabler/icons-react";
 import type { ReactNode } from "react";
 import { PADDING } from "../../../lib/plotAxis";
 
@@ -38,26 +39,70 @@ export const WEATHER_FRAMES: ReadonlyArray<{
   { variant: "header", note: "a bordered box under a titled strip" },
 ];
 
-function Caption({ children }: { children: ReactNode }) {
+/**
+ * The caption, and — where the band can be folded away — the control that does
+ * it. One thing rather than two: a caption beside a separate chevron spends a
+ * second target on the same idea, and the word is what a reader aims at anyway.
+ */
+function Caption({
+  children,
+  open,
+  onOpenChange,
+}: {
+  children: ReactNode;
+  open?: boolean | undefined;
+  onOpenChange?: ((open: boolean) => void) | undefined;
+}) {
+  const style = { paddingLeft: PADDING.left };
+
+  if (onOpenChange === undefined) {
+    return (
+      <p className="text-[11px] leading-none text-[var(--ink-2)]" style={style}>
+        {children}
+      </p>
+    );
+  }
+
   return (
-    <p
-      className="text-[11px] leading-none text-[var(--ink-2)]"
-      style={{ paddingLeft: PADDING.left }}
+    <button
+      type="button"
+      aria-expanded={open}
+      onClick={() => onOpenChange(!open)}
+      className="flex items-center gap-1 text-[11px] leading-none text-[var(--ink-2)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
+      style={style}
     >
+      <IconChevronsRight
+        size={12}
+        stroke={2}
+        aria-hidden="true"
+        className={open ? "rotate-90 transition-transform" : "transition-transform"}
+      />
       {children}
-    </p>
+    </button>
   );
 }
 
 export function WeatherFrame({
   variant,
   caption,
+  open = true,
+  onOpenChange,
   children,
 }: {
   variant: WeatherFrameVariant;
   caption: string;
+  /** Whether the band is shown. `plain` has no caption, so it cannot fold. */
+  open?: boolean | undefined;
+  onOpenChange?: ((open: boolean) => void) | undefined;
   children: ReactNode;
 }) {
+  const cap = (
+    <Caption open={open} onOpenChange={onOpenChange}>
+      {caption}
+    </Caption>
+  );
+  const band = open ? children : null;
+
   if (variant === "plain") {
     return <>{children}</>;
   }
@@ -69,8 +114,8 @@ export function WeatherFrame({
     // not "this one is a guess".
     return (
       <div className="grid gap-1.5">
-        <Caption>{caption}</Caption>
-        {children}
+        {cap}
+        {band}
       </div>
     );
   }
@@ -78,10 +123,8 @@ export function WeatherFrame({
   if (variant === "card") {
     return (
       <div className="rounded-lg bg-[var(--base)] py-2">
-        <div className="mb-1.5">
-          <Caption>{caption}</Caption>
-        </div>
-        {children}
+        <div className={open ? "mb-1.5" : ""}>{cap}</div>
+        {band}
       </div>
     );
   }
@@ -90,19 +133,19 @@ export function WeatherFrame({
     return (
       // A real fieldset, because the word sitting on the rule is what a legend
       // is, and the browser cuts the border for it without any arithmetic here.
-      <fieldset className="rounded-lg border border-[var(--rule)] pt-1 pb-2">
+      <fieldset className={`rounded-lg border border-[var(--rule)] pt-1 ${open ? "pb-2" : "pb-1"}`}>
         <legend className="ml-[2.25rem] px-1 text-[11px] text-[var(--ink-2)]">{caption}</legend>
-        {children}
+        {band}
       </fieldset>
     );
   }
 
   return (
     <div className="overflow-hidden rounded-lg border border-[var(--rule)]">
-      <div className="border-b border-[var(--rule)] bg-[var(--base)] py-1">
-        <Caption>{caption}</Caption>
+      <div className={`bg-[var(--base)] py-1 ${open ? "border-b border-[var(--rule)]" : ""}`}>
+        {cap}
       </div>
-      <div className="pt-1.5 pb-2">{children}</div>
+      {open ? <div className="pt-1.5 pb-2">{band}</div> : null}
     </div>
   );
 }

@@ -103,11 +103,21 @@ function place(anchors: Anchor[], width: number): number[] {
 export function LabelledRibbon({
   segments,
   surface,
+  labelled = true,
   highlight,
   onHighlightChange,
 }: {
   segments: Segment[];
   surface: SurfaceSummary | null;
+  /**
+   * Whether the class names are shown.
+   *
+   * Only the names fold. The ribbon itself is positional — it says where the
+   * gravel is, which nothing else in the sheet says — so folding it would
+   * remove a reading rather than tidy one away. What can go is the key, which
+   * a reader who knows the palette does not need on screen.
+   */
+  labelled?: boolean;
   highlight: Highlight | null;
   onHighlightChange: (next: Highlight | null) => void;
 }) {
@@ -118,43 +128,45 @@ export function LabelledRibbon({
   return (
     <div ref={ref}>
       <Ribbon segments={segments} className="h-3" highlight={highlight} />
-      <div className="relative" style={{ height: LEADER_HEIGHT + LABEL_HEIGHT }}>
-        <svg
-          className="absolute inset-x-0 top-0"
-          height={LEADER_HEIGHT}
-          width="100%"
-          aria-hidden="true"
-        >
-          {anchors.map((anchor, index) => {
-            const from = anchor.at * width;
-            const to = (placed[index] ?? 0) + anchor.width / 2;
-
-            return (
-              <path
-                key={anchor.kind}
-                d={`M${from.toFixed(1)} 0 L${to.toFixed(1)} ${LEADER_HEIGHT}`}
-                className="stroke-[var(--rule)]"
-                strokeWidth={1}
-                fill="none"
-              />
-            );
-          })}
-        </svg>
-        {anchors.map((anchor, index) => (
-          <HighlightToggle
-            key={anchor.kind}
-            highlight={{ type: "surface", kind: anchor.kind }}
-            current={highlight}
-            onChange={onHighlightChange}
-            label={`${anchor.label}, ${anchor.description}`}
-            title={anchor.description}
-            className="absolute rounded text-[11px] leading-none text-[var(--ink-2)] hover:text-[var(--ink)] aria-pressed:font-semibold aria-pressed:text-[var(--ink)]"
-            style={{ left: placed[index] ?? 0, top: LEADER_HEIGHT, height: LABEL_HEIGHT }}
+      {!labelled ? null : (
+        <div className="relative" style={{ height: LEADER_HEIGHT + LABEL_HEIGHT }}>
+          <svg
+            className="absolute inset-x-0 top-0"
+            height={LEADER_HEIGHT}
+            width="100%"
+            aria-hidden="true"
           >
-            {anchor.label}
-          </HighlightToggle>
-        ))}
-      </div>
+            {anchors.map((anchor, index) => {
+              const from = anchor.at * width;
+              const to = (placed[index] ?? 0) + anchor.width / 2;
+
+              return (
+                <path
+                  key={anchor.kind}
+                  d={`M${from.toFixed(1)} 0 L${to.toFixed(1)} ${LEADER_HEIGHT}`}
+                  className="stroke-[var(--rule)]"
+                  strokeWidth={1}
+                  fill="none"
+                />
+              );
+            })}
+          </svg>
+          {anchors.map((anchor, index) => (
+            <HighlightToggle
+              key={anchor.kind}
+              highlight={{ type: "surface", kind: anchor.kind }}
+              current={highlight}
+              onChange={onHighlightChange}
+              label={`${anchor.label}, ${anchor.description}`}
+              title={anchor.description}
+              className="absolute rounded text-[11px] leading-none text-[var(--ink-2)] hover:text-[var(--ink)] aria-pressed:font-semibold aria-pressed:text-[var(--ink)]"
+              style={{ left: placed[index] ?? 0, top: LEADER_HEIGHT, height: LABEL_HEIGHT }}
+            >
+              {anchor.label}
+            </HighlightToggle>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

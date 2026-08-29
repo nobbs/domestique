@@ -26,6 +26,8 @@
  * fit, so nothing is hidden, only queued.
  */
 
+import { IconChevronsRight } from "@tabler/icons-react";
+import { useState } from "react";
 import { ElevationProfile } from "../../../components/route/ElevationProfile";
 import { FilmstripBand } from "../../../components/route/forecast-spike/FilmstripBand";
 import { formatAscent, formatDistance, formatGradient } from "../../../lib/format";
@@ -56,6 +58,16 @@ export function StackClimbsSheet({
   unitSystem,
 }: SheetProps & { weatherFrame?: WeatherFrameVariant }) {
   const { ref, width } = useElementWidth<HTMLDivElement>();
+  /*
+   * Held here rather than by each part, and local rather than remembered. In
+   * the real panel these would stick across routes for the reason
+   * `RouteProfile` already gives about its chart: a reader who put something
+   * away did so to see more of everything else, not more of one route's
+   * everything else.
+   */
+  const [climbsOpen, setClimbsOpen] = useState(true);
+  const [forecastOpen, setForecastOpen] = useState(true);
+  const [groundLabelled, setGroundLabelled] = useState(true);
 
   return (
     <Sheet>
@@ -86,15 +98,45 @@ export function StackClimbsSheet({
              * steepness band, and a gradient ribbon here would be the same
              * fact drawn twice a row apart.
              */}
-            <div style={{ paddingLeft: PADDING.left, paddingRight: PADDING.right }}>
-              <LabelledRibbon
-                segments={groundSegments(surface)}
-                surface={surface}
-                highlight={highlight}
-                onHighlightChange={onHighlightChange}
-              />
+            <div className="relative">
+              {/*
+               * The fold sits in the chart's left gutter, which is reserved
+               * for the metre axis and is empty at this row. A control on the
+               * ribbon's own line would either push it out of step with the
+               * chart above or cover the first kilometres of ground.
+               */}
+              <button
+                type="button"
+                aria-expanded={groundLabelled}
+                aria-label={groundLabelled ? "Hide the ground key" : "Show the ground key"}
+                onClick={() => setGroundLabelled(!groundLabelled)}
+                className="absolute top-0 left-0 rounded p-0.5 text-[var(--ink-2)] hover:bg-[var(--base)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)]"
+              >
+                <IconChevronsRight
+                  size={12}
+                  stroke={2}
+                  aria-hidden="true"
+                  className={
+                    groundLabelled ? "rotate-90 transition-transform" : "transition-transform"
+                  }
+                />
+              </button>
+              <div style={{ paddingLeft: PADDING.left, paddingRight: PADDING.right }}>
+                <LabelledRibbon
+                  segments={groundSegments(surface)}
+                  surface={surface}
+                  labelled={groundLabelled}
+                  highlight={highlight}
+                  onHighlightChange={onHighlightChange}
+                />
+              </div>
             </div>
-            <WeatherFrame variant={weatherFrame} caption="Forecast · every 30 min of riding">
+            <WeatherFrame
+              variant={weatherFrame}
+              caption="Forecast · every 30 min of riding"
+              open={forecastOpen}
+              onOpenChange={setForecastOpen}
+            >
               <FilmstripBand
                 cells={cells}
                 width={width}
@@ -115,66 +157,97 @@ export function StackClimbsSheet({
          * Absolute rather than a max-height, because the height to match is
          * the lanes' own and that is not a number anything here knows.
          */}
-        <div className="relative w-[16.5rem] shrink-0 border-l border-[var(--rule)] pl-4">
-          <div className="absolute inset-y-0 right-0 left-4 overflow-y-auto">
-            <h3 className="mb-1.5 text-[11px] font-semibold tracking-[0.06em] text-[var(--ink-2)] uppercase">
-              What happens
-            </h3>
-            {climbs.length === 0 ? (
-              <p className="text-xs text-[var(--ink-2)]">
-                Nothing sustained enough to call a climb.
-              </p>
-            ) : (
-              <ol className="grid gap-0.5">
-                {climbs.map((climb, index) => {
-                  // The middle of the climb rather than its foot: the weather a
-                  // rider remembers about a col is the weather on it.
-                  const middle = (climb.startMetres + climb.endMetres) / 2;
-                  const cell = cellAt(cells, middle);
-                  const Glyph = cell ? weatherIcon(cell.point.weatherCode) : null;
+        {climbsOpen ? (
+          <div className="relative w-[16.5rem] shrink-0 border-l border-[var(--rule)] pl-4">
+            <div className="absolute inset-y-0 right-0 left-4 overflow-y-auto">
+              <h3 className="mb-1.5">
+                <button
+                  type="button"
+                  aria-expanded
+                  onClick={() => setClimbsOpen(false)}
+                  className="flex items-center gap-1 text-[11px] font-semibold tracking-[0.06em] text-[var(--ink-2)] uppercase hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
+                >
+                  <IconChevronsRight
+                    size={12}
+                    stroke={2}
+                    aria-hidden="true"
+                    className="rotate-90"
+                  />
+                  What happens
+                </button>
+              </h3>
+              {climbs.length === 0 ? (
+                <p className="text-xs text-[var(--ink-2)]">
+                  Nothing sustained enough to call a climb.
+                </p>
+              ) : (
+                <ol className="grid gap-0.5">
+                  {climbs.map((climb, index) => {
+                    // The middle of the climb rather than its foot: the weather a
+                    // rider remembers about a col is the weather on it.
+                    const middle = (climb.startMetres + climb.endMetres) / 2;
+                    const cell = cellAt(cells, middle);
+                    const Glyph = cell ? weatherIcon(cell.point.weatherCode) : null;
 
-                  return (
-                    <li key={climb.startMetres}>
-                      <button
-                        type="button"
-                        onClick={() => onActiveChange(middle)}
-                        className="w-full rounded-lg px-1.5 py-1 text-left hover:bg-[var(--base)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent)]"
-                      >
-                        <span className="flex items-baseline gap-1.5">
-                          {/*
-                           * The same ordinal the bracket over the chart carries.
-                           * It is what makes this a reading of the axis beside it
-                           * rather than a second list about the same ride.
-                           */}
-                          <span className="text-xs font-semibold tabular-nums">{index + 1}</span>
-                          <span className="text-xs tabular-nums">
-                            {formatDistance(climb.distanceMetres, unitSystem)} at{" "}
-                            {formatGradient(climb.averageGradePercent)}
-                          </span>
-                          {cell === null ? null : (
-                            <span className="ml-auto flex items-center gap-1 text-xs tabular-nums">
-                              {Glyph === null ? null : (
-                                <Glyph size={14} stroke={1.8} aria-hidden="true" />
-                              )}
-                              <span className="font-semibold">
-                                {Math.round(cell.point.temperatureCelsius)}°
-                              </span>
+                    return (
+                      <li key={climb.startMetres}>
+                        <button
+                          type="button"
+                          onClick={() => onActiveChange(middle)}
+                          className="w-full rounded-lg px-1.5 py-1 text-left hover:bg-[var(--base)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent)]"
+                        >
+                          <span className="flex items-baseline gap-1.5">
+                            {/*
+                             * The same ordinal the bracket over the chart carries.
+                             * It is what makes this a reading of the axis beside it
+                             * rather than a second list about the same ride.
+                             */}
+                            <span className="text-xs font-semibold tabular-nums">{index + 1}</span>
+                            <span className="text-xs tabular-nums">
+                              {formatDistance(climb.distanceMetres, unitSystem)} at{" "}
+                              {formatGradient(climb.averageGradePercent)}
                             </span>
-                          )}
-                        </span>
-                        <span className="mt-0.5 block text-[11px] text-[var(--ink-2)] tabular-nums">
-                          {formatAscent(climb.ascentMetres, unitSystem)} · from{" "}
-                          {formatDistance(climb.startMetres, unitSystem)}
-                          {cell === null ? null : ` · ${clockAt(cell.sample.arrivalAt)}`}
-                        </span>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ol>
-            )}
+                            {cell === null ? null : (
+                              <span className="ml-auto flex items-center gap-1 text-xs tabular-nums">
+                                {Glyph === null ? null : (
+                                  <Glyph size={14} stroke={1.8} aria-hidden="true" />
+                                )}
+                                <span className="font-semibold">
+                                  {Math.round(cell.point.temperatureCelsius)}°
+                                </span>
+                              </span>
+                            )}
+                          </span>
+                          <span className="mt-0.5 block text-[11px] text-[var(--ink-2)] tabular-nums">
+                            {formatAscent(climb.ascentMetres, unitSystem)} · from{" "}
+                            {formatDistance(climb.startMetres, unitSystem)}
+                            {cell === null ? null : ` · ${clockAt(cell.sample.arrivalAt)}`}
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ol>
+              )}
+            </div>
           </div>
-        </div>
+        ) : (
+          // Folded, the column becomes the control that brings it back, and
+          // the lanes take the width it was using — which is the whole reason
+          // a reader would fold it.
+          <div className="shrink-0 border-l border-[var(--rule)] pl-1">
+            <button
+              type="button"
+              aria-expanded={false}
+              aria-label={`Show ${climbs.length} climbs`}
+              title="What happens"
+              onClick={() => setClimbsOpen(true)}
+              className="rounded p-1 text-[var(--ink-2)] hover:bg-[var(--base)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)]"
+            >
+              <IconChevronsRight size={14} stroke={2} aria-hidden="true" className="rotate-180" />
+            </button>
+          </div>
+        )}
       </div>
     </Sheet>
   );
