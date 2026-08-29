@@ -110,13 +110,9 @@ func (h *Handler) GetRouteGeometry(writer http.ResponseWriter, request *http.Req
 }
 
 // ReprocessRoute asks for one route to be worked out again from scratch, and
-// starts the synchronization that will do it.
-//
-// The request is recorded before the run is asked for, and deliberately survives
-// a refused start: a run already in flight may be past this stage, or may not
-// include it at all, so the mark waits for a pass that will honour it rather
-// than being dropped on the floor. That is why a busy service still answers
-// `202` here — the operator's request has been taken either way.
+// starts the synchronization that will do it. The request is recorded before the
+// run is asked for and survives a refused start, so a busy service still answers
+// `202`: a run already in flight may be past this stage or not include it.
 func (h *Handler) ReprocessRoute(writer http.ResponseWriter, request *http.Request) {
 	provider, sourceRouteID, stageOrder, ok := routeKey(request)
 	if !ok {
@@ -142,14 +138,10 @@ func (h *Handler) ReprocessRoute(writer http.ResponseWriter, request *http.Reque
 	h.writeJSON(writer, http.StatusAccepted, openapi.Accepted{Status: "accepted"})
 }
 
-// routeSurface reads the classification stored for this exact geometry. It
-// returns a nil view when none has been recorded yet, and reports the state as
-// unreadable when the store itself failed.
-//
-// The content hash is part of the lookup because the ranges index the stored
-// coordinates: a classification measured against an earlier plan of the same
-// stage describes positions that no longer exist, so it is treated as absent
-// rather than served against the wrong line.
+// routeSurface reads the classification stored for this exact geometry, nil when
+// none is recorded and unreadable when the store failed. The content hash is part
+// of the lookup: ranges index the stored coordinates, so a classification from an
+// earlier plan describes positions that no longer exist.
 func (h *Handler) routeSurface(request *http.Request, summary *route.Summary) (view *geometrySurfaceView, readable bool) {
 	ranges, matchedMetres, found, err := h.state.StageSurface(
 		request.Context(),
@@ -213,16 +205,11 @@ func (h *Handler) routeValidationView() *openapi.RouteValidation {
 	}
 }
 
-// routeKey reads the provider and the route and stage identifiers from the
-// path. Their shape is already settled: the contract declares them as a
-// non-empty string and two integers of minimum 1, and the request validator
-// refuses anything else before this runs. The parse is repeated rather than
-// trusted only because the values arrive as path text.
-//
-// The provider is not checked against a known set here: state is keyed by
-// provider, sourceRouteID and stageOrder together, so a provider naming nothing
-// stored is already refused downstream as not found, the same way a well-formed
-// but absent sourceRouteID is.
+// routeKey reads the provider and the route and stage identifiers from the path.
+// The contract declares them and the validator refuses anything else, so the
+// parse is repeated only because the values arrive as path text. The provider is
+// not checked against a known set: state is keyed by all three, so one naming
+// nothing stored is refused downstream as not found.
 func routeKey(request *http.Request) (provider route.Provider, sourceRouteID int64, stageOrder int, ok bool) {
 	provider = route.Provider(request.PathValue("provider"))
 	sourceRouteID, routeErr := strconv.ParseInt(request.PathValue("sourceRouteId"), 10, 64)

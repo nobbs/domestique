@@ -11,11 +11,8 @@ import (
 )
 
 // The one word each target gets, in decreasing order of what an operator has to
-// act on. They are a summary of the counts and the last run beside them, so a
-// reader that wants the detail already has it.
-// They are aliases for the contract's own enum members rather than their own
-// spellings, so a word this package can produce is a word the contract
-// declares, and dropping one from api/openapi.yaml stops this file compiling.
+// act on. They are aliases for the contract's own enum members, so dropping one
+// from api/openapi.yaml stops this file compiling.
 const (
 	// convergenceUnauthorized means the slot has never completed, or has lost,
 	// its one-time browser onboarding. Nothing can be written until it does.
@@ -47,18 +44,10 @@ type sourceStageKey struct {
 }
 
 // targetRouteCounts derives, for each configured target, how much of the stored
-// library that target already holds and how much it still owes.
-//
-// It is a comparison of two local tables and nothing else: the revision each
-// route is stored at, against the revision each target was last successfully
-// written at. Wahoo is never asked, because a status request must answer while a
-// provider is down, and because the honest question here is what this service
-// has applied — what a device has since fetched is not observable from here.
-//
-// Only the source revision is compared, not the content hash: the hash a target
-// records is the encoded course's, derived by the layer that writes it, and this
-// layer has no business knowing how a course is encoded. A route whose content
-// changed changes revision with it.
+// library it holds and how much it owes. It compares two local tables and nothing
+// else, so a status request answers while a provider is down. Only the source
+// revision is compared, not the content hash: the hash a target records is the
+// encoded course's, and this layer has no business knowing how one is encoded.
 func (h *Handler) targetRouteCounts(ctx context.Context) (map[string]openapi.TargetRoutes, error) {
 	revisions := make(map[sourceStageKey]string)
 	if err := h.state.ForEachSourceStage(

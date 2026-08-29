@@ -1,14 +1,8 @@
-// Package readiness serves the loopback readiness probe: the one answer to
-// "can this process do its job with what the host gave it", as opposed to the
-// liveness probe's "can this process answer HTTP at all".
-//
-// It is a separate package, on its own listener, with a single dependency on
-// local state, because that is what keeps the two probes from drifting into
-// each other. Nothing here can reach VeloPlanner, Wahoo, Pushover, Cloudflare,
-// Tailscale, or the tile provider: this package is given no client that could,
-// so a readiness check cannot become a paid, rate-limited, or failing call to
-// somebody else's service. The identity-gated surface is served by internal
-// httpapi on another socket, and neither handler knows the other's routes.
+// Package readiness serves the loopback readiness probe: whether this process can
+// do its job with what the host gave it, as opposed to the liveness probe's
+// whether it can answer HTTP at all. It is a separate package on its own listener
+// with one dependency on local state, and is given no client that could reach
+// VeloPlanner, Wahoo, Pushover, Cloudflare, Tailscale, or the tile provider.
 package readiness
 
 import (
@@ -42,12 +36,9 @@ type Handler struct {
 }
 
 // New creates the readiness handler over the target slots configured right now.
-//
-// The slots are read per probe rather than held, because they are a setting an
-// operator edits. A deployment that has none yet is ready: it is running
-// exactly as deployed, waiting to be configured through the browser, and a
-// probe that called that unhealthy would roll the deploy back before anyone
-// could configure it.
+// The slots are read per probe rather than held, because they are an editable
+// setting. A deployment with none is ready: it is waiting to be configured
+// through the browser.
 func New(targetIDs func() []string, state State) (*Handler, error) {
 	if state == nil {
 		return nil, errors.New("readiness requires state")
@@ -81,10 +72,8 @@ func (h *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 }
 
 // ready reports whether the configured targets are backed by readable local
-// state. It deliberately says nothing about whether a target is authorised: a
-// slot waiting for its one-time OAuth onboarding is a process working exactly as
-// deployed, and a probe that called that "not ready" would keep a correctly
-// running container marked unhealthy until a human visited a browser.
+// state. It says nothing about whether a target is authorised: a slot waiting for
+// its one-time OAuth onboarding is a process working exactly as deployed.
 func (h *Handler) ready(writer http.ResponseWriter, request *http.Request) {
 	ctx, cancel := context.WithTimeout(request.Context(), stateTimeout)
 	defer cancel()

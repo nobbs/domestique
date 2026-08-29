@@ -26,27 +26,19 @@ func (c *Client) observeRateLimit(response *http.Response) {
 	if remaining > 0 {
 		return
 	}
-	// A spent quota with no usable reset still has to be waited out. Treating
-	// an unknown reset as "no need to wait" is what previously left this
-	// throttle permanently unarmed — Wahoo reports seconds_until_reset as 0 on
-	// every response that was not itself limited, so the guard never passed and
-	// a run kept spending until it was refused outright.
+	// A spent quota with no usable reset still has to be waited out. Wahoo
+	// reports seconds_until_reset as 0 on every response that was not itself
+	// limited, so treating unknown as "no wait" leaves this permanently unarmed.
 	if reset <= 0 {
 		reset = defaultRateLimitReset
 	}
 	c.notBefore = c.now().Add(reset)
 }
 
-// RateLimit reports the lowest request quota Wahoo advertised across the
-// windows on its most recent response, and when that quota is next expected to
-// refill. ok is false until the client has made a request that carried a
-// quota header, which is the honest state for a service that has not spoken to
-// Wahoo yet.
-//
-// resetAt is zero whenever it would already be in the past: a response that
-// was not itself limited can leave a stale reset in place (see
-// observeRateLimit), and this is where that staleness stops rather than
-// reaching a caller as a refill time that has already gone by.
+// RateLimit reports the lowest request quota Wahoo advertised across the windows
+// on its most recent response, and when it is next expected to refill. ok is false
+// until a request has carried a quota header. resetAt is zero whenever it would
+// already be in the past, so a stale reset never reaches a caller.
 func (c *Client) RateLimit() (remaining int, resetAt time.Time, ok bool) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
@@ -91,10 +83,8 @@ func lowestRateLimit(value string) (int, bool) {
 }
 
 // quotaPatienceKey marks a context whose requests may wait longer for a spent
-// quota to refill. It is request-scoped rather than a client setting because
-// it is a property of what is being asked for, not of who is asking: the same
-// client serves both a scheduled run that must not stall and a clear somebody
-// is waiting on.
+// quota to refill. Request-scoped rather than a client setting: the same client
+// serves a scheduled run that must not stall and a clear somebody is waiting on.
 type quotaPatienceKey struct{}
 
 func withQuotaPatience(ctx context.Context) context.Context {

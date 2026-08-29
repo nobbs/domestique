@@ -30,12 +30,10 @@ const oauthCallbackPath = "/oauth/wahoo/callback"
 // to do, and the settings page is where it is fixed.
 var errNotConfigured = errors.New("the Wahoo application is not configured yet")
 
-// wahooProvider hands out the Wahoo client the settings in force describe.
-//
-// The client carries the request budget observed from Wahoo's own responses, so
-// it is rebuilt only when those settings actually change rather than per use:
-// a fresh client believes it has a full daily quota and spends real requests
-// finding out otherwise.
+// wahooProvider hands out the Wahoo client the settings in force describe. The
+// client carries the request budget observed from Wahoo's own responses, so it is
+// rebuilt only when those settings change: a fresh one believes it has a full
+// daily quota and spends real requests finding out otherwise.
 type wahooProvider struct {
 	settings    *runtimeconfig.Current
 	client      *wahoo.Client
@@ -215,13 +213,10 @@ func (p *wahooProvider) RateLimit() (remaining int, resetAt time.Time, ok bool) 
 	return client.RateLimit()
 }
 
-// sources builds the library clients a run reads, in the order they are
-// configured. They are built per call because neither client keeps a session
-// between inventories, so there is nothing a longer-lived one would preserve.
-//
-// A source whose credentials are not entered yet is not skipped: reading part
-// of a library and calling it the whole inventory is what the deletion gate
-// exists to prevent.
+// sources builds the library clients a run reads, in configured order. Built per
+// call because neither client keeps a session between inventories. A source whose
+// credentials are not entered is not skipped: reading part of a library and
+// calling it the whole inventory is what the deletion gate exists to prevent.
 func sources(settings *runtimeconfig.Current) ([]syncservice.Source, error) {
 	configured := settings.Values().Sources
 	built := make([]syncservice.Source, 0, len(configured))
@@ -267,12 +262,9 @@ func newSource(source runtimeconfig.Source, email, password []byte) (syncservice
 }
 
 // rideModelProvider predicts moving time from the coefficient file in force,
-// reloading it when an operator points the setting somewhere else.
-//
-// Prediction stays optional: no file configured means no stage ever carries a
-// guessed rider figure, which is the state every deployment starts in. A file
-// that will not load is a failed prediction rather than a substituted one, so
-// nothing is served that the loaded model does not stand behind.
+// reloading it when an operator points the setting elsewhere. No file configured
+// means no stage carries a guessed rider figure, and a file that will not load is
+// a failed prediction rather than a substituted one.
 type rideModelProvider struct {
 	store      *sqlite.Store
 	predictor  *ridemodel.Predictor
@@ -287,10 +279,7 @@ func newRideModelProvider(store *sqlite.Store) *rideModelProvider {
 }
 
 // reload resolves the configured file, replacing what is loaded when it moved.
-//
-// Predictions cached against a different file are dropped as part of the swap:
-// they address the same geometry as the ones this model would make, so nothing
-// downstream would ever notice they no longer match what is loaded now.
+// Predictions cached against a different file are dropped as part of the swap.
 func (p *rideModelProvider) reload(ctx context.Context, settings *runtimeconfig.Current) error {
 	path := settings.Values().RideModel.CoefficientsFile
 

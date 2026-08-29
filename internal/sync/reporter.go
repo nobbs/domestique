@@ -339,12 +339,9 @@ func (r *Reporter) record(ctx context.Context, startedAt time.Time, result *Resu
 	return *result
 }
 
-// recordTargetRuns writes down what each slot's own reconciliation came to.
-//
-// A slot that cannot be recorded is passed over rather than allowed to stop the
-// rest: these rows report convergence, and losing one costs an operator a stale
-// line on a status page, whereas abandoning the loop would cost them every line
-// after it.
+// recordTargetRuns writes down what each slot's own reconciliation came to. A
+// slot that cannot be recorded is passed over rather than stopping the rest:
+// losing one row costs a stale line on a status page.
 func (r *Reporter) recordTargetRuns(ctx context.Context, finishedAt time.Time, targets []TargetResult) {
 	for _, target := range targets {
 		if err := r.state.RecordTargetRun(
@@ -359,13 +356,9 @@ func (r *Reporter) recordTargetRuns(ctx context.Context, finishedAt time.Time, t
 	}
 }
 
-// notifyFailure delivers one failure notification per phase and category, no
-// more often than the suppression interval.
-//
-// The phase is part of the key. A library that has been failing to load all
-// morning must not be the reason a target stops reporting that it can no longer
-// be written to: they are separate problems with separate remedies, and each is
-// worth one alert.
+// notifyFailure delivers one failure notification per phase and category, no more
+// often than the suppression interval. The phase is part of the key: a failing
+// library and a target that cannot be written to are separate problems.
 func (r *Reporter) notifyFailure(ctx context.Context, result *Result, reference string, now time.Time) {
 	if result.Failure == FailureNone {
 		return
@@ -383,15 +376,10 @@ func (r *Reporter) notifyFailure(ctx context.Context, result *Result, reference 
 	}
 }
 
-// checkStaleness reports and notifies on the age of the trusted source
-// inventory, independently of whatever this tick's phases did — a source that
-// has stopped succeeding leaves no new failure to notify on once its failure
-// category is already suppressed, and this is what still catches that.
-//
-// sourceStored is this tick's own source-phase outcome. A source that just
-// succeeded ends any outstanding stale alert unconditionally, the same way an
-// ordinary recovery is never held back by policy; a source that did not
-// succeed this tick is checked against how long it has been since one did.
+// checkStaleness reports and notifies on the age of the trusted source inventory,
+// independently of this tick's phases: a source that stopped succeeding leaves no
+// new failure to notify on once its category is suppressed. sourceStored is this
+// tick's outcome; a source that just succeeded ends a stale alert unconditionally.
 func (r *Reporter) checkStaleness(ctx context.Context, now time.Time, sourceStored bool) {
 	lastSentAt, notified, err := r.state.LastFailureNotification(ctx, staleCategory)
 	if err != nil {
@@ -440,14 +428,9 @@ func staleMessage(age time.Duration) string {
 }
 
 // successMessage reports the counts the finished phase actually produced. A
-// source run that listed forty stages and a target run that changed none are
-// different events, and a message padded with the other phase's zeroes reads as
-// though work was skipped.
-//
-// Every message names the run it is about, so an operator reading it on a phone
-// can find that run and nothing else in the history. The reference is random and
-// means nothing on its own, which is what makes it safe to send: it says which
-// run without saying anything about it.
+// message padded with the other phase's zeroes reads as though work was skipped.
+// Every message names its run: the reference is random and means nothing on its
+// own, which is what makes it safe to send.
 func successMessage(result *Result, reference string) string {
 	if result.Phase == PhaseSource {
 		return fmt.Sprintf("source succeeded: source_stages=%d run=%s", result.SourceStages, reference)

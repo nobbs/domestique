@@ -112,14 +112,9 @@ func (s *Store) ForEachStageSummary(ctx context.Context, visit func(summary rout
 }
 
 // StageGeometry returns one stage's cached geometry with its display metadata.
-// The coordinates are a JSON array of [longitude, latitude, elevation?]
-// positions, and cumulativeSeconds is a JSON array of the predicted moving time
-// at each coordinate, both ready to serve as-is without re-encoding.
-//
-// cumulativeSeconds is nil unless a prediction was measured against this exact
-// geometry: the same stage_duration.content_hash join StageDurationFingerprint
-// relies on, so a prediction left over from an earlier plan of the stage is
-// withheld rather than served against coordinates it no longer describes.
+// Coordinates are a JSON array of [longitude, latitude, elevation?] positions and
+// cumulativeSeconds a JSON array of predicted moving time, both ready to serve
+// as-is. cumulativeSeconds is nil unless measured against this exact geometry.
 func (s *Store) StageGeometry(
 	ctx context.Context,
 	provider route.Provider,
@@ -183,34 +178,16 @@ func (s *Store) StageGeometry(
 }
 
 // reprocessSentinel is what a target mapping records instead of the revision and
-// content hash it last pushed, once a reprocess has been requested for it.
-//
-// It is deliberately not the empty string. A mapping is only usable to the
-// reconciler while every field is present — an empty revision is read as a
-// broken row and fails the whole target phase — so forgetting what was pushed
-// has to be written down as a value, not as an absence. Nothing produces this
-// value by accident: a real revision comes from the source and a real content
-// hash is hexadecimal.
+// content hash it last pushed, once a reprocess is requested. Not the empty
+// string: a mapping is usable only while every field is present, so forgetting
+// has to be written as a value. Nothing produces it by accident.
 const reprocessSentinel = "reprocess-requested"
 
-// RequestStageReprocess asks for one stage to be redone from scratch.
-//
-// It changes no route data. It removes the three answers the service would
-// otherwise reuse for that stage, so the next passes have to work them out
-// again: the geometry cache is marked for rewriting even though the source
-// content has not changed, the target mappings forget which revision they last
-// pushed so every target is written again, and the surface classification is
-// dropped so it is asked for afresh.
-//
-// The Wahoo route identity is deliberately kept, and so is the shape of the
-// mapping: what changes is that it no longer claims to have pushed the revision
-// it holds, so the next reconciliation takes the update path. A reprocess
-// re-writes the route the service already owns; it never deletes one and never
-// creates a second.
-//
-// Reports whether the stage is in the stored inventory. A stage that is not
-// cannot be redone, and saying so is better than leaving a mark that nothing
-// will ever consume.
+// RequestStageReprocess asks for one stage to be redone from scratch, changing no
+// route data: it drops the geometry cache, the revision each target last pushed,
+// and the surface classification. The Wahoo route identity is kept, so the next
+// reconciliation takes the update path and never creates a second route. Reports
+// whether the stage is in the stored inventory.
 func (s *Store) RequestStageReprocess(ctx context.Context, provider route.Provider, routeID int64, stageOrder int) (bool, error) {
 	transaction, err := s.database.BeginTx(ctx, nil)
 	if err != nil {

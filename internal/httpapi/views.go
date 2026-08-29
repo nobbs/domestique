@@ -61,11 +61,9 @@ func stringValue(value *string) string {
 }
 
 // The wire shapes come from api/openapi.yaml through the generated contract
-// package, so there is one definition of every response body. What stays here
-// is the geometry Feature, which cannot: its coordinates, surface ranges, and
-// cumulative seconds are served as json.RawMessage straight from storage, and
-// the generated shapes would decode and re-encode every one of them on every
-// request.
+// package. What stays here is the geometry Feature, whose coordinates, surface
+// ranges and cumulative seconds are served as json.RawMessage straight from
+// storage rather than decoded and re-encoded on every request.
 
 // geometryView is a GeoJSON Feature carrying one stage's stored geometry. The
 // coordinates pass through as stored, so no decode and re-encode is needed.
@@ -87,13 +85,9 @@ type lineStringView struct {
 // first case, and present with a matched length of zero in the second.
 type geometrySurfaceView struct {
 	// Ranges are index spans into this feature's coordinates, passed through as
-	// stored so serving them costs no decode and re-encode.
-	//
-	// They tile the whole geometry rather than only its surveyed parts: an
-	// unsurveyed stretch is a fact about the ground worth drawing, so it travels
-	// as an `unknown` range in its own place along the line. What was surveyed
-	// is MatchedMetres, and it alone answers how much of the stage the classes
-	// actually describe.
+	// stored. They tile the whole geometry rather than only its surveyed parts: an
+	// unsurveyed stretch travels as an `unknown` range in its own place.
+	// MatchedMetres alone answers how much of the stage the classes describe.
 	Ranges        json.RawMessage `json:"ranges"`
 	MatchedMetres float64         `json:"matchedMetres"`
 }
@@ -104,13 +98,9 @@ type geometryPropertyView struct {
 	Title           string               `json:"title"`
 	SourceRouteName string               `json:"sourceRouteName"`
 	RouteName       string               `json:"routeName"`
-	// CumulativeSeconds is the predicted moving time in seconds at each
-	// coordinate, indexed 1:1 with the feature's coordinates and passed through
-	// as stored so serving it costs no decode and re-encode. It is absent —
-	// never a zero-filled array — whenever nothing has predicted this exact
-	// geometry: a deployment with no coefficient file configured, a stage with
-	// no usable elevation, or a prediction measured against geometry that has
-	// since changed.
+	// CumulativeSeconds is the predicted moving time at each coordinate, indexed
+	// 1:1 with the feature's coordinates and passed through as stored. Absent —
+	// never zero-filled — whenever nothing has predicted this exact geometry.
 	CumulativeSeconds  json.RawMessage `json:"cumulativeSeconds,omitempty"`
 	DistanceMetres     float64         `json:"distanceMetres"`
 	AscentMetres       float64         `json:"ascentMetres"`
