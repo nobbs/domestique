@@ -29,62 +29,11 @@ import {
 } from "./fixture";
 import { LedgerCard } from "./LedgerCard";
 import { LengthsCard } from "./LengthsCard";
+import { MapPane } from "./MapPane";
 import { SentenceCard } from "./SentenceCard";
 import { SpikePanel } from "./SpikePanel";
 import type { CardProps } from "./shared";
 import { TerrainCard } from "./TerrainCard";
-
-const PANE = { width: 860, height: 540 };
-
-/** Rings standing in for contour lines, so the ground has some texture on it. */
-const CONTOURS = Array.from({ length: 13 }, (_, index) => 90 + index * 34);
-
-/** The fixture's loop, projected into the pane, so the map has this route on it. */
-function routePath(): string {
-  const longitudes = spikeCoordinates.map((point) => point[0]);
-  const latitudes = spikeCoordinates.map((point) => point[1]);
-  const west = Math.min(...longitudes);
-  const east = Math.max(...longitudes);
-  const south = Math.min(...latitudes);
-  const north = Math.max(...latitudes);
-  const scale = Math.min((PANE.width - 360) / (east - west), (PANE.height - 140) / (north - south));
-
-  return spikeCoordinates
-    .filter((_, index) => index % 8 === 0)
-    .map(([longitude, latitude], index) => {
-      const x = PANE.width - 60 - (east - longitude) * scale;
-      const y = 70 + (north - latitude) * scale;
-
-      return `${index === 0 ? "M" : "L"}${x.toFixed(1)} ${y.toFixed(1)}`;
-    })
-    .join(" ");
-}
-
-/** Ground to stand the panel on: not cartography, just something that is not white. */
-function MapBackdrop() {
-  return (
-    <svg
-      className="absolute inset-0 size-full"
-      viewBox={`0 0 ${PANE.width} ${PANE.height}`}
-      preserveAspectRatio="none"
-      aria-hidden="true"
-    >
-      <rect width={PANE.width} height={PANE.height} className="fill-[var(--base)]" />
-      {CONTOURS.map((radius) => (
-        <ellipse
-          key={radius}
-          cx={PANE.width * 0.62}
-          cy={PANE.height * 0.5}
-          rx={radius}
-          ry={radius * 0.64}
-          className="fill-none stroke-[var(--rule)]"
-          strokeWidth={1}
-        />
-      ))}
-      <path d={routePath()} className="fill-none stroke-[var(--accent)]" strokeWidth={3} />
-    </svg>
-  );
-}
 
 function Preview({
   name,
@@ -108,35 +57,28 @@ function Preview({
         <span className="font-semibold">{name}</span>{" "}
         <span className="text-[var(--ink-2)]">— {note}</span>
       </figcaption>
-      <div
-        className="relative overflow-hidden rounded-lg ring-1 ring-[var(--rule)]"
-        style={{ width: PANE.width, height: PANE.height }}
-      >
-        <MapBackdrop />
-        {/* Where the shell puts it, at the size the shell gives it. */}
-        <div className="absolute top-3 left-3">
-          <SpikePanel
-            Card={Card}
-            collapsed={collapsed}
-            onCollapsedChange={setCollapsed}
-            route={spikeRoute}
-            subtitle={spikeSubtitle}
-            movingSeconds={spikeRoute.movingSeconds}
-            highestMetres={spikeHighestMetres}
-            bands={spikeBands}
-            runs={spikeRuns}
-            surface={spikeSurface}
-            surfaceAbsence="Surface not classified yet."
-            climbs={spikeClimbs}
-            highlight={highlight}
-            onHighlightChange={setHighlight}
-            unitSystem={unitSystem}
-            onClose={() => {}}
-            sourceBaseUrls={{ veloplanner: "https://veloplanner.com" }}
-            libraryCount={47}
-          />
-        </div>
-      </div>
+      <MapPane coordinates={spikeCoordinates}>
+        <SpikePanel
+          Card={Card}
+          collapsed={collapsed}
+          onCollapsedChange={setCollapsed}
+          route={spikeRoute}
+          subtitle={spikeSubtitle}
+          movingSeconds={spikeRoute.movingSeconds}
+          highestMetres={spikeHighestMetres}
+          bands={spikeBands}
+          runs={spikeRuns}
+          surface={spikeSurface}
+          surfaceAbsence="Surface not classified yet."
+          climbs={spikeClimbs}
+          highlight={highlight}
+          onHighlightChange={setHighlight}
+          unitSystem={unitSystem}
+          onClose={() => {}}
+          sourceBaseUrls={{ veloplanner: "https://veloplanner.com" }}
+          libraryCount={47}
+        />
+      </MapPane>
     </figure>
   );
 }
