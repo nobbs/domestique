@@ -137,9 +137,9 @@ export function TargetRow({ target, reconciling, onReconcile, clear }: TargetRow
            */}
           {/*
            * "This target", not "this device": the button reconciles the
-           * Wahoo account the row is about, and says so, because what it
-           * presses is not the same thing as a head unit fetching routes
-           * from it on its own schedule.
+           * target the row is about, and says so, because what it presses is
+           * not the same thing as a head unit fetching routes from it on its
+           * own schedule.
            */}
           <Button
             variant="outline"
