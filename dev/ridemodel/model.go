@@ -14,9 +14,10 @@ import (
 func closeFile(closer io.Closer) { _ = closer.Close() }
 
 // movingSpeedThresholdMetresPerSecond is the one definition of "moving" this
-// pipeline uses, applied only in sample.MovingFilter. Roughly a brisk walking
-// pace, under the ~3 m/s a coasting roll starts at. Strava's moving_time and a
-// device's total_timer_time use their own heuristics and are reported alongside.
+// pipeline uses, applied only in sample.MovingFilter. 0.5 m/s is 1.8 km/h, a
+// slow walk, and well under the ~3 m/s a coasting roll starts at, so it never
+// clips genuine riding. Strava's moving_time and a device's total_timer_time use
+// their own heuristics and are reported alongside.
 const movingSpeedThresholdMetresPerSecond = 0.5
 
 // gradientWindowMetres matches internal/route's own constant and lib/profile.ts's,
