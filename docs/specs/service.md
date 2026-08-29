@@ -65,8 +65,7 @@ resolution.
 Where a route's surface classification has been cached, the view draws it: the
 route is banded by ground class on the map, and the route's split is summarised
 beside its stored facts. A route with no cached classification is drawn plainly
-and said to be unclassified, never presented as unsurveyed ground. The map view
-carries the ODbL attribution the derived OpenStreetMap database requires.
+and said to be unclassified, never presented as unsurveyed ground.
 
 The view marks both terminals of a route and the direction of travel. The start
 and the finish are marked distinctly and stay distinguishable on a route that
@@ -224,9 +223,14 @@ the OpenStreetMap extract download above. The tile origin, by contrast, is
 reached only by the operator's **browser**. The service asks Open-Meteo for an
 hourly forecast at the coordinates and times `GET /v1/weather` was given. A
 viewed route's shape and timing are what leaves; the request carries no identity.
-Operating the service requires attributing Open-Meteo under its [CC BY 4.0
-licence](https://open-meteo.com/en/licence) wherever its data is shown, as
-surface classification carries the ODbL attribution above.
+
+Every credit this service owes is shown in one place, the settings page. The
+derived OpenStreetMap database the surface classification is built from requires
+ODbL attribution, Open-Meteo's forecasts require attribution under its [CC BY
+4.0 licence](https://open-meteo.com/en/licence), and each configured basemap
+requires whatever credit its style document declares. All three are listed
+there, and nowhere else in the UI: no credit is drawn over the map or beside the
+forecast.
 
 The Wahoo OAuth redirect URI is the HTTPS URL a browser returns to. Without the
 public path it is the service's Tailnet URL:
@@ -436,11 +440,12 @@ listener: an application entry document and immutable hashed static assets.
 routes. The catalogue reads the same inventory listing `/` does and asks the
 service for nothing of its own: it is the library as a sortable table, and the
 ordering, searching and narrowing it offers all happen in the browser. Settings
-holds two kinds of preference and keeps them apart: the theme and the units are
-this browser's alone and stay in its local storage, while the service's runtime
-settings are read and written over the endpoints above and are the same for
-every browser. It does not alter the route or moving-time contracts, and unknown
-paths remain JSON `404` responses.
+holds two kinds of preference and keeps them apart, and lists the data sources
+this service credits: the theme and the units are this browser's alone and stay
+in its local storage, while the service's runtime settings are read and written
+over the endpoints above and are the same for every browser. It does not alter
+the route or moving-time contracts, and unknown paths remain JSON `404`
+responses.
 
 The response schemas are defined in
 [the sync lifecycle specification](sync-lifecycle.md). They must never expose

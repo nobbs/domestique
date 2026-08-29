@@ -4,6 +4,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { PageShell } from "../../components/Layout";
 import { THEME_CHOICES, type ThemeChoice } from "../../lib/theme";
 import { useUnitSystem } from "../../lib/units";
+import { DataSources } from "./DataSources";
 import { ServiceSettings } from "./ServiceSettings";
 
 const THEME_LABELS: Record<ThemeChoice, string> = {
@@ -88,6 +89,11 @@ export function SettingsPage({ themeChoice, onThemeChoiceChange }: SettingsPageP
          * alone.
          */}
         <ServiceSettings />
+        {/*
+         * Last, because it is reference rather than a setting: nothing here is
+         * changed, and every credit this service owes is read from one place.
+         */}
+        <DataSources />
       </div>
     </PageShell>
   );

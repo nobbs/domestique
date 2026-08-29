@@ -6,8 +6,6 @@ import { ScaleControl } from "react-map-gl/maplibre";
 import type { Basemap, BoundingBox } from "../../api/types";
 import { BasemapPicker } from "../../components/map/BasemapPicker";
 import { MapControls } from "../../components/map/MapControls";
-import { MapCredits } from "../../components/map/MapCredits";
-import { MapOverlay } from "../../components/map/MapOverlay";
 import { MapViewport } from "../../components/map/MapViewport";
 import { MapWidget } from "../../components/map/MapWidget";
 import type { Insets } from "../../lib/overlayInsets";
@@ -32,7 +30,6 @@ export interface LibraryMapProps {
   maxZoom?: number;
   /** The selected route's full layer stack, rendered over the library. */
   children?: ReactNode;
-  extraCredit?: string | undefined;
   onPick?: (key: string) => void;
   inertKey?: string | null;
 }
@@ -56,16 +53,10 @@ export function LibraryMap({
   insets,
   maxZoom = DEFAULT_MAX_ZOOM,
   children,
-  extraCredit,
   onPick,
   inertKey = null,
 }: LibraryMapProps) {
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
-  /*
-   * Whether the reader unfolded the credit. `null` until they say, so it starts
-   * folded.
-   */
-  const [creditChoice, setCreditChoice] = useState<boolean | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const hasOverlay = children !== null && children !== undefined;
 
@@ -100,14 +91,6 @@ export function LibraryMap({
               />
             ) : null}
           </MapControls>
-          <MapOverlay>
-            <MapCredits
-              styleUrl={styleUrl}
-              extra={extraCredit}
-              choice={creditChoice}
-              onChoiceChange={setCreditChoice}
-            />
-          </MapOverlay>
         </>
       }
     >

@@ -18,12 +18,7 @@
  * that is the credit, which follows the ground actually loaded.
  */
 
-import {
-  BASEMAP_ATTRIBUTION_TEXT,
-  SECOND_BASEMAP_ATTRIBUTION_TEXT,
-  SECOND_BASEMAP_MARKER,
-  SECOND_BASEMAP_NAME,
-} from "./basemap";
+import { SECOND_BASEMAP_MARKER, SECOND_BASEMAP_NAME } from "./basemap";
 import { expect, installOfflineBasemap, openLibrary, pinRendering, test } from "./fixtures";
 
 /** The style documents the page asked for, marker aside. */
@@ -43,8 +38,6 @@ test.describe("the basemap chooser", () => {
 
     // What a reader who has chosen nothing gets: the first configured entry.
     expect(askedForSecond(requested)).toBe(false);
-    await page.getByRole("button", { name: "Show the map credit" }).click();
-    await expect(page.getByText(BASEMAP_ATTRIBUTION_TEXT)).toBeVisible();
 
     await page.getByRole("button", { name: "Choose the basemap" }).click();
     // The row, not the radio: behind a preview the radio is there for what reads
@@ -52,9 +45,11 @@ test.describe("the basemap chooser", () => {
     // and the name.
     await page.getByText(SECOND_BASEMAP_NAME, { exact: true }).click();
 
-    // A canvas cannot be read back, so what proves the map changed hands is the
-    // credit: it names the provider of the ground actually loaded.
-    await expect(page.getByText(SECOND_BASEMAP_ATTRIBUTION_TEXT)).toBeVisible();
+    // A canvas cannot be read back, and the credit now lives on the settings
+    // page, so what proves the map changed hands is the request: the second
+    // provider's style document is fetched, and the first one's was already.
+    await expect(page.getByRole("radio", { name: SECOND_BASEMAP_NAME })).toBeChecked();
+    await expect.poll(() => askedForSecond(requested)).toBe(true);
 
     expect(leaks, "no request left the page for a third-party server").toEqual([]);
   });

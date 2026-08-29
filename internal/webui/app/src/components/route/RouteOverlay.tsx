@@ -51,18 +51,6 @@ const ROUTE_CASING = { light: "#fcfdff", dark: "#24282c" } as const;
 
 const SOURCE_ID = "route-geometry";
 
-/**
- * Credit for the surface classification, which is derived from OpenStreetMap.
- *
- * The basemap's own credit arrives from the style document and covers the tiles
- * only. The classification is a separate derived database under the ODbL, whose
- * share-alike terms oblige this attribution wherever it is shown. Exported
- * because the credit is drawn by the map this stack sits on rather than by the
- * stack itself: it is one line in one corner, and the classification is the
- * reason for half of it.
- */
-export const SURFACE_ATTRIBUTION = "Surface data © OpenStreetMap contributors (ODbL)";
-
 /** The casing's normal opacity, kept in one place so the dimmed one follows it. */
 const CASING_OPACITY = 0.85;
 
