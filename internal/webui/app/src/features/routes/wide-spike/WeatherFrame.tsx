@@ -85,22 +85,42 @@ function Caption({
 export function WeatherFrame({
   variant,
   caption,
+  controls,
   open = true,
   onOpenChange,
   children,
 }: {
   variant: WeatherFrameVariant;
   caption: string;
+  /**
+   * What sits at the end of the caption row — the departure, where the dock
+   * makes it settable.
+   *
+   * Beside the caption rather than inside the band, because the band is what
+   * folds away and the control that decides what it draws should not fold with
+   * it. It also reads as one line: *forecast, from this moment*.
+   */
+  controls?: ReactNode;
   /** Whether the band is shown. `plain` has no caption, so it cannot fold. */
   open?: boolean | undefined;
   onOpenChange?: ((open: boolean) => void) | undefined;
   children: ReactNode;
 }) {
-  const cap = (
-    <Caption open={open} onOpenChange={onOpenChange}>
-      {caption}
-    </Caption>
-  );
+  const cap =
+    controls === undefined ? (
+      <Caption open={open} onOpenChange={onOpenChange}>
+        {caption}
+      </Caption>
+    ) : (
+      // Siblings, not nested: the caption is a button and so is half of the
+      // departure control, and one cannot live inside the other.
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+        <Caption open={open} onOpenChange={onOpenChange}>
+          {caption}
+        </Caption>
+        {controls}
+      </div>
+    );
   const band = open ? children : null;
 
   if (variant === "plain") {

@@ -115,28 +115,17 @@ export function StackClimbsSheet({
           <div className="w-[13.5rem] shrink-0 border-r border-[var(--rule)] pr-4">{lead}</div>
         )}
         <div className="min-w-0 flex-1">
-          <div className="mb-2 flex flex-wrap items-end gap-x-4 gap-y-1">
-            {onStartAtChange === undefined ? (
+          {/*
+           * No header of its own where the departure is settable: the ride
+           * window was the only thing on it, and both halves of that — when it
+           * leaves and when it is back — belong to the forecast, which is the
+           * only part of the dock they change.
+           */}
+          {onStartAtChange !== undefined ? null : (
+            <div className="mb-2">
               <RideWindow startAt={startAt} samples={samples} />
-            ) : (
-              <>
-                {/*
-                 * The real control, not a sketch of one: it already refuses a
-                 * departure whose ride would finish past the forecast horizon,
-                 * and a picker in a spike that quietly allowed one would be
-                 * flattering the layout with a case the service rejects.
-                 */}
-                <StartTimeField
-                  value={startAt}
-                  onChange={onStartAtChange}
-                  movingSeconds={route.movingSeconds}
-                />
-                <p className="pb-1.5 text-xs text-[var(--ink-2)] tabular-nums">
-                  back {clockAt(samples[samples.length - 1]?.arrivalAt ?? startAt)}
-                </p>
-              </>
-            )}
-          </div>
+            </div>
+          )}
           <div ref={ref} className="grid gap-1.5">
             <div className="relative">
               <ElevationProfile
@@ -194,7 +183,21 @@ export function StackClimbsSheet({
             </div>
             <WeatherFrame
               variant={weatherFrame}
-              caption="Forecast · every 30 min of riding"
+              caption={
+                onStartAtChange === undefined
+                  ? "Forecast · every 30 min of riding"
+                  : `Forecast · back ${clockAt(samples[samples.length - 1]?.arrivalAt ?? startAt)}`
+              }
+              controls={
+                onStartAtChange === undefined ? undefined : (
+                  <StartTimeField
+                    value={startAt}
+                    onChange={onStartAtChange}
+                    movingSeconds={route.movingSeconds}
+                    inline
+                  />
+                )
+              }
               open={forecastOpen}
               onOpenChange={setForecastOpen}
             >
