@@ -17,18 +17,14 @@ const huberK = 1.345
 const robustIterations = 8
 
 // maxAcceptableConditionRatio flags a fit as ill-conditioned once the normal
-// matrix's eigenvalue ratio crosses it. Chosen as an order-of-magnitude
-// heuristic, not a derived bound.
-//
-// Note: a fixed threshold, not calibrated per corpus; revisit if a real
-// corpus reports a ratio just under it with a visibly bad fit.
+// matrix's eigenvalue ratio crosses it. An order-of-magnitude heuristic, not a
+// derived bound, and not calibrated per corpus.
 const maxAcceptableConditionRatio = 5000.0
 
-// coastingObservation is one regression row: this package's only remaining
-// use is fitRouteCoefficients' two-variable fit of seconds_per_km and
-// seconds_per_ascent_m against a ride's distance and ascent — the name is a
-// holdover from the coasting-window regression #241 deleted, kept because
-// renaming a still-correct, still-generic type is not this issue's job.
+// coastingObservation is one regression row. Its only remaining use is
+// fitRouteCoefficients' two-variable fit of seconds_per_km and
+// seconds_per_ascent_m against a ride's distance and ascent; the name is a
+// holdover.
 type coastingObservation struct {
 	Y, X1, X2, Weight float64
 }

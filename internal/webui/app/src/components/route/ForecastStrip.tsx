@@ -166,11 +166,9 @@ function cellKey(sample: ForecastSample): string {
 function conditionText(point: WeatherPoint, unitSystem: UnitSystem): string {
   const label = weatherCodeLabel(point.weatherCode);
   if (point.precipitationProbabilityPercent <= 0 && point.precipitationMillimetres <= 0) {
-    // Said rather than left to the missing fill. A dry cell is drawn by having
-    // no shading at all, which is exactly the "carried by colour alone" state
-    // this page does not allow — and "overcast" on its own says nothing about
-    // whether rain was forecast. A pair of zeros would be the same fact in a
-    // form nobody reads out loud.
+    // Said rather than left to the missing fill. A dry cell is drawn with no
+    // shading at all, which is the "carried by colour alone" state this page does
+    // not allow, and "overcast" alone says nothing about rain.
     return `${label}, no rain expected`;
   }
 
@@ -285,14 +283,10 @@ export function ForecastStrip({
       const next = samples[index + 1];
       const cellStart = previous ? (previous.distanceMetres + sample.distanceMetres) / 2 : 0;
       const cellEnd = next ? (sample.distanceMetres + next.distanceMetres) / 2 : totalMetres;
-      // Outside the stretch the chart is drawing — a zoomed elevation profile
-      // narrows the axis this strip shares with it, and a cell wholly outside
-      // that window has nothing to draw itself against.
-      //
-      // A window of no width is not a window that excludes everything: a stage
-      // that covers no ground still has a timeline, and dropping every cell
-      // against it would take the readable table down with the graphic. There
-      // is nothing to clip to, so nothing is clipped.
+      // Outside the stretch the chart is drawing: a zoomed profile narrows the
+      // axis this strip shares, and a cell wholly outside it has nothing to draw
+      // against. A window of no width is not a window that excludes everything —
+      // a stage covering no ground still has a timeline, so nothing is clipped.
       const clips = endMetres > startMetres;
       if (clips && (cellEnd <= startMetres || cellStart >= endMetres)) {
         return [];

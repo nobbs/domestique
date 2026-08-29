@@ -58,13 +58,10 @@ const (
 	FailureDeletionLimit FailureCategory = "deletion_limit"
 )
 
-// TargetResult is one target's own share of a reconciliation.
-//
-// A run is recorded once, so its outcome is the worst of what happened across
-// the slots. That is the wrong answer to the question an operator asks about one
-// Wahoo account, which is why each slot reports its own here: a run that wrote
-// one account and could not write the other is a partial failure, and both
-// halves of that fact are worth keeping.
+// TargetResult is one target's own share of a reconciliation. A run is recorded
+// once, so its outcome is the worst across the slots, which is the wrong answer
+// about one Wahoo account: a run that wrote one and not the other is a partial
+// failure, and both halves are worth keeping.
 type TargetResult struct {
 	// ID is the configured target slot. It is never a Wahoo user identifier.
 	ID      string
@@ -72,11 +69,9 @@ type TargetResult struct {
 	Failure FailureCategory
 }
 
-// SourceResult is one configured source's own share of a source-phase read.
-//
-// One source's failure must not read as a claim about another: a run that
-// read one library and could not read the other is a partial failure, and
-// naming which source is which is what lets an operator tell them apart.
+// SourceResult is one configured source's own share of a source-phase read. One
+// source's failure must not read as a claim about another, and naming which is
+// which is what lets an operator tell them apart.
 type SourceResult struct {
 	Provider route.Provider
 	Outcome  Outcome

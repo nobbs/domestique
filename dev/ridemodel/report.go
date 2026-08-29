@@ -41,12 +41,10 @@ type reportData struct {
 	ingestedMovingSeconds      float64
 }
 
-// timerDivergenceThreshold names how far a ride's own device timer time may
-// differ from its elapsed time before it is worth a second look. Both are the
-// device's own two answers to "how long was this ride", disagreeing only
-// because one subtracts auto-paused time and the other does not; this is not
-// the moving-time threshold above; it exists purely to flag rides worth a
-// human's attention, and feeds no computation.
+// timerDivergenceThreshold names how far a ride's device timer time may differ
+// from its elapsed time before it is worth a second look. The two disagree only
+// because one subtracts auto-paused time. It flags rides for a human and feeds
+// no computation.
 const timerDivergenceThreshold = 0.05
 
 // buildReport aggregates every ride this run touched into the figures the

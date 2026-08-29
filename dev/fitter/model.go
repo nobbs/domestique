@@ -1,10 +1,7 @@
-// Command fitter benchmarks the accepted hybrid ETA model — internal/
-// ridemodel's own equation, never a second implementation of it — against a
-// ride corpus, and can recalibrate its two route coefficients,
-// seconds_per_km and seconds_per_ascent_m, when explicitly asked.
-//
-// It reads samples.csv and rides.csv from dev/ridemodel's corpus. See
-// dev/fitter/main.go for the CLI.
+// Command fitter benchmarks the accepted hybrid ETA model — internal/ridemodel's
+// own equation, never a second implementation — against a ride corpus, and can
+// recalibrate seconds_per_km and seconds_per_ascent_m when explicitly asked. It
+// reads samples.csv and rides.csv from dev/ridemodel's corpus. CLI in main.go.
 package main
 
 import "time"

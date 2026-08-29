@@ -44,10 +44,9 @@ type gpxTrackPointExtension struct {
 }
 
 // decodeGPX reads a Strava GPX export, gzipped or not. GPX carries no speed
-// channel — Strava differentiates it from position and time on the way out,
-// which is markedly noisier than a device's own speed field — so every
-// record this produces is marked Derived, and ingestActivity carries that
-// through to every sample row.
+// channel — Strava differentiates it from position and time, which is noisier
+// than a device's own field — so every record is marked Derived and
+// ingestActivity carries that through to every sample row.
 func decodeGPX(path string, gzipped bool) (decodedActivity, error) {
 	file, err := os.Open(path) //nolint:gosec // The path is composed from the operator's own -export flag and activities.csv's Filename column.
 	if err != nil {

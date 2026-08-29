@@ -29,11 +29,9 @@ const (
 // onto a small host and there is no useful fixed deadline for that.
 const checksumTimeout = 30 * time.Second
 
-// fetchChecksums reads the published checksum for every region.
-//
-// This runs before anything is downloaded, and its result decides both the
-// generation and whether there is any work to do. A rebuild that finds every
-// checksum unchanged costs one small request per region and stops there.
+// fetchChecksums reads the published checksum for every region. It runs before
+// anything is downloaded, and its result decides both the generation and whether
+// there is work to do.
 func fetchChecksums(ctx context.Context, client *http.Client, baseURL string, regions []string) (map[string]string, error) {
 	checksums := make(map[string]string, len(regions))
 	for _, region := range regions {
@@ -76,13 +74,10 @@ func fetchChecksum(ctx context.Context, client *http.Client, baseURL, region str
 }
 
 // downloadExtract streams one region's extract to disk and verifies it against
-// the checksum already fetched.
-//
-// The body is written straight through to the file while the digest is computed
-// from the same stream, so a 300 MB extract never exists in memory. A digest
-// that does not match leaves nothing behind: an extract truncated by a dropped
-// connection would otherwise decode as a valid but partial map and produce an
-// index quietly missing half its roads.
+// the checksum already fetched. The body is written straight through while the
+// digest is computed from the same stream, so a 300 MB extract never exists in
+// memory. A mismatch leaves nothing behind: a truncated extract would decode as
+// a valid but partial map.
 func downloadExtract(
 	ctx context.Context,
 	client *http.Client,

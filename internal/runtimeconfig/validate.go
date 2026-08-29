@@ -197,16 +197,11 @@ func ValidateNotifications(notifications Notifications) (Notifications, error) {
 	return notifications, nil
 }
 
-// ValidateBasemaps checks the list the map may be switched between and returns
-// it trimmed. At least one entry is required, because a map with no cartography
-// paints nothing; each is named, because the name is both the label the reader
-// picks by and the identity a browser remembers its choice by, and a repeated
-// name would make those two disagree.
-//
-// The same-origin rule on a dark twin holds per entry rather than across the
-// list. One entry still reaches one third-party origin, and the page still
-// requests only the entry currently on screen; what the list grows is the set of
-// providers the operator has offered, which is the point of the setting.
+// ValidateBasemaps checks the list the map may be switched between and returns it
+// trimmed. At least one entry is required, and each is named: the name is both
+// the label the reader picks by and the identity a browser remembers by, so a
+// repeated name would make those disagree. The same-origin rule on a dark twin
+// holds per entry rather than across the list.
 func ValidateBasemaps(raw []Basemap) ([]Basemap, error) {
 	if len(raw) == 0 {
 		return nil, errors.New("webui.basemaps must contain at least one entry")
@@ -287,14 +282,10 @@ func SameOrigin(left, right string) bool {
 }
 
 // regionSlug is one Geofabrik region path, such as
-// "europe/germany/rheinland-pfalz".
-//
-// A slug becomes a path under a fixed download host, so its shape is checked
-// here rather than trusted: lowercase segments of letters, digits, and single
-// hyphens can introduce neither a host nor a traversal. The index builder
-// applies the same rule again before it composes a URL — this one exists so a
-// mistyped region is refused where it is entered, rather than becoming a
-// download that fails a week later.
+// "europe/germany/rheinland-pfalz". A slug becomes a path under a fixed download
+// host, so its shape is checked rather than trusted: lowercase segments of
+// letters, digits and single hyphens introduce neither a host nor a traversal.
+// The index builder applies the same rule before composing a URL.
 var regionSlug = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*(?:/[a-z0-9]+(?:-[a-z0-9]+)*)*$`)
 
 // ValidateSurface accepts a set of regions to index, or no regions at all, and
@@ -310,11 +301,8 @@ func ValidateSurface(surface Surface) (Surface, error) {
 			)
 		}
 	}
-	// Required whether or not a region is named. The rebuild schedule is
-	// created either way — a service with no regions runs it and does nothing —
-	// so a cadence of zero would be a schedule that could not be started, and an
-	// operator naming their first region would find out only at the next
-	// restart.
+	// Required whether or not a region is named: the rebuild schedule is created
+	// either way, so a cadence of zero would be a schedule that could not start.
 	if surface.RebuildInterval < minimumInterval {
 		return Surface{}, errors.New("surface.rebuild_interval must be at least 1s")
 	}
