@@ -32,11 +32,16 @@ import { formatAscent, formatDistance, formatGradient } from "../../../lib/forma
 import { PADDING } from "../../../lib/plotAxis";
 import { useElementWidth } from "../../../lib/useElementWidth";
 import { weatherIcon } from "../../../lib/weather";
-import { groundSegments, Ribbon } from "../panel-spike/shared";
+import { groundSegments } from "../panel-spike/shared";
+import { ClimbMarkers } from "./ClimbMarkers";
+import { LabelledRibbon } from "./LabelledRibbon";
 import type { SheetProps } from "./shared";
 import { cellAt, clockAt, RideWindow, Sheet } from "./shared";
+import type { WeatherFrameVariant } from "./WeatherFrame";
+import { WeatherFrame } from "./WeatherFrame";
 
 export function StackClimbsSheet({
+  weatherFrame = "card",
   route,
   profile,
   surface,
@@ -47,8 +52,9 @@ export function StackClimbsSheet({
   activeMetres,
   onActiveChange,
   highlight,
+  onHighlightChange,
   unitSystem,
-}: SheetProps) {
+}: SheetProps & { weatherFrame?: WeatherFrameVariant }) {
   const { ref, width } = useElementWidth<HTMLDivElement>();
 
   return (
@@ -59,52 +65,44 @@ export function StackClimbsSheet({
             <RideWindow startAt={startAt} samples={samples} />
           </div>
           <div ref={ref} className="grid gap-1.5">
-            <ElevationProfile
-              profile={profile}
-              title={route.title}
-              surface={surface}
-              activeMetres={activeMetres}
-              onActiveChange={onActiveChange}
-              highlight={highlight}
-              unitSystem={unitSystem}
-            />
-            <div style={{ paddingLeft: PADDING.left, paddingRight: PADDING.right }}>
-              {/*
-               * The cols bracketed on the shared axis, carrying the chart's own
-               * gutters. A bracket a few pixels off from the hump above it would
-               * put the col in the wrong place subtly, which is worse than
-               * obviously.
-               */}
-              <div className="relative mb-1 h-3.5">
-                {climbs.map((climb, index) => (
-                  <span
-                    key={climb.startMetres}
-                    className="absolute top-2 h-1 rounded-full bg-[var(--ink-2)]"
-                    style={{
-                      left: `${(climb.startMetres / route.distanceMetres) * 100}%`,
-                      width: `${((climb.endMetres - climb.startMetres) / route.distanceMetres) * 100}%`,
-                    }}
-                  >
-                    <span className="absolute -top-2.5 left-0 text-[10px] leading-none font-semibold text-[var(--ink-2)] tabular-nums">
-                      {index + 1}
-                    </span>
-                  </span>
-                ))}
-              </div>
-              {/*
-               * Ground only: the chart above already paints its area by steepness
-               * band, and a gradient ribbon here would be the same fact drawn
-               * twice a row apart.
-               */}
-              <Ribbon segments={groundSegments(surface)} className="h-3" highlight={highlight} />
+            <div className="relative">
+              <ElevationProfile
+                profile={profile}
+                title={route.title}
+                surface={surface}
+                activeMetres={activeMetres}
+                onActiveChange={onActiveChange}
+                highlight={highlight}
+                unitSystem={unitSystem}
+              />
+              <ClimbMarkers
+                climbs={climbs}
+                totalMetres={route.distanceMetres}
+                onSelect={onActiveChange}
+              />
             </div>
-            <FilmstripBand
-              cells={cells}
-              width={width}
-              startMetres={0}
-              endMetres={route.distanceMetres}
-              unitSystem={unitSystem}
-            />
+            {/*
+             * Ground only: the chart above already paints its area by
+             * steepness band, and a gradient ribbon here would be the same
+             * fact drawn twice a row apart.
+             */}
+            <div style={{ paddingLeft: PADDING.left, paddingRight: PADDING.right }}>
+              <LabelledRibbon
+                segments={groundSegments(surface)}
+                surface={surface}
+                highlight={highlight}
+                onHighlightChange={onHighlightChange}
+              />
+            </div>
+            <WeatherFrame variant={weatherFrame} caption="Forecast · every 30 min of riding">
+              <FilmstripBand
+                cells={cells}
+                width={width}
+                startMetres={0}
+                endMetres={route.distanceMetres}
+                unitSystem={unitSystem}
+              />
+            </WeatherFrame>
           </div>
         </div>
         {/*

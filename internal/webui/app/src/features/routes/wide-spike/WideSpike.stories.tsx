@@ -43,6 +43,7 @@ import { StackClimbsSheet } from "./StackClimbsSheet";
 import { StackSheet } from "./StackSheet";
 import type { SheetProps } from "./shared";
 import { TimelineSheet } from "./TimelineSheet";
+import { WEATHER_FRAMES } from "./WeatherFrame";
 
 /** About a laptop, which is the smallest screen this panel is meant for. */
 const PAGE = { width: 1440, height: 900 };
@@ -199,6 +200,48 @@ export const Alternatives: Story = {
           <Framed key={entry.key} name={entry.name} note={entry.note}>
             <Page Sheet={entry.Sheet} />
           </Framed>
+        ))}
+      </div>
+    </StoryProviders>
+  ),
+};
+
+/**
+ * Four ways of framing the forecast, without the map.
+ *
+ * The map is what the other stories are for. This one asks whether the band
+ * reads as a prediction rather than as another lane of measured terrain, and
+ * that is a question about the inside of the sheet — putting four pages up to
+ * ask it would spend four screens on furniture nobody is looking at.
+ */
+export const WeatherFrames: Story = {
+  render: () => (
+    <StoryProviders>
+      <div className="grid gap-6 bg-[var(--ground)] p-6">
+        {WEATHER_FRAMES.map((frame) => (
+          <figure key={frame.variant} className="grid gap-1" style={{ width: PAGE.width - 48 }}>
+            <figcaption className="text-sm">
+              <span className="font-semibold">{frame.variant}</span>{" "}
+              <span className="text-[var(--ink-2)]">— {frame.note}</span>
+            </figcaption>
+            <StackClimbsSheet
+              weatherFrame={frame.variant}
+              route={spikeRoute}
+              profile={spikeProfile}
+              surface={spikeSurface}
+              runs={spikeRuns}
+              bands={spikeBands}
+              climbs={spikeClimbs}
+              cells={cells}
+              samples={spikeSamples}
+              startAt={spikeStartAt}
+              activeMetres={null}
+              onActiveChange={() => {}}
+              highlight={null}
+              onHighlightChange={() => {}}
+              unitSystem="metric"
+            />
+          </figure>
         ))}
       </div>
     </StoryProviders>
