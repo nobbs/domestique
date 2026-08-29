@@ -1,17 +1,13 @@
 // Command demoapi seeds a demo database and serves the browser UI's API from it.
 //
-// It exists because the shipped binary verifies its caller's Cloudflare Access
-// assertion against Cloudflare's key set, and a demo that needs no account
-// cannot obtain one. Rather than weakening that gate, this command stands up an
-// Access team of its own: it generates a signing key in memory, publishes it to
-// the production verifier through an in-process key-set endpoint, and mints one
-// assertion for the UI dev server to present. The gate that runs is the real
-// one, with the real signature, audience, expiry and allowed-email checks; only
-// the team signing it is local. Nothing it serves leaves this machine, and the
-// generated key exists for the lifetime of the process.
+// The shipped binary verifies a Cloudflare Access assertion and a demo cannot
+// obtain one, so this stands up an Access team of its own: a signing key
+// generated in memory, published to the production verifier through an
+// in-process key-set endpoint, and one assertion minted for the UI dev server.
+// The real gate runs; only the team signing it is local, and nothing leaves
+// this machine.
 //
-// It is development tooling and is not part of the shipped binary. See
-// dev/demo.sh, which is how it is meant to be started.
+// Development tooling, not part of the shipped binary. See dev/demo.sh.
 package main
 
 import (

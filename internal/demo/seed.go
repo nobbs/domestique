@@ -65,16 +65,9 @@ const demoIndexGeneration = "demo"
 const demoCoefficientFingerprint = "demo-coefficients"
 
 // demoCoefficients are a physically plausible hybrid profile for a mid-weight
-// rider and a fairly upright road position — an unremarkable ride, not this
-// package's own claim about any real one. Mass, power, CdA and the route
-// coefficients are near the figures #239's real benchmark actually recorded;
-// the rest are reasonable stand-ins that Coefficients' own load-time
-// validation would accept from a real coefficient file.
-//
-// A function rather than a package variable, on the same terms as specs() in
-// library.go: nothing here may become mutable package-level state, and a
-// fresh map on every call is cheap next to the geometry this package already
-// rebuilds on every Seed.
+// rider in a fairly upright road position, not a claim about any real one. A
+// function rather than a package variable: nothing here may become mutable
+// package-level state.
 func demoCoefficients() ridemodel.Coefficients {
 	return ridemodel.Coefficients{
 		CalibrationCutoff: "2025-08-01",
@@ -97,16 +90,10 @@ func demoCoefficients() ridemodel.Coefficients {
 	}
 }
 
-// Seed writes the synthetic library, its surfaces, and one state per slot.
-//
-// The clock is a parameter because everything else here is a function of the
-// constants in this package, and a run that stamped itself with time.Now would
-// be the one thing in the fixture that could not be asserted on. Pass a fixed
-// instant in a test and the wall clock in a development environment, where a
-// last run dated two years ago would read as a broken service.
-//
-// Nothing here contacts a provider: the whole point is a library that exists
-// without one.
+// Seed writes the synthetic library, its surfaces, and one state per slot. The
+// clock is a parameter because everything else is a function of this package's
+// constants, and a run stamped with time.Now could not be asserted on. Nothing
+// here contacts a provider.
 func Seed(ctx context.Context, state State, slots []Slot, now time.Time) error {
 	if len(slots) == 0 {
 		return errors.New("demo: at least one target slot is required")
@@ -176,17 +163,10 @@ func Seed(ctx context.Context, state State, slots []Slot, now time.Time) error {
 	return nil
 }
 
-// seedDurations predicts and stores one moving-time series per stage, computed
-// by internal/ridemodel.Predict over the stage's own geometry and its surface
-// classification — the same forward model and the same per-point surface
-// classes a real enrichment pass would use, run here once against fixed
-// coefficients instead of a loaded coefficient file.
-//
-// Predict returns false for a stage with no usable elevation, which this
-// package's own elevation-less and partially-elevated stages both are: they
-// are stored as nil, nil, exactly what Predict itself would have this package
-// cache for a real stage it could not answer, rather than a fabricated time
-// that would misrepresent what the model can and cannot do.
+// seedDurations predicts and stores one moving-time series per stage, using
+// internal/ridemodel.Predict over the stage's own geometry and classification —
+// the same forward model a real enrichment pass uses, against fixed coefficients.
+// Predict returns false without usable elevation, and those stages store nil.
 func seedDurations(ctx context.Context, state State, stages []route.Route) error {
 	kindsByStage := stageSurfaceKinds(stages)
 	for index := range stages {
@@ -302,13 +282,9 @@ func wahooRouteID(routeID int64, stageOrder int) int64 {
 	return 900_000_000 + routeID*100 + int64(stageOrder)
 }
 
-// seedRuns records the demo's run history in order, so the newest row is the
-// most recent run here as it would be on a service that had been running.
-//
-// The last two runs are the pair a first synchronization leaves behind; the
-// rest are there so the history is a history rather than one line, and the
-// blocked one is how a deletion gate looks to a reader without a demo that can
-// delete anything.
+// seedRuns records the demo's run history in order, so the newest row is the most
+// recent run. The last two are the pair a first synchronization leaves behind;
+// the blocked one is how a deletion gate looks without a demo that can delete.
 func seedRuns(ctx context.Context, state State, stages int, now time.Time) error {
 	pastRuns := []struct {
 		phase   string

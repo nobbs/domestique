@@ -1,16 +1,7 @@
-// Package demo builds a synthetic route library: stages, surfaces, targets and
-// runs that exercise the service the way a rider's own data would, computed from
-// arithmetic instead of copied from anybody.
-//
-// It exists so that developing the browser UI, and testing it, needs neither a
-// snapshot of a deployed database nor an account with a provider. Every value
-// here is a function of the constants in this file, so the same library appears
-// on every machine and in every test run, and a fixture can be asserted against
-// by name rather than by whatever happened to be in somebody's SQLite file.
-//
-// The coordinates are placed over real ground, because a basemap under an empty
-// ocean shows a developer nothing. They are still generated: no route in here
-// was ever planned or ridden.
+// Package demo builds a synthetic route library computed from arithmetic rather
+// than copied from anybody, so developing and testing the browser UI needs
+// neither a deployed snapshot nor a provider account. Every value is a function
+// of the constants here. The coordinates sit over real ground; nothing was ridden.
 package demo
 
 import (
@@ -24,9 +15,7 @@ import (
 )
 
 // Where the synthetic rides start, and the flat-earth scale used to walk away
-// from it. Over the tens of kilometres a stage covers the error is metres, which
-// is smaller than the spacing between two stored points and irrelevant to
-// anything a fixture is asked to demonstrate.
+// from it. Over the tens of kilometres a stage covers the error is metres.
 const (
 	originLatitude  = 48.40
 	originLongitude = 8.10
@@ -34,10 +23,9 @@ const (
 	metresPerDegreeLatitude = 111_320.0
 )
 
-// How densely a stage is stored, and the bounds either side of it: a stage is
-// sampled about every stored-point interval a planner emits, but a two-kilometre
-// stage still needs enough points to draw a shape and a sixty-kilometre one does
-// not need thousands to look like a ride.
+// How densely a stage is stored, and the bounds either side: a two-kilometre
+// stage still needs enough points to draw a shape, and a sixty-kilometre one
+// does not need thousands.
 const (
 	pointSpacingMetres = 25.0
 	minimumPoints      = 48
@@ -63,12 +51,10 @@ const (
 	// elevationEverywhere is the stage a source profiled from end to end.
 	elevationEverywhere elevationCoverage = iota
 	// elevationNowhere is the stage a source stored flat, with no height at all.
-	// It is not a claim that the ground is flat, and the UI must not present it
-	// as one.
+	// Not a claim that the ground is flat, and the UI must not present it as one.
 	elevationNowhere
-	// elevationPartial is the stage whose profile stops partway. It is the case
-	// that breaks a naive gradient, because a height beside a hole is not a
-	// slope.
+	// elevationPartial is the stage whose profile stops partway: a height beside
+	// a hole is not a slope.
 	elevationPartial
 )
 
@@ -78,13 +64,9 @@ type band struct {
 	kind          surface.Kind
 }
 
-// stageSpec is one synthetic stage, before it becomes geometry.
-//
-// spanMetres is the ground the stage covers, not the distance a rider would
-// record: the drawn line wanders either side of its bearing, so the ridden
-// length comes out something like a tenth longer. That is the right way round —
-// a fixture's distance should be whatever the geometry actually measures, since
-// that is the number every reader of it derives.
+// stageSpec is one synthetic stage, before it becomes geometry. spanMetres is the
+// ground the stage covers, not the ridden distance: the drawn line wanders either
+// side of its bearing, so the ridden length comes out about a tenth longer.
 type stageSpec struct {
 	routeName      string
 	stageName      string
@@ -113,12 +95,10 @@ func (s *stageSpec) sourceProvider() route.Provider {
 	return s.provider
 }
 
-// specs is the library. Between them the stages carry a multi-stage route, a
-// loop, an out-and-back, the longest and shortest rides the UI has to lay out,
-// a stage with no profile and one with half a profile, gradients from flat to
-// steep, every surface class including unknown, a stage that was never
-// classified at all, and one whose classification covers only part of its
-// length.
+// specs is the library: a multi-stage route, a loop, an out-and-back, the longest
+// and shortest rides the UI must lay out, a stage with no profile and one with
+// half a profile, gradients from flat to steep, every surface class including
+// unknown, one never classified, and one classified over part of its length.
 func specs() []stageSpec {
 	return []stageSpec{
 		{
@@ -189,11 +169,9 @@ func specs() []stageSpec {
 				{untilFraction: 1, kind: surface.KindCompacted},
 			},
 		},
-		// The one stage from a second source, so a library with more than one
-		// provider in it is not only a case the code has to allow but one the
-		// demo and the browser suite actually exercise. Centred inside the
-		// ground the other stages already cover rather than beside it, so
-		// adding it does not itself widen the map the entry page frames.
+		// The one stage from a second source, so a multi-provider library is
+		// exercised rather than merely allowed. Centred inside the ground the other
+		// stages cover, so it does not widen the map the entry page frames.
 		{
 			provider: route.ProviderKomoot,
 			routeID:  4201, stageOrder: 1,
@@ -246,11 +224,9 @@ type Classification struct {
 	StageOrder    int
 }
 
-// Classifications returns the stored surface for every stage that has one.
-//
-// The ranges are compressed and encoded by the same code that stores a real
-// classification, and the matched length is measured the same way, so a fixture
-// cannot drift into a shape the production reader would not accept.
+// Classifications returns the stored surface for every stage that has one. The
+// ranges are compressed and encoded by the same code that stores a real
+// classification, so a fixture cannot drift into an unacceptable shape.
 func Classifications(stages []route.Route) ([]Classification, error) {
 	specs := specs()
 	kindsByStage := stageSurfaceKinds(stages)
@@ -281,20 +257,9 @@ func Classifications(stages []route.Route) ([]Classification, error) {
 }
 
 // stageSurfaceKinds returns each stage's per-point surface class, aligned with
-// stages and indexed the same way. A stage with no classification bands (the
-// one never surveyed at all) reports nil, which both Classifications' encoder
-// and ridemodel.Predict read correctly: the former skips it as unclassified,
-// the latter falls back to asphalt throughout.
-//
-// It exists so the two readers that need per-point bands — Classifications,
-// storing a surface classification, and seedDurations, feeding the ride-model
-// prediction — assign them the same way rather than each in its own words.
-//
-// Seed does call it once for each, so the bands are assigned twice per run.
-// That is deliberate: threading one result through both would mean widening
-// Classifications' exported signature so its callers computed and carried
-// something they have no use for, and this is seven synthetic stages built
-// once at demo start.
+// stages. A stage with no bands reports nil: Classifications skips it as
+// unclassified, and ridemodel.Predict falls back to asphalt throughout. It exists
+// so both readers assign per-point bands the same way.
 func stageSurfaceKinds(stages []route.Route) [][]surface.Kind {
 	specs := specs()
 	kinds := make([][]surface.Kind, len(stages))
@@ -361,13 +326,10 @@ func (s *stageSpec) geometry() []route.Point {
 	return points
 }
 
-// offsetMetres is how far along and across the stage's start one point lies.
-//
-// A line leaves on its bearing and wanders either side of it, so a drawn route
-// bends like a road rather than reading as a ruler. A loop is a closed curve
-// whose circumference is the stage length. An out-and-back walks the line to
-// halfway and retraces it, which is what makes its two ends the same point
-// without its shape being a loop.
+// offsetMetres is how far along and across the stage's start one point lies. A
+// line leaves on its bearing and wanders either side of it. A loop is a closed
+// curve whose circumference is the stage length; an out-and-back walks to halfway
+// and retraces, which makes its two ends one point without being a loop.
 func (s *stageSpec) offsetMetres(fraction float64) (eastwards, northward float64) {
 	if s.shape == shapeLoop {
 		// A slightly lobed circle: a perfect one reads as a drawing rather than

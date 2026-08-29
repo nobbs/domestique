@@ -14,16 +14,12 @@ import (
 	"time"
 )
 
-// retainedSyncRuns bounds the recorded run history. Both halves run on the
-// configured interval, so an hourly deployment writes about fifty rows a day
-// and this window holds a little over a week of them — long enough to answer
-// "when did this start going wrong" and short enough that the state file this
-// service keeps forever stops growing.
+// retainedSyncRuns bounds the recorded run history. An hourly deployment writes
+// about fifty rows a day, so this holds a little over a week.
 const retainedSyncRuns = 500
 
-// syncRunReferenceBytes is how much randomness names a run. Twelve hex
-// characters are readable aloud and leave the retained window nowhere near a
-// collision.
+// syncRunReferenceBytes is how much randomness names a run. Twelve hex characters
+// are readable aloud and leave the retained window nowhere near a collision.
 const syncRunReferenceBytes = 6
 
 // LastSyncRun returns the most recently recorded terminal run, if any.
@@ -45,11 +41,9 @@ func (s *Store) LastSyncRun(ctx context.Context) (completedAt time.Time, outcome
 	return time.Unix(completedUnix, 0).UTC(), outcome, detail, sourceStages, created, updated, deleted, true, nil
 }
 
-// ForEachPhaseRun visits the most recent recorded run of each phase.
-//
-// The phases run and fail independently, so the single most recent run answers
-// only half the question an operator is asking. Runs recorded before phases
-// existed carry no phase and are left out rather than attributed to one.
+// ForEachPhaseRun visits the most recent recorded run of each phase. The phases
+// run and fail independently, so a single most recent run answers half the
+// question. Runs recorded before phases existed carry none and are left out.
 func (s *Store) ForEachPhaseRun(
 	ctx context.Context,
 	visit func(phase string, completedAt time.Time, outcome, detail string, sourceStages, created, updated, deleted int) error,
@@ -92,14 +86,10 @@ func (s *Store) ForEachPhaseRun(
 }
 
 // ForEachSyncRun visits one page of the recorded history, newest first, and
-// returns the cursor for the page after it — empty when the history ends here.
-// A cursor this store did not issue is reported as unusable rather than as a
-// failure: it is the caller's input, not a broken store.
-//
-// The page starts after the run the caller's cursor names, or at the newest run
-// when there is none. A cursor is a position rather than a name: the run it was
-// taken from may have been pruned by the time the next page is asked for, and a
-// position still resolves where a name would have to fail.
+// returns the cursor for the page after it — empty when the history ends here. A
+// cursor this store did not issue is reported as unusable rather than as a
+// failure. A cursor is a position rather than a name, so it still resolves after
+// the run it was taken from has been pruned.
 func (s *Store) ForEachSyncRun(
 	ctx context.Context,
 	after string,
@@ -123,23 +113,16 @@ func (s *Store) ForEachSyncRun(
 			return "", false, readErr
 		}
 		// Positions are handed out from one upwards and the highest only grows,
-		// because pruning never drops the newest run. A cursor outside that
-		// range is one this store never issued; inside it, a pruned row is
-		// still a position the runs before it can be read from.
+		// because pruning never drops the newest run. A cursor outside that range
+		// is one this store never issued.
 		if cursor <= 0 || cursor > issued {
 			return "", false, nil
 		}
 		position = cursor
 	}
-	// One row past the page, so "is there more" is read rather than guessed
-	// from a page that happened to come back full.
-	//
-	// Rows recorded before runs were split by phase keep an empty phase, and
-	// the history is served per phase: a run that covered both halves at once
-	// cannot be reported as either without claiming something untrue. They are
-	// excluded here rather than in the caller so the lookahead above still
-	// counts what the page will actually contain, on the same terms as
-	// ForEachPhaseRun.
+	// One row past the page, so "is there more" is read rather than guessed.
+	// Rows predating the phase split carry none and are excluded here rather than
+	// in the caller, so the lookahead counts what the page will contain.
 	rows, err := s.database.QueryContext(ctx, `
 		SELECT id, reference, phase, finished_at_unix, outcome, COALESCE(detail, ''),
 			source_stages, created, updated, deleted
@@ -199,11 +182,7 @@ func (s *Store) lastSyncRunID(ctx context.Context) (int64, error) {
 
 // RecordSyncRun stores one terminal synchronization result and returns the
 // reference naming it. Its detail is a stable failure category, never provider
-// text or a route name.
-//
-// Recording a run also prunes the history back to its bound, so the file this
-// service keeps forever holds a fixed number of runs rather than one per hour
-// for as long as it is deployed.
+// text or a route name. Recording also prunes the history back to its bound.
 func (s *Store) RecordSyncRun(
 	ctx context.Context,
 	phase string,
@@ -257,12 +236,8 @@ func newSyncRunReference() (string, error) {
 }
 
 // pruneSyncRuns drops everything past the retained window, in the caller's
-// transaction.
-//
-// The most recent run of each phase is kept whatever its age. It is not history
-// there: the status response reads it as what that half last came to, and a
-// half switched off for a week must not lose its last answer because the other
-// half filled the window.
+// transaction. The most recent run of each phase is kept whatever its age: the
+// status response reads it as what that half last came to.
 func pruneSyncRuns(ctx context.Context, transaction *sql.Tx) error {
 	if _, err := transaction.ExecContext(ctx, `
 		DELETE FROM sync_runs
@@ -381,12 +356,8 @@ func (s *Store) LastSuccessfulPhaseCompletion(ctx context.Context, phase string)
 }
 
 // ForEachSuccessfulRunAfter visits the successful runs recorded after the given
-// run, oldest first, and carries each one's id so the caller can move its window
-// to the last row it actually saw.
-//
-// It selects the counts a digest totals and nothing else. The detail column is
-// deliberately not read: a digest is aggregate, and the failure category it
-// holds belongs to the runs this query excludes anyway.
+// run, oldest first, carrying each id so the caller can move its window. It
+// selects the counts a digest totals and not the detail column.
 func (s *Store) ForEachSuccessfulRunAfter(
 	ctx context.Context,
 	runID int64,
