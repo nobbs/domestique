@@ -1,12 +1,7 @@
 // Package osmindex builds and reads a local index of OpenStreetMap way geometry
-// and surface tagging, so a stage can be classified from disk instead of from a
-// public Overpass endpoint.
-//
-// It sits outside package surface deliberately. That package is pure geometry
-// and tagging — it snaps points to ways and names the ground — and stays free of
-// any concern about where ways come from. This one owns the file formats, the
-// download, and the SQLite storage, and depends on surface for the shared types
-// rather than the other way round.
+// and surface tagging, so a stage is classified from disk rather than from a
+// public endpoint. It owns the file formats, the download and the storage, and
+// depends on package surface for shared types rather than the other way round.
 package osmindex
 
 import (
@@ -18,22 +13,15 @@ import (
 	"github.com/nobbs/domestique/internal/surface"
 )
 
-// coordinateScale is the fixed-point multiplier a stored coordinate carries: a
-// value of 1e6 means six decimal places, about 11 cm of latitude.
-//
-// Six was measured rather than assumed. Against a full-precision index the
-// five-decimal grid disagreed on 0.493% of ridden distance, which is the same
-// order as the disagreement with Overpass itself and so would have doubled the
-// error for a quarter less file; six decimals costs 57 MB against 73 MB for
-// OpenStreetMap's native seven and reproduces it to 99.876%.
+// coordinateScale is the fixed-point multiplier a stored coordinate carries: 1e6
+// is six decimal places, about 11 cm of latitude. Five decimals disagreed on
+// 0.493% of ridden distance; six costs 57 MB against 73 MB for OpenStreetMap's
+// native seven and reproduces it to 99.876%.
 const coordinateScale = 1e6
 
-// cellDegrees is the side of one index cell in degrees.
-//
-// Cell size does not affect what the index answers — two indexes at the same
-// precision on different grids agreed to 100.000% — so it is chosen purely for
-// read cost. At 0.01° a cell is roughly 1.1 km north-south, and the corridor
-// around a stage touches a few dozen of them.
+// cellDegrees is the side of one index cell in degrees. Cell size does not affect
+// what the index answers, so it is chosen for read cost: at 0.01° a cell is
+// roughly 1.1 km north-south and a stage's corridor touches a few dozen.
 const cellDegrees = 0.01
 
 // nativeScale is the fixed-point precision OpenStreetMap itself stores, and the
@@ -41,27 +29,23 @@ const cellDegrees = 0.01
 const nativeScale = 1e7
 
 // coordinateMissing marks a node the extract referenced but never supplied, and
-// is deliberately not zero: (0, 0) is a real point in the Gulf of Guinea, so a
-// zero default would make a node there indistinguishable from an absent one.
-// At nativeScale a coordinate reaches 1.8e9 at the antimeridian, which leaves
-// the int32 floor unreachable by any real place.
+// is not zero: (0, 0) is a real point in the Gulf of Guinea. At nativeScale a
+// coordinate reaches 1.8e9, leaving the int32 floor unreachable by a real place.
 const coordinateMissing = math.MinInt32
 
 // errShortRecord means a cell blob ended in the middle of a way record, which
 // can only happen if the file is truncated or was written by another format.
 var errShortRecord = errors.New("osmindex: cell record is truncated")
 
-// cellKey addresses one cell of the grid. The origin is the intersection of the
-// equator and the prime meridian, so a key is meaningful without reference to
-// the region the index was built from.
+// cellKey addresses one cell of the grid. The origin is the equator and prime
+// meridian, so a key is meaningful without reference to the region indexed.
 type cellKey struct {
 	x int32
 	y int32
 }
 
-// quantisedPerCell is how many quantised coordinate units span one cell. It is
-// the conversion between a cell key and the coordinate origin a blob's deltas
-// are measured from.
+// quantisedPerCell is how many quantised coordinate units span one cell: the
+// conversion between a cell key and the origin a blob's deltas are measured from.
 func quantisedPerCell() int64 {
 	return int64(math.Round(cellDegrees * coordinateScale))
 }
@@ -79,10 +63,9 @@ func cellOf(x, y int32) cellKey {
 	return cellKey{x: floorDiv(x, per), y: floorDiv(y, per)}
 }
 
-// floorDiv divides rounding towards negative infinity, so cells west of the
-// prime meridian and south of the equator are the same size as the rest. Go's
-// integer division truncates towards zero, which would otherwise make the four
-// cells around the origin share a key with their neighbours.
+// floorDiv divides rounding towards negative infinity, so cells west of the prime
+// meridian and south of the equator are the same size as the rest. Go's integer
+// division truncates towards zero, which would merge the four cells at the origin.
 func floorDiv(value, divisor int32) int32 {
 	quotient := value / divisor
 	if value%divisor != 0 && (value < 0) != (divisor < 0) {
@@ -92,18 +75,10 @@ func floorDiv(value, divisor int32) int32 {
 	return quotient
 }
 
-// appendRun packs one way's geometry within one cell onto a buffer.
-//
-// The blob for a cell is the concatenation of these records with nothing
-// wrapping them: no count, no length prefix, no index. That is what lets the
-// builder append a cell's later records to the ones already stored without
-// reading back what it wrote, which is in turn what lets it hold only a bounded
-// amount of packed output in memory at a time.
-//
-// Way identifiers are stored whole rather than delta-encoded against the
-// previous record for the same reason — a record has to mean the same thing
-// wherever in the blob it lands. It costs about five bytes per record against a
-// file whose bulk is coordinates.
+// appendRun packs one way's geometry within one cell onto a buffer. A cell's blob
+// is the concatenation of these records with no count, length prefix or index, so
+// the builder can append without reading back what it wrote. Way identifiers are
+// stored whole for the same reason: a record must mean the same thing anywhere.
 func appendRun(buffer []byte, key cellKey, wayID int64, kind surface.Kind, x, y []int32) []byte {
 	buffer = binary.AppendUvarint(buffer, uint64(wayID)) //nolint:gosec // OSM identifiers are positive.
 	buffer = append(buffer, byte(kind))
@@ -120,10 +95,8 @@ func appendRun(buffer []byte, key cellKey, wayID int64, kind surface.Kind, x, y 
 	return buffer
 }
 
-// decodeCell reverses appendRun for every record in one cell's blob.
-//
-// The ways are returned with geometry in degrees, which is what surface.Match
-// consumes, so nothing downstream has to know the file stores fixed point.
+// decodeCell reverses appendRun for every record in one cell's blob. Geometry is
+// returned in degrees, which is what surface.Match consumes.
 func decodeCell(blob []byte, key cellKey) ([]surface.Way, error) {
 	per := quantisedPerCell()
 	baseX, baseY := int64(key.x)*per, int64(key.y)*per
@@ -147,14 +120,10 @@ func decodeCell(blob []byte, key cellKey) ([]surface.Way, error) {
 			return nil, errShortRecord
 		}
 		offset += size
-		// The count is preallocated, so it has to be believed only as far as the
-		// blob could actually carry: a point is two varints and so at least two
-		// bytes. Without this a corrupt count allocates against a number nothing
-		// in the file supports, which panics in make rather than returning the
-		// error every other damaged record here returns.
-		//
-		// The subtraction cannot go negative: Uvarint reported a positive size
-		// just above, so it read inside the blob and left offset within it.
+		// The preallocated count is believed only as far as the blob could carry:
+		// a point is two varints, so at least two bytes. A corrupt count would
+		// otherwise panic in make rather than returning an error. The subtraction
+		// cannot go negative: Uvarint read inside the blob just above.
 		remaining := len(blob) - offset
 		if count > uint64(remaining)/2 { //nolint:gosec // Non-negative, as above.
 			return nil, errShortRecord
@@ -188,13 +157,9 @@ func decodeCell(blob []byte, key cellKey) ([]surface.Way, error) {
 	return ways, nil
 }
 
-// splitIntoCells cuts one way into the maximal runs that lie in a single cell,
-// appending each to the accumulator.
-//
-// Each run carries one point past the boundary it ends at, so a segment that
-// crosses between two cells is complete on both sides. Without that overlap a
-// stage point sitting near a cell edge would measure its distance to a way that
-// appeared to stop at the edge, and would snap to something further away.
+// splitIntoCells cuts one way into the maximal runs lying in a single cell. Each
+// run carries one point past the boundary it ends at, so a segment crossing cells
+// is complete on both sides and a point near an edge does not snap further away.
 func splitIntoCells(into map[cellKey][]byte, wayID int64, kind surface.Kind, x, y []int32) int {
 	written := 0
 	current := cellOf(x[0], y[0])
@@ -216,8 +181,7 @@ func splitIntoCells(into map[cellKey][]byte, wayID int64, kind surface.Kind, x, 
 }
 
 // verifyScales fails a read whose file was written at a precision this build
-// cannot interpret. The values live in the file rather than in configuration so
-// an index and its reader cannot drift apart silently.
+// cannot interpret. The values live in the file so index and reader cannot drift.
 func verifyScales(fileCellDegrees, fileScale float64) error {
 	if fileCellDegrees != cellDegrees || fileScale != coordinateScale {
 		return fmt.Errorf(
