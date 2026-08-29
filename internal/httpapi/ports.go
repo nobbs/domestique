@@ -178,7 +178,7 @@ type State interface {
 // reconciliation ended. Every one of these is a local read — a status request
 // never asks Wahoo what it holds.
 type TargetState interface {
-	ForEachTarget(ctx context.Context, visit func(id, authorization string) error) error
+	ForEachTarget(ctx context.Context, visit func(id, authorizationState string) error) error
 	// ForEachPendingAuthorization visits the slots with an authorization in
 	// flight. The stored state cannot say so — it holds what a slot durably is,
 	// and being midway through the browser flow is not that — so the status view

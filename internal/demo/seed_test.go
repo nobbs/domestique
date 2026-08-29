@@ -175,8 +175,8 @@ func TestSeedLeavesEachSlotInTheStateItWasAskedFor(t *testing.T) {
 	})
 
 	authorizations := map[string]string{}
-	require.NoError(t, store.ForEachTarget(t.Context(), func(id, authorization string) error {
-		authorizations[id] = authorization
+	require.NoError(t, store.ForEachTarget(t.Context(), func(id, authorizationState string) error {
+		authorizations[id] = authorizationState
 
 		return nil
 	}))

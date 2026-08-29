@@ -74,7 +74,7 @@ func (s *Store) Targets(ctx context.Context) ([]Target, error) {
 
 // ForEachTarget visits each configured target without exposing its Wahoo
 // identity or refresh token.
-func (s *Store) ForEachTarget(ctx context.Context, visit func(id, authorization string) error) error {
+func (s *Store) ForEachTarget(ctx context.Context, visit func(id, authorizationState string) error) error {
 	if visit == nil {
 		return errors.New("target visitor is required")
 	}
@@ -86,11 +86,11 @@ func (s *Store) ForEachTarget(ctx context.Context, visit func(id, authorization 
 	}
 	defer closeRows(rows)
 	for rows.Next() {
-		var id, authorization string
-		if err := rows.Scan(&id, &authorization); err != nil {
+		var id, authorizationState string
+		if err := rows.Scan(&id, &authorizationState); err != nil {
 			return fmt.Errorf("reading target: %w", err)
 		}
-		if err := visit(id, authorization); err != nil {
+		if err := visit(id, authorizationState); err != nil {
 			return fmt.Errorf("visiting target: %w", err)
 		}
 	}
