@@ -121,11 +121,9 @@ func (s *fakeSource) Ways(_ context.Context, points []route.Point) ([]Way, error
 	return []Way{{ID: routeID, Kind: KindAsphalt, Line: line}}, nil
 }
 
-// fakeCache keys on the whole stage identity rather than the route ID alone.
-// The cache it stands in for is addressed by provider, route, and stage order,
-// so a fake that dropped any of the three would answer for a stage it was never
-// asked about — two providers sharing a route ID, or two stages under one
-// route, would read each other's classification and the test would not notice.
+// fakeCache keys on the whole stage identity rather than the route ID alone. The
+// cache it stands in for is addressed by provider, route and stage order, so a
+// fake dropping any of the three would answer for a stage it was never asked about.
 type fakeCache struct {
 	hashes      map[route.Key]string
 	generations map[route.Key]string

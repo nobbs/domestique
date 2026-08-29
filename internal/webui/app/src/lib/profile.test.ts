@@ -597,12 +597,10 @@ describe("gradientRanges", () => {
     }
   });
 
-  // The floor is a hundred metres and a whole-route chart of a long stage gives
-  // each of them about a pixel and a half, so the question is whether a stage
-  // full of terrain-model wobble comes out as a stipple of slivers. It does not:
-  // the window the gradient is measured over smooths well past its own length,
-  // and nothing shorter than a couple of pixels survives it. This is the check
-  // that would notice if that stopped being true.
+  // The floor is a hundred metres, and a whole-route chart of a long stage gives
+  // each about a pixel and a half, so the question is whether terrain-model wobble
+  // comes out as a stipple of slivers. It does not: the window the gradient is
+  // measured over smooths past its own length. This notices if that stops holding.
   it("does not shatter a long noisy stage into slivers", () => {
     // Rolling hills under a deterministic ±0.6 m of wobble, twelve metres a
     // point, sixty kilometres of it.

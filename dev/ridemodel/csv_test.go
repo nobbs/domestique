@@ -9,12 +9,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// A real Strava export repeats "Elapsed Time" and "Distance": once in an
-// early summary block in mixed units, again in a later detailed block in
-// metric base units (metres, seconds). This fixture reproduces that shape —
-// the first Distance is kilometres, the second is metres — so a regression
-// that goes back to "first occurrence wins" shows up as a thousand-fold
-// distance error rather than a silent one.
+// A real Strava export repeats "Elapsed Time" and "Distance": once in an early
+// summary block in mixed units, again in a later detailed block in metric base
+// units. This fixture reproduces that — the first Distance is kilometres, the
+// second metres — so a regression to "first occurrence wins" shows up as a
+// thousand-fold error.
 const sampleActivitiesCSV = `Activity ID,Activity Date,Activity Type,Elapsed Time,Distance,Activity Gear,Filename,Elapsed Time,Moving Time,Distance,Elevation Gain
 19865784256,"Aug 23, 2026, 10:36:58 AM",Ride,12691,78.95,Koga Colmaro Extreme,activities/21000736315.fit.gz,12691.0,11913.0,78957.9,406.0
 17902963176,"Aug 20, 2026, 6:00:00 AM",Virtual Ride,3600,20.0,,activities/19002753344.fit.gz,3600.0,3550.0,20123.4,0.0

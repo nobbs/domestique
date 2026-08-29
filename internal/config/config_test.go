@@ -116,10 +116,9 @@ func TestLoadRejectsInvalidConfiguration(t *testing.T) {
 		},
 		{
 			// Everything but the listeners, the identity gate and the state file
-			// moved into the database. An upgraded deployment whose config.toml
-			// still names one has to be told, because the value it holds is no
-			// longer read and a silent start would run on whatever the database
-			// says instead.
+			// moved into the database. A config.toml still naming one has to be
+			// told: the value is no longer read, and a silent start would run on
+			// whatever the database says.
 			name: "a setting that moved to the database",
 			mutate: func(t *testing.T, path string) {
 				t.Helper()

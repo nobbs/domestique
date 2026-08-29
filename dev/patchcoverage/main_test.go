@@ -53,10 +53,9 @@ github.com/nobbs/domestique/internal/route/stage.go:10.2,11.3 1 0
 }
 
 // The rule the whole program exists for. `if err != nil {` is the last line of
-// the block that evaluated the condition and the first line of the block that
-// handles the error, so a never-taken error path leaves it reached one way and
-// not the other. Codecov counts that against the patch, and a measurement that
-// calls it covered reports several points more than the gate will.
+// the block that evaluated the condition and the first of the block that handles
+// the error, so a never-taken error path leaves it reached one way and not the
+// other. Codecov counts that against the patch.
 func TestReadProfileMarksALineTwoBlocksDisagreeOnPartial(t *testing.T) {
 	t.Parallel()
 

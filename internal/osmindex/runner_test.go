@@ -310,12 +310,10 @@ func (n *fakeNotifier) Send(_ context.Context, title, message string) error {
 	return nil
 }
 
-// A build that succeeds has to leave the service using what it built. Every
-// other test here stops short of that: a failure never opens an index, and an
-// unchanged check deliberately keeps the one already live. This is the run that
-// installs, and it is the only one that proves the pieces fit — that Build's
-// file is one Open accepts, that the generation written down is the generation
-// now being served, and that a crash's leftovers go with it.
+// A build that succeeds has to leave the service using what it built. Every other
+// test here stops short: a failure never opens an index, and an unchanged check
+// keeps the one already live. This proves Build's file is one Open accepts, that
+// the generation written down is the one being served, and that leftovers go.
 func TestRunInstallsWhatItBuilds(t *testing.T) {
 	extract := testExtract(t)
 	digest := digestOf(extract)

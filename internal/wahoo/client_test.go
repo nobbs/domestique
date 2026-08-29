@@ -156,12 +156,10 @@ func TestClientReportsRateLimitObservedFromResponse(t *testing.T) {
 	assert.Equal(t, now.Add(120*time.Second), resetAt)
 }
 
-// A response that is not itself limited can report no usable reset at all —
-// Wahoo answers seconds_until_reset as 0 on every such response — so the last
-// advertised reset stays in place internally rather than being discarded. Once
-// that time has actually passed, though, reporting it to a caller would be a
-// refill time that has already gone by, which RateLimit clears rather than
-// hands out.
+// A response that is not itself limited reports no usable reset — Wahoo answers
+// seconds_until_reset as 0 — so the last advertised reset stays in place
+// internally. Once that time has passed, reporting it would be a refill time
+// already gone by, which RateLimit clears.
 func TestClientDoesNotReportAResetThatHasAlreadyPassed(t *testing.T) {
 	var requests int
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {

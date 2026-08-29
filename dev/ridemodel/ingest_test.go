@@ -92,11 +92,9 @@ func TestBuildSamplesMarksBelowThresholdAsNotMoving(t *testing.T) {
 	assert.True(t, samples[1].MovingFilter)
 }
 
-// The window is a physical distance, so doubling how densely a ride is
-// A point less than gradientWindowMetres into the ride has no full window
-// behind it yet, and must report no gradient rather than one measured over
-// whatever short span happens to be available — the same rule
-// internal/route.Route.MaxGradientPercent applies.
+// A point less than gradientWindowMetres into the ride has no full window behind
+// it yet, and must report no gradient rather than one measured over whatever
+// short span is available — the same rule MaxGradientPercent applies.
 func TestWindowedGradientsReportsNoneBeforeAFullWindowIsAvailable(t *testing.T) {
 	start := time.Date(2026, 8, 1, 6, 0, 0, 0, time.UTC)
 	// A steep, unmistakable grade, but only 40 m into the ride — well short

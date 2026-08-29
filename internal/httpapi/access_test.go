@@ -139,11 +139,10 @@ func TestGateRejectsMissingAssertionOnPublicPath(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, response.Code)
 }
 
-// Tailscale-User-Login is not an identity here. Serve still fronts the
-// listener and Tailnet members can still reach it directly, so honouring that
-// header would be a second way in — and Cloudflare Tunnel forwards client
-// headers verbatim, so it would be a forgeable one. Sending it must change
-// nothing at all.
+// Tailscale-User-Login is not an identity here. Serve still fronts the listener
+// and Tailnet members can reach it directly, so honouring that header would be a
+// second way in — and a forgeable one, since Cloudflare Tunnel forwards client
+// headers verbatim. Sending it must change nothing.
 func TestGateIgnoresTailscaleIdentityHeader(t *testing.T) {
 	tests := []struct {
 		verifier      *recordingVerifier

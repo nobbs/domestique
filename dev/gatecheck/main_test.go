@@ -9,13 +9,9 @@ import (
 )
 
 // graph is the smallest task set that satisfies both rules: `quick` runs two
-// checks, `check` runs those two plus exactly the deferred set, and the ci-*
-// groups decompose it the way CI does. Every test starts from this and breaks
-// one thing, so what a case asserts is the edit it makes.
-//
-// `build-check` depends on `ui-build` here for the same reason it does in
-// mise-tasks.toml: it is how that check arranges to run, not a further check,
-// and the walk must not count it as a step.
+// checks, `check` runs those plus the deferred set, and the ci-* groups decompose
+// it as CI does. Every test breaks one thing, so what a case asserts is the edit
+// it makes. `build-check` depends on `ui-build` as it does in mise-tasks.toml.
 func graph() []task {
 	return []task{
 		{Name: "quick", Depends: []string{"ui-install", "hygiene", "vet"}},

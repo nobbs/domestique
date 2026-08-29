@@ -14,14 +14,10 @@ import (
 )
 
 // The runbook is written against the categories this package emits, and those
-// are the only words an operator ever sees for a run that did not succeed. A
-// category added here without an entry there leaves the one document that
-// explains it silently incomplete, which is exactly the failure a runbook exists
-// to prevent.
-//
+// are the only words an operator sees for a run that did not succeed. A category
+// added here without an entry there leaves that document silently incomplete.
 // The categories are read out of the declaration rather than listed again here,
-// because a list this test maintains by hand would pass for exactly the change
-// it exists to catch.
+// which would pass for exactly the change this exists to catch.
 func TestTheRunbookExplainsEveryFailureCategory(t *testing.T) {
 	runbook := readRunbook(t)
 

@@ -12,11 +12,9 @@ import (
 	"github.com/nobbs/domestique/internal/surface"
 )
 
-// Null Island is a real place, so a node there has to survive the pass that
-// drops nodes the extract never supplied. The two cases are only
-// distinguishable because an unresolved slot carries a sentinel rather than a
-// zero, and a way reduced to one point by a wrongly dropped node vanishes
-// entirely.
+// Null Island is a real place, so a node there has to survive the pass that drops
+// nodes the extract never supplied. The two cases are distinguishable only
+// because an unresolved slot carries a sentinel rather than a zero.
 func TestPackWaysKeepsANodeAtTheOrigin(t *testing.T) {
 	path := IndexPath(t.TempDir(), "aaaaaaaaaaaa")
 	writer, err := newCellWriter(t.Context(), path)

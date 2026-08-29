@@ -518,10 +518,9 @@ func TestSetSecretsRefusesACredentialNothingReads(t *testing.T) {
 }
 
 // The type exists to keep a credential out of anything observable, so the two
-// ways a value usually escapes have to be closed. %s is the one that would
-// otherwise print it in full: an unexported []byte is still rendered as text by
-// that verb, and by the %+v slog reaches for. %#v reaches past String into the
-// field itself, so it is checked here too.
+// ways a value usually escapes are closed. %s renders an unexported []byte as
+// text, and so does the %+v slog reaches for; %#v reaches past String into the
+// field itself, so it is checked too.
 func TestSecretDoesNotRenderItsValue(t *testing.T) {
 	secret := NewSecret([]byte("opensesame"))
 

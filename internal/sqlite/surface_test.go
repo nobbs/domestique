@@ -118,12 +118,10 @@ func TestStoreHidesASurfaceMeasuredAgainstOtherGeometry(t *testing.T) {
 	assert.Equal(t, "earlier-hash", hash, "StageSurfaceHash()")
 }
 
-// The mirror of the test above, and deliberately the opposite answer. A stale
-// generation is not a stale geometry: those ranges still index the coordinates
-// the stage actually has, so they are old rather than wrong. There is one row
-// per stage, so withholding it would serve no surface at all — every rebuild
-// would blank the library until enrichment had walked it again. The hash read
-// is what notices, and the next pass is what corrects it.
+// The mirror of the test above, and the opposite answer. A stale generation is
+// not a stale geometry: those ranges still index the coordinates the stage has,
+// so they are old rather than wrong. One row per stage, so withholding it would
+// blank the library after every rebuild. The next pass corrects it.
 func TestStoreKeepsASurfaceMeasuredAgainstAnEarlierIndex(t *testing.T) {
 	store := openTestStore(t, testKey(1))
 	stage := storeTestStage(t, 1, 1, "revision", "content-hash")
