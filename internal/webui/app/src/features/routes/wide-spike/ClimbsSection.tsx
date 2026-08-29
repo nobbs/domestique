@@ -40,13 +40,13 @@ import { cellAt, clockAt } from "./shared";
  * snapping has somewhere to land, and the list always rests showing whole
  * climbs.
  *
- * Five of them. The card above carries the two mixes as well, and with those
- * stacked under the figures there was only room for three — read across on one
- * line instead, they cost a row rather than a block, and the height that buys
- * goes here.
+ * Six of them, on one line each. A climb is five short facts — how long, how
+ * steep, how much it climbs, where it starts, and the weather waiting on it —
+ * and the card is wide enough to say all five across, which halves the row and
+ * lets the list show most routes whole without scrolling at all.
  */
-const ROW_HEIGHT = 44;
-const VISIBLE_ROWS = 5;
+const ROW_HEIGHT = 28;
+const VISIBLE_ROWS = 6;
 
 export function ClimbsSection({
   climbs,
@@ -112,31 +112,29 @@ export function ClimbsSection({
                 <button
                   type="button"
                   onClick={() => onSelect(middle)}
-                  className="flex size-full flex-col justify-center rounded-lg px-1.5 text-left hover:bg-[var(--base)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent)]"
+                  className="flex size-full items-center gap-2 rounded-lg px-1.5 text-left hover:bg-[var(--base)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent)]"
                 >
-                  <span className="flex items-baseline gap-1.5">
+                  <span className="w-3 shrink-0 text-xs font-semibold tabular-nums">
                     {/* The ordinal the chart's own bracket carries. */}
-                    <span className="text-xs font-semibold tabular-nums">{index + 1}</span>
-                    <span className="text-xs tabular-nums">
-                      {formatDistance(climb.distanceMetres, unitSystem)} at{" "}
-                      {formatGradient(climb.averageGradePercent)}
-                    </span>
-                    {cell === null ? null : (
-                      <span className="ml-auto flex items-center gap-1 text-xs tabular-nums">
-                        {Glyph === null ? null : (
-                          <Glyph size={14} stroke={1.8} aria-hidden="true" />
-                        )}
-                        <span className="font-semibold">
-                          {Math.round(cell.point.temperatureCelsius)}°
-                        </span>
-                      </span>
-                    )}
+                    {index + 1}
                   </span>
-                  <span className="mt-0.5 block text-[11px] text-[var(--ink-2)] tabular-nums">
+                  <span className="shrink-0 text-xs tabular-nums">
+                    {formatDistance(climb.distanceMetres, unitSystem)} at{" "}
+                    {formatGradient(climb.averageGradePercent)}
+                  </span>
+                  <span className="truncate text-[11px] text-[var(--ink-2)] tabular-nums">
                     {formatAscent(climb.ascentMetres, unitSystem)} · from{" "}
                     {formatDistance(climb.startMetres, unitSystem)}
                     {cell === null ? null : ` · ${clockAt(cell.sample.arrivalAt)}`}
                   </span>
+                  {cell === null ? null : (
+                    <span className="ml-auto flex shrink-0 items-center gap-1 text-xs tabular-nums">
+                      {Glyph === null ? null : <Glyph size={14} stroke={1.8} aria-hidden="true" />}
+                      <span className="font-semibold">
+                        {Math.round(cell.point.temperatureCelsius)}°
+                      </span>
+                    </span>
+                  )}
                 </button>
               </li>
             );
