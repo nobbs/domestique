@@ -220,3 +220,15 @@ body { margin: 0; background: var(--base); color: var(--ink); font-family: var(-
   .map-controls { top: calc(16px + env(safe-area-inset-top)); right: calc(16px + env(safe-area-inset-right)); }
   .route-map > .map-credits { right: calc(16px + env(safe-area-inset-right)); bottom: calc(64px + env(safe-area-inset-bottom)); }
 }
+
+/*
+ * A finger already has a zoom gesture. Pinching is how the map is scaled where
+ * the primary pointer is coarse, so the two buttons are a second way to do a
+ * thing the reader can already do, sitting over the ground they are trying to
+ * see. Keyed on the pointer rather than on the breakpoint because it is the
+ * gesture that makes them redundant and not the width: a narrow window on a
+ * desktop still has only a cursor, and keeps them.
+ */
+@media (pointer: coarse) {
+  .map-zoom { display: none; }
+}
