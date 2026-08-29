@@ -18,20 +18,11 @@ import (
 const authorizedState = "authorized"
 
 // maxDeletionsPerTarget bounds how many owned routes one reconciliation may
-// remove from one target.
-//
-// It was an operator setting only in name: the configuration file accepted the
-// key and then refused every value but five, so the number was never anything
-// else. A limit that exists to make a runaway deletion stop is not a dial an
-// operator has a use for, and naming it here says so.
+// remove from one target. Not a setting: it exists to stop a runaway deletion.
 const maxDeletionsPerTarget = 5
 
-// Interval is how often a scheduled reconciliation runs.
-//
-// Like maxDeletionsPerTarget it was a file key that accepted exactly one value.
-// An hour is the cadence the whole design is sized for — the rate limits, the
-// staleness bound, and the digest window are all expressed against it — so it
-// is stated here rather than asked for.
+// Interval is how often a scheduled reconciliation runs. The rate limits, the
+// staleness bound and the digest window are all sized against an hour.
 const Interval = time.Hour
 
 const encoderContentVersion = "fit-v4-elevation-profile"
@@ -39,20 +30,12 @@ const encoderContentVersion = "fit-v4-elevation-profile"
 // Options configures safety rules for a synchronizer. It contains no secrets
 // and is intentionally independent of the configuration packages.
 type Options struct {
-	// AllowEmptySourceDeletion reports whether a trusted but empty source may
-	// delete the final owned destination routes.
-	//
-	// It is a function rather than a value because it is the switch an operator
-	// turns on for one deliberate run and off again afterwards. It is asked once
-	// per source, as that source is read, so turning it off reaches the sources
-	// a run has not read yet.
+	// AllowEmptySourceDeletion reports whether a trusted but empty source may delete
+	// the final owned destination routes. Asked once per source, as it is read.
 	AllowEmptySourceDeletion func() bool
 
-	// Sources and TargetIDs are functions for the same reason: both are
-	// settings an operator edits while the service runs, so a run reads them as
-	// it starts rather than inheriting what was configured at composition.
-	// Both answer with what has already been validated; an empty answer is a
-	// service that has not been configured yet, and a run says so.
+	// Sources and TargetIDs are read as a run starts, not at composition: both are
+	// settings an operator edits while the service runs. Empty means unconfigured.
 	Sources   func() ([]Source, error)
 	TargetIDs func() []string
 }
@@ -72,10 +55,8 @@ type Service struct {
 	running                  atomic.Bool
 }
 
-// New creates a synchronizer with explicit consumer-owned dependencies. Every
-// dependency is required except the annotator and the predictor: a nil
-// annotator leaves stored stages unclassified, a nil predictor leaves them
-// carrying no prediction, and either changes nothing else about a run.
+// New creates a synchronizer with explicit consumer-owned dependencies. All are
+// required except the annotator and predictor; nil leaves stages unenriched.
 func New(
 	options *Options,
 	state State,
@@ -108,20 +89,10 @@ func New(
 	}, nil
 }
 
-// RunSource reads every configured source into stored state, one at a time.
-//
-// It contacts no target and needs no authorisation, so a library refresh keeps
-// working while a target waits to be reauthorised. Each source is read and
-// stored independently: one source's failure does not stop the others from
-// being read, and only a source that was read successfully has its own stored
-// stages replaced. A source that failed keeps the stages it was last known to
-// have, which is why the empty-source gate is evaluated per source, against
-// that source's own prior count — refusing to overwrite a populated source
-// with an empty one is what stops the deletion before anything downstream can
-// be told to perform it.
-//
-// A concurrent run performs no work and returns OutcomeSkipped without altering
-// durable state.
+// RunSource reads every configured source into stored state, one at a time,
+// contacting no target. Only a source read successfully has its stages replaced;
+// a failed one keeps its last-known stages, and the empty-source gate is
+// evaluated per source against that source's own prior count.
 func (s *Service) RunSource(ctx context.Context) Result {
 	if !s.running.CompareAndSwap(false, true) {
 		return Result{Phase: PhaseSource, Outcome: OutcomeSkipped}
@@ -155,8 +126,7 @@ func (s *Service) RunSource(ctx context.Context) Result {
 			result.Outcome = OutcomeFailed
 		}
 		// A real failure always replaces a recorded empty-source block: the guard
-		// category describes no fault, and reporting it once a source has actually
-		// failed would record and alert on the wrong category.
+		// category describes no fault.
 		if result.Failure == FailureNone || (result.Failure == FailureEmptySource && failure != FailureEmptySource) {
 			result.Failure = failure
 		}
@@ -201,20 +171,10 @@ func (s *Service) runOneSource(
 	return OutcomeSucceeded, FailureNone, len(ordered)
 }
 
-// RunTargets reconciles the stored inventory onto every configured target.
-//
-// It reads the library the source phase stored rather than fetching it again,
-// so a target that was unreachable or unauthorised catches up from the same
-// inventory the last successful read produced, without asking VeloPlanner a
-// second time for an answer already on disk.
-//
-// The stored inventory is authority for what should exist, exactly as a freshly
-// fetched one was: an inventory that cannot be read back whole fails the phase
-// as a state failure, because a partial library is indistinguishable from a
-// library whose missing stages are meant to be deleted.
-//
-// A concurrent run performs no work and returns OutcomeSkipped without altering
-// durable state.
+// RunTargets reconciles the stored inventory onto every configured target,
+// reading the library the source phase stored rather than fetching it again. An
+// inventory that cannot be read back whole fails the phase as a state failure:
+// a partial library is indistinguishable from one meant to shrink.
 func (s *Service) RunTargets(ctx context.Context) Result {
 	if !s.running.CompareAndSwap(false, true) {
 		return Result{Phase: PhaseTargets, Outcome: OutcomeSkipped}
@@ -279,19 +239,9 @@ func (s *Service) RunTargets(ctx context.Context) Result {
 	return result
 }
 
-// RunTarget reconciles the stored inventory onto exactly one configured
-// target, leaving every other target untouched. It shares the same ownership,
-// ordering, update-before-delete, and deletion-limit rules RunTargets applies
-// to that slot — this is the same reconciliation, scoped to one account rather
-// than run over all of them.
-//
-// It shares RunTargets' mutual exclusion: a target-specific request must not
-// race a full synchronization over the same stored state and target-stage
-// mappings.
-//
-// An unconfigured target ID performs no work, the same defensive answer a
-// concurrent run gives, because the caller is expected to have already
-// refused a slot this service was never given.
+// RunTarget reconciles the stored inventory onto exactly one configured target,
+// applying every rule RunTargets applies to that slot and sharing its mutual
+// exclusion. An unconfigured target ID performs no work.
 func (s *Service) RunTarget(ctx context.Context, targetID string) Result {
 	if !slices.Contains(s.targetIDs(), targetID) {
 		return Result{Phase: PhaseTargets, Outcome: OutcomeSkipped}
@@ -332,25 +282,10 @@ func (s *Service) RunTarget(ctx context.Context, targetID string) Result {
 	}
 }
 
-// ClearTarget deletes every route this service owns from one configured
-// target, and forgets its stage mappings, leaving the slot as though it had
-// never been written to. The next reconciliation rebuilds it from stored
-// source state.
-//
-// It is the one deletion path the per-run deletion limit does not apply to,
-// and that is deliberate. The limit exists so an *unattended* run cannot act
-// on a bad inventory; this runs only when an operator asks for it directly,
-// having already been told what it will do. For the same reason nothing
-// schedules it: it is reachable from a manual trigger alone.
-//
-// What it may not do is unchanged. It deletes only routes carrying an external
-// ID this service issued, so a hand-made route in the same account is as
-// untouchable here as anywhere else — the ownership rule is the reason this
-// can exist at all, not an exception to it.
-//
-// It leaves the library alone: source stages, their geometry, and the trusted
-// inventory are untouched, because clearing a destination is not forgetting
-// what should be on it.
+// ClearTarget deletes every route this service owns from one configured target
+// and forgets its stage mappings; the next reconciliation rebuilds it. It is the
+// one deletion the per-run limit does not bound, nothing schedules it, and it
+// deletes only routes carrying an external ID this service issued.
 func (s *Service) ClearTarget(ctx context.Context, targetID string) Result {
 	if !slices.Contains(s.targetIDs(), targetID) {
 		return Result{Phase: PhaseTargets, Outcome: OutcomeSkipped}
@@ -379,10 +314,8 @@ func (s *Service) ClearTarget(ctx context.Context, targetID string) Result {
 	}
 }
 
-// clearTarget removes the remote routes first and the local record of them
-// second. That order is what makes an interrupted clear safe to repeat: a
-// mapping still present for an already-deleted route is re-cleared harmlessly,
-// where the reverse would strand routes nothing remembers owning.
+// clearTarget removes the remote routes first and the local record second, so an
+// interrupted clear is safe to repeat rather than stranding unowned routes.
 func (s *Service) clearTarget(ctx context.Context, targetID string) (int, FailureCategory) {
 	refreshToken, refreshErr := s.state.RefreshToken(ctx, targetID)
 	if refreshErr != nil {
@@ -401,9 +334,8 @@ func (s *Service) clearTarget(ctx context.Context, targetID string) (int, Failur
 		return 0, FailureState
 	}
 
-	// The count is real even when this fails: those routes are gone, and
-	// repeating the clear continues from what is left rather than starting
-	// over. The mappings below are forgotten only on a clean sweep.
+	// The count is real even when this fails: those routes are gone. The mappings
+	// below are forgotten only on a clean sweep.
 	deleted, deleteErr := s.target.DeleteOwnedRoutes(ctx, accessToken)
 	if deleteErr != nil {
 		return deleted, s.handleTargetError(ctx, targetID, deleteErr)
@@ -419,8 +351,7 @@ func (s *Service) clearTarget(ctx context.Context, targetID string) (int, Failur
 }
 
 // targetOutcome states one slot's reconciliation in the same vocabulary a run
-// uses, so a reader does not have to know the failure categories to tell a
-// blocked slot from a broken one.
+// uses.
 func targetOutcome(failure FailureCategory) Outcome {
 	if failure == FailureNone {
 		return OutcomeSucceeded
@@ -435,24 +366,9 @@ func targetOutcome(failure FailureCategory) Outcome {
 }
 
 // AnnotateStored classifies the ground under the stored inventory and predicts
-// its moving time, reporting how much of the classification pass could not
-// classify. The two run over the same read of the inventory, predicting after
-// classifying, so a stage's prediction can read the classification this same
-// pass just wrote rather than waiting a full cycle behind it.
-//
-// Neither is part of either sync phase. Getting routes onto a device is what a
-// synchronization is for, so a slow or unavailable tagging endpoint, or a
-// coefficient file predicting nothing new, must neither delay that nor be
-// reported as a failed sync — which is why the caller runs this after every
-// phase it intended to run. Each pass caches what it learns and is bounded to
-// this one call, so a failure costs only the stages this pass would have
-// filled in; the next one asks again, and until then those stages simply carry
-// no surface or no prediction. The failed count is what tells that apart from a
-// stage nobody has asked about yet, which looks identical otherwise.
-//
-// It reads the inventory back from state rather than being handed one, because
-// a classification is a set of positions in one stored geometry's coordinate
-// array: the stages it must describe are precisely the stored ones.
+// its moving time over one read, predicting after classifying. Neither is part
+// of either sync phase and neither can fail a run; the failed count tells a
+// stage that keeps failing apart from one nobody has asked about yet.
 func (s *Service) AnnotateStored(ctx context.Context) (classified, failed int) {
 	if s.annotator == nil && s.predictor == nil {
 		return 0, 0
@@ -473,9 +389,8 @@ func (s *Service) AnnotateStored(ctx context.Context) (classified, failed int) {
 	return classified, failed
 }
 
-// predictStored runs the ride-model predictor over the same stages
-// AnnotateStored just read, and is silent on success for the same reason
-// AnnotateStored's own logging is: a routine pass is not worth a log line.
+// predictStored runs the ride-model predictor over the stages AnnotateStored
+// read. Silent on success: a routine pass is not worth a log line.
 func (s *Service) predictStored(ctx context.Context, stages []route.Route) {
 	if s.predictor == nil {
 		return
@@ -484,11 +399,8 @@ func (s *Service) predictStored(ctx context.Context, stages []route.Route) {
 	logPassOutcome("ride model prediction", predicted, failed, err)
 }
 
-// logPassOutcome is the one place either enrichment pass is allowed to be
-// heard in the log. Neither pass can fail a run and neither is worth an alert,
-// but a stage that fails every pass is invisible otherwise: it looks exactly
-// like a stage nobody has asked about. Counts and whether the pass ran to the
-// end — no stage names, no geometry, and nothing the endpoint said.
+// logPassOutcome is the one place either enrichment pass is heard in the log.
+// Counts and completion only: no stage names, no geometry, nothing upstream said.
 func logPassOutcome(pass string, completed, failed int, err error) {
 	if failed == 0 && err == nil {
 		return
@@ -500,17 +412,9 @@ func logPassOutcome(pass string, completed, failed int, err error) {
 	slog.Warn(pass+" incomplete", "completed", completed, "failed", failed, "reason", reason)
 }
 
-// exportProfiles returns the inventory carrying the elevation profile that is
-// exported to devices, leaving identity, revision, and content hash untouched.
-//
-// Storing that profile rather than the raw one means any statistic derived from
-// stored state describes the same climb a rider will actually see, instead of
-// the satellite noise the normalizer exists to remove.
-//
-// A stage the processor rejects is stored as it arrived rather than failing the
-// run here. What is stored is what the targets are sent, so a rejected stage
-// reaches a device as the source planned it rather than not at all, and the map
-// draws the same line the device carries.
+// exportProfiles returns the inventory carrying the elevation profile exported to
+// devices, leaving identity, revision, and content hash untouched. A stage the
+// processor rejects is stored as it arrived, so it still reaches a device.
 func (s *Service) exportProfiles(ordered []route.Route) []route.Route {
 	stages := make([]route.Route, 0, len(ordered))
 	for index := range ordered {
@@ -526,13 +430,8 @@ func (s *Service) exportProfiles(ordered []route.Route) []route.Route {
 	return stages
 }
 
-// reconcileTarget brings one target in line with the stored inventory.
-//
-// The stages it is given are the export profiles the source phase derived and
-// stored, and they are encoded as they are. Deriving again here would smooth an
-// already smoothed profile, and would put a different course on the device from
-// the one the stored state describes and the map draws. One derivation, in the
-// phase that owns it.
+// reconcileTarget brings one target in line with the stored inventory. The
+// stages are encoded as given; deriving again here would smooth twice.
 func (s *Service) reconcileTarget(
 	ctx context.Context,
 	targetID string,
@@ -560,11 +459,8 @@ func (s *Service) reconcileTarget(
 		return counts{}, FailureDeletionLimit
 	}
 
-	// One listing answers ownership for every stage below, including the ones
-	// nothing changed about. It is the same evidence a per-stage lookup gave —
-	// what the target actually holds right now, by external ID — gathered once
-	// instead of once per stage, so an unchanged library costs a single
-	// request rather than one per stage against a quota every target shares.
+	// One listing answers ownership for every stage below, so an unchanged library
+	// costs one request rather than one per stage against a shared quota.
 	owned, listErr := s.target.ListOwnedRoutes(ctx, accessToken)
 	if listErr != nil {
 		return counts{}, s.handleTargetError(ctx, targetID, listErr)
@@ -643,13 +539,8 @@ func (s *Service) reconcileTarget(
 
 func (s *Service) handleTargetError(ctx context.Context, targetID string, err error) FailureCategory {
 	if !s.target.IsUnauthorized(err) {
-		// FailureDestination alone does not distinguish a rate limit an operator
-		// should just wait out from a genuine, unexpected Wahoo failure. The
-		// wahoo package's own errors are already protocol-level — an HTTP status,
-		// a rate-limit sentinel, a transport failure — never a route name, a
-		// stage, or a credential, so logging the message here stays inside the
-		// same "aggregate facts only" rule every other log line in this package
-		// follows.
+		// The wahoo package's errors are protocol-level — a status, a rate-limit
+		// sentinel, a transport failure — never a route name or a credential.
 		slog.Warn("wahoo target reconciliation failed", "target", targetID, "error", err)
 
 		return FailureDestination

@@ -11,18 +11,12 @@ import (
 	"time"
 )
 
-// maxDigestInterval bounds the period one digest may cover.
-//
-// A digest totals the recorded run history, and that history is a bounded
-// window: the store keeps the last few hundred runs, which an hourly deployment
-// fills in a little over a week. A longer period would not fail — it would
-// quietly report a total missing every run already pruned from under it, which
-// is worse than refusing the setting.
+// maxDigestInterval bounds the period one digest may cover. The run history is a
+// bounded window, and a longer period would total runs already pruned from it.
 const maxDigestInterval = 7 * 24 * time.Hour
 
-// minimumInterval is the floor under every duration here. These settings cross
-// the wire and are stored as whole seconds, so anything shorter is written down
-// as zero and then refused when it is read back at startup.
+// minimumInterval is the floor under every duration here. These are stored as
+// whole seconds, so anything shorter is written as zero and then refused.
 const minimumInterval = time.Second
 
 // maxTargets bounds the destination slots one deployment reconciles onto. Two

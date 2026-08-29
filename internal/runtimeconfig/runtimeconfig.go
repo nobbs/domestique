@@ -1,16 +1,5 @@
 // Package runtimeconfig owns the settings an operator changes while the service
-// is running, together with the rules those settings have to satisfy.
-//
-// The service's remaining configuration is read once from a file at startup and
-// is the business of internal/config. What lives here is the half that has no
-// reason to cost a restart: a deletion gate flipped for one deliberate run, a
-// basemap added to the picker, a notification quieted for a week. Those are
-// held in the database, edited from the browser, and read from a live snapshot
-// by whoever needs them.
-//
-// The validation is here rather than at either edge: both the write path and
-// the read-back at startup call the same functions, so a value that reaches the
-// database is one that would have passed the check a file-loaded value passes.
+// is running, and the rules both the write path and startup validate them with.
 package runtimeconfig
 
 import (
@@ -27,16 +16,13 @@ import (
 )
 
 // Values is one complete set of runtime settings. It is copied by value and
-// replaced whole: an edit writes every field, because the form the operator
-// submits holds every field.
+// replaced whole: an edit writes every field.
 type Values struct {
 	Notifications Notifications
 	Wahoo         Wahoo
 	RideModel     RideModel
-	// Basemaps are the cartographies the reader may switch the map between, in
-	// the order they are offered. The first is what a browser that has never
-	// chosen one loads. At least one is required, because the map has to paint
-	// on something.
+	// Basemaps are the cartographies the reader may switch between, in the order
+	// offered. The first is the default; at least one is required.
 	Basemaps []Basemap
 	// Sources are the libraries a run reads, in the order it reads them. An
 	// empty list is a service that has not been configured yet, not an error.
@@ -51,16 +37,13 @@ type Wahoo struct {
 	OAuthBaseURL string
 	ClientID     string
 
-	// Targets are the destination slot names, in the order they are offered.
-	// A slot name is the identity every stored authorization, target stage and
-	// recorded run carries, so renaming one abandons that slot's state rather
-	// than moving it.
+	// Targets are the destination slot names, in order. Stored authorizations and
+	// runs carry the name, so renaming a slot abandons its state.
 	Targets []string
 }
 
 // SourceProviders lists the libraries a run can read, in the order it reads them
-// and the order a settings page offers them. A library turned on takes its place
-// in this order rather than the order it happened to be turned on in.
+// and a settings page offers them.
 func SourceProviders() []route.Provider {
 	return []route.Provider{route.ProviderVeloPlanner, route.ProviderKomoot}
 }
@@ -69,37 +52,31 @@ func SourceProviders() []route.Provider {
 type Source struct {
 	Provider route.Provider
 
-	// BaseURL is both the origin the adapter reaches and the one the page links
-	// a stage back to, so it is the provider's own web application rather than
-	// an API host that happens to answer.
+	// BaseURL is both the origin the adapter reaches and the one the page links a
+	// stage back to: the provider's web application, not an API host.
 	BaseURL string
 }
 
 // RideModel configures the predicted moving time internal/ridemodel computes
 // per stage.
 type RideModel struct {
-	// CoefficientsFile names the coefficient file the offline fitting tooling
-	// emits. It is not a secret: it carries fitted physical constants, not a
-	// credential or route data.
-	//
-	// No file switches prediction off entirely, which is also the default.
+	// CoefficientsFile names the file the offline fitting tooling emits. Not a
+	// secret. Empty switches prediction off entirely, and is the default.
 	CoefficientsFile string
 }
 
 // Sync holds the reconciliation settings a run reads when it starts.
 type Sync struct {
 	// AllowEmptySourceDeletion permits a trusted but empty source to delete the
-	// final owned destination routes. It is turned on for one deliberate run and
-	// off again afterwards.
+	// final owned destination routes.
 	AllowEmptySourceDeletion bool
 
 	// StaleAfter bounds how long the trusted source inventory may go without a
 	// successful refresh before it is reported and notified as stale.
 	StaleAfter time.Duration
 
-	// InitialDelay is how long after start the first run is attempted. It is
-	// read once, by the start it delays, so an edit reaches the next restart
-	// rather than the next run.
+	// InitialDelay is how long after start the first run is attempted. Read once,
+	// by the start it delays, so an edit reaches the next restart.
 	InitialDelay time.Duration
 }
 
@@ -108,28 +85,21 @@ type Notifications struct {
 	// Policy names what a routine successful run notifies.
 	Policy SuccessPolicy
 
-	// PushoverBaseURL is the origin the application token and user key are sent
-	// to. It is a setting so a development or demo environment can point it at
-	// an address that goes nowhere rather than reaching the real one with a
-	// placeholder token.
+	// PushoverBaseURL is the origin the application token and user key are sent to.
+	// A setting so a demo environment can point it somewhere that goes nowhere.
 	PushoverBaseURL string
 
-	// DigestInterval is how much time separates two digests. It is read only by
-	// SuccessPolicyDigest, and validated whatever the policy is: a setting an
-	// operator will one day switch to should not turn out to have been invalid
-	// all along at the moment they switch.
+	// DigestInterval separates two digests. Read only by SuccessPolicyDigest, and
+	// validated whatever the policy in force is.
 	DigestInterval time.Duration
 
 	// Enabled is the switch for the whole channel. Off suppresses failures too,
-	// not only routine success, which is why every surface that offers it has to
-	// say so.
+	// not only routine success.
 	Enabled bool
 }
 
-// SuccessPolicy names what a routine successful run notifies. It never governs
-// a failure, a blocked run, or the first success that ends one: those are the
-// signals the operator installed notifications for, and only Notifications.
-// Enabled silences them.
+// SuccessPolicy names what a routine successful run notifies. It never governs a
+// failure, a blocked run, or the first success that ends one.
 type SuccessPolicy string
 
 const (
@@ -148,42 +118,27 @@ type Basemap struct {
 	// remembers its choice by, so it is required and unique across the list.
 	Name string
 
-	// StyleURL is the MapLibre style document the operator's browser loads. It
-	// is deliberately not a secret: it is served to the page and is visible to
-	// anyone who can reach the UI. The default is a keyless provider, so no
-	// credential is exposed. A provider that requires an API key would place it
-	// in this URL's query and thereby publish it to the browser.
+	// StyleURL is the MapLibre style the browser loads. Not a secret: it is served
+	// to the page, so a provider's key in its query is published to the browser.
 	StyleURL string
 
-	// StyleURLDark is loaded in place of StyleURL when the browser reports a
-	// dark system colour scheme. It must share this entry's StyleURL origin. An
-	// empty value keeps one style in both schemes.
+	// StyleURLDark replaces StyleURL under a dark system colour scheme. It must
+	// share this entry's StyleURL origin; empty keeps one style in both schemes.
 	StyleURLDark string
 
-	// DarkCartography says this entry's ground is dark whatever the system
-	// colour scheme is, which is what satellite imagery is. Anything the page
-	// paints over the map reads this rather than the scheme.
-	//
-	// It contradicts StyleURLDark: a provider publishing a dark twin has light
-	// cartography to switch away from. Configuring both is refused.
+	// DarkCartography says this entry's ground is dark whatever the colour scheme,
+	// as satellite imagery is. It contradicts StyleURLDark; setting both is refused.
 	DarkCartography bool
 }
 
 // Surface configures the local map the road surface of a stage is read from.
 type Surface struct {
-	// Regions are the OpenStreetMap extracts to index, as Geofabrik slugs such
-	// as "europe/germany/rheinland-pfalz". They have to cover the ground the
-	// operator actually rides: a stage outside every configured region is served
-	// without a surface rather than wrongly.
-	//
-	// An empty list switches surface classification off entirely, which is also
-	// the default: nothing is downloaded, nothing is built, and stages carry no
-	// surface.
+	// Regions are the OpenStreetMap extracts to index, as Geofabrik slugs. A stage
+	// outside every region is served without a surface. Empty disables the feature.
 	Regions []string
 
-	// RebuildInterval is how often the index is rebuilt from freshly published
-	// extracts. A rebuild that finds every extract unchanged costs one small
-	// request per region and stops there.
+	// RebuildInterval is how often the index is rebuilt. A rebuild that finds every
+	// extract unchanged costs one small request per region.
 	RebuildInterval time.Duration
 }
 
@@ -197,30 +152,24 @@ type Store interface {
 	SetRuntimeSecrets(ctx context.Context, secrets map[SecretName]Secret) error
 }
 
-// Current holds whichever settings are live and hands them to readers.
-//
-// Every reader takes a copy for the length of one run, one request, or one
-// notification, so an edit lands between two units of work rather than inside
-// one.
+// Current holds whichever settings are live and hands them to readers. Every
+// reader takes a copy for one run, request, or notification.
 type Current struct {
 	values  atomic.Pointer[Values]
 	secrets atomic.Pointer[map[SecretName]Secret]
 	store   Store
-	// writing serialises the edits that read what is stored before they replace
-	// it, which every edit to one section does, to its settings and to its
-	// credentials alike.
+	// writing serialises the read-modify-write that every section edit performs,
+	// over its settings and its credentials alike.
 	writing    sync.Mutex
 	generation atomic.Uint64
 }
 
-// ErrStore reports that the store refused a write. It separates a service that
-// cannot answer right now from a value the rules will never accept, which are
-// two different answers to whoever submitted the edit.
+// ErrStore reports that the store refused a write, separating a service that
+// cannot answer now from a value the rules will never accept.
 var ErrStore = errors.New("the settings could not be stored")
 
 // Load reads the stored settings and validates them before anything runs on
-// them. A database edited by hand into something the write path would have
-// refused fails startup here, naming the setting, rather than being served.
+// them. A hand-edited database fails startup here, naming the setting.
 func Load(ctx context.Context, store Store) (*Current, error) {
 	stored, err := store.RuntimeSettings(ctx)
 	if err != nil {
@@ -244,9 +193,8 @@ func Load(ctx context.Context, store Store) (*Current, error) {
 	return current, nil
 }
 
-// Generation counts the edits that have landed. Whoever builds something out of
-// these settings — a client that has to be constructed, a file that has to be
-// read — keeps what it built until this number moves.
+// Generation counts the edits that have landed. A caller holding something built
+// from these settings keeps it until this number moves.
 func (c *Current) Generation() uint64 {
 	return c.generation.Load()
 }
@@ -256,28 +204,22 @@ func (c *Current) Secret(name SecretName) Secret {
 	return (*c.secrets.Load())[name]
 }
 
-// SecretIsSet reports whether a credential is stored. It exists so a surface
-// that has to say whether one is configured can be given that alone, without
-// being given a way to read it.
+// SecretIsSet reports whether a credential is stored, without providing any way
+// to read it.
 func (c *Current) SecretIsSet(name SecretName) bool {
 	return c.Secret(name).IsSet()
 }
 
-// SetSecrets stores the credentials it is given and leaves every other one as
-// it was, which is what lets a settings page offer a replacement without ever
-// having been told the current value.
+// SetSecrets stores the credentials it is given and leaves every other one as it
+// was, so a page can offer a replacement without knowing the current value.
 func (c *Current) SetSecrets(ctx context.Context, secrets map[SecretName]Secret) error {
-	// An edit that replaced no credential is not a write. The settings page sends
-	// only the credentials that were typed, so every other save would otherwise
-	// open a transaction and move the generation that tells everything holding
-	// something built from these settings to look again.
+	// An edit that replaced no credential is not a write: it would otherwise move
+	// the generation and make every holder rebuild.
 	if len(secrets) == 0 {
 		return nil
 	}
-	// The stored credentials are read, added to and written back, which is the
-	// same read-modify-write Update holds this lock for: two sections saved at
-	// once each carry their own credentials, and without it the later write puts
-	// back a map that never had the earlier one in it.
+	// Read-modify-write under the same lock as Update: two sections saved at once
+	// each carry their own credentials, and the later write would drop the earlier.
 	c.writing.Lock()
 	defer c.writing.Unlock()
 
@@ -312,15 +254,8 @@ func (c *Current) Values() Values {
 	return c.values.Load().clone()
 }
 
-// Update validates, persists, and then publishes the settings the change
-// returns. The order is what makes the snapshot and the database agree: a set
-// of values that fails validation or fails to be written never becomes live.
-//
-// The change is handed the settings as they are right now rather than as its
-// caller last read them, and the read, the change and the write are one
-// critical section. Two sections of one page saved at the same moment would
-// otherwise each build a whole object from the settings as they were before the
-// other's edit, and the later write would put the earlier one back.
+// Update validates, persists, then publishes; values that fail either never
+// become live. Read-change-write is one critical section.
 func (c *Current) Update(ctx context.Context, change func(Values) Values) error {
 	c.writing.Lock()
 	defer c.writing.Unlock()
@@ -352,9 +287,7 @@ func (v Values) clone() Values {
 }
 
 // Missing names every setting still to be entered, in the order a settings page
-// offers them. Everything a run needs is here, and so are the Pushover
-// credentials while notifications are on, which no run needs but every
-// notification does. An empty result is a service that is configured.
+// offers them, including the Pushover credentials while notifications are on.
 func (c *Current) Missing() []string {
 	values := c.Values()
 	missing := make([]string, 0)

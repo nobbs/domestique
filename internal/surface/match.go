@@ -6,38 +6,26 @@ import (
 	"github.com/nobbs/domestique/internal/route"
 )
 
-// earthRadiusMetres is the spherical Earth model shared with the route and
-// elevation packages, so a length measured here agrees with the distance shown
-// beside it.
+// earthRadiusMetres is the spherical model shared with the route and elevation
+// packages, so a length here agrees with the distance shown beside it.
 const earthRadiusMetres = 6_371_000.0
 
 const (
 	// snapRadiusMetres is the furthest a stage point may sit from a way before the
-	// two are treated as unrelated. It is the tolerance that decides what this
-	// package will claim to know, and the query is sized from it rather than the
-	// other way around, so widening it here means widening what is asked for.
+	// two are unrelated. The query is sized from it, so widening it widens the ask.
 	snapRadiusMetres = 25.0
 
-	// headingWeightMetres is what a full right-angle heading disagreement costs,
-	// expressed as the distance penalty it is worth. A way crossing the route is a
-	// poor match even when it passes close by, and this is what separates the road
-	// being ridden from the driveways, footways, and side streets joining it.
+	// headingWeightMetres is what a full right-angle heading disagreement costs as a
+	// distance penalty. It separates the road ridden from the ways joining it.
 	headingWeightMetres = 20.0
 
-	// switchPenaltyMetres is charged for leaving the previous point's way. Ways
-	// split at every junction and every tagging change, so a route legitimately
-	// steps through a great many of them; the penalty is small enough to allow
-	// that and large enough to stop a parallel footway from winning a single point
-	// in the middle of a road.
+	// switchPenaltyMetres is charged for leaving the previous point's way. Small
+	// enough for legitimate splits, large enough to reject a parallel footway.
 	switchPenaltyMetres = 10.0
 
-	// minimumRunPoints is the shortest run of one class kept in the result.
-	//
-	// Snapping decides each point on its own, so a route running between a road
-	// and its parallel cycleway produces brief flickers between the two wherever
-	// the geometry passes marginally closer to the wrong one. Those flickers are
-	// artefacts of the match, not changes of surface, and a rider reading a
-	// two-point band of gravel in the middle of a road learns something untrue.
+	// minimumRunPoints is the shortest run of one class kept. Snapping decides each
+	// point alone, so a parallel cycleway produces flickers that are artefacts of
+	// the match rather than changes of surface.
 	minimumRunPoints = 3
 )
 
@@ -56,8 +44,7 @@ type Way struct {
 }
 
 // Range is a contiguous run of stage points sharing one class. Both indices are
-// inclusive and address the stage geometry as stored, so a consumer can map a
-// range onto the coordinates it already holds without a second lookup.
+// inclusive and address the stage geometry as stored.
 type Range struct {
 	StartIndex int
 	EndIndex   int
@@ -65,17 +52,9 @@ type Range struct {
 }
 
 // Match assigns a class to every stage point by snapping it to the nearest
-// plausible candidate way.
-//
-// This is deliberately not full map matching. A planned route is already routed
-// along the ways it follows, so its geometry sits on the centrelines rather than
-// wandering the way a recorded GPS trace does, and picking the best way per
-// point with a penalty for switching is enough. What it does not do is guarantee
-// a topologically connected path through the network; it does not need to,
-// because the question being answered is what the ground is, not which way the
-// route went.
-//
-// Points with no candidate within snapRadiusMetres are KindUnknown.
+// plausible candidate way. Not full map matching: a planned route already sits
+// on the centrelines, and no topologically connected path is guaranteed. Points
+// with no candidate within snapRadiusMetres are KindUnknown.
 func Match(points []route.Point, ways []Way) []Kind {
 	kinds := make([]Kind, len(points))
 	if len(points) == 0 || len(ways) == 0 {
@@ -121,10 +100,8 @@ func Match(points []route.Point, ways []Way) []Kind {
 	return despeckle(kinds)
 }
 
-// Compress folds per-point classes into contiguous ranges. The wire format
-// carries ranges rather than one class per point because a route changes surface
-// tens of times, not thousands, and the point-per-entry form would be almost
-// entirely repetition.
+// Compress folds per-point classes into contiguous ranges. A route changes
+// surface tens of times, not thousands.
 func Compress(kinds []Kind) []Range {
 	ranges := make([]Range, 0)
 	for index, kind := range kinds {
@@ -139,17 +116,13 @@ func Compress(kinds []Kind) []Range {
 	return ranges
 }
 
-// Expand is Compress's inverse: it restores one class per point from a set of
-// ranges, for a consumer that reads the cached wire form back and needs to
-// index it by point rather than by range. Positions outside every range —
-// which Compress never produces from a full Match, but a caller of Expand
-// should not have to assume — are KindUnknown.
+// Expand is Compress's inverse, restoring one class per point. Positions outside
+// every range are KindUnknown.
 func Expand(ranges []Range, pointCount int) []Kind {
 	kinds := make([]Kind, pointCount)
 	for _, band := range ranges {
-		// A negative StartIndex cannot come from Compress, but Expand reads
-		// whatever a caller decoded — a corrupted row, in the worst case —
-		// and must degrade rather than panic on one.
+		// A negative StartIndex cannot come from Compress, but Expand reads whatever
+		// a caller decoded and must degrade rather than panic.
 		for index := max(band.StartIndex, 0); index <= band.EndIndex && index < pointCount; index++ {
 			kinds[index] = band.Kind
 		}
@@ -158,13 +131,9 @@ func Expand(ranges []Range, pointCount int) []Kind {
 	return kinds
 }
 
-// MatchedMetres returns the stage length that snapped to a classified way. It is
-// the honest denominator for any share a caller wants to report: a stage that
-// matched a third of its length should not present its surface split as though
-// it described the whole ride.
-//
-// A segment counts when either of its ends is classified, so a length is never
-// silently dropped at a boundary between two classes.
+// MatchedMetres returns the stage length that snapped to a classified way, the
+// denominator for any share a caller reports. A segment counts when either end
+// is classified, so no length is dropped at a boundary.
 func MatchedMetres(points []route.Point, kinds []Kind) float64 {
 	if len(points) != len(kinds) {
 		return 0
@@ -181,10 +150,9 @@ func MatchedMetres(points []route.Point, kinds []Kind) float64 {
 	return total
 }
 
-// despeckle replaces runs shorter than minimumRunPoints with the class of the
-// longer neighbour, so a flicker between a road and its parallel path does not
-// read as a change of surface. Runs at either end of the stage take their only
-// neighbour. A stage too short to contain one full run is left as matched.
+// despeckle replaces runs shorter than minimumRunPoints with the longer
+// neighbour's class. End runs take their only neighbour; a stage too short for
+// one full run is left as matched.
 func despeckle(kinds []Kind) []Kind {
 	if len(kinds) < minimumRunPoints {
 		return kinds
@@ -230,14 +198,9 @@ func dominantNeighbour(kinds []Kind, run Range) (Kind, bool) {
 }
 
 // projection converts geographic coordinates to local metres about a reference
-// point, using an equirectangular approximation.
-//
-// Snapping compares distances of a few tens of metres between points that are
-// themselves metres apart, and the grid index needs square cells. Both are far
-// easier to reason about on a plane, and the projection's error over the span
-// where two candidates actually compete is orders of magnitude below the
-// tolerances involved. Lengths reported to callers still use haversine, so
-// nothing measured on this plane escapes the package.
+// point, equirectangular. The grid index needs square cells, and the error over
+// the span where candidates compete is far below the tolerances involved.
+// Lengths reported to callers still use haversine.
 type projection struct {
 	referenceLongitude float64
 	referenceLatitude  float64
@@ -289,8 +252,7 @@ func buildSegments(projection projection, ways []Way) []segment {
 }
 
 // distanceTo returns the perpendicular distance from a projected point to the
-// segment, clamped to the segment's ends so a point beyond either end measures
-// to that end rather than to the infinite line through it.
+// segment, clamped to its ends.
 func (s segment) distanceTo(east, north float64) float64 {
 	runEast, runNorth := s.endEast-s.startEast, s.endNorth-s.startNorth
 	lengthSquared := runEast*runEast + runNorth*runNorth
@@ -304,10 +266,7 @@ func (s segment) distanceTo(east, north float64) float64 {
 }
 
 // headingPenalty scores how far the segment's bearing is from the route's, as a
-// distance. Direction of travel is ignored — a way is equally the right way
-// whichever end the route entered it from — so the penalty is measured on the
-// undirected angle between the two, reaching headingWeightMetres at a right
-// angle.
+// distance. Undirected: a way is equally right whichever end was entered.
 func (s segment) headingPenalty(headingEast, headingNorth float64) float64 {
 	runEast, runNorth := s.endEast-s.startEast, s.endNorth-s.startNorth
 	runLength := math.Hypot(runEast, runNorth)
@@ -320,9 +279,8 @@ func (s segment) headingPenalty(headingEast, headingNorth float64) float64 {
 	return headingWeightMetres * (1 - math.Min(1, alignment))
 }
 
-// heading returns the route's local direction at one point, as a projected
-// vector. It is taken across the neighbouring points rather than from the
-// previous one, so a single closely spaced pair does not decide the direction.
+// heading returns the route's local direction at one point, taken across the
+// neighbouring points so a closely spaced pair does not decide it.
 func heading(projection projection, points []route.Point, index int) (east, north float64) {
 	before := max(index-1, 0)
 	after := min(index+1, len(points)-1)
@@ -335,9 +293,8 @@ func heading(projection projection, points []route.Point, index int) (east, nort
 	return afterEast - beforeEast, afterNorth - beforeNorth
 }
 
-// haversineMetres returns the great-circle distance between two stage points. It
-// matches the spherical model the route and elevation packages use so lengths
-// agree across the service.
+// haversineMetres returns the great-circle distance between two stage points, on
+// the same spherical model the route and elevation packages use.
 func haversineMetres(left, right route.Point) float64 {
 	latitudeDelta := (right.Latitude - left.Latitude) * math.Pi / 180
 	longitudeDelta := (right.Longitude - left.Longitude) * math.Pi / 180
