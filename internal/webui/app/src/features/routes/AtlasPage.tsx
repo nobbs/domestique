@@ -27,7 +27,7 @@ import { routeGeometryQuery, routesQuery, statusQuery, webUIConfigQuery } from "
 import type { BoundingBox, Position, RouteGeometry, SurfaceKind } from "../../api/types";
 import { routeKey } from "../../api/types";
 import { Layout } from "../../components/Layout";
-import { RouteOverlay, SURFACE_ATTRIBUTION } from "../../components/route/RouteOverlay";
+import { RouteOverlay } from "../../components/route/RouteOverlay";
 import { Alert, AlertDescription, AlertTitle } from "../../components/ui/alert";
 import { basemapFor, useBasemapChoice, usePrefersDarkScheme } from "../../lib/basemap";
 import type { Climb } from "../../lib/climbs";
@@ -549,7 +549,6 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
             bounds={bounds}
             insets={insets}
             maxZoom={windowBounds ? WINDOW_MAX_ZOOM : ROUTE_MAX_ZOOM}
-            extraCredit={shownRoute ? SURFACE_ATTRIBUTION : undefined}
             onPick={pick}
             inertKey={openKey}
           >

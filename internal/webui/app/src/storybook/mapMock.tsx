@@ -9,10 +9,8 @@
  * `useMap()` is untouched — it's the real hook from `react-map-gl/maplibre`,
  * and with no real `<Map>` mounted it reports no current map, same as it does
  * before the real map has loaded. `MapControls` and `MapViewport` already
- * handle that (buttons disabled, effects no-op). `MapOverlay` does not — it
- * portals into the container `useMap()` reports and renders nothing without
- * one — so it stays with the "content" stories that keep the real canvas,
- * alongside any story that specifically needs a live map instance.
+ * handle that: buttons disabled, effects no-op. A story that needs a live map
+ * instance keeps the real canvas instead.
  */
 
 import { type ReactNode, useEffect, useRef } from "react";

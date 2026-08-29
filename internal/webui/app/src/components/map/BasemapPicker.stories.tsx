@@ -8,10 +8,10 @@
  * its own.
  *
  * Not every component test made that same move. One that renders react-map-gl
- * itself (`MapControls`, `MapOverlay`, `MapWidget`) mocks it to isolate a
- * narrow question — an imperative call made, a portal target picked — from a
- * WebGL canvas neither jsdom nor this browser can meaningfully render; that
- * isolation is the point, and it stays in Testing Library. So does anything
+ * itself (`MapControls`, `MapWidget`) mocks it to isolate a narrow question —
+ * an imperative call made — from a WebGL canvas neither jsdom nor this browser
+ * can meaningfully render; that isolation is the point, and it stays in
+ * Testing Library. So does anything
  * whose real assertions are geometry or gesture math with dozens of cases
  * (`ElevationProfile`, `RouteLegend`, `RouteOverlay`) — a real browser proves
  * nothing more about arithmetic than jsdom already does, at several times the

@@ -294,9 +294,6 @@ test("choosing a start time draws a forecast strip under the profile", async ({
 
   const strip = page.getByRole("img", { name: /Forecast along the way/ });
   await expect(strip).toBeVisible();
-  // Attribution the licence requires wherever the forecast appears — see
-  // components/ForecastStrip.tsx.
-  await expect(page.getByText("Weather data by Open-Meteo.com")).toBeVisible();
 
   /*
    * The alignment is the whole point of drawing the strip here rather than

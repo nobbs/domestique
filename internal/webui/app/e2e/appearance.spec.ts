@@ -151,38 +151,27 @@ test.describe("on a narrow viewport", () => {
     expect(map.width).toBeLessThanOrEqual(375);
   });
 
-  /*
-   * The credit is obliged to be visible and is therefore never removed, only
-   * folded — so what this asserts is that folding it buys the room it was folded
-   * for, and that one press buys the words back. Neither is answerable in jsdom:
-   * the cluster has a width only once a stylesheet and a real map have given it
-   * one, and the words are read out of a style document the page fetched.
-   */
-  test("the credit folds into the cluster and comes back in one press", async ({
-    offlinePage: page,
-  }) => {
+  // The tile credit is read out of a style document the page fetched, which is
+  // why this is asked in a real browser rather than in jsdom.
+  test("the settings page credits every data source", async ({ offlinePage: page }) => {
     await openLibrary(page);
+    await page.getByRole("link", { name: "Settings" }).click();
 
-    const creditControl = page.locator(".map-credits");
-    const show = page.getByRole("button", { name: "Show the map credit" });
-    await expect(show).toBeVisible();
-    const folded = await creditControl.boundingBox();
-
-    await show.click();
-    await expect(page.getByRole("button", { name: "Hide the map credit" })).toBeVisible();
     const credit = page.getByText(BASEMAP_ATTRIBUTION_TEXT);
     await expect(credit).toHaveText(BASEMAP_ATTRIBUTION_TEXT);
     // The provider wrapped that in a link. The page took the words and left the
     // markup, which is the rule the credit is read out of the document under.
     await expect(credit.locator("a")).toHaveCount(0);
-    const open = await creditControl.boundingBox();
 
-    expect(folded).not.toBeNull();
-    expect(open).not.toBeNull();
-    if (!folded || !open) {
-      return;
-    }
-    expect(folded.width).toBeLessThan(open.width);
+    await expect(page.getByText(/Surface data © OpenStreetMap contributors/)).toBeVisible();
+    await expect(page.getByText(/Weather data by Open-Meteo/)).toBeVisible();
+  });
+
+  test("the map itself carries no credit", async ({ offlinePage: page }) => {
+    await openLibrary(page);
+
+    await expect(page.getByText(BASEMAP_ATTRIBUTION_TEXT)).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /the map credit/ })).toHaveCount(0);
   });
 
   test("a route still shows its map and its chart", async ({ offlinePage: page }) => {

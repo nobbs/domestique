@@ -418,7 +418,6 @@ export function ForecastStrip({
       </svg>
 
       <p className="mt-1 text-xs text-[var(--ink-2)]">{forecastSharpness(leadHours)}</p>
-      <p className="mt-1 text-xs text-[var(--ink-2)]">Weather data by Open-Meteo.com</p>
 
       <table className="visually-hidden">
         <caption>Forecast along the way</caption>

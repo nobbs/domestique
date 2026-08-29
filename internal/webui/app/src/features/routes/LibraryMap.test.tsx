@@ -51,14 +51,6 @@ const drawn = vi.hoisted(() => ({
 vi.mock("../../lib/maplibre", () => ({}));
 
 /*
- * The credit asks the style document what it must attribute, which is a fetch
- * and nothing this file is about. What is asked here is where it lands.
- */
-vi.mock("../../components/map/MapCredits", () => ({
-  MapCredits: () => <p data-testid="credits">© somebody</p>,
-}));
-
-/*
  * And the chooser decides nothing here either: what is asked of it in this file
  * is whether it is offered at all, and where it lands.
  */
@@ -99,10 +91,6 @@ vi.mock("../../components/map/MapControls", () => ({
       {children}
     </div>
   ),
-}));
-
-vi.mock("../../components/map/MapOverlay", () => ({
-  MapOverlay: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
 
 vi.mock("react-map-gl/maplibre", () => ({
@@ -444,13 +432,6 @@ describe("LibraryMap", () => {
     expect(drawn.map.zoomOut).toHaveBeenCalledOnce();
   });
 
-  it("keeps the credit out of the scale corner", () => {
-    show();
-
-    expect(drawn.container?.textContent).toBe("");
-    expect(screen.getByTestId("credits")).toBeInTheDocument();
-  });
-
   /*
    * The chooser stacks under the zoom pair, in the map's own corner: one column
    * of controls rather than two corners a reader has to know to look in. Its
@@ -573,16 +554,13 @@ describe("LibraryMap", () => {
   });
 
   /*
-   * A licence obliges the credit to be visible, so a map that reports nothing
-   * to hang it on costs it its placement rather than its place on the page. The
-   * chooser rides in the control stack and never reads the container at all,
-   * which is what this also holds it to.
+   * The chooser rides in the control stack and never reads the container, so a
+   * map that reports nothing to hang an overlay on cannot take it away.
    */
-  it("keeps the credit on the page when the map reports no container", () => {
+  it("keeps the basemap chooser on the page when the map reports no container", () => {
     drawn.container = document.createElement("div");
     show({ basemaps: TWO_BASEMAPS, selectedBasemap: "Streets", onBasemapChange: () => {} });
 
-    expect(screen.getByTestId("credits")).toBeInTheDocument();
     expect(screen.getByTestId("picker")).toBeInTheDocument();
   });
 });

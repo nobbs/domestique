@@ -67,20 +67,16 @@ test("the Tabler zoom controls move the map", async ({ offlinePage: page }) => {
   expect((await settleMap(page)).equals(before)).toBe(false);
 });
 
-test("keeps map actions, scale, and attribution in their own corners", async ({
-  offlinePage: page,
-}) => {
+test("keeps map actions and scale in their own corners", async ({ offlinePage: page }) => {
   await openLibrary(page);
 
   const map = await mapRegion(page).boundingBox();
   const locate = await page.getByRole("button", { name: "Find my location" }).boundingBox();
   const zoom = await page.getByRole("button", { name: "Zoom in" }).boundingBox();
-  const credit = await page.locator(".map-credits").boundingBox();
   expect(map).not.toBeNull();
   expect(locate).not.toBeNull();
   expect(zoom).not.toBeNull();
-  expect(credit).not.toBeNull();
-  if (!map || !locate || !zoom || !credit) {
+  if (!map || !locate || !zoom) {
     throw new Error("expected the map controls to have been laid out");
   }
 
@@ -88,8 +84,6 @@ test("keeps map actions, scale, and attribution in their own corners", async ({
     expect(control.x).toBeGreaterThan(map.x + map.width / 2);
     expect(control.y).toBeLessThan(map.y + map.height / 2);
   }
-  expect(credit.x).toBeGreaterThan(map.x + map.width / 2);
-  expect(credit.y).toBeGreaterThan(map.y + map.height / 2);
   await expect(page.locator(".maplibregl-ctrl-scale")).toHaveCSS(
     "background-color",
     "rgba(0, 0, 0, 0)",
