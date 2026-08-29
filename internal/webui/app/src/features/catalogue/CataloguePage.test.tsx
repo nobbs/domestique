@@ -71,18 +71,24 @@ function geometryFor(index: number): RouteGeometry {
   };
 }
 
-function show(library: LibraryRoute[] = LIBRARY, entry = "/catalogue") {
+function show(
+  library: LibraryRoute[] = LIBRARY,
+  entry = "/catalogue",
+  { geometry = true }: { geometry?: boolean } = {},
+) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   client.setQueryData(routesQuery().queryKey, library);
   client.setQueryData(statusQuery().queryKey, STATUS);
   // Seeded rather than fetched: the glyphs and the surface filter both read
   // this, under the same keys the atlas caches it with.
-  library.forEach((route, index) => {
-    client.setQueryData(
-      routeGeometryQuery(route.provider, route.sourceRouteId, route.stageOrder).queryKey,
-      geometryFor(index),
-    );
-  });
+  if (geometry) {
+    library.forEach((route, index) => {
+      client.setQueryData(
+        routeGeometryQuery(route.provider, route.sourceRouteId, route.stageOrder).queryKey,
+        geometryFor(index),
+      );
+    });
+  }
 
   return render(
     <QueryClientProvider client={client}>
@@ -172,7 +178,7 @@ describe("CataloguePage", () => {
     const user = userEvent.setup();
     show();
 
-    await user.click(screen.getByRole("button", { name: "Climbing" }));
+    await user.click(screen.getByRole("button", { name: "Ascent" }));
     await user.type(screen.getByRole("searchbox"), "r");
 
     expect(screen.getByTestId("address")).toHaveTextContent("sort=ascent");
@@ -242,6 +248,31 @@ describe("CataloguePage", () => {
 
     expect(screen.getByRole("img", { name: "Shape of Alpine loop" })).toBeInTheDocument();
     expect(screen.getAllByRole("img", { name: /^Shape of / })).toHaveLength(3);
+  });
+
+  it("divides each route by surface and by gradient, from that same geometry", () => {
+    show();
+
+    const [first] = screen.getAllByRole("row").slice(1);
+    // The seeded geometry makes the first route wholly gravel and, with every
+    // point at one elevation, wholly flat.
+    expect(within(first as HTMLElement).getByText(/Gravel 100%/)).toBeInTheDocument();
+    expect(within(first as HTMLElement).getByText(/flat 100%/)).toBeInTheDocument();
+  });
+
+  it("says so rather than dividing a route nothing has measured", () => {
+    show([libraryRoute("Unmeasured", { sourceRouteId: 9 })], "/catalogue", { geometry: false });
+
+    expect(screen.getByText("surface not classified")).toBeInTheDocument();
+    expect(screen.getByText("no elevation data")).toBeInTheDocument();
+  });
+
+  it("marks a route that is new or updated on the row itself", () => {
+    show();
+
+    const rows = screen.getAllByRole("row").slice(1);
+    expect(rows.every((row) => row.getAttribute("data-change") === "new")).toBe(true);
+    expect(screen.getAllByText("New")).toHaveLength(3);
   });
 
   it("narrows by surface, which the same geometry classifies", async () => {

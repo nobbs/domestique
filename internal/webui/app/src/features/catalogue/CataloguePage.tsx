@@ -28,7 +28,7 @@ import { useQueries, useQuery } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { routeGeometryQuery, routesQuery, statusQuery } from "../../api/queries";
-import type { Position, Route, RouteGeometry, SurfaceKind } from "../../api/types";
+import type { Position, Route, RouteGeometry, SurfaceKind, SurfaceRange } from "../../api/types";
 import { routeKey } from "../../api/types";
 import { PageShell } from "../../components/Layout";
 import { RouteGlyph } from "../../components/route/RouteGlyph";
@@ -55,13 +55,14 @@ import {
 import { matchingRoutes } from "../../lib/library";
 import { useNarrowViewport } from "../../lib/mediaQuery";
 import { gradientBand } from "../../lib/profile";
-import { providerLabel } from "../../lib/provider";
 import type { RouteChange } from "../../lib/seenRoutes";
 import { useSeenRoutes } from "../../lib/seenRoutes";
 import type { UnitSystem } from "../../lib/units";
 import { useUnitSystem } from "../../lib/units";
 import { FilterPanel } from "../routes/FilterPanel";
 import { RouteChangeBadge } from "../routes/RouteChangeBadge";
+import { CatalogueHeader } from "./CatalogueHeader";
+import { CatalogueRow } from "./CatalogueRow";
 
 /** The address the atlas reads a route back off. */
 function atlasLink(route: Route): string {
@@ -152,56 +153,6 @@ function SortHeader({
         )}
       </button>
     </th>
-  );
-}
-
-/** One route as a row of a table. */
-function CatalogueRow({
-  route,
-  coordinates,
-  change,
-  unitSystem,
-}: {
-  route: Route;
-  coordinates: Position[];
-  change: RouteChange;
-  unitSystem: UnitSystem;
-}) {
-  const where = secondName(route);
-
-  return (
-    <tr className="border-[var(--rule)] border-t hover:bg-[var(--base)]">
-      <td className="py-2 pl-3">
-        <span className="block size-8">
-          <RouteGlyph
-            coordinates={coordinates}
-            title={route.title}
-            band={gradientBand(route.maxGradientPercent)}
-          />
-        </span>
-      </td>
-      <td className="px-3 py-2">
-        <Link
-          to={atlasLink(route)}
-          className="font-semibold hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
-        >
-          {route.title}
-        </Link>
-        <RouteChangeBadge change={change} />
-        <span className="ml-1 text-[11px] font-semibold tracking-[0.06em] text-[var(--ink-2)] uppercase">
-          {providerLabel(route.provider)}
-        </span>
-        {where === null ? null : <span className="block text-xs text-[var(--ink-2)]">{where}</span>}
-      </td>
-      {measures(route, unitSystem).map(({ key, figure, qualifier }) => (
-        <td key={key} className="px-3 py-2 text-right tabular-nums">
-          {figure}
-          {qualifier === undefined ? null : (
-            <span className="ml-1 text-xs text-[var(--ink-2)]">{qualifier}</span>
-          )}
-        </td>
-      ))}
-    </tr>
   );
 }
 
@@ -350,6 +301,7 @@ export function CataloguePage() {
     (results: Array<UseQueryResult<RouteGeometry>>) => {
       const shapes = new Map<string, Position[]>();
       const surfaces = new Map<string, Set<SurfaceKind>>();
+      const ranges = new Map<string, SurfaceRange[]>();
       library.forEach((route, index) => {
         const geometry = results[index]?.data;
         if (!geometry) {
@@ -362,10 +314,11 @@ export function CataloguePage() {
         const surface = geometry.surface;
         if (surface && surface.matchedMetres > 0 && surface.ranges.length > 0) {
           surfaces.set(key, new Set(surface.ranges.map((range) => range.kind)));
+          ranges.set(key, surface.ranges);
         }
       });
 
-      return { shapes, surfaces };
+      return { shapes, surfaces, ranges };
     },
     [library],
   );
@@ -487,25 +440,15 @@ export function CataloguePage() {
                 }`}
               </caption>
               <thead>
-                <tr>
-                  {/*
-                   * The shapes have no heading of their own: the column ranks
-                   * by nothing and repeats the route the cell beside it names.
-                   */}
-                  <th scope="col">
-                    <span className="sr-only">Shape</span>
-                  </th>
-                  {SORT_COLUMNS.map(({ column, label }) => (
-                    <SortHeader
-                      key={column}
-                      column={column}
-                      label={label}
-                      view={view}
-                      onSort={sortBy}
-                      numeric={column !== "title"}
-                    />
-                  ))}
-                </tr>
+                <CatalogueHeader view={view} onSort={sortBy}>
+                  <SortHeader
+                    column="title"
+                    label="Route"
+                    view={view}
+                    onSort={sortBy}
+                    numeric={false}
+                  />
+                </CatalogueHeader>
               </thead>
               <tbody>
                 {shown.map((route) => (
@@ -513,8 +456,10 @@ export function CataloguePage() {
                     key={routeKey(route)}
                     route={route}
                     coordinates={drawn.shapes.get(routeKey(route)) ?? []}
+                    surface={drawn.ranges.get(routeKey(route))}
                     change={changeOf(route)}
                     unitSystem={unitSystem}
+                    to={atlasLink(route)}
                   />
                 ))}
               </tbody>
