@@ -33,6 +33,7 @@ import { UserPill } from "./UserPill";
  */
 const DESTINATIONS = [
   { to: "/", label: "Atlas", end: true },
+  { to: "/catalogue", label: "Catalogue", end: false },
   { to: "/sync", label: "Sync", end: false },
   { to: "/settings", label: "Settings", end: false },
 ] as const;

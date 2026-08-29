@@ -85,6 +85,13 @@ opened over it. This is the reader's word for that page and its nav label. What
 the atlas draws is the *library*; what it draws on is a *map*. It is a browser
 UI word only — the API has no atlas.
 
+**catalogue** — the second view of the same library: every route written out as
+a table, ranked by whatever the reader sorted on. The atlas answers *where does
+this ride go*; the catalogue answers *which of these rides is the one I want*.
+Its nav label and its path are both "catalogue", and like the atlas it is a
+browser UI word only — the API has no catalogue, and the page asks it for
+nothing the atlas does not already ask for.
+
 ## Identity and the map
 
 **route key** — the string `provider/sourceRouteId/stageOrder` that identifies

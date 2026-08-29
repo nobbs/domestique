@@ -1,5 +1,6 @@
 import { useLayoutEffect } from "react";
 import { Navigate, Route, Routes, useParams } from "react-router";
+import { CataloguePage } from "./features/catalogue/CataloguePage";
 import { AtlasPage } from "./features/routes/AtlasPage";
 import { SettingsPage } from "./features/settings/SettingsPage";
 import { SyncPage } from "./features/sync/SyncPage";
@@ -69,6 +70,7 @@ export function App() {
       <Route path="/" element={<AtlasPage themeChoice={themeChoice} />} />
       <Route path="routes/:provider/:sourceRouteId/:stageOrder" element={<OpenedRoute />} />
       <Route path="routes/:sourceRouteId/:stageOrder" element={<OpenedLegacyRoute />} />
+      <Route path="catalogue" element={<CataloguePage />} />
       <Route path="sync" element={<SyncPage />} />
       <Route
         path="settings"
