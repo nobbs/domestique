@@ -18,7 +18,7 @@
  * it won on is worth keeping.
  */
 
-import type { WeatherPoint } from "../../../api/types";
+import type { Position, WeatherPoint } from "../../../api/types";
 import type { ForecastSample } from "../../../lib/forecastSamples";
 import { cumulativeMetres } from "../../../lib/profile";
 
@@ -139,25 +139,33 @@ function speedKmh(gradientPercent: number): number {
 const SAMPLE_INTERVAL_SECONDS = 1_800;
 export const START_AT = new Date("2026-08-18T06:00:00Z");
 
-/** The loop, sampled every half hour of riding, the way `forecastSamples` would. */
-export const spikeSamples: ForecastSample[] = (() => {
-  const distances = cumulativeMetres(spikeCoordinates);
+/**
+ * Any route, sampled every half hour of riding, the way `forecastSamples` would.
+ *
+ * Takes its geometry rather than closing over this module's, because the loop
+ * here was shaped to make a *forecast band* hard to draw — twenty readings
+ * unevenly spread over a long day — and other spikes want the same weather
+ * over a route shaped to make something else hard. The sampler is the part
+ * worth sharing; the loop it was written against is not.
+ */
+export function samplesAlong(coordinates: Position[], startAt: Date): ForecastSample[] {
+  const distances = cumulativeMetres(coordinates);
   const samples: ForecastSample[] = [];
   let seconds = 0;
   let nextSampleAt = 0;
 
-  for (let index = 0; index < spikeCoordinates.length; index++) {
+  for (let index = 0; index < coordinates.length; index++) {
     if (seconds >= nextSampleAt) {
       samples.push({
-        position: spikeCoordinates[index] as [number, number, number],
+        position: coordinates[index] as [number, number, number],
         distanceMetres: distances[index] ?? 0,
-        arrivalAt: new Date(START_AT.getTime() + seconds * 1000),
+        arrivalAt: new Date(startAt.getTime() + seconds * 1000),
       });
       nextSampleAt += SAMPLE_INTERVAL_SECONDS;
     }
 
-    const previous = spikeCoordinates[index];
-    const next = spikeCoordinates[index + 1];
+    const previous = coordinates[index];
+    const next = coordinates[index + 1];
     if (!previous || !next) {
       continue;
     }
@@ -168,7 +176,10 @@ export const spikeSamples: ForecastSample[] = (() => {
   }
 
   return samples;
-})();
+}
+
+/** This loop, sampled the same way. */
+export const spikeSamples: ForecastSample[] = samplesAlong(spikeCoordinates, START_AT);
 
 /**
  * The front, as a handful of moments the weather is interpolated between.
@@ -282,24 +293,29 @@ function between(from: number, to: number, fraction: number): number {
  * kind of weather, and there is no state halfway between overcast and a
  * thunderstorm, so it holds the last keyframe's until the next one arrives.
  */
-export const spikePoints: WeatherPoint[] = spikeSamples.map((sample, index) => {
-  const after = KEYFRAMES.findIndex((frame) => frame.at > index);
-  const previous = KEYFRAMES[after === -1 ? KEYFRAMES.length - 1 : Math.max(after - 1, 0)];
-  const next = KEYFRAMES[after === -1 ? KEYFRAMES.length - 1 : after];
-  if (!previous || !next) {
-    throw new Error("the forecast keyframes are empty");
-  }
-  const span = next.at - previous.at;
-  const fraction = span > 0 ? Math.min(Math.max((index - previous.at) / span, 0), 1) : 0;
+export function weatherAlong(samples: ForecastSample[]): WeatherPoint[] {
+  return samples.map((sample, index) => {
+    const after = KEYFRAMES.findIndex((frame) => frame.at > index);
+    const previous = KEYFRAMES[after === -1 ? KEYFRAMES.length - 1 : Math.max(after - 1, 0)];
+    const next = KEYFRAMES[after === -1 ? KEYFRAMES.length - 1 : after];
+    if (!previous || !next) {
+      throw new Error("the forecast keyframes are empty");
+    }
+    const span = next.at - previous.at;
+    const fraction = span > 0 ? Math.min(Math.max((index - previous.at) / span, 0), 1) : 0;
 
-  return {
-    time: sample.arrivalAt.toISOString(),
-    temperatureCelsius: between(previous.temperature, next.temperature, fraction),
-    apparentTemperatureCelsius: between(previous.apparent, next.apparent, fraction),
-    precipitationMillimetres: between(previous.millimetres, next.millimetres, fraction),
-    precipitationProbabilityPercent: between(previous.probability, next.probability, fraction),
-    windSpeedKmh: between(previous.windKmh, next.windKmh, fraction),
-    windDirectionDegrees: between(previous.windFrom, next.windFrom, fraction),
-    weatherCode: previous.code,
-  };
-});
+    return {
+      time: sample.arrivalAt.toISOString(),
+      temperatureCelsius: between(previous.temperature, next.temperature, fraction),
+      apparentTemperatureCelsius: between(previous.apparent, next.apparent, fraction),
+      precipitationMillimetres: between(previous.millimetres, next.millimetres, fraction),
+      precipitationProbabilityPercent: between(previous.probability, next.probability, fraction),
+      windSpeedKmh: between(previous.windKmh, next.windKmh, fraction),
+      windDirectionDegrees: between(previous.windFrom, next.windFrom, fraction),
+      weatherCode: previous.code,
+    };
+  });
+}
+
+/** This loop's day. */
+export const spikePoints: WeatherPoint[] = weatherAlong(spikeSamples);
