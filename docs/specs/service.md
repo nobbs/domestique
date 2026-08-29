@@ -224,13 +224,18 @@ reached only by the operator's **browser**. The service asks Open-Meteo for an
 hourly forecast at the coordinates and times `GET /v1/weather` was given. A
 viewed route's shape and timing are what leaves; the request carries no identity.
 
-Every credit this service owes is shown in one place, the settings page. The
-derived OpenStreetMap database the surface classification is built from requires
-ODbL attribution, Open-Meteo's forecasts require attribution under its [CC BY
-4.0 licence](https://open-meteo.com/en/licence), and each configured basemap
-requires whatever credit its style document declares. All three are listed
-there, and nowhere else in the UI: no credit is drawn over the map or beside the
-forecast.
+Every credit this service owes is shown in one place, the settings page, and
+nowhere else in the UI: no credit is drawn over the map or beside the forecast.
+
+The derived OpenStreetMap database the surface classification is built from
+requires ODbL attribution, and Open-Meteo's forecasts require attribution under
+its [CC BY 4.0 licence](https://open-meteo.com/en/licence). Both are constants
+this service states itself, and both are always shown.
+
+Each configured basemap requires whatever credit its own style document
+declares, and that credit is read from the provider rather than held here, so it
+is shown when the style can be read. A style this service cannot reach or parse
+leaves the map uncredited, and costs no other credit on the page.
 
 The Wahoo OAuth redirect URI is the HTTPS URL a browser returns to. Without the
 public path it is the service's Tailnet URL:
