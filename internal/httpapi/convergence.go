@@ -25,7 +25,7 @@ const (
 	// blocked run is a safety gate holding rather than a fault.
 	convergenceFailed = openapi.TargetStatus_ConvergenceFailed
 	// convergenceLagging means the slot is onboarded and its last run was fine,
-	// but stored stages are still owed to it.
+	// but stored routes are still owed to it.
 	convergenceLagging = openapi.TargetStatus_ConvergenceLagging
 	// convergenceCurrent means the Wahoo account holds every stored stage at the
 	// revision the library holds now. It is not a claim that any head unit has
@@ -46,20 +46,20 @@ type sourceStageKey struct {
 	stageOrder int
 }
 
-// targetStageCounts derives, for each configured target, how much of the stored
+// targetRouteCounts derives, for each configured target, how much of the stored
 // library that target already holds and how much it still owes.
 //
 // It is a comparison of two local tables and nothing else: the revision each
-// stage is stored at, against the revision each target was last successfully
+// route is stored at, against the revision each target was last successfully
 // written at. Wahoo is never asked, because a status request must answer while a
 // provider is down, and because the honest question here is what this service
 // has applied — what a device has since fetched is not observable from here.
 //
 // Only the source revision is compared, not the content hash: the hash a target
 // records is the encoded course's, derived by the layer that writes it, and this
-// layer has no business knowing how a course is encoded. A stage whose content
+// layer has no business knowing how a course is encoded. A route whose content
 // changed changes revision with it.
-func (h *Handler) targetStageCounts(ctx context.Context) (map[string]openapi.TargetRoutes, error) {
+func (h *Handler) targetRouteCounts(ctx context.Context) (map[string]openapi.TargetRoutes, error) {
 	revisions := make(map[sourceStageKey]string)
 	if err := h.state.ForEachSourceStage(
 		ctx,
@@ -69,7 +69,7 @@ func (h *Handler) targetStageCounts(ctx context.Context) (map[string]openapi.Tar
 			return nil
 		},
 	); err != nil {
-		return nil, fmt.Errorf("read stored stages: %w", err)
+		return nil, fmt.Errorf("read stored routes: %w", err)
 	}
 
 	targetIDs := h.targetIDs()
@@ -96,7 +96,7 @@ func (h *Handler) targetStageCounts(ctx context.Context) (map[string]openapi.Tar
 				return nil
 			},
 		); err != nil {
-			return nil, fmt.Errorf("read applied stages: %w", err)
+			return nil, fmt.Errorf("read applied routes: %w", err)
 		}
 		counts[targetID] = openapi.TargetRoutes{
 			Current: current,
@@ -137,7 +137,7 @@ func (h *Handler) targetRuns(ctx context.Context) (map[string]openapi.TargetRun,
 
 // convergenceState reduces one target to the word that describes it.
 func convergenceState(
-	authorization string, stages openapi.TargetRoutes, run *openapi.TargetRun,
+	authorization string, routes openapi.TargetRoutes, run *openapi.TargetRun,
 ) openapi.TargetStatus_Convergence {
 	if authorization != authorizedState {
 		return convergenceUnauthorized
@@ -148,7 +148,7 @@ func convergenceState(
 	if run != nil && run.Result != succeededOutcome {
 		return convergenceFailed
 	}
-	if stages.Pending > 0 {
+	if routes.Pending > 0 {
 		return convergenceLagging
 	}
 

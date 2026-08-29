@@ -169,7 +169,7 @@ func NewRoute(
 		return Route{}, errors.New("provider is required")
 	}
 	if sourceRouteID <= 0 {
-		return Route{}, errors.New("route ID must be positive")
+		return Route{}, errors.New("source route ID must be positive")
 	}
 	if stageOrder <= 0 {
 		return Route{}, errors.New("stage order must be positive")

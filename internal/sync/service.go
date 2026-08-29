@@ -172,10 +172,10 @@ type Encoder interface {
 	Encode(ctx context.Context, stage route.Route) ([]byte, error)
 }
 
-// Processor derives a device-export stage without changing source identity or
+// Processor derives a device-export route without changing source identity or
 // source-content state.
 type Processor interface {
-	Process(stage *route.Route) (route.Route, error)
+	Process(original *route.Route) (route.Route, error)
 }
 
 // Target performs serial Wahoo OAuth refresh and route operations.

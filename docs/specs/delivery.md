@@ -530,7 +530,7 @@ The two are gated by different path filters, and deliberately so. Publishing
 follows every input of the running binary, because a source change must reach a
 new digest. The pull-request build follows only the container inputs — the
 Dockerfile, what it copies in, and the dependency manifests that resolve inside
-a build route — because re-proving an untouched Dockerfile against changed Go
+a build stage — because re-proving an untouched Dockerfile against changed Go
 source repeats what the compile check has already established. A container
 break that reaches the default branch costs a red run and no new image; it costs
 no availability, because a deploying host is pinned to a digest that keeps
@@ -600,7 +600,7 @@ What is not automerged is what the gate cannot answer for:
   nothing about whether the map still draws correctly, and looking at it remains
   a human act.
 - **The Go and Node toolchains.** The compiler and runtime in `.mise.toml`, the
-  language version in `go.mod`, the types in `@types/node` and the build routes'
+  language version in `go.mod`, the types in `@types/node` and the build stages'
   base image tags each describe one decision spread across several files, so
   each is grouped and moved by a person. It is what everything else is built
   with.
@@ -638,18 +638,18 @@ environment, are the two places to intervene if that trade stops being worth it.
 
 ## Container contract
 
-The production image is a multi-route build that produces a statically linked
+The production image is a multi-stage build that produces a statically linked
 Linux binary with `CGO_ENABLED=0`, published for `linux/amd64` alone. That is
 the architecture of the deployed host, and of the runner that builds it, so no
-route needs emulation. The accepted cost is that the published image does not
+stage needs emulation. The accepted cost is that the published image does not
 run on an arm64 host without it; the `TARGETOS`/`TARGETARCH` parameterisation in
 the Dockerfile is kept, so restoring a second platform is a build argument at
-each build site rather than a rewrite. A first route builds the browser UI
-bundle with Node.js, which the Go route then embeds; Node reaches no further
-than that route and is absent from the runtime image.
+each build site rather than a rewrite. A first stage builds the browser UI
+bundle with Node.js, which the Go stage then embeds; Node reaches no further
+than that stage and is absent from the runtime image.
 
 Every base image is a **Docker Hardened Image** from `dhi.io`, pinned by digest:
-the `-dev` variants for the Node and Go build routes, which need a shell and a
+the `-dev` variants for the Node and Go build stages, which need a shell and a
 toolchain, and the minimal `static` image for the runtime. They carry SBOMs,
 SLSA Build Level 3 provenance, and signatures. Because the images this project
 publishes are themselves unsigned, that is the strongest verifiable link in the
