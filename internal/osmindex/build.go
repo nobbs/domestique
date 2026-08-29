@@ -249,17 +249,11 @@ func scanWays(ctx context.Context, path string) (ways []wayRecord, references []
 	return ways, references, nil
 }
 
-// candidateWay decides whether a way can supply a surface to a route.
-//
-// This is the filter the Overpass query used to carry, kept whole so the index
-// answers the same question the endpoint did. Everything tagged highway is a
-// candidate except the features nothing is ridden on — a bus platform, a lift, a
-// road still under construction — and areas, which are places rather than ways
-// and would snap a route to the middle of a square.
-//
-// Note that an unclassified way is still kept. Knowing that a road exists and
-// carries no surface tag is the difference between honestly unsurveyed ground
-// and ground nobody looked for.
+// candidateWay decides whether a way can supply a surface to a route. Everything
+// tagged highway is a candidate except features nothing is ridden on — a bus
+// platform, a lift, a road under construction — and areas, which would snap a
+// route to the middle of a square. An unclassified way is still kept: a road with
+// no surface tag is honestly unsurveyed rather than absent.
 func candidateWay(tags map[string]string) bool {
 	highway := tags["highway"]
 	if highway == "" || tags["area"] == "yes" {
@@ -275,12 +269,9 @@ func candidateWay(tags map[string]string) bool {
 }
 
 // scanNodes reads the node pass, resolving only the coordinates the kept ways
-// refer to.
-//
-// The identifiers arrive sorted, so this is a binary search per node rather than
-// a hash of every node in the extract. The result is two parallel slices in the
-// same order as nodeIDs: a sorted table of exactly the coordinates that will be
-// used, and nothing else from a file that holds tens of millions of them.
+// refer to. The identifiers arrive sorted, so this is a binary search per node
+// rather than a hash of every node in the extract. The result is two parallel
+// slices in nodeIDs order.
 func scanNodes(ctx context.Context, path string, nodeIDs []int64) (latitude, longitude []int32, err error) {
 	file, err := os.Open(path) //nolint:gosec // The path was composed by this package when it staged the extract.
 	if err != nil {
@@ -322,14 +313,10 @@ func scanNodes(ctx context.Context, path string, nodeIDs []int64) (latitude, lon
 	return latitude, longitude, nil
 }
 
-// packWays resolves each way's geometry and cuts it into per-cell runs.
-//
-// Runs are packed to bytes here, at the moment they are cut, rather than being
-// collected as geometry and packed at the end. That is what keeps the builder's
-// footprint flat: the alternative holds a slice header and two coordinate slices
-// per run for millions of runs, which for one German state is most of a
-// gigabyte of live data, against a few tens of megabytes for the same runs as
-// packed bytes.
+// packWays resolves each way's geometry and cuts it into per-cell runs. Runs are
+// packed to bytes at the moment they are cut rather than collected and packed at
+// the end, which keeps the builder's footprint flat: holding geometry per run is
+// most of a gigabyte for one German state, against tens of megabytes packed.
 func packWays(
 	ctx context.Context,
 	ways []wayRecord,

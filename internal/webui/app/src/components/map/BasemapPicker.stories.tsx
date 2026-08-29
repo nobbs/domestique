@@ -121,11 +121,10 @@ export const Unfolded: Story = {
     await expect(screen.getByRole("radio", { name: "Dark" })).toBeInTheDocument();
     await expect(screen.getAllByRole("radio")).toHaveLength(2);
 
-    // The name is the whole of what the button says, so it has to change with
-    // the fold: the mark inside it does not, and `aria-expanded` alone would
-    // leave a reader who cannot see the list guessing what pressing it does
-    // next. What it opens is the popover, and the names are inside that — the
-    // group is no longer a sibling the button can name directly.
+    // The name is the whole of what the button says, so it changes with the fold:
+    // the mark inside it does not, and `aria-expanded` alone would leave a reader
+    // who cannot see the list guessing. What it opens is the popover, and the names
+    // are inside that.
     const toggle = canvas.getByRole("button", { name: "Hide the basemap choices" });
     await expect(toggle).toHaveAttribute("aria-expanded", "true");
     const controls = toggle.getAttribute("aria-controls") ?? "";

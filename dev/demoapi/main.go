@@ -192,21 +192,11 @@ func newHandler(
 		return nil, fmt.Errorf("creating oauth service: %w", err)
 	}
 
-	// A demo has nothing to synchronise from and nowhere to write to, so a
-	// manual run re-seeds the library at the current instant instead. That is
-	// what makes the button worth pressing in a demo: the run it reports is a
-	// fresh one, and it still reaches nothing. It seeds on the request rather
-	// than in the background because the whole library is a few hundred
-	// milliseconds of local writes.
-	//
-	// False means one run is already in progress and nothing else, so that is
-	// the only thing it is used for here. A re-seed that fails is a run that
-	// failed rather than a conflict, and its error goes to the log.
-	//
-	// The full and single-target triggers share one reseeder, and so one
-	// `running` flag: a demo has no per-target work to isolate, and two
-	// independent flags would let a full re-seed and a single-target one
-	// interleave writes over the same rows.
+	// A demo has nothing to synchronise from and nowhere to write to, so a manual
+	// run re-seeds the library at the current instant instead, on the request
+	// rather than in the background. False means one run is already in progress.
+	// The full and single-target triggers share one reseeder and one `running`
+	// flag; two would let their writes interleave over the same rows.
 	demoReseeder := reseeder{
 		store:   store,
 		slots:   slots,
@@ -237,20 +227,11 @@ func newHandler(
 	return handler, nil
 }
 
-// bundleAssets is the embedded browser UI, when one has been built into this
-// binary, and an explanation when one has not.
-//
-// A demo is normally driven through the Vite dev server, which serves the UI from
-// source and proxies the API here, so for years the honest answer from this
-// listener was "the UI is somewhere else". It is served here as well because that
-// is the arrangement a deployment actually runs — the production bundle, behind
-// this handler's identity gate, its cache headers and its content security
-// policy — and the browser suite has a project that drives exactly that.
-//
-// The bundle is embedded at compile time from a gitignored directory, so whether
-// it exists depends on whether `mise run ui-build` ran before this binary was built.
-// A missing one is reported rather than served as a blank page; `dev/demo.sh
-// --with-bundle` is what guarantees a fresh one.
+// bundleAssets is the embedded browser UI when one has been built into this
+// binary, and an explanation when one has not. It is served here as well as
+// through the Vite dev server because this is what a deployment runs: the
+// production bundle behind this handler's gate, headers and policy. The bundle is
+// embedded at compile time; `dev/demo.sh --with-bundle` guarantees a fresh one.
 func bundleAssets() httpapi.Assets {
 	assets, err := webui.New()
 	if err != nil {
@@ -308,13 +289,9 @@ func (r reseeder) triggerTarget(_ string) bool {
 }
 
 // triggerClear answers the clear control so the demo can exercise it, and
-// re-seeds like every other trigger here.
-//
-// It deletes nothing, because there is nothing to delete: a demo target names
-// no Wahoo account, and the synthetic library is the whole of what this
-// process has. What it does offer is the control's real shape — accepted,
-// refused while something else runs, and the page settling afterwards — which
-// is what the demo exists to show.
+// re-seeds like every other trigger here. It deletes nothing: a demo target names
+// no Wahoo account. What it offers is the control's real shape — accepted,
+// refused while something else runs, and the page settling afterwards.
 func (r reseeder) triggerClear(_ string) bool {
 	return r.trigger("")
 }
@@ -500,18 +477,12 @@ func (t *team) mint() (string, error) {
 // schedule never fires, so the only synchronisation is one somebody asked for.
 const demoYear = 365 * 24 * time.Hour
 
-// seedSettings writes everything the demo is configured with, which is now
-// everything but its listener, its identity gate and its state file.
-//
-// The cartographies are the reason this exists: a demo is where the map is
-// actually looked at, and the picker appears only when there is more than one
-// entry to pick from. These are one provider's distinct styles, so offering
-// five widens nothing the demo may reach. The rest is what makes the service
-// report itself configured — every address is the demo's own origin, which
-// serves the UI and nothing else, and every credential is a placeholder.
-//
-// Written on every start rather than once: the settings page can edit them, and
-// a demo restarted is a demo expected to be back as it ships.
+// seedSettings writes everything the demo is configured with, which is everything
+// but its listener, its identity gate and its state file. The cartographies are
+// the reason it exists: the picker appears only with more than one entry, and
+// these are one provider's distinct styles. Every address is the demo's own
+// origin and every credential a placeholder. Written on every start, since the
+// settings page can edit them.
 func seedSettings(ctx context.Context, current *runtimeconfig.Current, origin string) error {
 	secrets := make(map[runtimeconfig.SecretName]runtimeconfig.Secret, len(runtimeconfig.SecretNames()))
 	for _, name := range runtimeconfig.SecretNames() {

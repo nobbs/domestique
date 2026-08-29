@@ -165,11 +165,10 @@ func segmentSpeedMetresPerSecond(gradientPercent, crr float64, coefficients Coef
 	return min(poweredSpeedMetresPerSecond(crr, sinTheta, cosTheta, coefficients), fixedSpeedCapMetresPerSecond)
 }
 
-// gradientTrig converts a percent gradient (rise over run, as a percentage) to
-// sin and cos of the slope angle exactly, from its tangent. This stays
-// well-behaved at any gradient, including the near-vertical and reversed
-// pathologies a noisy elevation window can produce: cosTheta approaches zero
-// and sinTheta approaches ±1 rather than either diverging.
+// gradientTrig converts a percent gradient to sin and cos of the slope angle
+// exactly, from its tangent. It stays well-behaved at any gradient, including the
+// pathologies a noisy elevation window produces: cosTheta approaches zero and
+// sinTheta ±1 rather than either diverging.
 func gradientTrig(gradientPercent float64) (sinTheta, cosTheta float64) {
 	tanTheta := gradientPercent / 100
 	cosTheta = 1 / math.Sqrt(1+tanTheta*tanTheta)
@@ -180,10 +179,8 @@ func gradientTrig(gradientPercent float64) (sinTheta, cosTheta float64) {
 
 // poweredSpeedMetresPerSecond solves P·η = v·(Crr·m·g·cosθ + m·g·sinθ +
 // ½·ρ·CdA·v²) for v by bisection on a bounded interval. The right-hand side is
-// zero at v=0 and grows without bound as v→∞ regardless of gradient, so a sign
-// change always exists in the bracket; bisecting a fixed number of iterations
-// rather than looping to convergence is what guarantees termination on every
-// segment.
+// zero at v=0 and grows without bound, so a sign change always exists in the
+// bracket; a fixed iteration count guarantees termination.
 //
 //nolint:gocritic // value param: same reasoning as Predict above.
 func poweredSpeedMetresPerSecond(crr, sinTheta, cosTheta float64, coefficients Coefficients) float64 {

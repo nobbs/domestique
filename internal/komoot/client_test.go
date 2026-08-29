@@ -474,10 +474,9 @@ func TestClientInventoryPreservesEmailContainingSlash(t *testing.T) {
 	var gotEscapedPath string
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		// request.URL.Path is already percent-decoded by net/http, so it reads
-		// identically whether the client escaped the '/' correctly or sent it
-		// as a literal separator — this test would pass either way if it
-		// asserted on Path. EscapedPath (and the raw RequestURI) is the one
-		// place the two cases still differ: %2F versus a literal '/'.
+		// identically whether the client escaped the '/' or sent it as a literal
+		// separator. EscapedPath, and the raw RequestURI, is where the two still
+		// differ: %2F versus a literal '/'.
 		if gotEscapedPath == "" {
 			gotEscapedPath = request.URL.EscapedPath()
 		}

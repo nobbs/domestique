@@ -230,14 +230,11 @@ func parseProfile(in io.Reader) (lines, error) {
 // ignorer reports whether a line carries no code, and so is measured by nobody.
 type ignorer func(file string, line int) bool
 
-// readProfile reads a profile into line statuses.
-//
-// A block is reported once per test binary that instrumented its package, so the
-// same position arrives several times and is covered if any of them reached it.
-// Only then are blocks projected onto lines: a block spanning several lines
-// covers all of them, and a line held by both a covered block and an uncovered
-// one is a partial. Doing it in the other order would make a block one binary
-// never reached partial every line of a block another binary covered outright.
+// readProfile reads a profile into line statuses. A block is reported once per
+// test binary that instrumented its package, so the same position arrives several
+// times and is covered if any reached it. Only then are blocks projected onto
+// lines: the other order would make a block one binary never reached partial
+// every line another binary covered outright.
 func readProfile(in io.Reader, skip ignorer) (lines, error) {
 	blocks := make(map[string]bool)
 
@@ -389,17 +386,12 @@ func lineOf(pair string) (int, error) {
 	return number, nil
 }
 
-// parseLCOV reads Vitest's LCOV file into the status of every line it measured.
-//
-// A DA record carries a line and how often it ran; a BRDA record carries one
-// branch on a line and how often that branch was taken, with "-" for a branch
-// under an expression that never evaluated. A line that ran but holds a branch
-// nobody took is a partial, which is exactly how Codecov reads the same file.
-//
-// A BRDA line with no DA record beside it is measured all the same, which is
-// easy to miss and worth 160 of this repository's 1739 UI lines: Codecov reads
-// its status from the branches alone — every one untaken is a miss, some taken
-// is a partial, all taken is a hit.
+// parseLCOV reads Vitest's LCOV file into the status of every line it measured. A
+// DA record carries a line and how often it ran; a BRDA record carries one branch
+// and how often it was taken, "-" for one never evaluated. A line that ran but
+// holds an untaken branch is a partial. A BRDA line with no DA record beside it is
+// measured all the same — worth 160 of 1739 UI lines — its status read from the
+// branches alone.
 func parseLCOV(in io.Reader) (lines, error) {
 	const root = "internal/webui/app/"
 
