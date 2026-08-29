@@ -7,6 +7,11 @@
  * and the weather is *predicted*, and a panel that draws them alike is
  * inviting a reader to trust one as far as they trust the other.
  *
+ * Since the band gained a rounded border of its own, three of these nest a box
+ * inside a box, and the question has largely become whether anything beyond a
+ * caption is still needed. They are kept so that the comparison is visible
+ * rather than asserted.
+ *
  * Whatever frames it must not indent it. The band lays its tiles on the shared
  * distance axis, and the whole argument for stacking is that a tile sits under
  * the ground it falls on — so every variant here borders without horizontal
@@ -17,13 +22,17 @@
 import type { ReactNode } from "react";
 import { PADDING } from "../../../lib/plotAxis";
 
-export type WeatherFrameVariant = "plain" | "card" | "legend" | "header";
+export type WeatherFrameVariant = "plain" | "capped" | "card" | "legend" | "header";
 
 export const WEATHER_FRAMES: ReadonlyArray<{
   readonly variant: WeatherFrameVariant;
   readonly note: string;
 }> = [
   { variant: "plain", note: "no frame — the band as one more lane" },
+  {
+    variant: "capped",
+    note: "a caption only, letting the strip's own rounded border be the frame",
+  },
   { variant: "card", note: "a filled inset, so the prediction sits on its own ground" },
   { variant: "legend", note: "a hairline box with the word on the rule, as a fieldset" },
   { variant: "header", note: "a bordered box under a titled strip" },
@@ -51,6 +60,19 @@ export function WeatherFrame({
 }) {
   if (variant === "plain") {
     return <>{children}</>;
+  }
+
+  if (variant === "capped") {
+    // The band draws its own rounded border, so a box around it is a box
+    // inside a box. All that is left to add is the word — which is the part
+    // that was actually missing, since a border says "this is one thing" and
+    // not "this one is a guess".
+    return (
+      <div className="grid gap-1.5">
+        <Caption>{caption}</Caption>
+        {children}
+      </div>
+    );
   }
 
   if (variant === "card") {
