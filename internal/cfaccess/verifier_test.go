@@ -125,10 +125,9 @@ func (c *clock) advance(by time.Duration) {
 
 // verifyPastTheFloor runs a verification until it actually reaches the certs
 // endpoint. go-oidc wakes a caller waiting on a key fetch before it clears the
-// finished request, so a verification arriving in that window is answered from
-// the completed fetch and sends nothing of its own — which a test counting
-// fetches would read as the refresh floor having stayed shut. An attempt that
-// sends no request stamps nothing either, so the retry is free of the floor.
+// finished request, so a verification arriving in that window sends nothing of
+// its own. An attempt that sends no request stamps nothing, so the retry is free
+// of the floor.
 func verifyPastTheFloor(t *testing.T, fetches *atomic.Int64, verify func()) {
 	t.Helper()
 
@@ -432,20 +431,11 @@ func TestVerifyRefetchesAfterKeyRotation(t *testing.T) {
 }
 
 // Every request arriving against a cold cache has to end up with the key, not
-// just the one that happened to look first.
-//
-// The refresh floor is stamped before the fetch rather than after it, so a
-// caller that tested staleness while another was mid-fetch used to rule itself
-// out on the strength of that in-flight attempt and be told the key was unknown
-// a moment before it arrived. That is every process start under concurrent
-// traffic, and it was reproducible as a browser suite failing one test at random
-// once it ran on more than one worker.
-//
-// The ordering is what makes this reproduce rather than depend on scheduling.
-// One caller goes first and is held inside the certs handler, so by the time the
-// rest start the floor is provably stamped and the key set provably not yet
-// published — which is exactly the window the bug lives in. Releasing the
-// handler only after they have all started keeps them in it.
+// just the one that looked first. The refresh floor is stamped before the fetch,
+// so a caller testing staleness mid-fetch used to rule itself out and be told the
+// key was unknown a moment before it arrived. The ordering makes this reproduce
+// rather than depend on scheduling: one caller is held inside the certs handler,
+// so by the time the rest start the floor is stamped and the key set is not.
 func TestVerifyAdmitsConcurrentCallersAgainstAColdCache(t *testing.T) {
 	t.Parallel()
 

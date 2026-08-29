@@ -25,11 +25,9 @@ func TestClientProviderIsKomoot(t *testing.T) {
 }
 
 func TestClientNeverSendsAnAcceptHeaderTheRealAPIRejects(t *testing.T) {
-	// Verified against a live account: every v007 resource is served as HAL
-	// and answers a strict "Accept: application/json" with 406
-	// HttpMediaTypeNotAcceptable, even though its body is ordinary JSON
-	// either way. This server reproduces exactly that rejection so a
-	// regression here fails loudly instead of only in production.
+	// Verified against a live account: every v007 resource is served as HAL and
+	// answers a strict "Accept: application/json" with 406. This server reproduces
+	// that rejection so a regression fails loudly rather than only in production.
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if strings.HasPrefix(request.URL.Path, "/v007/") && !strings.Contains(request.Header.Get("Accept"), "hal+json") {
 			writer.WriteHeader(http.StatusNotAcceptable)

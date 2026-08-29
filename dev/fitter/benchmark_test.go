@@ -105,18 +105,11 @@ func TestFitRouteCoefficientsRecoversSyntheticRideTimes(t *testing.T) {
 	assert.InDelta(t, 3.5, secondsPerAscentM, 1e-6)
 }
 
-// TestHybridModelEqualsTheWeightedPhysicsAndRouteHalves is #241's own
-// acceptance criterion as a test: physics-only and route-only, each isolated
-// from internal/ridemodel.Predict's own output, must average back to exactly
-// what the hybrid model predicts — because the hybrid model IS
-// internal/ridemodel.Predict, called directly, never a second
-// implementation of it.
-//
-// The weight is read off physicsOnlyScaleFactor rather than written in
-// literally, so this stays an identity about the two halves reassembling
-// rather than a second place a reweighting has to be remembered;
-// TestPhysicsOnlyScaleFactorInvertsTheBlendWeight is what holds that factor
-// to the real constant.
+// Physics-only and route-only, each isolated from Predict's own output, must
+// average back to exactly what the hybrid model predicts, the hybrid model being
+// Predict called directly. The weight is read off physicsOnlyScaleFactor rather
+// than written in literally; TestPhysicsOnlyScaleFactorInvertsTheBlendWeight
+// holds that factor to the real constant.
 func TestHybridModelEqualsTheWeightedPhysicsAndRouteHalves(t *testing.T) {
 	coefficients := testCoefficients()
 	samples := rideFeatureSamples(25, 400)
@@ -201,11 +194,9 @@ func TestEvaluateSplitScoresRidesAfterTheLoadedCutoffWithNoFitting(t *testing.T)
 	assert.Contains(t, eval.errorsByModel, "route-only")
 }
 
-// TestEvaluateSplitTreatsTheWholeCutoffDateAsSeen is the exact bug a naive
-// Date.After(cutoff) comparison has: calibration_cutoff is a date — "the
-// last calibration ride's date" — not an instant, so a ride recorded later
-// on that same calendar date must still count as seen, not as an unseen
-// candidate to score.
+// calibration_cutoff is a date, not an instant, so a ride recorded later on that
+// same calendar date must still count as seen rather than as an unseen candidate
+// to score. This is the bug a naive Date.After(cutoff) comparison has.
 func TestEvaluateSplitTreatsTheWholeCutoffDateAsSeen(t *testing.T) {
 	rides, samplesByRide := syntheticCorpus(30)
 	cutoffDate := rides[17].Date

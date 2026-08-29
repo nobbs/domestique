@@ -1108,10 +1108,7 @@ func TestNewReporterRejectsANonPositiveStaleAfter(t *testing.T) {
 }
 
 // An interval nothing succeeded in is silent, and it still moves the window.
-//
-// Leaving the window where it was would make the next digest report two
-// intervals of work under one interval's heading; sending an all-zero message
-// would defeat the policy an operator chose it for.
+// Leaving it would make the next digest report two intervals under one heading.
 func TestReporterDigestPassesOverAnIntervalWithNothingToReport(t *testing.T) {
 	runner := &reportingRunner{targets: Result{
 		Phase: PhaseTargets, Outcome: OutcomeSucceeded, SourceStages: 3, Created: 1,
@@ -1366,13 +1363,9 @@ func (r *pacedRunner) AnnotateStored(context.Context) (classified, failed int) {
 }
 
 // Both halves of the pass that carries the window past the interval are counted
-// in the same digest.
-//
-// A window closing between them would pair each pass's targets half with the
-// next pass's source half instead — no run is lost, but every digest then
-// reports a period that never happened. The counts below differ per pass so
-// that regrouping is visible: pairing them the wrong way reports the previous
-// pass's writes under this pass's heading.
+// in the same digest. A window closing between them would pair each pass's
+// targets half with the next pass's source half. The counts below differ per pass
+// so that regrouping is visible.
 func TestReporterDigestCountsAWholePassInOneInterval(t *testing.T) {
 	start := time.Date(2026, time.August, 17, 8, 0, 0, 0, time.UTC)
 	now := start

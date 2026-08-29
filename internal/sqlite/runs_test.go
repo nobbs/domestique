@@ -142,11 +142,10 @@ func TestStoreRefusesACursorItDidNotIssue(t *testing.T) {
 	}
 }
 
-// The visitor is this method's entire output, and the page size decides how much
-// of the table it reads, so a caller that supplied neither is answered rather
-// than served an empty history it would read as "nothing has run". A visitor
-// that fails partway stops the page for the same reason: a swallowed failure
-// would serve half a page as a whole one.
+// The visitor is this method's entire output and the page size decides how much
+// of the table it reads, so a caller supplying neither is answered rather than
+// served an empty history. A visitor that fails partway stops the page: a
+// swallowed failure would serve half a page as a whole one.
 func TestStoreStopsReadingTheHistoryOnVisitorFailure(t *testing.T) {
 	store := openTestStore(t, testKey(1))
 	startedAt := time.Date(2026, time.August, 17, 8, 0, 0, 0, time.UTC)
@@ -254,13 +253,10 @@ func TestStoreNamesRunsRecordedBeforeReferencesExisted(t *testing.T) {
 	assert.Len(t, page[0], 2*syncRunReferenceBytes, "the reference the migration gave it")
 }
 
-// readSyncRunPage collects one page of the recorded history as the references
-// it names, newest first, with the cursor for the page after it.
-// Runs recorded before the history was split by phase keep an empty phase, and
-// they are not served: the history reports one half or the other, and a run
-// that covered both at once cannot be called either without saying something
-// untrue. The page they are excluded from still fills to its limit, because the
-// exclusion happens where the page is read rather than after it.
+// readSyncRunPage collects one page of the recorded history as the references it
+// names, newest first, with the cursor for the page after it. Runs recorded
+// before the history was split by phase keep an empty phase and are not served.
+// The page still fills to its limit: the exclusion happens where the page is read.
 func TestStoreLeavesPrePhaseRunsOutOfTheHistory(t *testing.T) {
 	store := openTestStore(t, testKey(1))
 	startedAt := time.Date(2026, time.August, 17, 8, 0, 0, 0, time.UTC)

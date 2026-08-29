@@ -164,16 +164,10 @@ func statusCode(status int) string { return strconv.Itoa(status) }
 
 // Every operation the contract marks as state-changing is refused without the
 // browser's origin, and no other operation is refused for wanting one. The
-// document is now the only place that distinction is written down — the
-// validator reads the security requirement rather than matching paths — so this
-// walks the document and proves the served behaviour matches it operation by
-// operation.
-//
-// Each is also reached with a reserved character percent-encoded inside a path
-// parameter. A target identifier is operator-configured free text, so "a%2Fb"
-// addresses a configured slot rather than being malformed, and a guard that
-// read the decoded path would see a different operation than the one the
-// request actually reaches.
+// document is the only place that distinction is written down, so this walks it
+// operation by operation. Each is also reached with a reserved character
+// percent-encoded inside a path parameter: a target identifier is free text, so
+// "a%2Fb" addresses a slot rather than being malformed.
 func TestEveryStateChangingOperationRequiresTheBrowserOrigin(t *testing.T) {
 	document := loadOpenAPIContract(t)
 	handler := newTestHandler(t)
@@ -215,15 +209,10 @@ func TestEveryStateChangingOperationRequiresTheBrowserOrigin(t *testing.T) {
 }
 
 // The served listener answers within its own contract, checked the other way
-// round: the request validator holds callers to the document, and this holds
-// the handlers to it.
-//
-// It is a test rather than a middleware on purpose. Validating a response costs
-// decoding every body this service serves, geometry included, on a path whose
-// whole point is that geometry is never decoded. The class of defect it catches
-// is one nothing else does: a stored value that is outside the enum the
-// document declares reaches the wire silently, and is found in review months
-// later, if at all.
+// round: the validator holds callers to the document, and this holds the handlers
+// to it. A test rather than middleware: validating a response costs decoding
+// every body, geometry included, on a path whose point is that geometry is never
+// decoded.
 func TestServedResponsesSatisfyTheContract(t *testing.T) {
 	spec, err := servedSpec()
 	require.NoError(t, err, "the source contract")
