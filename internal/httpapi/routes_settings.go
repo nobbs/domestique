@@ -22,18 +22,11 @@ func (h *Handler) GetSettings(writer http.ResponseWriter, _ *http.Request) {
 	h.writeJSON(writer, http.StatusOK, h.settingsView())
 }
 
-// The settings are written one section at a time, and each of these replaces
-// the whole of the section it names.
-//
-// The page is a form per section rather than one form, so a save carries what
-// its own form holds and touches nothing else. That is what keeps the whole
-// object rule: a section left out of a request is not a section merged from a
-// page that had gone stale, it is a section this request was never about.
-//
-// Credentials travel with the section that owns them, and only the ones typed
-// in: a credential left out keeps its stored value, and one sent empty is
-// removed. The page is never told what is stored, so it has nothing else to
-// send.
+// The settings are written one section at a time, and each of these replaces the
+// whole of the section it names. The page is a form per section, so a save
+// carries what its own form holds and touches nothing else. Credentials travel
+// with their section and only the ones typed in: one left out keeps its stored
+// value, one sent empty is removed.
 
 // SetWahooApplication replaces the registered application. The slots it writes
 // to are their own section: an application is edited when it is registered or
@@ -214,15 +207,9 @@ func settingsBody[Body any](h *Handler, writer http.ResponseWriter, request *htt
 }
 
 // storeSection writes one section and then its credentials, and answers with
-// every setting now in force.
-//
-// The change is applied to the settings as they are at the moment of the write
-// rather than to a copy read here, so a section saved while another is being
-// saved replaces its own part of a current object.
-//
-// The section goes first because it is the half that can be refused: a
-// credential written before it would stay written under the 400 the page is
-// about to show, which reads as the save having half happened.
+// every setting now in force. The change is applied to the settings as they are
+// at the moment of the write. The section goes first because it is the half that
+// can be refused: a credential written before it would stay written under a 400.
 func (h *Handler) storeSection(
 	writer http.ResponseWriter,
 	request *http.Request,

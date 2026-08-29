@@ -30,10 +30,8 @@ func (s *Store) LastFailureNotification(ctx context.Context, category string) (t
 }
 
 // RecordFailureNotification records a delivered notification after Pushover
-// accepted it, so failed delivery attempts are retried on the next run. A zero
-// sentAt clears the category's suppression record entirely instead: recording
-// and clearing are complements of the same row, not separate concerns, and a
-// category never notified is a no-op to clear.
+// accepted it, so failed deliveries are retried next run. A zero sentAt clears
+// the category's suppression record instead; a category never notified is a no-op.
 func (s *Store) RecordFailureNotification(ctx context.Context, category string, sentAt time.Time) error {
 	if category == "" {
 		return errors.New("failure category is required")

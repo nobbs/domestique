@@ -50,24 +50,12 @@ func NewAnnotator(source Source, cache Cache) *Annotator {
 	return &Annotator{source: source, cache: cache}
 }
 
-// Annotate classifies every stage whose surface is not already known against
-// both its current geometry and the current map. It reports how many stages it
-// classified and how many it could not.
-//
-// The whole inventory is walked in one pass. Classification reads a local index
-// and costs a stage a few milliseconds, so there is nothing to spread over
-// several runs; an earlier version of this classified ten stages a run because
-// each one cost a remote server tens of seconds of work.
-//
-// A stage already classified against its current hash and the current generation
-// is skipped without reading anything. A stage that produced nothing is still
-// recorded: knowing that the question has been asked and answered with silence
-// is what stops it being asked again every run.
-//
-// A stage that fails does not end the pass. Each stage gets its own attempt
-// whatever happened to the last, so one unreadable stage cannot starve every
-// stage behind it — the inventory is always walked in the same order, and an
-// early failure that stopped the pass would stop it at the same place forever.
+// Annotate classifies every stage whose surface is not known against both its
+// current geometry and the current map, reporting how many it classified and how
+// many it could not. The whole inventory is walked in one pass. A stage already
+// classified against its current hash and generation is skipped; one that
+// produced nothing is still recorded, so it is not asked again every run; one
+// that fails does not end the pass, which always walks in the same order.
 func (a *Annotator) Annotate(ctx context.Context, stages []route.Route) (classified, failed int, err error) {
 	// A source with no map behind it has nothing to say. Running anyway would
 	// record every stage as unsurveyed and then reclassify the lot as soon as
