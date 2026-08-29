@@ -2,9 +2,9 @@
  * **B — Filmstrip.** One tile per reading, still nailed to the axis.
  *
  * Where **A** asks the reader to scan a lane, this asks them to read a tile:
- * each moment is a small bordered card carrying its own condition,
- * temperature and wind, and the tiles are as wide as the ground they cover,
- * so the ruled edges themselves show where the ride slows down.
+ * each moment is a small rounded card carrying its own condition, temperature
+ * and wind, and the tiles are as wide as the ground they cover, so their own
+ * edges show where the ride slows down.
  *
  * The bet: a rider reads a forecast a moment at a time — "what is it like
  * when I get to the top" — and grouping by moment beats grouping by measure.
@@ -19,6 +19,17 @@ import { windWeight } from "./cells";
 import type { BandProps } from "./LanesBand";
 
 const TILE_HEIGHT = 62;
+
+/**
+ * The sliver of ground each tile gives back so that it can have corners.
+ *
+ * Butted edge to edge, rounded tiles meet in a notch that reads as a mark
+ * rather than as a gap. Two pixels is enough to separate them and small
+ * enough that a tile still measures the ground it covers: the left edge is
+ * exact, and only the right edge falls short, by less than the ruled line it
+ * replaces.
+ */
+const TILE_GAP = 2;
 
 /*
  * What a tile gives up as it narrows, and in which order.
@@ -57,10 +68,10 @@ export function FilmstripBand({ cells, width, startMetres, endMetres }: BandProp
           return (
             <div
               key={cell.sample.arrivalAt.getTime()}
-              className="absolute top-0 flex flex-col items-center justify-center gap-0.5 overflow-hidden border-[var(--rule)] border-r"
+              className="absolute top-0 flex flex-col items-center justify-center gap-0.5 overflow-hidden rounded-md border border-[var(--rule)]"
               style={{
                 left,
-                width: cellWidth,
+                width: Math.max(cellWidth - TILE_GAP, 1),
                 height: TILE_HEIGHT,
                 backgroundColor: `color-mix(in srgb, var(--accent) ${wet * 100}%, transparent)`,
               }}
