@@ -34,12 +34,9 @@ export function ReprocessButton({
           // The status is polled anyway, and refetching it now is how the run this
           // request started shows up as running rather than as nothing happening.
           queryClient.invalidateQueries({ queryKey: statusQuery().queryKey }),
-          // The geometry is only marked stale. Refetching it now would fetch the
-          // old stage — the run has barely started — and then hold that answer as
-          // fresh for the five minutes the query is allowed to cache, which is
-          // exactly the wrong thing to do to a page waiting for new data. Stale
-          // instead means the next visit or focus fetches whatever has landed by
-          // then.
+          // The geometry is only marked stale. Refetching now would fetch the old stage
+          // — the run has barely started — and hold it as fresh for the five minutes the
+          // query caches. Stale means the next visit or focus fetches what has landed.
           queryClient.invalidateQueries({
             queryKey: routeGeometryQuery(provider, sourceRouteId, stageOrder).queryKey,
             refetchType: "none",

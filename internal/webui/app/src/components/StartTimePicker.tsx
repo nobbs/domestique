@@ -72,16 +72,10 @@ export function StartTimePicker({ value, onChange, movingSeconds }: StartTimePic
       <Input
         id={INPUT_ID}
         type="datetime-local"
-        // The browser's own hint for the same window this refuses by hand —
-        // cheap to offer, and it steers a picker away from the refusal before
-        // the reader ever reaches it. Computed once per render rather than
-        // kept ticking live, which a control open for a whole session would
-        // need; the check in the handler reads the clock afresh, so a drifted
-        // hint costs a refusal rather than a bad request.
-        //
-        // Rounded up to the next whole minute, because the field works in
-        // minutes: truncating downwards would advertise a minute already a few
-        // seconds too old to pass that check.
+        // The browser's own hint for the same window this refuses by hand. Computed
+        // once per render rather than kept ticking; the handler reads the clock afresh,
+        // so a drifted hint costs a refusal rather than a bad request. Rounded up to the
+        // next whole minute, since truncating would advertise a minute already too old.
         min={toInputValue(new Date(ceilToMinute(now.getTime() - FORECAST_PAST_ALLOWANCE_MS)))}
         max={toInputValue(latestStart)}
         value={value ? toInputValue(value) : ""}

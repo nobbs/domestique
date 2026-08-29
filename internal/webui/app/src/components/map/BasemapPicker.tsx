@@ -72,11 +72,9 @@ export function BasemapPicker({
     <Popover open={expanded} onOpenChange={onExpandedChange}>
       <PopoverTrigger
         render={<Button variant="panel" icon={<IconStack2 stroke={1.6} />} />}
-        // The mark says "the ground is a choice" to anyone who can see it; the
-        // name says what, for anyone who cannot. The name is the whole of what
-        // the button says and the mark inside it does not change, so the name
-        // has to carry the fold — `aria-expanded`, which the popover sets for
-        // itself, would otherwise leave a reader guessing what pressing it does.
+        // The mark says "the ground is a choice" to anyone who can see it; the name
+        // says what, for anyone who cannot. The name has to carry the fold, since
+        // `aria-expanded` alone leaves a reader guessing what pressing it does.
         aria-label={expanded ? "Hide the basemap choices" : "Choose the basemap"}
       />
       {/*
