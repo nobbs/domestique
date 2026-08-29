@@ -8,11 +8,17 @@
 # changes nothing about which image this builds on — but it names the stream the
 # digest was taken from, which is what lets the updater offer the next digest of
 # that stream rather than of `latest`.
+#
+# The tag names the exact patch, not the major or major.minor line it belongs
+# to, so that it states the same version `.mise.toml` pins rather than the
+# nearest floating alias of it. A digest refresh then only ever brings a rebuild
+# of that patch, and reaching the next one is a tag change — which is what puts
+# it in the toolchain group a person reads.
 
 # The -dev variant carries corepack and a shell. Corepack installs the pnpm
 # version pinned by `packageManager` in package.json, so the build resolves the
 # same pnpm the repository does without pinning it a second time here.
-FROM --platform=$BUILDPLATFORM dhi.io/node:24-dev@sha256:1949e745d8b5365e45dbd7ba20a495178aa55fda7248c5c5af3928d84467d047 AS webui
+FROM --platform=$BUILDPLATFORM dhi.io/node:24.19.0-dev@sha256:1949e745d8b5365e45dbd7ba20a495178aa55fda7248c5c5af3928d84467d047 AS webui
 
 USER root
 WORKDIR /app
@@ -27,7 +33,7 @@ COPY internal/webui/app/ ./
 RUN pnpm run build
 
 # The -dev variant carries the toolchain and coreutils.
-FROM --platform=$BUILDPLATFORM dhi.io/golang:1.27-dev@sha256:e2e77e505161b120742b747aae60dbf6179bf381e9a178644ef6530b65171f79 AS build
+FROM --platform=$BUILDPLATFORM dhi.io/golang:1.27.0-dev@sha256:e2e77e505161b120742b747aae60dbf6179bf381e9a178644ef6530b65171f79 AS build
 
 ARG TARGETARCH
 ARG TARGETOS

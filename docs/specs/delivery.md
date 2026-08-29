@@ -626,6 +626,9 @@ A tag change is offered too, but it does not arrive on its own: the Node and Go
 base image tags are grouped with the toolchain entries they have to agree with,
 so moving to a new compiler or runtime is one pull request that changes
 `.mise.toml`, `go.mod` and the `Dockerfile` together, and a person reads it.
+Because those tags name the exact patch, every toolchain move is such a change —
+there is no patch small enough to slip past the group by leaving the tag it
+already matched.
 
 **An automerged update reaches production.** A merge to the default branch that
 touches an input of the image publishes it, and the deployment follows the
@@ -654,9 +657,14 @@ toolchain, and the minimal `static` image for the runtime. They carry SBOMs,
 SLSA Build Level 3 provenance, and signatures. Because the images this project
 publishes are themselves unsigned, that is the strongest verifiable link in the
 chain, and it is why the base images stay pinned by digest. Each reference names
-its tag beside that digest — `dhi.io/node:24-dev@sha256:…` — which resolves
+its tag beside that digest — `dhi.io/node:24.19.0-dev@sha256:…` — which resolves
 identically and exists so that an automated digest refresh follows the intended
-stream rather than `latest`.
+stream rather than `latest`. That tag names the **exact patch**, not the major
+or major.minor alias above it, so that it states the same version `.mise.toml`
+pins instead of the nearest floating window over it. The cost is that a stream
+whose patch tag stops being rebuilt stops receiving digest refreshes; the gain
+is that the image can no longer move to a runtime or compiler the pinned
+toolchain never named.
 
 `dhi.io` requires `docker login dhi.io` with a Docker Hub account and personal
 access token **even on the free Community tier**. It is therefore a build-time
