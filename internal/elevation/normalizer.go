@@ -15,8 +15,8 @@ const (
 	earthRadiusMetres    = 6_371_000.0
 )
 
-// Normalizer resamples fully-elevated stages and removes isolated altitude
-// spikes with a centred moving median. Stages with incomplete elevation are
+// Normalizer resamples fully-elevated routes and removes isolated altitude
+// spikes with a centred moving median. Routes with incomplete elevation are
 // preserved because they do not provide a complete profile to normalize.
 type Normalizer struct{}
 
@@ -25,33 +25,33 @@ func New() *Normalizer {
 	return &Normalizer{}
 }
 
-// Process returns a stage with a normalized elevation profile while retaining
+// Process returns a route with a normalized elevation profile while retaining
 // its source identity, revision, title, and source content hash.
-func (n *Normalizer) Process(stage *route.Stage) (route.Stage, error) {
-	if stage == nil {
-		return route.Stage{}, fmt.Errorf("elevation: route stage is required")
+func (n *Normalizer) Process(original *route.Route) (route.Route, error) {
+	if original == nil {
+		return route.Route{}, fmt.Errorf("elevation: route is required")
 	}
-	geometry := stage.Geometry()
+	geometry := original.Geometry()
 	if !hasCompleteElevation(geometry) {
-		return *stage, nil
+		return *original, nil
 	}
 
 	profile := resampleElevations(geometry)
 	applyMovingMedian(profile)
 	applyElevations(geometry, profile)
 
-	processed, err := route.NewStage(
-		stage.Key().Provider(),
-		stage.Key().RouteID(),
-		stage.Key().StageOrder(),
-		stage.Revision(),
-		stage.RouteName(),
-		stage.StageName(),
+	processed, err := route.NewRoute(
+		original.Key().Provider(),
+		original.Key().SourceRouteID(),
+		original.Key().StageOrder(),
+		original.Revision(),
+		original.SourceRouteName(),
+		original.RouteName(),
 		geometry,
-		stage.ContentHash(),
+		original.ContentHash(),
 	)
 	if err != nil {
-		return route.Stage{}, fmt.Errorf("elevation: creating normalized stage: %w", err)
+		return route.Route{}, fmt.Errorf("elevation: creating normalized route: %w", err)
 	}
 
 	return processed, nil

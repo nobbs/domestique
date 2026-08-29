@@ -519,10 +519,10 @@ func newTestClient(t *testing.T, server *httptest.Server) *Client {
 	return client
 }
 
-func testStage(t *testing.T) route.Stage {
+func testStage(t *testing.T) route.Route {
 	t.Helper()
 	elevation := 100.0
-	stage, err := route.NewStage(
+	stage, err := route.NewRoute(
 		route.ProviderVeloPlanner,
 		100,
 		1,

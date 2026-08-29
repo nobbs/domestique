@@ -507,7 +507,7 @@ function SourceSettingsSection({
   return (
     <Section
       title={label}
-      description="A source is read with an account of its own, and the address is both what is read and what a stage is linked back to."
+      description="A source is read with an account of its own, and the address is both what is read and what a route is linked back to."
       save={save}
       edited={draft !== null}
       onSave={() =>
@@ -793,7 +793,7 @@ function SurfaceClassification({ settings }: { settings: Settings }) {
         />
         <FieldDescription>
           An empty list switches classification off. Naming a region does not build the index: the
-          next rebuild on the schedule below does, and stages are classified on the pass after that.
+          next rebuild on the schedule below does, and routes are classified on the pass after that.
         </FieldDescription>
       </Field>
       <Field>
@@ -841,7 +841,7 @@ function RideModel({ settings }: { settings: Settings }) {
         />
         <FieldDescription>
           An absolute path, on the machine the service runs on, to the file the fitting tooling
-          produced. Empty leaves stages without a predicted moving time.
+          produced. Empty leaves routes without a predicted moving time.
         </FieldDescription>
       </Field>
     </Section>

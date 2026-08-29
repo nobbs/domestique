@@ -21,7 +21,7 @@ import {
   test,
 } from "./fixtures";
 
-const LOOP_ROUTE = { provider: "veloplanner", routeId: 4102, stageOrder: 1 };
+const LOOP_ROUTE = { provider: "veloplanner", sourceRouteId: 4102, stageOrder: 1 };
 
 /** `--base` in the light palette, from the custom properties in index.css. */
 const LIGHT_SURFACE = "rgb(243, 245, 246)";
@@ -39,7 +39,7 @@ test.describe("in a light colour scheme", () => {
     offlinePage: page,
     basemapRequests,
   }) => {
-    await openRoute(page, LOOP_ROUTE.provider, LOOP_ROUTE.routeId, LOOP_ROUTE.stageOrder);
+    await openRoute(page, LOOP_ROUTE.provider, LOOP_ROUTE.sourceRouteId, LOOP_ROUTE.stageOrder);
 
     expect(await backgroundOfBody(page)).toBe(LIGHT_SURFACE);
     expect(basemapRequests.length).toBeGreaterThan(0);
@@ -54,7 +54,7 @@ test.describe("in a dark colour scheme", () => {
     offlinePage: page,
     basemapRequests,
   }) => {
-    await openRoute(page, LOOP_ROUTE.provider, LOOP_ROUTE.routeId, LOOP_ROUTE.stageOrder);
+    await openRoute(page, LOOP_ROUTE.provider, LOOP_ROUTE.sourceRouteId, LOOP_ROUTE.stageOrder);
 
     expect(await backgroundOfBody(page)).toBe(DARK_SURFACE);
     // The basemap cannot follow the media query in CSS: it is a document fetched
@@ -82,7 +82,7 @@ test("the two schemes do not render the same map", async ({ browser, baseURL }) 
     await pinRendering(page);
 
     await page.goto(
-      `${served}/?route=${LOOP_ROUTE.provider}%2F${LOOP_ROUTE.routeId}%2F${LOOP_ROUTE.stageOrder}`,
+      `${served}/?route=${LOOP_ROUTE.provider}%2F${LOOP_ROUTE.sourceRouteId}%2F${LOOP_ROUTE.stageOrder}`,
     );
     shots.push(await settleMap(page));
 
@@ -186,7 +186,7 @@ test.describe("on a narrow viewport", () => {
   });
 
   test("a route still shows its map and its chart", async ({ offlinePage: page }) => {
-    await openRoute(page, LOOP_ROUTE.provider, LOOP_ROUTE.routeId, LOOP_ROUTE.stageOrder);
+    await openRoute(page, LOOP_ROUTE.provider, LOOP_ROUTE.sourceRouteId, LOOP_ROUTE.stageOrder);
 
     const box = await mapRegion(page).boundingBox();
     expect(box).not.toBeNull();

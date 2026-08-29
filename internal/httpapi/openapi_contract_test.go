@@ -94,8 +94,8 @@ func TestOpenAPIContractResponses(t *testing.T) {
 	document := loadOpenAPIContract(t)
 	state := &fakeState{
 		summaries: []route.Summary{{
-			Provider: route.ProviderVeloPlanner, RouteID: 12, StageOrder: 1,
-			RouteName: "Contract route", PointCount: 2,
+			Provider: route.ProviderVeloPlanner, SourceRouteID: 12, StageOrder: 1,
+			SourceRouteName: "Contract route", PointCount: 2,
 		}},
 		coordinates: json.RawMessage(`[[8,49],[8.1,49.1]]`),
 	}
@@ -109,9 +109,9 @@ func TestOpenAPIContractResponses(t *testing.T) {
 		{"health", "/healthz", http.MethodGet, "application/json", cacheAPI, "", http.StatusOK, false},
 		{"status", "/v1/status", http.MethodGet, "application/json", cacheAPI, "", http.StatusOK, true},
 		{"unauthorized", "/v1/status", http.MethodGet, "application/json", cacheAPI, "", http.StatusUnauthorized, false},
-		{"geometry", "/v1/providers/{provider}/routes/{routeId}/stages/{stage}/geometry", http.MethodGet, "application/geo+json", cacheAPI, "", http.StatusOK, true},
+		{"geometry", "/v1/providers/{provider}/sourceRoutes/{sourceRouteId}/routes/{stageOrder}/geometry", http.MethodGet, "application/geo+json", cacheAPI, "", http.StatusOK, true},
 		{"trigger", "/v1/sync", http.MethodPost, "application/json", cacheAPI, "", http.StatusAccepted, true},
-		{"legacy redirect", "/v1/routes/{routeId}/stages/{stage}", http.MethodGet, "", cacheAPI, "/v1/providers/veloplanner/routes/12/stages/1", http.StatusPermanentRedirect, true},
+		{"legacy redirect", "/v1/routes/{routeId}/stages/{stage}", http.MethodGet, "", cacheAPI, "/v1/providers/veloplanner/sourceRoutes/12/routes/1", http.StatusPermanentRedirect, true},
 		{"unmatched", "", http.MethodGet, "application/json", cacheAPI, "", document.Fallback.Status, true},
 	}
 
@@ -133,7 +133,10 @@ func TestOpenAPIContractResponses(t *testing.T) {
 			if target == "" {
 				target = "/missing"
 			}
-			target = strings.NewReplacer("{provider}", "veloplanner", "{routeId}", "12", "{stage}", "1", "{asset}", "app.js").Replace(target)
+			target = strings.NewReplacer(
+				"{provider}", "veloplanner", "{sourceRouteId}", "12", "{stageOrder}", "1",
+				"{routeId}", "12", "{stage}", "1", "{asset}", "app.js",
+			).Replace(target)
 			request := httptest.NewRequestWithContext(context.Background(), test.method, target, http.NoBody)
 			if test.authenticated {
 				request.Header.Set(assertionHeader, testAssertion)
@@ -175,11 +178,13 @@ func TestEveryStateChangingOperationRequiresTheBrowserOrigin(t *testing.T) {
 	document := loadOpenAPIContract(t)
 	handler := newTestHandler(t)
 	plain := strings.NewReplacer(
-		"{provider}", "veloplanner", "{routeId}", "12", "{stage}", "1",
+		"{provider}", "veloplanner", "{sourceRouteId}", "12", "{stageOrder}", "1",
+		"{routeId}", "12", "{stage}", "1",
 		"{target}", "rider-a", "{asset}", "app.js",
 	)
 	escaped := strings.NewReplacer(
-		"{provider}", "velo%2Fplanner", "{routeId}", "12", "{stage}", "1",
+		"{provider}", "velo%2Fplanner", "{sourceRouteId}", "12", "{stageOrder}", "1",
+		"{routeId}", "12", "{stage}", "1",
 		"{target}", "a%2Fb", "{asset}", "app%2Ejs",
 	)
 
@@ -229,8 +234,8 @@ func TestServedResponsesSatisfyTheContract(t *testing.T) {
 	// of nothing would satisfy any schema.
 	state := historyStateFixture()
 	state.summaries = []route.Summary{{
-		Provider: route.ProviderVeloPlanner, RouteID: 12, StageOrder: 1,
-		RouteName: "Contract route", PointCount: 2,
+		Provider: route.ProviderVeloPlanner, SourceRouteID: 12, StageOrder: 1,
+		SourceRouteName: "Contract route", PointCount: 2,
 	}}
 	state.coordinates = json.RawMessage(`[[8,49],[8.1,49.1]]`)
 	handler := newHandler(t, &fakeOAuth{}, state)
@@ -242,8 +247,8 @@ func TestServedResponsesSatisfyTheContract(t *testing.T) {
 		"/v1/sync/runs",
 		"/v1/webui/config",
 		"/v1/settings",
-		"/v1/providers/veloplanner/routes/12/stages/1",
-		"/v1/providers/veloplanner/routes/12/stages/1/geometry",
+		"/v1/providers/veloplanner/sourceRoutes/12/routes/1",
+		"/v1/providers/veloplanner/sourceRoutes/12/routes/1/geometry",
 	} {
 		t.Run(target, func(t *testing.T) {
 			request := authenticatedRequest(http.MethodGet, target)

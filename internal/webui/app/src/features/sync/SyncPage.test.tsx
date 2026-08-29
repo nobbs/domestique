@@ -13,7 +13,7 @@ function statusBody() {
         id: "rider-a",
         authorisation: "authorized",
         convergence: "current",
-        stages: { current: 4, pending: 0 },
+        routes: { current: 4, pending: 0 },
       },
     ],
     sync: {

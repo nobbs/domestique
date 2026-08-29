@@ -35,7 +35,7 @@ private to this service.
 │       └── main.go                 process composition and lifecycle only
 ├── internal/
 │   ├── config/                     Koanf loading, secret input, validation
-│   ├── route/                      source-stage value types and invariants
+│   ├── route/                      route value types and invariants
 │   ├── sync/                       reconciliation use case and its interfaces
 │   ├── oauth/                      Wahoo OAuth use case and its interfaces
 │   ├── schedule/                   delayed-start and hourly execution
@@ -71,7 +71,7 @@ owns a distinct responsibility in this tree.
 | --- | --- | --- |
 | config | TOML and environment layering, the state key's file-secret resolution, validation of the file's own fields | HTTP clients, business decisions, provider-specific secret syntax, anything an operator edits while the service runs |
 | runtimeconfig | the settings and credentials held in the database: their types, the rules both the write path and startup check them against, and the live snapshot readers copy from | SQL, HTTP routing, the file's fields, and any decision made *from* a setting |
-| route | source-stage identity — including which provider issued it — geometry, revision, and validation types | SQL, HTTP, FIT, Wahoo details |
+| route | route identity — including which provider issued it — geometry, revision, and validation types | SQL, HTTP, FIT, Wahoo details |
 | sync | inventory reconciliation, deletion gates, target progress, aggregate run result, per-target run result | HTTP handlers, SQL queries, Wahoo URLs |
 | oauth | one-time callback state, target onboarding, duplicate-account rejection | HTTP routing, SQL queries, Wahoo URL formatting |
 | schedule | startup delay, hourly cadence, no-overlap guard, cancellation | sync decisions or notification content |
@@ -79,12 +79,12 @@ owns a distinct responsibility in this tree.
 | readiness | the loopback readiness probe: whether local configuration and state are usable | any upstream call, identity, routing of the served surface, or authorisation state |
 | webui | the embedded browser bundle and serving it; the TypeScript application | HTTP routing, identity, or any knowledge of persistence |
 | elevation | sampling and median-filtering the exported elevation profile | source fetching, storage, FIT bytes |
-| surface | OSM surface and tracktype classification, snapping a stage to the ways under it, caching policy | SQL, HTTP routing, what the UI draws, where the ways come from |
-| osmindex | downloading regional OSM extracts, packing them into a cell-partitioned surface index, the rebuild schedule, serving the ways near a stage | classification rules, SQL of the state store, what a stage is |
-| ridemodel | the hybrid coefficient type and its loading, the forward model — fixed physics averaged with a rides-calibrated route correction — that turns a stage's geometry into a predicted moving time, caching that prediction against geometry, surface, and coefficient fingerprints | calibrating the route correction from a ride corpus (`dev/fitter`'s job), SQL, HTTP routing, how a stage's surface is classified |
+| surface | OSM surface and tracktype classification, snapping a route to the ways under it, caching policy | SQL, HTTP routing, what the UI draws, where the ways come from |
+| osmindex | downloading regional OSM extracts, packing them into a cell-partitioned surface index, the rebuild schedule, serving the ways near a route | classification rules, SQL of the state store, what a route is |
+| ridemodel | the hybrid coefficient type and its loading, the forward model — fixed physics averaged with a rides-calibrated route correction — that turns a route's geometry into a predicted moving time, caching that prediction against geometry, surface, and coefficient fingerprints | calibrating the route correction from a ride corpus (`dev/fitter`'s job), SQL, HTTP routing, how a route's surface is classified |
 | veloplanner | login, listing, detail decoding, route conversion | SQLite and Wahoo concerns |
 | komoot | login, listing, detail decoding, route conversion | SQLite and Wahoo concerns |
-| fit | deterministic FIT bytes for one valid route stage | VeloPlanner or Komoot requests, OAuth, HTTP |
+| fit | deterministic FIT bytes for one valid route | VeloPlanner or Komoot requests, OAuth, HTTP |
 | wahoo | authorisation URL, exchange, refresh, user lookup, FIT route operations, rate headers | route-source parsing, SQLite queries, Pushover |
 | sqlite | migrations, encrypted token storage, snapshots and commits | Wahoo, VeloPlanner, or Komoot HTTP |
 | pushover | delivery of an already safe notification | run aggregation or secret resolution |
@@ -107,7 +107,7 @@ type Source interface {
 }
 
 type Encoder interface {
-    Encode(ctx context.Context, stage route.Stage) ([]byte, error)
+    Encode(ctx context.Context, route route.Route) ([]byte, error)
 }
 
 type Target interface {
@@ -130,7 +130,7 @@ differ in what they contact and what they may not do, so the type system, not a
 switch statement, is what keeps a caller from asking for a half that does not
 exist.
 
-`Source.Inventory` returns stages already carrying their own `route.Provider`,
+`Source.Inventory` returns routes already carrying their own `route.Provider`,
 so a second provider is a new adapter satisfying this same interface with its
 own provider value — not a change to the interface, the identity type, or any
 package that consumes a `route.Key`.
@@ -158,7 +158,7 @@ configuration and the Content-Security-Policy header at once.
 satisfied by `*sqlite.Store`: the settings package owns the rules, and the
 adapter owns the rows.
 
-Read models that cross the persistence boundary — the stage summary served by
+Read models that cross the persistence boundary — the route summary served by
 the routes endpoints — are declared in `route`, not exported from `sqlite`. That
 keeps the arrow one-way: `httpapi` and `sqlite` share a value vocabulary without
 `httpapi` importing an adapter.
@@ -198,7 +198,7 @@ which tier it belongs to.
 
 An answer that depends only on the route belongs to Go. It is the same for every
 viewer, every session and every device, so it can be computed once and stored:
-stage distance, ascent and maximum gradient in `Summary`; surface classification
+route distance, ascent and maximum gradient in `Summary`; surface classification
 in `surface.Match`, which needs the OpenStreetMap index; the elevation
 normalisation the FIT encoder exports.
 
@@ -239,7 +239,7 @@ endpoint accepts them.
 
 ### Predicted moving time is a deliberate departure
 
-A stage's predicted moving time — `internal/ridemodel`, computed once and
+A route's predicted moving time — `internal/ridemodel`, computed once and
 stored on `Summary` in the manner of surface classification — depends on rider
 mass and sustained power, which by the rule above are reader-shaped and belong
 to the browser. It is stored in Go instead, and the reason is worth recording
@@ -253,7 +253,7 @@ different ones. That premise does not hold once there is one configured
 hybrid profile — fixed physical priors averaged with a route correction
 calibrated once against a corpus of recorded rides ([#239](https://github.com/nobbs/domestique/issues/239))
 — rather than a value each reader guesses: there is one operator, one profile,
-and therefore exactly one answer per stage, which is precisely the shape of
+and therefore exactly one answer per route, which is precisely the shape of
 thing this section already sends to Go. The conclusion moves because the
 premise does, not because it is being worked around.
 
@@ -277,7 +277,7 @@ its inputs come from otherwise changed.
 The same boundary holds for the profile's measured unseen-route error
 ([#217](https://github.com/nobbs/domestique/issues/217)): `internal/httpapi`
 reads it once, straight off the loaded `ridemodel.Coefficients`, and attaches
-it to every stage response that carries a prediction. It is metadata about
+it to every route response that carries a prediction. It is metadata about
 the frozen profile, not a value this service computes at serve time —
 `dev/fitter -recalibrate` is what measures it, the same way it measures
 `seconds_per_km` and `seconds_per_ascent_m`.

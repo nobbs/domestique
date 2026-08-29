@@ -48,7 +48,7 @@ import {
   movingSecondsForWindow,
   rangeBounds,
 } from "../../lib/profile";
-import { useSeenStages } from "../../lib/seenStages";
+import { useSeenRoutes } from "../../lib/seenRoutes";
 import { widened } from "../../lib/selection";
 import { useStartTime } from "../../lib/startTime";
 import { summariseSurface } from "../../lib/surface";
@@ -102,8 +102,8 @@ function unionOf(boxes: BoundingBox[]): BoundingBox | null {
  *
  * The address carries every part of the identity the service serves a route
  * under even though nothing on the page ever shows the last two: a library
- * with more than one provider or more than one stage under a route would
- * otherwise have routes that cannot be linked to.
+ * with more than one provider or more than one route under a source route
+ * would otherwise have routes that cannot be linked to.
  *
  * The two-part form this address had before a second provider existed is still
  * read, and means the provider it always meant. This is the address the app
@@ -114,7 +114,7 @@ function unionOf(boxes: BoundingBox[]): BoundingBox | null {
  */
 function parseRouteKey(
   value: string | null,
-): { provider: string; routeId: number; stageOrder: number } | null {
+): { provider: string; sourceRouteId: number; stageOrder: number } | null {
   const parts = (value ?? "").split("/");
   const [provider, left, right] = parts.length === 2 ? ["veloplanner", ...parts] : parts;
   if (
@@ -127,10 +127,10 @@ function parseRouteKey(
   ) {
     return null;
   }
-  const routeId = Number.parseInt(left, 10);
+  const sourceRouteId = Number.parseInt(left, 10);
   const stageOrder = Number.parseInt(right, 10);
 
-  return routeId > 0 && stageOrder > 0 ? { provider, routeId, stageOrder } : null;
+  return sourceRouteId > 0 && stageOrder > 0 ? { provider, sourceRouteId, stageOrder } : null;
 }
 
 /**
@@ -189,7 +189,7 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
   // No default: an invented start time would draw a confident forecast for a
   // ride nobody actually planned. See lib/startTime.ts.
   const [startAt, setStartAt] = useStartTime();
-  const { changeOf, markSeen } = useSeenStages();
+  const { changeOf, markSeen } = useSeenRoutes();
   // What the panels are standing on, so the camera frames a route in the part
   // of the map the reader can actually see.
   const insets = useOverlayInsets();
@@ -207,7 +207,7 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
    */
   const [params, setParams] = useSearchParams();
   const opened = parseRouteKey(params.get("route"));
-  const openKey = opened ? `${opened.provider}/${opened.routeId}/${opened.stageOrder}` : null;
+  const openKey = opened ? `${opened.provider}/${opened.sourceRouteId}/${opened.stageOrder}` : null;
 
   const library = useMemo(() => routes.data ?? [], [routes.data]);
 
@@ -260,7 +260,7 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
 
   const drawn = useQueries({
     queries: library.map((route) =>
-      routeGeometryQuery(route.provider, route.routeId, route.stageOrder),
+      routeGeometryQuery(route.provider, route.sourceRouteId, route.stageOrder),
     ),
     combine,
   });
@@ -283,7 +283,11 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
   // richer than the filter's kind-only reading of the same fetch — reaches it.
   const openRoute = library.find((route) => routeKey(route) === openKey) ?? null;
   const openGeometry = useQuery({
-    ...routeGeometryQuery(opened?.provider ?? "", opened?.routeId ?? 0, opened?.stageOrder ?? 0),
+    ...routeGeometryQuery(
+      opened?.provider ?? "",
+      opened?.sourceRouteId ?? 0,
+      opened?.stageOrder ?? 0,
+    ),
     // Only for a route the library actually holds: an address naming one it does
     // not is answered by saying so, not by asking the service about it.
     enabled: openRoute !== null,
@@ -302,7 +306,7 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
   const openFailed = openRoute !== null && openGeometry.isError;
   const shownRoute = openFailed ? null : openRoute;
 
-  // The deterministic trigger for "seen": the stage's own panel is actually
+  // The deterministic trigger for "seen": the route's own panel is actually
   // shown, whether that came from pressing "Open route", picking it off the
   // map, or opening a link straight to it. Never from rendering it in the
   // list, and never a network call — it only ever writes to this reader's own
@@ -326,7 +330,7 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
 
   const routeProfile = useMemo(() => buildProfile(openCoordinates), [openCoordinates]);
   // Samples for the forecast strip: nothing until the reader has chosen a
-  // start time, and nothing for a stage nothing has predicted a moving time
+  // start time, and nothing for a route nothing has predicted a moving time
   // for — `forecastSamples` itself returns `[]` for either, which the strip
   // reads as nothing to draw.
   const samples = useMemo(
@@ -336,7 +340,7 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
         : [],
     [openCoordinates, openGeometry.data?.cumulativeSeconds, startAt],
   );
-  // The whole stage's predicted moving time, and undefined for a stage nothing
+  // The whole route's predicted moving time, and undefined for a route nothing
   // has predicted. It bounds how late a start the picker may offer — the
   // forecast has to reach the arrival, not just the departure — and it is what
   // tells the page to explain an absent strip rather than draw nothing.
@@ -352,8 +356,8 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
   // around a stretch the chart is not showing.
   const shownWindow = windowed ? zoomWindow : null;
   // The moving time for the stretch on show, read off the same cumulative
-  // series the whole-stage figure comes from. Undefined restores the
-  // whole-stage figure — clearing the selection, or a stage nothing has
+  // series the whole-route figure comes from. Undefined restores the
+  // whole-route figure — clearing the selection, or a route nothing has
   // predicted, both fall back the same way.
   const selectionMovingSeconds = useMemo(
     () => movingSecondsForWindow(openCoordinates, cumulativeSeconds, shownWindow),
@@ -524,7 +528,7 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
    * about the library rather than about this route.
    */
   const subtitle = [
-    openRoute && openRoute.routeName !== openRoute.title ? openRoute.routeName : null,
+    openRoute && openRoute.sourceRouteName !== openRoute.title ? openRoute.sourceRouteName : null,
     readAt ? `read ${formatReadTime(readAt)}` : null,
     status.data?.converged ? convergedPhrase(status.data.targets.length) : null,
   ]
@@ -641,7 +645,7 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
               coordinates={openCoordinates}
               movingSeconds={movingSeconds}
               predictionKnown={openGeometry.isSuccess}
-              stageKey={openKey ?? undefined}
+              routeKey={openKey ?? undefined}
             />
           }
           highestMetres={routeProfile ? routeProfile.maxElevationMetres : null}

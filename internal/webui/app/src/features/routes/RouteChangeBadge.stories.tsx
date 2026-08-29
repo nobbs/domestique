@@ -1,10 +1,10 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect } from "storybook/test";
-import { StageChangeBadge } from "./StageChangeBadge";
+import { RouteChangeBadge } from "./RouteChangeBadge";
 
 const meta = {
-  title: "Features/Atlas/Stage Change Badge",
-  component: StageChangeBadge,
+  title: "Features/Atlas/Route Change Badge",
+  component: RouteChangeBadge,
   tags: ["autodocs"],
   decorators: [
     (Story) => (
@@ -13,7 +13,7 @@ const meta = {
       </div>
     ),
   ],
-} satisfies Meta<typeof StageChangeBadge>;
+} satisfies Meta<typeof RouteChangeBadge>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;

@@ -7,7 +7,7 @@ const succeeded: SyncRun = {
   phase: "targets",
   completedAt: "2026-08-18T06:30:00Z",
   result: "succeeded",
-  sourceStages: 0,
+  sourceRoutes: 0,
   created: 3,
   updated: 12,
   deleted: 1,
@@ -52,7 +52,7 @@ export const NoReference: Story = {
 
 export const SourceRead: Story = {
   args: {
-    run: { ...succeeded, phase: "source", sourceStages: 47, created: 0, updated: 0, deleted: 0 },
+    run: { ...succeeded, phase: "source", sourceRoutes: 47, created: 0, updated: 0, deleted: 0 },
     label: "VeloPlanner",
   },
 };

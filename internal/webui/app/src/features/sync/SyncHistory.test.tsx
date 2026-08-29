@@ -14,7 +14,7 @@ function status(lastCompletedAt: string): Status {
     sync: {
       state: "idle",
       lastCompletedAt,
-      sourceStages: 0,
+      sourceRoutes: 0,
       created: 0,
       updated: 0,
       deleted: 0,
@@ -31,7 +31,7 @@ function run(overrides: Partial<SyncRun> = {}): SyncRun {
     phase: "targets",
     completedAt: "2026-08-18T06:30:00Z",
     result: "succeeded",
-    sourceStages: 0,
+    sourceRoutes: 0,
     created: 1,
     updated: 2,
     deleted: 0,
@@ -78,7 +78,7 @@ describe("SyncHistory", () => {
     renderHistory({
       runs: [
         run({ reference: "aaaaaaaaaaaa" }),
-        run({ reference: "bbbbbbbbbbbb", phase: "source", sourceStages: 12 }),
+        run({ reference: "bbbbbbbbbbbb", phase: "source", sourceRoutes: 12 }),
       ],
     });
 
@@ -97,7 +97,7 @@ describe("SyncHistory", () => {
   // more than one reads as the library instead.
   it("reads a source row as the library when more than one source is configured", () => {
     renderHistory(
-      { runs: [run({ reference: "bbbbbbbbbbbb", phase: "source", sourceStages: 12 })] },
+      { runs: [run({ reference: "bbbbbbbbbbbb", phase: "source", sourceRoutes: 12 })] },
       config({ veloplanner: "https://v.example", komoot: "https://k.example" }),
     );
 

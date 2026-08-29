@@ -1,4 +1,6 @@
-// Package route owns validated source route-stage values.
+// Package route owns validated route values. A route is one ride's worth of
+// geometry: the whole of a Komoot tour, or one ordered piece — one stage — of a
+// VeloPlanner source route.
 package route
 
 import (
@@ -18,58 +20,65 @@ const earthRadiusMetres = 6_371_000.0
 // describes the same scale of terrain the exported profile preserves.
 const gradientWindowMetres = 100.0
 
-// Provider names which upstream source issued a stage's route ID. It is the
-// shared vocabulary a stage identity is named against: two providers may issue
-// the same numeric route ID, so the pair alone is not unique once a second
-// provider exists.
+// Provider names which upstream source issued a route's source route ID. It is
+// the shared vocabulary a route identity is named against: two providers may
+// issue the same numeric source route ID, so the pair alone is not unique once
+// a second provider exists.
 type Provider string
 
-// ProviderVeloPlanner is the only provider a stage has ever come from until a
-// second one exists. Naming it does not change what a VeloPlanner stage's
+// ProviderVeloPlanner is the only provider a route has ever come from until a
+// second one exists. Naming it does not change what a VeloPlanner route's
 // ExternalID renders as.
 const ProviderVeloPlanner Provider = "veloplanner"
 
 // ProviderKomoot names the second source the webui and its demo library are
 // built to distinguish. No adapter reads Komoot yet — that is a second
-// source's own delivery — so today this value only ever reaches a stage
+// source's own delivery — so today this value only ever reaches a route
 // through the synthetic demo library.
 const ProviderKomoot Provider = "komoot"
 
-// Key is the stable identity of one source route stage.
+// Key is the stable identity of one route.
 type Key struct {
-	provider   Provider
-	routeID    int64
-	stageOrder int
+	provider      Provider
+	sourceRouteID int64
+	stageOrder    int
 }
 
-// NewKey builds a stage identity from its parts, for a caller that has not
-// constructed a Stage — a stored mapping row, or a served address.
-func NewKey(provider Provider, routeID int64, stageOrder int) Key {
-	return Key{provider: provider, routeID: routeID, stageOrder: stageOrder}
+// NewKey builds a route identity from its parts, for a caller that has not
+// constructed a Route — a stored mapping row, or a served address.
+func NewKey(provider Provider, sourceRouteID int64, stageOrder int) Key {
+	return Key{provider: provider, sourceRouteID: sourceRouteID, stageOrder: stageOrder}
 }
 
-// Provider returns which upstream source issued the stage's route ID.
+// Provider returns which upstream source issued the route's source route ID.
 func (k Key) Provider() Provider {
 	return k.provider
 }
 
-// RouteID returns the immutable source route identifier.
-func (k Key) RouteID() int64 {
-	return k.routeID
+// SourceRouteID returns the immutable source route identifier.
+func (k Key) SourceRouteID() int64 {
+	return k.sourceRouteID
 }
 
-// StageOrder returns the one-based order of the stage within its route.
+// StageOrder returns the route's one-based order within its source route. It
+// keeps the stage word because an ordinal within a source route is precisely
+// what a stage is.
 func (k Key) StageOrder() int {
 	return k.stageOrder
 }
 
 // ExternalID returns the deterministic Wahoo external identifier for the
-// stage. A VeloPlanner stage renders exactly as it always has; a later
+// route. A VeloPlanner route renders exactly as it always has; a later
 // provider gets its own segment in the same grammar. This is the only place
 // that renders an external ID — the string that proves ownership before a
 // delete, so nothing else may format it independently.
+//
+// The `stage` segment is frozen. It is written into every route this service
+// has ever created at a destination, and ownership is matched against it, so
+// respelling it to match the current vocabulary would orphan the entire
+// library rather than rename anything.
 func (k Key) ExternalID() string {
-	return externalIDPrefix + fmt.Sprintf("%s:%d:stage:%d", k.provider, k.routeID, k.stageOrder)
+	return externalIDPrefix + fmt.Sprintf("%s:%d:stage:%d", k.provider, k.sourceRouteID, k.stageOrder)
 }
 
 // externalIDPrefix is what every external ID this service issues begins with,
@@ -88,14 +97,14 @@ func OwnsExternalID(externalID string) bool {
 	return strings.HasPrefix(externalID, externalIDPrefix)
 }
 
-// Point is one geographic point in a route-stage geometry.
+// Point is one geographic point in a route geometry.
 type Point struct {
 	Elevation *float64
 	Longitude float64
 	Latitude  float64
 }
 
-// Bounds is the axis-aligned geographic extent of a route-stage geometry.
+// Bounds is the axis-aligned geographic extent of a route geometry.
 type Bounds struct {
 	MinLongitude float64
 	MinLatitude  float64
@@ -103,82 +112,82 @@ type Bounds struct {
 	MaxLatitude  float64
 }
 
-// Summary is stored, display-oriented metadata for one source stage. It is a
+// Summary is stored, display-oriented metadata for one route. It is a
 // read model shared between the persistence adapter and the HTTP layer so
 // neither has to know the other's types, and it deliberately carries no
 // geometry.
 type Summary struct {
 	// MovingSeconds is the predicted moving time from internal/ridemodel, nil
-	// when no coefficient file is configured, the stage has no usable
+	// when no coefficient file is configured, the route has no usable
 	// elevation, or nothing has predicted this exact geometry yet.
 	MovingSeconds      *float64
 	SourceRevision     string
-	StageName          string
+	RouteName          string
 	Provider           Provider
 	ContentHash        string
-	RouteName          string
+	SourceRouteName    string
 	Bounds             Bounds
 	DistanceMetres     float64
 	AscentMetres       float64
 	MaxGradientPercent float64
-	RouteID            int64
+	SourceRouteID      int64
 	PointCount         int
 	StageOrder         int
 }
 
-// Title returns the device-facing title for the summarised stage.
+// Title returns the device-facing title for the summarised route.
 func (s *Summary) Title() string {
-	if s.StageName == "" {
-		return s.RouteName
+	if s.RouteName == "" {
+		return s.SourceRouteName
 	}
 
-	return s.RouteName + " — " + s.StageName
+	return s.SourceRouteName + " — " + s.RouteName
 }
 
-// Stage is a validated, immutable source route stage.
-type Stage struct {
-	revision    string
-	routeName   string
-	stageName   string
-	contentHash string
-	geometry    []Point
-	key         Key
+// Route is a validated, immutable route.
+type Route struct {
+	revision        string
+	sourceRouteName string
+	routeName       string
+	contentHash     string
+	geometry        []Point
+	key             Key
 }
 
-// NewStage validates and copies a source route stage.
-func NewStage(
+// NewRoute validates and copies a route.
+func NewRoute(
 	provider Provider,
-	routeID int64,
+	sourceRouteID int64,
 	stageOrder int,
 	revision string,
+	sourceRouteName string,
 	routeName string,
-	stageName string,
 	geometry []Point,
 	contentHash string,
-) (Stage, error) {
+) (Route, error) {
 	if provider == "" {
-		return Stage{}, errors.New("provider is required")
+		return Route{}, errors.New("provider is required")
 	}
-	if routeID <= 0 {
-		return Stage{}, errors.New("route ID must be positive")
+	if sourceRouteID <= 0 {
+		return Route{}, errors.New("source route ID must be positive")
 	}
 	if stageOrder <= 0 {
-		return Stage{}, errors.New("stage order must be positive")
+		return Route{}, errors.New("stage order must be positive")
 	}
 	if revision == "" {
-		return Stage{}, errors.New("source revision is required")
+		return Route{}, errors.New("source revision is required")
 	}
 	if contentHash == "" {
-		return Stage{}, errors.New("content hash is required")
+		return Route{}, errors.New("content hash is required")
 	}
 	if len(geometry) < 2 {
-		return Stage{}, errors.New("route stage requires at least two points")
+		return Route{}, errors.New("route requires at least two points")
 	}
 
 	copied := slices.Clone(geometry)
 	for index, point := range copied {
 		if err := validatePoint(point); err != nil {
-			return Stage{}, fmt.Errorf("geometry point %d: %w", index, err)
+			return Route{}, fmt.Errorf("geometry point %d: %w", index, err)
 		}
 		if point.Elevation != nil {
 			elevation := *point.Elevation
@@ -186,52 +195,52 @@ func NewStage(
 		}
 	}
 
-	return Stage{
-		key:         Key{provider: provider, routeID: routeID, stageOrder: stageOrder},
-		revision:    revision,
-		routeName:   routeName,
-		stageName:   stageName,
-		geometry:    copied,
-		contentHash: contentHash,
+	return Route{
+		key:             Key{provider: provider, sourceRouteID: sourceRouteID, stageOrder: stageOrder},
+		revision:        revision,
+		sourceRouteName: sourceRouteName,
+		routeName:       routeName,
+		geometry:        copied,
+		contentHash:     contentHash,
 	}, nil
 }
 
-// Key returns the stable identity of the stage.
-func (s *Stage) Key() Key {
+// Key returns the stable identity of the route.
+func (s *Route) Key() Key {
 	return s.key
 }
 
 // Revision returns the source revision for change detection.
-func (s *Stage) Revision() string {
+func (s *Route) Revision() string {
 	return s.revision
 }
 
-// RouteName returns the mutable source route title.
-func (s *Stage) RouteName() string {
+// SourceRouteName returns the mutable source route title.
+func (s *Route) SourceRouteName() string {
+	return s.sourceRouteName
+}
+
+// RouteName returns the mutable route title, as the source spells it.
+func (s *Route) RouteName() string {
 	return s.routeName
 }
 
-// StageName returns the mutable source stage title.
-func (s *Stage) StageName() string {
-	return s.stageName
-}
-
-// Title returns the device-facing title for the source stage.
-func (s *Stage) Title() string {
-	if s.stageName == "" {
-		return s.routeName
+// Title returns the device-facing title for the route.
+func (s *Route) Title() string {
+	if s.routeName == "" {
+		return s.sourceRouteName
 	}
 
-	return s.routeName + " — " + s.stageName
+	return s.sourceRouteName + " — " + s.routeName
 }
 
-// ContentHash returns the deterministic stage-content hash.
-func (s *Stage) ContentHash() string {
+// ContentHash returns the deterministic route-content hash.
+func (s *Route) ContentHash() string {
 	return s.contentHash
 }
 
-// Geometry returns a defensive copy of the validated stage geometry.
-func (s *Stage) Geometry() []Point {
+// Geometry returns a defensive copy of the validated route geometry.
+func (s *Route) Geometry() []Point {
 	points := slices.Clone(s.geometry)
 	for index, point := range points {
 		if point.Elevation != nil {
@@ -243,9 +252,9 @@ func (s *Stage) Geometry() []Point {
 	return points
 }
 
-// DistanceMetres returns the cumulative great-circle length of the stage
-// geometry. A stage with fewer than two points has zero length.
-func (s *Stage) DistanceMetres() float64 {
+// DistanceMetres returns the cumulative great-circle length of the route
+// geometry. A route with fewer than two points has zero length.
+func (s *Route) DistanceMetres() float64 {
 	total := 0.0
 	for index := 1; index < len(s.geometry); index++ {
 		total += haversineMetres(s.geometry[index-1], s.geometry[index])
@@ -254,14 +263,14 @@ func (s *Stage) DistanceMetres() float64 {
 	return total
 }
 
-// Bounds returns the extent of the stage geometry for map framing. A stage
+// Bounds returns the extent of the route geometry for map framing. A route
 // without geometry reports the zero value.
 //
-// The extent is a plain axis-aligned box. A stage crossing the antimeridian
+// The extent is a plain axis-aligned box. A route crossing the antimeridian
 // would report a box spanning most of the globe rather than the short way
 // around; that is accepted because the source library is regional, and the
 // consequence is a wide initial viewport rather than incorrect geometry.
-func (s *Stage) Bounds() Bounds {
+func (s *Route) Bounds() Bounds {
 	if len(s.geometry) == 0 {
 		return Bounds{}
 	}
@@ -283,7 +292,7 @@ func (s *Stage) Bounds() Bounds {
 	return bounds
 }
 
-// ElevationGainMetres returns the total climbing in the stage profile.
+// ElevationGainMetres returns the total ascent in the route profile.
 //
 // It sums the positive steps of the profile as stored. That is only meaningful
 // on a smoothed profile: raw satellite altitude wanders by a metre or two per
@@ -291,9 +300,9 @@ func (s *Stage) Bounds() Bounds {
 // badly. Callers are expected to store the device-export profile, which has
 // already had its spikes removed.
 //
-// A stage whose points do not all carry elevation has no profile to measure and
+// A route whose points do not all carry elevation has no profile to measure and
 // reports zero.
-func (s *Stage) ElevationGainMetres() float64 {
+func (s *Route) ElevationGainMetres() float64 {
 	if !s.hasCompleteElevation() {
 		return 0
 	}
@@ -317,8 +326,8 @@ func (s *Stage) ElevationGainMetres() float64 {
 // window is what makes the number correspond to something a rider would
 // recognise as a climb.
 //
-// A stage without a complete profile, or shorter than one window, reports zero.
-func (s *Stage) MaxGradientPercent() float64 {
+// A route without a complete profile, or shorter than one window, reports zero.
+func (s *Route) MaxGradientPercent() float64 {
 	if !s.hasCompleteElevation() {
 		return 0
 	}
@@ -354,7 +363,7 @@ func (s *Stage) MaxGradientPercent() float64 {
 	return steepest
 }
 
-func (s *Stage) hasCompleteElevation() bool {
+func (s *Route) hasCompleteElevation() bool {
 	if len(s.geometry) < 2 {
 		return false
 	}

@@ -46,7 +46,7 @@ export const TargetStatusConvergence = {
   unauthorized: "unauthorized",
 } as const;
 
-export interface TargetStages {
+export interface TargetRoutes {
   /** @minimum 0 */
   current: number;
   /** @minimum 0 */
@@ -63,7 +63,7 @@ export interface TargetStatus {
   id: string;
   authorisation: string;
   convergence: TargetStatusConvergence;
-  stages: TargetStages;
+  routes: TargetRoutes;
   lastRun?: TargetRun;
 }
 
@@ -79,7 +79,7 @@ export interface SyncActive {
   startsAt?: string;
   /** @minimum 0 */
   targets: number;
-  stages: TargetStages;
+  routes: TargetRoutes;
 }
 
 export interface SyncSchedule {
@@ -91,7 +91,7 @@ export interface SyncPhaseRun {
   lastCompletedAt: string;
   lastResult: string;
   lastFailure?: string;
-  sourceStages: number;
+  sourceRoutes: number;
   created: number;
   updated: number;
   deleted: number;
@@ -127,7 +127,7 @@ export interface SyncStatus {
   active?: SyncActive;
   lastResult?: string;
   lastCompletedAt?: string;
-  sourceStages: number;
+  sourceRoutes: number;
   created: number;
   updated: number;
   deleted: number;
@@ -159,7 +159,7 @@ export interface SyncRun {
   completedAt: string;
   result: string;
   failure?: string;
-  sourceStages: number;
+  sourceRoutes: number;
   created: number;
   updated: number;
   deleted: number;
@@ -180,11 +180,11 @@ export interface RouteValidation {
 
 export interface Route {
   provider: string;
-  routeId: number;
+  sourceRouteId: number;
   stageOrder: number;
   title: string;
+  sourceRouteName: string;
   routeName: string;
-  stageName: string;
   sourceRevision: string;
   contentHash: string;
   distanceMetres: number;
@@ -196,7 +196,7 @@ export interface Route {
 }
 
 export interface RouteList {
-  stages: Route[];
+  routes: Route[];
 }
 
 export interface GeoJSONLineString {
@@ -235,11 +235,11 @@ export type GeoJSONPropertiesSurface = {
 
 export interface GeoJSONProperties {
   provider: string;
-  routeId: number;
+  sourceRouteId: number;
   stageOrder: number;
   title: string;
+  sourceRouteName: string;
   routeName: string;
-  stageName: string;
   distanceMetres: number;
   ascentMetres: number;
   maxGradientPercent: number;
@@ -327,7 +327,7 @@ export interface WahooSettings {
   /** The registered application's public identifier. Its secret is not here: it is written through secrets and read back only as set. */
   clientId: string;
   /**
-   * The destination slots, in the order they are offered. A slot name is the identity every stored authorization, target stage and recorded run already carries, so renaming one abandons that slot's state rather than moving it.
+   * The destination slots, in the order they are offered. A slot name is the identity every stored authorization, target route and recorded run already carries, so renaming one abandons that slot's state rather than moving it.
    * @maxItems 2
    */
   targets: string[];
@@ -343,7 +343,7 @@ export const SourceSettingsProvider = {
 
 export interface SourceSettings {
   provider: SourceSettingsProvider;
-  /** The source's own web application, which is both the origin the service reads and the one a stage is linked back to. */
+  /** The source's own web application, which is both the origin the service reads and the one a route is linked back to. */
   baseUrl: string;
 }
 
@@ -387,7 +387,7 @@ export interface WahooApplicationUpdate {
 
 export interface TargetsUpdate {
   /**
-   * The destination slots, in the order they are offered. A slot name is the identity every stored authorization, target stage and recorded run already carries, so renaming one abandons that slot's state rather than moving it.
+   * The destination slots, in the order they are offered. A slot name is the identity every stored authorization, target route and recorded run already carries, so renaming one abandons that slot's state rather than moving it.
    * @maxItems 2
    */
   targets: string[];
@@ -399,7 +399,7 @@ export interface TargetsUpdate {
 export interface SourceUpdate {
   /** Whether a run reads this library at all. Off takes it out of the list without forgetting the account it was read with. */
   read: boolean;
-  /** The source's own web application, which is both the origin the service reads and the one a stage is linked back to. */
+  /** The source's own web application, which is both the origin the service reads and the one a route is linked back to. */
   baseUrl: string;
   /** The account's email address, sent only when it was typed. The rules the application secret follows apply here too. */
   email?: string;
@@ -1979,24 +1979,31 @@ export type getRouteResponseError = (
   headers: Headers;
 };
 
-export const getGetRouteUrl = (provider: string, routeId: number, stage: number) => {
-  return `/v1/providers/${encodeURIComponent(String(provider))}/routes/${encodeURIComponent(String(routeId))}/stages/${encodeURIComponent(String(stage))}`;
+export const getGetRouteUrl = (provider: string, sourceRouteId: number, stageOrder: number) => {
+  return `/v1/providers/${encodeURIComponent(String(provider))}/sourceRoutes/${encodeURIComponent(String(sourceRouteId))}/routes/${encodeURIComponent(String(stageOrder))}`;
 };
 
 export const getRoute = async (
   provider: string,
-  routeId: number,
-  stage: number,
+  sourceRouteId: number,
+  stageOrder: number,
   options?: Parameters<typeof domestiqueRequest>[1],
 ): Promise<getRouteResponseSuccess> => {
-  return domestiqueRequest<getRouteResponseSuccess>(getGetRouteUrl(provider, routeId, stage), {
-    ...options,
-    method: "GET",
-  });
+  return domestiqueRequest<getRouteResponseSuccess>(
+    getGetRouteUrl(provider, sourceRouteId, stageOrder),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
 };
 
-export const getGetRouteQueryKey = (provider: string, routeId: number, stage: number) => {
-  return [`/v1/providers/${provider}/routes/${routeId}/stages/${stage}`] as const;
+export const getGetRouteQueryKey = (
+  provider: string,
+  sourceRouteId: number,
+  stageOrder: number,
+) => {
+  return [`/v1/providers/${provider}/sourceRoutes/${sourceRouteId}/routes/${stageOrder}`] as const;
 };
 
 export const getGetRouteQueryOptions = <
@@ -2010,8 +2017,8 @@ export const getGetRouteQueryOptions = <
   >,
 >(
   provider: string,
-  routeId: number,
-  stage: number,
+  sourceRouteId: number,
+  stageOrder: number,
   options?: {
     query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getRoute>>, TError, TData>>;
     request?: SecondParameter<typeof domestiqueRequest>;
@@ -2019,10 +2026,11 @@ export const getGetRouteQueryOptions = <
 ) => {
   const { query: queryOptions, request: requestOptions } = options ?? {};
 
-  const queryKey = queryOptions?.queryKey ?? getGetRouteQueryKey(provider, routeId, stage);
+  const queryKey =
+    queryOptions?.queryKey ?? getGetRouteQueryKey(provider, sourceRouteId, stageOrder);
 
   const queryFn: QueryFunction<Awaited<ReturnType<typeof getRoute>>> = ({ signal }) =>
-    getRoute(provider, routeId, stage, { signal, ...requestOptions });
+    getRoute(provider, sourceRouteId, stageOrder, { signal, ...requestOptions });
 
   return {
     queryKey,
@@ -2030,10 +2038,10 @@ export const getGetRouteQueryOptions = <
     enabled:
       provider !== null &&
       provider !== undefined &&
-      routeId !== null &&
-      routeId !== undefined &&
-      stage !== null &&
-      stage !== undefined,
+      sourceRouteId !== null &&
+      sourceRouteId !== undefined &&
+      stageOrder !== null &&
+      stageOrder !== undefined,
     ...queryOptions,
   } as UseQueryOptions<Awaited<ReturnType<typeof getRoute>>, TError, TData> & {
     queryKey: DataTag<QueryKey, TData, TError>;
@@ -2060,8 +2068,8 @@ export function useGetRoute<
   >,
 >(
   provider: string,
-  routeId: number,
-  stage: number,
+  sourceRouteId: number,
+  stageOrder: number,
   options: {
     query: Partial<UseQueryOptions<Awaited<ReturnType<typeof getRoute>>, TError, TData>> &
       Pick<
@@ -2087,8 +2095,8 @@ export function useGetRoute<
   >,
 >(
   provider: string,
-  routeId: number,
-  stage: number,
+  sourceRouteId: number,
+  stageOrder: number,
   options?: {
     query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getRoute>>, TError, TData>> &
       Pick<
@@ -2114,8 +2122,8 @@ export function useGetRoute<
   >,
 >(
   provider: string,
-  routeId: number,
-  stage: number,
+  sourceRouteId: number,
+  stageOrder: number,
   options?: {
     query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getRoute>>, TError, TData>>;
     request?: SecondParameter<typeof domestiqueRequest>;
@@ -2134,15 +2142,15 @@ export function useGetRoute<
   >,
 >(
   provider: string,
-  routeId: number,
-  stage: number,
+  sourceRouteId: number,
+  stageOrder: number,
   options?: {
     query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getRoute>>, TError, TData>>;
     request?: SecondParameter<typeof domestiqueRequest>;
   },
   queryClient?: QueryClient,
 ): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
-  const queryOptions = getGetRouteQueryOptions(provider, routeId, stage, options);
+  const queryOptions = getGetRouteQueryOptions(provider, sourceRouteId, stageOrder, options);
 
   const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
     queryKey: DataTag<QueryKey, TData, TError>;
@@ -2194,18 +2202,22 @@ export type getRouteGeometryResponseError = (
   headers: Headers;
 };
 
-export const getGetRouteGeometryUrl = (provider: string, routeId: number, stage: number) => {
-  return `/v1/providers/${encodeURIComponent(String(provider))}/routes/${encodeURIComponent(String(routeId))}/stages/${encodeURIComponent(String(stage))}/geometry`;
+export const getGetRouteGeometryUrl = (
+  provider: string,
+  sourceRouteId: number,
+  stageOrder: number,
+) => {
+  return `/v1/providers/${encodeURIComponent(String(provider))}/sourceRoutes/${encodeURIComponent(String(sourceRouteId))}/routes/${encodeURIComponent(String(stageOrder))}/geometry`;
 };
 
 export const getRouteGeometry = async (
   provider: string,
-  routeId: number,
-  stage: number,
+  sourceRouteId: number,
+  stageOrder: number,
   options?: Parameters<typeof domestiqueRequest>[1],
 ): Promise<getRouteGeometryResponseSuccess> => {
   return domestiqueRequest<getRouteGeometryResponseSuccess>(
-    getGetRouteGeometryUrl(provider, routeId, stage),
+    getGetRouteGeometryUrl(provider, sourceRouteId, stageOrder),
     {
       ...options,
       method: "GET",
@@ -2213,8 +2225,14 @@ export const getRouteGeometry = async (
   );
 };
 
-export const getGetRouteGeometryQueryKey = (provider: string, routeId: number, stage: number) => {
-  return [`/v1/providers/${provider}/routes/${routeId}/stages/${stage}/geometry`] as const;
+export const getGetRouteGeometryQueryKey = (
+  provider: string,
+  sourceRouteId: number,
+  stageOrder: number,
+) => {
+  return [
+    `/v1/providers/${provider}/sourceRoutes/${sourceRouteId}/routes/${stageOrder}/geometry`,
+  ] as const;
 };
 
 export const getGetRouteGeometryQueryOptions = <
@@ -2228,8 +2246,8 @@ export const getGetRouteGeometryQueryOptions = <
   >,
 >(
   provider: string,
-  routeId: number,
-  stage: number,
+  sourceRouteId: number,
+  stageOrder: number,
   options?: {
     query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getRouteGeometry>>, TError, TData>>;
     request?: SecondParameter<typeof domestiqueRequest>;
@@ -2237,10 +2255,11 @@ export const getGetRouteGeometryQueryOptions = <
 ) => {
   const { query: queryOptions, request: requestOptions } = options ?? {};
 
-  const queryKey = queryOptions?.queryKey ?? getGetRouteGeometryQueryKey(provider, routeId, stage);
+  const queryKey =
+    queryOptions?.queryKey ?? getGetRouteGeometryQueryKey(provider, sourceRouteId, stageOrder);
 
   const queryFn: QueryFunction<Awaited<ReturnType<typeof getRouteGeometry>>> = ({ signal }) =>
-    getRouteGeometry(provider, routeId, stage, { signal, ...requestOptions });
+    getRouteGeometry(provider, sourceRouteId, stageOrder, { signal, ...requestOptions });
 
   return {
     queryKey,
@@ -2248,10 +2267,10 @@ export const getGetRouteGeometryQueryOptions = <
     enabled:
       provider !== null &&
       provider !== undefined &&
-      routeId !== null &&
-      routeId !== undefined &&
-      stage !== null &&
-      stage !== undefined,
+      sourceRouteId !== null &&
+      sourceRouteId !== undefined &&
+      stageOrder !== null &&
+      stageOrder !== undefined,
     ...queryOptions,
   } as UseQueryOptions<Awaited<ReturnType<typeof getRouteGeometry>>, TError, TData> & {
     queryKey: DataTag<QueryKey, TData, TError>;
@@ -2278,8 +2297,8 @@ export function useGetRouteGeometry<
   >,
 >(
   provider: string,
-  routeId: number,
-  stage: number,
+  sourceRouteId: number,
+  stageOrder: number,
   options: {
     query: Partial<UseQueryOptions<Awaited<ReturnType<typeof getRouteGeometry>>, TError, TData>> &
       Pick<
@@ -2305,8 +2324,8 @@ export function useGetRouteGeometry<
   >,
 >(
   provider: string,
-  routeId: number,
-  stage: number,
+  sourceRouteId: number,
+  stageOrder: number,
   options?: {
     query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getRouteGeometry>>, TError, TData>> &
       Pick<
@@ -2332,8 +2351,8 @@ export function useGetRouteGeometry<
   >,
 >(
   provider: string,
-  routeId: number,
-  stage: number,
+  sourceRouteId: number,
+  stageOrder: number,
   options?: {
     query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getRouteGeometry>>, TError, TData>>;
     request?: SecondParameter<typeof domestiqueRequest>;
@@ -2352,15 +2371,20 @@ export function useGetRouteGeometry<
   >,
 >(
   provider: string,
-  routeId: number,
-  stage: number,
+  sourceRouteId: number,
+  stageOrder: number,
   options?: {
     query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getRouteGeometry>>, TError, TData>>;
     request?: SecondParameter<typeof domestiqueRequest>;
   },
   queryClient?: QueryClient,
 ): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
-  const queryOptions = getGetRouteGeometryQueryOptions(provider, routeId, stage, options);
+  const queryOptions = getGetRouteGeometryQueryOptions(
+    provider,
+    sourceRouteId,
+    stageOrder,
+    options,
+  );
 
   const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
     queryKey: DataTag<QueryKey, TData, TError>;
@@ -2412,18 +2436,22 @@ export type reprocessRouteResponseError = (
   headers: Headers;
 };
 
-export const getReprocessRouteUrl = (provider: string, routeId: number, stage: number) => {
-  return `/v1/providers/${encodeURIComponent(String(provider))}/routes/${encodeURIComponent(String(routeId))}/stages/${encodeURIComponent(String(stage))}/reprocess`;
+export const getReprocessRouteUrl = (
+  provider: string,
+  sourceRouteId: number,
+  stageOrder: number,
+) => {
+  return `/v1/providers/${encodeURIComponent(String(provider))}/sourceRoutes/${encodeURIComponent(String(sourceRouteId))}/routes/${encodeURIComponent(String(stageOrder))}/reprocess`;
 };
 
 export const reprocessRoute = async (
   provider: string,
-  routeId: number,
-  stage: number,
+  sourceRouteId: number,
+  stageOrder: number,
   options?: Parameters<typeof domestiqueRequest>[1],
 ): Promise<reprocessRouteResponseSuccess> => {
   return domestiqueRequest<reprocessRouteResponseSuccess>(
-    getReprocessRouteUrl(provider, routeId, stage),
+    getReprocessRouteUrl(provider, sourceRouteId, stageOrder),
     {
       ...options,
       method: "POST",
@@ -2465,9 +2493,9 @@ export const getReprocessRouteMutationOptions = <
     Awaited<ReturnType<typeof reprocessRoute>>,
     ReprocessRouteMutationVariables
   > = (props) => {
-    const { provider, routeId, stage } = props ?? {};
+    const { provider, sourceRouteId, stageOrder } = props ?? {};
 
-    return reprocessRoute(provider, routeId, stage, requestOptions);
+    return reprocessRoute(provider, sourceRouteId, stageOrder, requestOptions);
   };
 
   return { mutationFn, ...mutationOptions };
@@ -2482,7 +2510,11 @@ export type ReprocessRouteMutationError = ErrorType<
   | NotFoundResponse
   | UnavailableResponse
 >;
-export type ReprocessRouteMutationVariables = { provider: string; routeId: number; stage: number };
+export type ReprocessRouteMutationVariables = {
+  provider: string;
+  sourceRouteId: number;
+  stageOrder: number;
+};
 
 export const useReprocessRoute = <
   TError = ErrorType<
@@ -2831,7 +2863,7 @@ export const getSetTargetsUrl = () => {
 };
 
 /**
- * Replaces the destination slots whole, in the order they are offered. A slot name is the identity every stored authorization, target stage and recorded run already carries, so renaming one abandons that slot's state rather than moving it.
+ * Replaces the destination slots whole, in the order they are offered. A slot name is the identity every stored authorization, target route and recorded run already carries, so renaming one abandons that slot's state rather than moving it.
  */
 export const setTargets = async (
   targetsUpdate: TargetsUpdate,

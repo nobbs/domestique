@@ -56,7 +56,7 @@ func TestEncoderEncodeRespectsCanceledContext(t *testing.T) {
 
 func TestEncoderEncodeRejectsUnsupportedElevation(t *testing.T) {
 	elevation := 13_000.0
-	stage, err := route.NewStage(
+	stage, err := route.NewRoute(
 		route.ProviderVeloPlanner,
 		1,
 		1,
@@ -72,10 +72,10 @@ func TestEncoderEncodeRejectsUnsupportedElevation(t *testing.T) {
 	require.Error(t, err, "an elevation outside the FIT range must be refused")
 }
 
-func testStage(t *testing.T) route.Stage {
+func testStage(t *testing.T) route.Route {
 	t.Helper()
 	elevation := 321.4
-	stage, err := route.NewStage(
+	stage, err := route.NewRoute(
 		route.ProviderVeloPlanner,
 		100,
 		2,

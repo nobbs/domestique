@@ -106,8 +106,8 @@ func (c *Client) Provider() route.Provider {
 }
 
 // Inventory logs in with a new session and returns every planned tour as a
-// single-stage route.Stage, in stable order.
-func (c *Client) Inventory(ctx context.Context) ([]route.Stage, error) {
+// single-stage route.Route, in stable order.
+func (c *Client) Inventory(ctx context.Context) ([]route.Route, error) {
 	session := c.newSession()
 
 	userID, token, err := session.login(ctx)
@@ -120,7 +120,7 @@ func (c *Client) Inventory(ctx context.Context) ([]route.Stage, error) {
 		return nil, err
 	}
 
-	stages := make([]route.Stage, 0, len(summaries))
+	stages := make([]route.Route, 0, len(summaries))
 	for _, summary := range summaries {
 		if err := ctx.Err(); err != nil {
 			return nil, fmt.Errorf("komoot: inventory cancelled: %w", err)

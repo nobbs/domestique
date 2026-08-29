@@ -79,7 +79,7 @@ func createRoute(
 	client *http.Client,
 	baseURL *url.URL,
 	accessToken string,
-	stage *route.Stage,
+	stage *route.Route,
 	encoded []byte,
 	externalID string,
 ) (wahooRoute, error) {
@@ -205,9 +205,9 @@ func sandboxExternalID() (string, error) {
 	return "domestique:fit-acceptance:" + hex.EncodeToString(random), nil
 }
 
-func sandboxStage(t *testing.T) route.Stage {
+func sandboxStage(t *testing.T) route.Route {
 	t.Helper()
-	stage, err := route.NewStage(
+	stage, err := route.NewRoute(
 		route.ProviderVeloPlanner,
 		999_999_999,
 		1,

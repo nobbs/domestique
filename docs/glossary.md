@@ -28,16 +28,18 @@ becomes one route here. A Komoot tour has no such division, so it becomes
 exactly one route (see [service.md](specs/service.md), "Source and course
 representation").
 
-This is the distinction that has caused the most confusion, because both halves
-were called `route`: the API type `Route` is the *piece*, while the `routeId`
-inside it identifies the *whole*. The whole is a **source route** and its
-identifier is a **source route id**.
+This is the distinction that caused the most confusion, because both halves
+were once called `route`: the API type `Route` is the *piece*, and the id
+inside it names the *whole*. The whole is a **source route**, and the field is
+`sourceRouteId`.
 
 **stage** — VeloPlanner's word for a source route's ordered pieces, and the
 right word when talking about the provider or about storage. It is not the word
 for the thing a reader opens; that is a route. `stageOrder` keeps its name
 because it is an ordinal within a source route, which is precisely a stage
-concept.
+concept, and so does the `:stage:` segment of a Wahoo external ID, which is
+frozen: ownership is matched against it, so respelling it would orphan the
+library rather than rename anything.
 
 **course** — the FIT-file rendering of a route, and only that. It belongs to the
 encoder boundary and to Wahoo, never to the browser UI.

@@ -12,7 +12,7 @@ const meta = {
     lastRun: {
       lastCompletedAt: "2026-08-18T06:30:00Z",
       lastResult: "succeeded",
-      sourceStages: 0,
+      sourceRoutes: 0,
       created: 3,
       updated: 12,
       deleted: 0,
@@ -46,7 +46,7 @@ export const HeldByAGate: Story = {
       lastCompletedAt: "2026-08-18T06:30:00Z",
       lastResult: "blocked",
       lastFailure: "deletion_limit",
-      sourceStages: 0,
+      sourceRoutes: 0,
       created: 0,
       updated: 0,
       deleted: 0,

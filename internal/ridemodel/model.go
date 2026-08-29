@@ -144,7 +144,7 @@ func Predict(points []route.Point, kinds []surface.Kind, coefficients Coefficien
 
 		// The raw, unwindowed rise — not gradients[index] — because the linear
 		// half's ascent term is #239's own definition of ascent: the same
-		// positive-delta sum route.Stage.ElevationGainMetres() reports, which is
+		// positive-delta sum route.Route.ElevationGainMetres() reports, which is
 		// what seconds_per_ascent_m was calibrated against.
 		rise := *points[index].Elevation - *points[index-1].Elevation
 		linearSeconds := coefficients.SecondsPerKM*(span/1000) + coefficients.SecondsPerAscentM*math.Max(0, rise)
@@ -174,7 +174,7 @@ func hasCompleteElevation(points []route.Point) bool {
 
 // windowedGradientPercent returns, for every point but the first, the signed
 // gradient over the trailing window ending at it — the same window
-// route.Stage.MaxGradientPercent measures, kept signed here because climbing
+// route.Route.MaxGradientPercent measures, kept signed here because climbing
 // and descending segments are solved differently.
 //
 // ponytail: near the start of a stage, fewer than gradientWindowMetres of

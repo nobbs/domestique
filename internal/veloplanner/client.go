@@ -105,7 +105,7 @@ func (c *Client) Provider() route.Provider {
 
 // Inventory logs in with a new session and returns every non-empty source
 // route stage in stable source order.
-func (c *Client) Inventory(ctx context.Context) ([]route.Stage, error) {
+func (c *Client) Inventory(ctx context.Context) ([]route.Route, error) {
 	session, err := c.newSession()
 	if err != nil {
 		return nil, fmt.Errorf("veloplanner: creating session: %w", err)
@@ -121,7 +121,7 @@ func (c *Client) Inventory(ctx context.Context) ([]route.Stage, error) {
 		return nil, err
 	}
 
-	stages := make([]route.Stage, 0, len(summaries))
+	stages := make([]route.Route, 0, len(summaries))
 	for _, summary := range summaries {
 		if err := ctx.Err(); err != nil {
 			return nil, fmt.Errorf("veloplanner: inventory cancelled: %w", err)

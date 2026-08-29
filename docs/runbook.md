@@ -61,11 +61,11 @@ stays ready while a target waits for its one-time authorisation.
 | Category | Half | What it means | Section |
 | --- | --- | --- | --- |
 | `authorization` | targets | A Wahoo account rejected this service's authorisation | [Reconnect a Wahoo account](#reconnect-a-wahoo-account) |
-| `empty_source` | source | The library came back empty after previously holding stages | [A deletion was blocked](#a-deletion-was-blocked) |
+| `empty_source` | source | The library came back empty after previously holding routes | [A deletion was blocked](#a-deletion-was-blocked) |
 | `deletion_limit` | targets | More owned routes would go than the per-run maximum | [A deletion was blocked](#a-deletion-was-blocked) |
 | `source` | source | The library did not arrive complete or valid | [The library is not being read](#the-library-is-not-being-read) |
 | `destination` | targets | A Wahoo operation did not complete | [A write to Wahoo did not complete](#a-write-to-wahoo-did-not-complete) |
-| `course` | targets | A stage could not be encoded as a course | [A write to Wahoo did not complete](#a-write-to-wahoo-did-not-complete) |
+| `course` | targets | A route could not be encoded as a course | [A write to Wahoo did not complete](#a-write-to-wahoo-did-not-complete) |
 | `state` | either | Stored state could not be read or written safely | [State cannot be read](#state-cannot-be-read-or-has-been-lost) |
 
 Two of those are gates rather than faults. A **blocked** run is the service
@@ -148,7 +148,7 @@ confirmation, and the per-run deletion limit is a constant nothing can raise.
 
 ### `empty_source` — the library came back empty
 
-The source half read zero stages from a library that previously held some, and
+The source half read zero routes from a library that previously held some, and
 the empty-source deletion gate denies it. The empty inventory was **not
 stored**, so the last inventory validated as whole is still what the targets
 reconcile against: both accounts are intact and stay intact.
@@ -211,10 +211,10 @@ Run the target half again once Wahoo is reachable: the reconciler looks up what
 each account actually holds by external ID before it creates anything, so a
 retry converges rather than duplicating.
 
-**`course`** means one stage could not be encoded as a FIT course. That stage
-was not written, and the rest of the run continued. Correct the stage at the
-source, then use **Reprocess** on that stage's page: it discards the stored
-geometry, the recorded revision, and the surface classification for that stage
+**`course`** means one route could not be encoded as a FIT course. That route
+was not written, and the rest of the run continued. Correct the route at the
+source, then use **Reprocess** on that route's page: it discards the stored
+geometry, the recorded revision, and the surface classification for that route
 alone, and asks for a run of both halves. It rewrites the route the service
 already owns rather than deleting and recreating it.
 
@@ -244,7 +244,7 @@ over any of it.
   both delete the named state volume.
 
 Losing the geometry or surface caches is harmless — they are rebuilt from the
-next run and can never authorise a deletion. Losing targets or their stage
+next run and can never authorise a deletion. Losing targets or their route
 mappings is the case above.
 
 **After genuine state loss**, authorise every slot in the browser as in
@@ -286,17 +286,17 @@ undoes the code and nothing the code wrote.
 ## Surface classification is not completing
 
 **You will have seen** the status page saying surface is classified for fewer
-stages than the library holds, or `sync.surface` reporting the same. The
+routes than the library holds, or `sync.surface` reporting the same. The
 classification pass writes one log line per pass carrying counts and whether it
 ran to the end, and nothing else.
 
 **What already held.** Classification is enrichment. It belongs to no half,
 never changes a run's outcome, never touches a Wahoo account, and cannot
-authorise a deletion. A stage without it is a stage the map draws without
+authorise a deletion. A route without it is a route the map draws without
 surface colouring.
 
 **Usually, nothing.** The pass runs after a read that stored something new and
-skips stages already classified against both their current content hash and the
+skips routes already classified against both their current content hash and the
 generation of the current index, so a library that has just been rebuilt against
 a new map reclassifies itself over the next run or two.
 
@@ -317,9 +317,9 @@ scheduled build fills it in.
 Service settings** is empty. That is the default, and it switches the whole
 feature off: no extract is downloaded and no index is built. Adding a region
 there does not build anything by itself: the next rebuild on the configured
-schedule does, and stages are classified on the pass after that.
+schedule does, and routes are classified on the pass after that.
 
-A single stage classified wrongly is a **Reprocess** away; re-planning a stage
+A single route classified wrongly is a **Reprocess** away; re-planning a route
 reclassifies it automatically, because the cached ranges describe coordinates
 that were replaced.
 

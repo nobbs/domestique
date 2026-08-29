@@ -317,7 +317,7 @@ request. Pushover credentials are placeholders, so no notification is delivered.
 needs no account, no snapshot, and nobody's routes. It writes a throwaway
 configuration under `.local/demo`, seeds a fresh database with the synthetic
 library in `internal/demo`, serves it with `dev/demoapi`, and runs the UI dev
-server in front of it. Every stage, surface, run and target state it shows is
+server in front of it. Every route, surface, run and target state it shows is
 generated; VeloPlanner, Wahoo and Pushover all point at an unroutable address;
 and no scheduler, source client or reporter is wired, so a manual
 synchronisation re-seeds the synthetic library at the current instant instead of
@@ -341,7 +341,7 @@ the reusable components and the API client, and are the routine cost. The
 Playwright suite in `internal/webui/app/e2e` runs the whole page in a real
 Chromium, and exists for what jsdom cannot observe: the map, which needs WebGL,
 and the interactions that span components — scrubbing the elevation chart,
-selecting a stretch off the map, following a card into a stage. It is not a
+selecting a stretch off the map, following a card into a route. It is not a
 second home for logic that a component test could reach.
 
 The suite runs against `mise run demo`, so it is subject to everything that

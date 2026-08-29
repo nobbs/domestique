@@ -8,10 +8,10 @@ import {
   formatMovingTimeUncertainty,
 } from "../../lib/format";
 import { gradientBand } from "../../lib/profile";
-import type { StageChange } from "../../lib/seenStages";
+import type { RouteChange } from "../../lib/seenRoutes";
 import type { UnitSystem } from "../../lib/units";
+import { RouteChangeBadge } from "./RouteChangeBadge";
 import type { RouteShape } from "./SearchPanel";
-import { StageChangeBadge } from "./StageChangeBadge";
 
 /** One route, closed: its shape, its name, and the figures that rank it. */
 export function ResultRow({
@@ -23,7 +23,7 @@ export function ResultRow({
 }: {
   route: Route;
   shape: RouteShape | undefined;
-  change: StageChange;
+  change: RouteChange;
   onSelect: () => void;
   unitSystem: UnitSystem;
 }) {
@@ -42,7 +42,7 @@ export function ResultRow({
           />
         </span>
         <span className="min-w-0 truncate font-semibold">{route.title}</span>
-        <StageChangeBadge change={change} />
+        <RouteChangeBadge change={change} />
         <span className="col-start-2 col-end-4 flex flex-wrap gap-x-2 gap-y-1 text-xs text-[var(--ink-2)] tabular-nums">
           <span>{formatDistance(route.distanceMetres, unitSystem)}</span>
           <span>{formatAscent(route.ascentMetres, unitSystem)}</span>

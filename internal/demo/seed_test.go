@@ -41,7 +41,7 @@ func TestSeedFillsAStoreWithTheWholeLibrary(t *testing.T) {
 
 	store := seed(t, []demo.Slot{{ID: "rider-a", State: demo.SlotCurrent}})
 
-	stages, err := demo.Stages()
+	stages, err := demo.Routes()
 	require.NoError(t, err)
 	// Counted per source and summed, because the store now isolates one
 	// source's trusted inventory from another's — the whole library is the two
@@ -72,12 +72,12 @@ func TestSeedStoresGeometryTheEndpointCanServe(t *testing.T) {
 
 	store := seed(t, []demo.Slot{{ID: "rider-a", State: demo.SlotCurrent}})
 
-	stages, err := demo.Stages()
+	stages, err := demo.Routes()
 	require.NoError(t, err)
 	stage := &stages[0]
 	key := stage.Key()
 
-	summary, geometry, _, found, err := store.StageGeometry(t.Context(), key.Provider(), key.RouteID(), key.StageOrder())
+	summary, geometry, _, found, err := store.StageGeometry(t.Context(), key.Provider(), key.SourceRouteID(), key.StageOrder())
 	require.NoError(t, err)
 	require.True(t, found)
 	assert.Equal(t, len(stage.Geometry()), summary.PointCount)
@@ -88,7 +88,7 @@ func TestSeedStoresGeometryTheEndpointCanServe(t *testing.T) {
 		"the endpoint serves the stored coordinates, so the fixture has to store them all")
 
 	ranges, matched, found, err := store.StageSurface(
-		t.Context(), key.Provider(), key.RouteID(), key.StageOrder(), stage.ContentHash(),
+		t.Context(), key.Provider(), key.SourceRouteID(), key.StageOrder(), stage.ContentHash(),
 	)
 	require.NoError(t, err)
 	require.True(t, found, "a surface stored under another hash would be pruned, not served")
@@ -105,13 +105,13 @@ func TestSeedStoresAPredictedDurationForAFullyElevatedStage(t *testing.T) {
 
 	store := seed(t, []demo.Slot{{ID: "rider-a", State: demo.SlotCurrent}})
 
-	stages, err := demo.Stages()
+	stages, err := demo.Routes()
 	require.NoError(t, err)
 	stage := &stages[0] // Synthetic Rhine Traverse / Valley floor: profiled end to end.
 	key := stage.Key()
 
 	summary, _, cumulativeSecondsRaw, found, err := store.StageGeometry(
-		t.Context(), key.Provider(), key.RouteID(), key.StageOrder(),
+		t.Context(), key.Provider(), key.SourceRouteID(), key.StageOrder(),
 	)
 	require.NoError(t, err)
 	require.True(t, found)
@@ -125,7 +125,7 @@ func TestSeedStoresAPredictedDurationForAFullyElevatedStage(t *testing.T) {
 		"the cumulative series should end exactly at the stage's own moving time")
 
 	contentHash, surfaceGeneration, coefficientFingerprint, found, err := store.StageDurationFingerprint(
-		t.Context(), key.Provider(), key.RouteID(), key.StageOrder(),
+		t.Context(), key.Provider(), key.SourceRouteID(), key.StageOrder(),
 	)
 	require.NoError(t, err)
 	require.True(t, found)
@@ -142,13 +142,13 @@ func TestSeedLeavesElevationlessStagesWithNoPredictedDuration(t *testing.T) {
 
 	store := seed(t, []demo.Slot{{ID: "rider-a", State: demo.SlotCurrent}})
 
-	stages, err := demo.Stages()
+	stages, err := demo.Routes()
 	require.NoError(t, err)
 
 	for _, routeID := range []int64{4103, 4104} { // no profile, and a profile with a hole in it.
-		var stage *route.Stage
+		var stage *route.Route
 		for index := range stages {
-			if stages[index].Key().RouteID() == routeID {
+			if stages[index].Key().SourceRouteID() == routeID {
 				stage = &stages[index]
 			}
 		}
@@ -156,7 +156,7 @@ func TestSeedLeavesElevationlessStagesWithNoPredictedDuration(t *testing.T) {
 		key := stage.Key()
 
 		summary, _, cumulativeSecondsRaw, found, err := store.StageGeometry(
-			t.Context(), key.Provider(), key.RouteID(), key.StageOrder(),
+			t.Context(), key.Provider(), key.SourceRouteID(), key.StageOrder(),
 		)
 		require.NoError(t, err)
 		require.True(t, found)
@@ -185,7 +185,7 @@ func TestSeedLeavesEachSlotInTheStateItWasAskedFor(t *testing.T) {
 	assert.Equal(t, "not_authorized", authorizations["rider-c"],
 		"an un-onboarded slot is what the browser onboarding path is demonstrated from")
 
-	stages, err := demo.Stages()
+	stages, err := demo.Routes()
 	require.NoError(t, err)
 
 	behind, orphans, current := 0, 0, 0

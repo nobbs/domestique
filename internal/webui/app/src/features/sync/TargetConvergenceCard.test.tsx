@@ -15,7 +15,7 @@ function target(overrides: Partial<TargetStatus> = {}): TargetStatus {
     id: "rider-a",
     authorisation: "authorized",
     convergence: "current",
-    stages: { current: 4, pending: 0 },
+    routes: { current: 4, pending: 0 },
     lastRun: { completedAt: "2026-08-18T06:00:00Z", result: "succeeded" },
     ...overrides,
   };
@@ -28,7 +28,7 @@ function status(converged: boolean, targets: TargetStatus[]): Status {
     targets,
     sync: {
       state: "idle",
-      sourceStages: 4,
+      sourceRoutes: 4,
       created: 0,
       updated: 0,
       deleted: 0,
@@ -63,7 +63,7 @@ describe("TargetConvergenceCard", () => {
         target({
           id: "rider-b",
           convergence: "failed",
-          stages: { current: 3, pending: 1 },
+          routes: { current: 3, pending: 1 },
           lastRun: {
             completedAt: "2026-08-18T06:00:04Z",
             result: "failed",
@@ -117,7 +117,7 @@ describe("TargetConvergenceCard", () => {
         target({
           authorisation: "not_authorized",
           convergence: "unauthorized",
-          stages: { current: 0, pending: 4 },
+          routes: { current: 0, pending: 4 },
         }),
       ]),
     );
@@ -140,7 +140,7 @@ describe("TargetConvergenceCard", () => {
   ])("offers the protected flow for a %s target", (authorisation, name) => {
     renderConvergence(
       status(false, [
-        target({ authorisation, convergence: "unauthorized", stages: { current: 0, pending: 4 } }),
+        target({ authorisation, convergence: "unauthorized", routes: { current: 0, pending: 4 } }),
       ]),
     );
 
@@ -157,7 +157,7 @@ describe("TargetConvergenceCard", () => {
         target({
           authorisation: "needs_reauthorization",
           convergence: "unauthorized",
-          stages: { current: 4, pending: 0 },
+          routes: { current: 4, pending: 0 },
           lastRun: {
             completedAt: "2026-08-18T06:00:04Z",
             result: "failed",
@@ -185,7 +185,7 @@ describe("TargetConvergenceCard", () => {
         target({
           authorisation: "pending",
           convergence: "unauthorized",
-          stages: { current: 0, pending: 4 },
+          routes: { current: 0, pending: 4 },
         }),
       ]),
     );
@@ -218,13 +218,13 @@ describe("TargetConvergenceCard", () => {
    */
   it.each([
     ["deletion_limit", /more owned routes than the configured maximum/],
-    ["empty_source", /came back empty after previously holding stages/],
+    ["empty_source", /came back empty after previously holding routes/],
   ])("reads a %s gate as held rather than as a fault", (failure, explanation) => {
     renderConvergence(
       status(false, [
         target({
           convergence: "failed",
-          stages: { current: 4, pending: 2 },
+          routes: { current: 4, pending: 2 },
           lastRun: { completedAt: "2026-08-18T06:00:04Z", result: "blocked", failure },
         }),
       ]),

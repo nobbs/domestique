@@ -31,7 +31,7 @@ function unauthorized(): TargetStatus {
     id: "rider-b",
     authorisation: "not_authorized",
     convergence: "unauthorized",
-    stages: { current: 0, pending: 4 },
+    routes: { current: 0, pending: 4 },
   };
 }
 
@@ -98,7 +98,7 @@ export const LinksToSync: Story = {
     sync: {
       state: "idle",
       lastCompletedAt: "2026-08-18T06:30:00Z",
-      sourceStages: 0,
+      sourceRoutes: 0,
       created: 0,
       updated: 0,
       deleted: 0,
@@ -138,7 +138,7 @@ export const UnauthorizedTarget: Story = {
     sync: {
       state: "idle",
       lastCompletedAt: "2026-08-18T06:30:00Z",
-      sourceStages: 0,
+      sourceRoutes: 0,
       created: 0,
       updated: 0,
       deleted: 0,

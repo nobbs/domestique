@@ -40,7 +40,7 @@ type Accepted struct {
 	Status string `json:"status"`
 }
 
-type TargetStages struct {
+type TargetRoutes struct {
 	Current int `json:"current"`
 	Pending int `json:"pending"`
 }
@@ -64,7 +64,7 @@ type TargetStatus struct {
 	ID            string                   `json:"id"`
 	Authorisation string                   `json:"authorisation"`
 	Convergence   TargetStatus_Convergence `json:"convergence"`
-	Stages        TargetStages             `json:"stages"`
+	Routes        TargetRoutes             `json:"routes"`
 	LastRun       *TargetRun               `json:"lastRun,omitempty"`
 }
 
@@ -77,11 +77,11 @@ type RouteValidation struct {
 
 type Route struct {
 	Provider           string           `json:"provider"`
-	RouteID            int64            `json:"routeId"`
+	SourceRouteID      int64            `json:"sourceRouteId"`
 	StageOrder         int              `json:"stageOrder"`
 	Title              string           `json:"title"`
+	SourceRouteName    string           `json:"sourceRouteName"`
 	RouteName          string           `json:"routeName"`
-	StageName          string           `json:"stageName"`
 	SourceRevision     string           `json:"sourceRevision"`
 	ContentHash        string           `json:"contentHash"`
 	DistanceMetres     float64          `json:"distanceMetres"`
@@ -93,7 +93,7 @@ type Route struct {
 }
 
 type RouteList struct {
-	Stages []Route `json:"stages"`
+	Routes []Route `json:"routes"`
 }
 
 type SyncSchedule struct {
@@ -105,7 +105,7 @@ type SyncPhaseRun struct {
 	LastCompletedAt time.Time `json:"lastCompletedAt"`
 	LastResult      string    `json:"lastResult"`
 	LastFailure     *string   `json:"lastFailure,omitempty"`
-	SourceStages    int       `json:"sourceStages"`
+	SourceRoutes    int       `json:"sourceRoutes"`
 	Created         int       `json:"created"`
 	Updated         int       `json:"updated"`
 	Deleted         int       `json:"deleted"`
@@ -127,7 +127,7 @@ type SyncActive struct {
 	Phase    *SyncActive_Phase `json:"phase,omitempty"`
 	StartsAt *time.Time        `json:"startsAt,omitempty"`
 	Targets  int               `json:"targets"`
-	Stages   TargetStages      `json:"stages"`
+	Routes   TargetRoutes      `json:"routes"`
 }
 
 type SurfaceCoverage struct {
@@ -155,7 +155,7 @@ type SyncStatus struct {
 	Active           *SyncActive       `json:"active,omitempty"`
 	LastResult       *string           `json:"lastResult,omitempty"`
 	LastCompletedAt  *time.Time        `json:"lastCompletedAt,omitempty"`
-	SourceStages     int               `json:"sourceStages"`
+	SourceRoutes     int               `json:"sourceRoutes"`
 	Created          int               `json:"created"`
 	Updated          int               `json:"updated"`
 	Deleted          int               `json:"deleted"`
@@ -192,7 +192,7 @@ type SyncRun struct {
 	CompletedAt  time.Time     `json:"completedAt"`
 	Result       string        `json:"result"`
 	Failure      *string       `json:"failure,omitempty"`
-	SourceStages int           `json:"sourceStages"`
+	SourceRoutes int           `json:"sourceRoutes"`
 	Created      int           `json:"created"`
 	Updated      int           `json:"updated"`
 	Deleted      int           `json:"deleted"`
@@ -282,7 +282,7 @@ type WahooApplicationUpdate struct {
 }
 
 type TargetsUpdate struct {
-	// Targets The destination slots, in the order they are offered. A slot name is the identity every stored authorization, target stage and recorded run already carries, so renaming one abandons that slot's state rather than moving it.
+	// Targets The destination slots, in the order they are offered. A slot name is the identity every stored authorization, target route and recorded run already carries, so renaming one abandons that slot's state rather than moving it.
 	Targets []string `json:"targets"`
 }
 
@@ -290,7 +290,7 @@ type TargetsUpdate struct {
 type SourceUpdate struct {
 	// Read Whether a run reads this library at all. Off takes it out of the list without forgetting the account it was read with.
 	Read bool `json:"read"`
-	// BaseURL The source's own web application, which is both the origin the service reads and the one a stage is linked back to.
+	// BaseURL The source's own web application, which is both the origin the service reads and the one a route is linked back to.
 	BaseURL string `json:"baseUrl"`
 	// Email The account's email address, sent only when it was typed. The rules the application secret follows apply here too.
 	Email *string `json:"email,omitempty"`
@@ -358,7 +358,7 @@ type WahooSettings struct {
 	OauthBaseURL string `json:"oauthBaseUrl"`
 	// ClientID The registered application's public identifier. Its secret is not here: it is written through secrets and read back only as set.
 	ClientID string `json:"clientId"`
-	// Targets The destination slots, in the order they are offered. A slot name is the identity every stored authorization, target stage and recorded run already carries, so renaming one abandons that slot's state rather than moving it.
+	// Targets The destination slots, in the order they are offered. A slot name is the identity every stored authorization, target route and recorded run already carries, so renaming one abandons that slot's state rather than moving it.
 	Targets []string `json:"targets"`
 }
 
@@ -371,7 +371,7 @@ const (
 
 type SourceSettings struct {
 	Provider SourceSettings_Provider `json:"provider"`
-	// BaseURL The source's own web application, which is both the origin the service reads and the one a stage is linked back to.
+	// BaseURL The source's own web application, which is both the origin the service reads and the one a route is linked back to.
 	BaseURL string `json:"baseUrl"`
 }
 
@@ -441,11 +441,11 @@ type GeoJSONProperties_Surface struct {
 
 type GeoJSONProperties struct {
 	Provider           string                     `json:"provider"`
-	RouteID            int64                      `json:"routeId"`
+	SourceRouteID      int64                      `json:"sourceRouteId"`
 	StageOrder         int                        `json:"stageOrder"`
 	Title              string                     `json:"title"`
+	SourceRouteName    string                     `json:"sourceRouteName"`
 	RouteName          string                     `json:"routeName"`
-	StageName          string                     `json:"stageName"`
 	DistanceMetres     float64                    `json:"distanceMetres"`
 	AscentMetres       float64                    `json:"ascentMetres"`
 	MaxGradientPercent float64                    `json:"maxGradientPercent"`

@@ -33,7 +33,7 @@ func New() *Encoder {
 // Encode returns a deterministic FIT course for one validated route stage.
 //
 //nolint:gocritic // This method conforms to the sync package's value contract.
-func (e *Encoder) Encode(ctx context.Context, stage route.Stage) ([]byte, error) {
+func (e *Encoder) Encode(ctx context.Context, stage route.Route) ([]byte, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, fmt.Errorf("fit: encoding cancelled: %w", err)
 	}

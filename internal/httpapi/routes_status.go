@@ -97,7 +97,7 @@ func (h *Handler) GetStatus(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 
-	stageCounts, err := h.targetStageCounts(request.Context())
+	routeCounts, err := h.targetRouteCounts(request.Context())
 	if err != nil {
 		h.unavailable(writer)
 
@@ -113,8 +113,8 @@ func (h *Handler) GetStatus(writer http.ResponseWriter, request *http.Request) {
 	targets := make([]openapi.TargetStatus, 0, len(targetIDs))
 	// The aggregate of the per-target counts, which is the only progress a run
 	// in flight reports: how much of the library is already on the configured
-	// accounts, and how much of it is still owed to them.
-	allStages := openapi.TargetStages{}
+	// targets, and how much of it is still owed to them.
+	allRoutes := openapi.TargetRoutes{}
 	ready, converged := true, true
 	for _, targetID := range targetIDs {
 		stored, found := authorizations[targetID]
@@ -124,21 +124,21 @@ func (h *Handler) GetStatus(writer http.ResponseWriter, request *http.Request) {
 			return
 		}
 		authorization := reportedAuthorization(stored, inFlight[targetID])
-		stages := stageCounts[targetID]
+		routes := routeCounts[targetID]
 		var lastRun *openapi.TargetRun
 		if run, recorded := runs[targetID]; recorded {
 			lastRun = &run
 		}
-		convergence := convergenceState(authorization, stages, lastRun)
+		convergence := convergenceState(authorization, routes, lastRun)
 		targets = append(targets, openapi.TargetStatus{
 			ID:            targetID,
 			Authorisation: authorization,
 			Convergence:   convergence,
-			Stages:        stages,
+			Routes:        routes,
 			LastRun:       lastRun,
 		})
-		allStages.Current += stages.Current
-		allStages.Pending += stages.Pending
+		allRoutes.Current += routes.Current
+		allRoutes.Pending += routes.Pending
 		ready = ready && authorization == authorizedState
 		// Overall convergence is the conjunction, so one lagging slot is enough
 		// to say the library is not everywhere it belongs.
@@ -197,7 +197,7 @@ func (h *Handler) GetStatus(writer http.ResponseWriter, request *http.Request) {
 			LastCompletedAt: wireTime(completedAt),
 			LastResult:      outcome,
 			LastFailure:     optionalString(detail),
-			SourceStages:    sourceStages,
+			SourceRoutes:    sourceStages,
 			Created:         created,
 			Updated:         updated,
 			Deleted:         deleted,
@@ -233,7 +233,7 @@ func (h *Handler) GetStatus(writer http.ResponseWriter, request *http.Request) {
 	if found {
 		view.Sync.State, view.Sync.LastResult = outcome, optionalString(outcome)
 		view.Sync.LastCompletedAt = optionalTime(completedAt)
-		view.Sync.SourceStages, view.Sync.Created, view.Sync.Updated, view.Sync.Deleted =
+		view.Sync.SourceRoutes, view.Sync.Created, view.Sync.Updated, view.Sync.Deleted =
 			sourceStages, created, updated, deleted
 	}
 	// A run that has not finished outranks the last one that did. Reporting
@@ -244,7 +244,7 @@ func (h *Handler) GetStatus(writer http.ResponseWriter, request *http.Request) {
 		view.Sync.State = state
 		view.Sync.Active = &openapi.SyncActive{
 			Targets: len(targetIDs),
-			Stages:  allStages,
+			Routes:  allRoutes,
 		}
 		if activity.Phase != "" {
 			phase := openapi.SyncActive_Phase(activity.Phase)
@@ -331,7 +331,7 @@ func (h *Handler) GetSyncRuns(writer http.ResponseWriter, request *http.Request)
 			CompletedAt:  wireTime(completedAt),
 			Result:       outcome,
 			Failure:      optionalString(detail),
-			SourceStages: sourceStages,
+			SourceRoutes: sourceStages,
 			Created:      created,
 			Updated:      updated,
 			Deleted:      deleted,
@@ -431,7 +431,7 @@ func (h *Handler) trigger(writer http.ResponseWriter, phase SyncPhase) {
 // TriggerSurfaceSync queues one immediate surface-classification pass, independently
 // of either half of a synchronization. Unlike sync, syncSource, and
 // syncTargets, it never reads the source library or writes a Wahoo target — it
-// only reclassifies stages already stored, against the local surface index.
+// only reclassifies routes already stored, against the local surface index.
 // It shares their single-flight guard, so a synchronization or another such
 // pass already in flight refuses it the same way.
 func (h *Handler) TriggerSurfaceSync(writer http.ResponseWriter, _ *http.Request) {

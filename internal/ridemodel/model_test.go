@@ -125,7 +125,7 @@ func TestPredictBlendsPhysicsAndLinearHalvesPerSegment(t *testing.T) {
 }
 
 // TestPredictLinearHalfCreditsOnlyPositiveAscent matches
-// route.Stage.ElevationGainMetres()'s own definition, which
+// route.Route.ElevationGainMetres()'s own definition, which
 // seconds_per_ascent_m was calibrated against: a descending segment
 // contributes nothing to the linear half.
 func TestPredictLinearHalfCreditsOnlyPositiveAscent(t *testing.T) {

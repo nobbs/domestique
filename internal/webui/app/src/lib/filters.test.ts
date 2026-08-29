@@ -5,11 +5,11 @@ import { EMPTY_FILTERS, hasActiveFilters, matchesFilters } from "./filters";
 function route(overrides: Partial<Route> = {}): Route {
   return {
     provider: "veloplanner",
-    routeId: 1,
+    sourceRouteId: 1,
     stageOrder: 1,
     title: "Kaiserstuhl Loop",
-    routeName: "Kaiserstuhl Loop",
-    stageName: "",
+    sourceRouteName: "Kaiserstuhl Loop",
+    routeName: "",
     sourceRevision: "1",
     contentHash: "hash",
     distanceMetres: 50_000,

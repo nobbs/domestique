@@ -13,7 +13,7 @@ function status(overrides: Partial<Status["sync"]> = {}): Status {
     targets: [],
     sync: {
       state: "idle",
-      sourceStages: 0,
+      sourceRoutes: 0,
       created: 0,
       updated: 0,
       deleted: 0,
@@ -68,7 +68,7 @@ describe("SyncControls", () => {
     renderControls(
       status({
         state: "running",
-        active: { phase: "targets", targets: 2, stages: { current: 11, pending: 1 } },
+        active: { phase: "targets", targets: 2, routes: { current: 11, pending: 1 } },
       }),
     );
 
@@ -81,7 +81,7 @@ describe("SyncControls", () => {
   // moment the operator who pressed the button is looking at.
   it("says a run has been accepted before either half starts", () => {
     renderControls(
-      status({ state: "queued", active: { targets: 1, stages: { current: 0, pending: 0 } } }),
+      status({ state: "queued", active: { targets: 1, routes: { current: 0, pending: 0 } } }),
     );
 
     expect(screen.getByText("Starting")).toBeInTheDocument();
@@ -96,7 +96,7 @@ describe("SyncControls", () => {
         active: {
           startsAt: "2026-08-18T06:05:00Z",
           targets: 1,
-          stages: { current: 3, pending: 1 },
+          routes: { current: 3, pending: 1 },
         },
       }),
     );
@@ -223,7 +223,7 @@ describe("SyncControls", () => {
           source: {
             lastCompletedAt: "2026-08-18T06:00:00Z",
             lastResult: "succeeded",
-            sourceStages: 12,
+            sourceRoutes: 12,
             created: 0,
             updated: 0,
             deleted: 0,
@@ -232,7 +232,7 @@ describe("SyncControls", () => {
             lastCompletedAt: "2026-08-18T06:00:04Z",
             lastResult: "failed",
             lastFailure: "destination",
-            sourceStages: 12,
+            sourceRoutes: 12,
             created: 1,
             updated: 0,
             deleted: 0,
@@ -264,7 +264,7 @@ describe("SyncControls", () => {
             lastCompletedAt: "2026-08-18T06:00:04Z",
             lastResult: "blocked",
             lastFailure,
-            sourceStages: 12,
+            sourceRoutes: 12,
             created: 0,
             updated: 0,
             deleted: 0,
@@ -286,7 +286,7 @@ describe("SyncControls", () => {
             lastCompletedAt: "2026-08-18T06:00:00Z",
             lastResult: "failed",
             lastFailure: "source",
-            sourceStages: 0,
+            sourceRoutes: 0,
             created: 0,
             updated: 0,
             deleted: 0,
@@ -333,7 +333,7 @@ describe("SyncControls", () => {
     );
   });
 
-  // Classification never fails a run, so a stage the endpoint keeps refusing is
+  // Classification never fails a run, so a route the endpoint keeps refusing is
   // otherwise indistinguishable from one that has not come up yet.
   it("says how much of the library is still unclassified", () => {
     renderControls(status({ surface: { classified: 1, total: 3, incomplete: 0 } }));
@@ -353,10 +353,10 @@ describe("SyncControls", () => {
     expect(screen.queryByText(/classified for/)).not.toBeInTheDocument();
   });
 
-  // A stage that keeps failing classification is otherwise indistinguishable
+  // A route that keeps failing classification is otherwise indistinguishable
   // from one that has not come up yet — the count and the retry are the two
   // places that difference shows.
-  it("offers a retry once a stage could not be classified", () => {
+  it("offers a retry once a route could not be classified", () => {
     renderControls(status({ surface: { classified: 1, total: 3, incomplete: 1 } }));
 
     expect(screen.getByText(/1 could not be classified last time/)).toBeInTheDocument();
@@ -420,7 +420,7 @@ describe("activeSummary", () => {
   // The instant is what makes a delay worth reporting, but a service that did
   // not give one is still waiting rather than idle.
   it("says a held-back run is waiting when nothing said until when", () => {
-    expect(activeSummary("delayed", { targets: 1, stages: { current: 1, pending: 1 } })).toBe(
+    expect(activeSummary("delayed", { targets: 1, routes: { current: 1, pending: 1 } })).toBe(
       "Waiting to start · 1 of 2 routes across 1 target",
     );
   });
@@ -435,7 +435,7 @@ describe("idleSummary", () => {
             source: {
               lastCompletedAt: "2026-08-18T06:00:00Z",
               lastResult: "succeeded",
-              sourceStages: 12,
+              sourceRoutes: 12,
               created: 0,
               updated: 0,
               deleted: 0,
@@ -457,7 +457,7 @@ describe("idleSummary", () => {
               lastCompletedAt: "2026-08-18T06:00:04Z",
               lastResult: "blocked",
               lastFailure: "deletion_limit",
-              sourceStages: 12,
+              sourceRoutes: 12,
               created: 0,
               updated: 0,
               deleted: 0,

@@ -8,7 +8,7 @@ const connected: TargetStatus = {
   id: "rider-a",
   authorisation: "authorized",
   convergence: "current",
-  stages: { current: 4, pending: 0 },
+  routes: { current: 4, pending: 0 },
   lastRun: { completedAt: "2026-08-18T06:00:00Z", result: "succeeded" },
 };
 
@@ -86,7 +86,7 @@ export const Connected: Story = { render: () => <Held /> };
 
 export const Behind: Story = {
   render: () => (
-    <Held target={{ ...connected, convergence: "lagging", stages: { current: 2, pending: 2 } }} />
+    <Held target={{ ...connected, convergence: "lagging", routes: { current: 2, pending: 2 } }} />
   ),
 };
 
@@ -97,7 +97,7 @@ export const NotConnected: Story = {
         id: "rider-b",
         authorisation: "not_authorized",
         convergence: "unauthorized",
-        stages: { current: 0, pending: 4 },
+        routes: { current: 0, pending: 4 },
       }}
     />
   ),

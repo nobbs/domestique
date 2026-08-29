@@ -19,14 +19,14 @@ import { useThemeChoice } from "./lib/theme";
  * actually be wrong — against the library, once the query is read back.
  */
 function OpenedRoute() {
-  const { provider, routeId, stage } = useParams();
-  const key = `${provider}/${routeId}/${stage}`;
+  const { provider, sourceRouteId, stageOrder } = useParams();
+  const key = `${provider}/${sourceRouteId}/${stageOrder}`;
 
   return <Navigate to={`/?route=${encodeURIComponent(key)}`} replace />;
 }
 
 /**
- * The address a route had before a second provider gave every stage a
+ * The address a route had before a second provider gave every route a
  * provider of its own, answered the same way.
  *
  * Only VeloPlanner ever handed out a two-segment link, so the provider a link
@@ -34,8 +34,8 @@ function OpenedRoute() {
  * handler makes for the same paths in production.
  */
 function OpenedLegacyRoute() {
-  const { routeId, stage } = useParams();
-  const key = `veloplanner/${routeId}/${stage}`;
+  const { sourceRouteId, stageOrder } = useParams();
+  const key = `veloplanner/${sourceRouteId}/${stageOrder}`;
 
   return <Navigate to={`/?route=${encodeURIComponent(key)}`} replace />;
 }
@@ -67,8 +67,8 @@ export function App() {
   return (
     <Routes>
       <Route path="/" element={<AtlasPage themeChoice={themeChoice} />} />
-      <Route path="routes/:provider/:routeId/:stage" element={<OpenedRoute />} />
-      <Route path="routes/:routeId/:stage" element={<OpenedLegacyRoute />} />
+      <Route path="routes/:provider/:sourceRouteId/:stageOrder" element={<OpenedRoute />} />
+      <Route path="routes/:sourceRouteId/:stageOrder" element={<OpenedLegacyRoute />} />
       <Route path="sync" element={<SyncPage />} />
       <Route
         path="settings"

@@ -99,11 +99,11 @@ type geometrySurfaceView struct {
 }
 
 type geometryPropertyView struct {
-	Surface   *geometrySurfaceView `json:"surface,omitempty"`
-	Provider  string               `json:"provider"`
-	Title     string               `json:"title"`
-	RouteName string               `json:"routeName"`
-	StageName string               `json:"stageName"`
+	Surface         *geometrySurfaceView `json:"surface,omitempty"`
+	Provider        string               `json:"provider"`
+	Title           string               `json:"title"`
+	SourceRouteName string               `json:"sourceRouteName"`
+	RouteName       string               `json:"routeName"`
 	// CumulativeSeconds is the predicted moving time in seconds at each
 	// coordinate, indexed 1:1 with the feature's coordinates and passed through
 	// as stored so serving it costs no decode and re-encode. It is absent —
@@ -115,7 +115,7 @@ type geometryPropertyView struct {
 	DistanceMetres     float64         `json:"distanceMetres"`
 	AscentMetres       float64         `json:"ascentMetres"`
 	MaxGradientPercent float64         `json:"maxGradientPercent"`
-	RouteID            int64           `json:"routeId"`
+	SourceRouteID      int64           `json:"sourceRouteId"`
 	PointCount         int             `json:"pointCount"`
 	StageOrder         int             `json:"stageOrder"`
 }

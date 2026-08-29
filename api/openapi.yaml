@@ -251,7 +251,7 @@ paths:
       operationId: getRoutes
       responses:
         "200":
-          description: Stored stage inventory without geometry.
+          description: Stored route inventory without geometry.
           content:
             application/json:
               schema:
@@ -262,18 +262,18 @@ paths:
           $ref: '#/components/responses/Forbidden'
         "503":
           $ref: '#/components/responses/Unavailable'
-  /v1/providers/{provider}/routes/{routeId}/stages/{stage}:
+  /v1/providers/{provider}/sourceRoutes/{sourceRouteId}/routes/{stageOrder}:
     get:
       tags:
         - browser-api
       operationId: getRoute
       parameters:
         - $ref: '#/components/parameters/Provider'
-        - $ref: '#/components/parameters/RouteId'
-        - $ref: '#/components/parameters/Stage'
+        - $ref: '#/components/parameters/SourceRouteId'
+        - $ref: '#/components/parameters/StageOrder'
       responses:
         "200":
-          description: Stored stage metadata.
+          description: Stored route metadata.
           content:
             application/json:
               schema:
@@ -288,18 +288,18 @@ paths:
           $ref: '#/components/responses/NotFound'
         "503":
           $ref: '#/components/responses/Unavailable'
-  /v1/providers/{provider}/routes/{routeId}/stages/{stage}/geometry:
+  /v1/providers/{provider}/sourceRoutes/{sourceRouteId}/routes/{stageOrder}/geometry:
     get:
       tags:
         - browser-api
       operationId: getRouteGeometry
       parameters:
         - $ref: '#/components/parameters/Provider'
-        - $ref: '#/components/parameters/RouteId'
-        - $ref: '#/components/parameters/Stage'
+        - $ref: '#/components/parameters/SourceRouteId'
+        - $ref: '#/components/parameters/StageOrder'
       responses:
         "200":
-          description: Stored stage geometry.
+          description: Stored route geometry.
           content:
             application/geo+json:
               schema:
@@ -314,15 +314,15 @@ paths:
           $ref: '#/components/responses/NotFound'
         "503":
           $ref: '#/components/responses/Unavailable'
-  /v1/providers/{provider}/routes/{routeId}/stages/{stage}/reprocess:
+  /v1/providers/{provider}/sourceRoutes/{sourceRouteId}/routes/{stageOrder}/reprocess:
     post:
       tags:
         - browser-api
       operationId: reprocessRoute
       parameters:
         - $ref: '#/components/parameters/Provider'
-        - $ref: '#/components/parameters/RouteId'
-        - $ref: '#/components/parameters/Stage'
+        - $ref: '#/components/parameters/SourceRouteId'
+        - $ref: '#/components/parameters/StageOrder'
       security:
         - accessAssertion: []
           browserOrigin: []
@@ -339,12 +339,69 @@ paths:
           $ref: '#/components/responses/NotFound'
         "503":
           $ref: '#/components/responses/Unavailable'
+  /v1/providers/{provider}/routes/{routeId}/stages/{stage}:
+    get:
+      operationId: redirectStageRoute
+      parameters:
+        - $ref: '#/components/parameters/Provider'
+        - $ref: '#/components/parameters/LegacyRouteId'
+        - $ref: '#/components/parameters/LegacyStage'
+      responses:
+        "308":
+          $ref: '#/components/responses/LegacyRedirect'
+        "400":
+          $ref: '#/components/responses/InvalidRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+  /v1/providers/{provider}/routes/{routeId}/stages/{stage}/geometry:
+    get:
+      operationId: redirectStageGeometry
+      parameters:
+        - $ref: '#/components/parameters/Provider'
+        - $ref: '#/components/parameters/LegacyRouteId'
+        - $ref: '#/components/parameters/LegacyStage'
+      responses:
+        "308":
+          $ref: '#/components/responses/LegacyRedirect'
+        "400":
+          $ref: '#/components/responses/InvalidRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+  /v1/providers/{provider}/routes/{routeId}/stages/{stage}/reprocess:
+    post:
+      operationId: redirectStageReprocess
+      parameters:
+        - $ref: '#/components/parameters/Provider'
+        - $ref: '#/components/parameters/LegacyRouteId'
+        - $ref: '#/components/parameters/LegacyStage'
+      security:
+        - accessAssertion: []
+          browserOrigin: []
+      responses:
+        "308":
+          $ref: '#/components/responses/LegacyRedirect'
+        "400":
+          $ref: '#/components/responses/InvalidRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
   /v1/routes/{routeId}/stages/{stage}:
     get:
       operationId: redirectLegacyRoute
       parameters:
-        - $ref: '#/components/parameters/RouteId'
-        - $ref: '#/components/parameters/Stage'
+        - $ref: '#/components/parameters/LegacyRouteId'
+        - $ref: '#/components/parameters/LegacyStage'
       responses:
         "308":
           $ref: '#/components/responses/LegacyRedirect'
@@ -360,8 +417,8 @@ paths:
     get:
       operationId: redirectLegacyGeometry
       parameters:
-        - $ref: '#/components/parameters/RouteId'
-        - $ref: '#/components/parameters/Stage'
+        - $ref: '#/components/parameters/LegacyRouteId'
+        - $ref: '#/components/parameters/LegacyStage'
       responses:
         "308":
           $ref: '#/components/responses/LegacyRedirect'
@@ -377,8 +434,8 @@ paths:
     post:
       operationId: redirectLegacyReprocess
       parameters:
-        - $ref: '#/components/parameters/RouteId'
-        - $ref: '#/components/parameters/Stage'
+        - $ref: '#/components/parameters/LegacyRouteId'
+        - $ref: '#/components/parameters/LegacyStage'
       security:
         - accessAssertion: []
           browserOrigin: []
@@ -450,7 +507,7 @@ paths:
           browserOrigin: []
       description: >-
         Replaces the destination slots whole, in the order they are offered. A
-        slot name is the identity every stored authorization, target stage and
+        slot name is the identity every stored authorization, target route and
         recorded run already carries, so renaming one abandons that slot's state
         rather than moving it.
       requestBody:
@@ -762,18 +819,35 @@ components:
       schema:
         type: string
         minLength: 1
-    RouteId:
-      name: routeId
+    SourceRouteId:
+      name: sourceRouteId
       in: path
       required: true
       schema:
         type: integer
         format: int64
         minimum: 1
-    Stage:
+    StageOrder:
+      name: stageOrder
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+    LegacyRouteId:
+      name: routeId
+      in: path
+      required: true
+      description: The source route identifier, under the name a superseded address gave it.
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+    LegacyStage:
       name: stage
       in: path
       required: true
+      description: The stage order, under the name a superseded address gave it.
       schema:
         type: integer
         minimum: 1
@@ -922,7 +996,7 @@ components:
         status:
           type: string
           const: accepted
-    TargetStages:
+    TargetRoutes:
       type: object
       additionalProperties: false
       required:
@@ -956,7 +1030,7 @@ components:
         - id
         - authorisation
         - convergence
-        - stages
+        - routes
       properties:
         id:
           type: string
@@ -969,8 +1043,8 @@ components:
             - lagging
             - failed
             - unauthorized
-        stages:
-          $ref: '#/components/schemas/TargetStages'
+        routes:
+          $ref: '#/components/schemas/TargetRoutes'
         lastRun:
           $ref: '#/components/schemas/TargetRun'
     RouteValidation:
@@ -999,11 +1073,11 @@ components:
       additionalProperties: false
       required:
         - provider
-        - routeId
+        - sourceRouteId
         - stageOrder
         - title
+        - sourceRouteName
         - routeName
-        - stageName
         - sourceRevision
         - contentHash
         - distanceMetres
@@ -1013,16 +1087,16 @@ components:
       properties:
         provider:
           type: string
-        routeId:
+        sourceRouteId:
           type: integer
           format: int64
         stageOrder:
           type: integer
         title:
           type: string
-        routeName:
+        sourceRouteName:
           type: string
-        stageName:
+        routeName:
           type: string
         sourceRevision:
           type: string
@@ -1048,9 +1122,9 @@ components:
       type: object
       additionalProperties: false
       required:
-        - stages
+        - routes
       properties:
-        stages:
+        routes:
           type: array
           items:
             $ref: '#/components/schemas/Route'
@@ -1071,7 +1145,7 @@ components:
       required:
         - lastCompletedAt
         - lastResult
-        - sourceStages
+        - sourceRoutes
         - created
         - updated
         - deleted
@@ -1083,7 +1157,7 @@ components:
           type: string
         lastFailure:
           type: string
-        sourceStages:
+        sourceRoutes:
           type: integer
         created:
           type: integer
@@ -1104,7 +1178,7 @@ components:
       additionalProperties: false
       required:
         - targets
-        - stages
+        - routes
       properties:
         phase:
           type: string
@@ -1117,8 +1191,8 @@ components:
         targets:
           type: integer
           minimum: 0
-        stages:
-          $ref: '#/components/schemas/TargetStages'
+        routes:
+          $ref: '#/components/schemas/TargetRoutes'
     SurfaceCoverage:
       type: object
       additionalProperties: false
@@ -1173,7 +1247,7 @@ components:
         - state
         - phases
         - surface
-        - sourceStages
+        - sourceRoutes
         - created
         - updated
         - deleted
@@ -1188,7 +1262,7 @@ components:
         lastCompletedAt:
           type: string
           format: date-time
-        sourceStages:
+        sourceRoutes:
           type: integer
         created:
           type: integer
@@ -1245,7 +1319,7 @@ components:
         - phase
         - completedAt
         - result
-        - sourceStages
+        - sourceRoutes
         - created
         - updated
         - deleted
@@ -1264,7 +1338,7 @@ components:
           type: string
         failure:
           type: string
-        sourceStages:
+        sourceRoutes:
           type: integer
         created:
           type: integer
@@ -1381,7 +1455,7 @@ components:
             type: string
           description: >-
             The destination slots, in the order they are offered. A slot name is
-            the identity every stored authorization, target stage and recorded
+            the identity every stored authorization, target route and recorded
             run already carries, so renaming one abandons that slot's state
             rather than moving it.
     SourceUpdate:
@@ -1401,7 +1475,7 @@ components:
           type: string
           description: >-
             The source's own web application, which is both the origin the
-            service reads and the one a stage is linked back to.
+            service reads and the one a route is linked back to.
         email:
           type: string
           description: >-
@@ -1543,7 +1617,7 @@ components:
             type: string
           description: >-
             The destination slots, in the order they are offered. A slot name is
-            the identity every stored authorization, target stage and recorded
+            the identity every stored authorization, target route and recorded
             run already carries, so renaming one abandons that slot's state
             rather than moving it.
     SourceSettings:
@@ -1562,7 +1636,7 @@ components:
           type: string
           description: >-
             The source's own web application, which is both the origin the
-            service reads and the one a stage is linked back to.
+            service reads and the one a route is linked back to.
     RideModelSettings:
       type: object
       additionalProperties: false
@@ -1707,11 +1781,11 @@ components:
       additionalProperties: false
       required:
         - provider
-        - routeId
+        - sourceRouteId
         - stageOrder
         - title
+        - sourceRouteName
         - routeName
-        - stageName
         - distanceMetres
         - ascentMetres
         - maxGradientPercent
@@ -1719,16 +1793,16 @@ components:
       properties:
         provider:
           type: string
-        routeId:
+        sourceRouteId:
           type: integer
           format: int64
         stageOrder:
           type: integer
         title:
           type: string
-        routeName:
+        sourceRouteName:
           type: string
-        stageName:
+        routeName:
           type: string
         distanceMetres:
           type: number

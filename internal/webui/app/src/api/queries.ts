@@ -42,22 +42,22 @@ export const routesQuery = () =>
   getGetRoutesQueryOptions({
     query: {
       select: (response) => {
-        const routes = payload<{ stages: Route[] } | Route[]>(response);
+        const routes = payload<{ routes: Route[] } | Route[]>(response);
 
-        return Array.isArray(routes) ? routes : routes.stages;
+        return Array.isArray(routes) ? routes : routes.routes;
       },
     },
   });
 
-export const routeQuery = (provider: string, routeId: number, stageOrder: number) =>
-  getGetRouteQueryOptions(provider, routeId, stageOrder, {
+export const routeQuery = (provider: string, sourceRouteId: number, stageOrder: number) =>
+  getGetRouteQueryOptions(provider, sourceRouteId, stageOrder, {
     query: {
       select: (response) => payload<Route>(response),
     },
   });
 
-export const routeGeometryQuery = (provider: string, routeId: number, stageOrder: number) =>
-  getGetRouteGeometryQueryOptions<RouteGeometry>(provider, routeId, stageOrder, {
+export const routeGeometryQuery = (provider: string, sourceRouteId: number, stageOrder: number) =>
+  getGetRouteGeometryQueryOptions<RouteGeometry>(provider, sourceRouteId, stageOrder, {
     query: {
       select: (response) => routeGeometry(payload<GeoJSONFeature>(response) as GeoJSONFeature),
       staleTime: 5 * 60 * 1000,

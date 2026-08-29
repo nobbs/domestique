@@ -209,14 +209,14 @@ func specs() []stageSpec {
 	}
 }
 
-// Stages returns the synthetic source inventory.
-func Stages() ([]route.Stage, error) {
+// Routes returns the synthetic source inventory.
+func Routes() ([]route.Route, error) {
 	specs := specs()
-	stages := make([]route.Stage, 0, len(specs))
+	stages := make([]route.Route, 0, len(specs))
 	for index := range specs {
 		spec := &specs[index]
 		geometry := spec.geometry()
-		stage, err := route.NewStage(
+		stage, err := route.NewRoute(
 			spec.sourceProvider(),
 			spec.routeID,
 			spec.stageOrder,
@@ -242,7 +242,7 @@ type Classification struct {
 	Provider      route.Provider
 	Ranges        []byte
 	MatchedMetres float64
-	RouteID       int64
+	SourceRouteID int64
 	StageOrder    int
 }
 
@@ -251,7 +251,7 @@ type Classification struct {
 // The ranges are compressed and encoded by the same code that stores a real
 // classification, and the matched length is measured the same way, so a fixture
 // cannot drift into a shape the production reader would not accept.
-func Classifications(stages []route.Stage) ([]Classification, error) {
+func Classifications(stages []route.Route) ([]Classification, error) {
 	specs := specs()
 	kindsByStage := stageSurfaceKinds(stages)
 	classifications := make([]Classification, 0, len(specs))
@@ -272,7 +272,7 @@ func Classifications(stages []route.Stage) ([]Classification, error) {
 			Ranges:        encoded,
 			Provider:      stage.Key().Provider(),
 			MatchedMetres: surface.MatchedMetres(geometry, kinds),
-			RouteID:       spec.routeID,
+			SourceRouteID: spec.routeID,
 			StageOrder:    spec.stageOrder,
 		})
 	}
@@ -295,7 +295,7 @@ func Classifications(stages []route.Stage) ([]Classification, error) {
 // Classifications' exported signature so its callers computed and carried
 // something they have no use for, and this is seven synthetic stages built
 // once at demo start.
-func stageSurfaceKinds(stages []route.Stage) [][]surface.Kind {
+func stageSurfaceKinds(stages []route.Route) [][]surface.Kind {
 	specs := specs()
 	kinds := make([][]surface.Kind, len(stages))
 	for index := range specs {

@@ -164,18 +164,18 @@ type Source interface {
 	// Provider names the upstream this source reads. Every stage Inventory
 	// returns must carry this same provider.
 	Provider() route.Provider
-	Inventory(ctx context.Context) ([]route.Stage, error)
+	Inventory(ctx context.Context) ([]route.Route, error)
 }
 
 // Encoder produces a FIT course for one source stage.
 type Encoder interface {
-	Encode(ctx context.Context, stage route.Stage) ([]byte, error)
+	Encode(ctx context.Context, stage route.Route) ([]byte, error)
 }
 
-// Processor derives a device-export stage without changing source identity or
+// Processor derives a device-export route without changing source identity or
 // source-content state.
 type Processor interface {
-	Process(stage *route.Stage) (route.Stage, error)
+	Process(original *route.Route) (route.Route, error)
 }
 
 // Target performs serial Wahoo OAuth refresh and route operations.
@@ -192,8 +192,8 @@ type Target interface {
 	// finished only when the target is empty and may have to wait out a spent
 	// request quota to get there.
 	DeleteOwnedRoutes(ctx context.Context, accessToken string) (int, error)
-	CreateRoute(ctx context.Context, accessToken string, stage *route.Stage, fitData []byte) (routeID int64, err error)
-	UpdateRoute(ctx context.Context, routeID int64, accessToken string, stage *route.Stage, fitData []byte) (updatedRouteID int64, err error)
+	CreateRoute(ctx context.Context, accessToken string, stage *route.Route, fitData []byte) (routeID int64, err error)
+	UpdateRoute(ctx context.Context, routeID int64, accessToken string, stage *route.Route, fitData []byte) (updatedRouteID int64, err error)
 	DeleteRoute(ctx context.Context, routeID int64, accessToken string) error
 	IsUnauthorized(err error) bool
 }
@@ -206,7 +206,7 @@ type Target interface {
 // and a pass that had nothing to classify look identical from the outside, and
 // an operator wondering why a route has no surface deserves the difference.
 type Annotator interface {
-	Annotate(ctx context.Context, stages []route.Stage) (classified, failed int, err error)
+	Annotate(ctx context.Context, stages []route.Route) (classified, failed int, err error)
 }
 
 // Predictor computes and caches predicted moving time for the stored
@@ -215,7 +215,7 @@ type Annotator interface {
 // predictor leaves stored stages carrying no prediction and changes nothing
 // else about a run.
 type Predictor interface {
-	Predict(ctx context.Context, stages []route.Stage) (predicted, failed int, err error)
+	Predict(ctx context.Context, stages []route.Route) (predicted, failed int, err error)
 }
 
 // State owns the minimum durable state operations required by synchronization.
@@ -226,8 +226,8 @@ type State interface {
 	ReplaceRefreshToken(ctx context.Context, targetID, refreshToken string) error
 	MarkNeedsReauthorization(ctx context.Context, targetID string) error
 	TrustedInventoryCount(ctx context.Context, provider route.Provider) (int, error)
-	StoreTrustedInventory(ctx context.Context, provider route.Provider, stages []route.Stage) error
-	TrustedInventory(ctx context.Context) ([]route.Stage, error)
+	StoreTrustedInventory(ctx context.Context, provider route.Provider, stages []route.Route) error
+	TrustedInventory(ctx context.Context) ([]route.Route, error)
 	ForEachTargetStage(ctx context.Context, targetID string, visit func(provider route.Provider, routeID int64, stageOrder int, sourceRevision, contentHash string, wahooRouteID int64) error) error
 	UpsertTargetStage(ctx context.Context, targetID string, provider route.Provider, routeID int64, stageOrder int, sourceRevision, contentHash string, wahooRouteID int64) error
 	DeleteTargetStage(ctx context.Context, targetID string, provider route.Provider, routeID int64, stageOrder int) error
@@ -586,7 +586,7 @@ func (s *Service) clearTarget(ctx context.Context, targetID string) (int, Failur
 	}
 
 	for key := range mappings {
-		if err := s.state.DeleteTargetStage(ctx, targetID, key.Provider(), key.RouteID(), key.StageOrder()); err != nil {
+		if err := s.state.DeleteTargetStage(ctx, targetID, key.Provider(), key.SourceRouteID(), key.StageOrder()); err != nil {
 			return deleted, FailureState
 		}
 	}
@@ -652,7 +652,7 @@ func (s *Service) AnnotateStored(ctx context.Context) (classified, failed int) {
 // predictStored runs the ride-model predictor over the same stages
 // AnnotateStored just read, and is silent on success for the same reason
 // AnnotateStored's own logging is: a routine pass is not worth a log line.
-func (s *Service) predictStored(ctx context.Context, stages []route.Stage) {
+func (s *Service) predictStored(ctx context.Context, stages []route.Route) {
 	if s.predictor == nil {
 		return
 	}
@@ -687,8 +687,8 @@ func logPassOutcome(pass string, completed, failed int, err error) {
 // run here. What is stored is what the targets are sent, so a rejected stage
 // reaches a device as the source planned it rather than not at all, and the map
 // draws the same line the device carries.
-func (s *Service) exportProfiles(ordered []route.Stage) []route.Stage {
-	stages := make([]route.Stage, 0, len(ordered))
+func (s *Service) exportProfiles(ordered []route.Route) []route.Route {
+	stages := make([]route.Route, 0, len(ordered))
 	for index := range ordered {
 		processed, err := s.processor.Process(&ordered[index])
 		if err != nil {
@@ -714,22 +714,22 @@ type counts struct {
 	deleted int
 }
 
-func normalizeInventory(stages []route.Stage) (map[route.Key]route.Stage, []route.Stage, error) {
-	ordered := append([]route.Stage(nil), stages...)
+func normalizeInventory(stages []route.Route) (map[route.Key]route.Route, []route.Route, error) {
+	ordered := append([]route.Route(nil), stages...)
 	sort.Slice(ordered, func(left, right int) bool {
 		leftKey := ordered[left].Key()
 		rightKey := ordered[right].Key()
 		if leftKey.Provider() != rightKey.Provider() {
 			return leftKey.Provider() < rightKey.Provider()
 		}
-		if leftKey.RouteID() != rightKey.RouteID() {
-			return leftKey.RouteID() < rightKey.RouteID()
+		if leftKey.SourceRouteID() != rightKey.SourceRouteID() {
+			return leftKey.SourceRouteID() < rightKey.SourceRouteID()
 		}
 
 		return leftKey.StageOrder() < rightKey.StageOrder()
 	})
 
-	desired := make(map[route.Key]route.Stage, len(ordered))
+	desired := make(map[route.Key]route.Route, len(ordered))
 	for _, stage := range ordered {
 		key := stage.Key()
 		if _, exists := desired[key]; exists {
@@ -751,8 +751,8 @@ func normalizeInventory(stages []route.Stage) (map[route.Key]route.Stage, []rout
 func (s *Service) reconcileTarget(
 	ctx context.Context,
 	targetID string,
-	desired map[route.Key]route.Stage,
-	ordered []route.Stage,
+	desired map[route.Key]route.Route,
+	ordered []route.Route,
 ) (counts, FailureCategory) {
 	refreshToken, refreshErr := s.state.RefreshToken(ctx, targetID)
 	if refreshErr != nil {
@@ -848,7 +848,7 @@ func (s *Service) reconcileTarget(
 			}
 			result.deleted++
 		}
-		if err := s.state.DeleteTargetStage(ctx, targetID, key.Provider(), key.RouteID(), key.StageOrder()); err != nil {
+		if err := s.state.DeleteTargetStage(ctx, targetID, key.Provider(), key.SourceRouteID(), key.StageOrder()); err != nil {
 			return result, FailureState
 		}
 	}
@@ -905,7 +905,7 @@ func (s *Service) targetStages(ctx context.Context, targetID string) (map[route.
 	return mappings, nil
 }
 
-func missingStages(mappings map[route.Key]targetStage, desired map[route.Key]route.Stage) []route.Key {
+func missingStages(mappings map[route.Key]targetStage, desired map[route.Key]route.Route) []route.Key {
 	missing := make([]route.Key, 0)
 	for key := range mappings {
 		if _, exists := desired[key]; !exists {
@@ -916,8 +916,8 @@ func missingStages(mappings map[route.Key]targetStage, desired map[route.Key]rou
 		if missing[left].Provider() != missing[right].Provider() {
 			return missing[left].Provider() < missing[right].Provider()
 		}
-		if missing[left].RouteID() != missing[right].RouteID() {
-			return missing[left].RouteID() < missing[right].RouteID()
+		if missing[left].SourceRouteID() != missing[right].SourceRouteID() {
+			return missing[left].SourceRouteID() < missing[right].SourceRouteID()
 		}
 
 		return missing[left].StageOrder() < missing[right].StageOrder()
@@ -926,13 +926,13 @@ func missingStages(mappings map[route.Key]targetStage, desired map[route.Key]rou
 	return missing
 }
 
-func (s *Service) storeTargetStage(ctx context.Context, targetID string, stage *route.Stage, wahooRouteID int64) error {
+func (s *Service) storeTargetStage(ctx context.Context, targetID string, stage *route.Route, wahooRouteID int64) error {
 	key := stage.Key()
 	if err := s.state.UpsertTargetStage(
 		ctx,
 		targetID,
 		key.Provider(),
-		key.RouteID(),
+		key.SourceRouteID(),
 		key.StageOrder(),
 		stage.Revision(),
 		encodedContentHash(stage),
@@ -944,7 +944,7 @@ func (s *Service) storeTargetStage(ctx context.Context, targetID string, stage *
 	return nil
 }
 
-func encodedContentHash(stage *route.Stage) string {
+func encodedContentHash(stage *route.Route) string {
 	sum := sha256.Sum256([]byte(encoderContentVersion + "\x00" + stage.ContentHash()))
 
 	return hex.EncodeToString(sum[:])

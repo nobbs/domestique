@@ -32,11 +32,11 @@ export const coordinates = Array.from({ length: 40 }, (_, index): [number, numbe
 
 export const route: Route = {
   provider: "veloplanner",
-  routeId: 12,
+  sourceRouteId: 12,
   stageOrder: 2,
   title: "Alpine loop — Descent",
-  routeName: "Alpine loop",
-  stageName: "Descent",
+  sourceRouteName: "Alpine loop",
+  routeName: "Descent",
   sourceRevision: "2026-08-17",
   contentHash: "storybook",
   distanceMetres: 42_500,
@@ -112,19 +112,19 @@ export const status: Status = {
       id: "rider-a",
       authorisation: "authorized",
       convergence: "current",
-      stages: { current: 4, pending: 0 },
+      routes: { current: 4, pending: 0 },
     },
     {
       id: "rider-b",
       authorisation: "authorized",
       convergence: "lagging",
-      stages: { current: 2, pending: 2 },
+      routes: { current: 2, pending: 2 },
     },
   ],
   sync: {
     state: "idle",
     lastCompletedAt: "2026-08-18T06:30:00Z",
-    sourceStages: 4,
+    sourceRoutes: 4,
     created: 0,
     updated: 2,
     deleted: 0,
@@ -133,7 +133,7 @@ export const status: Status = {
       source: {
         lastCompletedAt: "2026-08-18T06:15:00Z",
         lastResult: "succeeded",
-        sourceStages: 4,
+        sourceRoutes: 4,
         created: 0,
         updated: 0,
         deleted: 0,
@@ -141,7 +141,7 @@ export const status: Status = {
       targets: {
         lastCompletedAt: "2026-08-18T06:30:00Z",
         lastResult: "succeeded",
-        sourceStages: 0,
+        sourceRoutes: 0,
         created: 0,
         updated: 2,
         deleted: 0,
@@ -157,7 +157,7 @@ export const runs: SyncRun[] = [
     phase: "targets",
     completedAt: "2026-08-18T06:30:00Z",
     result: "succeeded",
-    sourceStages: 0,
+    sourceRoutes: 0,
     created: 0,
     updated: 2,
     deleted: 0,
@@ -167,7 +167,7 @@ export const runs: SyncRun[] = [
     phase: "source",
     completedAt: "2026-08-18T06:15:00Z",
     result: "succeeded",
-    sourceStages: 4,
+    sourceRoutes: 4,
     created: 0,
     updated: 0,
     deleted: 0,
@@ -235,7 +235,7 @@ export function StoryProviders({ children }: { children: ReactNode }) {
     next.setQueryData(settingsQuery().queryKey, settings);
     next.setQueryData(routesQuery().queryKey, [route]);
     next.setQueryData(
-      routeGeometryQuery(route.provider, route.routeId, route.stageOrder).queryKey,
+      routeGeometryQuery(route.provider, route.sourceRouteId, route.stageOrder).queryKey,
       routeGeometryFixture,
     );
     next.setQueryData(syncRunsQueryKey(), {

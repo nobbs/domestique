@@ -660,7 +660,7 @@ func distanceAndAscent(samples []sampleRow) (distanceKM, ascentM float64) {
 // from the point sequence rather than making the ride unscorable outright —
 // see maxMissingGeometryFraction for why a small amount of this is
 // tolerated.
-func normalizedRideStage(samples []sampleRow) (route.Stage, bool) {
+func normalizedRideStage(samples []sampleRow) (route.Route, bool) {
 	points := make([]route.Point, 0, len(samples))
 	var movingSeconds, missingGeometrySeconds float64
 	for i := range samples {
@@ -678,17 +678,17 @@ func normalizedRideStage(samples []sampleRow) (route.Stage, bool) {
 		points = append(points, route.Point{Latitude: s.Latitude, Longitude: s.Longitude, Elevation: &altitude})
 	}
 	if movingSeconds > 0 && missingGeometrySeconds/movingSeconds > maxMissingGeometryFraction {
-		return route.Stage{}, false
+		return route.Route{}, false
 	}
-	stage, err := route.NewStage(
+	stage, err := route.NewRoute(
 		route.ProviderVeloPlanner, 1, 1, "benchmark", "benchmark", "", points, "benchmark",
 	)
 	if err != nil {
-		return route.Stage{}, false
+		return route.Route{}, false
 	}
 	normalized, err := elevation.New().Process(&stage)
 	if err != nil {
-		return route.Stage{}, false
+		return route.Route{}, false
 	}
 
 	return normalized, true

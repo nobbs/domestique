@@ -316,8 +316,8 @@ func (s *Store) ForEachStageSummary(ctx context.Context, visit func(summary rout
 		var summary route.Summary
 		var movingSeconds sql.NullFloat64
 		if err := rows.Scan(
-			&summary.Provider, &summary.RouteID, &summary.StageOrder, &summary.SourceRevision, &summary.ContentHash,
-			&summary.RouteName, &summary.StageName, &summary.PointCount, &summary.DistanceMetres,
+			&summary.Provider, &summary.SourceRouteID, &summary.StageOrder, &summary.SourceRevision, &summary.ContentHash,
+			&summary.SourceRouteName, &summary.RouteName, &summary.PointCount, &summary.DistanceMetres,
 			&summary.AscentMetres, &summary.MaxGradientPercent, &movingSeconds,
 			&summary.Bounds.MinLongitude, &summary.Bounds.MinLatitude,
 			&summary.Bounds.MaxLongitude, &summary.Bounds.MaxLatitude,
@@ -388,8 +388,8 @@ func (s *Store) StageGeometry(
 			AND stage_duration.content_hash = stage_geometry.content_hash
 		WHERE stage_geometry.provider = ? AND stage_geometry.route_id = ? AND stage_geometry.stage_order = ?
 	`, provider, routeID, stageOrder).Scan(
-		&summary.Provider, &summary.RouteID, &summary.StageOrder, &summary.SourceRevision, &summary.ContentHash,
-		&summary.RouteName, &summary.StageName, &summary.PointCount, &summary.DistanceMetres,
+		&summary.Provider, &summary.SourceRouteID, &summary.StageOrder, &summary.SourceRevision, &summary.ContentHash,
+		&summary.SourceRouteName, &summary.RouteName, &summary.PointCount, &summary.DistanceMetres,
 		&summary.AscentMetres, &summary.MaxGradientPercent, &movingSeconds,
 		&summary.Bounds.MinLongitude, &summary.Bounds.MinLatitude,
 		&summary.Bounds.MaxLongitude, &summary.Bounds.MaxLatitude,
@@ -668,7 +668,7 @@ func (s *Store) LastSyncRun(ctx context.Context) (completedAt time.Time, outcome
 // hash fails the whole read. Returning the rest would describe the library as
 // smaller than it is, and a smaller library is exactly what reconciliation
 // treats as an instruction to delete.
-func (s *Store) TrustedInventory(ctx context.Context) ([]route.Stage, error) {
+func (s *Store) TrustedInventory(ctx context.Context) ([]route.Route, error) {
 	rows, err := s.database.QueryContext(ctx, `
 		SELECT
 			source_stages.provider,
@@ -692,7 +692,7 @@ func (s *Store) TrustedInventory(ctx context.Context) ([]route.Stage, error) {
 	}
 	defer closeRows(rows)
 
-	stages := make([]route.Stage, 0)
+	stages := make([]route.Route, 0)
 	for rows.Next() {
 		var provider route.Provider
 		var routeID int64
@@ -715,7 +715,7 @@ func (s *Store) TrustedInventory(ctx context.Context) ([]route.Stage, error) {
 		if err != nil {
 			return nil, err
 		}
-		stage, err := route.NewStage(
+		stage, err := route.NewRoute(
 			provider, routeID, stageOrder, revision, routeName.String, stageName.String, points, contentHash,
 		)
 		if err != nil {
@@ -1541,7 +1541,7 @@ func (s *Store) TrustedInventoryCount(ctx context.Context, provider route.Provid
 // Scoping the replacement to one provider is what lets a source that failed to
 // read this run keep the stages it was last known to have: only a source that
 // was read successfully reaches this call at all.
-func (s *Store) StoreTrustedInventory(ctx context.Context, provider route.Provider, stages []route.Stage) error {
+func (s *Store) StoreTrustedInventory(ctx context.Context, provider route.Provider, stages []route.Route) error {
 	seen := make(map[route.Key]struct{}, len(stages))
 	for _, stage := range stages {
 		key := stage.Key()
@@ -1568,7 +1568,7 @@ func (s *Store) StoreTrustedInventory(ctx context.Context, provider route.Provid
 		if _, err := transaction.ExecContext(ctx, `
 			INSERT INTO source_stages (provider, route_id, stage_order, source_revision, content_hash)
 			VALUES (?, ?, ?, ?, ?)
-		`, key.Provider(), key.RouteID(), key.StageOrder(), stage.Revision(), stage.ContentHash()); err != nil {
+		`, key.Provider(), key.SourceRouteID(), key.StageOrder(), stage.Revision(), stage.ContentHash()); err != nil {
 			return fmt.Errorf("storing trusted source stage: %w", err)
 		}
 	}
@@ -1592,7 +1592,7 @@ func (s *Store) StoreTrustedInventory(ctx context.Context, provider route.Provid
 // transaction. A stage whose content hash is unchanged is left untouched, so an
 // unchanged library does not rewrite the whole cache on every scheduled run.
 // Rows whose stage has left the inventory are pruned.
-func storeStageGeometry(ctx context.Context, transaction *sql.Tx, provider route.Provider, stages []route.Stage) error {
+func storeStageGeometry(ctx context.Context, transaction *sql.Tx, provider route.Provider, stages []route.Route) error {
 	updatedAt := time.Now().UTC().Unix()
 	requested, err := requestedReprocessing(ctx, transaction)
 	if err != nil {
@@ -1606,7 +1606,7 @@ func storeStageGeometry(ctx context.Context, transaction *sql.Tx, provider route
 		var storedHash string
 		err := transaction.QueryRowContext(ctx, `
 			SELECT content_hash FROM stage_geometry WHERE provider = ? AND route_id = ? AND stage_order = ?
-		`, key.Provider(), key.RouteID(), key.StageOrder()).Scan(&storedHash)
+		`, key.Provider(), key.SourceRouteID(), key.StageOrder()).Scan(&storedHash)
 		switch {
 		case errors.Is(err, sql.ErrNoRows):
 		case err != nil:
@@ -1643,7 +1643,7 @@ func storeStageGeometry(ctx context.Context, transaction *sql.Tx, provider route
 				coordinates = excluded.coordinates,
 				updated_at_unix = excluded.updated_at_unix
 		`,
-			key.Provider(), key.RouteID(), key.StageOrder(), stage.ContentHash(), stage.RouteName(), stage.StageName(),
+			key.Provider(), key.SourceRouteID(), key.StageOrder(), stage.ContentHash(), stage.SourceRouteName(), stage.RouteName(),
 			len(geometry), stage.DistanceMetres(), stage.ElevationGainMetres(), stage.MaxGradientPercent(),
 			bounds.MinLongitude, bounds.MinLatitude, bounds.MaxLongitude, bounds.MaxLatitude,
 			coordinates, updatedAt,

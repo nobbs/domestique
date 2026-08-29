@@ -19,11 +19,11 @@ import { Spinner } from "../../components/ui/spinner";
 
 export function ReprocessButton({
   provider,
-  routeId,
+  sourceRouteId,
   stageOrder,
 }: {
   provider: string;
-  routeId: number;
+  sourceRouteId: number;
   stageOrder: number;
 }) {
   const queryClient = useQueryClient();
@@ -41,7 +41,7 @@ export function ReprocessButton({
           // instead means the next visit or focus fetches whatever has landed by
           // then.
           queryClient.invalidateQueries({
-            queryKey: routeGeometryQuery(provider, routeId, stageOrder).queryKey,
+            queryKey: routeGeometryQuery(provider, sourceRouteId, stageOrder).queryKey,
             refetchType: "none",
           }),
         ]);
@@ -54,14 +54,14 @@ export function ReprocessButton({
       <Button
         variant="outline"
         disabled={reprocess.isPending}
-        onClick={() => reprocess.mutate({ provider, routeId, stage: stageOrder })}
+        onClick={() => reprocess.mutate({ provider, sourceRouteId, stageOrder })}
       >
         {reprocess.isPending ? <Spinner aria-label="Requesting reprocess" /> : null}
         {reprocess.isPending ? "Requesting…" : "Reprocess"}
       </Button>
       {reprocess.isSuccess ? (
         <span className="text-xs text-[var(--ink-2)]" role="status">
-          Queued. This stage is read, derived, and pushed again on the next pass.
+          Queued. This route is read, derived, and pushed again on the next pass.
         </span>
       ) : null}
       {reprocess.isError ? (
