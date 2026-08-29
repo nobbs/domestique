@@ -171,7 +171,7 @@ export function LedgerCard({
       </dl>
       <ProportionChips
         name="Gradient"
-        entries={bandEntries(bands)}
+        entries={bandEntries(bands, route.distanceMetres)}
         absence="No elevation data."
         highlight={highlight}
         onHighlightChange={onHighlightChange}

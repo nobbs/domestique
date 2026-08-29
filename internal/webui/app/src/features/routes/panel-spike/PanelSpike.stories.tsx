@@ -28,6 +28,7 @@ import {
   spikeSurface,
 } from "./fixture";
 import { LedgerCard } from "./LedgerCard";
+import { LengthsCard } from "./LengthsCard";
 import { SentenceCard } from "./SentenceCard";
 import { SpikePanel } from "./SpikePanel";
 import type { CardProps } from "./shared";
@@ -170,8 +171,14 @@ const ALTERNATIVES = [
   {
     key: "D",
     name: "D — Columns",
-    note: "turned sideways; labels beside their own segment",
+    note: "turned sideways; labels beside their own segment, as shares",
     Card: ColumnsCard,
+  },
+  {
+    key: "E",
+    name: "E — Lengths",
+    note: "D's arrangement, labelled with ground covered rather than share",
+    Card: LengthsCard,
   },
 ] as const;
 
@@ -192,6 +199,7 @@ export const LedgerA: Story = { render: only("A") };
 export const TerrainB: Story = { render: only("B") };
 export const SentenceC: Story = { render: only("C") };
 export const ColumnsD: Story = { render: only("D") };
+export const LengthsE: Story = { render: only("E") };
 
 /** All four together, for the one judgement that needs them side by side. */
 export const Alternatives: Story = {
@@ -222,5 +230,24 @@ export const AtRest: Story = {
   ),
 };
 
-/** Miles and feet, where the figures are longest and the chips tightest. */
-export const Imperial: Story = { render: only("A", "imperial") };
+/**
+ * Miles and feet: where A's chips are tightest, and where E risks reporting one
+ * column in two units at once.
+ */
+export const Imperial: Story = {
+  render: () => (
+    <StoryProviders>
+      <div className="grid gap-8 p-6">
+        {ALTERNATIVES.filter((entry) => entry.key === "A" || entry.key === "E").map((entry) => (
+          <Preview
+            key={entry.key}
+            name={entry.name}
+            note="imperial"
+            Card={entry.Card}
+            unitSystem="imperial"
+          />
+        ))}
+      </div>
+    </StoryProviders>
+  ),
+};

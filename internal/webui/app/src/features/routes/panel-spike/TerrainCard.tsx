@@ -183,7 +183,7 @@ export function TerrainCard({
       <div className="grid gap-1">
         <ClassList
           name="Gradient"
-          entries={bandEntries(bands)}
+          entries={bandEntries(bands, route.distanceMetres)}
           absence="No elevation data."
           highlight={highlight}
           onHighlightChange={onHighlightChange}

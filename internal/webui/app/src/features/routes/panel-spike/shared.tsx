@@ -172,15 +172,26 @@ export interface MixEntry {
   label: string;
   description: string;
   share: number;
+  /** The same quantity as ground rather than as a proportion. */
+  metres: number;
   colour: string;
 }
 
-export function bandEntries(bands: BandShare[]): MixEntry[] {
+/**
+ * The steepness bands as rows.
+ *
+ * The route's own length is needed because a band knows only its share of the
+ * route. It is the figure the panel prints everywhere else, so a card that
+ * multiplied by the geometry's measured length instead could report a total
+ * that does not add up to the distance beside it.
+ */
+export function bandEntries(bands: BandShare[], totalMetres: number): MixEntry[] {
   return bands.map((entry) => ({
     highlight: { type: "band", band: entry.band },
     label: bandLabel(entry.band),
     description: bandDescription(entry.band),
     share: entry.share,
+    metres: entry.share * totalMetres,
     colour: bandVariable(entry.band),
   }));
 }
@@ -191,6 +202,9 @@ export function surfaceEntries(surface: SurfaceSummary | null): MixEntry[] {
     label: surfaceLabel(entry.kind),
     description: SURFACE_STYLES[entry.kind].description,
     share: entry.share,
+    // Measured by the classifier rather than derived from the share, which is
+    // the same number one rounding earlier.
+    metres: entry.metres,
     colour: surfaceVariable(entry.kind),
   }));
 }
