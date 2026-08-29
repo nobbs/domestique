@@ -49,7 +49,8 @@ const ROW_HEIGHT = 28;
 
 /**
  * The row's columns: ordinal, length, average gradient, steepest gradient,
- * ascent, then where and when, then the weather.
+ * ascent, where and when, then the weather waiting there and the chance of
+ * rain on it.
  *
  * Fixed tracks rather than a flex row, so a figure sits under the figure above
  * it. Laid out by content, each row starts its second fact wherever its first
@@ -62,7 +63,17 @@ const ROW_HEIGHT = 28;
  * no explaining; two adjacent ones are a riddle, and the answer — which is the
  * average and which the wall — is the whole reason for carrying both.
  */
-const ROW_COLUMNS = "0.75rem 3.5rem 2.5rem 2.5rem 3.5rem minmax(0,1fr) auto";
+const ROW_COLUMNS = "0.75rem 3.5rem 2.5rem 2.5rem 3.5rem minmax(0,1fr) 3.25rem 2.5rem";
+
+/**
+ * Above this chance of rain, the figure stops being muted.
+ *
+ * A column of percentages is read for the high ones. Anything under about a
+ * third is the forecast saying "probably not", and drawing those at the weight
+ * of a ninety makes a reader compare seven numbers to find the one that
+ * matters.
+ */
+const WET_ENOUGH = 40;
 const VISIBLE_ROWS = 6;
 
 export function ClimbsSection({
@@ -131,6 +142,7 @@ export function ClimbsSection({
             <span className="text-right">Ascent</span>
             <span>Starts</span>
             <span />
+            <span className="text-right">Rain</span>
           </div>
           <ol
             className="mt-1 snap-y snap-mandatory overflow-y-auto"
@@ -168,7 +180,8 @@ export function ClimbsSection({
                       {formatAscent(climb.ascentMetres, unitSystem)}
                     </span>
                     <span className="truncate text-[11px] text-[var(--ink-2)] tabular-nums">
-                      from {formatDistance(climb.startMetres, unitSystem)}
+                      {/* No "from": the column is called Starts. */}
+                      {formatDistance(climb.startMetres, unitSystem)}
                       {cell === null ? null : ` · ${clockAt(cell.sample.arrivalAt)}`}
                     </span>
                     {cell === null ? null : (
@@ -179,6 +192,17 @@ export function ClimbsSection({
                         <span className="font-semibold">
                           {Math.round(cell.point.temperatureCelsius)}°
                         </span>
+                      </span>
+                    )}
+                    {cell === null ? null : (
+                      <span
+                        className={`text-right text-xs tabular-nums ${
+                          cell.point.precipitationProbabilityPercent >= WET_ENOUGH
+                            ? "font-semibold"
+                            : "text-[var(--ink-2)]"
+                        }`}
+                      >
+                        {Math.round(cell.point.precipitationProbabilityPercent)}%
                       </span>
                     )}
                   </button>
