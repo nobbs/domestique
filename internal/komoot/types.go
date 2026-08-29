@@ -15,11 +15,9 @@ type toursResponse struct {
 	// an explicit, genuinely empty {"number":0,"totalPages":0,"totalElements":0}
 	// page. Both would otherwise look identical to a real, empty library.
 	Page *pageInfo `json:"page"`
-	// Embedded is a pointer, and Tours stays a plain slice deliberately: Go
-	// decodes an absent or null "tours" as a nil slice but "tours":[] as a
-	// non-nil, zero-length one, so listTours can tell "the listing container
-	// was missing" from "the listing container said zero tours" without a
-	// second layer of pointers.
+	// Embedded is a pointer and Tours stays a plain slice: Go decodes an absent or
+	// null "tours" as a nil slice but "tours":[] as a non-nil empty one, so
+	// listTours can tell a missing container from one saying zero tours.
 	Embedded *embeddedTours `json:"_embedded"` //nolint:tagliatelle // Komoot's API uses HAL's leading underscore.
 }
 
@@ -55,12 +53,10 @@ type tourDetail struct {
 	ID int64 `json:"id"`
 }
 
-// coordinate is one point of a tour's geometry. All three fields are pointers
-// so a missing or null field decodes as absent rather than as a fabricated
-// zero — a point at (0, 0) with no elevation is real JSON, not a safe
-// default. alt is required by Komoot's published schema and was present on
-// every point of every planned tour sampled, unlike VeloPlanner's optional
-// elevation; convertTour rejects a tour missing any of the three.
+// coordinate is one point of a tour's geometry. All three fields are pointers so
+// a missing field decodes as absent rather than a fabricated zero — a point at
+// (0, 0) with no elevation is real JSON. alt is required by Komoot's published
+// schema, and convertTour rejects a tour missing any of the three.
 type coordinate struct {
 	Latitude  *float64 `json:"lat"`
 	Longitude *float64 `json:"lng"`

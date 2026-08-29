@@ -276,20 +276,11 @@ func (s *Store) ConsumeAuthorization(ctx context.Context, callerLogin string, st
 	return targetID, nil
 }
 
-// ForEachPendingAuthorization visits every target slot that has an
-// authorization in flight: a transaction this service started, that has neither
-// expired nor been consumed.
-//
-// It exists because "pending" is a state of the flow rather than of the slot.
-// The targets table holds the three states a slot durably has, and the moment
-// between a start request and its callback is not one of them — it is the
-// presence of exactly this row, which BeginAuthorization writes and
-// ConsumeAuthorization retires. Reading it here rather than storing a fourth
-// state keeps that moment from needing transitions of its own on expiry,
-// denial, and exchange failure, none of which the service is told about.
-//
-// It reports the slot alone. The state digest, the caller identity, and the
-// expiry are the flow's own secrets and never leave this method.
+// ForEachPendingAuthorization visits every target slot with an authorization in
+// flight: a transaction that has neither expired nor been consumed. "pending" is
+// a state of the flow rather than of the slot, so it is this row's presence
+// rather than a fourth stored state needing transitions nothing reports. It
+// reports the slot alone; the digest, identity and expiry never leave here.
 func (s *Store) ForEachPendingAuthorization(ctx context.Context, visit func(targetID string) error) error {
 	if visit == nil {
 		return errors.New("pending authorization visitor is required")

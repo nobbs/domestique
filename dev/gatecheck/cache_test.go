@@ -11,11 +11,9 @@ import (
 )
 
 // CI restores the directories the Go toolchain writes its caches to, and two
-// files have to agree on where those are: `.mise.toml` points the toolchain at
-// them, and ci.yml names them in a cache step. Drift between the two fails
-// nothing and is invisible in a green run — the step saves a directory nothing
-// wrote, restores it on the next run, and every job keeps compiling cold — so
-// the agreement is asserted here rather than left to be noticed in a timing.
+// files must agree on where those are: `.mise.toml` points the toolchain at them
+// and ci.yml names them in a cache step. Drift fails nothing and is invisible in
+// a green run, so the agreement is asserted here.
 func TestCICachesTheDirectoriesTheToolchainWritesTo(t *testing.T) {
 	t.Parallel()
 

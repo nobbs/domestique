@@ -2,15 +2,10 @@ package main
 
 import "sort"
 
-// minGroupRides is the fewest rides a gear group needs before this package
-// will fit coefficients for it. Below it, a fit exists mostly to overfit
-// whatever few rides happened to be on that bike — reported and skipped
-// rather than merged into a neighbouring group, which would attribute
-// coefficients to equipment that did not produce them.
-//
-// Note: a fixed threshold, not derived from the regression's own standard
-// error; revisit if a real corpus reports a group just above it with a
-// visibly unstable fit.
+// minGroupRides is the fewest rides a gear group needs before this package will
+// fit coefficients for it. Below it a fit mostly overfits whatever few rides were
+// on that bike; such a group is reported and skipped rather than merged into a
+// neighbour. A fixed threshold, not derived from the regression's standard error.
 const minGroupRides = 10
 
 // untaggedGear is the gear partition key for a ride whose export row carries
@@ -27,11 +22,10 @@ type rideGroup struct {
 	UntaggedAttributed bool
 }
 
-// groupRidesByGear partitions rides by their gear identifier — never by name
-// or date, which the issue calls out as exactly the constant that goes stale
-// the next time equipment changes. Groups are returned in a stable order:
-// tagged gears first (alphabetically), then untagged, so a run's report and
-// its output files are reproducible.
+// groupRidesByGear partitions rides by their gear identifier, never by name or
+// date, which go stale the next time equipment changes. Groups are returned in a
+// stable order — tagged gears alphabetically, then untagged — so a run's report
+// and output files are reproducible.
 func groupRidesByGear(rides []rideRow) []rideGroup {
 	counts := make(map[string]int)
 	rideIDs := make(map[string]map[string]bool)

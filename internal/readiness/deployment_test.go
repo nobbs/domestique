@@ -45,18 +45,11 @@ func TestTheComposeFilePublishesReadinessToLoopbackOnly(t *testing.T) {
 	}
 }
 
-// Docker kills a container that outstays its grace period, and its default of
-// ten seconds is shorter than the fifteen the service spends draining its
-// listeners: a recreate can cut the shutdown off before the service has even
-// reached the part it does after that. The two numbers sit in different files
-// and neither names the other, so this is what keeps a change to either from
-// quietly reintroducing the kill.
-//
-// It is only the bounded part of the shutdown that can be compared. The
-// scheduler drain and the wait for an in-flight manual sync run with no deadline
-// at all, and a reconciliation long enough to outlast any grace period is still
-// cut off — safely, because the store is in WAL mode, but at an arbitrary point
-// rather than at a boundary the service chose.
+// Docker's default ten-second grace period is shorter than the fifteen the
+// service spends draining its listeners, so a recreate can cut shutdown off. The
+// two numbers sit in different files and neither names the other. Only the
+// bounded part is compared: the scheduler drain and an in-flight manual sync have
+// no deadline, and a long reconciliation is still cut off, safely, under WAL.
 func TestTheComposeFileOutwaitsTheServiceShutdown(t *testing.T) {
 	grace := composeStopGracePeriod(t)
 	drain := serviceShutdownTimeout(t)
@@ -108,14 +101,9 @@ func TestTheDeployScriptGatesOnReadiness(t *testing.T) {
 }
 
 // An unpublished port is not reported the same way by every Compose: v2 prints
-// nothing, v5 prints `invalid IP:0` on stdout and still exits 0. The gate reads a
-// publication by its shape, because the alternative — treating any output at all
-// as one — takes v5's answer for a port published off loopback and rolls a
-// healthy deploy back on the very host the skip exists for.
-//
-// Read the other way, a spelling the pattern does not know is taken for no
-// publication at all and skips the loopback check silently, so every address
-// Docker prints has to be one it recognises.
+// nothing, v5 prints `invalid IP:0` and still exits 0. The gate reads a
+// publication by its shape — treating any output as one takes v5's answer for a
+// port off loopback, and a spelling the pattern misses skips the check silently.
 func TestTheDeployScriptReadsAnUnpublishedPortByShape(t *testing.T) {
 	script := readRepositoryFile(t, "deploy/domestique-deploy.sh")
 
@@ -164,11 +152,9 @@ func TestTheDeployJobInstallsTheScriptBeforeDeploying(t *testing.T) {
 	assert.Less(t, install, deploy, "the script is installed before the deploy it applies to")
 }
 
-// The deploy job on its own, comments dropped. Read from the whole workflow, the
-// assertions above are satisfied by an install in any job at all, in any order
-// relative to the deploy it is supposed to precede — which is the thing they
-// exist to pin. Read with its comments, they are satisfied by a comment that
-// merely names the flag, which the comment above the step does.
+// The deploy job on its own, comments dropped. Read from the whole workflow the
+// assertions above are satisfied by an install in any job in any order, which is
+// the thing they pin; read with comments, by a comment naming the flag.
 func deployJob(t *testing.T) string {
 	t.Helper()
 	workflow := readRepositoryFile(t, ".github/workflows/ci.yml")
@@ -209,11 +195,9 @@ func TestTheDeployScriptRefusesAnUninstallableScript(t *testing.T) {
 	assert.Contains(t, install, `trap 'rm -f "${incoming}"' EXIT`, "no path leaves a temporary file on the host")
 }
 
-// Superseded images are pruned by the digest each image carries, not by the one
-// the listing prints. `docker images` leaves that column empty for an image
-// whose tag has moved on, which is every image the prune is for, so a prune
-// reading the column removed nothing and the host accumulated a deployment's
-// image on every deploy.
+// Superseded images are pruned by the digest each image carries, not the one the
+// listing prints. `docker images` leaves that column empty for an image whose tag
+// has moved on, which is every image the prune is for.
 func TestTheDeployScriptPrunesByRepositoryDigest(t *testing.T) {
 	script := readRepositoryFile(t, "deploy/domestique-deploy.sh")
 
@@ -242,13 +226,10 @@ func TestNoDocumentServesTheReadinessPortThroughTailscale(t *testing.T) {
 	}
 }
 
-// The container smoke test is only worth running while it runs the container an
+// The container smoke test is worth running only while it runs the container an
 // operator deploys. Each pair below is one line of the documented runtime and the
-// flag that reproduces it, so relaxing either file fails here rather than quietly
-// leaving the smoke test asserting a healthy service inside a softer container
-// than the one it stands for. It is asserted here because this is where the
-// deployment files are held to each other, and because the probe the smoke test
-// waits for is this package's.
+// flag reproducing it, so relaxing either file fails here. Asserted in this
+// package because the probe the smoke test waits for is this package's.
 func TestTheContainerSmokeTestRunsTheDocumentedRuntime(t *testing.T) {
 	// The compose file is compared with its whitespace collapsed, so a pair can
 	// name a clause that spans two lines of YAML — dropping capabilities is one —

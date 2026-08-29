@@ -16,23 +16,16 @@ import (
 	"github.com/nobbs/domestique/internal/runtimeconfig"
 )
 
-// assertionHeader carries the signed Cloudflare Access token. It is the only
-// identity this service accepts.
-//
-// Tailscale Serve still fronts the listener, because cloudflared reaches it by
-// Service name, but it authenticates as a tagged device and so carries no
-// Tailnet identity. Deliberately absent is any handling of Tailscale-User-Login:
-// Serve remains reachable by Tailnet members directly, and honouring that header
-// would leave a second front door with a second identity source behind it.
+// assertionHeader carries the signed Cloudflare Access token, the only identity
+// this service accepts. Tailscale-User-Login is deliberately never read.
 const assertionHeader = "Cf-Access-Jwt-Assertion"
 
 // maximumRequestBytes bounds the only request bodies this service reads. They
 // carry two booleans, so anything larger is a mistake or an attempt.
 const maximumRequestBytes = 1 << 10
 
-// maximumSettingsBytes bounds the one body that is larger by design. The
-// basemap list carries two URLs per entry, so the cap every other route is
-// right to have would refuse a legitimate edit.
+// maximumSettingsBytes bounds the one body that is larger by design: the basemap
+// list carries two URLs per entry.
 const maximumSettingsBytes = 16 << 10
 
 const (
@@ -41,10 +34,8 @@ const (
 	cacheImmutable = "public, max-age=31536000, immutable"
 )
 
-// The shapes a build stamp may have before this package will serve it. They are
-// restated here rather than imported because this is the layer that publishes
-// them: whatever produced the value, only a full commit object name and a
-// `sha256:` digest leave the service.
+// The shapes a build stamp may have before this package will serve it: only a
+// full commit object name and a `sha256:` digest leave the service.
 const (
 	revisionLength = 40
 	digestPrefix   = "sha256:"
@@ -57,41 +48,20 @@ type Options struct {
 	// It is required: without it the service has no gate at all.
 	AccessVerifier AccessVerifier
 
-	// SurfaceIndexFunc reports the map build classifications are currently being
-	// read from. It answers false when surface classification is switched off,
-	// and while a first index is still being built.
-	//
-	// It asks the live index rather than the state file on purpose: what the
-	// status page should say is what is loaded, and a recorded build whose file
-	// did not survive a restart is exactly the case where the two differ.
+	// SurfaceIndexFunc reports the map build classifications are read from, false
+	// when off or still building. It asks the live index, not the state file.
 	SurfaceIndexFunc func() (generation string, builtAt time.Time, ok bool)
 
-	// RideModelValidation is the loaded coefficient profile's measured
-	// unseen-route error, when a profile is configured and its file carries
-	// one. It describes the profile as a whole, so every stage response
-	// carries the same value rather than one derived per stage. Nil when no
-	// profile is configured or the loaded file predates #217's validation
-	// fields.
+	// RideModelValidation is the loaded profile's measured unseen-route error. One
+	// value per profile, so every stage carries the same. Nil when absent.
 	RideModelValidationFunc func() *RideModelValidation
 
-	// Settings are the runtime settings this handler both serves and edits.
-	// Required.
-	//
-	// Every read of one goes through here per request rather than being held,
-	// because an operator edits them while the service runs: a basemap added to
-	// the list has to reach the page's configuration and the
-	// Content-Security-Policy header at once, not at the next restart.
+	// Settings are the runtime settings this handler serves and edits. Required.
+	// Read per request, never held: an edit reaches the page and the CSP at once.
 	Settings SettingsState
 
-	// BuildRevision is the public source commit this binary was built from, and
-	// BuildImageDigest the immutable digest of the image running it. Both are
-	// optional: a local build knows neither, and the status response then says
-	// so rather than naming something it cannot stand behind.
-	//
-	// Each is published only when it is what it claims to be — a full commit
-	// object name, and a `sha256:` digest — because this is the boundary that
-	// serves them, and a malformed value here would become a link to nowhere in
-	// a browser.
+	// BuildRevision and BuildImageDigest name the source commit and the image
+	// running it. Both optional, and published only when well-formed.
 	BuildRevision string
 
 	// BuildImageDigest is the digest alone. Whatever registry and repository the
@@ -102,18 +72,12 @@ type Options struct {
 	// principal every authenticated request resolves to.
 	AccessEmail string
 
-	// AccessSignOutURL ends the session, and is served by whatever stands in
-	// front of this service rather than by this service. Only a deployment
-	// knows whether anything does, so it is named at the composition root and
-	// left empty everywhere nothing would answer it — the page then offers no
-	// way out rather than a link to a 404.
+	// AccessSignOutURL ends the session and is served by whatever fronts this
+	// service. Empty where nothing would answer it.
 	AccessSignOutURL string
 
-	// BrowserOriginURL is an absolute HTTPS URL on the hostname a browser
-	// reaches this service at. Only its scheme and host are read: together they
-	// are the one origin a state-changing request may come from. The Wahoo
-	// redirect URL is that hostname by construction — it is where a browser
-	// returns from Wahoo — which is why it is what the composition root passes.
+	// BrowserOriginURL is an absolute HTTPS URL on the hostname a browser reaches
+	// this service at. Only scheme and host are read; it is the one allowed origin.
 	BrowserOriginURL string
 }
 
@@ -177,10 +141,8 @@ func New(
 	if err != nil {
 		return nil, err
 	}
-	// The settings themselves are not re-checked here. They reach this handler
-	// already validated, by the same rules an edit written through it is held
-	// to, and a second copy of those rules here is the drift the runtime
-	// settings package exists to prevent.
+	// The settings are not re-checked here: they arrive already validated by the
+	// same rules an edit through this handler is held to.
 	if options.Settings == nil {
 		return nil, errors.New("the runtime settings are required")
 	}
@@ -264,9 +226,8 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("GET /routes/{routeId}/{stage}", h.RedirectLegacyRoutePage)
 	h.mux.HandleFunc("GET /sync", h.GetSyncPage)
 	h.mux.HandleFunc("GET /settings", h.GetSettingsPage)
-	// Browser routes are deliberately explicit: they are application navigation
-	// and assets, not OpenAPI operations. This remains separate because
-	// ServeMux has no pattern for the unmatched-path fallback.
+	// Browser routes are explicit application navigation, not OpenAPI operations.
+	// Separate because ServeMux has no pattern for the unmatched-path fallback.
 	h.mux.HandleFunc("/", func(writer http.ResponseWriter, _ *http.Request) {
 		h.notFound(writer)
 	})
@@ -296,9 +257,7 @@ func (h *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 }
 
 // bounded caps the body before the validator reads it. The validator reads a
-// declared request body whole in order to check it against its schema, and does
-// so without a limit of its own, so the cap has to be in place before it runs
-// rather than in the one handler that decodes a body.
+// declared body whole, without a limit of its own.
 func (h *Handler) bounded(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if request.Body != nil && request.Body != http.NoBody {
@@ -317,17 +276,8 @@ func requestLimit(path string) int64 {
 	return maximumRequestBytes
 }
 
-// gated rejects any caller that is not the single configured identity.
-//
-// Requests arrive through Cloudflare Access and cloudflared, which runs on a
-// tagged node, so Serve injects no identity header and the signed Access
-// assertion is the only identity a request carries. It is verified here on
-// every request rather than assumed to have been checked upstream.
-//
-// Tailscale Serve still fronts this listener and Tailnet members can still
-// reach it, so there is deliberately no Tailscale-User-Login branch: it would
-// be a second front door, and a forgeable one, since a tunnel forwards client
-// headers verbatim.
+// gated rejects any caller that is not the single configured identity, verifying
+// the signed Access assertion on every request. No Tailscale-User-Login branch.
 func (h *Handler) gated(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		assertion := request.Header.Get(assertionHeader)
@@ -351,39 +301,20 @@ func (h *Handler) gated(next http.Handler) http.Handler {
 			return
 		}
 
-		// The asserted address is proven and then dropped: it differs from the
-		// configured one only in case, and the routes that need an identity
-		// read h.allowedEmail. OAuth state is bound to that one spelling, so a
-		// flow started in one request stays consumable by the next.
+		// The asserted address is proven and then dropped: OAuth state is bound to the
+		// configured spelling, which differs from it only in case.
 		next.ServeHTTP(writer, request)
 	})
 }
 
-// contentSecurityPolicy confines the page to this service's own origin plus the
-// origin of every configured basemap. An entry's light and dark styles share an
-// origin, so the list is as long as the number of distinct providers offered and
-// no longer.
-//
-// Naming more than one is what makes a switchable map possible, and it is worth
-// being exact about what it costs. The policy says which origins the page may
-// reach; it does not make the page reach them. Only the basemap on screen is
-// ever requested, so what a single provider learns — the area of a viewed route
-// — is unchanged. What grew is the set of providers that could be asked, and
-// that set is exactly the one the operator wrote down.
-//
-// Three allowances are deliberate, and each was confirmed against a real
-// MapLibre render rather than assumed:
-//   - worker-src needs 'self' because MapLibre loads its worker from a bundled
-//     same-origin module, and blob: because it also spawns blob workers;
-//   - style-src needs 'unsafe-inline' because MapLibre styles its own controls
-//     inline;
-//   - img-src and connect-src need the tile origins for sprites, glyphs, and
-//     tiles.
+// contentSecurityPolicy confines the page to this service's origin plus each
+// configured basemap's. Three allowances are MapLibre's, confirmed by render:
+//   - worker-src 'self' and blob: it loads a bundled worker and spawns blob ones;
+//   - style-src 'unsafe-inline': it styles its own controls inline;
+//   - img-src and connect-src tile origins: sprites, glyphs, and tiles.
 func (h *Handler) contentSecurityPolicy() string {
-	// A list that cannot be reduced to origins is one that was never allowed to
-	// be stored, so the error is a bug rather than a state to serve around. The
-	// header then names no tile origin at all, which blanks the map rather than
-	// opening the policy.
+	// A list that cannot be reduced to origins was never allowed to be stored, so
+	// this is a bug. The header then names no tile origin, blanking the map.
 	tileOrigins, err := tileOriginsOf(h.settings.Values().Basemaps)
 	if err != nil {
 		tileOrigins = nil
@@ -427,9 +358,8 @@ func (h *Handler) writeJSON(writer http.ResponseWriter, status int, value any) {
 	}
 }
 
-// browserOriginOf reduces the URL a browser reaches this service at to the
-// origin a browser would name in an Origin header: a lowercase scheme and host,
-// without the port when it is HTTPS's default, and nothing after the host.
+// browserOriginOf reduces a URL to the origin a browser names in an Origin
+// header: lowercase scheme and host, default HTTPS port dropped.
 func browserOriginOf(value string) (string, error) {
 	parsed, err := url.Parse(strings.TrimSpace(value))
 	if err != nil || parsed.Scheme != "https" || parsed.Host == "" {
@@ -439,15 +369,8 @@ func browserOriginOf(value string) (string, error) {
 	return "https://" + strings.TrimSuffix(strings.ToLower(parsed.Host), ":443"), nil
 }
 
-// accessEmailOf returns the one address an assertion may name.
-//
-// It is checked for shape and not only for presence, because the page is now
-// told what it is: the contract publishes it as an email, and a deployment that
-// wrote something else there would have this service serving a response its own
-// schema does not describe. `mail.ParseAddress` is the reading Go already has,
-// and the address it returns has to be the whole of what was configured —
-// otherwise `Rider <rider@example.test>` would pass, and the gate compares the
-// asserted address against this one literally.
+// accessEmailOf returns the one address an assertion may name. Checked for shape
+// because the contract publishes it as an email and the gate compares literally.
 func accessEmailOf(value string) (string, error) {
 	trimmed := strings.TrimSpace(value)
 	if trimmed == "" {
@@ -461,20 +384,8 @@ func accessEmailOf(value string) (string, error) {
 	return trimmed, nil
 }
 
-// signOutPathOf returns the path a page may offer as the way out, or empty for
-// a deployment that named none.
-//
-// The value reaches a browser as the href of a link a reader clicks, so what it
-// may be is worth stating rather than assuming. It is a path on this service's
-// own origin: an absolute one is a different site, `//host` is a different site
-// spelled to look like a path, and `javascript:` is script that runs on click.
-// None of those is a way out of this session, and refusing here means a
-// deployment that misnames one fails to start rather than serving a link that
-// leaves — or executes — on press.
-//
-// Nothing configurable reaches this today; `cmd/domestique` passes a constant.
-// The check is here because that is a property of the caller rather than of
-// this option, and the option is what the page trusts.
+// signOutPathOf returns the path a page may offer as the way out, or empty. It
+// must be a path on this origin: absolute, //host and javascript: are refused.
 func signOutPathOf(value string) (string, error) {
 	trimmed := strings.TrimSpace(value)
 	if trimmed == "" {
@@ -495,9 +406,7 @@ func signOutPathOf(value string) (string, error) {
 }
 
 // publishableRevision returns the commit object name this build may claim, or
-// empty. Dropped rather than refused: a binary that reports no revision still
-// works, whereas one that refuses to start over a build stamp is a service an
-// operator loses for a reason that has nothing to do with cycling.
+// empty. Dropped rather than refused, so a bad stamp cannot stop the service.
 func publishableRevision(value string) string {
 	trimmed := strings.TrimSpace(value)
 	if len(trimmed) != revisionLength || !isLowerHex(trimmed) {
@@ -508,10 +417,7 @@ func publishableRevision(value string) string {
 }
 
 // publishableDigest returns the image digest this build may claim, or empty. A
-// reference with a registry and repository still in front of it is refused here
-// rather than trimmed: the composition root is where a deployment reference is
-// read, and this layer serving one would mean the topology had already reached
-// a response body once.
+// reference still carrying a registry and repository is refused, not trimmed.
 func publishableDigest(value string) string {
 	trimmed := strings.TrimSpace(value)
 	hex, found := strings.CutPrefix(trimmed, digestPrefix)
@@ -558,15 +464,8 @@ func sourceBaseURL(sources []runtimeconfig.Source, provider route.Provider) stri
 	return ""
 }
 
-// tileOriginsOf reduces the configured basemaps to the distinct origins the page
-// is allowed to reach, sorted so the header a deployment sends does not depend
-// on the order the entries happen to be written in.
-//
-// A dark style is held to its own entry's origin here as well as in the
-// configuration, because a style admitted by neither the light entry's source
-// nor its own would be served to the page and then blocked by the header it was
-// served with. Refusing it at construction makes that a startup error rather
-// than a map that goes blank after dark.
+// tileOriginsOf reduces the basemaps to the distinct origins the page may reach,
+// sorted. A dark style is held to its own entry's origin here too.
 func tileOriginsOf(basemaps []runtimeconfig.Basemap) ([]string, error) {
 	if len(basemaps) == 0 {
 		return nil, errors.New("at least one basemap is required")
@@ -598,9 +497,7 @@ func originOf(value string) (string, error) {
 		return "", errors.New("tile style URL must be an absolute HTTPS URL")
 	}
 
-	// Lowercased because a host is not case-sensitive, matching the provenance
-	// comparison in the configuration layer: a dark style differing from its
-	// light counterpart only by host case is the same origin a browser would
-	// use, and must not fail here after passing validation there.
+	// Lowercased because a host is not case-sensitive, matching the configuration
+	// layer's provenance comparison.
 	return parsed.Scheme + "://" + strings.ToLower(parsed.Host), nil
 }

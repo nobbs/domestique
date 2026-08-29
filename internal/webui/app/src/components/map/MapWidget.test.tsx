@@ -93,11 +93,10 @@ describe("MapWidget", () => {
   });
 
   it("does not read readiness from an event that can describe the outgoing style", () => {
-    // `styledata` fires several times on a basemap change, and the only one
-    // that reports `isStyleLoaded()` arrives microseconds after the swap, while
-    // the style being replaced is still the loaded one. Reading that as the new
-    // style being ready remounted the layers early when it happened to fire,
-    // and stranded them for good when it did not.
+    // `styledata` fires several times on a basemap change, and the only one that
+    // reports `isStyleLoaded()` arrives microseconds after the swap while the style
+    // being replaced is still loaded. Reading that as the new style being ready
+    // remounted the layers early, and stranded them when it did not fire.
     render(
       <MapWidget styleUrl="https://tiles.example/style.json">
         <p>layered content</p>

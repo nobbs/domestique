@@ -10,11 +10,9 @@ import (
 	"time"
 )
 
-// csvColumns maps a header name to its index, for the corpus files this
-// package reads: dev/ridemodel writes them itself, in a fixed column order,
-// so unlike activities.csv there is no duplicate-header or unit ambiguity to
-// resolve — only tolerance for the file being read by name rather than
-// position, so a column dev/ridemodel reorders does not silently misread.
+// csvColumns maps a header name to its index for the corpus files this package
+// reads. dev/ridemodel writes them in a fixed column order, so reading by name
+// only tolerates it reordering its own columns.
 type csvColumns map[string]int
 
 func columnsByName(header []string) csvColumns {
@@ -56,17 +54,10 @@ func (c csvColumns) time(record []string, name string) time.Time {
 	return t
 }
 
-// readCorpusCSV reads a corpus file dev/ridemodel wrote, calling build for
-// every data row. It is generic over the row type so samples.csv, rides.csv
-// and indoor.csv share one reader rather than three near-identical loops.
-//
-// requiredColumns names the columns this file's contract with dev/ridemodel
-// cannot do without — a row missing one of these is not "an absent optional
-// channel" the way a missing altitude or heart rate reading is, it means
-// the file is not the corpus this package expects. Read by name rather than
-// position tolerates dev/ridemodel reordering its own columns; it must not
-// also tolerate silently reading zero values for a column that went
-// missing or was renamed.
+// readCorpusCSV reads a corpus file dev/ridemodel wrote, calling build for every
+// data row. Generic over the row type so three files share one reader.
+// requiredColumns names what the contract cannot do without: a row missing one
+// means the file is not the corpus this package expects, not an absent channel.
 func readCorpusCSV[T any](path string, requiredColumns []string, build func(record []string, columns csvColumns) T) ([]T, error) {
 	file, err := os.Open(path) //nolint:gosec // The path is the operator's own -corpus flag, joined with this package's fixed file names.
 	if err != nil {
@@ -109,11 +100,9 @@ func readCorpusCSV[T any](path string, requiredColumns []string, build func(reco
 }
 
 func readSamplesCSV(path string) ([]sampleRow, error) {
-	// Everything the route-only fit and the hybrid benchmark actually key
-	// decisions on: geometry, timing, and the moving flag. Cadence,
-	// temperature and heart rate were the sensor-level physical fitter's own
-	// columns — dev/ridemodel still writes them, but nothing here reads them
-	// since #241.
+	// Everything the route-only fit and the hybrid benchmark key decisions on:
+	// geometry, timing, and the moving flag. dev/ridemodel still writes cadence,
+	// temperature and heart rate, but nothing here reads them.
 	required := []string{
 		"ride_id", "time", "delta_seconds", "interval_distance_m", "speed_mps", "gradient_percent",
 		"altitude_m", "has_altitude", "latitude", "longitude", "has_position", "moving",

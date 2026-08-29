@@ -12,12 +12,8 @@ import (
 	openapi "github.com/nobbs/domestique/internal/httpapi/contract"
 )
 
-// The authorisation words this service serves. Three of them are the states a
-// target slot durably holds; "pending" is the fourth, and is derived rather
-// than stored, because it describes the flow rather than the slot — the moment
-// between a protected start request and the callback that ends it. Deriving it
-// is what keeps the slot from needing transitions on expiry, denial, and
-// exchange failure, none of which anything tells this service about.
+// The authorisation words this service serves. "pending" is derived rather than
+// stored: it describes the flow, which ends by expiry or denial unobserved.
 const (
 	notAuthorizedState        = "not_authorized"
 	pendingState              = "pending"
@@ -25,13 +21,8 @@ const (
 	needsReauthorizationState = "needs_reauthorization"
 )
 
-// reportedAuthorization is what the status view says about one slot, given what
-// the store holds and whether an authorization is in flight for it.
-//
-// The substitution is deliberately narrow. A slot that is already authorised
-// stays authorised while a fresh flow runs: it holds a working refresh token
-// until that flow replaces it, and reporting otherwise would say the service
-// had stopped being able to write to an account it can still write to.
+// reportedAuthorization is what the status view says about one slot. A slot that
+// is already authorised stays so while a fresh flow runs; its token still works.
 func reportedAuthorization(stored string, inFlight bool) string {
 	if inFlight && (stored == notAuthorizedState || stored == needsReauthorizationState) {
 		return pendingState
@@ -40,20 +31,16 @@ func reportedAuthorization(stored string, inFlight bool) string {
 	return stored
 }
 
-// The words for work that has not finished. None of them may be replaced by the
-// outcome of an earlier run: a run in flight has produced no result, and one
-// that has not started has produced nothing at all.
+// The words for work that has not finished. None may be replaced by the outcome
+// of an earlier run.
 const (
 	queuedState  = "queued"
 	runningState = "running"
 	delayedState = "delayed"
 )
 
-// liveSyncState names the state of a run that has not finished, and reports
-// false when none is under way.
-//
-// A run outranks a delay, because a manual trigger during the initial delay is
-// work happening rather than work waiting for its turn.
+// liveSyncState names the state of a run that has not finished, false when none
+// is under way. A run outranks a delay.
 func liveSyncState(activity SyncActivityState) (string, bool) {
 	switch {
 	case activity.Running && activity.Phase != "":
@@ -69,9 +56,8 @@ func liveSyncState(activity SyncActivityState) (string, bool) {
 
 // GetStatus reports readiness, per-target convergence, and the last terminal run.
 func (h *Handler) GetStatus(writer http.ResponseWriter, request *http.Request) {
-	// One snapshot for the whole response. Reading the setting again further down
-	// would let a document report a list of targets and a count of them that an
-	// edit made while it was being assembled had already put out of step.
+	// One snapshot for the whole response, so the list of targets and the count of
+	// them cannot disagree mid-assembly.
 	targetIDs := h.targetIDs()
 	authorizations := make(map[string]string, len(targetIDs))
 	if err := h.state.ForEachTarget(request.Context(), func(id, authorizationState string) error {
@@ -111,9 +97,8 @@ func (h *Handler) GetStatus(writer http.ResponseWriter, request *http.Request) {
 	}
 
 	targets := make([]openapi.TargetStatus, 0, len(targetIDs))
-	// The aggregate of the per-target counts, which is the only progress a run
-	// in flight reports: how much of the library is already on the configured
-	// targets, and how much of it is still owed to them.
+	// The aggregate of the per-target counts, which is the only progress a run in
+	// flight reports.
 	allRoutes := openapi.TargetRoutes{}
 	ready, converged := true, true
 	for _, targetID := range targetIDs {
@@ -152,9 +137,8 @@ func (h *Handler) GetStatus(writer http.ResponseWriter, request *http.Request) {
 		Targets:   targets,
 		Sync:      openapi.SyncStatus{State: "not_ready"},
 	}
-	// Only when the revision is known: the digest alone would say which image is
-	// running without saying what is in it, and a group with nothing to identify
-	// is worse than no group.
+	// Only when the revision is known: the digest alone names an image without
+	// saying what is in it.
 	if h.buildRevision != "" {
 		view.Build = &openapi.Build{Revision: h.buildRevision, ImageDigest: optionalString(h.buildImageDigest)}
 	}
@@ -236,10 +220,8 @@ func (h *Handler) GetStatus(writer http.ResponseWriter, request *http.Request) {
 		view.Sync.SourceRoutes, view.Sync.Created, view.Sync.Updated, view.Sync.Deleted =
 			sourceStages, created, updated, deleted
 	}
-	// A run that has not finished outranks the last one that did. Reporting
-	// "succeeded" while work is under way would be describing the previous run
-	// with nothing to say so, and an operator who has just pressed a button
-	// would read it as their answer.
+	// A run that has not finished outranks the last one that did: reporting
+	// "succeeded" mid-run would describe the previous run with nothing saying so.
 	if state, live := liveSyncState(activity); live {
 		view.Sync.State = state
 		view.Sync.Active = &openapi.SyncActive{
@@ -250,9 +232,8 @@ func (h *Handler) GetStatus(writer http.ResponseWriter, request *http.Request) {
 			phase := openapi.SyncActive_Phase(activity.Phase)
 			view.Sync.Active.Phase = &phase
 		}
-		// Only a delay has a due instant to report. A run triggered while the
-		// first one is still being held back is under way now, and saying when
-		// something else was going to start would read as its own progress.
+		// Only a delay has a due instant to report. A run under way now would read
+		// another's start time as its own progress.
 		if state == delayedState {
 			view.Sync.Active.StartsAt = optionalTime(activity.StartsAt)
 		}
@@ -274,10 +255,8 @@ func (h *Handler) SetSyncSchedule(writer http.ResponseWriter, request *http.Requ
 
 		return
 	}
-	// One object, and nothing after it. A body carrying a second value is a
-	// caller who thinks they sent something this service never read, and
-	// silently acting on the first half of that is how a switch ends up in a
-	// state nobody asked for.
+	// One object, and nothing after it: a body carrying a second value means the
+	// caller sent something this service never read.
 	if decoder.More() {
 		h.error(writer, http.StatusBadRequest, "invalid_request", "the request body must be one object")
 
@@ -291,20 +270,15 @@ func (h *Handler) SetSyncSchedule(writer http.ResponseWriter, request *http.Requ
 	h.writeJSON(writer, http.StatusOK, openapi.SyncSchedule{Source: *body.Source, Targets: *body.Targets})
 }
 
-// The recorded history is served a page at a time. The default is what the page
-// shows without asking for more, and the ceiling keeps one request from reading
-// the whole retained window into a response.
+// The recorded history is served a page at a time. The ceiling keeps one request
+// from reading the whole retained window.
 const (
 	defaultSyncRunPage = 20
 	maximumSyncRunPage = 100
 )
 
-// GetSyncRuns serves one page of the recorded run history, newest first,
-// followed by the cursor for the page after it.
-//
-// Every field is read from the same local records the status response is
-// derived from, so a page names no route, carries no geometry, quotes nothing a
-// provider said, and costs no provider call.
+// GetSyncRuns serves one page of the recorded run history, newest first, with the
+// cursor for the next. Local records only: no route names, no provider calls.
 func (h *Handler) GetSyncRuns(writer http.ResponseWriter, request *http.Request) {
 	query := request.URL.Query()
 	limit := defaultSyncRunPage
@@ -359,9 +333,8 @@ func (h *Handler) TriggerSync(writer http.ResponseWriter, _ *http.Request) {
 	h.trigger(writer, SyncPhaseAll)
 }
 
-// TriggerSourceSync queues one immediate read of the source library. It runs whether or
-// not the schedule is allowed to start that phase: the switch governs unattended
-// runs, and an operator asking for one now has already decided.
+// TriggerSourceSync queues one immediate read of the source library. It runs
+// whether or not the schedule is allowed to start that phase.
 func (h *Handler) TriggerSourceSync(writer http.ResponseWriter, _ *http.Request) {
 	h.trigger(writer, SyncPhaseSource)
 }
@@ -372,15 +345,8 @@ func (h *Handler) TriggerTargetsSync(writer http.ResponseWriter, _ *http.Request
 	h.trigger(writer, SyncPhaseTargets)
 }
 
-// TriggerTargetSync queues one immediate reconciliation of stored state onto exactly
-// one configured target, on the same terms as syncTargets: it runs whether or
-// not the schedule allows the target half to start, and every ownership,
-// ordering, and deletion rule a full target phase applies stays exactly what
-// it is, scoped to the slot named in the path.
-//
-// The target identifier is checked against the configured slots here, the
-// same way the OAuth start route checks it: an unconfigured or missing slot is
-// not found, not a target this request could ever reconcile.
+// TriggerTargetSync queues one immediate reconciliation onto exactly one target,
+// on syncTargets' terms scoped to that slot. An unconfigured slot is not found.
 func (h *Handler) TriggerTargetSync(writer http.ResponseWriter, request *http.Request) {
 	targetID := request.PathValue("target")
 	if targetID == "" || !slices.Contains(h.targetIDs(), targetID) {
@@ -396,14 +362,8 @@ func (h *Handler) TriggerTargetSync(writer http.ResponseWriter, request *http.Re
 	h.writeJSON(writer, http.StatusAccepted, openapi.Accepted{Status: "accepted"})
 }
 
-// ClearTarget queues the deletion of every route this service owns on exactly
-// one configured target.
-//
-// It is the destructive counterpart to syncTarget and is checked the same way:
-// an unconfigured slot is not found. It carries no request body — the
-// confirmation this needs belongs with the operator looking at the target,
-// not in a field a script could fill in — and it is gated and origin-checked
-// like every other state-changing route.
+// ClearTarget queues the deletion of every route this service owns on exactly one
+// configured target. An unconfigured slot is not found. It carries no body.
 func (h *Handler) ClearTarget(writer http.ResponseWriter, request *http.Request) {
 	targetID := request.PathValue("target")
 	if targetID == "" || !slices.Contains(h.targetIDs(), targetID) {
@@ -428,12 +388,8 @@ func (h *Handler) trigger(writer http.ResponseWriter, phase SyncPhase) {
 	h.writeJSON(writer, http.StatusAccepted, openapi.Accepted{Status: "accepted"})
 }
 
-// TriggerSurfaceSync queues one immediate surface-classification pass, independently
-// of either half of a synchronization. Unlike sync, syncSource, and
-// syncTargets, it never reads the source library or writes a Wahoo target — it
-// only reclassifies routes already stored, against the local surface index.
-// It shares their single-flight guard, so a synchronization or another such
-// pass already in flight refuses it the same way.
+// TriggerSurfaceSync queues one classification pass, independent of either half.
+// It reads no source and writes no target, and shares their single-flight guard.
 func (h *Handler) TriggerSurfaceSync(writer http.ResponseWriter, _ *http.Request) {
 	if !h.syncRuns.TriggerAnnotate() {
 		h.error(writer, http.StatusConflict, "sync_in_progress", "a synchronization or classification pass is already running")
@@ -443,10 +399,8 @@ func (h *Handler) TriggerSurfaceSync(writer http.ResponseWriter, _ *http.Request
 	h.writeJSON(writer, http.StatusAccepted, openapi.Accepted{Status: "accepted"})
 }
 
-// trustedInventoryFreshness reports the trusted source inventory's age against
-// the configured bound, derived from local state alone. Absent last success is
-// reported as fresh: a service that has never completed a source run has no
-// trusted inventory yet, which is not the same claim as a stale one.
+// trustedInventoryFreshness reports the inventory's age against the configured
+// bound from local state. Absent last success is fresh, not stale.
 func (h *Handler) trustedInventoryFreshness(ctx context.Context) (*openapi.TrustedInventory, error) {
 	view := &openapi.TrustedInventory{Fresh: true, MaxAgeSeconds: int(h.settings.Values().Sync.StaleAfter / time.Second)}
 	lastSuccess, found, err := h.state.LastSuccessfulPhaseCompletion(ctx, string(SyncPhaseSource))
@@ -456,17 +410,14 @@ func (h *Handler) trustedInventoryFreshness(ctx context.Context) (*openapi.Trust
 	if !found {
 		return view, nil
 	}
-	// Clamped rather than reported negative: a wall clock that has moved
-	// backwards, or a recorded success that races ahead of it, is a clock
-	// problem elsewhere and must not be read here as a claim about the future.
+	// Clamped rather than reported negative: a backwards clock must not be read
+	// here as a claim about the future.
 	age := max(h.now().Sub(lastSuccess), 0)
 	ageSeconds := int(age / time.Second)
 	view.LastSuccessAt = optionalTime(lastSuccess)
 	view.AgeSeconds = ageSeconds
-	// Fresh is derived from the same truncated seconds the response reports,
-	// not the untruncated duration: a sub-second sync.stale_after would
-	// otherwise let fresh disagree with what age_seconds and max_age_seconds
-	// themselves say.
+	// Fresh is derived from the same truncated seconds the response reports, so a
+	// sub-second bound cannot make fresh disagree with the numbers beside it.
 	view.Fresh = ageSeconds < view.MaxAgeSeconds
 
 	return view, nil

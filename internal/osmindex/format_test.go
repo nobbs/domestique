@@ -132,10 +132,9 @@ func absolute(t *testing.T, degrees [][2]float64) (x, y []int32) {
 }
 
 // A count is the one field acted on before anything reads against it, so a
-// corrupt one has to be rejected rather than allocated for. A count this large
-// cannot be a slice at all, and reaching make with it panics rather than
-// returning the error every other damaged record returns; smaller but still
-// impossible counts merely reserve memory nothing in the file justifies.
+// corrupt one is rejected rather than allocated for. A count this large cannot be
+// a slice at all, and reaching make with it panics rather than returning the
+// error every other damaged record returns.
 func TestDecodeCellRejectsAnImpossiblePointCount(t *testing.T) {
 	blob := []byte{}
 	blob = binary.AppendUvarint(blob, 42)          // way identifier

@@ -15,14 +15,10 @@ import (
 	"github.com/muktihari/fit/profile/mesgdef"
 )
 
-// decodeFITGZ reads a gzipped FIT file the way a Strava export stores one.
-//
-// Zwift writes FIT files whose CRC does not validate — every indoor ride in
-// the export this was written against fails it. A file is always decoded
-// with the checksum ignored, but it is first tried with the checksum
-// enforced, purely to learn whether it would have failed: that is what lets a
-// checksum failure be reported under its own name instead of disappearing
-// into "unreadable" or, worse, into a silently-accepted file nobody flagged.
+// decodeFITGZ reads a gzipped FIT file the way a Strava export stores one. Zwift
+// writes FIT files whose CRC does not validate. A file is always decoded with the
+// checksum ignored, but is first tried with it enforced, so a checksum failure is
+// reported under its own name rather than as "unreadable".
 func decodeFITGZ(path string) (decodedActivity, error) {
 	raw, err := readGzip(path)
 	if err != nil {

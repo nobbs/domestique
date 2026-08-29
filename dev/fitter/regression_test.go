@@ -13,13 +13,10 @@ import (
 // this test only needs a physically realistic ground truth to recover.
 const testGravityMPS2 = 9.80665
 
-// syntheticObservations generates coastingObservation rows consistent with
-// known crr and cda at a range of speeds and grades, so solve2x2/irlsFit have
-// a ground truth to be checked against. The coasting-window framing is a
-// holdover from the physical fitter #241 deleted; this package's only
-// remaining regression (fitRouteCoefficients' distance/ascent fit) is linear
-// in exactly the same two-regressor shape, so recovering crr/cda here still
-// exercises the solver correctly.
+// syntheticObservations generates coastingObservation rows consistent with known
+// crr and cda at a range of speeds and grades, so solve2x2/irlsFit have a ground
+// truth. The coasting framing is a holdover; the one remaining regression is
+// linear in the same two-regressor shape, so this still exercises the solver.
 func syntheticObservations(rng *rand.Rand, n int, crr, cda, noise float64) []coastingObservation {
 	const massKG = 90.0
 	const airDensity = 1.2

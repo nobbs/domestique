@@ -12,27 +12,21 @@ import (
 )
 
 // failureNotificationCategory names this runner's notifications, and
-// failureNotificationSuppression is how long one of them silences the next. A
-// weekly job that has started failing is worth one message; the same message
-// every week afterwards is noise an operator learns to ignore.
+// failureNotificationSuppression is how long one silences the next.
 const (
 	failureNotificationCategory    = "surface_index:build"
 	failureNotificationSuppression = 7 * 24 * time.Hour
 )
 
-// generationName matches an index filename this package wrote. It is deliberately
-// exact — twelve lowercase hex characters between the fixed prefix and suffix —
-// because it is what decides whether a file in the index directory may be
-// removed.
+// generationName matches an index filename this package wrote. Exact, because it
+// decides whether a file in the index directory may be removed.
 var generationName = regexp.MustCompile(`^` + indexPrefix + `[0-9a-f]{12}\` + indexSuffix + `$`)
 
 // State remembers what the last build produced, so the schedule survives a
-// restart and the annotator knows which index its cached classifications were
-// measured against.
+// restart and the annotator knows which index its classifications used.
 type State interface {
-	// SurfaceIndexBuild reports when the last build finished and which
-	// generation it produced. A service that has never built reports the zero
-	// time and an empty generation.
+	// SurfaceIndexBuild reports when the last build finished and which generation
+	// it produced. Never built reports the zero time and an empty generation.
 	SurfaceIndexBuild(ctx context.Context) (builtAt time.Time, generation string, err error)
 	RecordSurfaceIndexBuild(ctx context.Context, builtAt time.Time, generation string) error
 	LastFailureNotification(ctx context.Context, category string) (sentAt time.Time, found bool, err error)
@@ -44,12 +38,9 @@ type Notifier interface {
 	Send(ctx context.Context, title, message string) error
 }
 
-// Runner rebuilds the index on a schedule and installs what it builds.
-//
-// It reports nothing to its scheduler. A build is preprocessing: a route whose
-// surface is not yet known is served without one, so a build that fails changes
-// what the service knows rather than whether it works, and there is no run
-// outcome for a caller to act on.
+// Runner rebuilds the index on a schedule and installs what it builds. It
+// reports nothing to its scheduler: a build is preprocessing, so a failed one
+// changes what the service knows rather than whether it works.
 type Runner struct {
 	current  *Current
 	state    State
@@ -61,13 +52,8 @@ type Runner struct {
 }
 
 // NewRunner creates a runner over an index holder, durable state, and a
-// notifier.
-//
-// The regions are a function rather than a list because they are a setting an
-// operator edits while the service runs. Options.Regions is ignored: each run
-// asks for the list as it stands, and a run that finds it empty builds nothing.
-// That empty list is a supported state rather than a misconfiguration — it is
-// how classification is switched off — so it is not refused here.
+// notifier. Regions are a function because they are an editable setting;
+// Options.Regions is ignored. An empty list builds nothing and is supported.
 func NewRunner(
 	options Options, regions func() []string, current *Current, state State, notifier Notifier,
 ) (*Runner, error) {
@@ -83,11 +69,8 @@ func NewRunner(
 	}, nil
 }
 
-// Run performs one scheduled rebuild.
-//
-// Concurrent runs are refused rather than queued. A build reads a region's whole
-// road network into memory, and two at once is the one way this service could
-// exhaust its host.
+// Run performs one scheduled rebuild. Concurrent runs are refused rather than
+// queued: a build reads a region's whole road network into memory.
 func (r *Runner) Run(ctx context.Context) {
 	if !r.running.CompareAndSwap(false, true) {
 		slog.Warn("surface index build skipped", "reason", "a build is already running")
@@ -97,8 +80,7 @@ func (r *Runner) Run(ctx context.Context) {
 	defer r.running.Store(false)
 
 	// No region is the operator's switch for leaving stages unclassified. The
-	// schedule still runs — turning regions on must not need a restart — and a
-	// run with nothing to index is over here.
+	// schedule still runs, so turning regions on needs no restart.
 	options := r.options
 	options.Regions = r.regions()
 	if len(options.Regions) == 0 {
@@ -151,20 +133,17 @@ func (r *Runner) Run(ctx context.Context) {
 	)
 }
 
-// record writes down what the run established. It runs for an unchanged check as
-// well as for a rebuild, so the next start counts its delay from the last time
-// the upstream was actually looked at.
+// record writes down what the run established, for an unchanged check as well as
+// a rebuild, so the next delay counts from the last upstream look.
 func (r *Runner) record(ctx context.Context, finishedAt time.Time, generation string) {
 	if err := r.state.RecordSurfaceIndexBuild(ctx, finishedAt, generation); err != nil {
 		slog.Error("recording the surface index build", "error", err)
 	}
 }
 
-// notifyFailure announces a failed build, subject to the suppression window.
-//
-// The message carries no error detail. A failure reaches a phone through a
-// third-party service, and the errors here name upstream URLs and local paths;
-// the log already has them, and the log stays on the host.
+// notifyFailure announces a failed build, subject to the suppression window. The
+// message carries no error detail: those name upstream URLs and local paths,
+// and the log already has them.
 func (r *Runner) notifyFailure(ctx context.Context) {
 	now := r.now().UTC()
 	lastSentAt, found, err := r.state.LastFailureNotification(ctx, failureNotificationCategory)
@@ -181,12 +160,9 @@ func (r *Runner) notifyFailure(ctx context.Context) {
 	}
 }
 
-// prune removes indexes from earlier builds.
-//
-// Swap deletes the file it replaces, so this only ever finds what a crash left
-// behind — but each one is hundreds of megabytes on a host with a few gigabytes
-// free, so nothing may accumulate. Only names this package writes are considered,
-// and only after a build has succeeded.
+// prune removes indexes from earlier builds. Swap deletes the file it replaces,
+// so this only finds what a crash left behind — each hundreds of megabytes. Only
+// names this package writes, and only after a build has succeeded.
 func (r *Runner) prune(keep string) {
 	entries, err := os.ReadDir(r.options.Directory)
 	if err != nil {
@@ -206,23 +182,14 @@ func (r *Runner) prune(keep string) {
 	}
 }
 
-// InitialBuildDelay is the floor InitialDelay never goes below. A build that is
-// already overdue when the process starts still waits this long, so a restart
-// puts the service on its feet before it puts a memory-hungry job behind it.
+// InitialBuildDelay is the floor InitialDelay never goes below, so a restart puts
+// the service on its feet before a memory-hungry job behind it.
 const InitialBuildDelay = 5 * time.Minute
 
-// InitialDelay is how long to wait before the first build of a process.
-//
-// The scheduler counts from process start, which on its own means a service
-// deployed several times a day never reaches a weekly interval — it would
-// rebuild on every deploy or, with a delay long enough to prevent that, never
-// rebuild at all. Reading when the last build finished turns the interval into
-// what it reads as: time between builds, not time since this process happened to
-// start.
-//
-// A build that is already overdue still waits the floor rather than running
-// immediately, so a restart does not put a memory-hungry job in front of the
-// service coming up.
+// InitialDelay is how long to wait before the first build of a process. Reading
+// when the last build finished turns the interval into time between builds
+// rather than time since this process started. A build already overdue still
+// waits the floor.
 func InitialDelay(lastBuiltAt time.Time, interval, floor time.Duration, now time.Time) time.Duration {
 	if lastBuiltAt.IsZero() {
 		return floor

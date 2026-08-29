@@ -85,13 +85,10 @@ export function MapViewport({
     if (!map || !bounds) {
       return;
     }
-    // Re-frame when a different route is selected, rather than remounting the
-    // map and re-downloading the style — and when a stretch is chosen, so the
-    // map shows the ground the chart is showing however the stretch was asked
-    // for. Only a change of subject moves the camera: panning away to look at
-    // the surrounding roads costs nothing and needs no way back.
-    // Every input the framing is computed from, so a reflow that moves the
-    // panels still re-frames while a remount that moved nothing does not.
+    // Re-frame when a different route or stretch is selected, rather than
+    // remounting the map and re-downloading the style. Only a change of subject
+    // moves the camera. Every input the framing reads, so a reflow re-frames
+    // while a remount that moved nothing does not.
     const subject = JSON.stringify([bounds, maxZoom, padding, top, right, bottom, left]);
     const container = map.getContainer();
     if (framedTo.get(container) === subject) {

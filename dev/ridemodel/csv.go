@@ -23,11 +23,10 @@ type activitiesCSVColumns struct {
 	id, date, activityType, distance, elapsedTime, movingTime, elevationGain, gear, filename int
 }
 
-// readActivitiesCSV reads activities.csv, tolerant of extra or reordered
-// columns. Only a row missing its ID is skipped here: an ID names the
-// activity a report can name back, even when its Filename is empty —
-// ingestActivity is what turns a missing Filename into a reported
-// exclusionNoSourceFile rather than a row silently absent from every count.
+// readActivitiesCSV reads activities.csv, tolerant of extra or reordered columns.
+// Only a row missing its ID is skipped here: an ID names the activity a report
+// can name back, and ingestActivity turns a missing Filename into a reported
+// exclusion rather than a row absent from every count.
 func readActivitiesCSV(path string) ([]activityRow, error) {
 	file, err := os.Open(path) //nolint:gosec // The path is the operator's own -export flag, joined with the fixed activities.csv name.
 	if err != nil {
@@ -66,12 +65,10 @@ func readActivitiesCSV(path string) ([]activityRow, error) {
 	return rows, nil
 }
 
-// columnsOf finds each required column by header name. Strava's own export
-// repeats several headers — "Distance" and "Elapsed Time" each appear twice,
-// once in an early summary block and again in a later detailed one — and the
-// two are not always the same unit: the first "Distance" is kilometres, the
-// second is metres. The last occurrence is always the detailed, metric-base
-// column this tool wants, so that is what wins rather than the first.
+// columnsOf finds each required column by header name. Strava's export repeats
+// several headers — "Distance" and "Elapsed Time" each appear twice — and the two
+// are not the same unit: the first "Distance" is kilometres, the second metres.
+// The last occurrence is the detailed metric column, so that is what wins.
 func columnsOf(header []string) (activitiesCSVColumns, error) {
 	find := func(name string) int {
 		found := -1

@@ -8,21 +8,10 @@ import (
 )
 
 // GetWebUIConfig hands the page its runtime settings so the built assets stay
-// static and fully cacheable. It exposes no secret: the tile style URLs are
-// operator-chosen configuration that the browser must know to render a map.
-//
-// The whole list is sent rather than the service picking one, for two reasons
-// that are really the same reason. Which cartography to show is the reader's
-// choice, remembered in their browser; and which of an entry's two styles to
-// load is their system's colour scheme. Both are properties of the browser the
-// operator is sitting at, and this response is cached across every page in the
-// session, so neither can be resolved here.
-//
-// Each configured source's base URL rides along for the same reason: the page
-// builds the link back to a stage's source route from it, keyed by the
-// provider that stage names, and the alternative — the service putting a route
-// URL on every stage it serves — would be the same fact repeated once per
-// stage.
+// static and cacheable. It exposes no secret. The whole basemap list is sent
+// rather than one: the reader's choice and their colour scheme both belong to
+// the browser, and this response is cached across the session. Each source's
+// base URL rides along so the page can link a stage back to its source route.
 func (h *Handler) GetWebUIConfig(writer http.ResponseWriter, _ *http.Request) {
 	// An unset dark style and an unset dark-cartography flag are both absent
 	// from the response rather than sent as an empty string or false, which is
@@ -39,11 +28,9 @@ func (h *Handler) GetWebUIConfig(writer http.ResponseWriter, _ *http.Request) {
 		}
 	}
 
-	// The one authorised address, which the gate has already proved this caller
-	// to be. It is not sent so the page can decide anything — there is nothing
-	// to decide — but so a reader can see which session they are in, and leave
-	// it. The way out is omitted where nothing in front of this service would
-	// serve one; see Options.AccessSignOutURL.
+	// The one authorised address, which the gate has already proved this caller to
+	// be. Sent so a reader can see which session they are in and leave it. The way
+	// out is omitted where nothing in front of this service would serve one.
 	config := openapi.WebUIConfig{
 		Basemaps: basemaps,
 		Identity: openapi.BrowserIdentity{
@@ -69,30 +56,20 @@ func (h *Handler) index(writer http.ResponseWriter, request *http.Request) {
 	h.assets.Index(writer, request)
 }
 
-// GetManifest serves the manifest that makes the UI installable, which is how
-// the map runs edge to edge on a phone: iOS 26 Safari lays a tab out between
-// its own chrome and reports no safe-area insets, while the same document added
-// to the Home Screen gets the whole screen.
-//
-// The type is set here because Go's table does not know .webmanifest and the
-// responses carry X-Content-Type-Options: nosniff. The caching is the stable
-// kind for the reason below, and doubly so for this file: it decides how an
-// installed copy launches.
+// GetManifest serves the manifest that makes the UI installable, which is how the
+// map runs edge to edge on a phone: iOS 26 Safari lays a tab out between its own
+// chrome and reports no safe-area insets, while a Home Screen copy gets the whole
+// screen. The type is set here because Go's table does not know .webmanifest and
+// responses carry nosniff.
 func (h *Handler) GetManifest(writer http.ResponseWriter, request *http.Request) {
 	writer.Header().Set("Content-Type", "application/manifest+json")
 	h.stableAsset(writer, request)
 }
 
-// stableAsset serves a build artefact that is addressed by a fixed name rather
-// than a content hash: the favicon, the icons an installed copy is given, the
-// manifest that names them.
-//
-// The name staying the same is the whole point of these — a manifest may only
-// point at a path it can rely on — and it is also why they cannot be cached the
-// way the hashed output is. A new icon arrives at the URL the old one had, so a
-// year of immutable caching is a year of the Home Screen showing the previous
-// one. They revalidate instead, which costs a conditional request and keeps the
-// installed copy honest.
+// stableAsset serves a build artefact addressed by a fixed name rather than a
+// content hash: the favicon, the installed copy's icons, the manifest naming
+// them. A new icon arrives at the URL the old one had, so these revalidate rather
+// than being cached the way hashed output is.
 func (h *Handler) stableAsset(writer http.ResponseWriter, request *http.Request) {
 	writer.Header().Set("Cache-Control", cacheDocument)
 	h.assets.Static(writer, request)

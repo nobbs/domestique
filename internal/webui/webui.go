@@ -1,8 +1,6 @@
-// Package webui embeds the built browser UI and serves it from the binary.
-//
-// The bundle is compiled in rather than read from disk so the runtime keeps a
-// read-only root filesystem and so the UI and the API can only ever ship as one
-// signed artefact.
+// Package webui embeds the built browser UI and serves it from the binary. The
+// bundle is compiled in so the runtime keeps a read-only root filesystem and the
+// UI and API ship as one artefact.
 package webui
 
 import (
@@ -25,9 +23,7 @@ var ErrBundleMissing = errors.New("browser UI bundle is missing: run `mise run u
 
 // The all: prefix keeps the embed valid when the working tree holds only the
 // committed .gitkeep, so the package compiles before the UI has been built.
-// Nothing empties this directory — the bundler writes into `bundle` inside it —
-// so that placeholder is never deleted and restored underneath a concurrent
-// reader of the worktree.
+// Nothing empties this directory — the bundler writes into `bundle` inside it.
 //
 //go:embed all:app/dist
 var bundle embed.FS

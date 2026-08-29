@@ -22,10 +22,8 @@ func exampleTour(id int64) *tourDetail {
 	return tour
 }
 
-// floatPtr is a plain pointer-to-literal helper rather than Go's newer
-// new(expr) form: this repository's toolchain accepts it, but tooling that
-// reviews this code may not recognise it yet, and a helper needs no reader to
-// know which Go release added it.
+// floatPtr is a plain pointer-to-literal helper rather than new(expr): tooling
+// that reviews this code may not recognise the newer form.
 //
 //nolint:modernize // deliberately not new(expr); see comment above.
 func floatPtr(v float64) *float64 {

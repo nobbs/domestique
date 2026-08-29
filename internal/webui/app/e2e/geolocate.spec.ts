@@ -91,11 +91,10 @@ test.describe("granted", () => {
     expect((await cameraScreenshot(page)).equals(before)).toBe(false);
   });
 
-  // `trackUserLocation` is left at its default rather than turned on, so a press
-  // must resolve one position rather than open a continuous watch — the risk the
-  // issue calls out by name. Chromium's own StrictMode double-mount can still ask
-  // `getCurrentPosition` twice in the dev build; what must never appear is
-  // `watchPosition`.
+  // `trackUserLocation` is left at its default, so a press must resolve one
+  // position rather than open a continuous watch. Chromium's StrictMode
+  // double-mount can ask `getCurrentPosition` twice in the dev build; what must
+  // never appear is `watchPosition`.
   test("asks for one-shot positions, never a continuous watch", async ({ offlinePage: page }) => {
     await trackGeolocationCalls(page);
     await openLibrary(page);

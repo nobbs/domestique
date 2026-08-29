@@ -26,11 +26,9 @@ import (
 const (
 	defaultBaseURL = "https://api.open-meteo.com"
 	defaultTimeout = 15 * time.Second
-	// maximumBodyBytes bounds a response for the largest legitimate request
-	// the httpapi boundary allows through: 48 points over its 17-day window
-	// (a day of past allowance plus a 16-day forecast horizon), which is
-	// roughly 1.05 MB of column-oriented JSON. This leaves headroom above
-	// that without being unbounded.
+	// maximumBodyBytes bounds a response for the largest request the httpapi
+	// boundary allows: 48 points over its 17-day window, roughly 1.05 MB of
+	// column-oriented JSON. This leaves headroom without being unbounded.
 	maximumBodyBytes = 4 << 20
 	hourFormat       = "2006-01-02T15:04"
 
@@ -120,15 +118,11 @@ func New(options *Options) (*Client, error) {
 	}, nil
 }
 
-// Forecast returns one hourly series per coordinate, in the order given,
-// spanning from..to. from is rounded down and to rounded up to the nearest
-// Europe/Berlin local hour before either crosses the wire, so a request
-// window that does not itself land on the hour still asks for — and gets
-// back — every hour a point inside it could resolve to.
-//
-// Open-Meteo replies with a JSON array, one object per coordinate, for
-// several coordinates — but a bare object, not a one-element array, for
-// exactly one. Both are handled here.
+// Forecast returns one hourly series per coordinate, in the order given, spanning
+// from..to. from is rounded down and to rounded up to the nearest Europe/Berlin
+// local hour, so a window that does not land on the hour still gets every hour a
+// point could resolve to. Open-Meteo replies with an array for several
+// coordinates and a bare object for exactly one; both are handled.
 func (c *Client) Forecast(ctx context.Context, at []Coordinate, from, to time.Time) (hourlies []Hourly, err error) {
 	if len(at) == 0 {
 		return nil, errors.New("openmeteo: at least one coordinate is required")

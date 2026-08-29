@@ -46,13 +46,10 @@ export function syncState(status: Status): SyncState {
     if (guidance?.kind === "blocked") {
       return { label: `Held by a gate · ${formatTimestamp(run?.lastCompletedAt)}`, tone: "hold" };
     }
-    // Only a run that went wrong. `syncGuidance` also speaks for a run that
-    // never started — a half skipped because the other was already going, or
-    // one held back until a target is connected — and neither is a fault:
-    // the first says "nothing is wrong" in its own remediation, and the second
-    // is the unconnected target, which the check below names for what it is.
-    // Painting either red would teach an operator to go looking on a morning
-    // when the schedule simply overlapped itself.
+    // Only a run that went wrong. `syncGuidance` also speaks for a run that never
+    // started — a half skipped because the other was going, or one held back until
+    // a target is connected — and neither is a fault: the second is the unconnected
+    // target, which the check below names for what it is.
     if (guidance?.kind === "failed") {
       return { label: `Did not finish · ${formatTimestamp(run?.lastCompletedAt)}`, tone: "alert" };
     }

@@ -199,10 +199,9 @@ export function PositionTooltip({
    */
   const above = point === null || point.y - GAP_PIXELS - size.height >= EDGE_PIXELS;
 
-  // Re-attached whenever the box changes which side it opens from, rather than
-  // only once: the marker below is keyed on that and rebuilds its whole subtree
-  // when it flips, which would otherwise leave this observing a box that has
-  // just left the document — measuring nothing, and never released.
+  // Re-attached whenever the box changes which side it opens from: the marker
+  // below is keyed on that and rebuilds its subtree when it flips, which would
+  // otherwise leave this observing a box that has left the document.
   // biome-ignore lint/correctness/useExhaustiveDependencies: `above` is read nowhere in the body; it is the remount signal, not a value the effect needs.
   useEffect(() => {
     const element = boxRef.current;

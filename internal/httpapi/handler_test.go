@@ -545,11 +545,9 @@ func TestHandlerServesTileStyleConfiguration(t *testing.T) {
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/webui/config"))
 	require.Equal(t, http.StatusOK, response.Code, "config status")
 	body := response.Body.String()
-	// Both styles, because the page picks between them: the colour scheme is a
-	// property of the browser, and this response is cached for the session. The
-	// name goes with them, because it is what a reader picks by and what their
-	// browser remembers. The provider base URL rides along, because the link
-	// back to a stage's source route is built from it.
+	// Both styles, because the page picks between them and this response is cached
+	// for the session. The name goes with them, and the provider base URL rides
+	// along because the link back to a stage's source route is built from it.
 	for _, want := range []string{"Streets", testTileStyleURL, testTileStyleURLDark, testSourceBaseURL} {
 		assert.Contains(t, body, want, "the config body omits a value the page is built from")
 	}
@@ -574,11 +572,9 @@ func TestHandlerNamesTheIdentityTheGateLetThrough(t *testing.T) {
 	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body), "decoding the config")
 
 	assert.Equal(t, testAccessEmail, body.Identity.Email, "the config must name the one authorised address")
-	// Nothing stands in front of this handler, so there is nowhere to sign out
-	// to. The field is absent rather than empty, which is how the page tells
-	// "no way out exists" from one it was given — and absence is checked in the
-	// bytes as well, since a `null` would decode to a nil pointer just as
-	// readily as a missing key.
+	// Nothing stands in front of this handler, so there is nowhere to sign out to.
+	// The field is absent rather than empty, and absence is checked in the bytes:
+	// a `null` would decode to a nil pointer just as readily as a missing key.
 	assert.Nil(t, body.Identity.SignOutURL, "a handler with no configured way out must not name one")
 	assert.NotContains(t, response.Body.String(), "signOutUrl",
 		"the way out must be omitted from the response rather than sent empty")
@@ -900,11 +896,9 @@ func TestHandlerNamesOneOriginOnceForTwoBasemapsSharingIt(t *testing.T) {
 		"one origin serving two cartographies must be named once per directive: %q", policy)
 }
 
-// TestHandlerAcceptsADarkStyleOnItsOriginRegardlessOfHostCase mirrors the
-// configuration layer's sameOrigin, which treats host case as insignificant.
-// A dark style differing from its light counterpart only by host case is on
-// the origin a browser would use, and must not fail startup here after
-// passing that same check in the configuration.
+// Mirrors the configuration layer's sameOrigin, which treats host case as
+// insignificant. A dark style differing only by host case is on the origin a
+// browser would use, and must not fail startup after passing that check.
 func TestHandlerAcceptsADarkStyleOnItsOriginRegardlessOfHostCase(t *testing.T) {
 	handler, err := New(
 		&Options{
@@ -2725,14 +2719,10 @@ func wireInstant(at time.Time) string {
 }
 
 // The identifier guards inside the stage handlers are unreachable through the
-// router: the request validator refuses anything that is not an integer of at
-// least 1, overflow included, before a handler runs. They stay because a
-// redirect target and a store lookup must never be built from a value this
-// package did not itself parse, and a handler that trusted the middleware
-// entirely would fail open the day that middleware is reordered or skipped.
-//
-// They are reached here by calling the handler with the path values a router
-// would have set, which is the only way in.
+// router: the validator refuses anything that is not an integer of at least 1.
+// They stay because a redirect target and a store lookup must never be built from
+// a value this package did not parse. Reached here by calling the handler with
+// the path values a router would have set.
 func TestStageHandlersRefuseAnIdentifierTheyCannotParse(t *testing.T) {
 	handler := newTestHandler(t)
 

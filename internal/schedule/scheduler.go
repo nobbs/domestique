@@ -8,12 +8,9 @@ import (
 	"time"
 )
 
-// Runner executes one scheduled attempt at whatever the scheduler drives.
-//
-// It reports nothing. What a run produced belongs to whoever ran it — the sync
-// reporter records and notifies on its own results, and the index builder
-// installs its own output — and a timer that took an outcome it could not act on
-// would only tie this package to one caller's vocabulary.
+// Runner executes one scheduled attempt at whatever the scheduler drives. It
+// reports nothing: what a run produced belongs to whoever ran it, and a timer
+// taking an outcome it could not act on would tie this package to one caller.
 type Runner interface {
 	Run(ctx context.Context)
 }
@@ -114,12 +111,8 @@ func (s *Scheduler) Run(ctx context.Context) {
 }
 
 // NextRunAt reports the instant the first run is being held until, while the
-// scheduler is still holding it.
-//
-// Only the initial delay answers here. The interval between runs is this
-// service's cadence rather than work being held back, and a scheduler that
-// called every gap between hourly runs "waiting" would leave a status page —
-// and anything polling one — with nothing to settle on.
+// scheduler is still holding it. Only the initial delay answers: the interval
+// between runs is this service's cadence rather than work being held back.
 func (s *Scheduler) NextRunAt() (time.Time, bool) {
 	startsAt := s.startsAt.Load()
 	if startsAt == nil {

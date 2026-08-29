@@ -517,11 +517,10 @@ func TestSetSecretsRefusesACredentialNothingReads(t *testing.T) {
 	assert.Zero(t, store.writes, "a refused credential is not written")
 }
 
-// The type exists to keep a credential out of anything observable, so the two
-// ways a value usually escapes have to be closed. %s is the one that would
-// otherwise print it in full: an unexported []byte is still rendered as text by
-// that verb, and by the %+v slog reaches for. %#v reaches past String into the
-// field itself, so it is checked here too.
+// The type exists to keep a credential out of anything observable, so every verb
+// that would print one is checked. %s renders an unexported []byte as text, and
+// so does %+v, which is the verb slog reaches for. %#v bypasses String entirely
+// and reads the field.
 func TestSecretDoesNotRenderItsValue(t *testing.T) {
 	secret := NewSecret([]byte("opensesame"))
 

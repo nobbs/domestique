@@ -11,18 +11,10 @@ import (
 )
 
 // TrustedInventory rebuilds the stored source inventory as the stages a target
-// reconciliation works from.
-//
-// This is the handover between the two halves of a synchronization: reading the
-// source writes it, writing to the targets reads it, and neither has to be
-// running for the other to work. The geometry it returns is the export profile
-// that was stored, so a course encoded from it is the one the source pass
-// derived rather than a second, subtly different derivation of the same stage.
-//
-// A stage whose geometry is missing or was cached against a different content
-// hash fails the whole read. Returning the rest would describe the library as
-// smaller than it is, and a smaller library is exactly what reconciliation
-// treats as an instruction to delete.
+// reconciliation works from: the handover between the two halves. The geometry
+// returned is the stored export profile, so a course encoded from it is the one
+// the source pass derived. A stage whose geometry is missing or cached against a
+// different hash fails the whole read — a smaller library reads as a deletion.
 func (s *Store) TrustedInventory(ctx context.Context) ([]route.Route, error) {
 	rows, err := s.database.QueryContext(ctx, `
 		SELECT
@@ -100,12 +92,9 @@ func (s *Store) TrustedInventoryCount(ctx context.Context, provider route.Provid
 }
 
 // StoreTrustedInventory atomically replaces one source's share of the trusted
-// inventory, leaving every other provider's stored stages untouched. It stores
-// metadata only, never geometry or FIT bytes.
-//
-// Scoping the replacement to one provider is what lets a source that failed to
-// read this run keep the stages it was last known to have: only a source that
-// was read successfully reaches this call at all.
+// inventory, leaving every other provider's stages untouched. Metadata only,
+// never geometry or FIT bytes. Scoping to one provider is what lets a source that
+// failed this run keep the stages it was last known to have.
 func (s *Store) StoreTrustedInventory(ctx context.Context, provider route.Provider, stages []route.Route) error {
 	seen := make(map[route.Key]struct{}, len(stages))
 	for _, stage := range stages {

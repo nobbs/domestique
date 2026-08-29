@@ -13,14 +13,10 @@ import (
 // see through a call, so a helper reads as an open redirect whether or not the
 // value reaching it came from the request.
 
-// redirectStagePath sends an address from before *route* named the unit to its
-// current equivalent, preserving suffix and method. A 308 is used rather than a
-// 301 or 302 because the reprocess route is a POST, and only a 308 is defined
-// to keep a redirected request's method and body intact.
-//
-// The identifiers are re-rendered from parsed integers. The provider cannot be —
-// it is free text the caller chose — so it is escaped into exactly one path
-// segment rather than trusted to stay one.
+// redirectStagePath sends a superseded address to its current equivalent,
+// preserving suffix and method. A 308 rather than a 301 or 302: only a 308 keeps
+// a redirected request's method and body intact, and the reprocess route is a
+// POST. The provider is free text, so it is escaped into exactly one segment.
 func (h *Handler) redirectStagePath(writer http.ResponseWriter, request *http.Request, suffix string) {
 	sourceRouteID, stageOrder, ok := legacyStagePathValues(request)
 	if !ok {

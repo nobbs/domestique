@@ -391,10 +391,9 @@ func (s *blockingScheduler) Run(ctx context.Context) {
 }
 
 // A restart has to serve classifications immediately rather than going blind
-// until the next rebuild lands, which is the whole reason the last build's file
-// is reopened here. These are the states a host can restart into: one that has
-// never built, and one whose state database remembers a build whose file is no
-// longer beside it. Neither is an error, and both have to end with a schedule.
+// until the next rebuild. These are the states a host can restart into: never
+// built, and a state database remembering a build whose file is gone. Neither is
+// an error, and both end with a schedule.
 func TestStartSurfaceIndexOnAHostThatHasNeverBuilt(t *testing.T) {
 	t.Parallel()
 
@@ -448,9 +447,8 @@ func surfaceSettings(t *testing.T, store *sqlite.Store) *runtimeconfig.Current {
 }
 
 // testSettings publishes what a service that has never been configured starts
-// with: everything seeded, nothing entered.
-// storeSettings replaces the settings whole, which is what a test holding a
-// complete set of values wants; the service replaces one section at a time.
+// with. storeSettings replaces the settings whole, which is what a test holding
+// a complete set of values wants; the service replaces one section at a time.
 //
 //nolint:gocritic // value param: mirrors Update's own copy-in.
 func storeSettings(t *testing.T, current *runtimeconfig.Current, values runtimeconfig.Values) {

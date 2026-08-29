@@ -1,34 +1,11 @@
-// Command gatecheck guards the property that makes a fast local loop safe to
-// offer: `mise run quick` is a strict subset of `mise run check`, and the work
-// it leaves out is exactly the set that was deliberately deferred.
+// Command gatecheck asserts three properties of the local gate.
 //
-// GitHub Actions is the authoritative gate, so `quick` is allowed to be smaller
-// than `check`. What it must never become is *different* — a loop that checks
-// something the full gate does not is a loop that can pass work the merge gate
-// then rejects, and a check added to `check` alone silently stops being part of
-// the routine loop. Both directions are asserted here:
-//
-//   - every task `quick` runs is also run by `check`; and
-//   - every task `check` runs is also run by `quick`, except the deferred set
-//     below, which is named here so that adding to it is a deliberate edit.
-//
-// The comparison reads `mise tasks ls --json`, which dumps every task with its
-// dependencies without running any of them, so this costs a few milliseconds
-// and needs no network.
-//
-// A cached check is subject to the same kind of hole. A task that declares
-// `sources` runs only when one of them has moved since it last succeeded, and a
-// glob matching no file at all counts as "nothing moved" — forever. So every
-// glob is asserted to match a tracked file, which is what stops a renamed
-// directory from quietly retiring the check that used to read it.
-//
-// That comparison can only see a step declared as a dependency, and mise lets a
-// task carry an inline `run` alongside its `depends`. A command written there
-// would still run as part of the gate while being invisible to a dependency
-// query, which is precisely the hole the comparison must not have. So the
-// structure it relies on is asserted first: a gate task declares its steps and
-// runs nothing itself. Without that check this program would assert rather less
-// than it appears to.
+//   - `mise run quick` is a strict subset of `mise run check`, and the
+//     difference is exactly the deferred set below. Both directions are checked.
+//   - Every declared `sources` glob matches a tracked file: one matching nothing
+//     counts as "nothing moved" forever.
+//   - A gate task declares its steps and runs no command itself, since an inline
+//     `run` would be invisible to the dependency query the first check reads.
 package main
 
 import (
@@ -52,10 +29,8 @@ type rules struct {
 	deferred []string
 
 	// gate is the gate tasks: the two entry points and the ci-* groups they
-	// delegate to. The groups are the decomposition CI uses to name a failing
-	// area, not checks in their own right, so the walk descends through them
-	// rather than counting them. Every one of them must declare its steps and
-	// run nothing itself.
+	// delegate to. The walk descends through the groups rather than counting them,
+	// and each must declare its steps and run nothing itself.
 	gate []string
 
 	// preparation is the only dependency of a gate task that is not a check.
@@ -65,17 +40,10 @@ type rules struct {
 	preparation []string
 }
 
-// gateRules is the repository's gate, as mise-tasks.toml declares it.
-//
-// build-check rebuilds the UI bundle and compiles the published release target,
-// which is the slowest check in the gate whenever the build cache is cold;
-// test-race reruns the whole Go suite under the race detector, which needs cgo
-// and costs several times the wall clock of the plain run; vulncheck and
-// ui-audit each need the network and a current advisory database;
-// ui-browser-install downloads a browser, and ui-browser-test,
-// ui-storybook-test and ui-storybook-sweep then each drive it — over the demo
-// stack, over every story, and over a built Storybook — for minutes. That is
-// why each is deferred.
+// gateRules is the repository's gate, as mise-tasks.toml declares it. Each
+// deferred check is slow or needs the network: build-check recompiles the release
+// target, test-race needs cgo, vulncheck and ui-audit need advisory databases,
+// and ui-browser-* download and drive a browser.
 func gateRules() rules {
 	return rules{
 		deferred: []string{
@@ -308,13 +276,8 @@ func matchSegments(pattern, name []string) bool {
 }
 
 // steps returns the checks a gate task runs, sorted. The walk descends through
-// the gate tasks, because a group is a way of naming a failing area rather than
-// a check, and stops at anything else: a check's own dependencies are how it
-// arranges to run, not further checks. That is why `ui-build` does not count as
-// a step of `build-check`: bundling the UI is how that check compiles at all,
-// and neither entry point is claiming to run it as a check.
-//
-// Preparation tasks are dropped here rather than filtered by the caller, so that
+// the gate tasks and stops at anything else: a check's own dependencies are how
+// it arranges to run, not further checks. Preparation tasks are dropped here so
 // neither comparison has to know they exist.
 func (r rules) steps(byName map[string]task, root string) ([]string, error) {
 	found := map[string]bool{}

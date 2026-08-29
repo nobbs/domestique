@@ -3,14 +3,9 @@ package surface
 import "math"
 
 // segmentGrid indexes way segments by locality so each stage point compares
-// itself against nearby candidates instead of against every way in the area.
-//
-// A route with a few thousand points against a few hundred ways is tens of
-// millions of segment comparisons done naively, for a result where all but a
-// handful of candidates are hundreds of metres away. A uniform grid is used
-// rather than a tree because the data is uniformly dense at the only scale that
-// matters here — everything is within tens of metres of the route — and a grid
-// is a fraction of the code to read.
+// itself against nearby candidates rather than every way in the area. A uniform
+// grid rather than a tree: the data is uniformly dense at the only scale that
+// matters, and a grid is a fraction of the code.
 type segmentGrid struct {
 	cells    map[cell][]int
 	scratch  []int
@@ -22,14 +17,10 @@ type cell struct {
 	north int
 }
 
-// newSegmentGrid indexes segments for lookups within the given radius.
-//
-// The cell is twice the radius and each segment is sampled along its length at
-// the radius, which together guarantee that near() finds every segment within
-// the radius while searching only the immediate ring of cells. A segment's true
-// nearest point lies at most half a sample step from a registered sample, so a
-// candidate within the radius registers at most radius+radius/2 away from the
-// query — inside one cell width, and therefore inside the ring.
+// newSegmentGrid indexes segments for lookups within the given radius. The cell is
+// twice the radius and each segment is sampled at the radius, which guarantees
+// near() finds every segment within the radius while searching only the immediate
+// ring: a candidate registers at most radius+radius/2 away, inside one cell width.
 func newSegmentGrid(segments []segment, radiusMetres float64) *segmentGrid {
 	grid := &segmentGrid{
 		cells:    make(map[cell][]int, len(segments)),
@@ -75,11 +66,9 @@ func (g *segmentGrid) add(index int, key cell) {
 }
 
 // near returns the segments registered in the ring of cells around a projected
-// point. A segment registered in several of those cells is returned more than
-// once; evaluating it twice costs one repeated distance calculation and is
-// cheaper than the bookkeeping to avoid it.
-//
-// The result is owned by the grid and is only valid until the next call.
+// point. A segment in several cells is returned more than once; evaluating it
+// twice is cheaper than the bookkeeping to avoid it. The result is owned by the
+// grid and valid only until the next call.
 func (g *segmentGrid) near(east, north float64) []int {
 	centre := cell{
 		east:  int(math.Floor(east / g.cellSize)),

@@ -25,11 +25,9 @@ func TestClientProviderIsKomoot(t *testing.T) {
 }
 
 func TestClientNeverSendsAnAcceptHeaderTheRealAPIRejects(t *testing.T) {
-	// Verified against a live account: every v007 resource is served as HAL
-	// and answers a strict "Accept: application/json" with 406
-	// HttpMediaTypeNotAcceptable, even though its body is ordinary JSON
-	// either way. This server reproduces exactly that rejection so a
-	// regression here fails loudly instead of only in production.
+	// Verified against a live account: every v007 resource is served as HAL and
+	// answers a strict "Accept: application/json" with 406. This server reproduces
+	// that rejection so a regression fails loudly rather than only in production.
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if strings.HasPrefix(request.URL.Path, "/v007/") && !strings.Contains(request.Header.Get("Accept"), "hal+json") {
 			writer.WriteHeader(http.StatusNotAcceptable)
@@ -476,10 +474,9 @@ func TestClientInventoryPreservesEmailContainingSlash(t *testing.T) {
 	var gotEscapedPath string
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		// request.URL.Path is already percent-decoded by net/http, so it reads
-		// identically whether the client escaped the '/' correctly or sent it
-		// as a literal separator — this test would pass either way if it
-		// asserted on Path. EscapedPath (and the raw RequestURI) is the one
-		// place the two cases still differ: %2F versus a literal '/'.
+		// identically whether the client escaped the '/' or sent it as a literal
+		// separator. EscapedPath, and the raw RequestURI, is where the two still
+		// differ: %2F versus a literal '/'.
 		if gotEscapedPath == "" {
 			gotEscapedPath = request.URL.EscapedPath()
 		}

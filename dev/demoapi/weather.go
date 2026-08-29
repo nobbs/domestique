@@ -8,21 +8,11 @@ import (
 	"github.com/nobbs/domestique/internal/httpapi"
 )
 
-// syntheticWeather stands in for internal/openmeteo.Client.Forecast. The
-// weather strip this demo now exists to exercise is new: nothing in this
-// service has ever asked Open-Meteo for a forecast before, so wiring the real
-// client in live for the first time would make every Playwright run of the
-// strip depend on a real third-party forecast that changes hour to hour — and
-// dev/demo.sh already documents every provider below this handler as
-// unroutable on purpose. This keeps that true for weather too: the reading at
-// a given coordinate and hour is pure arithmetic, so it is identical on every
-// run and asserting on it in a browser test needs no recorded fixture.
-//
-// The arithmetic is deliberately simple: two sine waves over latitude,
-// longitude and the hour, one driving temperature and cloud cover, a second,
-// faster one layered on top to bring in rain. It exists only to look like
-// weather changing along a route and through the day, never as a forecast
-// anyone should read as real.
+// syntheticWeather stands in for internal/openmeteo.Client.Forecast. Every
+// provider below this handler is unroutable on purpose, and this keeps that true
+// for weather: the reading at a coordinate and hour is pure arithmetic, identical
+// on every run, so a browser test needs no recorded fixture. Two sine waves drive
+// temperature and cloud, with a faster one layered on for rain.
 func syntheticWeather(
 	_ context.Context, latitudes, longitudes []float64, from, to time.Time,
 ) ([]httpapi.WeatherSeries, error) {
@@ -111,11 +101,9 @@ func syntheticSeriesAt(latitude, longitude float64, hours []time.Time) httpapi.W
 	return series
 }
 
-// weatherPrecipitation turns the cloud and rain signals into a millimetre
-// amount, a probability, and a WMO weather code — real codes from Open-Meteo's
-// own vocabulary (0 clear sky, 1/2/3 mainly clear/partly cloudy/overcast, 61
-// slight rain, 63 moderate rain), so the strip renders exactly the icons a
-// live forecast would ask it to.
+// weatherPrecipitation turns the cloud and rain signals into a millimetre amount,
+// a probability, and a WMO weather code from Open-Meteo's own vocabulary, so the
+// strip renders exactly the icons a live forecast would ask for.
 func weatherPrecipitation(cloud, rain float64) (millimetres, probabilityPercent float64, code int) {
 	switch {
 	case rain > 0.6:

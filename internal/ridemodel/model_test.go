@@ -68,10 +68,9 @@ func kindsAll(n int, kind surface.Kind) []surface.Kind {
 	return kinds
 }
 
-// floatPtr is a plain pointer-to-literal helper rather than Go's newer
-// new(expr) form: this repository's toolchain accepts it, but tooling that
-// reviews this code may not recognise it yet, and a helper needs no reader to
-// know which Go release added it. Mirrors internal/komoot's convert_test.go.
+// floatPtr is a plain pointer-to-literal helper rather than new(expr): tooling
+// that reviews this code may not recognise the newer form. Mirrors
+// internal/komoot's convert_test.go.
 //
 //nolint:modernize // deliberately not new(expr); see comment above.
 func floatPtr(value float64) *float64 { return &value }
@@ -91,12 +90,9 @@ func TestPredictFlatAsphaltRoundTripsThroughItsOwnSolver(t *testing.T) {
 	assert.InDelta(t, expected, result.MovingSeconds, 1e-6, "flat asphalt moving time is the 50/50 blend")
 }
 
-// TestPredictBlendsPhysicsAndLinearHalvesPerSegment is #240's own acceptance
-// criterion as a test: the runtime total matches the same 50/50 average of
-// independently-summed physics-only and linear-only segment times #239's
-// benchmark validated, now computed once per segment so the running series
-// stays aligned 1:1 with the geometry rather than only agreeing on the grand
-// total.
+// The runtime total matches the same average of independently-summed
+// physics-only and linear-only segment times the benchmark validated, computed
+// once per segment so the running series stays aligned 1:1 with the geometry.
 func TestPredictBlendsPhysicsAndLinearHalvesPerSegment(t *testing.T) {
 	coefficients := testCoefficients()
 	hill := func(d float64) float64 { return 40 * math.Sin(d/2000) }
@@ -230,12 +226,10 @@ func TestPredictPhysicsHalfIsNeverSlowerDownhillThanOnTheFlat(t *testing.T) {
 	}
 }
 
-// The same guarantee at the extremes Load admits, which is where the speed cap
-// actually binds on level ground. It is the case for gating the cap on a
-// negative gradient — the obvious reading of a constant that exists for
-// descents — and the reason not to: capping only below zero leaves this
-// profile solving past the cap at +0.01% and pinned to it at -0.01%, so the
-// bike comes out slower downhill than up, with a cliff at exactly zero.
+// The same guarantee at the extremes Load admits, where the speed cap binds on
+// level ground. Capping only below zero leaves this profile solving past the cap
+// at +0.01% and pinned to it at -0.01%, so the bike comes out slower downhill
+// than up, with a cliff at exactly zero.
 func TestPredictPhysicsHalfIsNeverSlowerDownhillAtTheValidatedExtremes(t *testing.T) {
 	coefficients := testCoefficients()
 	coefficients.SecondsPerKM, coefficients.SecondsPerAscentM = 0, 0
@@ -313,11 +307,9 @@ func TestPoweredSpeedBottomsOutRatherThanDivergingWhenNoBracketedSpeedSuffices(t
 	assert.InDelta(t, minSolveSpeedMetresPerSecond, speed, 1e-12)
 }
 
-// TestPredictSurfaceSelectsRollingResistance exercises the crr(kind) lookup
-// mechanism directly, with an explicitly differentiated map — not what Load
-// produces since #239 selected the scalar (every real profile now maps every
-// kind to the same value), but the mechanism itself is unchanged and stays
-// covered in case a future profile ever varies it again.
+// Exercises the crr(kind) lookup with an explicitly differentiated map. Load now
+// maps every kind to the same scalar, but the mechanism is unchanged and stays
+// covered in case a future profile varies it again.
 func TestPredictSurfaceSelectsRollingResistance(t *testing.T) {
 	coefficients := testCoefficients()
 	coefficients.CrrBySurface = map[surface.Kind]float64{surface.KindAsphalt: 0.005, surface.KindGravel: 0.02}

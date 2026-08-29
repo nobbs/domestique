@@ -1,10 +1,6 @@
-// Package ridemodel is the forward physical model that turns a stage's
-// geometry and a set of hybrid coefficients into a predicted moving time.
-//
-// It is a pure function of its inputs: nothing here reaches a network, SQLite,
-// or the clock. dev/fitter's benchmark and this package's Predictor both run
-// exactly this model, so a coefficient set means the same thing wherever it is
-// evaluated.
+// Package ridemodel is the forward physical model that turns a stage's geometry
+// and a set of hybrid coefficients into a predicted moving time. It is a pure
+// function of its inputs, and dev/fitter's benchmark runs exactly this model.
 package ridemodel
 
 import (
@@ -21,34 +17,26 @@ import (
 	"github.com/nobbs/domestique/internal/surface"
 )
 
-// Physical plausibility bounds for a loaded coefficient file. They are wide
-// enough to admit any rider and machine and narrow enough to catch a
-// transposed unit or a fit that did not converge — the same purpose #215's own
-// tyre-relative Crr band serves, drawn here instead against the file this
-// service actually loads.
+// Physical plausibility bounds for a loaded coefficient file: wide enough to
+// admit any rider and machine, narrow enough to catch a transposed unit or a
+// fit that did not converge.
 const (
 	minMassKG     = 20.0
 	maxMassKG     = 300.0
 	minPowerWatts = 20.0
 	maxPowerWatts = 1000.0
-	// minCdAM2 is below anything a person on a bicycle presents to the wind —
-	// an aggressive hour-record position sits around 0.19 m². Below this, the
-	// powered solver's fixed speed bracket ([0, maxSolveSpeedMetresPerSecond])
-	// can fail to contain the equation's true root at high configured power,
-	// which would otherwise report a crawl speed rather than a fast one.
+	// minCdAM2 is below anything a person on a bicycle presents to the wind; an
+	// hour-record position sits around 0.19 m². Below this the powered solver's
+	// fixed speed bracket can fail to contain the true root at high power.
 	minCdAM2 = 0.15
 	maxCdAM2 = 2.0
 	maxCrr   = 0.05
 )
 
-// Coefficients are the values the accepted hybrid model — #213's weighted
-// average of fixed physics and a rides-calibrated route correction — can
-// legitimately vary. Everything else (the blend weight, drivetrain efficiency,
-// standard air density, the descent cap) is a versioned model
-// constant in model.go, not an operator input; see modelVersion's own comment
-// for why that split is what makes an upgrade to those constants still
-// invalidate a cached prediction. They arrive as one file, loaded once at
-// startup.
+// Coefficients are the values the hybrid model can legitimately vary. The blend
+// weight, drivetrain efficiency, air density and descent cap are versioned model
+// constants in model.go, not operator inputs. They arrive as one file, loaded
+// once at startup.
 type Coefficients struct {
 	CrrBySurface      map[surface.Kind]float64 // every surface.Kind mapped to the same scalar Crr — see crr's doc comment
 	Fingerprint       string
@@ -58,24 +46,17 @@ type Coefficients struct {
 	CdAM2             float64
 	SecondsPerKM      float64
 	SecondsPerAscentM float64
-	// EvaluatedRides, BiasPercent, MAEPercent, and P90Percent are the
-	// profile's measured unseen-route error, pooled across #251's
-	// rolling-origin folds rather than read off a single frozen split.
-	// Unlike every field above, these are optional: a file written before
-	// #217 omits them, and EvaluatedRides == 0 is the sentinel that means
-	// "not measured" — a real evaluation always scores more than zero rides,
-	// so it can't collide with a genuine reading the way a zero bias
-	// legitimately could.
+	// EvaluatedRides, BiasPercent, MAEPercent, and P90Percent are the profile's
+	// measured unseen-route error, pooled across rolling-origin folds. Optional:
+	// EvaluatedRides == 0 is the sentinel for "not measured", which a real
+	// evaluation can never produce.
 	EvaluatedRides int
 	BiasPercent    float64
 	MAEPercent     float64
 	P90Percent     float64
-	// TrainingWindowMonths is how far back the fit that produced
-	// SecondsPerKM and SecondsPerAscentM was allowed to reach. Nothing here
-	// reads it — the service only predicts — but without it a profile cannot
-	// be reproduced from its own metadata: CalibrationCutoff says where the
-	// training data ended and this says where it began. Optional, and zero
-	// means a file that predates #251 and was fit over all history.
+	// TrainingWindowMonths is how far back the fit that produced SecondsPerKM and
+	// SecondsPerAscentM reached. Nothing here reads it, but without it a profile
+	// cannot be reproduced from its own metadata. Zero means all history.
 	TrainingWindowMonths int
 }
 
@@ -87,16 +68,10 @@ func (c Coefficients) HasValidation() bool {
 	return c.EvaluatedRides > 0
 }
 
-// crr returns the rolling resistance for a segment, still selecting by kind
-// (with the KindUnknown-to-asphalt fallback the surface classification
-// pipeline expects) rather than ignoring it. What changed is what Load fills
-// CrrBySurface with: #239's route-disjoint benchmark found the per-surface
-// Crr table no material improvement over one scalar value on the operator's
-// real corpus, so every kind now maps to that same scalar for a loaded file,
-// and kind has no effect on the result in practice. The lookup itself stays
-// exactly as it was — Predict, Predictor, and the cache's surface-generation
-// tracking are unchanged by this — in case a future profile ever varies it
-// again.
+// crr returns the rolling resistance for a segment, selecting by kind with a
+// KindUnknown-to-asphalt fallback. Load currently fills CrrBySurface with one
+// scalar for every kind, so kind has no effect in practice; the lookup stays in
+// case a future profile varies it again.
 //
 //nolint:gocritic // value receiver: Coefficients is immutable once loaded, and a pointer would let a caller mutate the shared instance mid-prediction.
 func (c Coefficients) crr(kind surface.Kind) float64 {
@@ -124,14 +99,9 @@ type rawCoefficients struct {
 	TrainingWindowMonths int `toml:"training_window_months"`
 }
 
-// Load reads, parses, and validates a coefficient file. A missing, malformed,
-// or physically impossible file is a startup failure: main refuses to serve a
-// prediction it cannot stand behind rather than falling back to silence. A
-// file in the old physics-fitted schema — a `[crr]` table, `drive_efficiency`,
-// no `seconds_per_km` — fails here too: `crr` no longer unmarshals as a table
-// into a float field, and the new required fields are absent, so it is
-// rejected the same way any other malformed file is, with no compatibility
-// path carried for a schema this service no longer runs.
+// Load reads, parses, and validates a coefficient file. A missing, malformed, or
+// physically impossible file is a startup failure. A file in the old
+// physics-fitted schema fails here too: no compatibility path is carried.
 func Load(path string) (Coefficients, error) {
 	data, err := os.ReadFile(path) //nolint:gosec // path is an operator-configured absolute file, not user input.
 	if err != nil {
@@ -148,28 +118,23 @@ func Load(path string) (Coefficients, error) {
 		return Coefficients{}, err
 	}
 
-	// modelVersion is mixed into the hash, not just the file's own bytes: a
-	// code upgrade that changes one of model.go's versioned constants must
-	// still invalidate a cached prediction even when the operator's file is
-	// byte-for-byte unchanged. See modelVersion's own comment and
-	// fingerprintOf's for why it isn't simple concatenation.
+	// modelVersion is mixed into the hash, not just the file's bytes: a code
+	// upgrade that changes a versioned constant must invalidate a cached
+	// prediction even when the file is byte-for-byte unchanged.
 	coefficients.Fingerprint = fingerprintOf(modelVersion, data)
 
 	return coefficients, nil
 }
 
-// fingerprintOf hashes version and data with version's length written ahead
-// of it, so the two fields can never be reinterpreted as a different
-// (version, data) pair that happens to concatenate to the same bytes — a
-// longer version string whose extra suffix matches the shortened data's own
-// prefix, for one. Plain concatenation would not carry that guarantee.
+// fingerprintOf hashes version and data with version's length written ahead of
+// it, so the two can never be reinterpreted as a different (version, data) pair
+// that concatenates to the same bytes.
 func fingerprintOf(version string, data []byte) string {
 	hash := sha256.New()
 	var versionLength [8]byte
 	binary.BigEndian.PutUint64(versionLength[:], uint64(len(version)))
-	// hash.Hash.Write never returns an error — the interface only carries one
-	// because it embeds io.Writer — but the ignore is made explicit rather
-	// than implicit for a reader or a future linter change.
+	// hash.Hash.Write never returns an error — the interface carries one only
+	// because it embeds io.Writer.
 	_, _ = hash.Write(versionLength[:])
 	_, _ = hash.Write([]byte(version))
 	_, _ = hash.Write(data)
@@ -199,10 +164,9 @@ func (r *rawCoefficients) build() (Coefficients, error) {
 	if _, parseErr := time.Parse(time.DateOnly, r.CalibrationCutoff); parseErr != nil {
 		return Coefficients{}, fmt.Errorf("ridemodel: calibration_cutoff must be a date in %s form: %w", time.DateOnly, parseErr)
 	}
-	// Optional, but a value present at all must be a value that could mean
-	// something: EvaluatedRides is a count, and MAEPercent/P90Percent are
-	// magnitudes of absolute error, so none of the three can be negative.
-	// BiasPercent is signed and gets no such check.
+	// Optional, but a value present must be one that could mean something:
+	// EvaluatedRides is a count and the two percentages are magnitudes, so none
+	// can be negative. BiasPercent is signed and gets no such check.
 	if r.EvaluatedRides < 0 {
 		return Coefficients{}, errors.New("ridemodel: evaluated_rides must not be negative")
 	}
@@ -215,11 +179,9 @@ func (r *rawCoefficients) build() (Coefficients, error) {
 	if r.TrainingWindowMonths < 0 {
 		return Coefficients{}, errors.New("ridemodel: training_window_months must not be negative")
 	}
-	// A partially-updated file — one of the three percentages set without
-	// evaluated_rides — must not silently load and then drop the metadata:
-	// HasValidation() would read EvaluatedRides == 0 as "not measured" and
-	// serve none of it, which is exactly the configuration mistake this
-	// catches rather than masks.
+	// A partially-updated file — percentages set without evaluated_rides — must
+	// not silently load and drop the metadata: HasValidation() would read it as
+	// "not measured" and serve none of it.
 	if r.EvaluatedRides == 0 && (r.BiasPercent != 0 || r.MAEPercent != 0 || r.P90Percent != 0) {
 		return Coefficients{}, errors.New(
 			"ridemodel: bias_percent, mae_percent, and p90_percent require evaluated_rides",

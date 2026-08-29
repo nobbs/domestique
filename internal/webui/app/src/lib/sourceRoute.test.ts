@@ -74,10 +74,8 @@ describe("sourceRoute", () => {
   });
 
   // The identifier is the whole of what travels. Anything else on the URL would
-  // be telling the provider something about the reader that it did not ask for.
-  // The service refuses a base URL carrying either, so this is the second lock
-  // on the same door: nothing the operator configured travels to the provider
-  // beyond the address of the route.
+  // tell the provider something about the reader it did not ask for. The service
+  // refuses a base URL carrying either, so this is the second lock on that door.
   it("drops a query or fragment a base URL arrives with", () => {
     expect(sourceRoute(VELOPLANNER, `${BASE}?utm_source=domestique`, 7)?.href).toBe(
       "https://source.example.test/user-routes/7",

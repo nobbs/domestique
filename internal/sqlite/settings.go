@@ -36,11 +36,8 @@ func (s *Store) SetSyncSchedule(ctx context.Context, source, targets bool) error
 }
 
 // RuntimeSettings reads the settings an operator edits while the service is
-// running. It satisfies runtimeconfig.Store.
-//
-// The two lists come back in the order they were arranged in, because both mean
-// something different rearranged: the first basemap is the one a browser that
-// has never chosen loads.
+// running. It satisfies runtimeconfig.Store. Both lists come back in the order
+// they were arranged in: the first basemap is what a browser loads by default.
 func (s *Store) RuntimeSettings(ctx context.Context) (runtimeconfig.Values, error) {
 	var (
 		values                 runtimeconfig.Values
@@ -95,11 +92,9 @@ func (s *Store) RuntimeSettings(ctx context.Context) (runtimeconfig.Values, erro
 	return values, nil
 }
 
-// SetRuntimeSettings replaces every runtime setting in one transaction.
-//
-// The lists are deleted and rewritten rather than reconciled row by row. They
-// are short, they arrive complete, and an edit that reorders one changes every
-// position in it anyway.
+// SetRuntimeSettings replaces every runtime setting in one transaction. The lists
+// are deleted and rewritten rather than reconciled: they are short, they arrive
+// complete, and reordering one changes every position anyway.
 //
 //nolint:gocritic // value param: this method conforms to the runtimeconfig.Store contract.
 func (s *Store) SetRuntimeSettings(ctx context.Context, values runtimeconfig.Values) error {
@@ -174,11 +169,9 @@ func (s *Store) SetRuntimeSettings(ctx context.Context, values runtimeconfig.Val
 		`, position, targetID); err != nil {
 			return fmt.Errorf("storing a target: %w", err)
 		}
-		// A newly named slot gets its durable record here rather than at the
-		// next startup, so the OAuth onboarding the operator goes on to do has
-		// a row to authorize. A slot removed from the list keeps its record:
-		// the state is what a slot renamed back would want, and nothing reads a
-		// record whose slot is not configured.
+		// A newly named slot gets its durable record here rather than at the next
+		// startup, so the OAuth onboarding that follows has a row to authorize. A
+		// removed slot keeps its record, and nothing reads an unconfigured one.
 		if _, err := transaction.ExecContext(ctx, `
 			INSERT INTO targets (slot, authorization_state, updated_at_unix)
 			VALUES (?, ?, ?)
@@ -269,12 +262,9 @@ func (s *Store) runtimeSources(ctx context.Context) ([]runtimeconfig.Source, err
 	return sources, nil
 }
 
-// RuntimeSecrets reads every stored credential. It satisfies
-// runtimeconfig.Store.
-//
+// RuntimeSecrets reads every stored credential. It satisfies runtimeconfig.Store.
 // A ciphertext that will not open is a state failure rather than an absent
-// secret: it means the database was written under a different encryption key,
-// and starting anyway would silently reauthorize nothing and reach no upstream.
+// secret: the database was written under a different encryption key.
 func (s *Store) RuntimeSecrets(ctx context.Context) (map[runtimeconfig.SecretName]runtimeconfig.Secret, error) {
 	rows, err := s.database.QueryContext(ctx, `SELECT name, value FROM runtime_secret`)
 	if err != nil {

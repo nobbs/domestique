@@ -17,8 +17,7 @@ type OAuth interface {
 }
 
 // SyncPhase names the half of a synchronization a manual trigger asks for, or
-// both halves together. It is declared here rather than imported so this package
-// keeps knowing nothing about how synchronization is implemented.
+// both. Declared here so this package knows nothing about the implementation.
 type SyncPhase string
 
 const (
@@ -31,12 +30,8 @@ const (
 )
 
 // Sync is the synchronization process behind this surface: it starts a manual
-// run, and it says what has not finished yet.
-//
-// Both answers come from the process rather than from stored state. A run that
-// has not finished has recorded nothing, and one that has not started has
-// nothing to record, so a status built from state alone can only describe the
-// last run that ended.
+// run and says what has not finished. Both answers come from the process, since
+// a run that has not finished has recorded nothing.
 type Sync interface {
 	// Trigger starts one manual synchronization and reports whether it was
 	// accepted. An accepted run continues independently of the HTTP request.
@@ -45,15 +40,12 @@ type Sync interface {
 	// target, on the same terms as Trigger scoped to that slot alone.
 	TriggerTarget(targetID string) bool
 	// TriggerClear starts a manual clear of exactly one configured target,
-	// deleting every route this service owns there. It is destructive, and
-	// reachable only because an operator asked for it directly.
+	// deleting every route this service owns there. Destructive.
 	TriggerClear(targetID string) bool
 	// Activity reports the run that has not finished, if there is one.
 	Activity() SyncActivityState
-	// TriggerAnnotate starts one manual surface-classification pass and reports
-	// whether it was accepted. Unlike Trigger, it never reads the source or
-	// writes a target — it shares Trigger's guard, so it is refused while a
-	// synchronization or another such pass is already under way.
+	// TriggerAnnotate starts one surface-classification pass. It never reads the
+	// source or writes a target, and shares Trigger's single-flight guard.
 	TriggerAnnotate() bool
 	// SurfaceIncomplete reports how many stages the most recently completed
 	// classification pass could not classify.
@@ -66,8 +58,7 @@ type Sync interface {
 // SyncActivityState is what the process knows about a run that has not
 // finished. Its zero value says nothing is under way.
 type SyncActivityState struct {
-	// StartsAt is when a run being deliberately held back is due to start —
-	// an initial delay rather than the ordinary wait for the next tick. Zero
+	// StartsAt is when a run being held back by the initial delay is due. Zero
 	// when nothing is being held.
 	StartsAt time.Time
 	// Phase names the half in flight. Empty while a run has been accepted but
@@ -79,8 +70,7 @@ type SyncActivityState struct {
 }
 
 // SyncFuncs adapts a pair of functions to Sync for manual wiring. An unset
-// ActivityFunc reports no work under way, which is the honest answer from a
-// process whose runs begin and end inside the request that asked for one.
+// ActivityFunc reports no work under way.
 type SyncFuncs struct {
 	TriggerFunc           func(phase SyncPhase) bool
 	TriggerTargetFunc     func(targetID string) bool
@@ -102,9 +92,7 @@ func (f SyncFuncs) TriggerTarget(targetID string) bool {
 }
 
 // TriggerClear starts the adapted manual single-target clear. An unset
-// TriggerClearFunc refuses, so a wiring that never offered the operation
-// answers as though it were already busy rather than panicking on a route
-// nothing serves.
+// TriggerClearFunc refuses rather than panicking.
 func (f SyncFuncs) TriggerClear(targetID string) bool {
 	if f.TriggerClearFunc == nil {
 		return false
@@ -163,9 +151,6 @@ type Assets interface {
 
 // State provides only non-secret metadata and stored geometry for the read
 // model. It never exposes tokens or upstream response bodies.
-//
-// It is composed of the concerns behind the served surface rather than written
-// as one long list, so a reader can see which of them a route actually touches.
 type State interface {
 	TargetState
 	StageState
@@ -173,24 +158,19 @@ type State interface {
 	ScheduleState
 }
 
-// TargetState is what is known locally about each configured Wahoo account:
-// whether it is onboarded, what it was last written, and how its own last
-// reconciliation ended. Every one of these is a local read — a status request
-// never asks Wahoo what it holds.
+// TargetState is what is known locally about each configured Wahoo account.
+// Every read is local: a status request never asks Wahoo what it holds.
 type TargetState interface {
 	ForEachTarget(ctx context.Context, visit func(id, authorizationState string) error) error
 	// ForEachPendingAuthorization visits the slots with an authorization in
-	// flight. The stored state cannot say so — it holds what a slot durably is,
-	// and being midway through the browser flow is not that — so the status view
-	// reads the two together.
+	// flight. Stored state holds what a slot durably is, which this is not.
 	ForEachPendingAuthorization(ctx context.Context, visit func(targetID string) error) error
 	ForEachTargetStage(ctx context.Context, targetID string, visit func(provider route.Provider, routeID int64, stageOrder int, sourceRevision, contentHash string, wahooRouteID int64) error) error
 	ForEachTargetRun(ctx context.Context, visit func(targetID string, finishedAt time.Time, outcome, detail string) error) error
 }
 
-// StageState is the stored library: what each stage is, the revision it is held
-// at, and the geometry and classification derived from it. The revision here,
-// against the one in TargetState, is all convergence is derived from.
+// StageState is the stored library: what each stage is, its revision, and what
+// is derived from it. That revision against TargetState's is all convergence is.
 type StageState interface {
 	ForEachSourceStage(ctx context.Context, visit func(provider route.Provider, routeID int64, stageOrder int, sourceRevision, contentHash string) error) error
 	ForEachStageSummary(ctx context.Context, visit func(summary route.Summary) error) error
@@ -206,16 +186,13 @@ type RunState interface {
 	LastSyncRun(ctx context.Context) (completedAt time.Time, outcome, detail string, sourceStages, created, updated, deleted int, found bool, err error)
 	ForEachPhaseRun(ctx context.Context, visit func(phase string, completedAt time.Time, outcome, detail string, sourceStages, created, updated, deleted int) error) error
 	ForEachSyncRun(ctx context.Context, after string, limit int, visit func(reference, phase string, completedAt time.Time, outcome, detail string, sourceStages, created, updated, deleted int) error) (next string, usable bool, err error)
-	// LastSuccessfulPhaseCompletion returns when a phase last recorded a
-	// success, which is what the trusted inventory's reported age is measured
-	// against.
+	// LastSuccessfulPhaseCompletion returns when a phase last recorded a success,
+	// which the trusted inventory's reported age is measured against.
 	LastSuccessfulPhaseCompletion(ctx context.Context, phase string) (completedAt time.Time, found bool, err error)
 }
 
 // SettingsState is the settings an operator edits while the service runs, held
-// live and replaced a section at a time. It is satisfied by
-// *runtimeconfig.Current, which validates before it persists, so what is read
-// back here has passed the same rules startup applies.
+// live and replaced a section at a time. Satisfied by *runtimeconfig.Current.
 type SettingsState interface {
 	Values() runtimeconfig.Values
 

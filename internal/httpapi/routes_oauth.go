@@ -28,28 +28,18 @@ func (h *Handler) StartOAuth(writer http.ResponseWriter, request *http.Request) 
 
 		return
 	}
-	// Re-rendered from the parsed URL rather than sent as the string that was
-	// parsed, so what the browser is handed is provably the value the checks
-	// above accepted.
-	//
-	// Taint analysis reaches the request through targetID, which reaches the
-	// authorization URL through the OAuth service. It cannot see the two
-	// checks that make the path safe: targetID is refused unless it is one of
-	// the configured slots, and the URL the service returns is refused unless
-	// it parses as https with a host. Neither is expressible to the analyser,
-	// so the finding is suppressed here rather than answered by a third check.
+	// Re-rendered from the parsed URL, so what the browser is handed is provably
+	// the value the checks above accepted. Taint analysis cannot see those checks:
+	// targetID is refused unless it names a configured slot, and the URL is refused
+	// unless it parses as https with a host.
 	//nolint:gosec // G710: redirect target is allowlisted and scheme-checked above.
 	http.Redirect(writer, request, parsedLocation.String(), http.StatusFound)
 }
 
-// CompleteOAuth consumes the one-time OAuth state without echoing its query values.
-//
-// It returns the browser to the UI rather than to the JSON status endpoint.
-// What arrives here is an operator who was sent to Wahoo by a link on that
-// page, and the page is where the target they just connected is described; the
-// endpoint would answer the same question in a format nobody came to read. The
-// redirect drops the authorization code and state from the browser URL either
-// way, which is what the 303 is for.
+// CompleteOAuth consumes the one-time OAuth state without echoing its query
+// values. It returns the browser to the UI rather than the JSON status endpoint:
+// the operator was sent to Wahoo by a link on that page. The 303 drops the
+// authorization code and state from the browser URL.
 func (h *Handler) CompleteOAuth(writer http.ResponseWriter, request *http.Request) {
 	login := h.allowedEmail
 	query := request.URL.Query()

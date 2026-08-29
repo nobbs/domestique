@@ -7,13 +7,10 @@ import (
 )
 
 // This file builds a real .osm.pbf in memory so the decode passes can be tested
-// without a fixture nobody can read and without the network.
-//
-// The format is a sequence of blobs, each preceded by its header's length in
-// network byte order. A blob may hold its payload uncompressed, which is what
-// lets this stay a few dozen lines of protobuf wire encoding rather than a
-// dependency on a writer that does not exist in Go. The field numbers below are
-// from the OSM PBF schema and are the only thing here that is not arbitrary.
+// without a fixture nobody can read and without the network. The format is a
+// sequence of blobs, each preceded by its header's length in network byte order,
+// and a blob may hold its payload uncompressed. The field numbers below are from
+// the OSM PBF schema.
 
 type testNode struct {
 	id       int64

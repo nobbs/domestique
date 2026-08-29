@@ -69,11 +69,9 @@ export function FilterPanel({
             unit="km"
             range={filters.distanceMetres}
             onChange={(next) => onFiltersChange({ ...filters, distanceMetres: next })}
-            // Rounded on the way in as well as the way out, to the same 0.1 km
-            // step: a value typed with finer precision than the field ever
-            // displays would otherwise keep filtering at that precision after
-            // the panel folds and reopens, on a field that now shows a
-            // rounder number than the one actually in force.
+            // Rounded on the way in as well as out, to the same 0.1 km step: a value
+            // typed with finer precision would otherwise keep filtering at that precision
+            // while the field shows a rounder number.
             toDisplay={(metres) => Math.round((metres / 1000) * 10) / 10}
             toStored={(km) => Math.round(km * 10) * 100}
           />

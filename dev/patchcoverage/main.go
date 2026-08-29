@@ -1,75 +1,27 @@
-// Command patchcoverage decides, locally, the coverage question that decides a
-// merge.
+// Command patchcoverage grades, locally, the coverage question that decides a
+// merge. It reads the same two reports CI uploads — .coverage/go.out and
+// .coverage/ui/lcov.info — and applies codecov.yml's rules to them.
 //
-// codecov/patch/go is the only merge-blocking status this repository has with no
-// local equivalent, and it is the one that fails: the shortfall is discovered
-// five minutes and one push after the change was written, and then again after
-// the fix. This reads the same two reports CI uploads — .coverage/go.out and
-// .coverage/ui/lcov.info, as written by `mise run coverage` — and grades them by
-// the rules in codecov.yml, before any of that.
+// It needs no base measurement. Project coverage is the weighted average of the
+// untouched lines and the patch, so the head's number lies between the base's and
+// the patch's, and a patch clearing the head's clears the base's. Inside
+// codecov.yml's one-point threshold the answer turns on how far the base sits
+// above the head, so it is reported as undecidable and counted as a shortfall:
+// stricter than the status within that band, never looser.
 //
-// # Why no base measurement is needed
+// Partials count against, as Codecov's ratio does — a Go line held by both a
+// covered and an uncovered block, or an LCOV line with an untaken BRDA branch.
+// The numbers are line coverage as Codecov computes it, not the statement
+// coverage dev/coveragesummary prints.
 //
-// codecov.yml leaves the patch statuses' target unset, so each compares the
-// patch against the base commit's project coverage for the same flag. This
-// compares it against the head's instead, and for the bare comparison that is
-// not an approximation: project coverage is the weighted average of the lines
-// the patch did not touch and the patch itself, so the head's number always
-// lies between the base's and the patch's. A patch that clears the head's
-// number therefore clears the base's, and one that falls short of either falls
-// short of both. That is why nothing here needs a second report, and so why
-// nothing here goes to the network.
+// The UI half reproduces Codecov exactly, LCOV already describing lines. The Go
+// half is approximate: a profile describes blocks, and mapping them to lines
+// reimplements the uploader's unpublished ignorable-line rule, landing a couple
+// of tenths of a point low. It moves both percentages the same way.
 //
-// The threshold is where that stops holding, and the failure would be a false
-// pass. codecov.yml allows the patch to sit 1% under the base, and the head's
-// number is not the base's — a large patch pulls it toward the patch's own,
-// which would let this report a pass where the base is more than a point
-// higher and the status fails. So the slack is not spent blindly. Three
-// verdicts come out of the one measurement:
-//
-//   - patch at or above the head's project coverage: the status passes, with
-//     the threshold untouched and nothing resting on it.
-//   - patch more than a point below it: the base is higher still, so the status
-//     fails.
-//   - patch inside that point: undecidable from this report alone, because the
-//     answer turns on how far the base sits above the head. It is reported as
-//     such and counted as a shortfall, which makes this stricter than the
-//     status within a band under a point wide and never looser.
-//
-// # Partials count against
-//
-// Codecov's ratio is hits over hits plus misses plus partials, and a partial is
-// a line reached one way and not another: in a Go profile, a line held by both a
-// covered block and an uncovered one — `if err != nil {` whose error path never
-// ran; in LCOV, a line whose BRDA records a branch nobody took. Counting those as
-// covered is what makes a hand-rolled measurement report 95% where the gate says
-// 77%.
-//
-// # What the numbers mean
-//
-// Line coverage, as Codecov computes it. It is not what dev/coveragesummary
-// prints — that is statement coverage over the same profile, and it reads
-// several points higher. Neither is wrong; only one of them gates.
-//
-// The UI half reproduces Codecov exactly, because LCOV already describes lines:
-// against this repository's own report it agrees on all four figures — lines,
-// hits, misses and partials.
-//
-// The Go half does not, because a profile describes blocks rather than lines,
-// and going from one to the other takes a judgement call. A block covers every
-// line it spans, minus the lines Codecov's uploader marks ignorable from the
-// source — blank ones, comment-only ones, and ones holding nothing but a closing
-// brace. That last rule is the uploader's rather than a guess, but the exact set
-// it computes is not published and is reimplemented here approximately: measured
-// against Codecov's own figures for this repository, the Go project percentage
-// lands a couple of tenths of a point low. That is well inside the threshold
-// below, and it moves both percentages the same way, which is the only thing the
-// comparison reads.
-//
-// The diff runs against the working tree, so this is usable while writing rather
-// than only before a push. A file git does not track yet appears in no diff at
-// all: `git add -N` puts it in one, and untracked files are named in the output
-// so that a missing one is visible rather than silently uncounted.
+// The diff runs against the working tree, so this is usable while writing. A file
+// git does not track appears in no diff: `git add -N` puts it in one, and
+// untracked files are named in the output rather than silently uncounted.
 package main
 
 import (
@@ -278,14 +230,11 @@ func parseProfile(in io.Reader) (lines, error) {
 // ignorer reports whether a line carries no code, and so is measured by nobody.
 type ignorer func(file string, line int) bool
 
-// readProfile reads a profile into line statuses.
-//
-// A block is reported once per test binary that instrumented its package, so the
-// same position arrives several times and is covered if any of them reached it.
-// Only then are blocks projected onto lines: a block spanning several lines
-// covers all of them, and a line held by both a covered block and an uncovered
-// one is a partial. Doing it in the other order would make a block one binary
-// never reached partial every line of a block another binary covered outright.
+// readProfile reads a profile into line statuses. A block is reported once per
+// test binary that instrumented its package, so the same position arrives several
+// times and is covered if any reached it. Only then are blocks projected onto
+// lines: the other order would make a block one binary never reached partial
+// every line another binary covered outright.
 func readProfile(in io.Reader, skip ignorer) (lines, error) {
 	blocks := make(map[string]bool)
 
@@ -437,17 +386,12 @@ func lineOf(pair string) (int, error) {
 	return number, nil
 }
 
-// parseLCOV reads Vitest's LCOV file into the status of every line it measured.
-//
-// A DA record carries a line and how often it ran; a BRDA record carries one
-// branch on a line and how often that branch was taken, with "-" for a branch
-// under an expression that never evaluated. A line that ran but holds a branch
-// nobody took is a partial, which is exactly how Codecov reads the same file.
-//
-// A BRDA line with no DA record beside it is measured all the same, which is
-// easy to miss and worth 160 of this repository's 1739 UI lines: Codecov reads
-// its status from the branches alone — every one untaken is a miss, some taken
-// is a partial, all taken is a hit.
+// parseLCOV reads Vitest's LCOV file into the status of every line it measured. A
+// DA record carries a line and how often it ran; a BRDA record carries one branch
+// and how often it was taken, "-" for one never evaluated. A line that ran but
+// holds an untaken branch is a partial. A BRDA line with no DA record beside it is
+// measured all the same — worth 160 of 1739 UI lines — its status read from the
+// branches alone.
 func parseLCOV(in io.Reader) (lines, error) {
 	const root = "internal/webui/app/"
 

@@ -1,12 +1,8 @@
 // Command coveragesummary turns a merged Go coverage profile into a per-package
-// summary, reading the profile on standard input.
-//
-// The profile is produced with -coverpkg over the whole service, so that code
-// exercised only through another package's tests is not reported as dead. The
-// cost is that the percentage `go test` prints for each package becomes the
-// fraction of the whole service that that package's tests reached, which is not
-// a number anyone wants to read. The merged profile still holds the real one,
-// so this reads it from there.
+// summary, reading the profile on standard input. The profile is produced with
+// -coverpkg over the whole service, which makes the percentage `go test` prints
+// per package the fraction of the whole service its tests reached. The merged
+// profile still holds the real one, so this reads it from there.
 package main
 
 import (

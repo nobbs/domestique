@@ -229,12 +229,10 @@ func TestPredictorFallsBackToAsphaltWhenNoSurfaceIsCached(t *testing.T) {
 	assert.InDelta(t, asphaltOnly.MovingSeconds, *stored.movingSeconds, 1e-9, "an unclassified stage is timed as asphalt")
 }
 
-// Regression: StageSurfaceHash can report a real, non-empty generation while
-// StageSurface itself fails to read the ranges — a transient error, distinct
-// from nothing being classified yet. The stored fingerprint must not still
-// claim that generation, or a later successful read would look, to the cache,
-// identical to one that already used it, and the asphalt fallback this run
-// took would never be retried.
+// Regression: StageSurfaceHash can report a real generation while StageSurface
+// fails to read the ranges — a transient error, distinct from nothing being
+// classified yet. The stored fingerprint must not claim that generation, or the
+// asphalt fallback this run took would never be retried.
 func TestPredictorDoesNotLockInAnAsphaltFallbackWhenSurfaceRangesFailToRead(t *testing.T) {
 	stage := stageWithElevation(t, "hash-1")
 	coefficients := testCoefficients()

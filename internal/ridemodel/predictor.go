@@ -9,11 +9,9 @@ import (
 	"github.com/nobbs/domestique/internal/surface"
 )
 
-// SurfaceSource supplies the surface classification cached for a stage's
-// current geometry. It is satisfied by *sqlite.Store's existing surface reads —
-// the same two methods internal/httpapi already calls to serve the geometry
-// endpoint — so the predictor asks the same question surface classification
-// itself answers, rather than opening a second path to the same cache.
+// SurfaceSource supplies the surface classification cached for a stage's current
+// geometry. Satisfied by *sqlite.Store's existing surface reads, so the predictor
+// asks the same question rather than opening a second path to the cache.
 type SurfaceSource interface {
 	StageSurfaceHash(
 		ctx context.Context, provider route.Provider, routeID int64, stageOrder int,
@@ -99,14 +97,10 @@ func (p *Predictor) predictStage(ctx context.Context, stage *route.Route, surfac
 	geometry := stage.Geometry()
 	kinds := p.surfaceKinds(ctx, stage, len(geometry))
 	if kinds == nil {
-		// Predict reads a nil kinds as asphalt throughout, whatever the reason:
-		// nothing classified yet, or classification exists but could not be
-		// read or decoded this run. surfaceGeneration must not still claim the
-		// second case used it — caching the real generation against an
-		// asphalt-fallback prediction would make a transient read failure
-		// indistinguishable, to the next run, from a stage that genuinely used
-		// its classification, locking the fallback in permanently instead of
-		// retrying once the read succeeds.
+		// Predict reads a nil kinds as asphalt throughout, whatever the reason.
+		// surfaceGeneration must not claim a real generation here: caching one
+		// against an asphalt fallback would lock a transient read failure in
+		// permanently instead of retrying once the read succeeds.
 		surfaceGeneration = ""
 	}
 
@@ -136,11 +130,9 @@ func (p *Predictor) predictStage(ctx context.Context, stage *route.Route, surfac
 }
 
 // currentSurfaceGeneration is the value a duration is fingerprinted against. It
-// is empty both when nothing has classified this stage yet and when a stale
-// classification exists for an earlier geometry, and equally when the source
-// itself could not answer — a prediction is never blocked on surface
-// classification being available, so any of those three reads as "no current
-// classification", which is exactly what "timed as asphalt throughout" means.
+// is empty when nothing has classified this stage, when a stale classification
+// exists for an earlier geometry, and when the source could not answer: all three
+// mean "timed as asphalt throughout".
 func (p *Predictor) currentSurfaceGeneration(ctx context.Context, stage *route.Route) string {
 	key := stage.Key()
 	contentHash, generation, found, err := p.source.StageSurfaceHash(ctx, key.Provider(), key.SourceRouteID(), key.StageOrder())

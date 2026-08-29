@@ -17,11 +17,10 @@ const earthRadiusMetres = 6_371_000.0
 // list. Distinct from a decode failure: the file was never opened.
 var errUnsupportedFile = errors.New("no parser for this file format")
 
-// ingestActivity turns one activities.csv row into a per-ride summary, and
-// either outdoor sample rows or an indoor reference row, never both. Every
-// exclusion is recorded on the summary rather than returned as an error: a
-// run over hundreds of activities must finish and report on all of them, not
-// stop at the first one a file format or a missing channel does not like.
+// ingestActivity turns one activities.csv row into a per-ride summary, and either
+// outdoor sample rows or an indoor reference row, never both. Every exclusion is
+// recorded on the summary rather than returned: a run over hundreds of activities
+// must finish and report on all of them.
 func ingestActivity(exportDir string, row *activityRow) (rideSummary, []sample, []indoorSample) {
 	summary := rideSummary{
 		RideID:           row.ID,
@@ -121,12 +120,9 @@ func ingestActivity(exportDir string, row *activityRow) (rideSummary, []sample, 
 	return summary, samples, nil
 }
 
-// resolveActivityFile joins exportDir with the Filename column, and refuses
-// the result if it does not stay inside exportDir. Filename is data this
-// tool did not write — an absolute path, or one built from "..", would let a
-// malformed or tampered export point this tool at an arbitrary local file;
-// this is what stops that regardless of whether Filename could also just be
-// an honest mistake.
+// resolveActivityFile joins exportDir with the Filename column and refuses a
+// result that does not stay inside exportDir. Filename is data this tool did not
+// write: an absolute path, or one built from "..", would point it elsewhere.
 func resolveActivityFile(exportDir, filename string) (string, error) {
 	if filepath.IsAbs(filename) {
 		return "", fmt.Errorf("filename %q must be relative", filename)
@@ -214,11 +210,9 @@ func anyRecordHasAltitude(records []point) bool {
 	return false
 }
 
-// buildSamples turns a decoded record stream into one row per interval,
-// starting at the second record: the first has no predecessor to form an
-// interval with. A pair whose Δt is not strictly positive — a clock that
-// jumped backward, or a duplicate timestamp — is skipped rather than
-// producing a divide-by-zero or negative speed.
+// buildSamples turns a decoded record stream into one row per interval, starting
+// at the second record. A pair whose Δt is not strictly positive — a backward
+// clock, a duplicate timestamp — is skipped rather than dividing by zero.
 func buildSamples(rideID string, records []point, derived bool) []sample {
 	if len(records) < 2 {
 		return nil
@@ -338,14 +332,10 @@ func haversineMetres(left, right *point) float64 {
 	return earthRadiusMetres * 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
 }
 
-// windowedGradients returns, for each record, the gradient measured over a
-// window of at least gradientWindowMetres ending at it — never between two
-// adjacent records, which can be metres apart and dominated by altitude
-// error rather than terrain. Doubling how densely a ride is sampled leaves
-// these materially unchanged, because the window is a physical distance, not
-// a point count: the same expanding-trailing-window technique
-// internal/route.Route.MaxGradientPercent uses, adapted to report every
-// point's own value instead of only the steepest.
+// windowedGradients returns, for each record, the gradient over a window of at
+// least gradientWindowMetres ending at it, never between adjacent records where
+// altitude error dominates. The window is a physical distance, so sampling
+// density does not move these. Same technique as MaxGradientPercent, per point.
 func windowedGradients(records []point, cumulative []float64) []float64 {
 	gradients := make([]float64, len(records))
 	trailing := 0

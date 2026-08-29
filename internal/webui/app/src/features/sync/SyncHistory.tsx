@@ -37,12 +37,9 @@ export function SyncHistory() {
     useSyncRuns();
 
   // A run that finishes writes a row this list does not know about. The status
-  // above is already polled while a run is in flight, so the instant it reports
-  // a newer completion is the instant there is something new to read here.
-  //
-  // A change is what triggers the refresh, not a value: the first completion
-  // this component sees is the one the page was loaded with, and re-asking for
-  // a page that has just been fetched would be asking on nobody's behalf.
+  // above is already polled while a run is in flight, so its newer completion is
+  // the signal. A change triggers the refresh, not a value: the first completion
+  // seen is the one the page loaded with.
   const lastCompletedAt = status?.sync.lastCompletedAt;
   const seenCompletion = useRef(lastCompletedAt);
   useEffect(() => {

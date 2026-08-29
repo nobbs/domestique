@@ -1,12 +1,7 @@
-// Package build reports which public source revision produced this binary, and
-// which image is running it.
-//
-// Both facts come from outside the program: the revision is injected at link
-// time by the trusted CI build, and the image reference is whatever the
-// deploying host was pinned to. Neither can be derived here — a Docker build
-// context carries no VCS metadata, and an image cannot know its own digest
-// while it is being built — so this package's whole job is to say what is known
-// and to refuse to guess when nothing is.
+// Package build reports which public source revision produced this binary and
+// which image is running it. Both come from outside the program: the revision is
+// injected at link time by CI, and the image reference is what the deploying host
+// was pinned to. Neither can be derived here, so this package refuses to guess.
 package build
 
 import "strings"
@@ -20,10 +15,8 @@ const (
 	digestLength   = 64
 )
 
-// revision is set at link time with
-// -X github.com/nobbs/domestique/internal/build.revision=<commit sha>
-// and is never written afterwards. A build that omits it — every local build —
-// reports no revision at all rather than a plausible one.
+// revision is set at link time with -X …/internal/build.revision=<commit sha>.
+// A build that omits it — every local build — reports no revision at all.
 //
 //nolint:gochecknoglobals // A link-time -X target must be a package variable; nothing writes it at runtime.
 var revision string
@@ -40,11 +33,9 @@ type Info struct {
 	ImageDigest string
 }
 
-// Current reports the running build. imageReference is the reference the host
-// was pinned to, in any of the forms an operator's environment holds it —
-// `repo@sha256:…`, or the bare digest. Only the digest is kept: the repository
-// and registry in front of it describe where the deployment pulls from, which
-// is nothing a browser needs to be told.
+// Current reports the running build. imageReference is what the host was pinned
+// to, in any form an operator's environment holds it. Only the digest is kept:
+// the repository and registry describe where the deployment pulls from.
 func Current(imageReference string) Info {
 	return Info{
 		Revision:    validRevision(revision),

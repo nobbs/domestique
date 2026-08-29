@@ -8,11 +8,9 @@ import (
 	"time"
 )
 
-// SuccessPolicy decides what a routine successful run notifies.
-//
-// It governs routine success alone. A failure, a blocked run, and the first
-// success after either are signals an operator is waiting for, and no policy
-// here can suppress them.
+// SuccessPolicy decides what a routine successful run notifies. It governs
+// routine success alone: a failure, a blocked run, and the first success after
+// either are signals no policy here can suppress.
 type SuccessPolicy string
 
 const (
@@ -34,10 +32,8 @@ type SuccessNotification struct {
 	Interval time.Duration
 }
 
-// validate rejects a policy the composition root failed to supply.
-//
-// The zero value is not quietly treated as SuccessEvery: every value here
-// decides how much an operator hears, and a miswired one that silently went
+// validate rejects a policy the composition root failed to supply. The zero
+// value is not treated as SuccessEvery: a miswired value that silently went
 // quiet is the failure this service can least afford to hide.
 func (s SuccessNotification) validate() error {
 	switch s.Policy {
@@ -81,12 +77,8 @@ func (d digest) message(since time.Time) string {
 }
 
 // notifySuccess delivers what the configured policy allows for one successful
-// run.
-//
-// A recovery is delivered whatever the policy, because the operator is owed the
-// end of a failure they were told about. Everything else is routine, and
-// routine is what a policy may hold back — a digest reports it later, from the
-// record, rather than from here.
+// run. A recovery is delivered whatever the policy; everything else is routine,
+// which a policy may hold back for a digest to report later from the record.
 func (r *Reporter) notifySuccess(ctx context.Context, result *Result, reference string, recovered bool) {
 	if !recovered && r.notifications().Success.Policy != SuccessEvery {
 		return
@@ -96,45 +88,28 @@ func (r *Reporter) notifySuccess(ctx context.Context, result *Result, reference 
 	}
 }
 
-// recovered reports whether this success ends a run of unhealthy passes, which
-// is what makes it the recovery signal rather than a routine success.
-//
-// Anything the phase recorded other than a success counts. A target awaiting
-// OAuth records `not_ready` and notifies nothing, so a phase that failed, was
-// left needing onboarding, and then came good would otherwise leave the failure
-// alert open with no message ever closing it — the one thing the recovery signal
-// exists to prevent.
-//
-// It reads the phase's own previous run, so the answer survives a restart and
-// cannot drift from the record an operator reads back. It is asked only when a
-// policy might hold the success back; under SuccessEvery the message goes out
-// either way and the query would buy nothing.
+// recovered reports whether this success ends a run of unhealthy passes.
+// Anything the phase recorded other than a success counts, including the
+// `not_ready` a target awaiting OAuth records. It reads the phase's own previous
+// run, so the answer survives a restart, and is asked only when it can matter.
 func (r *Reporter) recovered(ctx context.Context, phase Phase) bool {
 	if r.notifications().Success.Policy == SuccessEvery {
 		return false
 	}
 	outcome, found, err := r.state.LastPhaseOutcome(ctx, string(phase))
 	if err != nil || !found {
-		// An unreadable history must not silence a success that may be the
-		// recovery. Sending one message too many costs an operator a line;
-		// withholding the recovery costs them the end of an alert.
+		// An unreadable history must not silence a success that may be the recovery:
+		// one message too many costs a line, a withheld recovery costs an alert.
 		return err != nil
 	}
 
 	return outcome != string(OutcomeSucceeded)
 }
 
-// notifyDigest sends one aggregate message per interval, covering the
-// successful runs recorded since the last one.
-//
-// It is asked once per pass, after both halves are recorded, rather than as
-// each half is notified. A pass whose halves straddled the digest would
-// otherwise anchor the next window on its own timestamp and drop the half
-// recorded a moment later, which is a run reported in no digest at all.
-//
-// The first digest of a new configuration sends nothing and starts the clock:
-// the alternative is an opening message covering however much history the
-// database happens to hold, which is not the period the operator asked for.
+// notifyDigest sends one aggregate message per interval, covering the successful
+// runs recorded since the last one. Asked once per pass, after both halves are
+// recorded, so a pass straddling the digest cannot drop the later half. The
+// first digest of a new configuration sends nothing and starts the clock.
 func (r *Reporter) notifyDigest(ctx context.Context, now time.Time) {
 	since, after, found, err := r.state.LastDigestNotification(ctx)
 	if err != nil {
@@ -148,9 +123,8 @@ func (r *Reporter) notifyDigest(ctx context.Context, now time.Time) {
 		return
 	}
 	// Two silent cases move the window without a message: the first digest of a
-	// new configuration, and a period that nothing succeeded in. Leaving the
-	// second where it was would make the next digest claim every quiet period
-	// before it as part of its own.
+	// new configuration, and a period nothing succeeded in. Leaving the second
+	// would make the next digest claim every quiet period before it.
 	if !found || totals.empty() {
 		r.anchorDigest(ctx, now, latest)
 
@@ -162,11 +136,9 @@ func (r *Reporter) notifyDigest(ctx context.Context, now time.Time) {
 	r.anchorDigest(ctx, now, latest)
 }
 
-// anchorDigest moves the window past the runs just reported.
-//
-// An anchor that cannot be written leaves the next pass to place it. That
-// repeats a period rather than losing one, which is the right way round for a
-// message whose only job is to summarise.
+// anchorDigest moves the window past the runs just reported. An anchor that
+// cannot be written leaves the next pass to place it, repeating a period rather
+// than losing one.
 func (r *Reporter) anchorDigest(ctx context.Context, now time.Time, lastRunID int64) {
 	if err := r.state.RecordDigestNotification(ctx, now, lastRunID); err != nil {
 		slog.Warn("success digest window not anchored", "reason", "state")
@@ -174,11 +146,9 @@ func (r *Reporter) anchorDigest(ctx context.Context, now time.Time, lastRunID in
 }
 
 // totalSuccessesAfter adds up the successful runs of one window and reports the
-// last run it saw, which becomes the next window's lower bound.
-//
-// Bounding by run rather than by time is what keeps a run from falling between
-// two windows: recorded times are whole seconds, so a run finishing in the same
-// second as a digest cannot be placed on one side of it reliably.
+// last run it saw, which becomes the next window's lower bound. Bounding by run
+// rather than by time keeps a run from falling between two windows: recorded
+// times are whole seconds.
 func (r *Reporter) totalSuccessesAfter(ctx context.Context, after int64) (digest, int64, error) {
 	var totals digest
 	latest := after

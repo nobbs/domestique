@@ -11,10 +11,8 @@ import (
 )
 
 // builderVersion changes whenever this package would pack the same input
-// differently — a new class in the classifier, a change of precision, a change
-// of format. It is part of the generation, so a release that reads the map
-// differently invalidates the indexes and caches built by the one before it
-// without anyone having to remember to say so.
+// differently. It is part of the generation, so a release that reads the map
+// differently invalidates the indexes and caches built by the one before it.
 const builderVersion = "1"
 
 // regionSegment is one path element of a Geofabrik slug. Slugs are operator
@@ -44,13 +42,10 @@ func ValidateRegion(slug string) error {
 	return nil
 }
 
-// generationOf fingerprints a build from what would change its output.
-//
-// The regions are sorted so the same set written in a different order is the
-// same generation, and each is paired with the checksum Geofabrik publishes for
-// its extract rather than with a timestamp. A checksum says exactly which bytes
-// were read, so an upstream file that is republished unchanged does not force a
-// rebuild, and one that changes cannot fail to.
+// generationOf fingerprints a build from what would change its output. The
+// regions are sorted, so the same set in a different order is the same
+// generation, and each is paired with Geofabrik's published checksum rather than
+// a timestamp: a republished but unchanged file forces no rebuild.
 func generationOf(checksums map[string]string) string {
 	regions := make([]string, 0, len(checksums))
 	for region := range checksums {

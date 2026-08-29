@@ -2,15 +2,10 @@
 // on, from OpenStreetMap way tagging.
 package surface
 
-// Kind is a rideability class for one stretch of route.
-//
-// The classes are deliberately few. OpenStreetMap distinguishes several dozen
-// surface values, most of which change nothing about how a stage rides: a rider
-// picking tyres cares whether the ground is sealed, firm, loose, or soft, not
-// whether the loose stuff was tagged gravel or pebblestone. Collapsing the
-// values here keeps the legend small enough to hold in your head, and makes an
-// unfamiliar tag degrade to the nearest class rather than to a colour nobody
-// has seen before.
+// Kind is a rideability class for one stretch of route. The classes are few:
+// OpenStreetMap distinguishes dozens of surface values, but a rider picking tyres
+// cares whether the ground is sealed, firm, loose or soft. Collapsing them makes
+// an unfamiliar tag degrade to the nearest class.
 type Kind uint8
 
 const (
@@ -49,17 +44,10 @@ func (k Kind) String() string {
 	return "unknown"
 }
 
-// Classify maps one way's OpenStreetMap tags to a rideability class.
-//
-// The surface tag decides wherever it is present. Where it is absent, tracktype
-// fills in for tracks only: it grades how firm a track is without naming its
-// material, which is the distinction that matters here and no help at all on a
-// road.
-//
-// Nothing is inferred from the highway tag. A residential street is usually
-// sealed and a woodland path usually is not, but "usually" would paint a
-// confident colour over ground nobody has surveyed. An unsurveyed stretch is
-// worth showing as unsurveyed, so it stays KindUnknown.
+// Classify maps one way's OpenStreetMap tags to a rideability class. The surface
+// tag decides wherever present; where absent, tracktype fills in for tracks only.
+// Nothing is inferred from the highway tag: an unsurveyed stretch stays
+// KindUnknown rather than being painted a confident colour.
 func Classify(tags map[string]string) Kind {
 	if kind := classifySurface(tags["surface"]); kind != KindUnknown {
 		return kind
@@ -71,14 +59,9 @@ func Classify(tags map[string]string) Kind {
 	return KindUnknown
 }
 
-// classifySurface maps the surface tag's value.
-//
-// Two of these are judgement calls rather than translations. The generic value
-// "paved" means sealed without saying with what, and is mapped to KindAsphalt
-// because that is what it nearly always turns out to be — at the cost of
-// occasionally calling a cobbled lane smooth. The generic "unpaved" is mapped to
-// KindGravel as the middle of the range it spans, so it errs towards loose
-// rather than promising a firm surface that may be mud.
+// classifySurface maps the surface tag's value. Two are judgement calls: generic
+// "paved" maps to KindAsphalt, at the cost of calling a cobbled lane smooth, and
+// generic "unpaved" to KindGravel as the middle of its range.
 func classifySurface(value string) Kind {
 	switch value {
 	case "asphalt", "chipseal", "concrete", "concrete:lanes", "concrete:plates", "paved":

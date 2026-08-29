@@ -35,10 +35,9 @@ func (s *Store) StageDurationFingerprint(
 }
 
 // StoreStageDuration caches one stage's predicted moving time, or its absence,
-// against the geometry, surface generation, and coefficient fingerprint it was
-// computed from. A nil movingSeconds records that this exact combination was
-// asked and answered with no prediction — a stage with no usable elevation —
-// which is what stops it being asked again every run.
+// against the geometry, surface generation and coefficient fingerprint it was
+// computed from. A nil movingSeconds records that this combination was asked and
+// answered with no prediction, which stops it being asked again every run.
 func (s *Store) StoreStageDuration(
 	ctx context.Context,
 	provider route.Provider,
@@ -70,18 +69,10 @@ func (s *Store) StoreStageDuration(
 	return nil
 }
 
-// PruneStageDurationsWithDifferentFingerprint deletes every cached prediction
-// not measured against currentFingerprint. It exists for the gap
-// pruneStageDuration does not cover: that function only reacts to a stage's
-// geometry changing, so a coefficient file edited or removed between restarts
-// would otherwise leave the previous file's predictions sitting in the read
-// path, served as current until the next enrichment pass happens to overwrite
-// or is never one for a stage whose geometry has not changed.
-//
-// Called once at startup. currentFingerprint is empty when no coefficient
-// file is configured, which clears every row — matching the contract that an
-// unconfigured deployment predicts nothing, rather than serving whatever a
-// previous configuration left behind.
+// PruneStageDurationsWithDifferentFingerprint deletes every cached prediction not
+// measured against currentFingerprint, covering what pruneStageDuration cannot: a
+// coefficient file edited between restarts. Called once at startup; an empty
+// fingerprint means no file is configured and clears every row.
 func (s *Store) PruneStageDurationsWithDifferentFingerprint(ctx context.Context, currentFingerprint string) error {
 	if _, err := s.database.ExecContext(ctx, `
 		DELETE FROM stage_duration WHERE coefficient_fingerprint != ?

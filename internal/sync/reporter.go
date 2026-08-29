@@ -12,9 +12,8 @@ import (
 
 const failureNotificationSuppression = 6 * time.Hour
 
-// staleCategory names the notification suppression bucket for a stale trusted
-// source inventory. It shares the same suppression window and store as an
-// ordinary phase failure, keyed apart from any real phase-and-failure pair.
+// staleCategory is the suppression bucket for a stale trusted inventory. It
+// shares the window and store of a phase failure, keyed apart from any real pair.
 const staleCategory = "source:stale"
 
 // RunState records terminal run data and failure-notification delivery state.
@@ -25,16 +24,12 @@ type RunState interface {
 	RecordTargetRun(ctx context.Context, targetID string, finishedAt time.Time, outcome, detail string) error
 	LastFailureNotification(ctx context.Context, category string) (sentAt time.Time, found bool, err error)
 	// RecordFailureNotification records a delivered notification at sentAt, or
-	// clears the category's suppression record entirely when sentAt is the
-	// zero value — the two are complements of the same record, not separate
-	// concerns.
+	// clears the category's suppression record when sentAt is the zero value.
 	RecordFailureNotification(ctx context.Context, category string, sentAt time.Time) error
 	// LastSuccessfulPhaseCompletion returns when a phase last recorded a
 	// success, which is what its trusted inventory age is measured against.
 	LastSuccessfulPhaseCompletion(ctx context.Context, phase string) (completedAt time.Time, found bool, err error)
-	// LastPhaseOutcome returns the outcome of the phase's most recent recorded
-	// run, which is what tells a success that ends a failure apart from a
-	// routine one.
+	// LastPhaseOutcome returns the outcome of the phase's most recent recorded run.
 	LastPhaseOutcome(ctx context.Context, phase string) (outcome string, found bool, err error)
 	// LastDigestNotification returns when the last digest was sent and the
 	// highest run it covered, which together bound the next one.
@@ -66,16 +61,13 @@ type Reporter struct {
 	notifications func() Notifications
 	running       atomic.Bool
 	triggered     stdsync.WaitGroup
-	// surfaceIncomplete is how many stages the most recently completed
-	// annotation pass could not classify. It is read back by SurfaceIncomplete
-	// and is what tells a stage that keeps failing apart from one nobody has
-	// asked about yet — both otherwise look like the same absent classification.
+	// surfaceIncomplete is how many stages the most recently completed annotation
+	// pass could not classify. Read back by SurfaceIncomplete.
 	surfaceIncomplete atomic.Int64
 }
 
 // Runner is the application service seam consumed by the reporter and
-// scheduler. Each half of a synchronization is its own call, because each is
-// separately switched and separately triggered.
+// scheduler. Each half of a synchronization is its own call.
 type Runner interface {
 	RunSource(ctx context.Context) Result
 	RunTargets(ctx context.Context) Result
@@ -86,15 +78,12 @@ type Runner interface {
 	// target and forgets its stage mappings. Only an operator asks for it.
 	ClearTarget(ctx context.Context, targetID string) Result
 	// AnnotateStored enriches the stored inventory and reports how much of it it
-	// could not classify. The count can never change a run's outcome — it is
-	// read back through SurfaceIncomplete, never returned from a phase.
+	// could not classify. The count never changes a run's outcome.
 	AnnotateStored(ctx context.Context) (classified, failed int)
 }
 
-// Notifications is everything the reporter reads before it reports a run.
-//
-// It is supplied as a function and read at each decision rather than held,
-// because these are settings an operator changes while the service runs.
+// Notifications is everything the reporter reads before it reports a run. It is
+// supplied as a function and read at each decision, never held.
 type Notifications struct {
 	Success SuccessNotification
 
@@ -102,17 +91,13 @@ type Notifications struct {
 	// successful refresh before it is reported and notified as stale.
 	StaleAfter time.Duration
 
-	// Enabled is the switch for the whole channel. Off suppresses a failure and
-	// a stale inventory as surely as it suppresses a routine success, which is
-	// why every surface offering it has to say so in as many words.
+	// Enabled is the switch for the whole channel. Off suppresses a failure and a
+	// stale inventory as surely as it suppresses a routine success.
 	Enabled bool
 }
 
-// NewReporter creates a reporting runner with explicit dependencies.
-//
-// The settings it will read are checked once here, against what they say right
-// now. A later edit cannot be refused from inside the reporter, so the rules
-// that admit one live where the edit is written.
+// NewReporter creates a reporting runner with explicit dependencies. The
+// settings it will read are checked once here, against what they say now.
 func NewReporter(
 	runner Runner, state RunState, notifier Notifier, notifications func() Notifications,
 ) (*Reporter, error) {
@@ -132,14 +117,8 @@ func NewReporter(
 	}, nil
 }
 
-// Run performs the scheduled synchronization: whichever phases the operator has
-// left switched on, in order, each recorded and reported on its own.
-//
-// A schedule that cannot be read runs nothing. The alternative is contacting a
-// provider the operator may have switched off, and the difference between "off"
-// and "unreadable" is not one a timer should guess at. The unreadable schedule
-// is recorded as a failed source run so it reaches the same notification path as
-// any other state failure rather than passing as a quiet tick.
+// Run performs the scheduled synchronization, each switched-on phase recorded
+// and reported on its own. An unreadable schedule is a failed source run.
 func (r *Reporter) Run(ctx context.Context) Result {
 	if !r.running.CompareAndSwap(false, true) {
 		return Result{Outcome: OutcomeSkipped}
@@ -157,12 +136,7 @@ func (r *Reporter) Run(ctx context.Context) Result {
 }
 
 // Trigger starts a manual synchronization of both phases in the background. It
-// returns false when a scheduled or another manual synchronization is already
-// running.
-//
-// A manual trigger runs the phase whether or not the timer is allowed to: the
-// switches govern what happens unattended, and an operator asking for a run now
-// has already decided.
+// returns false when a scheduled or another manual synchronization is running.
 func (r *Reporter) Trigger(ctx context.Context) bool {
 	return r.trigger(ctx, true, true)
 }
@@ -188,13 +162,8 @@ func (r *Reporter) trigger(ctx context.Context, source, targets bool) bool {
 	return true
 }
 
-// TriggerTarget starts a manual reconciliation of exactly one configured
-// target in the background. It returns false when a scheduled or another
-// manual synchronization — full or target-specific — is already running.
-//
-// It runs on the same terms as Trigger: whether or not the schedule allows the
-// target half to start, and through the same run recording and notification
-// path as an ordinary target phase, scoped to the one slot asked for.
+// TriggerTarget starts a manual reconciliation of exactly one configured target
+// in the background. False when any synchronization is already running.
 func (r *Reporter) TriggerTarget(ctx context.Context, targetID string) bool {
 	if !r.running.CompareAndSwap(false, true) {
 		return false
@@ -209,14 +178,8 @@ func (r *Reporter) TriggerTarget(ctx context.Context, targetID string) bool {
 	return true
 }
 
-// TriggerClear starts a manual clear of exactly one configured target in the
-// background, deleting every route this service owns there and forgetting its
-// stage mappings. It returns false when a synchronization or another manual
-// operation is already running.
-//
-// It reports through the same run recording and notification path as an
-// ordinary target phase, so a clear appears in history as the deletion it was
-// rather than as an unexplained drop in what a target holds.
+// TriggerClear deletes every route this service owns from one target and forgets
+// its stage mappings. False when another operation is already running.
 func (r *Reporter) TriggerClear(ctx context.Context, targetID string) bool {
 	if !r.running.CompareAndSwap(false, true) {
 		return false
@@ -231,11 +194,8 @@ func (r *Reporter) TriggerClear(ctx context.Context, targetID string) bool {
 	return true
 }
 
-// TriggerAnnotate starts one manual classification pass in the background,
-// touching only the local surface index and cache. It never reads VeloPlanner
-// or writes a Wahoo target, unlike Trigger and TriggerPhase, and shares their
-// single-flight guard: it returns false when a synchronization or another
-// annotation pass is already under way.
+// TriggerAnnotate starts one classification pass in the background, touching
+// only the local index and cache. False when another operation is running.
 func (r *Reporter) TriggerAnnotate(ctx context.Context) bool {
 	if !r.running.CompareAndSwap(false, true) {
 		return false
@@ -256,15 +216,9 @@ func (r *Reporter) SurfaceIncomplete() int {
 
 // Running reports what this process has under way: the half in flight, and
 // whether a run is under way at all.
-//
-// The two answers are separate because a run is accepted before its first half
-// starts. Reporting nothing in that window would leave a status response
-// falling back to the last finished run, which would claim a terminal result
-// for work that has not begun.
 func (r *Reporter) Running() (Phase, bool) {
-	// Read the phase first: a finishing run clears its phase before it clears
-	// running, so this order can report a run without the half it is in, but
-	// never a half of a run that has already finished.
+	// Read the phase first: a finishing run clears its phase before running, so
+	// this can report a run without its half but never a half without its run.
 	phase := r.phase.Load()
 	running := r.running.Load()
 	if phase == nil || !running {
@@ -281,18 +235,13 @@ func (r *Reporter) enter(phase Phase) {
 }
 
 // runPhases runs the requested phases in order and returns the last result.
-//
-// Reading the source before writing to the targets is what makes one tick carry
-// a change all the way through; the order also means a failed read leaves the
-// targets reconciling the last inventory known to be whole rather than nothing.
+// Source before targets, so one tick carries a change all the way through.
 func (r *Reporter) runPhases(ctx context.Context, source, targets bool) Result {
 	return r.runPhasesWith(ctx, source, targets, r.runner.RunTargets)
 }
 
-// runPhasesWith is runPhases parameterized over what reconciles the target
-// half, so a single-target trigger shares every recording, staleness, and
-// digest rule an ordinary target phase gets, without reconciling any slot
-// beyond the one it names.
+// runPhasesWith is runPhases parameterized over what reconciles the target half,
+// so a single-target trigger shares every recording and reporting rule.
 func (r *Reporter) runPhasesWith(ctx context.Context, source, targets bool, runTargets func(context.Context) Result) Result {
 	defer r.phase.Store(nil)
 
@@ -307,28 +256,21 @@ func (r *Reporter) runPhasesWith(ctx context.Context, source, targets bool, runT
 		r.enter(PhaseTargets)
 		result = r.run(ctx, runTargets)
 	}
-	// One instant for everything this pass settles below, so a tick landing on
-	// a second boundary cannot make the digest window and the whole-second
-	// staleness comparison disagree about what time it ran at.
+	// One instant for everything this pass settles, so a tick on a second boundary
+	// cannot make the digest window and the staleness comparison disagree.
 	now := r.now().UTC()
-	// The digest is considered once the pass has recorded everything it did, so
-	// its window closes on a whole pass rather than between two halves.
-	//
-	// Both of the messages below are held back entirely when the operator has
-	// switched notifications off, failure and staleness included.
+	// The digest is considered once the pass has recorded everything it did. Both
+	// messages below are held back entirely when notifications are off.
 	if notifications := r.notifications(); notifications.Enabled {
 		if notifications.Success.Policy == SuccessDigest {
 			r.notifyDigest(ctx, now)
 		}
-		// Checked every pass, whether or not the source phase ran this tick: the
-		// inventory can go stale while the schedule has it switched off, and this
-		// reads only local state, so it costs no provider call either way.
+		// Checked every pass, whether or not the source phase ran: the inventory can
+		// go stale while the schedule has it switched off.
 		r.checkStaleness(ctx, now, sourceStored)
 	}
-	// Enrichment comes after everything a rider is waiting for. It runs on any
-	// successful source refresh, whether or not that refresh actually changed
-	// the stored inventory — an unchanged library can still hold stages an
-	// earlier pass never got to.
+	// Enrichment runs on any successful source refresh, changed or not: an
+	// unchanged library can still hold stages an earlier pass never got to.
 	if sourceStored {
 		r.annotate(ctx)
 	}
@@ -336,9 +278,8 @@ func (r *Reporter) runPhasesWith(ctx context.Context, source, targets bool, runT
 	return result
 }
 
-// annotate runs one classification pass and records how much of it the pass
-// could not finish, for SurfaceIncomplete to read back. It is the seam shared
-// by the scheduled pass above and a manually triggered retry.
+// annotate runs one classification pass and records what it could not finish,
+// for SurfaceIncomplete to read back.
 func (r *Reporter) annotate(ctx context.Context) {
 	_, failed := r.runner.AnnotateStored(ctx)
 	r.surfaceIncomplete.Store(int64(failed))
@@ -398,12 +339,9 @@ func (r *Reporter) record(ctx context.Context, startedAt time.Time, result *Resu
 	return *result
 }
 
-// recordTargetRuns writes down what each slot's own reconciliation came to.
-//
-// A slot that cannot be recorded is passed over rather than allowed to stop the
-// rest: these rows report convergence, and losing one costs an operator a stale
-// line on a status page, whereas abandoning the loop would cost them every line
-// after it.
+// recordTargetRuns writes down what each slot's own reconciliation came to. A
+// slot that cannot be recorded is passed over rather than stopping the rest:
+// losing one row costs a stale line on a status page.
 func (r *Reporter) recordTargetRuns(ctx context.Context, finishedAt time.Time, targets []TargetResult) {
 	for _, target := range targets {
 		if err := r.state.RecordTargetRun(
@@ -418,13 +356,9 @@ func (r *Reporter) recordTargetRuns(ctx context.Context, finishedAt time.Time, t
 	}
 }
 
-// notifyFailure delivers one failure notification per phase and category, no
-// more often than the suppression interval.
-//
-// The phase is part of the key. A library that has been failing to load all
-// morning must not be the reason a target stops reporting that it can no longer
-// be written to: they are separate problems with separate remedies, and each is
-// worth one alert.
+// notifyFailure delivers one failure notification per phase and category, no more
+// often than the suppression interval. The phase is part of the key: a failing
+// library and a target that cannot be written to are separate problems.
 func (r *Reporter) notifyFailure(ctx context.Context, result *Result, reference string, now time.Time) {
 	if result.Failure == FailureNone {
 		return
@@ -442,15 +376,10 @@ func (r *Reporter) notifyFailure(ctx context.Context, result *Result, reference 
 	}
 }
 
-// checkStaleness reports and notifies on the age of the trusted source
-// inventory, independently of whatever this tick's phases did — a source that
-// has stopped succeeding leaves no new failure to notify on once its failure
-// category is already suppressed, and this is what still catches that.
-//
-// sourceStored is this tick's own source-phase outcome. A source that just
-// succeeded ends any outstanding stale alert unconditionally, the same way an
-// ordinary recovery is never held back by policy; a source that did not
-// succeed this tick is checked against how long it has been since one did.
+// checkStaleness reports and notifies on the age of the trusted source inventory,
+// independently of this tick's phases: a source that stopped succeeding leaves no
+// new failure to notify on once its category is suppressed. sourceStored is this
+// tick's outcome; a source that just succeeded ends a stale alert unconditionally.
 func (r *Reporter) checkStaleness(ctx context.Context, now time.Time, sourceStored bool) {
 	lastSentAt, notified, err := r.state.LastFailureNotification(ctx, staleCategory)
 	if err != nil {
@@ -499,14 +428,9 @@ func staleMessage(age time.Duration) string {
 }
 
 // successMessage reports the counts the finished phase actually produced. A
-// source run that listed forty stages and a target run that changed none are
-// different events, and a message padded with the other phase's zeroes reads as
-// though work was skipped.
-//
-// Every message names the run it is about, so an operator reading it on a phone
-// can find that run and nothing else in the history. The reference is random and
-// means nothing on its own, which is what makes it safe to send: it says which
-// run without saying anything about it.
+// message padded with the other phase's zeroes reads as though work was skipped.
+// Every message names its run: the reference is random and means nothing on its
+// own, which is what makes it safe to send.
 func successMessage(result *Result, reference string) string {
 	if result.Phase == PhaseSource {
 		return fmt.Sprintf("source succeeded: source_stages=%d run=%s", result.SourceStages, reference)

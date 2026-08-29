@@ -12,25 +12,11 @@ import (
 )
 
 // StageSurface returns one stage's cached surface classification, but only where
-// it was measured against the geometry named by contentHash.
-//
-// The ranges are positions in that geometry's coordinate array, so serving them
-// beside a different revision of the stage would put bands of gravel over
-// whatever now happens to sit at those indices. Matching on the hash makes a
-// stale row absent rather than wrong: the caller sees a stage whose surface is
-// not known yet, which is the truth until the next enrichment pass runs.
-//
-// The index generation is deliberately not part of this filter, though it is
-// half of what StageSurfaceHash checks. The two mismatches are not alike. A row
-// measured against an earlier index is stale rather than wrong — its ranges
-// still index the geometry the stage actually has — and the table holds one row
-// per stage, so withholding it here would serve no surface at all rather than a
-// newer one. Every rebuild would blank the whole library until enrichment had
-// walked it again, to correct the rare road that was genuinely resurfaced.
-// Re-measurement is what corrects those, and StageSurfaceHash is what schedules
-// it.
-//
-// The ranges are returned as stored, ready to serve without re-encoding.
+// it was measured against the geometry named by contentHash: the ranges are
+// positions in that geometry's coordinate array, so matching on the hash makes a
+// stale row absent rather than wrong. The index generation is not part of this
+// filter, though StageSurfaceHash checks it — withholding an older reading would
+// blank the library after every rebuild. Ranges are returned as stored.
 func (s *Store) StageSurface(
 	ctx context.Context,
 	provider route.Provider,
@@ -55,13 +41,9 @@ func (s *Store) StageSurface(
 }
 
 // StageSurfaceHash returns what the stored classification was measured against —
-// the stage's geometry and the build of the map — so a caller can tell what still
-// needs classifying without reading the ranges themselves.
-//
-// Both halves have to match for a cached row to still be an answer. The content
-// hash covers the stage changing under a fixed map; the generation covers the
-// map changing under a fixed stage, which is the ordinary case here: a weekly
-// index is a weekly opportunity for a road to have been resurfaced.
+// the stage's geometry and the build of the map — so a caller can tell what needs
+// classifying without reading the ranges. Both halves must match: the content
+// hash covers the stage changing, the generation covers the map changing.
 func (s *Store) StageSurfaceHash(
 	ctx context.Context,
 	provider route.Provider,
@@ -112,12 +94,9 @@ func (s *Store) StoreStageSurface(
 }
 
 // pruneStageSurface drops classifications that no longer describe anything, in
-// the caller's transaction.
-//
-// A row goes when its stage has left the inventory, and equally when the stage
-// has been re-planned: the cached ranges address the coordinates of the geometry
-// they were measured against, and once that geometry is replaced they are not
-// stale data to be corrected but positions in an array that no longer exists.
+// the caller's transaction. A row goes when its stage leaves the inventory and
+// when the stage is re-planned: the cached ranges address coordinates of a
+// geometry that no longer exists.
 func pruneStageSurface(ctx context.Context, transaction *sql.Tx) error {
 	if _, err := transaction.ExecContext(ctx, `
 		DELETE FROM stage_surface
@@ -136,20 +115,10 @@ func pruneStageSurface(ctx context.Context, transaction *sql.Tx) error {
 }
 
 // SurfaceCoverage reports how many stored stages carry a classification of the
-// geometry they currently hold, and how many stages there are.
-//
-// It is the answer to the question an operator actually asks when a route has no
-// surface on the map: is this one stage waiting its turn, or has nothing been
-// classified in a week. Counting the classification against the current content
-// hash is what makes it honest — a stage whose shape changed has a stored
-// classification that describes a line it no longer has, and is not classified
-// in any sense the map can use.
-//
-// It counts on the same terms StageSurface serves on, which is what keeps this
-// number and the map agreeing. The index generation is no more a condition here
-// than it is there: a stage measured against an earlier index is still shown a
-// surface, so counting it as unclassified would report nothing covered after
-// every rebuild while every route on the map still had its surfaces.
+// geometry they currently hold, and how many stages there are. Counting against
+// the current content hash is what makes it honest: a stage whose shape changed
+// is not classified in any sense the map can use. The index generation is no more
+// a condition here than in StageSurface, so the count and the map agree.
 func (s *Store) SurfaceCoverage(ctx context.Context) (classified, total int, err error) {
 	if err := s.database.QueryRowContext(ctx, `
 		SELECT
@@ -185,11 +154,9 @@ func (s *Store) SurfaceIndexBuild(ctx context.Context) (builtAt time.Time, gener
 	return time.Unix(builtAtUnix, 0).UTC(), generation, nil
 }
 
-// RecordSurfaceIndexBuild writes down that a build finished.
-//
-// It is written for a build that found nothing to do as well as for one that
-// produced a new index, because what the next start needs to know is when the
-// upstream was last looked at, not when the file last changed.
+// RecordSurfaceIndexBuild writes down that a build finished, for one that found
+// nothing to do as well as one that produced a new index: the next start needs
+// to know when the upstream was last looked at.
 func (s *Store) RecordSurfaceIndexBuild(ctx context.Context, builtAt time.Time, generation string) error {
 	if _, err := s.database.ExecContext(ctx, `
 		UPDATE surface_index SET built_at_unix = ?, generation = ? WHERE id = 1

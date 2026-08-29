@@ -1121,11 +1121,10 @@ type fakeTarget struct {
 	updatedRouteIDs    []int64
 	refreshTokens      []string
 	nextRouteID        int64
-	// listCalls counts reconciliation's route listings, so a test can assert
-	// that an unchanged library asks the target exactly once per run rather
-	// than once per stage. clearCalls counts the clear's own bulk delete
-	// separately: one counter for both would let a clear hide a regression in
-	// how often reconciliation lists.
+	// listCalls counts reconciliation's route listings, so a test can assert that
+	// an unchanged library asks the target once per run rather than once per stage.
+	// clearCalls counts the clear's bulk delete separately: one counter for both
+	// would let a clear hide a regression in how often reconciliation lists.
 	listCalls  int
 	clearCalls int
 }

@@ -83,12 +83,10 @@ func writeCorpus(t *testing.T, dir string, rides []rideRow, samplesByRide map[st
 
 func TestRunEvaluatesTheLoadedProfileEndToEnd(t *testing.T) {
 	rides, samplesByRide := syntheticCorpus(30)
-	// syntheticCorpus already sets each ride's MovingSeconds from its own
-	// distance and ascent; spread that same total evenly across the sample's
-	// points instead of the placeholder one-second spacing rideFeatureSamples
-	// used, so the moving-time hygiene check (samples' summed delta seconds
-	// against the ride row) and the model's own predictions are consistent
-	// with each other, not just internally consistent with a fictional pace.
+	// syntheticCorpus sets each ride's MovingSeconds from its own distance and
+	// ascent; spread that total evenly across the sample's points rather than the
+	// placeholder one-second spacing, so the moving-time hygiene check and the
+	// model's predictions are consistent with each other.
 	for i := range rides {
 		samples := samplesByRide[rides[i].RideID]
 		perSample := rides[i].MovingSeconds / float64(len(samples))

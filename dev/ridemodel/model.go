@@ -1,10 +1,6 @@
-// Command ridemodel turns a Strava bulk export into a flat table of ride
-// samples the drag and power fitter can regress over.
-//
-// It owns no physics and no fitting: it reads activities.csv and the files
-// under activities/, and emits a sample table, a per-ride summary, and a
-// reference table of indoor rides. See dev/ridemodel/main.go for the CLI, and
-// the mise task "ridemodel" for how it is invoked.
+// Command ridemodel turns a Strava bulk export into a flat table of ride samples
+// the drag and power fitter can regress over. It owns no physics and no fitting.
+// See dev/ridemodel/main.go for the CLI and the mise task "ridemodel".
 package main
 
 import (
@@ -12,34 +8,21 @@ import (
 	"time"
 )
 
-// closeFile ignores the error of closing a file this package only ever
-// reads: nothing this tool does with an export directory depends on a close
-// error, the way internal/osmindex's own closeFile does not either.
+// closeFile ignores the error of closing a file this package only ever reads.
 //
 //nolint:errcheck // A file opened for reading has nothing to report on close.
 func closeFile(closer io.Closer) { _ = closer.Close() }
 
 // movingSpeedThresholdMetresPerSecond is the one definition of "moving" this
-// pipeline uses, applied in exactly one place (sample.MovingFilter, set in
-// ingestActivity). Below it a bike is being walked or is stationary at a
-// light, not rolling in any sense a drag or rolling-resistance fit should
-// weight; above it, wheel speed dominates any GPS or auto-pause noise.
-// Roughly a brisk walking pace (1.8 km/h), well under the ~3 m/s a coasting
-// downhill roll starts at, so it never clips genuine low-speed riding.
-//
-// Strava's own moving_time column and a device's total_timer_time each apply
-// their own undocumented heuristic and disagree with this and each other by
-// one to three percent; both are reported as a sanity check, but this
-// constant is what every downstream sample carries as its own filter, so a
-// figure computed from filtered samples means the same thing everywhere it is
-// used.
+// pipeline uses, applied only in sample.MovingFilter. 0.5 m/s is 1.8 km/h, a
+// slow walk, and well under the ~3 m/s a coasting roll starts at, so it never
+// clips genuine riding. Strava's moving_time and a device's total_timer_time use
+// their own heuristics and are reported alongside.
 const movingSpeedThresholdMetresPerSecond = 0.5
 
-// gradientWindowMetres matches internal/route's own constant (and
-// lib/profile.ts's), so a gradient in this corpus means the same thing as one
-// in the model later fitted to it. Kept as this package's own constant,
-// rather than imported, because dev/ tooling stays decoupled from the
-// service's internal packages.
+// gradientWindowMetres matches internal/route's own constant and lib/profile.ts's,
+// so a gradient here means what it means in the model fitted to it. Kept as this
+// package's own: dev/ tooling stays decoupled from the service's internals.
 const gradientWindowMetres = 100.0
 
 // exclusionReason names why an activity did not enter the outdoor sample
@@ -48,12 +31,9 @@ const gradientWindowMetres = 100.0
 type exclusionReason string
 
 const (
-	// exclusionNotCycling marks a row this tool never treats as a ride at
-	// all: a real bulk export holds every activity type an athlete logged,
-	// and Strava's own Activity Type is the only signal that distinguishes
-	// them — a run or a climb has no drag or rolling-resistance regime to
-	// fit. Counted rather than dropped silently, so the corpus total still
-	// reconciles against the CSV's own row count.
+	// exclusionNotCycling marks a row this tool never treats as a ride: a bulk
+	// export holds every activity type, and Strava's Activity Type is the only
+	// signal. Counted rather than dropped, so the corpus reconciles with the CSV.
 	exclusionNotCycling      exclusionReason = "not_a_ride"
 	exclusionIndoor          exclusionReason = "indoor"
 	exclusionUnreadable      exclusionReason = "unreadable"
@@ -61,12 +41,9 @@ const (
 	exclusionNoSourceFile    exclusionReason = "no_source_file"
 	exclusionUnsafeFilename  exclusionReason = "unsafe_filename"
 	exclusionNoAltitude      exclusionReason = "no_altitude_channel"
-	// exclusionNoSamples marks a decoded file that yielded fewer than two
-	// usable record intervals — under two records, or every consecutive pair
-	// sharing a non-positive Δt — so buildSamples has nothing to emit. Without
-	// this, such a ride would count as ingested while contributing zero rows
-	// to samples.csv, leaving the corpus's own ride count inconsistent with
-	// what it actually holds.
+	// exclusionNoSamples marks a decoded file that yielded fewer than two usable
+	// record intervals, so buildSamples has nothing to emit. Counted, or such a
+	// ride would count as ingested while contributing no rows.
 	exclusionNoSamples exclusionReason = "no_samples"
 )
 

@@ -111,11 +111,10 @@ func run(ctx context.Context) error {
 		return weatherSeriesOf(hourlies), nil
 	})
 
-	// Surface enrichment is built whether or not a region is named, because
-	// naming the first one is now an edit rather than a restart. A deployment
-	// with no regions downloads nothing: the holder stays empty, every scheduled
-	// build returns without work, and stages are served without a surface, which
-	// synchronization supports as a normal state.
+	// Surface enrichment is built whether or not a region is named, since naming
+	// the first one is an edit rather than a restart. With no regions the holder
+	// stays empty, every build returns without work, and stages are served without
+	// a surface.
 	surfaceIndex, indexScheduler, err := startSurfaceIndex(ctx, settings, runtimeSettings, store, notifier)
 	if err != nil {
 		return err
@@ -127,12 +126,10 @@ func run(ctx context.Context) error {
 	}()
 	annotator := surface.NewAnnotator(surfaceIndex, store)
 
-	// Ride model prediction is equally optional. An operator who configures no
-	// coefficients file keeps every stage exactly as it is today: no rider
-	// figure is ever guessed, and no endpoint gains a field nobody asked for.
-	// A file that will not load is reported here and again by the run that next
-	// needs it, rather than keeping the service from starting: the setting
-	// naming it is edited through a page this process has to be up to serve.
+	// Ride model prediction is equally optional; no rider figure is ever guessed.
+	// A file that will not load is reported here and again by the run that needs
+	// it, rather than keeping the service from starting: the setting naming it is
+	// edited through a page this process must be up to serve.
 	rideModel := newRideModelProvider(store)
 	if reloadErr := rideModel.reload(ctx, runtimeSettings); reloadErr != nil {
 		slog.Error("the ride model could not be loaded", "error", reloadErr)
@@ -200,13 +197,10 @@ func run(ctx context.Context) error {
 		},
 	)
 
-	// Which source produced this binary, and which image is carrying it. The
-	// revision is compiled in by CI; the image reference is what the deploying
-	// host pinned, handed in through the environment because nothing inside an
-	// image can know its own digest — the configuration layer takes it out of
-	// that environment on the way past, since the prefix is its own. Only the
-	// digest survives the read: the registry and repository in front of it stay
-	// on the host.
+	// Which source produced this binary, and which image carries it. The revision
+	// is compiled in by CI; the image reference is what the deploying host pinned,
+	// handed in through the environment because nothing inside an image knows its
+	// own digest. Only the digest survives the read.
 	buildInfo := build.Current(settings.ImageReference)
 
 	handler, err := httpapi.New(
@@ -310,18 +304,11 @@ func run(ctx context.Context) error {
 		[]schedulerRunner{scheduler, indexScheduler}, reporter)
 }
 
-// startSurfaceIndex prepares the surface index and the schedule that rebuilds
-// it.
-//
-// The last build's file is opened before anything else runs, so a restart serves
-// classifications immediately instead of going blind until the next rebuild
-// lands. A file the state database remembers but that is no longer on disk is
-// not an error: the holder simply starts empty and the first build fills it.
-//
-// The index lives beside the state database because that is the one directory a
-// deployment is guaranteed to have made durable. Giving it a setting of its own
-// would only invite an operator to point it at the container's /tmp, which is a
-// tmpfs — the exact memory this build works to stay out of.
+// startSurfaceIndex prepares the surface index and the schedule that rebuilds it.
+// The last build's file is opened first, so a restart serves classifications
+// immediately. A file the state database remembers but that is gone from disk is
+// not an error. The index lives beside the state database, the one directory a
+// deployment is guaranteed to have made durable.
 func startSurfaceIndex(
 	ctx context.Context,
 	settings *config.Settings,
@@ -382,12 +369,8 @@ type manualSyncWaiter interface {
 }
 
 // serve runs both HTTP listeners and every scheduled job under one cancellation
-// scope. It waits for cancelled runs to finish before its caller can close the
-// durable state and the index files those runs may still be using.
-//
-// Either listener failing stops the process. A readiness probe that cannot bind
-// is a deployment whose health checking silently answers nothing, which is worse
-// than a service that refuses to start and says why.
+// scope, waiting for cancelled runs to finish before its caller closes the state
+// and index files they may still use. Either listener failing stops the process.
 func serve(
 	ctx context.Context,
 	cancel context.CancelFunc,

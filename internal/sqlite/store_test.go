@@ -35,15 +35,10 @@ func TestStoreMigrationsAreIdempotent(t *testing.T) {
 	assert.Equal(t, len(schemaMigrations()), version, "schema version")
 }
 
-// The one guard that catches a migration inserted into shipped history.
-//
-// Every other test here builds its database from the list as it stands now, so a
-// list whose elements have been reordered still migrates cleanly from any prefix
-// of itself. A deployment cannot: it recorded a count against the old order, so
-// element N must still be the migration that shipped as N. The fingerprints in
-// testdata are that record. Appending a migration means appending one line;
-// changing a line means an already-applied migration has been rewritten, which
-// no deployment will ever re-run.
+// The one guard that catches a migration inserted into shipped history. Every
+// other test builds its database from the list as it stands, so a reordered list
+// still migrates cleanly. A deployment recorded a count against the old order, so
+// element N must still be the migration that shipped as N. testdata is that record.
 func TestStoreMigrationHistoryIsAppendOnly(t *testing.T) {
 	recorded, err := os.ReadFile(filepath.Join("testdata", "schema-migrations.sha256"))
 	require.NoError(t, err)
@@ -63,13 +58,10 @@ func TestStoreMigrationHistoryIsAppendOnly(t *testing.T) {
 	}
 }
 
-// A deployment upgrades from whatever version it is on, and every version this
-// service has ever shipped is still out there in somebody's volume. Opening a
-// database at each earlier version is what proves the history is still
-// append-only: insert a migration rather than append one, and the deployment
-// that already applied the old numbering re-runs the migration that took its
-// place. That is a startup failure on exactly the databases carrying the
-// operator's data, and every other test here migrates an empty file and passes.
+// Every version this service has shipped is still in somebody's volume. Opening a
+// database at each earlier version proves the history is append-only: insert a
+// migration rather than append one and the deployment that applied the old
+// numbering re-runs the migration that took its place.
 func TestStoreUpgradesFromEveryEarlierVersion(t *testing.T) {
 	migrations := schemaMigrations()
 	for version := 1; version < len(migrations); version++ {
@@ -165,12 +157,10 @@ func TestStoreMigratesExistingOAuthTransactions(t *testing.T) {
 	require.NoError(t, store.UpsertTargetStage(t.Context(), "rider-a", route.ProviderVeloPlanner, 1, 1, "revision", "content-hash", 42), "UpsertTargetStage() after migration")
 }
 
-// The rollback case: a deploy migrated the state, failed its health gate, and
-// the previous binary is put back in front of a database one migration ahead of
-// it. That binary has to open the file and keep working, or the rollback leaves
-// the host down. Only the recorded version moves here — a real future migration
-// would also change the schema, and the compatibility rule below is what keeps
-// that change invisible to these writes.
+// The rollback case: a deploy migrated the state, failed its health gate, and the
+// previous binary is put back in front of a database one migration ahead. Only
+// the recorded version moves here; the compatibility rule below is what keeps a
+// real migration's schema change invisible to these writes.
 func TestStoreOpensStateOneMigrationAhead(t *testing.T) {
 	databasePath := filepath.Join(t.TempDir(), "state.db")
 	seedSchemaVersion(t, databasePath, len(schemaMigrations()))
@@ -202,12 +192,10 @@ func TestStoreRefusesStateTooFarAhead(t *testing.T) {
 	assert.Contains(t, err.Error(), schemaAheadMessage, "the refusal must stay recognisable to the deploy script")
 }
 
-// The other half of the rollback guarantee. Tolerating a newer schema is only
-// safe while every migration leaves the previous release's binary able to read
-// and write what it already did, so each migration is compared against the
-// schema it was applied to. This is the structural half of the rule documented
-// on schemaMigrations: what a migration means by an existing column's values is
-// beyond a schema comparison and stays with the author.
+// The other half of the rollback guarantee. Tolerating a newer schema is safe
+// only while every migration leaves the previous binary able to read and write
+// what it did, so each is compared against the schema it was applied to. What a
+// migration means by an existing column's values stays with the author.
 func TestNewMigrationsStayReadableByThePreviousRelease(t *testing.T) {
 	migrations := schemaMigrations()
 	for version := compatibilityRuleFromMigration; version <= len(migrations); version++ {
@@ -250,11 +238,9 @@ func TestNewMigrationsStayReadableByThePreviousRelease(t *testing.T) {
 	}
 }
 
-// compatibilityRuleFromMigration is the first migration the rule above is
-// applied to. Migration 2 predates it and breaks it — it adds a UNIQUE index to
-// a table version 1 already wrote — and rewriting shipped history to satisfy a
-// rule adopted afterwards is the one thing schemaMigrations forbids. Everything
-// appended since already complies, so the rule starts where it can hold.
+// compatibilityRuleFromMigration is the first migration the rule above applies
+// to. Migration 2 predates it and breaks it, and rewriting shipped history to
+// satisfy a later rule is what schemaMigrations forbids.
 const compatibilityRuleFromMigration = 3
 
 // checkConstraint matches a CHECK constraint's text, with one level of nesting

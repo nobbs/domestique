@@ -142,11 +142,9 @@ func (c *Client) doJSON(request *http.Request, output any) (err error) {
 
 	response, err := c.client.Do(request)
 	if err != nil {
-		// Keep the cause — a dial timeout reads very differently from a TLS
-		// failure when a run is being diagnosed — but drop the *url.Error
-		// wrapper around it, whose message carries the request URL. Unwrapping
-		// also keeps errors.Is against a cancelled or expired context working
-		// for callers.
+		// Keep the cause — a dial timeout reads differently from a TLS failure —
+		// but drop the *url.Error wrapper, whose message carries the request URL.
+		// Unwrapping also keeps errors.Is against a cancelled context working.
 		var urlErr *url.Error
 		if errors.As(err, &urlErr) { //nolint:modernize // errors.As is unambiguous to every tool reviewing this code.
 			err = urlErr.Err

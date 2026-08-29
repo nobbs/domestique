@@ -25,11 +25,9 @@ import (
 const (
 	defaultConfigFile = "/etc/domestique/config.toml"
 
-	// defaultReadinessAddress is the readiness listener an operator gets without
-	// saying anything. It is a second port rather than a second path, so a host
-	// that publishes only the served one has no way to reach readiness through
-	// the front door — and an existing deployment keeps working unchanged,
-	// because nothing has to be added to its configuration file.
+	// defaultReadinessAddress is the readiness listener without configuration. A
+	// second port rather than a second path, so a host publishing only the served
+	// one cannot reach readiness through the front door.
 	defaultReadinessAddress = ":8081"
 	envPrefix               = "DOMESTIQUE_"
 	configFileEnv           = envPrefix + "CONFIG_FILE"
@@ -38,21 +36,14 @@ const (
 	imageReferenceEnv = envPrefix + "IMAGE"
 )
 
-// Settings is the validated, startup-only configuration for one service
-// process: the two listeners, the one identity allowed to reach them, and where
-// durable state lives with the key that encrypts it.
-//
-// Everything else an operator configures — the Wahoo application and its target
-// slots, the source libraries, the credentials all of those are reached with,
-// the ride model, and the reconciliation cadence — is a runtime setting held in
-// that state and edited from the browser. This package refuses a file that
-// still carries one, naming the key.
+// Settings is the validated, startup-only configuration for one service process:
+// the two listeners, the one identity allowed to reach them, and where durable
+// state lives with the key that encrypts it. Everything else is a runtime setting
+// held in that state; this package refuses a file carrying one, naming the key.
 type Settings struct {
-	// ImageReference is not configuration: it is the container image the
-	// deploying host pinned, which the host passes in so the running service can
-	// report which image it is. It arrives here only because this package owns
-	// the DOMESTIQUE_ prefix and refuses unknown keys within it — leaving it in
-	// the environment would fail startup. Empty when the host said nothing.
+	// ImageReference is not configuration: it is the image the deploying host
+	// pinned, passed in so the service can report which image it is. It arrives
+	// here because this package refuses unknown DOMESTIQUE_ keys. Empty when unset.
 	ImageReference string
 
 	HTTP   HTTP
@@ -65,21 +56,15 @@ type Settings struct {
 type HTTP struct {
 	ListenAddress string
 
-	// ReadinessAddress is the second, separate listener that answers the
-	// readiness probe. It exists apart from ListenAddress because the two
-	// answer different callers: the Tailnet host publishes and serves the first
-	// one, and only a local health check reaches the second. Keeping readiness
-	// off the served listener is what keeps it off the authenticated public
-	// surface, so the two must never be the same port.
+	// ReadinessAddress is the second listener answering the readiness probe. The
+	// Tailnet host publishes and serves ListenAddress; only a local health check
+	// reaches this one, so the two must never share a port.
 	ReadinessAddress string
 
-	// BrowserOriginURL is the public origin a browser reaches this service at.
-	// A state-changing request naming any other origin — or none — is refused,
-	// so that an authenticated session cannot be driven from another site, and
-	// the Wahoo OAuth callback is this origin's own path.
-	//
-	// It is startup configuration rather than a runtime setting because it is
-	// the gate: a value the browser could edit is a gate the browser could open.
+	// BrowserOriginURL is the public origin a browser reaches this service at. A
+	// state-changing request naming any other is refused, and the Wahoo callback
+	// is this origin's own path. Startup configuration because it is the gate: a
+	// value the browser could edit is a gate the browser could open.
 	BrowserOriginURL string
 }
 
@@ -89,17 +74,16 @@ type Access struct {
 	Cloudflare CloudflareAccess
 }
 
-// CloudflareAccess configures verification of Cloudflare Access assertions.
-// None of its values is a secret: the team domain and the application audience
-// tag are public identifiers, and verification rests on Cloudflare's published
-// signing keys rather than on a shared credential.
+// CloudflareAccess configures verification of Cloudflare Access assertions. None
+// of its values is a secret: the team domain and audience tag are public, and
+// verification rests on Cloudflare's published signing keys.
 type CloudflareAccess struct {
 	// TeamDomain is the Zero Trust team domain that signs assertions.
 	TeamDomain string
 
-	// ApplicationAUD is the audience tag of the one Access application that
-	// fronts this service. Without it, an assertion minted for any other
-	// application of the same team would verify.
+	// ApplicationAUD is the audience tag of the one Access application fronting
+	// this service. Without it, an assertion for any other application of the
+	// same team would verify.
 	ApplicationAUD string
 
 	// AllowedEmail is the single address an assertion may name.
@@ -153,8 +137,8 @@ type secretInput struct {
 }
 
 // Load reads the configured TOML file and supported environment overrides once.
-// It clears direct secret environment values before returning, including when
-// validation fails.
+// It clears direct secret environment values before returning, including on
+// validation failure.
 func Load() (settings *Settings, err error) {
 	defer func() {
 		if clearErr := clearDirectSecretEnvironments(); clearErr != nil {
@@ -172,9 +156,8 @@ func Load() (settings *Settings, err error) {
 		return nil, err
 	}
 
-	// Consumed before Koanf reads the environment, for the same reason the
-	// configuration selector is: every remaining DOMESTIQUE_ variable is treated
-	// as a setting, and an unknown one is fatal.
+	// Consumed before Koanf reads the environment, as the configuration selector
+	// is: every remaining DOMESTIQUE_ variable is a setting, and unknown is fatal.
 	imageReference, referenceErr := consumeImageReference()
 	if referenceErr != nil {
 		return nil, referenceErr
@@ -232,9 +215,8 @@ func Load() (settings *Settings, err error) {
 	return built, nil
 }
 
-// consumeImageReference takes the pinned image reference out of the environment
-// and returns it. It is not validated here: this package cannot say what a valid
-// image reference is, and the only consumer keeps just the digest it can prove.
+// consumeImageReference takes the pinned image reference out of the environment.
+// Not validated here: the only consumer keeps just the digest it can prove.
 func consumeImageReference() (string, error) {
 	reference, found := os.LookupEnv(imageReferenceEnv)
 	if !found {
@@ -293,10 +275,9 @@ func hasPath(values map[string]any, path []string) bool {
 	return false
 }
 
-// validateCloudflareAccess accepts the section either wholly absent or wholly
-// present. A half-configured section is rejected rather than silently ignored,
-// because the failure it would otherwise produce is a public endpoint whose
-// assertions are never checked.
+// validateCloudflareAccess accepts the section wholly absent or wholly present.
+// A half-configured section would produce a public endpoint whose assertions
+// are never checked.
 func validateCloudflareAccess(raw *rawCloudflareAccess) error {
 	values := map[string]string{
 		"access.cloudflare.team_domain":     strings.TrimSpace(raw.TeamDomain),
@@ -383,11 +364,9 @@ func validateListenAddress(address string) error {
 	return nil
 }
 
-// validateReadinessAddress accepts a listener for the readiness probe on the
-// same terms as the served one, and additionally refuses the served listener's
-// own port.
-// Sharing it would put readiness behind Tailscale Serve and the tunnel, which is
-// exactly the surface the probe is supposed to stay off.
+// validateReadinessAddress accepts a readiness listener on the served listener's
+// terms and additionally refuses its port. Sharing it would put readiness behind
+// Tailscale Serve and the tunnel.
 func validateReadinessAddress(address, listenAddress string) error {
 	host, port, err := net.SplitHostPort(strings.TrimSpace(address))
 	if err != nil || host != "" {

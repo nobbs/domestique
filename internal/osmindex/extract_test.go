@@ -79,13 +79,10 @@ func TestDownloadExtractRefusesAndRemovesAMismatchedFile(t *testing.T) {
 	assert.Empty(t, entries, "the refused extract was left on disk")
 }
 
-// A dropped connection is the failure this download is most likely to meet: an
-// extract is hundreds of megabytes over a link nobody controls. It has to leave
-// nothing behind, because a partial file that survives is one a later run could
-// mistake for a whole one.
-//
-// The checksum would catch a short body too, but only after it had been written
-// — this is the earlier branch, where the transfer itself reports the error.
+// A dropped connection is the failure this download is most likely to meet, and
+// it has to leave nothing behind: a partial file that survives is one a later run
+// could mistake for a whole one. The checksum would catch a short body too, but
+// only after writing it; this is the earlier branch.
 func TestDownloadExtractRemovesWhatADroppedConnectionLeft(t *testing.T) {
 	directory := t.TempDir()
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {

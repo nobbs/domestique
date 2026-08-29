@@ -7,17 +7,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestPhysicsOnlyScaleFactorInvertsTheBlendWeight pins this package's
-// physics-only diagnostic to internal/ridemodel's blend weight, which is
-// unexported and so cannot simply be compared against. The weight is
-// recovered from Predict itself instead: zeroing the route coefficients
-// leaves weight x physics, and restoring them adds (1 - weight) x a linear
-// term this test computes independently, so the difference between the two
-// predictions reveals the weight without either side naming it.
-//
-// Without this, reweighting the blend would silently turn the physics-only
-// column of every benchmark into a scaled fiction, and no other test would
-// notice: the hybrid and route-only columns stay correct.
+// Pins this package's physics-only diagnostic to internal/ridemodel's blend
+// weight, which is unexported. The weight is recovered from Predict itself:
+// zeroing the route coefficients leaves weight × physics, and restoring them adds
+// (1 − weight) × a linear term this test computes, so the difference reveals the
+// weight without either side naming it. Without this, reweighting would turn the
+// physics-only column of every benchmark into a scaled fiction unnoticed.
 func TestPhysicsOnlyScaleFactorInvertsTheBlendWeight(t *testing.T) {
 	_, samplesByRide := syntheticCorpus(1)
 	var samples []sampleRow

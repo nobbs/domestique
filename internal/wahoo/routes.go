@@ -26,14 +26,10 @@ func (c *Client) UpdateRoute(ctx context.Context, routeID int64, accessToken str
 	return c.writeRoute(ctx, http.MethodPut, routeID, accessToken, stage, fitData)
 }
 
-// ListOwnedRoutes returns every route the account holds that carries an
-// external ID, keyed by it. One listing answers what a per-stage lookup used
-// to ask once per stage: a library of a hundred stages cost a hundred
-// requests against a quota shared by every target, which is what exhausted it.
-//
-// A route whose external ID this service did not issue was not created here.
-// Leaving it out of the map is what keeps a hand-made route unmatchable, and
-// therefore undeletable, by everything downstream.
+// ListOwnedRoutes returns every route the account holds that carries an external
+// ID, keyed by it. One listing answers what a per-stage lookup asked once per
+// stage against a quota every target shares. A route whose external ID this
+// service did not issue is left out, which keeps a hand-made route undeletable.
 func (c *Client) ListOwnedRoutes(ctx context.Context, accessToken string) (map[string]int64, error) {
 	if accessToken == "" {
 		return nil, errors.New("wahoo: access token is required")
@@ -56,11 +52,9 @@ func (c *Client) ListOwnedRoutes(ctx context.Context, accessToken string) (map[s
 		if !route.OwnsExternalID(item.ExternalID) || item.ID <= 0 {
 			continue
 		}
-		// Two routes claiming one external ID leaves no way to say which one
-		// this service owns, so every later answer about it — update this,
-		// delete that — would be a coin toss silently resolved by map order. A
-		// per-stage lookup refused a multiple match for the same reason; the
-		// listing has to refuse it too rather than keep whichever arrived last.
+		// Two routes claiming one external ID leaves no way to say which this
+		// service owns, so every later answer would be a coin toss resolved by map
+		// order. The listing refuses it rather than keeping whichever arrived last.
 		if _, duplicate := owned[item.ExternalID]; duplicate {
 			return nil, errors.New("wahoo: route listing contained a duplicate external id")
 		}
@@ -70,24 +64,12 @@ func (c *Client) ListOwnedRoutes(ctx context.Context, accessToken string) (map[s
 	return owned, nil
 }
 
-// DeleteOwnedRoutes removes every route this service issued the external ID
-// for, and reports how many it removed. A route it did not issue is not
-// listed, not counted, and not touched.
-//
-// It reads the account's routes itself rather than taking a list, because the
-// two halves have to agree about repeated external IDs. Reconciliation cannot
-// act on one — it would not know which route it owns — so its listing refuses
-// them outright. Clearing is what an operator reaches for to get out of
-// exactly that state, so this sees duplicates and removes every last one.
-//
-// It waits out a spent request quota rather than stopping at one, because a
-// clear is finished only when the target is empty. On a small quota that can
-// mean several refills and many minutes; the alternative is an operator
-// pressing the same destructive button until the count reaches zero.
-//
-// A deletion that fails for any other reason ends it, and the count returned
-// alongside the error is real: those routes are gone, and repeating the call
-// continues from what is left.
+// DeleteOwnedRoutes removes every route this service issued the external ID for
+// and reports how many. A route it did not issue is not listed, counted, or
+// touched. It reads the account's routes itself so it sees the repeated external
+// IDs reconciliation refuses, and removes every one. It waits out a spent quota
+// rather than stopping, so a clear finishes only when the target is empty. Any
+// other failure ends it, and the count returned with the error is real.
 func (c *Client) DeleteOwnedRoutes(ctx context.Context, accessToken string) (int, error) {
 	if accessToken == "" {
 		return 0, errors.New("wahoo: access token is required")

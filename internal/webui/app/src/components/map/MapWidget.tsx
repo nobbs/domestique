@@ -114,18 +114,10 @@ export function MapWidget({
       <MapComponent
         mapStyle={styleUrl}
         onLoad={() => setLoadedStyleUrl(styleUrl)}
-        // `idle`, not `styledata`, which cannot answer this question. Changing
-        // the basemap fires `styledata` several times, and the only one that
-        // reports `isStyleLoaded()` — the first, microseconds after the swap —
-        // is still describing the style being replaced. So the layers came back
-        // on the strength of the outgoing style having been ready, and every
-        // later `styledata` reported false. A swap that missed that one
-        // accidental true never saw another event, and the routes stayed gone
-        // for good.
-        //
-        // `idle` is emitted once the new style is loaded and everything it
-        // asked for has been drawn, which is the first moment the layers below
-        // can actually be added.
+        // `idle`, not `styledata`. Changing the basemap fires `styledata` several
+        // times and the only one reporting `isStyleLoaded()` describes the style
+        // being replaced, so a swap that missed that accidental true left the
+        // routes gone for good. `idle` is the first moment the layers can be added.
         onIdle={() => setLoadedStyleUrl(styleUrl)}
         style={{ width: "100%", height: "100%" }}
         aria-label={ariaLabel}

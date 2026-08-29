@@ -1,14 +1,9 @@
 //go:build verify
 
 // Package-internal verification against the extract and index the design was
-// measured on.
-//
-// This is not a unit test and is excluded from a normal run: it needs a 267 MB
-// regional extract and the index built from it by the prototype, neither of
-// which belongs in the repository. It exists to answer one question — does the
-// production builder give the same answers as the index the 99.477% agreement
-// was measured against — and it answers it the only way that counts, by running
-// the production matcher over both and comparing classified distance.
+// measured on. Not a unit test and excluded from a normal run: it needs a 267 MB
+// regional extract and the index the prototype built from it. It runs the
+// production matcher over both and compares classified distance.
 //
 //	go test -tags verify ./internal/osmindex -run TestVerifyAgainstPrototype -v \
 //	  -extract /path/rheinland-pfalz.osm.pbf \
@@ -161,12 +156,9 @@ func buildFixture(t *testing.T, path string) {
 }
 
 // prototypeIndex reads the format the validated index was written in: a count
-// prefix per cell, way identifiers delta-encoded against the previous run.
-//
-// The production format drops both so that a cell can be appended to, which is
-// what lets the builder flush and forget. Keeping the old reader here is what
-// makes the comparison meaningful — the claim is that the two formats carry the
-// same information, and the only way to test that is to decode both.
+// prefix per cell, way identifiers delta-encoded against the previous run. The
+// production format drops both so a cell can be appended to. Keeping the old
+// reader is what makes the comparison meaningful.
 type prototypeIndex struct {
 	database *sql.DB
 	lookup   *sql.Stmt
