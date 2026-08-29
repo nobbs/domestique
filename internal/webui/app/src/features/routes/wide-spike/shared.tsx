@@ -11,6 +11,7 @@
  * how many of them can be seen at once, and against what axis.
  */
 
+import { IconChevronsRight } from "@tabler/icons-react";
 import type { ReactNode } from "react";
 import type { Route } from "../../../api/types";
 import type { Cell } from "../../../components/route/forecast-spike/cells";
@@ -42,18 +43,71 @@ export interface SheetProps {
 }
 
 /**
- * The sheet itself: a card standing on the foot of the map.
+ * The sheet itself: a card standing on the foot of the map, or a pill when it
+ * has been put away.
  *
  * Rounded and inset on all sides rather than run to the edges, so the map is
  * visibly continuous behind it and the panel reads as something laid on the
  * page rather than a region of it.
+ *
+ * Folded, it gives back its whole height — around a third of the map — and
+ * leaves a pill centred on the foot. Centred rather than in a corner because
+ * the dock is the full width of the page: it belongs to the middle, and a
+ * reader who put it away looks for it where it went, not where a corner
+ * control happens to live.
  */
-export function Sheet({ children }: { children: ReactNode }) {
+export function Sheet({
+  open = true,
+  onOpenChange,
+  summary,
+  children,
+}: {
+  /** Whether the dock is unfolded. Folded, it is a pill on the map's foot. */
+  open?: boolean | undefined;
+  onOpenChange?: ((open: boolean) => void) | undefined;
+  /** What the pill says while the dock is away. */
+  summary?: string | undefined;
+  children: ReactNode;
+}) {
+  if (onOpenChange !== undefined && !open) {
+    return (
+      <button
+        type="button"
+        aria-expanded={false}
+        onClick={() => onOpenChange(true)}
+        className="flex items-center gap-1.5 rounded-full bg-[var(--panel)] py-1.5 pr-3.5 pl-3 text-xs shadow-[var(--shadow)] ring-1 ring-black/5 hover:bg-[var(--base)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
+      >
+        <IconChevronsRight
+          size={13}
+          stroke={2}
+          aria-hidden="true"
+          className="-rotate-90 text-[var(--ink-2)]"
+        />
+        {summary ?? "Route detail"}
+      </button>
+    );
+  }
+
   return (
     <section
       aria-label="Route detail"
-      className="rounded-xl bg-[var(--panel)] p-4 shadow-[var(--shadow)] ring-1 ring-black/5"
+      className="relative w-full rounded-xl bg-[var(--panel)] p-4 shadow-[var(--shadow)] ring-1 ring-black/5"
     >
+      {onOpenChange === undefined ? null : (
+        // On the top edge, centred: that edge is the seam the dock folds
+        // along, and it is where the pill will be. The control does not move
+        // when the thing it controls goes away — the same rule the climbs
+        // divider follows one panel over.
+        <button
+          type="button"
+          aria-expanded
+          aria-label="Hide the route detail"
+          onClick={() => onOpenChange(false)}
+          className="absolute -top-2.5 left-1/2 flex -translate-x-1/2 items-center rounded-full border border-[var(--rule)] bg-[var(--panel)] px-2 py-0.5 text-[var(--ink-2)] shadow-[var(--shadow)] hover:bg-[var(--base)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)]"
+        >
+          <IconChevronsRight size={13} stroke={2} aria-hidden="true" className="rotate-90" />
+        </button>
+      )}
       {children}
     </section>
   );

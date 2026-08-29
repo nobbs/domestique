@@ -88,7 +88,11 @@ export function MapPane({
         />
       </svg>
       <div className="absolute top-3 left-3">{children}</div>
-      {sheet === undefined ? null : <div className="absolute right-3 bottom-3 left-3">{sheet}</div>}
+      {sheet === undefined ? null : (
+        // Centred, so a dock that folds to a pill leaves it in the middle of
+        // the foot where the dock was, rather than dropping it into a corner.
+        <div className="absolute right-3 bottom-3 left-3 flex justify-center">{sheet}</div>
+      )}
     </div>
   );
 }

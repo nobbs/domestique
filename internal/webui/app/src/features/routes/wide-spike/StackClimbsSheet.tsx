@@ -47,6 +47,8 @@ export function StackClimbsSheet({
   weatherFrame = "card",
   withClimbs = true,
   lead,
+  open,
+  onOpenChange,
   route,
   profile,
   surface,
@@ -74,6 +76,9 @@ export function StackClimbsSheet({
    * a card of its own. Absent leaves the sheet as it was.
    */
   lead?: ReactNode;
+  /** Folds the whole dock into a pill on the map's foot. */
+  open?: boolean | undefined;
+  onOpenChange?: ((open: boolean) => void) | undefined;
 }) {
   const { ref, width } = useElementWidth<HTMLDivElement>();
   /*
@@ -88,7 +93,11 @@ export function StackClimbsSheet({
   const [groundLabelled, setGroundLabelled] = useState(true);
 
   return (
-    <Sheet>
+    <Sheet
+      open={open}
+      onOpenChange={onOpenChange}
+      summary={`Profile, ground and forecast · back ${clockAt(samples[samples.length - 1]?.arrivalAt ?? startAt)}`}
+    >
       <div className="flex items-stretch gap-4">
         {lead === undefined ? null : (
           <div className="w-[13.5rem] shrink-0 border-r border-[var(--rule)] pr-4">{lead}</div>

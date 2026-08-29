@@ -128,6 +128,7 @@ function useComposition() {
 export const Negotiated: StoryObj = {
   render: () => {
     const shared = useComposition();
+    const [dockOpen, setDockOpen] = useState(true);
 
     return (
       <Page>
@@ -137,7 +138,14 @@ export const Negotiated: StoryObj = {
           width={PAGE.width}
           height={PAGE.height - 56}
           sheet={
-            <StackClimbsSheet {...sheet} {...shared} weatherFrame="capped" withClimbs={false} />
+            <StackClimbsSheet
+              {...sheet}
+              {...shared}
+              weatherFrame="capped"
+              withClimbs={false}
+              open={dockOpen}
+              onOpenChange={setDockOpen}
+            />
           }
         >
           <div
