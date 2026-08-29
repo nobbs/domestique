@@ -31,7 +31,7 @@ const stateTimeout = 3 * time.Second
 // whole of this package's dependencies: readiness proves that the process can
 // read what it was configured with, and nothing more.
 type State interface {
-	ForEachTarget(ctx context.Context, visit func(id, authorization string) error) error
+	ForEachTarget(ctx context.Context, visit func(id, authorizationState string) error) error
 }
 
 // Handler answers the readiness probe and nothing else.

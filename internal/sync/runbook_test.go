@@ -26,7 +26,7 @@ func TestTheRunbookExplainsEveryFailureCategory(t *testing.T) {
 	runbook := readRunbook(t)
 
 	categories := declaredFailureCategories(t)
-	require.NotEmpty(t, categories, "no failure categories were found in service.go")
+	require.NotEmpty(t, categories, "no failure categories were found in result.go")
 	for _, category := range categories {
 		assert.Contains(t, runbook, "`"+category+"`",
 			"docs/runbook.md does not explain the %q failure category", category)
@@ -38,7 +38,7 @@ func TestTheRunbookExplainsEveryFailureCategory(t *testing.T) {
 // one of them, so it is left out.
 func declaredFailureCategories(t *testing.T) []string {
 	t.Helper()
-	file, err := parser.ParseFile(token.NewFileSet(), "service.go", nil, 0)
+	file, err := parser.ParseFile(token.NewFileSet(), "result.go", nil, 0)
 	require.NoError(t, err)
 
 	var categories []string

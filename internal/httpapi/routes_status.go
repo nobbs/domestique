@@ -74,9 +74,9 @@ func (h *Handler) GetStatus(writer http.ResponseWriter, request *http.Request) {
 	// edit made while it was being assembled had already put out of step.
 	targetIDs := h.targetIDs()
 	authorizations := make(map[string]string, len(targetIDs))
-	if err := h.state.ForEachTarget(request.Context(), func(id, authorization string) error {
+	if err := h.state.ForEachTarget(request.Context(), func(id, authorizationState string) error {
 		if slices.Contains(targetIDs, id) {
-			authorizations[id] = authorization
+			authorizations[id] = authorizationState
 		}
 
 		return nil
