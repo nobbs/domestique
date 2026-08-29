@@ -98,14 +98,22 @@ export function Sheet({
         // along, and it is where the pill will be. The control does not move
         // when the thing it controls goes away — the same rule the climbs
         // divider follows one panel over.
+        //
+        // Shaped like the drawer's own swipe handle, which is the vocabulary
+        // this application already uses for the top edge of a sheet: a wide
+        // flat pill rather than the dot it was, so it reads as the sheet's
+        // handle rather than as a stray control that happens to sit there.
+        // The chevron stays, though — the drawer's bar promises a drag, and
+        // this only ever takes a press, so it says which way the sheet goes
+        // instead of inviting one.
         <button
           type="button"
           aria-expanded
           aria-label="Hide the route detail"
           onClick={() => onOpenChange(false)}
-          className="absolute -top-2.5 left-1/2 flex -translate-x-1/2 items-center rounded-full border border-[var(--rule)] bg-[var(--panel)] px-2 py-0.5 text-[var(--ink-2)] shadow-[var(--shadow)] hover:bg-[var(--base)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)]"
+          className="absolute -top-3 left-1/2 flex h-6 w-14 -translate-x-1/2 items-center justify-center rounded-full border border-[var(--rule)] bg-[var(--panel)] text-[var(--ink-2)] shadow-[var(--shadow)] hover:bg-[var(--base)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)]"
         >
-          <IconChevronsRight size={13} stroke={2} aria-hidden="true" className="rotate-90" />
+          <IconChevronsRight size={15} stroke={2} aria-hidden="true" className="rotate-90" />
         </button>
       )}
       {children}
