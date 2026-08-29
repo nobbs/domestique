@@ -11,7 +11,7 @@ import { cumulativeMetres } from "./profile";
 const START_AT = new Date("2026-08-24T06:00:00Z");
 
 /**
- * Points spaced evenly by latitude, paired with an elapsed-time series spaced
+ * Points spaced evenly by latitude, paired with a moving-time series spaced
  * evenly by point index. A synthetic, unrealistic pairing of ground and clock
  * — real predictions never march in lockstep with point index — but an exact
  * one, which is what makes the sample indices this test expects predictable
@@ -31,7 +31,7 @@ function evenlyTimedRoute(pointCount: number, latitudeStep: number, secondsPerPo
 }
 
 /**
- * A ride at constant speed: elapsed time is the real great-circle distance
+ * A ride at constant speed: moving time is the real great-circle distance
  * between consecutive points divided by the speed, using the same
  * `cumulativeMetres` `forecastSamples` measures with — so this fixture can
  * never disagree with the function under test about where the ground is.
@@ -53,8 +53,8 @@ function constantSpeedRoute(
 }
 
 describe("forecastSamples", () => {
-  it("lands a sample every 30 minutes of elapsed time, with the first and last coordinate always present", () => {
-    // 13 points, 10 minutes apart in elapsed time and about 2.2 km apart on
+  it("lands a sample every 30 minutes of moving time, with the first and last coordinate always present", () => {
+    // 13 points, 10 minutes apart in moving time and about 2.2 km apart on
     // the ground — comfortably clear of the 5 km floor, so only the timing
     // rule decides which points are kept.
     const { coordinates, cumulativeSeconds } = evenlyTimedRoute(13, 0.02, 600);
@@ -111,7 +111,7 @@ describe("forecastSamples", () => {
     ]);
   });
 
-  it("sets each arrival time to the start plus the elapsed time at that coordinate, ending at the whole moving time", () => {
+  it("sets each arrival time to the start plus the moving time at that coordinate, ending at the whole moving time", () => {
     const { coordinates, cumulativeSeconds } = evenlyTimedRoute(13, 0.02, 600);
     const totalSeconds = cumulativeSeconds[cumulativeSeconds.length - 1] ?? 0;
 
@@ -178,7 +178,7 @@ describe("forecastSamples", () => {
     ]);
   });
 
-  it("returns an empty list rather than throwing for a stage with zero total elapsed time", () => {
+  it("returns an empty list rather than throwing for a stage with zero total moving time", () => {
     expect(forecastSamples([[8, 49]], [0], START_AT)).toEqual([]);
     expect(
       forecastSamples(
@@ -211,7 +211,7 @@ describe("forecastSamples", () => {
     ]);
   });
 
-  it("samples the finish even when the last coordinates share one elapsed time", () => {
+  it("samples the finish even when the last coordinates share one moving time", () => {
     // A stage ending in a zero-length segment: the clock stops before the
     // geometry does, so the naive cursor would stop on the second-to-last
     // coordinate and never sample the point the rider finishes at.
@@ -313,7 +313,7 @@ describe("forecastSamples", () => {
     ).toEqual([]);
   });
 
-  it("returns an empty list rather than throwing for an empty elapsed-time series", () => {
+  it("returns an empty list rather than throwing for an empty moving-time series", () => {
     expect(
       forecastSamples(
         [
@@ -326,7 +326,7 @@ describe("forecastSamples", () => {
     ).toEqual([]);
   });
 
-  it("returns an empty list rather than throwing when coordinates and elapsed times disagree in length", () => {
+  it("returns an empty list rather than throwing when coordinates and moving times disagree in length", () => {
     expect(
       forecastSamples(
         [

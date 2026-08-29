@@ -339,18 +339,18 @@ describe("coordinateRange", () => {
 
 describe("movingSecondsForWindow", () => {
   const coordinates = route([100, 200, 300, 400, 500]);
-  // Ten seconds per point, so the window's own elapsed time is easy to check
+  // Ten seconds per point, so the window's own moving time is easy to check
   // against coordinateRange's own start/end indices.
   const cumulativeSeconds = [0, 10, 20, 30, 40];
 
   it("subtracts the cumulative series at the selection's rounded-outward boundaries", () => {
-    const elapsed = movingSecondsForWindow(coordinates, cumulativeSeconds, {
+    const moving = movingSecondsForWindow(coordinates, cumulativeSeconds, {
       startMetres: 150,
       endMetres: 250,
     });
 
     // coordinateRange rounds this stretch out to indices 1 and 3.
-    expect(elapsed).toBe((cumulativeSeconds[3] ?? 0) - (cumulativeSeconds[1] ?? 0));
+    expect(moving).toBe((cumulativeSeconds[3] ?? 0) - (cumulativeSeconds[1] ?? 0));
   });
 
   it("is undefined with no selection", () => {
@@ -369,7 +369,7 @@ describe("movingSecondsForWindow", () => {
     ).toBeUndefined();
   });
 
-  it("is undefined for a non-monotonic or duplicated series rather than a zero or negative elapsed time", () => {
+  it("is undefined for a non-monotonic or duplicated series rather than a zero or negative moving time", () => {
     const flat = [0, 10, 10, 10, 40];
     expect(
       movingSecondsForWindow(coordinates, flat, { startMetres: 150, endMetres: 250 }),

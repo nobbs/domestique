@@ -54,7 +54,7 @@ export interface ForecastSample {
 
 /**
  * Picks the samples worth a forecast request: evenly spaced across the ride's
- * elapsed time, then thinned so no two sit closer than
+ * moving time, then thinned so no two sit closer than
  * `MIN_SAMPLE_SPACING_METRES` apart on the ground.
  *
  * `cumulativeSeconds` is the predicted moving time at each coordinate, as the
@@ -62,7 +62,7 @@ export interface ForecastSample {
  * assumed non-decreasing. It is optional for the same
  * reason that field is: a stage nothing has predicted a time for has no clock
  * to sample against, and this never guesses one. It returns `[]` for an
- * absent or empty series, mismatched lengths, or a total elapsed time of
+ * absent or empty series, mismatched lengths, or a total moving time of
  * zero, leaving the caller to decide what an unpredicted stage shows.
  */
 export function forecastSamples(
@@ -86,7 +86,7 @@ export function forecastSamples(
 
   const slots = Math.min(MAX_SAMPLES, Math.max(2, Math.floor(total / SAMPLE_INTERVAL_SECONDS) + 1));
 
-  // One forward pass: the target elapsed time rises monotonically with the
+  // One forward pass: the target moving time rises monotonically with the
   // slot, and so does the first coordinate index that reaches it, so the same
   // cursor serves every slot rather than rescanning from the start each time.
   const candidates: number[] = [];
@@ -101,7 +101,7 @@ export function forecastSamples(
     }
   }
 
-  // A ride whose last coordinates share one elapsed time — a stage ending in a
+  // A ride whose last coordinates share one moving time — a stage ending in a
   // zero-length segment — leaves the cursor on the first of them, so the finish
   // itself would never be sampled. It is the point a rider most wants, so it
   // replaces the sample before it once the cap is already full.

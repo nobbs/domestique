@@ -1,6 +1,6 @@
 /**
  * The reader's chosen ride start time, used to turn a stage's forecast
- * samples — each one an elapsed time since departure — into real moments
+ * samples — each one a moving time since departure — into real moments
  * worth asking `GET /v1/weather` about.
  *
  * Modelled closely on `theme.ts`, with one difference: a stored start time
