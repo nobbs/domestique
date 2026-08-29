@@ -40,22 +40,42 @@ const POINT_COUNT = 2_001;
 /**
  * Height above sea level at each turning point, by distance in kilometres.
  *
- * Three cols with a valley between each. The last keyframe returns to the
- * first: the route is a loop, and a loop that ended two hundred metres above
- * where it started would put that error into the ascent figure every card
- * prints.
+ * Seven climbs, deliberately unlike each other, because three cols of much the
+ * same size is the easy case for everything that draws them. There is a long
+ * steady col, a short wall steep enough to reach the top gradient band, a
+ * gentle drag, two punchy ramps close enough together to crowd any marker
+ * placed on an axis, the day's big one, and a sting in the tail at the point a
+ * reader has stopped expecting one.
+ *
+ * That range is the point. A climbs list is easy to lay out for three and
+ * awkward for seven; a bracket track is legible until two climbs are four
+ * kilometres apart; a "biggest climb" line means something quite different
+ * when the biggest is one of seven rather than one of three.
+ *
+ * The last keyframe returns to the first: the route is a loop, and one that
+ * ended two hundred metres above where it started would put that error into
+ * the ascent figure every card prints.
  */
 const ELEVATION_KEYFRAMES: ReadonlyArray<readonly [number, number]> = [
   [0, 420],
-  [18, 465],
-  [29.5, 1_115],
-  [31, 1_310],
-  [42, 640],
-  [58, 690],
-  [74, 1_495],
-  [90, 610],
-  [110, 700],
-  [120, 1_210],
+  [8, 450],
+  [20, 1_150],
+  [27, 640],
+  [32, 700],
+  [35, 1_050],
+  [40, 520],
+  [52, 700],
+  [60, 1_060],
+  [66, 640],
+  [69, 900],
+  [73, 700],
+  [76, 960],
+  [82, 560],
+  [95, 620],
+  [106, 1_250],
+  [108, 1_420],
+  [116, 700],
+  [121, 1_000],
   [130, 420],
 ];
 
