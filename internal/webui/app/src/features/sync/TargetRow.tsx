@@ -17,9 +17,9 @@ import { GUIDANCE_LABELS, syncGuidance } from "../../lib/syncGuidance";
 import { authorisationGuidance, authorisationStartHref } from "../../lib/targetAuthorisation";
 
 /**
- * What one account holds, in a line.
+ * What one target holds, in a line.
  *
- * An account that is not connected holds whatever it was last written, but
+ * A target that is not connected holds whatever it was last written, but
  * saying so alongside "not connected" would be two answers to one question. The
  * connection is the answer that matters, so it is the one the line gives.
  */
@@ -39,12 +39,12 @@ function stagesSummary(target: TargetStatus): string {
 }
 
 /**
- * How this account's last write ended, when it did not end well.
+ * How this target's last write ended, when it did not end well.
  *
  * The service reduces every unsuccessful run to `failed` in its own one word,
- * because that word answers a different question — whether this account is
+ * because that word answers a different question — whether this target is
  * behind — and a held gate leaves it behind either way. Here there is room to
- * say which, and a gate must not be read as a fault: the account is intact and
+ * say which, and a gate must not be read as a fault: the target is intact and
  * the next move is the operator's.
  */
 function lastRunSummary(target: TargetStatus): string | null {
@@ -56,20 +56,20 @@ function lastRunSummary(target: TargetStatus): string | null {
   return `${GUIDANCE_LABELS[guidance.kind]} · ${formatTimestamp(target.lastRun.completedAt)}`;
 }
 
-/** One account's last write, explained, or nothing when it succeeded. */
+/** One target's last write, explained, or nothing when it succeeded. */
 function targetGuidance(target: TargetStatus) {
   return target.lastRun
     ? syncGuidance("targets", target.lastRun.result, target.lastRun.failure)
     : undefined;
 }
 
-export interface AccountRowProps {
+export interface TargetRowProps {
   target: TargetStatus;
   reconciling: boolean;
   onReconcile: () => void;
   /**
    * The delete-confirmation dialog's state, held by the caller rather than in
-   * this row: only one account's confirmation may be open at a time, which a
+   * this row: only one target's confirmation may be open at a time, which a
    * row cannot promise on its own.
    */
   clear: {
@@ -82,8 +82,8 @@ export interface AccountRowProps {
   };
 }
 
-/** One account: what it holds, and the two ways to act on it. */
-export function AccountRow({ target, reconciling, onReconcile, clear }: AccountRowProps) {
+/** One target: what it holds, and the two ways to act on it. */
+export function TargetRow({ target, reconciling, onReconcile, clear }: TargetRowProps) {
   const guidance = targetGuidance(target);
   const authorisation = authorisationGuidance(target.authorisation);
   const failure = lastRunSummary(target);
@@ -136,10 +136,10 @@ export function AccountRow({ target, reconciling, onReconcile, clear }: AccountR
            * button next to it that undoes the point of asking.
            */}
           {/*
-           * "This account", not "this device": the button reconciles the
-           * Wahoo account the row is about, and says so, because what it
-           * presses is not the same thing as a head unit fetching routes
-           * from it on its own schedule.
+           * "This target", not "this device": the button reconciles the
+           * target the row is about, and says so, because what it presses is
+           * not the same thing as a head unit fetching routes from it on its
+           * own schedule.
            */}
           <Button
             variant="outline"
@@ -148,12 +148,12 @@ export function AccountRow({ target, reconciling, onReconcile, clear }: AccountR
             aria-label={`Reconcile now: ${target.id}`}
           >
             {reconciling ? <Spinner aria-label="Reconciling" /> : null}
-            Reconcile this account
+            Reconcile this target
           </Button>
           {/*
            * Deleting everything is not a variant of reconciling, so it does
            * not sit beside it as an equal. It asks first, and what it asks
-           * for is the account's own name — the one confirmation a stray
+           * for is the target's own name — the one confirmation a stray
            * click cannot supply.
            */}
           <AlertDialog open={clear.open} onOpenChange={clear.onOpenChange}>

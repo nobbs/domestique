@@ -39,7 +39,7 @@ const DESTINATIONS = [
 
 /*
  * Two channels, kept apart on purpose. Which page you are on is `aria-current`,
- * which paints the link's own text; what synchronisation is doing is a dot
+ * which paints the link's own text; what sync is doing is a dot
  * beside the word, which paints nothing else. A reader who met both as a colour
  * on the same word could not tell "you are here" from "something needs you".
  */
@@ -66,7 +66,7 @@ export function MenuBar() {
              * the name still begins with the word on screen so that saying
              * "Sync" to a voice control reaches this link. A state that has not
              * arrived leaves the name alone: a status request failing is not the
-             * reader's problem until they ask about synchronisation.
+             * reader's problem until they ask about sync.
              */
             aria-label={to === "/sync" ? described : undefined}
             title={to === "/sync" ? described : undefined}

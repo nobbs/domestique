@@ -33,7 +33,7 @@ describe("syncGuidance", () => {
   });
 
   it("keeps a gate readable as a gate whatever result word carries it", () => {
-    // A gate is about what the account now holds, and that is the same whether
+    // A gate is about what the target now holds, and that is the same whether
     // the run recorded itself as blocked or as failed.
     expect(syncGuidance("targets", "failed", "deletion_limit")?.kind).toBe("blocked");
     expect(syncGuidance("targets", "blocked", "deletion_limit")?.kind).toBe("blocked");

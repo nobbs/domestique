@@ -11,7 +11,8 @@ the wire, the database and the interface in step, rather than one file at a time
 as each is noticed.
 
 The frontend-only renames (items 3, 5, 6, 7, 8, 9, 13 and the smaller drift)
-have been applied and are gone from here.
+and the interface wording (4, 10, 12) have been applied and are gone from
+here.
 
 Every claim below carries the file it was read from. Line numbers are from the
 commit this document was written against and will drift; the identifiers will
@@ -104,41 +105,6 @@ outlier is `stageKey`, which renames the concept mid-flight.
 
 **Proposed:** `stageKey` → `routeKey`.
 
-## 4. `target` on the wire, "account" in the interface
-
-The wire and the types say **target** throughout: `TargetStatus`, `TargetRun`,
-`/v1/settings/targets`, `/v1/sync/targets/{target}`,
-`/oauth/wahoo/start/{target}`.
-
-The interface never says it. It says *account*: the card heading "What the
-accounts hold", the settings section "Wahoo accounts", the field "Accounts, one
-per line", "That account could not be reconciled."
-
-`AccountRow` straddles the two — the component is named for the interface and
-its prop (`AccountRow.tsx:68`) is `target: TargetStatus`.
-`docs/specs/configuration.md` uses a third word, *slot*, from line 74 onward.
-
-**Proposed:** *target* wins, because it is already the wire word and because the
-credentials are a property of the target rather than the thing itself. Rename
-the interface strings and `AccountRow` → `TargetRow`. See the glossary entry
-for *account*, which stays a real word for the credentials on both sides.
-
-*Slot* stays, and is a glossary entry rather than drift. It is not a loose third
-spelling of *target*: `configuration.md` uses it for the configured list entry
-as distinct from the durable record that entry creates — "Removing a slot from
-the list keeps that record" — and no other word in the vocabulary draws that
-line. It is configuration's word alone; the wire and the interface say
-*target*.
-
-## 10. `sync` and `synchronisation`
-
-The nav label is "Sync", the route is `/sync`, the Go package is
-`internal/sync` — and the settings section on the adjacent screen is titled
-"Synchronisation", with `lib/syncState.ts` documenting "the state of
-synchronisation".
-
-**Proposed:** "Sync" everywhere a reader sees it.
-
 ## 11. Phases are called halves in prose
 
 `SyncPhase` is `"source" | "targets"` — singular for one, plural for the other —
@@ -154,19 +120,6 @@ source section, up to two target slots — and `SyncPhases` holds exactly one
 grammatically consistent would break `api/openapi.yaml`, `SYNC_PHASES` and Go's
 `PhaseSource`/`PhaseTargets` for a cosmetic gain.
 
-## 12. British identifiers over American values
-
-`lib/targetAuthorisation.ts` (British) exports `TARGET_AUTHORISATIONS` whose
-members are `"not_authorized"`, `"authorized"`, `"needs_reauthorization"`.
-`TargetStatus.authorisation` is a British field whose sibling `convergence`
-enum includes `"unauthorized"`. `ServiceSettings.tsx:472` shows the reader
-"every authorization, route and recorded run" while `AccountRow` says
-"authorisation".
-
-**Proposed:** as the glossary says — British in prose and in identifiers this
-project owns, American only where quoting a wire value. The one real fix is the
-user-visible "authorization" in `ServiceSettings.tsx`.
-
 ## 14. `Route` collides with react-router
 
 `react-router` exports `Route` and `Routes`; `api/types.ts` exports a domain
@@ -179,8 +132,7 @@ considered.
 
 ## Suggested order
 
-1. The wording that does not cross the wire (4, 10, 11, 12) — user-visible
-   strings and Go comments, one pass.
+1. Item 11, which is a prose fix in Go comments and touches nothing else.
 2. `route` versus `source route` (1, 2) — last, because it crosses
    `api/openapi.yaml`, the Go handlers, a `localStorage` key and the normative
    specifications.

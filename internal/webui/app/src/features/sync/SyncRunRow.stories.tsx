@@ -17,7 +17,7 @@ const meta = {
   title: "Features/Sync/Sync Run Row",
   component: SyncRunRow,
   tags: ["autodocs"],
-  args: { run: succeeded, label: "Wahoo accounts" },
+  args: { run: succeeded, label: "Wahoo targets" },
   decorators: [
     (Story) => (
       <ul className="w-96 bg-[var(--panel)] p-2">

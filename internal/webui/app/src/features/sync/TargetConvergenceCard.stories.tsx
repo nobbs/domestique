@@ -11,7 +11,7 @@ const meta = {
   tags: ["autodocs"],
   decorators: [
     (Story) => (
-      <SyncCard id="accounts" heading="What the accounts hold">
+      <SyncCard id="targets" heading="What the targets hold">
         <Story />
       </SyncCard>
     ),
@@ -49,7 +49,7 @@ export const Pending: Story = {
     },
   ],
   play: async ({ canvas }) => {
-    await expect(canvas.getByLabelText("Loading accounts")).toBeInTheDocument();
+    await expect(canvas.getByLabelText("Loading targets")).toBeInTheDocument();
   },
 };
 
@@ -76,7 +76,7 @@ export const Failed: Story = {
   ],
   play: async ({ canvas }) => {
     await expect(
-      await canvas.findByText("The service did not say what the accounts hold."),
+      await canvas.findByText("The service did not say what the targets hold."),
     ).toBeInTheDocument();
   },
 };

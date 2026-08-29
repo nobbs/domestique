@@ -87,7 +87,7 @@ test("the status view drives the sync page", async ({ bundlePage: page, apiCalls
   await expect(page.getByText("rider-b", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Run now: Read from VeloPlanner" })).toBeVisible();
   await expect(page.getByLabel("Hourly: Read from VeloPlanner")).toBeVisible();
-  await expect(page.getByRole("region", { name: "What the accounts hold" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "What the targets hold" })).toBeVisible();
   expect(callsTo(apiCalls, "GET", "/v1/status").map((call) => call.status)).toContain(200);
   // The history card is the third view the page reads, and it crosses the same
   // boundary as the other two.

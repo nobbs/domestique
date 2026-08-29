@@ -195,7 +195,7 @@ export function RunNotice({ reference }: { reference: string | null }) {
         </Button>
         {/*
          * The other way out. Whatever the remediation asks for beyond running
-         * the half again — a limit raised, an account reconnected — is settled
+         * the half again — a limit raised, a target reconnected — is settled
          * in the service's own configuration or in the cards below, so the
          * second action leaves rather than pretending this card can do it.
          */}

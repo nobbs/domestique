@@ -3,12 +3,12 @@
  *
  * It used to be a strip above the library — a badge, a couple of buttons, and a
  * history a reader scrolled past to get to their routes. Nothing about
- * synchronisation is urgent enough to sit over the map every day, and everything
+ * sync is urgent enough to sit over the map every day, and everything
  * about it needs more room than a strip when it does need attention, so it is a
  * page of its own that the menu bar links to and a notification lands on.
  *
  * A notice comes first when attention is needed, followed by three cards in
- * the order the questions come: what is happening now, what the accounts
+ * the order the questions come: what is happening now, what the targets
  * hold, and what has happened.
  */
 
@@ -37,7 +37,7 @@ export function SyncPage() {
         <SyncCard id="now" heading="Now">
           <SyncControls />
         </SyncCard>
-        <SyncCard id="accounts" heading="What the accounts hold">
+        <SyncCard id="targets" heading="What the targets hold">
           <TargetConvergenceCard />
         </SyncCard>
         <SyncCard id="history" heading="What has happened">

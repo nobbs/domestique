@@ -87,7 +87,7 @@ export const SavesOneSectionOnItsOwn: Story = {
     await userEvent.clear(hours);
     await userEvent.type(hours, "30");
 
-    await userEvent.click(canvas.getByRole("button", { name: "Save Synchronisation" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Save Sync" }));
 
     await waitFor(() => expect(written).toHaveLength(1));
     await expect(written[0]?.url).toContain("/v1/settings/sync");

@@ -134,18 +134,18 @@ function parseRouteKey(
 }
 
 /**
- * How the card says every account holds the library.
+ * How the card says every target holds the library.
  *
- * Counted, because an operator with two Wahoo accounts reads "on both accounts"
- * as a statement about their own setup, and "on every account" as a statement
- * about a set they have to remember the size of.
+ * Counted, because an operator with two targets reads "on both targets" as a
+ * statement about their own setup, and "on every target" as a statement about a
+ * set they have to remember the size of.
  */
 function convergedPhrase(targetCount: number): string {
   if (targetCount === 1) {
-    return "on the account";
+    return "on the target";
   }
 
-  return targetCount === 2 ? "on both accounts" : "on every account";
+  return targetCount === 2 ? "on both targets" : "on every target";
 }
 
 export interface AtlasPageProps {
@@ -514,12 +514,12 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
   const readAt = status.data?.sync.phases.source?.lastCompletedAt;
 
   /*
-   * Where the route is, when it was read, and whether the accounts have it.
+   * Where the route is, when it was read, and whether the targets have it.
    *
    * The service stores no locality, so "where" is the operator's own name for
    * the route wherever that is not already the title — asking a geocoder would
    * send the library's coordinates outside the Tailnet to answer a question the
-   * naming already answers. The accounts are only mentioned when every one of
+   * naming already answers. The targets are only mentioned when every one of
    * them holds the whole library, because anything short of that is a statement
    * about the library rather than about this route.
    */

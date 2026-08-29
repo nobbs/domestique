@@ -18,7 +18,7 @@ test("the page puts notices before the operational questions", async ({ offlineP
   await openSync(page);
 
   await expect(page.getByRole("region", { name: "Now" })).toBeVisible();
-  await expect(page.getByRole("region", { name: "What the accounts hold" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "What the targets hold" })).toBeVisible();
   await expect(page.getByRole("region", { name: "What has happened" })).toBeVisible();
   // Each card really read its view: the schedule and the run control come from
   // the status, the slots from the same status, and the rows from the history.

@@ -60,7 +60,7 @@ export interface RoutePanelProps {
    * Where the route is, and when it was read: the panel's second line.
    *
    * Composed by the page, because two of the three things it can say — the read
-   * time and whether the accounts hold the library — are facts about the sync
+   * time and whether the targets hold the library — are facts about the sync
    * rather than about this route.
    */
   subtitle: string;

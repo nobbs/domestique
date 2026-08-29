@@ -139,9 +139,9 @@ describe("syncState", () => {
     expect(skipped.label).not.toMatch(/^Did not finish/);
   });
 
-  // The same for a half held back until an account is connected: that is the
-  // unconnected account, and the account is what the line should say.
-  it("names the unconnected account rather than the run it held back", () => {
+  // The same for a half held back until a target is connected: that is the
+  // unconnected target, and the target is what the line should say.
+  it("names the unconnected target rather than the run it held back", () => {
     expect(
       syncState(
         status(
@@ -152,13 +152,13 @@ describe("syncState", () => {
           [unauthorized()],
         ),
       ),
-    ).toEqual({ label: "An account is not connected", tone: "alert" });
+    ).toEqual({ label: "A target is not connected", tone: "alert" });
   });
 
-  it("raises an account that cannot be written to at all", () => {
+  it("raises a target that cannot be written to at all", () => {
     expect(
       syncState(status({ lastCompletedAt: "2026-08-18T06:30:00Z" }, [unauthorized()])),
-    ).toEqual({ label: "An account is not connected", tone: "alert" });
+    ).toEqual({ label: "A target is not connected", tone: "alert" });
   });
 
   it("says nothing has run rather than that everything is in sync", () => {
@@ -179,7 +179,7 @@ describe("syncState", () => {
     expect(behind.label).toMatch(/^Behind · /);
   });
 
-  it("paints only a library every account holds", () => {
+  it("paints only a library every target holds", () => {
     const state = syncState(status({ lastCompletedAt: "2026-08-18T06:30:00Z" }));
 
     expect(state.tone).toBe("good");

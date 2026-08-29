@@ -78,7 +78,7 @@ interface CategoryGuidance {
  * the page as itself.
  *
  * `empty_source` and `deletion_limit` are the two deletion gates, and both are
- * `blocked`: the library is intact on both accounts, and the way past either is
+ * `blocked`: the library is intact on both targets, and the way past either is
  * a deliberate configuration change rather than another run.
  */
 const CATEGORY_GUIDANCE: Record<SyncFailureCategory, CategoryGuidance> = {
@@ -98,13 +98,13 @@ const CATEGORY_GUIDANCE: Record<SyncFailureCategory, CategoryGuidance> = {
     kind: "failed",
     what: "a Wahoo account would not accept this service's authorisation",
     remediation:
-      "That account has to be connected again before anything can be written to it. Reconnect it, then run this half again.",
+      "That target has to be connected again before anything can be written to it. Reconnect it, then run this half again.",
   },
   destination: {
     kind: "failed",
     what: "a Wahoo operation did not complete",
     remediation:
-      "The account may hold part of the change. Run this half again once Wahoo is reachable; it reconciles from what is actually there rather than repeating what it tried.",
+      "The target may hold part of the change. Run this half again once Wahoo is reachable; it reconciles from what is actually there rather than repeating what it tried.",
   },
   course: {
     kind: "failed",
@@ -144,13 +144,13 @@ const UNRECOGNISED: CategoryGuidance = {
 const WAITING_GUIDANCE: Record<string, CategoryGuidance> = {
   not_ready: {
     kind: "waiting",
-    what: "did not start, because an account still has to be connected",
+    what: "did not start, because a target still has to be connected",
     remediation:
-      "Connect every configured Wahoo account. Nothing is written while one of them is unconnected.",
+      "Connect every configured target. Nothing is written while one of them is unconnected.",
   },
   skipped: {
     kind: "waiting",
-    what: "did not start, because a synchronisation was already running",
+    what: "did not start, because a sync was already running",
     remediation: "Nothing is wrong. This half runs on its next turn.",
   },
 };
@@ -187,7 +187,7 @@ export function syncGuidance(
   const entry = failure && isRecognised(failure) ? CATEGORY_GUIDANCE[failure] : UNRECOGNISED;
   // The service's own word wins on blocked, because it is the half that knows
   // whether a gate held. A category that is only ever reported as blocked still
-  // reads as blocked when a run reports it any other way, since the account is
+  // reads as blocked when a run reports it any other way, since the target is
   // untouched either way.
   const kind: SyncGuidanceKind = result === "blocked" ? "blocked" : entry.kind;
   const verb = kind === "blocked" ? "stopped" : "could not finish";
