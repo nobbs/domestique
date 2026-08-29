@@ -48,8 +48,8 @@ import { cellAt, clockAt } from "./shared";
 const ROW_HEIGHT = 28;
 
 /**
- * The row's columns: ordinal, length, gradient, ascent, then where and when,
- * then the weather.
+ * The row's columns: ordinal, length, average gradient, steepest gradient,
+ * ascent, then where and when, then the weather.
  *
  * Fixed tracks rather than a flex row, so a figure sits under the figure above
  * it. Laid out by content, each row starts its second fact wherever its first
@@ -57,8 +57,12 @@ const ROW_HEIGHT = 28;
  * is the only way anyone reads seven of anything. The four measured columns
  * are right-aligned for the same reason: it is the digits that have to line
  * up, not the words.
+ *
+ * The two gradients are why there is a header. One percentage in a row needs
+ * no explaining; two adjacent ones are a riddle, and the answer — which is the
+ * average and which the wall — is the whole reason for carrying both.
  */
-const ROW_COLUMNS = "0.75rem 3.5rem 2.5rem 3.5rem minmax(0,1fr) auto";
+const ROW_COLUMNS = "0.75rem 3.5rem 2.5rem 2.5rem 3.5rem minmax(0,1fr) auto";
 const VISIBLE_ROWS = 6;
 
 export function ClimbsSection({
@@ -109,55 +113,80 @@ export function ClimbsSection({
         // `snap-mandatory` rather than `proximity`: this list is short and its
         // rows are uniform, so there is never a reading where landing between
         // two of them is what the reader meant.
-        <ol
-          className="mt-1.5 snap-y snap-mandatory overflow-y-auto"
-          style={{ maxHeight: ROW_HEIGHT * VISIBLE_ROWS }}
-        >
-          {climbs.map((climb, index) => {
-            // The middle of the climb rather than its foot: the weather a
-            // rider remembers about a col is the weather on it.
-            const middle = (climb.startMetres + climb.endMetres) / 2;
-            const cell = cellAt(cells, middle);
-            const Glyph = cell ? weatherIcon(cell.point.weatherCode) : null;
+        <>
+          {/*
+           * Outside the scroller, so the names stay put while the climbs move
+           * under them — a header that scrolls away is a header that is absent
+           * exactly when a reader has lost track of which column is which.
+           */}
+          <div
+            className="mt-1.5 grid gap-2 px-1.5 text-[10px] leading-none text-[var(--ink-2)]"
+            style={{ gridTemplateColumns: ROW_COLUMNS }}
+            aria-hidden="true"
+          >
+            <span />
+            <span className="text-right">Length</span>
+            <span className="text-right">Avg</span>
+            <span className="text-right">Max</span>
+            <span className="text-right">Ascent</span>
+            <span>Starts</span>
+            <span />
+          </div>
+          <ol
+            className="mt-1 snap-y snap-mandatory overflow-y-auto"
+            style={{ maxHeight: ROW_HEIGHT * VISIBLE_ROWS }}
+          >
+            {climbs.map((climb, index) => {
+              // The middle of the climb rather than its foot: the weather a
+              // rider remembers about a col is the weather on it.
+              const middle = (climb.startMetres + climb.endMetres) / 2;
+              const cell = cellAt(cells, middle);
+              const Glyph = cell ? weatherIcon(cell.point.weatherCode) : null;
 
-            return (
-              <li key={climb.startMetres} className="snap-start" style={{ height: ROW_HEIGHT }}>
-                <button
-                  type="button"
-                  onClick={() => onSelect(middle)}
-                  className="grid size-full items-center gap-2 rounded-lg px-1.5 text-left hover:bg-[var(--base)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent)]"
-                  style={{ gridTemplateColumns: ROW_COLUMNS }}
-                >
-                  <span className="text-right text-xs font-semibold tabular-nums">
-                    {/* The ordinal the chart's own bracket carries. */}
-                    {index + 1}
-                  </span>
-                  <span className="text-right text-xs tabular-nums">
-                    {formatDistance(climb.distanceMetres, unitSystem)}
-                  </span>
-                  <span className="text-right text-xs tabular-nums">
-                    {formatGradient(climb.averageGradePercent)}
-                  </span>
-                  <span className="text-right text-xs text-[var(--ink-2)] tabular-nums">
-                    {formatAscent(climb.ascentMetres, unitSystem)}
-                  </span>
-                  <span className="truncate text-[11px] text-[var(--ink-2)] tabular-nums">
-                    from {formatDistance(climb.startMetres, unitSystem)}
-                    {cell === null ? null : ` · ${clockAt(cell.sample.arrivalAt)}`}
-                  </span>
-                  {cell === null ? null : (
-                    <span className="flex items-center justify-end gap-1 text-xs tabular-nums">
-                      {Glyph === null ? null : <Glyph size={14} stroke={1.8} aria-hidden="true" />}
-                      <span className="font-semibold">
-                        {Math.round(cell.point.temperatureCelsius)}°
-                      </span>
+              return (
+                <li key={climb.startMetres} className="snap-start" style={{ height: ROW_HEIGHT }}>
+                  <button
+                    type="button"
+                    onClick={() => onSelect(middle)}
+                    className="grid size-full items-center gap-2 rounded-lg px-1.5 text-left hover:bg-[var(--base)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent)]"
+                    style={{ gridTemplateColumns: ROW_COLUMNS }}
+                  >
+                    <span className="text-right text-xs font-semibold tabular-nums">
+                      {/* The ordinal the chart's own bracket carries. */}
+                      {index + 1}
                     </span>
-                  )}
-                </button>
-              </li>
-            );
-          })}
-        </ol>
+                    <span className="text-right text-xs tabular-nums">
+                      {formatDistance(climb.distanceMetres, unitSystem)}
+                    </span>
+                    <span className="text-right text-xs tabular-nums">
+                      {formatGradient(climb.averageGradePercent)}
+                    </span>
+                    <span className="text-right text-xs text-[var(--ink-2)] tabular-nums">
+                      {formatGradient(climb.maxGradePercent)}
+                    </span>
+                    <span className="text-right text-xs text-[var(--ink-2)] tabular-nums">
+                      {formatAscent(climb.ascentMetres, unitSystem)}
+                    </span>
+                    <span className="truncate text-[11px] text-[var(--ink-2)] tabular-nums">
+                      from {formatDistance(climb.startMetres, unitSystem)}
+                      {cell === null ? null : ` · ${clockAt(cell.sample.arrivalAt)}`}
+                    </span>
+                    {cell === null ? null : (
+                      <span className="flex items-center justify-end gap-1 text-xs tabular-nums">
+                        {Glyph === null ? null : (
+                          <Glyph size={14} stroke={1.8} aria-hidden="true" />
+                        )}
+                        <span className="font-semibold">
+                          {Math.round(cell.point.temperatureCelsius)}°
+                        </span>
+                      </span>
+                    )}
+                  </button>
+                </li>
+              );
+            })}
+          </ol>
+        </>
       )}
     </section>
   );
