@@ -10,46 +10,24 @@ import { defineConfig } from "vitest/config";
 const dirname = fileURLToPath(new URL(".", import.meta.url));
 
 // The development API from `mise run dev-api` listens here. The dev server proxies
-// to it and forwards a Cloudflare Access assertion, which is the only identity
-// the service accepts.
-//
-// There is deliberately no way to skip that check in development: put a real
-// assertion in DOMESTIQUE_DEV_ASSERTION and the gate behaves exactly as it does
-// in production. Sign in to the deployed hostname once and copy the
-// Cf-Access-Jwt-Assertion header from any request the browser makes; it stays
-// valid for the Access session duration. Without it every proxied request
-// answers 401, which is the correct answer to a request that proves nothing.
-//
-// Point DOMESTIQUE_DEV_API at http://127.0.0.1:8080 to work against the
-// deployed container instead — but note that one can reach Wahoo, whereas the
-// development API deliberately cannot.
+// to it and forwards a Cloudflare Access assertion, the only identity the service
+// accepts; put a real one in DOMESTIQUE_DEV_ASSERTION, copied from a request the
+// browser makes against the deployed hostname. DOMESTIQUE_DEV_API can point at
+// the deployed container instead, which unlike the development API reaches Wahoo.
 const apiTarget = process.env.DOMESTIQUE_DEV_API ?? "http://127.0.0.1:8081";
 const devAssertion = process.env.DOMESTIQUE_DEV_ASSERTION;
 
-// State-changing requests must come from the origin the API is configured to
-// serve its UI at, which is the origin of its wahoo.redirect_url. The dev server
-// runs on another one, so it names the API's for the requests it proxies. The
-// default is what dev/setup.sh writes; set DOMESTIQUE_DEV_ORIGIN when pointing
-// DOMESTIQUE_DEV_API at the deployed container instead, whose origin is public.
-//
-// This is not a way around the check: it is this proxy stating the origin it is
-// standing in for, exactly as it states the identity it is standing in for.
+// State-changing requests must come from the origin the API serves its UI at. The
+// dev server runs on another, so it names the API's for the requests it proxies.
+// Set DOMESTIQUE_DEV_ORIGIN when pointing DOMESTIQUE_DEV_API at the deployed
+// container. This is the proxy stating the origin it stands in for, not a bypass.
 const devOrigin = process.env.DOMESTIQUE_DEV_ORIGIN ?? "https://127.0.0.1:9";
 
 // `dev/demo.sh --tailnet` fronts the dev server with `tailscale serve`, which
-// takes a connection from the tailnet and forwards it to a loopback address.
-// Vite stays on loopback either way — the tailnet is reached by what forwards
-// to it, not by widening what it listens on — and the port is the same on both
-// sides, so hot reload needs nothing.
-//
-// Two things do change. The Host header arrives as this machine's MagicDNS
-// name, and Vite serves only Hosts it trusts — localhost and IP literals on its
-// own, and a MagicDNS name is neither; so the tailnet suffix is named here, the
-// name in front of it being whichever tailnet this machine joined, which a
-// checked-in file cannot know. And `localhost` resolves to ::1 first, which is
-// the only address Vite then listens on, while Serve forwards to 127.0.0.1 and
-// gets nothing: the two are named the same and are not the same socket. So the
-// address is spelled out for as long as something is forwarding to it.
+// forwards a tailnet connection to a loopback address. Two things change: the
+// Host arrives as this machine's MagicDNS name, which Vite does not trust on its
+// own, so the tailnet suffix is named here; and `localhost` resolves to ::1 while
+// Serve forwards to 127.0.0.1, so the address is spelled out literally.
 const tailnet = process.env.DOMESTIQUE_DEV_TAILNET === "true";
 
 const proxy = {
@@ -72,11 +50,9 @@ export default defineConfig({
   // bundle has to be emitted as an ES module rather than the default IIFE.
   worker: { format: "es" },
   build: {
-    // One level below the embedded root. `emptyOutDir` clears whatever it is
-    // pointed at, and the directory Go embeds holds a committed placeholder
-    // that keeps the embed pattern valid before the first build — so the two
-    // cannot be the same directory without the bundler deleting a tracked file
-    // on every run.
+    // One level below the embedded root. `emptyOutDir` clears what it is pointed
+    // at, and the directory Go embeds holds a committed placeholder keeping the
+    // embed pattern valid, so the two cannot be the same directory.
     outDir: "dist/bundle",
     emptyOutDir: true,
     // Fail the build rather than silently shipping an oversized bundle.
@@ -93,17 +69,10 @@ export default defineConfig({
     },
   },
   test: {
-    // The terminal summary a contributor reads, and the JUnit report CI
-    // uploads to Codecov's test analytics beside the other suite's own.
-    // Written on every run rather than behind a flag, so the file a failure
-    // is read from locally is the same one the pull request comment was
-    // assembled from.
-    //
-    // `reporters`/`outputFile` are root-level config: Vitest applies them to
-    // the whole invocation, not per project, so filtering with `--project`
-    // still writes here. VITEST_JUNIT_SUFFIX is what keeps `mise run ui-test`
-    // and `ui-storybook-test` from clobbering each other's report — see the
-    // scripts in package.json that set it.
+    // The terminal summary a contributor reads and the JUnit report CI uploads,
+    // written on every run so the local file is the one the comment came from.
+    // `reporters`/`outputFile` are root-level: Vitest applies them to the whole
+    // invocation, and VITEST_JUNIT_SUFFIX keeps two task runs from clobbering.
     reporters: ["default", "junit"],
     outputFile: {
       junit: `../../../.test-results/ui/${process.env.VITEST_JUNIT_SUFFIX ?? "vitest"}.xml`,
@@ -158,11 +127,8 @@ export default defineConfig({
         plugins: [storybookTest({ configDir: path.join(dirname, ".storybook") })],
         test: {
           name: "storybook",
-          // Every story, played and checked for markup and interaction in a
-          // real browser rather than jsdom's DOM
-          // approximation — see the comment above BasemapPicker.stories.tsx
-          // and its siblings for why some component suites live here instead
-          // of in the jsdom project.
+          // Every story, played and checked for markup and interaction in a real
+          // browser rather than jsdom's approximation.
           browser: {
             enabled: true,
             headless: true,

@@ -367,13 +367,10 @@ export function RouteOverlay({
     [activeProfile, activeMetres],
   );
 
-  // The tooltip's own content: whichever profile the chart is actually
-  // showing, when the position falls inside it — this is what lets the
-  // tooltip agree with the readout exactly rather than merely approximately,
-  // since a windowed profile resamples its stretch at a different density
-  // than the whole route does. Outside a zoom window the chart has nothing to
-  // say either, so this falls back to the whole-route sample above, which is
-  // still an honest answer for ground the chart is not currently showing.
+  // Whichever profile the chart is actually showing, when the position falls
+  // inside it: a windowed profile resamples at a different density, so this is
+  // what makes the tooltip agree with the readout exactly. Outside a zoom window
+  // it falls back to the whole-route sample.
   const contentSample = windowedSample ?? activeSample;
 
   // The position shared with the elevation chart. An empty collection keeps the

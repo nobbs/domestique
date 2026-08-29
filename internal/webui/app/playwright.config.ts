@@ -65,17 +65,10 @@ const progressReporter: ReporterDescription = process.env.CI ? ["github"] : ["li
 
 export default defineConfig({
   testDir: "./e2e",
-  // Two workers, over one demo API, one database and one dev server.
-  //
-  // The cost here is the browser — a software WebGL renderer painting a map for
-  // every test — and that is CPU the runner has spare: this suite is the last
-  // thing left running in the UI job, alone on four vCPUs, and measured at
-  // around 1.6 of them on a single worker. What stopped it being more than one
-  // was never the browser but the shared stack underneath it, and the projects
-  // below are what make that safe rather than this number.
-  //
-  // `fullyParallel: false` is what keeps the two honest: a worker takes a whole
-  // file, so the order within one is still the order it is written in, and only
+  // Two workers, over one demo API, one database and one dev server. The cost is
+  // the browser painting a map in software, which is CPU the runner has spare.
+  // What limits concurrency is the shared stack underneath, which the projects
+  // below make safe. `fullyParallel: false` holds one file to one worker, so only
   // separate files ever run at the same time.
   workers: 2,
   fullyParallel: false,
@@ -96,18 +89,10 @@ export default defineConfig({
     ["html", { outputFolder: "../../../.playwright/report", open: "never" }],
     ["junit", { outputFile: "../../../.test-results/ui/browser.xml" }],
   ],
-  // Two read-only projects that may overlap, and one that may not.
-  //
-  // Everything above reads: it opens pages, drives a map, scrubs a chart and
-  // follows links, and two workers doing that at once over one service is only
-  // two readers. `mutations` is the exception — it toggles the schedule, and its
-  // "run now" re-seeds the whole synthetic library — so it is split out of
-  // `e2e/contract` into a project of its own and made to wait for both of the
-  // others. That is the whole of what keeps `workers: 2` safe: a re-seed can
-  // never land under a test that is reading what it rewrites.
-  //
-  // It is one file, and `fullyParallel: false` holds one file to one worker, so
-  // the mutations still run one after another as they are written.
+  // Two read-only projects that may overlap, and one that may not. Everything
+  // above only reads. `mutations` toggles the schedule and re-seeds the whole
+  // library, so it is a project of its own that waits for both others: a re-seed
+  // can never land under a test reading what it rewrites.
   projects: [
     {
       name: "dev-server",
@@ -163,17 +148,10 @@ export default defineConfig({
     // previous build left embedded.
     command: "./dev/demo.sh --with-bundle",
     cwd: "../../..",
-    // Through the dev server's proxy rather than at its root, so that "ready"
-    // means a request can travel the whole way rather than that Vite is serving
-    // for itself. `dev/demo.sh` starts Vite last and only once the API answers,
-    // and every test's first act is a proxied call, so this is the path they
-    // actually depend on.
-    //
-    // It is not a gate on the identity check, and cannot be: Playwright counts
-    // any status under 404 as ready, so a 401 here would read as a live server.
-    // The startup rejection this was first reached for was never Vite's — see
-    // TestVerifyAdmitsConcurrentCallersAgainstAColdCache, which covers it where
-    // it belongs.
+    // Through the dev server's proxy rather than at its root, so "ready" means a
+    // request can travel the whole way. It is not a gate on the identity check
+    // and cannot be: Playwright counts any status under 404 as ready, so a 401
+    // would read as a live server.
     url: `${DEV_SERVER_URL}/healthz`,
     // Locally, a demo already running is the one to test against; in CI there is
     // never one to reuse, and silently using a stale server would be worse than

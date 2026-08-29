@@ -709,15 +709,10 @@ export function ElevationProfile({
           distanceLabel(profile.startMetres, geometry.distanceStep, unitSystem),
         )}
         aria-valuemax={Number(distanceLabel(profile.endMetres, geometry.distanceStep, unitSystem))}
-        // Falls back to the start of the stretch on show, not to zero: zoomed
-        // into the far end of a route, zero is outside the range this slider
-        // declares, and a value outside its own bounds is nothing assistive
-        // technology can place.
-        //
-        // The same adaptive precision the axis labels use, not a fixed decimal:
-        // a mile is coarse enough that a fixed tenth can hold still for a
-        // couple of hundred metres of drag, which is a slider that stopped
-        // reporting position rather than one reporting it coarsely.
+        // Falls back to the start of the stretch on show, not zero: zoomed into
+        // the far end, zero is outside the range this slider declares. The same
+        // adaptive precision the axis labels use, since a fixed decimal can hold
+        // still for hundreds of metres of drag.
         aria-valuenow={Number(
           distanceLabel(
             active?.distanceMetres ?? profile.startMetres,

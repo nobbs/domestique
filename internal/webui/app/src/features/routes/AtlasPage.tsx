@@ -306,11 +306,9 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
   const openFailed = openRoute !== null && openGeometry.isError;
   const shownRoute = openFailed ? null : openRoute;
 
-  // The deterministic trigger for "seen": the route's own panel is actually
-  // shown, whether that came from pressing "Open route", picking it off the
-  // map, or opening a link straight to it. Never from rendering it in the
-  // list, and never a network call — it only ever writes to this reader's own
-  // browser.
+  // The deterministic trigger for "seen": the route's own panel is shown, however
+  // it was opened. Never from rendering it in the list, and never a network call:
+  // it writes only to this reader's own browser.
   useEffect(() => {
     if (shownRoute) {
       markSeen(shownRoute);

@@ -125,13 +125,9 @@ function mark(icon: ReactNode) {
   }
 
   return (
-    // `contents` so the glyph stays a flex child of the button and keeps the
-    // gap the primitive puts between a mark and a label.
-    //
-    // The attribute is what the primitive watches for: a labelled button tucks
-    // in the padding on the side its mark is on, and the rule is written
-    // against a descendant carrying this. Set here rather than at every call
-    // site, which is the whole point of the mark having a slot of its own.
+    // `contents` so the glyph stays a flex child and keeps the primitive's gap
+    // between a mark and a label. The attribute is what the primitive watches:
+    // a labelled button tucks in the padding on the side its mark is on.
     <span aria-hidden="true" className="contents" data-icon="inline-start">
       {icon}
     </span>
