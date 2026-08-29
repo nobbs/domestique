@@ -15,6 +15,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import type { ComponentType, ReactNode } from "react";
 import { useState } from "react";
+import { expect, userEvent, waitFor } from "storybook/test";
 import { MenuBar } from "../../../components/MenuBar";
 import { buildCells } from "../../../components/route/forecast-spike/cells";
 import type { Highlight } from "../../../lib/highlight";
@@ -246,4 +247,30 @@ export const WeatherFrames: Story = {
       </div>
     </StoryProviders>
   ),
+};
+
+/**
+ * Folding the climbs column has to widen the chart and the forecast with it.
+ *
+ * Both measure themselves with a `ResizeObserver`, and both are inside the
+ * column that grows — so this is exactly the kind of thing that looks fine and
+ * silently is not. It cannot be checked by eye in a preview pane either: the
+ * story renders in a hidden document there, where the rendering lifecycle is
+ * suspended and neither `ResizeObserver` nor `requestAnimationFrame` is
+ * delivered, so the lanes visibly widen and the two measured lanes do not
+ * follow. This runs in a real browser, where they do.
+ */
+export const RescalesWhenFolded: Story = {
+  render: one("stack-climbs"),
+  play: async ({ canvas }) => {
+    const chart = canvas.getByRole("img", { name: /Trois Cols/ });
+    const before = Number(chart.getAttribute("width"));
+    expect(before).toBeGreaterThan(0);
+
+    await userEvent.click(canvas.getByRole("button", { name: "Hide what happens" }));
+
+    await waitFor(() => {
+      expect(Number(chart.getAttribute("width"))).toBeGreaterThan(before);
+    });
+  },
 };
