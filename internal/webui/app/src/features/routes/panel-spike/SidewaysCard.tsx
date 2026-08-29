@@ -117,7 +117,7 @@ function Figure({ term, children }: { term: string; children: React.ReactNode })
   );
 }
 
-function StackedColumn({
+export function StackedColumn({
   name,
   entries,
   absence,

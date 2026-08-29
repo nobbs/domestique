@@ -46,6 +46,8 @@ export function RouteIdentity({
   unitSystem,
   layout = "column",
   named = false,
+  climbLine = true,
+  columns = 2,
 }: {
   route: Route;
   subtitle: string;
@@ -57,8 +59,24 @@ export function RouteIdentity({
   layout?: "column" | "row";
   /** Whether the route's name is here, or on a pill above that already has it. */
   named?: boolean;
+  /**
+   * Whether the climbs summary is drawn here.
+   *
+   * Off where a foldable climbs section follows, since that section's own
+   * trigger *is* this line — printing it twice would put a summary directly
+   * above the control that repeats it.
+   */
+  climbLine?: boolean;
+  /**
+   * How many figures share a row in the column layout.
+   *
+   * Three where the card also carries the mixes and a climbs list: five
+   * figures over two rows instead of three is a row of height back, and the
+   * card is competing with the dock for the same screen.
+   */
+  columns?: 2 | 3;
 }) {
-  const climbLine = climbSentence(climbs, unitSystem);
+  const summary = climbLine ? climbSentence(climbs, unitSystem) : null;
 
   return (
     // `min-w-0` on both: a grid or flex item defaults to its content's minimum
@@ -82,7 +100,7 @@ export function RouteIdentity({
         className={
           layout === "row"
             ? "flex shrink-0 items-baseline gap-5"
-            : "grid grid-cols-2 gap-x-3 gap-y-1.5"
+            : `grid gap-x-3 gap-y-1.5 ${columns === 3 ? "grid-cols-3" : "grid-cols-2"}`
         }
       >
         <Figure term="Distance">{formatDistance(route.distanceMetres, unitSystem)}</Figure>
@@ -91,7 +109,7 @@ export function RouteIdentity({
         <Figure term="Highest">
           {highestMetres === null ? "—" : formatElevation(highestMetres, unitSystem)}
         </Figure>
-        <div className={layout === "row" ? undefined : "col-span-2"}>
+        <div className={layout === "row" || columns === 3 ? undefined : "col-span-2"}>
           <dt className="text-[11px] leading-none text-[var(--ink-2)]">Moving time</dt>
           <dd className="text-sm leading-tight tabular-nums">
             {formatMovingTime(movingSeconds)}
@@ -103,7 +121,7 @@ export function RouteIdentity({
           </dd>
         </div>
       </dl>
-      {climbLine === null ? null : (
+      {summary === null ? null : (
         <p
           className={
             layout === "row"
@@ -111,7 +129,7 @@ export function RouteIdentity({
               : "border-t border-[var(--rule)] pt-2 text-xs text-[var(--ink-2)]"
           }
         >
-          {climbLine}
+          {summary}
         </p>
       )}
     </div>

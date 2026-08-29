@@ -35,9 +35,12 @@ import {
   spikeSurface,
   spikeWeather,
 } from "../panel-spike/fixture";
-import { LengthsCard } from "../panel-spike/LengthsCard";
+import { LengthsCard, lengthFigure } from "../panel-spike/LengthsCard";
 import { MapPane } from "../panel-spike/MapPane";
+import { StackedColumn } from "../panel-spike/SidewaysCard";
 import { SpikePanel } from "../panel-spike/SpikePanel";
+import { bandEntries, surfaceEntries } from "../panel-spike/shared";
+import { ClimbsSection } from "./ClimbsSection";
 import { RouteIdentity } from "./RouteIdentity";
 import { StackClimbsSheet } from "./StackClimbsSheet";
 
@@ -94,16 +97,32 @@ function useComposition() {
 }
 
 /**
- * **1 — Negotiated.** Both panels stay; the content moves.
+ * **1 — Negotiated.** Both panels stay; the content moves between them.
  *
- * The card keeps what it alone can say — the name, the figures, the climbs
- * line — and every *drawn* reading becomes the sheet's. Nothing appears twice,
- * and the card shrinks to about a third of its height, which is map back in
- * the corner where the reader was most conscious of losing it.
+ * The split is by *question* rather than by room. The dock draws everything
+ * against the distance axis and so answers *where* — where it is steep, where
+ * the gravel is, where the rain arrives. The card answers *how much* and *what
+ * of*: thirteen kilometres of gravel, seven climbs, seven and a half hours.
  *
- * The rule is a negotiation rather than a fixed layout: with the sheet shut
- * the card would take its bars back, since there would be nowhere else for
- * them. That is the part this frame cannot show and the part most worth
+ * Both mixes are therefore in both panels, and that is not the duplication it
+ * looks like. `gradientShares` and `gradientMix` exist as separate functions
+ * for this exact reason — one totals the route per class, the other keeps the
+ * order it is ridden in — and the legend's own note says the two cannot be
+ * read for each other's question. Thirteen kilometres of gravel decides the
+ * bike; its falling on the second col decides the day.
+ *
+ * The climbs went to the card on that rule. They had been a column beside the
+ * lanes, which filed them with the drawn readings, and a climb is not one: it
+ * is a thing about the route, like its distance and its ascent, and the panel
+ * naming those is the one already there. It also leaves the dock as three
+ * lanes on one axis and nothing else, which is all it ever claimed to be.
+ *
+ * Folded by default, so the card costs a line and opens to a list — the same
+ * bargain `ClimbsList` already makes in the panel this is a sketch for.
+ *
+ * The rule is a negotiation rather than a fixed layout: with the dock shut the
+ * card would take the drawn readings back, since there would be nowhere else
+ * for them. That is the part this frame cannot show and the part most worth
  * arguing about.
  */
 export const Negotiated: StoryObj = {
@@ -117,13 +136,52 @@ export const Negotiated: StoryObj = {
           coordinates={spikeCoordinates}
           width={PAGE.width}
           height={PAGE.height - 56}
-          sheet={<StackClimbsSheet {...sheet} {...shared} weatherFrame="capped" />}
+          sheet={
+            <StackClimbsSheet {...sheet} {...shared} weatherFrame="capped" withClimbs={false} />
+          }
         >
           <div
             data-compact-workspace=""
-            className="w-[19rem] rounded-xl bg-[var(--panel)] p-3 shadow-[var(--shadow)] ring-1 ring-black/5"
+            // The height bound the real shell already puts on this panel: its
+            // `aside` is `max-h-[calc(100%-1.5rem)] overflow-y-auto`. Kept here
+            // as the same safety net, so a route with more to say scrolls its
+            // card rather than sliding it under the dock.
+            className="grid max-h-[calc(100%-0.75rem)] w-[21rem] gap-2 overflow-y-auto rounded-xl bg-[var(--panel)] p-3 shadow-[var(--shadow)] ring-1 ring-black/5"
           >
-            <RouteIdentity {...identity} named />
+            <RouteIdentity {...identity} named climbLine={false} columns={3} />
+            {/*
+             * The mixes as lengths, which is a different question from the one
+             * the dock's ribbon answers. `gradientShares` and `gradientMix`
+             * were split for exactly this: how much of the ride is gravel, and
+             * where the gravel is. Thirteen kilometres of it decides the bike;
+             * its falling on the second col decides the day.
+             */}
+            <div className="flex items-start gap-3 border-t border-[var(--rule)] pt-2">
+              <StackedColumn
+                name="Gradient"
+                entries={bandEntries(spikeBands, spikeRoute.distanceMetres)}
+                absence="No elevation data."
+                figure={lengthFigure}
+                highlight={shared.highlight}
+                onHighlightChange={shared.onHighlightChange}
+                unitSystem="metric"
+              />
+              <StackedColumn
+                name="Surface"
+                entries={surfaceEntries(spikeSurface)}
+                absence="Surface not classified yet."
+                figure={lengthFigure}
+                highlight={shared.highlight}
+                onHighlightChange={shared.onHighlightChange}
+                unitSystem="metric"
+              />
+            </div>
+            <ClimbsSection
+              climbs={spikeClimbs}
+              cells={cells}
+              unitSystem="metric"
+              onSelect={shared.onActiveChange}
+            />
           </div>
         </MapPane>
       </Page>

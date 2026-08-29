@@ -22,6 +22,7 @@
 
 import type { UnitSystem } from "../../../lib/units";
 import { metresToFeet, metresToMiles } from "../../../lib/units";
+import type { MixFigure } from "./SidewaysCard";
 import { SidewaysCard } from "./SidewaysCard";
 import type { CardProps, MixEntry } from "./shared";
 
@@ -42,7 +43,7 @@ const FEET_COLUMN_LIMIT = 5280;
  * compared down, and a class that small is being looked for rather than read
  * off.
  */
-function columnLength(metres: number, unitSystem: UnitSystem, column: MixEntry[]): string {
+export function columnLength(metres: number, unitSystem: UnitSystem, column: MixEntry[]): string {
   const longest = Math.max(...column.map((entry) => entry.metres), 0);
 
   if (unitSystem === "imperial") {
@@ -58,11 +59,10 @@ function columnLength(metres: number, unitSystem: UnitSystem, column: MixEntry[]
     : `${(metres / 1_000).toFixed(longest < 100_000 ? 1 : 0)} km`;
 }
 
+/** E's figure, for a composition that wants the same columns outside the card. */
+export const lengthFigure: MixFigure = (entry, unitSystem, column) =>
+  columnLength(entry.metres, unitSystem, column);
+
 export function LengthsCard(props: CardProps) {
-  return (
-    <SidewaysCard
-      {...props}
-      figure={(entry, unitSystem, column) => columnLength(entry.metres, unitSystem, column)}
-    />
-  );
+  return <SidewaysCard {...props} figure={lengthFigure} />;
 }
