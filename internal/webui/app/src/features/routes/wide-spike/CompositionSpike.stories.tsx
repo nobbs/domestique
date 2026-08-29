@@ -224,7 +224,6 @@ export const Negotiated: StoryObj = {
             </div>
             <ClimbsSection
               climbs={spikeClimbs}
-              cells={dayCells}
               unitSystem="metric"
               onSelect={shared.onActiveChange}
             />

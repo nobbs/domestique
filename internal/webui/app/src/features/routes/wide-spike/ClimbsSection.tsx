@@ -13,21 +13,19 @@
  * says "seven climbs, the biggest thirteen kilometres at six percent" needs no
  * separate word to press.
  *
- * Each row carries the chance of rain on that col — the join the split
- * alternative found, and the one thing here neither panel could say on its
- * own. Only that: the condition and the temperature are drawn along the
- * forecast band a few hundred pixels below, tile by tile, and a glyph repeated
- * per climb was the same reading in a worse place.
+ * Climb data and nothing else. Everything the forecast knows about a col is
+ * drawn along the band below — tile by tile, at every reading rather than only
+ * at the seven a climb happens to fall on — and a weather figure repeated here
+ * was the same reading in a worse place. It also made a table of one subject
+ * into a table of two.
  */
 
 import { IconChevronsRight } from "@tabler/icons-react";
 import { useState } from "react";
-import type { Cell } from "../../../components/route/forecast-spike/cells";
 import type { Climb } from "../../../lib/climbs";
 import { formatAscent, formatDistance, formatGradient } from "../../../lib/format";
 import type { UnitSystem } from "../../../lib/units";
 import { climbSentence } from "../panel-spike/shared";
-import { cellAt, clockAt } from "./shared";
 
 /**
  * One row's height, and how many are shown.
@@ -50,7 +48,7 @@ const ROW_HEIGHT = 28;
 
 /**
  * The row's columns: ordinal, length, average gradient, steepest gradient,
- * ascent, where and when, and the chance of rain there.
+ * ascent, and where it starts.
  *
  * Fixed tracks rather than a flex row, so a figure sits under the figure above
  * it. Laid out by content, each row starts its second fact wherever its first
@@ -63,27 +61,16 @@ const ROW_HEIGHT = 28;
  * no explaining; two adjacent ones are a riddle, and the answer — which is the
  * average and which the wall — is the whole reason for carrying both.
  */
-const ROW_COLUMNS = "0.75rem 3.5rem 2.5rem 2.5rem 3.5rem minmax(0,1fr) 2.5rem";
+const ROW_COLUMNS = "0.75rem 3.5rem 2.5rem 2.5rem 3.5rem minmax(0,1fr)";
 
-/**
- * Above this chance of rain, the figure stops being muted.
- *
- * A column of percentages is read for the high ones. Anything under about a
- * third is the forecast saying "probably not", and drawing those at the weight
- * of a ninety makes a reader compare seven numbers to find the one that
- * matters.
- */
-const WET_ENOUGH = 40;
 const VISIBLE_ROWS = 6;
 
 export function ClimbsSection({
   climbs,
-  cells,
   unitSystem,
   onSelect,
 }: {
   climbs: Climb[];
-  cells: Cell[];
   unitSystem: UnitSystem;
   /** Opens the shared window on one climb, as the chart's own brackets do. */
   onSelect: (metres: number) => void;
@@ -141,17 +128,15 @@ export function ClimbsSection({
             <span className="text-right">Max</span>
             <span className="text-right">Ascent</span>
             <span>Starts</span>
-            <span className="text-right">Rain</span>
           </div>
           <ol
             className="mt-1 snap-y snap-mandatory overflow-y-auto"
             style={{ maxHeight: ROW_HEIGHT * VISIBLE_ROWS }}
           >
             {climbs.map((climb, index) => {
-              // The middle of the climb rather than its foot: the rain a rider
-              // gets on a col is the rain over the col, not at the bottom of it.
+              // The middle of the climb rather than its foot, since this is
+              // what the chart's own bracket is centred on.
               const middle = (climb.startMetres + climb.endMetres) / 2;
-              const cell = cellAt(cells, middle);
 
               return (
                 <li key={climb.startMetres} className="snap-start" style={{ height: ROW_HEIGHT }}>
@@ -180,19 +165,7 @@ export function ClimbsSection({
                     <span className="truncate text-[11px] text-[var(--ink-2)] tabular-nums">
                       {/* No "from": the column is called Starts. */}
                       {formatDistance(climb.startMetres, unitSystem)}
-                      {cell === null ? null : ` · ${clockAt(cell.sample.arrivalAt)}`}
                     </span>
-                    {cell === null ? null : (
-                      <span
-                        className={`text-right text-xs tabular-nums ${
-                          cell.point.precipitationProbabilityPercent >= WET_ENOUGH
-                            ? "font-semibold"
-                            : "text-[var(--ink-2)]"
-                        }`}
-                      >
-                        {Math.round(cell.point.precipitationProbabilityPercent)}%
-                      </span>
-                    )}
                   </button>
                 </li>
               );
