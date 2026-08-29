@@ -22,7 +22,7 @@ const BASEMAPS: WebUIConfig["basemaps"] = [
 ];
 
 const CREDITS: Record<string, string> = {
-  "https://tiles.example.test/bright": "© OpenStreetMap contributors",
+  "https://tiles.example.test/bright": "© Example Cartography",
   "https://imagery.example.test/aerial": "© Example Imagery",
 };
 
@@ -68,7 +68,7 @@ type Story = StoryObj<typeof meta>;
 export const Default: Story = {
   render: () => <Seeded basemaps={BASEMAPS} />,
   play: async ({ canvas }) => {
-    await expect(canvas.getByText(/© OpenStreetMap contributors/)).toBeVisible();
+    await expect(canvas.getByText(/© Example Cartography/)).toBeVisible();
     await expect(canvas.getByText(/© Example Imagery/)).toBeVisible();
     await expect(canvas.getByText(/Surface data/)).toBeVisible();
     await expect(canvas.getByText(/Open-Meteo/)).toBeVisible();
@@ -82,7 +82,7 @@ export const Default: Story = {
 export const OneBasemap: Story = {
   render: () => <Seeded basemaps={[BASEMAPS[0] as WebUIConfig["basemaps"][number]]} />,
   play: async ({ canvas }) => {
-    await expect(canvas.getByText(/© OpenStreetMap contributors/)).toBeVisible();
+    await expect(canvas.getByText(/© Example Cartography/)).toBeVisible();
     await expect(canvas.queryByText(/© Example Imagery/)).not.toBeInTheDocument();
     await expect(canvas.getByText(/Surface data/)).toBeVisible();
   },
