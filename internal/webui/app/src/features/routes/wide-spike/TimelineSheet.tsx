@@ -21,10 +21,10 @@
  */
 
 import type { ForecastSample } from "../../../lib/forecastSamples";
-import { formatDistance, formatMovingTime } from "../../../lib/format";
+import { formatDistance } from "../../../lib/format";
 import { temperatureColour, weatherIcon } from "../../../lib/weather";
 import type { SheetProps } from "./shared";
-import { clockAt, Figures, Sheet } from "./shared";
+import { clockAt, RideWindow, Sheet } from "./shared";
 
 const PLOT_HEIGHT = 96;
 const STRIP_HEIGHT = 34;
@@ -105,15 +105,8 @@ export function TimelineSheet({
 
   return (
     <Sheet>
-      <div className="mb-2 flex flex-wrap items-baseline justify-between gap-3">
-        <Figures
-          route={route}
-          highestMetres={profile ? profile.maxElevationMetres : null}
-          unitSystem={unitSystem}
-        />
-        <p className="text-xs text-[var(--ink-2)]">
-          Setting off {clockAt(startAt)} · {formatMovingTime(route.movingSeconds)} moving
-        </p>
+      <div className="mb-2">
+        <RideWindow startAt={startAt} samples={samples} />
       </div>
       <svg
         width="100%"

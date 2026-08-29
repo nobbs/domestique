@@ -19,18 +19,18 @@
 
 import { ElevationProfile } from "../../../components/route/ElevationProfile";
 import { FilmstripBand } from "../../../components/route/forecast-spike/FilmstripBand";
-import { formatMovingTime } from "../../../lib/format";
 import { PADDING } from "../../../lib/plotAxis";
 import { useElementWidth } from "../../../lib/useElementWidth";
 import { groundSegments, Ribbon } from "../panel-spike/shared";
 import type { SheetProps } from "./shared";
-import { clockAt, Figures, Sheet } from "./shared";
+import { RideWindow, Sheet } from "./shared";
 
 export function StackSheet({
   route,
   profile,
   surface,
   cells,
+  samples,
   startAt,
   activeMetres,
   onActiveChange,
@@ -41,15 +41,8 @@ export function StackSheet({
 
   return (
     <Sheet>
-      <div className="mb-2 flex flex-wrap items-baseline justify-between gap-3">
-        <Figures
-          route={route}
-          highestMetres={profile ? profile.maxElevationMetres : null}
-          unitSystem={unitSystem}
-        />
-        <p className="text-xs text-[var(--ink-2)]">
-          Setting off {clockAt(startAt)} · {formatMovingTime(route.movingSeconds)} moving
-        </p>
+      <div className="mb-2">
+        <RideWindow startAt={startAt} samples={samples} />
       </div>
       <div ref={ref} className="grid gap-1.5">
         <ElevationProfile

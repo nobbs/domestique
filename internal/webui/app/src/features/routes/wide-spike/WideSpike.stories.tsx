@@ -55,7 +55,10 @@ function Page({
   Sheet: ComponentType<SheetProps>;
   unitSystem?: UnitSystem;
 }) {
-  const [collapsed, setCollapsed] = useState(true);
+  // Expanded, which is the contested case: both panels open at once is when
+  // the two are actually competing for the screen, and a sheet judged against
+  // a resting pill has been shown the easy half of the question.
+  const [collapsed, setCollapsed] = useState(false);
   const [highlight, setHighlight] = useState<Highlight | null>(null);
   const [activeMetres, setActiveMetres] = useState<number | null>(null);
 
@@ -88,10 +91,6 @@ function Page({
           />
         }
       >
-        {/*
-         * Resting, which is how it will usually be found once there is a sheet:
-         * the reader who opened the wide panel is reading the wide panel.
-         */}
         <SpikePanel
           Card={LengthsCard}
           collapsed={collapsed}

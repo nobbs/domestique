@@ -24,7 +24,7 @@ import { PADDING } from "../../../lib/plotAxis";
 import { weatherIcon } from "../../../lib/weather";
 import { groundSegments, Ribbon } from "../panel-spike/shared";
 import type { SheetProps } from "./shared";
-import { clockAt, Figures, Sheet } from "./shared";
+import { clockAt, RideWindow, Sheet } from "./shared";
 
 /** The reading nearest a point on the route, which is the weather a rider meets there. */
 function cellAt(cells: Cell[], metres: number): Cell | null {
@@ -46,6 +46,8 @@ export function SplitSheet({
   surface,
   climbs,
   cells,
+  samples,
+  startAt,
   activeMetres,
   onActiveChange,
   highlight,
@@ -56,11 +58,7 @@ export function SplitSheet({
       <div className="flex items-start gap-5">
         <div className="min-w-0 flex-1">
           <div className="mb-2">
-            <Figures
-              route={route}
-              highestMetres={profile ? profile.maxElevationMetres : null}
-              unitSystem={unitSystem}
-            />
+            <RideWindow startAt={startAt} samples={samples} />
           </div>
           <ElevationProfile
             profile={profile}

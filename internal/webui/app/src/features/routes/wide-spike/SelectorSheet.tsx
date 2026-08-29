@@ -27,7 +27,7 @@ import {
 } from "../panel-spike/shared";
 import { ClassList } from "./ClassList";
 import type { SheetProps } from "./shared";
-import { Figures, Sheet } from "./shared";
+import { RideWindow, Sheet } from "./shared";
 
 const VIEWS = [
   { key: "elevation", label: "Elevation" },
@@ -44,6 +44,8 @@ export function SelectorSheet({
   runs,
   bands,
   cells,
+  samples,
+  startAt,
   activeMetres,
   onActiveChange,
   highlight,
@@ -56,11 +58,7 @@ export function SelectorSheet({
   return (
     <Sheet>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <Figures
-          route={route}
-          highestMetres={profile ? profile.maxElevationMetres : null}
-          unitSystem={unitSystem}
-        />
+        <RideWindow startAt={startAt} samples={samples} />
         <div className="flex items-center gap-2">
           <div className="flex rounded-lg bg-[var(--base)] p-0.5">
             {VIEWS.map((candidate) => (

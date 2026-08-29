@@ -16,13 +16,6 @@ import type { Route } from "../../../api/types";
 import type { Cell } from "../../../components/route/forecast-spike/cells";
 import type { Climb } from "../../../lib/climbs";
 import type { ForecastSample } from "../../../lib/forecastSamples";
-import {
-  formatAscent,
-  formatDistance,
-  formatElevation,
-  formatGradient,
-  formatMovingTime,
-} from "../../../lib/format";
 import type { Highlight } from "../../../lib/highlight";
 import type { BandShare, Profile } from "../../../lib/profile";
 import type { SurfaceSummary } from "../../../lib/surface";
@@ -66,40 +59,31 @@ export function Sheet({ children }: { children: ReactNode }) {
   );
 }
 
-/** One measured fact, in the row every alternative leads with. */
-export function Figure({ term, value }: { term: string; value: string }) {
-  return (
-    <div className="whitespace-nowrap">
-      <span className="text-sm font-semibold tabular-nums">{value}</span>{" "}
-      <span className="text-xs text-[var(--ink-2)]">{term}</span>
-    </div>
-  );
-}
-
-export function Figures({
-  route,
-  highestMetres,
-  unitSystem,
-}: {
-  route: Route;
-  highestMetres: number | null;
-  unitSystem: UnitSystem;
-}) {
-  return (
-    <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1">
-      <Figure term="" value={formatDistance(route.distanceMetres, unitSystem)} />
-      <Figure term="moving" value={formatMovingTime(route.movingSeconds)} />
-      <Figure term="up" value={formatAscent(route.ascentMetres, unitSystem)} />
-      <Figure term="max" value={formatGradient(route.maxGradientPercent)} />
-      <Figure
-        term="high"
-        value={highestMetres === null ? "—" : formatElevation(highestMetres, unitSystem)}
-      />
-    </div>
-  );
-}
-
 /** `14:20`, in the reader's own zone, which is where they will be riding. */
 export function clockAt(at: Date): string {
   return at.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+}
+
+/**
+ * When the ride sets off and when it is back.
+ *
+ * What is left of the header once the figures go. The route panel above is
+ * already carrying how far, how much climbing and how long it takes, and a
+ * sheet that repeated them would be spending its first row on a second copy
+ * of the card two hundred pixels up.
+ *
+ * The window is not one of those figures. It is the frame the forecast is
+ * drawn in — the reason a tile sits where it does — and the finish time is a
+ * thing the panel above cannot say, because it only knows a duration and this
+ * knows when the duration starts.
+ */
+export function RideWindow({ startAt, samples }: { startAt: Date; samples: ForecastSample[] }) {
+  const back = samples[samples.length - 1]?.arrivalAt;
+
+  return (
+    <p className="text-xs text-[var(--ink-2)] tabular-nums">
+      Setting off {clockAt(startAt)}
+      {back === undefined ? null : ` · back ${clockAt(back)}`}
+    </p>
+  );
 }
