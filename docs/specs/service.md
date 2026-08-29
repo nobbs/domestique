@@ -53,7 +53,9 @@ state-changing. A request the document does not describe is refused with the
 shared error shape.
 
 Two checks sit outside that validation and in front of it. The Access identity
-is proven first. The request body is capped first.
+is proven before the validator resolves a route: a caller that has proven
+nothing is answered 401, never "no such route". The request body is capped
+before the validator reads it.
 
 Every `type: number` in the contract is IEEE 754 double precision, declared as
 `format: double`. Identifiers and counts are `type: integer` and stay integral;
@@ -186,9 +188,8 @@ the camera and go nowhere else: they are never sent to this service, a log,
 storage, or the tile origin as a discrete value. Only the resulting tile
 requests, naming the area rather than a point, reach it. The default is a single
 keyless provider, so no credential is exposed to the browser and the requests
-carry no account identity. The basemaps are configuration rather than code, so an
-origin can be changed, or pointed at a self-hosted tile source, without a code
-change.
+carry no account identity. The basemaps are a runtime setting, so an origin can
+be changed, or pointed at a self-hosted tile source, without a code change.
 
 An operator may configure more than one basemap so the reader can switch between
 them. A Content-Security-Policy restricts the browser to the service's own

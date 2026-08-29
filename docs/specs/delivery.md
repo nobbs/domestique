@@ -59,8 +59,8 @@ be reviewed and staged deliberately.
 ### The authoritative gate is GitHub Actions
 
 GitHub Actions runs the complete validation on every pull request targeting the
-default branch, and its aggregate check is what a merge must satisfy. No check
-is removed, relaxed, or made optional locally.
+default branch, and its aggregate check is what a merge must satisfy. Nothing
+is removed from that gate, relaxed in it, or made optional in it.
 
 Local validation learns a result earlier, and comes at two depths:
 
