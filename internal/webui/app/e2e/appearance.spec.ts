@@ -151,11 +151,8 @@ test.describe("on a narrow viewport", () => {
     expect(map.width).toBeLessThanOrEqual(375);
   });
 
-  /*
-   * Every credit is shown on the settings page and nowhere else. The tile one is
-   * read out of a style document the page fetched, which is why this is asked in
-   * a real browser rather than in jsdom.
-   */
+  // The tile credit is read out of a style document the page fetched, which is
+  // why this is asked in a real browser rather than in jsdom.
   test("the settings page credits every data source", async ({ offlinePage: page }) => {
     await openLibrary(page);
     await page.getByRole("link", { name: "Settings" }).click();
@@ -170,7 +167,6 @@ test.describe("on a narrow viewport", () => {
     await expect(page.getByText(/Weather data by Open-Meteo/)).toBeVisible();
   });
 
-  /* And nowhere else: the map carries no credit of its own any more. */
   test("the map itself carries no credit", async ({ offlinePage: page }) => {
     await openLibrary(page);
 

@@ -1,30 +1,19 @@
 /**
- * The credits this service owes for the data it shows, and how the tile ones
- * are read out of a style document.
- *
- * Every credit is shown in one place, the settings page's data sources card.
- * MapLibre's own attribution control stays switched off everywhere in this UI:
- * it renders the provider's own markup, which is markup from a third-party
- * origin.
+ * The credits this service owes. MapLibre's own attribution control stays off
+ * everywhere: it renders markup from a third-party origin.
  */
 
 import { queryOptions } from "@tanstack/react-query";
 
-/**
- * The surface classification is a derived OpenStreetMap database under the
- * ODbL, whose share-alike terms oblige this credit.
- */
+/** The surface classification is a derived OpenStreetMap database under the ODbL. */
 export const SURFACE_ATTRIBUTION = "Surface data © OpenStreetMap contributors (ODbL)";
 
-/** Open-Meteo's forecasts are CC BY 4.0, which obliges this credit. */
+/** Open-Meteo's forecasts are CC BY 4.0. */
 export const WEATHER_ATTRIBUTION = "Weather data by Open-Meteo.com";
 
 /**
- * Reduces an attribution string to plain text.
- *
- * Parsing rather than a regex so entities such as `&copy;` decode properly.
- * `DOMParser` does not execute anything it parses, and only the text is read
- * back, so no third-party markup or script reaches the page.
+ * Reduces an attribution string to plain text. Parsed rather than matched so
+ * `&copy;` decodes; only the text is read back, so no markup reaches the page.
  */
 export function stripMarkup(value: string): string {
   const parsed = new DOMParser().parseFromString(value, "text/html");
@@ -32,21 +21,23 @@ export function stripMarkup(value: string): string {
   return (parsed.body.textContent ?? "").replace(/\s+/g, " ").trim();
 }
 
+/**
+ * Reads one JSON document, or null for anything that is not one. Nothing here
+ * rejects: an unreachable provider costs its own credit, not the whole card.
+ */
 async function readJSON(url: string): Promise<unknown> {
-  const response = await fetch(url);
+  try {
+    const response = await fetch(url);
 
-  return response.ok ? response.json() : null;
+    return response.ok ? await response.json() : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
- * Resolves a URL found inside a style document against that document.
- *
- * A style may reference its TileJSON relatively, and such a reference is
- * relative to the style, not to this page. Resolving it against the app origin
- * would request the wrong host whenever a configured basemap points at a
- * third-party provider. A value that will not parse is passed through
- * unchanged, so a malformed style degrades to no attribution rather than an
- * exception.
+ * Resolves a URL found inside a style document against that document: a
+ * relative TileJSON reference belongs to the style's origin, not this page's.
  */
 function resolveAgainstStyle(styleUrl: string, url: string): string {
   try {
@@ -63,7 +54,7 @@ function attributionOf(value: unknown): string {
 }
 
 /** Reads every credit one style document's sources declare. */
-export async function fetchAttribution(styleUrl: string): Promise<string> {
+export async function fetchAttribution(styleUrl: string): Promise<string[]> {
   const style = await readJSON(styleUrl);
   const sources = (style as { sources?: Record<string, unknown> } | null)?.sources ?? {};
 
@@ -86,17 +77,23 @@ export async function fetchAttribution(styleUrl: string): Promise<string> {
     }
   }
 
-  return [...credits].join(" · ");
+  return [...credits];
 }
 
 /**
- * One basemap's credit, keyed on the style it is read from and kept for the
- * session: a style's attribution does not change under a reader.
+ * One basemap's credits, from every style it may load. A dark twin usually
+ * repeats its entry's credit and dedupes away; one that does not is a credit
+ * this page owes.
  */
-export function basemapAttributionQuery(styleUrl: string) {
+export function basemapAttributionQuery(styleUrl: string, styleUrlDark?: string | undefined) {
   return queryOptions({
-    queryKey: ["tile-attribution", styleUrl] as const,
-    queryFn: () => fetchAttribution(styleUrl),
+    queryKey: ["tile-attribution", styleUrl, styleUrlDark ?? ""] as const,
+    queryFn: async () => {
+      const styles = styleUrlDark === undefined ? [styleUrl] : [styleUrl, styleUrlDark];
+      const credits = await Promise.all(styles.map(fetchAttribution));
+
+      return [...new Set(credits.flat())];
+    },
     staleTime: Number.POSITIVE_INFINITY,
   });
 }

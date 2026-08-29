@@ -1,10 +1,5 @@
-/**
- * The credits card, with the tile attribution seeded rather than fetched.
- *
- * A story must not reach a tile provider, so the query the card reads is filled
- * in here. What the story shows is the arrangement — one row per source, the
- * configured basemaps first — rather than any real provider's wording.
- */
+/** The credits card. A story must not reach a tile provider, so the tile
+ * credits are seeded rather than fetched. */
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -21,9 +16,9 @@ const BASEMAPS: WebUIConfig["basemaps"] = [
   { name: "Satellite", styleUrl: "https://imagery.example.test/aerial", darkCartography: true },
 ];
 
-const CREDITS: Record<string, string> = {
-  "https://tiles.example.test/bright": "© Example Cartography",
-  "https://imagery.example.test/aerial": "© Example Imagery",
+const CREDITS: Record<string, string[]> = {
+  "https://tiles.example.test/bright": ["© Example Cartography"],
+  "https://imagery.example.test/aerial": ["© Example Imagery"],
 };
 
 function Seeded({ basemaps }: { basemaps: WebUIConfig["basemaps"] }): ReactNode {
@@ -38,8 +33,8 @@ function Seeded({ basemaps }: { basemaps: WebUIConfig["basemaps"] }): ReactNode 
     } as WebUIConfig);
     for (const basemap of basemaps) {
       next.setQueryData(
-        basemapAttributionQuery(basemap.styleUrl).queryKey,
-        CREDITS[basemap.styleUrl] ?? "",
+        basemapAttributionQuery(basemap.styleUrl, basemap.styleUrlDark).queryKey,
+        CREDITS[basemap.styleUrl] ?? [],
       );
     }
 
@@ -64,7 +59,6 @@ export default meta;
 
 type Story = StoryObj<typeof meta>;
 
-/** Two configured basemaps, plus the two credits every deployment owes. */
 export const Default: Story = {
   render: () => <Seeded basemaps={BASEMAPS} />,
   play: async ({ canvas }) => {
@@ -75,10 +69,6 @@ export const Default: Story = {
   },
 };
 
-/**
- * A deployment on the single keyless default. The surface and weather credits
- * are owed whatever the operator configured, so they are still here.
- */
 export const OneBasemap: Story = {
   render: () => <Seeded basemaps={[BASEMAPS[0] as WebUIConfig["basemaps"][number]]} />,
   play: async ({ canvas }) => {
