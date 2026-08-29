@@ -610,7 +610,9 @@ describe("AtlasPage", () => {
 
   it("goes back to the search it came from", async () => {
     renderPage(LIBRARY, { at: "/?route=veloplanner%2F2%2F1" });
-    await userEvent.click(screen.getByRole("button", { name: /^Search \d+ routes?$/ }));
+    await userEvent.click(
+      screen.getByRole("button", { name: /^Close the route and go back to \d+ routes?$/ }),
+    );
 
     expect(screen.getByRole("button", { name: "Search the route library" })).toBeInTheDocument();
     expect(lastDrawing().overlaid).toBe(false);
@@ -621,11 +623,13 @@ describe("AtlasPage", () => {
    * point: a reader who wants the ground back can put the chart away without
    * closing the route.
    */
-  it("puts the profile away and leaves the route open", async () => {
+  it("puts the detail dock away and leaves the route open", async () => {
     renderPage(LIBRARY, { at: "/?route=veloplanner%2F2%2F1" });
-    await userEvent.click(screen.getByRole("button", { name: "Hide the profile" }));
+    await userEvent.click(screen.getByRole("button", { name: "Hide the route detail" }));
 
-    expect(screen.getByRole("button", { name: "Show the profile" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /^Profile, ground and forecast/ }),
+    ).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Kaiserstuhl Loop" })).toBeInTheDocument();
   });
 
@@ -642,7 +646,9 @@ describe("AtlasPage", () => {
   it("stops marking a route new once its own panel has been opened", async () => {
     stubStorage();
     renderPage(LIBRARY, { at: "/?route=veloplanner%2F2%2F1" });
-    await userEvent.click(screen.getByRole("button", { name: /^Search \d+ routes?$/ }));
+    await userEvent.click(
+      screen.getByRole("button", { name: /^Close the route and go back to \d+ routes?$/ }),
+    );
     await userEvent.type(await searchBox(), "kaiserstuhl");
 
     expect(screen.queryByText("New")).toBeNull();
@@ -657,7 +663,9 @@ describe("AtlasPage", () => {
     await userEvent.type(await searchBox(), "kaiserstuhl");
     await userEvent.click(screen.getByRole("button", { name: /Kaiserstuhl Loop/ }));
     await userEvent.click(screen.getByRole("button", { name: "Open route" }));
-    await userEvent.click(screen.getByRole("button", { name: /^Search \d+ routes?$/ }));
+    await userEvent.click(
+      screen.getByRole("button", { name: /^Close the route and go back to \d+ routes?$/ }),
+    );
 
     expect(screen.queryByText("New")).toBeNull();
   });

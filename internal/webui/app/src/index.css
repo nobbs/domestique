@@ -27,6 +27,11 @@
   --grade-2: #e8b70a;
   --grade-3: #f2811d;
   --grade-4: #dc2b21;
+  --temp-0: #2e5f9e;
+  --temp-1: #5aa2cf;
+  --temp-2: #cbb579;
+  --temp-3: #e08a3c;
+  --temp-4: #c9453a;
   --surface-asphalt: #556b82;
   --surface-paving: #7d3ab7;
   --surface-compacted: #009c89;
@@ -70,6 +75,11 @@
   --grade-2: #f7d13f;
   --grade-3: #ff9e46;
   --grade-4: #f95a4c;
+  --temp-0: #6f9fd8;
+  --temp-1: #8ec8e8;
+  --temp-2: #e3d199;
+  --temp-3: #f2a961;
+  --temp-4: #ef7266;
   --surface-asphalt: #8da8c3;
   --surface-paving: #b77ff2;
   --surface-compacted: #59ceba;
@@ -113,6 +123,11 @@
     --grade-2: #f7d13f;
     --grade-3: #ff9e46;
     --grade-4: #f95a4c;
+    --temp-0: #6f9fd8;
+    --temp-1: #8ec8e8;
+    --temp-2: #e3d199;
+    --temp-3: #f2a961;
+    --temp-4: #ef7266;
     --surface-asphalt: #8da8c3;
     --surface-paving: #b77ff2;
     --surface-compacted: #59ceba;

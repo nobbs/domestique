@@ -26,7 +26,6 @@ function renderPanel(overrides: Partial<RoutePanelProps> = {}) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const props: RoutePanelProps = {
     route: route(),
-    profile: null,
     highestMetres: null,
     subtitle: "",
     surface: null,
@@ -36,6 +35,8 @@ function renderPanel(overrides: Partial<RoutePanelProps> = {}) {
     onHighlightChange: () => {},
     climbs: [],
     onSelectClimb: () => {},
+    collapsed: false,
+    onCollapsedChange: () => {},
     libraryCount: 0,
     onClose: () => {},
     sourceBaseUrls: {},
@@ -100,7 +101,6 @@ describe("RoutePanel", () => {
       <QueryClientProvider client={client}>
         <RoutePanel
           route={route({ movingSeconds: 6420 })}
-          profile={null}
           highestMetres={null}
           subtitle=""
           surface={null}
@@ -110,6 +110,8 @@ describe("RoutePanel", () => {
           onHighlightChange={() => {}}
           climbs={[]}
           onSelectClimb={() => {}}
+          collapsed={false}
+          onCollapsedChange={() => {}}
           libraryCount={0}
           onClose={() => {}}
           sourceBaseUrls={{}}

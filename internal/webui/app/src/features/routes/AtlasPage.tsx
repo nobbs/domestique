@@ -43,9 +43,9 @@ import { resolvesDark } from "../../lib/theme";
 import { useUnitSystem } from "../../lib/units";
 import { useEscapeKey } from "../../lib/useEscapeKey";
 import { LibraryMap, type MapLine } from "./LibraryMap";
+import { RouteDock } from "./RouteDock";
 import { RouteOverlay } from "./RouteOverlay";
 import { RoutePanel } from "./RoutePanel";
-import { RouteProfile } from "./RouteProfile";
 import type { RouteShape } from "./SearchPanel";
 import { SearchPanel } from "./SearchPanel";
 import { useOpenRoute } from "./useOpenRoute";
@@ -298,8 +298,6 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
     setActiveMetres,
     highlight,
     setHighlight,
-    chartCollapsed,
-    setChartCollapsed,
     routeProfile,
     samples,
     movingSeconds,
@@ -314,6 +312,14 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
     surface,
     surfaceSummary,
   } = useOpenRoute(openCoordinates, openGeometry, startAt);
+  /*
+   * What the reader has put away, and it sticks across routes: someone who
+   * folded the dock did so to see more map, not to see more of one route's map.
+   */
+  const [dockOpen, setDockOpen] = useState(true);
+  const [panelCollapsed, setPanelCollapsed] = useState(false);
+  const [groundLabelled, setGroundLabelled] = useState(true);
+  const [forecastOpen, setForecastOpen] = useState(true);
 
   const open = useCallback(
     (key: string) => {
@@ -467,7 +473,7 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
                 activeProfile={windowed ?? routeProfile}
                 activeMetres={activeMetres}
                 onActiveChange={setActiveMetres}
-                profileCollapsed={chartCollapsed}
+                profileCollapsed={!dockOpen}
                 zoomWindow={shownWindow}
                 onZoomChange={onZoomChange}
                 highlight={highlight}
@@ -476,6 +482,35 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
             ) : null}
           </LibraryMap>
         ) : null
+      }
+      dock={
+        shownRoute ? (
+          <RouteDock
+            title={shownRoute.title}
+            profile={windowed ?? routeProfile}
+            distanceMetres={shownRoute.distanceMetres}
+            surface={surfaceSummary}
+            climbs={climbs}
+            coordinates={openCoordinates}
+            samples={samples}
+            startAt={startAt}
+            onStartAtChange={setStartAt}
+            movingSeconds={movingSeconds}
+            activeMetres={activeMetres}
+            onActiveChange={setActiveMetres}
+            zoomWindow={shownWindow}
+            onZoomChange={onZoomChange}
+            highlight={highlight}
+            onHighlightChange={setHighlight}
+            unitSystem={unitSystem}
+            open={dockOpen}
+            onOpenChange={setDockOpen}
+            groundLabelled={groundLabelled}
+            onGroundLabelledChange={setGroundLabelled}
+            forecastOpen={forecastOpen}
+            onForecastOpenChange={setForecastOpen}
+          />
+        ) : undefined
       }
     >
       {/*
@@ -526,29 +561,6 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
         <RoutePanel
           route={shownRoute}
           movingSecondsOverride={selectionMovingSeconds}
-          profile={
-            <RouteProfile
-              profile={windowed ?? routeProfile}
-              title={shownRoute.title}
-              ascentMetres={shownRoute.ascentMetres}
-              surface={surfaceSummary}
-              activeMetres={activeMetres}
-              onActiveChange={setActiveMetres}
-              zoomWindow={shownWindow}
-              onZoomChange={onZoomChange}
-              highlight={highlight}
-              collapsed={chartCollapsed}
-              onCollapsedChange={setChartCollapsed}
-              unitSystem={unitSystem}
-              startAt={startAt}
-              onStartAtChange={setStartAt}
-              samples={samples}
-              coordinates={openCoordinates}
-              movingSeconds={movingSeconds}
-              predictionKnown={openGeometry.isSuccess}
-              routeKey={openKey ?? undefined}
-            />
-          }
           highestMetres={routeProfile ? routeProfile.maxElevationMetres : null}
           subtitle={subtitle}
           surface={surfaceSummary}
@@ -562,6 +574,8 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
           onHighlightChange={setHighlight}
           climbs={climbs}
           onSelectClimb={selectClimb}
+          collapsed={panelCollapsed}
+          onCollapsedChange={setPanelCollapsed}
           libraryCount={library.length}
           onClose={close}
           sourceBaseUrls={config.data?.sourceBaseUrls ?? {}}

@@ -1,118 +1,206 @@
 /**
- * When the ride starts, which is what turns a stage's predicted moving time
- * into real moments worth asking `GET /v1/weather` about.
+ * When the ride sets off: a calendar in a popover, and a time beside it.
  *
- * A `ui/field` around a `ui/input`, like every other labelled control here. It
- * takes a value and a callback, with nothing held here.
+ * A `Calendar` in a `Popover` for the day, an `Input` for the time.
  *
  * There is no default. An invented start time would draw a confident forecast
- * for a ride nobody actually planned, so the field opens empty and stays that
- * way until the reader picks something.
+ * for a ride nobody actually planned, so it opens empty and stays that way
+ * until the reader picks something.
  *
- * A time outside `isWithinForecastWindow` is refused rather than sent: the
- * endpoint answers one with a `400 invalid_request`, and a control that can
- * check the window itself has no business making that round trip. Refusing
- * leaves the previous value in place — a controlled input re-renders with the
- * prop it was given, so an invalid keystroke never reaches `onChange`.
+ * The window is the point. The service answers a departure whose ride
+ * would finish past the sixteen-day horizon with a `400`, so the calendar
+ * disables those days rather than offering them, and `startTimeRefusal` — the
+ * same function the page uses on a remembered value — has the last word on
+ * whatever is assembled. A picker that looked better and quietly allowed a
+ * request the service refuses would be a worse control, not a nicer one.
+ *
+ * The two halves are one value. A day without a time is not a departure, so
+ * the time carries on from whatever was set and only the date moves; changing
+ * either re-checks the pair.
  */
 
+import { IconCalendar, IconX } from "@tabler/icons-react";
 import { useState } from "react";
+import { Calendar } from "@/components/ui/calendar";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   FORECAST_HORIZON_MS,
   FORECAST_PAST_ALLOWANCE_MS,
   startTimeRefusal,
 } from "../lib/startTime";
+import { Button } from "./Button";
 
-const INPUT_ID = "start-time-input";
-
-/** The next whole minute at or after `epochMs`, since the input works in minutes. */
-function ceilToMinute(epochMs: number): number {
-  return Math.ceil(epochMs / 60_000) * 60_000;
-}
+const TIME_ID = "start-time-of-day";
 
 function pad(value: number): string {
   return String(value).padStart(2, "0");
 }
 
-/** `datetime-local`'s own wire format, in the browser's local time. */
-function toInputValue(date: Date): string {
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+/** `HH:MM`, which is what `input[type=time]` reads and writes. */
+function toTimeValue(date: Date): string {
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
-export interface StartTimePickerProps {
+/** The day from one date and the time of day from another. */
+function combine(day: Date, timeOf: Date): Date {
+  const next = new Date(day);
+  next.setHours(timeOf.getHours(), timeOf.getMinutes(), 0, 0);
+
+  return next;
+}
+
+export function StartTimePicker({
+  value,
+  onChange,
+  movingSeconds,
+  inline = false,
+}: {
   value: Date | null;
   onChange: (next: Date | null) => void;
-  /**
-   * The stage's predicted moving time, when it has one.
-   *
-   * The horizon belongs to the *last* sample, not the first: the forecast
-   * request spans from the departure to the arrival, and a five-hour ride
-   * begun at the very edge of the window ends five hours past it. Bounding the
-   * control by the horizon alone would offer a start that is certain to be
-   * refused, and the refusal would arrive as a `400` the page can only report
-   * as the provider being unavailable — which it would not be.
-   */
+  /** The ride's length, since the horizon applies to when it *finishes*. */
   movingSeconds?: number | undefined;
-}
-
-export function StartTimePicker({ value, onChange, movingSeconds }: StartTimePickerProps) {
+  /**
+   * Drops the stacked label and sits on one line.
+   *
+   * For the forecast's own caption row, where the surrounding words already
+   * say what the control is for — "Forecast from …" reads as a sentence, and a
+   * second "Ride start" above it would be labelling the label.
+   */
+  inline?: boolean;
+}) {
   const [refusal, setRefusal] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
   const now = new Date();
-  const latestStart = new Date(
+  const earliest = new Date(now.getTime() - FORECAST_PAST_ALLOWANCE_MS);
+  const latest = new Date(
     now.getTime() + FORECAST_HORIZON_MS - Math.max(movingSeconds ?? 0, 0) * 1000,
   );
 
-  return (
-    <Field>
-      <FieldLabel className="font-semibold" htmlFor={INPUT_ID}>
-        Ride start
-      </FieldLabel>
-      <Input
-        id={INPUT_ID}
-        type="datetime-local"
-        // The browser's own hint for the same window this refuses by hand. Computed
-        // once per render rather than kept ticking; the handler reads the clock afresh,
-        // so a drifted hint costs a refusal rather than a bad request. Rounded up to the
-        // next whole minute, since truncating would advertise a minute already too old.
-        min={toInputValue(new Date(ceilToMinute(now.getTime() - FORECAST_PAST_ALLOWANCE_MS)))}
-        max={toInputValue(latestStart)}
-        value={value ? toInputValue(value) : ""}
-        aria-describedby={refusal ? "start-time-refusal" : undefined}
-        onChange={(event) => {
-          const raw = event.target.value;
-          if (raw === "") {
+  /** Proposes a departure, and says why if the service would not take it. */
+  const propose = (next: Date) => {
+    // Read afresh rather than from this render: a page can sit open for hours,
+    // and the window that matters is the one in force when the reader picks.
+    const complaint = startTimeRefusal(next, movingSeconds, new Date());
+    if (complaint !== null) {
+      setRefusal(
+        complaint === "past"
+          ? "That's more than a day in the past."
+          : "That ride would finish past the 16-day forecast horizon.",
+      );
+
+      return;
+    }
+    setRefusal(null);
+    onChange(next);
+  };
+
+  const controls = (
+    <div className="flex items-center gap-1.5">
+      {/*
+       * The application's own `Button`, not `ui/button`: the shadcn one is the
+       * vocabulary the generated components speak among themselves, and this
+       * file is application code, which lint enforces.
+       */}
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger
+          render={
+            <Button
+              variant="outline"
+              icon={<IconCalendar stroke={1.8} />}
+              className={
+                inline ? "h-7 px-2 text-xs font-normal tabular-nums" : "font-normal tabular-nums"
+              }
+              aria-label="The day the ride starts"
+            />
+          }
+        >
+          {value === null
+            ? "Pick a day"
+            : value.toLocaleDateString(undefined, {
+                day: "numeric",
+                month: "short",
+                year: "numeric",
+              })}
+        </PopoverTrigger>
+        <PopoverContent align="start" className="w-auto p-0">
+          <Calendar
+            mode="single"
+            // Spread only when there is one. Under
+            // `exactOptionalPropertyTypes` an optional prop and one that may
+            // be undefined are different types, and `react-day-picker`
+            // declares these as the former.
+            {...(value === null ? {} : { selected: value, defaultMonth: value })}
+            // Offered days are the ones the service would actually answer for.
+            disabled={{ before: earliest, after: latest }}
+            onSelect={(day) => {
+              if (day === undefined) {
+                return;
+              }
+              propose(combine(day, value ?? day));
+              setOpen(false);
+            }}
+            autoFocus
+          />
+        </PopoverContent>
+      </Popover>
+      {value === null ? null : (
+        // The way back to nothing chosen. There is no default start time on
+        // purpose — an invented one draws a confident forecast for a ride
+        // nobody planned — so a reader who set one has to be able to unset it.
+        <button
+          type="button"
+          aria-label="Clear the ride start"
+          onClick={() => {
             setRefusal(null);
             onChange(null);
-
+          }}
+          className="rounded p-1 text-[var(--ink-2)] hover:bg-[var(--base)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)]"
+        >
+          <IconX size={14} stroke={2} aria-hidden="true" />
+        </button>
+      )}
+      <Input
+        id={TIME_ID}
+        type="time"
+        className={inline ? "h-7 w-[6.5rem] px-2 text-xs tabular-nums" : "w-[7.5rem] tabular-nums"}
+        aria-label="The time the ride starts"
+        aria-describedby={refusal ? "start-time-refusal" : undefined}
+        value={value ? toTimeValue(value) : ""}
+        onChange={(event) => {
+          const raw = event.target.value;
+          const [hours, minutes] = raw.split(":").map(Number);
+          if (value === null || hours === undefined || Number.isNaN(hours)) {
             return;
           }
-          const parsed = new Date(raw);
-          if (Number.isNaN(parsed.getTime())) {
-            return;
-          }
-          // A fresh reading rather than the one this render captured: a page
-          // can sit open for hours, and the window this is checked against is
-          // the one in force when the reader picks, not when the field drew.
-          const asOf = new Date();
-          // Classified by the same function the page uses on a remembered
-          // value, so a keystroke and a stored time can never be told two
-          // different things about the same trouble.
-          const refusal = startTimeRefusal(parsed, movingSeconds, asOf);
-          if (refusal !== null) {
-            setRefusal(
-              refusal === "past"
-                ? "That's more than a day in the past."
-                : "That ride would finish past the 16-day forecast horizon.",
-            );
-
-            return;
-          }
-          setRefusal(null);
-          onChange(parsed);
+          const next = new Date(value);
+          next.setHours(hours, minutes ?? 0, 0, 0);
+          propose(next);
         }}
       />
+    </div>
+  );
+
+  if (inline) {
+    return (
+      <div className="flex items-center gap-1.5">
+        {controls}
+        {refusal ? (
+          <span id="start-time-refusal" className="text-[11px] text-[var(--danger,var(--ink-2))]">
+            {refusal}
+          </span>
+        ) : null}
+      </div>
+    );
+  }
+
+  return (
+    <Field>
+      <FieldLabel className="font-semibold" htmlFor={TIME_ID}>
+        Ride start
+      </FieldLabel>
+      {controls}
       {refusal ? <FieldError id="start-time-refusal">{refusal}</FieldError> : null}
     </Field>
   );

@@ -7,6 +7,7 @@ import {
   DrawerTrigger,
 } from "@/components/ui/drawer";
 import { useNarrowViewport } from "../lib/mediaQuery";
+import { useElementWidth } from "../lib/useElementWidth";
 import { MenuBar } from "./MenuBar";
 
 export interface LayoutProps {
@@ -14,12 +15,31 @@ export interface LayoutProps {
   map?: React.ReactNode;
   /** Search, filters, results, and route detail. */
   children?: React.ReactNode;
+  /**
+   * The wide panel along the map's foot, where a route is open.
+   *
+   * A sibling of the workspace rather than part of it, which is what makes the
+   * camera work without any arithmetic here: `useOverlayInsets` measures the
+   * overlay's children, and `insetsFrom` gives a wide short panel to the bottom
+   * edge it eats least of.
+   *
+   * Below the breakpoint there is no map to stand on — the panels are a Drawer
+   * — so it goes in the Drawer with everything else.
+   */
+  dock?: React.ReactNode;
 }
 
 /** The map stays mounted while the same workspace becomes a rail or a Drawer. */
-export function Layout({ map, children }: LayoutProps) {
+export function Layout({ map, children, dock }: LayoutProps) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const narrow = useNarrowViewport();
+  /*
+   * The workspace's own width, so the dock can start clear of it. Measured
+   * rather than assumed: the panel in that corner is a search pill, a route
+   * pill or an unfolded card depending on what the reader is doing, and a
+   * hard-coded inset would be wrong for two of the three.
+   */
+  const { ref: workspace, width: workspaceWidth } = useElementWidth<HTMLElement>();
 
   return (
     /*
@@ -43,6 +63,7 @@ export function Layout({ map, children }: LayoutProps) {
                 </DrawerHeader>
                 <div className="min-h-0 overflow-y-auto p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
                   {children}
+                  {dock}
                 </div>
               </DrawerContent>
             </Drawer>
@@ -50,11 +71,23 @@ export function Layout({ map, children }: LayoutProps) {
         ) : (
           <div className="shell__overlay pointer-events-none absolute inset-0 z-20">
             <aside
+              ref={workspace}
               className="pointer-events-auto absolute top-3 left-3 max-h-[calc(100%-1.5rem)] w-fit max-w-[calc(100dvw-1.5rem)] overflow-y-auto rounded-xl bg-[var(--panel)] p-3 shadow-[var(--shadow)] ring-1 ring-black/5 transition-[background-color,box-shadow,padding] duration-200 has-[>[data-compact-workspace]]:overflow-visible has-[>[data-compact-workspace]]:bg-transparent has-[>[data-compact-workspace]]:p-0 has-[>[data-compact-workspace]]:shadow-none has-[>[data-compact-workspace]]:ring-0"
               aria-label="Route library controls"
             >
               {children}
             </aside>
+            {dock === undefined ? null : (
+              // Centred in what is left of the foot, so a dock that folds to a
+              // pill leaves it in the middle of the ground it had rather than
+              // dropping it into a corner.
+              <div
+                className="pointer-events-auto absolute right-3 bottom-3 flex justify-center"
+                style={{ left: workspaceWidth + 24 }}
+              >
+                {dock}
+              </div>
+            )}
           </div>
         )}
       </main>

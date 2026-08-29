@@ -1,120 +1,64 @@
 /**
- * A stage's forecast, as a strip of cells under the elevation chart: one per
- * forecast sample, in the order the ride reaches them.
+ * A stage's forecast, as a strip of tiles along the route: one per reading, in
+ * the order the ride reaches them.
  *
- * Colour carries precipitation — the one figure worth reading at a glance —
- * but nothing here is colour-only. `ElevationProfile`'s bands can afford that
- * because this service has one operator who has said colour is the channel
- * they want; a forecast a rider might actually plan a ride's start time
- * around does not get that exemption. So every value a cell encodes is also
- * reachable as text: a letter glyph for the wind relation, an SVG `<title>`
- * a pointer can hover for the exact figures, and a visually hidden `<table>`
- * beside the strip that a screen reader reads instead of the graphic — the
- * `role="img"` on the `<svg>` carries one summary label and cannot carry
- * forty-eight readings on its own.
+ * A tile rather than a lane per measure. A rider reads a forecast a moment at a
+ * time — *what is it like when I get to the top* — so each reading is a small
+ * card carrying its own condition, temperature and wind, and the tiles are as
+ * wide as the ground they cover, so their own edges show where the ride slows
+ * down. The strip is bordered and rounded as one object, because that is what
+ * it is: the tiles divide it, they do not sit in it.
  *
- * The wind reading can also be honestly unsettled. A switchback is heading
- * two directions within a few hundred metres, and `wind.ts` reports that as
+ * Rain tints the tile rather than drawing a bar of its own — a tile already
+ * carries three readings, and a fourth mark inside it is the crowding this
+ * layout exists to avoid. Wet moments go visibly heavier as a front arrives.
+ *
+ * Runs its own query — `MapCredits` is this component's own precedent for that
+ * — so a caller only has to hand over what the forecast is asked about, not
+ * thread a query result through props.
+ *
+ * The wind reading can be honestly unsettled. A switchback is heading two
+ * directions within a few hundred metres, and `wind.ts` reports that as
  * `"mixed"` rather than averaging it into a confident crosswind; this draws
- * that as its own glyph rather than picking one of the two directions to
- * believe.
- *
- * Runs its own query — `MapCredits` is this component's own precedent for
- * that — so a caller only has to hand over what the forecast is asked about,
- * not thread a query result through props.
+ * that as its own glyph rather than picking one of the two to believe.
  */
 
+import { IconArrowUp, IconWind } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { weatherQuery } from "../../api/queries";
 import { ApiError } from "../../api/request";
-import type { Position, WeatherPoint } from "../../api/types";
+import type { Position } from "../../api/types";
 import type { ForecastSample } from "../../lib/forecastSamples";
-import { formatPrecipitation, formatTemperature, formatWindSpeed } from "../../lib/format";
 import { PADDING, plotAxis } from "../../lib/plotAxis";
-import { cumulativeMetres } from "../../lib/profile";
 import type { UnitSystem } from "../../lib/units";
 import { useElementWidth } from "../../lib/useElementWidth";
-import type { WindRelation } from "../../lib/wind";
-import { BEARING_WINDOW_METRES, bearingAt, bearingIsMixed, windRelation } from "../../lib/wind";
+import { temperatureColour, weatherIcon } from "../../lib/weather";
+import { buildCells, windWeight } from "./forecastCells";
+
+const TILE_HEIGHT = 62;
 
 /**
- * What a cell's own glyph and table row say about the wind: one of
- * `wind.ts`'s own relations, `"mixed"` for a window that disagreed with
- * itself, or null when there was no direction of travel to measure at all.
+ * Corners on the strip, not on the tiles.
+ *
+ * Rounding each tile turns the band into a row of loose chips, and a gap
+ * between them is ground the strip claims to cover and then does not draw. The
+ * clip that puts the corners on the ends is also what shapes the first and last
+ * tiles, so neither has to know it is first or last.
  */
-type CellRelation = WindRelation | "mixed" | null;
+const STRIP_RADIUS = "0.375rem";
 
-/** How tall the strip's row of cells is drawn. Short: it is a strip, not a chart. */
-const STRIP_HEIGHT = 22;
-
-/**
- * Below this along-route component, in km/h, the wind is reported by its
- * relation and its raw reading alone. Half a kilometre an hour is nothing a
- * rider feels, and quoting it would put a direction on a quantity that has
- * none.
+/*
+ * What a tile gives up as it narrows, and in which order.
+ *
+ * Temperature survives longest because it is the reading a rider acts on; the
+ * wind goes first because it changes slowest across a day. The order matters
+ * more than the numbers: dropping the figure before the glyph leaves a tile
+ * that is decorated but says nothing.
  */
-const NEGLIGIBLE_COMPONENT_KMH = 0.5;
-
-/** Below this many pixels a cell's own wind glyph is dropped rather than crowded. */
-const MIN_GLYPH_CELL_WIDTH = 14;
-
-/**
- * How far past 0% probability the precipitation fill climbs, and how far it
- * is allowed to go. A cell with no chance of rain draws no fill at all —
- * "colour carries precipitation" means an absence of colour is an honest
- * answer too.
- */
-const MAX_PRECIPITATION_OPACITY = 0.55;
-
-/**
- * Open-Meteo's WMO weather codes, the subset this service's own forecast
- * ever answers with (`internal/httpapi/routes_weather.go` passes the
- * provider's own code straight through). A code not in this table is
- * reported by number rather than guessed at.
- */
-const WEATHER_CODE_LABELS: Record<number, string> = {
-  0: "clear sky",
-  1: "mainly clear",
-  2: "partly cloudy",
-  3: "overcast",
-  45: "fog",
-  48: "depositing rime fog",
-  51: "light drizzle",
-  53: "moderate drizzle",
-  55: "dense drizzle",
-  56: "light freezing drizzle",
-  57: "dense freezing drizzle",
-  61: "slight rain",
-  63: "moderate rain",
-  65: "heavy rain",
-  66: "light freezing rain",
-  67: "heavy freezing rain",
-  71: "slight snow",
-  73: "moderate snow",
-  75: "heavy snow",
-  77: "snow grains",
-  80: "slight rain showers",
-  81: "moderate rain showers",
-  82: "violent rain showers",
-  85: "slight snow showers",
-  86: "heavy snow showers",
-  95: "thunderstorm",
-  96: "thunderstorm with slight hail",
-  99: "thunderstorm with heavy hail",
-};
-
-const COMPASS_POINTS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
-
-function weatherCodeLabel(code: number): string {
-  return WEATHER_CODE_LABELS[code] ?? `weather code ${code}`;
-}
-
-function compassLabel(degrees: number): string {
-  const index = Math.round((((degrees % 360) + 360) % 360) / 45) % 8;
-
-  return COMPASS_POINTS[index] ?? "N";
-}
+const MIN_WIND_WIDTH = 34;
+const MIN_ICON_WIDTH = 26;
+const MIN_FIGURE_WIDTH = 18;
 
 /**
  * How much a forecast this far ahead can be trusted to be precise, in one
@@ -136,116 +80,6 @@ function forecastSharpness(leadHours: number): string {
   return "More than 3 days out: coarser global guidance, past ICON's finer-grained range.";
 }
 
-/**
- * The felt temperature first, the dry-bulb one behind it.
- *
- * On a bike at 25 km/h the apparent temperature is the figure that decides
- * what goes in the jersey pocket — wind chill on a descent is most of the
- * difference between the two — so it leads. The reading a thermometer by the
- * road would give still travels beside it rather than instead of it, because
- * the two disagreeing by ten degrees is itself worth seeing.
- */
-function temperatureText(point: WeatherPoint, unitSystem: UnitSystem): string {
-  const apparent = formatTemperature(point.apparentTemperatureCelsius, unitSystem);
-  const actual = formatTemperature(point.temperatureCelsius, unitSystem);
-
-  return `feels ${apparent}, ${actual} actual`;
-}
-
-/**
- * What tells one cell from another.
- *
- * Not the distance alone: a stage with repeated coordinates puts several
- * samples at the same point on the ground, and React would be handed the same
- * key twice. The clock always moves even when the road does not.
- */
-function cellKey(sample: ForecastSample): string {
-  return `${sample.distanceMetres}-${sample.arrivalAt.getTime()}`;
-}
-
-function conditionText(point: WeatherPoint, unitSystem: UnitSystem): string {
-  const label = weatherCodeLabel(point.weatherCode);
-  if (point.precipitationProbabilityPercent <= 0 && point.precipitationMillimetres <= 0) {
-    // Said rather than left to the missing fill. A dry cell is drawn with no
-    // shading at all, which is the "carried by colour alone" state this page does
-    // not allow, and "overcast" alone says nothing about rain.
-    return `${label}, no rain expected`;
-  }
-
-  return `${label}, ${Math.round(point.precipitationProbabilityPercent)}% chance of ${formatPrecipitation(point.precipitationMillimetres, unitSystem)}`;
-}
-
-/**
- * The wind a rider actually feels, with the weather station's reading behind
- * it.
- *
- * A bare "18 km/h from 240°" asks the reader to do trigonometry in their head,
- * which is the whole reason this strip classifies the wind at all. The number
- * that leads is therefore the component along the direction of travel: a
- * crosswind leaning slightly ahead is a couple of kilometres an hour against
- * you, not eighteen. The raw speed and bearing still travel, because they are
- * what a forecast anywhere else will quote back.
- */
-function windText(
-  point: WeatherPoint,
-  relation: CellRelation,
-  componentKmhPerKmh: number | null,
-  unitSystem: UnitSystem,
-): string {
-  const speed = formatWindSpeed(point.windSpeedKmh, unitSystem);
-  const direction = `from ${compassLabel(point.windDirectionDegrees)} (${Math.round(point.windDirectionDegrees)}°)`;
-  const named =
-    relation === "head"
-      ? "Headwind"
-      : relation === "tail"
-        ? "Tailwind"
-        : relation === "cross"
-          ? "Crosswind"
-          : relation === "mixed"
-            ? "Mixed direction here"
-            : null;
-  if (named === null) {
-    return `${speed} ${direction}`;
-  }
-  // Mixed means the road turns through the window, so there is no one
-  // component to quote: the same wind is ahead and behind within a kilometre.
-  if (componentKmhPerKmh === null || relation === "mixed") {
-    return `${named}, ${speed} ${direction}`;
-  }
-  const alongKmh = Math.abs(componentKmhPerKmh) * point.windSpeedKmh;
-  /*
-   * A wind square across the road pushes the rider neither way, and "0.0 mph
-   * against you" is a direction claimed for a quantity that has none. The
-   * relation and the raw reading say everything there is to say about it.
-   */
-  if (alongKmh < NEGLIGIBLE_COMPONENT_KMH) {
-    return `${named}, ${speed} ${direction}`;
-  }
-  const along = formatWindSpeed(alongKmh, unitSystem);
-  /*
-   * "Headwind" and "Tailwind" already say which way their component pushes, so
-   * the magnitude alone is the whole of it. A crosswind is the reading that
-   * still leans one way or the other, and the sign is the only thing carrying
-   * that: without it, a cross leaning into the rider and one pushing them
-   * along announce the same number.
-   */
-  if (relation === "cross") {
-    const lean = componentKmhPerKmh < 0 ? "against you" : "with you";
-
-    return `${named}, ${along} ${lean} along the route, ${speed} ${direction}`;
-  }
-
-  return `${named} ${along} along the route, ${speed} ${direction}`;
-}
-
-/** The letter a cell's own glyph draws for a wind relation. */
-const RELATION_GLYPH: Record<Exclude<CellRelation, null>, string> = {
-  head: "H",
-  tail: "T",
-  cross: "X",
-  mixed: "M",
-};
-
 export interface ForecastStripProps {
   samples: ForecastSample[];
   coordinates: Position[];
@@ -260,62 +94,13 @@ export function ForecastStrip({
   coordinates,
   startMetres,
   endMetres,
-  unitSystem,
 }: ForecastStripProps) {
+  const forecast = useQuery(weatherQuery(samples));
   const { ref, width } = useElementWidth<HTMLDivElement>();
-  const distances = useMemo(() => cumulativeMetres(coordinates), [coordinates]);
-  const totalMetres = distances[distances.length - 1] ?? 0;
-
-  const forecast = useQuery({ ...weatherQuery(samples), enabled: samples.length > 0 });
-
-  const cells = useMemo(() => {
-    const points = forecast.data?.points;
-    if (!points || points.length !== samples.length) {
-      return [];
-    }
-
-    return samples.flatMap((sample, index) => {
-      const point = points[index];
-      if (!point) {
-        return [];
-      }
-      const previous = samples[index - 1];
-      const next = samples[index + 1];
-      const cellStart = previous ? (previous.distanceMetres + sample.distanceMetres) / 2 : 0;
-      const cellEnd = next ? (sample.distanceMetres + next.distanceMetres) / 2 : totalMetres;
-      // Outside the stretch the chart is drawing: a zoomed profile narrows the
-      // axis this strip shares, and a cell wholly outside it has nothing to draw
-      // against. A window of no width is not a window that excludes everything —
-      // a stage covering no ground still has a timeline, so nothing is clipped.
-      const clips = endMetres > startMetres;
-      if (clips && (cellEnd <= startMetres || cellStart >= endMetres)) {
-        return [];
-      }
-
-      const bearing = bearingAt(
-        coordinates,
-        distances,
-        sample.distanceMetres,
-        BEARING_WINDOW_METRES,
-      );
-      const mixed =
-        bearing !== null &&
-        bearingIsMixed(coordinates, distances, sample.distanceMetres, BEARING_WINDOW_METRES);
-      const reading = bearing !== null ? windRelation(bearing, point.windDirectionDegrees) : null;
-      const relation: CellRelation = mixed ? "mixed" : (reading?.relation ?? null);
-
-      return [
-        {
-          sample,
-          point,
-          cellStart,
-          cellEnd,
-          relation,
-          component: reading?.componentKmhPerKmh ?? null,
-        },
-      ];
-    });
-  }, [samples, forecast.data, coordinates, distances, totalMetres, startMetres, endMetres]);
+  const cells = useMemo(
+    () => (forecast.data ? buildCells(samples, forecast.data.points, coordinates) : []),
+    [samples, forecast.data, coordinates],
+  );
 
   if (samples.length === 0) {
     return null;
@@ -334,9 +119,9 @@ export function ForecastStrip({
     const provider = forecast.error instanceof ApiError && forecast.error.status >= 500;
 
     return (
-      // Announced, not merely rendered: this appears when a request the
-      // reader never watched comes back, and every other asynchronous failure
-      // in this UI says so out loud.
+      // Announced, not merely rendered: this appears when a request the reader
+      // never watched comes back, and every other asynchronous failure in this
+      // UI says so out loud.
       <p className="mt-2 text-sm text-[var(--alert)]" role="alert">
         {provider
           ? "The forecast is unavailable right now; the rest of this route is unaffected."
@@ -348,103 +133,78 @@ export function ForecastStrip({
     return null;
   }
 
-  const { plotWidth, x } = plotAxis(width, startMetres, endMetres);
-  // The same total the elevation chart draws its own viewBox at — including
-  // the padding reserved down the left for its axis labels, which this strip
-  // has none of but still leaves clear, so the two plot areas start at the
-  // same pixel.
-  const totalWidth = plotWidth + PADDING.left + PADDING.right;
+  const { x } = plotAxis(width, startMetres, endMetres);
   const firstArrival = samples[0]?.arrivalAt;
   const leadHours = firstArrival
     ? Math.max(0, (firstArrival.getTime() - Date.now()) / 3_600_000)
     : 0;
 
   return (
-    <div className="mt-2" ref={ref}>
-      <svg
-        width="100%"
-        className="block"
-        height={STRIP_HEIGHT}
-        viewBox={`0 0 ${totalWidth} ${STRIP_HEIGHT}`}
-        role="img"
-        aria-label={`Forecast along the way, ${cells.length} readings`}
-      >
-        <title>{`Forecast along the way, ${cells.length} readings`}</title>
-        <g transform={`translate(${PADDING.left} 0)`}>
-          {cells.map(({ sample, point, cellStart, cellEnd, relation, component }) => {
-            const left = Math.min(Math.max(x(cellStart), 0), plotWidth);
-            const right = Math.min(Math.max(x(cellEnd), 0), plotWidth);
-            const cellWidth = Math.max(right - left, 0);
-            const opacity =
-              (point.precipitationProbabilityPercent / 100) * MAX_PRECIPITATION_OPACITY;
-            const time = sample.arrivalAt.toLocaleString(undefined, {
-              weekday: "short",
-              hour: "2-digit",
-              minute: "2-digit",
-            });
-            const title = `${time} — ${temperatureText(point, unitSystem)} · ${windText(point, relation, component, unitSystem)} · ${conditionText(point, unitSystem)}`;
+    <div ref={ref}>
+      {/*
+       * The chart's own gutters, left clear rather than drawn in: this strip
+       * has no axis labels of its own but reserves the same margin, which is
+       * what keeps its tiles under the terrain they describe.
+       */}
+      <div style={{ paddingLeft: PADDING.left, paddingRight: PADDING.right }}>
+        <div
+          className="relative overflow-hidden border border-[var(--rule)]"
+          style={{ height: TILE_HEIGHT, borderRadius: STRIP_RADIUS }}
+        >
+          {cells.map((cell) => {
+            const left = x(cell.startMetres);
+            const cellWidth = Math.max(x(cell.endMetres) - left, 0);
+            const Condition = weatherIcon(cell.point.weatherCode);
+            const figures = cellWidth >= MIN_FIGURE_WIDTH;
+            const icon = cellWidth >= MIN_ICON_WIDTH;
+            const wind = cellWidth >= MIN_WIND_WIDTH;
+            const wet = (cell.point.precipitationProbabilityPercent / 100) * 0.5;
 
             return (
-              // Distance and arrival together: a stage that stands still —
-              // repeated coordinates — gives several samples the same distance,
-              // and the clock is what still tells them apart.
-              <g key={cellKey(sample)}>
-                <rect
-                  x={left}
-                  y={0}
-                  width={cellWidth}
-                  height={STRIP_HEIGHT}
-                  className="fill-[var(--accent)]"
-                  style={{ fillOpacity: opacity }}
+              <div
+                key={cell.sample.arrivalAt.getTime()}
+                className="absolute top-0 flex flex-col items-center justify-center gap-0.5 overflow-hidden border-[var(--rule)] not-last:border-r"
+                style={{
+                  left,
+                  width: cellWidth,
+                  height: TILE_HEIGHT,
+                  backgroundColor: `color-mix(in srgb, var(--accent) ${wet * 100}%, transparent)`,
+                }}
+              >
+                <span className="text-[var(--ink-2)]">
+                  {icon ? <Condition size={15} stroke={1.7} /> : null}
+                </span>
+                <span
+                  className="rounded px-1 text-[11px] font-semibold text-[var(--ink)] tabular-nums"
+                  style={{
+                    backgroundColor: `color-mix(in srgb, ${temperatureColour(cell.point.temperatureCelsius)} 60%, transparent)`,
+                  }}
                 >
-                  <title>{title}</title>
-                </rect>
-                {relation && cellWidth >= MIN_GLYPH_CELL_WIDTH ? (
-                  <text
-                    className="pointer-events-none fill-[var(--ink-2)] text-xs"
-                    data-relation={relation}
-                    x={left + cellWidth / 2}
-                    y={STRIP_HEIGHT / 2}
-                    textAnchor="middle"
-                    dominantBaseline="central"
-                  >
-                    {RELATION_GLYPH[relation]}
-                  </text>
-                ) : null}
-              </g>
+                  {figures ? `${Math.round(cell.point.temperatureCelsius)}°` : null}
+                </span>
+                <span
+                  className="flex items-center gap-0.5 text-[10px] text-[var(--ink-2)] tabular-nums"
+                  style={{ opacity: 0.4 + windWeight(cell.point.windSpeedKmh) * 0.6 }}
+                >
+                  {!wind ? null : cell.relation === "mixed" || cell.pushDegrees === null ? (
+                    <IconWind size={12} stroke={1.8} />
+                  ) : (
+                    <IconArrowUp
+                      size={12}
+                      stroke={2.2}
+                      style={{ transform: `rotate(${cell.pushDegrees}deg)` }}
+                    />
+                  )}
+                  {wind ? Math.round(cell.point.windSpeedKmh) : null}
+                </span>
+              </div>
             );
           })}
-        </g>
-      </svg>
-
-      <p className="mt-1 text-xs text-[var(--ink-2)]">{forecastSharpness(leadHours)}</p>
-
-      <table className="visually-hidden">
-        <caption>Forecast along the way</caption>
-        <thead>
-          <tr>
-            <th scope="col">Time</th>
-            <th scope="col">Temperature</th>
-            <th scope="col">Wind</th>
-            <th scope="col">Condition</th>
-          </tr>
-        </thead>
-        <tbody>
-          {cells.map(({ sample, point, relation, component }) => (
-            <tr key={cellKey(sample)}>
-              <td>
-                {sample.arrivalAt.toLocaleString(undefined, {
-                  dateStyle: "medium",
-                  timeStyle: "short",
-                })}
-              </td>
-              <td>{temperatureText(point, unitSystem)}</td>
-              <td>{windText(point, relation, component, unitSystem)}</td>
-              <td>{conditionText(point, unitSystem)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+        </div>
+      </div>
+      <p className="mt-1 text-xs text-[var(--ink-2)]" style={{ paddingLeft: PADDING.left }}>
+        {forecastSharpness(leadHours)}
+      </p>
     </div>
   );
 }
