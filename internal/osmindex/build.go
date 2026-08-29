@@ -19,23 +19,13 @@ import (
 	"github.com/nobbs/domestique/internal/surface"
 )
 
-// flushThresholdBytes is how much packed output the builder holds before
-// writing it out.
-//
-// Packed cells are appended to whatever the file already holds, so the builder
-// never needs a whole region's output in memory at once and this can be set for
-// comfort rather than for correctness. It is the one number that decides the
-// builder's own footprint; everything else it holds is a function of the region
-// being read.
+// flushThresholdBytes is how much packed output the builder holds before writing
+// it out. Packed cells are appended, so this is set for comfort rather than
+// correctness; it is the one number deciding the builder's own footprint.
 const flushThresholdBytes = 48 << 20
 
-// DefaultMemoryLimit is the soft heap ceiling a build runs under.
-//
-// It is a constant rather than a setting because it is not a preference: a build
-// measured at roughly half a gigabyte of live heap is given headroom, and the
-// host it runs on has a few gigabytes free. An operator who tightened this would
-// only make the collector work harder for the same result, and one who loosened
-// it would only find out on the day the host ran out.
+// DefaultMemoryLimit is the soft heap ceiling a build runs under. A build
+// measured at roughly half a gigabyte of live heap is given headroom.
 const DefaultMemoryLimit int64 = 1 << 30
 
 // Options configures one build.
@@ -43,22 +33,16 @@ type Options struct {
 	// Client fetches extracts. Empty means a client with no timeout, since the
 	// caller's context is what bounds a download.
 	Client *http.Client
-	// Directory is where indexes live and where extracts are staged. It must be
-	// on real disk: an extract is hundreds of megabytes and the service's /tmp is
-	// a tmpfs, which would put it in the memory this build is trying to bound.
+	// Directory is where indexes live and extracts are staged. It must be on real
+	// disk: an extract is hundreds of megabytes and the service's /tmp is a tmpfs.
 	Directory string
 	// BaseURL is the extract host. Empty means DefaultBaseURL.
 	BaseURL string
 	// Regions are Geofabrik slugs such as "europe/germany/rheinland-pfalz".
 	Regions []string
-	// MemoryLimit is a soft ceiling applied for the duration of the build and
-	// lifted afterwards. Zero leaves the runtime's limit alone.
-	//
-	// It is applied here rather than through GOMEMLIMIT because the setting is
-	// runtime-wide: an environment variable sized for the build would make the
-	// HTTP service collect against the same ceiling for the rest of the
-	// process's life, which is a cost paid continuously to bound something that
-	// happens weekly.
+	// MemoryLimit is a soft ceiling applied for the build and lifted afterwards;
+	// zero leaves the runtime's limit alone. Applied here rather than through
+	// GOMEMLIMIT, which is runtime-wide and would bind the HTTP service too.
 	MemoryLimit int64
 }
 
@@ -68,22 +52,15 @@ type Result struct {
 	Path string
 	// Generation identifies the build.
 	Generation string
-	// Unchanged reports that every region's published extract is byte-identical
-	// to the one the current index was built from, so nothing was downloaded and
-	// no file was written.
+	// Unchanged reports that every region's published extract is byte-identical to
+	// the one the current index was built from, so nothing was downloaded.
 	Unchanged bool
 }
 
-// Build produces an index for the configured regions.
-//
-// It fetches each region's published checksum first and derives the generation
-// from them, so a scheduled rebuild that finds nothing changed upstream costs
-// one small request per region and returns without downloading anything. When
-// the generation differs from the one given, the extracts are downloaded,
-// verified, decoded, and packed into a new file named for the new generation.
-//
-// The caller owns the returned file: this function does not touch whatever index
-// is currently live.
+// Build produces an index for the configured regions. It fetches each region's
+// published checksum first and derives the generation from them, so a rebuild
+// that finds nothing changed costs one small request per region. The caller owns
+// the returned file: this does not touch whatever index is currently live.
 func Build(ctx context.Context, options Options, currentGeneration string) (Result, error) {
 	for _, region := range options.Regions {
 		if err := ValidateRegion(region); err != nil {
@@ -144,12 +121,10 @@ func buildInto(
 	}
 	defer writer.close()
 
-	// Regions are read one at a time and their working memory released before
-	// the next, so the peak is set by the largest single region rather than by
-	// the total. Extracts overlap slightly at their borders, which stores a
-	// handful of boundary ways twice; a duplicate is the same way with the same
-	// identifier, geometry, and class, so the match treats the two as one
-	// candidate and nothing needs to deduplicate them.
+	// Regions are read one at a time and their working memory released before the
+	// next, so the peak is the largest single region. Extracts overlap at their
+	// borders; a duplicate is the same way with the same identifier and class, so
+	// the match treats the two as one candidate.
 	for _, region := range options.Regions {
 		if err := ctx.Err(); err != nil {
 			return fmt.Errorf("osmindex: building index: %w", err)
@@ -188,12 +163,9 @@ func addRegion(
 	return indexExtract(ctx, extractPath, writer)
 }
 
-// indexExtract reads one extract in two passes and packs what it finds.
-//
-// The two passes are what keep this affordable. A single pass would have to
-// hold every node in the file against the chance that some later way refers to
-// it; reading the ways first means the node pass knows exactly which
-// coordinates matter and can discard the rest as it goes.
+// indexExtract reads one extract in two passes and packs what it finds. A single
+// pass would hold every node against the chance a later way refers to it;
+// reading ways first lets the node pass discard what does not matter.
 func indexExtract(ctx context.Context, extractPath string, writer *cellWriter) error {
 	ways, references, err := scanWays(ctx, extractPath)
 	if err != nil {
@@ -212,10 +184,9 @@ func indexExtract(ctx context.Context, extractPath string, writer *cellWriter) e
 	return packWays(ctx, ways, references, nodeIDs, latitude, longitude, writer)
 }
 
-// wayRecord is one candidate way: what it is, and where its geometry is to be
-// found in the shared reference slice. The references are held in one slice
-// rather than per way because a slice header per way would cost more than the
-// references themselves.
+// wayRecord is one candidate way: what it is, and where its geometry sits in the
+// shared reference slice. References are held in one slice because a slice header
+// per way would cost more than the references themselves.
 type wayRecord struct {
 	id       int64
 	refStart int32
@@ -254,10 +225,8 @@ func scanWays(ctx context.Context, path string) (ways []wayRecord, references []
 		}
 
 		// A way record addresses the shared reference slice with int32 offsets,
-		// which is what keeps it small enough to hold millions of them. No
-		// regional extract comes close to two billion references, but a builder
-		// that silently wrapped would produce an index with the wrong geometry
-		// rather than no index at all.
+		// which keeps it small enough to hold millions. A builder that silently
+		// wrapped would produce an index with the wrong geometry.
 		if len(references)+len(way.Nodes) > math.MaxInt32 {
 			return nil, nil, errors.New("osmindex: extract holds more references than this builder can address")
 		}

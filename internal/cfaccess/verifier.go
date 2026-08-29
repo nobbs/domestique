@@ -1,16 +1,7 @@
-// Package cfaccess verifies Cloudflare Access JWT assertions so the service can
-// establish a caller identity on a request path that carries no Tailnet
-// identity of its own.
-//
-// Tailscale Serve populates its identity headers only for traffic from user
-// nodes, and never for a tagged device. A request that reaches this service
-// through the public Cloudflare path therefore arrives with no
-// Tailscale-User-Login at all, and Serve strips any the client tried to supply.
-// The signed assertion Cloudflare Access adds is the only identity such a
-// request carries, so it is the only thing worth trusting on that path.
-//
-// The JOSE work is github.com/coreos/go-oidc's, which is what Cloudflare's
-// documentation points at for this.
+// Package cfaccess verifies Cloudflare Access JWT assertions, which are the only
+// identity a request through the public Cloudflare path carries: Tailscale Serve
+// populates no identity header for a tagged device and strips any the client
+// supplied. The JOSE work is github.com/coreos/go-oidc's.
 package cfaccess
 
 import (
@@ -29,15 +20,13 @@ import (
 )
 
 const (
-	// AssertionHeader carries the signed Access token. Cloudflare also sets a
-	// CF_Authorization cookie, but the cookie is not guaranteed to be forwarded,
-	// so the header is the documented thing to verify.
+	// AssertionHeader carries the signed Access token. The CF_Authorization
+	// cookie is not guaranteed to be forwarded; the header is what to verify.
 	AssertionHeader = "Cf-Access-Jwt-Assertion"
 
 	// signingAlgorithm is the only algorithm this verifier accepts. Pinning it
-	// here, rather than reading it from the token, is what makes algorithm
-	// confusion impossible: an attacker cannot downgrade a token to "none" or
-	// to an HMAC verified with the public key as its secret.
+	// here makes algorithm confusion impossible: no downgrade to "none" or to an
+	// HMAC verified with the public key as its secret.
 	signingAlgorithm = jose.RS256
 
 	// certsPath is the JWKS endpoint every Access team domain exposes.
@@ -50,17 +39,13 @@ const (
 	// kilobytes; this stops a hostile or broken endpoint consuming memory.
 	maxCertsBytes = 1 << 20
 
-	// minRefreshInterval rate-limits refetching after an unknown key ID, so a
-	// stream of bogus tokens cannot turn into a request flood against
-	// Cloudflare. It counts attempts rather than successes: a limit that only
-	// advances on success stops limiting exactly when the endpoint is
-	// unhealthy, which is when the flood would cost the most.
+	// minRefreshInterval rate-limits refetching after an unknown key ID. It counts
+	// attempts rather than successes: a limit that only advances on success stops
+	// limiting exactly when the endpoint is unhealthy.
 	minRefreshInterval = time.Minute
 
-	// clockSkew tolerates a small amount of clock drift on the not-before and
-	// issued-at claims. Expiry is checked strictly by go-oidc: accepting an
-	// expired token is a real weakening, whereas rejecting a token issued a few
-	// seconds into this host's future is merely inconvenient.
+	// clockSkew tolerates drift on not-before and issued-at. Expiry is checked
+	// strictly by go-oidc: accepting an expired token is a real weakening.
 	clockSkew = 30 * time.Second
 )
 
@@ -89,9 +74,8 @@ type Options struct {
 	// "example.cloudflareaccess.com".
 	TeamDomain string
 
-	// Audience is the AUD tag of the one Access application that fronts this
-	// service. A token minted for a different application of the same team is
-	// signed by the same key, so this check is what stops it being accepted.
+	// Audience is the AUD tag of the one Access application fronting this service.
+	// A token for another application of the same team is signed by the same key.
 	Audience string
 }
 
@@ -119,8 +103,7 @@ func New(options *Options) (*Verifier, error) {
 	}
 	// Userinfo and a port are rejected alongside path, query and fragment: the
 	// JWKS URL is built by concatenation, so "user@elsewhere.example" would
-	// otherwise be accepted here and then fetch this service's signing keys
-	// from elsewhere.example.
+	// otherwise fetch this service's signing keys from elsewhere.example.
 	if strings.ContainsAny(team, "/?#@:") {
 		return nil, errors.New("cfaccess team domain must be a bare host")
 	}
@@ -140,8 +123,8 @@ func New(options *Options) (*Verifier, error) {
 	}
 
 	// go-oidc takes the key set's HTTP client from the context it is built with
-	// rather than from the one verifying a token, and fetches on that context
-	// too — so it is Background, and the client's timeout is what bounds a fetch.
+	// and fetches on that context, so it is Background and the client's timeout
+	// is what bounds a fetch.
 	keySetClient := *client
 	throttle := &throttledTransport{
 		base: client.Transport,
@@ -168,11 +151,9 @@ func New(options *Options) (*Verifier, error) {
 	}, nil
 }
 
-// Verify checks the assertion's signature and claims and returns the identity
-// it names. Every failure returns the same opaque error category to the caller;
-// the detail stays here rather than being reflected to a client.
-//
-// go-oidc checks the signature, issuer, audience and expiry; not-before and
+// Verify checks the assertion's signature and claims and returns the identity it
+// names. Every failure returns the same opaque category; detail stays here.
+// go-oidc checks signature, issuer, audience and expiry; not-before and
 // issued-at are checked here because it does not look at them.
 func (v *Verifier) Verify(ctx context.Context, token string) (Identity, error) {
 	if err := requireKeyID(token); err != nil {
@@ -181,15 +162,10 @@ func (v *Verifier) Verify(ctx context.Context, token string) (Identity, error) {
 
 	fetched, refused := v.throttle.counts()
 	idToken, err := v.verifier.Verify(ctx, token)
-	// One verification is retried: the one the floor refused while the very
-	// fetch that had stamped it was landing the keys it needed. That caller
-	// read the cache before those keys arrived, so a second attempt reads
-	// them and succeeds. Both halves of the condition matter. Without the
-	// refusal, an assertion that failed on its own terms — an unknown key ID,
-	// a bad signature — would be retried and have its error replaced by a
-	// floor refusal on the way out. Without the completed fetch, a bogus key
-	// ID, which is what the floor is there for, would cost two verifications
-	// instead of one.
+	// One verification is retried: the one the floor refused while the fetch that
+	// stamped it was landing the keys it needed. Both halves of the condition
+	// matter — without the refusal, a genuinely bad assertion would have its
+	// error replaced; without the completed fetch, a bogus key ID costs two.
 	if nowFetched, nowRefused := v.throttle.counts(); err != nil &&
 		nowRefused != refused && nowFetched != fetched {
 		idToken, err = v.verifier.Verify(ctx, token)
@@ -239,17 +215,16 @@ func requireKeyID(token string) error {
 	return nil
 }
 
-// throttledTransport is the refresh floor, and the cap on how much of a reply
-// is read. It sits here rather than around the key set because oidc.KeySet is a
+// throttledTransport is the refresh floor and the cap on how much of a reply is
+// read. It sits here rather than around the key set because oidc.KeySet is a
 // whole verification, which cannot tell an unknown key ID from any other failure.
 type throttledTransport struct {
 	base        http.RoundTripper
 	now         func() time.Time
 	lastAttempt time.Time
-	// fetched counts the round trips that reached a reply and refused the
-	// ones the floor turned away, so a verification can tell a key set that
-	// landed underneath it from one that never came, and its own failure from
-	// a request this floor declined to send.
+	// fetched counts round trips that reached a reply and refused counts the ones
+	// the floor turned away, so a verification can tell a key set that landed
+	// underneath it from one that never came.
 	fetched atomic.Uint64
 	refused atomic.Uint64
 	mu      sync.Mutex
@@ -278,9 +253,8 @@ func (t *throttledTransport) RoundTrip(request *http.Request) (*http.Response, e
 	if base == nil {
 		base = http.DefaultTransport
 	}
-	// The deadline is applied here rather than left to the client, because the
-	// key set is built on Background and a caller may supply a client with no
-	// timeout of its own; without this such a fetch would never give up.
+	// The deadline is applied here rather than left to the client: the key set is
+	// built on Background and a caller may supply a client with no timeout.
 	ctx, cancel := context.WithTimeout(request.Context(), fetchTimeout)
 	response, err := base.RoundTrip(request.WithContext(ctx))
 	if err != nil {

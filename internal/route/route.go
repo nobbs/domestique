@@ -1,6 +1,5 @@
 // Package route owns validated route values. A route is one ride's worth of
-// geometry: the whole of a Komoot tour, or one ordered piece — one stage — of a
-// VeloPlanner source route.
+// geometry: a whole Komoot tour, or one stage of a VeloPlanner source route.
 package route
 
 import (
@@ -16,25 +15,19 @@ import (
 const earthRadiusMetres = 6_371_000.0
 
 // gradientWindowMetres is the shortest span a gradient is measured over. It
-// matches the elevation normalizer's median window, so a gradient reported here
-// describes the same scale of terrain the exported profile preserves.
+// matches the elevation normalizer's median window.
 const gradientWindowMetres = 100.0
 
-// Provider names which upstream source issued a route's source route ID. It is
-// the shared vocabulary a route identity is named against: two providers may
-// issue the same numeric source route ID, so the pair alone is not unique once
-// a second provider exists.
+// Provider names which upstream issued a route's source route ID. Two providers
+// may issue the same numeric ID, so that ID alone is not unique.
 type Provider string
 
-// ProviderVeloPlanner is the only provider a route has ever come from until a
-// second one exists. Naming it does not change what a VeloPlanner route's
-// ExternalID renders as.
+// ProviderVeloPlanner is the only provider a route comes from today. Naming it
+// does not change what a VeloPlanner route's ExternalID renders as.
 const ProviderVeloPlanner Provider = "veloplanner"
 
-// ProviderKomoot names the second source the webui and its demo library are
-// built to distinguish. No adapter reads Komoot yet — that is a second
-// source's own delivery — so today this value only ever reaches a route
-// through the synthetic demo library.
+// ProviderKomoot names the second source the webui and its demo library
+// distinguish. No adapter reads Komoot yet; only the demo library sets it.
 const ProviderKomoot Provider = "komoot"
 
 // Key is the stable identity of one route.
@@ -60,39 +53,26 @@ func (k Key) SourceRouteID() int64 {
 	return k.sourceRouteID
 }
 
-// StageOrder returns the route's one-based order within its source route. It
-// keeps the stage word because an ordinal within a source route is precisely
-// what a stage is.
+// StageOrder returns the route's one-based order within its source route.
 func (k Key) StageOrder() int {
 	return k.stageOrder
 }
 
-// ExternalID returns the deterministic Wahoo external identifier for the
-// route. A VeloPlanner route renders exactly as it always has; a later
-// provider gets its own segment in the same grammar. This is the only place
-// that renders an external ID — the string that proves ownership before a
-// delete, so nothing else may format it independently.
-//
-// The `stage` segment is frozen. It is written into every route this service
-// has ever created at a destination, and ownership is matched against it, so
-// respelling it to match the current vocabulary would orphan the entire
-// library rather than rename anything.
+// ExternalID returns the deterministic Wahoo external identifier for the route,
+// and is the only place one is rendered: it is the string that proves ownership
+// before a delete. The `stage` segment is frozen — ownership is matched against
+// it, so respelling it would orphan the library rather than rename anything.
 func (k Key) ExternalID() string {
 	return externalIDPrefix + fmt.Sprintf("%s:%d:stage:%d", k.provider, k.sourceRouteID, k.stageOrder)
 }
 
 // externalIDPrefix is what every external ID this service issues begins with,
-// and the whole of what distinguishes a route it owns from one it must not
-// touch.
+// and the whole of what distinguishes a route it owns from one it must not touch.
 const externalIDPrefix = "domestique:"
 
-// OwnsExternalID reports whether an external ID read back from a destination
-// was issued by this service.
-//
-// It lives beside ExternalID because the two have to agree: the prefix is the
-// entire evidence of ownership, and ownership is what stands between a
-// reconciliation and somebody's hand-made route. A destination route carrying
-// no external ID, or another tool's, is not ours to update or delete.
+// OwnsExternalID reports whether an external ID read back from a destination was
+// issued by this service. The prefix is the entire evidence of ownership: a
+// destination route carrying none, or another tool's, is not ours to touch.
 func OwnsExternalID(externalID string) bool {
 	return strings.HasPrefix(externalID, externalIDPrefix)
 }
@@ -112,14 +92,12 @@ type Bounds struct {
 	MaxLatitude  float64
 }
 
-// Summary is stored, display-oriented metadata for one route. It is a
-// read model shared between the persistence adapter and the HTTP layer so
-// neither has to know the other's types, and it deliberately carries no
+// Summary is stored, display-oriented metadata for one route: a read model
+// shared between the persistence adapter and the HTTP layer. It carries no
 // geometry.
 type Summary struct {
-	// MovingSeconds is the predicted moving time from internal/ridemodel, nil
-	// when no coefficient file is configured, the route has no usable
-	// elevation, or nothing has predicted this exact geometry yet.
+	// MovingSeconds is the predicted moving time, nil when no coefficient file is
+	// configured, the route has no usable elevation, or nothing has predicted it.
 	MovingSeconds      *float64
 	SourceRevision     string
 	RouteName          string
@@ -263,13 +241,9 @@ func (s *Route) DistanceMetres() float64 {
 	return total
 }
 
-// Bounds returns the extent of the route geometry for map framing. A route
-// without geometry reports the zero value.
-//
-// The extent is a plain axis-aligned box. A route crossing the antimeridian
-// would report a box spanning most of the globe rather than the short way
-// around; that is accepted because the source library is regional, and the
-// consequence is a wide initial viewport rather than incorrect geometry.
+// Bounds returns the extent of the route geometry for map framing; zero without
+// geometry. A route crossing the antimeridian reports a box spanning most of the
+// globe, which is a wide viewport rather than incorrect geometry.
 func (s *Route) Bounds() Bounds {
 	if len(s.geometry) == 0 {
 		return Bounds{}
@@ -292,16 +266,10 @@ func (s *Route) Bounds() Bounds {
 	return bounds
 }
 
-// ElevationGainMetres returns the total ascent in the route profile.
-//
-// It sums the positive steps of the profile as stored. That is only meaningful
-// on a smoothed profile: raw satellite altitude wanders by a metre or two per
-// sample, and summing that noise over thousands of points inflates the total
-// badly. Callers are expected to store the device-export profile, which has
-// already had its spikes removed.
-//
-// A route whose points do not all carry elevation has no profile to measure and
-// reports zero.
+// ElevationGainMetres returns the total ascent in the route profile, summing the
+// positive steps as stored. Only meaningful on a smoothed profile: raw satellite
+// altitude noise summed over thousands of points inflates the total badly. A
+// route without full elevation reports zero.
 func (s *Route) ElevationGainMetres() float64 {
 	if !s.hasCompleteElevation() {
 		return 0
@@ -318,15 +286,9 @@ func (s *Route) ElevationGainMetres() float64 {
 	return gain
 }
 
-// MaxGradientPercent returns the steepest sustained gradient in the profile.
-//
-// Gradient is measured across a window of at least gradientWindowMetres rather
-// than between adjacent points, because the gradient between two points a few
-// metres apart is dominated by altitude error rather than by terrain. The
-// window is what makes the number correspond to something a rider would
-// recognise as a climb.
-//
-// A route without a complete profile, or shorter than one window, reports zero.
+// MaxGradientPercent returns the steepest sustained gradient, measured across a
+// window of at least gradientWindowMetres rather than between adjacent points,
+// where altitude error dominates. Zero without a complete profile.
 func (s *Route) MaxGradientPercent() float64 {
 	if !s.hasCompleteElevation() {
 		return 0
@@ -342,12 +304,8 @@ func (s *Route) MaxGradientPercent() float64 {
 	steepest := 0.0
 	trailing := 0
 	for leading := 1; leading < len(s.geometry); leading++ {
-		// Advance the trailing edge while the window stays wide enough.
-		//
-		// trailing+1 stays in range without a bound check: distances is
-		// non-decreasing, so once trailing+1 reaches leading the difference is
-		// zero, which is below the window, and the loop stops. The trailing
-		// edge therefore never catches the leading one.
+		// trailing+1 stays in range without a bound check: distances is non-decreasing,
+		// so the difference reaches zero and the loop stops.
 		for distances[leading]-distances[trailing+1] >= gradientWindowMetres {
 			trailing++
 		}
@@ -376,9 +334,8 @@ func (s *Route) hasCompleteElevation() bool {
 	return true
 }
 
-// haversineMetres returns the great-circle distance between two points. It
-// matches the spherical model the elevation resampler uses so distances agree
-// across the service.
+// haversineMetres returns the great-circle distance between two points, on the
+// same spherical model the elevation resampler uses.
 func haversineMetres(left, right Point) float64 {
 	latitudeDelta := (right.Latitude - left.Latitude) * math.Pi / 180
 	longitudeDelta := (right.Longitude - left.Longitude) * math.Pi / 180
