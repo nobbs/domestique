@@ -127,7 +127,7 @@ export function ClimbsSection({
             <span className="text-right">Avg</span>
             <span className="text-right">Max</span>
             <span className="text-right">Ascent</span>
-            <span>Starts</span>
+            <span className="text-right">Starts</span>
           </div>
           <ol
             className="mt-1 snap-y snap-mandatory overflow-y-auto"
@@ -162,7 +162,7 @@ export function ClimbsSection({
                     <span className="text-right text-xs text-[var(--ink-2)] tabular-nums">
                       {formatAscent(climb.ascentMetres, unitSystem)}
                     </span>
-                    <span className="truncate text-[11px] text-[var(--ink-2)] tabular-nums">
+                    <span className="truncate text-right text-[11px] text-[var(--ink-2)] tabular-nums">
                       {/* No "from": the column is called Starts. */}
                       {formatDistance(climb.startMetres, unitSystem)}
                     </span>

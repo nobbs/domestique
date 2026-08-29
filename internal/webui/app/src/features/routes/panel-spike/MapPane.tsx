@@ -48,6 +48,7 @@ export function MapPane({
   width = PANE.width,
   height = PANE.height,
   sheet,
+  sheetLeft = 12,
   children,
 }: {
   coordinates: Position[];
@@ -55,6 +56,13 @@ export function MapPane({
   height?: number;
   /** A wide panel standing on the foot of the map, where one is being tried. */
   sheet?: ReactNode;
+  /**
+   * Where the dock's left edge sits, in pixels.
+   *
+   * The caller's business, because only the caller knows how wide the panel in
+   * the corner is — and the two must not overlap.
+   */
+  sheetLeft?: number;
   /** The route panel, placed where the shell places it. */
   children: ReactNode;
 }) {
@@ -91,7 +99,12 @@ export function MapPane({
       {sheet === undefined ? null : (
         // Centred, so a dock that folds to a pill leaves it in the middle of
         // the foot where the dock was, rather than dropping it into a corner.
-        <div className="absolute right-3 bottom-3 left-3 flex justify-center">{sheet}</div>
+        // `sheetLeft` holds it clear of the route panel: the two are separate
+        // objects and should not share a column, and a dock that ran under the
+        // card would be claiming width it cannot draw in.
+        <div className="absolute right-3 bottom-3 flex justify-center" style={{ left: sheetLeft }}>
+          {sheet}
+        </div>
       )}
     </div>
   );
