@@ -8,7 +8,14 @@ golangci-lint = "2.13.1"
 prek = "0.4.14"
 actionlint = "1.7.12"
 gitleaks = "8.30.1"
-markdownlint-cli2 = "0.23.2"
+# fastq, which markdownlint-cli2 pulls in transitively, published 1.20.2 by
+# hand on 2026-08-28 after eight months of workflow releases, so it carries no
+# provenance where 1.20.0 and 1.20.1 do. mise reads that lost trust evidence as
+# a downgrade and refuses the install. The release is what it claims to be —
+# every file in the tarball is byte-identical to mcollina/fastq at v1.20.2, a
+# four-line fix and its tests — so this names that one version and nothing
+# else. Drop it once fastq publishes through its workflow again.
+markdownlint-cli2 = { version = "0.23.2", trust_policy_excludes = ["fastq@1.20.2"] }
 shellcheck = "0.11.0"
 yamlfmt = "0.21.0"
 yq = "4.53.6"
