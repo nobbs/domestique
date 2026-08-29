@@ -5,6 +5,9 @@
  * the zoom pair — the basemap chooser does. It arrives that way rather than as
  * props because what a reader may choose as the ground is the map's business
  * and not these two controls'.
+ *
+ * The zoom pair is hidden from a coarse pointer, which has pinching instead;
+ * the rule for it is `.map-zoom` in `index.css`.
  */
 
 import { IconCurrentLocation, IconMinus, IconPlus } from "@tabler/icons-react";
@@ -62,7 +65,7 @@ export function MapControls({ children }: { children?: ReactNode }) {
          */}
         <ButtonGroup
           orientation="vertical"
-          className="divide-y divide-[var(--rule)] rounded-lg bg-[var(--panel)] shadow-[var(--shadow)] ring-1 ring-[var(--rule)] ring-inset [&>*:not(:first-child)]:rounded-t-none [&>*:not(:last-child)]:rounded-b-none"
+          className="map-zoom divide-y divide-[var(--rule)] rounded-lg bg-[var(--panel)] shadow-[var(--shadow)] ring-1 ring-[var(--rule)] ring-inset [&>*:not(:first-child)]:rounded-t-none [&>*:not(:last-child)]:rounded-b-none"
         >
           <Button
             variant="ghost"
