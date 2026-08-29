@@ -152,7 +152,7 @@ A manual trigger is a state change and carries the browser-origin requirement of
 every state-changing route.
 
 The configured Tailnet user can request `POST /v1/sync` to start an immediate
-synchronization of both halves, or `POST /v1/sync/source` and
+synchronisation of both halves, or `POST /v1/sync/source` and
 `POST /v1/sync/targets` to start one. `POST /v1/sync/targets/{target}`
 reconciles exactly one configured target slot without touching the source read
 or any other target. `{target}` must name a configured slot; a request naming
@@ -164,7 +164,7 @@ ownership, ordering, update-before-delete, and deletion-limit rules the target
 phase always applies to that slot.
 
 The service returns `202` only when no scheduled or manual run is active. A full
-synchronization and a single-target one share one mutual exclusion; neither may
+synchronisation and a single-target one share one mutual exclusion; neither may
 start while the other is in flight. Otherwise the service returns `409` and
 starts no provider work. A refused trigger changes nothing, the status included:
 the run already in flight remains the one described, and no second run state
@@ -177,7 +177,7 @@ it. The switches govern unattended runs only.
 
 `POST /v1/sync/surface` asks for one immediate classification pass on the same
 terms as a manual trigger: it carries the browser-origin requirement, and the
-service returns `202` only when no synchronization or other classification pass
+service returns `202` only when no synchronisation or other classification pass
 is active, `409` otherwise. It shares one mutual exclusion with every other
 manual trigger above — `POST /v1/sync`, `POST /v1/sync/source`,
 `POST /v1/sync/targets`, and `POST /v1/sync/targets/{target}`. None of the five
@@ -187,7 +187,7 @@ It never reads VeloPlanner and never writes a Wahoo target. It reclassifies the
 routes already stored against the local surface index and cache alone, which is
 the pass a successful source read runs automatically. It can neither create,
 update, nor delete a route on any target, and carries none of the safety gates
-or notification traffic a synchronization does.
+or notification traffic a synchronisation does.
 
 ## Reprocessing one route
 
@@ -196,7 +196,7 @@ current: the geometry it derived and stored, the revision it last pushed to each
 target, and its surface classification.
 
 A reprocess request discards all three for that route and starts a
-synchronization of both halves. The route is read again, derived again, encoded
+synchronisation of both halves. The route is read again, derived again, encoded
 again, pushed to every target regardless of the revision recorded there, and
 classified again.
 
@@ -380,7 +380,7 @@ minutes and several refills. The count it reports is accurate even when it ends
 early, and repeating it continues from what is left.
 
 It shares the single-flight guard with every other run, so it can neither race a
-synchronization nor be started while one is under way, and a long clear holds
+synchronisation nor be started while one is under way, and a long clear holds
 off the scheduled runs behind it until it finishes. It is recorded and notified
 as its own run.
 
@@ -905,7 +905,7 @@ The implementation test suite must cover at least:
   `GET /v1/status` reporting the same age and freshness from local state alone;
   and
 - `POST /v1/sync/surface` running a classification pass without reading the
-  source or writing a target, refusing to start one alongside a synchronization
+  source or writing a target, refusing to start one alongside a synchronisation
   or another such pass in either direction, and `GET /v1/status` reporting
   `incomplete` from the most recently completed pass, reading zero again after
   a restart until a pass has run.

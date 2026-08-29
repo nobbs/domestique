@@ -65,9 +65,33 @@ ID. It is done as one pass: a package half converted reads worse than one not
 converted at all. It is done away from a rename that also moves the wire, so the
 compiler proves the whole thing.
 
+## 16. `synchronization` is spelled American in Go and TypeScript
+
+[The glossary](glossary.md) requires British spelling in prose and in
+identifiers this project owns, and admits American only where it quotes
+somebody else's wire value. 60 occurrences of `synchronization` in the Go and
+TypeScript tree do neither. None of them is an identifier, so none is a rename:
+
+| Kind | Count | Where |
+| --- | --- | --- |
+| Doc and inline comments | 51 | across `httpapi`, `sync`, `sqlite`, `schedule`, `cmd/domestique` and their tests |
+| User-facing error message | 3 | `internal/httpapi/routes_status.go`, all reading `a synchronization is already running` |
+| Test assertions on that message | 6 | `SyncControls.test.tsx`, `TargetConvergenceCard.test.tsx` |
+
+The specifications carry no such occurrence.
+
+**Proposed:** *synchronisation* throughout, in two separate changes. The
+comments are prose and carry no risk. The error message is served to an
+operator, and [the sync lifecycle
+specification](specs/sync-lifecycle.md#errors) calls served messages stable, so
+respelling it is a wire-visible change: it moves with the six assertions that
+read it, and it is worth deciding on rather than folding into a comment sweep.
+
 ## Suggested order
 
-1. Item 15, which the compiler checks end to end and touches no contract.
-2. Item 11, a prose fix in Go comments, whenever somebody separates the
+1. Item 16's comments, which touch no contract and need no compiler.
+2. Item 15, which the compiler checks end to end and touches no contract.
+3. Item 16's error message, with the assertions that read it.
+4. Item 11, a prose fix in Go comments, whenever somebody separates the
    sync-phase sense of *half* from the ordinary English one the rest of the
    tree uses.

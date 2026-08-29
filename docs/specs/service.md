@@ -257,7 +257,7 @@ calling identity and target slot and prevents cross-account or CSRF callbacks.
 The service rejects an attempt to authorise the same Wahoo account for two
 target slots.
 
-Alongside it are the operator controls over synchronization: the manual
+Alongside it are the operator controls over synchronisation: the manual
 triggers, the two switches that decide what the timer is allowed to start, the
 per-route reprocess request, and the surface-enrichment retry. They change what
 the service does next; they change nothing it has stored about routes. A
@@ -276,7 +276,7 @@ applied to it at startup. It is also the only endpoint that accepts a credential
 and it is write-only in both directions of that word: a submitted credential is
 stored encrypted and is never read back out, by this endpoint or any other.
 
-A synchronization has two halves, and each is separately switched, triggered,
+A synchronisation has two halves, and each is separately switched, triggered,
 and reported:
 
 - The **source** half reads the VeloPlanner library, validates it, and stores
@@ -369,9 +369,9 @@ the reprocess request, the enrichment retry, and the settings write —
 additionally require the browser origin described above, and answer 403 without
 it.
 
-- `POST /v1/sync` queues one immediate synchronization of both halves through
+- `POST /v1/sync` queues one immediate synchronisation of both halves through
   the same reporting path as the schedule. It returns `202 Accepted`, or `409
-  Conflict` when a scheduled or manual synchronization is already running.
+  Conflict` when a scheduled or manual synchronisation is already running.
 - `POST /v1/sync/source` and `POST /v1/sync/targets` queue one half on the same
   terms.
 - `POST /v1/sync/targets/{target}` reconciles exactly one configured target
@@ -389,11 +389,11 @@ it.
   stored. A body that names only one switch is refused.
 - `POST /v1/providers/{provider}/sourceRoutes/{source-route-id}/routes/{stage-order}/reprocess`
   asks for one route to be worked out again from scratch and starts the
-  synchronization that will do it. It returns `202 Accepted`, or `404` for a
+  synchronisation that will do it. It returns `202 Accepted`, or `404` for a
   route that is not in the stored inventory.
 - `POST /v1/sync/surface` queues one immediate surface-classification pass,
   independently of either sync half. It returns `202 Accepted`, or `409
-  Conflict` when a synchronization or another such pass is already running. It
+  Conflict` when a synchronisation or another such pass is already running. It
   never reads VeloPlanner or writes a Wahoo target, and carries none of the other
   triggers' provider risk.
 - The settings are written one section at a time, over one endpoint per
@@ -747,7 +747,7 @@ secret files remain outside Git.
   service's own browser UI.
 - Every HTTP interaction is identity-gated, to one principal, by a signature the
   service verifies itself. Beyond OAuth, the only ones that change anything are
-  the synchronization triggers, the two schedule switches, the reprocess request,
+  the synchronisation triggers, the two schedule switches, the reprocess request,
   which discards derived answers so they are worked out again, the
   surface-enrichment retry, which reclassifies stored routes without reading
   VeloPlanner or writing a Wahoo target, and the settings write, which changes
