@@ -16,9 +16,10 @@
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import type { ReactNode } from "react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { MenuBar } from "../../../components/MenuBar";
 import { buildCells } from "../../../components/route/forecast-spike/cells";
+import { samplesAlong, weatherAlong } from "../../../components/route/forecast-spike/fixture";
 import type { Highlight } from "../../../lib/highlight";
 import { StoryProviders } from "../../../storybook/fixtures";
 import {
@@ -129,6 +130,23 @@ export const Negotiated: StoryObj = {
   render: () => {
     const shared = useComposition();
     const [dockOpen, setDockOpen] = useState(true);
+    /*
+     * The departure is real state here, and everything downstream is derived
+     * from it: move it and the samples are placed at new times, the weather is
+     * re-read against them, and every tile in the strip shifts. A picker that
+     * changed a label and nothing else would be testing the label.
+     *
+     * It starts at the fixture's own departure rather than at the clock, so
+     * the first render is the same picture every time — a story that drew
+     * today's date would disagree with its own snapshot tomorrow.
+     */
+    const [startAt, setStartAt] = useState(spikeStartAt);
+    const samples = useMemo(() => samplesAlong(spikeCoordinates, startAt), [startAt]);
+    const weather = useMemo(() => weatherAlong(samples), [samples]);
+    const dayCells = useMemo(
+      () => buildCells(samples, weather, spikeCoordinates),
+      [samples, weather],
+    );
 
     return (
       <Page>
@@ -141,10 +159,14 @@ export const Negotiated: StoryObj = {
             <StackClimbsSheet
               {...sheet}
               {...shared}
+              samples={samples}
+              cells={dayCells}
+              startAt={startAt}
               weatherFrame="capped"
               withClimbs={false}
               open={dockOpen}
               onOpenChange={setDockOpen}
+              onStartAtChange={setStartAt}
             />
           }
         >
@@ -202,7 +224,7 @@ export const Negotiated: StoryObj = {
             </div>
             <ClimbsSection
               climbs={spikeClimbs}
-              cells={cells}
+              cells={dayCells}
               unitSystem="metric"
               onSelect={shared.onActiveChange}
             />

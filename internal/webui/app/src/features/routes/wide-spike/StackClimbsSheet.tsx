@@ -31,6 +31,7 @@ import type { ReactNode } from "react";
 import { useState } from "react";
 import { ElevationProfile } from "../../../components/route/ElevationProfile";
 import { FilmstripBand } from "../../../components/route/forecast-spike/FilmstripBand";
+
 import { formatAscent, formatDistance, formatGradient } from "../../../lib/format";
 import { PADDING } from "../../../lib/plotAxis";
 import { useElementWidth } from "../../../lib/useElementWidth";
@@ -38,6 +39,7 @@ import { weatherIcon } from "../../../lib/weather";
 import { groundSegments } from "../panel-spike/shared";
 import { ClimbMarkers } from "./ClimbMarkers";
 import { LabelledRibbon } from "./LabelledRibbon";
+import { StartTimeField } from "./StartTimeField";
 import type { SheetProps } from "./shared";
 import { cellAt, clockAt, RideWindow, Sheet } from "./shared";
 import type { WeatherFrameVariant } from "./WeatherFrame";
@@ -49,6 +51,7 @@ export function StackClimbsSheet({
   lead,
   open,
   onOpenChange,
+  onStartAtChange,
   route,
   profile,
   surface,
@@ -79,6 +82,15 @@ export function StackClimbsSheet({
   /** Folds the whole dock into a pill on the map's foot. */
   open?: boolean | undefined;
   onOpenChange?: ((open: boolean) => void) | undefined;
+  /**
+   * Makes the departure settable here rather than merely reported.
+   *
+   * The dock is where it belongs: the start time is the forecast's own
+   * parameter, and every tile in the strip moves when it changes. Absent, the
+   * window is still stated — a sheet that cannot be given a new departure can
+   * at least say which one it drew.
+   */
+  onStartAtChange?: ((next: Date) => void) | undefined;
 }) {
   const { ref, width } = useElementWidth<HTMLDivElement>();
   /*
@@ -103,8 +115,27 @@ export function StackClimbsSheet({
           <div className="w-[13.5rem] shrink-0 border-r border-[var(--rule)] pr-4">{lead}</div>
         )}
         <div className="min-w-0 flex-1">
-          <div className="mb-2">
-            <RideWindow startAt={startAt} samples={samples} />
+          <div className="mb-2 flex flex-wrap items-end gap-x-4 gap-y-1">
+            {onStartAtChange === undefined ? (
+              <RideWindow startAt={startAt} samples={samples} />
+            ) : (
+              <>
+                {/*
+                 * The real control, not a sketch of one: it already refuses a
+                 * departure whose ride would finish past the forecast horizon,
+                 * and a picker in a spike that quietly allowed one would be
+                 * flattering the layout with a case the service rejects.
+                 */}
+                <StartTimeField
+                  value={startAt}
+                  onChange={onStartAtChange}
+                  movingSeconds={route.movingSeconds}
+                />
+                <p className="pb-1.5 text-xs text-[var(--ink-2)] tabular-nums">
+                  back {clockAt(samples[samples.length - 1]?.arrivalAt ?? startAt)}
+                </p>
+              </>
+            )}
           </div>
           <div ref={ref} className="grid gap-1.5">
             <div className="relative">
