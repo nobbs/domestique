@@ -2,9 +2,11 @@
  * **B — Filmstrip.** One tile per reading, still nailed to the axis.
  *
  * Where **A** asks the reader to scan a lane, this asks them to read a tile:
- * each moment is a small rounded card carrying its own condition, temperature
- * and wind, and the tiles are as wide as the ground they cover, so their own
- * edges show where the ride slows down.
+ * each moment is a ruled cell carrying its own condition, temperature and
+ * wind, and the cells are as wide as the ground they cover, so the rules
+ * themselves show where the ride slows down. The strip is bordered and
+ * rounded as one object, because that is what it is — the tiles divide it,
+ * they do not sit in it.
  *
  * The bet: a rider reads a forecast a moment at a time — "what is it like
  * when I get to the top" — and grouping by moment beats grouping by measure.
@@ -21,15 +23,16 @@ import type { BandProps } from "./LanesBand";
 const TILE_HEIGHT = 62;
 
 /**
- * The sliver of ground each tile gives back so that it can have corners.
+ * Corners on the strip, not on the tiles.
  *
- * Butted edge to edge, rounded tiles meet in a notch that reads as a mark
- * rather than as a gap. Two pixels is enough to separate them and small
- * enough that a tile still measures the ground it covers: the left edge is
- * exact, and only the right edge falls short, by less than the ruled line it
- * replaces.
+ * Rounding each tile turned the band into a row of loose chips, and a gap
+ * between them is ground the strip is claiming to cover and then not drawing.
+ * The band is one object — a continuous reading of the whole ride — so the
+ * corners belong to its ends, and the clip that puts them there is also what
+ * shapes the first and last tiles without either needing to know it is first
+ * or last.
  */
-const TILE_GAP = 2;
+const STRIP_RADIUS = "0.375rem";
 
 /*
  * What a tile gives up as it narrows, and in which order.
@@ -49,7 +52,10 @@ export function FilmstripBand({ cells, width, startMetres, endMetres }: BandProp
 
   return (
     <div style={{ paddingLeft: PADDING.left, paddingRight: PADDING.right }}>
-      <div className="relative" style={{ height: TILE_HEIGHT }}>
+      <div
+        className="relative overflow-hidden border border-[var(--rule)]"
+        style={{ height: TILE_HEIGHT, borderRadius: STRIP_RADIUS }}
+      >
         {cells.map((cell) => {
           const left = x(cell.startMetres);
           const cellWidth = Math.max(x(cell.endMetres) - left, 0);
@@ -68,10 +74,10 @@ export function FilmstripBand({ cells, width, startMetres, endMetres }: BandProp
           return (
             <div
               key={cell.sample.arrivalAt.getTime()}
-              className="absolute top-0 flex flex-col items-center justify-center gap-0.5 overflow-hidden rounded-md border border-[var(--rule)]"
+              className="absolute top-0 flex flex-col items-center justify-center gap-0.5 overflow-hidden border-[var(--rule)] not-last:border-r"
               style={{
                 left,
-                width: Math.max(cellWidth - TILE_GAP, 1),
+                width: cellWidth,
                 height: TILE_HEIGHT,
                 backgroundColor: `color-mix(in srgb, var(--accent) ${wet * 100}%, transparent)`,
               }}
