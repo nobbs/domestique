@@ -42,9 +42,14 @@ const SURFACE_VARIABLE: Record<keyof typeof SURFACE_STYLES, string> = {
  * The states differ by line style — new is solid, updated is dashed — rather
  * than by colour, and the word itself stays in the row as text only a screen
  * reader reads. A border cannot carry a name, so the name lives beside it.
+ *
+ * The dash is set on the left edge alone. `border-dashed` is a shorthand for
+ * every edge, and the row draws a top rule of its own: an updated route took
+ * the dashes across that rule too, which reads as a broken table rather than
+ * as a marked row.
  */
 const CHANGE_BORDER =
-  "border-l-[3px] border-l-transparent data-[change=new]:border-l-[var(--accent)] data-[change=updated]:border-l-[var(--accent)] data-[change=updated]:border-dashed";
+  "border-l-[3px] border-l-transparent data-[change=new]:border-l-[var(--accent)] data-[change=updated]:border-l-[var(--accent)] data-[change=updated]:[border-left-style:dashed]";
 
 /** The source route this one came off, where the title does not already say it. */
 function secondName(route: Route): string | null {
@@ -72,6 +77,14 @@ export function CatalogueRow({
   to,
 }: CatalogueRowProps) {
   const where = secondName(route);
+  /*
+   * Whether this route's geometry is in hand at all. Both divisions below come
+   * off it, and both are empty before it arrives — so without this the page
+   * would answer "surface not classified" and "no elevation data" for every
+   * route in the moment before its geometry lands, stating a result it does
+   * not have yet. Nothing is said until there is something to say.
+   */
+  const measured = coordinates.length > 0;
   const summary = surface ? summariseSurface(coordinates, surface) : null;
   const bands = gradientShares(coordinates);
 
@@ -111,9 +124,11 @@ export function CatalogueRow({
           )}
         </span>
         {summary === null ? (
-          <span className="mt-1.5 block text-right text-[11px] text-[var(--ink-2)]">
-            surface not classified
-          </span>
+          !measured ? null : (
+            <span className="mt-1.5 block text-right text-[11px] text-[var(--ink-2)]">
+              surface not classified
+            </span>
+          )
         ) : (
           <span className="mt-1.5 flex flex-wrap justify-end gap-1">
             {summary.shares.map((entry) => (
@@ -130,7 +145,7 @@ export function CatalogueRow({
       <td className="w-80 px-3 py-3">
         <span className="block text-right tabular-nums">
           {bands.length === 0 ? (
-            <span className="text-[var(--ink-2)]">no elevation data</span>
+            <span className="text-[var(--ink-2)]">{measured ? "no elevation data" : ""}</span>
           ) : (
             <>
               {formatAscent(route.ascentMetres, unitSystem)}

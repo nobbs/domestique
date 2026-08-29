@@ -74,7 +74,10 @@ function geometryFor(index: number): RouteGeometry {
 function show(
   library: LibraryRoute[] = LIBRARY,
   entry = "/catalogue",
-  { geometry = true }: { geometry?: boolean } = {},
+  {
+    geometry = true,
+    nothingToDivide = false,
+  }: { geometry?: boolean; nothingToDivide?: boolean } = {},
 ) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   client.setQueryData(routesQuery().queryKey, library);
@@ -83,9 +86,14 @@ function show(
   // this, under the same keys the atlas caches it with.
   if (geometry) {
     library.forEach((route, index) => {
+      const seeded = geometryFor(index);
       client.setQueryData(
         routeGeometryQuery(route.provider, route.sourceRouteId, route.stageOrder).queryKey,
-        geometryFor(index),
+        // A geometry that arrived and holds one point: nothing to classify and
+        // nothing to band, which is a different answer from not having arrived.
+        nothingToDivide
+          ? { ...seeded, coordinates: seeded.coordinates.slice(0, 1), surface: undefined }
+          : seeded,
       );
     });
   }
@@ -261,10 +269,35 @@ describe("CataloguePage", () => {
   });
 
   it("says so rather than dividing a route nothing has measured", () => {
-    show([libraryRoute("Unmeasured", { sourceRouteId: 9 })], "/catalogue", { geometry: false });
+    // Geometry present and flat throughout, with no surface on it: the page
+    // has its answer and the answer is that there is nothing to divide.
+    show([libraryRoute("Unmeasured", { sourceRouteId: 9 })], "/catalogue", {
+      nothingToDivide: true,
+    });
 
     expect(screen.getByText("surface not classified")).toBeInTheDocument();
     expect(screen.getByText("no elevation data")).toBeInTheDocument();
+  });
+
+  it("claims nothing about a route whose geometry has not arrived", () => {
+    // Nothing seeded, so the divisions are empty for want of an answer rather
+    // than because there is none. Saying "no elevation data" here would state
+    // a result the page does not have.
+    show([libraryRoute("Pending", { sourceRouteId: 8 })], "/catalogue", { geometry: false });
+
+    expect(screen.getByText("Pending")).toBeInTheDocument();
+    expect(screen.queryByText("surface not classified")).not.toBeInTheDocument();
+    expect(screen.queryByText("no elevation data")).not.toBeInTheDocument();
+  });
+
+  it("dashes only the marker on an updated row, never the rule above it", () => {
+    show();
+    const row = screen.getAllByRole("row")[1] as HTMLElement;
+
+    // `border-dashed` is every edge at once, and the row draws a top rule of
+    // its own; the dash belongs to the left marker alone.
+    expect(row.className).toContain("[border-left-style:dashed]");
+    expect(row.className).not.toMatch(/(?:^|\s)data-\[change=updated\]:border-dashed(?:\s|$)/);
   });
 
   it("marks a route that is new or updated on the row itself", () => {

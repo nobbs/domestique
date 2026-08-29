@@ -14,40 +14,34 @@
 
 import { IconArrowDown, IconArrowUp } from "@tabler/icons-react";
 import type { CatalogueView, SortColumn } from "../../lib/catalogue";
+import { sortColumn } from "../../lib/catalogue";
 
-/** Which measures each cell ranks by, in the order they are drawn. */
+/**
+ * Which measures each cell ranks by, in the order they are drawn.
+ *
+ * The columns are named, not their labels: those come from `SORT_COLUMNS`, so
+ * the control and the sentence that describes the order are spelled from one
+ * table rather than two that can drift.
+ */
 export const GROUPED_COLUMNS: ReadonlyArray<{
   readonly cell: string;
-  readonly measures: ReadonlyArray<{ readonly column: SortColumn; readonly label: string }>;
+  readonly columns: readonly SortColumn[];
 }> = [
-  {
-    cell: "ride",
-    measures: [
-      { column: "distance", label: "Distance" },
-      { column: "movingTime", label: "Time" },
-    ],
-  },
-  {
-    cell: "climbing",
-    measures: [
-      { column: "ascent", label: "Ascent" },
-      { column: "gradient", label: "Max" },
-    ],
-  },
+  { cell: "ride", columns: ["distance", "movingTime"] },
+  { cell: "climbing", columns: ["ascent", "gradient"] },
 ];
 
 function SortButton({
   column,
-  label,
   view,
   onSort,
 }: {
   column: SortColumn;
-  label: string;
   view: CatalogueView;
   onSort: (column: SortColumn) => void;
 }) {
   const active = view.sort === column;
+  const label = sortColumn(column)?.short ?? column;
 
   return (
     <button
@@ -89,10 +83,10 @@ export function CatalogueHeader({ view, onSort, children }: CatalogueHeaderProps
         <span className="sr-only">Shape</span>
       </th>
       {children}
-      {GROUPED_COLUMNS.map(({ cell, measures }) => {
+      {GROUPED_COLUMNS.map(({ cell, columns }) => {
         // The cell is sorted when any of its measures is, which is what a
         // reader moving by column needs to hear without landing on a control.
-        const sorted = measures.find((measure) => measure.column === view.sort);
+        const sorted = columns.includes(view.sort);
 
         return (
           <th
@@ -102,14 +96,8 @@ export function CatalogueHeader({ view, onSort, children }: CatalogueHeaderProps
             className="px-3 py-2 text-right align-bottom"
           >
             <span className="flex justify-end gap-2">
-              {measures.map(({ column, label }) => (
-                <SortButton
-                  key={column}
-                  column={column}
-                  label={label}
-                  view={view}
-                  onSort={onSort}
-                />
+              {columns.map((column) => (
+                <SortButton key={column} column={column} view={view} onSort={onSort} />
               ))}
             </span>
           </th>
