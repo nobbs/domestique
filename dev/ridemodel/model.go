@@ -1,10 +1,6 @@
-// Command ridemodel turns a Strava bulk export into a flat table of ride
-// samples the drag and power fitter can regress over.
-//
-// It owns no physics and no fitting: it reads activities.csv and the files
-// under activities/, and emits a sample table, a per-ride summary, and a
-// reference table of indoor rides. See dev/ridemodel/main.go for the CLI, and
-// the mise task "ridemodel" for how it is invoked.
+// Command ridemodel turns a Strava bulk export into a flat table of ride samples
+// the drag and power fitter can regress over. It owns no physics and no fitting.
+// See dev/ridemodel/main.go for the CLI and the mise task "ridemodel".
 package main
 
 import (

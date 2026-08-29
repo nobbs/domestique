@@ -24,13 +24,10 @@ const (
 	userAgent        = "domestique/1.0"
 	tourTypePlanned  = "tour_planned"
 
-	// acceptJSON is deliberately not the plain "application/json" it looks
-	// like it should be. Verified against a live account: every v007 resource
-	// (listing, detail) is served as HAL and answers a strict
-	// "Accept: application/json" with 406 HttpMediaTypeNotAcceptable, even
-	// though its body is ordinary JSON either way. v006's login is more
-	// lenient and would accept either, so the same header is used everywhere
-	// rather than carrying two.
+	// acceptJSON is not plain "application/json". Verified against a live account:
+	// every v007 resource is served as HAL and answers a strict
+	// "Accept: application/json" with 406, though its body is ordinary JSON.
+	// v006's login accepts either, so one header is used everywhere.
 	acceptJSON = "application/hal+json, application/json;q=0.9"
 )
 
@@ -161,11 +158,10 @@ func (c *Client) newSession() *session {
 		client: &http.Client{
 			Timeout:   c.timeout,
 			Transport: c.transport,
-			// Every request here carries HTTP Basic credentials or the session
-			// token. Go's default redirect policy keeps the Authorization header
-			// on a same-host redirect, so an https-to-http redirect on the
-			// configured origin would otherwise downgrade and leak them. Nothing
-			// this package calls ever needs to be redirected.
+			// Every request carries Basic credentials or the session token, and Go's
+			// default redirect policy keeps Authorization on a same-host redirect, so
+			// an https-to-http redirect would downgrade and leak them. Nothing here
+			// needs redirecting.
 			CheckRedirect: func(*http.Request, []*http.Request) error {
 				return errors.New("komoot: refusing to follow a redirect")
 			},
@@ -175,16 +171,10 @@ func (c *Client) newSession() *session {
 	}
 }
 
-// login exchanges the account's email and password for a numeric user id and
-// a session token, both returned under misleading field names. It is the only
-// call that authenticates with the account password; every later call
-// authenticates with the returned token instead.
-//
-// It builds its own request rather than going through newRequest: the email
-// is untrusted-shaped data embedded directly in a path segment, and
-// newRequest's endpoint strings are otherwise plain constants and validated
-// numeric ids, so keeping the one call site that needs path escaping separate
-// keeps that escaping in exactly one place.
+// login exchanges the account's email and password for a numeric user id and a
+// session token, both returned under misleading field names. It is the only call
+// authenticating with the password. It builds its own request rather than using
+// newRequest, so the one call site needing path escaping keeps it in one place.
 func (s *session) login(ctx context.Context) (userID, token string, err error) {
 	email := string(s.parent.email)
 	loginURL := *s.baseURL
@@ -347,12 +337,10 @@ func (s *session) url(endpoint string) *url.URL {
 func (s *session) doRequest(request *http.Request) (body []byte, statusCode int, err error) {
 	response, err := s.client.Do(request)
 	if err != nil {
-		// http.Client wraps a transport, TLS, or timeout failure in a *url.Error
-		// whose Error() text includes the request URL — for login, a URL that
-		// embeds the account's email. Unwrap to the underlying cause so a
-		// caller that logs this failure never has the operator's email to log,
-		// while errors.Is against context.Canceled or a deadline still works
-		// against the unwrapped cause.
+		// http.Client wraps transport failures in a *url.Error whose text includes
+		// the request URL — for login, one embedding the account's email. Unwrap so
+		// a caller logging this never has the email, while errors.Is against
+		// context.Canceled still works.
 		var urlErr *url.Error
 		if errors.As(err, &urlErr) { //nolint:modernize // errors.As is unambiguous to every tool reviewing this code.
 			err = urlErr.Err
@@ -366,11 +354,9 @@ func (s *session) doRequest(request *http.Request) (body []byte, statusCode int,
 
 	body, err = io.ReadAll(io.LimitReader(response.Body, maximumBodyBytes+1))
 	if err != nil {
-		// A body read that fails because the caller's context was cancelled or
-		// timed out mid-stream is that cancellation, not a corrupt response;
-		// callers checking errors.Is against context.Canceled or
-		// context.DeadlineExceeded need it preserved rather than replaced with
-		// a generic read failure.
+		// A body read failing because the caller's context was cancelled is that
+		// cancellation, not a corrupt response: callers checking errors.Is need it
+		// preserved rather than replaced with a generic read failure.
 		if ctxErr := request.Context().Err(); ctxErr != nil {
 			return nil, 0, fmt.Errorf("reading response: %w", ctxErr)
 		}

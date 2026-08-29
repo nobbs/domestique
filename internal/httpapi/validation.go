@@ -30,14 +30,9 @@ const readinessTag = "readiness"
 var errForeignOrigin = errors.New("request origin is not permitted")
 
 // servedSpec is the contract this listener enforces: the source document minus
-// the operations the readiness listener owns.
-//
-// The two have to be filtered separately. The generated router beside this is
-// produced with exclude-tags, so it never registers /readyz, but the source
-// document carries it whole — and a validator built from the unfiltered one
-// would accept a readiness request on the served socket that the router then
-// could not answer. Filtering by the tag rather than by the path keeps the
-// document the source of that decision.
+// the operations the readiness listener owns. The generated router is produced
+// with exclude-tags and never registers /readyz, so a validator built from the
+// unfiltered document would accept a request the router could not answer.
 func servedSpec() (*v3.Document, error) {
 	document, err := libopenapi.NewDocument(api.OpenAPISpec())
 	if err != nil {
@@ -83,12 +78,11 @@ func (h *Handler) useContractValidation() error {
 	contractValidator := validator.NewValidatorFromV3Model(
 		spec,
 		config.WithAuthenticationFunc(h.authenticateScheme),
-		// Weather points are repeated query parameters whose individual values
-		// contain commas. libopenapi-validator treats those commas as array
-		// delimiters even when the parameter is exploded. The handlers already
-		// validate every query parameter this service has.
-		// ponytail: restore this when libopenapi-validator supports comma-bearing
-		// exploded values without rejecting the individual values as delimiters.
+		// Weather points are repeated query parameters whose values contain commas,
+		// which libopenapi-validator treats as array delimiters even when exploded.
+		// The handlers already validate every query parameter this service has.
+		// ponytail: restore when libopenapi-validator supports comma-bearing
+		// exploded values.
 		config.WithoutRequestQueryParameterValidation(),
 	)
 
@@ -107,23 +101,16 @@ func (h *Handler) useContractValidation() error {
 }
 
 // authenticateScheme answers the security requirements the document declares.
-//
-// Only the provenance scheme is answered here. The Access assertion is proven
-// by gated() before this middleware runs, and it must stay there: this
-// validator resolves the route before it validates security, so an unknown path
-// would answer 404 to a caller that has proven nothing, which is the surface
-// enumeration the identity gate exists to prevent. Verifying the assertion a
-// second time here would cost a second signature check per request and change
-// nothing.
+// Only the provenance scheme is answered here: the Access assertion is proven by
+// gated() before this middleware runs, and must stay there, because this
+// validator resolves the route before it validates security.
 func (h *Handler) authenticateScheme(_ context.Context, input *config.AuthenticationInput) error {
 	if input.SecuritySchemeName != browserOriginScheme {
 		return nil
 	}
-	// A browser attaches Origin to every request whose method is not GET or
-	// HEAD, including a same-origin one, so the UI's own requests always carry
-	// it. A missing header is therefore not "same-origin, header omitted" — it
-	// is a caller that is not this UI. So is "null", which is what a sandboxed
-	// or redirected context sends. Both fail this comparison.
+	// A browser attaches Origin to every request whose method is not GET or HEAD,
+	// including a same-origin one. A missing header is a caller that is not this
+	// UI, and so is "null", which a sandboxed or redirected context sends.
 	if input.Request.Header.Get("Origin") != h.browserOrigin {
 		return errForeignOrigin
 	}

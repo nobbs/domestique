@@ -19,13 +19,10 @@ import (
 
 const driverName = "sqlite"
 
-// cellRing is how many cells either side of a stage point are read.
-//
-// One ring is enough for any query radius shorter than a cell, which at 0.01°
-// means anything under a kilometre; the snap radius is 25 m. It exists at all
-// because a point sitting just inside a cell boundary has candidates in the
-// neighbouring cell, and reading nine small blobs costs less than reasoning
-// about which of them the corridor actually touches.
+// cellRing is how many cells either side of a stage point are read. One ring
+// covers any query radius shorter than a cell — under a kilometre at 0.01°,
+// against a 25 m snap radius. It exists because a point just inside a boundary
+// has candidates in the neighbouring cell.
 const cellRing = 1
 
 // Index reads a built surface index. It is immutable once opened and safe for
@@ -61,12 +58,9 @@ func IndexPath(directory, generation string) string {
 }
 
 // Load opens the index for a generation, reporting a missing file as no index
-// rather than as a failure.
-//
-// This is what makes a restart cheap: the last build's file is still on disk, so
-// the service serves classifications from the moment it starts instead of going
-// blind until the next scheduled build. A file that is missing or unreadable is
-// not fatal — the next build replaces it.
+// rather than as a failure. The last build's file is still on disk, so the service
+// serves classifications from the moment it starts. A missing or unreadable file
+// is not fatal: the next build replaces it.
 func Load(ctx context.Context, directory, generation string) (index *Index, found bool, err error) {
 	if generation == "" {
 		return nil, false, nil
@@ -126,12 +120,10 @@ func (i *Index) Close() error {
 	return nil
 }
 
-// Ways implements surface.Source over the packed cells.
-//
-// Every cell the stage's corridor may reach is read and decoded whole. Decoding
-// a cell the corridor only clips is wasted work, but a cell holds a kilometre of
-// road network and the alternative is a second spatial test against geometry
-// that surface.Match is about to test properly anyway.
+// Ways implements surface.Source over the packed cells. Every cell the stage's
+// corridor may reach is read and decoded whole: a cell holds a kilometre of road
+// network, and the alternative is a spatial test surface.Match is about to do
+// properly anyway.
 func (i *Index) Ways(ctx context.Context, points []route.Point) ([]surface.Way, error) {
 	ways := make([]surface.Way, 0, 1024)
 	for _, key := range cellsFor(points) {
@@ -218,15 +210,10 @@ func cellsFor(points []route.Point) []cellKey {
 	return keys
 }
 
-// Current holds whichever index is live and hands it to readers.
-//
-// A build produces a new file beside the old one and calls Swap. Readers hold
-// the lock for the length of one Ways call — a fraction of a second against a
-// local file — so a swap waits for work in flight rather than interrupting it,
-// and the replaced file is closed and deleted only once nothing is reading it.
-//
-// A Current with no index yet is not an error. It reports that it has none, and
-// classification is simply skipped until the first build lands.
+// Current holds whichever index is live and hands it to readers. A build produces
+// a new file beside the old one and calls Swap; readers hold the lock for one
+// Ways call, so a swap waits for work in flight and the replaced file is closed
+// only once nothing reads it. A Current with no index reports that it has none.
 type Current struct {
 	index *Index
 	mutex sync.RWMutex
