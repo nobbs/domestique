@@ -17,10 +17,16 @@
  * flatter it.
  */
 
-import type { Position, Route, SurfaceKind } from "../../../api/types";
+import type { Position, Route, SurfaceKind, WeatherPoint } from "../../../api/types";
 import { SURFACE_KINDS } from "../../../api/types";
+import {
+  START_AT,
+  samplesAlong,
+  weatherAlong,
+} from "../../../components/route/forecast-spike/fixture";
 import type { Climb } from "../../../lib/climbs";
 import { findClimbs } from "../../../lib/climbs";
+import type { ForecastSample } from "../../../lib/forecastSamples";
 import type { BandShare } from "../../../lib/profile";
 import { buildProfile, cumulativeMetres, gradientMix, gradientShares } from "../../../lib/profile";
 import type { SurfaceBand, SurfaceShare, SurfaceSummary } from "../../../lib/surface";
@@ -227,6 +233,22 @@ export const spikeBands: BandShare[] = gradientShares(spikeCoordinates);
 export const spikeRuns: BandShare[] = gradientMix(spikeCoordinates);
 export const spikeClimbs: Climb[] = findClimbs(spikeCoordinates);
 
+/**
+ * The day over this route, borrowed from the forecast spike.
+ *
+ * The two spikes share a ride rather than each carrying one, so a story that
+ * shows a panel and a forecast together is showing one day. The samples are
+ * placed by riding the geometry at a speed that falls with the gradient, which
+ * is also where the moving time below comes from — the figure the panel prints
+ * and the axis the forecast lays its tiles along are then the same ride by
+ * construction rather than by two numbers agreeing.
+ */
+export const spikeSamples: ForecastSample[] = samplesAlong(spikeCoordinates, START_AT);
+export const spikeWeather: WeatherPoint[] = weatherAlong(spikeSamples);
+export const spikeStartAt = START_AT;
+
+const lastArrival = spikeSamples[spikeSamples.length - 1]?.arrivalAt ?? START_AT;
+
 export const spikeRoute: Route = {
   provider: "veloplanner",
   sourceRouteId: 208,
@@ -240,9 +262,7 @@ export const spikeRoute: Route = {
   ascentMetres: ascentOf(spikeCoordinates),
   maxGradientPercent: steepest,
   pointCount: spikeCoordinates.length,
-  // Around twenty-two an hour over this much climbing, which is what the
-  // service's own model lands on for a route this shape.
-  movingSeconds: 21_240,
+  movingSeconds: Math.round((lastArrival.getTime() - START_AT.getTime()) / 1_000),
   validation: { biasPercent: -0.8, maePercent: 7.4, p90Percent: 15.2, evaluatedRides: 63 },
 };
 

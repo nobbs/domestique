@@ -7,6 +7,10 @@
  * settle is the thing the choice actually turns on — each at the width it will
  * really get.
  *
+ * Both are drawn against one ride — the panel spike's own loop, now carrying
+ * the forecast spike's day — so the distance under the pill and the axis the
+ * tiles are laid along describe the same afternoon.
+ *
  * That width is the whole argument for the pairing. The forecast comparison
  * ran in the route panel and **A — Lanes** won there, because at five hundred
  * pixels for two hundred and twenty kilometres the filmstrip's tiles fall to
@@ -20,28 +24,30 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
 import { buildCells } from "../../../components/route/forecast-spike/cells";
 import { FilmstripBand } from "../../../components/route/forecast-spike/FilmstripBand";
-import { spikePoints, spikeSamples } from "../../../components/route/forecast-spike/fixture";
 import { formatMovingTime } from "../../../lib/format";
 import type { Highlight } from "../../../lib/highlight";
 import type { UnitSystem } from "../../../lib/units";
 import { StoryProviders } from "../../../storybook/fixtures";
+import {
+  spikeBands,
+  spikeClimbs,
+  spikeCoordinates,
+  spikeHighestMetres,
+  spikeRoute,
+  spikeRuns,
+  spikeSamples,
+  spikeSubtitle,
+  spikeSurface,
+  spikeWeather,
+} from "./fixture";
 import { LengthsCard } from "./LengthsCard";
 import { MapPane } from "./MapPane";
 import { SpikePanel } from "./SpikePanel";
-import {
-  rideBands,
-  rideClimbs,
-  rideCoordinates,
-  rideHighestMetres,
-  rideRoute,
-  rideRuns,
-  rideSurface,
-} from "./together";
 
 /** About what a wide panel gets on a laptop, once the window has its margins. */
 const WIDE = 1_040;
 
-const cells = buildCells(spikeSamples, spikePoints, rideCoordinates);
+const cells = buildCells(spikeSamples, spikeWeather, spikeCoordinates);
 
 function Ride({ unitSystem = "metric" }: { unitSystem?: UnitSystem }) {
   const [collapsed, setCollapsed] = useState(false);
@@ -54,20 +60,20 @@ function Ride({ unitSystem = "metric" }: { unitSystem?: UnitSystem }) {
           <span className="font-semibold">E — Lengths</span>{" "}
           <span className="text-[var(--ink-2)]">— on the map, where it really sits</span>
         </figcaption>
-        <MapPane coordinates={rideCoordinates}>
+        <MapPane coordinates={spikeCoordinates}>
           <SpikePanel
             Card={LengthsCard}
             collapsed={collapsed}
             onCollapsedChange={setCollapsed}
-            route={rideRoute}
-            subtitle="Haute-Savoie · read 19:38"
-            movingSeconds={rideRoute.movingSeconds}
-            highestMetres={rideHighestMetres}
-            bands={rideBands}
-            runs={rideRuns}
-            surface={rideSurface}
+            route={spikeRoute}
+            subtitle={spikeSubtitle}
+            movingSeconds={spikeRoute.movingSeconds}
+            highestMetres={spikeHighestMetres}
+            bands={spikeBands}
+            runs={spikeRuns}
+            surface={spikeSurface}
             surfaceAbsence="Surface not classified yet."
-            climbs={rideClimbs}
+            climbs={spikeClimbs}
             highlight={highlight}
             onHighlightChange={setHighlight}
             unitSystem={unitSystem}
@@ -89,13 +95,13 @@ function Ride({ unitSystem = "metric" }: { unitSystem?: UnitSystem }) {
           style={{ width: WIDE, maxWidth: "100%" }}
         >
           <p className="mb-2 text-xs text-[var(--ink-2)]">
-            Setting off 06:00 · {formatMovingTime(rideRoute.movingSeconds)} moving
+            Setting off 06:00 · {formatMovingTime(spikeRoute.movingSeconds)} moving
           </p>
           <FilmstripBand
             cells={cells}
             width={WIDE - 32}
             startMetres={0}
-            endMetres={rideRoute.distanceMetres}
+            endMetres={spikeRoute.distanceMetres}
             unitSystem={unitSystem}
           />
         </div>
