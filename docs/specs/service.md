@@ -15,8 +15,7 @@ of the service.
 
 Each stage of a VeloPlanner source route is one route here, and each is a
 separate Wahoo route. A source route with one stage keeps its own name. One
-with several uses `Source route — Route` so its routes are individually
-identifiable on a device.
+with several uses `Source route — Route`.
 
 The service is a single-tenant Docker workload for an amd64 Tailnet host, which
 is the only architecture the image is published for. The long-running target is a
@@ -26,12 +25,11 @@ The service serves a read-only browser UI for route preview. Its HTTP surface is
 read-only JSON for status, route data, and route geometry, except for the
 protected Wahoo OAuth onboarding flow, the manual triggers over synchronisation
 and surface enrichment, and the runtime settings the UI reads and writes back.
-The UI is a view onto stored state: it draws the whole stored library on one
-map, opens any one route over that same map, and reports
-synchronisation on a second view. A route is not a page of its own — it takes
-over the panel the search occupies and adds its own layers to the map already on
-screen — but the route being read is carried in the address, so the view stays
-linkable.
+The UI is a view onto stored state: it draws the whole stored library on one map,
+opens any one route over that same map, and reports synchronisation on a second
+view. A route is not a page of its own — it takes over the panel the search
+occupies and adds its own layers to the map already on screen. The route being
+read is carried in the address, and the view is linkable.
 
 ## HTTP wire contract
 
@@ -48,81 +46,69 @@ as `application/geo+json`; its stored coordinates and surface ranges pass
 through without decoding and re-encoding. Deploying this wire change requires a
 browser hard reload. There is no compatibility endpoint or public SDK.
 
-The contract is enforced at runtime rather than only described by it. Every
-request is held to the document before it reaches a handler: the parameter
-bounds, the request bodies, and the provenance requirement that marks an
-operation as state-changing. A request the document does not describe is
-refused with the shared error shape, so a constraint written down here cannot
-quietly go unchecked in the code.
+The contract is enforced at runtime rather than only described. Every request is
+held to the document before it reaches a handler: the parameter bounds, the
+request bodies, and the provenance requirement that marks an operation as
+state-changing. A request the document does not describe is refused with the
+shared error shape.
 
-Two checks sit deliberately outside that validation, and in front of it. The
-Access identity is proven first, because the validator resolves a route before
-it validates security: an unknown path would otherwise answer "no such route"
-to a caller that has proven nothing, which is the surface enumeration the gate
-exists to prevent. The request body is capped first for the same kind of
-reason: the validator reads a declared body whole to check it, and the bound on
-that read has to already be in place.
+Two checks sit outside that validation and in front of it. The Access identity
+is proven before the validator resolves a route: a caller that has proven
+nothing is answered 401, never "no such route". The request body is capped
+before the validator reads it.
 
 Every `type: number` in the contract is IEEE 754 double precision, declared as
-`format: double` so a generated client cannot narrow a coordinate to single
-precision. Identifiers and counts are `type: integer` and stay integral: a
-route identifier is an int64, which is exactly what a double could not carry.
-Every timestamp is RFC 3339 in UTC, at second resolution, so one instant has
-one spelling on the wire regardless of the timezone the service runs in.
+`format: double`. Identifiers and counts are `type: integer` and stay integral;
+a route identifier is an int64. Every timestamp is RFC 3339 in UTC, at second
+resolution.
 
-Where a route's surface classification has been cached, that view draws it: the
+Where a route's surface classification has been cached, the view draws it: the
 route is banded by ground class on the map, and the route's split is summarised
 beside its stored facts. A route with no cached classification is drawn plainly
-and said to be unclassified, never presented as unsurveyed ground. Because the
-classification is a derived OpenStreetMap database, the map view carries the
-ODbL attribution its share-alike terms require.
+and said to be unclassified, never presented as unsurveyed ground. The map view
+carries the ODbL attribution the derived OpenStreetMap database requires.
 
-The drawn route says where a ride goes and nothing about which end it begins at,
-so the view marks both terminals and the direction of travel. The start and the
-finish are marked distinctly, and stay distinguishable on a route that finishes
-where it started: the two markers are separated on screen rather than drawn on
-one point. Direction cues are placed along the route at a spacing measured on
-screen, so a route gets the same restrained handful of them whatever its length
-and however far the camera is pulled back. Every cue is derived from the stored
-geometry already drawn — no request is made to answer it — and every cue has a
-textual equivalent stating which way the ride leaves, whether it returns to its
-start, and which way it comes back, because the cues themselves are drawn into a
-canvas that carries no text.
+The view marks both terminals of a route and the direction of travel. The start
+and the finish are marked distinctly and stay distinguishable on a route that
+finishes where it started; the two markers are separated on screen rather than
+drawn on one point. Direction cues are placed along the route at a spacing
+measured on screen, so a route gets the same restrained handful of them whatever
+its length and however far the camera is pulled back. Every cue is derived from
+the stored geometry already drawn, and no request is made to answer it. Every
+cue has a textual equivalent stating which way the ride leaves, whether it
+returns to its start, and which way it comes back.
 
-The key to what the view draws is also how it is questioned: a surface class or
-a gradient band can be selected, and the stretches of route it covers stay lit on
-the map and in the elevation chart while the rest of the ride is dimmed. One
-class at a time, and selecting it again restores the whole route. This changes
-what is emphasised, never what is stored.
+A surface class or a gradient band can be selected from the key. The stretches
+of route it covers stay lit on the map and in the elevation chart while the rest
+of the ride is dimmed. One class at a time; selecting it again restores the whole
+route. This changes what is emphasised, never what is stored.
 
 A stretch of the ride is asked for the same way on either instrument: a drag
 across the elevation chart, or a drag along the painted route, selects the
 distance range it covers, and both views then show that stretch until the whole
 route is asked for again. A drag that begins away from the route moves the map
 instead, and moving the map selects nothing. Selecting a stretch by keyboard
-remains the elevation chart's. Like the class selection, this changes what is
-shown, never what is stored.
+belongs to the elevation chart alone. This too changes what is shown, never what
+is stored.
 
-The map is the view rather than something embedded in one, so it holds its own
-gestures throughout: the wheel zooms, fingers pan and zoom, and the arrow keys
-answer. Nothing is printed over the cartography to ask for them. A drag that
-begins on the painted route picks a stretch of the ride instead of moving the
-camera, because that gesture is a question about the ride rather than about the
-view.
+The map holds its own gestures throughout: the wheel zooms, fingers pan and
+zoom, and the arrow keys answer. Nothing is printed over the cartography to ask
+for them. A drag that begins on the painted route picks a stretch of the ride
+instead of moving the camera.
 
 The elevation chart floats across the foot of the map rather than sitting in a
 column beside it, and it can be folded away to a pill that still states the
 route's total climbing and the heights it runs between. That choice lasts as
-long as the tab and is deliberately not stored.
+long as the tab and is not stored.
 
 The UI carries one outbound link, to this service's public source repository. It
 is the only navigation that leaves the authenticated origin, it opens in a new
 context without a referrer, and it sends nothing: no route, geometry, or
 origin address accompanies it.
 
-Route editing remains explicitly out of scope. The UI presents no editing
-affordance, and the service writes nothing back to VeloPlanner. Any future
-change to that boundary requires revising this document first.
+Route editing is out of scope. The UI presents no editing affordance, and the
+service writes nothing back to VeloPlanner. Any change to that boundary requires
+revising this document first.
 
 ## Constraints and non-goals
 
@@ -145,13 +131,13 @@ container has no public host port. The Tailnet host exposes it privately through
 endpoints require the configured sole identity, apart from two loopback probes:
 a liveness probe on the served listener, and a readiness probe on a second
 listener of its own. Tailscale Serve and the tunnel front the served listener
-only, so the readiness listener is reachable from host-local health checking and
-not from the authenticated public surface. It must never be given to
-`tailscale serve`. The HTTP server trusts Tailnet
-identity headers only from that local proxy.
+only. The readiness listener is reachable from host-local health checking and
+not from the authenticated public surface, and must never be given to
+`tailscale serve`. The HTTP server trusts Tailnet identity headers only from
+that local proxy.
 
-The service is single-tenant, and remains so. One person is authorised, and
-there is exactly one way to prove it.
+The service is single-tenant. One person is authorised, and there is exactly one
+way to prove it.
 
 Every request must carry a `Cf-Access-Jwt-Assertion` the service verifies
 itself: RS256 signature against the team's published keys, matching issuer,
@@ -160,110 +146,96 @@ unexpired, and an `aud` equal to the configured application's audience tag. The
 `Cf-Access-Authenticated-User-Email` header is never consulted, and neither is
 `Tailscale-User-Login`.
 
-Identity is not provenance. An Access session lives in an ordinary browser, so
-proving who is calling does not prove that they meant to call. Every
-state-changing endpoint therefore also requires an `Origin` header exactly equal
-to the origin the browser UI is served from — `http.browser_origin_url`, which
-is by declaration the hostname a browser reaches this service at, and from which
-the Wahoo callback is derived. A missing, malformed, `null`, or cross-site origin is refused
-with 403 before any trigger runs or any state is written; a browser attaches
-`Origin` to every request whose method is not GET or HEAD, including a
-same-origin one, so absent means "not this UI" rather than "same origin". This
-is a security requirement, not an implementation detail.
+Every state-changing endpoint additionally requires an `Origin` header exactly
+equal to the origin the browser UI is served from — `http.browser_origin_url`,
+which is by declaration the hostname a browser reaches this service at, and from
+which the Wahoo callback is derived. A missing, malformed, `null`, or cross-site
+origin is refused with 403 before any trigger runs or any state is written. A
+browser attaches `Origin` to every request whose method is not GET or HEAD,
+including a same-origin one. This is a security requirement, not an
+implementation detail.
 
-The OAuth start and callback are deliberately outside that check. The callback
-is a cross-site GET the browser is redirected into, and what protects it is its
-one-time, identity-bound, expiring state.
+The OAuth start and callback are outside that check. The callback is a
+cross-site GET the browser is redirected into, and its state is one-time,
+identity-bound, and expiring.
 
 Requests reach the service through Cloudflare Access and a Cloudflare Tunnel
 whose origin is this service's **Tailscale Service name**. `cloudflared` runs on
 a tagged node, and Serve never populates identity headers for a tagged device,
-so such a request carries no Tailnet identity to consult in the first place.
+so such a request carries no Tailnet identity to consult.
 
 Tailscale Serve still fronts the listener, and Tailnet members can still reach
 it directly. Such a request is refused like any other without an assertion.
-Honouring `Tailscale-User-Login` would mean a second front door with a second
-identity source behind it, and — because a tunnel forwards client headers
-verbatim — a forgeable one the moment anything but Serve reached the listener.
-The header is therefore not read at all. This is a security requirement, not an
+`Tailscale-User-Login` is not read at all. This is a security requirement, not an
 implementation detail.
 
 This adds no public listener: the container still publishes to loopback only,
-and the tunnel is an outbound connection. It does not widen the gate either —
-one principal before, one principal now.
+and the tunnel is an outbound connection. One principal is authorised.
 
 The tunnel's origin must be the Tailscale Service name rather than a node
-address or loopback. That is a security requirement, not a convenience: it keeps
-Tailscale Serve in the path, and Serve's stripping of client-supplied
-`Tailscale-*` headers is what prevents a public caller from asserting a Tailnet
-identity. The `[access.cloudflare]` section is all-or-nothing; a partly
-configured one is rejected at startup.
+address or loopback. This is a security requirement. It keeps Tailscale Serve in
+the path, and Serve strips client-supplied `Tailscale-*` headers, which prevents
+a public caller from asserting a Tailnet identity. The `[access.cloudflare]`
+section is all-or-nothing; a partly configured one is rejected at startup.
 
-The map view introduces one deliberate, documented exception to the otherwise
-Tailnet-only posture: the operator's **browser** fetches basemap tiles from a
-configured third-party tile origin, and the area those tiles cover is
-necessarily the viewport on screen — a viewed route's, or, once the reader
-presses the map's locate button, an area centred on their own live position.
-The service itself never contacts a tile origin. The raw coordinates the
-locate button reads from the browser's Geolocation API go nowhere beyond
-moving the camera: they are never sent to this service, a log, storage, or
-the tile origin as a discrete value — only the resulting tile requests, naming
-the area rather than a point, reach it, the same way a viewed route's area
-already did. The default is a single keyless provider, so no credential is
-exposed to the browser and the requests carry no account identity. The
-basemaps are static configuration so an origin can be changed, or pointed at
-a self-hosted tile source, without a code change.
+The map view is one documented exception to the otherwise Tailnet-only posture.
+The operator's **browser** fetches basemap tiles from a configured third-party
+tile origin, and the area those tiles cover is the viewport on screen: a viewed
+route's, or, once the reader presses the map's locate button, an area centred on
+their own live position. The service itself never contacts a tile origin. The
+raw coordinates the locate button reads from the browser's Geolocation API move
+the camera and go nowhere else: they are never sent to this service, a log,
+storage, or the tile origin as a discrete value. Only the resulting tile
+requests, naming the area rather than a point, reach it. The default is a single
+keyless provider, so no credential is exposed to the browser and the requests
+carry no account identity. The basemaps are a runtime setting, so an origin can
+be changed, or pointed at a self-hosted tile source, without a code change.
 
-An operator may configure more than one basemap so the reader can switch
-between them, and a Content-Security-Policy restricts the browser to the
-service's own origin plus the origin of each configured basemap. That policy
-says which origins the page *may* reach; only the basemap on screen is ever
-requested, so what any one provider learns is unchanged by the presence of
-another in the list. A second style may be configured for a dark system colour
-scheme, and must be on **its own basemap's** origin, so following the operator's
-colour scheme reveals nothing to anyone new.
+An operator may configure more than one basemap so the reader can switch between
+them. A Content-Security-Policy restricts the browser to the service's own
+origin plus the origin of each configured basemap. The policy names which
+origins the page *may* reach; only the basemap on screen is ever requested. A
+second style may be configured for a dark system colour scheme, and must be on
+**its own basemap's** origin.
 
 The reader's pick is remembered in the browser's own storage, under one key
 holding the chosen basemap's name and nothing else. It is never sent anywhere:
 the service is not told which basemap a browser loads, and the choice is kept
-out of the address so a shared link to a route does not carry it. A browser that
-refuses storage still switches; it simply starts again from the first entry on
-the next visit.
+out of the address, so a shared link to a route does not carry it. A browser that
+refuses storage still switches; it starts again from the first entry on the next
+visit.
 
-Surface classification introduces **no** such exception. To learn whether a
-route runs on asphalt, paving, gravel, or a forest track, the service reads a
+Surface classification introduces **no** such exception. The service reads a
 surface index it builds itself from OpenStreetMap regional extracts, and the
-whole classification then happens on the host with no request leaving it. No
-route shape is ever sent anywhere. The only outbound traffic is the scheduled
-rebuild: on its own cadence the service downloads the configured regions'
-published extracts from the extract host, which learns which regions this
-deployment is interested in and nothing about any route. An operator who
-configures no region downloads nothing at all and leaves routes unclassified.
+whole classification happens on the host with no request leaving it. No route
+shape is ever sent anywhere. The only outbound traffic is the scheduled rebuild:
+on its own cadence the service downloads the configured regions' published
+extracts from the extract host, which learns which regions this deployment is
+interested in and nothing about any route. An operator who configures no region
+downloads nothing and leaves routes unclassified.
 
-Each route is classified once per geometry per index build: the answer is cached
+Each route is classified once per geometry per index build. The answer is cached
 against both the route's content hash and the generation of the index it was
-read from, so a route is reclassified when its shape changes and when the map
+read from. A route is reclassified when its shape changes and when the map
 underneath it is rebuilt, and at no other time.
 
 Open-Meteo is the second service the deployment itself reaches outbound, after
-the OpenStreetMap extract download above — and unlike the tile origin, which
-only the operator's **browser** reaches. The service asks Open-Meteo for an
-hourly forecast at the coordinates and times `GET /v1/weather` was given; a
-viewed route's shape and timing are what leaves, and nothing about the
-account viewing it, because the request carries no identity. Operating the
-service requires attributing Open-Meteo under its [CC BY 4.0
-licence](https://open-meteo.com/en/licence) wherever its data is shown, the
-same way surface classification carries the ODbL attribution above.
+the OpenStreetMap extract download above. The tile origin, by contrast, is
+reached only by the operator's **browser**. The service asks Open-Meteo for an
+hourly forecast at the coordinates and times `GET /v1/weather` was given. A
+viewed route's shape and timing are what leaves; the request carries no identity.
+Operating the service requires attributing Open-Meteo under its [CC BY 4.0
+licence](https://open-meteo.com/en/licence) wherever its data is shown, as
+surface classification carries the ODbL attribution above.
 
 The Wahoo OAuth redirect URI is the HTTPS URL a browser returns to. Without the
-public path that is the service's Tailnet URL:
+public path it is the service's Tailnet URL:
 
 ```text
 https://<service>.<tailnet>.ts.net/oauth/wahoo/callback
 ```
 
-With the public path deployed it is the public hostname instead, because the
-redirect lands in an ordinary browser that need not be on the tailnet:
+With the public path deployed it is the public hostname instead:
 
 ```text
 https://<hostname>/oauth/wahoo/callback
@@ -285,16 +257,15 @@ calling identity and target slot and prevents cross-account or CSRF callbacks.
 The service rejects an attempt to authorise the same Wahoo account for two
 target slots.
 
-Alongside it are the operator controls over synchronization: the manual
+Alongside it are the operator controls over synchronisation: the manual
 triggers, the two switches that decide what the timer is allowed to start, the
-per-route reprocess request, and the surface-enrichment retry.
-They change what the service does next; they change nothing it has stored about
-routes, and they cannot make a run less safe than a scheduled one, because a
-triggered run is the same run through the same gates. The enrichment retry is
-narrower still — it never reads VeloPlanner or writes a Wahoo target, only
-reclassifying routes already stored — and shares the same single-flight guard
-as the other four triggers. Every one of them is limited to the same principal
-as the rest of the surface.
+per-route reprocess request, and the surface-enrichment retry. They change what
+the service does next; they change nothing it has stored about routes. A
+triggered run is the same run through the same gates as a scheduled one. The
+enrichment retry is narrower still: it never reads VeloPlanner or writes a Wahoo
+target, only reclassifying routes already stored, and it shares the same
+single-flight guard as the other four triggers. Every one of them is limited to
+the same principal as the rest of the surface.
 
 Beside those is the one write that changes what the service *is* rather than
 what it does next: the settings write stores the runtime settings an operator
@@ -305,7 +276,7 @@ applied to it at startup. It is also the only endpoint that accepts a credential
 and it is write-only in both directions of that word: a submitted credential is
 stored encrypted and is never read back out, by this endpoint or any other.
 
-A synchronization has two halves, and each is separately switched, triggered,
+A synchronisation has two halves, and each is separately switched, triggered,
 and reported:
 
 - The **source** half reads the VeloPlanner library, validates it, and stores
@@ -314,59 +285,50 @@ and reported:
   the stored library rather than fetching a fresh one, so a target that was
   unreachable catches up from the last inventory known to be whole.
 
-Splitting them lets an operator stop writing to devices while still refreshing
-the library, or keep devices current while the source is known to be in flux,
-without editing configuration on the host and restarting the service. The
-switches govern the timer only: a manual trigger runs its half whether or not
-the timer is allowed to, because an operator asking for a run has already
-decided. Neither switch stops a run already in flight.
+The switches govern the timer only. A manual trigger runs its half whether or
+not the timer is allowed to. Neither switch stops a run already in flight.
 
-The read-only JSON surface is deliberately small:
+The read-only JSON surface is small:
 
 - `GET /healthz` reports local process health, on the served listener.
 - `GET /readyz`, on the readiness listener alone, reports whether local
   configuration and the state the process needs are usable. It verifies nothing
   else: no VeloPlanner, Wahoo, Pushover, Cloudflare, Tailscale, or tile provider
   call, and no judgement about whether a target has completed its one-time
-  authorisation, because a slot waiting for a browser visit is a correctly
-  running deployment. It reports a fixed category when it is not ready, never a
-  path, key, or upstream detail.
+  authorisation. It reports a fixed category when it is not ready, never a path,
+  key, or upstream detail.
 - `GET /v1/status` reports current configuration readiness, last sync outcome,
   aggregate counts, target authorisation state, the two schedule switches, the
   last run of each half, and how much of the library carries a current surface
   classification together with which map build it was read from. It also reports
-  whether every stored route at its current
-  revision has reached every configured target: one convergence word, safe
-  aggregate current and pending counts, and the last reconciliation result per
-  target, plus one overall answer that is true only when every target is
-  current. Those are derived from stored revisions alone, never by asking Wahoo
-  what it holds, and they describe the Wahoo accounts rather than what any
-  physical head unit has downloaded. It also names the build that is running: the full public
-  source commit the binary was compiled from, and the digest of the image
-  carrying it when the host told the service one. That group is absent for a
-  build that carries no injected revision, which is how a reader tells a
-  development process from a deployed one. Only a full commit object name and a
-  bare `sha256:` digest are served; a value that is neither is dropped rather
-  than published, because in a browser it would become a link to nowhere. No
-  registry, repository, host, tag, or path is included.
+  whether every stored route at its current revision has reached every configured
+  target: one convergence word, safe aggregate current and pending counts, and
+  the last reconciliation result per target, plus one overall answer that is true
+  only when every target is current. Those are derived from stored revisions
+  alone, never by asking Wahoo what it holds, and they describe the Wahoo
+  accounts rather than what any physical head unit has downloaded. It also names
+  the build that is running: the full public source commit the binary was
+  compiled from, and the digest of the image carrying it when the host told the
+  service one. That group is absent for a build that carries no injected
+  revision. Only a full commit object name and a bare `sha256:` digest are
+  served; a value that is neither is dropped rather than published. No registry,
+  repository, host, tag, or path is included.
 - `GET /v1/sync/runs` returns a bounded, paginated history of terminal runs,
   newest first: each one's opaque reference, half, completion time, result, safe
   failure category, and aggregate counts. Older runs are pruned as new ones are
-  recorded, so it is recent history rather than a permanent record. It is the
-  one read that takes query parameters — a bounded page size, and the cursor the
-  previous page ended with — because a page of history cannot be decided in the
-  browser from a listing it already holds.
+  recorded, so it is recent history rather than a permanent record. It is the one
+  read that takes query parameters: a bounded page size, and the cursor the
+  previous page ended with.
 - `GET /v1/routes` lists every stored route with its source route and titles,
   aggregate geometry facts, and — when a ride-model coefficient file is
   configured and has predicted this exact geometry — a predicted moving time.
   It is omitted, never zero, for a route nothing has predicted yet.
 - `GET /v1/providers/{provider}/sourceRoutes/{source-route-id}/routes/{stage-order}`
-  returns stored route metadata, not edit controls. The two earlier shapes of
-  this address redirect to it with `308`.
+  returns stored route metadata, not edit controls. Two further shapes of this
+  address redirect to it with `308`.
 - `GET /v1/providers/{provider}/sourceRoutes/{source-route-id}/routes/{stage-order}/geometry`
-  returns the stored
-  geometry of one route for map rendering, together with the surface
-  classification of that geometry when one has been cached, and — when a
+  returns the stored geometry of one route for map rendering, together with the
+  surface classification of that geometry when one has been cached, and — when a
   ride-model coefficient file is configured and has predicted this exact
   geometry — the predicted cumulative moving time at each coordinate, indexed
   1:1 with the geometry. It is omitted, never empty, for a route nothing has
@@ -377,25 +339,18 @@ The read-only JSON surface is deliberately small:
   its cartography is dark in either colour scheme — and the source provider's
   base URL. The list is never empty, and its first entry is what a browser that
   has chosen nothing loads. The base URL is the whole of what is sent about the
-  provider — the page builds a route's link back to its source route from it,
-  rather than the service repeating a route URL on every route it serves. It is
-  omitted when unconfigured, so the page shows no such link rather than a broken
-  one. That link is only useful to the operator whose account holds the route:
-  the source route is private to that account, and following it as anyone else
-  reaches the provider's own refusal, not the route.
+  provider; the page builds a route's link back to its source route from it. It
+  is omitted when unconfigured, and the page then shows no such link.
 - `GET /v1/settings` returns every setting an operator may change while the
   service is running: the synchronisation settings, the notification settings,
   the basemap list, the surface settings, the Wahoo application and its target
   slots, the source libraries, and the ride model. It is one document and the
-  whole of it every time, whichever section is about to be edited, because a
-  form showing only part of what it is about to replace would silently revert
-  the rest.
+  whole of it every time, whichever section is about to be edited.
 
-  It carries **no credential value**. Instead it reports, per stored credential,
-  whether one is set at all, so the page can offer to replace one it was never
-  told; and it names what is still to be entered — everything a run needs, and
-  the Pushover credentials while notifications are on — so a service nobody has
-  finished configuring says so rather than being quietly idle. It carries no static configuration — [the configuration
+  It carries **no credential value**. It reports, per stored credential, whether
+  one is set at all, and it names what is still to be entered: everything a run
+  needs, and the Pushover credentials while notifications are on. It carries no
+  static configuration — [the configuration
   specification](configuration.md#runtime-settings) states which settings live
   here and which stay in the file.
 - `GET /v1/weather` returns an hourly forecast for up to 48 repeated `point`
@@ -408,14 +363,15 @@ The read-only JSON surface is deliberately small:
   a window Open-Meteo could not answer is refused as `400` before any
   outbound call; a provider failure is `502`, carrying no upstream response
   text.
+
 The endpoints below that change state — the sync triggers, the schedule switch,
 the reprocess request, the enrichment retry, and the settings write —
 additionally require the browser origin described above, and answer 403 without
 it.
 
-- `POST /v1/sync` queues one immediate synchronization of both halves through
+- `POST /v1/sync` queues one immediate synchronisation of both halves through
   the same reporting path as the schedule. It returns `202 Accepted`, or `409
-  Conflict` when a scheduled or manual synchronization is already running.
+  Conflict` when a scheduled or manual synchronisation is already running.
 - `POST /v1/sync/source` and `POST /v1/sync/targets` queue one half on the same
   terms.
 - `POST /v1/sync/targets/{target}` reconciles exactly one configured target
@@ -424,24 +380,22 @@ it.
 - `POST /v1/targets/{target}/clear` deletes every route this service owns from
   exactly one configured slot and forgets that slot's route mappings. It is the
   one deletion the per-target deletion limit does not bound, and is reachable
-  only this way — nothing schedules it. It still deletes only routes carrying
-  an external ID this service issued, and leaves the stored library untouched,
-  so the next reconciliation rebuilds the target. It returns `202 Accepted`,
-  `404` for a slot that is not configured, or `409 Conflict` while any run is
-  under way.
+  only this way; nothing schedules it. It still deletes only routes carrying an
+  external ID this service issued, and leaves the stored library untouched, so
+  the next reconciliation rebuilds the target. It returns `202 Accepted`, `404`
+  for a slot that is not configured, or `409 Conflict` while any run is under
+  way.
 - `PUT /v1/sync/schedule` sets both switches, and answers with the state it
-  stored. A body that names only one switch is refused: the other would be left
-  at whatever the caller assumed it was.
+  stored. A body that names only one switch is refused.
 - `POST /v1/providers/{provider}/sourceRoutes/{source-route-id}/routes/{stage-order}/reprocess`
-  asks for one
-  route to be worked out again from scratch and starts the synchronization that
-  will do it. It returns `202 Accepted`, or `404` for a route that is not in the
-  stored inventory.
+  asks for one route to be worked out again from scratch and starts the
+  synchronisation that will do it. It returns `202 Accepted`, or `404` for a
+  route that is not in the stored inventory.
 - `POST /v1/sync/surface` queues one immediate surface-classification pass,
   independently of either sync half. It returns `202 Accepted`, or `409
-  Conflict` when a synchronization or another such pass is already running. It
-  never reads VeloPlanner or writes a Wahoo target, so it carries none of the
-  other triggers' provider risk.
+  Conflict` when a synchronisation or another such pass is already running. It
+  never reads VeloPlanner or writes a Wahoo target, and carries none of the other
+  triggers' provider risk.
 - The settings are written one section at a time, over one endpoint per
   section: `PUT /v1/settings/wahoo` for the registered application,
   `/v1/settings/targets` for the slots it writes to,
@@ -452,19 +406,17 @@ it.
   service reads; any other is refused.
 
   Each replaces the whole of the section it names. A body naming only some of
-  that section's fields is refused for the reason the schedule switch is: the
-  rest would be left at whatever the caller assumed. Sections the request does
-  not name are not merged and not touched — a section is edited by the endpoint
-  that owns it or not at all, which is what lets one page save each section on
-  its own. The edit is applied to the settings as they are at the moment of the
-  write, so two sections saved at once do not each undo the other.
+  that section's fields is refused. Sections the request does not name are not
+  merged and not touched: a section is edited by the endpoint that owns it or not
+  at all. The edit is applied to the settings as they are at the moment of the
+  write.
 
   A value the service would have refused at startup is refused here as `400`,
   in a message naming the setting, and what it stores is in force for the next
   request and the next run without a restart. Each changes what the service does
-  next; none changes anything it has stored about a route, and none can reach a
-  listener address, the browser origin, or the identity gate, because none of
-  those is a runtime setting.
+  next; none changes anything it has stored about a route, and none reaches a
+  listener address, the browser origin, or the identity gate, none of which is a
+  runtime setting.
 
   Credentials travel with the section that owns them — the client secret with
   the application, an account with its library, the Pushover pair with the
@@ -475,9 +427,8 @@ it.
   these reasons stores neither its values nor the credentials it carried.
 
   Every one of these answers with the same document `GET` returns — every
-  setting now in force, not only the section the request replaced, so one answer
-  refills the whole page — and nothing that was submitted as a credential
-  appears in it.
+  setting now in force, not only the section the request replaced — and nothing
+  that was submitted as a credential appears in it.
 
 The browser UI is served from the same origin and the same authenticated
 listener: an application entry document and immutable hashed static assets.
@@ -496,6 +447,7 @@ Route geometry is served **only** on the dedicated geometry endpoint, only to
 the configured principal, and only from local stored state. It must never
 appear in logs, notifications, error messages, the status endpoint, or the
 inventory listing.
+
 The concrete OAuth, sync, persistence, and JSON contracts are defined in the
 [sync lifecycle specification](sync-lifecycle.md).
 
@@ -552,12 +504,10 @@ A SQLite database on a Docker volume stores:
   generation it was measured for. The two are not acted on alike: a changed
   content hash withdraws the cached answer, whose ranges are positions in a
   geometry the route no longer has, while a newer index leaves it on display and
-  marks the route for re-measurement on the next enrichment pass — those ranges
-  still fit, so a rebuild costs the library nothing while the rare road that was
-  actually resurfaced is still corrected;
-- when the last surface index build finished and which generation it produced, so
-  the rebuild interval is time between builds rather than time since this process
-  started;
+  marks the route for re-measurement on the next enrichment pass;
+- when the last surface index build finished and which generation it produced.
+  The rebuild interval is measured between builds rather than from process
+  start;
 - the corresponding remote Wahoo route identity where available;
 - last successful source inventory and last sync outcome; and
 - expiring OAuth states.
@@ -566,15 +516,14 @@ The database holds no plaintext credential or token. It is intentionally not
 backed up.
 
 The schema is versioned by an append-only migration history, and migrations run
-forward only. Because there is no backup, a deployment that migrates the state
-and then fails its health gate must still be able to roll back onto the previous
-image, so:
+forward only. There is no backup, and rollback onto the previous image must
+remain possible after a migration:
 
 - every migration must leave the previous release's binary able to read and
   write what it already did — additive with defaults. A migration must not drop
-  or rename anything an earlier binary uses, add a `NOT NULL` column without a
-  default to a table an earlier binary inserts into, tighten a `CHECK` or add a
-  `UNIQUE` index an earlier binary's writes could violate, or change what an
+  or rename anything a preceding binary uses, add a `NOT NULL` column without a
+  default to a table a preceding binary inserts into, tighten a `CHECK` or add a
+  `UNIQUE` index a preceding binary's writes could violate, or change what an
   existing column's values mean; and
 - a binary opens a state file up to one migration ahead of itself, and refuses
   one further ahead than that with a distinct error. A release that must stay
@@ -583,37 +532,34 @@ image, so:
 The rollback path never restores or replaces state; the tolerance is what makes
 the previous image usable against a state file the failed deploy migrated.
 
-One migration is a deliberate exception to the first rule, and it is recorded
-here rather than left to be discovered during an incident. The migration that
-gave a route's identity its provider widened the primary key of
-`target_stages`, `stage_geometry`, `stage_surface`, and `stage_reprocess` to
-include the new column. A previous release's binary writes those four tables
-through `ON CONFLICT (route_id, stage_order)`, and SQLite requires that column
-list to name an existing unique constraint exactly, so those statements no
-longer prepare against the widened key. A rollback onto that binary can still
-**read** all four tables — no state is lost or rewritten — but cannot write
-them, which leaves synchronisation failing until the deployment rolls forward
-again. The narrower alternative, leaving provider out of those keys, would stop
-four of the six stage-keyed tables from holding two providers' routes at once
-and so defeat the migration's purpose. A future migration carries the same
-obligation to be additive; this exception licenses that one change, not a
-general relaxation.
+Two migrations are recorded exceptions to the first rule.
 
-The camelCase HTTP cutover is a second, bounded exception. It rewrites only the
-cached JSON bytes in `stage_surface.ranges`, so existing geometry can stay a raw
-pass-through response rather than being decoded and re-encoded by the handler.
-A rollback onto the preceding image would serve the new range field names, so a
-failed deployment must roll forward after the browser hard reload instead of
-rolling back that image. No route data, ownership record, or sync safety state
-changes meaning.
+The migration that gave a route's identity its provider widened the primary key
+of `target_stages`, `stage_geometry`, `stage_surface`, and `stage_reprocess` to
+include the new column. A binary from before that migration writes those four
+tables through `ON CONFLICT (route_id, stage_order)`, and SQLite requires that
+column list to name an existing unique constraint exactly, so those statements
+do not prepare against the widened key. A rollback across this migration can
+still **read** all four tables — no state is lost or rewritten — but cannot
+write them, and synchronisation fails until the deployment rolls forward again.
 
-It does hold the operator's route geometry in plaintext as a rendering cache.
-That is personal data rather than a credential, and losing it is harmless — the
-next sync refills it from the source — but it raises the sensitivity of the
-volume and should inform where the host keeps it.
+The camelCase HTTP cutover rewrites only the cached JSON bytes in
+`stage_surface.ranges`, which keeps existing geometry a raw pass-through
+response rather than one decoded and re-encoded by the handler. A binary from
+before that cutover serves the new range field names, so a failed deployment
+must roll forward after the browser hard reload rather than rolling back across
+it. No route data, ownership record, or sync safety state changes meaning.
+
+Both exceptions license the one change each describes, not a general relaxation.
+A future migration carries the same obligation to be additive.
+
+The database holds the operator's route geometry in plaintext as a rendering
+cache. That is personal data rather than a credential, and losing it is
+harmless: the next sync refills it from the source. It raises the sensitivity of
+the volume and should inform where the host keeps it.
 
 If the database or volume is lost, the operator must re-authorise every Wahoo
-targets. The service must reconcile using the Domestique-owned `external_id`
+target. The service must reconcile using the Domestique-owned `external_id`
 before it creates or removes routes. It must not treat lost local state as
 authority to delete routes from a Wahoo account.
 
@@ -651,29 +597,26 @@ An encoder change is adopted only once that check covers it. No personal route
 data belongs in repository fixtures.
 
 Komoot is a second, independent source integration against the same unofficial
-category of interface, described here ahead of the configuration and
-composition-root work that will actually offer it to an operator: until that
-work lands, the purpose and scope above still hold, and a deployment mirrors
-VeloPlanner alone. The adapter reads a private account's own email and
-password, exchanged at runtime for a session token, with no OAuth machinery
-involved. It is unofficial
-because Komoot's OAuth2 partner interface is issued only under a partner
-contract and is not available to an individual operator; the unofficial and
-partner interfaces serve the same documented resource shapes, so only the
-authentication differs. A Komoot tour has no stage subdivision, so it maps to
-exactly one route — stage order 1, with no name of its own beyond the tour's —
-rather than leaving the concept unused. The adapter issues no HTTP method other than `GET`: the session token
+category of interface. It is not yet offered to an operator: until the
+configuration and composition-root work lands, the purpose and scope above hold
+and a deployment mirrors VeloPlanner alone.
+
+The adapter reads a private account's own email and password, exchanged at
+runtime for a session token, with no OAuth machinery involved. Komoot's OAuth2
+partner interface is issued only under a partner contract and is not available
+to an individual operator; the unofficial and partner interfaces serve the same
+documented resource shapes, and only the authentication differs. A Komoot tour
+maps to exactly one route: stage order 1, with no name of its own beyond the
+tour's. The adapter issues no HTTP method other than `GET`; the session token
 Komoot returns is not read-scoped, and a write against it would delete a route
 from the operator's own library with no undo.
 
 Both sources hand over geometry and metadata only. Neither source's FIT, GPX,
 surface classification, way types, or turn directions are consumed, even where
-the provider offers them: FIT is produced once, by this service's own encoder,
+the provider offers them. FIT is produced once, by this service's own encoder,
 for every source alike, and surface classification is computed once, against
-this service's own OpenStreetMap index, for every source alike. A provider that
-supplied any of these directly would let two identical roads disagree depending
-on which source found them, and would give two sources unequal elevation
-handling. This rule is provider-agnostic and applies to any future source.
+this service's own OpenStreetMap index, for every source alike. This rule is
+provider-agnostic and applies to any future source.
 
 ## Wahoo synchronisation
 
@@ -712,13 +655,12 @@ fails.
 No automatic run may delete more than five owned Wahoo routes from a target.
 Before any deletion, the source inventory is checked against the last trusted
 inventory. Authentication failure, malformed source data, an empty result after
-a previously non-empty library, or a suspicious shrink stops deletion and raises
-an alert. A normal small, authenticated source deletion is mirrored.
+a populated library, or a suspicious shrink stops deletion and raises an alert.
+A normal small, authenticated source deletion is mirrored.
 
-Source authentication and inventory safety are more important than making a
-deletion immediate. A final-library deletion that would appear as an empty
-source requires an explicit static configuration acknowledgement before it can
-delete Wahoo routes.
+Source authentication and inventory safety take priority over making a deletion
+immediate. A final-library deletion that would appear as an empty source requires
+an explicit acknowledgement before it can delete Wahoo routes.
 
 Every run records a terminal outcome. Pushover receives:
 
@@ -781,8 +723,9 @@ FIT/Wahoo contract and never receives production secrets through CI.
 
 Docker images are published to GHCR from each default-branch change that alters
 an input of the image, and deployed to the Pi by immutable digest. They are not
-signed; the [delivery specification](delivery.md) states why and what stands in
-its place.
+signed; the [delivery specification](delivery.md) states what stands in place of
+a signature.
+
 The macOS MVP may build locally from the checkout; its configuration and Docker
 secret files remain outside Git.
 
@@ -801,17 +744,15 @@ secret files remain outside Git.
 - Lost state cannot cause deletion of unknown Wahoo routes.
 - The service logs and notifications do not reveal secrets or route details.
 - Every state-changing HTTP interaction additionally proves it came from this
-  service's own browser UI, so an authenticated session cannot be driven from
-  another site.
+  service's own browser UI.
 - Every HTTP interaction is identity-gated, to one principal, by a signature the
-  service verifies itself. Beyond OAuth, the only ones
-  that change anything are the synchronization triggers, the two schedule
-  switches, the reprocess request, which discards derived answers so they are
-  worked out again, the surface-enrichment retry, which reclassifies stored
-  routes without reading VeloPlanner or writing a Wahoo target, and the settings
-  write, which changes how the service behaves next and nothing it holds about a
-  route. Nothing on the surface edits route data, in this service or at the
-  source.
+  service verifies itself. Beyond OAuth, the only ones that change anything are
+  the synchronisation triggers, the two schedule switches, the reprocess request,
+  which discards derived answers so they are worked out again, the
+  surface-enrichment retry, which reclassifies stored routes without reading
+  VeloPlanner or writing a Wahoo target, and the settings write, which changes
+  how the service behaves next and nothing it holds about a route. Nothing on the
+  surface edits route data, in this service or at the source.
 - The browser UI renders stored routes on a map, is reachable only by
   the configured identity, and offers no affordance for editing a route. The
   settings it does offer are the service's own runtime settings and this
@@ -825,7 +766,7 @@ secret files remain outside Git.
   following it discloses neither the origin nor anything about the route on
   screen.
 - Route geometry is cached locally and rewritten only when a route's content
-  hash changes, so an unchanged library does not rewrite the cache on every run.
+  hash changes.
 - Losing the geometry cache degrades only the map view; it cannot affect sync
   safety or cause a destructive Wahoo operation.
 - The codebase has reproducible local and GitHub validation before an image is

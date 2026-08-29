@@ -2,16 +2,9 @@
 
 The words this project uses, and the one meaning each of them has.
 
-Terms here were previously defined only in module doc comments. Those comments
-are good individually, and they are exactly how `key`, `library`, `selection`,
-`window` and `account` each came to mean several things without anyone
-noticing — a term defined locally cannot see the other definition. This file is
-the one place that can.
-
-It describes the vocabulary the code should use. Where the code still disagrees,
-[naming-drift.md](naming-drift.md) records the disagreement and what the fix
-would be — an entry is deleted from it as the rename lands, so what remains
-there is the gap between this file and `main`.
+This file describes the vocabulary the code should use. Where the code
+disagrees, [naming-drift.md](naming-drift.md) records the disagreement and what
+the fix would be; an entry is deleted from it as the rename lands.
 
 Definitions that carry contractual weight live in
 [`docs/specs`](specs) and are linked from here rather than restated.
@@ -28,18 +21,15 @@ becomes one route here. A Komoot tour has no such division, so it becomes
 exactly one route (see [service.md](specs/service.md), "Source and course
 representation").
 
-This is the distinction that caused the most confusion, because both halves
-were once called `route`: the API type `Route` is the *piece*, and the id
-inside it names the *whole*. The whole is a **source route**, and the field is
-`sourceRouteId`.
+The API type `Route` is the *piece*; the id inside it names the *whole*. The
+whole is a **source route**, and the field is `sourceRouteId`.
 
 **stage** — VeloPlanner's word for a source route's ordered pieces, and the
 right word when talking about the provider or about storage. It is not the word
-for the thing a reader opens; that is a route. `stageOrder` keeps its name
-because it is an ordinal within a source route, which is precisely a stage
-concept, and so does the `:stage:` segment of a Wahoo external ID, which is
-frozen: ownership is matched against it, so respelling it would orphan the
-library rather than rename anything.
+for the thing a reader opens; that is a route. `stageOrder` keeps its name as an
+ordinal within a source route, which is a stage concept. The `:stage:` segment
+of a Wahoo external ID is frozen: ownership is matched against it, and
+respelling it would orphan the library.
 
 **course** — the FIT-file rendering of a route, and only that. It belongs to the
 encoder boundary and to Wahoo, never to the browser UI.
@@ -59,21 +49,21 @@ it. "Source" is the role; "provider" is the identity. A sentence about *which*
 service says provider; a sentence about *reading* says source.
 
 **target** — a Wahoo destination that routes are written to. This is the word on
-the wire and in types, and it is the word the interface should use as well. It
-is not a *slot* and not, on its own, an *account*.
+the wire, in types, and in the interface. It is not a *slot* and not, on its
+own, an *account*.
 
 **slot** — one entry in the configured `wahoo.targets` list, which is a name
 rather than a Wahoo identity. Naming a slot creates a target's durable record,
-and removing it leaves that record standing, so a slot and the target it names
-are not the same thing (see [configuration.md](specs/configuration.md)). This is
+and removing it leaves that record standing; a slot and the target it names are
+not the same thing (see [configuration.md](specs/configuration.md)). This is
 configuration's word alone; the wire and the interface say *target*.
 
 **account** — a set of credentials, and only that. A source has one (a library
 is read with a login of its own) and a target has one (an authorised Wahoo
-connection). Because both have accounts, "account" alone never identifies which
-side is meant: say *source account* or *target account*, or name the side
-directly. The destination itself is a *target*, in the interface as on the
-wire — "what the targets hold", not "what the accounts hold".
+connection). "Account" alone never identifies which side is meant: say *source
+account* or *target account*, or name the side directly. The destination itself
+is a *target*, in the interface as on the wire — "what the targets hold", not
+"what the accounts hold".
 
 ## The library
 
@@ -94,8 +84,8 @@ There is no *stage key*; it is the same string.
 
 **legend** — the colour reference for gradient bands and surface classes, which
 is also the control that filters by them. The component is `RouteLegend` and its
-swatch is a `LegendChip`; a legend is not a key, and `routeKey()` produces the
-other thing entirely.
+swatch is a `LegendChip`. A legend is not a key; `routeKey()` produces the other
+thing entirely.
 
 ## Reading a route
 
@@ -104,7 +94,7 @@ other thing entirely.
 is *picked*, or *open*, or *hovered*, or *focused*.
 
 **distance window** — a start and end distance along one route. Always written
-in full, because `window` on its own is the browser's.
+in full; `window` on its own is the browser's.
 
 **highlight** — a gradient band or surface class held above the others. Distinct
 from a selection: a highlight is a class of ground, a selection is a stretch of
@@ -112,7 +102,7 @@ one route.
 
 **moving time** — the predicted time in motion for a route, `movingSeconds` on
 the wire. `cumulativeSeconds` is the same quantity accumulated per coordinate.
-There is no separate "ride time" or "elapsed time" — those are the same thing
+There is no separate "ride time" or "elapsed time"; those are the same thing
 under other names.
 
 **ascent** — total metres climbed over a route, shown as "Ascent".

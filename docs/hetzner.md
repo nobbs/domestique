@@ -4,10 +4,9 @@ Domestique runs as one Docker container on a small always-on Linux VM in the
 Tailnet, and **pulls a published image by digest**. GitHub Actions publishes
 the image from the default branch, so this host never builds one.
 
-Building here was the earlier arrangement, and it is where this VM's memory
-pressure came from: a two-platform `pnpm install` and Go build does not fit
-alongside the running service on two vCPUs and 4 GB. A host that only pulls
-carries none of that load and needs no `dhi.io` credential.
+This host does not build. A two-platform `pnpm install` and Go build does not
+fit alongside the running service on two vCPUs and 4 GB, and a host that only
+pulls needs no `dhi.io` credential.
 
 The compose file, configuration, secret files, and pinned digest stay on the
 host, outside this repository.
@@ -23,21 +22,19 @@ flowchart LR
   app --> providers["VeloPlanner, Wahoo, Pushover"]
 ```
 
-This boundary is the reason the listener stays private at all. On a VM with a
-public IP it deserves extra care: the container must publish to `127.0.0.1`
-only, never to `0.0.0.0`.
-Confirm it after every start with `ss -tlnp`. Do not use Tailscale Funnel, and
-do not put a general-purpose reverse proxy in front of the service. The
-application authenticates every request by verifying a Cloudflare Access
-assertion, so a proxy cannot hand over the API by forwarding a header — but it
+On a VM with a public IP, the container must publish to `127.0.0.1` only, never
+to `0.0.0.0`. Confirm it after every start with `ss -tlnp`. Do not use Tailscale
+Funnel, and do not put a general-purpose reverse proxy in front of the service.
+The application authenticates every request by verifying a Cloudflare Access
+assertion, so a proxy cannot hand over the API by forwarding a header, but it
 can still expose an unauthenticated listener to the Internet.
 
 Reaching the service from outside the Tailnet has one supported form, described
-in [the Cloudflare Access guide](cloudflare-access.md). It satisfies the rule
-above rather than bending it: the proxy's origin is the Tailscale Service name,
-so Tailscale Serve stays in the path and strips the client-supplied header, and
-the application independently verifies a signed Cloudflare Access assertion. Any
-other proxy, or that same proxy pointed at `127.0.0.1`, hands over the API.
+in [the Cloudflare Access guide](cloudflare-access.md). The proxy's origin is
+the Tailscale Service name, so Tailscale Serve stays in the path and strips the
+client-supplied header, and the application independently verifies a signed
+Cloudflare Access assertion. Any other proxy, or that same proxy pointed at
+`127.0.0.1`, hands over the API.
 
 Wahoo never connects to this host. The browser follows Wahoo's authorisation
 redirect back to the callback URL after the user signs in, so the OAuth flow
@@ -81,8 +78,8 @@ and stored encrypted under this key.
 
 Add `secrets/pushover_application_token` and `secrets/pushover_user_key` too if
 this host should alert on a failed deployment. Those two are the deploy
-script's own — it has to be able to report a service that never started, which
-is exactly when it cannot read the service's database.
+script's own: it reports a service that never started, which is when it cannot
+read the service's database.
 
 **File ownership matters on Linux.** Compose bind-mounts each secret into the
 container, where the unprivileged runtime user reads it directly, so the files
@@ -97,14 +94,14 @@ chmod 0444 config.toml
 
 Keep the state encryption key together with the `domestique-state` volume.
 Losing either requires Wahoo reauthorisation and safe route adoption; there is
-intentionally no state backup or key-rotation workflow.
+no state backup or key-rotation workflow.
 
 ## Pull a published image
 
 Every default-branch change that touches an input of the image publishes one
 `linux/amd64` image to `ghcr.io/nobbs/domestique`. The package is private,
-so the host needs a **classic** personal access token scoped to `read:packages`
-— a fine-grained token cannot authenticate to ghcr.io:
+so the host needs a **classic** personal access token scoped to `read:packages`;
+a fine-grained token cannot authenticate to ghcr.io:
 
 ```sh
 read -rs GHCR_TOKEN
@@ -131,23 +128,23 @@ DOMESTIQUE_IMAGE=ghcr.io/nobbs/domestique@sha256:<digest>
 The compose file also passes `DOMESTIQUE_IMAGE` into the container, so the
 running service can report which image it is on its status page beside the
 commit it was built from. Only the digest is read from it; the registry and
-repository stay on the host. Nothing breaks without it — the service then names
+repository stay on the host. Nothing breaks without it; the service then names
 the commit alone.
 
-Pin that index digest — not the manifest digest under it, and not a tag. The
-push is an index even though it covers one architecture, because the bill of
-materials and the provenance travel beside the image as their own manifests, and
-reading a digest out of `docker images --digests` after a pull can hand you the
-image manifest alone, which leaves those behind. `latest` moves, so it names an
-image to look at, never one to deploy.
+Pin that index digest, not the manifest digest under it and not a tag. The push
+is an index even though it covers one architecture: the bill of materials and
+the provenance travel beside the image as their own manifests. Reading a digest
+out of `docker images --digests` after a pull can hand you the image manifest
+alone, which leaves those behind. `latest` moves, so it names an image to look
+at, never one to deploy.
 
-The image is not signed, so there is no signature to check: what makes a digest
+The image is not signed, so there is no signature to check. What makes a digest
 trustworthy is that it came from the run that built it on the default branch of
 the private repository. Do not accept a digest from any other source.
-[The delivery specification](specs/delivery.md) states why nothing is signed and
-what stands in its place. The image does carry BuildKit-generated SBOM and
-provenance attestations, which are worth inspecting when investigating a
-supply-chain change:
+[The delivery specification](specs/delivery.md) states what stands in place of a
+signature. The image does carry BuildKit-generated SBOM and provenance
+attestations, which are worth inspecting when investigating a supply-chain
+change:
 
 ```sh
 IMAGE=ghcr.io/nobbs/domestique@sha256:<digest>
@@ -168,10 +165,10 @@ ss -tlnp | grep -E '8080|8081'
 ```
 
 The readiness probe is the second port, published to loopback like the first and
-deliberately never given to `tailscale serve`: it says the service can read the
-state it was configured with, while `/healthz` says only that the process
-answers HTTP. Readiness contacts nothing outside this host, and a target still
-waiting for its one-time authorisation does not make it unready.
+never given to `tailscale serve`. It reports that the service can read the state
+it was configured with, while `/healthz` reports only that the process answers
+HTTP. Readiness contacts nothing outside this host, and a target still waiting
+for its one-time authorisation does not make it unready.
 
 The last command must show `127.0.0.1:8080` and `127.0.0.1:8081`, and nothing
 bound to a public address. The named state volume is initialised from the image
@@ -182,12 +179,12 @@ start — it logs only errors — so a running container with no restarts and a
 passing health probe is the expected quiet result.
 
 `compose.yml` also sets `stop_grace_period`, which has to stay longer than the
-shutdown budget in `cmd/domestique/main.go`: Docker's default of ten seconds is
+shutdown budget in `cmd/domestique/main.go`. Docker's default of ten seconds is
 shorter than that budget and kills the container part-way through a drain. A
-host set up before this line existed still has the older file — a deploy
-replaces the image and never the compose file — so copy the current
-`compose.example.yml` over it, or add the one line, and recreate the service
-once with `docker compose --env-file .env up -d`.
+deploy replaces the image and never the compose file, so a host carrying an
+older `compose.yml` needs the current `compose.example.yml` copied over it, or
+the one line added, and the service recreated once with
+`docker compose --env-file .env up -d`.
 
 ## Publish it through Tailscale
 
@@ -237,24 +234,24 @@ nothing is retyped either.
 
 3. Apply the ownership rules above to the copied secrets, then start the
    container and confirm `/v1/status` reports every target as `authorized`.
-   That is the proof the encryption key and database arrived intact; a target
+   That is the proof the encryption key and database arrived intact. A target
    that reports otherwise means the key and the database no longer match, and
    the run should be stopped rather than left to reconcile against half the
    state.
 4. Withdraw the service from the old host with `tailscale serve drain` followed
    by `tailscale serve clear`, then advertise it here. Only one host should
-   advertise the service, because two would run the sync loop against the same
-   Wahoo accounts.
+   advertise the service; two would run the sync loop against the same Wahoo
+   accounts.
 
-Leave the old host's volume in place until the new host has completed a sync;
-it is the rollback path.
+Leave the old host's volume in place until the new host has completed a sync.
+It is the rollback path.
 
 ## Deploy from CI
 
 Merging to the default branch moves this host onto the image that merge
-published. The `deploy` job joins the tailnet as an ephemeral `tag:github` node
-— authenticated by workload identity federation, so no tailnet credential is
-stored in GitHub — and runs one command over Tailscale SSH:
+published. The `deploy` job joins the tailnet as an ephemeral `tag:github` node,
+authenticated by workload identity federation, so no tailnet credential is
+stored in GitHub, and runs one command over Tailscale SSH:
 
 ```sh
 sudo /usr/local/lib/domestique/domestique-deploy.sh sha256:<digest>
@@ -265,15 +262,14 @@ in this repository. It pulls the digest, records the one being replaced, pins
 the new one in `.env`, restarts only the `domestique` service, and waits for
 `/healthz` and then `/readyz`. If the new image does not answer within a minute,
 cannot read its state, or publishes anything other than a loopback port, the
-script restores the previous digest,
-restarts, and sends a Pushover alert; the CI job fails either way. Nothing in
-any path removes the state volume.
+script restores the previous digest, restarts, and sends a Pushover alert; the
+CI job fails either way. Nothing in any path removes the state volume.
 
 **The digest is the only thing CI supplies about the image.** The reference is
 composed on the host from its own configured repository, so the workflow cannot
-point this host at another registry, another repository, or a mutable tag —
-`latest` is still never deployed. The account CI logs in as is unprivileged, is
-not in the `docker` group, and may run exactly this one script as root.
+point this host at another registry, another repository, or a mutable tag;
+`latest` is never deployed. The account CI logs in as is unprivileged, is not in
+the `docker` group, and may run exactly this one script as root.
 
 That script is also what CI updates. The job sends the repository's copy over
 the same connection first:
@@ -285,21 +281,17 @@ sudo /usr/local/lib/domestique/domestique-deploy.sh --install-self \
 
 The host refuses anything that is not a bash script that parses, replaces its
 copy by renaming a temporary file over it, and logs `deploy script is already
-current` without touching anything when the two already match. This exists
-because the copy here fell three changes behind the
-repository — including a readiness gate and a rollback guard that read as
-present in the tree and were absent where they ran.
+current` without touching anything when the two already match.
 
 A host whose copy predates `--install-self` does not understand the flag, so the
 step fails and the deploy behind it never runs. Install the script by hand once,
 as below; from then on CI keeps it current.
 
-**It also means a merge to the default branch runs code as root on this host,**
-not only as the unprivileged container the image starts. The deploy account
-still cannot write the script itself, and cannot run anything else through
-`sudo`; what it can do is hand the script a replacement, which is the same
-trust as merging. If that trade is not wanted, drop the install step from the
-`deploy` job and reinstall by hand — the rest of this page still applies.
+**A merge to the default branch therefore runs code as root on this host,** not
+only as the unprivileged container the image starts. The deploy account cannot
+write the script itself and cannot run anything else through `sudo`; what it can
+do is hand the script a replacement. To avoid that, drop the install step from
+the `deploy` job and reinstall by hand; the rest of this page still applies.
 
 Prepare the host once:
 
@@ -316,11 +308,11 @@ chmod 600 .env   # it carries the tunnel's Tailscale auth key
 tailscale set --ssh
 ```
 
-The script must stay owned by root and unwritable by `domestique-deploy`, so
-that the only way that account can change it is the `--install-self` path above,
-where the content is checked before it lands. After this one install, CI keeps
-the copy current; the `install` command above is still how an operator repairs a
-host whose script no longer runs.
+The script must stay owned by root and unwritable by `domestique-deploy`. The
+only way that account can change it is the `--install-self` path above, where
+the content is checked before it lands. After this one install, CI keeps the
+copy current; the `install` command above is how an operator repairs a host
+whose script no longer runs.
 
 The tailnet side lives in the `nobbs/infrastructure` repository, in
 `stacks/tailscale`: policy rules letting `tag:github` reach `tag:domestique` on
@@ -333,17 +325,17 @@ client ID and audience to set here.
 GitHub needs a `production` environment and four repository variables, none of
 them secret: `TS_DEPLOY_CLIENT_ID` and `TS_DEPLOY_AUDIENCE` from that output,
 `DOMESTIQUE_HOST` for this host's fully-qualified MagicDNS name, and
-`DOMESTIQUE_DEPLOY_USER`. The environment is not only a deployment log: because
-the `deploy` job names it, the job's OIDC subject becomes
+`DOMESTIQUE_DEPLOY_USER`. The `deploy` job names the environment, so the job's
+OIDC subject is
 
 ```text
 repo:nobbs@203061/domestique@1336140013:environment:production
 ```
 
-which is exactly what the federated identity matches on. Renaming or removing
-the environment stops the deploy from authenticating at all. The numeric owner
-and repository IDs are GitHub's immutable subject format, the default for
-repositories created after 2026-07-15; the identity has to be updated with the
+which is what the federated identity matches on. Renaming or removing the
+environment stops the deploy from authenticating at all. The numeric owner and
+repository IDs are GitHub's immutable subject format, the default for
+repositories created after 2026-07-15. The identity has to be updated with the
 current prefix if this repository is ever transferred:
 
 ```sh
@@ -375,14 +367,14 @@ broke — resolve the digest of a published image as above, point
 named state volume stays in place.
 
 Keep the previous digest written down. A digest stays pullable after its tag has
-moved on, so the rollback path survives even once the local copy is gone — but
-only if the value was recorded somewhere.
+moved on, so the rollback path survives the local copy being gone, provided the
+value was recorded somewhere.
 
-A host that used to build has disk to reclaim. The deploy script prunes
-published images other than the running and the rollback digest, but it knows
-nothing about locally built ones: remove the stale `domestique:<git-sha>` images
-with `docker image rm`, then run `docker builder prune -af` to clear the BuildKit
-cache those builds accumulated. Leave the `alpine` image in place; the migration
-recipe above uses it. Never run `docker system prune --volumes`.
+A host that has built images locally has disk to reclaim. The deploy script
+prunes published images other than the running and the rollback digest, and
+knows nothing about locally built ones: remove the stale `domestique:<git-sha>`
+images with `docker image rm`, then run `docker builder prune -af` to clear the
+BuildKit cache those builds accumulated. Leave the `alpine` image in place; the
+migration recipe above uses it. Never run `docker system prune --volumes`.
 
 Do not run `docker compose down -v`, which deletes the state volume.

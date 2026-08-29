@@ -2,12 +2,12 @@
 
 **Status:** accepted
 
-This is a subordinate specification to [the service contract](service.md).
-It defines the Go module layout, package ownership, manually wired dependencies,
+This specification is subordinate to [the service contract](service.md). It
+defines the Go module layout, package ownership, manually wired dependencies,
 and implementation sequence. It does not introduce a framework, a DI container,
 or a public library API.
 
-## Architectural decision
+## Architecture
 
 Domestique is a small private HTTP service with a single binary. It uses a
 right-sized ports-and-adapters style rather than a generic clean-architecture
@@ -76,8 +76,8 @@ private to this service.
     └── specs/
 ~~~
 
-The browser UI is compiled into the binary with `go:embed`, so the service ships
-as one artefact and the API and UI cannot drift apart in a deployment.
+The browser UI is compiled into the binary with `go:embed`. The service ships as
+one artefact, and the API and UI cannot drift apart in a deployment.
 `internal/webui/app/dist` is build output; only its placeholder is tracked.
 
 There is no public pkg directory, internal/common package, interfaces package,
@@ -148,20 +148,17 @@ type Notifier interface {
 ~~~
 
 Within sync, the reporter consumes a runner seam with one method per half plus
-the enrichment pass, rather than one method taking a phase argument. The halves
-differ in what they contact and what they may not do, so the type system, not a
-switch statement, is what keeps a caller from asking for a half that does not
+the enrichment pass, rather than one method taking a phase argument. The type
+system, not a switch statement, is what refuses a caller a half that does not
 exist.
 
-`Source.Inventory` returns routes already carrying their own `route.Provider`,
-so a second provider is a new adapter satisfying this same interface with its
-own provider value — not a change to the interface, the identity type, or any
-package that consumes a `route.Key`.
+`Source.Inventory` returns routes already carrying their own `route.Provider`. A
+second provider is a new adapter satisfying this same interface with its own
+provider value; it requires no change to the interface, the identity type, or
+any package that consumes a `route.Key`.
 
-The schedule package is unchanged by the split: it still starts one run per tick
-through a one-method interface. Which halves that run performs is a policy the
-sync package owns, because it is the package that knows what a half costs and
-what it may not skip.
+The schedule package starts one run per tick through a one-method interface.
+Which halves that run performs is a policy the sync package owns.
 
 The OAuth package owns separate, narrow Wahoo and state interfaces for
 authorisation state. It does not reuse the sync interfaces merely because SQLite
@@ -174,22 +171,21 @@ It also declares a two-method `Assets` interface for serving the browser bundle,
 so it stays independent of how that bundle is built or embedded, and a
 two-method settings seam — read the live values, replace them whole — satisfied
 by `runtimeconfig.Current`. The handler reads through that seam on every request
-rather than holding a copy, because an edit has to reach the page's
-configuration and the Content-Security-Policy header at once.
+rather than holding a copy. An edit reaches the page's configuration and the
+Content-Security-Policy header together.
 
-`runtimeconfig` declares its own one-pair store interface for the same reason,
-satisfied by `*sqlite.Store`: the settings package owns the rules, and the
-adapter owns the rows.
+`runtimeconfig` declares its own one-pair store interface, satisfied by
+`*sqlite.Store`: the settings package owns the rules, and the adapter owns the
+rows.
 
 Read models that cross the persistence boundary — the route summary served by
-the routes endpoints — are declared in `route`, not exported from `sqlite`. That
-keeps the arrow one-way: `httpapi` and `sqlite` share a value vocabulary without
+the routes endpoints — are declared in `route`, not exported from `sqlite`. The
+arrow stays one-way: `httpapi` and `sqlite` share a value vocabulary without
 `httpapi` importing an adapter.
 
 ## Browser UI composition
 
-The TypeScript application is component-driven so later features extend it
-rather than rewrite it:
+The TypeScript application is component-driven:
 
 | Directory | Owns |
 | --- | --- |
@@ -200,7 +196,7 @@ rather than rewrite it:
 
 `components` must not import from `features`. Each feature owns its own data
 fetching. `src/api` is the single place that knows URL shapes, and it validates
-every response so a drift from the Go DTOs fails at the boundary with a clear
+every response, so a drift from the Go DTOs fails at the boundary with a clear
 error rather than surfacing as `undefined` inside a component.
 
 Ordinary action buttons come from the shared `components/Button` rather than
@@ -216,25 +212,24 @@ without creating an import cycle; ordinary constructor assignment is sufficient.
 
 ## Tier ownership
 
-Package ownership settles where a computation lives within a tier. This settles
-which tier it belongs to.
+Package ownership settles where a computation lives within a tier. This section
+settles which tier it belongs to.
 
 An answer that depends only on the route belongs to Go. It is the same for every
-viewer, every session and every device, so it can be computed once and stored:
+viewer, every session and every device, and it is computed once and stored:
 route distance, ascent and maximum gradient in `Summary`; surface classification
 in `surface.Match`, which needs the OpenStreetMap index; the elevation
 normalisation the FIT encoder exports.
 
-An answer that depends on the person reading belongs to the browser. There is no
-single answer to store, because it differs by reader, by pointer position or by
-preference: the gradient bands and the sampled profile; `surfaceKindAt`, which
+An answer that depends on the person reading belongs to the browser. It differs
+by reader, by pointer position, or by preference, and there is no single answer
+to store: the gradient bands and the sampled profile; `surfaceKindAt`, which
 answers what the cursor is over; the library's text filter; the theme and unit
 preferences kept per browser.
 
-Note that `surface` determines what the ground is and `lib/surface.ts` presents
-what was determined. The same subject divides cleanly along this line, and so
-does gradient: Go computes the stored maximum, the browser computes the bands it
-is drawn in.
+`surface` determines what the ground is; `lib/surface.ts` presents what was
+determined. Gradient divides the same way: Go computes the stored maximum, the
+browser computes the bands it is drawn in.
 
 The rule reads a computation's inputs, not the shape of its output. A function
 returning coordinates still belongs to the browser when which coordinates it
@@ -245,8 +240,7 @@ Two conditions override it:
 - **The boundary pulls work backwards.** Work needing a credential, or that
   would add a host the page itself reaches, belongs to Go however
   reader-dependent it is. Adopting an outbound service to answer a per-reader
-  question is a deliberate exception to this section, and the issue adopting it
-  says so.
+  question is an exception to this section and is recorded as one.
 - **Interaction pulls work forwards.** Route-only arithmetic that has to run on
   every hover or drag frame is implemented in the browser as well.
   `haversineMetres` and cumulative distance therefore exist on both sides: the
@@ -255,55 +249,35 @@ Two conditions override it:
   beside it. A second implementation without that agreement is a defect, not a
   mirror.
 
-What crosses the boundary follows from the rule: route-shaped values do,
-reader-shaped values do not. Coordinates, distances and timestamps are sent;
-rider mass, sustained power, unit preference, theme and zoom are not, and no
-endpoint accepts them.
+Route-shaped values cross the boundary; reader-shaped values do not. Coordinates,
+distances and timestamps are sent. Rider mass, sustained power, unit preference,
+theme and zoom are not, and no endpoint accepts them.
 
-### Predicted moving time is a deliberate departure
+### Predicted moving time
 
-A route's predicted moving time — `internal/ridemodel`, computed once and
-stored on `Summary` in the manner of surface classification — depends on rider
-mass and sustained power, which by the rule above are reader-shaped and belong
-to the browser. It is stored in Go instead, and the reason is worth recording
-rather than leaving as a contradiction between this document and the code.
+A route's predicted moving time is computed in `internal/ridemodel`, once, and
+stored on `Summary`, in the manner of surface classification. It depends on
+rider mass and sustained power, which the rule above places in the browser.
 
-The rule sends reader-dependent work to the browser *because* there is no
-single answer to store: an earlier proposal, #136, asked the operator to type
-a flat-road speed, a mass, and a sustained power into `localStorage`, and a
-different reader — or the same reader on a different device — would type
-different ones. That premise does not hold once there is one configured
-hybrid profile — fixed physical priors averaged with a route correction
-calibrated once against a corpus of recorded rides ([#239](https://github.com/nobbs/domestique/issues/239))
-— rather than a value each reader guesses: there is one operator, one profile,
-and therefore exactly one answer per route, which is precisely the shape of
-thing this section already sends to Go. The conclusion moves because the
-premise does, not because it is being worked around.
+It belongs to Go because there is exactly one answer per route to store. The
+inputs come from one configured hybrid profile — fixed physical priors averaged
+with a route correction calibrated once against a corpus of recorded rides —
+rather than from a value each reader supplies.
 
-The guarantee the rule exists to protect survives intact by a different
-route: no endpoint accepts a rider-shaped value. The profile arrives as a
-setting naming a file on the host — `ridemodel.coefficients_file` — never as a
-request field, so
-"rider mass, sustained power... are not [sent], and no endpoint accepts them"
-remains true of every HTTP request this service answers. What changed is only
-where the one answer the profile produces is computed and kept.
+No endpoint accepts a rider-shaped value. The profile arrives as a setting
+naming a file on the host, `ridemodel.coefficients_file`, never as a request
+field.
 
-This supersedes #136's placement. A later reader finding both documents
-should trust this one: the moving-time model's physics is substantially the
-same forward solve and descent cap #136 specified. Two deliberate changes
-came later: drag, rolling resistance and power are now settled reference
-values rather than fitted per-deployment from coasting and climbing samples
-the corpus could not reliably identify, and a two-parameter route correction
-carries what the corpus can — see #239 and #240. Only where it runs and where
-its inputs come from otherwise changed.
+Drag, rolling resistance and power are settled reference values rather than
+values fitted per deployment; a two-parameter route correction carries what the
+corpus can identify.
 
-The same boundary holds for the profile's measured unseen-route error
-([#217](https://github.com/nobbs/domestique/issues/217)): `internal/httpapi`
-reads it once, straight off the loaded `ridemodel.Coefficients`, and attaches
-it to every route response that carries a prediction. It is metadata about
-the frozen profile, not a value this service computes at serve time —
-`dev/fitter -recalibrate` is what measures it, the same way it measures
-`seconds_per_km` and `seconds_per_ascent_m`.
+The same boundary holds for the profile's measured unseen-route error.
+`internal/httpapi` reads it once, straight off the loaded
+`ridemodel.Coefficients`, and attaches it to every route response that carries a
+prediction. It is metadata about the frozen profile, not a value this service
+computes at serve time; `dev/fitter -recalibrate` measures it, the same way it
+measures `seconds_per_km` and `seconds_per_ascent_m`.
 
 ## Dependency direction
 
@@ -337,10 +311,10 @@ flowchart LR
 ~~~
 
 Only main imports an application use case and its concrete adapters together.
-The readiness probe has one dependency, the local state it reads, so nothing it
-is given could reach a provider. No adapter imports sync, oauth, schedule,
-httpapi, or readiness. This keeps dependency arrows one-way and prevents
-adapter-to-adapter coupling.
+The readiness probe has one dependency, the local state it reads; nothing it is
+given can reach a provider. No adapter imports sync, oauth, schedule, httpapi,
+or readiness. Dependency arrows stay one-way, and adapters do not couple to each
+other.
 
 ## Composition and lifecycle
 
@@ -350,22 +324,21 @@ Main performs the following in order:
 2. Open SQLite, run migrations, and create the concrete Store.
 3. Load and validate the stored runtime settings and credentials into the live
    snapshot every component below reads through a function rather than a held
-   value, so an edit reaches the next run or the next request instead of the
-   next restart. Settings the migrations seeded are checked here by the rules
-   that guard the write path, so a hand-edited database fails startup naming the
+   value. An edit reaches the next run or the next request rather than the next
+   restart. Settings the migrations seeded are checked here by the rules that
+   guard the write path, so a hand-edited database fails startup naming the
    setting.
 4. Construct the clients whose configuration cannot change: FIT, Open-Meteo,
    and Pushover, the last reading its origin and credentials through the
    snapshot on each send.
 
-   The source and Wahoo clients are not among them. They are built from the
-   snapshot per run, by providers `main` owns, because everything they need is
-   an editable setting: the Wahoo client is rebuilt only when those settings
-   actually change, since it carries the request budget observed from Wahoo's
-   own responses and a fresh one would spend real requests rediscovering it.
-   A provider whose settings are not filled in yet builds nothing and reports
-   the run not ready — which is what a service nobody has configured does, and
-   is not a startup failure.
+   The source and Wahoo clients are not among them. Everything they need is an
+   editable setting, so they are built from the snapshot per run, by providers
+   `main` owns. The Wahoo client is rebuilt only when those settings change; it
+   carries the request budget observed from Wahoo's own responses, and a fresh
+   one spends real requests rediscovering it. A provider whose settings are not
+   filled in yet builds nothing and reports the run not ready. That is not a
+   startup failure.
 5. Construct concrete sync and OAuth services from their consumer interfaces.
 6. Construct the scheduler and Tailnet-gated HTTP handler.
 7. Start the HTTP server and scheduler under one signal-derived context.
