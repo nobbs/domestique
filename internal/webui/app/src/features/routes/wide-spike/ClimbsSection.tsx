@@ -46,6 +46,19 @@ import { cellAt, clockAt } from "./shared";
  * lets the list show most routes whole without scrolling at all.
  */
 const ROW_HEIGHT = 28;
+
+/**
+ * The row's columns: ordinal, length, gradient, ascent, then where and when,
+ * then the weather.
+ *
+ * Fixed tracks rather than a flex row, so a figure sits under the figure above
+ * it. Laid out by content, each row starts its second fact wherever its first
+ * one happened to end — and the list stops being readable down a column, which
+ * is the only way anyone reads seven of anything. The four measured columns
+ * are right-aligned for the same reason: it is the digits that have to line
+ * up, not the words.
+ */
+const ROW_COLUMNS = "0.75rem 3.5rem 2.5rem 3.5rem minmax(0,1fr) auto";
 const VISIBLE_ROWS = 6;
 
 export function ClimbsSection({
@@ -112,23 +125,28 @@ export function ClimbsSection({
                 <button
                   type="button"
                   onClick={() => onSelect(middle)}
-                  className="flex size-full items-center gap-2 rounded-lg px-1.5 text-left hover:bg-[var(--base)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent)]"
+                  className="grid size-full items-center gap-2 rounded-lg px-1.5 text-left hover:bg-[var(--base)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent)]"
+                  style={{ gridTemplateColumns: ROW_COLUMNS }}
                 >
-                  <span className="w-3 shrink-0 text-xs font-semibold tabular-nums">
+                  <span className="text-right text-xs font-semibold tabular-nums">
                     {/* The ordinal the chart's own bracket carries. */}
                     {index + 1}
                   </span>
-                  <span className="shrink-0 text-xs tabular-nums">
-                    {formatDistance(climb.distanceMetres, unitSystem)} at{" "}
+                  <span className="text-right text-xs tabular-nums">
+                    {formatDistance(climb.distanceMetres, unitSystem)}
+                  </span>
+                  <span className="text-right text-xs tabular-nums">
                     {formatGradient(climb.averageGradePercent)}
                   </span>
+                  <span className="text-right text-xs text-[var(--ink-2)] tabular-nums">
+                    {formatAscent(climb.ascentMetres, unitSystem)}
+                  </span>
                   <span className="truncate text-[11px] text-[var(--ink-2)] tabular-nums">
-                    {formatAscent(climb.ascentMetres, unitSystem)} · from{" "}
-                    {formatDistance(climb.startMetres, unitSystem)}
+                    from {formatDistance(climb.startMetres, unitSystem)}
                     {cell === null ? null : ` · ${clockAt(cell.sample.arrivalAt)}`}
                   </span>
                   {cell === null ? null : (
-                    <span className="ml-auto flex shrink-0 items-center gap-1 text-xs tabular-nums">
+                    <span className="flex items-center justify-end gap-1 text-xs tabular-nums">
                       {Glyph === null ? null : <Glyph size={14} stroke={1.8} aria-hidden="true" />}
                       <span className="font-semibold">
                         {Math.round(cell.point.temperatureCelsius)}°
