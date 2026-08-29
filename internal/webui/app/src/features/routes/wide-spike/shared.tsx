@@ -59,6 +59,27 @@ export function Sheet({ children }: { children: ReactNode }) {
   );
 }
 
+/**
+ * The reading nearest a point on the route, which is the weather met there.
+ *
+ * The join two of these alternatives are built on. A climb has a distance and
+ * the forecast has a distance, so "col two, half past eleven, twenty degrees
+ * and clouding over" is a sentence this service can already assemble and
+ * currently never does.
+ */
+export function cellAt(cells: Cell[], metres: number): Cell | null {
+  return cells.reduce<Cell | null>((nearest, cell) => {
+    if (nearest === null) {
+      return cell;
+    }
+
+    return Math.abs(cell.sample.distanceMetres - metres) <
+      Math.abs(nearest.sample.distanceMetres - metres)
+      ? cell
+      : nearest;
+  }, null);
+}
+
 /** `14:20`, in the reader's own zone, which is where they will be riding. */
 export function clockAt(at: Date): string {
   return at.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });

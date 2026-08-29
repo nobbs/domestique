@@ -39,6 +39,7 @@ import { MapPane } from "../panel-spike/MapPane";
 import { SpikePanel } from "../panel-spike/SpikePanel";
 import { SelectorSheet } from "./SelectorSheet";
 import { SplitSheet } from "./SplitSheet";
+import { StackClimbsSheet } from "./StackClimbsSheet";
 import { StackSheet } from "./StackSheet";
 import type { SheetProps } from "./shared";
 import { TimelineSheet } from "./TimelineSheet";
@@ -148,6 +149,12 @@ const SHEETS = [
     Sheet: SplitSheet,
   },
   {
+    key: "stack-climbs",
+    name: "5 — Stack, with what happens",
+    note: "the axis from 2, the climbs-and-weather join from 3, as a lane",
+    Sheet: StackClimbsSheet,
+  },
+  {
     key: "timeline",
     name: "4 — Timeline",
     note: "the same ride against the clock rather than the tape",
@@ -180,6 +187,7 @@ type Story = StoryObj<typeof meta>;
 export const SelectorOne: Story = { render: one("selector") };
 export const StackTwo: Story = { render: one("stack") };
 export const SplitThree: Story = { render: one("split") };
+export const StackClimbsFive: Story = { render: one("stack-climbs") };
 export const TimelineFour: Story = { render: one("timeline") };
 
 /** All four, for the judgement that needs them next to each other. */

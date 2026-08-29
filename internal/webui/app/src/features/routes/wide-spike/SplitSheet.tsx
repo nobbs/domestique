@@ -18,27 +18,12 @@
  */
 
 import { ElevationProfile } from "../../../components/route/ElevationProfile";
-import type { Cell } from "../../../components/route/forecast-spike/cells";
 import { formatAscent, formatDistance, formatGradient } from "../../../lib/format";
 import { PADDING } from "../../../lib/plotAxis";
 import { weatherIcon } from "../../../lib/weather";
 import { groundSegments, Ribbon } from "../panel-spike/shared";
 import type { SheetProps } from "./shared";
-import { clockAt, RideWindow, Sheet } from "./shared";
-
-/** The reading nearest a point on the route, which is the weather a rider meets there. */
-function cellAt(cells: Cell[], metres: number): Cell | null {
-  return cells.reduce<Cell | null>((nearest, cell) => {
-    if (nearest === null) {
-      return cell;
-    }
-
-    return Math.abs(cell.sample.distanceMetres - metres) <
-      Math.abs(nearest.sample.distanceMetres - metres)
-      ? cell
-      : nearest;
-  }, null);
-}
+import { cellAt, clockAt, RideWindow, Sheet } from "./shared";
 
 export function SplitSheet({
   route,
