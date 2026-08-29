@@ -55,9 +55,18 @@ import {
  */
 export type MixFigure = (entry: MixEntry, unitSystem: UnitSystem, column: MixEntry[]) => string;
 
-const COLUMN_HEIGHT = 132;
-/** A name at eleven pixels, with enough air not to touch the one below it. */
-const LABEL_HEIGHT = 17;
+const COLUMN_HEIGHT = 104;
+/**
+ * A name at eleven pixels, with just enough air not to touch the one below it.
+ *
+ * These two set how spread out the column looks, and both were generous. The
+ * labels are only pushed apart where they would collide, so the column's own
+ * height is what decides the rest — a tall one spaces the big classes right
+ * out and leaves the picture looking airier than it is dense. Six classes need
+ * ninety pixels to stack without touching, so a hundred and four leaves the
+ * proportional spread somewhere to happen and nothing more.
+ */
+const LABEL_HEIGHT = 15;
 const BAR_WIDTH = 8;
 const LEADER_WIDTH = 12;
 
