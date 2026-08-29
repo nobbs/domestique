@@ -157,24 +157,39 @@ export function StackClimbsSheet({
          * Absolute rather than a max-height, because the height to match is
          * the lanes' own and that is not a number anything here knows.
          */}
-        {climbsOpen ? (
-          <div className="relative w-[16.5rem] shrink-0 border-l border-[var(--rule)] pl-4">
-            <div className="absolute inset-y-0 right-0 left-4 overflow-y-auto">
-              <h3 className="mb-1.5">
-                <button
-                  type="button"
-                  aria-expanded
-                  onClick={() => setClimbsOpen(false)}
-                  className="flex items-center gap-1 text-[11px] font-semibold tracking-[0.06em] text-[var(--ink-2)] uppercase hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
-                >
-                  <IconChevronsRight
-                    size={12}
-                    stroke={2}
-                    aria-hidden="true"
-                    className="rotate-90"
-                  />
-                  What happens
-                </button>
+        {/*
+         * The rule between the lanes and the list, with the control sitting on
+         * it. The divider is the seam the column folds along, so the handle
+         * belongs on the seam rather than inside either side — in the heading
+         * it disappeared along with the thing it opens, which put the way back
+         * somewhere else entirely.
+         *
+         * A column of its own, so it stays put whether the list is there or
+         * not: the rule is the one part of this that does not move.
+         */}
+        <div className="relative w-px shrink-0 self-stretch bg-[var(--rule)]">
+          <button
+            type="button"
+            aria-expanded={climbsOpen}
+            aria-label={climbsOpen ? "Hide what happens" : `Show ${climbs.length} climbs`}
+            title={climbsOpen ? "Hide what happens" : "What happens"}
+            onClick={() => setClimbsOpen(!climbsOpen)}
+            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border border-[var(--rule)] bg-[var(--panel)] p-0.5 text-[var(--ink-2)] hover:bg-[var(--base)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)]"
+          >
+            {/* Pointing the way the column will go: right to push it away, left to pull it back. */}
+            <IconChevronsRight
+              size={12}
+              stroke={2}
+              aria-hidden="true"
+              className={climbsOpen ? "transition-transform" : "rotate-180 transition-transform"}
+            />
+          </button>
+        </div>
+        {!climbsOpen ? null : (
+          <div className="relative w-[16.5rem] shrink-0">
+            <div className="absolute inset-0 overflow-y-auto">
+              <h3 className="mb-1.5 text-[11px] font-semibold tracking-[0.06em] text-[var(--ink-2)] uppercase">
+                What happens
               </h3>
               {climbs.length === 0 ? (
                 <p className="text-xs text-[var(--ink-2)]">
@@ -230,22 +245,6 @@ export function StackClimbsSheet({
                 </ol>
               )}
             </div>
-          </div>
-        ) : (
-          // Folded, the column becomes the control that brings it back, and
-          // the lanes take the width it was using — which is the whole reason
-          // a reader would fold it.
-          <div className="shrink-0 border-l border-[var(--rule)] pl-1">
-            <button
-              type="button"
-              aria-expanded={false}
-              aria-label={`Show ${climbs.length} climbs`}
-              title="What happens"
-              onClick={() => setClimbsOpen(true)}
-              className="rounded p-1 text-[var(--ink-2)] hover:bg-[var(--base)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)]"
-            >
-              <IconChevronsRight size={14} stroke={2} aria-hidden="true" className="rotate-180" />
-            </button>
           </div>
         )}
       </div>
