@@ -7,6 +7,20 @@ import (
 	"time"
 )
 
+// admission is why an attempt may or may not start. Telling the two refusals
+// apart is what lets a chain coalesce onto work already happening while still
+// recording one that genuinely lost a resource.
+type admission int
+
+const (
+	// admitStarted means the attempt has taken what it needs.
+	admitStarted admission = iota
+	// admitWorking means this exact invocation is already being worked on.
+	admitWorking
+	// admitHeld means a resource or a concurrency slot was not free.
+	admitHeld
+)
+
 // maxChainDepth bounds how far one attempt's consequences may reach. Every
 // chain the service registers is one or two links long; this is the backstop
 // behind the set of what a chain has already run.

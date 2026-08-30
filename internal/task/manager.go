@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"maps"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -117,8 +116,8 @@ func (m *Manager) Trigger(ctx context.Context, name, argument string) bool {
 		return false
 	}
 	invocation := Invocation{Task: name, Argument: argument, Trigger: TriggerManual}
-	release, admitted := m.admit(entry, invocation)
-	if !admitted {
+	release, outcome := m.admit(entry, invocation)
+	if outcome != admitStarted {
 		m.refused(ctx, entry, invocation)
 
 		return false
@@ -193,8 +192,8 @@ func (m *Manager) scheduled(ctx context.Context, entry *registered) {
 		return
 	}
 	invocation := Invocation{Task: entry.definition.Name, Trigger: TriggerSchedule}
-	release, admitted := m.admit(entry, invocation)
-	if !admitted {
+	release, outcome := m.admit(entry, invocation)
+	if outcome != admitStarted {
 		m.refused(ctx, entry, invocation)
 
 		return
@@ -205,6 +204,9 @@ func (m *Manager) scheduled(ctx context.Context, entry *registered) {
 // perform runs one attempt and then whatever it asked should follow. The
 // resources are released before the chain starts, because a link wanting what
 // its parent held would otherwise be refused by it every time.
+//
+// One chain shares one set of what it has run. A chain is sequential, so
+// siblings see each other rather than each starting from its parent's copy.
 func (m *Manager) perform(
 	ctx context.Context,
 	entry *registered,
@@ -213,14 +215,16 @@ func (m *Manager) perform(
 	visited map[string]struct{},
 	depth int,
 ) {
+	if visited == nil {
+		visited = make(map[string]struct{}, 1)
+	}
+	visited[invocationKey(invocation)] = struct{}{}
+
 	result := m.attemptAndRelease(ctx, entry, invocation, release)
 	if len(result.Next) == 0 {
 		return
 	}
-	followed := make(map[string]struct{}, len(visited)+1)
-	maps.Copy(followed, visited)
-	followed[invocationKey(invocation)] = struct{}{}
-	m.chain(ctx, result.Next, followed, depth+1)
+	m.chain(ctx, result.Next, visited, depth+1)
 }
 
 // attemptAndRelease runs one attempt and gives back what it held, whatever
@@ -249,7 +253,9 @@ func (m *Manager) chain(ctx context.Context, links []Link, visited map[string]st
 }
 
 // linked runs one chain link. Work already under way is left to finish rather
-// than refused: a link asking for what is happening anyway has its answer.
+// than refused: a link asking for what is happening anyway has its answer, and
+// admission is what decides that, so nothing can change between asking and
+// starting.
 func (m *Manager) linked(ctx context.Context, link Link, visited map[string]struct{}, depth int) {
 	entry, known := m.tasks[link.Task]
 	if !known || ctx.Err() != nil {
@@ -261,14 +267,15 @@ func (m *Manager) linked(ctx context.Context, link Link, visited map[string]stru
 
 		return
 	}
-	if m.busy(invocation) {
+	release, outcome := m.admit(entry, invocation)
+	switch outcome {
+	case admitWorking:
 		return
-	}
-	release, admitted := m.admit(entry, invocation)
-	if !admitted {
+	case admitHeld:
 		m.refused(ctx, entry, invocation)
 
 		return
+	case admitStarted:
 	}
 	m.perform(ctx, entry, invocation, release, visited, depth)
 }
@@ -324,7 +331,7 @@ func (m *Manager) record(
 // admit takes a concurrency slot and the whole resource set together, returning
 // what releases them. Nothing is taken unless all of it is available, so an
 // attempt can never wait while holding part of what another one needs.
-func (m *Manager) admit(entry *registered, invocation Invocation) (func(), bool) {
+func (m *Manager) admit(entry *registered, invocation Invocation) (func(), admission) {
 	wanted := merge(entry.definition.resources(invocation.Argument))
 	key := invocationKey(invocation)
 
@@ -332,10 +339,10 @@ func (m *Manager) admit(entry *registered, invocation Invocation) (func(), bool)
 	defer m.mutex.Unlock()
 
 	if _, working := m.running[key]; working {
-		return nil, false
+		return nil, admitWorking
 	}
 	if entry.inFlight >= entry.definition.limit() || !m.available(wanted) {
-		return nil, false
+		return nil, admitHeld
 	}
 	m.running[key] = struct{}{}
 	for _, resource := range wanted {
@@ -348,17 +355,7 @@ func (m *Manager) admit(entry *registered, invocation Invocation) (func(), bool)
 	}
 	entry.inFlight++
 
-	return func() { m.release(entry, key, wanted) }, true
-}
-
-// busy reports whether this exact invocation is already being worked on.
-func (m *Manager) busy(invocation Invocation) bool {
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
-
-	_, working := m.running[invocationKey(invocation)]
-
-	return working
+	return func() { m.release(entry, key, wanted) }, admitStarted
 }
 
 // invocationKey names one task's work over one argument. The separator is a

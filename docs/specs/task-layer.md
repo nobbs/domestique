@@ -93,9 +93,10 @@ happening, which is what the link wanted. A link losing a resource to something
 unrelated is a refusal, and is recorded as one.
 
 Because links are chosen while a task runs, nothing can reject a cycle when a
-task is registered. Each chain carries the set of what it has already run and
-refuses to run any of it again, with a depth limit behind that for a chain whose
-arguments keep changing.
+task is registered. One chain carries one set of what it has already run and
+refuses to run any of it again — a chain runs in order, so branches share that
+set rather than each starting from a copy. A depth limit sits behind it for a
+chain whose arguments keep changing.
 
 These chains are registered:
 

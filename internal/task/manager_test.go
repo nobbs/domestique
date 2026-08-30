@@ -954,8 +954,8 @@ func TestAnAttemptGivesBackWhatItHeldWhenTheRunnerPanics(t *testing.T) {
 
 	entry := manager.tasks["a"]
 	invocation := Invocation{Task: "a"}
-	release, admitted := manager.admit(entry, invocation)
-	require.True(t, admitted, "admit()")
+	release, outcome := manager.admit(entry, invocation)
+	require.Equal(t, admitStarted, outcome, "admit()")
 
 	func() {
 		defer func() {
@@ -965,5 +965,52 @@ func TestAnAttemptGivesBackWhatItHeldWhenTheRunnerPanics(t *testing.T) {
 	}()
 
 	assert.False(t, manager.Holding("inventory"), "a runner that gave up kept the resource")
-	assert.False(t, manager.busy(invocation), "a runner that gave up stayed listed as working")
+	_, again := manager.admit(entry, invocation)
+	assert.Equal(t, admitStarted, again, "a runner that gave up stayed listed as working")
+}
+
+// One chain shares one set of what it has run, so a task named twice in the
+// same list runs once rather than once per naming.
+func TestAChainRunsAnInvocationOnceHoweverManyLinksNameIt(t *testing.T) {
+	t.Parallel()
+
+	followed := countingRunner()
+	manager, _ := newTestManager(t)
+	require.NoError(t, manager.Register(&Definition{
+		Name: "parent",
+		Run: RunnerFunc(func(context.Context, Invocation) Result {
+			return Result{Outcome: Succeeded, Next: []Link{{Task: "child"}, {Task: "child"}}}
+		}),
+	}), "Register(parent)")
+	require.NoError(t, manager.Register(&Definition{Name: "child", Run: followed}), "Register(child)")
+
+	require.True(t, manager.Trigger(t.Context(), "parent", ""), "Trigger()")
+	manager.Wait()
+	assert.Equal(t, 1, followed.runs(), "a task named twice in one chain ran more than once")
+}
+
+// A link one branch reaches is a link every later branch has already had, so a
+// sibling naming it again finds it run.
+func TestAChainSharesWhatItHasRunAcrossBranches(t *testing.T) {
+	t.Parallel()
+
+	shared := countingRunner()
+	manager, _ := newTestManager(t)
+	require.NoError(t, manager.Register(&Definition{
+		Name: "parent",
+		Run: RunnerFunc(func(context.Context, Invocation) Result {
+			return Result{Outcome: Succeeded, Next: []Link{{Task: "first"}, {Task: "shared"}}}
+		}),
+	}), "Register(parent)")
+	require.NoError(t, manager.Register(&Definition{
+		Name: "first",
+		Run: RunnerFunc(func(context.Context, Invocation) Result {
+			return Result{Outcome: Succeeded, Next: []Link{{Task: "shared"}}}
+		}),
+	}), "Register(first)")
+	require.NoError(t, manager.Register(&Definition{Name: "shared", Run: shared}), "Register(shared)")
+
+	require.True(t, manager.Trigger(t.Context(), "parent", ""), "Trigger()")
+	manager.Wait()
+	assert.Equal(t, 1, shared.runs(), "a link two branches reached ran twice")
 }
