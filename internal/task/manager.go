@@ -3,10 +3,10 @@ package task
 import (
 	"context"
 	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -391,11 +391,16 @@ func (m *Manager) announce(
 	}
 }
 
-// newRunReference names one attempt. It is random and means nothing on its own,
-// which is what makes it safe to send; twelve characters are readable aloud and
-// leave a bounded history nowhere near a collision.
+// newRunReference names one attempt, in the same twelve hex characters every
+// other run in this service is named by. It is random and means nothing on its
+// own, which is what makes it safe to send.
 func newRunReference() string {
-	return strings.ToLower(rand.Text()[:runReferenceLength])
+	reference := make([]byte, runReferenceBytes)
+	// crypto/rand.Read is defined never to fail; it panics rather than
+	// answering short.
+	_, _ = rand.Read(reference)
+
+	return hex.EncodeToString(reference)
 }
 
 // alertMessage says which task went wrong, over what, and why. Every message

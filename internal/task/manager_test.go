@@ -1210,7 +1210,7 @@ func TestAFailingTaskIsAnnouncedOncePerWindow(t *testing.T) {
 	require.Len(t, sent, 2, "sent alerts")
 	for _, alert := range sent {
 		assert.Equal(t, "Domestique sync failed", alert.title, "alert title")
-		assert.Regexp(t, `^sync failed: destination run=[0-9a-z]{12}$`, alert.message, "alert message")
+		assert.Regexp(t, `^sync failed: destination run=[0-9a-f]{12}$`, alert.message, "alert message")
 	}
 }
 
@@ -1256,7 +1256,7 @@ func TestAnAlertNamesTheArgumentItIsAbout(t *testing.T) {
 	sent := notifier.messages()
 	require.Len(t, sent, 1, "sent alerts")
 	assert.Equal(t, "Domestique sync failed", sent[0].title, "alert title")
-	assert.Regexp(t, `^sync:target rider-a blocked: deletion_limit run=[0-9a-z]{12}$`,
+	assert.Regexp(t, `^sync:target rider-a blocked: deletion_limit run=[0-9a-f]{12}$`,
 		sent[0].message, "alert message")
 }
 
@@ -1420,6 +1420,6 @@ func TestEachAttemptIsNamedSomethingOfItsOwn(t *testing.T) {
 	require.True(t, manager.Trigger(t.Context(), "a", ""), "second Trigger()")
 	manager.Wait()
 
-	assert.Len(t, first, runReferenceLength, "a run was named something the wrong length")
+	assert.Regexp(t, `^[0-9a-f]{12}$`, first, "a run was named something unexpected")
 	assert.NotEqual(t, first, store.reference, "two runs shared a name")
 }

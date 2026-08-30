@@ -48,9 +48,9 @@ type Runner struct {
 	options Options
 }
 
-// NewRunner creates a runner over an index holder, durable state, and a
-// notifier. Regions are a function because they are an editable setting;
-// Options.Regions is ignored. An empty list builds nothing and is supported.
+// NewRunner creates a runner over an index holder and durable state. Regions
+// are a function because they are an editable setting; Options.Regions is
+// ignored. An empty list builds nothing and is supported.
 func NewRunner(
 	options Options, regions func() []string, current *Current, state State,
 ) (*Runner, error) {

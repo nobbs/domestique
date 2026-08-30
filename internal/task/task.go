@@ -30,8 +30,10 @@ func (a admission) detail() Detail {
 	return DetailHeld
 }
 
-// runReferenceLength is how much of a random name one attempt carries.
-const runReferenceLength = 12
+// runReferenceBytes is how much randomness names one attempt. Twelve hex
+// characters are readable aloud and leave a bounded history nowhere near a
+// collision.
+const runReferenceBytes = 6
 
 // maxChainDepth bounds how far one attempt's consequences may reach. Every
 // chain the service registers is one or two links long; this is the backstop
