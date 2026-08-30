@@ -11,6 +11,7 @@ import {
   gradientMix,
   gradientRanges,
   gradientShares,
+  gradientSummary,
   movingSecondsForWindow,
   nearestSample,
   niceStep,
@@ -628,6 +629,67 @@ describe("gradientRanges", () => {
   it("refuses geometry that is not fully surveyed", () => {
     expect(gradientRanges(route([100, undefined, 120]))).toEqual([]);
     expect(gradientRanges(route([100]))).toEqual([]);
+  });
+});
+
+describe("gradientSummary", () => {
+  it("is nought throughout for a route that never climbs", () => {
+    expect(gradientSummary(ramp(Array(60).fill(0)))).toEqual({
+      averageClimbing: 0,
+      steepestClimbing: 0,
+      steepestDescent: 0,
+    });
+    expect(gradientSummary([]).averageClimbing).toBe(0);
+  });
+
+  // The whole point of the figure: the descent is not averaged in, so the
+  // answer is the gradient of the climbing rather than half of it.
+  it("ignores the descent a climb is given back on", () => {
+    const upThenDown = ramp([...Array(60).fill(8), ...Array(60).fill(-8)]);
+
+    expect(gradientSummary(upThenDown).averageClimbing).toBeCloseTo(8, 0);
+  });
+
+  // A loop is the case the whole-route average is worst on: it must give back
+  // every metre it gains, so half its length argues the ride is easy.
+  it("says the same of a loop as of the climb inside it", () => {
+    const loop = ramp([...Array(40).fill(10), ...Array(80).fill(-5)]);
+    const { averageClimbing } = gradientSummary(loop);
+
+    // The climb's own gradient, give or take the crest: the window straddles
+    // the turn, so the last hundred metres of the climb are read against ground
+    // that has already started falling. Averaged over the whole loop instead
+    // this is 3.3%, which is a third of the ride the rider is actually facing.
+    expect(averageClimbing).toBeGreaterThan(9);
+    expect(averageClimbing).toBeLessThanOrEqual(10);
+  });
+
+  // Weighted by ground rather than by segment count, so a long shallow drag
+  // outweighs a short ramp rather than tying with it.
+  it("weights each climbing stretch by the ground it covers", () => {
+    const mostlyShallow = ramp([...Array(90).fill(2), ...Array(30).fill(10)]);
+
+    expect(gradientSummary(mostlyShallow).averageClimbing).toBeCloseTo(4, 0);
+  });
+
+  /*
+   * The reason the two are measured apart: the service takes the absolute
+   * value, so this route reaches the page as "18%" whichever way it is ridden.
+   * A 6% climb and an 18% descent is a different day from the reverse.
+   */
+  it("tells the steepest climb from the steepest descent", () => {
+    const gentleUpSteepDown = ramp([...Array(60).fill(6), ...Array(20).fill(-18)]);
+    const { steepestClimbing, steepestDescent } = gradientSummary(gentleUpSteepDown);
+
+    expect(steepestClimbing).toBeCloseTo(6, 0);
+    expect(steepestDescent).toBeCloseTo(18, 0);
+  });
+
+  // Both are depths rather than signed rises, so neither is ever negative and
+  // the pair can be printed under one heading.
+  it("reports a descent as a positive depth", () => {
+    expect(gradientSummary(ramp(Array(60).fill(-9))).steepestDescent).toBeCloseTo(9, 0);
+    expect(gradientSummary(ramp(Array(60).fill(-9))).steepestClimbing).toBe(0);
   });
 });
 

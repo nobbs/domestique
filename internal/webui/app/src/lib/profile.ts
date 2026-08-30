@@ -318,6 +318,94 @@ export function gradientShares(coordinates: Position[]): BandShare[] {
     .map((band) => ({ band, share: totals.get(band) ?? 0 }));
 }
 
+/** What the route's gradients come to, once the climbing is told from the rest. */
+export interface GradientSummary {
+  /**
+   * The average gradient of the ground that goes up, ignoring the ground that
+   * does not.
+   *
+   * A gradient is read to answer whether a ride will be hard, and only the
+   * climbing decides that: a descent is not negative work. Averaged over the
+   * whole route instead, every descending and flat kilometre dilutes the
+   * answer, and a closed loop dilutes it worst of all — it has to give back
+   * every metre it gains, so about half its length argues the ride is easy.
+   */
+  averageClimbing: number;
+  /** The steepest sustained climb, as a positive percentage. */
+  steepestClimbing: number;
+  /** The steepest sustained descent, also positive: a depth, not a signed rise. */
+  steepestDescent: number;
+}
+
+const NO_GRADIENTS: GradientSummary = {
+  averageClimbing: 0,
+  steepestClimbing: 0,
+  steepestDescent: 0,
+};
+
+/**
+ * The route's gradients, with up told from down.
+ *
+ * The service publishes one steepest figure and takes its absolute value, so a
+ * savage descent and a savage climb reach the page as the same number. They are
+ * not the same fact — one of them is what makes a ride hard — so the two are
+ * measured apart here, from the geometry the service itself stored.
+ *
+ * Measured over the same hundred-metre window as the bands and as the service's
+ * own figure, so everything that calls something a gradient is reading the
+ * route the same way. Between adjacent points, altitude error dominates and
+ * every route becomes a stipple of imaginary ramps.
+ *
+ * All three are nought for a route that never climbs, which is the truthful
+ * answer for a towpath and the same one an empty profile gives.
+ */
+export function gradientSummary(coordinates: Position[]): GradientSummary {
+  // The same refusal the service's own steepest figure makes: a point without
+  // an elevation read as sea level turns a mountain route into a cliff at each
+  // gap, and a route with no elevations at all into a confident flat.
+  if (coordinates.length < 2 || coordinates.some((point) => elevationOf(point) === undefined)) {
+    return NO_GRADIENTS;
+  }
+  const distances = cumulativeMetres(coordinates);
+  const elevations = coordinates.map((point) => elevationOf(point) ?? 0);
+
+  let rising = 0;
+  let gained = 0;
+  let steepestClimbing = 0;
+  let steepestDescent = 0;
+  let behind = 0;
+  for (let index = 1; index <= coordinates.length - 1; index++) {
+    while (
+      behind + 1 < index &&
+      (distances[index] ?? 0) - (distances[behind + 1] ?? 0) >= GRADIENT_WINDOW_METRES
+    ) {
+      behind++;
+    }
+    const run = (distances[index] ?? 0) - (distances[behind] ?? 0);
+    if (run <= 0) {
+      continue;
+    }
+    const gradient = (((elevations[index] ?? 0) - (elevations[behind] ?? 0)) / run) * 100;
+    if (gradient > 0) {
+      steepestClimbing = Math.max(steepestClimbing, gradient);
+      // The segment this window was read for, not the window itself:
+      // neighbouring windows overlap, and counting their whole length would
+      // count most of the route several times over.
+      const segment = (distances[index] ?? 0) - (distances[index - 1] ?? 0);
+      rising += segment;
+      gained += segment * (gradient / 100);
+    } else {
+      steepestDescent = Math.max(steepestDescent, -gradient);
+    }
+  }
+
+  return {
+    averageClimbing: rising > 0 ? (gained / rising) * 100 : 0,
+    steepestClimbing,
+    steepestDescent,
+  };
+}
+
 /** The classification proper, for a caller that has already measured the route. */
 function bandedRanges(coordinates: Position[], distances: number[]): BandedRange[] {
   const lastIndex = coordinates.length - 1;

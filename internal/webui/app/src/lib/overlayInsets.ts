@@ -61,10 +61,19 @@ const LEAST_PANEL = 4;
 /**
  * Which side each panel takes, and how far in it reaches.
  *
- * A panel is assigned to the edge it eats the least of, which is the edge it is
- * docked against: a column down the left takes its own width from the left
- * rather than its own height from the top, and a strip across the foot would
- * take its height from the bottom rather than most of the pane from the right.
+ * A panel is assigned to the edge it costs the least map to give away, which is
+ * the edge it is docked against: a column down the left takes its own width
+ * from the left rather than its own height from the top, and a strip across the
+ * foot takes its height from the bottom rather than most of the pane from the
+ * right.
+ *
+ * Cost rather than depth, because an inset gives away a *band*, not a distance:
+ * a side inset costs its reach times the frame's height, a top or bottom one
+ * its reach times the width. Comparing reaches alone only agrees with that on a
+ * square frame — on a wide one a card in the top-left corner looks shallower
+ * from the top than from the left and is handed the whole width of the pane for
+ * it, which frames every route into the band left between it and whatever
+ * stands on the foot.
  */
 export function insetsFrom(frame: Box, panels: Box[]): Insets {
   const insets = { ...NO_INSETS };
@@ -84,8 +93,31 @@ export function insetsFrom(frame: Box, panels: Box[]): Insets {
       bottom: frame.bottom - panel.top,
       left: panel.right - frame.left,
     };
+    /*
+     * Against the map that is still there, not the map as it was before this
+     * panel's neighbours took their share. A band's cost is its reach times the
+     * extent it spans, and that extent shrinks as insets are taken: once a dock
+     * across the foot has had its strip, a short card in the top-left corner
+     * costs more from the top than from the left, because the top band it wants
+     * is measured against a frame the dock has already shortened.
+     *
+     * Charging every panel against the whole frame instead reads each one as if
+     * it were alone, and hands a folded card the full width of the pane — which
+     * leaves the route in the strip between the card and the dock, half of it
+     * under the dock.
+     */
+    const room = {
+      width: Math.max(0, frame.right - insets.right - (frame.left + insets.left)),
+      height: Math.max(0, frame.bottom - insets.bottom - (frame.top + insets.top)),
+    };
+    const cost: Insets = {
+      top: reach.top * room.width,
+      right: reach.right * room.height,
+      bottom: reach.bottom * room.width,
+      left: reach.left * room.height,
+    };
     const side = (Object.keys(reach) as Array<keyof Insets>).reduce((least, next) =>
-      reach[next] < reach[least] ? next : least,
+      cost[next] < cost[least] ? next : least,
     );
     insets[side] = Math.max(insets[side], reach[side]);
   }

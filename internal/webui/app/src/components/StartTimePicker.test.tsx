@@ -5,7 +5,7 @@ import { StartTimePicker } from "./StartTimePicker";
 const NOW = new Date("2026-08-24T12:00:00Z");
 
 beforeEach(() => {
-  vi.useFakeTimers();
+  vi.useFakeTimers({ shouldAdvanceTime: true });
   vi.setSystemTime(NOW);
 });
 
@@ -13,113 +13,148 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-function input(): HTMLInputElement {
-  return screen.getByLabelText("Ride start") as HTMLInputElement;
+/** The half of the control that sets the time of day. */
+function timeField(): HTMLInputElement {
+  return screen.getByLabelText("The time the ride starts") as HTMLInputElement;
 }
 
-/** What a `datetime-local` field carries for a moment: local time, to the minute. */
-function localInputValue(date: Date): string {
-  const pad = (value: number) => String(value).padStart(2, "0");
-
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+/** The half that opens the calendar, which also reports the day chosen. */
+function dayButton(): HTMLElement {
+  return screen.getByLabelText("The day the ride starts");
 }
 
 describe("StartTimePicker", () => {
   it("opens empty when nothing has been chosen", () => {
     render(<StartTimePicker value={null} onChange={() => {}} />);
 
-    expect(input().value).toBe("");
+    expect(dayButton()).toHaveTextContent("Pick a day");
+    expect(timeField().value).toBe("");
+  });
+
+  it("treats clearing the time field as nothing, not as midnight", () => {
+    const onChange = vi.fn();
+    render(<StartTimePicker value={new Date("2026-08-25T07:00")} onChange={onChange} />);
+
+    // An empty string splits to [""] and Number("") is 0 — without the guard
+    // this proposed a confident midnight the reader never picked.
+    fireEvent.change(timeField(), { target: { value: "" } });
+
+    expect(onChange).not.toHaveBeenCalled();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("keeps the time field inert until a day exists to set it on", () => {
+    render(<StartTimePicker value={null} onChange={() => {}} />);
+
+    expect(timeField()).toBeDisabled();
+  });
+
+  it("holds a picked day until a time joins it", async () => {
+    const onChange = vi.fn();
+    render(<StartTimePicker value={null} onChange={onChange} />);
+
+    fireEvent.click(dayButton());
+    // The morning after "now", as the calendar offers it.
+    fireEvent.click(await screen.findByRole("button", { name: /25(th)?/ }));
+
+    // A day alone is not a departure: nothing proposed, nothing refused, and
+    // the time field now has a day to set its hours on.
+    expect(onChange).not.toHaveBeenCalled();
+    expect(timeField()).toBeEnabled();
+    expect(dayButton()).not.toHaveTextContent("Pick a day");
+
+    fireEvent.change(timeField(), { target: { value: "08:30" } });
+
+    expect(onChange).toHaveBeenCalledWith(new Date("2026-08-25T08:30"));
   });
 
   it("accepts a time inside the forecast window", () => {
     const onChange = vi.fn();
-    render(<StartTimePicker value={null} onChange={onChange} />);
-
     // The morning after "now": comfortably inside both bounds of the window.
-    fireEvent.change(input(), { target: { value: "2026-08-25T07:00" } });
+    render(<StartTimePicker value={new Date("2026-08-25T07:00")} onChange={onChange} />);
 
-    expect(onChange).toHaveBeenCalledWith(new Date("2026-08-25T07:00"));
+    fireEvent.change(timeField(), { target: { value: "08:30" } });
+
+    expect(onChange).toHaveBeenCalledWith(new Date("2026-08-25T08:30"));
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("refuses a time more than a day in the past, and says so", () => {
     const onChange = vi.fn();
-    render(<StartTimePicker value={null} onChange={onChange} />);
+    render(<StartTimePicker value={new Date("2026-08-01T07:00")} onChange={onChange} />);
 
-    fireEvent.change(input(), { target: { value: "2026-08-01T07:00" } });
+    fireEvent.change(timeField(), { target: { value: "08:00" } });
 
     expect(onChange).not.toHaveBeenCalled();
-    expect(screen.getByRole("alert")).toHaveTextContent("more than a day in the past");
+    expect(screen.getByText("That's more than a day in the past.")).toBeInTheDocument();
   });
 
   it("refuses a time beyond the forecast horizon, and says so", () => {
     const onChange = vi.fn();
-    render(<StartTimePicker value={null} onChange={onChange} />);
+    render(<StartTimePicker value={new Date("2026-09-20T07:00")} onChange={onChange} />);
 
-    fireEvent.change(input(), { target: { value: "2026-10-01T07:00" } });
+    fireEvent.change(timeField(), { target: { value: "08:00" } });
 
     expect(onChange).not.toHaveBeenCalled();
-    expect(screen.getByRole("alert")).toHaveTextContent("forecast horizon");
+    expect(
+      screen.getByText("That ride would finish past the 16-day forecast horizon."),
+    ).toBeInTheDocument();
   });
 
-  /*
-   * The forecast request spans the whole ride, so the horizon belongs to the
-   * arrival rather than the departure. A start the endpoint would refuse comes
-   * back as a 400 the page can only report as the provider being unavailable,
-   * which is a lie about whose fault it was.
-   */
   it("refuses a start whose finish would fall past the horizon", () => {
     const onChange = vi.fn();
-    const sixHours = 6 * 60 * 60;
-    render(<StartTimePicker value={null} onChange={onChange} movingSeconds={sixHours} />);
+    // A start the horizon would allow on its own, for a ride long enough that
+    // its finish would not be.
+    render(
+      <StartTimePicker
+        value={new Date("2026-09-09T07:00")}
+        onChange={onChange}
+        movingSeconds={20 * 3600}
+      />,
+    );
 
-    // Just inside the 16-day window at the start line, and past it at the finish.
-    const nearlyTheHorizon = new Date(Date.now() + 16 * 24 * 60 * 60 * 1000 - 60 * 60 * 1000);
-    fireEvent.change(input(), {
-      target: { value: nearlyTheHorizon.toISOString().slice(0, 16) },
-    });
+    fireEvent.change(timeField(), { target: { value: "20:00" } });
 
     expect(onChange).not.toHaveBeenCalled();
-    expect(screen.getByRole("alert")).toHaveTextContent("forecast horizon");
+    expect(
+      screen.getByText("That ride would finish past the 16-day forecast horizon."),
+    ).toBeInTheDocument();
   });
 
   it("offers a later start for a short ride than for a long one", () => {
-    const { unmount } = render(
-      <StartTimePicker value={null} onChange={() => {}} movingSeconds={60 * 60} />,
-    );
-    const shortRideMax = input().getAttribute("max") ?? "";
-    unmount();
-
-    render(<StartTimePicker value={null} onChange={() => {}} movingSeconds={10 * 60 * 60} />);
-
-    expect(input().getAttribute("max") ?? "").not.toBe("");
-    expect((input().getAttribute("max") ?? "") < shortRideMax).toBe(true);
-  });
-
-  /*
-   * The bounds are drawn once, and this page can sit open for hours. What the
-   * check must measure against is the window in force when the reader picks,
-   * not the one that happened to be current when the field last rendered.
-   */
-  it("checks a pick against the clock now, not the one the field drew with", () => {
     const onChange = vi.fn();
-    render(<StartTimePicker value={null} onChange={onChange} />);
-    // Two minutes inside the past allowance when the field was drawn.
-    const almostStale = new Date(NOW.getTime() - 24 * 60 * 60 * 1000 + 2 * 60 * 1000);
-    // ...and ten minutes of sitting open later, outside it.
-    vi.setSystemTime(new Date(NOW.getTime() + 10 * 60 * 1000));
+    const late = new Date("2026-09-08T09:00");
 
-    fireEvent.change(input(), { target: { value: localInputValue(almostStale) } });
+    const short = render(<StartTimePicker value={late} onChange={onChange} movingSeconds={600} />);
+    fireEvent.change(timeField(), { target: { value: "10:00" } });
+    expect(onChange).toHaveBeenCalledTimes(1);
+    short.unmount();
+
+    onChange.mockClear();
+    render(<StartTimePicker value={late} onChange={onChange} movingSeconds={40 * 3600} />);
+    fireEvent.change(timeField(), { target: { value: "10:00" } });
 
     expect(onChange).not.toHaveBeenCalled();
-    expect(screen.getByRole("alert")).toHaveTextContent("more than a day in the past");
+  });
+
+  it("checks a pick against the clock now, not the one the field drew with", () => {
+    const onChange = vi.fn();
+    render(<StartTimePicker value={new Date("2026-08-25T07:00")} onChange={onChange} />);
+
+    // The page has been open for a fortnight; the window has moved on without
+    // this render being told.
+    vi.setSystemTime(new Date("2026-09-08T12:00:00Z"));
+    fireEvent.change(timeField(), { target: { value: "08:00" } });
+
+    expect(onChange).not.toHaveBeenCalled();
+    expect(screen.getByText("That's more than a day in the past.")).toBeInTheDocument();
   });
 
   it("clears back to nothing chosen", () => {
     const onChange = vi.fn();
     render(<StartTimePicker value={new Date("2026-08-25T07:00")} onChange={onChange} />);
 
-    fireEvent.change(input(), { target: { value: "" } });
+    fireEvent.click(screen.getByLabelText("Clear the ride start"));
 
     expect(onChange).toHaveBeenCalledWith(null);
   });

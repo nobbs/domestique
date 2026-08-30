@@ -14,13 +14,24 @@ export interface LayoutProps {
   map?: React.ReactNode;
   /** Search, filters, results, and route detail. */
   children?: React.ReactNode;
+  /**
+   * The wide panel along the map's foot, where a route is open.
+   *
+   * A sibling of the workspace rather than part of it, which is what makes the
+   * camera work without any arithmetic here: `useOverlayInsets` measures the
+   * overlay's children, and `insetsFrom` gives a wide short panel to the bottom
+   * edge it eats least of.
+   *
+   * Below the breakpoint there is no map to stand on — the panels are a Drawer
+   * — so it goes in the Drawer with everything else.
+   */
+  dock?: React.ReactNode;
 }
 
 /** The map stays mounted while the same workspace becomes a rail or a Drawer. */
-export function Layout({ map, children }: LayoutProps) {
+export function Layout({ map, children, dock }: LayoutProps) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const narrow = useNarrowViewport();
-
   return (
     /*
      * A column, not a stack: the bar takes its own height off the top and the
@@ -43,6 +54,7 @@ export function Layout({ map, children }: LayoutProps) {
                 </DrawerHeader>
                 <div className="min-h-0 overflow-y-auto p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
                   {children}
+                  {dock}
                 </div>
               </DrawerContent>
             </Drawer>
@@ -55,6 +67,17 @@ export function Layout({ map, children }: LayoutProps) {
             >
               {children}
             </aside>
+            {dock === undefined ? null : (
+              // The whole width of the foot. The card above it is a fixed
+              // height that clears this by a long way, so there is nothing to
+              // start clear of — and the lanes drawn against distance want
+              // every pixel of width there is, because width is what resolves
+              // them. Centred within it, so a dock that folds to a pill leaves
+              // it in the middle of the ground it had.
+              <div className="pointer-events-auto absolute right-3 bottom-3 left-3 flex justify-center">
+                {dock}
+              </div>
+            )}
           </div>
         )}
       </main>

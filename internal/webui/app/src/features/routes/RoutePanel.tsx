@@ -4,20 +4,41 @@
  * Not a page. The map is the library and the library is the page, so opening a
  * route swaps what the top-left panel is holding rather than navigating away
  * from the ground the reader is looking at: the same route stays drawn, the
- * same camera moves to it, and the way back is one control at the top of this
- * panel.
+ * same camera moves to it, and the way back is one control on this panel.
  *
- * Read-only by design. There are deliberately no editing affordances here, and
- * the service writes nothing back to VeloPlanner — the two quiet actions at the
- * foot either leave for the provider or ask this service to work the route out
- * again.
+ * It answers one question — *is this the route to ride* — and nothing else.
+ * Everything drawn against the route's distance is the dock's: the profile, the
+ * ground in ride order, the forecast. What is left is what the route *is*, and
+ * that is small enough that covering the map with it permanently is a bad
+ * trade. So the panel rests as a pill and unfolds on request.
+ *
+ * The pill is the mechanism `SearchPanel` already uses: `data-compact-workspace`
+ * makes the shell drop its own background, padding, shadow and ring, so a panel
+ * that brings its own chrome gets a floating pill for free — and
+ * `useOverlayInsets` keeps framing routes around whatever size it currently is.
+ *
+ * Read-only by design. There are deliberately no editing affordances, and the
+ * service writes nothing back to VeloPlanner — the two quiet actions in the
+ * overflow either leave for the provider or ask this service to work the route
+ * out again.
  */
 
-import { IconArrowLeft, IconX } from "@tabler/icons-react";
+import {
+  IconChevronsRight,
+  IconDots,
+  IconTrendingDown,
+  IconTrendingUp,
+  IconX,
+} from "@tabler/icons-react";
 import type { Route } from "../../api/types";
-import { Button } from "../../components/Button";
 import { SourceRouteLink } from "../../components/SourceRouteLink";
-import type { Climb } from "../../lib/climbs";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "../../components/ui/dropdown-menu";
+import { Separator } from "../../components/ui/separator";
 import {
   formatAscent,
   formatDistance,
@@ -27,43 +48,66 @@ import {
   formatMovingTimeUncertainty,
 } from "../../lib/format";
 import type { Highlight } from "../../lib/highlight";
-import type { BandShare } from "../../lib/profile";
-import { providerLabel } from "../../lib/provider";
+import { bandEntries, surfaceEntries } from "../../lib/mix";
+import type { BandShare, GradientSummary } from "../../lib/profile";
 import type { SurfaceSummary } from "../../lib/surface";
-import type { UnitSystem } from "../../lib/units";
-import { ClimbsList } from "./ClimbsList";
+import { elevationValue, type UnitSystem } from "../../lib/units";
+import { MixSection } from "./MixSection";
 import { ReprocessButton } from "./ReprocessButton";
-import { RouteLegend } from "./RouteLegend";
+
+/**
+ * One figure, as a line rather than as a stack.
+ *
+ * The name left and the number right, so the numbers land on two rules down
+ * the card and a reader comparing them reads down a column rather than
+ * hunting. Stacked, each pair cost two lines and the figures sat wherever
+ * their labels happened to end.
+ *
+ * `items-baseline` because the two really are different sizes on one line,
+ * which is what a baseline is for — unlike a row taller than its own text,
+ * where it only pins the words to the ceiling.
+ */
+function Figure({
+  term,
+  span,
+  children,
+}: {
+  term: React.ReactNode;
+  /** Both columns, for a figure with no partner to sit beside. */
+  span?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={`flex items-baseline justify-between gap-2 ${span ? "col-span-2" : ""}`}>
+      <dt className="flex min-w-0 items-center gap-1 truncate text-[11px] text-[var(--ink-2)] [&_svg]:size-3 [&_svg]:shrink-0">
+        {term}
+      </dt>
+      <dd className="shrink-0 text-sm leading-tight tabular-nums">{children}</dd>
+    </div>
+  );
+}
 
 export interface RoutePanelProps {
   route: Route;
   /**
-   * The moving time for the elevation-profile stretch currently on show, in
-   * place of the whole route's. Undefined restores the whole-route figure —
-   * clearing the selection, or a route nothing has predicted, both read the
-   * same way here.
+   * The moving time for the stretch currently on show, in place of the whole
+   * route's. Undefined restores the whole-route figure — clearing the selection,
+   * or a route nothing has predicted, both read the same way here.
    */
   movingSecondsOverride?: number | undefined;
-  /**
-   * The elevation profile, which sits inside this card between the figures it
-   * elaborates and the gradient bar it explains.
-   *
-   * Handed in rather than built here, because every question the chart answers
-   * — the stretch on show, the position under the pointer, the class picked out
-   * of the chips — is also asked of the map, and the page is the one place both
-   * views can be answered from.
-   */
-  profile: React.ReactNode;
   /** The whole route's highest point, or null where there is no usable profile. */
   highestMetres: number | null;
+  /** Its lowest, from the same profile and null on the same terms. */
+  lowestMetres: number | null;
   /**
-   * Where the route is, and when it was read: the panel's second line.
+   * The route's gradients with up told from down.
    *
-   * Composed by the page, because two of the three things it can say — the read
-   * time and whether the targets hold the library — are facts about the sync
-   * rather than about this route.
+   * A gradient answers whether the ride will be hard, and only the climbing
+   * decides that — so the descents are neither averaged in nor allowed to
+   * stand in for the steepest climb, which is what the service's own single
+   * absolute figure lets them do.
    */
-  subtitle: string;
+  gradients: GradientSummary;
   /** Null for a route nobody has classified, which the key says in words. */
   surface: SurfaceSummary | null;
   surfaceAbsence: string;
@@ -71,153 +115,251 @@ export interface RoutePanelProps {
   bands: BandShare[];
   highlight: Highlight | null;
   onHighlightChange: (highlight: Highlight | null) => void;
-  /** The route's sustained climbs, in the order they are ridden. */
-  climbs: Climb[];
-  /** Opens the shared map/chart window on one climb. */
-  onSelectClimb: (climb: Climb) => void;
   /**
-   * How many routes the search goes back to, which the way back says.
+   * Whether the panel rests as a pill.
+   *
+   * Held by the page and sticky across routes, for the reason `ElevationProfile`
+   * is collapsed the same way: a reader who put the card away did so to see more
+   * map, not to see more of one route's map.
+   */
+  collapsed: boolean;
+  onCollapsedChange: (collapsed: boolean) => void;
+  /**
+   * How many routes the search goes back to.
    *
    * The count is what makes leaving a described action rather than an undo: a
-   * reader who opened a route by accident is told what is behind it. Zero is a
-   * library that has not arrived yet, and the control says so in words instead.
+   * reader who opened a route by accident is told what is behind it. It is the
+   * close button's accessible name, since the pill has no room for a row of its
+   * own to write it on.
    */
   libraryCount: number;
   /** Puts the route away and gives the search pill back. */
   onClose: () => void;
   /** Each configured source's web application, keyed by provider. */
   sourceBaseUrls: Record<string, string>;
-  /** The units the figures and the climbs list report distance and elevation in. */
   unitSystem: UnitSystem;
 }
 
 export function RoutePanel({
   route,
   movingSecondsOverride,
-  profile,
   highestMetres,
-  subtitle,
+  lowestMetres,
+  gradients,
   surface,
   surfaceAbsence,
   bands,
   highlight,
   onHighlightChange,
-  climbs,
-  onSelectClimb,
+  collapsed,
+  onCollapsedChange,
   libraryCount,
   onClose,
   sourceBaseUrls,
   unitSystem,
 }: RoutePanelProps) {
-  const back =
-    libraryCount > 0
-      ? `Search ${libraryCount} ${libraryCount === 1 ? "route" : "routes"}`
-      : "Back to search";
   const movingSeconds = movingSecondsOverride ?? route.movingSeconds;
 
   return (
-    <section className="flex w-[32.5rem] max-w-full flex-col gap-4" aria-label={route.title}>
-      {/*
-       * The way back, and the only thing above the name: this panel replaced
-       * the search, so a reader who opened a route by accident has to be able
-       * to see how to get the search back without reading the route first.
-       *
-       * Twice, at either end of the line. The sentence is the one that says
-       * where leaving goes; the cross is the one a reader looks for without
-       * reading anything, and it sits where every dismissable thing keeps it.
-       */}
-      <div className="flex items-center justify-between gap-2">
-        <Button variant="ghost" icon={<IconArrowLeft stroke={2} />} onClick={onClose}>
-          {back}
-        </Button>
-        <Button
-          variant="ghost"
-          icon={<IconX stroke={2} />}
-          onClick={onClose}
-          aria-label="Close the route"
-        />
-      </div>
-      <div>
-        <h2 className="text-xl font-semibold tracking-tight">{route.title}</h2>
+    // The shell strips its own card off whatever carries this, which is what
+    // lets the pill be a pill rather than a pill inside a panel.
+    <div data-compact-workspace="" className="w-fit max-w-full">
+      <section
+        aria-label={route.title}
+        // The pill hugs its content; the card does not. Left to size itself the
+        // card took its width from whichever row was widest, so a long title
+        // stretched the panel and left every rule below it stopping short of
+        // the edge. Open, the width is the card's and the header lives in it.
+        className={`max-h-[calc(100dvh-9rem)] max-w-full overflow-y-auto rounded-xl bg-[var(--panel)] shadow-[var(--shadow)] ring-1 ring-black/5 ${collapsed ? "w-fit" : "w-[23rem]"}`}
+      >
         {/*
-         * Which source this route came from. A quiet label rather than a logo:
-         * this is a private tool with two sources, not a marketplace, and real
-         * text is what makes it distinguishable by accessible name alone.
+         * The route's name as the panel's heading, drawn nowhere: the pill
+         * below shows it, and printing it twice would spend the card's first
+         * row telling a reader something they are already looking at. Without
+         * it the panel has no heading at all — the document jumps from the
+         * page's own h1 to the mixes' h3s, and a reader moving by heading
+         * lands inside a panel about a route that never named itself.
          */}
-        <span className="text-xs font-semibold tracking-[0.06em] text-[var(--ink-2)] uppercase">
-          {providerLabel(route.provider)}
-        </span>
-        {subtitle === "" ? null : <p className="mt-1 text-sm text-[var(--ink-2)]">{subtitle}</p>}
-      </div>
-      <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-3">
-        <div>
-          <dt>Distance</dt>
-          <dd>{formatDistance(route.distanceMetres, unitSystem)}</dd>
-        </div>
-        <div>
-          <dt>Ascent</dt>
-          <dd>{formatAscent(route.ascentMetres, unitSystem)}</dd>
-        </div>
-        <div>
-          <dt>Max gradient</dt>
-          <dd>{formatGradient(route.maxGradientPercent)}</dd>
-        </div>
-        <div>
-          <dt>Moving time</dt>
-          {/*
-           * Predicted, not measured — the label says "moving time", not
-           * "arrival time", and carries no stops, traffic, or day-specific
-           * weather. The qualifier names how far off that estimate usually
-           * runs, from the frozen profile's own held-out benchmark, and is
-           * absent whenever the loaded profile carries no measured result.
-           */}
-          <dd>
-            {formatMovingTime(movingSeconds)}
-            {movingSeconds !== undefined && route.validation ? (
-              <span className="ml-1 text-xs text-[var(--ink-2)]">
-                {formatMovingTimeUncertainty(route.validation)}
+        <h2 className="visually-hidden">{route.title}</h2>
+        <div className="flex items-center gap-1 p-1.5">
+          <button
+            type="button"
+            aria-expanded={!collapsed}
+            onClick={() => {
+              const next = !collapsed;
+              onCollapsedChange(next);
+              // Collapsing takes the class labels away with it, and a pressed
+              // one is the only way to give the whole route back. Rather than
+              // leave the map lit with no visible cause, putting the card away
+              // puts the question away too.
+              if (next) {
+                onHighlightChange(null);
+              }
+            }}
+            className="flex min-w-0 items-center gap-2 rounded-lg px-2 py-1 text-left hover:bg-[var(--base)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent)]"
+          >
+            <IconChevronsRight
+              size={16}
+              stroke={2}
+              aria-hidden="true"
+              className={collapsed ? "transition-transform" : "rotate-90 transition-transform"}
+            />
+            <span className="min-w-0 max-w-[15rem] truncate font-semibold">{route.title}</span>
+            {/*
+             * The two figures a ride is decided on, on the line that is visible
+             * far more often than the card is. A pill that only named the route
+             * would make every reading of them cost a press.
+             *
+             * Only on the pill: open, they are the first two rows of the list
+             * immediately below, and the width they cost is the width the title
+             * then has to truncate into.
+             */}
+            {collapsed ? (
+              <span className="shrink-0 text-sm text-[var(--ink-2)] tabular-nums">
+                {formatDistance(route.distanceMetres, unitSystem)} ·{" "}
+                {formatAscent(route.ascentMetres, unitSystem)}
               </span>
             ) : null}
-          </dd>
+          </button>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              aria-label="More about this route"
+              className="ml-auto rounded-lg p-1.5 text-[var(--ink-2)] hover:bg-[var(--base)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent)]"
+            >
+              <IconDots size={16} stroke={2} aria-hidden="true" />
+            </DropdownMenuTrigger>
+            {/*
+             * `w-auto` because the menu's own width follows its anchor, and the
+             * anchor here is a 28-pixel icon button.
+             */}
+            <DropdownMenuContent align="end" className="w-auto min-w-52">
+              {/*
+               * The two quiet actions that used to hold a bordered row of their
+               * own at the foot of the card. Both are rare — one leaves for the
+               * provider, the other asks the service to work the route out
+               * again — and a row spent on them is a row not spent on the route.
+               */}
+              <SourceRouteLink
+                provider={route.provider}
+                baseUrl={sourceBaseUrls[route.provider]}
+                sourceRouteId={route.sourceRouteId}
+              />
+              <DropdownMenuSeparator />
+              <ReprocessButton
+                provider={route.provider}
+                sourceRouteId={route.sourceRouteId}
+                stageOrder={route.stageOrder}
+              />
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label={
+              // Zero is the listing still loading, not an empty library, and
+              // "go back to 0 routes" reads as the second.
+              libraryCount === 0
+                ? "Close the route and go back to the library"
+                : `Close the route and go back to ${libraryCount} ${libraryCount === 1 ? "route" : "routes"}`
+            }
+            className="rounded-lg p-1.5 text-[var(--ink-2)] hover:bg-[var(--base)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent)]"
+          >
+            <IconX size={16} stroke={2} aria-hidden="true" />
+          </button>
         </div>
-        <div>
-          <dt>Highest</dt>
-          {/*
-           * Of the whole route, never of the stretch on show: it is one of the
-           * four things this route is, and a figure that changed while a reader
-           * dragged across the chart would be a fifth instrument.
-           */}
-          <dd>{highestMetres === null ? "—" : formatElevation(highestMetres, unitSystem)}</dd>
-        </div>
-      </dl>
-      {profile}
-      <ClimbsList climbs={climbs} onSelect={onSelectClimb} unitSystem={unitSystem} />
-      {/*
-       * The two mixes, as a bar and a row of chips each, and pressing a chip
-       * lights that ground on both the map and the chart. They sit under the
-       * plot rather than inside it: the chart folds away, and a key that
-       * travelled with it would take the surface mix — which the chart does not
-       * draw at all — away with it.
-       */}
-      <RouteLegend
-        surface={surface}
-        surfaceAbsence={surfaceAbsence}
-        bands={bands}
-        highlight={highlight}
-        onHighlightChange={onHighlightChange}
-      />
-      <div className="flex flex-wrap gap-2 border-t border-[var(--rule)] pt-4">
-        <SourceRouteLink
-          provider={route.provider}
-          baseUrl={sourceBaseUrls[route.provider]}
-          sourceRouteId={route.sourceRouteId}
-        />
-        <ReprocessButton
-          provider={route.provider}
-          sourceRouteId={route.sourceRouteId}
-          stageOrder={route.stageOrder}
-        />
-      </div>
-    </section>
+        {collapsed ? null : (
+          <div className="grid w-full gap-2 px-3 pt-2 pb-3">
+            {/*
+             * Base UI's separator always carries `role="separator"`, with no
+             * decorative escape hatch. These three rules only group one card's
+             * parts, so the role says a little more than they mean — the cost
+             * of dividing sections with the component rather than a border.
+             *
+             * Full-bleed against the card's own padding, so the rule reads as
+             * the card's division rather than as a line inside its content,
+             * and `data-horizontal:w-auto` to beat the component's own
+             * `w-full`, which would measure the padding box and fall short.
+             */}
+            <Separator className="-mx-3 -mt-2 data-horizontal:w-auto" />
+            {/*
+             * Paired by row: what it is and how much it climbs, then the two
+             * gradients, then the two ends of its elevation. The grid means
+             * something that way — a reader comparing the pair reads across —
+             * where before it was seven figures reflowed into two columns.
+             */}
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-1">
+              <Figure term="Distance">{formatDistance(route.distanceMetres, unitSystem)}</Figure>
+              <Figure term="Ascent">{formatAscent(route.ascentMetres, unitSystem)}</Figure>
+              {/*
+               * One figure rather than two: the two ends of a range are read
+               * together or not at all, and asking for the height of the top
+               * without the height of the bottom is asking half a question.
+               * It is how the dock has always said it.
+               */}
+              <Figure term="Elevation">
+                {lowestMetres === null || highestMetres === null
+                  ? "—"
+                  : // The unit once, on the end it belongs to. Printed on both
+                    // ends the pair is the widest figure on the card, and in
+                    // feet — where both ends are four digits — it is wide
+                    // enough to start eating its own label.
+                    `${Math.round(elevationValue(lowestMetres, unitSystem)).toLocaleString()}–${formatElevation(highestMetres, unitSystem)}`}
+              </Figure>
+              <Figure term="Avg climbing">{formatGradient(gradients.averageClimbing)}</Figure>
+              {/*
+               * The steepest each way, which the service's own figure cannot
+               * say: it takes the absolute value, so a savage descent reaches
+               * the page as a savage climb. The glyph carries the direction and
+               * the word carries the rest, because two rows reading "Max" and
+               * differing only by an arrow would rest the whole distinction on
+               * a twelve-pixel picture.
+               */}
+              <Figure
+                term={
+                  <>
+                    <IconTrendingUp stroke={2} aria-hidden="true" />
+                    Max climb
+                  </>
+                }
+              >
+                {formatGradient(gradients.steepestClimbing)}
+              </Figure>
+              <Figure
+                term={
+                  <>
+                    <IconTrendingDown stroke={2} aria-hidden="true" />
+                    Max descent
+                  </>
+                }
+              >
+                {formatGradient(gradients.steepestDescent)}
+              </Figure>
+              {/*
+               * Predicted, not measured — the label says "moving time", not
+               * "arrival time", and carries no stops, traffic or day-specific
+               * weather. The qualifier names how far off that estimate usually
+               * runs, from the frozen profile's own held-out benchmark.
+               */}
+              <Figure term="Moving time" span>
+                {formatMovingTime(movingSeconds)}
+                {movingSeconds !== undefined && route.validation ? (
+                  <span className="ml-1 text-[11px] font-normal text-[var(--ink-2)]">
+                    {formatMovingTimeUncertainty(route.validation)}
+                  </span>
+                ) : null}
+              </Figure>
+            </dl>
+            <MixSection
+              bands={bandEntries(bands, route.distanceMetres)}
+              surface={surfaceEntries(surface)}
+              surfaceAbsence={surfaceAbsence}
+              highlight={highlight}
+              onHighlightChange={onHighlightChange}
+              unitSystem={unitSystem}
+            />
+          </div>
+        )}
+      </section>
+    </div>
   );
 }

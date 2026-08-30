@@ -19,9 +19,29 @@ const LOOP_ROUTE = { provider: "veloplanner", sourceRouteId: 4102, stageOrder: 1
 /** The short link, which was never classified and has no profile at all. */
 const UNCLASSIFIED_ROUTE = { provider: "veloplanner", sourceRouteId: 4103, stageOrder: 1 };
 
+/**
+ * A departure two hours out, stored where `useStartTime` reads it.
+ *
+ * There is deliberately no default start time, so a forecast needs one chosen
+ * before it draws anything — and the control that chooses it is a calendar
+ * popover, which is its own subject with its own tests.
+ */
+async function chooseStartTime(page: Page): Promise<void> {
+  const soon = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+  // Before the first navigation rather than after it: the panel reads the
+  // stored departure as it mounts, so seeding it here needs no reload and no
+  // second wait for the workspace to come back.
+  await page.addInitScript(
+    (at) => window.localStorage.setItem("domestique.start-time", at as string),
+    soon,
+  );
+}
+
 function routePanel(page: Page) {
+  // Anchored on the way back out, whose name carries the library count: the
+  // panel no longer has a row to write that on, so the close control says it.
   return page
-    .getByRole("button", { name: /^Search \d+ routes?$/ })
+    .getByRole("button", { name: /^Close the route and go back to \d+ routes?$/ })
     .locator("xpath=ancestor::section");
 }
 
@@ -44,17 +64,49 @@ test("the route draws its map, its facts and its profile", async ({ offlinePage:
   await expect(page.locator(".maplibregl-ctrl-scale")).toContainText(/\d/);
 });
 
-test("climbs start folded and expand on demand", async ({ offlinePage: page }) => {
+/*
+ * The climbs are the dock's, beside the chart that brackets them. They open
+ * with it, because the reader who opened the dock opened it to study the
+ * route, and fold to a rail when the chart wants the width back.
+ */
+test("the climbs sit beside the chart and fold to a rail", async ({ offlinePage: page }) => {
   await openRoute(page, CLIMB_ROUTE.provider, CLIMB_ROUTE.sourceRouteId, CLIMB_ROUTE.stageOrder);
 
-  const toggle = page.getByRole("button", { name: /^Show \d+ climbs?$/ });
-  await expect(toggle).toBeVisible();
-  await toggle.click();
-  const expanded = page.getByRole("button", { name: /^Hide \d+ climbs?$/ });
-  await expect(expanded).toBeVisible();
+  const dock = page.getByRole("region", { name: "Route detail" });
+  const shown = dock.getByRole("button", { name: /^Hide \d+ climbs?$/ });
+  await expect(shown).toBeVisible();
   await expect(
-    expanded.locator("xpath=ancestor::section").getByRole("listitem").first(),
+    shown.locator("xpath=ancestor::section").getByRole("listitem").first(),
   ).toBeVisible();
+
+  await shown.click();
+
+  const folded = dock.getByRole("button", { name: /^Show \d+ climbs?$/ });
+  await expect(folded).toBeVisible();
+  await expect(dock.getByRole("listitem")).toHaveCount(0);
+});
+
+// The card says what the route is; the climbs say what it does, and they are
+// no longer on it.
+test("the card has no climbs on it", async ({ offlinePage: page }) => {
+  await openRoute(page, CLIMB_ROUTE.provider, CLIMB_ROUTE.sourceRouteId, CLIMB_ROUTE.stageOrder);
+
+  await expect(routePanel(page).getByRole("button", { name: /climbs?$/ })).toHaveCount(0);
+});
+
+test("the mixes start folded and expand on demand", async ({ offlinePage: page }) => {
+  await openRoute(page, LOOP_ROUTE.provider, LOOP_ROUTE.sourceRouteId, LOOP_ROUTE.stageOrder);
+
+  const toggle = page.getByRole("button", { name: "Show gradient and surface" });
+  // The line that stands in for them names what they hold, not what it does.
+  await expect(toggle).toContainText("Gradient and surface");
+  await expect(page.getByRole("list", { name: "Surface classes" })).toBeHidden();
+
+  await toggle.click();
+
+  await expect(page.getByRole("button", { name: "Hide gradient and surface" })).toBeVisible();
+  await expect(page.getByRole("list", { name: "Surface classes" })).toBeVisible();
+  await expect(page.getByRole("list", { name: "Gradient bands" })).toBeVisible();
 });
 
 test("the chart answers the arrow keys and says where it is", async ({ offlinePage: page }) => {
@@ -119,7 +171,7 @@ test("dragging along the route picks the same stretch off the map", async ({
    *
    * Not the centre of the canvas: the camera frames a route in the part of the
    * map no panel is standing on, so the midpoint sits at the centre of what the
-   * column leaves.
+   * column leaves beside it and the dock leaves above it.
    */
   const region = mapRegion(page);
   const box = await region.boundingBox();
@@ -128,8 +180,9 @@ test("dragging along the route picks the same stretch off the map", async ({
     return;
   }
   const column = await routePanel(page).boundingBox();
+  const dock = await page.getByRole("region", { name: "Route detail" }).boundingBox();
   const centreX = ((column ? column.x + column.width : box.x) + box.x + box.width) / 2;
-  const centreY = box.y + box.height / 2;
+  const centreY = (box.y + (dock ? dock.y : box.y + box.height)) / 2;
   await page.mouse.move(centreX, centreY);
   await page.mouse.down();
   await page.mouse.move(centreX + 120, centreY + 40, { steps: 10 });
@@ -146,6 +199,7 @@ test("dragging along the route picks the same stretch off the map", async ({
 
 test("picking a surface class out of the key repaints the map", async ({ offlinePage: page }) => {
   await openRoute(page, LOOP_ROUTE.provider, LOOP_ROUTE.sourceRouteId, LOOP_ROUTE.stageOrder);
+  await page.getByRole("button", { name: "Show gradient and surface" }).click();
   const before = await settleMap(page);
 
   const key = page.getByRole("list", { name: "Surface classes" });
@@ -174,6 +228,10 @@ test("a route nobody classified says so rather than showing an empty key", async
     UNCLASSIFIED_ROUTE.stageOrder,
   );
 
+  // The two mixes are folded, and an absence is still one of the things they
+  // have to be able to say once opened.
+  await page.getByRole("button", { name: "Show gradient and surface" }).click();
+
   await expect(page.getByText("Surface not classified yet.")).toBeVisible();
   // The same route has no elevation either, which is a second absence the page
   // has to state instead of drawing a flat line through it.
@@ -185,20 +243,18 @@ test("a route nobody classified says so rather than showing an empty key", async
  * gets the rest of the card and the map back — and the two figures it existed to
  * give at a glance have to survive that.
  */
-test("the profile folds to a row that still carries its figures", async ({ offlinePage: page }) => {
+test("the detail dock folds away and leaves the route open", async ({ offlinePage: page }) => {
   await openRoute(page, LINE_ROUTE.provider, LINE_ROUTE.sourceRouteId, LINE_ROUTE.stageOrder);
 
-  const section = page.getByRole("region", { name: "Elevation" });
   await expect(page.getByRole("img", { name: /^Elevation profile of / })).toBeVisible();
 
-  await page.getByRole("button", { name: "Hide the profile" }).click();
+  await page.getByRole("button", { name: "Hide the route detail" }).click();
 
   await expect(page.getByRole("img", { name: /^Elevation profile of / })).toBeHidden();
-  await expect(section.getByLabel("Elevation summary")).toContainText("m");
-  // The route is still open around it: the chart was put away, not the route.
+  // The route is still open around it: the dock was put away, not the route.
   await expect(routePanel(page)).toContainText("km");
 
-  await page.getByRole("button", { name: "Show the profile" }).click();
+  await page.getByRole("button", { name: /^Profile, ground and forecast/ }).click();
   await expect(page.getByRole("img", { name: /^Elevation profile of / })).toBeVisible();
 });
 
@@ -226,14 +282,15 @@ test("hovering the route labels the position while the profile is folded away", 
   if (!box) {
     return;
   }
+  const dock = await page.getByRole("region", { name: "Route detail" }).boundingBox();
   const x = ((panel ? panel.x + panel.width : box.x) + box.x + box.width) / 2;
-  const y = box.y + box.height / 2;
+  const y = (box.y + (dock ? dock.y : box.y + box.height)) / 2;
   await page.mouse.move(x, y);
   // Proof the point really is on the line, before the readout it would have
   // shown this on is folded away.
   await expect(profileScrubber(page)).toHaveAttribute("aria-valuetext", /percent/);
 
-  const collapse = page.getByRole("button", { name: "Hide the profile" });
+  const collapse = page.getByRole("button", { name: "Hide the route detail" });
   await collapse.focus();
   await collapse.press("Enter");
   await expect(page.getByRole("img", { name: /^Elevation profile of / })).toBeHidden();
@@ -265,7 +322,9 @@ test("the way back to the library is reachable from the keyboard", async ({
 }) => {
   await openRoute(page, LINE_ROUTE.provider, LINE_ROUTE.sourceRouteId, LINE_ROUTE.stageOrder);
 
-  const back = page.getByRole("button", { name: /^Search \d+ routes?$/ });
+  const back = page.getByRole("button", {
+    name: /^Close the route and go back to \d+ routes?$/,
+  });
   await back.focus();
   await expect(back).toBeFocused();
   await back.press("Enter");
@@ -285,14 +344,19 @@ test("the way back to the library is reachable from the keyboard", async ({
 test("choosing a start time draws a forecast strip under the profile", async ({
   offlinePage: page,
 }) => {
+  const strip = page.getByRole("group", { name: /^Forecast along the way/ });
+
+  // Without a departure there is nothing to time a sample against, so the strip
+  // draws nothing at all.
+  await openRoute(page, LINE_ROUTE.provider, LINE_ROUTE.sourceRouteId, LINE_ROUTE.stageOrder);
+  await expect(strip).toHaveCount(0);
+
+  // Seeded and reopened. The subject here is the strip, not the picker —
+  // driving a calendar popover to reach it would make this test fail for
+  // reasons that have nothing to do with the forecast.
+  await chooseStartTime(page);
   await openRoute(page, LINE_ROUTE.provider, LINE_ROUTE.sourceRouteId, LINE_ROUTE.stageOrder);
 
-  await expect(page.getByRole("img", { name: /Forecast along the way/ })).toHaveCount(0);
-
-  const soon = new Date(Date.now() + 2 * 60 * 60 * 1000);
-  await page.getByLabel("Ride start").fill(soon.toISOString().slice(0, 16));
-
-  const strip = page.getByRole("img", { name: /Forecast along the way/ });
   await expect(strip).toBeVisible();
 
   /*
@@ -300,17 +364,20 @@ test("choosing a start time draws a forecast strip under the profile", async ({
    * anywhere else, and it is invisible to every assertion above: the strip
    * shipped once measuring nothing, drawing itself at the fallback width and
    * stretching that over the card, which reads as a strip until you notice the
-   * rain sitting a kilometre from the climb it falls on. Both charts plot
-   * against the same measured width, so their viewBoxes agree to the pixel or
-   * one of them is measuring something the other is not.
+   * rain sitting a kilometre from the climb it falls on. Both are laid out by
+   * `plotAxis` against their own measured width, so the two boxes agree to the
+   * pixel or one of them is measuring something the other is not.
    */
-  const widths = {
-    profile: (
-      await page.getByRole("img", { name: /^Elevation profile of / }).getAttribute("viewBox")
-    )?.split(" ")[2],
-    strip: (await strip.getAttribute("viewBox"))?.split(" ")[2],
-  };
-  expect(widths.strip, "the strip and the profile plot at the same width").toBe(widths.profile);
+  const chartBox = await page.getByRole("img", { name: /^Elevation profile of / }).boundingBox();
+  const stripBox = await strip.boundingBox();
+  expect(chartBox).not.toBeNull();
+  expect(stripBox).not.toBeNull();
+  if (!chartBox || !stripBox) {
+    return;
+  }
+  expect(Math.round(stripBox.width), "the strip and the profile plot at the same width").toBe(
+    Math.round(chartBox.width),
+  );
 });
 
 /*
@@ -321,6 +388,9 @@ test("choosing a start time draws a forecast strip under the profile", async ({
 test("a stage with no predicted moving time shows no forecast strip", async ({
   offlinePage: page,
 }) => {
+  // A departure is chosen, and it changes nothing: this stage has no predicted
+  // moving time, so there is no moment to place a sample at.
+  await chooseStartTime(page);
   await openRoute(
     page,
     UNCLASSIFIED_ROUTE.provider,
@@ -328,8 +398,5 @@ test("a stage with no predicted moving time shows no forecast strip", async ({
     UNCLASSIFIED_ROUTE.stageOrder,
   );
 
-  const soon = new Date(Date.now() + 2 * 60 * 60 * 1000);
-  await page.getByLabel("Ride start").fill(soon.toISOString().slice(0, 16));
-
-  await expect(page.getByRole("img", { name: /Forecast along the way/ })).toHaveCount(0);
+  await expect(page.getByRole("group", { name: /^Forecast along the way/ })).toHaveCount(0);
 });

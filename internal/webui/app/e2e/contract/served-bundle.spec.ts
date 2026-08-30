@@ -68,6 +68,12 @@ test("a route's geometry and its surface reach the map", async ({ bundlePage: pa
   // geometry view; a map that fitted its camera and a key that lists classes are
   // the two halves of that having been read.
   await expect(mapRegion(page)).toContainText("Starts and finishes");
+  // The key sits behind the card's fold on this layer; where a later layer has
+  // removed the fold, there is nothing to open and the key is already there.
+  const foldedMixes = page.getByRole("button", { name: "Show gradient and surface" });
+  if ((await foldedMixes.count()) > 0) {
+    await foldedMixes.click();
+  }
   await expect(page.getByRole("list", { name: "Surface classes" })).toBeVisible();
 
   const geometry = callsTo(

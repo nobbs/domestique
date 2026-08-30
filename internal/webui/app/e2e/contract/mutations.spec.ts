@@ -99,7 +99,12 @@ test("asking for a run now is accepted", async ({ bundlePage: page, apiCalls }) 
 test("asking for one route to be redone is accepted", async ({ bundlePage: page, apiCalls }) => {
   await openRoute(page, LINE_ROUTE.provider, LINE_ROUTE.sourceRouteId, LINE_ROUTE.stageOrder);
 
-  await page.getByRole("button", { name: "Reprocess" }).click();
+  // Behind the panel's overflow: reprocessing is a rare action, and a row of
+  // the card spent on it is a row not spent on the route.
+  await page.getByRole("button", { name: "More about this route" }).click();
+  // A menu item, not a button: the overflow is a real menu now, and its items
+  // answer to the menu's own role.
+  await page.getByRole("menuitem", { name: "Reprocess" }).click();
 
   await expect(page.getByText(/Queued\./)).toBeVisible();
   expect(

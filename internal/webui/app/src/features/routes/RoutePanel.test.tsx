@@ -26,16 +26,16 @@ function renderPanel(overrides: Partial<RoutePanelProps> = {}) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const props: RoutePanelProps = {
     route: route(),
-    profile: null,
     highestMetres: null,
-    subtitle: "",
+    lowestMetres: null,
+    gradients: { averageClimbing: 0, steepestClimbing: 0, steepestDescent: 0 },
     surface: null,
     surfaceAbsence: "Surface not classified yet.",
     bands: [],
     highlight: null,
     onHighlightChange: () => {},
-    climbs: [],
-    onSelectClimb: () => {},
+    collapsed: false,
+    onCollapsedChange: () => {},
     libraryCount: 0,
     onClose: () => {},
     sourceBaseUrls: {},
@@ -100,16 +100,16 @@ describe("RoutePanel", () => {
       <QueryClientProvider client={client}>
         <RoutePanel
           route={route({ movingSeconds: 6420 })}
-          profile={null}
           highestMetres={null}
-          subtitle=""
+          lowestMetres={null}
+          gradients={{ averageClimbing: 0, steepestClimbing: 0, steepestDescent: 0 }}
           surface={null}
           surfaceAbsence="Surface not classified yet."
           bands={[]}
           highlight={null}
           onHighlightChange={() => {}}
-          climbs={[]}
-          onSelectClimb={() => {}}
+          collapsed={false}
+          onCollapsedChange={() => {}}
           libraryCount={0}
           onClose={() => {}}
           sourceBaseUrls={{}}

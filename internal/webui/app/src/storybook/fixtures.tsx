@@ -64,21 +64,42 @@ export const routeGeometryFixture: RouteGeometry = { bbox: routeBoundingBox, coo
 
 export const profile = buildProfile(coordinates);
 export const bands = gradientShares(coordinates);
+/**
+ * Tomorrow morning at seven, by the clock the stories actually run under.
+ *
+ * The picker and the forecast judge a departure against the real clock — a
+ * day in the past is refused, a horizon is sixteen days out — so a fixture
+ * pinned to a calendar date drifts out of the window and the stories start
+ * showing refusals instead of forecasts. Tomorrow is always inside it.
+ */
+export const rideStart: Date = (() => {
+  const morning = new Date();
+  morning.setDate(morning.getDate() + 1);
+  morning.setHours(7, 0, 0, 0);
+
+  return morning;
+})();
+
+/** Minutes after the ride starts, as a Date. */
+function intoRide(minutes: number): Date {
+  return new Date(rideStart.getTime() + minutes * 60_000);
+}
+
 export const weatherSamples: ForecastSample[] = [
   {
     position: coordinates[0] ?? [8, 49, 100],
     distanceMetres: 0,
-    arrivalAt: new Date("2026-08-18T07:00:00Z"),
+    arrivalAt: intoRide(0),
   },
   {
     position: coordinates[20] ?? [8.02, 49.01, 200],
     distanceMetres: 1_500,
-    arrivalAt: new Date("2026-08-18T07:45:00Z"),
+    arrivalAt: intoRide(45),
   },
   {
     position: coordinates[39] ?? [8.039, 49.0195, 295],
     distanceMetres: 3_000,
-    arrivalAt: new Date("2026-08-18T08:30:00Z"),
+    arrivalAt: intoRide(90),
   },
 ];
 export const surface: SurfaceSummary = {

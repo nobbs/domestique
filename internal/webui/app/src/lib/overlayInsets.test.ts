@@ -44,6 +44,33 @@ describe("insetsFrom", () => {
 
   // The collapsed chart is a pill in the bottom-right corner: short and narrow,
   // and closer to the foot than to the right edge.
+  /*
+   * The card the atlas opens a route into: wider than it is tall, in the
+   * top-left corner. Judged by reach alone it looks shallower from the top and
+   * is handed the whole width of the pane for it — which frames every route
+   * into whatever band is left between it and the dock on the foot.
+   */
+  it("gives a corner card the side that costs the least map", () => {
+    expect(insetsFrom(FRAME, [box(12, 12, 470, 340)])).toEqual({ ...NO_INSETS, left: 482 });
+  });
+
+  /*
+   * The same card once its two lists are folded away: 368 wide and barely 200
+   * tall, in the corner, with the dock already across the foot. Judged against
+   * the whole pane the top band is the cheaper of the two — but the dock has
+   * shortened the pane, and against what is left the card is a column again.
+   *
+   * Charged against the whole frame instead, this returns `top: 216`, and the
+   * camera frames every route into the strip between the card and the dock.
+   */
+  it("charges a panel against the map its neighbours have left", () => {
+    expect(insetsFrom(FRAME, [box(12, 12, 368, 204), CHART])).toEqual({
+      ...NO_INSETS,
+      left: 380,
+      bottom: 180,
+    });
+  });
+
   it("gives a pill in a corner the nearer of its two edges", () => {
     expect(insetsFrom(FRAME, [box(1060, 736, 200, 44)])).toEqual({ ...NO_INSETS, bottom: 64 });
   });
