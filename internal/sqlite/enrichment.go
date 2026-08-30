@@ -1,0 +1,112 @@
+package sqlite
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+	"time"
+
+	"github.com/nobbs/domestique/internal/route"
+)
+
+// The enrichment passes a stage can be missing. They are stored rather than
+// derived, so a pass that is not configured at all leaves no rows behind.
+const (
+	PassSurface  = "surface"
+	PassDuration = "duration"
+)
+
+// RecordStageSurfaceFailure remembers that a stage could not be classified.
+func (s *Store) RecordStageSurfaceFailure(
+	ctx context.Context, provider route.Provider, routeID int64, stageOrder int, reason string,
+) error {
+	return s.recordStageEnrichmentFailure(ctx, provider, routeID, stageOrder, PassSurface, reason)
+}
+
+// RecordStageDurationFailure remembers that a stage could not be timed.
+func (s *Store) RecordStageDurationFailure(
+	ctx context.Context, provider route.Provider, routeID int64, stageOrder int, reason string,
+) error {
+	return s.recordStageEnrichmentFailure(ctx, provider, routeID, stageOrder, PassDuration, reason)
+}
+
+// recordStageEnrichmentFailure remembers what one pass could not finish for one
+// stage, replacing whatever it last said about that pair. The reason is a
+// stable category, never an upstream message or a local path.
+func (s *Store) recordStageEnrichmentFailure(
+	ctx context.Context, provider route.Provider, routeID int64, stageOrder int, pass, reason string,
+) error {
+	if provider == "" || reason == "" {
+		return errors.New("a provider and a reason are required")
+	}
+
+	if _, err := s.database.ExecContext(ctx, `
+		INSERT INTO stage_enrichment_failure (provider, route_id, stage_order, pass, reason, failed_at_unix)
+		VALUES (?, ?, ?, ?, ?, ?)
+		ON CONFLICT (provider, route_id, stage_order, pass) DO UPDATE SET
+			reason = excluded.reason,
+			failed_at_unix = excluded.failed_at_unix
+	`, provider, routeID, stageOrder, pass, reason, time.Now().UTC().Unix()); err != nil {
+		return fmt.Errorf("recording a stage enrichment failure: %w", err)
+	}
+
+	return nil
+}
+
+// ForEachStageEnrichmentFailure visits what each pass currently cannot finish,
+// in stable stage order. It is what turns a count of incomplete stages into the
+// stages themselves.
+func (s *Store) ForEachStageEnrichmentFailure(
+	ctx context.Context,
+	visit func(key route.Key, pass, reason string, failedAt time.Time) error,
+) error {
+	if visit == nil {
+		return errors.New("a stage enrichment failure visitor is required")
+	}
+
+	rows, err := s.database.QueryContext(ctx, `
+		SELECT provider, route_id, stage_order, pass, reason, failed_at_unix
+		FROM stage_enrichment_failure
+		ORDER BY provider, route_id, stage_order, pass
+	`)
+	if err != nil {
+		return fmt.Errorf("reading stage enrichment failures: %w", err)
+	}
+	defer closeRows(rows)
+
+	for rows.Next() {
+		var provider, pass, reason string
+		var routeID int64
+		var stageOrder int
+		var failedAt int64
+		if err := rows.Scan(&provider, &routeID, &stageOrder, &pass, &reason, &failedAt); err != nil {
+			return fmt.Errorf("reading a stage enrichment failure: %w", err)
+		}
+		key := route.NewKey(route.Provider(provider), routeID, stageOrder)
+		if err := visit(key, pass, reason, time.Unix(failedAt, 0).UTC()); err != nil {
+			return err
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("reading stage enrichment failures: %w", err)
+	}
+
+	return nil
+}
+
+// clearStageEnrichmentFailure drops what a pass last could not finish, in the
+// caller's transaction. Storing what the pass produced is what clears it, so a
+// stage cannot be listed as failing and enriched at the same time.
+func clearStageEnrichmentFailure(
+	ctx context.Context, transaction *sql.Tx, provider route.Provider, routeID int64, stageOrder int, pass string,
+) error {
+	if _, err := transaction.ExecContext(ctx, `
+		DELETE FROM stage_enrichment_failure
+		WHERE provider = ? AND route_id = ? AND stage_order = ? AND pass = ?
+	`, provider, routeID, stageOrder, pass); err != nil {
+		return fmt.Errorf("clearing a stage enrichment failure: %w", err)
+	}
+
+	return nil
+}

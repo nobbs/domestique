@@ -76,7 +76,13 @@ func (s *Store) StoreStageSurface(
 	ranges []byte,
 	matchedMetres float64,
 ) error {
-	if _, err := s.database.ExecContext(ctx, `
+	transaction, err := s.database.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("storing stage surface: %w", err)
+	}
+	defer rollback(transaction)
+
+	if _, err := transaction.ExecContext(ctx, `
 		INSERT INTO stage_surface (
 			provider, route_id, stage_order, content_hash, index_generation, ranges, matched_metres, updated_at_unix
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -88,6 +94,14 @@ func (s *Store) StoreStageSurface(
 			updated_at_unix = excluded.updated_at_unix
 	`, provider, routeID, stageOrder, contentHash, indexGeneration, ranges, matchedMetres, time.Now().UTC().Unix()); err != nil {
 		return fmt.Errorf("storing stage surface: %w", err)
+	}
+	// Stored and still listed as failing cannot both be true, so the two move
+	// together.
+	if err := clearStageEnrichmentFailure(ctx, transaction, provider, routeID, stageOrder, PassSurface); err != nil {
+		return err
+	}
+	if err := transaction.Commit(); err != nil {
+		return fmt.Errorf("committing stage surface: %w", err)
 	}
 
 	return nil

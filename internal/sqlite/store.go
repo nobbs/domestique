@@ -601,5 +601,19 @@ func schemaMigrations() [][]string {
 			// one task's retained rows instead, which its own bound keeps small.
 			`CREATE INDEX task_runs_task_index ON task_runs(task, id DESC)`,
 		},
+		{
+			// Which stages an enrichment pass could not finish, and why. One row per
+			// stage per pass, replaced when the pass tries again and removed when it
+			// succeeds, so what is here is what is wrong now rather than a log.
+			`CREATE TABLE stage_enrichment_failure (
+				provider       TEXT    NOT NULL,
+				route_id       INTEGER NOT NULL,
+				stage_order    INTEGER NOT NULL,
+				pass           TEXT    NOT NULL,
+				reason         TEXT    NOT NULL,
+				failed_at_unix INTEGER NOT NULL,
+				PRIMARY KEY (provider, route_id, stage_order, pass)
+			)`,
+		},
 	}
 }
