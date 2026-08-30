@@ -15,6 +15,7 @@ import {
   buildProfile,
   buildWindowedProfile,
   gradientShares,
+  gradientSummary,
   movingSecondsForWindow,
 } from "../../lib/profile";
 import { widened } from "../../lib/selection";
@@ -89,6 +90,9 @@ export function useOpenRoute(
   // so the chips do not re-run the classification on every hover.
   const gradient = useMemo(() => gradientShares(coordinates), [coordinates]);
 
+  // How steep the route is each way, from the same stored coordinates.
+  const gradients = useMemo(() => gradientSummary(coordinates), [coordinates]);
+
   // The route's sustained climbs, from the same stored coordinates.
   const climbs = useMemo(() => findClimbs(coordinates), [coordinates]);
 
@@ -133,6 +137,7 @@ export function useOpenRoute(
     onZoomChange,
     forget,
     gradient,
+    gradients,
     climbs,
     selectClimb,
     surface,

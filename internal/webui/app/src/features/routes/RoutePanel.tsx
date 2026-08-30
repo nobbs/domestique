@@ -23,7 +23,13 @@
  * out again.
  */
 
-import { IconChevronsRight, IconDots, IconX } from "@tabler/icons-react";
+import {
+  IconChevronsRight,
+  IconDots,
+  IconTrendingDown,
+  IconTrendingUp,
+  IconX,
+} from "@tabler/icons-react";
 import type { Route } from "../../api/types";
 import { SourceRouteLink } from "../../components/SourceRouteLink";
 import {
@@ -44,9 +50,9 @@ import {
 } from "../../lib/format";
 import type { Highlight } from "../../lib/highlight";
 import { bandEntries, surfaceEntries } from "../../lib/mix";
-import type { BandShare } from "../../lib/profile";
+import type { BandShare, GradientSummary } from "../../lib/profile";
 import type { SurfaceSummary } from "../../lib/surface";
-import type { UnitSystem } from "../../lib/units";
+import { elevationValue, type UnitSystem } from "../../lib/units";
 import { ClimbsTable } from "./ClimbsTable";
 import { MixSection } from "./MixSection";
 import { ReprocessButton } from "./ReprocessButton";
@@ -68,31 +74,19 @@ function Figure({
   span,
   children,
 }: {
-  term: string;
+  term: React.ReactNode;
   /** Both columns, for a figure with no partner to sit beside. */
   span?: boolean;
   children: React.ReactNode;
 }) {
   return (
     <div className={`flex items-baseline justify-between gap-2 ${span ? "col-span-2" : ""}`}>
-      <dt className="truncate text-[11px] text-[var(--ink-2)]">{term}</dt>
+      <dt className="flex min-w-0 items-center gap-1 truncate text-[11px] text-[var(--ink-2)] [&_svg]:size-3 [&_svg]:shrink-0">
+        {term}
+      </dt>
       <dd className="shrink-0 text-sm leading-tight tabular-nums">{children}</dd>
     </div>
   );
-}
-
-/**
- * How much the route climbs per unit of ground, as a gradient.
- *
- * Ascent over distance rather than net rise over distance, which is what a
- * climb's own average is: a loop ends where it started, so the net measure
- * says nought for every one of them and says it most confidently about the
- * lumpiest. This says how much of the ride is spent going up, which is the
- * question the figure beside it — the steepest hundred metres — does not
- * answer.
- */
-function averageGradient(ascentMetres: number, distanceMetres: number): number {
-  return distanceMetres > 0 ? (ascentMetres / distanceMetres) * 100 : 0;
 }
 
 export interface RoutePanelProps {
@@ -107,6 +101,15 @@ export interface RoutePanelProps {
   highestMetres: number | null;
   /** Its lowest, from the same profile and null on the same terms. */
   lowestMetres: number | null;
+  /**
+   * The route's gradients with up told from down.
+   *
+   * A gradient answers whether the ride will be hard, and only the climbing
+   * decides that — so the descents are neither averaged in nor allowed to
+   * stand in for the steepest climb, which is what the service's own single
+   * absolute figure lets them do.
+   */
+  gradients: GradientSummary;
   /** Null for a route nobody has classified, which the key says in words. */
   surface: SurfaceSummary | null;
   surfaceAbsence: string;
@@ -148,6 +151,7 @@ export function RoutePanel({
   movingSecondsOverride,
   highestMetres,
   lowestMetres,
+  gradients,
   surface,
   surfaceAbsence,
   bands,
@@ -288,15 +292,49 @@ export function RoutePanel({
             <dl className="grid grid-cols-2 gap-x-4 gap-y-1">
               <Figure term="Distance">{formatDistance(route.distanceMetres, unitSystem)}</Figure>
               <Figure term="Ascent">{formatAscent(route.ascentMetres, unitSystem)}</Figure>
-              <Figure term="Avg gradient">
-                {formatGradient(averageGradient(route.ascentMetres, route.distanceMetres))}
+              {/*
+               * One figure rather than two: the two ends of a range are read
+               * together or not at all, and asking for the height of the top
+               * without the height of the bottom is asking half a question.
+               * It is how the dock has always said it.
+               */}
+              <Figure term="Elevation">
+                {lowestMetres === null || highestMetres === null
+                  ? "—"
+                  : // The unit once, on the end it belongs to. Printed on both
+                    // ends the pair is the widest figure on the card, and in
+                    // feet — where both ends are four digits — it is wide
+                    // enough to start eating its own label.
+                    `${Math.round(elevationValue(lowestMetres, unitSystem)).toLocaleString()}–${formatElevation(highestMetres, unitSystem)}`}
               </Figure>
-              <Figure term="Max gradient">{formatGradient(route.maxGradientPercent)}</Figure>
-              <Figure term="Lowest">
-                {lowestMetres === null ? "—" : formatElevation(lowestMetres, unitSystem)}
+              <Figure term="Avg climbing">{formatGradient(gradients.averageClimbing)}</Figure>
+              {/*
+               * The steepest each way, which the service's own figure cannot
+               * say: it takes the absolute value, so a savage descent reaches
+               * the page as a savage climb. The glyph carries the direction and
+               * the word carries the rest, because two rows reading "Max" and
+               * differing only by an arrow would rest the whole distinction on
+               * a twelve-pixel picture.
+               */}
+              <Figure
+                term={
+                  <>
+                    <IconTrendingUp stroke={2} aria-hidden="true" />
+                    Max climb
+                  </>
+                }
+              >
+                {formatGradient(gradients.steepestClimbing)}
               </Figure>
-              <Figure term="Highest">
-                {highestMetres === null ? "—" : formatElevation(highestMetres, unitSystem)}
+              <Figure
+                term={
+                  <>
+                    <IconTrendingDown stroke={2} aria-hidden="true" />
+                    Max descent
+                  </>
+                }
+              >
+                {formatGradient(gradients.steepestDescent)}
               </Figure>
               {/*
                * Predicted, not measured — the label says "moving time", not

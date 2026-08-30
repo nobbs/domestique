@@ -292,6 +292,7 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
     onZoomChange,
     forget,
     gradient,
+    gradients,
     climbs,
     selectClimb,
     surface,
@@ -530,6 +531,7 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
           movingSecondsOverride={selectionMovingSeconds}
           highestMetres={routeProfile ? routeProfile.maxElevationMetres : null}
           lowestMetres={routeProfile ? routeProfile.minElevationMetres : null}
+          gradients={gradients}
           surface={surfaceSummary}
           surfaceAbsence={
             surface

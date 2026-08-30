@@ -28,6 +28,7 @@ function renderPanel(overrides: Partial<RoutePanelProps> = {}) {
     route: route(),
     highestMetres: null,
     lowestMetres: null,
+    gradients: { averageClimbing: 0, steepestClimbing: 0, steepestDescent: 0 },
     surface: null,
     surfaceAbsence: "Surface not classified yet.",
     bands: [],
@@ -103,6 +104,7 @@ describe("RoutePanel", () => {
           route={route({ movingSeconds: 6420 })}
           highestMetres={null}
           lowestMetres={null}
+          gradients={{ averageClimbing: 0, steepestClimbing: 0, steepestDescent: 0 }}
           surface={null}
           surfaceAbsence="Surface not classified yet."
           bands={[]}

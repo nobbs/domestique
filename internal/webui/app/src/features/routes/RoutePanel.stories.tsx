@@ -25,6 +25,7 @@ export const RouteDetail: Story = {
           route={route}
           highestMetres={295}
           lowestMetres={48}
+          gradients={{ averageClimbing: 4.8, steepestClimbing: 11.4, steepestDescent: 9.2 }}
           surface={surface}
           surfaceAbsence="Surface not classified yet."
           bands={bands}
