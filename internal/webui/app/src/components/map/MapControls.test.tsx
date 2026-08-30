@@ -7,6 +7,12 @@ const map = vi.hoisted(() => ({
   getZoom: vi.fn(() => 10),
   zoomIn: vi.fn(),
   zoomOut: vi.fn(),
+  // What the compass rides on; its behavior has its own suite.
+  getBearing: vi.fn(() => 0),
+  getPitch: vi.fn(() => 0),
+  easeTo: vi.fn(),
+  on: vi.fn(),
+  off: vi.fn(),
 }));
 const mapReady = vi.hoisted(() => ({ value: true }));
 
