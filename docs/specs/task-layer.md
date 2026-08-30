@@ -49,7 +49,7 @@ only answerable afterwards if it was written down.
 
 A chain link is the exception. One asking for work already under way is dropped
 rather than refused, because the work is happening — which is what the link
-wanted.
+wanted — and the rest of the chain counts it as run.
 
 `unchanged` and `current` are deliberately separate. A rebuild that reached its
 upstream and found the published data identical did work — it checked — and the

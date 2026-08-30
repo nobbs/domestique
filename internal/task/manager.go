@@ -271,6 +271,10 @@ func (m *Manager) linked(ctx context.Context, link Link, visited map[invocationK
 	release, outcome := m.admit(entry, invocation)
 	switch outcome {
 	case admitWorking:
+		// The work is happening, which is what the link asked for, so the rest
+		// of the chain treats it as run rather than asking again once it ends.
+		visited[keyOf(invocation)] = struct{}{}
+
 		return
 	case admitHeld:
 		m.refused(ctx, entry, invocation, DetailHeld)

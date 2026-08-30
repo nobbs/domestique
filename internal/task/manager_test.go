@@ -1048,3 +1048,55 @@ func TestARefusalSaysWhichKindOfBusyStoppedIt(t *testing.T) {
 	close(held.release)
 	manager.Wait()
 }
+
+// A link that coalesced onto work already under way has had its answer, so a
+// later link in the same chain must not ask for it again once that work ends.
+func TestACoalescedLinkCountsAsRunForTheRestOfTheChain(t *testing.T) {
+	t.Parallel()
+
+	var childRuns sync.Mutex
+	runs := 0
+	started, release, finished := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	child := RunnerFunc(func(context.Context, Invocation) Result {
+		childRuns.Lock()
+		runs++
+		first := runs == 1
+		childRuns.Unlock()
+
+		if first {
+			close(started)
+			<-release
+			close(finished)
+		}
+
+		return Result{Outcome: Succeeded}
+	})
+
+	manager, _ := newTestManager(t)
+	require.NoError(t, manager.Register(&Definition{Name: "child", Run: child}), "Register(child)")
+	require.NoError(t, manager.Register(&Definition{
+		Name: "sibling",
+		Run: RunnerFunc(func(context.Context, Invocation) Result {
+			// Let the held run finish, so the link below is asked after it ends.
+			close(release)
+			<-finished
+
+			return Result{Outcome: Succeeded, Next: []Link{{Task: "child"}}}
+		}),
+	}), "Register(sibling)")
+	require.NoError(t, manager.Register(&Definition{
+		Name: "parent",
+		Run: RunnerFunc(func(context.Context, Invocation) Result {
+			return Result{Outcome: Succeeded, Next: []Link{{Task: "child"}, {Task: "sibling"}}}
+		}),
+	}), "Register(parent)")
+
+	require.True(t, manager.Trigger(t.Context(), "child", ""), "Trigger(child)")
+	<-started
+	require.True(t, manager.Trigger(t.Context(), "parent", ""), "Trigger(parent)")
+	manager.Wait()
+
+	childRuns.Lock()
+	defer childRuns.Unlock()
+	assert.Equal(t, 1, runs, "a coalesced link was asked for again once its work had finished")
+}
