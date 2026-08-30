@@ -216,7 +216,7 @@ export function MixColumn({
                   // screen is a choice about space, not about what the class is.
                   label={`${entry.label}, ${entry.description}, ${columnLength(entry.metres, unitSystem, longest)}, ${formatShare(entry.share)} of the route`}
                   title={entry.description}
-                  className="flex size-full min-w-0 items-baseline gap-1 rounded px-1 text-left text-[11px] leading-none hover:bg-[var(--base)] aria-pressed:bg-[color-mix(in_srgb,var(--accent)_16%,transparent)]"
+                  className="flex size-full min-w-0 items-center gap-1 rounded px-1 text-left text-[11px] leading-none hover:bg-[var(--base)] aria-pressed:bg-[color-mix(in_srgb,var(--accent)_16%,transparent)]"
                 >
                   <span className="truncate text-[var(--ink-2)]">{entry.label}</span>
                   <span className="ml-auto shrink-0 font-semibold tabular-nums">
