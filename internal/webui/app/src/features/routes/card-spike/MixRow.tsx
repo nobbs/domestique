@@ -15,11 +15,11 @@
  * width rather than the label's height.
  */
 
-import { HighlightToggle } from "../../../components/route/HighlightToggle";
 import { formatDistance } from "../../../lib/format";
 import type { Highlight } from "../../../lib/highlight";
 import type { MixEntry } from "../../../lib/mix";
 import { useElementWidth } from "../../../lib/useElementWidth";
+import { HighlightToggle } from "../HighlightToggle";
 
 const BAR_HEIGHT = 10;
 /** The drop the leader falls through, between the bar and the tags. */

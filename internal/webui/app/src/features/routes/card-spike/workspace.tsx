@@ -16,13 +16,13 @@
 
 import { IconChevronRight, IconLayoutSidebarRightCollapse } from "@tabler/icons-react";
 import { useMemo, useState } from "react";
-import { ClimbMarkers } from "../../../components/route/ClimbMarkers";
-import { ElevationProfile } from "../../../components/route/ElevationProfile";
-import { GroundRibbon } from "../../../components/route/GroundRibbon";
 import type { Climb } from "../../../lib/climbs";
 import type { Highlight } from "../../../lib/highlight";
 import { groundSegments } from "../../../lib/mix";
 import { buildProfile } from "../../../lib/profile";
+import { ClimbMarkers } from "../ClimbMarkers";
+import { ElevationProfile } from "../ElevationProfile";
+import { GroundRibbon } from "../GroundRibbon";
 import { CLIMBS, SPIKE_COORDINATES, SPIKE_DISTANCE_METRES, SPIKE_SURFACE, TITLE } from "./data";
 import { AirCard, PlainCard, RowsCard, SlideCard } from "./variants";
 

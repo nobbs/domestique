@@ -22,6 +22,7 @@
  */
 
 import { IconChevronsRight } from "@tabler/icons-react";
+import { useState } from "react";
 import type { Position } from "../../api/types";
 import { StartTimePicker } from "../../components/StartTimePicker";
 import type { Climb } from "../../lib/climbs";
@@ -36,6 +37,7 @@ import type { SurfaceSummary } from "../../lib/surface";
 import type { UnitSystem } from "../../lib/units";
 import { distanceUnitLabel, distanceValue } from "../../lib/units";
 import { ClimbMarkers } from "./ClimbMarkers";
+import { ClimbsSidebar } from "./ClimbsSidebar";
 import { ElevationProfile } from "./ElevationProfile";
 import { ForecastFrame } from "./ForecastFrame";
 import { ForecastStrip } from "./ForecastStrip";
@@ -54,6 +56,8 @@ export interface RouteDockProps {
   distanceMetres: number;
   surface: SurfaceSummary | null;
   climbs: Climb[];
+  /** Opens the shared map/chart window on one climb, as the brackets do. */
+  onSelectClimb: (climb: Climb) => void;
   /** The route's own geometry, which the strip's wind reading is measured against. */
   coordinates: Position[];
   samples: ForecastSample[];
@@ -83,6 +87,7 @@ export function RouteDock({
   distanceMetres,
   surface,
   climbs,
+  onSelectClimb,
   coordinates,
   samples,
   startAt,
@@ -111,6 +116,7 @@ export function RouteDock({
    * this reader has.
    */
   const coarse = useCoarsePointer();
+  const [climbsOpen, setClimbsOpen] = useState(true);
   const range =
     profile === null
       ? ""
@@ -169,78 +175,95 @@ export function RouteDock({
       >
         <IconChevronsRight size={15} stroke={2} aria-hidden="true" className="rotate-90" />
       </button>
-      <div className="grid gap-1.5">
-        {summary === "" ? null : (
-          <output aria-label="Elevation summary" className="text-xs text-[var(--ink-2)]">
-            {summary}
-          </output>
-        )}
-        <div className="relative">
-          <ElevationProfile
-            profile={profile}
-            title={title}
-            surface={surface}
-            activeMetres={activeMetres}
-            onActiveChange={onActiveChange}
-            zoomWindow={zoomWindow}
-            onZoomChange={onZoomChange}
-            highlight={highlight}
-            unitSystem={unitSystem}
-          />
-          <ClimbMarkers climbs={climbs} totalMetres={distanceMetres} onSelect={onActiveChange} />
-        </div>
-        {/*
-         * Ground only. The chart above already paints the area under it by
-         * steepness band, so a gradient ribbon here would be the same fact
-         * drawn twice one row apart — which reads as two measurements until you
-         * work out that it is not.
-         */}
-        <div className="relative">
-          <button
-            type="button"
-            aria-expanded={groundLabelled}
-            aria-label={groundLabelled ? "Hide the ground key" : "Show the ground key"}
-            onClick={() => onGroundLabelledChange(!groundLabelled)}
-            className="absolute top-0 left-0 rounded p-0.5 text-[var(--ink-2)] hover:bg-[var(--base)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)]"
-          >
-            <IconChevronsRight
-              size={12}
-              stroke={2}
-              aria-hidden="true"
-              className={groundLabelled ? "rotate-90 transition-transform" : "transition-transform"}
-            />
-          </button>
-          <div style={{ paddingLeft: PADDING.left, paddingRight: PADDING.right }}>
-            <GroundRibbon
-              segments={groundSegments(surface)}
+      {/*
+       * The lanes and the climbs side by side. The lanes are everything drawn
+       * against distance and take the width that is left; the list is a column
+       * of figures and takes a fixed one, because a table that reflows with the
+       * window is a table whose columns move while you read down them.
+       */}
+      <div className="flex items-stretch gap-3">
+        <div className="grid min-w-0 flex-1 gap-1.5">
+          {summary === "" ? null : (
+            <output aria-label="Elevation summary" className="text-xs text-[var(--ink-2)]">
+              {summary}
+            </output>
+          )}
+          <div className="relative">
+            <ElevationProfile
+              profile={profile}
+              title={title}
               surface={surface}
-              labelled={groundLabelled}
+              activeMetres={activeMetres}
+              onActiveChange={onActiveChange}
+              zoomWindow={zoomWindow}
+              onZoomChange={onZoomChange}
               highlight={highlight}
-              onHighlightChange={onHighlightChange}
+              unitSystem={unitSystem}
             />
+            <ClimbMarkers climbs={climbs} totalMetres={distanceMetres} onSelect={onActiveChange} />
           </div>
-        </div>
-        <ForecastFrame
-          caption={`Forecast${back === undefined ? "" : ` · back ${clockAt(back)}`}`}
-          open={forecastOpen}
-          onOpenChange={onForecastOpenChange}
-          controls={
-            <StartTimePicker
-              value={startAt}
-              onChange={onStartAtChange}
-              movingSeconds={movingSeconds}
-              inline
+          {/*
+           * Ground only. The chart above already paints the area under it by
+           * steepness band, so a gradient ribbon here would be the same fact
+           * drawn twice one row apart — which reads as two measurements until you
+           * work out that it is not.
+           */}
+          <div className="relative">
+            <button
+              type="button"
+              aria-expanded={groundLabelled}
+              aria-label={groundLabelled ? "Hide the ground key" : "Show the ground key"}
+              onClick={() => onGroundLabelledChange(!groundLabelled)}
+              className="absolute top-0 left-0 rounded p-0.5 text-[var(--ink-2)] hover:bg-[var(--base)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)]"
+            >
+              <IconChevronsRight
+                size={12}
+                stroke={2}
+                aria-hidden="true"
+                className={
+                  groundLabelled ? "rotate-90 transition-transform" : "transition-transform"
+                }
+              />
+            </button>
+            <div style={{ paddingLeft: PADDING.left, paddingRight: PADDING.right }}>
+              <GroundRibbon
+                segments={groundSegments(surface)}
+                surface={surface}
+                labelled={groundLabelled}
+                highlight={highlight}
+                onHighlightChange={onHighlightChange}
+              />
+            </div>
+          </div>
+          <ForecastFrame
+            caption={`Forecast${back === undefined ? "" : ` · back ${clockAt(back)}`}`}
+            open={forecastOpen}
+            onOpenChange={onForecastOpenChange}
+            controls={
+              <StartTimePicker
+                value={startAt}
+                onChange={onStartAtChange}
+                movingSeconds={movingSeconds}
+                inline
+              />
+            }
+          >
+            <ForecastStrip
+              samples={samples}
+              coordinates={coordinates}
+              startMetres={shown.startMetres}
+              endMetres={shown.endMetres}
+              unitSystem={unitSystem}
             />
-          }
-        >
-          <ForecastStrip
-            samples={samples}
-            coordinates={coordinates}
-            startMetres={shown.startMetres}
-            endMetres={shown.endMetres}
-            unitSystem={unitSystem}
-          />
-        </ForecastFrame>
+          </ForecastFrame>
+        </div>
+        <ClimbsSidebar
+          climbs={climbs}
+          open={climbsOpen}
+          onOpenChange={setClimbsOpen}
+          onSelect={onSelectClimb}
+          unitSystem={unitSystem}
+        />
       </div>
     </section>
   );

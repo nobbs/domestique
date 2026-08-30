@@ -34,8 +34,6 @@ function renderPanel(overrides: Partial<RoutePanelProps> = {}) {
     bands: [],
     highlight: null,
     onHighlightChange: () => {},
-    climbs: [],
-    onSelectClimb: () => {},
     collapsed: false,
     onCollapsedChange: () => {},
     libraryCount: 0,
@@ -110,8 +108,6 @@ describe("RoutePanel", () => {
           bands={[]}
           highlight={null}
           onHighlightChange={() => {}}
-          climbs={[]}
-          onSelectClimb={() => {}}
           collapsed={false}
           onCollapsedChange={() => {}}
           libraryCount={0}

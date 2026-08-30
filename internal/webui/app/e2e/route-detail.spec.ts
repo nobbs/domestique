@@ -64,17 +64,34 @@ test("the route draws its map, its facts and its profile", async ({ offlinePage:
   await expect(page.locator(".maplibregl-ctrl-scale")).toContainText(/\d/);
 });
 
-test("climbs start folded and expand on demand", async ({ offlinePage: page }) => {
+/*
+ * The climbs are the dock's, beside the chart that brackets them. They open
+ * with it, because the reader who opened the dock opened it to study the
+ * route, and fold to a rail when the chart wants the width back.
+ */
+test("the climbs sit beside the chart and fold to a rail", async ({ offlinePage: page }) => {
   await openRoute(page, CLIMB_ROUTE.provider, CLIMB_ROUTE.sourceRouteId, CLIMB_ROUTE.stageOrder);
 
-  const toggle = page.getByRole("button", { name: /^Show \d+ climbs?$/ });
-  await expect(toggle).toBeVisible();
-  await toggle.click();
-  const expanded = page.getByRole("button", { name: /^Hide \d+ climbs?$/ });
-  await expect(expanded).toBeVisible();
+  const dock = page.getByRole("region", { name: "Route detail" });
+  const shown = dock.getByRole("button", { name: /^Hide \d+ climbs?$/ });
+  await expect(shown).toBeVisible();
   await expect(
-    expanded.locator("xpath=ancestor::section").getByRole("listitem").first(),
+    shown.locator("xpath=ancestor::section").getByRole("listitem").first(),
   ).toBeVisible();
+
+  await shown.click();
+
+  const folded = dock.getByRole("button", { name: /^Show \d+ climbs?$/ });
+  await expect(folded).toBeVisible();
+  await expect(dock.getByRole("listitem")).toHaveCount(0);
+});
+
+// The card says what the route is; the climbs say what it does, and they are
+// no longer on it.
+test("the card has no climbs on it", async ({ offlinePage: page }) => {
+  await openRoute(page, CLIMB_ROUTE.provider, CLIMB_ROUTE.sourceRouteId, CLIMB_ROUTE.stageOrder);
+
+  await expect(routePanel(page).getByRole("button", { name: /climbs?$/ })).toHaveCount(0);
 });
 
 test("the mixes start folded and expand on demand", async ({ offlinePage: page }) => {

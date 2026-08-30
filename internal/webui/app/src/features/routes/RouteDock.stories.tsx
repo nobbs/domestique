@@ -48,6 +48,7 @@ function Docked({ startOpen }: { startOpen: boolean }) {
           distanceMetres={route.distanceMetres}
           surface={surface}
           climbs={climbs}
+          onSelectClimb={() => {}}
           coordinates={coordinates}
           samples={weatherSamples}
           startAt={startAt}

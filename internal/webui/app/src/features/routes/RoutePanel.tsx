@@ -39,7 +39,6 @@ import {
   DropdownMenuTrigger,
 } from "../../components/ui/dropdown-menu";
 import { Separator } from "../../components/ui/separator";
-import type { Climb } from "../../lib/climbs";
 import {
   formatAscent,
   formatDistance,
@@ -53,7 +52,6 @@ import { bandEntries, surfaceEntries } from "../../lib/mix";
 import type { BandShare, GradientSummary } from "../../lib/profile";
 import type { SurfaceSummary } from "../../lib/surface";
 import { elevationValue, type UnitSystem } from "../../lib/units";
-import { ClimbsTable } from "./ClimbsTable";
 import { MixSection } from "./MixSection";
 import { ReprocessButton } from "./ReprocessButton";
 
@@ -117,10 +115,6 @@ export interface RoutePanelProps {
   bands: BandShare[];
   highlight: Highlight | null;
   onHighlightChange: (highlight: Highlight | null) => void;
-  /** The route's sustained climbs, in the order they are ridden. */
-  climbs: Climb[];
-  /** Opens the shared map/chart window on one climb. */
-  onSelectClimb: (climb: Climb) => void;
   /**
    * Whether the panel rests as a pill.
    *
@@ -157,8 +151,6 @@ export function RoutePanel({
   bands,
   highlight,
   onHighlightChange,
-  climbs,
-  onSelectClimb,
   collapsed,
   onCollapsedChange,
   libraryCount,
@@ -359,7 +351,6 @@ export function RoutePanel({
               onHighlightChange={onHighlightChange}
               unitSystem={unitSystem}
             />
-            <ClimbsTable climbs={climbs} unitSystem={unitSystem} onSelect={onSelectClimb} />
           </div>
         )}
       </section>

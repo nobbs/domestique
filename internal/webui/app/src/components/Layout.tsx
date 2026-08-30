@@ -7,7 +7,6 @@ import {
   DrawerTrigger,
 } from "@/components/ui/drawer";
 import { useNarrowViewport } from "../lib/mediaQuery";
-import { useElementWidth } from "../lib/useElementWidth";
 import { MenuBar } from "./MenuBar";
 
 export interface LayoutProps {
@@ -33,14 +32,6 @@ export interface LayoutProps {
 export function Layout({ map, children, dock }: LayoutProps) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const narrow = useNarrowViewport();
-  /*
-   * The workspace's own width, so the dock can start clear of it. Measured
-   * rather than assumed: the panel in that corner is a search pill, a route
-   * pill or an unfolded card depending on what the reader is doing, and a
-   * hard-coded inset would be wrong for two of the three.
-   */
-  const { ref: workspace, width: workspaceWidth } = useElementWidth<HTMLElement>();
-
   return (
     /*
      * A column, not a stack: the bar takes its own height off the top and the
@@ -71,20 +62,19 @@ export function Layout({ map, children, dock }: LayoutProps) {
         ) : (
           <div className="shell__overlay pointer-events-none absolute inset-0 z-20">
             <aside
-              ref={workspace}
               className="pointer-events-auto absolute top-3 left-3 max-h-[calc(100%-1.5rem)] w-fit max-w-[calc(100dvw-1.5rem)] overflow-y-auto rounded-xl bg-[var(--panel)] p-3 shadow-[var(--shadow)] ring-1 ring-black/5 transition-[background-color,box-shadow,padding] duration-200 has-[>[data-compact-workspace]]:overflow-visible has-[>[data-compact-workspace]]:bg-transparent has-[>[data-compact-workspace]]:p-0 has-[>[data-compact-workspace]]:shadow-none has-[>[data-compact-workspace]]:ring-0"
               aria-label="Route library controls"
             >
               {children}
             </aside>
             {dock === undefined ? null : (
-              // Centred in what is left of the foot, so a dock that folds to a
-              // pill leaves it in the middle of the ground it had rather than
-              // dropping it into a corner.
-              <div
-                className="pointer-events-auto absolute right-3 bottom-3 flex justify-center"
-                style={{ left: workspaceWidth + 24 }}
-              >
+              // The whole width of the foot. The card above it is a fixed
+              // height that clears this by a long way, so there is nothing to
+              // start clear of — and the lanes drawn against distance want
+              // every pixel of width there is, because width is what resolves
+              // them. Centred within it, so a dock that folds to a pill leaves
+              // it in the middle of the ground it had.
+              <div className="pointer-events-auto absolute right-3 bottom-3 left-3 flex justify-center">
                 {dock}
               </div>
             )}

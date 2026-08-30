@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
 import type { Highlight } from "../../lib/highlight";
-import { bands, climbs, route, StoryProviders, surface } from "../../storybook/fixtures";
+import { bands, route, StoryProviders, surface } from "../../storybook/fixtures";
 import { RoutePanel } from "./RoutePanel";
 
 // The story holds the state the component reads back, so it renders rather
@@ -31,8 +31,6 @@ export const RouteDetail: Story = {
           bands={bands}
           highlight={highlight}
           onHighlightChange={setHighlight}
-          climbs={climbs}
-          onSelectClimb={() => {}}
           collapsed={collapsed}
           onCollapsedChange={setCollapsed}
           libraryCount={47}

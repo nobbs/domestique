@@ -21,8 +21,8 @@ import {
   IconX,
 } from "@tabler/icons-react";
 import { type ReactNode, useLayoutEffect, useRef, useState } from "react";
-import { MixColumn } from "../../../components/route/MixColumn";
 import type { Highlight } from "../../../lib/highlight";
+import { MixColumn } from "../MixColumn";
 import {
   CLIMB_SUMMARY,
   CLIMBS,

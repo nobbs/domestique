@@ -459,6 +459,7 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
             distanceMetres={shownRoute.distanceMetres}
             surface={surfaceSummary}
             climbs={climbs}
+            onSelectClimb={selectClimb}
             coordinates={openCoordinates}
             samples={samples}
             startAt={startAt}
@@ -541,8 +542,6 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
           bands={gradient}
           highlight={highlight}
           onHighlightChange={setHighlight}
-          climbs={climbs}
-          onSelectClimb={selectClimb}
           collapsed={panelCollapsed}
           onCollapsedChange={setPanelCollapsed}
           libraryCount={library.length}
