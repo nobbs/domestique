@@ -34,6 +34,7 @@ vi.mock("react-map-gl/maplibre", () => ({
 }));
 
 const { LibraryRoutes, LIBRARY_HIT_LAYER } = await import("./LibraryRoutes");
+const { CartographyProvider } = await import("../../components/map/CartographyContext");
 
 beforeEach(() => {
   drawn.sources = [];
@@ -56,22 +57,24 @@ function layer(id: string) {
 describe("LibraryRoutes", () => {
   it("draws selectable lines, including the transparent hit target", () => {
     render(
-      <LibraryRoutes
-        lines={[
-          line("too-short", [[8, 49]]),
-          line("selected", [
-            [8, 49],
-            [8.1, 49.1],
-          ]),
-          line("hovered", [
-            [8.2, 49.2],
-            [8.3, 49.3],
-          ]),
-        ]}
-        pickedKey="selected"
-        hoveredKey="hovered"
-        hitLayerId={LIBRARY_HIT_LAYER}
-      />,
+      <CartographyProvider dark={false}>
+        <LibraryRoutes
+          lines={[
+            line("too-short", [[8, 49]]),
+            line("selected", [
+              [8, 49],
+              [8.1, 49.1],
+            ]),
+            line("hovered", [
+              [8.2, 49.2],
+              [8.3, 49.3],
+            ]),
+          ]}
+          pickedKey="selected"
+          hoveredKey="hovered"
+          hitLayerId={LIBRARY_HIT_LAYER}
+        />
+      </CartographyProvider>,
     );
 
     expect(drawn.sources[0]?.data.features.map((feature) => feature.properties.key)).toEqual([

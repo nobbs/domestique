@@ -18,6 +18,7 @@ import { formatDistance, formatElevation } from "../../lib/format";
 import type { Profile } from "../../lib/profile";
 import { buildProfile, buildWindowedProfile, sampleAt } from "../../lib/profile";
 import { summariseSurface } from "../../lib/surface";
+import { CartographyProvider } from "../map/CartographyContext";
 
 interface LayerRecord {
   id: string;
@@ -142,18 +143,19 @@ function show(
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const jsx = (activeMetres: number | null) => (
     <QueryClientProvider client={client}>
-      <RouteOverlay
-        coordinates={coordinates}
-        surface={props.surface}
-        surfaceSummary={surfaceSummary}
-        darkBasemap={props.darkBasemap ?? false}
-        profile={profile}
-        activeProfile={props.activeProfile ?? profile}
-        activeMetres={activeMetres}
-        profileCollapsed={props.profileCollapsed ?? false}
-        zoomWindow={props.zoomWindow ?? null}
-        onZoomChange={onZoomChange}
-      />
+      <CartographyProvider dark={props.darkBasemap ?? false}>
+        <RouteOverlay
+          coordinates={coordinates}
+          surface={props.surface}
+          surfaceSummary={surfaceSummary}
+          profile={profile}
+          activeProfile={props.activeProfile ?? profile}
+          activeMetres={activeMetres}
+          profileCollapsed={props.profileCollapsed ?? false}
+          zoomWindow={props.zoomWindow ?? null}
+          onZoomChange={onZoomChange}
+        />
+      </CartographyProvider>
     </QueryClientProvider>
   );
   const { rerender } = render(jsx(props.activeMetres ?? null));

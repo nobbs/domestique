@@ -12,6 +12,7 @@ import type { SurfaceSummary } from "../../lib/surface";
 import { SURFACE_STYLES, surfaceColour, surfaceKindAt } from "../../lib/surface";
 import type { UnitSystem } from "../../lib/units";
 import { BEARING_WINDOW_METRES, bearingAt, bearingIsMixed, windRelation } from "../../lib/wind";
+import { useCartography } from "../map/CartographyContext";
 
 /** Between the dot and the nearest edge of the box. */
 const GAP_PIXELS = 10;
@@ -139,8 +140,6 @@ export interface PositionTooltipProps {
   /** The forecast requests for this ride, empty until a start time is picked. */
   samples: ForecastSample[];
   announce: boolean;
-  /** Whether the ground under this is dark, which is what its colours follow. */
-  darkBasemap: boolean;
   unitSystem: UnitSystem;
 }
 
@@ -171,9 +170,10 @@ export function PositionTooltip({
   coordinates,
   samples,
   announce,
-  darkBasemap,
   unitSystem,
 }: PositionTooltipProps) {
+  // Whether the ground under this is dark, which is what its colours follow.
+  const { dark: darkBasemap } = useCartography();
   const { current: map } = useMap();
   const boxRef = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState(DEFAULT_SIZE);

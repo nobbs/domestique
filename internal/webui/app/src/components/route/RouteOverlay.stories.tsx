@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import type { BoundingBox } from "../../api/types";
 import { buildProfile } from "../../lib/profile";
 import { coordinates, liveMap } from "../../storybook/fixtures";
+import { CartographyProvider } from "../map/CartographyContext";
 import { MapViewport } from "../map/MapViewport";
 import { MapWidget } from "../map/MapWidget";
 import { RouteOverlay } from "./RouteOverlay";
@@ -30,9 +31,11 @@ type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   render: () => (
-    <MapWidget styleUrl={styleUrl}>
-      <MapViewport bounds={bounds} maxZoom={14} />
-      <RouteOverlay coordinates={coordinates} profile={profile} activeProfile={profile} />
-    </MapWidget>
+    <CartographyProvider dark={false}>
+      <MapWidget styleUrl={styleUrl}>
+        <MapViewport bounds={bounds} maxZoom={14} />
+        <RouteOverlay coordinates={coordinates} profile={profile} activeProfile={profile} />
+      </MapWidget>
+    </CartographyProvider>
   ),
 };

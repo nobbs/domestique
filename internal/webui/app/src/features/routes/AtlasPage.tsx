@@ -538,7 +538,6 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
           >
             {shownRoute && openCoordinates.length > 1 ? (
               <RouteOverlay
-                darkBasemap={basemap.dark}
                 coordinates={openCoordinates}
                 surface={surfaceSummary ? surface?.ranges : undefined}
                 surfaceSummary={surfaceSummary}
