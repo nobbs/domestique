@@ -264,8 +264,11 @@ func (h *Handler) SetAlerts(writer http.ResponseWriter, request *http.Request) {
 		// Storing a decision about an alert nothing raises would leave a row
 		// nobody ever reads and a switch the page shows as having an effect.
 		if _, declared := known[declaredAlert{task: decision.Task, alert: decision.Alert}]; !declared {
+			// The reason is named without the request's own strings in it: an
+			// error page is observable, and the page only ever sends alerts
+			// from the matrix it was served.
 			h.error(writer, http.StatusBadRequest, "invalid_request",
-				"no task raises the alert "+decision.Alert+" for "+decision.Task)
+				"the request names an alert no task raises")
 
 			return
 		}

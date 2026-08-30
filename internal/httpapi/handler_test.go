@@ -2782,6 +2782,16 @@ func (a *fakeAlerts) Decide(_ context.Context, decisions []AlertDecision) error 
 		return a.err
 	}
 	a.decided = append(a.decided, decisions...)
+	// A decision the matrix has not taken up is one nobody made, so the fake
+	// takes it up rather than letting a test pass on a store that only wrote.
+	for _, decision := range decisions {
+		for index, alert := range a.catalogue {
+			if alert.Task == decision.Task && alert.Alert == decision.Alert {
+				a.catalogue[index].Enabled = decision.Enabled
+				a.catalogue[index].Decided = true
+			}
+		}
+	}
 
 	return nil
 }

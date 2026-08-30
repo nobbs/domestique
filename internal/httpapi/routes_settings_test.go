@@ -490,7 +490,12 @@ func TestSetAlertsRecordsWhatWasDecided(t *testing.T) {
 		`{"alerts": [{"task": "sync", "alert": "failed", "enabled": false}]}`)
 
 	assert.Equal(t, []AlertDecision{{Task: "sync", Alert: "failed", Enabled: false}}, alerts.decided, "the decisions")
-	assert.Len(t, view.Alerts, 2, "a saved decision was answered with less than the whole matrix")
+	// A decision is answered with the matrix it produced, so a page that reads
+	// the response is looking at what is now in force rather than what it sent.
+	assert.Equal(t, []openapi.AlertSetting{
+		{Task: "sync", Alert: "failed", Enabled: false, Decided: true},
+		{Task: "surface:index", Alert: "failed", Enabled: true, Decided: false},
+	}, view.Alerts, "the answered matrix")
 }
 
 // A decision about an alert nothing raises would store a row nobody reads and
@@ -503,7 +508,9 @@ func TestSetAlertsRefusesAnAlertNothingRaises(t *testing.T) {
 		`{"alerts": [{"task": "sync", "alert": "invented", "enabled": true}]}`))
 
 	require.Equal(t, http.StatusBadRequest, response.Code, response.Body.String())
-	assert.Contains(t, response.Body.String(), "invented", "the message names the alert")
+	// The reason is named, and the request's own strings are not sent back.
+	assert.Contains(t, response.Body.String(), "an alert no task raises", "the message names the reason")
+	assert.NotContains(t, response.Body.String(), "invented", "the message echoed the request")
 	assert.Empty(t, alerts.decided, "a refused edit reached the matrix")
 }
 
