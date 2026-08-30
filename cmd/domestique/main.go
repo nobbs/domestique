@@ -115,7 +115,7 @@ func run(ctx context.Context) error {
 	// the first one is an edit rather than a restart. With no regions the holder
 	// stays empty, every build returns without work, and stages are served without
 	// a surface.
-	surfaceIndex, indexTask, err := startSurfaceIndex(ctx, settings, runtimeSettings, store, notifier)
+	surfaceIndex, indexTask, err := startSurfaceIndex(ctx, settings, runtimeSettings, store)
 	if err != nil {
 		return err
 	}
@@ -159,7 +159,11 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("creating sync reporter: %w", err)
 	}
-	tasks, err := registerTasks(store, append(inventoryTasks(reporter, runtimeSettings), indexTask))
+	tasks, err := registerTasks(
+		store, notifier,
+		func() bool { return runtimeSettings.Values().Notifications.Enabled },
+		append(inventoryTasks(reporter, runtimeSettings), indexTask),
+	)
 	if err != nil {
 		return err
 	}
@@ -269,7 +273,6 @@ func startSurfaceIndex(
 	settings *config.Settings,
 	runtimeSettings *runtimeconfig.Current,
 	store *sqlite.Store,
-	notifier *pushover.Client,
 ) (*osmindex.Current, task.Definition, error) {
 	directory := filepath.Dir(settings.State.DatabasePath)
 	lastBuiltAt, generation, err := store.SurfaceIndexBuild(ctx)
@@ -294,7 +297,7 @@ func startSurfaceIndex(
 		MemoryLimit: osmindex.DefaultMemoryLimit,
 	}, func() []string {
 		return runtimeSettings.Values().Surface.Regions
-	}, current, store, notifier)
+	}, current, store)
 	if err != nil {
 		return nil, task.Definition{}, fmt.Errorf("creating the surface index builder: %w", err)
 	}

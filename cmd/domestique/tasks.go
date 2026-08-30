@@ -29,6 +29,16 @@ const (
 	resourceSurfaceIndex = "surface-index"
 )
 
+// What an alert about each task says, and how long one silences the next. A
+// failing library is worth hearing about the same morning; a failing weekly
+// rebuild is not worth hearing about more than once between builds.
+const (
+	syncAlertTitle        = "Domestique sync failed"
+	syncAlertSuppression  = 6 * time.Hour
+	indexAlertTitle       = "Domestique surface index failed"
+	indexAlertSuppression = 7 * 24 * time.Hour
+)
+
 // The reasons a surface index rebuild reports. Both are stable words a status
 // page may show; neither carries an upstream URL or a local path.
 const (
@@ -54,8 +64,10 @@ type indexBuilder interface {
 
 // registerTasks registers every activity this service runs unasked, over the
 // store their attempts are recorded in.
-func registerTasks(store task.Store, definitions []task.Definition) (*task.Manager, error) {
-	manager, err := task.NewManager(store)
+func registerTasks(
+	store task.Store, notifier task.Notifier, enabled func() bool, definitions []task.Definition,
+) (*task.Manager, error) {
+	manager, err := task.NewManager(store, notifier, enabled)
 	if err != nil {
 		return nil, fmt.Errorf("creating the task manager: %w", err)
 	}
@@ -79,6 +91,7 @@ func inventoryTasks(reporter synchronizer, settings *runtimeconfig.Current) []ta
 		{
 			Name:      taskSync,
 			Resources: inventory,
+			Notify:    &task.Notify{Title: syncAlertTitle, Suppress: syncAlertSuppression},
 			Schedule:  task.Every(func() time.Duration { return syncservice.Interval }),
 			InitialDelay: func() time.Duration {
 				return settings.Values().Sync.InitialDelay
@@ -92,6 +105,7 @@ func inventoryTasks(reporter synchronizer, settings *runtimeconfig.Current) []ta
 		{
 			Name:      taskSyncTarget,
 			Resources: inventory,
+			Notify:    &task.Notify{Title: syncAlertTitle, Suppress: syncAlertSuppression},
 			Run: task.RunnerFunc(func(ctx context.Context, invocation task.Invocation) task.Result {
 				result := reporter.ReconcileTarget(ctx, invocation.Argument)
 
@@ -101,6 +115,7 @@ func inventoryTasks(reporter synchronizer, settings *runtimeconfig.Current) []ta
 		{
 			Name:      taskSyncClear,
 			Resources: inventory,
+			Notify:    &task.Notify{Title: syncAlertTitle, Suppress: syncAlertSuppression},
 			Run: task.RunnerFunc(func(ctx context.Context, invocation task.Invocation) task.Result {
 				result := reporter.ClearTarget(ctx, invocation.Argument)
 
@@ -126,7 +141,8 @@ func surfaceIndexTask(
 	runner indexBuilder, settings *runtimeconfig.Current, lastBuiltAt time.Time,
 ) task.Definition {
 	return task.Definition{
-		Name: taskSurfaceIndex,
+		Name:   taskSurfaceIndex,
+		Notify: &task.Notify{Title: indexAlertTitle, Suppress: indexAlertSuppression},
 		Resources: func(string) []task.Resource {
 			return []task.Resource{{Name: resourceSurfaceIndex, Exclusive: true}}
 		},
