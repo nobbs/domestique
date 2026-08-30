@@ -116,3 +116,55 @@ export const CLIMBS: SpikeClimb[] = [
 export const MIX_SUMMARY = "12%+ 13.7 km, asphalt 16.9 km";
 export const CLIMB_SUMMARY = "3 climbs · biggest 7.7 km at 12%";
 export const TITLE = "Synthetic Kaiserstuhl Loop";
+
+/**
+ * A route shaped like the Kaiserstuhl loop, for the spike's chart to draw.
+ *
+ * Generated rather than fetched: what the workspace spike is judging is how
+ * much room a full-width dock gives the profile, and that needs a route with
+ * enough shape to fill it. Three cols over forty-nine kilometres, which is
+ * what the real one has.
+ *
+ * The card's own figures above stay as they are. They are text either way, and
+ * deriving them here would buy nothing the eye can check.
+ */
+export const SPIKE_COORDINATES: Array<[number, number, number]> = (() => {
+  const shape = Array.from({ length: 246 }, (_, index) => {
+    const along = index / 245;
+    // Three humps, the middle of them the tallest, on a gentle drift so the
+    // route neither starts nor ends at its low point.
+    return Math.sin(along * Math.PI * 3) ** 2 * (0.72 + 0.28 * Math.sin(along * Math.PI * 1.1));
+  });
+  // Scaled to the range the card claims, rather than to whatever the curve
+  // happened to peak at — a chart whose axis disagrees with the figure above it
+  // is the spike arguing with itself.
+  const tallest = Math.max(...shape);
+
+  return shape.map((height, index): [number, number, number] => {
+    const along = index / 245;
+
+    return [8.1 + along * 0.55, 48.4 + along * 0.28, 180 + (height / tallest) * 910];
+  });
+})();
+
+/** Ground under that route, in the order it is ridden. */
+export const SPIKE_SURFACE = {
+  bands: [
+    { kind: "asphalt" as const, startMetres: 0, endMetres: 11_000 },
+    { kind: "compacted" as const, startMetres: 11_000, endMetres: 21_200 },
+    { kind: "gravel" as const, startMetres: 21_200, endMetres: 29_100 },
+    { kind: "ground" as const, startMetres: 29_100, endMetres: 34_300 },
+    { kind: "paving" as const, startMetres: 34_300, endMetres: 43_100 },
+    { kind: "asphalt" as const, startMetres: 43_100, endMetres: 49_000 },
+  ],
+  shares: [
+    { kind: "asphalt" as const, metres: 16_900, share: 0.345 },
+    { kind: "compacted" as const, metres: 10_200, share: 0.208 },
+    { kind: "gravel" as const, metres: 7_900, share: 0.161 },
+    { kind: "ground" as const, metres: 5_200, share: 0.106 },
+    { kind: "paving" as const, metres: 8_800, share: 0.18 },
+  ],
+  totalMetres: 49_000,
+};
+
+export const SPIKE_DISTANCE_METRES = 49_000;

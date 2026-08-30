@@ -1,0 +1,41 @@
+/**
+ * The card, the dock and the climbs, judged as one layout.
+ *
+ * Storybook only. See `workspace.tsx` for what the three decisions are and why
+ * none of them can be judged on its own.
+ */
+
+import type { Meta, StoryObj } from "@storybook/react-vite";
+import { StoryProviders } from "../../../storybook/fixtures";
+import { Workspace } from "./workspace";
+
+const meta = {
+  title: "Spikes/Route Workspace",
+  tags: ["autodocs"],
+  parameters: { layout: "fullscreen" },
+} satisfies Meta;
+
+export default meta;
+type Story = StoryObj<typeof meta>;
+
+/** The slide card: one view at a time, so its height never moves. */
+export const WithSlideCard: Story = {
+  render: () => (
+    <StoryProviders>
+      <Workspace card="slide" />
+    </StoryProviders>
+  ),
+};
+
+/**
+ * The fold card with only one section left to fold. Shorter than it was with
+ * the climbs in it, but it still grows when the mix is opened — which is the
+ * whole difference between these two stories.
+ */
+export const WithFoldCard: Story = {
+  render: () => (
+    <StoryProviders>
+      <Workspace card="fold" />
+    </StoryProviders>
+  ),
+};

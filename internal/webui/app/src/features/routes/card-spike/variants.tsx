@@ -167,7 +167,7 @@ function AirSection({
   );
 }
 
-export function AirCard(props: BodyProps) {
+export function AirCard({ withClimbs = true, ...props }: BodyProps & { withClimbs?: boolean }) {
   return (
     <Shell>
       <div className="grid gap-4 px-3 pt-1 pb-3">
@@ -184,9 +184,11 @@ export function AirCard(props: BodyProps) {
           <AirSection name="Mix" summary={MIX_SUMMARY}>
             <Mixes {...props} />
           </AirSection>
-          <AirSection name="Climbs" summary={CLIMB_SUMMARY}>
-            <ClimbRows />
-          </AirSection>
+          {withClimbs ? (
+            <AirSection name="Climbs" summary={CLIMB_SUMMARY}>
+              <ClimbRows />
+            </AirSection>
+          ) : null}
         </div>
       </div>
     </Shell>
@@ -596,9 +598,10 @@ function SlideHeader({ name, onBack }: { name: string; onBack: () => void }) {
   );
 }
 
-export function SlideCard(props: BodyProps) {
+export function SlideCard({ withClimbs = true, ...props }: BodyProps & { withClimbs?: boolean }) {
+  const views: readonly View[] = withClimbs ? VIEWS : ["figures", "mix"];
   const [view, setView] = useState<View>("figures");
-  const index = VIEWS.indexOf(view);
+  const index = Math.max(views.indexOf(view), 0);
   const panes = useRef<Array<HTMLDivElement | null>>([]);
   const [height, setHeight] = useState<number>();
 
@@ -629,15 +632,15 @@ export function SlideCard(props: BodyProps) {
         <div
           className="flex items-start transition-transform duration-200 ease-out"
           style={{
-            width: `${VIEWS.length * 100}%`,
-            transform: `translateX(-${index * (100 / VIEWS.length)}%)`,
+            width: `${views.length * 100}%`,
+            transform: `translateX(-${index * (100 / views.length)}%)`,
           }}
         >
           <div
             ref={(node) => {
               panes.current[0] = node;
             }}
-            style={{ width: `${100 / VIEWS.length}%` }}
+            style={{ width: `${100 / views.length}%` }}
             className="shrink-0 px-3 pt-1 pb-3"
           >
             <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5">
@@ -651,14 +654,16 @@ export function SlideCard(props: BodyProps) {
             </dl>
             <div className="mt-3 grid gap-0.5">
               <SlideRow name="Mix" summary={MIX_SUMMARY} onOpen={() => setView("mix")} />
-              <SlideRow name="Climbs" summary={CLIMB_SUMMARY} onOpen={() => setView("climbs")} />
+              {withClimbs ? (
+                <SlideRow name="Climbs" summary={CLIMB_SUMMARY} onOpen={() => setView("climbs")} />
+              ) : null}
             </div>
           </div>
           <div
             ref={(node) => {
               panes.current[1] = node;
             }}
-            style={{ width: `${100 / VIEWS.length}%` }}
+            style={{ width: `${100 / views.length}%` }}
             className="shrink-0 px-3 pt-1 pb-3"
           >
             <SlideHeader name={VIEW_NAMES.mix} onBack={() => setView("figures")} />
@@ -666,20 +671,24 @@ export function SlideCard(props: BodyProps) {
               <Mixes {...props} />
             </div>
           </div>
-          <div
-            ref={(node) => {
-              panes.current[2] = node;
-            }}
-            style={{ width: `${100 / VIEWS.length}%` }}
-            className="shrink-0 px-3 pt-1 pb-3"
-          >
-            <SlideHeader name={VIEW_NAMES.climbs} onBack={() => setView("figures")} />
-            <div className="pt-2">
-              <ClimbRows />
+          {withClimbs ? (
+            <div
+              ref={(node) => {
+                panes.current[2] = node;
+              }}
+              style={{ width: `${100 / views.length}%` }}
+              className="shrink-0 px-3 pt-1 pb-3"
+            >
+              <SlideHeader name={VIEW_NAMES.climbs} onBack={() => setView("figures")} />
+              <div className="pt-2">
+                <ClimbRows />
+              </div>
             </div>
-          </div>
+          ) : null}
         </div>
       </div>
     </Shell>
   );
 }
+
+export { ClimbRows };
