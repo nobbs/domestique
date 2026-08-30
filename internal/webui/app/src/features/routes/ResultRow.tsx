@@ -1,5 +1,5 @@
 import type { Route } from "../../api/types";
-import { RouteGlyph } from "../../components/route/RouteGlyph";
+import { RouteGlyph } from "../../components/RouteGlyph";
 import {
   formatAscent,
   formatDistance,

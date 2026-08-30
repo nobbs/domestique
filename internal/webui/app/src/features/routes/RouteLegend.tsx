@@ -39,12 +39,12 @@
  */
 
 import type { SurfaceKind } from "../../api/types";
+import { ToggleGroup } from "../../components/ui/toggle-group";
 import type { Highlight } from "../../lib/highlight";
 import type { BandShare } from "../../lib/profile";
 import { GRADIENT_BANDS } from "../../lib/profile";
 import type { SurfaceSummary } from "../../lib/surface";
 import { SURFACE_STYLES } from "../../lib/surface";
-import { ToggleGroup } from "../ui/toggle-group";
 import { LegendChip } from "./LegendChip";
 import { MixBar } from "./MixBar";
 

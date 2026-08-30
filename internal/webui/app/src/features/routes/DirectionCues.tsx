@@ -2,9 +2,9 @@ import { IconChevronsRight } from "@tabler/icons-react";
 import { useEffect, useMemo, useState } from "react";
 import { Marker, useMap } from "react-map-gl/maplibre";
 import type { Position } from "../../api/types";
+import { useCartography } from "../../components/map/CartographyContext";
 import { PANEL } from "../../lib/cartography";
 import { bearingBetween, directionChevrons, metresPerPixel } from "../../lib/routeCues";
-import { useCartography } from "../map/CartographyContext";
 
 /**
  * Chevrons along the route, pointing the way it is ridden.

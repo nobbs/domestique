@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { SurfaceKind } from "../../api/types";
-import { ToggleGroupItem } from "../ui/toggle-group";
+import { ToggleGroupItem } from "../../components/ui/toggle-group";
 
 export interface LegendChipProps {
   /** What this chip is called within the toggle group it presses in. */

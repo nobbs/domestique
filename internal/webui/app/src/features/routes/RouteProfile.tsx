@@ -26,8 +26,6 @@
 import { IconChevronsRight } from "@tabler/icons-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import type { Position } from "../../api/types";
-import { ElevationProfile } from "../../components/route/ElevationProfile";
-import { ForecastStrip } from "../../components/route/ForecastStrip";
 import { StartTimePicker } from "../../components/StartTimePicker";
 import type { ForecastSample } from "../../lib/forecastSamples";
 import { formatAscent, formatElevation } from "../../lib/format";
@@ -38,6 +36,8 @@ import { startTimeRefusal } from "../../lib/startTime";
 import type { SurfaceSummary } from "../../lib/surface";
 import type { UnitSystem } from "../../lib/units";
 import { distanceUnitLabel, distanceValue } from "../../lib/units";
+import { ElevationProfile } from "./ElevationProfile";
+import { ForecastStrip } from "./ForecastStrip";
 
 export interface RouteProfileProps {
   /** The stretch on show: the whole route, or the window the reader chose. */

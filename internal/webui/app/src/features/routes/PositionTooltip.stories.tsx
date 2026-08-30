@@ -4,6 +4,9 @@ import { type ReactNode, useState } from "react";
 import { Marker } from "react-map-gl/maplibre";
 import { weatherQuery } from "../../api/queries";
 import type { BoundingBox } from "../../api/types";
+import { CartographyProvider } from "../../components/map/CartographyContext";
+import { MapViewport } from "../../components/map/MapViewport";
+import { MapWidget } from "../../components/map/MapWidget";
 import type { ProfileSample } from "../../lib/profile";
 import { sampleAt } from "../../lib/profile";
 import {
@@ -14,9 +17,6 @@ import {
   surface,
   weatherSamples,
 } from "../../storybook/fixtures";
-import { CartographyProvider } from "../map/CartographyContext";
-import { MapViewport } from "../map/MapViewport";
-import { MapWidget } from "../map/MapWidget";
 import { PositionTooltip } from "./PositionTooltip";
 
 const styleUrl = "https://tiles.openfreemap.org/styles/bright";

@@ -17,7 +17,7 @@
 
 import { Link } from "react-router";
 import type { Position, Route, SurfaceRange } from "../../api/types";
-import { RouteGlyph } from "../../components/route/RouteGlyph";
+import { RouteGlyph } from "../../components/RouteGlyph";
 import { formatAscent, formatDistance, formatGradient, formatMovingTime } from "../../lib/format";
 import { GRADIENT_BANDS, gradientBand, gradientShares } from "../../lib/profile";
 import type { RouteChange } from "../../lib/seenRoutes";

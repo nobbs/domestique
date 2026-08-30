@@ -27,7 +27,6 @@ import { routeGeometryQuery, routesQuery, statusQuery, webUIConfigQuery } from "
 import type { BoundingBox, Position, RouteGeometry, SurfaceKind } from "../../api/types";
 import { routeKey } from "../../api/types";
 import { Layout } from "../../components/Layout";
-import { RouteOverlay } from "../../components/route/RouteOverlay";
 import { Alert, AlertDescription, AlertTitle } from "../../components/ui/alert";
 import { basemapFor, useBasemapChoice, usePrefersDarkScheme } from "../../lib/basemap";
 import { ROUTE_MAX_ZOOM, WINDOW_MAX_ZOOM } from "../../lib/cartography";
@@ -44,6 +43,7 @@ import { resolvesDark } from "../../lib/theme";
 import { useUnitSystem } from "../../lib/units";
 import { useEscapeKey } from "../../lib/useEscapeKey";
 import { LibraryMap, type MapLine } from "./LibraryMap";
+import { RouteOverlay } from "./RouteOverlay";
 import { RoutePanel } from "./RoutePanel";
 import { RouteProfile } from "./RouteProfile";
 import type { RouteShape } from "./SearchPanel";

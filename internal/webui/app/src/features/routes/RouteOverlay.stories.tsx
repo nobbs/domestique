@@ -1,10 +1,10 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import type { BoundingBox } from "../../api/types";
+import { CartographyProvider } from "../../components/map/CartographyContext";
+import { MapViewport } from "../../components/map/MapViewport";
+import { MapWidget } from "../../components/map/MapWidget";
 import { buildProfile } from "../../lib/profile";
 import { coordinates, liveMap } from "../../storybook/fixtures";
-import { CartographyProvider } from "../map/CartographyContext";
-import { MapViewport } from "../map/MapViewport";
-import { MapWidget } from "../map/MapWidget";
 import { RouteOverlay } from "./RouteOverlay";
 
 const styleUrl = "https://tiles.openfreemap.org/styles/bright";

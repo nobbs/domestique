@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Marker, useMap } from "react-map-gl/maplibre";
 import { weatherQuery } from "../../api/queries";
 import type { Position } from "../../api/types";
+import { useCartography } from "../../components/map/CartographyContext";
 import { INK as CARTOGRAPHY_INK } from "../../lib/cartography";
 import type { ForecastSample } from "../../lib/forecastSamples";
 import { formatDistance, formatElevation, formatWindSpeed } from "../../lib/format";
@@ -12,7 +13,6 @@ import type { SurfaceSummary } from "../../lib/surface";
 import { SURFACE_STYLES, surfaceColour, surfaceKindAt } from "../../lib/surface";
 import type { UnitSystem } from "../../lib/units";
 import { BEARING_WINDOW_METRES, bearingAt, bearingIsMixed, windRelation } from "../../lib/wind";
-import { useCartography } from "../map/CartographyContext";
 
 /** Between the dot and the nearest edge of the box. */
 const GAP_PIXELS = 10;

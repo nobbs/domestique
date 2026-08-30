@@ -14,11 +14,11 @@ import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Position, SurfaceRange } from "../../api/types";
+import { CartographyProvider } from "../../components/map/CartographyContext";
 import { formatDistance, formatElevation } from "../../lib/format";
 import type { Profile } from "../../lib/profile";
 import { buildProfile, buildWindowedProfile, sampleAt } from "../../lib/profile";
 import { summariseSurface } from "../../lib/surface";
-import { CartographyProvider } from "../map/CartographyContext";
 
 interface LayerRecord {
   id: string;
