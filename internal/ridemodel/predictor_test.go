@@ -95,12 +95,13 @@ type storedDuration struct {
 }
 
 type fakeDurationCache struct {
-	stored     map[route.Key]storedDuration
-	failures   map[route.Key]string
-	hashErr    error
-	storeErr   error
-	failureErr error
-	storeCalls int
+	stored      map[route.Key]storedDuration
+	failures    map[route.Key]string
+	hashErr     error
+	storeErr    error
+	failureErr  error
+	whileStored func()
+	storeCalls  int
 }
 
 func newFakeDurationCache() *fakeDurationCache {
@@ -138,6 +139,9 @@ func (f *fakeDurationCache) StoreStageDuration(
 	movingSeconds *float64, cumulativeSeconds []byte,
 ) error {
 	f.storeCalls++
+	if f.whileStored != nil {
+		f.whileStored()
+	}
 	if f.storeErr != nil {
 		return f.storeErr
 	}
@@ -370,4 +374,22 @@ func TestPredictCarriesOnWhenAFailureCannotBeRecorded(t *testing.T) {
 
 	require.NoError(t, err, "Predict()")
 	assert.Equal(t, 1, failed, "failed stages")
+}
+
+// A shutdown reaching the cache mid-pass is not something the stage did.
+func TestPredictRecordsNothingForAStageAShutdownInterrupted(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cache := newFakeDurationCache()
+	cache.whileStored = cancel
+	cache.storeErr = context.Canceled
+
+	predicted, failed, err := NewPredictor(&fakeSurfaceSource{}, cache, testCoefficients()).
+		Predict(ctx, []route.Route{stageWithElevation(t, "hash-1")})
+
+	require.ErrorIs(t, err, context.Canceled, "Predict()")
+	assert.Zero(t, predicted, "predicted stages")
+	assert.Zero(t, failed, "a stage interrupted by a shutdown counted as failed")
+	assert.Empty(t, cache.failures, "a shutdown was recorded as a stage failure")
 }

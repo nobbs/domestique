@@ -163,6 +163,10 @@ wrong now, rather than a log of everything that ever went wrong.
 Storing what a pass produced is what clears its failure, in the same
 transaction, so a stage cannot be enriched and listed as failing at once.
 
+A pass a shutdown ended records nothing about the stage it was on. Whatever
+reached it was the cancellation rather than anything about that stage, and a row
+blaming the map for a service that was stopping would outlast the shutdown.
+
 ## Out of scope
 
 Notification policy, delayed retry after repeated failure, and a bound on how

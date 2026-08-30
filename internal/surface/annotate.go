@@ -87,6 +87,12 @@ func (a *Annotator) Annotate(ctx context.Context, stages []route.Route) (classif
 		}
 
 		if reason := a.annotateStage(ctx, stage, generation); reason != "" {
+			// A pass a shutdown ended has learned nothing about this stage, so
+			// it records nothing about it and stops here rather than at the top
+			// of the next turn.
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return classified, failed, fmt.Errorf("surface: annotating stages: %w", ctxErr)
+			}
 			a.recordFailure(ctx, key, reason)
 			failed++
 

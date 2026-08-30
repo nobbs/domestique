@@ -89,6 +89,12 @@ func (p *Predictor) Predict(ctx context.Context, stages []route.Route) (predicte
 		}
 
 		if reason := p.predictStage(ctx, stage, surfaceGeneration); reason != "" {
+			// A pass a shutdown ended has learned nothing about this stage, so
+			// it records nothing about it and stops here rather than at the top
+			// of the next turn.
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return predicted, failed, fmt.Errorf("ridemodel: predicting stages: %w", ctxErr)
+			}
 			p.recordFailure(ctx, key, reason)
 			failed++
 

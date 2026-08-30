@@ -129,6 +129,7 @@ func testStages(t *testing.T, routeIDs ...int64) []route.Route {
 type fakeSource struct {
 	failFor    map[int64]error
 	asked      map[int64]bool
+	whileAsked func()
 	generation string
 }
 
@@ -140,6 +141,9 @@ func (s *fakeSource) Ways(_ context.Context, points []route.Point) ([]Way, error
 	}
 	routeID := int64(points[0].Latitude)
 	s.asked[routeID] = true
+	if s.whileAsked != nil {
+		s.whileAsked()
+	}
 	if err, found := s.failFor[routeID]; found {
 		return nil, err
 	}
@@ -207,4 +211,23 @@ func (c *fakeCache) StoreStageSurface(
 // testKey is the identity testStages gives a stage built from a route ID.
 func testKey(routeID int64) route.Key {
 	return route.NewKey(route.ProviderVeloPlanner, routeID, 1)
+}
+
+// A shutdown reaching the map mid-pass is not something the stage did. Recording
+// it would leave a row blaming the map for a service that was stopping.
+func TestAnnotateRecordsNothingForAStageAShutdownInterrupted(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	source := &fakeSource{
+		generation: "abc123",
+		failFor:    map[int64]error{1: context.Canceled},
+		whileAsked: cancel,
+	}
+	cache := newFakeCache()
+
+	classified, failed, err := NewAnnotator(source, cache).Annotate(ctx, testStages(t, 1, 2))
+
+	require.ErrorIs(t, err, context.Canceled, "Annotate()")
+	assert.Zero(t, classified, "classified stages")
+	assert.Zero(t, failed, "a stage interrupted by a shutdown counted as failed")
+	assert.Empty(t, cache.failures, "a shutdown was recorded as a stage failure")
 }
