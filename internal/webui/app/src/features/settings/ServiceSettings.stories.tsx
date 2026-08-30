@@ -25,7 +25,9 @@ type Story = StoryObj<typeof meta>;
 export const WhatTheServiceIsSetTo: Story = {
   play: async ({ canvas }) => {
     await expect(canvas.getByLabelText("Call the library stale after (hours)")).toHaveValue(26);
-    await expect(canvas.getByLabelText("Geofabrik regions, one per line")).toHaveValue(
+    // The regions are chips now rather than typed lines, so what is asserted is
+    // that the stored region is held, not that a box contains its text.
+    await expect(canvas.getByRole("list", { name: "Selected regions" })).toHaveTextContent(
       "europe/germany",
     );
     await expect(canvas.getByRole("radio", { name: "One summary per period" })).toBeChecked();
