@@ -29,7 +29,7 @@ succeeded   the attempt did what it set out to do
 failed      a safe failure stopped it
 blocked     a safety gate refused the work
 not_ready   a setting is unset, or a target still awaits onboarding
-skipped     it did no work: a resource was held, or the task was at its limit
+skipped     it did no work: see its detail for which kind of busy stopped it
 cancelled   shutdown ended it; never a fault
 unchanged   it ran, checked, and found nothing new
 current     what it covers was already up to date, so it did nothing at all
@@ -42,8 +42,14 @@ Every attempt is recorded, with two exceptions. One that found its work already
 what a sweep over a whole library would otherwise write on every tick. One that
 shutdown `cancelled` cannot write during the shutdown that ended it.
 
-A refusal is recorded. It is the answer to why something did not run, and that
-question is only answerable afterwards if the refusal was written down.
+A refusal is recorded, and says which kind of busy stopped it: this service
+working on the very same thing, or working on something else that held what the
+attempt needed. They are the answer to why something did not run, and that is
+only answerable afterwards if it was written down.
+
+A chain link is the exception. One asking for work already under way is dropped
+rather than refused, because the work is happening — which is what the link
+wanted.
 
 `unchanged` and `current` are deliberately separate. A rebuild that reached its
 upstream and found the published data identical did work — it checked — and the

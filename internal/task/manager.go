@@ -118,7 +118,7 @@ func (m *Manager) Trigger(ctx context.Context, name, argument string) bool {
 	invocation := Invocation{Task: name, Argument: argument, Trigger: TriggerManual}
 	release, outcome := m.admit(entry, invocation)
 	if outcome != admitStarted {
-		m.refused(ctx, entry, invocation)
+		m.refused(ctx, entry, invocation, outcome.detail())
 
 		return false
 	}
@@ -194,7 +194,7 @@ func (m *Manager) scheduled(ctx context.Context, entry *registered) {
 	invocation := Invocation{Task: entry.definition.Name, Trigger: TriggerSchedule}
 	release, outcome := m.admit(entry, invocation)
 	if outcome != admitStarted {
-		m.refused(ctx, entry, invocation)
+		m.refused(ctx, entry, invocation, outcome.detail())
 
 		return
 	}
@@ -273,7 +273,7 @@ func (m *Manager) linked(ctx context.Context, link Link, visited map[invocationK
 	case admitWorking:
 		return
 	case admitHeld:
-		m.refused(ctx, entry, invocation)
+		m.refused(ctx, entry, invocation, DetailHeld)
 
 		return
 	case admitStarted:
@@ -294,10 +294,11 @@ func (m *Manager) attempt(ctx context.Context, entry *registered, invocation Inv
 	return result
 }
 
-// refused records an attempt that never started. Recording it is what makes a
-// task that keeps losing a resource visible after the contention has passed.
-func (m *Manager) refused(ctx context.Context, entry *registered, invocation Invocation) {
-	m.record(ctx, entry, invocation, m.now().UTC(), Result{Outcome: Skipped})
+// refused records an attempt that never started, saying which kind of busy
+// stopped it. Recording it is what makes a task that keeps losing to something
+// visible after the contention has passed.
+func (m *Manager) refused(ctx context.Context, entry *registered, invocation Invocation, detail Detail) {
+	m.record(ctx, entry, invocation, m.now().UTC(), Result{Outcome: Skipped, Detail: detail})
 }
 
 // record writes down what an attempt came to. A history that cannot be written

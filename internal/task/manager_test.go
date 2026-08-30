@@ -641,7 +641,10 @@ func TestARefusedAttemptIsRecordedAsSkipped(t *testing.T) {
 	require.False(t, manager.Trigger(t.Context(), "other", "slot"), "Trigger(other)")
 
 	assert.Equal(t, []recordedRun{
-		{task: "other", argument: "slot", outcome: string(Skipped), retain: defaultRetainedRuns},
+		{
+			task: "other", argument: "slot", outcome: string(Skipped),
+			detail: string(DetailHeld), retain: defaultRetainedRuns,
+		},
 	}, store.recorded(), "recorded runs")
 
 	close(held.release)
@@ -675,7 +678,10 @@ func TestARefusedScheduledRunIsRecorded(t *testing.T) {
 	<-waits
 
 	assert.Contains(t, store.recorded(),
-		recordedRun{task: "scheduled", outcome: string(Skipped), retain: defaultRetainedRuns},
+		recordedRun{
+			task: "scheduled", outcome: string(Skipped),
+			detail: string(DetailHeld), retain: defaultRetainedRuns,
+		},
 		"a refused scheduled run was not recorded")
 
 	close(blocker.release)
@@ -867,8 +873,10 @@ func TestAChainLinkRefusedByAnotherHolderIsRecorded(t *testing.T) {
 	require.True(t, manager.Trigger(t.Context(), "parent", ""), "Trigger(parent)")
 
 	require.Eventually(t, func() bool {
-		return slices.Contains(store.recorded(),
-			recordedRun{task: "child", outcome: string(Skipped), retain: defaultRetainedRuns})
+		return slices.Contains(store.recorded(), recordedRun{
+			task: "child", outcome: string(Skipped),
+			detail: string(DetailHeld), retain: defaultRetainedRuns,
+		})
 	}, time.Second, time.Millisecond, "a refused chain link was not recorded")
 
 	close(held.release)
@@ -1013,4 +1021,30 @@ func TestAChainSharesWhatItHasRunAcrossBranches(t *testing.T) {
 	require.True(t, manager.Trigger(t.Context(), "parent", ""), "Trigger()")
 	manager.Wait()
 	assert.Equal(t, 1, shared.runs(), "a link two branches reached ran twice")
+}
+
+// The two kinds of busy read differently to whoever asks why nothing happened:
+// this service working on the very same thing is not the same answer as it
+// working on something else.
+func TestARefusalSaysWhichKindOfBusyStoppedIt(t *testing.T) {
+	t.Parallel()
+
+	held := blockOn()
+	manager, store := newTestManager(t)
+	require.NoError(t, manager.Register(&Definition{Name: "a", Run: held, Resources: exclusive("inventory")}), "Register(a)")
+	require.NoError(t, manager.Register(&Definition{Name: "b", Run: succeeds(), Resources: exclusive("inventory")}), "Register(b)")
+
+	require.True(t, manager.Trigger(t.Context(), "a", "slot"), "Trigger(a)")
+	<-held.started
+
+	assert.False(t, manager.Trigger(t.Context(), "a", "slot"), "the same work was accepted twice")
+	assert.False(t, manager.Trigger(t.Context(), "b", ""), "an unrelated task took a held resource")
+
+	assert.Equal(t, []recordedRun{
+		{task: "a", argument: "slot", outcome: string(Skipped), detail: string(DetailWorking), retain: defaultRetainedRuns},
+		{task: "b", outcome: string(Skipped), detail: string(DetailHeld), retain: defaultRetainedRuns},
+	}, store.recorded(), "recorded refusals")
+
+	close(held.release)
+	manager.Wait()
 }

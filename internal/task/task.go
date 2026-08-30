@@ -21,6 +21,15 @@ const (
 	admitHeld
 )
 
+// detail is what a refused admission is recorded as.
+func (a admission) detail() Detail {
+	if a == admitWorking {
+		return DetailWorking
+	}
+
+	return DetailHeld
+}
+
 // maxChainDepth bounds how far one attempt's consequences may reach. Every
 // chain the service registers is one or two links long; this is the backstop
 // behind the set of what a chain has already run.
@@ -65,6 +74,17 @@ func (o Outcome) recorded() bool {
 // Detail is a stable, safe-to-display reason for an outcome. It never carries
 // provider response text, a route name, or an upstream identifier.
 type Detail string
+
+// Why an attempt did no work. They are separate because they mean different
+// things to whoever reads the history: one is this service busy with the very
+// same work, the other is it busy with something else.
+const (
+	// DetailWorking means the same task over the same argument was already
+	// being worked on.
+	DetailWorking Detail = "already_working"
+	// DetailHeld means a resource or a concurrency slot was not free.
+	DetailHeld Detail = "resource_held"
+)
 
 // Link is one invocation a finished attempt asks for. A task returns links for
 // the work its own result made necessary, so what follows what is decided by
