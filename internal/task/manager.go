@@ -4,16 +4,34 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
 	"sync/atomic"
 	"time"
 )
+
+// Store records what attempts came to. It is described here rather than taken
+// as a concrete store so this package carries no storage concern, and it deals
+// in strings so the store carries none of this package's vocabulary.
+type Store interface {
+	// RecordTaskRun writes one attempt down and prunes that task's history back
+	// to retain, keeping the most recent attempt over each argument whatever
+	// its age.
+	RecordTaskRun(
+		ctx context.Context,
+		task, argument string,
+		startedAt, finishedAt time.Time,
+		outcome, detail string,
+		retain int,
+	) error
+}
 
 // Manager owns every registered task: it runs them on their schedules, keeps
 // them off each other's resources, and waits for them at shutdown.
 type Manager struct {
 	now   func() time.Time
 	after func(time.Duration) <-chan time.Time
+	store Store
 
 	shared    map[string]int
 	exclusive map[string]struct{}
@@ -36,19 +54,25 @@ type registered struct {
 	inFlight   int
 }
 
-// NewManager creates an empty manager. Nothing runs until Run is called.
-func NewManager() *Manager {
+// NewManager creates an empty manager over the store its attempts are recorded
+// in. Nothing runs until Run is called.
+func NewManager(store Store) (*Manager, error) {
+	if store == nil {
+		return nil, errors.New("task: a run store is required")
+	}
+
 	return &Manager{
 		now:       time.Now,
 		after:     time.After,
+		store:     store,
 		shared:    make(map[string]int),
 		exclusive: make(map[string]struct{}),
 		tasks:     make(map[string]*registered),
-	}
+	}, nil
 }
 
 // Register adds a task. Registration order is the order Run starts schedules in.
-func (m *Manager) Register(definition Definition) error {
+func (m *Manager) Register(definition *Definition) error {
 	if definition.Name == "" || definition.Run == nil {
 		return errors.New("task: a name and a runner are required")
 	}
@@ -58,7 +82,7 @@ func (m *Manager) Register(definition Definition) error {
 	if _, exists := m.tasks[definition.Name]; exists {
 		return fmt.Errorf("task %q is already registered", definition.Name)
 	}
-	m.tasks[definition.Name] = &registered{definition: definition}
+	m.tasks[definition.Name] = &registered{definition: *definition}
 	m.order = append(m.order, definition.Name)
 
 	return nil
@@ -86,13 +110,16 @@ func (m *Manager) Trigger(ctx context.Context, name, argument string) bool {
 	if !known || ctx.Err() != nil {
 		return false
 	}
+	invocation := Invocation{Task: name, Argument: argument, Trigger: TriggerManual}
 	release, admitted := m.admit(entry, argument)
 	if !admitted {
+		m.refused(ctx, entry, invocation)
+
 		return false
 	}
 	m.triggered.Go(func() {
 		defer release()
-		m.attempt(ctx, entry, Invocation{Task: name, Argument: argument, Trigger: TriggerManual})
+		m.attempt(ctx, entry, invocation)
 	})
 
 	return true
@@ -162,23 +189,56 @@ func (m *Manager) scheduled(ctx context.Context, entry *registered) {
 	if ctx.Err() != nil {
 		return
 	}
+	invocation := Invocation{Task: entry.definition.Name, Trigger: TriggerSchedule}
 	release, admitted := m.admit(entry, "")
 	if !admitted {
+		m.refused(ctx, entry, invocation)
+
 		return
 	}
 	defer release()
-	m.attempt(ctx, entry, Invocation{Task: entry.definition.Name, Trigger: TriggerSchedule})
+	m.attempt(ctx, entry, invocation)
 }
 
-// attempt runs the task and reports what it came to. Shutdown outranks whatever
-// the runner returned: an attempt it ended did not finish.
+// attempt runs the task, records what it came to, and reports it. Shutdown
+// outranks whatever the runner returned: an attempt it ended did not finish.
 func (m *Manager) attempt(ctx context.Context, entry *registered, invocation Invocation) Result {
+	startedAt := m.now().UTC()
 	result := entry.definition.Run.Run(ctx, invocation)
 	if ctx.Err() != nil {
 		return Result{Outcome: Cancelled}
 	}
+	m.record(ctx, entry, invocation, startedAt, result)
 
 	return result
+}
+
+// refused records an attempt that never started. Recording it is what makes a
+// task that keeps losing a resource visible after the contention has passed.
+func (m *Manager) refused(ctx context.Context, entry *registered, invocation Invocation) {
+	m.record(ctx, entry, invocation, m.now().UTC(), Result{Outcome: Skipped})
+}
+
+// record writes down what an attempt came to. A history that cannot be written
+// is one stale line on a status page, so it is logged rather than raised.
+func (m *Manager) record(
+	ctx context.Context, entry *registered, invocation Invocation, startedAt time.Time, result Result,
+) {
+	if !result.Outcome.recorded() {
+		return
+	}
+	if err := m.store.RecordTaskRun(
+		ctx,
+		invocation.Task,
+		invocation.Argument,
+		startedAt,
+		m.now().UTC(),
+		string(result.Outcome),
+		string(result.Detail),
+		entry.definition.retain(),
+	); err != nil {
+		slog.Warn("task run not recorded", "task", invocation.Task, "reason", "state")
+	}
 }
 
 // admit takes a concurrency slot and the whole resource set together, returning

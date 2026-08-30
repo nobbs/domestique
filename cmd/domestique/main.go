@@ -159,9 +159,13 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("creating sync reporter: %w", err)
 	}
-	tasks := task.NewManager()
-	for _, definition := range append(inventoryTasks(reporter, runtimeSettings), indexTask) {
-		if registerErr := tasks.Register(definition); registerErr != nil {
+	tasks, err := task.NewManager(store)
+	if err != nil {
+		return fmt.Errorf("creating the task manager: %w", err)
+	}
+	definitions := append(inventoryTasks(reporter, runtimeSettings), indexTask)
+	for index := range definitions {
+		if registerErr := tasks.Register(&definitions[index]); registerErr != nil {
 			return fmt.Errorf("registering background tasks: %w", registerErr)
 		}
 	}
