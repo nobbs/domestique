@@ -20,10 +20,10 @@
 
 import { IconChevronsRight } from "@tabler/icons-react";
 import { useState } from "react";
+import { Separator } from "../../components/ui/separator";
 import type { Climb } from "../../lib/climbs";
 import { formatAscent, formatDistance, formatGradient } from "../../lib/format";
 import type { UnitSystem } from "../../lib/units";
-import { Separator } from "../ui/separator";
 
 /**
  * One row's height, and how many are shown.

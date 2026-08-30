@@ -48,7 +48,7 @@ import type { BandShare } from "../../lib/profile";
 import type { SurfaceSummary } from "../../lib/surface";
 import type { UnitSystem } from "../../lib/units";
 import { ClimbsTable } from "./ClimbsTable";
-import { MixColumn } from "./MixColumn";
+import { MixSection } from "./MixSection";
 import { ReprocessButton } from "./ReprocessButton";
 
 function Figure({ term, children }: { term: string; children: React.ReactNode }) {
@@ -266,36 +266,14 @@ export function RoutePanel({
                 </dd>
               </div>
             </dl>
-            {/*
-             * Under the figures rather than beside them. Alongside, the two bars
-             * set the card's width and the climbs table beneath had to live in
-             * whatever that came to.
-             *
-             * The mixes as lengths, which is a different question from the one
-             * the dock's ribbon answers: how much of the ride is gravel, and
-             * where the gravel is.
-             */}
-            <Separator />
-            <div className="flex items-start gap-3">
-              <MixColumn
-                name="Gradient"
-                classesLabel="Gradient bands"
-                entries={bandEntries(bands, route.distanceMetres)}
-                absence="No elevation data."
-                highlight={highlight}
-                onHighlightChange={onHighlightChange}
-                unitSystem={unitSystem}
-              />
-              <MixColumn
-                name="Surface"
-                classesLabel="Surface classes"
-                entries={surfaceEntries(surface)}
-                absence={surfaceAbsence}
-                highlight={highlight}
-                onHighlightChange={onHighlightChange}
-                unitSystem={unitSystem}
-              />
-            </div>
+            <MixSection
+              bands={bandEntries(bands, route.distanceMetres)}
+              surface={surfaceEntries(surface)}
+              surfaceAbsence={surfaceAbsence}
+              highlight={highlight}
+              onHighlightChange={onHighlightChange}
+              unitSystem={unitSystem}
+            />
             <ClimbsTable climbs={climbs} unitSystem={unitSystem} onSelect={onSelectClimb} />
           </div>
         )}

@@ -77,6 +77,21 @@ test("climbs start folded and expand on demand", async ({ offlinePage: page }) =
   ).toBeVisible();
 });
 
+test("the mixes start folded and expand on demand", async ({ offlinePage: page }) => {
+  await openRoute(page, LOOP_ROUTE.provider, LOOP_ROUTE.sourceRouteId, LOOP_ROUTE.stageOrder);
+
+  const toggle = page.getByRole("button", { name: "Show gradient and surface" });
+  // The line that stands in for them names what they hold, not what it does.
+  await expect(toggle).toContainText("Gradient and surface");
+  await expect(page.getByRole("list", { name: "Surface classes" })).toBeHidden();
+
+  await toggle.click();
+
+  await expect(page.getByRole("button", { name: "Hide gradient and surface" })).toBeVisible();
+  await expect(page.getByRole("list", { name: "Surface classes" })).toBeVisible();
+  await expect(page.getByRole("list", { name: "Gradient bands" })).toBeVisible();
+});
+
 test("the chart answers the arrow keys and says where it is", async ({ offlinePage: page }) => {
   await openRoute(page, LINE_ROUTE.provider, LINE_ROUTE.sourceRouteId, LINE_ROUTE.stageOrder);
 
@@ -167,6 +182,7 @@ test("dragging along the route picks the same stretch off the map", async ({
 
 test("picking a surface class out of the key repaints the map", async ({ offlinePage: page }) => {
   await openRoute(page, LOOP_ROUTE.provider, LOOP_ROUTE.sourceRouteId, LOOP_ROUTE.stageOrder);
+  await page.getByRole("button", { name: "Show gradient and surface" }).click();
   const before = await settleMap(page);
 
   const key = page.getByRole("list", { name: "Surface classes" });
@@ -194,6 +210,10 @@ test("a route nobody classified says so rather than showing an empty key", async
     UNCLASSIFIED_ROUTE.sourceRouteId,
     UNCLASSIFIED_ROUTE.stageOrder,
   );
+
+  // The two mixes are folded, and an absence is still one of the things they
+  // have to be able to say once opened.
+  await page.getByRole("button", { name: "Show gradient and surface" }).click();
 
   await expect(page.getByText("Surface not classified yet.")).toBeVisible();
   // The same route has no elevation either, which is a second absence the page
