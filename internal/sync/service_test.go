@@ -435,13 +435,6 @@ func TestServiceRewritesAStageWhosePushedRevisionWasForgotten(t *testing.T) {
 	assert.Empty(t, target.deletedRouteIDs, "deleted routes")
 }
 
-func TestServiceSkipsOverlappingRun(t *testing.T) {
-	service := newService(t, newFakeState("a", "b"), &fakeSource{}, &fakeEncoder{}, newFakeTarget(), false)
-	service.running.Store(true)
-
-	assert.Equal(t, OutcomeSkipped, runBoth(t.Context(), service).Outcome, "runBoth() outcome")
-}
-
 // RunTarget must mutate exactly the slot it was asked for, and nothing about
 // the other configured target: it reads the same stored inventory, but the
 // account never contacted is proof no other slot's routes were even read.
@@ -551,15 +544,6 @@ func TestServiceRunTargetFailsOnADuplicateStoredStage(t *testing.T) {
 	result := service.RunTarget(t.Context(), "a")
 	assert.Equal(t, OutcomeFailed, result.Outcome, "RunTarget() outcome")
 	assert.Equal(t, FailureState, result.Failure, "RunTarget() failure")
-}
-
-// RunTarget shares the same mutual exclusion as a full synchronization: it
-// must not race a run in flight over the same stored state.
-func TestServiceRunTargetSkipsOverlappingRun(t *testing.T) {
-	service := newService(t, newFakeState("a", "b"), &fakeSource{}, &fakeEncoder{}, newFakeTarget(), false)
-	service.running.Store(true)
-
-	assert.Equal(t, OutcomeSkipped, service.RunTarget(t.Context(), "a").Outcome, "RunTarget() outcome")
 }
 
 func TestServiceSupportsOneTarget(t *testing.T) {

@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"log/slog"
 	"slices"
-	"sync/atomic"
 	"time"
 
 	"github.com/nobbs/domestique/internal/route"
@@ -52,7 +51,6 @@ type Service struct {
 	predictor                Predictor
 	allowEmptySourceDeletion func() bool
 	targetIDs                func() []string
-	running                  atomic.Bool
 }
 
 // New creates a synchronizer with explicit consumer-owned dependencies. All are
@@ -94,11 +92,6 @@ func New(
 // a failed one keeps its last-known stages, and the empty-source gate is
 // evaluated per source against that source's own prior count.
 func (s *Service) RunSource(ctx context.Context) Result {
-	if !s.running.CompareAndSwap(false, true) {
-		return Result{Phase: PhaseSource, Outcome: OutcomeSkipped}
-	}
-	defer s.running.Store(false)
-
 	sources, err := s.sources()
 	if err != nil || len(sources) == 0 {
 		return Result{Phase: PhaseSource, Outcome: OutcomeNotReady}
@@ -176,11 +169,6 @@ func (s *Service) runOneSource(
 // inventory that cannot be read back whole fails the phase as a state failure:
 // a partial library is indistinguishable from one meant to shrink.
 func (s *Service) RunTargets(ctx context.Context) Result {
-	if !s.running.CompareAndSwap(false, true) {
-		return Result{Phase: PhaseTargets, Outcome: OutcomeSkipped}
-	}
-	defer s.running.Store(false)
-
 	targetIDs := s.targetIDs()
 	if len(targetIDs) == 0 {
 		return Result{Phase: PhaseTargets, Outcome: OutcomeNotReady}
@@ -240,16 +228,12 @@ func (s *Service) RunTargets(ctx context.Context) Result {
 }
 
 // RunTarget reconciles the stored inventory onto exactly one configured target,
-// applying every rule RunTargets applies to that slot and sharing its mutual
-// exclusion. An unconfigured target ID performs no work.
+// applying every rule RunTargets applies to that slot. An unconfigured target ID
+// performs no work.
 func (s *Service) RunTarget(ctx context.Context, targetID string) Result {
 	if !slices.Contains(s.targetIDs(), targetID) {
 		return Result{Phase: PhaseTargets, Outcome: OutcomeSkipped}
 	}
-	if !s.running.CompareAndSwap(false, true) {
-		return Result{Phase: PhaseTargets, Outcome: OutcomeSkipped}
-	}
-	defer s.running.Store(false)
 
 	authorization, err := s.state.TargetAuthorization(ctx, targetID)
 	if err != nil {
@@ -290,10 +274,6 @@ func (s *Service) ClearTarget(ctx context.Context, targetID string) Result {
 	if !slices.Contains(s.targetIDs(), targetID) {
 		return Result{Phase: PhaseTargets, Outcome: OutcomeSkipped}
 	}
-	if !s.running.CompareAndSwap(false, true) {
-		return Result{Phase: PhaseTargets, Outcome: OutcomeSkipped}
-	}
-	defer s.running.Store(false)
 
 	authorization, err := s.state.TargetAuthorization(ctx, targetID)
 	if err != nil {
