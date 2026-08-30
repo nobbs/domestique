@@ -151,9 +151,11 @@ func (a *Annotator) annotateStage(ctx context.Context, stage *route.Route, gener
 // itself be written down leaves the count as the only account of it, which is
 // what there was before.
 func (a *Annotator) recordFailure(ctx context.Context, key route.Key, reason string) {
+	// A shutdown reaching the write is the shutdown, not a lost record: this
+	// pass had already decided to record nothing about a cancelled stage.
 	if err := a.cache.RecordStageSurfaceFailure(
 		ctx, key.Provider(), key.SourceRouteID(), key.StageOrder(), reason,
-	); err != nil {
+	); err != nil && ctx.Err() == nil {
 		slog.Warn("stage classification failure not recorded", "reason", reason, "error", err)
 	}
 }

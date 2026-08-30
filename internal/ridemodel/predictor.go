@@ -156,9 +156,11 @@ func (p *Predictor) predictStage(ctx context.Context, stage *route.Route, surfac
 // recordFailure names the stage a pass could not finish. A failure that cannot
 // itself be written down leaves the count as the only account of it.
 func (p *Predictor) recordFailure(ctx context.Context, key route.Key, reason string) {
+	// A shutdown reaching the write is the shutdown, not a lost record: this
+	// pass had already decided to record nothing about a cancelled stage.
 	if err := p.cache.RecordStageDurationFailure(
 		ctx, key.Provider(), key.SourceRouteID(), key.StageOrder(), reason,
-	); err != nil {
+	); err != nil && ctx.Err() == nil {
 		slog.Warn("stage prediction failure not recorded", "reason", reason, "error", err)
 	}
 }
