@@ -460,14 +460,14 @@ func TestIndexResultSeparatesABuildFromAnUpstreamThatHadNothingNew(t *testing.T)
 func TestRegisterTasksRefusesADefinitionTheLayerCannotRun(t *testing.T) {
 	t.Parallel()
 
-	_, err := registerTasks(&countingStore{}, &silentNotifier{}, alwaysOn, []task.Definition{{Name: "", Run: nil}})
+	_, err := registerTasks(&countingStore{}, &silentNotifier{}, undecided{}, alwaysOn, []task.Definition{{Name: "", Run: nil}})
 	require.Error(t, err, "registerTasks()")
 }
 
 func TestRegisterTasksNeedsSomewhereToRecord(t *testing.T) {
 	t.Parallel()
 
-	_, err := registerTasks(nil, &silentNotifier{}, alwaysOn, nil)
+	_, err := registerTasks(nil, &silentNotifier{}, undecided{}, alwaysOn, nil)
 	require.Error(t, err, "registerTasks()")
 }
 
@@ -477,7 +477,7 @@ func TestRegisterTasksTakesEveryDefinitionItIsGiven(t *testing.T) {
 	definitions := append(inventoryTasks(&fakeSynchronizer{}, liveSettings(t)),
 		surfaceIndexTask(&fakeIndexBuilder{}, liveSettings(t), time.Time{}))
 
-	manager, err := registerTasks(&countingStore{}, &silentNotifier{}, alwaysOn, definitions)
+	manager, err := registerTasks(&countingStore{}, &silentNotifier{}, undecided{}, alwaysOn, definitions)
 	require.NoError(t, err, "registerTasks()")
 	for _, definition := range definitions {
 		_, known := manager.NextRunAt(definition.Name)
@@ -530,3 +530,10 @@ func alwaysOn() bool { return true }
 type silentNotifier struct{}
 
 func (*silentNotifier) Send(context.Context, string, string) error { return nil }
+
+// undecided stands in for an operator who has ruled on nothing.
+type undecided struct{}
+
+func (undecided) Wanted(context.Context, string, task.Detail) (enabled, decided bool) {
+	return false, false
+}

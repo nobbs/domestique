@@ -65,9 +65,10 @@ type indexBuilder interface {
 // registerTasks registers every activity this service runs unasked, over the
 // store their attempts are recorded in.
 func registerTasks(
-	store task.Store, notifier task.Notifier, enabled func() bool, definitions []task.Definition,
+	store task.Store, notifier task.Notifier, alerts task.Alerts,
+	enabled func() bool, definitions []task.Definition,
 ) (*task.Manager, error) {
-	manager, err := task.NewManager(store, notifier, enabled)
+	manager, err := task.NewManager(store, notifier, alerts, enabled)
 	if err != nil {
 		return nil, fmt.Errorf("creating the task manager: %w", err)
 	}
@@ -78,6 +79,25 @@ func registerTasks(
 	}
 
 	return manager, nil
+}
+
+// syncAlerts is what a synchronization can be announced for. Every failure
+// category the sync package reports is here, so an operator rules on each
+// rather than meeting one for the first time at four in the morning.
+func syncAlerts() *task.Notify {
+	return &task.Notify{
+		Title:    syncAlertTitle,
+		Suppress: syncAlertSuppression,
+		Alerts: []task.Detail{
+			task.Detail(syncservice.FailureState),
+			task.Detail(syncservice.FailureSource),
+			task.Detail(syncservice.FailureAuthorization),
+			task.Detail(syncservice.FailureDestination),
+			task.Detail(syncservice.FailureCourse),
+			task.Detail(syncservice.FailureEmptySource),
+			task.Detail(syncservice.FailureDeletionLimit),
+		},
+	}
 }
 
 // inventoryTasks are the activities that reconcile the library, in the order a
@@ -91,7 +111,7 @@ func inventoryTasks(reporter synchronizer, settings *runtimeconfig.Current) []ta
 		{
 			Name:      taskSync,
 			Resources: inventory,
-			Notify:    &task.Notify{Title: syncAlertTitle, Suppress: syncAlertSuppression},
+			Notify:    syncAlerts(),
 			Schedule:  task.Every(func() time.Duration { return syncservice.Interval }),
 			InitialDelay: func() time.Duration {
 				return settings.Values().Sync.InitialDelay
@@ -105,7 +125,7 @@ func inventoryTasks(reporter synchronizer, settings *runtimeconfig.Current) []ta
 		{
 			Name:      taskSyncTarget,
 			Resources: inventory,
-			Notify:    &task.Notify{Title: syncAlertTitle, Suppress: syncAlertSuppression},
+			Notify:    syncAlerts(),
 			Run: task.RunnerFunc(func(ctx context.Context, invocation task.Invocation) task.Result {
 				result := reporter.ReconcileTarget(ctx, invocation.Argument)
 
@@ -115,7 +135,7 @@ func inventoryTasks(reporter synchronizer, settings *runtimeconfig.Current) []ta
 		{
 			Name:      taskSyncClear,
 			Resources: inventory,
-			Notify:    &task.Notify{Title: syncAlertTitle, Suppress: syncAlertSuppression},
+			Notify:    syncAlerts(),
 			Run: task.RunnerFunc(func(ctx context.Context, invocation task.Invocation) task.Result {
 				result := reporter.ClearTarget(ctx, invocation.Argument)
 
@@ -141,8 +161,12 @@ func surfaceIndexTask(
 	runner indexBuilder, settings *runtimeconfig.Current, lastBuiltAt time.Time,
 ) task.Definition {
 	return task.Definition{
-		Name:   taskSurfaceIndex,
-		Notify: &task.Notify{Title: indexAlertTitle, Suppress: indexAlertSuppression},
+		Name: taskSurfaceIndex,
+		Notify: &task.Notify{
+			Title:    indexAlertTitle,
+			Suppress: indexAlertSuppression,
+			Alerts:   []task.Detail{detailBuild, detailNoRegions},
+		},
 		Resources: func(string) []task.Resource {
 			return []task.Resource{{Name: resourceSurfaceIndex, Exclusive: true}}
 		},

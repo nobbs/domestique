@@ -159,8 +159,12 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("creating sync reporter: %w", err)
 	}
+	alerts, err := newAlertDecisions(ctx, store)
+	if err != nil {
+		return fmt.Errorf("reading alert decisions: %w", err)
+	}
 	tasks, err := registerTasks(
-		store, notifier,
+		store, notifier, alerts,
 		func() bool { return runtimeSettings.Values().Notifications.Enabled },
 		append(inventoryTasks(reporter, runtimeSettings), indexTask),
 	)

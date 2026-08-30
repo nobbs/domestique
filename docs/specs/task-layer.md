@@ -165,6 +165,12 @@ attempt that did no work because something else held what it needed is not a
 fault — this service was busy, which is not the same as broken — and neither is
 a success or a run that found nothing to do.
 
+An operator rules on each alert separately, and a task declares which alerts it
+can raise so that ruling on one is possible before being woken by it. An alert
+nobody has ruled on is announced: a fault nobody has heard of is the one worth
+hearing about. An alert switched off is not sent and opens no window, so
+switching it back on does not find one it never heard the alert behind.
+
 The suppression window is keyed by the reason as well as the task. A library
 that cannot be read and a target that needs reauthorising are separate problems,
 and one must not silence the other. A failing task is worth one message; the
