@@ -19,6 +19,12 @@ func TestRegisterRefusesADefinitionItCannotRun(t *testing.T) {
 		"no name":   {Run: succeeds()},
 		"no runner": {Name: "a"},
 		"no delay":  {Name: "a", Run: succeeds(), Schedule: Every(func() time.Duration { return time.Hour })},
+		"no alert window": {
+			Name: "a", Run: succeeds(), Notify: &Notify{Title: "Domestique sync failed"},
+		},
+		"no alert title": {
+			Name: "a", Run: succeeds(), Notify: &Notify{Suppress: time.Hour},
+		},
 	}
 	for name, definition := range tests {
 		t.Run(name, func(t *testing.T) {

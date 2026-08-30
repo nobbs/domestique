@@ -187,9 +187,11 @@ type Definition struct {
 	Retain int
 }
 
-// alerts reports whether anything is announced about this task.
+// alerts reports whether anything is announced about this task. What it says
+// and how often are the same declaration, so a task cannot be announced about
+// without a window to announce within.
 func (d *Definition) alerts() bool {
-	return d.Notify != nil && d.Notify.Suppress > 0
+	return d.Notify != nil
 }
 
 // resources is the set this argument needs, empty when the task named none.

@@ -155,7 +155,10 @@ asking for one overrides them, because asking is the point.
 ## Alerts
 
 A task declares what an alert about it is titled and how long one silences the
-next. A task declaring nothing is a task nothing is announced about.
+next, or declares nothing and has nothing announced about it. Declaring one
+without the other is refused where the task is registered: a window left at zero
+would either silence the task or repeat itself every tick, and neither is what
+leaving it out meant.
 
 Only a fault is announced: a failure or a run a safety gate refused. A refusal
 is not a fault — something else was working — and neither is a success or a run

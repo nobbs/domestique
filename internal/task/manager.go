@@ -101,6 +101,11 @@ func (m *Manager) Register(definition *Definition) error {
 	if definition.Schedule != nil && definition.InitialDelay == nil {
 		return fmt.Errorf("task %q: a scheduled task needs an initial delay", definition.Name)
 	}
+	// A window left at zero would either silence the task or say the same thing
+	// every tick, and neither is what leaving it out meant.
+	if definition.Notify != nil && (definition.Notify.Title == "" || definition.Notify.Suppress <= 0) {
+		return fmt.Errorf("task %q: an announced task needs a title and a suppression window", definition.Name)
+	}
 	if _, exists := m.tasks[definition.Name]; exists {
 		return fmt.Errorf("task %q is already registered", definition.Name)
 	}
