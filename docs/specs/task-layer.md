@@ -78,6 +78,35 @@ A task's concurrency limit is how many of its attempts may run at once. It
 defaults to one, so registering a task never introduces parallelism by accident.
 The limit and the resource set are taken together or not at all.
 
+## Chains
+
+An attempt reports the invocations its own result made necessary. What follows
+what is decided by whoever knows the outcome, rather than declared where nobody
+can see it.
+
+An attempt releases its resources before its chain starts. A link wanting what
+its parent held would otherwise be refused by its own parent, which is the usual
+case rather than the exception.
+
+A link asking for work already under way is dropped, not refused: the work is
+happening, which is what the link wanted. A link losing a resource to something
+unrelated is a refusal, and is recorded as one.
+
+Because links are chosen while a task runs, nothing can reject a cycle when a
+task is registered. Each chain carries the set of what it has already run and
+refuses to run any of it again, with a depth limit behind that for a chain whose
+arguments keep changing.
+
+These chains are registered:
+
+~~~text
+sync            stored an inventory  ->  surface:annotate
+surface:index   installed a new map  ->  surface:annotate
+~~~
+
+A rebuilt index makes every stored classification stale, and nothing else
+notices that.
+
 ## Scheduling
 
 A task with a schedule runs unasked. The schedule answers when a task last due

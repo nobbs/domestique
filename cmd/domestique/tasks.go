@@ -169,7 +169,12 @@ func indexResult(outcome osmindex.Outcome, err error) task.Result {
 	}
 	switch outcome {
 	case osmindex.Rebuilt:
-		return task.Result{Outcome: task.Succeeded}
+		// A new generation makes every stored classification stale, and nothing
+		// else notices that.
+		return task.Result{
+			Outcome: task.Succeeded,
+			Next:    []task.Link{{Task: taskSurfaceAnnotate}},
+		}
 	case osmindex.Unchanged:
 		return task.Result{Outcome: task.Unchanged}
 	case osmindex.NoRegions:
@@ -184,6 +189,12 @@ func indexResult(outcome osmindex.Outcome, err error) task.Result {
 // syncResult carries a synchronization outcome into the task layer's vocabulary,
 // the failure category travelling as the detail.
 func syncResult(result *syncservice.Result) task.Result {
+	var next []task.Link
+	if result.SourceStored {
+		// An inventory that has just been replaced is worth reading the ground
+		// under again, whether or not any stage in it changed.
+		next = []task.Link{{Task: taskSurfaceAnnotate}}
+	}
 	outcome := task.Failed
 	switch result.Outcome {
 	case syncservice.OutcomeSucceeded:
@@ -198,7 +209,7 @@ func syncResult(result *syncservice.Result) task.Result {
 		outcome = task.Failed
 	}
 
-	return task.Result{Outcome: outcome, Detail: task.Detail(result.Failure)}
+	return task.Result{Outcome: outcome, Detail: task.Detail(result.Failure), Next: next}
 }
 
 // taskStarter is the task layer as the HTTP boundary needs it, and syncReporter
