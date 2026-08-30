@@ -31,6 +31,19 @@ type Story = StoryObj<typeof meta>;
 // is the one place it is not.
 const menu = () => within(document.body);
 
+/*
+ * The open menu, once it exists.
+ *
+ * The popup is portalled and positioned after the story renders, so a
+ * synchronous query races it: this passed on a fast machine and failed on
+ * Chromatic's, which is the worst way for a test to be wrong. Waiting for the
+ * menu itself also gives the absence stories something to assert against —
+ * "no item" is only meaningful once there is a menu to not contain one.
+ */
+async function openMenu() {
+  return await menu().findByRole("menu");
+}
+
 export const VeloPlanner: Story = {
   args: { provider: "veloplanner", baseUrl: "https://veloplanner.com", sourceRouteId: 12 },
 };
@@ -48,7 +61,7 @@ export const Asserted: Story = {
     sourceRouteId: 4212,
   },
   play: async () => {
-    const link = menu().getByRole("menuitem", {
+    const link = await menu().findByRole("menuitem", {
       name: "Open source route 4212 on source.example.test in a new tab",
     });
 
@@ -81,7 +94,7 @@ export const WwwAndPort: Story = {
     sourceRouteId: 4212,
   },
   play: async () => {
-    const link = menu().getByRole("menuitem");
+    const link = await menu().findByRole("menuitem");
 
     await expect(link.textContent).toContain("source.example.test");
     await expect(link.getAttribute("aria-label")).toContain("source.example.test");
@@ -92,7 +105,7 @@ export const WwwAndPort: Story = {
 export const NoConfiguredProvider: Story = {
   args: { provider: "veloplanner", baseUrl: undefined, sourceRouteId: 4212 },
   play: async () => {
-    await expect(menu().queryByRole("menuitem")).not.toBeInTheDocument();
+    await expect(within(await openMenu()).queryByRole("menuitem")).not.toBeInTheDocument();
   },
 };
 
@@ -100,7 +113,7 @@ export const NoConfiguredProvider: Story = {
 export const UnusableBaseUrl: Story = {
   args: { provider: "veloplanner", baseUrl: "not-a-url", sourceRouteId: 4212 },
   play: async () => {
-    await expect(menu().queryByRole("menuitem")).toBeNull();
+    await expect(within(await openMenu()).queryByRole("menuitem")).toBeNull();
   },
 };
 
@@ -108,6 +121,6 @@ export const UnusableBaseUrl: Story = {
 export const UnknownProvider: Story = {
   args: { provider: "komoot", baseUrl: "https://source.example.test", sourceRouteId: 4212 },
   play: async () => {
-    await expect(menu().queryByRole("menuitem")).toBeNull();
+    await expect(within(await openMenu()).queryByRole("menuitem")).toBeNull();
   },
 };
