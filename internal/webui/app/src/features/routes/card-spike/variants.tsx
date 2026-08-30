@@ -692,3 +692,36 @@ export function SlideCard({ withClimbs = true, ...props }: BodyProps & { withCli
 }
 
 export { ClimbRows };
+
+/* ---------------------------------------------------------------- G: Plain */
+
+/**
+ * A's typography with nothing left to fold.
+ *
+ * Once the climbs are in the dock the card holds one section, and a control
+ * that only ever hides one thing is machinery earning nothing: it costs a row
+ * to say what is behind it, a press to get there, and a second press to put it
+ * back. Showing the mixes outright costs the height the fold was saving and
+ * gives back the row, the presses and the state.
+ *
+ * No `useState` anywhere in it, which is the point — this is the version with
+ * no interaction to get wrong.
+ */
+export function PlainCard({ highlight, onHighlightChange }: BodyProps) {
+  return (
+    <Shell>
+      <div className="grid gap-3 px-3 pt-1 pb-3">
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+          <AirFigure term="Distance" value={FIGURES.distance} />
+          <AirFigure term="Ascent" value={FIGURES.ascent} />
+          <AirFigure term="Elevation" value={FIGURES.elevation} />
+          <AirFigure term="Avg climbing" value={FIGURES.averageClimbing} />
+          <AirFigure term="Max climb" value={FIGURES.steepestClimbing} icon="up" />
+          <AirFigure term="Max descent" value={FIGURES.steepestDescent} icon="down" />
+          <AirFigure term="Moving time" value={FIGURES.movingTime} span />
+        </dl>
+        <Mixes highlight={highlight} onHighlightChange={onHighlightChange} />
+      </div>
+    </Shell>
+  );
+}

@@ -24,7 +24,7 @@ import type { Highlight } from "../../../lib/highlight";
 import { groundSegments } from "../../../lib/mix";
 import { buildProfile } from "../../../lib/profile";
 import { CLIMBS, SPIKE_COORDINATES, SPIKE_DISTANCE_METRES, SPIKE_SURFACE, TITLE } from "./data";
-import { AirCard, SlideCard } from "./variants";
+import { AirCard, PlainCard, SlideCard } from "./variants";
 
 /** Where the spike's climbs sit along the route, for the markers over the chart. */
 const MARKED: Climb[] = [
@@ -138,12 +138,12 @@ function ClimbsSidebar({
   );
 }
 
-export function Workspace({ card }: { card: "slide" | "fold" }) {
+export function Workspace({ card }: { card: "slide" | "fold" | "plain" }) {
   const [highlight, setHighlight] = useState<Highlight | null>(null);
   const [active, setActive] = useState<number | null>(null);
   const [sidebar, setSidebar] = useState(true);
   const profile = useMemo(() => buildProfile(SPIKE_COORDINATES), []);
-  const Card = card === "slide" ? SlideCard : AirCard;
+  const Card = card === "slide" ? SlideCard : card === "plain" ? PlainCard : AirCard;
 
   return (
     // The map's stand-in: enough tone that a floating panel reads as floating.
@@ -158,7 +158,11 @@ export function Workspace({ card }: { card: "slide" | "fold" }) {
         }}
       />
       <div className="absolute top-3 left-3">
-        <Card withClimbs={false} highlight={highlight} onHighlightChange={setHighlight} />
+        {card === "plain" ? (
+          <PlainCard highlight={highlight} onHighlightChange={setHighlight} />
+        ) : (
+          <Card withClimbs={false} highlight={highlight} onHighlightChange={setHighlight} />
+        )}
       </div>
       {/*
        * Edge to edge, which is the point: the card no longer reaches down here,

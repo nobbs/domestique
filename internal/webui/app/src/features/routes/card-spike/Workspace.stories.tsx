@@ -39,3 +39,18 @@ export const WithFoldCard: Story = {
     </StoryProviders>
   ),
 };
+
+/**
+ * Nothing folded at all: the mixes are simply on the card.
+ *
+ * The version this arrives at once the climbs are in the dock — one section
+ * left, and a control that only ever hides one thing removed rather than
+ * styled.
+ */
+export const WithPlainCard: Story = {
+  render: () => (
+    <StoryProviders>
+      <Workspace card="plain" />
+    </StoryProviders>
+  ),
+};
