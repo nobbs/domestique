@@ -59,7 +59,8 @@ export default defineConfig({
     chunkSizeWarningLimit: 1200,
   },
   server: {
-    port: 5173,
+    // PORT is how a preview harness assigns a free port; 5173 otherwise.
+    port: Number(process.env.PORT ?? 5173),
     strictPort: true,
     ...(tailnet ? { host: "127.0.0.1", allowedHosts: [".ts.net"] } : {}),
     proxy: {

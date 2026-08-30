@@ -15,6 +15,7 @@ import { type ReactNode, useState } from "react";
 import { Marker, useMap } from "react-map-gl/maplibre";
 import { ButtonGroup } from "@/components/ui/button-group";
 import { Button } from "../Button";
+import { CompassButton } from "./CompassButton";
 import { LocationPin } from "./LocationPin";
 
 const LOCATION_ZOOM = 12;
@@ -84,6 +85,9 @@ export function MapControls({ children }: { children?: ReactNode }) {
             title="Zoom out"
           />
         </ButtonGroup>
+        {/* Not inside the zoom group: that pair hides from a coarse pointer,
+            and touch is exactly where twist-rotation lives. */}
+        <CompassButton />
         {children}
       </div>
     </>

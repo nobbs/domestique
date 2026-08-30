@@ -86,11 +86,13 @@ ASSERTION_FILE="${DEMO_DIR}/assertion"
 GO="${GO:-go}"
 PNPM="${PNPM:-pnpm}"
 
-API_PORT="${DOMESTIQUE_DEMO_PORT:-8082}"
+# PORT is set per preview; deriving the API's port from it keeps two demos
+# on one machine from proxying into each other's identity gate.
+API_PORT="${DOMESTIQUE_DEMO_PORT:-$(( ${PORT:-8081} + 1 ))}"
 API_URL="http://127.0.0.1:${API_PORT}"
-# Where the dev server answers. `strictPort` in vite.config.ts pins the same
-# number, so this names that port rather than choosing one.
-UI_PORT=5173
+# Where the dev server answers. vite.config.ts reads the same PORT variable
+# and pins the result with `strictPort`, so this names that port, not chooses.
+UI_PORT="${PORT:-5173}"
 # The origin the API is configured to serve its UI at, which state-changing
 # requests must come from. Unroutable, and only ever named, never fetched.
 BROWSER_ORIGIN="https://127.0.0.1:9"

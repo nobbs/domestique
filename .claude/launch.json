@@ -11,7 +11,8 @@
       "name": "demo",
       "runtimeExecutable": "mise",
       "runtimeArgs": ["run", "demo"],
-      "port": 5173
+      "port": 5173,
+      "autoPort": true
     }
   ]
 }
