@@ -38,7 +38,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../../components/ui/dropdown-menu";
-import { Separator } from "../../components/ui/separator";
 import {
   formatAscent,
   formatDistance,
@@ -52,7 +51,7 @@ import { bandEntries, surfaceEntries } from "../../lib/mix";
 import type { BandShare, GradientSummary } from "../../lib/profile";
 import type { SurfaceSummary } from "../../lib/surface";
 import { elevationValue, type UnitSystem } from "../../lib/units";
-import { MixSection } from "./MixSection";
+import { MixRow } from "./MixRow";
 import { ReprocessButton } from "./ReprocessButton";
 
 /**
@@ -268,19 +267,7 @@ export function RoutePanel({
           </button>
         </div>
         {collapsed ? null : (
-          <div className="grid w-full gap-2 px-3 pt-2 pb-3">
-            {/*
-             * Base UI's separator always carries `role="separator"`, with no
-             * decorative escape hatch. These three rules only group one card's
-             * parts, so the role says a little more than they mean — the cost
-             * of dividing sections with the component rather than a border.
-             *
-             * Full-bleed against the card's own padding, so the rule reads as
-             * the card's division rather than as a line inside its content,
-             * and `data-horizontal:w-auto` to beat the component's own
-             * `w-full`, which would measure the padding box and fall short.
-             */}
-            <Separator className="-mx-3 -mt-2 data-horizontal:w-auto" />
+          <div className="grid w-full gap-3 px-3 pt-2 pb-3">
             {/*
              * Paired by row: what it is and how much it climbs, then the two
              * gradients, then the two ends of its elevation. The grid means
@@ -349,14 +336,33 @@ export function RoutePanel({
                 ) : null}
               </Figure>
             </dl>
-            <MixSection
-              bands={bandEntries(bands, route.distanceMetres)}
-              surface={surfaceEntries(surface)}
-              surfaceAbsence={surfaceAbsence}
-              highlight={highlight}
-              onHighlightChange={onHighlightChange}
-              unitSystem={unitSystem}
-            />
+            {/*
+             * Mirrored: gradient's tags above its bar, surface's below its
+             * own, so the two meet with nothing between them. What a reader is
+             * comparing — how much of the route is steep against how much of
+             * it is loose — sits a couple of pixels apart rather than a
+             * heading apart.
+             */}
+            <div className="grid gap-0.5">
+              <MixRow
+                classesLabel="Gradient bands"
+                entries={bandEntries(bands, route.distanceMetres)}
+                absence="No elevation data."
+                tagSide="above"
+                highlight={highlight}
+                onHighlightChange={onHighlightChange}
+                unitSystem={unitSystem}
+              />
+              <MixRow
+                classesLabel="Surface classes"
+                entries={surfaceEntries(surface)}
+                absence={surfaceAbsence}
+                tagSide="below"
+                highlight={highlight}
+                onHighlightChange={onHighlightChange}
+                unitSystem={unitSystem}
+              />
+            </div>
           </div>
         )}
       </section>
