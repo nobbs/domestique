@@ -15,6 +15,7 @@ import {
   climbs,
   coordinates,
   profile,
+  rideStart,
   route,
   StoryProviders,
   surface,
@@ -24,7 +25,10 @@ import { RouteDock } from "./RouteDock";
 
 const meta = {
   title: "Features/Atlas/Route Dock",
-  parameters: { layout: "fullscreen" },
+  // No snapshot: the picker prints the ride's day, and the day is relative to
+  // the real clock — a pinned one drifts out of the forecast window, and a
+  // relative one re-diffs every build. Interactions are still tested.
+  parameters: { layout: "fullscreen", chromatic: { disableSnapshot: true } },
 } satisfies Meta;
 
 export default meta;
@@ -35,7 +39,9 @@ function Docked({ startOpen }: { startOpen: boolean }) {
   const [highlight, setHighlight] = useState<Highlight | null>(null);
   const [activeMetres, setActiveMetres] = useState<number | null>(null);
   const [zoomWindow, setZoomWindow] = useState<DistanceWindow | null>(null);
-  const [startAt, setStartAt] = useState<Date | null>(new Date("2026-08-18T06:00:00Z"));
+  // An hour before the first sample, and always inside the forecast window —
+  // see `rideStart` for why a pinned date is not an option here.
+  const [startAt, setStartAt] = useState<Date | null>(new Date(rideStart.getTime() - 60 * 60_000));
   const [groundLabelled, setGroundLabelled] = useState(true);
   const [forecastOpen, setForecastOpen] = useState(true);
 

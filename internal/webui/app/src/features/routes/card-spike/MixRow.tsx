@@ -17,6 +17,7 @@
 
 import { formatDistance } from "../../../lib/format";
 import type { Highlight } from "../../../lib/highlight";
+import { sameHighlight } from "../../../lib/highlight";
 import type { MixEntry } from "../../../lib/mix";
 import { useElementWidth } from "../../../lib/useElementWidth";
 import { HighlightToggle } from "../HighlightToggle";
@@ -151,11 +152,7 @@ export function MixRow({
                   flexBasis: 0,
                   background: entry.colour,
                   opacity:
-                    highlight === null ||
-                    (highlight.type === entry.highlight.type &&
-                      JSON.stringify(highlight) === JSON.stringify(entry.highlight))
-                      ? 1
-                      : 0.2,
+                    highlight === null || sameHighlight(highlight, entry.highlight) ? 1 : 0.2,
                 }}
               />
             ))}

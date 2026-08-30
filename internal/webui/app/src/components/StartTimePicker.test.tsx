@@ -5,7 +5,7 @@ import { StartTimePicker } from "./StartTimePicker";
 const NOW = new Date("2026-08-24T12:00:00Z");
 
 beforeEach(() => {
-  vi.useFakeTimers();
+  vi.useFakeTimers({ shouldAdvanceTime: true });
   vi.setSystemTime(NOW);
 });
 
@@ -29,6 +29,43 @@ describe("StartTimePicker", () => {
 
     expect(dayButton()).toHaveTextContent("Pick a day");
     expect(timeField().value).toBe("");
+  });
+
+  it("treats clearing the time field as nothing, not as midnight", () => {
+    const onChange = vi.fn();
+    render(<StartTimePicker value={new Date("2026-08-25T07:00")} onChange={onChange} />);
+
+    // An empty string splits to [""] and Number("") is 0 — without the guard
+    // this proposed a confident midnight the reader never picked.
+    fireEvent.change(timeField(), { target: { value: "" } });
+
+    expect(onChange).not.toHaveBeenCalled();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("keeps the time field inert until a day exists to set it on", () => {
+    render(<StartTimePicker value={null} onChange={() => {}} />);
+
+    expect(timeField()).toBeDisabled();
+  });
+
+  it("holds a picked day until a time joins it", async () => {
+    const onChange = vi.fn();
+    render(<StartTimePicker value={null} onChange={onChange} />);
+
+    fireEvent.click(dayButton());
+    // The morning after "now", as the calendar offers it.
+    fireEvent.click(await screen.findByRole("button", { name: /25(th)?/ }));
+
+    // A day alone is not a departure: nothing proposed, nothing refused, and
+    // the time field now has a day to set its hours on.
+    expect(onChange).not.toHaveBeenCalled();
+    expect(timeField()).toBeEnabled();
+    expect(dayButton()).not.toHaveTextContent("Pick a day");
+
+    fireEvent.change(timeField(), { target: { value: "08:30" } });
+
+    expect(onChange).toHaveBeenCalledWith(new Date("2026-08-25T08:30"));
   });
 
   it("accepts a time inside the forecast window", () => {

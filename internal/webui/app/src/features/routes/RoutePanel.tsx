@@ -255,7 +255,13 @@ export function RoutePanel({
           <button
             type="button"
             onClick={onClose}
-            aria-label={`Close the route and go back to ${libraryCount} ${libraryCount === 1 ? "route" : "routes"}`}
+            aria-label={
+              // Zero is the listing still loading, not an empty library, and
+              // "go back to 0 routes" reads as the second.
+              libraryCount === 0
+                ? "Close the route and go back to the library"
+                : `Close the route and go back to ${libraryCount} ${libraryCount === 1 ? "route" : "routes"}`
+            }
             className="rounded-lg p-1.5 text-[var(--ink-2)] hover:bg-[var(--base)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent)]"
           >
             <IconX size={16} stroke={2} aria-hidden="true" />

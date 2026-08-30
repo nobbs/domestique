@@ -360,7 +360,10 @@ const NO_GRADIENTS: GradientSummary = {
  * answer for a towpath and the same one an empty profile gives.
  */
 export function gradientSummary(coordinates: Position[]): GradientSummary {
-  if (coordinates.length < 2) {
+  // The same refusal the service's own steepest figure makes: a point without
+  // an elevation read as sea level turns a mountain route into a cliff at each
+  // gap, and a route with no elevations at all into a confident flat.
+  if (coordinates.length < 2 || coordinates.some((point) => elevationOf(point) === undefined)) {
     return NO_GRADIENTS;
   }
   const distances = cumulativeMetres(coordinates);

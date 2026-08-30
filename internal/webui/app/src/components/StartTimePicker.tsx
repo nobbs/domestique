@@ -86,6 +86,14 @@ export function StartTimePicker({
 }) {
   const [refusal, setRefusal] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
+  /*
+   * A day the reader has picked while no departure exists yet. Held rather
+   * than proposed: there is deliberately no default start time, and proposing
+   * the day at midnight would draw a confident forecast for a ride nobody
+   * planned — the very thing the clear button's comment promises not to do.
+   * The departure is proposed once the time field fills the other half in.
+   */
+  const [pendingDay, setPendingDay] = useState<Date | null>(null);
   const now = new Date();
   /*
    * The window's own edges carry a time of day, and a calendar offers days.
@@ -118,6 +126,9 @@ export function StartTimePicker({
     onChange(next);
   };
 
+  // The chosen departure's day, or the day waiting for its time.
+  const shownDay = value ?? pendingDay;
+
   const controls = (
     <div className="flex items-center gap-1.5">
       {/*
@@ -138,9 +149,9 @@ export function StartTimePicker({
             />
           }
         >
-          {value === null
+          {shownDay === null
             ? "Pick a day"
-            : value.toLocaleDateString(undefined, {
+            : shownDay.toLocaleDateString(undefined, {
                 day: "numeric",
                 month: "short",
                 year: "numeric",
@@ -153,21 +164,26 @@ export function StartTimePicker({
             // `exactOptionalPropertyTypes` an optional prop and one that may
             // be undefined are different types, and `react-day-picker`
             // declares these as the former.
-            {...(value === null ? {} : { selected: value, defaultMonth: value })}
+            {...(shownDay === null ? {} : { selected: shownDay, defaultMonth: shownDay })}
             // Offered days are the ones the service would actually answer for.
             disabled={{ before: earliest, after: latest }}
             onSelect={(day) => {
               if (day === undefined) {
                 return;
               }
-              propose(combine(day, value ?? day));
+              if (value === null) {
+                setPendingDay(day);
+                setRefusal(null);
+              } else {
+                propose(combine(day, value));
+              }
               setOpen(false);
             }}
             autoFocus
           />
         </PopoverContent>
       </Popover>
-      {value === null ? null : (
+      {shownDay === null ? null : (
         // The way back to nothing chosen. There is no default start time on
         // purpose — an invented one draws a confident forecast for a ride
         // nobody planned — so a reader who set one has to be able to unset it.
@@ -176,6 +192,7 @@ export function StartTimePicker({
           aria-label="Clear the ride start"
           onClick={() => {
             setRefusal(null);
+            setPendingDay(null);
             onChange(null);
           }}
           className="rounded p-1 text-[var(--ink-2)] hover:bg-[var(--base)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)]"
@@ -189,14 +206,24 @@ export function StartTimePicker({
         className={inline ? "h-7 w-[6.5rem] px-2 text-xs tabular-nums" : "w-[7.5rem] tabular-nums"}
         aria-label="The time the ride starts"
         aria-describedby={refusal ? "start-time-refusal" : undefined}
+        // Nothing for it to set a time on: no day is chosen and none pending,
+        // so an enabled field would be a control that swallows keystrokes.
+        disabled={shownDay === null}
         value={value ? toTimeValue(value) : ""}
         onChange={(event) => {
           const raw = event.target.value;
-          const [hours, minutes] = raw.split(":").map(Number);
-          if (value === null || hours === undefined || Number.isNaN(hours)) {
+          // Clearing the field is not a proposal. An empty string splits to
+          // [""] and Number("") is 0, so without this the guard below reads a
+          // cleared field as a confident midnight.
+          if (raw === "") {
             return;
           }
-          const next = new Date(value);
+          const [hours, minutes] = raw.split(":").map(Number);
+          const day = value ?? pendingDay;
+          if (day === null || hours === undefined || Number.isNaN(hours)) {
+            return;
+          }
+          const next = new Date(day);
           next.setHours(hours, minutes ?? 0, 0, 0);
           propose(next);
         }}
@@ -209,7 +236,13 @@ export function StartTimePicker({
       <div className="flex items-center gap-1.5">
         {controls}
         {refusal ? (
-          <span id="start-time-refusal" className="text-[11px] text-[var(--danger,var(--ink-2))]">
+          <span
+            id="start-time-refusal"
+            // What FieldError gives the block form for free: the refusal is the
+            // answer to what the reader just did, and has to be spoken as one.
+            role="alert"
+            className="text-[11px] text-[var(--danger,var(--ink-2))]"
+          >
             {refusal}
           </span>
         ) : null}
