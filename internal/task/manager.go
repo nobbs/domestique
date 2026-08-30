@@ -62,9 +62,11 @@ type Manager struct {
 
 	// mutex guards admission alone: a slot and a resource set are taken
 	// together or not at all, so an attempt can never hold one and want the
-	// other.
-	mutex     sync.Mutex
-	triggered sync.WaitGroup
+	// other. undeclaredMutex is separate so that invariant stays easy to
+	// reason about.
+	mutex           sync.Mutex
+	undeclaredMutex sync.Mutex
+	triggered       sync.WaitGroup
 }
 
 // registered is one task and what the manager knows about it right now.
@@ -428,10 +430,10 @@ func (m *Manager) reportUndeclared(entry *registered, task string, alert Detail)
 	}
 
 	key := declarationKey{task: task, alert: alert}
-	m.mutex.Lock()
+	m.undeclaredMutex.Lock()
 	_, said := m.undeclared[key]
 	m.undeclared[key] = struct{}{}
-	m.mutex.Unlock()
+	m.undeclaredMutex.Unlock()
 
 	if !said {
 		slog.Warn("task announced something it had not declared", "task", task, "alert", alert)
