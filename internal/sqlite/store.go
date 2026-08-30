@@ -583,5 +583,22 @@ func schemaMigrations() [][]string {
 				updated_at_unix INTEGER NOT NULL
 			)`,
 		},
+		{
+			// What every background activity came to, one row per attempt that did
+			// something. The task and its argument identify the work; the detail is a
+			// stable category, never provider text.
+			`CREATE TABLE task_runs (
+				id               INTEGER PRIMARY KEY,
+				task             TEXT    NOT NULL,
+				argument         TEXT    NOT NULL DEFAULT '',
+				started_at_unix  INTEGER NOT NULL,
+				finished_at_unix INTEGER NOT NULL,
+				outcome          TEXT    NOT NULL,
+				detail           TEXT    NOT NULL DEFAULT ''
+			)`,
+			// Retention prunes one task at a time and reads back the latest attempt over
+			// one argument, which is the order both want.
+			`CREATE INDEX task_runs_task_index ON task_runs(task, argument, id DESC)`,
+		},
 	}
 }
