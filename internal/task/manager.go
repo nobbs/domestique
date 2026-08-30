@@ -243,7 +243,7 @@ func (m *Manager) attemptAndRelease(
 // chain has already run is carried down it, and the depth is capped behind that.
 func (m *Manager) chain(ctx context.Context, links []Link, visited map[invocationKey]struct{}, depth int) {
 	if depth >= maxChainDepth {
-		slog.Warn("task chain truncated", "depth", depth)
+		slog.Warn("task chain truncated", "depth", depth, "dropped", len(links))
 
 		return
 	}
@@ -263,7 +263,8 @@ func (m *Manager) linked(ctx context.Context, link Link, visited map[invocationK
 	}
 	invocation := Invocation{Task: link.Task, Argument: link.Argument, Trigger: TriggerChain}
 	if _, seen := visited[keyOf(invocation)]; seen {
-		slog.Warn("task chain asked again for what it had already run", "task", link.Task)
+		slog.Warn("task chain asked again for what it had already run",
+			"task", link.Task, "argument", link.Argument, "depth", depth)
 
 		return
 	}
