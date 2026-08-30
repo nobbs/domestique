@@ -8,13 +8,12 @@ import { BasemapPicker } from "../../components/map/BasemapPicker";
 import { MapControls } from "../../components/map/MapControls";
 import { MapViewport } from "../../components/map/MapViewport";
 import { MapWidget } from "../../components/map/MapWidget";
+import { ROUTE_MAX_ZOOM } from "../../lib/cartography";
 import type { Insets } from "../../lib/overlayInsets";
 import type { UnitSystem } from "../../lib/units";
 import { LIBRARY_HIT_LAYER, LibraryRoutes, type MapLine } from "./LibraryRoutes";
 
 export type { MapLine } from "./LibraryRoutes";
-
-const DEFAULT_MAX_ZOOM = 14;
 
 export interface LibraryMapProps {
   styleUrl: string;
@@ -51,7 +50,7 @@ export function LibraryMap({
   pickedKey,
   bounds,
   insets,
-  maxZoom = DEFAULT_MAX_ZOOM,
+  maxZoom = ROUTE_MAX_ZOOM,
   children,
   onPick,
   inertKey = null,

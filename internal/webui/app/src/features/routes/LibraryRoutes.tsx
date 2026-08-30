@@ -3,9 +3,7 @@
 import { useMemo } from "react";
 import { Layer, Source } from "react-map-gl/maplibre";
 import type { Position } from "../../api/types";
-
-const LIBRARY_INK = { light: "#1c2126", dark: "#eef0f3" } as const;
-const SELECTION_ACCENT = { light: "#236fc7", dark: "#70adfb" } as const;
+import { INK as LIBRARY_INK, ROUTE_ACCENT as SELECTION_ACCENT } from "../../lib/cartography";
 
 const LIBRARY_OPACITY = 0.68;
 const CONTEXT_OPACITY = 0.14;

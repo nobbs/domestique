@@ -16,6 +16,9 @@ import type { DataDrivenPropertyValueSpecification } from "maplibre-gl";
 import { useMemo, useState } from "react";
 import { Layer, Source } from "react-map-gl/maplibre";
 import type { Position, SurfaceRange } from "../../api/types";
+// The casing under the route is the panel colour, so the line reads as lifted
+// off the ground rather than merely recoloured.
+import { ROUTE_ACCENT, PANEL as ROUTE_CASING } from "../../lib/cartography";
 import type { ForecastSample } from "../../lib/forecastSamples";
 import type { Highlight } from "../../lib/highlight";
 import { highlightRanges, litRanges } from "../../lib/highlight";
@@ -32,22 +35,6 @@ import { HoverLink } from "./HoverLink";
 import { PositionTooltip } from "./PositionTooltip";
 import { RouteTerminal } from "./RouteTerminal";
 import { SelectionLink } from "./SelectionLink";
-
-/**
- * The accent the route itself is drawn in, per basemap.
- *
- * Keyed on which basemap is loaded rather than on the system scheme, because
- * this sits on the cartography rather than on the page — see `LoadedBasemap.dark`.
- * The same pair is `--accent` in index.css; both copies must stay in step.
- */
-const ROUTE_ACCENT = { light: "#236fc7", dark: "#70adfb" } as const;
-
-/**
- * The casing under the route: the panel colour, so the line reads as lifted off
- * the ground rather than merely recoloured. The same pair is `--panel` in
- * index.css; both copies must stay in step.
- */
-const ROUTE_CASING = { light: "#fcfdff", dark: "#24282c" } as const;
 
 const SOURCE_ID = "route-geometry";
 

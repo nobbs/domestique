@@ -30,6 +30,7 @@ import { Layout } from "../../components/Layout";
 import { RouteOverlay } from "../../components/route/RouteOverlay";
 import { Alert, AlertDescription, AlertTitle } from "../../components/ui/alert";
 import { basemapFor, useBasemapChoice, usePrefersDarkScheme } from "../../lib/basemap";
+import { ROUTE_MAX_ZOOM, WINDOW_MAX_ZOOM } from "../../lib/cartography";
 import type { Climb } from "../../lib/climbs";
 import { findClimbs } from "../../lib/climbs";
 import type { LibraryFilters } from "../../lib/filters";
@@ -61,23 +62,6 @@ import { RoutePanel } from "./RoutePanel";
 import { RouteProfile } from "./RouteProfile";
 import type { RouteShape } from "./SearchPanel";
 import { SearchPanel } from "./SearchPanel";
-
-/**
- * How close the camera will go to the library, or to one whole route.
- *
- * A short route would otherwise open at street level, which says nothing about
- * where the ride goes.
- */
-const ROUTE_MAX_ZOOM = 14;
-
-/**
- * And how close it may come to the stretch the chart is showing.
- *
- * Higher, because that framing was asked for: the shortest window the chart
- * allows is 200 m, and holding it to the whole-route cap would answer a request
- * to look closer by barely moving.
- */
-const WINDOW_MAX_ZOOM = 17;
 
 /** The smallest box every drawn route fits inside, or null for no geometry yet. */
 function unionOf(boxes: BoundingBox[]): BoundingBox | null {
