@@ -9,9 +9,10 @@ import (
 )
 
 // alertDecisions answers what an operator has ruled about each alert, from a
-// snapshot it refreshes when the decisions are written. A run that cannot read
-// them announces what it would have announced anyway: a fault nobody has heard
-// of is the one worth hearing about.
+// snapshot it refreshes when the decisions are written. Reading them is part of
+// starting: a service that could not read them would announce what an operator
+// had deliberately silenced, and it already refuses to start on a state file it
+// cannot read.
 type alertDecisions struct {
 	store   *sqlite.Store
 	decided map[alertKey]bool
