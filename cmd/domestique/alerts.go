@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"log/slog"
 	"sync"
 
 	"github.com/nobbs/domestique/internal/sqlite"
@@ -54,6 +53,11 @@ func (d *alertDecisions) reload(ctx context.Context) error {
 
 	decided := make(map[alertKey]bool, len(toggles))
 	for _, toggle := range toggles {
+		// A decision about one scope is not a decision about the task. Nothing
+		// scopes its alerts yet, so a scoped row is somebody else's to read.
+		if toggle.Scope != "" {
+			continue
+		}
 		decided[alertKey{task: toggle.Task, alert: toggle.Alert}] = toggle.Enabled
 	}
 
@@ -69,9 +73,8 @@ func (d *alertDecisions) Set(ctx context.Context, toggles []sqlite.AlertToggle) 
 	if err := d.store.SetAlertToggles(ctx, toggles); err != nil {
 		return err //nolint:wrapcheck // the store already names what it was writing
 	}
-	if err := d.reload(ctx); err != nil {
-		slog.Warn("alert decisions not reloaded after a write", "error", err)
-	}
-
-	return nil
+	// A decision the running service has not read is one an operator believes
+	// they made: reporting success here would keep sending the alert they just
+	// switched off.
+	return d.reload(ctx)
 }

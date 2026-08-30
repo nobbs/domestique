@@ -4,6 +4,7 @@ package task
 
 import (
 	"context"
+	"slices"
 	"time"
 )
 
@@ -191,6 +192,12 @@ type Definition struct {
 	// Retain is how many of this task's attempts are kept. Zero means the
 	// default; the most recent attempt over each argument is kept regardless.
 	Retain int
+}
+
+// declares reports whether this task said in advance that it could be
+// announced for this reason.
+func (d *Definition) declares(alert Detail) bool {
+	return d.Notify != nil && slices.Contains(d.Notify.Alerts, alert)
 }
 
 // alerts reports whether anything is announced about this task. What it says

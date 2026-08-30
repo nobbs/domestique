@@ -384,6 +384,12 @@ func (m *Manager) announce(
 	if !entry.definition.alerts() || !result.Outcome.alerts() || !m.enabled() {
 		return
 	}
+	if !entry.definition.declares(result.Detail) {
+		// An alert nobody could rule on in advance still goes out, but the
+		// declaration is what the settings page offers and is now wrong.
+		slog.Warn("task announced something it had not declared",
+			"task", invocation.Task, "alert", result.Detail)
+	}
 	if !m.wanted(ctx, invocation.Task, result.Detail) {
 		return
 	}

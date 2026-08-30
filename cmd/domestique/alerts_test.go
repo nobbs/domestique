@@ -85,3 +85,21 @@ func TestSettingADecisionReportsAnUnreadableDatabase(t *testing.T) {
 		{Task: "sync", Alert: "destination", Enabled: false},
 	}), "Set() on a closed database")
 }
+
+// Nothing scopes its alerts yet, so a decision about one scope must not be read
+// as a decision about the task: the last scope read would otherwise apply to
+// every one of them.
+func TestAScopedDecisionIsNotADecisionAboutTheTask(t *testing.T) {
+	t.Parallel()
+
+	store := testStore(t, t.TempDir())
+	require.NoError(t, store.SetAlertToggles(t.Context(), []sqlite.AlertToggle{
+		{Task: "sync:target", Scope: "rider-a", Alert: "destination", Enabled: false},
+	}), "SetAlertToggles()")
+
+	decisions, err := newAlertDecisions(t.Context(), store)
+	require.NoError(t, err, "newAlertDecisions()")
+
+	_, decided := decisions.Wanted(t.Context(), "sync:target", "destination")
+	assert.False(t, decided, "a decision about one scope was read as a decision about the task")
+}

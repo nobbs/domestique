@@ -630,7 +630,7 @@ func schemaMigrations() [][]string {
 				task       TEXT    NOT NULL,
 				scope      TEXT    NOT NULL DEFAULT '',
 				alert      TEXT    NOT NULL,
-				enabled    INTEGER NOT NULL,
+				enabled    INTEGER NOT NULL CHECK (enabled IN (0, 1)),
 				updated_at_unix INTEGER NOT NULL,
 				PRIMARY KEY (task, scope, alert)
 			)`,
