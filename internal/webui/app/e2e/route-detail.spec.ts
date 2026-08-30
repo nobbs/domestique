@@ -12,8 +12,9 @@ import { expect, mapRegion, openRoute, profileScrubber, settleMap, test } from "
 
 /** A straight three-band route: the simplest ground to point at. */
 const LINE_ROUTE = { provider: "veloplanner", sourceRouteId: 4101, stageOrder: 3 };
-/** A hill route, used where the climbs disclosure is the subject. */
+/** A hill route, used where the climbs are the subject. */
 const CLIMB_ROUTE = { provider: "veloplanner", sourceRouteId: 4101, stageOrder: 1 };
+
 /** The loop, whose classification covers all six surface classes. */
 const LOOP_ROUTE = { provider: "veloplanner", sourceRouteId: 4102, stageOrder: 1 };
 /** The short link, which was never classified and has no profile at all. */
@@ -94,19 +95,18 @@ test("the card has no climbs on it", async ({ offlinePage: page }) => {
   await expect(routePanel(page).getByRole("button", { name: /climbs?$/ })).toHaveCount(0);
 });
 
-test("the mixes start folded and expand on demand", async ({ offlinePage: page }) => {
+/*
+ * The card carries the two mixes outright. There was a disclosure over them
+ * and a second over the climbs; the climbs have gone to the dock and one
+ * control that only ever hid one thing was machinery earning nothing.
+ */
+test("the card carries both mixes without asking", async ({ offlinePage: page }) => {
   await openRoute(page, LOOP_ROUTE.provider, LOOP_ROUTE.sourceRouteId, LOOP_ROUTE.stageOrder);
 
-  const toggle = page.getByRole("button", { name: "Show gradient and surface" });
-  // The line that stands in for them names what they hold, not what it does.
-  await expect(toggle).toContainText("Gradient and surface");
-  await expect(page.getByRole("list", { name: "Surface classes" })).toBeHidden();
-
-  await toggle.click();
-
-  await expect(page.getByRole("button", { name: "Hide gradient and surface" })).toBeVisible();
-  await expect(page.getByRole("list", { name: "Surface classes" })).toBeVisible();
   await expect(page.getByRole("list", { name: "Gradient bands" })).toBeVisible();
+  await expect(page.getByRole("list", { name: "Surface classes" })).toBeVisible();
+  // Nothing left to press: the mixes are the card rather than behind it.
+  await expect(page.getByRole("button", { name: /gradient and surface/i })).toHaveCount(0);
 });
 
 test("the chart answers the arrow keys and says where it is", async ({ offlinePage: page }) => {
@@ -199,7 +199,6 @@ test("dragging along the route picks the same stretch off the map", async ({
 
 test("picking a surface class out of the key repaints the map", async ({ offlinePage: page }) => {
   await openRoute(page, LOOP_ROUTE.provider, LOOP_ROUTE.sourceRouteId, LOOP_ROUTE.stageOrder);
-  await page.getByRole("button", { name: "Show gradient and surface" }).click();
   const before = await settleMap(page);
 
   const key = page.getByRole("list", { name: "Surface classes" });
@@ -230,7 +229,6 @@ test("a route nobody classified says so rather than showing an empty key", async
 
   // The two mixes are folded, and an absence is still one of the things they
   // have to be able to say once opened.
-  await page.getByRole("button", { name: "Show gradient and surface" }).click();
 
   await expect(page.getByText("Surface not classified yet.")).toBeVisible();
   // The same route has no elevation either, which is a second absence the page
