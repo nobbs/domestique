@@ -219,12 +219,12 @@ func TestWeatherSeriesOfConvertsEveryField(t *testing.T) {
 	}, series[0])
 }
 
-func TestServeWaitsForCancelledSchedulerBeforeReturning(t *testing.T) {
+func TestServeWaitsForTheCancelledTaskLayerBeforeReturning(t *testing.T) {
 	t.Parallel()
 
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	scheduler := &blockingScheduler{
+	tasks := &blockingTasks{
 		started:   make(chan struct{}),
 		cancelled: make(chan struct{}),
 		release:   make(chan struct{}),
@@ -233,76 +233,29 @@ func TestServeWaitsForCancelledSchedulerBeforeReturning(t *testing.T) {
 	readinessServer := newTestServer()
 	result := make(chan error, 1)
 	go func() {
-		result <- serve(ctx, cancel, server, readinessServer, []schedulerRunner{scheduler}, &blockingManualSync{})
+		result <- serve(ctx, cancel, server, readinessServer, tasks)
 	}()
 
-	<-scheduler.started
+	<-tasks.started
 	cancel()
-	<-scheduler.cancelled
+	<-tasks.cancelled
 
 	select {
 	case err := <-result:
-		t.Fatalf("serve returned before scheduler finished: %v", err)
+		t.Fatalf("serve returned before the task layer finished: %v", err)
 	case <-time.After(50 * time.Millisecond):
 	}
 
-	close(scheduler.release)
+	close(tasks.release)
 	require.NoError(t, <-result)
 }
 
-// Synchronization and the surface index rebuild are two independent schedules,
-// and serve owns the shutdown of both. A serve that waited for only the first
-// would close the state database and the index files while the other was still
-// reading them.
-func TestServeWaitsForEverySchedulerBeforeReturning(t *testing.T) {
-	t.Parallel()
-
-	ctx, cancel := context.WithCancel(t.Context())
-	defer cancel()
-	first := &blockingScheduler{
-		started:   make(chan struct{}),
-		cancelled: make(chan struct{}),
-		release:   make(chan struct{}),
-	}
-	second := &blockingScheduler{
-		started:   make(chan struct{}),
-		cancelled: make(chan struct{}),
-		release:   make(chan struct{}),
-	}
-	result := make(chan error, 1)
-	go func() {
-		result <- serve(
-			ctx, cancel, newTestServer(), newTestServer(),
-			[]schedulerRunner{first, second}, &blockingManualSync{},
-		)
-	}()
-
-	<-first.started
-	<-second.started
-	cancel()
-	<-first.cancelled
-	<-second.cancelled
-
-	// Releasing only one of them must not be enough to let serve return.
-	close(first.release)
-	select {
-	case err := <-result:
-		t.Fatalf("serve returned while a scheduler was still running: %v", err)
-	case <-time.After(50 * time.Millisecond):
-	}
-
-	close(second.release)
-	require.NoError(t, <-result)
-}
-
-// Both listeners are shut down together, so a serve that returns has stopped
-// answering the probe as well as the served surface.
 func TestServeStopsBothListeners(t *testing.T) {
 	t.Parallel()
 
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	scheduler := &blockingScheduler{
+	tasks := &blockingTasks{
 		started:   make(chan struct{}),
 		cancelled: make(chan struct{}),
 		release:   make(chan struct{}),
@@ -310,13 +263,13 @@ func TestServeStopsBothListeners(t *testing.T) {
 	server, readinessServer := newTestServer(), newTestServer()
 	result := make(chan error, 1)
 	go func() {
-		result <- serve(ctx, cancel, server, readinessServer, []schedulerRunner{scheduler}, &blockingManualSync{})
+		result <- serve(ctx, cancel, server, readinessServer, tasks)
 	}()
 
-	<-scheduler.started
+	<-tasks.started
 	cancel()
-	<-scheduler.cancelled
-	close(scheduler.release)
+	<-tasks.cancelled
+	close(tasks.release)
 	require.NoError(t, <-result)
 
 	for name, server := range map[string]*http.Server{"served": server, "readiness": readinessServer} {
@@ -342,7 +295,7 @@ func TestServeStopsWhenTheReadinessListenerCannotBind(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	scheduler := &blockingScheduler{
+	tasks := &blockingTasks{
 		started:   make(chan struct{}),
 		cancelled: make(chan struct{}),
 		release:   make(chan struct{}),
@@ -351,12 +304,12 @@ func TestServeStopsWhenTheReadinessListenerCannotBind(t *testing.T) {
 	readinessServer.Addr = occupied.Addr().String()
 	result := make(chan error, 1)
 	go func() {
-		result <- serve(ctx, cancel, newTestServer(), readinessServer, []schedulerRunner{scheduler}, &blockingManualSync{})
+		result <- serve(ctx, cancel, newTestServer(), readinessServer, tasks)
 	}()
 
-	<-scheduler.started
-	<-scheduler.cancelled
-	close(scheduler.release)
+	<-tasks.started
+	<-tasks.cancelled
+	close(tasks.release)
 
 	err = <-result
 	require.Error(t, err, "serve returned no error for a readiness listener that cannot bind")
@@ -373,22 +326,20 @@ func newTestServer() *http.Server {
 	}
 }
 
-type blockingScheduler struct {
+type blockingTasks struct {
 	started   chan struct{}
 	cancelled chan struct{}
 	release   chan struct{}
 }
 
-type blockingManualSync struct{}
-
-func (*blockingManualSync) Wait() {}
-
-func (s *blockingScheduler) Run(ctx context.Context) {
-	close(s.started)
+func (b *blockingTasks) Run(ctx context.Context) {
+	close(b.started)
 	<-ctx.Done()
-	close(s.cancelled)
-	<-s.release
+	close(b.cancelled)
+	<-b.release
 }
+
+func (*blockingTasks) Wait() {}
 
 // A restart has to serve classifications immediately rather than going blind
 // until the next rebuild. These are the states a host can restart into: never
@@ -400,13 +351,13 @@ func TestStartSurfaceIndexOnAHostThatHasNeverBuilt(t *testing.T) {
 	directory := t.TempDir()
 	store := testStore(t, directory)
 
-	current, scheduler, err := startSurfaceIndex(
+	current, definition, err := startSurfaceIndex(
 		t.Context(), stateSettings(directory), surfaceSettings(t, store), store, testNotifier(t),
 	)
 	require.NoError(t, err, "startSurfaceIndex()")
 	t.Cleanup(func() { assert.NoError(t, current.Close(), "Close()") })
 
-	assert.NotNil(t, scheduler, "no rebuild was scheduled")
+	assert.NotNil(t, definition.Schedule, "no rebuild was scheduled")
 	assert.Empty(t, current.Generation(), "an index was served by a host that has never built")
 }
 
@@ -417,13 +368,13 @@ func TestStartSurfaceIndexWhenTheRememberedIndexIsGone(t *testing.T) {
 	store := testStore(t, directory)
 	require.NoError(t, store.RecordSurfaceIndexBuild(t.Context(), time.Now().UTC(), "abcdef012345"))
 
-	current, scheduler, err := startSurfaceIndex(
+	current, definition, err := startSurfaceIndex(
 		t.Context(), stateSettings(directory), surfaceSettings(t, store), store, testNotifier(t),
 	)
 	require.NoError(t, err, "a remembered index that is no longer on disk is not an error")
 	t.Cleanup(func() { assert.NoError(t, current.Close(), "Close()") })
 
-	assert.NotNil(t, scheduler, "no rebuild was scheduled")
+	assert.NotNil(t, definition.Schedule, "no rebuild was scheduled")
 	assert.Empty(t, current.Generation(), "a generation was served from a file that does not exist")
 }
 
