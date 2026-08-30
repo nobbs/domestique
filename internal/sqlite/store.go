@@ -596,9 +596,10 @@ func schemaMigrations() [][]string {
 				outcome          TEXT    NOT NULL,
 				detail           TEXT    NOT NULL DEFAULT ''
 			)`,
-			// Retention prunes one task at a time and reads back the latest attempt over
-			// one argument, which is the order both want.
-			`CREATE INDEX task_runs_task_index ON task_runs(task, argument, id DESC)`,
+			// Both retention and readback ask for one task's attempts newest first, so
+			// that is the order indexed. Picking the latest attempt per argument scans
+			// one task's retained rows instead, which its own bound keeps small.
+			`CREATE INDEX task_runs_task_index ON task_runs(task, id DESC)`,
 		},
 	}
 }
