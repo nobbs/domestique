@@ -73,6 +73,9 @@ func NewManager(store Store) (*Manager, error) {
 
 // Register adds a task. Registration order is the order Run starts schedules in.
 func (m *Manager) Register(definition *Definition) error {
+	if definition == nil {
+		return errors.New("task: a definition is required")
+	}
 	if definition.Name == "" || definition.Run == nil {
 		return errors.New("task: a name and a runner are required")
 	}
@@ -237,7 +240,7 @@ func (m *Manager) record(
 		string(result.Detail),
 		entry.definition.retain(),
 	); err != nil {
-		slog.Warn("task run not recorded", "task", invocation.Task, "reason", "state")
+		slog.Warn("task run not recorded", "task", invocation.Task, "error", err)
 	}
 }
 

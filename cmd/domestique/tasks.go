@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/nobbs/domestique/internal/httpapi"
@@ -49,6 +50,22 @@ type synchronizer interface {
 
 type indexBuilder interface {
 	Run(ctx context.Context) (osmindex.Outcome, error)
+}
+
+// registerTasks registers every activity this service runs unasked, over the
+// store their attempts are recorded in.
+func registerTasks(store task.Store, definitions []task.Definition) (*task.Manager, error) {
+	manager, err := task.NewManager(store)
+	if err != nil {
+		return nil, fmt.Errorf("creating the task manager: %w", err)
+	}
+	for index := range definitions {
+		if err := manager.Register(&definitions[index]); err != nil {
+			return nil, fmt.Errorf("registering background tasks: %w", err)
+		}
+	}
+
+	return manager, nil
 }
 
 // inventoryTasks are the activities that reconcile the library, in the order a
@@ -147,16 +164,21 @@ func runSync(ctx context.Context, reporter synchronizer, invocation task.Invocat
 // build that found nothing new still reached its upstream, which is why it is
 // unchanged rather than current.
 func indexResult(outcome osmindex.Outcome, err error) task.Result {
-	switch {
-	case err != nil:
+	if err != nil {
 		return task.Result{Outcome: task.Failed, Detail: detailBuild}
-	case outcome == osmindex.Unchanged:
+	}
+	switch outcome {
+	case osmindex.Rebuilt:
+		return task.Result{Outcome: task.Succeeded}
+	case osmindex.Unchanged:
 		return task.Result{Outcome: task.Unchanged}
-	case outcome == osmindex.NoRegions:
+	case osmindex.NoRegions:
 		return task.Result{Outcome: task.NotReady, Detail: detailNoRegions}
 	}
 
-	return task.Result{Outcome: task.Succeeded}
+	// An outcome this binary has not heard of must not read as a success: the
+	// history would say the map moved when nothing here knows whether it did.
+	return task.Result{Outcome: task.Failed, Detail: detailBuild}
 }
 
 // syncResult carries a synchronization outcome into the task layer's vocabulary,

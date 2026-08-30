@@ -24,8 +24,8 @@ const (
 	// NotReady means there was nothing it could safely do yet, because a
 	// setting is unset or a target still awaits onboarding.
 	NotReady Outcome = "not_ready"
-	// Skipped means the attempt did no work, because something else held what
-	// it needed.
+	// Skipped means the attempt did no work, because a resource it needs was
+	// held or the task was already running as many attempts as it may.
 	Skipped Outcome = "skipped"
 	// Cancelled means shutdown ended the attempt. It is never a fault.
 	Cancelled Outcome = "cancelled"

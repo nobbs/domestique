@@ -29,7 +29,7 @@ succeeded   the attempt did what it set out to do
 failed      a safe failure stopped it
 blocked     a safety gate refused the work
 not_ready   a setting is unset, or a target still awaits onboarding
-skipped     it did no work, because something else held what it needed
+skipped     it did no work: a resource was held, or the task was at its limit
 cancelled   shutdown ended it; never a fault
 unchanged   it ran, checked, and found nothing new
 current     what it covers was already up to date, so it did nothing at all
