@@ -31,28 +31,14 @@ import { RouteOverlay } from "../../components/route/RouteOverlay";
 import { Alert, AlertDescription, AlertTitle } from "../../components/ui/alert";
 import { basemapFor, useBasemapChoice, usePrefersDarkScheme } from "../../lib/basemap";
 import { ROUTE_MAX_ZOOM, WINDOW_MAX_ZOOM } from "../../lib/cartography";
-import type { Climb } from "../../lib/climbs";
-import { findClimbs } from "../../lib/climbs";
 import type { LibraryFilters } from "../../lib/filters";
 import { EMPTY_FILTERS, matchesFilters } from "../../lib/filters";
-import { forecastSamples } from "../../lib/forecastSamples";
 import { formatReadTime } from "../../lib/format";
-import type { Highlight } from "../../lib/highlight";
 import { matchingRoutes } from "../../lib/library";
 import { useOverlayInsets } from "../../lib/overlayInsets";
-import type { DistanceWindow } from "../../lib/profile";
-import {
-  buildProfile,
-  buildWindowedProfile,
-  coordinateRange,
-  gradientShares,
-  movingSecondsForWindow,
-  rangeBounds,
-} from "../../lib/profile";
+import { coordinateRange, rangeBounds } from "../../lib/profile";
 import { useSeenRoutes } from "../../lib/seenRoutes";
-import { widened } from "../../lib/selection";
 import { useStartTime } from "../../lib/startTime";
-import { summariseSurface } from "../../lib/surface";
 import type { ThemeChoice } from "../../lib/theme";
 import { resolvesDark } from "../../lib/theme";
 import { useUnitSystem } from "../../lib/units";
@@ -62,6 +48,7 @@ import { RoutePanel } from "./RoutePanel";
 import { RouteProfile } from "./RouteProfile";
 import type { RouteShape } from "./SearchPanel";
 import { SearchPanel } from "./SearchPanel";
+import { useOpenRoute } from "./useOpenRoute";
 
 /** The smallest box every drawn route fits inside, or null for no geometry yet. */
 function unionOf(boxes: BoundingBox[]): BoundingBox | null {
@@ -300,64 +287,33 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
   }, [shownRoute, markSeen]);
 
   /*
-   * Everything asked of the open route. It lives here rather than in either
-   * view because both views answer it: the hovered position marks the chart and
-   * the map, the stretch on show dims one and frames the other, and a class
-   * picked out of the chips lights the same ground on both.
+   * Everything asked of the open route. It lives on this page rather than in
+   * either view because both views answer it: the hovered position marks the
+   * chart and the map, the stretch on show dims one and frames the other, and
+   * a class picked out of the chips lights the same ground on both. The
+   * questions themselves are gathered in `useOpenRoute`.
    */
-  const [activeMetres, setActiveMetres] = useState<number | null>(null);
-  const [zoomWindow, setZoomWindow] = useState<DistanceWindow | null>(null);
-  const [highlight, setHighlight] = useState<Highlight | null>(null);
-  const [chartCollapsed, setChartCollapsed] = useState(false);
-
-  const routeProfile = useMemo(() => buildProfile(openCoordinates), [openCoordinates]);
-  // Samples for the forecast strip: nothing until the reader has chosen a
-  // start time, and nothing for a route nothing has predicted a moving time
-  // for — `forecastSamples` itself returns `[]` for either, which the strip
-  // reads as nothing to draw.
-  const samples = useMemo(
-    () =>
-      startAt
-        ? forecastSamples(openCoordinates, openGeometry.data?.cumulativeSeconds, startAt)
-        : [],
-    [openCoordinates, openGeometry.data?.cumulativeSeconds, startAt],
-  );
-  // The whole route's predicted moving time, and undefined for a route nothing
-  // has predicted. It bounds how late a start the picker may offer — the
-  // forecast has to reach the arrival, not just the departure — and it is what
-  // tells the page to explain an absent strip rather than draw nothing.
-  const cumulativeSeconds = openGeometry.data?.cumulativeSeconds;
-  const movingSeconds = cumulativeSeconds?.[cumulativeSeconds.length - 1];
-  // Rebuilt from the original geometry rather than from the last window, so
-  // zooming inside a zoom compounds no rounding error and needs no stack.
-  const windowed = useMemo(
-    () => (zoomWindow ? buildWindowedProfile(openCoordinates, zoomWindow) : null),
-    [openCoordinates, zoomWindow],
-  );
-  // A window that built nothing is a slip, not a view: the map must not dim
-  // around a stretch the chart is not showing.
-  const shownWindow = windowed ? zoomWindow : null;
-  // The moving time for the stretch on show, read off the same cumulative
-  // series the whole-route figure comes from. Undefined restores the
-  // whole-route figure — clearing the selection, or a route nothing has
-  // predicted, both fall back the same way.
-  const selectionMovingSeconds = useMemo(
-    () => movingSecondsForWindow(openCoordinates, cumulativeSeconds, shownWindow),
-    [openCoordinates, cumulativeSeconds, shownWindow],
-  );
-
-  // The position was chosen against the view being left, so it goes with it.
-  const onZoomChange = useCallback((next: DistanceWindow | null) => {
-    setZoomWindow(next);
-    setActiveMetres(null);
-  }, []);
-
-  /** Puts every question asked of a route away with the route itself. */
-  const forget = useCallback(() => {
-    setActiveMetres(null);
-    setZoomWindow(null);
-    setHighlight(null);
-  }, []);
+  const {
+    activeMetres,
+    setActiveMetres,
+    highlight,
+    setHighlight,
+    chartCollapsed,
+    setChartCollapsed,
+    routeProfile,
+    samples,
+    movingSeconds,
+    windowed,
+    shownWindow,
+    selectionMovingSeconds,
+    onZoomChange,
+    forget,
+    gradient,
+    climbs,
+    selectClimb,
+    surface,
+    surfaceSummary,
+  } = useOpenRoute(openCoordinates, openGeometry, startAt);
 
   const open = useCallback(
     (key: string) => {
@@ -442,41 +398,6 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
   // the overlay answers that one, so this only fires once there is nothing left
   // between the reader and the library.
   useEscapeKey(openKey !== null && shownWindow === null, close);
-
-  // The route's steepness, classified from the coordinates the service stored
-  // rather than from any resampling of them, and totalled per band. Held here so
-  // the chips do not re-run the classification on every hover.
-  const gradient = useMemo(() => gradientShares(openCoordinates), [openCoordinates]);
-
-  // The route's sustained climbs, from the same stored coordinates.
-  const climbs = useMemo(() => findClimbs(openCoordinates), [openCoordinates]);
-
-  // A climb picked from the list opens the same shared window the chart's own
-  // drag-to-zoom gesture opens, widened the same way a short drag is: a
-  // hundred-metre climb is still worth a window big enough to plot.
-  const selectClimb = useCallback(
-    (climb: Climb) => {
-      onZoomChange(
-        widened(
-          { startMetres: climb.startMetres, endMetres: climb.endMetres },
-          routeProfile?.totalDistanceMetres ?? 0,
-        ),
-      );
-    },
-    [onZoomChange, routeProfile],
-  );
-
-  // A classification that snapped to nothing is left unpainted rather than drawn
-  // as unsurveyed from end to end: greying out the whole route to say nothing is
-  // known says it less clearly than one sentence does.
-  const surface = openGeometry.data?.surface;
-  const surfaceSummary = useMemo(
-    () =>
-      surface && surface.matchedMetres > 0
-        ? summariseSurface(openCoordinates, surface.ranges)
-        : null,
-    [openCoordinates, surface],
-  );
 
   /*
    * What the camera frames, in the order the reader asked for it: the stretch
