@@ -26,25 +26,27 @@ does not distinguish two situations that need different answers. Fetching it
 needs the same Cloudflare Access assertion the page carries, so it is read most
 easily from the browser at `/v1/status`.
 
-**Pushover.** A new failure notifies — the same one again is suppressed for the
-six hours described below — and a success notifies as far as the success policy
-allows: `every` sends one message per successful run, `quiet` sends none while
-the service is healthy, and `digest` replaces them with one aggregate message
-per digest period. Both, and the switch for the whole channel, are on the
-settings page. The switch is not a quieter policy: off, a failure goes unsent
-too. A success carries its counts. A failure arrives titled
-`Domestique sync failed` with a body naming the half and one stable category:
+**Pushover.** What a task can be announced for is a fixed list it declares, and
+each entry has its own switch on the settings page: the failure categories, a
+routine `succeeded`, the `recovered` that follows anything else, and `stale`
+when the task has gone too long without succeeding. An alert nobody has ruled on
+is sent, so a new one reaches you before you have heard of it. The switch for
+the whole channel is separate and is not a quieter setting: off, a failure goes
+unsent too.
+
+A message arrives titled for its task — `Domestique sync` — with a body naming
+the task, what it was over, and one stable category:
 
 ```text
-targets failed: deletion_limit
+sync targets failed: deletion_limit
 ```
 
-The first occurrence of a category in a half is sent; matching failures in that
-half are then suppressed for six hours, and the first following success is the
-recovery signal. The recovery signal is sent under every success policy, so a
-quiet deployment still tells you when an alert is over. **Silence is not
-health** — under `quiet` or `digest`, silence is also what a healthy service
-sounds like, and the status page's timestamps are what tell the two apart.
+The first occurrence of a category is sent; matching ones are then suppressed
+for six hours, and the first following success arrives as `recovered`. Silencing
+the routine `succeeded` leaves `recovered` to come through, so a quiet
+deployment still tells you when an alert is over. **Silence is not health** —
+with `succeeded` switched off, silence is also what a healthy service sounds
+like, and the status page's timestamps are what tell the two apart.
 
 **The readiness probe**, on the host, over loopback:
 

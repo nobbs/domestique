@@ -33,7 +33,9 @@ type Store interface {
 	LastTaskSuccess(ctx context.Context, task, argument string) (finishedAt time.Time, found bool, err error)
 	// LastFailureNotification reports when an alert of this kind last went out.
 	LastFailureNotification(ctx context.Context, category string) (sentAt time.Time, found bool, err error)
-	// RecordFailureNotification remembers that one did.
+	// RecordFailureNotification remembers that one did, or forgets that one ever
+	// had when sentAt is the zero value. Forgetting is what ends an incident, so
+	// the next alert of that kind is not held back by a window opened for it.
 	RecordFailureNotification(ctx context.Context, category string, sentAt time.Time) error
 }
 
@@ -411,14 +413,20 @@ func (m *Manager) alertFor(
 	if result.Outcome.alerts() {
 		return result.Detail
 	}
-	if result.Outcome != Succeeded || !entry.definition.alerts() {
+	if result.Outcome != Succeeded {
 		return ""
 	}
-	if m.endsAnIncident(ctx, invocation) {
+	// A success is opt-in where a fault is not. A fault nobody declared is
+	// still worth hearing about, but a routine success nobody asked for is
+	// noise an operator could not have switched off in advance.
+	if m.endsAnIncident(ctx, invocation) && entry.definition.declares(DetailRecovered) {
 		return DetailRecovered
 	}
+	if entry.definition.declares(DetailSucceeded) {
+		return DetailSucceeded
+	}
 
-	return DetailSucceeded
+	return ""
 }
 
 // endsAnIncident reports whether this success follows something that was not
@@ -447,8 +455,10 @@ func (m *Manager) checkStale(
 	reference string,
 	now time.Time,
 ) {
+	// Declared before it can be ruled on, for the same reason a success is: an
+	// age nobody asked to hear about is not a fault anyone is waiting for.
 	bound := entry.definition.staleAfter()
-	if bound <= 0 || !entry.definition.alerts() {
+	if bound <= 0 || !entry.definition.declares(DetailStale) {
 		return
 	}
 	// A success is what freshness is, so it ends the incident rather than being

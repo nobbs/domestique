@@ -103,8 +103,9 @@ const (
 // wants to hear about a library that stopped refreshing but not about every
 // routine pass can have exactly that.
 const (
-	// DetailSucceeded means the attempt did its work and the one before it had
-	// too. It is the routine traffic an operator most often switches off.
+	// DetailSucceeded means the attempt did its work and nothing was wrong
+	// before it — either the one before also succeeded, or there was none. It is
+	// the routine traffic an operator most often switches off.
 	DetailSucceeded Detail = "succeeded"
 	// DetailRecovered means the attempt succeeded where the one before it did
 	// not. It ends an incident, which is worth hearing even from a task whose

@@ -1363,7 +1363,9 @@ func TestAnAlertThatCouldNotBeSentIsTriedAgain(t *testing.T) {
 }
 
 // Nothing is announced about an attempt that did no work, and nothing at all
-// about a task that declared no alerts.
+// about a task that declared no alerts. A fault nobody declared is announced
+// anyway; a success nobody declared is not, because it is noise rather than
+// something an operator is waiting for.
 func TestOnlyATaskThatDeclaredAlertsIsAnnouncedAbout(t *testing.T) {
 	t.Parallel()
 
@@ -1380,10 +1382,17 @@ func TestOnlyATaskThatDeclaredAlertsIsAnnouncedAbout(t *testing.T) {
 				}),
 			},
 		},
-		"a success is announced as one": {
+		"a success nobody asked to hear about": {
 			definition: Definition{
 				Name:   "a",
 				Notify: &Notify{Title: "t", Suppress: time.Hour},
+				Run:    succeeds(),
+			},
+		},
+		"a success that was declared": {
+			definition: Definition{
+				Name:   "a",
+				Notify: &Notify{Title: "t", Suppress: time.Hour, Alerts: []Detail{DetailSucceeded}},
 				Run:    succeeds(),
 			},
 			want: 1,
@@ -1841,4 +1850,28 @@ func sentAlerts(notifier *fakeNotifier) string {
 	}
 
 	return sent
+}
+
+// A task that declares only its faults keeps announcing only those. Adding
+// success alerts to the layer must not turn every such task into one that
+// announces every pass it makes.
+func TestATaskThatDeclaredOnlyItsFaultsAnnouncesNoSuccess(t *testing.T) {
+	t.Parallel()
+
+	manager, store, notifier := newAlertingManager(t)
+	store.succeededAt = map[invocationKey]time.Time{
+		{task: "surface:index"}: time.Date(2020, time.January, 1, 0, 0, 0, 0, time.UTC),
+	}
+	require.NoError(t, manager.Register(&Definition{
+		Name:   "surface:index",
+		Notify: &Notify{Title: "t", Suppress: time.Hour, Alerts: []Detail{"build"}},
+		// A bound with nothing declared against it says nothing either.
+		StaleAfter: func() time.Duration { return time.Hour },
+		Run:        succeeds(),
+	}), "Register()")
+
+	require.True(t, manager.Trigger(t.Context(), "surface:index", ""), "Trigger()")
+	manager.Wait()
+
+	assert.Empty(t, notifier.messages(), "sent alerts")
 }

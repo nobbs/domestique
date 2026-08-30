@@ -33,9 +33,9 @@ const (
 // failing library is worth hearing about the same morning; a failing weekly
 // rebuild is not worth hearing about more than once between builds.
 const (
-	syncAlertTitle        = "Domestique sync failed"
+	syncAlertTitle        = "Domestique sync"
 	syncAlertSuppression  = 6 * time.Hour
-	indexAlertTitle       = "Domestique surface index failed"
+	indexAlertTitle       = "Domestique surface index"
 	indexAlertSuppression = 7 * 24 * time.Hour
 )
 
