@@ -230,12 +230,19 @@ func (m *Manager) record(
 	if !result.Outcome.recorded() {
 		return
 	}
+	// A wall clock that stepped backwards mid-attempt would leave the store
+	// refusing a run that finished before it started, costing the row entirely.
+	// No measurable time is the lesser wrong.
+	finishedAt := m.now().UTC()
+	if finishedAt.Before(startedAt) {
+		finishedAt = startedAt
+	}
 	if err := m.store.RecordTaskRun(
 		ctx,
 		invocation.Task,
 		invocation.Argument,
 		startedAt,
-		m.now().UTC(),
+		finishedAt,
 		string(result.Outcome),
 		string(result.Detail),
 		entry.definition.retain(),

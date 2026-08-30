@@ -684,6 +684,30 @@ func TestARefusedScheduledRunIsRecorded(t *testing.T) {
 	<-stopped
 }
 
+// A clock that steps backwards mid-attempt must not cost the row: the store
+// refuses a run that finished before it started, and losing the history is
+// worse than recording no measurable time.
+func TestAnAttemptSurvivesAClockThatStepsBackwards(t *testing.T) {
+	t.Parallel()
+
+	manager, store := newTestManager(t)
+	readings := []time.Time{reference(), reference().Add(-time.Hour)}
+	manager.now = func() time.Time {
+		at := readings[0]
+		if len(readings) > 1 {
+			readings = readings[1:]
+		}
+
+		return at
+	}
+	entry := &registered{definition: Definition{Name: "a", Run: succeeds()}}
+
+	manager.attempt(t.Context(), entry, Invocation{Task: "a"})
+	assert.Equal(t, []recordedRun{
+		{task: "a", outcome: string(Succeeded), retain: defaultRetainedRuns},
+	}, store.recorded(), "an attempt was lost to a clock that stepped backwards")
+}
+
 // Losing a history row costs a stale line on a status page, which must not be
 // allowed to rewrite what the attempt actually came to.
 func TestAHistoryThatCannotBeWrittenDoesNotChangeTheOutcome(t *testing.T) {
