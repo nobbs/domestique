@@ -44,11 +44,24 @@ export function surfaceLabel(kind: SurfaceKind): string {
   return SURFACE_STYLES[kind].label;
 }
 
-/** `0.084` as `8%`, and anything that would round to nothing as `<1%`. */
+/**
+ * `0.084` as `8%`, with both edges held off the round numbers.
+ *
+ * A class that covers a sliver reads `<1%` rather than `0%`, and one that
+ * covers nearly everything reads `>99%` rather than `100%` — because the other
+ * classes are still listed beside it, and "100% of the route" next to a second
+ * entry is a contradiction rather than a rounding.
+ */
 export function formatShare(share: number): string {
   const percent = share * 100;
+  if (percent > 0 && percent < 0.5) {
+    return "<1%";
+  }
+  if (percent < 100 && percent >= 99.5) {
+    return ">99%";
+  }
 
-  return percent < 0.5 && percent > 0 ? "<1%" : `${Math.round(percent)}%`;
+  return `${Math.round(percent)}%`;
 }
 
 /** One class of one mix, as the panels draw it. */

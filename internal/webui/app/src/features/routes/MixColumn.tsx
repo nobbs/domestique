@@ -117,6 +117,13 @@ function placeLabels(shares: number[]): { middle: number; top: number }[] {
 
 export interface MixColumnProps {
   name: string;
+  /**
+   * What the classes are called collectively, for the list that holds them.
+   *
+   * "Gradient" heads the column; "Gradient bands" is what a reader reaching it
+   * by list needs to hear, and the two are not the same words.
+   */
+  classesLabel: string;
   /** Canonical order, gentlest and smoothest first — reversed on the way in. */
   entries: MixEntry[];
   /** What to say instead, for a route nothing has classified. */
@@ -128,6 +135,7 @@ export interface MixColumnProps {
 
 export function MixColumn({
   name,
+  classesLabel,
   entries,
   absence,
   highlight,
@@ -189,33 +197,35 @@ export function MixColumn({
               );
             })}
           </svg>
-          {stacked.map((entry, index) => (
-            <div
-              key={entry.label}
-              className="absolute right-0"
-              style={{
-                left: BAR_WIDTH + LEADER_WIDTH,
-                top: places[index]?.top ?? 0,
-                height: LABEL_HEIGHT,
-              }}
-            >
-              <HighlightToggle
-                highlight={entry.highlight}
-                current={highlight}
-                onChange={onHighlightChange}
-                // Both quantities spoken whichever one is drawn: the figure on
-                // screen is a choice about space, not about what the class is.
-                label={`${entry.label}, ${entry.description}, ${columnLength(entry.metres, unitSystem, longest)}, ${formatShare(entry.share)} of the route`}
-                title={entry.description}
-                className="flex size-full min-w-0 items-baseline gap-1 rounded px-1 text-left text-[11px] leading-none hover:bg-[var(--base)] aria-pressed:bg-[color-mix(in_srgb,var(--accent)_16%,transparent)]"
+          <ul aria-label={classesLabel} className="contents">
+            {stacked.map((entry, index) => (
+              <li
+                key={entry.label}
+                className="absolute right-0"
+                style={{
+                  left: BAR_WIDTH + LEADER_WIDTH,
+                  top: places[index]?.top ?? 0,
+                  height: LABEL_HEIGHT,
+                }}
               >
-                <span className="truncate text-[var(--ink-2)]">{entry.label}</span>
-                <span className="ml-auto shrink-0 font-semibold tabular-nums">
-                  {columnLength(entry.metres, unitSystem, longest)}
-                </span>
-              </HighlightToggle>
-            </div>
-          ))}
+                <HighlightToggle
+                  highlight={entry.highlight}
+                  current={highlight}
+                  onChange={onHighlightChange}
+                  // Both quantities spoken whichever one is drawn: the figure on
+                  // screen is a choice about space, not about what the class is.
+                  label={`${entry.label}, ${entry.description}, ${columnLength(entry.metres, unitSystem, longest)}, ${formatShare(entry.share)} of the route`}
+                  title={entry.description}
+                  className="flex size-full min-w-0 items-baseline gap-1 rounded px-1 text-left text-[11px] leading-none hover:bg-[var(--base)] aria-pressed:bg-[color-mix(in_srgb,var(--accent)_16%,transparent)]"
+                >
+                  <span className="truncate text-[var(--ink-2)]">{entry.label}</span>
+                  <span className="ml-auto shrink-0 font-semibold tabular-nums">
+                    {columnLength(entry.metres, unitSystem, longest)}
+                  </span>
+                </HighlightToggle>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
     </section>

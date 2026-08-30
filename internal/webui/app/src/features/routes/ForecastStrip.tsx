@@ -32,6 +32,7 @@ import type { Position } from "../../api/types";
 import type { ForecastSample } from "../../lib/forecastSamples";
 import { PADDING, plotAxis } from "../../lib/plotAxis";
 import type { UnitSystem } from "../../lib/units";
+import { speedValue, temperatureValue } from "../../lib/units";
 import { useElementWidth } from "../../lib/useElementWidth";
 import { temperatureColour, weatherIcon } from "../../lib/weather";
 import { buildCells, windWeight } from "./forecastCells";
@@ -94,8 +95,11 @@ export function ForecastStrip({
   coordinates,
   startMetres,
   endMetres,
+  unitSystem,
 }: ForecastStripProps) {
-  const forecast = useQuery(weatherQuery(samples));
+  // Nothing to ask about without samples: the endpoint refuses an empty
+  // request, and the strip renders nothing for one anyway.
+  const forecast = useQuery({ ...weatherQuery(samples), enabled: samples.length > 0 });
   const { ref, width } = useElementWidth<HTMLDivElement>();
   const cells = useMemo(
     () => (forecast.data ? buildCells(samples, forecast.data.points, coordinates) : []),
@@ -140,7 +144,10 @@ export function ForecastStrip({
     : 0;
 
   return (
-    <div ref={ref}>
+    // Named as a group rather than as an image: the old strip was one graphic
+    // with a hidden table beside it, and this one is tiles carrying their own
+    // readings — marking it `img` would hide every figure on it.
+    <div ref={ref} role="group" aria-label={`Forecast along the way, ${cells.length} readings`}>
       {/*
        * The chart's own gutters, left clear rather than drawn in: this strip
        * has no axis labels of its own but reserves the same margin, which is
@@ -180,7 +187,15 @@ export function ForecastStrip({
                     backgroundColor: `color-mix(in srgb, ${temperatureColour(cell.point.temperatureCelsius)} 60%, transparent)`,
                   }}
                 >
-                  {figures ? `${Math.round(cell.point.temperatureCelsius)}°` : null}
+                  {/*
+                   * The reader's own scale, with the unit left off: a tile is
+                   * too small for "°C", and a column of them all in the same
+                   * scale needs saying once rather than per tile — which the
+                   * hidden label below does.
+                   */}
+                  {figures
+                    ? `${Math.round(temperatureValue(cell.point.temperatureCelsius, unitSystem))}°`
+                    : null}
                 </span>
                 <span
                   className="flex items-center gap-0.5 text-[10px] text-[var(--ink-2)] tabular-nums"
@@ -195,7 +210,7 @@ export function ForecastStrip({
                       style={{ transform: `rotate(${cell.pushDegrees}deg)` }}
                     />
                   )}
-                  {wind ? Math.round(cell.point.windSpeedKmh) : null}
+                  {wind ? Math.round(speedValue(cell.point.windSpeedKmh, unitSystem)) : null}
                 </span>
               </div>
             );

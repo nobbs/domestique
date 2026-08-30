@@ -26,12 +26,15 @@ import type { Position } from "../../api/types";
 import { StartTimePicker } from "../../components/StartTimePicker";
 import type { Climb } from "../../lib/climbs";
 import type { ForecastSample } from "../../lib/forecastSamples";
+import { formatElevation } from "../../lib/format";
 import type { Highlight } from "../../lib/highlight";
+import { useCoarsePointer } from "../../lib/mediaQuery";
 import { groundSegments } from "../../lib/mix";
 import { PADDING } from "../../lib/plotAxis";
 import type { DistanceWindow, Profile } from "../../lib/profile";
 import type { SurfaceSummary } from "../../lib/surface";
 import type { UnitSystem } from "../../lib/units";
+import { distanceUnitLabel, distanceValue } from "../../lib/units";
 import { ClimbMarkers } from "./ClimbMarkers";
 import { ElevationProfile } from "./ElevationProfile";
 import { ForecastFrame } from "./ForecastFrame";
@@ -101,6 +104,28 @@ export function RouteDock({
 }: RouteDockProps) {
   const back = samples[samples.length - 1]?.arrivalAt;
   const shown = zoomWindow ?? { startMetres: 0, endMetres: distanceMetres };
+  /*
+   * A finger cannot hover, and a card that scrolls cannot give every downward
+   * swipe over the chart to the chart — so on a touch pointer the gesture is
+   * armed by holding rather than by landing, and the hint says which of the two
+   * this reader has.
+   */
+  const coarse = useCoarsePointer();
+  const range =
+    profile === null
+      ? ""
+      : `${formatElevation(profile.minElevationMetres, unitSystem)}–${formatElevation(profile.maxElevationMetres, unitSystem)}`;
+  /*
+   * Zoomed, the line says which stretch is on show and how to leave it —
+   * without that, a reader who dragged into two kilometres of a hundred has no
+   * written way back. Otherwise it says what the chart will do if it is
+   * dragged across, which is the only place that gesture is advertised.
+   */
+  const summary = zoomWindow
+    ? `${distanceValue(zoomWindow.startMetres, unitSystem).toFixed(1)}–${distanceValue(zoomWindow.endMetres, unitSystem).toFixed(1)} ${distanceUnitLabel(unitSystem)} shown · Escape returns`
+    : range === ""
+      ? ""
+      : `${range} · ${coarse ? "press and hold to look closer" : "drag across to look closer"}`;
 
   if (!open) {
     return (
@@ -145,6 +170,11 @@ export function RouteDock({
         <IconChevronsRight size={15} stroke={2} aria-hidden="true" className="rotate-90" />
       </button>
       <div className="grid gap-1.5">
+        {summary === "" ? null : (
+          <output aria-label="Elevation summary" className="text-xs text-[var(--ink-2)]">
+            {summary}
+          </output>
+        )}
         <div className="relative">
           <ElevationProfile
             profile={profile}

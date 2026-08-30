@@ -32,6 +32,7 @@ function renderColumn(onHighlightChange = vi.fn(), highlight = null) {
   render(
     <MixColumn
       name="Surface"
+      classesLabel="Surface classes"
       entries={surfaceEntries(ground())}
       absence="Surface not classified yet."
       highlight={highlight}
@@ -64,6 +65,7 @@ describe("MixColumn", () => {
     render(
       <MixColumn
         name="Surface"
+        classesLabel="Surface classes"
         entries={[]}
         absence="Surface not classified yet."
         highlight={null}
@@ -80,6 +82,7 @@ describe("MixColumn", () => {
     const { rerender } = render(
       <MixColumn
         name="Surface"
+        classesLabel="Surface classes"
         entries={surfaceEntries(ground())}
         absence="Surface not classified yet."
         highlight={null}
@@ -94,6 +97,7 @@ describe("MixColumn", () => {
     rerender(
       <MixColumn
         name="Surface"
+        classesLabel="Surface classes"
         entries={surfaceEntries(ground())}
         absence="Surface not classified yet."
         highlight={{ type: "surface", kind: "gravel" }}

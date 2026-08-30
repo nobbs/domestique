@@ -55,16 +55,17 @@ describe("ClimbsTable", () => {
   it("says how many and which is worst before it is opened", () => {
     renderTable();
 
-    expect(
-      screen.getByRole("button", { name: /2 climbs · biggest 11\.9 km at 5\.9%/ }),
-    ).toBeInTheDocument();
+    // The line says what the route has; the control's name says what pressing
+    // it does, which is the half a summary cannot carry.
+    expect(screen.getByText(/2 climbs · biggest 11\.9 km at 5\.9%/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Show 2 climbs" })).toBeInTheDocument();
     expect(screen.queryByText("Ascent")).toBeNull();
   });
 
   it("carries both the average and the steepest gradient once opened", async () => {
     renderTable();
 
-    await userEvent.click(screen.getByRole("button", { name: /2 climbs/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Show 2 climbs" }));
 
     expect(screen.getByText("5.9%")).toBeInTheDocument();
     expect(screen.getByText("8.1%")).toBeInTheDocument();
@@ -75,7 +76,7 @@ describe("ClimbsTable", () => {
   it("opens the shared window on the climb that was pressed", async () => {
     const onSelect = renderTable();
 
-    await userEvent.click(screen.getByRole("button", { name: /2 climbs/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Show 2 climbs" }));
     // The row rather than the summary above it, which also names the biggest.
     // Its ascent appears nowhere else, so it is the unambiguous handle.
     await userEvent.click(screen.getByRole("button", { name: /699 m/ }));

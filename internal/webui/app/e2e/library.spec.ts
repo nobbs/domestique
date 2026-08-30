@@ -213,9 +213,9 @@ test("a bookmarked two-part address lands on the route", async ({ offlinePage: p
  * Points at a route on the map, wherever one happens to be.
  *
  * The framing decides where any one route falls, so the pointer is swept across
- * the map until the cursor says it is over a line — which is the same promise
- * the reader is given before they click. It leaves the pointer where it found
- * one, ready to click.
+ * the part of the map no panel is standing on until the cursor says it is over
+ * a line — which is the same promise the reader is given before they click. It
+ * leaves the pointer where it found one, ready to click.
  */
 async function pointAtALine(page: Page): Promise<{ x: number; y: number }> {
   const box = await mapRegion(page).boundingBox();
@@ -224,8 +224,16 @@ async function pointAtALine(page: Page): Promise<{ x: number; y: number }> {
     throw new Error("expected the map to have been laid out");
   }
   const canvas = page.locator(".maplibregl-canvas");
-  for (const yFraction of [0.25, 0.4, 0.55, 0.7]) {
-    const y = box.y + box.height * yFraction;
+  // Only the band that is still map. The dock stands on the foot of the pane,
+  // and the camera frames routes into what it leaves — so sweeping the lower
+  // third both misses every line and hovers the panel instead of the canvas.
+  // Counted before it is measured: with no route open there is no dock at all,
+  // and asking an absent locator for its box waits until the test gives up.
+  const dock = page.getByRole("region", { name: "Route detail" });
+  const dockBox = (await dock.count()) > 0 ? await dock.boundingBox() : null;
+  const floor = dockBox ? dockBox.y : box.y + box.height;
+  for (const yFraction of [0.25, 0.4, 0.55, 0.7, 0.85]) {
+    const y = box.y + (floor - box.y) * yFraction;
     for (let step = 1; step < 40; step += 1) {
       const x = box.x + (box.width * step) / 40;
       await page.mouse.move(x, y);
@@ -274,7 +282,6 @@ test("pointing at a line on the map picks that route out, twice to open it", asy
 
   const first = await pointAtALine(page);
   await page.mouse.click(first.x, first.y);
-  let title = await picked();
 
   // Bounded: each pass either opens the route or moves the selection to the one
   // it actually hit, and a library of seven routes cannot hand out new
@@ -284,7 +291,12 @@ test("pointing at a line on the map picks that route out, twice to open it", asy
     const next = await pointAtALine(page);
     await page.mouse.click(next.x, next.y);
 
-    const opened = page.getByRole("region", { name: title });
+    // Re-read rather than trusting the title from before the click: the camera
+    // reframes around the panels as they come and go, so the line under the
+    // pointer can be a different one by the time the click lands. What is being
+    // proved is that a second click on a line opens *that* line's route, and
+    // the heading on show is what says which route that is.
+    const opened = page.getByRole("region", { name: await picked() });
     if (await opened.isVisible()) {
       await expect(opened).toBeVisible();
       await expect(page.getByRole("img", { name: /^Elevation profile of / })).toBeVisible();
@@ -294,7 +306,6 @@ test("pointing at a line on the map picks that route out, twice to open it", asy
 
     // Not opened, so that click picked a different line out. It is now the
     // selected route, and the next pass is its second click.
-    title = await picked();
   }
 
   throw new Error("expected two clicks on one line to open it");

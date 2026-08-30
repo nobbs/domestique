@@ -138,6 +138,15 @@ export function RoutePanel({
         aria-label={route.title}
         className="max-h-[calc(100dvh-9rem)] w-fit max-w-full overflow-y-auto rounded-xl bg-[var(--panel)] shadow-[var(--shadow)] ring-1 ring-black/5"
       >
+        {/*
+         * The route's name as the panel's heading, drawn nowhere: the pill
+         * below shows it, and printing it twice would spend the card's first
+         * row telling a reader something they are already looking at. Without
+         * it the panel has no heading at all — the document jumps from the
+         * page's own h1 to the mixes' h3s, and a reader moving by heading
+         * lands inside a panel about a route that never named itself.
+         */}
+        <h2 className="visually-hidden">{route.title}</h2>
         <div className="flex items-center gap-1 p-1.5">
           <button
             type="button"
@@ -252,6 +261,7 @@ export function RoutePanel({
             <div className="flex items-start gap-3 border-t border-[var(--rule)] pt-2">
               <MixColumn
                 name="Gradient"
+                classesLabel="Gradient bands"
                 entries={bandEntries(bands, route.distanceMetres)}
                 absence="No elevation data."
                 highlight={highlight}
@@ -260,6 +270,7 @@ export function RoutePanel({
               />
               <MixColumn
                 name="Surface"
+                classesLabel="Surface classes"
                 entries={surfaceEntries(surface)}
                 absence={surfaceAbsence}
                 highlight={highlight}

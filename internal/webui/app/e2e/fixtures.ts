@@ -313,7 +313,12 @@ export async function openRoute(
 ): Promise<void> {
   await page.goto(`/?route=${provider}%2F${sourceRouteId}%2F${stageOrder}`);
   await openWorkspace(page);
-  await expect(page.getByRole("button", { name: /^Search \d+ routes?$/ })).toBeVisible();
+  // The route panel's own close control, whose name carries the count: the
+  // panel has no row to write "Search 42 routes" on any more, so the way back
+  // says it where a name is read rather than where one is drawn.
+  await expect(
+    page.getByRole("button", { name: /^Close the route and go back to \d+ routes?$/ }),
+  ).toBeVisible();
   await settleMap(page);
 }
 

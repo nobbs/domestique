@@ -43,6 +43,20 @@ function toTimeValue(date: Date): string {
   return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
+function startOfDay(date: Date): Date {
+  const next = new Date(date);
+  next.setHours(0, 0, 0, 0);
+
+  return next;
+}
+
+function endOfDay(date: Date): Date {
+  const next = new Date(date);
+  next.setHours(23, 59, 59, 999);
+
+  return next;
+}
+
 /** The day from one date and the time of day from another. */
 function combine(day: Date, timeOf: Date): Date {
   const next = new Date(day);
@@ -73,9 +87,17 @@ export function StartTimePicker({
   const [refusal, setRefusal] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const now = new Date();
-  const earliest = new Date(now.getTime() - FORECAST_PAST_ALLOWANCE_MS);
-  const latest = new Date(
-    now.getTime() + FORECAST_HORIZON_MS - Math.max(movingSeconds ?? 0, 0) * 1000,
+  /*
+   * The window's own edges carry a time of day, and a calendar offers days.
+   * Rounding them outwards to whole days is what keeps a day with valid hours
+   * in it selectable — the edge of the horizon falls at, say, half past two,
+   * and disabling that whole day would refuse the morning along with the
+   * evening. Which moments on it are allowed stays `startTimeRefusal`'s to
+   * say, and it is asked again about whatever the two halves assemble.
+   */
+  const earliest = startOfDay(new Date(now.getTime() - FORECAST_PAST_ALLOWANCE_MS));
+  const latest = endOfDay(
+    new Date(now.getTime() + FORECAST_HORIZON_MS - Math.max(movingSeconds ?? 0, 0) * 1000),
   );
 
   /** Proposes a departure, and says why if the service would not take it. */

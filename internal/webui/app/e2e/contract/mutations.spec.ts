@@ -99,6 +99,9 @@ test("asking for a run now is accepted", async ({ bundlePage: page, apiCalls }) 
 test("asking for one route to be redone is accepted", async ({ bundlePage: page, apiCalls }) => {
   await openRoute(page, LINE_ROUTE.provider, LINE_ROUTE.sourceRouteId, LINE_ROUTE.stageOrder);
 
+  // Behind the panel's overflow: reprocessing is a rare action, and a row of
+  // the card spent on it is a row not spent on the route.
+  await page.getByRole("button", { name: "More about this route" }).click();
   await page.getByRole("button", { name: "Reprocess" }).click();
 
   await expect(page.getByText(/Queued\./)).toBeVisible();

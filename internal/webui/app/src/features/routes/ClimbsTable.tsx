@@ -103,6 +103,9 @@ export function ClimbsTable({
         <button
           type="button"
           aria-expanded={open}
+          // The visible line is the summary, which says what the route has
+          // rather than what the control does — so the name says the second.
+          aria-label={`${open ? "Hide" : "Show"} ${climbs.length} ${climbs.length === 1 ? "climb" : "climbs"}`}
           onClick={() => setOpen(!open)}
           className="flex w-full items-center gap-1 text-left text-xs text-[var(--ink-2)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
         >
