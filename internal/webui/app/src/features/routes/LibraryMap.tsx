@@ -5,16 +5,16 @@ import type { MapLayerMouseEvent } from "react-map-gl/maplibre";
 import { ScaleControl } from "react-map-gl/maplibre";
 import type { Basemap, BoundingBox } from "../../api/types";
 import { BasemapPicker } from "../../components/map/BasemapPicker";
+import { CartographyProvider } from "../../components/map/CartographyContext";
 import { MapControls } from "../../components/map/MapControls";
 import { MapViewport } from "../../components/map/MapViewport";
 import { MapWidget } from "../../components/map/MapWidget";
+import { ROUTE_MAX_ZOOM } from "../../lib/cartography";
 import type { Insets } from "../../lib/overlayInsets";
 import type { UnitSystem } from "../../lib/units";
 import { LIBRARY_HIT_LAYER, LibraryRoutes, type MapLine } from "./LibraryRoutes";
 
 export type { MapLine } from "./LibraryRoutes";
-
-const DEFAULT_MAX_ZOOM = 14;
 
 export interface LibraryMapProps {
   styleUrl: string;
@@ -51,7 +51,7 @@ export function LibraryMap({
   pickedKey,
   bounds,
   insets,
-  maxZoom = DEFAULT_MAX_ZOOM,
+  maxZoom = ROUTE_MAX_ZOOM,
   children,
   onPick,
   inertKey = null,
@@ -61,49 +61,50 @@ export function LibraryMap({
   const hasOverlay = children !== null && children !== undefined;
 
   return (
-    <MapWidget
-      styleUrl={styleUrl}
-      ariaLabel="Map of the route library"
-      interactiveLayerIds={onPick ? [LIBRARY_HIT_LAYER] : []}
-      cursor={hoveredKey !== null && hoveredKey !== inertKey ? "pointer" : ""}
-      onMouseMove={(event) => setHoveredKey(keyAt(event))}
-      onMouseOut={() => setHoveredKey(null)}
-      onClick={(event) => {
-        const key = keyAt(event);
-        if (key !== null) {
-          onPick?.(key);
+    <CartographyProvider dark={darkBasemap}>
+      <MapWidget
+        styleUrl={styleUrl}
+        ariaLabel="Map of the route library"
+        interactiveLayerIds={onPick ? [LIBRARY_HIT_LAYER] : []}
+        cursor={hoveredKey !== null && hoveredKey !== inertKey ? "pointer" : ""}
+        onMouseMove={(event) => setHoveredKey(keyAt(event))}
+        onMouseOut={() => setHoveredKey(null)}
+        onClick={(event) => {
+          const key = keyAt(event);
+          if (key !== null) {
+            onPick?.(key);
+          }
+        }}
+        // Everything the cartography has no say over. It stays mounted while a
+        // new basemap loads, so choosing one does not take the controls away
+        // from under the hand that just used them.
+        furniture={
+          <>
+            <ScaleControl position="bottom-left" unit={unitSystem} />
+            <MapControls>
+              {onBasemapChange ? (
+                <BasemapPicker
+                  basemaps={basemaps}
+                  selectedName={selectedBasemap}
+                  onSelect={onBasemapChange}
+                  expanded={pickerOpen}
+                  onExpandedChange={setPickerOpen}
+                />
+              ) : null}
+            </MapControls>
+          </>
         }
-      }}
-      // Everything the cartography has no say over. It stays mounted while a
-      // new basemap loads, so choosing one does not take the controls away
-      // from under the hand that just used them.
-      furniture={
-        <>
-          <ScaleControl position="bottom-left" unit={unitSystem} />
-          <MapControls>
-            {onBasemapChange ? (
-              <BasemapPicker
-                basemaps={basemaps}
-                selectedName={selectedBasemap}
-                onSelect={onBasemapChange}
-                expanded={pickerOpen}
-                onExpandedChange={setPickerOpen}
-              />
-            ) : null}
-          </MapControls>
-        </>
-      }
-    >
-      <MapViewport bounds={bounds} maxZoom={maxZoom} {...(insets ? { insets } : {})} />
-      <LibraryRoutes
-        lines={lines}
-        darkBasemap={darkBasemap}
-        pickedKey={pickedKey}
-        accentKey={hasOverlay ? null : pickedKey}
-        hoveredKey={hoveredKey}
-        {...(onPick ? { hitLayerId: LIBRARY_HIT_LAYER } : {})}
-      />
-      {children}
-    </MapWidget>
+      >
+        <MapViewport bounds={bounds} maxZoom={maxZoom} {...(insets ? { insets } : {})} />
+        <LibraryRoutes
+          lines={lines}
+          pickedKey={pickedKey}
+          accentKey={hasOverlay ? null : pickedKey}
+          hoveredKey={hoveredKey}
+          {...(onPick ? { hitLayerId: LIBRARY_HIT_LAYER } : {})}
+        />
+        {children}
+      </MapWidget>
+    </CartographyProvider>
   );
 }

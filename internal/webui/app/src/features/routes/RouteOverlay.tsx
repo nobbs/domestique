@@ -16,6 +16,8 @@ import type { DataDrivenPropertyValueSpecification } from "maplibre-gl";
 import { useMemo, useState } from "react";
 import { Layer, Source } from "react-map-gl/maplibre";
 import type { Position, SurfaceRange } from "../../api/types";
+import { useCartography } from "../../components/map/CartographyContext";
+import { ROUTE_ACCENT, PANEL as ROUTE_CASING } from "../../lib/cartography";
 import type { ForecastSample } from "../../lib/forecastSamples";
 import type { Highlight } from "../../lib/highlight";
 import { highlightRanges, litRanges } from "../../lib/highlight";
@@ -32,22 +34,6 @@ import { HoverLink } from "./HoverLink";
 import { PositionTooltip } from "./PositionTooltip";
 import { RouteTerminal } from "./RouteTerminal";
 import { SelectionLink } from "./SelectionLink";
-
-/**
- * The accent the route itself is drawn in, per basemap.
- *
- * Keyed on which basemap is loaded rather than on the system scheme, because
- * this sits on the cartography rather than on the page — see `LoadedBasemap.dark`.
- * The same pair is `--accent` in index.css; both copies must stay in step.
- */
-const ROUTE_ACCENT = { light: "#236fc7", dark: "#70adfb" } as const;
-
-/**
- * The casing under the route: the panel colour, so the line reads as lifted off
- * the ground rather than merely recoloured. The same pair is `--panel` in
- * index.css; both copies must stay in step.
- */
-const ROUTE_CASING = { light: "#fcfdff", dark: "#24282c" } as const;
 
 const SOURCE_ID = "route-geometry";
 
@@ -141,14 +127,6 @@ function taggedCollection(slices: { inside: Position[][]; outside: Position[][] 
 }
 
 export interface RouteOverlayProps {
-  /**
-   * Whether `styleUrl` is the dark cartography, which picks the steepness ramp.
-   *
-   * Passed in rather than read from the system scheme here, because a deployment
-   * with no dark style configured keeps the light basemap under a dark scheme,
-   * and the edging has to match the ground it is drawn on.
-   */
-  darkBasemap?: boolean;
   /**
    * The forecast requests for this ride, which the position tooltip reads the
    * wind from. Empty until a start time is picked, which is also what a caller
@@ -247,7 +225,6 @@ export interface RouteOverlayProps {
 }
 
 export function RouteOverlay({
-  darkBasemap = false,
   samples = [],
   coordinates,
   surface,
@@ -262,6 +239,9 @@ export function RouteOverlay({
   highlight = null,
   unitSystem = "metric",
 }: RouteOverlayProps) {
+  // Picks the steepness ramp: the edging has to match the ground it is drawn
+  // on, which is the loaded basemap rather than the page's scheme.
+  const { dark: darkBasemap } = useCartography();
   /**
    * The stretch being drawn on the route right now, which is not a window yet.
    *
@@ -510,11 +490,7 @@ export function RouteOverlay({
           />
         </Source>
       ))}
-      <DirectionCues
-        coordinates={coordinates}
-        darkBasemap={darkBasemap}
-        color={ROUTE_CASING[darkBasemap ? "dark" : "light"]}
-      />
+      <DirectionCues coordinates={coordinates} />
       {/*
        * The two ends are DOM markers, so their pictograms stay legible at every
        * zoom instead of becoming two nearly identical dots on the canvas.
@@ -549,7 +525,6 @@ export function RouteOverlay({
           // it: the profile card is folded away, or — even open — a windowed
           // chart has no sample to announce for a hover outside its window.
           announce={profileCollapsed || windowedSample === null}
-          darkBasemap={darkBasemap}
           unitSystem={unitSystem}
         />
       ) : null}

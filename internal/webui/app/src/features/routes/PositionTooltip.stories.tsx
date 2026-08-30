@@ -4,6 +4,9 @@ import { type ReactNode, useState } from "react";
 import { Marker } from "react-map-gl/maplibre";
 import { weatherQuery } from "../../api/queries";
 import type { BoundingBox } from "../../api/types";
+import { CartographyProvider } from "../../components/map/CartographyContext";
+import { MapViewport } from "../../components/map/MapViewport";
+import { MapWidget } from "../../components/map/MapWidget";
 import type { ProfileSample } from "../../lib/profile";
 import { sampleAt } from "../../lib/profile";
 import {
@@ -14,8 +17,6 @@ import {
   surface,
   weatherSamples,
 } from "../../storybook/fixtures";
-import { MapViewport } from "../map/MapViewport";
-import { MapWidget } from "../map/MapWidget";
 import { PositionTooltip } from "./PositionTooltip";
 
 const styleUrl = "https://tiles.openfreemap.org/styles/bright";
@@ -100,11 +101,13 @@ function OnMap({
   dark?: boolean;
 }) {
   return (
-    <MapWidget styleUrl={style}>
-      <MapViewport bounds={bounds} maxZoom={14} />
-      <Dot dark={dark} />
-      {children}
-    </MapWidget>
+    <CartographyProvider dark={dark}>
+      <MapWidget styleUrl={style}>
+        <MapViewport bounds={bounds} maxZoom={14} />
+        <Dot dark={dark} />
+        {children}
+      </MapWidget>
+    </CartographyProvider>
   );
 }
 
@@ -121,7 +124,6 @@ const meta = {
     coordinates,
     samples: [],
     announce: false,
-    darkBasemap: false,
     unitSystem: "metric",
   },
   decorators: [
@@ -188,7 +190,7 @@ export const OnDarkCartography: Story = {
   render: (args) => (
     <SeedForecast fromDegrees={250}>
       <OnMap style={darkStyleUrl} dark={true}>
-        <PositionTooltip {...args} samples={weatherSamples} darkBasemap={true} />
+        <PositionTooltip {...args} samples={weatherSamples} />
       </OnMap>
     </SeedForecast>
   ),

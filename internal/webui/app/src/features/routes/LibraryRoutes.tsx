@@ -3,9 +3,8 @@
 import { useMemo } from "react";
 import { Layer, Source } from "react-map-gl/maplibre";
 import type { Position } from "../../api/types";
-
-const LIBRARY_INK = { light: "#1c2126", dark: "#eef0f3" } as const;
-const SELECTION_ACCENT = { light: "#236fc7", dark: "#70adfb" } as const;
+import { useCartography } from "../../components/map/CartographyContext";
+import { INK as LIBRARY_INK, ROUTE_ACCENT as SELECTION_ACCENT } from "../../lib/cartography";
 
 const LIBRARY_OPACITY = 0.68;
 const CONTEXT_OPACITY = 0.14;
@@ -21,7 +20,6 @@ export interface MapLine {
 
 export interface LibraryRoutesProps {
   lines: MapLine[];
-  darkBasemap?: boolean;
   /** The route that makes the rest of the library contextual. */
   pickedKey: string | null;
   /** The route painted in the accent while its full overlay is absent. */
@@ -46,14 +44,14 @@ function collectionOf(lines: MapLine[]) {
 
 export function LibraryRoutes({
   lines,
-  darkBasemap = false,
   pickedKey,
   accentKey = pickedKey,
   hoveredKey = null,
   hitLayerId,
 }: LibraryRoutesProps) {
+  const { dark } = useCartography();
   const library = useMemo(() => collectionOf(lines), [lines]);
-  const theme = darkBasemap ? "dark" : "light";
+  const theme = dark ? "dark" : "light";
 
   return (
     <Source id="library-lines" type="geojson" data={library}>

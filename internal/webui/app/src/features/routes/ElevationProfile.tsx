@@ -50,6 +50,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { Button } from "../../components/Button";
 import type { Highlight } from "../../lib/highlight";
 import { gapsOutside, highlightLabel } from "../../lib/highlight";
 import { useNarrowViewport } from "../../lib/mediaQuery";
@@ -69,7 +70,6 @@ import {
 } from "../../lib/units";
 import { useElementWidth } from "../../lib/useElementWidth";
 import { useEscapeKey } from "../../lib/useEscapeKey";
-import { Button } from "../Button";
 
 /**
  * How tall the drawn terrain is, in the two layouts there are.

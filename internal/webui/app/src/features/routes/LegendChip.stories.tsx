@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, userEvent } from "storybook/test";
-import { ToggleGroup } from "../ui/toggle-group";
+import { ToggleGroup } from "../../components/ui/toggle-group";
 import { LegendChip } from "./LegendChip";
 
 const meta = {

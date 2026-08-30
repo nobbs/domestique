@@ -16,7 +16,6 @@
 import { IconArrowLeft, IconX } from "@tabler/icons-react";
 import type { Route } from "../../api/types";
 import { Button } from "../../components/Button";
-import { RouteLegend } from "../../components/route/RouteLegend";
 import { SourceRouteLink } from "../../components/SourceRouteLink";
 import type { Climb } from "../../lib/climbs";
 import {
@@ -34,6 +33,7 @@ import type { SurfaceSummary } from "../../lib/surface";
 import type { UnitSystem } from "../../lib/units";
 import { ClimbsList } from "./ClimbsList";
 import { ReprocessButton } from "./ReprocessButton";
+import { RouteLegend } from "./RouteLegend";
 
 export interface RoutePanelProps {
   route: Route;

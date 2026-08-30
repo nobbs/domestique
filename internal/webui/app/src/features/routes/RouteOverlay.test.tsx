@@ -14,6 +14,7 @@ import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Position, SurfaceRange } from "../../api/types";
+import { CartographyProvider } from "../../components/map/CartographyContext";
 import { formatDistance, formatElevation } from "../../lib/format";
 import type { Profile } from "../../lib/profile";
 import { buildProfile, buildWindowedProfile, sampleAt } from "../../lib/profile";
@@ -142,18 +143,19 @@ function show(
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const jsx = (activeMetres: number | null) => (
     <QueryClientProvider client={client}>
-      <RouteOverlay
-        coordinates={coordinates}
-        surface={props.surface}
-        surfaceSummary={surfaceSummary}
-        darkBasemap={props.darkBasemap ?? false}
-        profile={profile}
-        activeProfile={props.activeProfile ?? profile}
-        activeMetres={activeMetres}
-        profileCollapsed={props.profileCollapsed ?? false}
-        zoomWindow={props.zoomWindow ?? null}
-        onZoomChange={onZoomChange}
-      />
+      <CartographyProvider dark={props.darkBasemap ?? false}>
+        <RouteOverlay
+          coordinates={coordinates}
+          surface={props.surface}
+          surfaceSummary={surfaceSummary}
+          profile={profile}
+          activeProfile={props.activeProfile ?? profile}
+          activeMetres={activeMetres}
+          profileCollapsed={props.profileCollapsed ?? false}
+          zoomWindow={props.zoomWindow ?? null}
+          onZoomChange={onZoomChange}
+        />
+      </CartographyProvider>
     </QueryClientProvider>
   );
   const { rerender } = render(jsx(props.activeMetres ?? null));

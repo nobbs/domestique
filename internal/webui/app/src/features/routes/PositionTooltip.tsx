@@ -3,6 +3,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Marker, useMap } from "react-map-gl/maplibre";
 import { weatherQuery } from "../../api/queries";
 import type { Position } from "../../api/types";
+import { useCartography } from "../../components/map/CartographyContext";
+import { INK as CARTOGRAPHY_INK } from "../../lib/cartography";
 import type { ForecastSample } from "../../lib/forecastSamples";
 import { formatDistance, formatElevation, formatWindSpeed } from "../../lib/format";
 import type { ProfileSample } from "../../lib/profile";
@@ -41,7 +43,7 @@ const TONE = {
  * `INK` at thirty per cent, and has to be picked with the same key or it lands
  * the ground's colour on the ground.
  */
-const GROUND = { light: "#1c2126", dark: "#eef0f3" } as const;
+const GROUND = CARTOGRAPHY_INK;
 const INK = { light: "#f3f5f6", dark: "#101316" } as const;
 const TRACK = { light: "#f3f5f64d", dark: "#1013164d" } as const;
 
@@ -138,8 +140,6 @@ export interface PositionTooltipProps {
   /** The forecast requests for this ride, empty until a start time is picked. */
   samples: ForecastSample[];
   announce: boolean;
-  /** Whether the ground under this is dark, which is what its colours follow. */
-  darkBasemap: boolean;
   unitSystem: UnitSystem;
 }
 
@@ -170,9 +170,10 @@ export function PositionTooltip({
   coordinates,
   samples,
   announce,
-  darkBasemap,
   unitSystem,
 }: PositionTooltipProps) {
+  // Whether the ground under this is dark, which is what its colours follow.
+  const { dark: darkBasemap } = useCartography();
   const { current: map } = useMap();
   const boxRef = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState(DEFAULT_SIZE);

@@ -31,7 +31,7 @@ import { routeGeometryQuery, routesQuery, statusQuery } from "../../api/queries"
 import type { Position, Route, RouteGeometry, SurfaceKind, SurfaceRange } from "../../api/types";
 import { routeKey } from "../../api/types";
 import { PageShell } from "../../components/Layout";
-import { RouteGlyph } from "../../components/route/RouteGlyph";
+import { RouteGlyph } from "../../components/RouteGlyph";
 import { Alert, AlertDescription, AlertTitle } from "../../components/ui/alert";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "../../components/ui/input-group";
 import type { CatalogueView, SortColumn } from "../../lib/catalogue";

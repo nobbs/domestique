@@ -13,7 +13,7 @@
  */
 
 import { useMemo } from "react";
-import type { Position } from "../../api/types";
+import type { Position } from "../api/types";
 
 /**
  * The viewBox, in the units the stroke is measured against.

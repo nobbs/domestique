@@ -1,8 +1,8 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import type { BoundingBox } from "../../api/types";
+import { MapViewport } from "../../components/map/MapViewport";
+import { MapWidget } from "../../components/map/MapWidget";
 import { coordinates, liveMap } from "../../storybook/fixtures";
-import { MapViewport } from "../map/MapViewport";
-import { MapWidget } from "../map/MapWidget";
 import { RouteTerminal } from "./RouteTerminal";
 
 const styleUrl = "https://tiles.openfreemap.org/styles/bright";

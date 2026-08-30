@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import type { BoundingBox } from "../../api/types";
+import { CartographyProvider } from "../../components/map/CartographyContext";
 import { MapViewport } from "../../components/map/MapViewport";
 import { MapWidget } from "../../components/map/MapWidget";
 import { coordinates, liveMap, StoryProviders } from "../../storybook/fixtures";
@@ -31,22 +32,24 @@ type Story = StoryObj<typeof meta>;
 export const Lines: Story = {
   args: { lines: [], pickedKey: null },
   render: () => (
-    <MapWidget styleUrl={styleUrl} ariaLabel="Map with route-library lines">
-      <MapViewport bounds={bounds} maxZoom={14} />
-      <LibraryRoutes
-        lines={[
-          { key: "alpine-loop", coordinates },
-          {
-            key: "valley-loop",
-            coordinates: coordinates.map(([longitude, latitude, elevation]) => [
-              longitude + 0.002,
-              latitude - 0.008,
-              elevation,
-            ]),
-          },
-        ]}
-        pickedKey={null}
-      />
-    </MapWidget>
+    <CartographyProvider dark={false}>
+      <MapWidget styleUrl={styleUrl} ariaLabel="Map with route-library lines">
+        <MapViewport bounds={bounds} maxZoom={14} />
+        <LibraryRoutes
+          lines={[
+            { key: "alpine-loop", coordinates },
+            {
+              key: "valley-loop",
+              coordinates: coordinates.map(([longitude, latitude, elevation]) => [
+                longitude + 0.002,
+                latitude - 0.008,
+                elevation,
+              ]),
+            },
+          ]}
+          pickedKey={null}
+        />
+      </MapWidget>
+    </CartographyProvider>
   ),
 };

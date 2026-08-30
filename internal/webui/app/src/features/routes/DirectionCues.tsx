@@ -2,6 +2,8 @@ import { IconChevronsRight } from "@tabler/icons-react";
 import { useEffect, useMemo, useState } from "react";
 import { Marker, useMap } from "react-map-gl/maplibre";
 import type { Position } from "../../api/types";
+import { useCartography } from "../../components/map/CartographyContext";
+import { PANEL } from "../../lib/cartography";
 import { bearingBetween, directionChevrons, metresPerPixel } from "../../lib/routeCues";
 
 /**
@@ -13,16 +15,11 @@ import { bearingBetween, directionChevrons, metresPerPixel } from "../../lib/rou
  * geometry is measured over the whole route, and a stage of several thousand
  * points would otherwise be re-measured sixty times a second to no visible end.
  */
-export function DirectionCues({
-  coordinates,
-  darkBasemap,
-  color,
-}: {
-  coordinates: Position[];
-  darkBasemap: boolean;
-  /** The route's casing colour for this basemap — see `RouteOverlay`'s `ROUTE_CASING`. */
-  color: string;
-}) {
+export function DirectionCues({ coordinates }: { coordinates: Position[] }) {
+  const { dark: darkBasemap } = useCartography();
+  // The route's casing colour for this basemap, so a chevron reads as part of
+  // the line it sits on.
+  const color = PANEL[darkBasemap ? "dark" : "light"];
   const { current: map } = useMap();
   const [resolution, setResolution] = useState<number | null>(null);
 

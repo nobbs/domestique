@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect } from "storybook/test";
-import { coordinates } from "../../storybook/fixtures";
+import { coordinates } from "../storybook/fixtures";
 import { RouteGlyph } from "./RouteGlyph";
 
 const meta = {

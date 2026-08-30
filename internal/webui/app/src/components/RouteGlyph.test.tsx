@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Position } from "../../api/types";
+import type { Position } from "../api/types";
 import { glyphPoints } from "./RouteGlyph";
 
 function parse(points: string): Array<[number, number]> {
