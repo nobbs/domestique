@@ -144,18 +144,7 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("creating sync service: %w", err)
 	}
-	reporter, err := syncservice.NewReporter(reconciler, store, notifier, func() syncservice.Notifications {
-		values := runtimeSettings.Values()
-
-		return syncservice.Notifications{
-			Enabled: values.Notifications.Enabled,
-			Success: syncservice.SuccessNotification{
-				Policy:   syncservice.SuccessPolicy(values.Notifications.Policy),
-				Interval: values.Notifications.DigestInterval,
-			},
-			StaleAfter: values.Sync.StaleAfter,
-		}
-	})
+	reporter, err := syncservice.NewReporter(reconciler, store)
 	if err != nil {
 		return fmt.Errorf("creating sync reporter: %w", err)
 	}

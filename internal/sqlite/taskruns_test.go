@@ -188,3 +188,82 @@ func TestForEachTaskRunStopsWhenTheVisitorDoes(t *testing.T) {
 	require.ErrorIs(t, err, giveUp, "ForEachTaskRun()")
 	assert.Equal(t, 1, visits, "the visitor was called again after giving up")
 }
+
+// What a task did last is what a success is compared against to tell a routine
+// one from the one that ends an incident, and it is asked per argument.
+func TestLastTaskOutcomeReadsTheMostRecentAttemptOverAnArgument(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t, testKey(1))
+	at := time.Date(2026, time.August, 30, 9, 0, 0, 0, time.UTC)
+	for run, outcome := range []string{"failed", "succeeded"} {
+		require.NoError(t, store.RecordTaskRun(t.Context(), "sync", "rider-a",
+			at.Add(time.Duration(run)*time.Minute), at.Add(time.Duration(run)*time.Minute),
+			outcome, "", "reference", 5,
+		), "RecordTaskRun(rider-a)")
+	}
+	require.NoError(t, store.RecordTaskRun(
+		t.Context(), "sync", "rider-b", at, at, "blocked", "", "reference", 5,
+	), "RecordTaskRun(rider-b)")
+
+	outcome, found, err := store.LastTaskOutcome(t.Context(), "sync", "rider-a")
+	require.NoError(t, err, "LastTaskOutcome()")
+	assert.True(t, found, "found")
+	assert.Equal(t, "succeeded", outcome, "the outcome")
+
+	other, found, err := store.LastTaskOutcome(t.Context(), "sync", "rider-b")
+	require.NoError(t, err, "LastTaskOutcome(rider-b)")
+	assert.True(t, found, "found")
+	assert.Equal(t, "blocked", other, "one argument's history answered for another")
+}
+
+// Staleness is measured against the last success: a failed attempt leaves
+// whatever the task keeps exactly as an earlier success left it.
+func TestLastTaskSuccessSkipsWhatDidNotSucceed(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t, testKey(1))
+	at := time.Date(2026, time.August, 30, 9, 0, 0, 0, time.UTC)
+	require.NoError(t, store.RecordTaskRun(
+		t.Context(), "sync", "", at, at, "succeeded", "", "reference", 5,
+	), "RecordTaskRun(succeeded)")
+	require.NoError(t, store.RecordTaskRun(
+		t.Context(), "sync", "", at.Add(time.Hour), at.Add(time.Hour), "failed", "", "reference", 5,
+	), "RecordTaskRun(failed)")
+
+	finishedAt, found, err := store.LastTaskSuccess(t.Context(), "sync", "")
+	require.NoError(t, err, "LastTaskSuccess()")
+	assert.True(t, found, "found")
+	assert.Equal(t, at, finishedAt, "the last success")
+}
+
+func TestTaskHistoryLookupsRefuseAnIncompleteRequestAndReportAnUnreadableDatabase(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t, testKey(1))
+	_, _, err := store.LastTaskOutcome(t.Context(), "", "")
+	require.Error(t, err, "LastTaskOutcome() with no task")
+	_, _, err = store.LastTaskSuccess(t.Context(), "", "")
+	require.Error(t, err, "LastTaskSuccess() with no task")
+
+	require.NoError(t, store.Close(), "Close()")
+	_, _, err = store.LastTaskOutcome(t.Context(), "sync", "")
+	require.Error(t, err, "LastTaskOutcome() on a closed database")
+	_, _, err = store.LastTaskSuccess(t.Context(), "sync", "")
+	require.Error(t, err, "LastTaskSuccess() on a closed database")
+}
+
+// A task nobody has run yet is waiting rather than overdue, and the absence has
+// to read as one rather than as a zero time.
+func TestTaskHistoryLookupsReportNothingRecorded(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t, testKey(1))
+	_, found, err := store.LastTaskOutcome(t.Context(), "sync", "")
+	require.NoError(t, err, "LastTaskOutcome()")
+	assert.False(t, found, "an unrun task reported an outcome")
+
+	_, found, err = store.LastTaskSuccess(t.Context(), "sync", "")
+	require.NoError(t, err, "LastTaskSuccess()")
+	assert.False(t, found, "an unrun task reported a success")
+}

@@ -89,6 +89,9 @@ func syncAlerts() *task.Notify {
 		Title:    syncAlertTitle,
 		Suppress: syncAlertSuppression,
 		Alerts: []task.Detail{
+			task.DetailSucceeded,
+			task.DetailRecovered,
+			task.DetailStale,
 			task.Detail(syncservice.FailureState),
 			task.Detail(syncservice.FailureSource),
 			task.Detail(syncservice.FailureAuthorization),
@@ -115,6 +118,12 @@ func inventoryTasks(reporter synchronizer, settings *runtimeconfig.Current) []ta
 			Schedule:  task.Every(func() time.Duration { return syncservice.Interval }),
 			InitialDelay: func() time.Duration {
 				return settings.Values().Sync.InitialDelay
+			},
+			// Only the scheduled pass is expected on a clock. A slot an operator
+			// reconciles by hand is stale the moment they stop asking, which is
+			// not a fault worth waking anyone for.
+			StaleAfter: func() time.Duration {
+				return settings.Values().Sync.StaleAfter
 			},
 			Run: task.RunnerFunc(func(ctx context.Context, invocation task.Invocation) task.Result {
 				result := runSync(ctx, reporter, invocation)
