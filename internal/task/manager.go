@@ -396,8 +396,8 @@ func (m *Manager) announce(
 // own, which is what makes it safe to send.
 func newRunReference() string {
 	reference := make([]byte, runReferenceBytes)
-	// crypto/rand.Read is defined never to fail; it panics rather than
-	// answering short.
+	// crypto/rand.Read never returns an error and always fills its argument
+	// entirely: it crashes the program rather than answering short.
 	_, _ = rand.Read(reference)
 
 	return hex.EncodeToString(reference)

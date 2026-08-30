@@ -160,9 +160,10 @@ without the other is refused where the task is registered: a window left at zero
 would either silence the task or repeat itself every tick, and neither is what
 leaving it out meant.
 
-Only a fault is announced: a failure or a run a safety gate refused. A refusal
-is not a fault — something else was working — and neither is a success or a run
-with nothing to do.
+Only a fault is announced: a run that failed, or one a safety gate blocked. An
+attempt that did no work because something else held what it needed is not a
+fault — this service was busy, which is not the same as broken — and neither is
+a success or a run that found nothing to do.
 
 The suppression window is keyed by the reason as well as the task. A library
 that cannot be read and a target that needs reauthorising are separate problems,
