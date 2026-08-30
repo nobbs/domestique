@@ -79,9 +79,8 @@ func (m *Manager) Run(ctx context.Context) {
 }
 
 // Trigger starts one attempt in the background, reporting whether it was
-// accepted. An accepted attempt outlives the call rather than the context: it
-// runs until ctx is done, and Wait is what waits for it. A service already
-// shutting down accepts nothing.
+// accepted. An accepted attempt outlives this call, is bounded by ctx, and is
+// what Wait waits for. A service already shutting down accepts nothing.
 func (m *Manager) Trigger(ctx context.Context, name, argument string) bool {
 	entry, known := m.tasks[name]
 	if !known || ctx.Err() != nil {
