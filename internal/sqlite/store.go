@@ -584,9 +584,9 @@ func schemaMigrations() [][]string {
 			)`,
 		},
 		{
-			// What every background activity came to, including the attempts that were
-			// refused and the ones with nothing to do. The task and its argument
-			// identify the work; the detail is a stable category, never provider text.
+			// What every background activity came to, refusals included. An attempt
+			// that found its work already current is absent, as is one shutdown ended.
+			// The detail is a stable category, never provider text.
 			`CREATE TABLE task_runs (
 				id               INTEGER PRIMARY KEY,
 				task             TEXT    NOT NULL,
