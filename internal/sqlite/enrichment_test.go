@@ -177,3 +177,29 @@ func TestClearStageDurationFailuresLeavesTheOtherPassAlone(t *testing.T) {
 		{key: route.NewKey("veloplanner", 7, 1), pass: PassSurface, reason: "ways"},
 	}, readFailures(t, store), "clearing one pass took the other with it")
 }
+
+func TestClearStageDurationFailuresReportsAnUnreadableDatabase(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.Close(), "Close()")
+
+	require.Error(t, store.ClearStageDurationFailures(t.Context()), "ClearStageDurationFailures()")
+}
+
+// SQLite stores what it is given, so a row this service could not have written
+// is still a row a read has to survive. Reporting it beats skipping it.
+func TestForEachStageEnrichmentFailureReportsARowItCannotRead(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t, testKey(1))
+	_, err := store.database.ExecContext(t.Context(), `
+		INSERT INTO stage_enrichment_failure (provider, route_id, stage_order, pass, reason, failed_at_unix)
+		VALUES ('veloplanner', 'not-a-route-id', 1, 'surface', 'ways', 0)
+	`)
+	require.NoError(t, err, "seeding an unreadable row")
+
+	require.Error(t, store.ForEachStageEnrichmentFailure(t.Context(),
+		func(route.Key, string, string, time.Time) error { return nil }),
+		"a row that could not be read was skipped")
+}

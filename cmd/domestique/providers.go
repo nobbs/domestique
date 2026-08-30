@@ -312,10 +312,13 @@ func (p *rideModelProvider) reload(ctx context.Context, settings *runtimeconfig.
 	if err := p.store.PruneStageDurationsWithDifferentFingerprint(ctx, fingerprint); err != nil {
 		return fmt.Errorf("pruning stale ride model predictions: %w", err)
 	}
-	// A stage cannot be failing a pass nothing is asking for, and one measured
-	// against a file that has been replaced is not failing the new one either.
-	if err := p.store.ClearStageDurationFailures(ctx); err != nil {
-		return fmt.Errorf("clearing stale ride model failures: %w", err)
+	// A stage cannot be failing a pass nothing is asking for. A replaced file is
+	// a different question: its predictions are pruned above, and the failures
+	// it left are replaced by whatever the next pass finds.
+	if path == "" {
+		if err := p.store.ClearStageDurationFailures(ctx); err != nil {
+			return fmt.Errorf("clearing stale ride model failures: %w", err)
+		}
 	}
 	p.predictor, p.validation, p.path, p.loaded = predictor, validation, path, true
 

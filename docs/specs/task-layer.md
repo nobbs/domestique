@@ -165,7 +165,8 @@ transaction, so a stage cannot be enriched and listed as failing at once.
 
 A failure goes when the stage it names leaves the library, and when the pass it
 names stops being configured at all: a stage cannot be failing something nothing
-is asking for.
+is asking for. A pass whose inputs merely changed keeps its failures until the
+next attempt replaces or clears them.
 
 A pass a shutdown ended records nothing about the stage it was on. Whatever
 reached it was the cancellation rather than anything about that stage, and a row
