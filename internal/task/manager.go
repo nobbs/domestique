@@ -384,12 +384,6 @@ func (m *Manager) announce(
 	if !entry.definition.alerts() || !result.Outcome.alerts() || !m.enabled() {
 		return
 	}
-	if !entry.definition.declares(result.Detail) {
-		// An alert nobody could rule on in advance still goes out, but the
-		// declaration is what the settings page offers and is now wrong.
-		slog.Warn("task announced something it had not declared",
-			"task", invocation.Task, "alert", result.Detail)
-	}
 	if !m.wanted(ctx, invocation.Task, result.Detail) {
 		return
 	}
@@ -397,6 +391,14 @@ func (m *Manager) announce(
 	lastSentAt, found, err := m.store.LastFailureNotification(ctx, category)
 	if err != nil || (found && now.Sub(lastSentAt) < entry.definition.Notify.Suppress) {
 		return
+	}
+	if !entry.definition.declares(result.Detail) {
+		// Said beside the message rather than in place of it: an alert nobody
+		// could rule on in advance still goes out, but the declaration a
+		// settings page offers is now wrong. The window above is what keeps
+		// this to once per alert rather than once per tick.
+		slog.Warn("task announced something it had not declared",
+			"task", invocation.Task, "alert", result.Detail)
 	}
 	if err := m.notifier.Send(ctx, entry.definition.Notify.Title, alertMessage(invocation, result, reference)); err != nil {
 		return
