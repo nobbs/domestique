@@ -494,3 +494,45 @@ func (c *counting) runs() int {
 
 	return c.count
 }
+
+// A service that is shutting down takes on nothing new, rather than accepting
+// work whose only outcome can be that it was cancelled.
+func TestTriggerRefusesOnceTheContextIsDone(t *testing.T) {
+	t.Parallel()
+
+	runner := countingRunner()
+	manager := NewManager()
+	require.NoError(t, manager.Register(Definition{Name: "a", Run: runner}), "Register()")
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	assert.False(t, manager.Trigger(ctx, "a", ""), "Trigger()")
+	manager.Wait()
+	assert.Zero(t, runner.runs(), "an attempt started after cancellation")
+}
+
+// A wait watches the clock and the context at once, and may report that it
+// fired even though both were ready. Starting work on that report would run one
+// more attempt into a shutdown.
+func TestAScheduledRunDoesNotStartOnceTheContextIsDone(t *testing.T) {
+	t.Parallel()
+
+	runner := countingRunner()
+	manager := NewManager()
+	fired := make(chan time.Time, 1)
+	manager.after = func(time.Duration) <-chan time.Time { return fired }
+	require.NoError(t, manager.Register(Definition{
+		Name:         "a",
+		Run:          runner,
+		Schedule:     Every(func() time.Duration { return time.Hour }),
+		InitialDelay: func() time.Duration { return time.Minute },
+	}), "Register()")
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	fired <- reference()
+
+	manager.Run(ctx)
+	assert.Zero(t, runner.runs(), "a scheduled attempt started after cancellation")
+}

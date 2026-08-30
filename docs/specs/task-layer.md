@@ -74,6 +74,11 @@ whatever a manual trigger started. An attempt that shutdown ended reports
 `cancelled` whatever it had managed to return, because it did not finish, and
 that is never a fault.
 
+Once shutdown has begun nothing new starts. A trigger is refused, and a schedule
+whose wait ended at the same instant as the cancellation does not run: waiting
+watches the clock and the context together and may report either, so the answer
+is checked rather than inferred.
+
 ## The registered tasks
 
 | Task | Argument | Resources | Schedule |
