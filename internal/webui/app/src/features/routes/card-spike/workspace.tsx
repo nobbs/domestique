@@ -24,7 +24,7 @@ import type { Highlight } from "../../../lib/highlight";
 import { groundSegments } from "../../../lib/mix";
 import { buildProfile } from "../../../lib/profile";
 import { CLIMBS, SPIKE_COORDINATES, SPIKE_DISTANCE_METRES, SPIKE_SURFACE, TITLE } from "./data";
-import { AirCard, PlainCard, SlideCard } from "./variants";
+import { AirCard, PlainCard, RowsCard, SlideCard } from "./variants";
 
 /** Where the spike's climbs sit along the route, for the markers over the chart. */
 const MARKED: Climb[] = [
@@ -138,7 +138,7 @@ function ClimbsSidebar({
   );
 }
 
-export function Workspace({ card }: { card: "slide" | "fold" | "plain" }) {
+export function Workspace({ card }: { card: "slide" | "fold" | "plain" | "rows" | "rows-gapped" }) {
   const [highlight, setHighlight] = useState<Highlight | null>(null);
   const [active, setActive] = useState<number | null>(null);
   const [sidebar, setSidebar] = useState(true);
@@ -158,7 +158,13 @@ export function Workspace({ card }: { card: "slide" | "fold" | "plain" }) {
         }}
       />
       <div className="absolute top-3 left-3">
-        {card === "plain" ? (
+        {card === "rows" || card === "rows-gapped" ? (
+          <RowsCard
+            gapped={card === "rows-gapped"}
+            highlight={highlight}
+            onHighlightChange={setHighlight}
+          />
+        ) : card === "plain" ? (
           <PlainCard highlight={highlight} onHighlightChange={setHighlight} />
         ) : (
           <Card withClimbs={false} highlight={highlight} onHighlightChange={setHighlight} />

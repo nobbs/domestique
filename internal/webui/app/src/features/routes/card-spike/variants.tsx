@@ -32,6 +32,7 @@ import {
   SURFACE_MIX,
   TITLE,
 } from "./data";
+import { MixRow } from "./MixRow";
 
 /** The parts every variant shares, so the differences below are the variants'. */
 interface BodyProps {
@@ -721,6 +722,56 @@ export function PlainCard({ highlight, onHighlightChange }: BodyProps) {
           <AirFigure term="Moving time" value={FIGURES.movingTime} span />
         </dl>
         <Mixes highlight={highlight} onHighlightChange={onHighlightChange} />
+      </div>
+    </Shell>
+  );
+}
+
+/* ----------------------------------------------------------------- H: Rows */
+
+/**
+ * G, with the two mixes laid across instead of up.
+ *
+ * Side by side each column had about a hundred and sixty pixels and spent most
+ * of it on the gap between a bar and its labels. Stacked across, each mix gets
+ * the card's whole width, the segments are drawn at the size they actually
+ * differ by, and the class sits under the ground it names.
+ */
+export function RowsCard({
+  gapped = false,
+  highlight,
+  onHighlightChange,
+}: BodyProps & { gapped?: boolean }) {
+  return (
+    <Shell>
+      <div className="grid gap-3 px-3 pt-1 pb-3">
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+          <AirFigure term="Distance" value={FIGURES.distance} />
+          <AirFigure term="Ascent" value={FIGURES.ascent} />
+          <AirFigure term="Elevation" value={FIGURES.elevation} />
+          <AirFigure term="Avg climbing" value={FIGURES.averageClimbing} />
+          <AirFigure term="Max climb" value={FIGURES.steepestClimbing} icon="up" />
+          <AirFigure term="Max descent" value={FIGURES.steepestDescent} icon="down" />
+          <AirFigure term="Moving time" value={FIGURES.movingTime} span />
+        </dl>
+        <MixRow
+          name="Gradient"
+          classesLabel="Gradient bands"
+          entries={GRADIENT_MIX}
+          absence="No elevation data."
+          gapped={gapped}
+          highlight={highlight}
+          onHighlightChange={onHighlightChange}
+        />
+        <MixRow
+          name="Surface"
+          classesLabel="Surface classes"
+          entries={SURFACE_MIX}
+          absence="Surface not classified yet."
+          gapped={gapped}
+          highlight={highlight}
+          onHighlightChange={onHighlightChange}
+        />
       </div>
     </Shell>
   );

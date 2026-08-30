@@ -54,3 +54,28 @@ export const WithPlainCard: Story = {
     </StoryProviders>
   ),
 };
+
+/** The same card again, with both mixes laid across the width instead of up it. */
+export const WithRowsCard: Story = {
+  render: () => (
+    <StoryProviders>
+      <Workspace card="rows" />
+    </StoryProviders>
+  ),
+};
+
+/**
+ * The rows again, with the segments separated.
+ *
+ * The dock's ground ribbon is a horizontal bar of the same classes in the same
+ * colours, and it says where the gravel is. This one says how much there is,
+ * sorted by size — so butted together they are the same picture meaning two
+ * different things. The gaps are what stop this one reading as a map.
+ */
+export const WithGappedRowsCard: Story = {
+  render: () => (
+    <StoryProviders>
+      <Workspace card="rows-gapped" />
+    </StoryProviders>
+  ),
+};
