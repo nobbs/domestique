@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	stdsync "sync"
 	"sync/atomic"
 	"time"
 )
@@ -59,8 +58,6 @@ type Reporter struct {
 	// notifications is read at the moment a message would go out rather than
 	// captured, because an operator edits these while the service runs.
 	notifications func() Notifications
-	running       atomic.Bool
-	triggered     stdsync.WaitGroup
 	// surfaceIncomplete is how many stages the most recently completed annotation
 	// pass could not classify. Read back by SurfaceIncomplete.
 	surfaceIncomplete atomic.Int64
@@ -120,11 +117,6 @@ func NewReporter(
 // Run performs the scheduled synchronization, each switched-on phase recorded
 // and reported on its own. An unreadable schedule is a failed source run.
 func (r *Reporter) Run(ctx context.Context) Result {
-	if !r.running.CompareAndSwap(false, true) {
-		return Result{Outcome: OutcomeSkipped}
-	}
-	defer r.running.Store(false)
-
 	source, targets, err := r.state.SyncSchedule(ctx)
 	if err != nil {
 		return r.record(ctx, r.now().UTC(), &Result{
@@ -135,64 +127,37 @@ func (r *Reporter) Run(ctx context.Context) Result {
 	return r.runPhases(ctx, source, targets)
 }
 
-// Trigger starts a manual synchronization of both phases in the background. It
-// returns false when a scheduled or another manual synchronization is running.
-func (r *Reporter) Trigger(ctx context.Context) bool {
-	return r.trigger(ctx, true, true)
+// RunBoth runs both halves whether or not the schedule has either switched on,
+// which is what an operator asking for a synchronization means by it.
+func (r *Reporter) RunBoth(ctx context.Context) Result {
+	return r.runPhases(ctx, true, true)
 }
 
-// TriggerPhase starts one manual phase in the background, on the same terms as
-// Trigger.
-func (r *Reporter) TriggerPhase(ctx context.Context, phase Phase) bool {
-	return r.trigger(ctx, phase == PhaseSource, phase == PhaseTargets)
+// RunPhase runs one half of a synchronization, whether or not the schedule has
+// that half switched on.
+func (r *Reporter) RunPhase(ctx context.Context, phase Phase) Result {
+	return r.runPhases(ctx, phase == PhaseSource, phase == PhaseTargets)
 }
 
-func (r *Reporter) trigger(ctx context.Context, source, targets bool) bool {
-	if !source && !targets {
-		return false
-	}
-
-	return r.background(func() { _ = r.runPhases(ctx, source, targets) })
-}
-
-// background runs work under the single-flight guard, reporting whether it was
-// accepted. Accepted work is what Wait waits for.
-func (r *Reporter) background(work func()) bool {
-	if !r.running.CompareAndSwap(false, true) {
-		return false
-	}
-	r.triggered.Go(func() {
-		defer r.running.Store(false)
-		work()
-	})
-
-	return true
-}
-
-// TriggerTarget starts a manual reconciliation of exactly one configured target
-// in the background. False when any synchronization is already running.
-func (r *Reporter) TriggerTarget(ctx context.Context, targetID string) bool {
-	return r.background(func() {
-		_ = r.runPhasesWith(ctx, false, true, func(ctx context.Context) Result {
-			return r.runner.RunTarget(ctx, targetID)
-		})
+// ReconcileTarget reconciles exactly one configured target, on the same
+// recording and reporting terms as a scheduled target phase.
+func (r *Reporter) ReconcileTarget(ctx context.Context, targetID string) Result {
+	return r.runPhasesWith(ctx, false, true, func(ctx context.Context) Result {
+		return r.runner.RunTarget(ctx, targetID)
 	})
 }
 
-// TriggerClear deletes every route this service owns from one target and forgets
-// its stage mappings. False when another operation is already running.
-func (r *Reporter) TriggerClear(ctx context.Context, targetID string) bool {
-	return r.background(func() {
-		_ = r.runPhasesWith(ctx, false, true, func(ctx context.Context) Result {
-			return r.runner.ClearTarget(ctx, targetID)
-		})
+// ClearTarget deletes every route this service owns from one target and forgets
+// its stage mappings.
+func (r *Reporter) ClearTarget(ctx context.Context, targetID string) Result {
+	return r.runPhasesWith(ctx, false, true, func(ctx context.Context) Result {
+		return r.runner.ClearTarget(ctx, targetID)
 	})
 }
 
-// TriggerAnnotate starts one classification pass in the background, touching
-// only the local index and cache. False when another operation is running.
-func (r *Reporter) TriggerAnnotate(ctx context.Context) bool {
-	return r.background(func() { r.annotate(ctx) })
+// Annotate runs one classification pass, touching only the local index and cache.
+func (r *Reporter) Annotate(ctx context.Context) {
+	r.annotate(ctx)
 }
 
 // SurfaceIncomplete reports how many stages the most recently completed
@@ -201,15 +166,12 @@ func (r *Reporter) SurfaceIncomplete() int {
 	return int(r.surfaceIncomplete.Load())
 }
 
-// Running reports what this process has under way: the half in flight, and
-// whether a run is under way at all.
+// Running reports which half is in flight, if any. Whether a run is under way
+// at all is the task layer's answer, not this one's.
 func (r *Reporter) Running() (Phase, bool) {
-	// Read the phase first: a finishing run clears its phase before running, so
-	// this can report a run without its half but never a half without its run.
 	phase := r.phase.Load()
-	running := r.running.Load()
-	if phase == nil || !running {
-		return "", running
+	if phase == nil {
+		return "", false
 	}
 
 	return *phase, true
@@ -270,11 +232,6 @@ func (r *Reporter) runPhasesWith(ctx context.Context, source, targets bool, runT
 func (r *Reporter) annotate(ctx context.Context) {
 	_, failed := r.runner.AnnotateStored(ctx)
 	r.surfaceIncomplete.Store(int64(failed))
-}
-
-// Wait waits for any manual synchronization accepted by Trigger to finish.
-func (r *Reporter) Wait() {
-	r.triggered.Wait()
 }
 
 func (r *Reporter) run(ctx context.Context, phase func(context.Context) Result) Result {
