@@ -27,7 +27,6 @@ function renderPanel(overrides: Partial<RoutePanelProps> = {}) {
   const props: RoutePanelProps = {
     route: route(),
     highestMetres: null,
-    subtitle: "",
     surface: null,
     surfaceAbsence: "Surface not classified yet.",
     bands: [],
@@ -102,7 +101,6 @@ describe("RoutePanel", () => {
         <RoutePanel
           route={route({ movingSeconds: 6420 })}
           highestMetres={null}
-          subtitle=""
           surface={null}
           surfaceAbsence="Surface not classified yet."
           bands={[]}

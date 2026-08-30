@@ -104,21 +104,6 @@ function parseRouteKey(
   return sourceRouteId > 0 && stageOrder > 0 ? { provider, sourceRouteId, stageOrder } : null;
 }
 
-/**
- * How the card says every target holds the library.
- *
- * Counted, because an operator with two targets reads "on both targets" as a
- * statement about their own setup, and "on every target" as a statement about a
- * set they have to remember the size of.
- */
-function convergedPhrase(targetCount: number): string {
-  if (targetCount === 1) {
-    return "on the target";
-  }
-
-  return targetCount === 2 ? "on both targets" : "on every target";
-}
-
 export interface AtlasPageProps {
   /** The reader's colour-scheme pick. Held by `App` — see there for why. */
   themeChoice: ThemeChoice;
@@ -426,24 +411,6 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
   const basemap = config.data ? basemapFor(config.data, resolvedDark, basemapChoice) : null;
   const readAt = status.data?.sync.phases.source?.lastCompletedAt;
 
-  /*
-   * Where the route is, when it was read, and whether the targets have it.
-   *
-   * The service stores no locality, so "where" is the operator's own name for
-   * the route wherever that is not already the title — asking a geocoder would
-   * send the library's coordinates outside the Tailnet to answer a question the
-   * naming already answers. The targets are only mentioned when every one of
-   * them holds the whole library, because anything short of that is a statement
-   * about the library rather than about this route.
-   */
-  const subtitle = [
-    openRoute && openRoute.sourceRouteName !== openRoute.title ? openRoute.sourceRouteName : null,
-    readAt ? `read ${formatReadTime(readAt)}` : null,
-    status.data?.converged ? convergedPhrase(status.data.targets.length) : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
-
   return (
     <Layout
       map={
@@ -562,7 +529,6 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
           route={shownRoute}
           movingSecondsOverride={selectionMovingSeconds}
           highestMetres={routeProfile ? routeProfile.maxElevationMetres : null}
-          subtitle={subtitle}
           surface={surfaceSummary}
           surfaceAbsence={
             surface

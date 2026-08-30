@@ -23,6 +23,7 @@ import { useState } from "react";
 import type { Climb } from "../../lib/climbs";
 import { formatAscent, formatDistance, formatGradient } from "../../lib/format";
 import type { UnitSystem } from "../../lib/units";
+import { Separator } from "../ui/separator";
 
 /**
  * One row's height, and how many are shown.
@@ -98,7 +99,9 @@ export function ClimbsTable({
   }
 
   return (
-    <section className="border-t border-[var(--rule)] pt-2">
+    <section>
+      {/* Divides the card, not the route: this is chrome, not structure. */}
+      <Separator className="mb-2" />
       <h3>
         <button
           type="button"

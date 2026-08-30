@@ -27,6 +27,7 @@ import { IconChevronsRight, IconDots, IconX } from "@tabler/icons-react";
 import type { Route } from "../../api/types";
 import { SourceRouteLink } from "../../components/SourceRouteLink";
 import { Popover, PopoverContent, PopoverTrigger } from "../../components/ui/popover";
+import { Separator } from "../../components/ui/separator";
 import type { Climb } from "../../lib/climbs";
 import {
   formatAscent,
@@ -39,7 +40,6 @@ import {
 import type { Highlight } from "../../lib/highlight";
 import { bandEntries, surfaceEntries } from "../../lib/mix";
 import type { BandShare } from "../../lib/profile";
-import { providerLabel } from "../../lib/provider";
 import type { SurfaceSummary } from "../../lib/surface";
 import type { UnitSystem } from "../../lib/units";
 import { ClimbsTable } from "./ClimbsTable";
@@ -65,14 +65,6 @@ export interface RoutePanelProps {
   movingSecondsOverride?: number | undefined;
   /** The whole route's highest point, or null where there is no usable profile. */
   highestMetres: number | null;
-  /**
-   * Where the route is, and when it was read: the panel's second line.
-   *
-   * Composed by the page, because two of the three things it can say — the read
-   * time and whether the targets hold the library — are facts about the sync
-   * rather than about this route.
-   */
-  subtitle: string;
   /** Null for a route nobody has classified, which the key says in words. */
   surface: SurfaceSummary | null;
   surfaceAbsence: string;
@@ -113,7 +105,6 @@ export function RoutePanel({
   route,
   movingSecondsOverride,
   highestMetres,
-  subtitle,
   surface,
   surfaceAbsence,
   bands,
@@ -217,13 +208,19 @@ export function RoutePanel({
           </button>
         </div>
         {collapsed ? null : (
-          <div className="grid w-[23rem] max-w-full gap-2 border-t border-[var(--rule)] px-3 pt-2 pb-3">
-            <p className="text-xs text-[var(--ink-2)]">
-              <span className="font-semibold tracking-[0.06em] uppercase">
-                {providerLabel(route.provider)}
-              </span>
-              {subtitle === "" ? null : ` · ${subtitle}`}
-            </p>
+          <div className="grid w-[23rem] max-w-full gap-2 px-3 pt-2 pb-3">
+            {/*
+             * Base UI's separator always carries `role="separator"`, with no
+             * decorative escape hatch. These three rules only group one card's
+             * parts, so the role says a little more than they mean — the cost
+             * of dividing sections with the component rather than a border.
+             *
+             * Full-bleed against the card's own padding, so the rule reads as
+             * the card's division rather than as a line inside its content,
+             * and `data-horizontal:w-auto` to beat the component's own
+             * `w-full`, which would measure the padding box and fall short.
+             */}
+            <Separator className="-mx-3 -mt-2 data-horizontal:w-auto" />
             <dl className="grid grid-cols-2 gap-x-3 gap-y-1.5">
               <Figure term="Distance">{formatDistance(route.distanceMetres, unitSystem)}</Figure>
               <Figure term="Ascent">{formatAscent(route.ascentMetres, unitSystem)}</Figure>
@@ -258,7 +255,8 @@ export function RoutePanel({
              * the dock's ribbon answers: how much of the ride is gravel, and
              * where the gravel is.
              */}
-            <div className="flex items-start gap-3 border-t border-[var(--rule)] pt-2">
+            <Separator />
+            <div className="flex items-start gap-3">
               <MixColumn
                 name="Gradient"
                 classesLabel="Gradient bands"
