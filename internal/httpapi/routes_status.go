@@ -31,6 +31,12 @@ func reportedAuthorization(stored string, inFlight bool) string {
 	return stored
 }
 
+// What a refused trigger tells the caller is already under way.
+const (
+	syncInProgress           = "a synchronization is already running"
+	syncOrAnnotateInProgress = "a synchronization or classification pass is already running"
+)
+
 // The words for work that has not finished. None may be replaced by the outcome
 // of an earlier run.
 const (
@@ -354,12 +360,7 @@ func (h *Handler) TriggerTargetSync(writer http.ResponseWriter, request *http.Re
 
 		return
 	}
-	if !h.syncRuns.TriggerTarget(targetID) {
-		h.error(writer, http.StatusConflict, "sync_in_progress", "a synchronization is already running")
-
-		return
-	}
-	h.writeJSON(writer, http.StatusAccepted, openapi.Accepted{Status: "accepted"})
+	h.accepted(writer, syncInProgress, func() bool { return h.syncRuns.TriggerTarget(targetID) })
 }
 
 // ClearTarget queues the deletion of every route this service owns on exactly one
@@ -371,17 +372,18 @@ func (h *Handler) ClearTarget(writer http.ResponseWriter, request *http.Request)
 
 		return
 	}
-	if !h.syncRuns.TriggerClear(targetID) {
-		h.error(writer, http.StatusConflict, "sync_in_progress", "a synchronization is already running")
-
-		return
-	}
-	h.writeJSON(writer, http.StatusAccepted, openapi.Accepted{Status: "accepted"})
+	h.accepted(writer, syncInProgress, func() bool { return h.syncRuns.TriggerClear(targetID) })
 }
 
 func (h *Handler) trigger(writer http.ResponseWriter, phase SyncPhase) {
-	if !h.syncRuns.Trigger(phase) {
-		h.error(writer, http.StatusConflict, "sync_in_progress", "a synchronization is already running")
+	h.accepted(writer, syncInProgress, func() bool { return h.syncRuns.Trigger(phase) })
+}
+
+// accepted reports what a manual trigger came to: 202 when the process took the
+// work, 409 when something is already running.
+func (h *Handler) accepted(writer http.ResponseWriter, conflict string, start func() bool) {
+	if !start() {
+		h.error(writer, http.StatusConflict, "sync_in_progress", conflict)
 
 		return
 	}
@@ -391,12 +393,7 @@ func (h *Handler) trigger(writer http.ResponseWriter, phase SyncPhase) {
 // TriggerSurfaceSync queues one classification pass, independent of either half.
 // It reads no source and writes no target, and shares their single-flight guard.
 func (h *Handler) TriggerSurfaceSync(writer http.ResponseWriter, _ *http.Request) {
-	if !h.syncRuns.TriggerAnnotate() {
-		h.error(writer, http.StatusConflict, "sync_in_progress", "a synchronization or classification pass is already running")
-
-		return
-	}
-	h.writeJSON(writer, http.StatusAccepted, openapi.Accepted{Status: "accepted"})
+	h.accepted(writer, syncOrAnnotateInProgress, func() bool { return h.syncRuns.TriggerAnnotate() })
 }
 
 // trustedInventoryFreshness reports the inventory's age against the configured
