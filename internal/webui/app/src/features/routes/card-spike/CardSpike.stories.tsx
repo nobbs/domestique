@@ -10,7 +10,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
 import type { Highlight } from "../../../lib/highlight";
 import { StoryProviders } from "../../../storybook/fixtures";
-import { AirCard, BandCard, HierarchyCard, LedgerCard, RailCard } from "./variants";
+import { AirCard, BandCard, HierarchyCard, LedgerCard, RailCard, SlideCard } from "./variants";
 
 const meta = {
   title: "Spikes/Route Card",
@@ -100,3 +100,4 @@ export const BandsOnly = only(BandCard);
 export const LedgerOnly = only(LedgerCard);
 export const HierarchyOnly = only(HierarchyCard);
 export const RailOnly = only(RailCard);
+export const SlideOnly = only(SlideCard);

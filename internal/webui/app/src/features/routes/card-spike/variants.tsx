@@ -12,6 +12,7 @@
  */
 
 import {
+  IconArrowLeft,
   IconChevronDown,
   IconChevronRight,
   IconDots,
@@ -19,7 +20,7 @@ import {
   IconTrendingUp,
   IconX,
 } from "@tabler/icons-react";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useLayoutEffect, useRef, useState } from "react";
 import { MixColumn } from "../../../components/route/MixColumn";
 import type { Highlight } from "../../../lib/highlight";
 import {
@@ -510,6 +511,174 @@ export function RailCard(props: BodyProps) {
         <RailSection name="Climbs" summary={CLIMB_SUMMARY}>
           <ClimbRows />
         </RailSection>
+      </div>
+    </Shell>
+  );
+}
+
+/* ---------------------------------------------------------------- F: Slide */
+
+/**
+ * A's typography, with its folds replaced by a slide.
+ *
+ * Opening a section stopped meaning "grow the card" and started meaning "go
+ * there": the figures leave to the left and the section arrives in their
+ * place, with the way back where a reader already looks for it. The card
+ * keeps one job on screen at a time.
+ *
+ * Two things fold-out could not do. The card no longer changes how much map it
+ * covers depending on what a reader opened — the camera frames a route around
+ * a panel whose height is now nearly constant. And a section gets the whole
+ * width and the whole height for as long as it is the thing being read,
+ * instead of the room left over beneath six figures.
+ *
+ * The height still animates, because the three views genuinely differ in
+ * length and snapping between them reads as a glitch rather than as a move.
+ */
+const VIEWS = ["figures", "mix", "climbs"] as const;
+type View = (typeof VIEWS)[number];
+
+const VIEW_NAMES: Record<View, string> = {
+  figures: "Route",
+  mix: "Gradient and surface",
+  climbs: "Climbs",
+};
+
+function SlideRow({
+  name,
+  summary,
+  onOpen,
+}: {
+  name: string;
+  summary: string;
+  onOpen: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="group flex w-full items-baseline gap-2 rounded py-1 text-left hover:bg-[var(--base)]"
+    >
+      <span className="text-[10px] font-semibold tracking-[0.08em] text-[var(--ink-2)] uppercase">
+        {name}
+      </span>
+      <span className="min-w-0 flex-1 truncate text-[11px] text-[var(--ink-2)] group-hover:text-[var(--ink)]">
+        {summary}
+      </span>
+      <IconChevronRight
+        size={12}
+        stroke={2}
+        aria-hidden="true"
+        className="shrink-0 text-[var(--ink-2)] transition-transform group-hover:translate-x-0.5"
+      />
+    </button>
+  );
+}
+
+/** The way back, in the place the section's own name would otherwise sit. */
+function SlideHeader({ name, onBack }: { name: string; onBack: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onBack}
+      className="group -ml-1 flex w-full items-center gap-1.5 rounded px-1 py-1 text-left hover:bg-[var(--base)]"
+    >
+      <IconArrowLeft
+        size={12}
+        stroke={2}
+        aria-hidden="true"
+        className="shrink-0 text-[var(--ink-2)] transition-transform group-hover:-translate-x-0.5"
+      />
+      <span className="text-[10px] font-semibold tracking-[0.08em] text-[var(--ink-2)] uppercase">
+        {name}
+      </span>
+    </button>
+  );
+}
+
+export function SlideCard(props: BodyProps) {
+  const [view, setView] = useState<View>("figures");
+  const index = VIEWS.indexOf(view);
+  const panes = useRef<Array<HTMLDivElement | null>>([]);
+  const [height, setHeight] = useState<number>();
+
+  // The viewport takes the height of whichever pane is showing, so the card is
+  // as tall as what it is holding rather than as tall as its longest section.
+  useLayoutEffect(() => {
+    const pane = panes.current[index];
+    if (!pane) {
+      return;
+    }
+    setHeight(pane.getBoundingClientRect().height);
+    // Again once the browser has had a frame: the mix pane holds a drawn
+    // column and the climbs pane a table, and a height read in the same tick
+    // they mount is short by whatever had not been laid out yet.
+    const settle = requestAnimationFrame(() =>
+      setHeight(panes.current[index]?.getBoundingClientRect().height),
+    );
+
+    return () => cancelAnimationFrame(settle);
+  }, [index]);
+
+  return (
+    <Shell>
+      <div
+        className="overflow-hidden transition-[height] duration-200 ease-out"
+        style={height === undefined ? undefined : { height }}
+      >
+        <div
+          className="flex items-start transition-transform duration-200 ease-out"
+          style={{
+            width: `${VIEWS.length * 100}%`,
+            transform: `translateX(-${index * (100 / VIEWS.length)}%)`,
+          }}
+        >
+          <div
+            ref={(node) => {
+              panes.current[0] = node;
+            }}
+            style={{ width: `${100 / VIEWS.length}%` }}
+            className="shrink-0 px-3 pt-1 pb-3"
+          >
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+              <AirFigure term="Distance" value={FIGURES.distance} />
+              <AirFigure term="Ascent" value={FIGURES.ascent} />
+              <AirFigure term="Elevation" value={FIGURES.elevation} />
+              <AirFigure term="Avg climbing" value={FIGURES.averageClimbing} />
+              <AirFigure term="Max climb" value={FIGURES.steepestClimbing} icon="up" />
+              <AirFigure term="Max descent" value={FIGURES.steepestDescent} icon="down" />
+              <AirFigure term="Moving time" value={FIGURES.movingTime} span />
+            </dl>
+            <div className="mt-3 grid gap-0.5">
+              <SlideRow name="Mix" summary={MIX_SUMMARY} onOpen={() => setView("mix")} />
+              <SlideRow name="Climbs" summary={CLIMB_SUMMARY} onOpen={() => setView("climbs")} />
+            </div>
+          </div>
+          <div
+            ref={(node) => {
+              panes.current[1] = node;
+            }}
+            style={{ width: `${100 / VIEWS.length}%` }}
+            className="shrink-0 px-3 pt-1 pb-3"
+          >
+            <SlideHeader name={VIEW_NAMES.mix} onBack={() => setView("figures")} />
+            <div className="pt-2">
+              <Mixes {...props} />
+            </div>
+          </div>
+          <div
+            ref={(node) => {
+              panes.current[2] = node;
+            }}
+            style={{ width: `${100 / VIEWS.length}%` }}
+            className="shrink-0 px-3 pt-1 pb-3"
+          >
+            <SlideHeader name={VIEW_NAMES.climbs} onBack={() => setView("figures")} />
+            <div className="pt-2">
+              <ClimbRows />
+            </div>
+          </div>
+        </div>
       </div>
     </Shell>
   );
