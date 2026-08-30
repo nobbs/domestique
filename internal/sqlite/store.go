@@ -615,5 +615,11 @@ func schemaMigrations() [][]string {
 				PRIMARY KEY (provider, route_id, stage_order, pass)
 			)`,
 		},
+		{
+			// The name a message about a run can carry. It is random and means
+			// nothing on its own, which is what makes it safe to send.
+			`ALTER TABLE task_runs ADD COLUMN reference TEXT NOT NULL DEFAULT ''`,
+			`UPDATE task_runs SET reference = lower(hex(randomblob(6))) WHERE reference = ''`,
+		},
 	}
 }

@@ -572,8 +572,18 @@ func TestAScheduledRunDoesNotStartOnceTheContextIsDone(t *testing.T) {
 func TestNewManagerNeedsSomewhereToRecord(t *testing.T) {
 	t.Parallel()
 
-	_, err := NewManager(nil)
-	assert.Error(t, err, "NewManager()")
+	for name, build := range map[string]func() (*Manager, error){
+		"no store":    func() (*Manager, error) { return NewManager(nil, &fakeNotifier{}, alwaysOn) },
+		"no notifier": func() (*Manager, error) { return NewManager(&recordingStore{}, nil, alwaysOn) },
+		"no switch":   func() (*Manager, error) { return NewManager(&recordingStore{}, &fakeNotifier{}, nil) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := build()
+			assert.Error(t, err, "NewManager()")
+		})
+	}
 }
 
 func TestAnAttemptIsRecordedWithWhatItCameTo(t *testing.T) {
@@ -730,11 +740,47 @@ func TestAHistoryThatCannotBeWrittenDoesNotChangeTheOutcome(t *testing.T) {
 func newTestManager(t *testing.T) (*Manager, *recordingStore) {
 	t.Helper()
 
-	store := &recordingStore{}
-	manager, err := NewManager(store)
-	require.NoError(t, err, "NewManager()")
+	manager, store, _ := newAlertingManager(t)
 
 	return manager, store
+}
+
+func newAlertingManager(t *testing.T) (*Manager, *recordingStore, *fakeNotifier) {
+	t.Helper()
+
+	store, notifier := &recordingStore{}, &fakeNotifier{}
+	manager, err := NewManager(store, notifier, alwaysOn)
+	require.NoError(t, err, "NewManager()")
+
+	return manager, store, notifier
+}
+
+func alwaysOn() bool { return true }
+
+type sentAlert struct {
+	title   string
+	message string
+}
+
+type fakeNotifier struct {
+	err   error
+	sent  []sentAlert
+	mutex sync.Mutex
+}
+
+func (n *fakeNotifier) Send(_ context.Context, title, message string) error {
+	n.mutex.Lock()
+	defer n.mutex.Unlock()
+	n.sent = append(n.sent, sentAlert{title: title, message: message})
+
+	return n.err
+}
+
+func (n *fakeNotifier) messages() []sentAlert {
+	n.mutex.Lock()
+	defer n.mutex.Unlock()
+
+	return slices.Clone(n.sent)
 }
 
 type recordedRun struct {
@@ -746,13 +792,18 @@ type recordedRun struct {
 }
 
 type recordingStore struct {
-	err   error
-	runs  []recordedRun
-	mutex sync.Mutex
+	err         error
+	historyErr  error
+	suppressErr error
+	notifiedAt  map[string]time.Time
+	reference   string
+	runs        []recordedRun
+	mutex       sync.Mutex
 }
 
 func (s *recordingStore) RecordTaskRun(
-	_ context.Context, task, argument string, startedAt, finishedAt time.Time, outcome, detail string, retain int,
+	_ context.Context, task, argument string, startedAt, finishedAt time.Time,
+	outcome, detail, reference string, retain int,
 ) error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
@@ -760,11 +811,33 @@ func (s *recordingStore) RecordTaskRun(
 	if finishedAt.Before(startedAt) {
 		return errors.New("an attempt finished before it started")
 	}
+	s.reference = reference
 	s.runs = append(s.runs, recordedRun{
 		task: task, argument: argument, outcome: outcome, detail: detail, retain: retain,
 	})
 
 	return s.err
+}
+
+func (s *recordingStore) LastFailureNotification(_ context.Context, category string) (time.Time, bool, error) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	sentAt, found := s.notifiedAt[category]
+
+	return sentAt, found, s.historyErr
+}
+
+func (s *recordingStore) RecordFailureNotification(_ context.Context, category string, sentAt time.Time) error {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	if s.notifiedAt == nil {
+		s.notifiedAt = make(map[string]time.Time)
+	}
+	s.notifiedAt[category] = sentAt
+
+	return s.suppressErr
 }
 
 func (s *recordingStore) recorded() []recordedRun {
@@ -1099,4 +1172,248 @@ func TestACoalescedLinkCountsAsRunForTheRestOfTheChain(t *testing.T) {
 	childRuns.Lock()
 	defer childRuns.Unlock()
 	assert.Equal(t, 1, runs, "a coalesced link was asked for again once its work had finished")
+}
+
+// A failing task is worth one message. The same message every tick afterwards
+// is noise an operator learns to ignore, which is how the message that mattered
+// gets missed.
+func TestAFailingTaskIsAnnouncedOncePerWindow(t *testing.T) {
+	t.Parallel()
+
+	manager, _, notifier := newAlertingManager(t)
+	now := reference()
+	manager.now = func() time.Time { return now }
+	require.NoError(t, manager.Register(&Definition{
+		Name:   "sync",
+		Notify: &Notify{Title: "Domestique sync failed", Suppress: 6 * time.Hour},
+		Run: RunnerFunc(func(context.Context, Invocation) Result {
+			return Result{Outcome: Failed, Detail: "destination"}
+		}),
+	}), "Register()")
+
+	require.True(t, manager.Trigger(t.Context(), "sync", ""), "first Trigger()")
+	manager.Wait()
+	now = now.Add(5 * time.Hour)
+	require.True(t, manager.Trigger(t.Context(), "sync", ""), "second Trigger()")
+	manager.Wait()
+	now = now.Add(2 * time.Hour)
+	require.True(t, manager.Trigger(t.Context(), "sync", ""), "third Trigger()")
+	manager.Wait()
+
+	sent := notifier.messages()
+	require.Len(t, sent, 2, "sent alerts")
+	for _, alert := range sent {
+		assert.Equal(t, "Domestique sync failed", alert.title, "alert title")
+		assert.Regexp(t, `^sync failed: destination run=[0-9a-z]{12}$`, alert.message, "alert message")
+	}
+}
+
+// The window is keyed by the reason as well as the task: a library that cannot
+// be read and a target that needs reauthorising are separate problems.
+func TestTwoReasonsAreAnnouncedSeparately(t *testing.T) {
+	t.Parallel()
+
+	manager, _, notifier := newAlertingManager(t)
+	detail := Detail("source")
+	require.NoError(t, manager.Register(&Definition{
+		Name:   "sync",
+		Notify: &Notify{Title: "Domestique sync failed", Suppress: 6 * time.Hour},
+		Run: RunnerFunc(func(context.Context, Invocation) Result {
+			return Result{Outcome: Failed, Detail: detail}
+		}),
+	}), "Register()")
+
+	require.True(t, manager.Trigger(t.Context(), "sync", ""), "first Trigger()")
+	manager.Wait()
+	detail = "destination"
+	require.True(t, manager.Trigger(t.Context(), "sync", ""), "second Trigger()")
+	manager.Wait()
+
+	assert.Len(t, notifier.messages(), 2, "a second reason was silenced by the first")
+}
+
+func TestAnAlertNamesTheArgumentItIsAbout(t *testing.T) {
+	t.Parallel()
+
+	manager, _, notifier := newAlertingManager(t)
+	require.NoError(t, manager.Register(&Definition{
+		Name:   "sync:target",
+		Notify: &Notify{Title: "Domestique sync failed", Suppress: time.Hour},
+		Run: RunnerFunc(func(context.Context, Invocation) Result {
+			return Result{Outcome: Blocked, Detail: "deletion_limit"}
+		}),
+	}), "Register()")
+
+	require.True(t, manager.Trigger(t.Context(), "sync:target", "rider-a"), "Trigger()")
+	manager.Wait()
+
+	sent := notifier.messages()
+	require.Len(t, sent, 1, "sent alerts")
+	assert.Equal(t, "Domestique sync failed", sent[0].title, "alert title")
+	assert.Regexp(t, `^sync:target rider-a blocked: deletion_limit run=[0-9a-z]{12}$`,
+		sent[0].message, "alert message")
+}
+
+// Nothing is written down as sent until it has been, so a channel that was down
+// does not silence the alert it failed to carry.
+func TestAnAlertThatCouldNotBeSentIsTriedAgain(t *testing.T) {
+	t.Parallel()
+
+	manager, store, notifier := newAlertingManager(t)
+	notifier.err = errors.New("channel unreachable")
+	require.NoError(t, manager.Register(&Definition{
+		Name:   "sync",
+		Notify: &Notify{Title: "Domestique sync failed", Suppress: 6 * time.Hour},
+		Run: RunnerFunc(func(context.Context, Invocation) Result {
+			return Result{Outcome: Failed, Detail: "destination"}
+		}),
+	}), "Register()")
+
+	require.True(t, manager.Trigger(t.Context(), "sync", ""), "Trigger()")
+	manager.Wait()
+
+	assert.Empty(t, store.notifiedAt, "a message that never went out was recorded as sent")
+}
+
+// Nothing is announced about an outcome that is not a fault, and nothing at all
+// about a task that declared no alerts.
+func TestOnlyAFaultingTaskThatDeclaredAlertsIsAnnounced(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		definition Definition
+		want       int
+	}{
+		"a refusal is not a fault": {
+			definition: Definition{
+				Name:   "a",
+				Notify: &Notify{Title: "t", Suppress: time.Hour},
+				Run: RunnerFunc(func(context.Context, Invocation) Result {
+					return Result{Outcome: Skipped, Detail: DetailHeld}
+				}),
+			},
+		},
+		"a success is not a fault": {
+			definition: Definition{
+				Name:   "a",
+				Notify: &Notify{Title: "t", Suppress: time.Hour},
+				Run:    succeeds(),
+			},
+		},
+		"a task that declared nothing": {
+			definition: Definition{
+				Name: "a",
+				Run: RunnerFunc(func(context.Context, Invocation) Result {
+					return Result{Outcome: Failed, Detail: "destination"}
+				}),
+			},
+		},
+		"a fault that did declare them": {
+			definition: Definition{
+				Name:   "a",
+				Notify: &Notify{Title: "t", Suppress: time.Hour},
+				Run: RunnerFunc(func(context.Context, Invocation) Result {
+					return Result{Outcome: Failed, Detail: "destination"}
+				}),
+			},
+			want: 1,
+		},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			manager, _, notifier := newAlertingManager(t)
+			require.NoError(t, manager.Register(&test.definition), "Register()")
+			require.True(t, manager.Trigger(t.Context(), "a", ""), "Trigger()")
+			manager.Wait()
+
+			assert.Len(t, notifier.messages(), test.want, "sent alerts")
+		})
+	}
+}
+
+// The switch is read at the moment a message would go out, and nothing is
+// written down as sent while it is off: turning it back on must not find a
+// suppression window it never heard the alert behind.
+func TestNothingIsAnnouncedOrRecordedWhileTheChannelIsOff(t *testing.T) {
+	t.Parallel()
+
+	store, notifier := &recordingStore{}, &fakeNotifier{}
+	manager, err := NewManager(store, notifier, func() bool { return false })
+	require.NoError(t, err, "NewManager()")
+	require.NoError(t, manager.Register(&Definition{
+		Name:   "sync",
+		Notify: &Notify{Title: "Domestique sync failed", Suppress: 6 * time.Hour},
+		Run: RunnerFunc(func(context.Context, Invocation) Result {
+			return Result{Outcome: Failed, Detail: "destination"}
+		}),
+	}), "Register()")
+
+	require.True(t, manager.Trigger(t.Context(), "sync", ""), "Trigger()")
+	manager.Wait()
+
+	assert.Empty(t, notifier.messages(), "a message went out while the channel was off")
+	assert.Empty(t, store.notifiedAt, "a suppression window was opened while the channel was off")
+}
+
+// An unreadable suppression history is not licence to send: a channel that has
+// already carried this alert must not carry it again on every tick because the
+// record of it could not be read.
+func TestAnAlertIsHeldBackWhenItsHistoryCannotBeRead(t *testing.T) {
+	t.Parallel()
+
+	manager, store, notifier := newAlertingManager(t)
+	store.historyErr = errors.New("state unavailable")
+	require.NoError(t, manager.Register(&Definition{
+		Name:   "sync",
+		Notify: &Notify{Title: "Domestique sync failed", Suppress: time.Hour},
+		Run: RunnerFunc(func(context.Context, Invocation) Result {
+			return Result{Outcome: Failed, Detail: "destination"}
+		}),
+	}), "Register()")
+
+	require.True(t, manager.Trigger(t.Context(), "sync", ""), "Trigger()")
+	manager.Wait()
+
+	assert.Empty(t, notifier.messages(), "an alert went out on an unreadable history")
+}
+
+// A message that has gone out has gone out. Failing to write down that it did
+// costs one repeat at the next tick, which beats not sending it at all.
+func TestAnAlertStillGoesOutWhenItsSuppressionCannotBeRecorded(t *testing.T) {
+	t.Parallel()
+
+	manager, store, notifier := newAlertingManager(t)
+	store.suppressErr = errors.New("state unavailable")
+	require.NoError(t, manager.Register(&Definition{
+		Name:   "sync",
+		Notify: &Notify{Title: "Domestique sync failed", Suppress: time.Hour},
+		Run: RunnerFunc(func(context.Context, Invocation) Result {
+			return Result{Outcome: Failed, Detail: "destination"}
+		}),
+	}), "Register()")
+
+	require.True(t, manager.Trigger(t.Context(), "sync", ""), "Trigger()")
+	manager.Wait()
+
+	assert.Len(t, notifier.messages(), 1, "the alert was lost with its suppression record")
+}
+
+// Every message names its run, and no two runs share a name.
+func TestEachAttemptIsNamedSomethingOfItsOwn(t *testing.T) {
+	t.Parallel()
+
+	manager, store, _ := newAlertingManager(t)
+	require.NoError(t, manager.Register(&Definition{Name: "a", Run: succeeds()}), "Register()")
+
+	require.True(t, manager.Trigger(t.Context(), "a", ""), "first Trigger()")
+	manager.Wait()
+	first := store.reference
+
+	require.True(t, manager.Trigger(t.Context(), "a", ""), "second Trigger()")
+	manager.Wait()
+
+	assert.Len(t, first, runReferenceLength, "a run was named something the wrong length")
+	assert.NotEqual(t, first, store.reference, "two runs shared a name")
 }

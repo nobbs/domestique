@@ -30,6 +30,9 @@ func (a admission) detail() Detail {
 	return DetailHeld
 }
 
+// runReferenceLength is how much of a random name one attempt carries.
+const runReferenceLength = 12
+
 // maxChainDepth bounds how far one attempt's consequences may reach. Every
 // chain the service registers is one or two links long; this is the backstop
 // behind the set of what a chain has already run.
@@ -63,6 +66,12 @@ const (
 	// nothing at all.
 	Current Outcome = "current"
 )
+
+// alerts reports whether an attempt with this outcome is worth announcing. A
+// refusal is not: something else was working, which is not a fault.
+func (o Outcome) alerts() bool {
+	return o == Failed || o == Blocked
+}
 
 // recorded reports whether an attempt with this outcome is written down. One
 // that found its work already current did nothing worth remembering, and a
@@ -135,6 +144,17 @@ func (f RunnerFunc) Run(ctx context.Context, invocation Invocation) Result {
 	return f(ctx, invocation)
 }
 
+// Notify is what the layer announces about one task. A task declares it once;
+// which of its alerts actually reach anyone is a separate question.
+type Notify struct {
+	// Title is what a message about this task is titled.
+	Title string
+	// Suppress is how long one alert silences the next for the same reason. A
+	// failing task is worth one message, and the same message every tick
+	// afterwards is noise an operator learns to ignore.
+	Suppress time.Duration
+}
+
 // Resource is state an attempt needs before it may start. Two attempts wanting
 // the same name serialize unless both want it shared.
 type Resource struct {
@@ -154,6 +174,9 @@ type Definition struct {
 	// InitialDelay is how long the first scheduled run waits after start. It is
 	// read once, when the schedule starts.
 	InitialDelay func() time.Duration
+	// Notify is what an alert about this task says and how often it may say it.
+	// Nil is a task nothing is announced about.
+	Notify *Notify
 	// Name identifies the task and is what a trigger asks for.
 	Name string
 	// Concurrency is how many attempts of this task may run at once. Zero means
@@ -162,6 +185,11 @@ type Definition struct {
 	// Retain is how many of this task's attempts are kept. Zero means the
 	// default; the most recent attempt over each argument is kept regardless.
 	Retain int
+}
+
+// alerts reports whether anything is announced about this task.
+func (d *Definition) alerts() bool {
+	return d.Notify != nil && d.Notify.Suppress > 0
 }
 
 // resources is the set this argument needs, empty when the task named none.

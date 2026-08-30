@@ -2,9 +2,11 @@ package task
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -14,24 +16,35 @@ import (
 // as a concrete store so this package carries no storage concern, and it deals
 // in strings so the store carries none of this package's vocabulary.
 type Store interface {
-	// RecordTaskRun writes one attempt down and prunes that task's history back
-	// to retain, keeping the most recent attempt over each argument whatever
-	// its age.
+	// RecordTaskRun writes one attempt down under the name a message about it
+	// may carry, and prunes that task's history back to retain, keeping the most
+	// recent attempt over each argument whatever its age.
 	RecordTaskRun(
 		ctx context.Context,
 		task, argument string,
 		startedAt, finishedAt time.Time,
-		outcome, detail string,
+		outcome, detail, reference string,
 		retain int,
 	) error
+	// LastFailureNotification reports when an alert of this kind last went out.
+	LastFailureNotification(ctx context.Context, category string) (sentAt time.Time, found bool, err error)
+	// RecordFailureNotification remembers that one did.
+	RecordFailureNotification(ctx context.Context, category string, sentAt time.Time) error
+}
+
+// Notifier delivers already-safe alert text.
+type Notifier interface {
+	Send(ctx context.Context, title, message string) error
 }
 
 // Manager owns every registered task: it runs them on their schedules, keeps
 // them off each other's resources, and waits for them at shutdown.
 type Manager struct {
-	now   func() time.Time
-	after func(time.Duration) <-chan time.Time
-	store Store
+	now      func() time.Time
+	after    func(time.Duration) <-chan time.Time
+	store    Store
+	notifier Notifier
+	enabled  func() bool
 
 	shared    map[string]int
 	exclusive map[string]struct{}
@@ -56,16 +69,20 @@ type registered struct {
 }
 
 // NewManager creates an empty manager over the store its attempts are recorded
-// in. Nothing runs until Run is called.
-func NewManager(store Store) (*Manager, error) {
-	if store == nil {
-		return nil, errors.New("task: a run store is required")
+// in and the channel its alerts go out on. Nothing runs until Run is called.
+// enabled is read at the moment a message would go out rather than captured,
+// because an operator edits it while the service runs.
+func NewManager(store Store, notifier Notifier, enabled func() bool) (*Manager, error) {
+	if store == nil || notifier == nil || enabled == nil {
+		return nil, errors.New("task: a run store, a notifier and a notification switch are required")
 	}
 
 	return &Manager{
 		now:       time.Now,
 		after:     time.After,
 		store:     store,
+		notifier:  notifier,
+		enabled:   enabled,
 		shared:    make(map[string]int),
 		exclusive: make(map[string]struct{}),
 		running:   make(map[invocationKey]struct{}),
@@ -320,6 +337,7 @@ func (m *Manager) record(
 	if finishedAt.Before(startedAt) {
 		finishedAt = startedAt
 	}
+	reference := newRunReference()
 	if err := m.store.RecordTaskRun(
 		ctx,
 		invocation.Task,
@@ -328,10 +346,67 @@ func (m *Manager) record(
 		finishedAt,
 		string(result.Outcome),
 		string(result.Detail),
+		reference,
 		entry.definition.retain(),
 	); err != nil {
 		slog.Warn("task run not recorded", "task", invocation.Task, "error", err)
+
+		return
 	}
+	m.announce(ctx, entry, invocation, result, reference, finishedAt)
+}
+
+// announce sends one alert for a run that went wrong, no more often than the
+// task's own suppression window allows. The window is keyed by the reason as
+// well as the task: a library that cannot be read and a target that needs
+// reauthorising are separate problems and are worth saying separately.
+func (m *Manager) announce(
+	ctx context.Context,
+	entry *registered,
+	invocation Invocation,
+	result Result,
+	reference string,
+	now time.Time,
+) {
+	if !entry.definition.alerts() || !result.Outcome.alerts() || !m.enabled() {
+		return
+	}
+	category := invocation.Task + ":" + string(result.Detail)
+	lastSentAt, found, err := m.store.LastFailureNotification(ctx, category)
+	if err != nil || (found && now.Sub(lastSentAt) < entry.definition.Notify.Suppress) {
+		return
+	}
+	if err := m.notifier.Send(ctx, entry.definition.Notify.Title, alertMessage(invocation, result, reference)); err != nil {
+		return
+	}
+	// Nothing is written down as sent until it has been, so a delivery that
+	// failed is tried again rather than silenced by its own suppression.
+	if err := m.store.RecordFailureNotification(ctx, category, now); err != nil {
+		slog.Warn("alert suppression not recorded", "task", invocation.Task, "error", err)
+	}
+}
+
+// newRunReference names one attempt. It is random and means nothing on its own,
+// which is what makes it safe to send; twelve characters are readable aloud and
+// leave a bounded history nowhere near a collision.
+func newRunReference() string {
+	return strings.ToLower(rand.Text()[:runReferenceLength])
+}
+
+// alertMessage says which task went wrong, over what, and why. Every message
+// names its run: the reference is random and means nothing on its own, which is
+// what makes it safe to send.
+func alertMessage(invocation Invocation, result Result, reference string) string {
+	message := invocation.Task
+	if invocation.Argument != "" {
+		message += " " + invocation.Argument
+	}
+	message += " " + string(result.Outcome)
+	if result.Detail != "" {
+		message += ": " + string(result.Detail)
+	}
+
+	return message + " run=" + reference
 }
 
 // admit takes a concurrency slot and the whole resource set together, returning

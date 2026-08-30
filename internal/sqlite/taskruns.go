@@ -8,17 +8,19 @@ import (
 	"time"
 )
 
-// RecordTaskRun stores what one attempt came to and prunes that task's history
-// back to its bound. It records no provider text, no route name, and no
-// upstream identifier: the detail is a stable category.
+// RecordTaskRun stores what one attempt came to, under the name a message about
+// it can carry, and prunes that task's history back to its bound. It records no
+// provider text, no route name, and no upstream identifier: the detail is a
+// stable category and the reference is random.
 func (s *Store) RecordTaskRun(
 	ctx context.Context,
 	task, argument string,
 	startedAt, finishedAt time.Time,
-	outcome, detail string,
+	outcome, detail, reference string,
 	retain int,
 ) error {
-	if task == "" || outcome == "" || startedAt.IsZero() || finishedAt.IsZero() || finishedAt.Before(startedAt) {
+	if task == "" || outcome == "" || reference == "" ||
+		startedAt.IsZero() || finishedAt.IsZero() || finishedAt.Before(startedAt) {
 		return errors.New("complete task run metadata is required")
 	}
 	if retain < 1 {
@@ -32,9 +34,9 @@ func (s *Store) RecordTaskRun(
 	defer rollback(transaction)
 
 	if _, err := transaction.ExecContext(ctx, `
-		INSERT INTO task_runs (task, argument, started_at_unix, finished_at_unix, outcome, detail)
-		VALUES (?, ?, ?, ?, ?, ?)
-	`, task, argument, startedAt.Unix(), finishedAt.Unix(), outcome, detail); err != nil {
+		INSERT INTO task_runs (task, argument, started_at_unix, finished_at_unix, outcome, detail, reference)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+	`, task, argument, startedAt.Unix(), finishedAt.Unix(), outcome, detail, reference); err != nil {
 		return fmt.Errorf("recording task run: %w", err)
 	}
 	if err := pruneTaskRuns(ctx, transaction, task, retain); err != nil {
