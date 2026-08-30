@@ -30,6 +30,13 @@ func TestRegisterRefusesADefinitionItCannotRun(t *testing.T) {
 	}
 }
 
+func TestRegisterRefusesNoDefinitionAtAll(t *testing.T) {
+	t.Parallel()
+
+	manager, _ := newTestManager(t)
+	assert.Error(t, manager.Register(nil), "Register(nil)")
+}
+
 func TestRegisterRefusesTheSameNameTwice(t *testing.T) {
 	t.Parallel()
 

@@ -452,3 +452,53 @@ func TestIndexResultSeparatesABuildFromAnUpstreamThatHadNothingNew(t *testing.T)
 		})
 	}
 }
+
+func TestRegisterTasksRefusesADefinitionTheLayerCannotRun(t *testing.T) {
+	t.Parallel()
+
+	_, err := registerTasks(&countingStore{}, []task.Definition{{Name: "", Run: nil}})
+	require.Error(t, err, "registerTasks()")
+}
+
+func TestRegisterTasksNeedsSomewhereToRecord(t *testing.T) {
+	t.Parallel()
+
+	_, err := registerTasks(nil, nil)
+	require.Error(t, err, "registerTasks()")
+}
+
+func TestRegisterTasksTakesEveryDefinitionItIsGiven(t *testing.T) {
+	t.Parallel()
+
+	definitions := append(inventoryTasks(&fakeSynchronizer{}, liveSettings(t)),
+		surfaceIndexTask(&fakeIndexBuilder{}, liveSettings(t), time.Time{}))
+
+	manager, err := registerTasks(&countingStore{}, definitions)
+	require.NoError(t, err, "registerTasks()")
+	for _, definition := range definitions {
+		_, known := manager.NextRunAt(definition.Name)
+		assert.False(t, known, definition.Name+" is holding a first run before anything started")
+	}
+}
+
+// An outcome this binary has not heard of must not read as a success: the
+// history would say the map moved when nothing here knows whether it did.
+func TestIndexResultTreatsAnUnknownOutcomeAsAFailure(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t,
+		task.Result{Outcome: task.Failed, Detail: detailBuild},
+		indexResult("invented", nil),
+		"indexResult()",
+	)
+}
+
+type countingStore struct{ runs int }
+
+func (s *countingStore) RecordTaskRun(
+	context.Context, string, string, time.Time, time.Time, string, string, int,
+) error {
+	s.runs++
+
+	return nil
+}

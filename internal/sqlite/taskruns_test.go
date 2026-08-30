@@ -1,6 +1,7 @@
 package sqlite
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -136,4 +137,53 @@ func readTaskRuns(t *testing.T, store *Store, task string) []taskRun {
 		}), "ForEachTaskRun()")
 
 	return runs
+}
+
+func TestRecordTaskRunReportsAnUnreadableDatabase(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t, testKey(1))
+	at := time.Date(2026, time.August, 30, 9, 0, 0, 0, time.UTC)
+	require.NoError(t, store.Close(), "Close()")
+
+	require.Error(t, store.RecordTaskRun(
+		t.Context(), "sync", "", at, at, "succeeded", "", 1,
+	), "RecordTaskRun() on a closed database")
+}
+
+func TestForEachTaskRunReportsAnUnreadableDatabase(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.Close(), "Close()")
+
+	require.Error(t, store.ForEachTaskRun(t.Context(), "sync",
+		func(string, time.Time, time.Time, string, string) error { return nil },
+	), "ForEachTaskRun() on a closed database")
+}
+
+// A visitor that gives up stops the read rather than being called again for
+// every remaining row.
+func TestForEachTaskRunStopsWhenTheVisitorDoes(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t, testKey(1))
+	at := time.Date(2026, time.August, 30, 9, 0, 0, 0, time.UTC)
+	for run := range 3 {
+		require.NoError(t, store.RecordTaskRun(
+			t.Context(), "sync", "", at.Add(time.Duration(run)*time.Minute),
+			at.Add(time.Duration(run)*time.Minute), "succeeded", "", 5,
+		), "RecordTaskRun()")
+	}
+
+	visits := 0
+	giveUp := errors.New("enough")
+	err := store.ForEachTaskRun(t.Context(), "sync", func(string, time.Time, time.Time, string, string) error {
+		visits++
+
+		return giveUp
+	})
+
+	require.ErrorIs(t, err, giveUp, "ForEachTaskRun()")
+	assert.Equal(t, 1, visits, "the visitor was called again after giving up")
 }
