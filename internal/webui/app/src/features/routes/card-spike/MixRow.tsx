@@ -79,6 +79,7 @@ export function MixRow({
   classesLabel,
   entries,
   absence,
+  tagSide = "below",
   gapped = false,
   highlight,
   onHighlightChange,
@@ -87,6 +88,15 @@ export function MixRow({
   classesLabel: string;
   entries: MixEntry[];
   absence: string;
+  /**
+   * Which side of the bar the tags hang off.
+   *
+   * The pair is drawn mirrored — gradient's tags above its bar, surface's
+   * below its own — so the two bars meet in the middle with nothing between
+   * them and the labelling fans outward. It puts the two things being compared
+   * a few pixels apart instead of a caption and a heading apart.
+   */
+  tagSide?: "above" | "below";
   /**
    * Whether the segments are separated rather than butted together.
    *
@@ -101,6 +111,7 @@ export function MixRow({
   highlight: Highlight | null;
   onHighlightChange: (next: Highlight | null) => void;
 }) {
+  const above = tagSide === "above";
   const { ref, width } = useElementWidth<HTMLDivElement>();
   const extent = width > 0 ? width : ASSUMED_WIDTH;
   const places = placeTags(
@@ -109,10 +120,7 @@ export function MixRow({
   );
 
   return (
-    <section>
-      <h3 className="mb-1 text-[11px] font-semibold tracking-[0.06em] text-[var(--ink-2)] uppercase">
-        {name}
-      </h3>
+    <section aria-label={name}>
       {entries.length === 0 ? (
         <p className="text-xs text-[var(--ink-2)]">{absence}</p>
       ) : (
@@ -122,8 +130,8 @@ export function MixRow({
           style={{ height: BAR_HEIGHT + LEADER_HEIGHT + TAG_HEIGHT }}
         >
           <div
-            className={`absolute inset-x-0 top-0 flex ${gapped ? "gap-0.5" : "overflow-hidden rounded-sm"}`}
-            style={{ height: BAR_HEIGHT }}
+            className={`absolute inset-x-0 flex ${gapped ? "gap-0.5" : "overflow-hidden rounded-sm"}`}
+            style={{ height: BAR_HEIGHT, ...(above ? { bottom: 0 } : { top: 0 }) }}
             aria-hidden="true"
           >
             {entries.map((entry) => (
@@ -146,7 +154,7 @@ export function MixRow({
           </div>
           <svg
             className="absolute inset-x-0 overflow-visible"
-            style={{ top: BAR_HEIGHT, height: LEADER_HEIGHT }}
+            style={{ top: above ? TAG_HEIGHT : BAR_HEIGHT, height: LEADER_HEIGHT }}
             viewBox={`0 0 ${extent} ${LEADER_HEIGHT}`}
             preserveAspectRatio="none"
             aria-hidden="true"
@@ -157,11 +165,16 @@ export function MixRow({
                 return null;
               }
               const to = place.left + TAG_WIDTH / 2;
+              // Drawn from whichever end the bar is on, so the dog-leg always
+              // leaves the segment and arrives at the tag.
+              const [from, at] = above
+                ? [to.toFixed(1), place.middle.toFixed(1)]
+                : [place.middle.toFixed(1), to.toFixed(1)];
 
               return (
                 <path
                   key={entry.label}
-                  d={`M${place.middle.toFixed(1)} 0 V${LEADER_HEIGHT / 2} H${to.toFixed(1)} V${LEADER_HEIGHT}`}
+                  d={`M${from} 0 V${LEADER_HEIGHT / 2} H${at} V${LEADER_HEIGHT}`}
                   className="stroke-[var(--rule)]"
                   strokeWidth={1}
                   fill="none"
@@ -177,7 +190,7 @@ export function MixRow({
                 className="absolute"
                 style={{
                   left: places[index]?.left ?? 0,
-                  top: BAR_HEIGHT + LEADER_HEIGHT,
+                  top: above ? 0 : BAR_HEIGHT + LEADER_HEIGHT,
                   width: TAG_WIDTH,
                   height: TAG_HEIGHT,
                 }}

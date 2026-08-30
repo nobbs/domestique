@@ -754,24 +754,35 @@ export function RowsCard({
           <AirFigure term="Max descent" value={FIGURES.steepestDescent} icon="down" />
           <AirFigure term="Moving time" value={FIGURES.movingTime} span />
         </dl>
-        <MixRow
-          name="Gradient"
-          classesLabel="Gradient bands"
-          entries={GRADIENT_MIX}
-          absence="No elevation data."
-          gapped={gapped}
-          highlight={highlight}
-          onHighlightChange={onHighlightChange}
-        />
-        <MixRow
-          name="Surface"
-          classesLabel="Surface classes"
-          entries={SURFACE_MIX}
-          absence="Surface not classified yet."
-          gapped={gapped}
-          highlight={highlight}
-          onHighlightChange={onHighlightChange}
-        />
+        {/*
+         * Mirrored, so the two bars meet with nothing between them: gradient's
+         * tags above its own bar, surface's below its own. The headings go
+         * with them — five percentages say "gradient" and five surface names
+         * say "surface" without being told, and two heading rows were two
+         * rows spent saying what the content already said.
+         */}
+        <div className="grid gap-0.5">
+          <MixRow
+            name="Gradient"
+            classesLabel="Gradient bands"
+            entries={GRADIENT_MIX}
+            absence="No elevation data."
+            tagSide="above"
+            gapped={gapped}
+            highlight={highlight}
+            onHighlightChange={onHighlightChange}
+          />
+          <MixRow
+            name="Surface"
+            classesLabel="Surface classes"
+            entries={SURFACE_MIX}
+            absence="Surface not classified yet."
+            tagSide="below"
+            gapped={gapped}
+            highlight={highlight}
+            onHighlightChange={onHighlightChange}
+          />
+        </div>
       </div>
     </Shell>
   );
