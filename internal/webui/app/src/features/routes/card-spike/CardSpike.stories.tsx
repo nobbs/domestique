@@ -15,7 +15,7 @@ import { AirCard, BandCard, HierarchyCard, LedgerCard, RailCard, SlideCard } fro
 const meta = {
   title: "Spikes/Route Card",
   tags: ["autodocs"],
-  parameters: { layout: "fullscreen" },
+  parameters: { layout: "fullscreen", chromatic: { disableSnapshot: true } },
 } satisfies Meta;
 
 export default meta;

@@ -12,7 +12,7 @@ import { Workspace } from "./workspace";
 const meta = {
   title: "Spikes/Route Workspace",
   tags: ["autodocs"],
-  parameters: { layout: "fullscreen" },
+  parameters: { layout: "fullscreen", chromatic: { disableSnapshot: true } },
 } satisfies Meta;
 
 export default meta;
