@@ -3,6 +3,11 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { routeGeometryQuery } from "../../api/queries";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "../../components/ui/dropdown-menu";
 import { ReprocessButton } from "./ReprocessButton";
 
 function renderButton() {
@@ -14,7 +19,17 @@ function renderButton() {
     client,
     ...render(
       <QueryClientProvider client={client}>
-        <ReprocessButton provider="veloplanner" sourceRouteId={12} stageOrder={1} />
+        {/*
+         * The control is a menu item, so it only exists inside a menu. Open
+         * from the start, and kept open by the item itself, because what the
+         * request answers has to land somewhere the reader is still looking.
+         */}
+        <DropdownMenu defaultOpen>
+          <DropdownMenuTrigger aria-label="More about this route">…</DropdownMenuTrigger>
+          <DropdownMenuContent>
+            <ReprocessButton provider="veloplanner" sourceRouteId={12} stageOrder={1} />
+          </DropdownMenuContent>
+        </DropdownMenu>
       </QueryClientProvider>,
     ),
   };
@@ -33,7 +48,7 @@ describe("ReprocessButton", () => {
     vi.stubGlobal("fetch", fetchMock);
     renderButton();
 
-    await userEvent.click(screen.getByRole("button", { name: "Reprocess" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "Reprocess" }));
 
     expect(fetchMock).toHaveBeenCalledWith(
       "/v1/providers/veloplanner/sourceRoutes/12/routes/1/reprocess",
@@ -55,7 +70,7 @@ describe("ReprocessButton", () => {
     );
     renderButton();
 
-    await userEvent.click(screen.getByRole("button", { name: "Reprocess" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "Reprocess" }));
 
     expect(await screen.findByRole("status")).toHaveTextContent("resource was not found");
   });
@@ -75,7 +90,7 @@ describe("ReprocessButton", () => {
       coordinates: [],
     });
 
-    await userEvent.click(screen.getByRole("button", { name: "Reprocess" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "Reprocess" }));
     await screen.findByRole("status");
 
     expect(

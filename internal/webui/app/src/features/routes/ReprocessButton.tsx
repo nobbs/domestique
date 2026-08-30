@@ -11,10 +11,11 @@
  * deletes one, never creates a second, and changes nothing in VeloPlanner.
  */
 
+import { IconRefresh } from "@tabler/icons-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useReprocessRoute } from "../../api/generated";
 import { routeGeometryQuery, statusQuery } from "../../api/queries";
-import { Button } from "../../components/Button";
+import { DropdownMenuItem } from "../../components/ui/dropdown-menu";
 import { Spinner } from "../../components/ui/spinner";
 
 export function ReprocessButton({
@@ -47,27 +48,35 @@ export function ReprocessButton({
   });
 
   return (
-    <div className="grid gap-1">
-      <Button
-        variant="outline"
+    <>
+      <DropdownMenuItem
+        // The only item here that does not close the menu. What it asks for has
+        // an answer — queued, or refused with a reason — and the menu is where
+        // the reader is looking when it arrives. Closing on click would put the
+        // outcome nowhere.
+        closeOnClick={false}
         disabled={reprocess.isPending}
         onClick={() => reprocess.mutate({ provider, sourceRouteId, stageOrder })}
       >
-        {reprocess.isPending ? <Spinner aria-label="Requesting reprocess" /> : null}
-        {reprocess.isPending ? "Requesting…" : "Reprocess"}
-      </Button>
+        {reprocess.isPending ? (
+          <Spinner aria-label="Requesting reprocess" />
+        ) : (
+          <IconRefresh aria-hidden="true" />
+        )}
+        {reprocess.isPending ? "Requesting\u2026" : "Reprocess"}
+      </DropdownMenuItem>
       {reprocess.isSuccess ? (
-        <span className="text-xs text-[var(--ink-2)]" role="status">
+        <p className="px-1.5 pb-1 text-xs text-[var(--ink-2)]" role="status">
           Queued. This route is read, derived, and pushed again on the next pass.
-        </span>
+        </p>
       ) : null}
       {reprocess.isError ? (
-        <span className="text-xs text-[var(--alert)]" role="status">
+        <p className="px-1.5 pb-1 text-xs text-[var(--alert)]" role="status">
           {reprocess.error instanceof Error && reprocess.error.message
             ? reprocess.error.message
             : "That request could not be made."}
-        </span>
+        </p>
       ) : null}
-    </div>
+    </>
   );
 }

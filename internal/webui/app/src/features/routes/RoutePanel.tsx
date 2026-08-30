@@ -26,7 +26,12 @@
 import { IconChevronsRight, IconDots, IconX } from "@tabler/icons-react";
 import type { Route } from "../../api/types";
 import { SourceRouteLink } from "../../components/SourceRouteLink";
-import { Popover, PopoverContent, PopoverTrigger } from "../../components/ui/popover";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "../../components/ui/dropdown-menu";
 import { Separator } from "../../components/ui/separator";
 import type { Climb } from "../../lib/climbs";
 import {
@@ -172,14 +177,18 @@ export function RoutePanel({
               {formatAscent(route.ascentMetres, unitSystem)}
             </span>
           </button>
-          <Popover>
-            <PopoverTrigger
+          <DropdownMenu>
+            <DropdownMenuTrigger
               aria-label="More about this route"
               className="rounded-lg p-1.5 text-[var(--ink-2)] hover:bg-[var(--base)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent)]"
             >
               <IconDots size={16} stroke={2} aria-hidden="true" />
-            </PopoverTrigger>
-            <PopoverContent align="end" className="grid w-auto gap-2 p-2">
+            </DropdownMenuTrigger>
+            {/*
+             * `w-auto` because the menu's own width follows its anchor, and the
+             * anchor here is a 28-pixel icon button.
+             */}
+            <DropdownMenuContent align="end" className="w-auto min-w-52">
               {/*
                * The two quiet actions that used to hold a bordered row of their
                * own at the foot of the card. Both are rare — one leaves for the
@@ -191,13 +200,14 @@ export function RoutePanel({
                 baseUrl={sourceBaseUrls[route.provider]}
                 sourceRouteId={route.sourceRouteId}
               />
+              <DropdownMenuSeparator />
               <ReprocessButton
                 provider={route.provider}
                 sourceRouteId={route.sourceRouteId}
                 stageOrder={route.stageOrder}
               />
-            </PopoverContent>
-          </Popover>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <button
             type="button"
             onClick={onClose}

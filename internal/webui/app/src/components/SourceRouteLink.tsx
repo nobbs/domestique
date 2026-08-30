@@ -8,7 +8,7 @@
  * is the same bargain the repository link in the header makes.
  *
  * The label is the provider, because that is what a reader cannot work out from
- * the row it sits in. The spoken name is the one that promises precision, and
+ * the menu it sits in. The spoken name is the one that promises precision, and
  * it promises route-level precision only: a stage is not addressable at the
  * provider — the fragment on one of its URLs is a map viewport, not a stage
  * selector — so an affordance offering more would be offering something the
@@ -19,8 +19,9 @@
  * back to offer, and saying so with an inert control would be saying it worse.
  */
 
+import { IconExternalLink } from "@tabler/icons-react";
 import { sourceRoute } from "../lib/sourceRoute";
-import { ExternalButtonLink } from "./Button";
+import { DropdownMenuItem } from "./ui/dropdown-menu";
 
 export interface SourceRouteLinkProps {
   /** The stage's own source, as its stage identity names it. */
@@ -38,26 +39,33 @@ export function SourceRouteLink({ provider, baseUrl, sourceRouteId }: SourceRout
   }
 
   return (
-    <ExternalButtonLink
-      href={source.href}
-      target="_blank"
-      rel="noreferrer"
-      // Where it goes and what it opens, spoken as part of the name rather than
-      // left to a title a keyboard never sees. The route number is in it because
-      // it is what the destination is addressed by, and the host because a
-      // reader deserves to know a link leaves before they follow it.
-      aria-label={`Open source route ${sourceRouteId} on ${source.host} in a new tab`}
+    <DropdownMenuItem
+      // A menu item that happens to navigate, so it answers to the menu's own
+      // keyboard rather than to Tab. It is still an anchor underneath, which is
+      // what keeps middle-click, copy-link and the browser's own idea of an
+      // outbound address working.
+      render={
+        <a
+          href={source.href}
+          target="_blank"
+          rel="noreferrer"
+          // Where it goes and what it opens, spoken as part of the name rather
+          // than left to a title a keyboard never sees. The route number is in
+          // it because it is what the destination is addressed by, and the host
+          // because a reader deserves to know a link leaves before they follow
+          // it.
+          aria-label={`Open source route ${sourceRouteId} on ${source.host} in a new tab`}
+        />
+      }
     >
+      <IconExternalLink aria-hidden="true" />
       {/*
        * The provider names itself. "Source route" described the link's job,
-       * which the row it sits in already says; the destination is the thing a
+       * which the menu it sits in already says; the destination is the thing a
        * reader cannot work out from context, and it is also the thing that
        * tells them whether following it is worth the tab.
-       *
-       * Real text, not decoration: it is what remains if the arrow the link
-       * puts before it fails to paint.
        */}
       {source.name}
-    </ExternalButtonLink>
+    </DropdownMenuItem>
   );
 }
