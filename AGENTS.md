@@ -28,6 +28,7 @@ one before changing behavior:
 | [implementation-architecture.md](docs/specs/implementation-architecture.md) | Package ownership, interface rules, composition root |
 | [configuration.md](docs/specs/configuration.md) | File schema, the one secret input, validation, and the runtime settings and credentials held in the database |
 | [sync-lifecycle.md](docs/specs/sync-lifecycle.md) | State transitions, safety gates, JSON contracts |
+| [task-layer.md](docs/specs/task-layer.md) | Background activities, the state they hold, and when they run |
 | [delivery.md](docs/specs/delivery.md) | Quality gate, container hardening, published images |
 
 When an implementation detail contradicts a specification, treat the
@@ -174,7 +175,7 @@ logic. Everything else is an `internal/` package with one responsibility.
   only where a real adapter boundary or test double needs them. Constructors
   accept interfaces and return concrete structs.
 - Adapters (`veloplanner`, `fit`, `wahoo`, `sqlite`, `pushover`) never import
-  each other, and never import `sync`, `oauth`, `schedule`, or `httpapi`.
+  each other, and never import `sync`, `oauth`, `task`, or `httpapi`.
   Dependency arrows stay one-way.
 - No mutable package-level state and no `init` functions. Package-level state is
   limited to immutable constants and precompiled regular expressions; the
@@ -294,7 +295,7 @@ Tailscale, or any network service.** The FIT/Wahoo sandbox acceptance check in
 invoked separately and never receives production secrets through CI.
 
 Add a regression test for every behavior change, especially for safety gates.
-Use the `schedule` package's trigger seam rather than sleeping on the wall
+Use the `task` package's clock seams rather than sleeping on the wall
 clock. Fixtures must contain no personal route data.
 
 Go assertions use [Testify](https://github.com/stretchr/testify). Use `require`
