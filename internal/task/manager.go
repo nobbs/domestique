@@ -35,7 +35,7 @@ type Manager struct {
 
 	shared    map[string]int
 	exclusive map[string]struct{}
-	running   map[string]struct{}
+	running   map[invocationKey]struct{}
 	tasks     map[string]*registered
 	order     []string
 
@@ -68,7 +68,7 @@ func NewManager(store Store) (*Manager, error) {
 		store:     store,
 		shared:    make(map[string]int),
 		exclusive: make(map[string]struct{}),
-		running:   make(map[string]struct{}),
+		running:   make(map[invocationKey]struct{}),
 		tasks:     make(map[string]*registered),
 	}, nil
 }
@@ -212,13 +212,13 @@ func (m *Manager) perform(
 	entry *registered,
 	invocation Invocation,
 	release func(),
-	visited map[string]struct{},
+	visited map[invocationKey]struct{},
 	depth int,
 ) {
 	if visited == nil {
-		visited = make(map[string]struct{}, 1)
+		visited = make(map[invocationKey]struct{}, 1)
 	}
-	visited[invocationKey(invocation)] = struct{}{}
+	visited[keyOf(invocation)] = struct{}{}
 
 	result := m.attemptAndRelease(ctx, entry, invocation, release)
 	if len(result.Next) == 0 {
@@ -241,7 +241,7 @@ func (m *Manager) attemptAndRelease(
 // chain runs what one attempt asked should follow it. Links are chosen at run
 // time, so nothing can reject a cycle at registration: the set of what this
 // chain has already run is carried down it, and the depth is capped behind that.
-func (m *Manager) chain(ctx context.Context, links []Link, visited map[string]struct{}, depth int) {
+func (m *Manager) chain(ctx context.Context, links []Link, visited map[invocationKey]struct{}, depth int) {
 	if depth >= maxChainDepth {
 		slog.Warn("task chain truncated", "depth", depth)
 
@@ -256,13 +256,13 @@ func (m *Manager) chain(ctx context.Context, links []Link, visited map[string]st
 // than refused: a link asking for what is happening anyway has its answer, and
 // admission is what decides that, so nothing can change between asking and
 // starting.
-func (m *Manager) linked(ctx context.Context, link Link, visited map[string]struct{}, depth int) {
+func (m *Manager) linked(ctx context.Context, link Link, visited map[invocationKey]struct{}, depth int) {
 	entry, known := m.tasks[link.Task]
 	if !known || ctx.Err() != nil {
 		return
 	}
 	invocation := Invocation{Task: link.Task, Argument: link.Argument, Trigger: TriggerChain}
-	if _, seen := visited[invocationKey(invocation)]; seen {
+	if _, seen := visited[keyOf(invocation)]; seen {
 		slog.Warn("task chain asked again for what it had already run", "task", link.Task)
 
 		return
@@ -333,7 +333,7 @@ func (m *Manager) record(
 // attempt can never wait while holding part of what another one needs.
 func (m *Manager) admit(entry *registered, invocation Invocation) (func(), admission) {
 	wanted := merge(entry.definition.resources(invocation.Argument))
-	key := invocationKey(invocation)
+	key := keyOf(invocation)
 
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
@@ -358,10 +358,16 @@ func (m *Manager) admit(entry *registered, invocation Invocation) (func(), admis
 	return func() { m.release(entry, key, wanted) }, admitStarted
 }
 
-// invocationKey names one task's work over one argument. The separator is a
-// byte neither a task name nor an argument carries.
-func invocationKey(invocation Invocation) string {
-	return invocation.Task + "\x00" + invocation.Argument
+// invocationKey names one task's work over one argument. It is a pair rather
+// than a joined string so that no argument can be spelled to collide with
+// another task's.
+type invocationKey struct {
+	task     string
+	argument string
+}
+
+func keyOf(invocation Invocation) invocationKey {
+	return invocationKey{task: invocation.Task, argument: invocation.Argument}
 }
 
 // available reports whether every wanted resource is free to take.
@@ -378,7 +384,7 @@ func (m *Manager) available(wanted []Resource) bool {
 	return true
 }
 
-func (m *Manager) release(entry *registered, key string, wanted []Resource) {
+func (m *Manager) release(entry *registered, key invocationKey, wanted []Resource) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
