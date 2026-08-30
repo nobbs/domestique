@@ -83,6 +83,19 @@ export const ChoosingACountryDropsItsStates: Story = {
 };
 
 /**
+ * Sizes are collected for Germany, so a region outside it is selectable but
+ * unpriced. The totals say they are a floor rather than counting what they
+ * cannot see as nothing.
+ */
+export const ARegionOutsideGermanyIsUnpriced: Story = {
+  args: { initial: ["europe/germany/saarland", "europe/france"] },
+  play: async ({ canvas }: { canvas: ReturnType<typeof within> }) => {
+    await expect(await canvas.findByText(/at least 52 MB downloaded/)).toBeVisible();
+    await expect(await canvas.findByText(/no published size/)).toBeVisible();
+  },
+};
+
+/**
  * A slug the catalogue does not know is kept and flagged rather than dropped:
  * the service still accepts any well-formed region, so an existing setting must
  * survive being opened here.

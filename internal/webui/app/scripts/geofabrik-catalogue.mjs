@@ -126,6 +126,19 @@ function readable(bytes) {
     : `${Math.round(bytes / 1024 ** 2)} MB`;
 }
 
+/**
+ * A region name with Geofabrik's own markup taken out. Twenty-one of them carry
+ * a `<br />` between a local name and its English gloss — the index is written
+ * for a web page. React escapes it rather than obeying it, so left alone it
+ * shows as literal angle brackets in the picker.
+ */
+function plainName(name) {
+  return name
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function slugOf(properties) {
   const url = properties.urls?.pbf;
 
@@ -147,7 +160,7 @@ for (const feature of index.features) {
     console.warn(`skipping ${properties.id}: ${slug} is not a slug the service accepts`);
     continue;
   }
-  regions.push({ slug, name: properties.name, parent: properties.parent ?? null });
+  regions.push({ slug, name: plainName(properties.name), parent: properties.parent ?? null });
 }
 regions.sort((a, b) => a.slug.localeCompare(b.slug));
 

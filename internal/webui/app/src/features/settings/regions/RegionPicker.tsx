@@ -42,24 +42,29 @@ export function RegionPicker({
         <FieldLabel htmlFor={`${id}-search`}>Regions to index</FieldLabel>
         {value.length > 0 ? (
           <ul className="flex flex-wrap gap-2" aria-label="Selected regions">
-            {value.map((slug) => (
-              <li key={slug}>
-                <Badge variant="secondary" className="h-7 gap-1.5 pr-1 pl-2.5">
-                  <span className="font-mono text-xs">{slug}</span>
-                  <span className="text-[var(--ink-2)]">
-                    {formatBytes(region(slug)?.bytes ?? null)}
-                  </span>
-                  <button
-                    type="button"
-                    aria-label={`Remove ${slug}`}
-                    className="grid size-5 place-items-center rounded-full hover:bg-[var(--rule)]"
-                    onClick={() => onChange(deselect(value, slug))}
-                  >
-                    <IconX className="size-3" />
-                  </button>
-                </Badge>
-              </li>
-            ))}
+            {value.map((slug) => {
+              const chosen = region(slug);
+
+              return (
+                <li key={slug}>
+                  <Badge variant="secondary" className="h-7 gap-1.5 pr-1 pl-2.5">
+                    <span className="font-mono text-xs">{slug}</span>
+                    {/* Silent when unmeasured, as every other row of this card is. */}
+                    {chosen?.bytes === undefined || chosen?.bytes === null ? null : (
+                      <span className="text-[var(--ink-2)]">{formatBytes(chosen.bytes)}</span>
+                    )}
+                    <button
+                      type="button"
+                      aria-label={`Remove ${slug}`}
+                      className="grid size-5 place-items-center rounded-full hover:bg-[var(--rule)]"
+                      onClick={() => onChange(deselect(value, slug))}
+                    >
+                      <IconX className="size-3" />
+                    </button>
+                  </Badge>
+                </li>
+              );
+            })}
           </ul>
         ) : null}
         <div className="relative">

@@ -50,25 +50,51 @@ export function unknown(slugs: readonly string[]): string[] {
   return slugs.filter((slug) => !BY_SLUG.has(slug));
 }
 
-/** What one rebuild downloads: every extract, every time its checksum has moved. */
-export function transferBytes(slugs: readonly string[]): number {
-  return slugs.reduce((total, slug) => total + (BY_SLUG.get(slug)?.bytes ?? 0), 0);
+/** What a selection costs to rebuild, and how much of it is actually known. */
+export interface Cost {
+  /** What one rebuild downloads, across the regions whose size is published. */
+  transfer: number;
+  /**
+   * What one rebuild needs on disk at its peak. A build stages one extract,
+   * packs it, and deletes it before starting the next (`osmindex.addRegion`),
+   * so this is the largest single region rather than the sum.
+   */
+  peakStaging: number;
+  /** How many selected regions the catalogue publishes no size for. */
+  unmeasured: number;
+  /** How many it does, so a caller can tell "nothing known" from "nothing selected". */
+  measured: number;
 }
 
 /**
- * What one rebuild needs on disk at its peak. A build stages one extract, packs
- * it, and deletes it before starting the next (`osmindex.addRegion`), so this is
- * the largest single region rather than the sum.
+ * What a selection costs.
+ *
+ * Only Germany's extracts are measured, so a selection may be partly or wholly
+ * unpriced. The count is carried alongside the totals rather than folded into
+ * them: treating an unmeasured region as costing nothing would report a 4 GB
+ * download as "0 MB", which is worse than admitting the gap.
  */
-export function peakStagingBytes(slugs: readonly string[]): number {
-  return slugs.reduce((peak, slug) => Math.max(peak, BY_SLUG.get(slug)?.bytes ?? 0), 0);
+export function cost(slugs: readonly string[]): Cost {
+  let transfer = 0;
+  let peakStaging = 0;
+  let unmeasured = 0;
+  let measured = 0;
+  for (const slug of slugs) {
+    const bytes = BY_SLUG.get(slug)?.bytes ?? null;
+    if (bytes === null) {
+      unmeasured += 1;
+      continue;
+    }
+    measured += 1;
+    transfer += bytes;
+    peakStaging = Math.max(peakStaging, bytes);
+  }
+
+  return { transfer, peakStaging, unmeasured, measured };
 }
 
-/** A size in the unit it is worth comparing at, or a dash where none is published. */
-export function formatBytes(bytes: number | null): string {
-  if (bytes === null) {
-    return "size unknown";
-  }
+/** A size in the unit it is worth comparing at. */
+export function formatBytes(bytes: number): string {
   if (bytes === 0) {
     return "0 MB";
   }

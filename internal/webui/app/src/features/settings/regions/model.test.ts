@@ -1,15 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { CATALOGUE, GERMANY } from "./catalogue.generated";
 import {
+  cost,
   covers,
   formatBytes,
   GERMAN_STATES,
-  peakStagingBytes,
   redundant,
   search,
   select,
   toggle,
-  transferBytes,
   unknown,
 } from "./model";
 
@@ -21,6 +20,13 @@ import {
 const REGION_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*(?:\/[a-z0-9]+(?:-[a-z0-9]+)*)*$/;
 
 describe("the catalogue", () => {
+  it("carries no markup in a name", () => {
+    // Geofabrik's index writes some names for a web page, with a `<br />`
+    // between a local name and its gloss. React escapes it rather than obeying
+    // it, so it has to come out before the name is stored.
+    expect(CATALOGUE.filter((entry) => /[<>]/.test(entry.name))).toEqual([]);
+  });
+
   it("offers only slugs the service accepts", () => {
     const refused = CATALOGUE.filter((entry) => !REGION_SLUG.test(entry.slug));
 
@@ -69,7 +75,7 @@ describe("the cost of a selection", () => {
   it("adds up what a rebuild downloads", () => {
     const states = ["europe/germany/bremen", "europe/germany/hamburg"];
 
-    expect(transferBytes(states)).toBe(
+    expect(cost(states).transfer).toBe(
       GERMAN_STATES.filter((state) => states.includes(state.slug)).reduce(
         (total, state) => total + (state.bytes ?? 0),
         0,
@@ -79,15 +85,32 @@ describe("the cost of a selection", () => {
 
   it("stages only the largest region at once", () => {
     const germany = CATALOGUE.find((entry) => entry.slug === GERMANY);
-    const selection = [GERMANY, "europe/germany/bremen"];
+    const { transfer, peakStaging } = cost([GERMANY, "europe/germany/bremen"]);
 
-    expect(peakStagingBytes(selection)).toBe(germany?.bytes);
-    expect(transferBytes(selection)).toBeGreaterThan(peakStagingBytes(selection));
+    expect(peakStaging).toBe(germany?.bytes);
+    expect(transfer).toBeGreaterThan(peakStaging);
   });
 
-  it("counts an unknown region as costing nothing rather than failing", () => {
-    expect(transferBytes(["europe/germay"])).toBe(0);
-    expect(peakStagingBytes([])).toBe(0);
+  /*
+   * Only Germany is measured, so this is the ordinary case for anywhere else —
+   * and counting an unpriced region as free would report a multi-gigabyte
+   * download as "0 MB", understating exactly what this card exists to show.
+   */
+  it("counts a region with no published size rather than treating it as free", () => {
+    const unpriced = CATALOGUE.find((entry) => entry.bytes === null);
+    const { transfer, measured, unmeasured } = cost([
+      unpriced?.slug ?? "",
+      "europe/germany/bremen",
+    ]);
+
+    expect(unmeasured).toBe(1);
+    expect(measured).toBe(1);
+    expect(transfer).toBe(CATALOGUE.find((e) => e.slug === "europe/germany/bremen")?.bytes);
+  });
+
+  it("knows nothing is selected from nothing being measured", () => {
+    expect(cost([])).toEqual({ transfer: 0, peakStaging: 0, unmeasured: 0, measured: 0 });
+    expect(cost(["europe/germay"])).toMatchObject({ measured: 0, unmeasured: 1 });
   });
 });
 
@@ -95,7 +118,6 @@ describe("formatBytes", () => {
   it("reads a country in gigabytes and a city state in megabytes", () => {
     expect(formatBytes(4.5 * 1024 ** 3)).toBe("4.5 GB");
     expect(formatBytes(52 * 1024 ** 2)).toBe("52 MB");
-    expect(formatBytes(null)).toBe("size unknown");
   });
 });
 
