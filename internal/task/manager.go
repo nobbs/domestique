@@ -213,9 +213,7 @@ func (m *Manager) perform(
 	visited map[string]struct{},
 	depth int,
 ) {
-	result := m.attempt(ctx, entry, invocation)
-	release()
-
+	result := m.attemptAndRelease(ctx, entry, invocation, release)
 	if len(result.Next) == 0 {
 		return
 	}
@@ -223,6 +221,17 @@ func (m *Manager) perform(
 	maps.Copy(followed, visited)
 	followed[invocationKey(invocation)] = struct{}{}
 	m.chain(ctx, result.Next, followed, depth+1)
+}
+
+// attemptAndRelease runs one attempt and gives back what it held, whatever
+// becomes of the runner. Releasing before the chain is what lets a link take
+// what its parent was holding.
+func (m *Manager) attemptAndRelease(
+	ctx context.Context, entry *registered, invocation Invocation, release func(),
+) Result {
+	defer release()
+
+	return m.attempt(ctx, entry, invocation)
 }
 
 // chain runs what one attempt asked should follow it. Links are chosen at run

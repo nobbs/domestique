@@ -938,3 +938,32 @@ func TestAChainIgnoresATaskNobodyRegistered(t *testing.T) {
 		{task: "parent", outcome: string(Succeeded), retain: defaultRetainedRuns},
 	}, store.recorded(), "recorded runs")
 }
+
+// A runner that gives up must not take the resource with it. Nothing here
+// recovers a panic, so this is about the shape of the code rather than a state
+// the service reaches: what is released on the way out stays released.
+func TestAnAttemptGivesBackWhatItHeldWhenTheRunnerPanics(t *testing.T) {
+	t.Parallel()
+
+	manager, _ := newTestManager(t)
+	require.NoError(t, manager.Register(&Definition{
+		Name:      "a",
+		Resources: exclusive("inventory"),
+		Run:       RunnerFunc(func(context.Context, Invocation) Result { panic("the runner gave up") }),
+	}), "Register()")
+
+	entry := manager.tasks["a"]
+	invocation := Invocation{Task: "a"}
+	release, admitted := manager.admit(entry, invocation)
+	require.True(t, admitted, "admit()")
+
+	func() {
+		defer func() {
+			assert.NotNil(t, recover(), "the runner did not give up after all")
+		}()
+		manager.perform(t.Context(), entry, invocation, release, nil, 0)
+	}()
+
+	assert.False(t, manager.Holding("inventory"), "a runner that gave up kept the resource")
+	assert.False(t, manager.busy(invocation), "a runner that gave up stayed listed as working")
+}
