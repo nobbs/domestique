@@ -96,12 +96,26 @@ type storedDuration struct {
 
 type fakeDurationCache struct {
 	stored     map[route.Key]storedDuration
+	failures   map[route.Key]string
 	hashErr    error
+	storeErr   error
+	failureErr error
 	storeCalls int
 }
 
 func newFakeDurationCache() *fakeDurationCache {
-	return &fakeDurationCache{stored: map[route.Key]storedDuration{}}
+	return &fakeDurationCache{
+		stored:   map[route.Key]storedDuration{},
+		failures: map[route.Key]string{},
+	}
+}
+
+func (f *fakeDurationCache) RecordStageDurationFailure(
+	_ context.Context, provider route.Provider, routeID int64, stageOrder int, reason string,
+) error {
+	f.failures[route.NewKey(provider, routeID, stageOrder)] = reason
+
+	return f.failureErr
 }
 
 func (f *fakeDurationCache) StageDurationFingerprint(
@@ -124,6 +138,9 @@ func (f *fakeDurationCache) StoreStageDuration(
 	movingSeconds *float64, cumulativeSeconds []byte,
 ) error {
 	f.storeCalls++
+	if f.storeErr != nil {
+		return f.storeErr
+	}
 	f.stored[route.NewKey(provider, routeID, stageOrder)] = storedDuration{
 		contentHash: contentHash, surfaceGeneration: surfaceGeneration, coefficientFingerprint: coefficientFingerprint,
 		movingSeconds: movingSeconds, cumulativeSeconds: cumulativeSeconds,
@@ -320,4 +337,37 @@ func TestPredictorStopsOnACancelledContext(t *testing.T) {
 	cancel()
 	_, _, err := predictor.Predict(ctx, []route.Route{stage})
 	require.Error(t, err, "Predict() on a cancelled context")
+}
+
+// A count says how many stages are missing a prediction; the record says which,
+// and what stopped each one.
+func TestPredictNamesWhatStoppedAStage(t *testing.T) {
+	t.Parallel()
+
+	cache := newFakeDurationCache()
+	cache.storeErr = errors.New("state unavailable")
+	stage := stageWithElevation(t, "hash-1")
+
+	_, failed, err := NewPredictor(&fakeSurfaceSource{}, cache, testCoefficients()).
+		Predict(t.Context(), []route.Route{stage})
+
+	require.NoError(t, err, "Predict()")
+	assert.Equal(t, 1, failed, "failed stages")
+	assert.Equal(t, map[route.Key]string{stage.Key(): ReasonCache}, cache.failures, "recorded failures")
+}
+
+// Losing the record of a failure leaves the count as the only account of it.
+// It must not stop the pass.
+func TestPredictCarriesOnWhenAFailureCannotBeRecorded(t *testing.T) {
+	t.Parallel()
+
+	cache := newFakeDurationCache()
+	cache.storeErr = errors.New("state unavailable")
+	cache.failureErr = errors.New("state unavailable")
+
+	_, failed, err := NewPredictor(&fakeSurfaceSource{}, cache, testCoefficients()).
+		Predict(t.Context(), []route.Route{stageWithElevation(t, "hash-1")})
+
+	require.NoError(t, err, "Predict()")
+	assert.Equal(t, 1, failed, "failed stages")
 }
