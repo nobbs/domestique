@@ -1561,3 +1561,30 @@ func TestAnUndeclaredAlertStillGoesOut(t *testing.T) {
 
 	assert.Len(t, notifier.messages(), 1, "an undeclared alert was swallowed")
 }
+
+// An alert an operator has switched off is still one the declaration should
+// have mentioned, so saying so does not wait on their decision.
+func TestAnUndeclaredAlertIsReportedEvenWhenNobodyWantsIt(t *testing.T) {
+	t.Parallel()
+
+	manager, _, notifier, decisions := newDecidingManager(t)
+	decisions.decided = map[Detail]bool{"never_declared": false}
+	require.NoError(t, manager.Register(&Definition{
+		Name: "sync",
+		Notify: &Notify{
+			Title: "Domestique sync failed", Suppress: time.Hour,
+			Alerts: []Detail{"source"},
+		},
+		Run: RunnerFunc(func(context.Context, Invocation) Result {
+			return Result{Outcome: Failed, Detail: "never_declared"}
+		}),
+	}), "Register()")
+
+	require.True(t, manager.Trigger(t.Context(), "sync", ""), "first Trigger()")
+	manager.Wait()
+	require.True(t, manager.Trigger(t.Context(), "sync", ""), "second Trigger()")
+	manager.Wait()
+
+	assert.Empty(t, notifier.messages(), "an alert nobody wanted was sent")
+	assert.Len(t, manager.undeclared, 1, "the missing declaration was not noticed")
+}

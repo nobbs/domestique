@@ -53,11 +53,12 @@ type Manager struct {
 	alerts   Alerts
 	enabled  func() bool
 
-	shared    map[string]int
-	exclusive map[string]struct{}
-	running   map[invocationKey]struct{}
-	tasks     map[string]*registered
-	order     []string
+	shared     map[string]int
+	exclusive  map[string]struct{}
+	running    map[invocationKey]struct{}
+	tasks      map[string]*registered
+	undeclared map[declarationKey]struct{}
+	order      []string
 
 	// mutex guards admission alone: a slot and a resource set are taken
 	// together or not at all, so an attempt can never hold one and want the
@@ -85,16 +86,17 @@ func NewManager(store Store, notifier Notifier, alerts Alerts, enabled func() bo
 	}
 
 	return &Manager{
-		now:       time.Now,
-		after:     time.After,
-		store:     store,
-		notifier:  notifier,
-		alerts:    alerts,
-		enabled:   enabled,
-		shared:    make(map[string]int),
-		exclusive: make(map[string]struct{}),
-		running:   make(map[invocationKey]struct{}),
-		tasks:     make(map[string]*registered),
+		now:        time.Now,
+		after:      time.After,
+		store:      store,
+		notifier:   notifier,
+		alerts:     alerts,
+		enabled:    enabled,
+		shared:     make(map[string]int),
+		exclusive:  make(map[string]struct{}),
+		running:    make(map[invocationKey]struct{}),
+		tasks:      make(map[string]*registered),
+		undeclared: make(map[declarationKey]struct{}),
 	}, nil
 }
 
@@ -384,6 +386,7 @@ func (m *Manager) announce(
 	if !entry.definition.alerts() || !result.Outcome.alerts() || !m.enabled() {
 		return
 	}
+	m.reportUndeclared(entry, invocation.Task, result.Detail)
 	if !m.wanted(ctx, invocation.Task, result.Detail) {
 		return
 	}
@@ -391,14 +394,6 @@ func (m *Manager) announce(
 	lastSentAt, found, err := m.store.LastFailureNotification(ctx, category)
 	if err != nil || (found && now.Sub(lastSentAt) < entry.definition.Notify.Suppress) {
 		return
-	}
-	if !entry.definition.declares(result.Detail) {
-		// Said beside the message rather than in place of it: an alert nobody
-		// could rule on in advance still goes out, but the declaration a
-		// settings page offers is now wrong. The window above is what keeps
-		// this to once per alert rather than once per tick.
-		slog.Warn("task announced something it had not declared",
-			"task", invocation.Task, "alert", result.Detail)
 	}
 	if err := m.notifier.Send(ctx, entry.definition.Notify.Title, alertMessage(invocation, result, reference)); err != nil {
 		return
@@ -420,6 +415,27 @@ func newRunReference() string {
 	_, _ = rand.Read(reference)
 
 	return hex.EncodeToString(reference)
+}
+
+// reportUndeclared says once that a task raised something it never declared.
+// Whether the declaration is complete is a fact about this build rather than
+// about this run, so it is said whatever an operator has decided and whatever
+// the window allows — and said once, because repeating it every tick would
+// bury it.
+func (m *Manager) reportUndeclared(entry *registered, task string, alert Detail) {
+	if entry.definition.declares(alert) {
+		return
+	}
+
+	key := declarationKey{task: task, alert: alert}
+	m.mutex.Lock()
+	_, said := m.undeclared[key]
+	m.undeclared[key] = struct{}{}
+	m.mutex.Unlock()
+
+	if !said {
+		slog.Warn("task announced something it had not declared", "task", task, "alert", alert)
+	}
 }
 
 // wanted reports whether an operator wants this alert delivered. One they have
@@ -478,6 +494,13 @@ func (m *Manager) admit(entry *registered, invocation Invocation) (func(), admis
 	entry.inFlight++
 
 	return func() { m.release(entry, key, wanted) }, admitStarted
+}
+
+// declarationKey names one alert of one task, for the once-per-build report
+// that its declaration does not mention it.
+type declarationKey struct {
+	task  string
+	alert Detail
 }
 
 // invocationKey names one task's work over one argument. It is a pair rather
