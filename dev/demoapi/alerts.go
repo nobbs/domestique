@@ -12,26 +12,33 @@ import (
 // in a plausible one and remembers what is decided about it for as long as the
 // process runs.
 type demoAlerts struct {
-	decided map[httpapi.AlertDecision]bool
+	decided map[demoAlert]bool
 	mutex   sync.RWMutex
+}
+
+// demoAlert identifies one alert. It is what an alert is rather than what was
+// decided about it, so a lookup cannot turn on a decision.
+type demoAlert struct {
+	task  string
+	alert string
 }
 
 // demoAlertCatalogue is what the shipped binary's tasks declare, which is what
 // makes the settings section look like the one an operator meets.
-var demoAlertCatalogue = []httpapi.AlertDecision{ //nolint:gochecknoglobals // a fixture for development tooling
-	{Task: "sync", Alert: "state"},
-	{Task: "sync", Alert: "source"},
-	{Task: "sync", Alert: "authorization"},
-	{Task: "sync", Alert: "destination"},
-	{Task: "sync", Alert: "course"},
-	{Task: "sync", Alert: "empty_source"},
-	{Task: "sync", Alert: "deletion_limit"},
-	{Task: "surface:index", Alert: "build"},
-	{Task: "surface:index", Alert: "no_regions"},
+var demoAlertCatalogue = []demoAlert{ //nolint:gochecknoglobals // a fixture for development tooling
+	{task: "sync", alert: "state"},
+	{task: "sync", alert: "source"},
+	{task: "sync", alert: "authorization"},
+	{task: "sync", alert: "destination"},
+	{task: "sync", alert: "course"},
+	{task: "sync", alert: "empty_source"},
+	{task: "sync", alert: "deletion_limit"},
+	{task: "surface:index", alert: "build"},
+	{task: "surface:index", alert: "no_regions"},
 }
 
 func newDemoAlerts() *demoAlerts {
-	return &demoAlerts{decided: make(map[httpapi.AlertDecision]bool)}
+	return &demoAlerts{decided: make(map[demoAlert]bool)}
 }
 
 // Catalogue lists the demo's alerts and what has been decided about each.
@@ -43,8 +50,8 @@ func (a *demoAlerts) Catalogue() []httpapi.AlertSetting {
 	for _, alert := range demoAlertCatalogue {
 		enabled, decided := a.decided[alert]
 		catalogue = append(catalogue, httpapi.AlertSetting{
-			Task:    alert.Task,
-			Alert:   alert.Alert,
+			Task:    alert.task,
+			Alert:   alert.alert,
 			Enabled: !decided || enabled,
 			Decided: decided,
 		})
@@ -59,7 +66,7 @@ func (a *demoAlerts) Decide(_ context.Context, decisions []httpapi.AlertDecision
 	defer a.mutex.Unlock()
 
 	for _, decision := range decisions {
-		a.decided[httpapi.AlertDecision{Task: decision.Task, Alert: decision.Alert}] = decision.Enabled
+		a.decided[demoAlert{task: decision.Task, alert: decision.Alert}] = decision.Enabled
 	}
 
 	return nil
