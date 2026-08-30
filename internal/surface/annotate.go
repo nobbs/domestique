@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 
 	"github.com/nobbs/domestique/internal/route"
 )
@@ -26,6 +27,11 @@ type Cache interface {
 	// StageSurfaceHash returns what a stored classification was measured
 	// against: the stage's geometry, and the build of the map.
 	StageSurfaceHash(ctx context.Context, provider route.Provider, routeID int64, stageOrder int) (contentHash, generation string, found bool, err error)
+	// RecordStageSurfaceFailure remembers that a stage could not be classified,
+	// and why. Storing a classification for it clears that.
+	RecordStageSurfaceFailure(
+		ctx context.Context, provider route.Provider, routeID int64, stageOrder int, reason string,
+	) error
 	// StoreStageSurface caches one stage's classification.
 	StoreStageSurface(
 		ctx context.Context,
@@ -80,7 +86,8 @@ func (a *Annotator) Annotate(ctx context.Context, stages []route.Route) (classif
 			continue
 		}
 
-		if stageErr := a.annotateStage(ctx, stage, generation); stageErr != nil {
+		if reason := a.annotateStage(ctx, stage, generation); reason != "" {
+			a.recordFailure(ctx, key, reason)
 			failed++
 
 			continue
@@ -91,18 +98,30 @@ func (a *Annotator) Annotate(ctx context.Context, stages []route.Route) (classif
 	return classified, failed, nil
 }
 
-// annotateStage classifies one stage and caches the result.
-func (a *Annotator) annotateStage(ctx context.Context, stage *route.Route, generation string) error {
+// What a stage could not be classified for. They are stable words a status
+// surface may show, and name a part of this service rather than an upstream.
+const (
+	// ReasonWays means the map could not answer for the ground under the stage.
+	ReasonWays = "ways"
+	// ReasonEncode means the classification could not be written down.
+	ReasonEncode = "encode"
+	// ReasonCache means it could not be stored.
+	ReasonCache = "cache"
+)
+
+// annotateStage classifies one stage and caches the result, reporting what
+// stopped it or an empty reason when nothing did.
+func (a *Annotator) annotateStage(ctx context.Context, stage *route.Route, generation string) string {
 	geometry := stage.Geometry()
 	ways, err := a.source.Ways(ctx, geometry)
 	if err != nil {
-		return fmt.Errorf("surface: reading ways along the stage: %w", err)
+		return ReasonWays
 	}
 
 	kinds := Match(geometry, ways)
 	ranges, err := EncodeRanges(Compress(kinds))
 	if err != nil {
-		return err
+		return ReasonEncode
 	}
 
 	key := stage.Key()
@@ -116,10 +135,21 @@ func (a *Annotator) annotateStage(ctx context.Context, stage *route.Route, gener
 		ranges,
 		MatchedMetres(geometry, kinds),
 	); err != nil {
-		return fmt.Errorf("surface: caching classification: %w", err)
+		return ReasonCache
 	}
 
-	return nil
+	return ""
+}
+
+// recordFailure names the stage a pass could not finish. A failure that cannot
+// itself be written down leaves the count as the only account of it, which is
+// what there was before.
+func (a *Annotator) recordFailure(ctx context.Context, key route.Key, reason string) {
+	if err := a.cache.RecordStageSurfaceFailure(
+		ctx, key.Provider(), key.SourceRouteID(), key.StageOrder(), reason,
+	); err != nil {
+		slog.Warn("stage classification failure not recorded", "reason", reason, "error", err)
+	}
 }
 
 // storedRange is the wire form of one range. The stored bytes are exactly what
