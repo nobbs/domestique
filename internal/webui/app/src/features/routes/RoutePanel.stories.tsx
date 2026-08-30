@@ -24,6 +24,7 @@ export const RouteDetail: Story = {
         <RoutePanel
           route={route}
           highestMetres={295}
+          lowestMetres={48}
           surface={surface}
           surfaceAbsence="Surface not classified yet."
           bands={bands}

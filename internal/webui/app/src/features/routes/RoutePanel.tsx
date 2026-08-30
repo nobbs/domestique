@@ -51,13 +51,48 @@ import { ClimbsTable } from "./ClimbsTable";
 import { MixSection } from "./MixSection";
 import { ReprocessButton } from "./ReprocessButton";
 
-function Figure({ term, children }: { term: string; children: React.ReactNode }) {
+/**
+ * One figure, as a line rather than as a stack.
+ *
+ * The name left and the number right, so the numbers land on two rules down
+ * the card and a reader comparing them reads down a column rather than
+ * hunting. Stacked, each pair cost two lines and the figures sat wherever
+ * their labels happened to end.
+ *
+ * `items-baseline` because the two really are different sizes on one line,
+ * which is what a baseline is for — unlike a row taller than its own text,
+ * where it only pins the words to the ceiling.
+ */
+function Figure({
+  term,
+  span,
+  children,
+}: {
+  term: string;
+  /** Both columns, for a figure with no partner to sit beside. */
+  span?: boolean;
+  children: React.ReactNode;
+}) {
   return (
-    <div>
-      <dt className="text-[11px] leading-none text-[var(--ink-2)]">{term}</dt>
-      <dd className="text-sm leading-tight tabular-nums">{children}</dd>
+    <div className={`flex items-baseline justify-between gap-2 ${span ? "col-span-2" : ""}`}>
+      <dt className="truncate text-[11px] text-[var(--ink-2)]">{term}</dt>
+      <dd className="shrink-0 text-sm leading-tight tabular-nums">{children}</dd>
     </div>
   );
+}
+
+/**
+ * How much the route climbs per unit of ground, as a gradient.
+ *
+ * Ascent over distance rather than net rise over distance, which is what a
+ * climb's own average is: a loop ends where it started, so the net measure
+ * says nought for every one of them and says it most confidently about the
+ * lumpiest. This says how much of the ride is spent going up, which is the
+ * question the figure beside it — the steepest hundred metres — does not
+ * answer.
+ */
+function averageGradient(ascentMetres: number, distanceMetres: number): number {
+  return distanceMetres > 0 ? (ascentMetres / distanceMetres) * 100 : 0;
 }
 
 export interface RoutePanelProps {
@@ -70,6 +105,8 @@ export interface RoutePanelProps {
   movingSecondsOverride?: number | undefined;
   /** The whole route's highest point, or null where there is no usable profile. */
   highestMetres: number | null;
+  /** Its lowest, from the same profile and null on the same terms. */
+  lowestMetres: number | null;
   /** Null for a route nobody has classified, which the key says in words. */
   surface: SurfaceSummary | null;
   surfaceAbsence: string;
@@ -110,6 +147,7 @@ export function RoutePanel({
   route,
   movingSecondsOverride,
   highestMetres,
+  lowestMetres,
   surface,
   surfaceAbsence,
   bands,
@@ -241,30 +279,39 @@ export function RoutePanel({
              * `w-full`, which would measure the padding box and fall short.
              */}
             <Separator className="-mx-3 -mt-2 data-horizontal:w-auto" />
-            <dl className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+            {/*
+             * Paired by row: what it is and how much it climbs, then the two
+             * gradients, then the two ends of its elevation. The grid means
+             * something that way — a reader comparing the pair reads across —
+             * where before it was seven figures reflowed into two columns.
+             */}
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-1">
               <Figure term="Distance">{formatDistance(route.distanceMetres, unitSystem)}</Figure>
               <Figure term="Ascent">{formatAscent(route.ascentMetres, unitSystem)}</Figure>
+              <Figure term="Avg gradient">
+                {formatGradient(averageGradient(route.ascentMetres, route.distanceMetres))}
+              </Figure>
               <Figure term="Max gradient">{formatGradient(route.maxGradientPercent)}</Figure>
+              <Figure term="Lowest">
+                {lowestMetres === null ? "—" : formatElevation(lowestMetres, unitSystem)}
+              </Figure>
               <Figure term="Highest">
                 {highestMetres === null ? "—" : formatElevation(highestMetres, unitSystem)}
               </Figure>
-              <div className="col-span-2">
-                <dt className="text-[11px] leading-none text-[var(--ink-2)]">Moving time</dt>
-                {/*
-                 * Predicted, not measured — the label says "moving time", not
-                 * "arrival time", and carries no stops, traffic or day-specific
-                 * weather. The qualifier names how far off that estimate usually
-                 * runs, from the frozen profile's own held-out benchmark.
-                 */}
-                <dd className="text-sm leading-tight tabular-nums">
-                  {formatMovingTime(movingSeconds)}
-                  {movingSeconds !== undefined && route.validation ? (
-                    <span className="ml-1 text-[11px] text-[var(--ink-2)]">
-                      {formatMovingTimeUncertainty(route.validation)}
-                    </span>
-                  ) : null}
-                </dd>
-              </div>
+              {/*
+               * Predicted, not measured — the label says "moving time", not
+               * "arrival time", and carries no stops, traffic or day-specific
+               * weather. The qualifier names how far off that estimate usually
+               * runs, from the frozen profile's own held-out benchmark.
+               */}
+              <Figure term="Moving time" span>
+                {formatMovingTime(movingSeconds)}
+                {movingSeconds !== undefined && route.validation ? (
+                  <span className="ml-1 text-[11px] font-normal text-[var(--ink-2)]">
+                    {formatMovingTimeUncertainty(route.validation)}
+                  </span>
+                ) : null}
+              </Figure>
             </dl>
             <MixSection
               bands={bandEntries(bands, route.distanceMetres)}

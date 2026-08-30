@@ -529,6 +529,7 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
           route={shownRoute}
           movingSecondsOverride={selectionMovingSeconds}
           highestMetres={routeProfile ? routeProfile.maxElevationMetres : null}
+          lowestMetres={routeProfile ? routeProfile.minElevationMetres : null}
           surface={surfaceSummary}
           surfaceAbsence={
             surface
