@@ -130,7 +130,15 @@ export function MixRow({
           style={{ height: BAR_HEIGHT + LEADER_HEIGHT + TAG_HEIGHT }}
         >
           <div
-            className={`absolute inset-x-0 flex ${gapped ? "gap-0.5" : "overflow-hidden rounded-sm"}`}
+            className={`absolute inset-x-0 flex ${
+              gapped
+                ? "gap-0.5"
+                : // Rounded on the outside only, so the pair reads as one bar
+                  // split by a hairline rather than as two stacked pills. The
+                  // bar sits on the far side of its own tags, so the edge to
+                  // round is the one the tags are not on.
+                  `overflow-hidden ${above ? "rounded-t-md" : "rounded-b-md"}`
+            }`}
             style={{ height: BAR_HEIGHT, ...(above ? { bottom: 0 } : { top: 0 }) }}
             aria-hidden="true"
           >
