@@ -132,7 +132,11 @@ export function RoutePanel({
     <div data-compact-workspace="" className="w-fit max-w-full">
       <section
         aria-label={route.title}
-        className="max-h-[calc(100dvh-9rem)] w-fit max-w-full overflow-y-auto rounded-xl bg-[var(--panel)] shadow-[var(--shadow)] ring-1 ring-black/5"
+        // The pill hugs its content; the card does not. Left to size itself the
+        // card took its width from whichever row was widest, so a long title
+        // stretched the panel and left every rule below it stopping short of
+        // the edge. Open, the width is the card's and the header lives in it.
+        className={`max-h-[calc(100dvh-9rem)] max-w-full overflow-y-auto rounded-xl bg-[var(--panel)] shadow-[var(--shadow)] ring-1 ring-black/5 ${collapsed ? "w-fit" : "w-[23rem]"}`}
       >
         {/*
          * The route's name as the panel's heading, drawn nowhere: the pill
@@ -166,16 +170,22 @@ export function RoutePanel({
               aria-hidden="true"
               className={collapsed ? "transition-transform" : "rotate-90 transition-transform"}
             />
-            <span className="max-w-[15rem] truncate font-semibold">{route.title}</span>
+            <span className="min-w-0 max-w-[15rem] truncate font-semibold">{route.title}</span>
             {/*
              * The two figures a ride is decided on, on the line that is visible
              * far more often than the card is. A pill that only named the route
              * would make every reading of them cost a press.
+             *
+             * Only on the pill: open, they are the first two rows of the list
+             * immediately below, and the width they cost is the width the title
+             * then has to truncate into.
              */}
-            <span className="shrink-0 text-sm text-[var(--ink-2)] tabular-nums">
-              {formatDistance(route.distanceMetres, unitSystem)} ·{" "}
-              {formatAscent(route.ascentMetres, unitSystem)}
-            </span>
+            {collapsed ? (
+              <span className="shrink-0 text-sm text-[var(--ink-2)] tabular-nums">
+                {formatDistance(route.distanceMetres, unitSystem)} ·{" "}
+                {formatAscent(route.ascentMetres, unitSystem)}
+              </span>
+            ) : null}
           </button>
           <DropdownMenu>
             <DropdownMenuTrigger
@@ -218,7 +228,7 @@ export function RoutePanel({
           </button>
         </div>
         {collapsed ? null : (
-          <div className="grid w-[23rem] max-w-full gap-2 px-3 pt-2 pb-3">
+          <div className="grid w-full gap-2 px-3 pt-2 pb-3">
             {/*
              * Base UI's separator always carries `role="separator"`, with no
              * decorative escape hatch. These three rules only group one card's
