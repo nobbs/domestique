@@ -2056,7 +2056,7 @@ func newHandlerWithSync(t *testing.T, oauthService OAuth, state State, syncRuns 
 	t.Helper()
 	handler, err := New(
 		&Options{
-			Alerts: &fakeAlerts{},
+			Alerts: &fakeAlerts{catalogue: []AlertSetting{{Task: "sync", Alert: "source", Enabled: true}}},
 			Settings: withSources(settingsWith(testBasemapsWithDark()),
 				runtimeconfig.Source{Provider: route.ProviderVeloPlanner, BaseURL: testSourceBaseURL}),
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},

@@ -144,6 +144,9 @@ export const SendsOnlyTheAlertsThatWereSwitched: Story = {
     await expect(canvas.getByRole("switch", { name: "sync source" })).toBeChecked();
     await expect(canvas.getByRole("switch", { name: "sync destination" })).not.toBeChecked();
 
+    // Off and on again is where it started, so it is not a decision to send.
+    await userEvent.click(canvas.getByRole("switch", { name: "sync source" }));
+    await userEvent.click(canvas.getByRole("switch", { name: "sync source" }));
     await userEvent.click(canvas.getByRole("switch", { name: "surface:index build" }));
 
     await userEvent.click(canvas.getByRole("button", { name: "Save Alerts" }));

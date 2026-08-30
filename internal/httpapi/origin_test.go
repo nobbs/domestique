@@ -30,6 +30,17 @@ var mutableRoutes = []struct { //nolint:gochecknoglobals // test fixture, read-o
 	{method: http.MethodPut, target: settingsSurfacePath, body: surfaceSubmission},
 	{method: http.MethodPut, target: settingsRideModelPath, body: rideModelSubmission},
 	{method: http.MethodPut, target: settingsSyncPath, body: syncSubmission},
+	{method: http.MethodPut, target: settingsAlertsPath, body: alertsSubmission},
+}
+
+// decidedAlerts is what the handler's matrix was told, so a refused request can
+// be shown to have decided nothing.
+func decidedAlerts(t *testing.T, handler *Handler) []AlertDecision {
+	t.Helper()
+	alerts, ok := handler.alerts.(*fakeAlerts)
+	require.True(t, ok, "the handler was not built over a fake alert matrix")
+
+	return alerts.decided
 }
 
 // An Access session lives in an ordinary browser, so identity alone would let a
@@ -68,6 +79,7 @@ func TestMutableRoutesRejectForeignProvenance(t *testing.T) {
 				assert.Zerof(t, trigger.calls, "%s %s started a run", route.method, route.target)
 				assert.Zerof(t, state.scheduleWrites, "%s %s wrote the schedule", route.method, route.target)
 				assert.Emptyf(t, state.reprocessed, "%s %s reprocessed a stage", route.method, route.target)
+				assert.Emptyf(t, decidedAlerts(t, handler), "%s %s decided an alert", route.method, route.target)
 			}
 		})
 	}

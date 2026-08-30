@@ -60,6 +60,7 @@ const (
 	surfaceSubmission   = `{"regions": ["europe/germany"], "rebuildIntervalSeconds": 604800}`
 	rideModelSubmission = `{"coefficientsFile": "/var/lib/domestique/coefficients.json"}`
 	syncSubmission      = `{"allowEmptySourceDeletion": true, "staleAfterSeconds": 90000, "initialDelaySeconds": 300}`
+	alertsSubmission    = `{"alerts": [{"task": "sync", "alert": "source", "enabled": false}]}`
 	komootSubmission    = `{
 		"read": true,
 		"baseUrl": "https://komoot.example.test",

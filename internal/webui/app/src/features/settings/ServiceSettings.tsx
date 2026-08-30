@@ -733,7 +733,17 @@ function Alerts({ settings }: { settings: Settings }) {
                       checked={draft[alertKey(alert)] ?? alert.enabled}
                       aria-label={`${taskName} ${alertLabel(alert)}`}
                       onCheckedChange={(enabled) =>
-                        setDraft((pending) => ({ ...pending, [alertKey(alert)]: enabled }))
+                        setDraft((pending) => {
+                          // A switch put back where it started is not a
+                          // decision. Sending it would record one, and an alert
+                          // nobody has ruled on is not the same as one somebody
+                          // switched on.
+                          const { [alertKey(alert)]: _, ...rest } = pending;
+
+                          return enabled === alert.enabled
+                            ? rest
+                            : { ...rest, [alertKey(alert)]: enabled };
+                        })
                       }
                     />
                   </Field>

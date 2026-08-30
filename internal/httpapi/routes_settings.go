@@ -237,6 +237,13 @@ func (h *Handler) storeSection(
 	h.writeJSON(writer, http.StatusOK, h.settingsView())
 }
 
+// declaredAlert identifies one alert in the matrix. It is what an alert is,
+// rather than what was decided about it, so a lookup cannot turn on a decision.
+type declaredAlert struct {
+	task  string
+	alert string
+}
+
 // SetAlerts records which alerts an operator wants delivered. An alert left out
 // of the request keeps whatever it had: deciding is what creates a record, and
 // an absent decision is not the same as switching one off.
@@ -246,24 +253,26 @@ func (h *Handler) SetAlerts(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 
-	known := make(map[AlertDecision]struct{}, len(body.Alerts))
+	known := make(map[declaredAlert]struct{}, len(body.Alerts))
 	for _, alert := range h.alerts.Catalogue() {
-		known[AlertDecision{Task: alert.Task, Alert: alert.Alert}] = struct{}{}
+		known[declaredAlert{task: alert.Task, alert: alert.Alert}] = struct{}{}
 	}
 
 	decisions := make([]AlertDecision, 0, len(body.Alerts))
 	for _, decision := range body.Alerts {
-		ruled := AlertDecision{Task: decision.Task, Alert: decision.Alert}
 		// Storing a decision about an alert nothing raises would leave a row
 		// nobody ever reads and a switch the page shows as having an effect.
-		if _, declared := known[ruled]; !declared {
+		if _, declared := known[declaredAlert{task: decision.Task, alert: decision.Alert}]; !declared {
 			h.error(writer, http.StatusBadRequest, "invalid_request",
 				"no task raises the alert "+decision.Alert+" for "+decision.Task)
 
 			return
 		}
-		ruled.Enabled = decision.Enabled
-		decisions = append(decisions, ruled)
+		decisions = append(decisions, AlertDecision{
+			Task:    decision.Task,
+			Alert:   decision.Alert,
+			Enabled: decision.Enabled,
+		})
 	}
 	if err := h.alerts.Decide(request.Context(), decisions); err != nil {
 		h.unavailable(writer)
