@@ -20,6 +20,14 @@ import {
 const REGION_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*(?:\/[a-z0-9]+(?:-[a-z0-9]+)*)*$/;
 
 describe("the catalogue", () => {
+  it("names regions rather than the page furniture around them", () => {
+    // The names are scraped, and every listing page carries navigation links
+    // beside the region ones. "[one level up]" reaching the catalogue as a
+    // region's name is the shape of mistake that looks fine until it is read.
+    expect(CATALOGUE.find((entry) => entry.slug === GERMANY)?.name).toBe("Germany");
+    expect(CATALOGUE.filter((entry) => entry.name.startsWith("["))).toEqual([]);
+  });
+
   it("carries no markup in a name", () => {
     // Geofabrik's index writes some names for a web page, with a `<br />`
     // between a local name and its gloss. React escapes it rather than obeying

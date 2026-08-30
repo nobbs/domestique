@@ -11,6 +11,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
 import { expect, userEvent, within } from "storybook/test";
 import { StoryProviders } from "../../../storybook/fixtures";
+import { CATALOGUE } from "./catalogue.generated";
 import { RegionPicker } from "./RegionPicker";
 
 /** Holds the selection, as the settings card does. */
@@ -83,12 +84,18 @@ export const ChoosingACountryDropsItsStates: Story = {
 };
 
 /**
- * Sizes are collected for Germany, so a region outside it is selectable but
- * unpriced. The totals say they are a floor rather than counting what they
- * cannot see as nothing.
+ * Geofabrik states no size for a handful of its regions — a few islands and
+ * territories. They stay selectable, and the totals say they are a floor rather
+ * than counting what they cannot see as nothing.
+ *
+ * The region is taken from the catalogue rather than named here, so this keeps
+ * testing the behaviour if Geofabrik starts publishing a size for whichever one
+ * would otherwise have been hardcoded.
  */
-export const ARegionOutsideGermanyIsUnpriced: Story = {
-  args: { initial: ["europe/germany/saarland", "europe/france"] },
+const UNPRICED = CATALOGUE.find((entry) => entry.bytes === null)?.slug ?? "";
+
+export const ARegionWithNoPublishedSize: Story = {
+  args: { initial: ["europe/germany/saarland", UNPRICED] },
   play: async ({ canvas }: { canvas: ReturnType<typeof within> }) => {
     await expect(await canvas.findByText(/at least 52 MB downloaded/)).toBeVisible();
     await expect(await canvas.findByText(/no published size/)).toBeVisible();
