@@ -51,19 +51,16 @@ func TestNewRunnerRequiresItsCollaborators(t *testing.T) {
 	options := Options{Directory: t.TempDir()}
 	regions := staticRegions("europe/germany")
 
-	_, err := NewRunner(options, regions, nil, &fakeState{}, &fakeNotifier{})
+	_, err := NewRunner(options, regions, nil, &fakeState{})
 	require.Error(t, err, "NewRunner() without an index holder")
 
-	_, err = NewRunner(options, regions, NewCurrent(), nil, &fakeNotifier{})
+	_, err = NewRunner(options, regions, NewCurrent(), nil)
 	require.Error(t, err, "NewRunner() without state")
 
-	_, err = NewRunner(options, regions, NewCurrent(), &fakeState{}, nil)
-	require.Error(t, err, "NewRunner() without a notifier")
-
-	_, err = NewRunner(options, nil, NewCurrent(), &fakeState{}, &fakeNotifier{})
+	_, err = NewRunner(options, nil, NewCurrent(), &fakeState{})
 	require.Error(t, err, "NewRunner() without a region list")
 
-	_, err = NewRunner(Options{}, regions, NewCurrent(), &fakeState{}, &fakeNotifier{})
+	_, err = NewRunner(Options{}, regions, NewCurrent(), &fakeState{})
 	require.Error(t, err, "NewRunner() without a directory")
 }
 
@@ -78,57 +75,26 @@ func staticRegions(regions ...string) func() []string {
 // have to restart the service for the build to become possible.
 func TestRunBuildsNothingWhileNoRegionIsConfigured(t *testing.T) {
 	state := &fakeState{}
-	notifier := &fakeNotifier{}
-	runner, err := NewRunner(Options{Directory: t.TempDir()}, staticRegions(),
-		NewCurrent(), state, notifier)
+	runner, err := NewRunner(Options{Directory: t.TempDir()}, staticRegions(), NewCurrent(), state)
 	require.NoError(t, err, "NewRunner()")
 
 	outcome, err := runner.Run(t.Context())
 	require.NoError(t, err, "Run()")
 	assert.Equal(t, NoRegions, outcome, "Run() outcome")
 	assert.True(t, state.builtAt.IsZero(), "a run with no regions recorded a build")
-	assert.Empty(t, notifier.sent, "a run with no regions notified")
-}
-
-// A failed build is worth one message. The same message every week afterwards is
-// noise an operator learns to ignore, which is how the message that mattered
-// gets missed.
-func TestRunNotifiesOnceForARunOfFailures(t *testing.T) {
-	server := failingUpstream(t)
-	state := &fakeState{}
-	notifier := &fakeNotifier{}
-	runner := testRunner(t, server, NewCurrent(), state, notifier)
-
-	_, err := runner.Run(t.Context())
-	require.Error(t, err, "a failed build reported no error")
-	require.Len(t, notifier.sent, 1, "the first failure was not announced")
-	assert.Contains(t, notifier.sent[0], "surface index", "the message does not say what failed")
-	assert.NotContains(t, notifier.sent[0], server.URL, "the message carries an upstream address")
-
-	_, err = runner.Run(t.Context())
-	require.Error(t, err, "a failed build reported no error")
-	assert.Len(t, notifier.sent, 1, "a second failure inside the window was announced again")
-
-	// A failure after the window has passed is worth saying again.
-	state.notifiedAt = state.notifiedAt.Add(-failureNotificationSuppression - time.Hour)
-	_, err = runner.Run(t.Context())
-	require.Error(t, err, "a failed build reported no error")
-	assert.Len(t, notifier.sent, 2, "a failure after the suppression window stayed silent")
 }
 
 // A cancelled build is a shutdown, not a fault. Announcing it would send a
 // notification every time the service is restarted.
 func TestRunStaysSilentWhenTheBuildIsCancelled(t *testing.T) {
 	server := failingUpstream(t)
-	notifier := &fakeNotifier{}
-	runner := testRunner(t, server, NewCurrent(), &fakeState{}, notifier)
+	runner := testRunner(t, server, NewCurrent(), &fakeState{})
 
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	_, err := runner.Run(ctx)
 
 	require.Error(t, err, "a cancelled build reported no error")
-	assert.Empty(t, notifier.sent, "a shutdown was announced as a failure")
 }
 
 // The next start counts its delay from the last time the upstream was actually
@@ -146,13 +112,11 @@ func TestRunRecordsAnUnchangedBuild(t *testing.T) {
 	t.Cleanup(func() { assert.NoError(t, current.Close()) })
 
 	state := &fakeState{}
-	notifier := &fakeNotifier{}
-	runner := testRunnerIn(t, directory, server, current, state, notifier)
+	runner := testRunnerIn(t, directory, server, current, state)
 	outcome, err := runner.Run(t.Context())
 
 	require.NoError(t, err, "Run()")
 	assert.Equal(t, Unchanged, outcome, "Run() outcome")
-	assert.Empty(t, notifier.sent, "an unchanged check was announced as a failure")
 	assert.Equal(t, generation, state.generation, "the recorded generation")
 	assert.False(t, state.builtAt.IsZero(), "the check was not written down")
 	assert.Equal(t, generation, current.Generation(), "the live index was replaced by an unchanged check")
@@ -189,15 +153,15 @@ func TestPruneRemovesOnlyRetiredIndexes(t *testing.T) {
 	}
 }
 
-func testRunner(t *testing.T, server *httptest.Server, current *Current, state State, notifier Notifier) *Runner {
+func testRunner(t *testing.T, server *httptest.Server, current *Current, state State) *Runner {
 	t.Helper()
 
-	return testRunnerIn(t, t.TempDir(), server, current, state, notifier)
+	return testRunnerIn(t, t.TempDir(), server, current, state)
 }
 
 func testRunnerIn(
 	t *testing.T, directory string, server *httptest.Server,
-	current *Current, state State, notifier Notifier,
+	current *Current, state State,
 ) *Runner {
 	t.Helper()
 
@@ -205,7 +169,7 @@ func testRunnerIn(
 		Directory: directory,
 		BaseURL:   server.URL,
 		Client:    server.Client(),
-	}, staticRegions("europe/germany"), current, state, notifier)
+	}, staticRegions("europe/germany"), current, state)
 	require.NoError(t, err, "NewRunner()")
 
 	return runner
@@ -272,20 +236,6 @@ func (s *fakeState) RecordFailureNotification(_ context.Context, _ string, sentA
 	return nil
 }
 
-type fakeNotifier struct {
-	err  error
-	sent []string
-}
-
-func (n *fakeNotifier) Send(_ context.Context, title, message string) error {
-	if n.err != nil {
-		return n.err
-	}
-	n.sent = append(n.sent, title+": "+message)
-
-	return nil
-}
-
 // A build that succeeds has to leave the service using what it built. Every other
 // test here stops short: a failure never opens an index, and an unchanged check
 // keeps the one already live. This proves Build's file is one Open accepts, that
@@ -306,13 +256,11 @@ func TestRunInstallsWhatItBuilds(t *testing.T) {
 	current := NewCurrent()
 	t.Cleanup(func() { assert.NoError(t, current.Close(), "Close()") })
 	state := &fakeState{}
-	notifier := &fakeNotifier{}
 
-	outcome, err := testRunnerIn(t, directory, server, current, state, notifier).Run(t.Context())
+	outcome, err := testRunnerIn(t, directory, server, current, state).Run(t.Context())
 
 	require.NoError(t, err, "Run()")
 	assert.Equal(t, Rebuilt, outcome, "Run() outcome")
-	require.Empty(t, notifier.sent, "a successful build was announced as a failure")
 	generation := generationOf(map[string]string{"europe/germany": digest})
 	assert.Equal(t, generation, current.Generation(), "the generation now being served")
 	assert.Equal(t, generation, state.generation, "the generation written down")
