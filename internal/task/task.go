@@ -7,6 +7,11 @@ import (
 	"time"
 )
 
+// maxChainDepth bounds how far one attempt's consequences may reach. Every
+// chain the service registers is one or two links long; this is the backstop
+// behind the set of what a chain has already run.
+const maxChainDepth = 8
+
 // defaultRetainedRuns bounds a task's history when it names no bound of its
 // own. An hourly task keeps roughly a week that way.
 const defaultRetainedRuns = 200
@@ -47,10 +52,19 @@ func (o Outcome) recorded() bool {
 // provider response text, a route name, or an upstream identifier.
 type Detail string
 
-// Result is what one attempt came to.
+// Link is one invocation a finished attempt asks for. A task returns links for
+// the work its own result made necessary, so what follows what is decided by
+// whoever knows, rather than declared where nobody can see the outcome.
+type Link struct {
+	Task     string
+	Argument string
+}
+
+// Result is what one attempt came to, and what it asks should happen next.
 type Result struct {
 	Outcome Outcome
 	Detail  Detail
+	Next    []Link
 }
 
 // Trigger names what started an attempt. A task whose scheduled behaviour
@@ -62,6 +76,8 @@ const (
 	TriggerSchedule Trigger = "schedule"
 	// TriggerManual is an operator asking for the task directly.
 	TriggerManual Trigger = "manual"
+	// TriggerChain is another attempt that finished and asked for this one.
+	TriggerChain Trigger = "chain"
 )
 
 // Invocation is one attempt: which task, over which argument, and what started
