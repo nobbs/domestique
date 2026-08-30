@@ -260,9 +260,9 @@ type fakeIndexBuilder struct{ builds int }
 
 func (b *fakeIndexBuilder) Run(context.Context) { b.builds++ }
 
-// The synchronization task is the one that runs unasked, so its cadence and its
-// first delay are read from the settings rather than fixed here.
-func TestSyncTaskReadsItsCadenceAndFirstDelayFromSettings(t *testing.T) {
+// The synchronization cadence is fixed by the rate limits it has to live
+// within; only how long the first run waits after start is an operator's.
+func TestSyncTaskRunsOnAFixedCadenceAfterASettingsDrivenFirstDelay(t *testing.T) {
 	t.Parallel()
 
 	settings := liveSettings(t)
