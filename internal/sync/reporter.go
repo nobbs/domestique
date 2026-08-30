@@ -218,11 +218,10 @@ func (r *Reporter) runPhasesWith(ctx context.Context, source, targets bool, runT
 		// go stale while the schedule has it switched off.
 		r.checkStaleness(ctx, now, sourceStored)
 	}
-	// Enrichment runs on any successful source refresh, changed or not: an
+	// Enrichment follows any successful source refresh, changed or not: an
 	// unchanged library can still hold stages an earlier pass never got to.
-	if sourceStored {
-		r.annotate(ctx)
-	}
+	// Whoever started this pass is what starts that.
+	result.SourceStored = sourceStored
 
 	return result
 }

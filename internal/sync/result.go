@@ -93,7 +93,10 @@ type Result struct {
 	Targets []TargetResult
 	// Sources carries each configured source's own outcome, in configured
 	// order. Only the source phase produces it.
-	Sources      []SourceResult
+	Sources []SourceResult
+	// SourceStored reports that this pass refreshed the stored inventory, which
+	// is what makes reading the ground under it worth doing again.
+	SourceStored bool
 	SourceStages int
 	Created      int
 	Updated      int
