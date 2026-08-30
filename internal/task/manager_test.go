@@ -579,9 +579,18 @@ func TestNewManagerNeedsSomewhereToRecord(t *testing.T) {
 	t.Parallel()
 
 	for name, build := range map[string]func() (*Manager, error){
-		"no store":    func() (*Manager, error) { return NewManager(nil, &fakeNotifier{}, alwaysOn) },
-		"no notifier": func() (*Manager, error) { return NewManager(&recordingStore{}, nil, alwaysOn) },
-		"no switch":   func() (*Manager, error) { return NewManager(&recordingStore{}, &fakeNotifier{}, nil) },
+		"no store": func() (*Manager, error) {
+			return NewManager(nil, &fakeNotifier{}, &fakeAlerts{}, alwaysOn)
+		},
+		"no notifier": func() (*Manager, error) {
+			return NewManager(&recordingStore{}, nil, &fakeAlerts{}, alwaysOn)
+		},
+		"no decisions": func() (*Manager, error) {
+			return NewManager(&recordingStore{}, &fakeNotifier{}, nil, alwaysOn)
+		},
+		"no switch": func() (*Manager, error) {
+			return NewManager(&recordingStore{}, &fakeNotifier{}, &fakeAlerts{}, nil)
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -754,11 +763,30 @@ func newTestManager(t *testing.T) (*Manager, *recordingStore) {
 func newAlertingManager(t *testing.T) (*Manager, *recordingStore, *fakeNotifier) {
 	t.Helper()
 
-	store, notifier := &recordingStore{}, &fakeNotifier{}
-	manager, err := NewManager(store, notifier, alwaysOn)
-	require.NoError(t, err, "NewManager()")
+	manager, store, notifier, _ := newDecidingManager(t)
 
 	return manager, store, notifier
+}
+
+func newDecidingManager(t *testing.T) (*Manager, *recordingStore, *fakeNotifier, *fakeAlerts) {
+	t.Helper()
+
+	store, notifier, decisions := &recordingStore{}, &fakeNotifier{}, &fakeAlerts{decided: map[Detail]bool{}}
+	manager, err := NewManager(store, notifier, decisions, alwaysOn)
+	require.NoError(t, err, "NewManager()")
+
+	return manager, store, notifier, decisions
+}
+
+// fakeAlerts stands in for what an operator has ruled on.
+type fakeAlerts struct {
+	decided map[Detail]bool
+}
+
+func (a *fakeAlerts) Wanted(_ context.Context, _ string, alert Detail) (enabled, decided bool) {
+	enabled, decided = a.decided[alert]
+
+	return enabled, decided
 }
 
 func alwaysOn() bool { return true }
@@ -1346,7 +1374,7 @@ func TestNothingIsAnnouncedOrRecordedWhileTheChannelIsOff(t *testing.T) {
 	t.Parallel()
 
 	store, notifier := &recordingStore{}, &fakeNotifier{}
-	manager, err := NewManager(store, notifier, func() bool { return false })
+	manager, err := NewManager(store, notifier, &fakeAlerts{}, func() bool { return false })
 	require.NoError(t, err, "NewManager()")
 	require.NoError(t, manager.Register(&Definition{
 		Name:   "sync",
@@ -1422,4 +1450,63 @@ func TestEachAttemptIsNamedSomethingOfItsOwn(t *testing.T) {
 
 	assert.Regexp(t, `^[0-9a-f]{12}$`, first, "a run was named something unexpected")
 	assert.NotEqual(t, first, store.reference, "two runs shared a name")
+}
+
+// A fault nobody has ruled on is announced: one nobody has heard of is the one
+// worth hearing about. A decision an operator has made wins either way.
+func TestAnOperatorsDecisionDecidesWhetherAnAlertGoesOut(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		decided map[Detail]bool
+		want    int
+	}{
+		"nobody has ruled on it": {decided: map[Detail]bool{}, want: 1},
+		"switched on":            {decided: map[Detail]bool{"destination": true}, want: 1},
+		"switched off":           {decided: map[Detail]bool{"destination": false}, want: 0},
+		"another alert switched off": {
+			decided: map[Detail]bool{"source": false}, want: 1,
+		},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			manager, _, notifier, decisions := newDecidingManager(t)
+			decisions.decided = test.decided
+			require.NoError(t, manager.Register(&Definition{
+				Name:   "sync",
+				Notify: &Notify{Title: "Domestique sync failed", Suppress: time.Hour},
+				Run: RunnerFunc(func(context.Context, Invocation) Result {
+					return Result{Outcome: Failed, Detail: "destination"}
+				}),
+			}), "Register()")
+
+			require.True(t, manager.Trigger(t.Context(), "sync", ""), "Trigger()")
+			manager.Wait()
+
+			assert.Len(t, notifier.messages(), test.want, "sent alerts")
+		})
+	}
+}
+
+// An alert switched off is not sent and opens no window, so switching it back
+// on does not find one it never heard the alert behind.
+func TestAnAlertSwitchedOffOpensNoWindow(t *testing.T) {
+	t.Parallel()
+
+	manager, store, _, decisions := newDecidingManager(t)
+	decisions.decided = map[Detail]bool{"destination": false}
+	require.NoError(t, manager.Register(&Definition{
+		Name:   "sync",
+		Notify: &Notify{Title: "Domestique sync failed", Suppress: time.Hour},
+		Run: RunnerFunc(func(context.Context, Invocation) Result {
+			return Result{Outcome: Failed, Detail: "destination"}
+		}),
+	}), "Register()")
+
+	require.True(t, manager.Trigger(t.Context(), "sync", ""), "Trigger()")
+	manager.Wait()
+
+	assert.Empty(t, store.notifiedAt, "a suppression window was opened for an alert nobody wanted")
 }

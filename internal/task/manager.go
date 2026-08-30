@@ -32,6 +32,12 @@ type Store interface {
 	RecordFailureNotification(ctx context.Context, category string, sentAt time.Time) error
 }
 
+// Alerts says which alerts an operator has ruled on. An alert nobody has ruled
+// on is not in the map, which is not the same as one switched off.
+type Alerts interface {
+	Wanted(ctx context.Context, task string, alert Detail) (enabled, decided bool)
+}
+
 // Notifier delivers already-safe alert text.
 type Notifier interface {
 	Send(ctx context.Context, title, message string) error
@@ -44,6 +50,7 @@ type Manager struct {
 	after    func(time.Duration) <-chan time.Time
 	store    Store
 	notifier Notifier
+	alerts   Alerts
 	enabled  func() bool
 
 	shared    map[string]int
@@ -72,9 +79,9 @@ type registered struct {
 // in and the channel its alerts go out on. Nothing runs until Run is called.
 // enabled is read at the moment a message would go out rather than captured,
 // because an operator edits it while the service runs.
-func NewManager(store Store, notifier Notifier, enabled func() bool) (*Manager, error) {
-	if store == nil || notifier == nil || enabled == nil {
-		return nil, errors.New("task: a run store, a notifier and a notification switch are required")
+func NewManager(store Store, notifier Notifier, alerts Alerts, enabled func() bool) (*Manager, error) {
+	if store == nil || notifier == nil || alerts == nil || enabled == nil {
+		return nil, errors.New("task: a run store, a notifier, alert decisions and a switch are required")
 	}
 
 	return &Manager{
@@ -82,6 +89,7 @@ func NewManager(store Store, notifier Notifier, enabled func() bool) (*Manager, 
 		after:     time.After,
 		store:     store,
 		notifier:  notifier,
+		alerts:    alerts,
 		enabled:   enabled,
 		shared:    make(map[string]int),
 		exclusive: make(map[string]struct{}),
@@ -376,6 +384,9 @@ func (m *Manager) announce(
 	if !entry.definition.alerts() || !result.Outcome.alerts() || !m.enabled() {
 		return
 	}
+	if !m.wanted(ctx, invocation.Task, result.Detail) {
+		return
+	}
 	category := invocation.Task + ":" + string(result.Detail)
 	lastSentAt, found, err := m.store.LastFailureNotification(ctx, category)
 	if err != nil || (found && now.Sub(lastSentAt) < entry.definition.Notify.Suppress) {
@@ -401,6 +412,18 @@ func newRunReference() string {
 	_, _ = rand.Read(reference)
 
 	return hex.EncodeToString(reference)
+}
+
+// wanted reports whether an operator wants this alert delivered. One they have
+// ruled on is their decision; one nobody has ruled on is announced, because a
+// fault nobody has heard of is the one worth hearing about.
+func (m *Manager) wanted(ctx context.Context, task string, alert Detail) bool {
+	enabled, decided := m.alerts.Wanted(ctx, task, alert)
+	if !decided {
+		return true
+	}
+
+	return enabled
 }
 
 // alertMessage says which task went wrong, over what, and why. Every message
