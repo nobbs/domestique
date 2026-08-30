@@ -239,10 +239,8 @@ export function RouteOverlay({
   highlight = null,
   unitSystem = "metric",
 }: RouteOverlayProps) {
-  // Which cartography the stack is drawn on, which picks the steepness ramp:
-  // resolved with the basemap itself, not from the page's scheme — a deployment
-  // with no dark style keeps the light basemap under a dark scheme, and the
-  // edging has to match the ground it is drawn on.
+  // Picks the steepness ramp: the edging has to match the ground it is drawn
+  // on, which is the loaded basemap rather than the page's scheme.
   const { dark: darkBasemap } = useCartography();
   /**
    * The stretch being drawn on the route right now, which is not a window yet.

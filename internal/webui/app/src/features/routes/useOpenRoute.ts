@@ -1,12 +1,6 @@
 /**
- * Everything asked of the open route, in one place.
- *
- * The map and the panel are two views of one answer — the hovered position
- * marks the chart and the map, the stretch on show dims one and frames the
- * other, and a class picked out of the chips lights the same ground on both —
- * so the questions live together here rather than in either view. `AtlasPage`
- * owns the hook; this file only gives the dossier a boundary of its own, away
- * from the library browsing the page also runs.
+ * Everything asked of the open route, in one place: the map and the panel are
+ * two views of one answer, so neither holds its own copy. `AtlasPage` calls it.
  */
 
 import type { UseQueryResult } from "@tanstack/react-query";
@@ -31,8 +25,7 @@ import { summariseSurface } from "../../lib/surface";
  *
  * @param coordinates The route's stored geometry, empty until it arrives.
  * @param geometry The same fetch the library map draws from, read for the
- *   fields beyond the coordinates: the surface classification and the
- *   predicted cumulative seconds.
+ *   surface classification and the predicted cumulative seconds.
  * @param startAt The reader's chosen start time, null while none is picked.
  */
 export function useOpenRoute(

@@ -1,11 +1,7 @@
 /**
- * Which cartography the map's children are drawn on.
- *
- * Whether the loaded basemap is dark is a fact about the canvas everything on
- * it shares, not a choice any one layer makes — a deployment with no dark
- * style configured keeps the light basemap under a dark page, so this is
- * resolved where the basemap itself is (see `basemapFor`) and carried here
- * rather than threaded as a prop through every component in between.
+ * Which cartography the map's children are drawn on: the loaded basemap's own
+ * darkness (resolved by `basemapFor`), not the page's scheme — a deployment
+ * with no dark style keeps the light basemap under a dark page.
  */
 
 import { createContext, type ReactNode, useContext, useMemo } from "react";
@@ -24,11 +20,8 @@ export function CartographyProvider({ dark, children }: Cartography & { children
 }
 
 /**
- * The cartography this component is drawn on.
- *
- * Throws rather than defaulting: a layer rendered outside a provider would
- * otherwise pick its colours for a basemap nobody resolved, and mis-render
- * quietly instead of failing where the mistake is.
+ * The cartography this component is drawn on. Throws outside a provider: a
+ * default would colour for a basemap nobody resolved and mis-render quietly.
  */
 export function useCartography(): Cartography {
   const cartography = useContext(CartographyContext);

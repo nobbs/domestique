@@ -1,10 +1,7 @@
 /**
- * Holds the TypeScript cartography colours to the CSS custom properties.
- *
- * The map's colours are keyed by which basemap is loaded and the page's by its
- * scheme, so neither side can read the other's copy at runtime — see
- * cartography.ts. What can be checked is that the copies agree: this parses
- * index.css and fails the moment a hex is changed on one side only.
+ * Holds the TypeScript cartography colours to the CSS custom properties: the
+ * two sides cannot share a copy at runtime (see cartography.ts), so this
+ * parses index.css and fails the moment a hex is changed on one side only.
  */
 
 import { readFileSync } from "node:fs";
@@ -32,9 +29,8 @@ function varsIn(selector: string): Map<string, string> {
 }
 
 const light = varsIn(":root");
-// The reader's explicit choice and the system's own preference are two blocks
-// carrying the same palette; a hex changed in only one of them is exactly the
-// drift this test exists to catch, so both are checked.
+// The explicit-choice and system-preference blocks carry the same palette;
+// both are checked so a hex changed in only one of them is caught too.
 const darkBlocks = [
   { name: '[data-theme="dark"]', vars: varsIn(':root[data-theme="dark"]') },
   {

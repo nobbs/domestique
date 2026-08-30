@@ -61,9 +61,6 @@ export function LibraryMap({
   const hasOverlay = children !== null && children !== undefined;
 
   return (
-    // The provider sits outside the widget so every layer on this canvas —
-    // the library's own lines and whatever overlay is handed in as children —
-    // reads the one darkness resolved with the basemap.
     <CartographyProvider dark={darkBasemap}>
       <MapWidget
         styleUrl={styleUrl}

@@ -1,27 +1,18 @@
 /**
  * The colours drawn onto the cartography, and how close the camera may go.
  *
- * Every pair here is keyed by which basemap is loaded rather than by the
- * page's scheme, because these sit on the map: a deployment with no dark style
- * configured keeps the light basemap under a dark page, and a line has to
- * match the ground it is actually drawn on — see `LoadedBasemap.dark`.
- *
- * The same three pairs are `--accent`, `--panel` and `--ink` in index.css,
- * where they follow the page instead. Neither file can read the other's copy —
- * a CSS variable resolves against the page's scheme, which is exactly the key
- * these must not use — so `cartography.test.ts` holds the two files to the
- * same values instead.
+ * Each pair is keyed by which basemap is loaded, never by the page's scheme —
+ * a deployment with no dark style keeps the light basemap under a dark page
+ * (see `LoadedBasemap.dark`). The same pairs are `--accent`, `--panel` and
+ * `--ink` in index.css, where they follow the page; a CSS variable would
+ * resolve against that wrong key, so `cartography.test.ts` holds the two
+ * files' copies equal instead.
  */
 
 /** The accent the route itself is drawn in, per basemap. */
 export const ROUTE_ACCENT = { light: "#236fc7", dark: "#70adfb" } as const;
 
-/**
- * The panel colour, on the cartography.
- *
- * Under the route it is the casing that lifts the line off the ground rather
- * than merely recolouring it; on the tooltip it is the box the words sit in.
- */
+/** The panel colour on the cartography: the route's casing, the tooltip's box. */
 export const PANEL = { light: "#fcfdff", dark: "#24282c" } as const;
 
 /** The ink the library's lines are drawn in, per basemap. */
