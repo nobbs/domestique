@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"sync/atomic"
 	"time"
 )
 
@@ -38,9 +37,23 @@ type Notifier interface {
 	Send(ctx context.Context, title, message string) error
 }
 
-// Runner rebuilds the index on a schedule and installs what it builds. It
-// reports nothing to its scheduler: a build is preprocessing, so a failed one
-// changes what the service knows rather than whether it works.
+// Outcome is what a rebuild came to when it did not fail outright.
+type Outcome string
+
+const (
+	// Rebuilt means a new index was built and installed.
+	Rebuilt Outcome = "rebuilt"
+	// Unchanged means every region's published extract still matches the index
+	// already installed, so nothing was downloaded.
+	Unchanged Outcome = "unchanged"
+	// NoRegions means none is configured, which is the operator's switch for
+	// leaving stages unclassified.
+	NoRegions Outcome = "no_regions"
+)
+
+// Runner rebuilds the index and installs what it builds. It reports what a
+// build came to so its caller can record it; a failed build changes what the
+// service knows rather than whether it works.
 type Runner struct {
 	current  *Current
 	state    State
@@ -48,7 +61,6 @@ type Runner struct {
 	regions  func() []string
 	now      func() time.Time
 	options  Options
-	running  atomic.Bool
 }
 
 // NewRunner creates a runner over an index holder, durable state, and a
@@ -69,24 +81,16 @@ func NewRunner(
 	}, nil
 }
 
-// Run performs one scheduled rebuild. Concurrent runs are refused rather than
-// queued: a build reads a region's whole road network into memory.
-func (r *Runner) Run(ctx context.Context) {
-	if !r.running.CompareAndSwap(false, true) {
-		slog.Warn("surface index build skipped", "reason", "a build is already running")
-
-		return
-	}
-	defer r.running.Store(false)
-
-	// No region is the operator's switch for leaving stages unclassified. The
-	// schedule still runs, so turning regions on needs no restart.
+// Run performs one rebuild and reports what it came to. Nothing here guards
+// against a concurrent build: whatever starts this is what keeps two of them
+// apart, and a build reads a region's whole road network into memory.
+func (r *Runner) Run(ctx context.Context) (Outcome, error) {
 	options := r.options
 	options.Regions = r.regions()
 	if len(options.Regions) == 0 {
 		slog.Info("surface index build skipped", "reason", "no regions are configured")
 
-		return
+		return NoRegions, nil
 	}
 
 	startedAt := r.now().UTC()
@@ -95,12 +99,12 @@ func (r *Runner) Run(ctx context.Context) {
 		// A cancelled build is a shutdown, not a fault. Announcing it would send
 		// a notification every time the service is restarted.
 		if ctx.Err() != nil {
-			return
+			return "", err
 		}
 		slog.Error("surface index build failed", "error", err)
 		r.notifyFailure(ctx)
 
-		return
+		return "", err
 	}
 
 	finishedAt := r.now().UTC()
@@ -111,7 +115,7 @@ func (r *Runner) Run(ctx context.Context) {
 		)
 		r.record(ctx, finishedAt, result.Generation)
 
-		return
+		return Unchanged, nil
 	}
 
 	index, err := Open(ctx, result.Path)
@@ -120,7 +124,7 @@ func (r *Runner) Run(ctx context.Context) {
 		removeFile(result.Path)
 		r.notifyFailure(ctx)
 
-		return
+		return "", err
 	}
 	r.current.Swap(index)
 	r.record(ctx, finishedAt, result.Generation)
@@ -131,6 +135,8 @@ func (r *Runner) Run(ctx context.Context) {
 		"regions", len(options.Regions),
 		"built_in", finishedAt.Sub(startedAt).Round(time.Second),
 	)
+
+	return Rebuilt, nil
 }
 
 // record writes down what the run established, for an unchanged check as well as
