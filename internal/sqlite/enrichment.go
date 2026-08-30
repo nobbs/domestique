@@ -95,6 +95,38 @@ func (s *Store) ForEachStageEnrichmentFailure(
 	return nil
 }
 
+// pruneStageEnrichmentFailure drops what no longer describes anything, in the
+// caller's transaction. A stage that has left the inventory takes its failures
+// with it: what is here is meant to be what is wrong now.
+func pruneStageEnrichmentFailure(ctx context.Context, transaction *sql.Tx) error {
+	if _, err := transaction.ExecContext(ctx, `
+		DELETE FROM stage_enrichment_failure
+		WHERE NOT EXISTS (
+			SELECT 1 FROM stage_geometry
+			WHERE stage_geometry.provider = stage_enrichment_failure.provider
+			  AND stage_geometry.route_id = stage_enrichment_failure.route_id
+			  AND stage_geometry.stage_order = stage_enrichment_failure.stage_order
+		)
+	`); err != nil {
+		return fmt.Errorf("pruning stage enrichment failures: %w", err)
+	}
+
+	return nil
+}
+
+// ClearStageDurationFailures drops what the timing pass could not finish, for a
+// pass that is no longer configured to run at all. A stage cannot be failing a
+// pass nothing is asking for.
+func (s *Store) ClearStageDurationFailures(ctx context.Context) error {
+	if _, err := s.database.ExecContext(ctx, `
+		DELETE FROM stage_enrichment_failure WHERE pass = ?
+	`, PassDuration); err != nil {
+		return fmt.Errorf("clearing stage duration failures: %w", err)
+	}
+
+	return nil
+}
+
 // clearStageEnrichmentFailure drops what a pass last could not finish, in the
 // caller's transaction. Storing what the pass produced is what clears it, so a
 // stage cannot be listed as failing and enriched at the same time.

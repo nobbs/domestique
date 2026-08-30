@@ -112,7 +112,7 @@ func TestForEachStageEnrichmentFailureStopsWhenTheVisitorDoes(t *testing.T) {
 	t.Parallel()
 
 	store := openTestStore(t, testKey(1))
-	for stage := range 3 {
+	for stage := 1; stage <= 3; stage++ {
 		require.NoError(t, store.RecordStageSurfaceFailure(
 			t.Context(), "veloplanner", 7, stage, "ways",
 		), "RecordStageSurfaceFailure()")
@@ -140,4 +140,40 @@ func TestStoreStageDurationReportsAnUnreadableDatabase(t *testing.T) {
 	require.Error(t, store.StoreStageDuration(
 		t.Context(), "veloplanner", 7, 1, "hash", "generation", "fingerprint", nil, nil,
 	), "StoreStageDuration() on a closed database")
+}
+
+// What is here is meant to be what is wrong now, so a stage that has left the
+// inventory takes its failures with it.
+func TestStageEnrichmentFailuresGoWithTheStagesTheyName(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t, testKey(1))
+	stages := []route.Route{
+		storeTestStage(t, 7, 1, "revision", "hash-7"),
+		storeTestStage(t, 8, 1, "revision", "hash-8"),
+	}
+	require.NoError(t, store.StoreTrustedInventory(t.Context(), "veloplanner", stages), "StoreTrustedInventory()")
+	require.NoError(t, store.RecordStageSurfaceFailure(t.Context(), "veloplanner", 7, 1, "ways"), "failure for 7")
+	require.NoError(t, store.RecordStageSurfaceFailure(t.Context(), "veloplanner", 8, 1, "ways"), "failure for 8")
+
+	// The library now holds only the first of them.
+	require.NoError(t, store.StoreTrustedInventory(t.Context(), "veloplanner", stages[:1]), "StoreTrustedInventory()")
+
+	assert.Equal(t, []recordedFailure{
+		{key: route.NewKey("veloplanner", 7, 1), pass: PassSurface, reason: "ways"},
+	}, readFailures(t, store), "a stage that left the library kept its failure")
+}
+
+// A pass nothing is asking for cannot be failing.
+func TestClearStageDurationFailuresLeavesTheOtherPassAlone(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.RecordStageSurfaceFailure(t.Context(), "veloplanner", 7, 1, "ways"), "surface failure")
+	require.NoError(t, store.RecordStageDurationFailure(t.Context(), "veloplanner", 7, 1, "cache"), "duration failure")
+
+	require.NoError(t, store.ClearStageDurationFailures(t.Context()), "ClearStageDurationFailures()")
+	assert.Equal(t, []recordedFailure{
+		{key: route.NewKey("veloplanner", 7, 1), pass: PassSurface, reason: "ways"},
+	}, readFailures(t, store), "clearing one pass took the other with it")
 }
