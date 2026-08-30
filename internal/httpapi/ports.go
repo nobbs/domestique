@@ -55,6 +55,32 @@ type Sync interface {
 	RateLimit() (remaining int, resetAt time.Time, ok bool)
 }
 
+// Alerts is the alert matrix as this surface needs it: what this service can
+// raise, what an operator has decided about each, and a way to decide.
+type Alerts interface {
+	// Catalogue lists every alert this service can raise, in a stable order,
+	// with what has been decided about each.
+	Catalogue() []AlertSetting
+	// Decide records what an operator decided. An alert left out keeps whatever
+	// it had, because deciding is what creates a record.
+	Decide(ctx context.Context, decisions []AlertDecision) error
+}
+
+// AlertSetting is one alert and what is currently true of it.
+type AlertSetting struct {
+	Task    string
+	Alert   string
+	Enabled bool
+	Decided bool
+}
+
+// AlertDecision is one alert an operator has ruled on.
+type AlertDecision struct {
+	Task    string
+	Alert   string
+	Enabled bool
+}
+
 // SyncActivityState is what the process knows about a run that has not
 // finished. Its zero value says nothing is under way.
 type SyncActivityState struct {

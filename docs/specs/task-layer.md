@@ -185,6 +185,23 @@ find a suppression window it never heard the alert behind.
 Every message names its run. The reference is random and means nothing on its
 own, which is what makes it safe to send.
 
+## The alert matrix
+
+What an operator is offered a decision about is what the registered tasks
+declare, read once at start because it is a fact about the build rather than
+about a run. An alert nothing raises cannot be decided: storing one would leave
+a row nobody reads behind a switch that appears to do something.
+
+A decision about an alert nobody has ruled on is what creates its record, so an
+alert left out of an edit keeps whatever it had rather than being switched off
+by omission.
+
+A decision reaches the running service, not only the database. One that had not
+been read back would keep sending the alert an operator had just switched off,
+which is the failure the switch exists to prevent. The decisions are read at
+start too, and a service that cannot read them refuses to start rather than
+announcing what was deliberately silenced.
+
 ## Enrichment failures
 
 Classifying the ground under a stage and timing it are passes over the whole

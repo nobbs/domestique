@@ -593,6 +593,34 @@ paths:
           $ref: '#/components/responses/Forbidden'
         "503":
           $ref: '#/components/responses/Unavailable'
+  /v1/settings/alerts:
+    put:
+      tags:
+        - browser-api
+      operationId: setAlerts
+      security:
+        - accessAssertion: []
+          browserOrigin: []
+      description: >-
+        Records which alerts are delivered. Deciding is what creates a record,
+        so an alert left out keeps whatever it had.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AlertsUpdate'
+      responses:
+        "200":
+          $ref: '#/components/responses/SettingsStored'
+        "400":
+          $ref: '#/components/responses/InvalidRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "503":
+          $ref: '#/components/responses/Unavailable'
   /v1/settings/basemaps:
     put:
       tags:
@@ -1373,6 +1401,7 @@ components:
         - wahoo
         - sources
         - rideModel
+        - alerts
         - secretsSet
         - missing
       properties:
@@ -1398,6 +1427,14 @@ components:
             is a service nobody has configured yet, not an error.
         rideModel:
           $ref: '#/components/schemas/RideModelSettings'
+        alerts:
+          type: array
+          items:
+            $ref: '#/components/schemas/AlertSetting'
+          description: >-
+            Every alert this service can raise, and whether it is delivered. An
+            alert nobody has ruled on is delivered: a fault nobody has heard of
+            is the one worth hearing about.
         secretsSet:
           type: object
           additionalProperties:
@@ -1484,6 +1521,58 @@ components:
         password:
           type: string
           description: The account's password, on the same terms as the email address.
+    AlertSetting:
+      type: object
+      additionalProperties: false
+      required:
+        - task
+        - alert
+        - enabled
+        - decided
+      properties:
+        task:
+          type: string
+          description: The background activity the alert is about.
+        alert:
+          type: string
+          description: >-
+            The stable reason the alert names. It never carries provider text, a
+            route name, or an upstream identifier.
+        enabled:
+          type: boolean
+          description: Whether this alert is delivered.
+        decided:
+          type: boolean
+          description: >-
+            Whether anybody has ruled on it. An alert nobody has ruled on is
+            delivered, which is not the same as one somebody switched on.
+    AlertsUpdate:
+      type: object
+      additionalProperties: false
+      required:
+        - alerts
+      properties:
+        alerts:
+          type: array
+          items:
+            $ref: '#/components/schemas/AlertDecision'
+          description: >-
+            What the operator has decided. Deciding is what creates a record, so
+            an alert left out of this list keeps whatever it had.
+    AlertDecision:
+      type: object
+      additionalProperties: false
+      required:
+        - task
+        - alert
+        - enabled
+      properties:
+        task:
+          type: string
+        alert:
+          type: string
+        enabled:
+          type: boolean
     NotificationsUpdate:
       type: object
       additionalProperties: false

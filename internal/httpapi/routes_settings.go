@@ -237,6 +237,58 @@ func (h *Handler) storeSection(
 	h.writeJSON(writer, http.StatusOK, h.settingsView())
 }
 
+// SetAlerts records which alerts an operator wants delivered. An alert left out
+// of the request keeps whatever it had: deciding is what creates a record, and
+// an absent decision is not the same as switching one off.
+func (h *Handler) SetAlerts(writer http.ResponseWriter, request *http.Request) {
+	body, ok := settingsBody[openapi.AlertsUpdate](h, writer, request)
+	if !ok {
+		return
+	}
+
+	known := make(map[AlertDecision]struct{}, len(body.Alerts))
+	for _, alert := range h.alerts.Catalogue() {
+		known[AlertDecision{Task: alert.Task, Alert: alert.Alert}] = struct{}{}
+	}
+
+	decisions := make([]AlertDecision, 0, len(body.Alerts))
+	for _, decision := range body.Alerts {
+		ruled := AlertDecision{Task: decision.Task, Alert: decision.Alert}
+		// Storing a decision about an alert nothing raises would leave a row
+		// nobody ever reads and a switch the page shows as having an effect.
+		if _, declared := known[ruled]; !declared {
+			h.error(writer, http.StatusBadRequest, "invalid_request",
+				"no task raises the alert "+decision.Alert+" for "+decision.Task)
+
+			return
+		}
+		ruled.Enabled = decision.Enabled
+		decisions = append(decisions, ruled)
+	}
+	if err := h.alerts.Decide(request.Context(), decisions); err != nil {
+		h.unavailable(writer)
+
+		return
+	}
+	h.writeJSON(writer, http.StatusOK, h.settingsView())
+}
+
+// alertSettings renders the alert matrix. It is always a list, never null: an
+// operator who has decided nothing yet still has a matrix to read.
+func alertSettings(catalogue []AlertSetting) []openapi.AlertSetting {
+	settings := make([]openapi.AlertSetting, 0, len(catalogue))
+	for _, alert := range catalogue {
+		settings = append(settings, openapi.AlertSetting{
+			Task:    alert.Task,
+			Alert:   alert.Alert,
+			Enabled: alert.Enabled,
+			Decided: alert.Decided,
+		})
+	}
+
+	return settings
+}
+
 // submitted collects the credentials an edit actually carried. One left out is
 // absent here rather than empty, because absent keeps what is stored and empty
 // removes it.
@@ -295,6 +347,7 @@ func (h *Handler) settingsView() openapi.Settings {
 			Regions:                append([]string{}, values.Surface.Regions...),
 			RebuildIntervalSeconds: int(values.Surface.RebuildInterval / time.Second),
 		},
+		Alerts:     alertSettings(h.alerts.Catalogue()),
 		SecretsSet: make(map[string]bool, len(runtimeconfig.SecretNames())),
 		Missing:    append([]string{}, h.settings.Missing()...),
 	}

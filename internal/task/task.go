@@ -162,6 +162,12 @@ type Notify struct {
 	Suppress time.Duration
 }
 
+// Declaration is one alert a registered task can raise.
+type Declaration struct {
+	Task  string
+	Alert Detail
+}
+
 // Resource is state an attempt needs before it may start. Two attempts wanting
 // the same name serialize unless both want it shared.
 type Resource struct {

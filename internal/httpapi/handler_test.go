@@ -585,6 +585,7 @@ func TestHandlerNamesTheIdentityTheGateLetThrough(t *testing.T) {
 func TestHandlerPublishesTheWayOutWhenOneIsConfigured(t *testing.T) {
 	handler, err := New(
 		&Options{
+			Alerts:           &fakeAlerts{},
 			Settings:         settingsWith(twoProviderBasemaps()),
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
@@ -618,6 +619,7 @@ func TestNewRefusesAnAccessEmailThatIsNotOne(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			_, err := New(
 				&Options{
+					Alerts:           &fakeAlerts{},
 					Settings:         settingsWith(twoProviderBasemaps()),
 					AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 					AccessEmail:      value,
@@ -646,6 +648,7 @@ func TestNewRefusesASignOutURLThatLeavesThisOrigin(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			_, err := New(
 				&Options{
+					Alerts:           &fakeAlerts{},
 					Settings:         settingsWith(twoProviderBasemaps()),
 					AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 					AccessEmail:      testAccessEmail,
@@ -663,6 +666,7 @@ func TestNewRefusesASignOutURLThatLeavesThisOrigin(t *testing.T) {
 func TestHandlerServesEveryConfiguredBasemapInOrder(t *testing.T) {
 	handler, err := New(
 		&Options{
+			Alerts:           &fakeAlerts{},
 			Settings:         settingsWith(twoProviderBasemaps()),
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
@@ -698,6 +702,7 @@ func TestHandlerServesEveryConfiguredBasemapInOrder(t *testing.T) {
 func TestHandlerOmitsAnUnconfiguredDarkTileStyle(t *testing.T) {
 	handler, err := New(
 		&Options{
+			Alerts:           &fakeAlerts{},
 			Settings:         settingsWith(testBasemaps()),
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
@@ -717,6 +722,7 @@ func TestHandlerOmitsAnUnconfiguredDarkTileStyle(t *testing.T) {
 func TestHandlerOmitsAnUnconfiguredSourceBaseURL(t *testing.T) {
 	handler, err := New(
 		&Options{
+			Alerts:           &fakeAlerts{},
 			Settings:         settingsWith(testBasemaps()),
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
@@ -736,6 +742,7 @@ func TestHandlerOmitsAnUnconfiguredSourceBaseURL(t *testing.T) {
 func TestHandlerServesEveryConfiguredSourceKeyedByProvider(t *testing.T) {
 	handler, err := New(
 		&Options{
+			Alerts: &fakeAlerts{},
 			Settings: withSources(settingsWith(testBasemaps()),
 				runtimeconfig.Source{Provider: route.ProviderVeloPlanner, BaseURL: testSourceBaseURL},
 				runtimeconfig.Source{Provider: route.ProviderKomoot, BaseURL: testKomootBaseURL},
@@ -828,6 +835,7 @@ func newHandlerWithBuild(t *testing.T, revision, imageDigest string) *Handler {
 
 	handler, err := New(
 		&Options{
+			Alerts:           &fakeAlerts{},
 			Settings:         settingsWith(testBasemaps()),
 			BuildRevision:    revision,
 			BuildImageDigest: imageDigest,
@@ -848,6 +856,7 @@ func newHandlerWithBuild(t *testing.T, revision, imageDigest string) *Handler {
 func TestHandlerNamesEveryBasemapOriginInThePolicy(t *testing.T) {
 	handler, err := New(
 		&Options{
+			Alerts:           &fakeAlerts{},
 			Settings:         settingsWith(twoProviderBasemaps()),
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
@@ -879,6 +888,7 @@ func TestHandlerNamesEveryBasemapOriginInThePolicy(t *testing.T) {
 func TestHandlerNamesOneOriginOnceForTwoBasemapsSharingIt(t *testing.T) {
 	handler, err := New(
 		&Options{
+			Alerts: &fakeAlerts{},
 			Settings: settingsWith([]runtimeconfig.Basemap{
 				{Name: "Streets", StyleURL: testTileStyleURL},
 				{Name: "Outdoors", StyleURL: "https://tiles.example.test/styles/outdoors"},
@@ -904,6 +914,7 @@ func TestHandlerNamesOneOriginOnceForTwoBasemapsSharingIt(t *testing.T) {
 func TestHandlerAcceptsADarkStyleOnItsOriginRegardlessOfHostCase(t *testing.T) {
 	handler, err := New(
 		&Options{
+			Alerts: &fakeAlerts{},
 			Settings: settingsWith([]runtimeconfig.Basemap{{
 				Name:         "Streets",
 				StyleURL:     testTileStyleURL,
@@ -1879,6 +1890,7 @@ func TestNewRejectsIncompleteOptions(t *testing.T) {
 		// are checked where an edit is written and where the stored values are
 		// read back, not a third time here; see internal/runtimeconfig.
 		{name: "no settings", options: &Options{
+			Alerts:           &fakeAlerts{},
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
@@ -1901,6 +1913,7 @@ func newHandlerWithVerifier(t *testing.T, verifier AccessVerifier) *Handler {
 	t.Helper()
 	handler, err := New(
 		&Options{
+			Alerts:           &fakeAlerts{},
 			Settings:         settingsWith(testBasemaps()),
 			AccessVerifier:   verifier,
 			AccessEmail:      testAccessEmail,
@@ -1919,6 +1932,7 @@ func newHandlerWithSurfaceIndex(t *testing.T, index func() (string, time.Time, b
 	t.Helper()
 	handler, err := New(
 		&Options{
+			Alerts:           &fakeAlerts{},
 			Settings:         settingsWith(testBasemaps()),
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
@@ -1939,6 +1953,7 @@ func newHandlerWithWeather(t *testing.T, weather Weather) *Handler {
 	t.Helper()
 	handler, err := New(
 		&Options{
+			Alerts:           &fakeAlerts{},
 			Settings:         settingsWith(testBasemaps()),
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
@@ -1964,6 +1979,7 @@ func newHandlerWithStaleAfter(t *testing.T, state State, staleAfter time.Duratio
 	settings.values.Sync.StaleAfter = staleAfter
 	handler, err := New(
 		&Options{
+			Alerts:           &fakeAlerts{},
 			Settings:         settings,
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
@@ -1983,6 +1999,7 @@ func newHandlerWithTargets(t *testing.T, state State, targetIDs ...string) *Hand
 	t.Helper()
 	handler, err := New(
 		&Options{
+			Alerts:           &fakeAlerts{},
 			Settings:         withTargets(settingsWith(testBasemaps()), targetIDs...),
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
@@ -2001,6 +2018,7 @@ func newHandlerWithLiveSync(t *testing.T, state State, activity SyncActivityStat
 	t.Helper()
 	handler, err := New(
 		&Options{
+			Alerts:           &fakeAlerts{},
 			Settings:         withTargets(settingsWith(testBasemaps()), "rider-a", "rider-b"),
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
@@ -2020,6 +2038,7 @@ func newHandlerWithRideModelValidation(t *testing.T, state State, validation *Ri
 	t.Helper()
 	handler, err := New(
 		&Options{
+			Alerts:                  &fakeAlerts{},
 			Settings:                settingsWith(testBasemaps()),
 			AccessVerifier:          &recordingVerifier{email: testAccessEmail},
 			AccessEmail:             testAccessEmail,
@@ -2037,6 +2056,7 @@ func newHandlerWithSync(t *testing.T, oauthService OAuth, state State, syncRuns 
 	t.Helper()
 	handler, err := New(
 		&Options{
+			Alerts: &fakeAlerts{},
 			Settings: withSources(settingsWith(testBasemapsWithDark()),
 				runtimeconfig.Source{Provider: route.ProviderVeloPlanner, BaseURL: testSourceBaseURL}),
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
@@ -2745,4 +2765,23 @@ func TestStageHandlersRefuseAnIdentifierTheyCannotParse(t *testing.T) {
 	response = httptest.NewRecorder()
 	handler.GetRoute(response, qualified)
 	assert.Equal(t, http.StatusNotFound, response.Code, "stage status")
+}
+
+// fakeAlerts is an alert matrix a test can read back. Its zero value declares
+// nothing, which is what a service with no announcing task has.
+type fakeAlerts struct {
+	err       error
+	catalogue []AlertSetting
+	decided   []AlertDecision
+}
+
+func (a *fakeAlerts) Catalogue() []AlertSetting { return a.catalogue }
+
+func (a *fakeAlerts) Decide(_ context.Context, decisions []AlertDecision) error {
+	if a.err != nil {
+		return a.err
+	}
+	a.decided = append(a.decided, decisions...)
+
+	return nil
 }

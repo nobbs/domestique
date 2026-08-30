@@ -195,6 +195,7 @@ func TestBrowserOriginNormalisation(t *testing.T) {
 func TestNewRequiresABrowserOrigin(t *testing.T) {
 	_, err := New(
 		&Options{
+			Alerts:         &fakeAlerts{},
 			Settings:       settingsWith(testBasemaps()),
 			AccessVerifier: &recordingVerifier{email: testAccessEmail},
 			AccessEmail:    testAccessEmail,

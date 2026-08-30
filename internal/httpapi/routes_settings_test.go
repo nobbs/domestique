@@ -30,6 +30,7 @@ const (
 	settingsSurfacePath       = "/v1/settings/surface"
 	settingsRideModelPath     = "/v1/settings/ridemodel"
 	settingsSyncPath          = "/v1/settings/sync"
+	settingsAlertsPath        = "/v1/settings/alerts"
 )
 
 // Each of these differs from settingsWith in every field it carries, so a test
@@ -73,6 +74,7 @@ func settingsHandler(t *testing.T) (*Handler, *staticSettings) {
 	settings := settingsWith(testBasemaps())
 	handler, err := New(
 		&Options{
+			Alerts:           &fakeAlerts{},
 			Settings:         settings,
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
@@ -431,4 +433,86 @@ func TestEditedBasemapsReachTheConfigAndThePolicy(t *testing.T) {
 	assert.Contains(t, config.Body.String(), "imagery.example.test", "the page's basemap list")
 	assert.Contains(t, config.Header().Get("Content-Security-Policy"), "https://imagery.example.test",
 		"the policy's tile origins")
+}
+
+// alertsHandler builds a handler over an alert matrix a test can read back.
+func alertsHandler(t *testing.T, catalogue ...AlertSetting) (*Handler, *fakeAlerts) {
+	t.Helper()
+	alerts := &fakeAlerts{catalogue: catalogue}
+	handler, err := New(
+		&Options{
+			Settings:         settingsWith(testBasemaps()),
+			Alerts:           alerts,
+			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
+			AccessEmail:      testAccessEmail,
+			BrowserOriginURL: testBrowserOriginURL,
+		},
+		&fakeOAuth{}, &fakeState{}, &fakeSync{accepted: true}, &fakeAssets{}, &fakeWeather{},
+	)
+	require.NoError(t, err, "New()")
+
+	return handler, alerts
+}
+
+// The page draws the matrix from what the settings carry, so every alert the
+// service can raise has to be in there whether or not anyone has ruled on it.
+func TestGetSettingsCarriesEveryAlertTheServiceCanRaise(t *testing.T) {
+	handler, _ := alertsHandler(t,
+		AlertSetting{Task: "sync", Alert: "failed", Enabled: true},
+		AlertSetting{Task: "surface:index", Alert: "failed", Decided: true},
+	)
+
+	view := settingsOf(t, handler, authenticatedRequest(http.MethodGet, settingsPath))
+	assert.Equal(t, []openapi.AlertSetting{
+		{Task: "sync", Alert: "failed", Enabled: true, Decided: false},
+		{Task: "surface:index", Alert: "failed", Enabled: false, Decided: true},
+	}, view.Alerts, "the alert matrix")
+}
+
+// A service with nothing to announce still has a matrix, an empty one. The page
+// has to tell that from a field it was not given.
+func TestGetSettingsSendsAnEmptyAlertMatrixAsAList(t *testing.T) {
+	handler, _ := alertsHandler(t)
+
+	view := settingsOf(t, handler, authenticatedRequest(http.MethodGet, settingsPath))
+	assert.NotNil(t, view.Alerts, "an empty matrix was sent as null")
+	assert.Empty(t, view.Alerts, "the alert matrix")
+}
+
+func TestSetAlertsRecordsWhatWasDecided(t *testing.T) {
+	handler, alerts := alertsHandler(t,
+		AlertSetting{Task: "sync", Alert: "failed", Enabled: true},
+		AlertSetting{Task: "surface:index", Alert: "failed", Enabled: true},
+	)
+
+	view := saveSection(t, handler, settingsAlertsPath,
+		`{"alerts": [{"task": "sync", "alert": "failed", "enabled": false}]}`)
+
+	assert.Equal(t, []AlertDecision{{Task: "sync", Alert: "failed", Enabled: false}}, alerts.decided, "the decisions")
+	assert.Len(t, view.Alerts, 2, "a saved decision was answered with less than the whole matrix")
+}
+
+// A decision about an alert nothing raises would store a row nobody reads and
+// draw a switch on the page that does nothing.
+func TestSetAlertsRefusesAnAlertNothingRaises(t *testing.T) {
+	handler, alerts := alertsHandler(t, AlertSetting{Task: "sync", Alert: "failed"})
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequestWithBody(http.MethodPut, settingsAlertsPath,
+		`{"alerts": [{"task": "sync", "alert": "invented", "enabled": true}]}`))
+
+	require.Equal(t, http.StatusBadRequest, response.Code, response.Body.String())
+	assert.Contains(t, response.Body.String(), "invented", "the message names the alert")
+	assert.Empty(t, alerts.decided, "a refused edit reached the matrix")
+}
+
+func TestSetAlertsReportsAStoreThatCannotBeWritten(t *testing.T) {
+	handler, alerts := alertsHandler(t, AlertSetting{Task: "sync", Alert: "failed"})
+	alerts.err = errors.New("disk gone")
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequestWithBody(http.MethodPut, settingsAlertsPath,
+		`{"alerts": [{"task": "sync", "alert": "failed", "enabled": false}]}`))
+
+	assert.Equal(t, http.StatusServiceUnavailable, response.Code, response.Body.String())
 }
