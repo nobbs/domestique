@@ -621,5 +621,19 @@ func schemaMigrations() [][]string {
 			`ALTER TABLE task_runs ADD COLUMN reference TEXT NOT NULL DEFAULT ''`,
 			`UPDATE task_runs SET reference = lower(hex(randomblob(6))) WHERE reference = ''`,
 		},
+		{
+			// Which alerts an operator wants delivered, one row per alert of one
+			// task over one scope. A row exists only once somebody has decided:
+			// what is absent is what nobody has said anything about, which is not
+			// the same as switched off.
+			`CREATE TABLE alert_toggle (
+				task       TEXT    NOT NULL,
+				scope      TEXT    NOT NULL DEFAULT '',
+				alert      TEXT    NOT NULL,
+				enabled    INTEGER NOT NULL,
+				updated_at_unix INTEGER NOT NULL,
+				PRIMARY KEY (task, scope, alert)
+			)`,
+		},
 	}
 }
