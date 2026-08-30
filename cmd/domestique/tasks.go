@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/nobbs/domestique/internal/httpapi"
 	"github.com/nobbs/domestique/internal/osmindex"
 	"github.com/nobbs/domestique/internal/runtimeconfig"
 	syncservice "github.com/nobbs/domestique/internal/sync"
@@ -27,9 +28,25 @@ const (
 	resourceSurfaceIndex = "surface-index"
 )
 
+// synchronizer is the synchronization work the task layer starts, and
+// indexBuilder is the surface index rebuild. Both are declared here so the task
+// definitions can be read without a reporter or a builder behind them.
+type synchronizer interface {
+	Run(ctx context.Context) syncservice.Result
+	RunBoth(ctx context.Context) syncservice.Result
+	RunPhase(ctx context.Context, phase syncservice.Phase) syncservice.Result
+	ReconcileTarget(ctx context.Context, targetID string) syncservice.Result
+	ClearTarget(ctx context.Context, targetID string) syncservice.Result
+	Annotate(ctx context.Context)
+}
+
+type indexBuilder interface {
+	Run(ctx context.Context)
+}
+
 // inventoryTasks are the activities that reconcile the library, in the order a
 // status page reads best.
-func inventoryTasks(reporter *syncservice.Reporter, settings *runtimeconfig.Current) []task.Definition {
+func inventoryTasks(reporter synchronizer, settings *runtimeconfig.Current) []task.Definition {
 	inventory := func(string) []task.Resource {
 		return []task.Resource{{Name: resourceInventory, Exclusive: true}}
 	}
@@ -82,7 +99,7 @@ func inventoryTasks(reporter *syncservice.Reporter, settings *runtimeconfig.Curr
 // last build rather than from this process starting, so restarting the service
 // does not restart the interval.
 func surfaceIndexTask(
-	runner *osmindex.Runner, settings *runtimeconfig.Current, lastBuiltAt time.Time,
+	runner indexBuilder, settings *runtimeconfig.Current, lastBuiltAt time.Time,
 ) task.Definition {
 	return task.Definition{
 		Name: taskSurfaceIndex,
@@ -109,7 +126,7 @@ func surfaceIndexTask(
 // runSync performs what was asked of the synchronization task. A scheduled run
 // honours the schedule switches; an operator asking for one overrides them,
 // because asking is the point.
-func runSync(ctx context.Context, reporter *syncservice.Reporter, invocation task.Invocation) syncservice.Result {
+func runSync(ctx context.Context, reporter synchronizer, invocation task.Invocation) syncservice.Result {
 	if invocation.Trigger == task.TriggerSchedule {
 		return reporter.Run(ctx)
 	}
@@ -139,4 +156,69 @@ func syncResult(result *syncservice.Result) task.Result {
 	}
 
 	return task.Result{Outcome: outcome, Detail: task.Detail(result.Failure)}
+}
+
+// taskStarter is the task layer as the HTTP boundary needs it, and syncReporter
+// is what only the reporter can answer. Both are narrow so the adaptation below
+// can be read without a manager or a reporter behind it.
+type taskStarter interface {
+	Trigger(ctx context.Context, name, argument string) bool
+	Holding(resource string) bool
+	NextRunAt(name string) (time.Time, bool)
+}
+
+type syncReporter interface {
+	Running() (syncservice.Phase, bool)
+	SurfaceIncomplete() int
+}
+
+// syncSurface adapts the task layer to what the HTTP boundary asks of it: start
+// work, and say what is under way. The HTTP surface names a phase; what running
+// one means is the sync package's to decide, and a manual trigger deliberately
+// ignores the schedule switches.
+func syncSurface(
+	ctx context.Context,
+	tasks taskStarter,
+	reporter syncReporter,
+	rateLimit func() (int, time.Time, bool),
+) httpapi.SyncFuncs {
+	return httpapi.SyncFuncs{
+		TriggerFunc: func(phase httpapi.SyncPhase) bool {
+			argument := ""
+			switch phase {
+			case httpapi.SyncPhaseAll:
+			case httpapi.SyncPhaseSource:
+				argument = string(syncservice.PhaseSource)
+			case httpapi.SyncPhaseTargets:
+				argument = string(syncservice.PhaseTargets)
+			default:
+				return false
+			}
+
+			return tasks.Trigger(ctx, taskSync, argument)
+		},
+		TriggerTargetFunc: func(targetID string) bool {
+			return tasks.Trigger(ctx, taskSyncTarget, targetID)
+		},
+		TriggerClearFunc: func(targetID string) bool {
+			return tasks.Trigger(ctx, taskSyncClear, targetID)
+		},
+		TriggerAnnotateFunc: func() bool {
+			return tasks.Trigger(ctx, taskSurfaceAnnotate, "")
+		},
+		// Two halves of one answer: the reporter knows which half is in flight,
+		// and the task layer knows whether anything holds the inventory at all.
+		ActivityFunc: func() httpapi.SyncActivityState {
+			phase, _ := reporter.Running()
+			startsAt, _ := tasks.NextRunAt(taskSync)
+
+			return httpapi.SyncActivityState{
+				StartsAt: startsAt,
+				Phase:    httpapi.SyncPhase(phase),
+				Running:  tasks.Holding(resourceInventory),
+			}
+		},
+		SurfaceIncompleteFunc: reporter.SurfaceIncomplete,
+		RateLimitFunc:         rateLimit,
+	}
 }

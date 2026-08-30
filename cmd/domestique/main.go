@@ -223,46 +223,7 @@ func run(ctx context.Context) error {
 		},
 		oauthService,
 		store,
-		// The HTTP surface names a phase; the reporter decides what running one
-		// means. Manual triggers deliberately ignore the schedule switches.
-		httpapi.SyncFuncs{
-			TriggerFunc: func(phase httpapi.SyncPhase) bool {
-				argument := ""
-				switch phase {
-				case httpapi.SyncPhaseAll:
-				case httpapi.SyncPhaseSource:
-					argument = string(syncservice.PhaseSource)
-				case httpapi.SyncPhaseTargets:
-					argument = string(syncservice.PhaseTargets)
-				default:
-					return false
-				}
-
-				return tasks.Trigger(runCtx, taskSync, argument)
-			},
-			TriggerTargetFunc: func(targetID string) bool {
-				return tasks.Trigger(runCtx, taskSyncTarget, targetID)
-			},
-			TriggerClearFunc: func(targetID string) bool {
-				return tasks.Trigger(runCtx, taskSyncClear, targetID)
-			},
-			// Three parts of one answer: the reporter knows which half is in
-			// flight, and the task layer knows whether anything holds the
-			// inventory and what it is still holding back.
-			ActivityFunc: func() httpapi.SyncActivityState {
-				phase, _ := reporter.Running()
-				startsAt, _ := tasks.NextRunAt(taskSync)
-
-				return httpapi.SyncActivityState{
-					StartsAt: startsAt,
-					Phase:    httpapi.SyncPhase(phase),
-					Running:  tasks.Holding(resourceInventory),
-				}
-			},
-			TriggerAnnotateFunc:   func() bool { return tasks.Trigger(runCtx, taskSurfaceAnnotate, "") },
-			SurfaceIncompleteFunc: reporter.SurfaceIncomplete,
-			RateLimitFunc:         destination.RateLimit,
-		},
+		syncSurface(runCtx, tasks, reporter, destination.RateLimit),
 		assets,
 		weather,
 	)

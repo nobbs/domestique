@@ -356,6 +356,47 @@ func TestRunKeepsFiringOnTheSchedule(t *testing.T) {
 	<-stopped
 }
 
+// A cadence an operator has emptied stops the schedule rather than spinning on
+// a gap that is not a gap.
+func TestRunStopsWhenTheCadenceIsEmptied(t *testing.T) {
+	t.Parallel()
+
+	runner := countingRunner()
+	manager := NewManager()
+	fired, waits := make(chan time.Time), make(chan time.Duration, 4)
+	manager.after = func(delay time.Duration) <-chan time.Time { waits <- delay; return fired }
+
+	var gaps sync.Mutex
+	gap := time.Hour
+	require.NoError(t, manager.Register(Definition{
+		Name: "a",
+		Run:  runner,
+		Schedule: Every(func() time.Duration {
+			gaps.Lock()
+			defer gaps.Unlock()
+
+			return gap
+		}),
+		InitialDelay: func() time.Duration { return time.Minute },
+	}), "Register()")
+
+	stopped := make(chan struct{})
+	go func() { defer close(stopped); manager.Run(t.Context()) }()
+
+	<-waits
+	gaps.Lock()
+	gap = 0
+	gaps.Unlock()
+	fired <- reference()
+
+	select {
+	case <-stopped:
+	case <-time.After(time.Second):
+		t.Fatal("Run did not stop after the cadence was emptied")
+	}
+	assert.Equal(t, 1, runner.runs(), "runs")
+}
+
 // A task naming one resource twice must not take it twice, or releasing it once
 // would leave it held forever.
 func TestMergeFoldsARepeatedResourceAndKeepsTheStricterHold(t *testing.T) {
