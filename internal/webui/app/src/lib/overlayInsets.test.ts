@@ -54,6 +54,23 @@ describe("insetsFrom", () => {
     expect(insetsFrom(FRAME, [box(12, 12, 470, 340)])).toEqual({ ...NO_INSETS, left: 482 });
   });
 
+  /*
+   * The same card once its two lists are folded away: 368 wide and barely 200
+   * tall, in the corner, with the dock already across the foot. Judged against
+   * the whole pane the top band is the cheaper of the two — but the dock has
+   * shortened the pane, and against what is left the card is a column again.
+   *
+   * Charged against the whole frame instead, this returns `top: 216`, and the
+   * camera frames every route into the strip between the card and the dock.
+   */
+  it("charges a panel against the map its neighbours have left", () => {
+    expect(insetsFrom(FRAME, [box(12, 12, 368, 204), CHART])).toEqual({
+      ...NO_INSETS,
+      left: 380,
+      bottom: 180,
+    });
+  });
+
   it("gives a pill in a corner the nearer of its two edges", () => {
     expect(insetsFrom(FRAME, [box(1060, 736, 200, 44)])).toEqual({ ...NO_INSETS, bottom: 64 });
   });

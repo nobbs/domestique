@@ -93,11 +93,28 @@ export function insetsFrom(frame: Box, panels: Box[]): Insets {
       bottom: frame.bottom - panel.top,
       left: panel.right - frame.left,
     };
+    /*
+     * Against the map that is still there, not the map as it was before this
+     * panel's neighbours took their share. A band's cost is its reach times the
+     * extent it spans, and that extent shrinks as insets are taken: once a dock
+     * across the foot has had its strip, a short card in the top-left corner
+     * costs more from the top than from the left, because the top band it wants
+     * is measured against a frame the dock has already shortened.
+     *
+     * Charging every panel against the whole frame instead reads each one as if
+     * it were alone, and hands a folded card the full width of the pane — which
+     * leaves the route in the strip between the card and the dock, half of it
+     * under the dock.
+     */
+    const room = {
+      width: Math.max(0, frame.right - insets.right - (frame.left + insets.left)),
+      height: Math.max(0, frame.bottom - insets.bottom - (frame.top + insets.top)),
+    };
     const cost: Insets = {
-      top: reach.top * frame.width,
-      right: reach.right * frame.height,
-      bottom: reach.bottom * frame.width,
-      left: reach.left * frame.height,
+      top: reach.top * room.width,
+      right: reach.right * room.height,
+      bottom: reach.bottom * room.width,
+      left: reach.left * room.height,
     };
     const side = (Object.keys(reach) as Array<keyof Insets>).reduce((least, next) =>
       cost[next] < cost[least] ? next : least,
