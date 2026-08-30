@@ -253,8 +253,9 @@ func (h *Handler) SetAlerts(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 
-	known := make(map[declaredAlert]struct{}, len(body.Alerts))
-	for _, alert := range h.alerts.Catalogue() {
+	catalogue := h.alerts.Catalogue()
+	known := make(map[declaredAlert]struct{}, len(catalogue))
+	for _, alert := range catalogue {
 		known[declaredAlert{task: alert.Task, alert: alert.Alert}] = struct{}{}
 	}
 
