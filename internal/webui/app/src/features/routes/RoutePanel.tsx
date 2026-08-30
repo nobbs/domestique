@@ -190,7 +190,7 @@ export function RoutePanel({
           <DropdownMenu>
             <DropdownMenuTrigger
               aria-label="More about this route"
-              className="rounded-lg p-1.5 text-[var(--ink-2)] hover:bg-[var(--base)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent)]"
+              className="ml-auto rounded-lg p-1.5 text-[var(--ink-2)] hover:bg-[var(--base)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent)]"
             >
               <IconDots size={16} stroke={2} aria-hidden="true" />
             </DropdownMenuTrigger>
