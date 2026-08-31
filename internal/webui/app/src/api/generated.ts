@@ -530,6 +530,11 @@ export type AcceptedResponse = Accepted;
 export type NotFoundResponse = Error;
 
 /**
+ * The attempt was refused. This exact work is already happening, or something it needs is held by another run. Neither is a fault.
+ */
+export type TaskInProgressResponse = Error;
+
+/**
  * A conflicting run is already active.
  */
 export type SyncInProgressResponse = Error;
@@ -872,7 +877,7 @@ export type runTaskResponse404 = {
 };
 
 export type runTaskResponse409 = {
-  data: SyncInProgressResponse;
+  data: TaskInProgressResponse;
   status: 409;
 };
 
@@ -907,7 +912,7 @@ export const runTask = async (
 
 export const getRunTaskMutationOptions = <
   TError = ErrorType<
-    UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | SyncInProgressResponse
+    UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | TaskInProgressResponse
   >,
   TContext = unknown,
 >(options?: {
@@ -946,13 +951,13 @@ export const getRunTaskMutationOptions = <
 export type RunTaskMutationResult = NonNullable<Awaited<ReturnType<typeof runTask>>>;
 
 export type RunTaskMutationError = ErrorType<
-  UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | SyncInProgressResponse
+  UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | TaskInProgressResponse
 >;
 export type RunTaskMutationVariables = { name: string };
 
 export const useRunTask = <
   TError = ErrorType<
-    UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | SyncInProgressResponse
+    UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | TaskInProgressResponse
   >,
   TContext = unknown,
 >(
@@ -996,7 +1001,7 @@ export type runTaskArgumentResponse404 = {
 };
 
 export type runTaskArgumentResponse409 = {
-  data: SyncInProgressResponse;
+  data: TaskInProgressResponse;
   status: 409;
 };
 
@@ -1032,7 +1037,7 @@ export const runTaskArgument = async (
 
 export const getRunTaskArgumentMutationOptions = <
   TError = ErrorType<
-    UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | SyncInProgressResponse
+    UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | TaskInProgressResponse
   >,
   TContext = unknown,
 >(options?: {
@@ -1073,13 +1078,13 @@ export type RunTaskArgumentMutationResult = NonNullable<
 >;
 
 export type RunTaskArgumentMutationError = ErrorType<
-  UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | SyncInProgressResponse
+  UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | TaskInProgressResponse
 >;
 export type RunTaskArgumentMutationVariables = { name: string; argument: string };
 
 export const useRunTaskArgument = <
   TError = ErrorType<
-    UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | SyncInProgressResponse
+    UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | TaskInProgressResponse
   >,
   TContext = unknown,
 >(

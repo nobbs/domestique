@@ -115,7 +115,7 @@ paths:
         "404":
           $ref: '#/components/responses/NotFound'
         "409":
-          $ref: '#/components/responses/SyncInProgress'
+          $ref: '#/components/responses/TaskInProgress'
   /v1/tasks/{name}/run/{argument}:
     post:
       tags:
@@ -140,7 +140,7 @@ paths:
         "404":
           $ref: '#/components/responses/NotFound'
         "409":
-          $ref: '#/components/responses/SyncInProgress'
+          $ref: '#/components/responses/TaskInProgress'
   /v1/sync:
     post:
       tags:
@@ -1039,6 +1039,14 @@ components:
             $ref: '#/components/schemas/Error'
     ProviderUnavailable:
       description: Provider request failed without exposing provider detail.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    TaskInProgress:
+      description: >-
+        The attempt was refused. This exact work is already happening, or
+        something it needs is held by another run. Neither is a fault.
       content:
         application/json:
           schema:

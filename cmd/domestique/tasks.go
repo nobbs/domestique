@@ -274,9 +274,6 @@ func syncResult(result *syncservice.Result) task.Result {
 	return task.Result{Outcome: outcome, Detail: task.Detail(result.Failure), Next: next}
 }
 
-// taskStarter is the task layer as the HTTP boundary needs it, and syncReporter
-// is what only the reporter can answer. Both are narrow so the adaptation below
-// can be read without a manager or a reporter behind it.
 // taskSurface adapts the manager to what the HTTP surface reads and starts.
 type taskSurface struct{ manager *task.Manager }
 
@@ -301,6 +298,9 @@ func (s taskSurface) Run(ctx context.Context, name, argument string) bool {
 	return s.manager.Trigger(ctx, name, argument)
 }
 
+// taskStarter is the task layer as the HTTP boundary needs it, and syncReporter
+// is what only the reporter can answer. Both are narrow so the adaptation below
+// can be read without a manager or a reporter behind it.
 type taskStarter interface {
 	Trigger(ctx context.Context, name, argument string) bool
 	Holding(resource string) bool
