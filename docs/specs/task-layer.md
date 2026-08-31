@@ -232,10 +232,9 @@ setting and tasks are registered at startup, so a library added through the
 settings page would otherwise wait for a restart.
 
 `sync:target` follows the read. `surface:annotate` follows both the read and the
-index rebuild, joined, so it runs once when the later of them finishes rather
-than once each. `sync:target`'s own schedule is a backstop behind its edge: what
-it catches is a slot that failed on its own, and an operator who has the read
-switched off entirely.
+index rebuild, and runs after each: either alone leaves stages wanting it.
+`sync:target`'s own schedule is a backstop behind its edge — what it catches is a
+slot that failed on its own, and an operator who has the read switched off.
 
 `sync:target` takes a slot name or nothing. Nothing is every configured slot,
 which is what both the schedule and a source read ask for; a name is that slot
@@ -251,29 +250,17 @@ is refused when the graph is resolved rather than found by a depth cap at four
 in the morning. The cap and the set of what one chain has run stay behind that,
 as belt and braces.
 
+What follows an attempt follows a successful one. A read that failed stored
+nothing to write or classify, and a rebuild that found nothing new left every
+stored classification standing.
+
+Each edge fires on its own, so a task following two predecessors runs after
+each. That is what classification wants: a read leaves stages nobody has
+classified, and a rebuild leaves the stored classifications stale, and neither
+is waiting on the other.
+
 An edge carries no argument. What a successor is over is its own business:
 `sync:target` reconciles every configured slot when nothing names one.
-
-A task may instead declare that it *joins*, which makes it wait for every
-predecessor that started rather than running after the first. The round is over
-whoever started it, and closes when the last of them finishes.
-
-A join fires unless one of its predecessors faulted — failed, or blocked by a
-safety gate. Anything else lets it through: a library nobody configured reports
-that it is not ready, and being absent is not the same as having gone wrong. A
-service reading one library would otherwise never write to its targets at all.
-
-Two things a round does not have, and both are behaviours to live with rather
-than defects to find:
-
-- A predecessor that starts *after* its round closed opens a new one, and fires
-  the successor a second time. Safe, because reconciliation is idempotent, and
-  wasteful.
-- A round lives in memory. A predecessor that finishes just before a restart
-  leaves its successors unrun until the next round.
-
-Giving a round an identity that survives a restart is a table and a resume path,
-and is worth doing when something needs it rather than in advance.
 
 ## Switching a task off
 

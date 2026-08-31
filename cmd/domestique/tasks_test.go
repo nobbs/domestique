@@ -430,8 +430,8 @@ func (*countingStore) LastFailureNotification(context.Context, string) (time.Tim
 func (*countingStore) RecordFailureNotification(context.Context, string, time.Time) error { return nil }
 
 // What follows what is declared, so the graph is the assertion rather than a
-// result carrying links. Both joins wait on every read, and the classification
-// pass waits on the index rebuild too.
+// result carrying links. Classification follows the read and the rebuild alike,
+// because each on its own leaves stages wanting it.
 func TestTheGraphDeclaresWhatFollowsEveryRead(t *testing.T) {
 	t.Parallel()
 
@@ -442,12 +442,10 @@ func TestTheGraphDeclaresWhatFollowsEveryRead(t *testing.T) {
 
 	targets := definitionNamed(t, definitions, taskSyncTarget)
 	assert.Equal(t, []string{taskSyncSource}, targets.Follows, "what the targets follow")
-	assert.True(t, targets.Join, "the targets do not wait for every predecessor")
 
 	annotate := definitionNamed(t, definitions, taskSurfaceAnnotate)
 	assert.Equal(t, []string{taskSyncSource, taskSurfaceIndex}, annotate.Follows,
 		"what classification follows")
-	assert.True(t, annotate.Join, "classification does not wait for every predecessor")
 }
 
 func alwaysOn() bool { return true }

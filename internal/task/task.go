@@ -248,10 +248,8 @@ type Definition struct {
 	// Follows names the tasks this one runs after, and is the whole graph: an
 	// edge to a task nobody registered, or one that closes a cycle, is refused
 	// where the task is registered rather than found by a depth cap at runtime.
+	// Each edge fires on its own — a task following two runs after either.
 	Follows []string
-	// Join makes this task wait for every predecessor that started, rather than
-	// running after the first. See the layer specification for what a round is.
-	Join bool
 	// Backoff holds this task back from its own schedule while it keeps
 	// faulting. Its zero value is a task that retries on schedule regardless.
 	Backoff Backoff

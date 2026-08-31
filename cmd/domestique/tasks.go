@@ -176,7 +176,6 @@ func inventoryTasks(
 			InitialDelay: func() time.Duration { return targetBackstopInterval },
 			Enabled:      enabled(taskSyncTarget),
 			Follows:      []string{taskSyncSource},
-			Join:         true,
 			Backoff:      task.Backoff{Base: targetBackoffBase, Cap: backoffCap},
 			Run: task.RunnerFunc(func(ctx context.Context, invocation task.Invocation) task.Result {
 				// No argument is every configured slot, which is what the schedule
@@ -205,7 +204,6 @@ func inventoryTasks(
 			Name:      taskSurfaceAnnotate,
 			Resources: inventory,
 			Follows:   []string{taskSyncSource, taskSurfaceIndex},
-			Join:      true,
 			Backoff:   task.Backoff{Base: annotateBackoffBase, Cap: backoffCap},
 			Run: task.RunnerFunc(func(ctx context.Context, _ task.Invocation) task.Result {
 				reporter.Annotate(ctx)

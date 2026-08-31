@@ -84,9 +84,6 @@ type Manager struct {
 type registered struct {
 	// startsAt holds the instant the first scheduled run is due, and only while
 	// it is still due.
-	// round is what each predecessor of a joining task came to this time round,
-	// and is nil between rounds. Guarded by the manager's mutex.
-	round map[string]Outcome
 	// successors are the tasks whose Follows name this one, resolved once when
 	// the last task is registered.
 	successors []string
@@ -424,8 +421,13 @@ func (m *Manager) perform(
 	}
 	visited[keyOf(invocation)] = struct{}{}
 
-	result := m.attemptAndRelease(ctx, entry, invocation, release)
-	m.chain(ctx, entry, result, visited, depth+1)
+	// What follows an attempt follows a successful one. A read that failed
+	// stored nothing to write or classify, and a rebuild that found nothing new
+	// left every classification standing.
+	if result := m.attemptAndRelease(ctx, entry, invocation, release); result.Outcome != Succeeded {
+		return
+	}
+	m.chain(ctx, entry, visited, depth+1)
 }
 
 // attemptAndRelease runs one attempt and gives back what it held, whatever
@@ -443,7 +445,7 @@ func (m *Manager) attemptAndRelease(
 // depth cap and the set of what this chain has run stay as belt and braces
 // behind registration refusing a cycle.
 func (m *Manager) chain(
-	ctx context.Context, entry *registered, result Result, visited map[invocationKey]struct{}, depth int,
+	ctx context.Context, entry *registered, visited map[invocationKey]struct{}, depth int,
 ) {
 	if len(entry.definition.Follows) == 0 && len(entry.successors) == 0 {
 		return
@@ -454,40 +456,8 @@ func (m *Manager) chain(
 		return
 	}
 	for _, name := range entry.successors {
-		successor := m.tasks[name]
-		if successor.definition.Join && !m.roundClosed(successor, entry.definition.Name, result.Outcome) {
-			continue
-		}
 		m.linked(ctx, name, visited, depth)
 	}
-}
-
-// roundClosed records what one predecessor came to and reports whether the
-// round this successor waits on is over: every predecessor that started has
-// finished, and none of them faulted.
-//
-// A predecessor that was never configured reports not_ready rather than
-// succeeding, and must not hold the round open for ever — being absent is not
-// the same as having gone wrong.
-func (m *Manager) roundClosed(successor *registered, predecessor string, outcome Outcome) bool {
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
-
-	if successor.round == nil {
-		successor.round = make(map[string]Outcome, len(successor.definition.Follows))
-	}
-	successor.round[predecessor] = outcome
-	if len(successor.round) < len(successor.definition.Follows) {
-		return false
-	}
-
-	faulted := false
-	for _, came := range successor.round {
-		faulted = faulted || came.alerts()
-	}
-	successor.round = nil
-
-	return !faulted
 }
 
 // linked runs one chain link. Work already under way is left to finish rather

@@ -1085,7 +1085,7 @@ func TestResolveRefusesAnEdgeToATaskNobodyRegistered(t *testing.T) {
 	require.ErrorContains(t, manager.Resolve(), "nothing registers", "Resolve()")
 }
 
-func TestAChainIgnoresATaskNobodyRegistered(t *testing.T) {
+func TestATaskWithNothingFollowingItRecordsOnlyItself(t *testing.T) {
 	t.Parallel()
 
 	manager, store := newTestManager(t)
@@ -1133,25 +1133,61 @@ func TestAnAttemptGivesBackWhatItHeldWhenTheRunnerPanics(t *testing.T) {
 	assert.Equal(t, admitStarted, again, "a runner that gave up stayed listed as working")
 }
 
-// Two tasks following the same predecessor both run, and one following both of
-// them runs once when the second finishes rather than once per predecessor.
-func TestATaskFollowingSeveralRunsOnceTheyHaveAllFinished(t *testing.T) {
+// Each edge fires on its own, so a task following two predecessors runs after
+// each of them: a read leaves stages wanting classification and a rebuild
+// leaves the stored ones stale, and neither waits on the other.
+func TestATaskFollowingSeveralRunsAfterEachOfThem(t *testing.T) {
 	t.Parallel()
 
 	shared := countingRunner()
 	manager, _ := newTestManager(t)
-	require.NoError(t, manager.Register(&Definition{Name: "parent", Run: succeeds()}), "Register(parent)")
+	for _, name := range []string{"first", "second"} {
+		require.NoError(t, manager.Register(&Definition{Name: name, Run: succeeds()}), "Register()")
+	}
 	require.NoError(t, manager.Register(&Definition{
-		Name: "first", Run: succeeds(), Follows: []string{"parent"},
-	}), "Register(first)")
-	require.NoError(t, manager.Register(&Definition{
-		Name: "shared", Run: shared, Follows: []string{"parent", "first"}, Join: true,
+		Name: "shared", Run: shared, Follows: []string{"first", "second"},
 	}), "Register(shared)")
 	require.NoError(t, manager.Resolve(), "Resolve()")
 
-	require.True(t, manager.Trigger(t.Context(), "parent", ""), "Trigger()")
+	require.True(t, manager.Trigger(t.Context(), "first", ""), "Trigger(first)")
 	manager.Wait()
-	assert.Equal(t, 1, shared.runs(), "a task following two predecessors ran other than once")
+	require.True(t, manager.Trigger(t.Context(), "second", ""), "Trigger(second)")
+	manager.Wait()
+
+	assert.Equal(t, 2, shared.runs(), "a task following two predecessors did not run after each")
+}
+
+// What follows an attempt follows a successful one: a read that failed stored
+// nothing to write, and a rebuild that found nothing new left every stored
+// classification standing.
+func TestNothingFollowsAnAttemptThatDidNotSucceed(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]Outcome{"failed": Failed, "found nothing new": Unchanged, "not ready": NotReady}
+	for name, outcome := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			followed := countingRunner()
+			manager, _ := newTestManager(t)
+			came := outcome
+			require.NoError(t, manager.Register(&Definition{
+				Name: "parent",
+				Run: RunnerFunc(func(context.Context, Invocation) Result {
+					return Result{Outcome: came}
+				}),
+			}), "Register(parent)")
+			require.NoError(t, manager.Register(&Definition{
+				Name: "child", Run: followed, Follows: []string{"parent"},
+			}), "Register(child)")
+			require.NoError(t, manager.Resolve(), "Resolve()")
+
+			require.True(t, manager.Trigger(t.Context(), "parent", ""), "Trigger()")
+			manager.Wait()
+
+			assert.Zero(t, followed.runs(), "something followed an attempt that did not succeed")
+		})
+	}
 }
 
 // The two kinds of busy read differently to whoever asks why nothing happened:
@@ -2077,75 +2113,4 @@ func TestASwitchedOffTaskStillRunsWhenAskedFor(t *testing.T) {
 	manager.Wait()
 
 	assert.Equal(t, 1, runner.runs(), "a switched-off task refused the operator who asked")
-}
-
-// A join waits for every predecessor and then asks whether any of them faulted.
-// A library nobody configured reports not_ready rather than succeeding, and
-// must not hold the round open: absent is not the same as broken.
-func TestAJoinRunsUnlessAPredecessorFaulted(t *testing.T) {
-	t.Parallel()
-
-	tests := map[string]struct {
-		first, second Outcome
-		want          int
-	}{
-		"both succeeded":        {first: Succeeded, second: Succeeded, want: 1},
-		"one was never ready":   {first: Succeeded, second: NotReady, want: 1},
-		"one found nothing new": {first: Succeeded, second: Unchanged, want: 1},
-		"one failed":            {first: Succeeded, second: Failed},
-		"one was blocked":       {first: Succeeded, second: Blocked},
-	}
-	for name, test := range tests {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-
-			joined := countingRunner()
-			manager, _ := newTestManager(t)
-			for index, outcome := range []Outcome{test.first, test.second} {
-				came := outcome
-				require.NoError(t, manager.Register(&Definition{
-					Name: []string{"first", "second"}[index],
-					Run: RunnerFunc(func(context.Context, Invocation) Result {
-						return Result{Outcome: came}
-					}),
-				}), "Register()")
-			}
-			require.NoError(t, manager.Register(&Definition{
-				Name: "joined", Run: joined, Follows: []string{"first", "second"}, Join: true,
-			}), "Register(joined)")
-			require.NoError(t, manager.Resolve(), "Resolve()")
-
-			require.True(t, manager.Trigger(t.Context(), "first", ""), "Trigger(first)")
-			manager.Wait()
-			require.True(t, manager.Trigger(t.Context(), "second", ""), "Trigger(second)")
-			manager.Wait()
-
-			assert.Equal(t, test.want, joined.runs(), "runs of the joined task")
-		})
-	}
-}
-
-// The round is over whoever started it, so a second round starts clean rather
-// than counting the last one's predecessors again.
-func TestAJoinStartsAFreshRoundAfterItFires(t *testing.T) {
-	t.Parallel()
-
-	joined := countingRunner()
-	manager, _ := newTestManager(t)
-	for _, name := range []string{"first", "second"} {
-		require.NoError(t, manager.Register(&Definition{Name: name, Run: succeeds()}), "Register()")
-	}
-	require.NoError(t, manager.Register(&Definition{
-		Name: "joined", Run: joined, Follows: []string{"first", "second"}, Join: true,
-	}), "Register(joined)")
-	require.NoError(t, manager.Resolve(), "Resolve()")
-
-	for range 2 {
-		require.True(t, manager.Trigger(t.Context(), "first", ""), "Trigger(first)")
-		manager.Wait()
-		require.True(t, manager.Trigger(t.Context(), "second", ""), "Trigger(second)")
-		manager.Wait()
-	}
-
-	assert.Equal(t, 2, joined.runs(), "the second round did not fire the join")
 }
