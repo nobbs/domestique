@@ -184,11 +184,8 @@ export function formatPrecipitation(millimetres: number, system: UnitSystem): st
 }
 
 /**
- * How often a task with a fixed schedule runs unasked, from the server's own
- * intervalSeconds rather than a label duplicated on this side of the wire:
- * changing the interval on the service must not silently make this lie.
- * Undefined is a task with no schedule, or a calendar one this format cannot
- * name a single gap for.
+ * Derived from the server's own intervalSeconds, not a duplicated label.
+ * Undefined means no fixed schedule.
  */
 export function formatCadence(seconds: number | undefined): string {
   if (seconds === undefined || !Number.isFinite(seconds) || seconds <= 0) {

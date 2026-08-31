@@ -1,20 +1,10 @@
-/**
- * The background activities this page can ask for, by the names the service
- * registers them under.
- *
- * The page asks for a task rather than for an endpoint, so an activity added to
- * the layer needs no route of its own. What each one is over — a phase, a
- * target slot — travels as the argument.
- */
+/** The background activities this page can ask for, by the names the service registers them under. */
 
 /** TASKS are the registered names. `GET /v1/tasks` lists what a build has. */
 export const TASKS = {
   /** Reading every configured source library into the stored inventory. */
   syncSource: "sync:source",
-  /**
-   * Writing the stored inventory to the targets: every configured slot, or the
-   * one the argument names.
-   */
+  /** Writing the stored inventory to every configured target, or the one the argument names. */
   syncTarget: "sync:target",
   /** Deleting every owned route from one target slot. Destructive. */
   syncClear: "sync:clear",

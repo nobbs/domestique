@@ -127,9 +127,7 @@ export function SyncControls() {
     mutation: { onSuccess: invalidateStatus },
   });
 
-  // The task list is required, not decorative: a switch drawn before it arrives
-  // would show a state nobody reported, and pressing it would send the opposite
-  // of a guess.
+  // Required, not decorative: a switch drawn before the task list arrives would show a guess.
   if (isPending || tasks.isPending) {
     return <Skeleton className="h-28 w-full" role="status" aria-label="Loading sync controls" />;
   }
@@ -137,9 +135,7 @@ export function SyncControls() {
     return <p className="text-sm text-[var(--alert)]">The service did not say what it is doing.</p>;
   }
 
-  // Each half is its own task now, so a switch travels alone: nothing here has
-  // to carry a value for the other half, and cannot get it wrong. A task the
-  // service does not list is one nobody has ruled on, which runs.
+  // Each half is its own task, so a switch travels alone. Unlisted defaults to enabled.
   const enabledFor = (phase: SyncPhase) =>
     tasks.data?.tasks?.find((task) => task.name === SYNC_PHASE_TASKS[phase])?.enabled ?? true;
   const cadenceFor = (phase: SyncPhase) =>
@@ -191,12 +187,7 @@ export function SyncControls() {
           ) : null}
         </p>
       ) : null}
-      {/*
-       * enrichmentFailures is the surface and duration passes together, and
-       * durable rather than reset by the next pass: a stage classification
-       * keeps retrying can still be timed successfully, and vice versa, so
-       * this is the count that would otherwise be write-only.
-       */}
+      {/* enrichmentFailures covers surface and duration passes together, and persists across runs. */}
       {data.sync.surface.enrichmentFailures > 0 ? (
         <p className="text-sm text-[var(--ink-2)]">
           {data.sync.surface.enrichmentFailures}{" "}

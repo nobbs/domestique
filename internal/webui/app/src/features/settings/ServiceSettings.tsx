@@ -631,12 +631,7 @@ function Notifications({ settings }: { settings: Settings }) {
   );
 }
 
-/**
- * The zone this service reads local time in.
- *
- * One zone for the whole service rather than one per reader: a run happens
- * once, and it has to happen at a time somebody chose.
- */
+/** The zone this service reads local time in — one for the whole service, not one per reader. */
 function Timezone({ settings }: { settings: Settings }) {
   const id = useId();
   const invalidate = useSettingsInvalidation();
@@ -679,12 +674,8 @@ function alertLabel(alert: AlertSetting): string {
 }
 
 /**
- * Which of the things the service can announce actually reach anyone.
- *
  * The matrix is what this build declares, not what has been decided: an alert
- * nobody has ruled on is on, so a fault nobody has heard of is still the one
- * that wakes them. Only the switches this card has moved are sent, because
- * leaving one out is what keeps it as it was.
+ * nobody has ruled on defaults to on. Only switches this card has moved are sent.
  */
 function Alerts({ settings }: { settings: Settings }) {
   const invalidate = useSettingsInvalidation();
@@ -732,10 +723,7 @@ function Alerts({ settings }: { settings: Settings }) {
                       aria-label={`${taskName} ${alertLabel(alert)}`}
                       onCheckedChange={(enabled) =>
                         setDraft((pending) => {
-                          // A switch put back where it started is not a
-                          // decision. Sending it would record one, and an alert
-                          // nobody has ruled on is not the same as one somebody
-                          // switched on.
+                          // A switch put back where it started isn't a decision worth sending.
                           const { [alertKey(alert)]: _, ...rest } = pending;
 
                           return enabled === alert.enabled
