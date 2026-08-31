@@ -4,6 +4,11 @@ import (
 	"testing"
 	"time"
 
+	// A calendar schedule is asserted against real zones, so the database has to
+	// travel with the test binary. The environments this runs in are not
+	// guaranteed to carry one, the same reason the service embeds it.
+	_ "time/tzdata"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
