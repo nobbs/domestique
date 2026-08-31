@@ -395,15 +395,16 @@ it.
   deletion limit does not bound, and nothing schedules it. It still deletes only
   routes carrying an external ID this service issued, and leaves the stored
   library untouched, so the next reconciliation rebuilds the target.
-- `GET /v1/tasks` lists what this build registers, with whether each runs
-  unasked, how many attempts are in flight, and when the first scheduled run is
-  due.
+- `GET /v1/tasks` lists what this build registers: whether each has a schedule,
+  whether that schedule may start it, how many attempts are in flight, and when
+  the first scheduled run is due.
 - `PUT /v1/tasks/{name}/schedule` sets whether the schedule may start one task,
   and answers with the registered tasks as they now stand. It governs unattended
   runs only.
 - `POST /v1/providers/{provider}/sourceRoutes/{source-route-id}/routes/{stage-order}/reprocess`
-  asks for one route to be worked out again from scratch and starts the
-  synchronisation that will do it, as `sync` run on that stage's behalf. It returns `202 Accepted`, or `404` for a
+  asks for one route to be worked out again from scratch and starts the read
+  that will do it, as `sync:source` run on that stage's behalf. What the targets
+  hold follows from that read. It returns `202 Accepted`, or `404` for a
   route that is not in the stored inventory.
 - The settings are written one section at a time, over one endpoint per
   section: `PUT /v1/settings/wahoo` for the registered application,
