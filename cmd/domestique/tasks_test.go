@@ -20,7 +20,7 @@ import (
 func TestInventoryTasksAllHoldTheInventoryExclusively(t *testing.T) {
 	t.Parallel()
 
-	definitions := inventoryTasks(&fakeSynchronizer{}, liveSettings(t), allEnabled)
+	definitions := inventoryTasks(&fakeSynchronizer{}, liveSettings(t), allEnabled, twoTargets)
 
 	names := make([]string, 0, len(definitions))
 	for _, definition := range definitions {
@@ -43,7 +43,7 @@ func TestOnlyTheReadAndTheTargetsAreScheduled(t *testing.T) {
 	t.Parallel()
 
 	scheduled := map[string]bool{taskSyncSource: true, taskSyncTarget: true}
-	for _, definition := range inventoryTasks(&fakeSynchronizer{}, liveSettings(t), allEnabled) {
+	for _, definition := range inventoryTasks(&fakeSynchronizer{}, liveSettings(t), allEnabled, twoTargets) {
 		if scheduled[definition.Name] {
 			assert.NotNilf(t, definition.Schedule, "%s is not scheduled", definition.Name)
 
@@ -85,7 +85,7 @@ func TestEachInventoryTaskRunsItsOwnWork(t *testing.T) {
 			t.Parallel()
 
 			synchronizer := &fakeSynchronizer{result: syncservice.Result{Outcome: syncservice.OutcomeSucceeded}}
-			definition := definitionNamed(t, inventoryTasks(synchronizer, liveSettings(t), allEnabled), test.task)
+			definition := definitionNamed(t, inventoryTasks(synchronizer, liveSettings(t), allEnabled, twoTargets), test.task)
 
 			result := definition.Run.Run(t.Context(), task.Invocation{Task: test.task, Argument: test.argument})
 			assert.Equal(t, task.Succeeded, result.Outcome, "outcome")
@@ -240,7 +240,7 @@ func TestSyncTaskRunsOnAFixedCadenceAfterASettingsDrivenFirstDelay(t *testing.T)
 	t.Parallel()
 
 	settings := liveSettings(t)
-	definition := definitionNamed(t, inventoryTasks(&fakeSynchronizer{}, settings, allEnabled), taskSyncSource)
+	definition := definitionNamed(t, inventoryTasks(&fakeSynchronizer{}, settings, allEnabled, twoTargets), taskSyncSource)
 
 	at := time.Date(2026, time.August, 30, 9, 0, 0, 0, time.UTC)
 	assert.Equal(t, at.Add(syncservice.Interval), definition.Schedule.NextFire(at), "NextFire()")
@@ -261,7 +261,7 @@ func TestSyncTaskRunsWhatWasAskedOfIt(t *testing.T) {
 	t.Parallel()
 
 	synchronizer := &fakeSynchronizer{result: syncservice.Result{Outcome: syncservice.OutcomeSucceeded}}
-	definition := definitionNamed(t, inventoryTasks(synchronizer, liveSettings(t), allEnabled), taskSyncSource)
+	definition := definitionNamed(t, inventoryTasks(synchronizer, liveSettings(t), allEnabled, twoTargets), taskSyncSource)
 
 	result := definition.Run.Run(t.Context(), task.Invocation{Task: taskSyncSource, Trigger: task.TriggerSchedule})
 	assert.Equal(t, task.Succeeded, result.Outcome, "outcome")
@@ -376,7 +376,7 @@ func TestRegisterTasksNeedsSomewhereToRecord(t *testing.T) {
 func TestRegisterTasksTakesEveryDefinitionItIsGiven(t *testing.T) {
 	t.Parallel()
 
-	definitions := append(inventoryTasks(&fakeSynchronizer{}, liveSettings(t), allEnabled),
+	definitions := append(inventoryTasks(&fakeSynchronizer{}, liveSettings(t), allEnabled, twoTargets),
 		surfaceIndexTask(&fakeIndexBuilder{}, liveSettings(t), allEnabled, time.Time{}))
 
 	manager, err := registerTasks(&countingStore{}, &silentNotifier{}, undecided{}, alwaysOn, definitions)
@@ -436,7 +436,7 @@ func TestTheGraphDeclaresWhatFollowsEveryRead(t *testing.T) {
 	t.Parallel()
 
 	definitions := append(
-		inventoryTasks(&fakeSynchronizer{}, liveSettings(t), allEnabled),
+		inventoryTasks(&fakeSynchronizer{}, liveSettings(t), allEnabled, twoTargets),
 		surfaceIndexTask(&fakeIndexBuilder{}, liveSettings(t), allEnabled, time.Time{}),
 	)
 
@@ -584,6 +584,9 @@ func TestTaskSurfaceRunsUnderTheServiceContext(t *testing.T) {
 // allEnabled is a service where nobody has switched anything off.
 func allEnabled(string) func() bool { return func() bool { return true } }
 
+// twoTargets is a service configured with two destination slots.
+func twoTargets() []string { return []string{"rider-a", "rider-b"} }
+
 // Switching a task through the surface reaches the store behind it, and the
 // list the page reads back says so.
 func TestTaskSurfaceSwitchesATaskAndReportsIt(t *testing.T) {
@@ -624,7 +627,7 @@ func TestTheReadTakesOneLibraryOrEveryOne(t *testing.T) {
 	t.Parallel()
 
 	synchronizer := &fakeSynchronizer{result: syncservice.Result{Outcome: syncservice.OutcomeSucceeded}}
-	definition := definitionNamed(t, inventoryTasks(synchronizer, liveSettings(t), allEnabled), taskSyncSource)
+	definition := definitionNamed(t, inventoryTasks(synchronizer, liveSettings(t), allEnabled, twoTargets), taskSyncSource)
 
 	definition.Run.Run(t.Context(), task.Invocation{Task: taskSyncSource})
 	assert.Equal(t, []syncservice.Phase{syncservice.PhaseSource}, synchronizer.phases, "phases run")

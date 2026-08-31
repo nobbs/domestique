@@ -141,7 +141,7 @@ func (r *Reporter) runPhasesWith(
 		}
 		r.enter(PhaseSource)
 		result = r.run(ctx, runSource)
-		sourceStored = result.Outcome == OutcomeSucceeded
+		sourceStored = result.AnySourceStored()
 	}
 	if targets {
 		if runTargets == nil {

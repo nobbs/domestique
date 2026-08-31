@@ -102,3 +102,17 @@ type Result struct {
 	Updated      int
 	Deleted      int
 }
+
+// AnySourceStored reports whether at least one configured source's read
+// stored a fresh inventory this pass, whatever the other sources or the
+// aggregate outcome came to. A source phase result carries this in Sources;
+// a target or clear result has none, so it is always false for those.
+func (r Result) AnySourceStored() bool {
+	for _, source := range r.Sources {
+		if source.Outcome == OutcomeSucceeded {
+			return true
+		}
+	}
+
+	return false
+}

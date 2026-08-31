@@ -58,7 +58,10 @@ func TestReporterClearsOneTargetAlone(t *testing.T) {
 // it stored something new to enrich rather than enriching it itself.
 func TestReporterReportsWhetherItStoredANewInventory(t *testing.T) {
 	stored := &reportingRunner{
-		source:  Result{Phase: PhaseSource, Outcome: OutcomeSucceeded},
+		source: Result{
+			Phase: PhaseSource, Outcome: OutcomeSucceeded,
+			Sources: []SourceResult{{Provider: route.ProviderVeloPlanner, Outcome: OutcomeSucceeded}},
+		},
 		targets: Result{Phase: PhaseTargets, Outcome: OutcomeSucceeded},
 	}
 	result := newReporter(t, stored, &fakeRunState{}).RunPhase(t.Context(), PhaseSource)
@@ -72,6 +75,24 @@ func TestReporterReportsWhetherItStoredANewInventory(t *testing.T) {
 	targetsOnly := &reportingRunner{targets: Result{Phase: PhaseTargets, Outcome: OutcomeSucceeded}}
 	targetsResult := newReporter(t, targetsOnly, &fakeRunState{}).RunPhase(t.Context(), PhaseTargets)
 	assert.False(t, targetsResult.SourceStored, "a run that stored no inventory reported one")
+}
+
+// A source phase over two providers where only one stores still reports a
+// stored inventory: the aggregate outcome is the worse of the two, but the
+// half that succeeded is worth building on.
+func TestReporterReportsAPartialSourceReadAsStored(t *testing.T) {
+	partial := &reportingRunner{
+		source: Result{
+			Phase: PhaseSource, Outcome: OutcomeFailed, Failure: FailureSource,
+			Sources: []SourceResult{
+				{Provider: route.ProviderVeloPlanner, Outcome: OutcomeSucceeded},
+				{Provider: route.ProviderKomoot, Outcome: OutcomeFailed, Failure: FailureSource},
+			},
+		},
+	}
+	result := newReporter(t, partial, &fakeRunState{}).RunPhase(t.Context(), PhaseSource)
+	assert.Equal(t, OutcomeFailed, result.Outcome, "the aggregate outcome hid the failure")
+	assert.True(t, result.SourceStored, "a partial store was not reported as one")
 }
 
 // SurfaceIncomplete is what tells a stage that keeps failing classification

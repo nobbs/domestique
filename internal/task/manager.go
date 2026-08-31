@@ -427,10 +427,10 @@ func (m *Manager) perform(
 	}
 	visited[keyOf(invocation)] = struct{}{}
 
-	// What follows an attempt follows a successful one. A read that failed
-	// stored nothing to write or classify, and a rebuild that found nothing new
-	// left every classification standing.
-	if result := m.attemptAndRelease(ctx, entry, invocation, release); result.Outcome != Succeeded {
+	// What follows an attempt follows a successful one, or one that stored
+	// something worth building on even though it did not fully succeed. A read
+	// that stored nothing at all left every classification standing.
+	if result := m.attemptAndRelease(ctx, entry, invocation, release); result.Outcome != Succeeded && !result.Advances {
 		return
 	}
 	m.chain(ctx, entry, visited, depth+1)
@@ -466,10 +466,8 @@ func (m *Manager) chain(
 	}
 }
 
-// runSuccessor runs one successor. Work already under way is left to finish rather
-// than refused: asking for what is happening anyway has its answer, and
-// admission is what decides that, so nothing can change between asking and
-// starting.
+// runSuccessor runs one successor, over the arguments its own definition fans
+// out to when it declares one, or the single empty argument otherwise.
 func (m *Manager) runSuccessor(
 	ctx context.Context, name string, visited map[invocationKey]struct{}, depth int,
 ) {
@@ -477,9 +475,29 @@ func (m *Manager) runSuccessor(
 	if !known || ctx.Err() != nil {
 		return
 	}
-	invocation := Invocation{Task: name, Trigger: TriggerChain}
+	arguments := []string{""}
+	if entry.definition.FanOut != nil {
+		if fanned := entry.definition.FanOut(); len(fanned) > 0 {
+			arguments = fanned
+		}
+	}
+	for _, argument := range arguments {
+		m.runSuccessorOver(ctx, entry, name, argument, visited, depth)
+	}
+}
+
+// runSuccessorOver runs one successor over one argument. Work already under way
+// is left to finish rather than refused: asking for what is happening anyway
+// has its answer, and admission is what decides that, so nothing can change
+// between asking and starting.
+func (m *Manager) runSuccessorOver(
+	ctx context.Context, entry *registered, name, argument string,
+	visited map[invocationKey]struct{}, depth int,
+) {
+	invocation := Invocation{Task: name, Argument: argument, Trigger: TriggerChain}
 	if _, seen := visited[keyOf(invocation)]; seen {
-		slog.Warn("task chain asked again for what it had already run", "task", name, "depth", depth)
+		slog.Warn("task chain asked again for what it had already run",
+			"task", name, "argument", argument, "depth", depth)
 
 		return
 	}
@@ -628,7 +646,7 @@ func (m *Manager) checkStale(
 	// A success is what freshness is, so it ends the incident rather than being
 	// measured against it.
 	if result.Outcome == Succeeded {
-		m.clearAlert(ctx, invocation.Task, DetailStale)
+		m.clearAlert(ctx, invocation, DetailStale)
 
 		return
 	}
@@ -649,16 +667,27 @@ func (m *Manager) checkStale(
 
 // clearAlert forgets that an alert went out, so the next one is not held back
 // by a window opened for an incident that is over.
-func (m *Manager) clearAlert(ctx context.Context, task string, alert Detail) {
-	if err := m.store.RecordFailureNotification(ctx, task+":"+string(alert), time.Time{}); err != nil {
-		slog.Warn("alert suppression not cleared", "task", task, "alert", alert, "error", err)
+func (m *Manager) clearAlert(ctx context.Context, invocation Invocation, alert Detail) {
+	if err := m.store.RecordFailureNotification(ctx, alertCategory(invocation, alert), time.Time{}); err != nil {
+		slog.Warn("alert suppression not cleared",
+			"task", invocation.Task, "argument", invocation.Argument, "alert", alert, "error", err)
 	}
 }
 
+// alertCategory names one task's suppression window for one alert, over one
+// argument. Backoff and staleness are both tracked per argument; the
+// suppression window matches, so a fault on one target slot does not silence
+// the same reason on another, and a success on one argument does not end
+// another argument's incident.
+func alertCategory(invocation Invocation, alert Detail) string {
+	return invocation.Task + ":" + invocation.Argument + ":" + string(alert)
+}
+
 // announce sends one alert, no more often than the task's own suppression
-// window allows. The window is keyed by the reason as well as the task: a
-// library that cannot be read and a target that needs reauthorising are
-// separate problems and are worth saying separately.
+// window allows. The window is keyed by the reason and the argument as well as
+// the task: a library that cannot be read and a target that needs
+// reauthorising are separate problems, and so are two targets failing for the
+// same reason, and are worth saying separately.
 func (m *Manager) announce(
 	ctx context.Context,
 	entry *registered,
@@ -674,7 +703,7 @@ func (m *Manager) announce(
 	if !m.wanted(ctx, invocation.Task, alert) {
 		return
 	}
-	category := invocation.Task + ":" + string(alert)
+	category := alertCategory(invocation, alert)
 	lastSentAt, found, err := m.store.LastFailureNotification(ctx, category)
 	if err != nil || (found && now.Sub(lastSentAt) < entry.definition.Notify.Suppress) {
 		return

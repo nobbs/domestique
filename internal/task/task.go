@@ -118,6 +118,11 @@ const (
 type Result struct {
 	Outcome Outcome
 	Detail  Detail
+	// Advances lets successors run even when Outcome is not Succeeded, for an
+	// attempt whose failure was partial and still stored something worth
+	// building on. The attempt's own outcome is unaffected: this only widens
+	// what follows it.
+	Advances bool
 }
 
 // Trigger names what started an attempt. A task whose scheduled behaviour
@@ -247,6 +252,14 @@ type Definition struct {
 	// Each edge fires on its own: a task that follows two of them runs after
 	// either one, rather than waiting for both.
 	Follows []string
+	// FanOut names the arguments a chain asking for this task fires it over,
+	// one invocation each, instead of the single empty-argument invocation
+	// every other task's successors get. It exists so backoff and history stay
+	// keyed per argument for a task whose empty argument otherwise means every
+	// configured slot at once: one slot's fault then holds only that slot back,
+	// not every slot a later successful predecessor would otherwise reach. Nil
+	// is every other task's answer: one invocation, the empty argument.
+	FanOut func() []string
 	// Backoff holds this task back from its own schedule while it keeps
 	// faulting. Its zero value is a task that retries on schedule regardless.
 	Backoff Backoff

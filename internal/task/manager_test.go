@@ -501,6 +501,29 @@ type counting struct {
 
 func countingRunner() *counting { return &counting{} }
 
+// arguments records the argument each attempt was given, in the order seen.
+type arguments struct {
+	mutex sync.Mutex
+	given []string
+}
+
+func argumentRecorder() *arguments { return &arguments{} }
+
+func (a *arguments) Run(_ context.Context, invocation Invocation) Result {
+	a.mutex.Lock()
+	a.given = append(a.given, invocation.Argument)
+	a.mutex.Unlock()
+
+	return Result{Outcome: Succeeded}
+}
+
+func (a *arguments) arguments() []string {
+	a.mutex.Lock()
+	defer a.mutex.Unlock()
+
+	return slices.Clone(a.given)
+}
+
 func (c *counting) Run(context.Context, Invocation) Result {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
@@ -1021,6 +1044,63 @@ func TestASuccessorRefusedByAnotherHolderIsRecorded(t *testing.T) {
 	manager.Wait()
 }
 
+// A predecessor that stored something worth building on still asks for its
+// successor, even though it did not fully succeed: a partial source read
+// should not leave a safely-written half unreconciled until the backstop.
+func TestASuccessorRunsWhenItsPredecessorOnlyAdvanced(t *testing.T) {
+	t.Parallel()
+
+	followed := countingRunner()
+	manager, _ := newTestManager(t)
+	require.NoError(t, manager.Register(&Definition{
+		Name: "parent",
+		Run: RunnerFunc(func(context.Context, Invocation) Result {
+			return Result{Outcome: Failed, Advances: true}
+		}),
+	}), "Register(parent)")
+	require.NoError(t, manager.Register(&Definition{
+		Name: "child", Run: followed, Follows: []string{"parent"},
+	}), "Register(child)")
+	require.NoError(t, manager.Resolve(), "Resolve()")
+
+	require.True(t, manager.Trigger(t.Context(), "parent", ""), "Trigger()")
+	manager.Wait()
+	assert.Equal(t, 1, followed.runs(), "a partial predecessor's successor never ran")
+}
+
+// A task that fans a chain out over several arguments backs off only the one
+// that keeps faulting: a source read that just succeeded must still reach
+// every target slot that is not itself the problem.
+func TestAFanOutSuccessorBacksOffOnlyTheFaultingArgument(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, time.August, 31, 9, 0, 0, 0, time.UTC)
+	seen := argumentRecorder()
+	manager, store := newTestManager(t)
+	manager.now = func() time.Time { return now }
+	store.faultStreak = map[invocationKey]faultStreak{
+		{task: "child", argument: "faulting"}: {faults: 5, lastAt: now},
+	}
+	require.NoError(t, manager.Register(&Definition{
+		Name: "parent",
+		Run: RunnerFunc(func(context.Context, Invocation) Result {
+			return Result{Outcome: Succeeded}
+		}),
+	}), "Register(parent)")
+	require.NoError(t, manager.Register(&Definition{
+		Name:    "child",
+		Run:     seen,
+		Follows: []string{"parent"},
+		FanOut:  func() []string { return []string{"faulting", "healthy"} },
+		Backoff: Backoff{Base: 30 * time.Second, Cap: 6 * time.Hour},
+	}), "Register(child)")
+	require.NoError(t, manager.Resolve(), "Resolve()")
+
+	require.True(t, manager.Trigger(t.Context(), "parent", ""), "Trigger()")
+	manager.Wait()
+	assert.Equal(t, []string{"healthy"}, seen.arguments(), "backoff on one argument held back the other")
+}
+
 // The set of what a chain has run stays behind registration's cycle refusal,
 // so a graph that somehow reached itself still runs each invocation once.
 func TestAChainWillNotRunTheSameInvocationTwice(t *testing.T) {
@@ -1339,6 +1419,61 @@ func TestTwoReasonsAreAnnouncedSeparately(t *testing.T) {
 	manager.Wait()
 
 	assert.Len(t, notifier.messages(), 2, "a second reason was silenced by the first")
+}
+
+// The window is keyed by the argument as well as the task and the reason: two
+// target slots failing for the same reason are separate incidents, the same as
+// two different reasons are.
+func TestTwoArgumentsFailingForTheSameReasonAreAnnouncedSeparately(t *testing.T) {
+	t.Parallel()
+
+	manager, _, notifier := newAlertingManager(t)
+	argument := "rider-a"
+	require.NoError(t, manager.Register(&Definition{
+		Name: "sync:target",
+		Notify: &Notify{
+			Title: "Domestique target failed", Suppress: 6 * time.Hour,
+			Alerts: []Detail{"destination"},
+		},
+		Run: RunnerFunc(func(_ context.Context, invocation Invocation) Result {
+			return Result{Outcome: Failed, Detail: "destination"}
+		}),
+	}), "Register()")
+
+	require.True(t, manager.Trigger(t.Context(), "sync:target", argument), "first Trigger()")
+	manager.Wait()
+	argument = "rider-b"
+	require.True(t, manager.Trigger(t.Context(), "sync:target", argument), "second Trigger()")
+	manager.Wait()
+
+	assert.Len(t, notifier.messages(), 2, "one slot's failure silenced another slot's")
+}
+
+// A success on one argument must not end another argument's staleness
+// incident: the window a success clears is the one the success is about.
+func TestASuccessClearsTheStaleWindowOnlyForItsOwnArgument(t *testing.T) {
+	t.Parallel()
+
+	manager, store, notifier := newAlertingManager(t)
+	store.notifiedAt = map[string]time.Time{
+		"sync:target:rider-a:stale": time.Date(2026, time.August, 30, 8, 0, 0, 0, time.UTC),
+		"sync:target:rider-b:stale": time.Date(2026, time.August, 30, 8, 0, 0, 0, time.UTC),
+	}
+	require.NoError(t, manager.Register(&Definition{
+		Name:       "sync:target",
+		Notify:     &Notify{Title: "t", Suppress: time.Hour, Alerts: []Detail{DetailStale}},
+		StaleAfter: func() time.Duration { return 24 * time.Hour },
+		Run:        succeeds(),
+	}), "Register()")
+
+	require.True(t, manager.Trigger(t.Context(), "sync:target", "rider-a"), "Trigger()")
+	manager.Wait()
+
+	_, riderAHeld := store.notifiedAt["sync:target:rider-a:stale"]
+	_, riderBHeld := store.notifiedAt["sync:target:rider-b:stale"]
+	assert.False(t, riderAHeld, "a success left its own stale window open")
+	assert.True(t, riderBHeld, "a success on one argument cleared another argument's stale window")
+	assert.Empty(t, notifier.messages(), "a success was announced as stale")
 }
 
 func TestAnAlertNamesTheArgumentItIsAbout(t *testing.T) {
@@ -1853,7 +1988,7 @@ func TestASuccessClearsTheStaleWindow(t *testing.T) {
 	t.Parallel()
 
 	manager, store, notifier := newAlertingManager(t)
-	store.notifiedAt = map[string]time.Time{"sync:stale": time.Date(2026, time.August, 30, 8, 0, 0, 0, time.UTC)}
+	store.notifiedAt = map[string]time.Time{"sync::stale": time.Date(2026, time.August, 30, 8, 0, 0, 0, time.UTC)}
 	require.NoError(t, manager.Register(&Definition{
 		Name:       "sync",
 		Notify:     &Notify{Title: "t", Suppress: time.Hour, Alerts: []Detail{DetailStale}},
@@ -1864,7 +1999,7 @@ func TestASuccessClearsTheStaleWindow(t *testing.T) {
 	require.True(t, manager.Trigger(t.Context(), "sync", ""), "Trigger()")
 	manager.Wait()
 
-	_, held := store.notifiedAt["sync:stale"]
+	_, held := store.notifiedAt["sync::stale"]
 	assert.False(t, held, "a success left the stale window open")
 	assert.NotContains(t, sentAlerts(notifier), "stale", "a success was announced as stale")
 }

@@ -170,7 +170,7 @@ func run(ctx context.Context) error {
 	tasks, err := registerTasks(
 		store, notifier, alerts,
 		func() bool { return runtimeSettings.Values().Notifications.Enabled },
-		append(inventoryTasks(reporter, runtimeSettings, switches.enabledFor), indexTask),
+		append(inventoryTasks(reporter, runtimeSettings, switches.enabledFor, destination.targetIDs), indexTask),
 	)
 	if err != nil {
 		return err

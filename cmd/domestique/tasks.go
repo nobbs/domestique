@@ -130,6 +130,7 @@ func syncAlerts() *task.Notify {
 // status page reads best.
 func inventoryTasks(
 	reporter synchronizer, settings *runtimeconfig.Current, enabled func(string) func() bool,
+	targetIDs func() []string,
 ) []task.Definition {
 	inventory := func(string) []task.Resource {
 		return []task.Resource{{Name: resourceInventory, Exclusive: true}}
@@ -176,7 +177,12 @@ func inventoryTasks(
 			InitialDelay: func() time.Duration { return targetBackstopInterval },
 			Enabled:      enabled(taskSyncTarget),
 			Follows:      []string{taskSyncSource},
-			Backoff:      task.Backoff{Base: targetBackoffBase, Cap: backoffCap},
+			// A chain asks per slot rather than for every slot at once, so one
+			// slot's fault backs only that slot off. Otherwise a single failing
+			// slot would hold every slot back from a source read that just
+			// succeeded, for as long as the backoff cap.
+			FanOut:  targetIDs,
+			Backoff: task.Backoff{Base: targetBackoffBase, Cap: backoffCap},
 			Run: task.RunnerFunc(func(ctx context.Context, invocation task.Invocation) task.Result {
 				// No argument is every configured slot, which is what the schedule
 				// and a source read both ask for. One names the slot alone.
@@ -289,7 +295,14 @@ func syncResult(result *syncservice.Result) task.Result {
 		outcome = task.Failed
 	}
 
-	return task.Result{Outcome: outcome, Detail: task.Detail(result.Failure)}
+	return task.Result{
+		Outcome: outcome,
+		Detail:  task.Detail(result.Failure),
+		// A source read that stored at least one provider's inventory is worth
+		// reconciling and classifying even when another provider failed and
+		// dragged the aggregate outcome down.
+		Advances: result.AnySourceStored(),
+	}
 }
 
 // taskSurface adapts the manager to what the HTTP surface reads, starts and
