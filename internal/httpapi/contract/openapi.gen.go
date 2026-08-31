@@ -323,7 +323,7 @@ type AlertDecision struct {
 }
 
 type NotificationsUpdate struct {
-	// Enabled The switch for the whole channel. Off suppresses a failure and a task that has stopped succeeding as surely as it suppresses a routine success. Which alerts are sent while it is on is a decision per task and per reason, held in the alert matrix.
+	// Enabled The switch for the whole channel. Off, nothing is sent at all: a failure, a blocked run, a recovery and a task that has stopped succeeding are held back as surely as a routine success is. Which alerts are sent while it is on is a decision per task and per reason, held in the alert matrix.
 	Enabled bool `json:"enabled"`
 	// PushoverBaseURL The origin the application token and user key are sent to.
 	PushoverBaseURL string `json:"pushoverBaseUrl"`
@@ -347,7 +347,7 @@ type SyncSettings struct {
 }
 
 type NotificationSettings struct {
-	// Enabled The switch for the whole channel. Off suppresses a failure and a task that has stopped succeeding as surely as it suppresses a routine success. Which alerts are sent while it is on is a decision per task and per reason, held in the alert matrix.
+	// Enabled The switch for the whole channel. Off, nothing is sent at all: a failure, a blocked run, a recovery and a task that has stopped succeeding are held back as surely as a routine success is. Which alerts are sent while it is on is a decision per task and per reason, held in the alert matrix.
 	Enabled bool `json:"enabled"`
 	// PushoverBaseURL The origin the application token and user key are sent to.
 	PushoverBaseURL string `json:"pushoverBaseUrl"`

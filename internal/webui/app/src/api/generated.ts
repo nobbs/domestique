@@ -280,7 +280,7 @@ export interface SyncSettings {
 }
 
 export interface NotificationSettings {
-  /** The switch for the whole channel. Off suppresses a failure and a task that has stopped succeeding as surely as it suppresses a routine success. Which alerts are sent while it is on is a decision per task and per reason, held in the alert matrix. */
+  /** The switch for the whole channel. Off, nothing is sent at all: a failure, a blocked run, a recovery and a task that has stopped succeeding are held back as surely as a routine success is. Which alerts are sent while it is on is a decision per task and per reason, held in the alert matrix. */
   enabled: boolean;
   /** The origin the application token and user key are sent to. */
   pushoverBaseUrl: string;
@@ -406,7 +406,7 @@ export interface SourceUpdate {
 }
 
 export interface NotificationsUpdate {
-  /** The switch for the whole channel. Off suppresses a failure and a task that has stopped succeeding as surely as it suppresses a routine success. Which alerts are sent while it is on is a decision per task and per reason, held in the alert matrix. */
+  /** The switch for the whole channel. Off, nothing is sent at all: a failure, a blocked run, a recovery and a task that has stopped succeeding are held back as surely as a routine success is. Which alerts are sent while it is on is a decision per task and per reason, held in the alert matrix. */
   enabled: boolean;
   /** The origin the application token and user key are sent to. */
   pushoverBaseUrl: string;
