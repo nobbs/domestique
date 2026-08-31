@@ -68,7 +68,7 @@ func TestReporterRunsNothingAndReportsAnUnreadableSchedule(t *testing.T) {
 	assert.Equal(t, FailureState, result.Failure, "Run() failure")
 	assert.Zero(t, runner.sourceRuns+runner.targetRuns, "a phase ran on an unreadable schedule")
 	assert.Equal(t, 1, state.runs, "recorded runs")
-	assert.Len(t, notifier.messages, 1, "want one failure alert")
+	assert.Empty(t, notifier.messages, "the reporter announced a failure the task layer announces")
 }
 
 // An operator asking for a phase has already decided; the switch only ever
@@ -108,45 +108,6 @@ func TestReporterClearsOneTargetAlone(t *testing.T) {
 	assert.Equal(t, []string{"rider-a"}, runner.clearedIDs, "target cleared")
 	assert.Zero(t, runner.sourceRuns, "the source phase ran for a clear")
 	assert.Equal(t, []string{"targets"}, state.phases, "recorded phases")
-}
-
-func TestReporterSuppressesMatchingFailureForSixHours(t *testing.T) {
-	runner := &reportingRunner{targets: Result{Phase: PhaseTargets, Outcome: OutcomeFailed, Failure: FailureDestination}}
-	state := &fakeRunState{targets: true}
-	notifier := &fakeNotifier{}
-	reporter := newReporter(t, runner, state, notifier)
-	now := time.Date(2026, time.August, 17, 8, 0, 0, 0, time.UTC)
-	reporter.now = func() time.Time { return now }
-
-	reporter.Run(t.Context())
-	now = now.Add(5 * time.Hour)
-	reporter.Run(t.Context())
-	now = now.Add(time.Hour)
-	reporter.Run(t.Context())
-	assert.Equal(t, []notification{
-		{title: "Domestique sync failed", message: "targets failed: destination run=" + recordedRunReference},
-		{title: "Domestique sync failed", message: "targets failed: destination run=" + recordedRunReference},
-	}, notifier.messages)
-}
-
-// A library that has been failing to load all morning must not be the reason a
-// target stops reporting that it can no longer be written to.
-func TestReporterAlertsOnEachPhaseFailingTheSameWay(t *testing.T) {
-	runner := &reportingRunner{
-		source:  Result{Phase: PhaseSource, Outcome: OutcomeFailed, Failure: FailureState},
-		targets: Result{Phase: PhaseTargets, Outcome: OutcomeFailed, Failure: FailureState},
-	}
-	state := &fakeRunState{source: true, targets: true}
-	notifier := &fakeNotifier{}
-	reporter := newReporter(t, runner, state, notifier)
-	now := time.Date(2026, time.August, 17, 8, 0, 0, 0, time.UTC)
-	reporter.now = func() time.Time { return now }
-
-	reporter.Run(t.Context())
-	assert.Equal(t, []notification{
-		{title: "Domestique sync failed", message: "source failed: state run=" + recordedRunReference},
-		{title: "Domestique sync failed", message: "targets failed: state run=" + recordedRunReference},
-	}, notifier.messages)
 }
 
 // A source that never succeeded has no trusted inventory to be stale, and
@@ -800,32 +761,6 @@ func TestReporterQuietPolicySendsNothingForARoutineSuccess(t *testing.T) {
 	assert.Empty(t, notifier.messages, "a quiet policy pushed a routine success")
 }
 
-// A quiet policy governs routine success and nothing else. The failure an
-// operator installed notifications for still arrives.
-func TestReporterQuietPolicyStillReportsFailureAndBlockedRuns(t *testing.T) {
-	for _, testCase := range []struct {
-		name    string
-		outcome Outcome
-		failure FailureCategory
-	}{
-		{name: "failed", outcome: OutcomeFailed, failure: FailureDestination},
-		{name: "blocked", outcome: OutcomeBlocked, failure: FailureDeletionLimit},
-	} {
-		t.Run(testCase.name, func(t *testing.T) {
-			runner := &reportingRunner{
-				targets: Result{Phase: PhaseTargets, Outcome: testCase.outcome, Failure: testCase.failure},
-			}
-			state := &fakeRunState{targets: true}
-			notifier := &fakeNotifier{}
-			reporter := newPolicyReporter(t, runner, state, notifier, SuccessNotification{Policy: SuccessQuiet})
-
-			reporter.Run(t.Context())
-			require.Len(t, notifier.messages, 1, "a quiet policy suppressed a %s run", testCase.name)
-			assert.Equal(t, "Domestique sync failed", notifier.messages[0].title, "notification title")
-		})
-	}
-}
-
 // The first success after a failure is the recovery signal, and it is the one
 // success no policy may hold back: it is what tells the operator the alert they
 // were sent is over.
@@ -836,20 +771,20 @@ func TestReporterQuietPolicySendsTheRecoverySuccess(t *testing.T) {
 	reporter := newPolicyReporter(t, runner, state, notifier, SuccessNotification{Policy: SuccessQuiet})
 
 	reporter.Run(t.Context())
-	require.Len(t, notifier.messages, 1, "want the failure alert")
+	require.Empty(t, notifier.messages, "the reporter announced a failure the task layer announces")
 
 	runner.targets = Result{Phase: PhaseTargets, Outcome: OutcomeSucceeded, SourceStages: 2, Updated: 1}
 	reporter.Run(t.Context())
-	require.Len(t, notifier.messages, 2, "the recovery success was suppressed")
+	require.Len(t, notifier.messages, 1, "the recovery success was suppressed")
 	assert.Equal(t, notification{
 		title:   "Domestique sync",
 		message: "targets succeeded: source_stages=2 created=0 updated=1 deleted=0 run=" + recordedRunReference,
-	}, notifier.messages[1], "recovery notification")
+	}, notifier.messages[0], "recovery notification")
 
 	// The recovery is the first following success and only the first: once the
 	// phase is healthy again its successes are routine.
 	reporter.Run(t.Context())
-	assert.Len(t, notifier.messages, 2, "a routine success after recovery was pushed")
+	assert.Len(t, notifier.messages, 1, "a routine success after recovery was pushed")
 }
 
 // Recovery is asked per phase, because a failure in one half says nothing about
@@ -864,14 +799,14 @@ func TestReporterRecoveryIsPerPhase(t *testing.T) {
 	reporter := newPolicyReporter(t, runner, state, notifier, SuccessNotification{Policy: SuccessQuiet})
 
 	reporter.Run(t.Context())
-	require.Len(t, notifier.messages, 1, "want the target failure alert alone")
+	require.Empty(t, notifier.messages, "the reporter announced a failure the task layer announces")
 
 	// The source half was healthy throughout, so its success stays routine even
 	// though the targets half is recovering.
 	runner.targets = Result{Phase: PhaseTargets, Outcome: OutcomeSucceeded, SourceStages: 5}
 	reporter.Run(t.Context())
-	require.Len(t, notifier.messages, 2, "want only the targets recovery")
-	assert.Contains(t, notifier.messages[1].message, "targets succeeded", "recovered phase")
+	require.Len(t, notifier.messages, 1, "want only the targets recovery")
+	assert.Contains(t, notifier.messages[0].message, "targets succeeded", "recovered phase")
 }
 
 // An unreadable history must not be the reason a recovery goes unsent. Erring
@@ -970,12 +905,12 @@ func TestReporterDigestPolicySendsTheRecoverySuccess(t *testing.T) {
 	})
 
 	reporter.Run(t.Context())
-	require.Len(t, notifier.messages, 1, "want the failure alert")
+	require.Empty(t, notifier.messages, "the reporter announced a failure the task layer announces")
 
 	runner.targets = Result{Phase: PhaseTargets, Outcome: OutcomeSucceeded, SourceStages: 3}
 	reporter.Run(t.Context())
-	require.Len(t, notifier.messages, 2, "the recovery success was held for a digest")
-	assert.Equal(t, "Domestique sync", notifier.messages[1].title, "recovery notification title")
+	require.Len(t, notifier.messages, 1, "the recovery success was held for a digest")
+	assert.Equal(t, "Domestique sync", notifier.messages[0].title, "recovery notification title")
 }
 
 // A policy the composition root failed to supply must stop startup rather than
@@ -1189,18 +1124,16 @@ func TestReporterRecoveryOutlastsAPhaseLeftAwaitingOnboarding(t *testing.T) {
 			reporter := newPolicyReporter(t, runner, state, notifier, SuccessNotification{Policy: SuccessQuiet})
 
 			reporter.Run(t.Context())
-			require.Len(t, notifier.messages, testCase.alerts, "want the alert")
+			require.Empty(t, notifier.messages, "the reporter announced a fault the task layer announces")
 
 			runner.targets = Result{Phase: PhaseTargets, Outcome: OutcomeNotReady}
 			reporter.Run(t.Context())
-			require.Len(t, notifier.messages, testCase.alerts, "a run awaiting onboarding notified")
+			require.Empty(t, notifier.messages, "a run awaiting onboarding notified")
 
 			runner.targets = Result{Phase: PhaseTargets, Outcome: OutcomeSucceeded, SourceStages: 3}
 			reporter.Run(t.Context())
-			require.Len(t, notifier.messages, testCase.alerts+1,
-				"the alert was left open with nothing to close it")
-			assert.Equal(t, "Domestique sync", notifier.messages[testCase.alerts].title,
-				"recovery notification title")
+			require.Len(t, notifier.messages, 1, "the alert was left open with nothing to close it")
+			assert.Equal(t, "Domestique sync", notifier.messages[0].title, "recovery notification title")
 		})
 	}
 }
@@ -1216,17 +1149,17 @@ func TestReporterQuietPolicySendsTheRecoveryAfterABlockedRun(t *testing.T) {
 	reporter := newPolicyReporter(t, runner, state, notifier, SuccessNotification{Policy: SuccessQuiet})
 
 	reporter.Run(t.Context())
-	require.Len(t, notifier.messages, 1, "want the blocked alert")
+	require.Empty(t, notifier.messages, "the reporter announced a blocked run the task layer announces")
 
 	runner.targets = Result{Phase: PhaseTargets, Outcome: OutcomeSucceeded, SourceStages: 3}
 	reporter.Run(t.Context())
-	require.Len(t, notifier.messages, 2, "the success after a blocked run was suppressed")
-	assert.Equal(t, "Domestique sync", notifier.messages[1].title, "recovery notification title")
+	require.Len(t, notifier.messages, 1, "the success after a blocked run was suppressed")
+	assert.Equal(t, "Domestique sync", notifier.messages[0].title, "recovery notification title")
 
 	// And only the first: the phase is healthy now, so its next success is
 	// routine and a quiet policy holds it back.
 	reporter.Run(t.Context())
-	assert.Len(t, notifier.messages, 2, "a routine success followed the recovery out")
+	assert.Len(t, notifier.messages, 1, "a routine success followed the recovery out")
 }
 
 // pacedRunner takes time to run each half, so a pass occupies a span rather than

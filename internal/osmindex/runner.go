@@ -10,13 +10,6 @@ import (
 	"time"
 )
 
-// failureNotificationCategory names this runner's notifications, and
-// failureNotificationSuppression is how long one silences the next.
-const (
-	failureNotificationCategory    = "surface_index:build"
-	failureNotificationSuppression = 7 * 24 * time.Hour
-)
-
 // generationName matches an index filename this package wrote. Exact, because it
 // decides whether a file in the index directory may be removed.
 var generationName = regexp.MustCompile(`^` + indexPrefix + `[0-9a-f]{12}\` + indexSuffix + `$`)
@@ -28,13 +21,6 @@ type State interface {
 	// it produced. Never built reports the zero time and an empty generation.
 	SurfaceIndexBuild(ctx context.Context) (builtAt time.Time, generation string, err error)
 	RecordSurfaceIndexBuild(ctx context.Context, builtAt time.Time, generation string) error
-	LastFailureNotification(ctx context.Context, category string) (sentAt time.Time, found bool, err error)
-	RecordFailureNotification(ctx context.Context, category string, sentAt time.Time) error
-}
-
-// Notifier delivers already-safe notification text.
-type Notifier interface {
-	Send(ctx context.Context, title, message string) error
 }
 
 // Outcome is what a rebuild came to when it did not fail outright.
@@ -55,29 +41,28 @@ const (
 // build came to so its caller can record it; a failed build changes what the
 // service knows rather than whether it works.
 type Runner struct {
-	current  *Current
-	state    State
-	notifier Notifier
-	regions  func() []string
-	now      func() time.Time
-	options  Options
+	current *Current
+	state   State
+	regions func() []string
+	now     func() time.Time
+	options Options
 }
 
-// NewRunner creates a runner over an index holder, durable state, and a
-// notifier. Regions are a function because they are an editable setting;
-// Options.Regions is ignored. An empty list builds nothing and is supported.
+// NewRunner creates a runner over an index holder and durable state. Regions
+// are a function because they are an editable setting; Options.Regions is
+// ignored. An empty list builds nothing and is supported.
 func NewRunner(
-	options Options, regions func() []string, current *Current, state State, notifier Notifier,
+	options Options, regions func() []string, current *Current, state State,
 ) (*Runner, error) {
-	if current == nil || state == nil || notifier == nil || regions == nil {
-		return nil, errors.New("osmindex: index holder, state, notifier, and regions are required")
+	if current == nil || state == nil || regions == nil {
+		return nil, errors.New("osmindex: index holder, state, and regions are required")
 	}
 	if options.Directory == "" {
 		return nil, errors.New("osmindex: an index directory is required")
 	}
 
 	return &Runner{
-		options: options, regions: regions, current: current, state: state, notifier: notifier, now: time.Now,
+		options: options, regions: regions, current: current, state: state, now: time.Now,
 	}, nil
 }
 
@@ -102,7 +87,6 @@ func (r *Runner) Run(ctx context.Context) (Outcome, error) {
 			return "", err
 		}
 		slog.Error("surface index build failed", "error", err)
-		r.notifyFailure(ctx)
 
 		return "", err
 	}
@@ -122,7 +106,6 @@ func (r *Runner) Run(ctx context.Context) (Outcome, error) {
 	if err != nil {
 		slog.Error("surface index build produced an unreadable index", "error", err)
 		removeFile(result.Path)
-		r.notifyFailure(ctx)
 
 		return "", err
 	}
@@ -144,25 +127,6 @@ func (r *Runner) Run(ctx context.Context) (Outcome, error) {
 func (r *Runner) record(ctx context.Context, finishedAt time.Time, generation string) {
 	if err := r.state.RecordSurfaceIndexBuild(ctx, finishedAt, generation); err != nil {
 		slog.Error("recording the surface index build", "error", err)
-	}
-}
-
-// notifyFailure announces a failed build, subject to the suppression window. The
-// message carries no error detail: those name upstream URLs and local paths,
-// and the log already has them.
-func (r *Runner) notifyFailure(ctx context.Context) {
-	now := r.now().UTC()
-	lastSentAt, found, err := r.state.LastFailureNotification(ctx, failureNotificationCategory)
-	if err != nil || (found && now.Sub(lastSentAt) < failureNotificationSuppression) {
-		return
-	}
-	if err := r.notifier.Send(ctx, "Domestique surface index failed",
-		"the scheduled surface index rebuild did not complete; routes keep their last known surfaces",
-	); err != nil {
-		return
-	}
-	if err := r.state.RecordFailureNotification(ctx, failureNotificationCategory, now); err != nil {
-		slog.Error("recording the surface index failure notification", "error", err)
 	}
 }
 

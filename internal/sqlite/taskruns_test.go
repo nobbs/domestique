@@ -16,7 +16,7 @@ func TestRecordTaskRunReadsBackWhatItWrote(t *testing.T) {
 	startedAt := time.Date(2026, time.August, 30, 9, 0, 0, 0, time.UTC)
 
 	require.NoError(t, store.RecordTaskRun(
-		t.Context(), "sync", "source", startedAt, startedAt.Add(time.Minute), "succeeded", "", 10,
+		t.Context(), "sync", "source", startedAt, startedAt.Add(time.Minute), "succeeded", "", "abc123def456", 10,
 	), "RecordTaskRun()")
 
 	assert.Equal(t, []taskRun{
@@ -35,21 +35,24 @@ func TestRecordTaskRunRefusesIncompleteMetadata(t *testing.T) {
 		finishedAt time.Time
 		task       string
 		outcome    string
+		reference  string
 		retain     int
 	}{
-		"no task":         {outcome: "succeeded", startedAt: at, finishedAt: at, retain: 1},
-		"no outcome":      {task: "sync", startedAt: at, finishedAt: at, retain: 1},
-		"no start":        {task: "sync", outcome: "succeeded", finishedAt: at, retain: 1},
-		"no finish":       {task: "sync", outcome: "succeeded", startedAt: at, retain: 1},
-		"finished first":  {task: "sync", outcome: "succeeded", startedAt: at, finishedAt: at.Add(-time.Hour), retain: 1},
-		"retains nothing": {task: "sync", outcome: "succeeded", startedAt: at, finishedAt: at, retain: 0},
+		"no task":         {outcome: "succeeded", startedAt: at, finishedAt: at, reference: "r", retain: 1},
+		"no outcome":      {task: "sync", startedAt: at, finishedAt: at, reference: "r", retain: 1},
+		"no reference":    {task: "sync", outcome: "succeeded", startedAt: at, finishedAt: at, retain: 1},
+		"no start":        {task: "sync", outcome: "succeeded", finishedAt: at, reference: "r", retain: 1},
+		"no finish":       {task: "sync", outcome: "succeeded", startedAt: at, reference: "r", retain: 1},
+		"finished first":  {task: "sync", outcome: "succeeded", startedAt: at, finishedAt: at.Add(-time.Hour), reference: "r", retain: 1},
+		"retains nothing": {task: "sync", outcome: "succeeded", startedAt: at, finishedAt: at, reference: "r", retain: 0},
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
 			assert.Error(t, store.RecordTaskRun(
-				t.Context(), test.task, "", test.startedAt, test.finishedAt, test.outcome, "", test.retain,
+				t.Context(), test.task, "", test.startedAt, test.finishedAt,
+				test.outcome, "", test.reference, test.retain,
 			), "RecordTaskRun()")
 		})
 	}
@@ -64,13 +67,12 @@ func TestRecordTaskRunBoundsEachTaskSeparately(t *testing.T) {
 	at := time.Date(2026, time.August, 30, 9, 0, 0, 0, time.UTC)
 
 	for run := range 8 {
-		require.NoError(t, store.RecordTaskRun(
-			t.Context(), "chatty", "", at.Add(time.Duration(run)*time.Minute),
-			at.Add(time.Duration(run)*time.Minute), "succeeded", "", 3,
+		require.NoError(t, store.RecordTaskRun(t.Context(), "chatty", "", at.Add(time.Duration(run)*time.Minute),
+			at.Add(time.Duration(run)*time.Minute), "succeeded", "", "reference", 3,
 		), "RecordTaskRun(chatty)")
 	}
 	require.NoError(t, store.RecordTaskRun(
-		t.Context(), "quiet", "", at, at, "succeeded", "", 3,
+		t.Context(), "quiet", "", at, at, "succeeded", "", "reference", 3,
 	), "RecordTaskRun(quiet)")
 
 	assert.Len(t, readTaskRuns(t, store, "chatty"), 3, "the chatty task kept more than its bound")
@@ -86,12 +88,12 @@ func TestRecordTaskRunKeepsTheLatestAttemptOverEachArgument(t *testing.T) {
 	at := time.Date(2026, time.August, 30, 9, 0, 0, 0, time.UTC)
 
 	require.NoError(t, store.RecordTaskRun(
-		t.Context(), "sync:target", "rider-a", at, at, "failed", "authorization", 1,
+		t.Context(), "sync:target", "rider-a", at, at, "failed", "authorization", "reference", 1,
 	), "RecordTaskRun(rider-a)")
 	for run := range 4 {
 		require.NoError(t, store.RecordTaskRun(
 			t.Context(), "sync:target", "rider-b", at.Add(time.Duration(run)*time.Minute),
-			at.Add(time.Duration(run)*time.Minute), "succeeded", "", 1,
+			at.Add(time.Duration(run)*time.Minute), "succeeded", "", "reference", 1,
 		), "RecordTaskRun(rider-b)")
 	}
 
@@ -147,7 +149,7 @@ func TestRecordTaskRunReportsAnUnreadableDatabase(t *testing.T) {
 	require.NoError(t, store.Close(), "Close()")
 
 	require.Error(t, store.RecordTaskRun(
-		t.Context(), "sync", "", at, at, "succeeded", "", 1,
+		t.Context(), "sync", "", at, at, "succeeded", "", "reference", 1,
 	), "RecordTaskRun() on a closed database")
 }
 
@@ -170,9 +172,8 @@ func TestForEachTaskRunStopsWhenTheVisitorDoes(t *testing.T) {
 	store := openTestStore(t, testKey(1))
 	at := time.Date(2026, time.August, 30, 9, 0, 0, 0, time.UTC)
 	for run := range 3 {
-		require.NoError(t, store.RecordTaskRun(
-			t.Context(), "sync", "", at.Add(time.Duration(run)*time.Minute),
-			at.Add(time.Duration(run)*time.Minute), "succeeded", "", 5,
+		require.NoError(t, store.RecordTaskRun(t.Context(), "sync", "", at.Add(time.Duration(run)*time.Minute),
+			at.Add(time.Duration(run)*time.Minute), "succeeded", "", "reference", 5,
 		), "RecordTaskRun()")
 	}
 

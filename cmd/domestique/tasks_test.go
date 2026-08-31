@@ -460,14 +460,14 @@ func TestIndexResultSeparatesABuildFromAnUpstreamThatHadNothingNew(t *testing.T)
 func TestRegisterTasksRefusesADefinitionTheLayerCannotRun(t *testing.T) {
 	t.Parallel()
 
-	_, err := registerTasks(&countingStore{}, []task.Definition{{Name: "", Run: nil}})
+	_, err := registerTasks(&countingStore{}, &silentNotifier{}, alwaysOn, []task.Definition{{Name: "", Run: nil}})
 	require.Error(t, err, "registerTasks()")
 }
 
 func TestRegisterTasksNeedsSomewhereToRecord(t *testing.T) {
 	t.Parallel()
 
-	_, err := registerTasks(nil, nil)
+	_, err := registerTasks(nil, &silentNotifier{}, alwaysOn, nil)
 	require.Error(t, err, "registerTasks()")
 }
 
@@ -477,7 +477,7 @@ func TestRegisterTasksTakesEveryDefinitionItIsGiven(t *testing.T) {
 	definitions := append(inventoryTasks(&fakeSynchronizer{}, liveSettings(t)),
 		surfaceIndexTask(&fakeIndexBuilder{}, liveSettings(t), time.Time{}))
 
-	manager, err := registerTasks(&countingStore{}, definitions)
+	manager, err := registerTasks(&countingStore{}, &silentNotifier{}, alwaysOn, definitions)
 	require.NoError(t, err, "registerTasks()")
 	for _, definition := range definitions {
 		_, known := manager.NextRunAt(definition.Name)
@@ -500,12 +500,18 @@ func TestIndexResultTreatsAnUnknownOutcomeAsAFailure(t *testing.T) {
 type countingStore struct{ runs int }
 
 func (s *countingStore) RecordTaskRun(
-	context.Context, string, string, time.Time, time.Time, string, string, int,
+	context.Context, string, string, time.Time, time.Time, string, string, string, int,
 ) error {
 	s.runs++
 
 	return nil
 }
+
+func (*countingStore) LastFailureNotification(context.Context, string) (time.Time, bool, error) {
+	return time.Time{}, false, nil
+}
+
+func (*countingStore) RecordFailureNotification(context.Context, string, time.Time) error { return nil }
 
 // A refreshed inventory is worth reading the ground under again; a pass that
 // stored nothing asks for nothing.
@@ -518,3 +524,9 @@ func TestSyncResultAsksForClassificationOnlyAfterStoringAnInventory(t *testing.T
 	untouched := syncResult(&syncservice.Result{Outcome: syncservice.OutcomeSucceeded})
 	assert.Empty(t, untouched.Next, "a pass that stored nothing asked for classification anyway")
 }
+
+func alwaysOn() bool { return true }
+
+type silentNotifier struct{}
+
+func (*silentNotifier) Send(context.Context, string, string) error { return nil }

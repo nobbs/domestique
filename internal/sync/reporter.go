@@ -271,11 +271,8 @@ func (r *Reporter) record(ctx context.Context, startedAt time.Time, result *Resu
 	// switched off: turning it back on must not find a suppression window it
 	// never heard the alert behind.
 	if r.notifications().Enabled {
-		switch result.Outcome {
-		case OutcomeSucceeded:
+		if result.Outcome == OutcomeSucceeded {
 			r.notifySuccess(ctx, result, reference, recovered)
-		case OutcomeFailed, OutcomeBlocked:
-			r.notifyFailure(ctx, result, reference, finishedAt)
 		}
 	}
 
@@ -296,26 +293,6 @@ func (r *Reporter) recordTargetRuns(ctx context.Context, finishedAt time.Time, t
 		); err != nil {
 			slog.Warn("target run not recorded", "target", target.ID, "reason", "state")
 		}
-	}
-}
-
-// notifyFailure delivers one failure notification per phase and category, no more
-// often than the suppression interval. The phase is part of the key: a failing
-// library and a target that cannot be written to are separate problems.
-func (r *Reporter) notifyFailure(ctx context.Context, result *Result, reference string, now time.Time) {
-	if result.Failure == FailureNone {
-		return
-	}
-	category := string(result.Phase) + ":" + string(result.Failure)
-	lastSentAt, found, err := r.state.LastFailureNotification(ctx, category)
-	if err != nil || (found && now.Sub(lastSentAt) < failureNotificationSuppression) {
-		return
-	}
-	if err := r.notifier.Send(ctx, "Domestique sync failed", failureMessage(result, reference)); err != nil {
-		return
-	}
-	if err := r.state.RecordFailureNotification(ctx, category, now); err != nil {
-		return
 	}
 }
 
@@ -387,8 +364,4 @@ func successMessage(result *Result, reference string) string {
 		result.Deleted,
 		reference,
 	)
-}
-
-func failureMessage(result *Result, reference string) string {
-	return string(result.Phase) + " failed: " + string(result.Failure) + " run=" + reference
 }

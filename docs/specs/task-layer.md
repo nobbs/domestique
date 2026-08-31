@@ -152,6 +152,33 @@ is checked rather than inferred.
 A scheduled `sync` honours the schedule switches for each half. An operator
 asking for one overrides them, because asking is the point.
 
+## Alerts
+
+A task declares what an alert about it is titled and how long one silences the
+next, or declares nothing and has nothing announced about it. Declaring one
+without the other is refused where the task is registered: a window left at zero
+would either silence the task or repeat itself every tick, and neither is what
+leaving it out meant.
+
+Only a fault is announced: a run that failed, or one a safety gate blocked. An
+attempt that did no work because something else held what it needed is not a
+fault — this service was busy, which is not the same as broken — and neither is
+a success or a run that found nothing to do.
+
+The suppression window is keyed by the reason as well as the task. A library
+that cannot be read and a target that needs reauthorising are separate problems,
+and one must not silence the other. A failing task is worth one message; the
+same message every tick afterwards is noise an operator learns to ignore, which
+is how the message that mattered gets missed.
+
+Nothing is written down as sent until it has been, so a channel that was down
+does not silence the alert it failed to carry. While the channel is switched off
+nothing is sent and nothing is recorded as sent: turning it back on must not
+find a suppression window it never heard the alert behind.
+
+Every message names its run. The reference is random and means nothing on its
+own, which is what makes it safe to send.
+
 ## Enrichment failures
 
 Classifying the ground under a stage and timing it are passes over the whole

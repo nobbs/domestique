@@ -15,7 +15,6 @@ import (
 	"github.com/nobbs/domestique/internal/config"
 	"github.com/nobbs/domestique/internal/httpapi"
 	"github.com/nobbs/domestique/internal/openmeteo"
-	"github.com/nobbs/domestique/internal/pushover"
 	"github.com/nobbs/domestique/internal/route"
 	"github.com/nobbs/domestique/internal/runtimeconfig"
 	"github.com/nobbs/domestique/internal/sqlite"
@@ -351,9 +350,7 @@ func TestStartSurfaceIndexOnAHostThatHasNeverBuilt(t *testing.T) {
 	directory := t.TempDir()
 	store := testStore(t, directory)
 
-	current, definition, err := startSurfaceIndex(
-		t.Context(), stateSettings(directory), surfaceSettings(t, store), store, testNotifier(t),
-	)
+	current, definition, err := startSurfaceIndex(t.Context(), stateSettings(directory), surfaceSettings(t, store), store)
 	require.NoError(t, err, "startSurfaceIndex()")
 	t.Cleanup(func() { assert.NoError(t, current.Close(), "Close()") })
 
@@ -368,9 +365,7 @@ func TestStartSurfaceIndexWhenTheRememberedIndexIsGone(t *testing.T) {
 	store := testStore(t, directory)
 	require.NoError(t, store.RecordSurfaceIndexBuild(t.Context(), time.Now().UTC(), "abcdef012345"))
 
-	current, definition, err := startSurfaceIndex(
-		t.Context(), stateSettings(directory), surfaceSettings(t, store), store, testNotifier(t),
-	)
+	current, definition, err := startSurfaceIndex(t.Context(), stateSettings(directory), surfaceSettings(t, store), store)
 	require.NoError(t, err, "a remembered index that is no longer on disk is not an error")
 	t.Cleanup(func() { assert.NoError(t, current.Close(), "Close()") })
 
@@ -429,18 +424,6 @@ func testStore(t *testing.T, directory string) *sqlite.Store {
 	t.Cleanup(func() { assert.NoError(t, store.Close(), "Close()") })
 
 	return store
-}
-
-func testNotifier(t *testing.T) *pushover.Client {
-	t.Helper()
-
-	notifier, err := pushover.New(&pushover.Options{
-		ApplicationToken: func() []byte { return []byte("token") },
-		UserKey:          func() []byte { return []byte("user") },
-	})
-	require.NoError(t, err, "pushover.New()")
-
-	return notifier
 }
 
 // An operator who configures no coefficients file keeps every stage exactly
