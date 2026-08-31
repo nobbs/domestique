@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"sync"
 
 	"github.com/nobbs/domestique/internal/httpapi"
 )
@@ -10,34 +11,58 @@ import (
 // running task layer; a demo has no layer, so this answers with the names an
 // operator meets and nothing about a schedule. Running one of the
 // synchronization tasks reseeds the library, which is the only work a demo does.
-type demoTasks struct{ reseed func() bool }
+type demoTasks struct {
+	reseed func() bool
+	// switched is what an operator has turned off here. A demo keeps it in
+	// memory rather than in the database: the page has to see its own edit come
+	// back, or the switch reads as broken, and nothing in a demo is scheduled
+	// for it to govern anyway.
+	switched map[string]bool
+	mutex    *sync.RWMutex
+}
+
+func newDemoTasks(reseed func() bool) demoTasks {
+	return demoTasks{reseed: reseed, switched: make(map[string]bool), mutex: &sync.RWMutex{}}
+}
 
 // demoTaskNames are what the shipped binary registers, in the order it does.
 var demoTaskNames = []string{ //nolint:gochecknoglobals // a fixture for development tooling
-	"sync", "sync:target", "sync:clear", "surface:annotate", "surface:index",
+	httpapi.TaskSyncSource, "sync:target", "sync:clear", "surface:annotate", "surface:index",
 }
 
-// Registered lists the demo's tasks, none of them scheduled: a demo has no
-// clock worth showing and nothing that runs unasked. All of them read as
-// enabled, which is what a task nobody has ruled on is.
-func (demoTasks) Registered() []httpapi.RegisteredTask {
+// Registered lists the demo's tasks. They read as scheduled and enabled, which
+// is what the shipped binary's are: the page draws a switch per task, and one
+// with nothing to draw is a page that looks broken rather than empty.
+func (t demoTasks) Registered() []httpapi.RegisteredTask {
+	t.mutex.RLock()
+	defer t.mutex.RUnlock()
+
 	tasks := make([]httpapi.RegisteredTask, 0, len(demoTaskNames))
 	for _, name := range demoTaskNames {
-		tasks = append(tasks, httpapi.RegisteredTask{Name: name, Enabled: true})
+		enabled, ruled := t.switched[name]
+		tasks = append(tasks, httpapi.RegisteredTask{
+			Name: name, Scheduled: true, Enabled: !ruled || enabled,
+		})
 	}
 
 	return tasks
 }
 
-// Schedule accepts a switch and forgets it: a demo schedules nothing, so there
-// is nothing for one to govern.
-func (demoTasks) Schedule(context.Context, string, bool) error { return nil }
+// Schedule remembers a switch for as long as the demo runs, so the page sees
+// its own edit come back.
+func (t demoTasks) Schedule(_ context.Context, name string, enabled bool) error {
+	t.mutex.Lock()
+	defer t.mutex.Unlock()
+	t.switched[name] = enabled
+
+	return nil
+}
 
 // Run reseeds for the synchronization tasks and accepts the rest without work:
 // a demo has no upstream to reach, no target to write, and no map to index.
 func (t demoTasks) Run(name, _ string) bool {
 	switch name {
-	case "sync", "sync:target", "sync:clear":
+	case httpapi.TaskSyncSource, "sync:target", "sync:clear":
 		return t.reseed()
 	default:
 		return true
