@@ -155,7 +155,6 @@ function renderPage(
       created: 0,
       updated: 0,
       deleted: 0,
-      schedule: { source: true, targets: true },
       phases: options.readAt
         ? {
             source: {

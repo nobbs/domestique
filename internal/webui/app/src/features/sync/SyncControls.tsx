@@ -14,9 +14,9 @@
  */
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useRunTask, useRunTaskArgument, useSetSyncSchedule } from "../../api/generated";
-import { statusQuery, webUIConfigQuery } from "../../api/queries";
-import { TASKS } from "../../api/tasks";
+import { useRunTask, useSetTaskSchedule } from "../../api/generated";
+import { statusQuery, tasksQuery, webUIConfigQuery } from "../../api/queries";
+import { SYNC_PHASE_CADENCE, SYNC_PHASE_TASKS, TASKS } from "../../api/tasks";
 import type { Status, SyncActive, SyncPhase } from "../../api/types";
 import { SYNC_PHASES } from "../../api/types";
 import { Button } from "../../components/Button";
@@ -102,6 +102,7 @@ export function idleSummary(status: Status): string {
 export function SyncControls() {
   const queryClient = useQueryClient();
   const { data, isPending, isError } = useQuery(statusQuery());
+  const tasks = useQuery(tasksQuery());
   const config = useQuery(webUIConfigQuery());
   // The sources this build can name, which is every provider a base URL is
   // configured for. Unresolved while the config is still loading, which reads
@@ -111,12 +112,13 @@ export function SyncControls() {
   const runningLabels = runningPhaseLabels(sourceProviders);
 
   const invalidateStatus = () =>
-    queryClient.invalidateQueries({ queryKey: statusQuery().queryKey });
-  const schedule = useSetSyncSchedule({
-    mutation: { onSuccess: invalidateStatus },
-  });
-  const sourceRun = useRunTaskArgument({ mutation: { onSuccess: invalidateStatus } });
-  const targetsRun = useRunTaskArgument({ mutation: { onSuccess: invalidateStatus } });
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: statusQuery().queryKey }),
+      queryClient.invalidateQueries({ queryKey: tasksQuery().queryKey }),
+    ]);
+  const schedule = useSetTaskSchedule({ mutation: { onSuccess: invalidateStatus } });
+  const sourceRun = useRunTask({ mutation: { onSuccess: invalidateStatus } });
+  const targetsRun = useRunTask({ mutation: { onSuccess: invalidateStatus } });
   // Each phase now has its own mutation, so each keeps its own terminal state
   // and a failure would otherwise outlive the successful run of the other half.
   // The banner belongs to whichever phase was asked for last.
@@ -125,18 +127,23 @@ export function SyncControls() {
     mutation: { onSuccess: invalidateStatus },
   });
 
-  if (isPending) {
+  // The task list is required, not decorative: a switch drawn before it arrives
+  // would show a state nobody reported, and pressing it would send the opposite
+  // of a guess.
+  if (isPending || tasks.isPending) {
     return <Skeleton className="h-28 w-full" role="status" aria-label="Loading sync controls" />;
   }
-  if (isError) {
+  if (isError || tasks.isError) {
     return <p className="text-sm text-[var(--alert)]">The service did not say what it is doing.</p>;
   }
 
-  // Both switches travel on every change: the service refuses a half-named
-  // schedule, and sending the pair means the operator's own view of the other
-  // half is what gets written rather than a value assumed here.
+  // Each half is its own task now, so a switch travels alone: nothing here has
+  // to carry a value for the other half, and cannot get it wrong. A task the
+  // service does not list is one nobody has ruled on, which runs.
+  const enabledFor = (phase: SyncPhase) =>
+    tasks.data?.tasks?.find((task) => task.name === SYNC_PHASE_TASKS[phase])?.enabled ?? true;
   const toggle = (phase: SyncPhase) =>
-    schedule.mutate({ data: { ...data.sync.schedule, [phase]: !data.sync.schedule[phase] } });
+    schedule.mutate({ name: SYNC_PHASE_TASKS[phase], data: { enabled: !enabledFor(phase) } });
 
   return (
     <>
@@ -197,11 +204,12 @@ export function SyncControls() {
               phase={phase}
               label={labels[phase]}
               lastRun={data.sync.phases[phase]}
-              enabled={data.sync.schedule[phase]}
+              enabled={enabledFor(phase)}
+              cadence={SYNC_PHASE_CADENCE[phase]}
               scheduleDisabled={schedule.isPending}
               onToggle={() => toggle(phase)}
               running={run.isPending}
-              onRun={() => run.mutate({ name: TASKS.sync, argument: phase })}
+              onRun={() => run.mutate({ name: SYNC_PHASE_TASKS[phase] })}
             />
           );
         })}

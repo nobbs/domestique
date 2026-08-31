@@ -35,11 +35,24 @@ func tasksHandler(t *testing.T, registered ...RegisteredTask) (*Handler, *fakeTa
 	return handler, tasks
 }
 
+// taskListOf sends a request and decodes the task list it answers with.
+func taskListOf(t *testing.T, handler *Handler, request *http.Request) openapi.TaskList {
+	t.Helper()
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+
+	var view openapi.TaskList
+	require.NoError(t, json.NewDecoder(response.Body).Decode(&view), "decoding the task list")
+
+	return view
+}
+
 func TestListTasksReportsWhatThisBuildRegisters(t *testing.T) {
 	due := time.Date(2026, time.August, 31, 9, 0, 0, 0, time.UTC)
 	handler, _ := tasksHandler(t,
-		RegisteredTask{Name: "sync", Scheduled: true, Running: 1, NextRunAt: due},
-		RegisteredTask{Name: "sync:target"},
+		RegisteredTask{Name: "sync:source", Scheduled: true, Running: 1, NextRunAt: due},
+		RegisteredTask{Name: "sync:clear"},
 	)
 
 	response := httptest.NewRecorder()
@@ -49,7 +62,7 @@ func TestListTasksReportsWhatThisBuildRegisters(t *testing.T) {
 	var view openapi.TaskList
 	require.NoError(t, json.NewDecoder(response.Body).Decode(&view), "decoding the task list")
 	require.Len(t, view.Tasks, 2, "tasks")
-	assert.Equal(t, "sync", view.Tasks[0].Name, "the first task")
+	assert.Equal(t, "sync:source", view.Tasks[0].Name, "the first task")
 	assert.True(t, view.Tasks[0].Scheduled, "scheduled")
 	assert.Equal(t, 1, view.Tasks[0].Running, "running")
 	require.NotNil(t, view.Tasks[0].NextRunAt, "the due time")
@@ -76,20 +89,24 @@ func TestListTasksSendsAnEmptyListAsAList(t *testing.T) {
 func TestRunTaskStartsTheNamedTask(t *testing.T) {
 	tests := map[string]struct {
 		target   string
+		task     string
 		argument string
 	}{
-		"with no argument": {target: "/v1/tasks/sync/run"},
-		"over an argument": {target: "/v1/tasks/sync/run/rider-a", argument: "rider-a"},
+		"with no argument": {target: "/v1/tasks/sync%3Asource/run", task: "sync:source"},
+		"over an argument": {
+			target: "/v1/tasks/sync%3Atarget/run/rider-a", task: "sync:target", argument: "rider-a",
+		},
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			handler, tasks := tasksHandler(t, RegisteredTask{Name: "sync"})
+			handler, tasks := tasksHandler(t,
+				RegisteredTask{Name: "sync:source"}, RegisteredTask{Name: "sync:target"})
 
 			response := httptest.NewRecorder()
 			handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, test.target))
 
 			require.Equal(t, http.StatusAccepted, response.Code, response.Body.String())
-			assert.Equal(t, []startedTask{{name: "sync", argument: test.argument}}, tasks.started, "started")
+			assert.Equal(t, []startedTask{{name: test.task, argument: test.argument}}, tasks.started, "started")
 		})
 	}
 }
@@ -97,7 +114,7 @@ func TestRunTaskStartsTheNamedTask(t *testing.T) {
 // A name this build does not register is not found, so a page built against
 // another build asks for nothing that silently does nothing.
 func TestRunTaskRefusesANameThisBuildDoesNotRegister(t *testing.T) {
-	handler, tasks := tasksHandler(t, RegisteredTask{Name: "sync"})
+	handler, tasks := tasksHandler(t, RegisteredTask{Name: "sync:source"})
 
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/tasks/invented/run"))
@@ -109,11 +126,11 @@ func TestRunTaskRefusesANameThisBuildDoesNotRegister(t *testing.T) {
 // A refusal is not a fault: the work is already happening, or something it
 // needs is held. Either way the caller is told rather than left waiting.
 func TestRunTaskReportsARefusal(t *testing.T) {
-	handler, tasks := tasksHandler(t, RegisteredTask{Name: "sync"})
+	handler, tasks := tasksHandler(t, RegisteredTask{Name: "sync:source"})
 	tasks.refuse = true
 
 	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/tasks/sync/run"))
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/tasks/sync%3Asource/run"))
 
 	require.Equal(t, http.StatusConflict, response.Code, response.Body.String())
 	assert.Contains(t, response.Body.String(), "task_in_progress",
@@ -125,7 +142,7 @@ func TestRunTaskReportsARefusal(t *testing.T) {
 // The list is read-only, so a browser sends no Origin on it and requiring one
 // would refuse the whole page.
 func TestListTasksNeedsNoOrigin(t *testing.T) {
-	handler, _ := tasksHandler(t, RegisteredTask{Name: "sync"})
+	handler, _ := tasksHandler(t, RegisteredTask{Name: "sync:source"})
 
 	request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, tasksPath, http.NoBody)
 	request.Header.Set(assertionHeader, testAssertion)

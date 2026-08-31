@@ -82,11 +82,6 @@ export interface SyncActive {
   routes: TargetRoutes;
 }
 
-export interface SyncSchedule {
-  source: boolean;
-  targets: boolean;
-}
-
 export interface SyncPhaseRun {
   lastCompletedAt: string;
   lastResult: string;
@@ -131,7 +126,6 @@ export interface SyncStatus {
   created: number;
   updated: number;
   deleted: number;
-  schedule: SyncSchedule;
   phases: SyncPhases;
   surface: SurfaceCoverage;
   wahooRateLimit?: WahooRateLimit;
@@ -149,8 +143,10 @@ export interface Status {
 export interface Task {
   /** What a trigger asks for. */
   name: string;
-  /** Whether the task runs unasked. */
+  /** Whether the task has a schedule at all. */
   scheduled: boolean;
+  /** Whether the schedule may start it. A task nobody has ruled on runs. It governs unattended runs only. */
+  enabled: boolean;
   /** How many attempts of this task are in flight. */
   running: number;
   /** When the first scheduled run is due. Absent once it has started, and for a task nothing schedules. */
@@ -159,6 +155,11 @@ export interface Task {
 
 export interface TaskList {
   tasks: Task[];
+}
+
+export interface TaskScheduleUpdate {
+  /** Whether the schedule may start this task. It governs unattended runs only. */
+  enabled: boolean;
 }
 
 export type SyncRunPhase = (typeof SyncRunPhase)[keyof typeof SyncRunPhase];
@@ -520,9 +521,9 @@ export type ForbiddenResponse = Error;
 export type UnavailableResponse = Error;
 
 /**
- * Work was accepted to run asynchronously.
+ * Request is malformed.
  */
-export type AcceptedResponse = Accepted;
+export type InvalidRequestResponse = Error;
 
 /**
  * Resource was not found.
@@ -530,14 +531,14 @@ export type AcceptedResponse = Accepted;
 export type NotFoundResponse = Error;
 
 /**
+ * Work was accepted to run asynchronously.
+ */
+export type AcceptedResponse = Accepted;
+
+/**
  * The attempt was refused. This exact work is already happening, or something it needs is held by another run. Neither is a fault.
  */
 export type TaskInProgressResponse = Error;
-
-/**
- * Request is malformed.
- */
-export type InvalidRequestResponse = Error;
 
 /**
  * Every setting now in force, not only the section this request replaced, so one answer refills the whole page.
@@ -856,6 +857,161 @@ export function useListTasks<
   return withQueryKey(query, queryOptions.queryKey);
 }
 
+export type setTaskScheduleResponse200 = {
+  data: TaskList;
+  status: 200;
+};
+
+export type setTaskScheduleResponse400 = {
+  data: InvalidRequestResponse;
+  status: 400;
+};
+
+export type setTaskScheduleResponse401 = {
+  data: UnauthorizedResponse;
+  status: 401;
+};
+
+export type setTaskScheduleResponse403 = {
+  data: ForbiddenResponse;
+  status: 403;
+};
+
+export type setTaskScheduleResponse404 = {
+  data: NotFoundResponse;
+  status: 404;
+};
+
+export type setTaskScheduleResponse503 = {
+  data: UnavailableResponse;
+  status: 503;
+};
+
+export type setTaskScheduleResponseSuccess = setTaskScheduleResponse200 & {
+  headers: Headers;
+};
+export type setTaskScheduleResponseError = (
+  | setTaskScheduleResponse400
+  | setTaskScheduleResponse401
+  | setTaskScheduleResponse403
+  | setTaskScheduleResponse404
+  | setTaskScheduleResponse503
+) & {
+  headers: Headers;
+};
+
+export const getSetTaskScheduleUrl = (name: string) => {
+  return `/v1/tasks/${encodeURIComponent(String(name))}/schedule`;
+};
+
+/**
+ * Sets whether the schedule may start this task. It governs unattended runs only: a task switched off still runs when an operator asks for it.
+ */
+export const setTaskSchedule = async (
+  name: string,
+  taskScheduleUpdate: TaskScheduleUpdate,
+  options?: Parameters<typeof domestiqueRequest>[1],
+): Promise<setTaskScheduleResponseSuccess> => {
+  const getHeaders = (
+    h?: NonNullable<RequestInit["headers"]>,
+  ): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Array.isArray(h)) return Object.fromEntries(h);
+    return h;
+  };
+  return domestiqueRequest<setTaskScheduleResponseSuccess>(getSetTaskScheduleUrl(name), {
+    ...options,
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...getHeaders(options?.headers) },
+    body: JSON.stringify(taskScheduleUpdate),
+  });
+};
+
+export const getSetTaskScheduleMutationOptions = <
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof setTaskSchedule>>,
+    TError,
+    SetTaskScheduleMutationVariables,
+    TContext
+  >;
+  request?: SecondParameter<typeof domestiqueRequest>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof setTaskSchedule>>,
+  TError,
+  SetTaskScheduleMutationVariables,
+  TContext
+> => {
+  const mutationKey = ["setTaskSchedule"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof setTaskSchedule>>,
+    SetTaskScheduleMutationVariables
+  > = (props) => {
+    const { name, data } = props ?? {};
+
+    return setTaskSchedule(name, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SetTaskScheduleMutationResult = NonNullable<
+  Awaited<ReturnType<typeof setTaskSchedule>>
+>;
+export type SetTaskScheduleMutationBody = TaskScheduleUpdate;
+export type SetTaskScheduleMutationError = ErrorType<
+  | InvalidRequestResponse
+  | UnauthorizedResponse
+  | ForbiddenResponse
+  | NotFoundResponse
+  | UnavailableResponse
+>;
+export type SetTaskScheduleMutationVariables = { name: string; data: TaskScheduleUpdate };
+
+export const useSetTaskSchedule = <
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
+  >,
+  TContext = unknown,
+>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof setTaskSchedule>>,
+      TError,
+      SetTaskScheduleMutationVariables,
+      TContext
+    >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof setTaskSchedule>>,
+  TError,
+  SetTaskScheduleMutationVariables,
+  TContext
+> => {
+  return useMutation(getSetTaskScheduleMutationOptions(options), queryClient);
+};
+
 export type runTaskResponse202 = {
   data: AcceptedResponse;
   status: 202;
@@ -1105,139 +1261,6 @@ export const useRunTaskArgument = <
   TContext
 > => {
   return useMutation(getRunTaskArgumentMutationOptions(options), queryClient);
-};
-
-export type setSyncScheduleResponse200 = {
-  data: SyncSchedule;
-  status: 200;
-};
-
-export type setSyncScheduleResponse400 = {
-  data: InvalidRequestResponse;
-  status: 400;
-};
-
-export type setSyncScheduleResponse401 = {
-  data: UnauthorizedResponse;
-  status: 401;
-};
-
-export type setSyncScheduleResponse403 = {
-  data: ForbiddenResponse;
-  status: 403;
-};
-
-export type setSyncScheduleResponse503 = {
-  data: UnavailableResponse;
-  status: 503;
-};
-
-export type setSyncScheduleResponseSuccess = setSyncScheduleResponse200 & {
-  headers: Headers;
-};
-export type setSyncScheduleResponseError = (
-  | setSyncScheduleResponse400
-  | setSyncScheduleResponse401
-  | setSyncScheduleResponse403
-  | setSyncScheduleResponse503
-) & {
-  headers: Headers;
-};
-
-export const getSetSyncScheduleUrl = () => {
-  return `/v1/sync/schedule`;
-};
-
-export const setSyncSchedule = async (
-  syncSchedule: SyncSchedule,
-  options?: Parameters<typeof domestiqueRequest>[1],
-): Promise<setSyncScheduleResponseSuccess> => {
-  const getHeaders = (
-    h?: NonNullable<RequestInit["headers"]>,
-  ): Record<string, string | readonly string[]> => {
-    if (!h) return {};
-    if (h instanceof Headers) return Object.fromEntries(h.entries());
-    if (Array.isArray(h)) return Object.fromEntries(h);
-    return h;
-  };
-  return domestiqueRequest<setSyncScheduleResponseSuccess>(getSetSyncScheduleUrl(), {
-    ...options,
-    method: "PUT",
-    headers: { "Content-Type": "application/json", ...getHeaders(options?.headers) },
-    body: JSON.stringify(syncSchedule),
-  });
-};
-
-export const getSetSyncScheduleMutationOptions = <
-  TError = ErrorType<
-    InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
-  >,
-  TContext = unknown,
->(options?: {
-  mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof setSyncSchedule>>,
-    TError,
-    SetSyncScheduleMutationVariables,
-    TContext
-  >;
-  request?: SecondParameter<typeof domestiqueRequest>;
-}): UseMutationOptions<
-  Awaited<ReturnType<typeof setSyncSchedule>>,
-  TError,
-  SetSyncScheduleMutationVariables,
-  TContext
-> => {
-  const mutationKey = ["setSyncSchedule"];
-  const { mutation: mutationOptions, request: requestOptions } = options
-    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
-      ? options
-      : { ...options, mutation: { ...options.mutation, mutationKey } }
-    : { mutation: { mutationKey }, request: undefined };
-
-  const mutationFn: MutationFunction<
-    Awaited<ReturnType<typeof setSyncSchedule>>,
-    SetSyncScheduleMutationVariables
-  > = (props) => {
-    const { data } = props ?? {};
-
-    return setSyncSchedule(data, requestOptions);
-  };
-
-  return { mutationFn, ...mutationOptions };
-};
-
-export type SetSyncScheduleMutationResult = NonNullable<
-  Awaited<ReturnType<typeof setSyncSchedule>>
->;
-export type SetSyncScheduleMutationBody = SyncSchedule;
-export type SetSyncScheduleMutationError = ErrorType<
-  InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
->;
-export type SetSyncScheduleMutationVariables = { data: SyncSchedule };
-
-export const useSetSyncSchedule = <
-  TError = ErrorType<
-    InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
-  >,
-  TContext = unknown,
->(
-  options?: {
-    mutation?: UseMutationOptions<
-      Awaited<ReturnType<typeof setSyncSchedule>>,
-      TError,
-      SetSyncScheduleMutationVariables,
-      TContext
-    >;
-    request?: SecondParameter<typeof domestiqueRequest>;
-  },
-  queryClient?: QueryClient,
-): UseMutationResult<
-  Awaited<ReturnType<typeof setSyncSchedule>>,
-  TError,
-  SetSyncScheduleMutationVariables,
-  TContext
-> => {
-  return useMutation(getSetSyncScheduleMutationOptions(options), queryClient);
 };
 
 export type getSyncRunsResponse200 = {

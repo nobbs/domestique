@@ -43,6 +43,9 @@ function renderPage(path = "/sync", body: unknown = statusBody()) {
       if (url.startsWith("/v1/sync/runs")) {
         return new Response(JSON.stringify({ runs: [] }), { status: 200 });
       }
+      if (url.startsWith("/v1/tasks")) {
+        return new Response(JSON.stringify({ tasks: [] }), { status: 200 });
+      }
 
       return new Response(JSON.stringify(body), { status: 200 });
     }),

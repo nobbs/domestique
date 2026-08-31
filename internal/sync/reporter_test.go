@@ -2,7 +2,6 @@ package sync
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
 
@@ -20,60 +19,10 @@ func TestReporterRecordsEverySuccess(t *testing.T) {
 	now := time.Date(2026, time.August, 17, 8, 0, 0, 0, time.UTC)
 	reporter.now = func() time.Time { return now }
 
-	reporter.Run(t.Context())
+	reporter.RunPhase(t.Context(), PhaseSource)
+	reporter.RunPhase(t.Context(), PhaseTargets)
 	assert.Equal(t, 2, state.runs, "recorded runs")
 	assert.Equal(t, []string{"source", "targets"}, state.phases, "recorded phases")
-}
-
-// The switches govern the timer, so a scheduled tick performs only what is still
-// switched on and leaves no record of the half it did not run.
-func TestReporterRunsOnlyTheScheduledPhases(t *testing.T) {
-	runner := &reportingRunner{
-		source:  Result{Phase: PhaseSource, Outcome: OutcomeSucceeded, SourceStages: 4},
-		targets: Result{Phase: PhaseTargets, Outcome: OutcomeSucceeded},
-	}
-	state := &fakeRunState{source: true, targets: false}
-	reporter := newReporter(t, runner, state)
-
-	reporter.Run(t.Context())
-	assert.Zero(t, runner.targetRuns, "the target phase ran while its schedule was off")
-	assert.Equal(t, []string{"source"}, state.phases, "recorded phases")
-}
-
-func TestReporterRunsNothingWhenBothPhasesAreSwitchedOff(t *testing.T) {
-	runner := &reportingRunner{}
-	state := &fakeRunState{}
-	reporter := newReporter(t, runner, state)
-
-	assert.Equal(t, OutcomeSkipped, reporter.Run(t.Context()).Outcome, "Run() outcome")
-	assert.Zero(t, runner.sourceRuns+runner.targetRuns, "a phase ran with both schedules off")
-	assert.Zero(t, state.runs, "recorded runs")
-}
-
-// "Off" and "unreadable" are different answers, and a timer must not act on the
-// second as though it were the first.
-func TestReporterRunsNothingAndReportsAnUnreadableSchedule(t *testing.T) {
-	runner := &reportingRunner{}
-	state := &fakeRunState{scheduleErr: errors.New("state unavailable")}
-	reporter := newReporter(t, runner, state)
-
-	result := reporter.Run(t.Context())
-	assert.Equal(t, OutcomeFailed, result.Outcome, "Run() outcome")
-	assert.Equal(t, FailureState, result.Failure, "Run() failure")
-	assert.Zero(t, runner.sourceRuns+runner.targetRuns, "a phase ran on an unreadable schedule")
-	assert.Equal(t, 1, state.runs, "recorded runs")
-}
-
-// An operator asking for a phase has already decided; the switch only ever
-// governed what happens unattended.
-func TestReporterRunsAPhaseTheScheduleHasSwitchedOff(t *testing.T) {
-	runner := &reportingRunner{targets: Result{Phase: PhaseTargets, Outcome: OutcomeSucceeded}}
-	state := &fakeRunState{}
-	reporter := newReporter(t, runner, state)
-
-	reporter.RunPhase(t.Context(), PhaseTargets)
-	assert.Equal(t, 1, runner.targetRuns, "target runs")
-	assert.Zero(t, runner.sourceRuns, "the source phase ran for a target trigger")
 }
 
 // A target-specific trigger reconciles exactly the slot asked for, through
@@ -110,16 +59,16 @@ func TestReporterReportsWhetherItStoredANewInventory(t *testing.T) {
 		source:  Result{Phase: PhaseSource, Outcome: OutcomeSucceeded},
 		targets: Result{Phase: PhaseTargets, Outcome: OutcomeSucceeded},
 	}
-	result := newReporter(t, stored, &fakeRunState{source: true, targets: true}).Run(t.Context())
+	result := newReporter(t, stored, &fakeRunState{}).RunPhase(t.Context(), PhaseSource)
 	assert.True(t, result.SourceStored, "a pass that stored an inventory did not say so")
 	assert.Zero(t, stored.annotations, "the reporter enriched what it stored instead of reporting it")
 
 	failed := &reportingRunner{source: Result{Phase: PhaseSource, Outcome: OutcomeFailed, Failure: FailureSource}}
-	failedResult := newReporter(t, failed, &fakeRunState{source: true}).Run(t.Context())
+	failedResult := newReporter(t, failed, &fakeRunState{}).RunPhase(t.Context(), PhaseSource)
 	assert.False(t, failedResult.SourceStored, "a failed read reported a stored inventory")
 
 	targetsOnly := &reportingRunner{targets: Result{Phase: PhaseTargets, Outcome: OutcomeSucceeded}}
-	targetsResult := newReporter(t, targetsOnly, &fakeRunState{targets: true}).Run(t.Context())
+	targetsResult := newReporter(t, targetsOnly, &fakeRunState{}).RunPhase(t.Context(), PhaseTargets)
 	assert.False(t, targetsResult.SourceStored, "a run that stored no inventory reported one")
 }
 
@@ -165,7 +114,8 @@ func TestReporterDoesNotRecordOrNotifySkippedRun(t *testing.T) {
 	}
 	reporter := newReporter(t, runner, state)
 
-	reporter.Run(t.Context())
+	reporter.RunPhase(t.Context(), PhaseSource)
+	reporter.RunPhase(t.Context(), PhaseTargets)
 	assert.Zero(t, state.runs, "a skipped run was recorded")
 }
 
@@ -179,7 +129,7 @@ func TestReporterReportsThePhaseInFlight(t *testing.T) {
 	assert.Empty(t, phase, "Running() named a phase before a run started")
 
 	finished := make(chan struct{})
-	go func() { defer close(finished); reporter.RunBoth(t.Context()) }()
+	go func() { defer close(finished); reporter.RunPhase(t.Context(), PhaseSource) }()
 	<-runner.started
 	phase, running = reporter.Running()
 	assert.True(t, running, "Running() reported no phase while one was in flight")
@@ -416,12 +366,12 @@ func TestReporterRecordsEachTargetsOwnResult(t *testing.T) {
 			{ID: "rider-b", Outcome: OutcomeFailed, Failure: FailureDestination},
 		},
 	}}
-	state := &fakeRunState{targets: true}
+	state := &fakeRunState{}
 	reporter := newReporter(t, runner, state)
 	now := time.Date(2026, time.August, 18, 9, 0, 0, 0, time.UTC)
 	reporter.now = func() time.Time { return now }
 
-	reporter.Run(t.Context())
+	reporter.RunPhase(t.Context(), PhaseTargets)
 	assert.Equal(t, []recordedTargetRun{
 		{finishedAt: now, id: "rider-a", outcome: "succeeded"},
 		{finishedAt: now, id: "rider-b", outcome: "failed", detail: "destination"},
@@ -431,9 +381,9 @@ func TestReporterRecordsEachTargetsOwnResult(t *testing.T) {
 // The source phase writes to no target, so it records nothing about one.
 func TestReporterRecordsNoTargetRunsForASourceRun(t *testing.T) {
 	runner := &reportingRunner{source: Result{Phase: PhaseSource, Outcome: OutcomeSucceeded, SourceStages: 2}}
-	state := &fakeRunState{source: true}
+	state := &fakeRunState{}
 	reporter := newReporter(t, runner, state)
 
-	reporter.Run(t.Context())
+	reporter.RunPhase(t.Context(), PhaseSource)
 	assert.Empty(t, state.recordedRuns)
 }

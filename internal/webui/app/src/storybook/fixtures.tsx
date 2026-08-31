@@ -7,6 +7,7 @@ import {
   settingsQuery,
   statusQuery,
   syncRunsQueryKey,
+  tasksQuery,
   weatherQuery,
   webUIConfigQuery,
 } from "../api/queries";
@@ -17,6 +18,7 @@ import type {
   Settings,
   Status,
   SyncRun,
+  TaskList,
   WebUIConfig,
 } from "../api/types";
 import type { Climb } from "../lib/climbs";
@@ -149,7 +151,6 @@ export const status: Status = {
     created: 0,
     updated: 2,
     deleted: 0,
-    schedule: { source: true, targets: true },
     phases: {
       source: {
         lastCompletedAt: "2026-08-18T06:15:00Z",
@@ -250,12 +251,23 @@ const config: WebUIConfig = {
   identity: { email: "rider@example.test", signOutUrl: "/cdn-cgi/access/logout" },
 };
 
+/** What this build registers, as the sync page reads it. */
+export const tasks: TaskList = {
+  tasks: [
+    { name: "sync:source", scheduled: true, enabled: true, running: 0 },
+    { name: "sync:target", scheduled: true, enabled: false, running: 0 },
+    { name: "surface:annotate", scheduled: false, enabled: true, running: 0 },
+    { name: "surface:index", scheduled: true, enabled: true, running: 0 },
+  ],
+};
+
 export function StoryProviders({ children }: { children: ReactNode }) {
   const [client] = useState(() => {
     const next = new QueryClient({
       defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
     });
     next.setQueryData(statusQuery().queryKey, status);
+    next.setQueryData(tasksQuery().queryKey, tasks);
     next.setQueryData(webUIConfigQuery().queryKey, config);
     next.setQueryData(settingsQuery().queryKey, settings);
     next.setQueryData(routesQuery().queryKey, [route]);

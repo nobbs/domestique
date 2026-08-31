@@ -297,6 +297,12 @@ func (m *Manager) scheduled(ctx context.Context, entry *registered) {
 	if ctx.Err() != nil {
 		return
 	}
+	// A switched-off task waits out its tick rather than leaving the loop, so
+	// switching it back on needs no restart. Nothing is recorded: an operator
+	// who turned it off is not waiting to be told it did not run.
+	if !entry.definition.enabled() {
+		return
+	}
 	invocation := Invocation{Task: entry.definition.Name, Trigger: TriggerSchedule}
 	if m.backingOff(ctx, entry, invocation) {
 		return

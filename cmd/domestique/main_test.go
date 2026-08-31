@@ -350,7 +350,7 @@ func TestStartSurfaceIndexOnAHostThatHasNeverBuilt(t *testing.T) {
 	directory := t.TempDir()
 	store := testStore(t, directory)
 
-	current, definition, err := startSurfaceIndex(t.Context(), stateSettings(directory), surfaceSettings(t, store), store)
+	current, definition, err := startSurfaceIndex(t.Context(), stateSettings(directory), surfaceSettings(t, store), store, allEnabled)
 	require.NoError(t, err, "startSurfaceIndex()")
 	t.Cleanup(func() { assert.NoError(t, current.Close(), "Close()") })
 
@@ -365,7 +365,7 @@ func TestStartSurfaceIndexWhenTheRememberedIndexIsGone(t *testing.T) {
 	store := testStore(t, directory)
 	require.NoError(t, store.RecordSurfaceIndexBuild(t.Context(), time.Now().UTC(), "abcdef012345"))
 
-	current, definition, err := startSurfaceIndex(t.Context(), stateSettings(directory), surfaceSettings(t, store), store)
+	current, definition, err := startSurfaceIndex(t.Context(), stateSettings(directory), surfaceSettings(t, store), store, allEnabled)
 	require.NoError(t, err, "a remembered index that is no longer on disk is not an error")
 	t.Cleanup(func() { assert.NoError(t, current.Close(), "Close()") })
 

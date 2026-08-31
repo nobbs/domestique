@@ -9,6 +9,7 @@ const meta = {
   args: {
     phase: "targets",
     label: "Wahoo targets",
+    cadence: "Every six hours",
     lastRun: {
       lastCompletedAt: "2026-08-18T06:30:00Z",
       lastResult: "succeeded",
@@ -58,7 +59,7 @@ export const Running: Story = { args: { running: true } };
 
 export const TogglesTheSchedule: Story = {
   play: async ({ canvas, args }) => {
-    await userEvent.click(canvas.getByRole("switch", { name: "Hourly: Wahoo targets" }));
+    await userEvent.click(canvas.getByRole("switch", { name: "Every six hours: Wahoo targets" }));
 
     await expect(args.onToggle).toHaveBeenCalled();
   },

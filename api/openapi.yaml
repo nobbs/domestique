@@ -94,6 +94,42 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "403":
           $ref: '#/components/responses/Forbidden'
+  /v1/tasks/{name}/schedule:
+    put:
+      tags:
+        - browser-api
+      operationId: setTaskSchedule
+      security:
+        - accessAssertion: []
+          browserOrigin: []
+      description: >-
+        Sets whether the schedule may start this task. It governs unattended
+        runs only: a task switched off still runs when an operator asks for it.
+      parameters:
+        - $ref: '#/components/parameters/TaskName'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskScheduleUpdate'
+      responses:
+        "200":
+          description: The registered tasks, as they now stand.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskList'
+        "400":
+          $ref: '#/components/responses/InvalidRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "503":
+          $ref: '#/components/responses/Unavailable'
   /v1/tasks/{name}/run:
     post:
       tags:
@@ -143,35 +179,6 @@ paths:
           $ref: '#/components/responses/NotFound'
         "409":
           $ref: '#/components/responses/TaskInProgress'
-  /v1/sync/schedule:
-    put:
-      tags:
-        - browser-api
-      operationId: setSyncSchedule
-      security:
-        - accessAssertion: []
-          browserOrigin: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/SyncSchedule'
-      responses:
-        "200":
-          description: Stored schedule.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SyncSchedule'
-        "400":
-          $ref: '#/components/responses/InvalidRequest'
-        "401":
-          $ref: '#/components/responses/Unauthorized'
-        "403":
-          $ref: '#/components/responses/Forbidden'
-        "503":
-          $ref: '#/components/responses/Unavailable'
   /v1/sync/runs:
     get:
       tags:
@@ -1169,17 +1176,6 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Route'
-    SyncSchedule:
-      type: object
-      additionalProperties: false
-      required:
-        - source
-        - targets
-      properties:
-        source:
-          type: boolean
-        targets:
-          type: boolean
     SyncPhaseRun:
       type: object
       additionalProperties: false
@@ -1292,7 +1288,6 @@ components:
         - created
         - updated
         - deleted
-        - schedule
       properties:
         state:
           type: string
@@ -1311,8 +1306,6 @@ components:
           type: integer
         deleted:
           type: integer
-        schedule:
-          $ref: '#/components/schemas/SyncSchedule'
         phases:
           $ref: '#/components/schemas/SyncPhases'
         surface:
@@ -1631,6 +1624,17 @@ components:
           minItems: 1
           items:
             $ref: '#/components/schemas/BrowserBasemap'
+    TaskScheduleUpdate:
+      type: object
+      additionalProperties: false
+      required:
+        - enabled
+      properties:
+        enabled:
+          type: boolean
+          description: >-
+            Whether the schedule may start this task. It governs unattended runs
+            only.
     TaskList:
       type: object
       additionalProperties: false
@@ -1647,6 +1651,7 @@ components:
       required:
         - name
         - scheduled
+        - enabled
         - running
       properties:
         name:
@@ -1654,7 +1659,12 @@ components:
           description: What a trigger asks for.
         scheduled:
           type: boolean
-          description: Whether the task runs unasked.
+          description: Whether the task has a schedule at all.
+        enabled:
+          type: boolean
+          description: >-
+            Whether the schedule may start it. A task nobody has ruled on runs.
+            It governs unattended runs only.
         running:
           type: integer
           description: How many attempts of this task are in flight.

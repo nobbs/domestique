@@ -96,11 +96,6 @@ type RouteList struct {
 	Routes []Route `json:"routes"`
 }
 
-type SyncSchedule struct {
-	Source  bool `json:"source"`
-	Targets bool `json:"targets"`
-}
-
 type SyncPhaseRun struct {
 	LastCompletedAt time.Time `json:"lastCompletedAt"`
 	LastResult      string    `json:"lastResult"`
@@ -159,7 +154,6 @@ type SyncStatus struct {
 	Created          int               `json:"created"`
 	Updated          int               `json:"updated"`
 	Deleted          int               `json:"deleted"`
-	Schedule         SyncSchedule      `json:"schedule"`
 	Phases           SyncPhases        `json:"phases"`
 	Surface          SurfaceCoverage   `json:"surface"`
 	WahooRateLimit   *WahooRateLimit   `json:"wahooRateLimit,omitempty"`
@@ -339,6 +333,11 @@ type BasemapsUpdate struct {
 	Basemaps []BrowserBasemap `json:"basemaps"`
 }
 
+type TaskScheduleUpdate struct {
+	// Enabled Whether the schedule may start this task. It governs unattended runs only.
+	Enabled bool `json:"enabled"`
+}
+
 type TaskList struct {
 	Tasks []Task `json:"tasks"`
 }
@@ -346,8 +345,10 @@ type TaskList struct {
 type Task struct {
 	// Name What a trigger asks for.
 	Name string `json:"name"`
-	// Scheduled Whether the task runs unasked.
+	// Scheduled Whether the task has a schedule at all.
 	Scheduled bool `json:"scheduled"`
+	// Enabled Whether the schedule may start it. A task nobody has ruled on runs. It governs unattended runs only.
+	Enabled bool `json:"enabled"`
 	// Running How many attempts of this task are in flight.
 	Running int `json:"running"`
 	// NextRunAt When the first scheduled run is due. Absent once it has started, and for a task nothing schedules.

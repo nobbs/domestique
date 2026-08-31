@@ -219,14 +219,34 @@ is checked rather than inferred.
 
 | Task | Argument | Resources | Schedule |
 | --- | --- | --- | --- |
-| `sync` | phase, or none for both | `inventory` exclusive | every hour |
-| `sync:target` | target slot | `inventory` exclusive | none |
+| `sync:source` | none | `inventory` exclusive | every hour |
+| `sync:target` | target slot, or none for every one | `inventory` exclusive | every six hours |
 | `sync:clear` | target slot | `inventory` exclusive | none |
 | `surface:annotate` | none | `inventory` exclusive | none |
 | `surface:index` | none | `surface-index` exclusive | the configured rebuild interval |
 
-A scheduled `sync` honours the schedule switches for each half. An operator
-asking for one overrides them, because asking is the point.
+A read that stored a library asks for the targets to be written and for the
+ground under the stages to be read again. So `sync:target`'s own schedule is a
+backstop rather than the timely path: what it catches is a slot that failed on
+its own, and an operator who has the read switched off entirely.
+
+`sync:target` takes a slot name or nothing. Nothing is every configured slot,
+which is what both the schedule and a source read ask for; a name is that slot
+alone. It is one task rather than one per slot because slots are a runtime
+setting and tasks are registered at startup — per-slot tasks would leave a newly
+onboarded slot doing nothing until a restart.
+
+## Switching a task off
+
+Each task carries its own switch, read at each tick. A task nobody has ruled on
+runs, so one added to a build reaches its schedule without anybody turning it on.
+
+Switching one off pauses its schedule rather than ending it: the loop waits out
+its tick and nothing is recorded, so switching it back on needs no restart. An
+operator who turned it off is not waiting to be told it did not run.
+
+The switch governs unattended runs only. An operator asking for a task has
+already decided, which is also how they run something they keep switched off.
 
 ## Alerts
 

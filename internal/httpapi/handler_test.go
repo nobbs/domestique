@@ -1032,8 +1032,9 @@ func TestHandlerReprocessesOneStageAndStartsARun(t *testing.T) {
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/providers/veloplanner/sourceRoutes/12/routes/1/reprocess"))
 	require.Equal(t, http.StatusAccepted, response.Code, "reprocess status")
 	assert.Equal(t, [][2]int64{{12, 1}}, state.reprocessed, "reprocessed stages")
-	// A reprocess is a whole synchronization asked for on a stage's behalf.
-	assert.Equal(t, []startedTask{{name: TaskSync}}, tasks.started, "started tasks")
+	// A reprocess is a source read asked for on a stage's behalf; what the
+	// targets hold follows from it.
+	assert.Equal(t, []startedTask{{name: TaskSyncSource}}, tasks.started, "started tasks")
 }
 
 // A run already in flight may be past this stage or may not include it, so the
@@ -1158,47 +1159,64 @@ func TestHandlerPassesAnUnconfiguredTargetThroughToTheTask(t *testing.T) {
 	assert.Equal(t, []startedTask{{name: "sync:clear", argument: "unknown"}}, tasks.started, "started")
 }
 
-func TestHandlerSwitchesEitherHalfOfTheSchedule(t *testing.T) {
-	state := &fakeState{scheduleSource: true, scheduleTargets: true}
-	handler := newHandler(t, &fakeOAuth{}, state)
+func TestSetTaskScheduleSwitchesOneTask(t *testing.T) {
+	handler, _ := tasksHandler(t,
+		RegisteredTask{Name: "sync:source", Scheduled: true, Enabled: true},
+		RegisteredTask{Name: "sync:target", Scheduled: true, Enabled: true},
+	)
+
+	view := taskListOf(t, handler, authenticatedRequestWithBody(
+		http.MethodPut, "/v1/tasks/sync%3Atarget/schedule", `{"enabled": false}`,
+	))
+
+	require.Len(t, view.Tasks, 2, "tasks")
+	assert.True(t, view.Tasks[0].Enabled, "switching one task off switched another")
+	assert.False(t, view.Tasks[1].Enabled, "the switched task is still enabled")
+}
+
+// A name this build does not register is refused, so a page built against
+// another build switches nothing that silently does nothing.
+func TestSetTaskScheduleRefusesANameThisBuildDoesNotRegister(t *testing.T) {
+	handler, _ := tasksHandler(t, RegisteredTask{Name: "sync:source"})
 
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, authenticatedRequestWithBody(
-		http.MethodPut, "/v1/sync/schedule", `{"source":true,"targets":false}`,
+		http.MethodPut, "/v1/tasks/invented/schedule", `{"enabled": false}`,
 	))
-	require.Equal(t, http.StatusOK, response.Code, "schedule status")
-	assert.True(t, state.scheduleSource, "the stored schedule switched the source half off")
-	assert.False(t, state.scheduleTargets, "the stored schedule left the target half on")
-	assert.Equal(t, 1, state.scheduleWrites, "schedule writes")
+
+	assert.Equal(t, http.StatusNotFound, response.Code, response.Body.String())
 }
 
-// Half a schedule is not a schedule: a body naming one switch would leave the
-// other at whatever the caller happened to assume.
-func TestHandlerRejectsAnIncompleteScheduleChange(t *testing.T) {
-	bodies := []string{
-		`{"source":true}`,
-		`{}`,
-		`{"source":true,"targets":true,"other":1}`,
-		"not json",
-		// A second object after the first: a caller who believes they sent
-		// something this service never read.
-		`{"source":true,"targets":false}{"source":false,"targets":true}`,
-	}
-	for _, body := range bodies {
-		state := &fakeState{}
-		handler := newHandler(t, &fakeOAuth{}, state)
+// A body without the switch is refused before it reaches the handler: enabled
+// is required in the contract, and every route is wrapped by the request
+// validator. Without that, a missing bool would decode as false and switch the
+// task off — so this asserts the validator is doing its job, not the handler.
+func TestSetTaskScheduleRefusesAnythingButOneWholeSwitch(t *testing.T) {
+	for _, body := range []string{`{}`, `{"enabled": true, "other": 1}`, "not json", `{"enabled":true}{"enabled":false}`} {
+		handler, _ := tasksHandler(t, RegisteredTask{Name: "sync:source"})
 		response := httptest.NewRecorder()
-		handler.ServeHTTP(response, authenticatedRequestWithBody(http.MethodPut, "/v1/sync/schedule", body))
-		assert.Equalf(t, http.StatusBadRequest, response.Code, "schedule status for %q", body)
-		assert.Zerof(t, state.scheduleWrites, "a rejected body %q was written to the schedule", body)
+		handler.ServeHTTP(response, authenticatedRequestWithBody(
+			http.MethodPut, "/v1/tasks/sync%3Asource/schedule", body,
+		))
+		assert.Equalf(t, http.StatusBadRequest, response.Code, "status for %q", body)
 	}
 }
 
-func TestHandlerReportsTheScheduleAndEachPhaseInStatus(t *testing.T) {
+func TestSetTaskScheduleReportsAStoreThatCannotBeWritten(t *testing.T) {
+	handler, tasks := tasksHandler(t, RegisteredTask{Name: "sync:source"})
+	tasks.scheduleErr = errors.New("disk gone")
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequestWithBody(
+		http.MethodPut, "/v1/tasks/sync%3Asource/schedule", `{"enabled": false}`,
+	))
+
+	assert.Equal(t, http.StatusServiceUnavailable, response.Code, response.Body.String())
+}
+
+func TestHandlerReportsEachPhaseInStatus(t *testing.T) {
 	completedAt := time.Date(2026, time.August, 18, 6, 30, 0, 0, time.UTC)
 	state := &fakeState{
-		scheduleSource:  true,
-		scheduleTargets: false,
 		phaseRuns: []phaseRun{
 			{phase: "source", completedAt: completedAt, outcome: "succeeded", sourceStages: 12},
 			{phase: "targets", completedAt: completedAt, outcome: "failed", detail: "destination", created: 1},
@@ -1211,8 +1229,6 @@ func TestHandlerReportsTheScheduleAndEachPhaseInStatus(t *testing.T) {
 	require.Equal(t, http.StatusOK, response.Code, "status")
 	var view openapi.Status
 	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &view), "decoding status")
-	assert.True(t, view.Sync.Schedule.Source, "the reported schedule has the source half off")
-	assert.False(t, view.Sync.Schedule.Targets, "the reported schedule has the target half on")
 	require.NotNil(t, view.Sync.Phases.Source, "the status reports no source run")
 	require.NotNil(t, view.Sync.Phases.Targets, "the status reports no target run")
 	assert.Equal(t, 12, view.Sync.Phases.Source.SourceRoutes, "source stages")
@@ -1624,8 +1640,8 @@ func TestHandlerRefusesADuplicateTriggerWithoutManufacturingASecondRun(t *testin
 	tasks.refuse = true
 
 	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/tasks/sync/run"))
-	require.Equal(t, http.StatusConflict, response.Code, "POST /v1/tasks/sync/run status")
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/tasks/sync%3Asource/run"))
+	require.Equal(t, http.StatusConflict, response.Code, "POST /v1/tasks/sync%3Asource/run status")
 
 	view := statusOf(t, handler)
 	assert.Equal(t, runningState, view.Sync.State, "sync state")
@@ -1699,15 +1715,6 @@ func TestHandlerKeepsAnAuthorizedTargetAuthorizedDuringAFreshFlow(t *testing.T) 
 
 func TestHandlerReportsUnreadablePendingAuthorizationsAsUnavailable(t *testing.T) {
 	state := &fakeState{pendingAuthErr: errors.New("state unavailable")}
-	handler := newHandler(t, &fakeOAuth{}, state)
-
-	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/status"))
-	assert.Equal(t, http.StatusServiceUnavailable, response.Code, "status")
-}
-
-func TestHandlerReportsUnreadableScheduleAsUnavailable(t *testing.T) {
-	state := &fakeState{scheduleErr: errors.New("state unavailable")}
 	handler := newHandler(t, &fakeOAuth{}, state)
 
 	response := httptest.NewRecorder()
@@ -1917,7 +1924,10 @@ func newHandlerWithSync(t *testing.T, oauthService OAuth, state State, syncRuns 
 	handler, err := New(
 		&Options{
 			Alerts: &fakeAlerts{catalogue: []AlertSetting{{Task: "sync", Alert: "source", Enabled: true}}},
-			Tasks:  &fakeTasks{registered: []RegisteredTask{{Name: "sync"}}},
+			Tasks: &fakeTasks{registered: []RegisteredTask{
+				{Name: "sync:source", Scheduled: true, Enabled: true},
+				{Name: "sync:target", Scheduled: true, Enabled: true},
+			}},
 			Settings: withSources(settingsWith(testBasemapsWithDark()),
 				runtimeconfig.Source{Provider: route.ProviderVeloPlanner, BaseURL: testSourceBaseURL}),
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
@@ -2093,7 +2103,6 @@ type fakeState struct {
 	surfaceErr        error
 	phaseRunErr       error
 	historyErr        error
-	scheduleErr       error
 	coverageErr       error
 	reprocessErr      error
 	sourceStageErr    error
@@ -2117,11 +2126,8 @@ type fakeState struct {
 	phaseRuns         []phaseRun
 	history           []recordedRun
 	surfaceMetres     float64
-	scheduleWrites    int
 	surfaceClassified int
 	surfaceTotal      int
-	scheduleSource    bool
-	scheduleTargets   bool
 }
 
 // fakeTarget is one configured slot and the authorisation state it is in.
@@ -2381,24 +2387,6 @@ func (s *fakeState) SurfaceCoverage(context.Context) (classified, total int, err
 	}
 
 	return s.surfaceClassified, s.surfaceTotal, nil
-}
-
-func (s *fakeState) SyncSchedule(context.Context) (source, targets bool, err error) {
-	if s.scheduleErr != nil {
-		return false, false, s.scheduleErr
-	}
-
-	return s.scheduleSource, s.scheduleTargets, nil
-}
-
-func (s *fakeState) SetSyncSchedule(_ context.Context, source, targets bool) error {
-	if s.scheduleErr != nil {
-		return s.scheduleErr
-	}
-	s.scheduleSource, s.scheduleTargets = source, targets
-	s.scheduleWrites++
-
-	return nil
 }
 
 // statusOf reads the status document as the handler serves it.
@@ -2661,10 +2649,12 @@ func (a *fakeAlerts) Decide(_ context.Context, decisions []AlertDecision) error 
 // it was asked for apart from what it started, so a refused attempt can be told
 // from one the handler never asked for at all.
 type fakeTasks struct {
-	asked      []startedTask
-	started    []startedTask
-	registered []RegisteredTask
-	refuse     bool
+	scheduleErr error
+	asked       []startedTask
+	started     []startedTask
+	scheduled   []scheduledTask
+	registered  []RegisteredTask
+	refuse      bool
 }
 
 type startedTask struct {
@@ -2672,7 +2662,26 @@ type startedTask struct {
 	argument string
 }
 
+type scheduledTask struct {
+	name    string
+	enabled bool
+}
+
 func (t *fakeTasks) Registered() []RegisteredTask { return t.registered }
+
+func (t *fakeTasks) Schedule(_ context.Context, name string, enabled bool) error {
+	t.scheduled = append(t.scheduled, scheduledTask{name: name, enabled: enabled})
+	if t.scheduleErr != nil {
+		return t.scheduleErr
+	}
+	for index, task := range t.registered {
+		if task.Name == name {
+			t.registered[index].Enabled = enabled
+		}
+	}
+
+	return nil
+}
 
 func (t *fakeTasks) Run(name, argument string) bool {
 	attempt := startedTask{name: name, argument: argument}

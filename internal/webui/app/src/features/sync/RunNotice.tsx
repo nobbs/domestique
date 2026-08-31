@@ -19,9 +19,9 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { Link } from "react-router";
-import { useRunTaskArgument } from "../../api/generated";
+import { useRunTask } from "../../api/generated";
 import { statusQuery, useSyncRunLookup } from "../../api/queries";
-import { TASKS } from "../../api/tasks";
+import { SYNC_PHASE_TASKS } from "../../api/tasks";
 import type { Status, SyncPhase, SyncRun } from "../../api/types";
 import { SYNC_PHASES } from "../../api/types";
 import { Button } from "../../components/Button";
@@ -98,8 +98,8 @@ export function RunNotice({ reference }: { reference: string | null }) {
   const history = useSyncRunLookup(reference);
   const invalidateStatus = () =>
     queryClient.invalidateQueries({ queryKey: statusQuery().queryKey });
-  const sourceRun = useRunTaskArgument({ mutation: { onSuccess: invalidateStatus } });
-  const targetsRun = useRunTaskArgument({ mutation: { onSuccess: invalidateStatus } });
+  const sourceRun = useRunTask({ mutation: { onSuccess: invalidateStatus } });
+  const targetsRun = useRunTask({ mutation: { onSuccess: invalidateStatus } });
   const run = noticePhaseMutation(sourceRun, targetsRun);
 
   const runs = history.data?.pages.flatMap((page) => page.runs) ?? [];
@@ -222,8 +222,8 @@ export function RunNotice({ reference }: { reference: string | null }) {
 // failure reported is the one belonging to whichever phase was asked for last,
 // rather than either half's outliving a later, successful run of the other.
 function noticePhaseMutation(
-  source: ReturnType<typeof useRunTaskArgument>,
-  targets: ReturnType<typeof useRunTaskArgument>,
+  source: ReturnType<typeof useRunTask>,
+  targets: ReturnType<typeof useRunTask>,
 ) {
   const latest = targets.submittedAt >= source.submittedAt ? targets : source;
 
@@ -232,6 +232,6 @@ function noticePhaseMutation(
     isError: latest.isError,
     error: latest.error,
     mutate: (phase: SyncPhase) =>
-      (phase === "source" ? source : targets).mutate({ name: TASKS.sync, argument: phase }),
+      (phase === "source" ? source : targets).mutate({ name: SYNC_PHASE_TASKS[phase] }),
   };
 }

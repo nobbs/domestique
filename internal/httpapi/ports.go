@@ -53,6 +53,9 @@ type Tasks interface {
 	// context: an accepted attempt outlives the request that asked for it, and a
 	// request context is cancelled the moment its handler returns.
 	Run(name, argument string) bool
+	// Schedule records whether the schedule may start one task. It governs
+	// unattended runs only: a task switched off still runs when asked for.
+	Schedule(ctx context.Context, name string, enabled bool) error
 }
 
 // RegisteredTask is one background activity and what is true of it now.
@@ -63,8 +66,11 @@ type RegisteredTask struct {
 	Name      string
 	// Running is how many attempts are in flight.
 	Running int
-	// Scheduled reports whether the task runs unasked.
+	// Scheduled reports whether the task has a schedule at all.
 	Scheduled bool
+	// Enabled reports whether the schedule may start it. A task nobody has ruled
+	// on runs.
+	Enabled bool
 }
 
 // Alerts is the alert matrix as this surface needs it: what this service can
@@ -159,7 +165,6 @@ type State interface {
 	TargetState
 	StageState
 	RunState
-	ScheduleState
 }
 
 // TargetState is what is known locally about each configured Wahoo account.
@@ -214,12 +219,6 @@ type SettingsState interface {
 	// Missing names the settings a run still needs, so the page can say what is
 	// left rather than leaving an operator to find out from a failed run.
 	Missing() []string
-}
-
-// ScheduleState is the pair of switches governing unattended runs.
-type ScheduleState interface {
-	SyncSchedule(ctx context.Context) (source, targets bool, err error)
-	SetSyncSchedule(ctx context.Context, source, targets bool) error
 }
 
 // AccessVerifier proves the identity behind a Cloudflare Access assertion. It

@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"slices"
@@ -145,13 +144,6 @@ func (h *Handler) GetStatus(writer http.ResponseWriter, request *http.Request) {
 	if ready {
 		view.Sync.State = "idle"
 	}
-	scheduleSource, scheduleTargets, err := h.state.SyncSchedule(request.Context())
-	if err != nil {
-		h.unavailable(writer)
-
-		return
-	}
-	view.Sync.Schedule = openapi.SyncSchedule{Source: scheduleSource, Targets: scheduleTargets}
 	classified, total, coverageErr := h.state.SurfaceCoverage(request.Context())
 	if coverageErr != nil {
 		h.unavailable(writer)
@@ -239,35 +231,6 @@ func (h *Handler) GetStatus(writer http.ResponseWriter, request *http.Request) {
 		}
 	}
 	h.writeJSON(writer, http.StatusOK, view)
-}
-
-// SetSyncSchedule switches either half of the scheduled synchronization on or
-// off. It changes nothing about a run already in flight, and never starts one.
-func (h *Handler) SetSyncSchedule(writer http.ResponseWriter, request *http.Request) {
-	var body struct {
-		Source  *bool `json:"source"`
-		Targets *bool `json:"targets"`
-	}
-	decoder := json.NewDecoder(http.MaxBytesReader(writer, request.Body, maximumRequestBytes))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&body); err != nil || body.Source == nil || body.Targets == nil {
-		h.error(writer, http.StatusBadRequest, "invalid_request", "both schedule switches are required")
-
-		return
-	}
-	// One object, and nothing after it: a body carrying a second value means the
-	// caller sent something this service never read.
-	if decoder.More() {
-		h.error(writer, http.StatusBadRequest, "invalid_request", "the request body must be one object")
-
-		return
-	}
-	if err := h.state.SetSyncSchedule(request.Context(), *body.Source, *body.Targets); err != nil {
-		h.unavailable(writer)
-
-		return
-	}
-	h.writeJSON(writer, http.StatusOK, openapi.SyncSchedule{Source: *body.Source, Targets: *body.Targets})
 }
 
 // The recorded history is served a page at a time. The ceiling keeps one request

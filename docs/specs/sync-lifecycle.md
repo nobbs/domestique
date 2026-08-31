@@ -48,7 +48,7 @@ implementation detail.
 | route surface | cached surface classification of one stored geometry, as index ranges plus matched length, against the content hash and the surface-index generation it was measured for | none |
 | surface index | when the last index build finished and which generation it produced | none |
 | sync run | opaque reference, half, start, end, terminal state, aggregate counts, safe failure category | none |
-| sync schedule | whether the timer may start each half | none |
+| task schedule | whether the timer may start each task | none |
 | reprocess request | one route an operator has asked to have redone | none |
 | notification state | last delivered failure category and suppression deadline | none |
 | runtime settings | the settings an operator edits while the service runs, including the basemap list and the surface regions | none |
@@ -656,17 +656,21 @@ a recorded success later than the reporting instant is clamped to zero.
 A stale reading never relaxes a deletion gate and implies nothing about what any
 target holds. Convergence and the deletion gates are unaffected by it.
 
-### PUT /v1/sync/schedule
+### PUT /v1/tasks/{name}/schedule
 
-Sets both switches. The request body names both:
+Sets whether the schedule may start one task:
 
 ~~~json
-{"source":true,"targets":false}
+{"enabled": false}
 ~~~
 
-Returns 200 with the stored state in the same shape. A body naming only one
-switch, or carrying an unknown field, is refused with 400. It never starts,
-stops, or alters a run in flight.
+Returns 200 with the registered tasks as they now stand. A body carrying an
+unknown field, or a name this build does not register, is refused. It never
+starts, stops, or alters a run in flight, and it governs unattended runs only:
+a task switched off still runs when an operator asks for it.
+
+One switch travels alone. Nothing has to carry a value for another task, and so
+cannot get it wrong.
 
 ### GET /v1/sync/runs
 
@@ -752,7 +756,7 @@ identity uses 403; a request that does not come from the browser UI's origin
 also uses 403; malformed client input uses 400.
 
 The OAuth start, callback, the protected `POST /v1/tasks` triggers, the protected
-`PUT /v1/sync/schedule` switch, the protected
+`PUT /v1/tasks/{name}/schedule` switch, the protected
 `POST /v1/providers/{provider}/sourceRoutes/{source-route-id}/routes/{stage-order}/reprocess`
 request, and the protected `PUT /v1/settings/*` section writes are the only
 state-changing endpoints. A settings write changes what the service does next and

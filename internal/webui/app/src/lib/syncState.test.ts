@@ -13,7 +13,6 @@ function status(sync: Partial<SyncStatus> = {}, targets: TargetStatus[] = []): S
       created: 0,
       updated: 0,
       deleted: 0,
-      schedule: { source: true, targets: true },
       phases: {},
       surface: { classified: 0, total: 0, incomplete: 0 },
       ...sync,
