@@ -86,6 +86,7 @@ type Route struct {
 	ContentHash        string           `json:"contentHash"`
 	DistanceMetres     float64          `json:"distanceMetres"`
 	AscentMetres       float64          `json:"ascentMetres"`
+	DescentMetres      float64          `json:"descentMetres"`
 	MaxGradientPercent float64          `json:"maxGradientPercent"`
 	PointCount         int              `json:"pointCount"`
 	MovingSeconds      *float64         `json:"movingSeconds,omitempty"`
@@ -477,6 +478,7 @@ type GeoJSONProperties struct {
 	RouteName          string                     `json:"routeName"`
 	DistanceMetres     float64                    `json:"distanceMetres"`
 	AscentMetres       float64                    `json:"ascentMetres"`
+	DescentMetres      float64                    `json:"descentMetres"`
 	MaxGradientPercent float64                    `json:"maxGradientPercent"`
 	PointCount         int                        `json:"pointCount"`
 	Surface            *GeoJSONProperties_Surface `json:"surface,omitempty"`

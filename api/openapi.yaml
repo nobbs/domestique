@@ -1126,6 +1126,7 @@ components:
         - contentHash
         - distanceMetres
         - ascentMetres
+        - descentMetres
         - maxGradientPercent
         - pointCount
       properties:
@@ -1150,6 +1151,9 @@ components:
           type: number
           format: double
         ascentMetres:
+          type: number
+          format: double
+        descentMetres:
           type: number
           format: double
         maxGradientPercent:
@@ -1939,6 +1943,7 @@ components:
         - routeName
         - distanceMetres
         - ascentMetres
+        - descentMetres
         - maxGradientPercent
         - pointCount
       properties:
@@ -1959,6 +1964,9 @@ components:
           type: number
           format: double
         ascentMetres:
+          type: number
+          format: double
+        descentMetres:
           type: number
           format: double
         maxGradientPercent:

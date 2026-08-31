@@ -43,6 +43,7 @@ export const route: Route = {
   contentHash: "storybook",
   distanceMetres: 42_500,
   ascentMetres: 620,
+  descentMetres: 540,
   maxGradientPercent: 11.4,
   pointCount: coordinates.length,
   movingSeconds: 6_420,

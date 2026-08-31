@@ -24,8 +24,16 @@
  */
 
 import {
+  IconArrowBarDown,
+  IconArrowBarUp,
+  IconArrowsUpDown,
+  IconArrowsVertical,
+  IconChartLine,
   IconChevronsRight,
   IconDots,
+  IconMountain,
+  IconRuler2,
+  IconStopwatch,
   IconTrendingDown,
   IconTrendingUp,
   IconX,
@@ -40,6 +48,7 @@ import {
 } from "../../components/ui/dropdown-menu";
 import {
   formatAscent,
+  formatDescent,
   formatDistance,
   formatElevation,
   formatGradient,
@@ -66,18 +75,9 @@ import { ReprocessButton } from "./ReprocessButton";
  * which is what a baseline is for — unlike a row taller than its own text,
  * where it only pins the words to the ceiling.
  */
-function Figure({
-  term,
-  span,
-  children,
-}: {
-  term: React.ReactNode;
-  /** Both columns, for a figure with no partner to sit beside. */
-  span?: boolean;
-  children: React.ReactNode;
-}) {
+function Figure({ term, children }: { term: React.ReactNode; children: React.ReactNode }) {
   return (
-    <div className={`flex items-baseline justify-between gap-2 ${span ? "col-span-2" : ""}`}>
+    <div className="flex items-baseline justify-between gap-1.5">
       <dt className="flex min-w-0 items-center gap-1 truncate text-[11px] text-[var(--ink-2)] [&_svg]:size-3 [&_svg]:shrink-0">
         {term}
       </dt>
@@ -169,7 +169,7 @@ export function RoutePanel({
         // card took its width from whichever row was widest, so a long title
         // stretched the panel and left every rule below it stopping short of
         // the edge. Open, the width is the card's and the header lives in it.
-        className={`max-h-[calc(100dvh-9rem)] max-w-full overflow-y-auto rounded-xl bg-[var(--panel)] shadow-[var(--shadow)] ring-1 ring-black/5 ${collapsed ? "w-fit" : "w-[23rem]"}`}
+        className={`max-h-[calc(100dvh-9rem)] max-w-full overflow-y-auto rounded-xl bg-[var(--panel)] shadow-[var(--shadow)] ring-1 ring-black/5 ${collapsed ? "w-fit" : "w-[30rem]"}`}
       >
         {/*
          * The route's name as the panel's heading, drawn nowhere: the pill
@@ -269,21 +269,57 @@ export function RoutePanel({
         {collapsed ? null : (
           <div className="grid w-full gap-3 px-3 pt-2 pb-3">
             {/*
-             * Paired by row: what it is and how much it climbs, then the two
-             * gradients, then the two ends of its elevation. The grid means
-             * something that way — a reader comparing the pair reads across —
-             * where before it was seven figures reflowed into two columns.
+             * Paired by row: what it is next to how long it takes, then its
+             * shape next to how much it climbs, then the average next to the
+             * extremes of the same statistic — six figures filling the grid
+             * exactly, an icon on each naming it before the number is read.
              */}
             <dl className="grid grid-cols-2 gap-x-4 gap-y-1">
-              <Figure term="Distance">{formatDistance(route.distanceMetres, unitSystem)}</Figure>
-              <Figure term="Ascent">{formatAscent(route.ascentMetres, unitSystem)}</Figure>
+              <Figure
+                term={
+                  <>
+                    <IconRuler2 stroke={2} aria-hidden="true" />
+                    Distance
+                  </>
+                }
+              >
+                {formatDistance(route.distanceMetres, unitSystem)}
+              </Figure>
+              {/*
+               * Predicted, not measured — the label says "moving time", not
+               * "arrival time", and carries no stops, traffic or day-specific
+               * weather. The qualifier names how far off that estimate usually
+               * runs, from the frozen profile's own held-out benchmark.
+               */}
+              <Figure
+                term={
+                  <>
+                    <IconStopwatch stroke={2} aria-hidden="true" />
+                    Moving time
+                  </>
+                }
+              >
+                {formatMovingTime(movingSeconds)}
+                {movingSeconds !== undefined && route.validation ? (
+                  <span className="ml-1 text-[11px] font-normal text-[var(--ink-2)]">
+                    {formatMovingTimeUncertainty(route.validation)}
+                  </span>
+                ) : null}
+              </Figure>
               {/*
                * One figure rather than two: the two ends of a range are read
                * together or not at all, and asking for the height of the top
                * without the height of the bottom is asking half a question.
                * It is how the dock has always said it.
                */}
-              <Figure term="Elevation">
+              <Figure
+                term={
+                  <>
+                    <IconMountain stroke={2} aria-hidden="true" />
+                    Elevation
+                  </>
+                }
+              >
                 {lowestMetres === null || highestMetres === null
                   ? "—"
                   : // The unit once, on the end it belongs to. Printed on both
@@ -292,48 +328,86 @@ export function RoutePanel({
                     // enough to start eating its own label.
                     `${Math.round(elevationValue(lowestMetres, unitSystem)).toLocaleString()}–${formatElevation(highestMetres, unitSystem)}`}
               </Figure>
-              <Figure term="Avg climbing">{formatGradient(gradients.averageClimbing)}</Figure>
+              {/*
+               * One row rather than two: a point-to-point route's climb and
+               * drop genuinely differ, so showing only Ascent was quietly
+               * assuming every route loops back to its start.
+               */}
+              <Figure
+                term={
+                  <>
+                    <IconArrowsUpDown stroke={2} aria-hidden="true" />
+                    Ascent
+                  </>
+                }
+              >
+                <span className="inline-flex items-center gap-px">
+                  <IconArrowBarUp stroke={2} aria-hidden="true" className="size-3 shrink-0" />
+                  <span className="sr-only">ascent</span>
+                  {formatAscent(route.ascentMetres, unitSystem)}
+                </span>
+                <span aria-hidden="true" className="mx-0.5 text-[var(--ink-2)]">
+                  /
+                </span>
+                <span className="inline-flex items-center gap-px">
+                  <IconArrowBarDown stroke={2} aria-hidden="true" className="size-3 shrink-0" />
+                  <span className="sr-only">descent</span>
+                  {formatDescent(route.descentMetres, unitSystem)}
+                </span>
+              </Figure>
+              <Figure
+                term={
+                  <>
+                    <IconChartLine
+                      stroke={2}
+                      aria-hidden="true"
+                      style={{ color: "var(--grade-2)" }}
+                    />
+                    Avg climbing
+                  </>
+                }
+              >
+                {formatGradient(gradients.averageClimbing)}
+              </Figure>
               {/*
                * The steepest each way, which the service's own figure cannot
                * say: it takes the absolute value, so a savage descent reaches
-               * the page as a savage climb. The glyph carries the direction and
-               * the word carries the rest, because two rows reading "Max" and
-               * differing only by an arrow would rest the whole distinction on
-               * a twelve-pixel picture.
+               * the page as a savage climb. One row rather than two, since
+               * both are the same statistic's extremes — the word that used to
+               * tell them apart moves to a screen-reader-only label, and the
+               * two arrows keep their own colour off the mix's grade scale.
                */}
               <Figure
                 term={
                   <>
-                    <IconTrendingUp stroke={2} aria-hidden="true" />
-                    Max climb
+                    <IconArrowsVertical stroke={2} aria-hidden="true" />
+                    Max grade
                   </>
                 }
               >
-                {formatGradient(gradients.steepestClimbing)}
-              </Figure>
-              <Figure
-                term={
-                  <>
-                    <IconTrendingDown stroke={2} aria-hidden="true" />
-                    Max descent
-                  </>
-                }
-              >
-                {formatGradient(gradients.steepestDescent)}
-              </Figure>
-              {/*
-               * Predicted, not measured — the label says "moving time", not
-               * "arrival time", and carries no stops, traffic or day-specific
-               * weather. The qualifier names how far off that estimate usually
-               * runs, from the frozen profile's own held-out benchmark.
-               */}
-              <Figure term="Moving time" span>
-                {formatMovingTime(movingSeconds)}
-                {movingSeconds !== undefined && route.validation ? (
-                  <span className="ml-1 text-[11px] font-normal text-[var(--ink-2)]">
-                    {formatMovingTimeUncertainty(route.validation)}
-                  </span>
-                ) : null}
+                <span className="inline-flex items-center gap-px">
+                  <IconTrendingUp
+                    stroke={2}
+                    aria-hidden="true"
+                    className="size-3 shrink-0"
+                    style={{ color: "var(--grade-4)" }}
+                  />
+                  <span className="sr-only">climb</span>
+                  {formatGradient(gradients.steepestClimbing)}
+                </span>
+                <span aria-hidden="true" className="mx-0.5 text-[var(--ink-2)]">
+                  /
+                </span>
+                <span className="inline-flex items-center gap-px">
+                  <IconTrendingDown
+                    stroke={2}
+                    aria-hidden="true"
+                    className="size-3 shrink-0"
+                    style={{ color: "var(--grade-3)" }}
+                  />
+                  <span className="sr-only">descent</span>
+                  {formatGradient(gradients.steepestDescent)}
+                </span>
               </Figure>
             </dl>
             {/*

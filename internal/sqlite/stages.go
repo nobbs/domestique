@@ -63,6 +63,7 @@ func (s *Store) ForEachStageSummary(ctx context.Context, visit func(summary rout
 			COALESCE(stage_geometry.point_count, 0),
 			COALESCE(stage_geometry.distance_metres, 0),
 			COALESCE(stage_geometry.ascent_metres, 0),
+			COALESCE(stage_geometry.descent_metres, 0),
 			COALESCE(stage_geometry.max_gradient_percent, 0),
 			stage_duration.moving_seconds,
 			COALESCE(stage_geometry.min_longitude, 0),
@@ -91,7 +92,7 @@ func (s *Store) ForEachStageSummary(ctx context.Context, visit func(summary rout
 		if err := rows.Scan(
 			&summary.Provider, &summary.SourceRouteID, &summary.StageOrder, &summary.SourceRevision, &summary.ContentHash,
 			&summary.SourceRouteName, &summary.RouteName, &summary.PointCount, &summary.DistanceMetres,
-			&summary.AscentMetres, &summary.MaxGradientPercent, &movingSeconds,
+			&summary.AscentMetres, &summary.DescentMetres, &summary.MaxGradientPercent, &movingSeconds,
 			&summary.Bounds.MinLongitude, &summary.Bounds.MinLatitude,
 			&summary.Bounds.MaxLongitude, &summary.Bounds.MaxLatitude,
 		); err != nil {
@@ -136,6 +137,7 @@ func (s *Store) StageGeometry(
 			stage_geometry.point_count,
 			stage_geometry.distance_metres,
 			stage_geometry.ascent_metres,
+			stage_geometry.descent_metres,
 			stage_geometry.max_gradient_percent,
 			stage_duration.moving_seconds,
 			stage_geometry.min_longitude,
@@ -158,7 +160,7 @@ func (s *Store) StageGeometry(
 	`, provider, routeID, stageOrder).Scan(
 		&summary.Provider, &summary.SourceRouteID, &summary.StageOrder, &summary.SourceRevision, &summary.ContentHash,
 		&summary.SourceRouteName, &summary.RouteName, &summary.PointCount, &summary.DistanceMetres,
-		&summary.AscentMetres, &summary.MaxGradientPercent, &movingSeconds,
+		&summary.AscentMetres, &summary.DescentMetres, &summary.MaxGradientPercent, &movingSeconds,
 		&summary.Bounds.MinLongitude, &summary.Bounds.MinLatitude,
 		&summary.Bounds.MaxLongitude, &summary.Bounds.MaxLatitude,
 		&coordinatesBytes,
@@ -267,10 +269,10 @@ func storeStageGeometry(ctx context.Context, transaction *sql.Tx, provider route
 		if _, err := transaction.ExecContext(ctx, `
 			INSERT INTO stage_geometry (
 				provider, route_id, stage_order, content_hash, route_name, stage_name,
-				point_count, distance_metres, ascent_metres, max_gradient_percent,
+				point_count, distance_metres, ascent_metres, descent_metres, max_gradient_percent,
 				min_longitude, min_latitude, max_longitude, max_latitude,
 				coordinates, updated_at_unix
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			ON CONFLICT (provider, route_id, stage_order) DO UPDATE SET
 				content_hash = excluded.content_hash,
 				route_name = excluded.route_name,
@@ -278,6 +280,7 @@ func storeStageGeometry(ctx context.Context, transaction *sql.Tx, provider route
 				point_count = excluded.point_count,
 				distance_metres = excluded.distance_metres,
 				ascent_metres = excluded.ascent_metres,
+				descent_metres = excluded.descent_metres,
 				max_gradient_percent = excluded.max_gradient_percent,
 				min_longitude = excluded.min_longitude,
 				min_latitude = excluded.min_latitude,
@@ -287,7 +290,7 @@ func storeStageGeometry(ctx context.Context, transaction *sql.Tx, provider route
 				updated_at_unix = excluded.updated_at_unix
 		`,
 			key.Provider(), key.SourceRouteID(), key.StageOrder(), stage.ContentHash(), stage.SourceRouteName(), stage.RouteName(),
-			len(geometry), stage.DistanceMetres(), stage.ElevationGainMetres(), stage.MaxGradientPercent(),
+			len(geometry), stage.DistanceMetres(), stage.ElevationGainMetres(), stage.ElevationLossMetres(), stage.MaxGradientPercent(),
 			bounds.MinLongitude, bounds.MinLatitude, bounds.MaxLongitude, bounds.MaxLatitude,
 			coordinates, updatedAt,
 		); err != nil {

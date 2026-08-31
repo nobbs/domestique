@@ -16,6 +16,7 @@ function route(overrides: Partial<Route> = {}): Route {
     contentHash: "hash",
     distanceMetres: 42_500,
     ascentMetres: 620,
+    descentMetres: 540,
     maxGradientPercent: 11.4,
     pointCount: 1200,
     ...overrides,
@@ -51,10 +52,36 @@ function renderPanel(overrides: Partial<RoutePanelProps> = {}) {
 }
 
 describe("RoutePanel", () => {
+  it("rests as a pill with the headline figures, not the full grid", () => {
+    renderPanel({ collapsed: true });
+
+    expect(screen.getByText("42.5 km · 620 m")).toBeInTheDocument();
+    expect(screen.queryByText("Elevation")).toBeNull();
+    expect(screen.queryByText("Moving time")).toBeNull();
+  });
+
   it("shows nothing for a route nothing has predicted", () => {
     renderPanel({ route: route() });
 
     expect(screen.getByText("Moving time").nextElementSibling).toHaveTextContent("—");
+  });
+
+  it("shows ascent and descent together as one Ascent figure", () => {
+    renderPanel({ route: route({ ascentMetres: 620, descentMetres: 540 }) });
+
+    const value = screen.getByText("Ascent").nextElementSibling;
+    expect(value).toHaveTextContent("620 m");
+    expect(value).toHaveTextContent("540 m");
+  });
+
+  it("shows the steepest climb and descent together as one Max grade figure", () => {
+    renderPanel({
+      gradients: { averageClimbing: 4.8, steepestClimbing: 11, steepestDescent: 9.2 },
+    });
+
+    const value = screen.getByText("Max grade").nextElementSibling;
+    expect(value).toHaveTextContent("11%");
+    expect(value).toHaveTextContent("9.2%");
   });
 
   it("shows the predicted moving time and its qualifier", () => {

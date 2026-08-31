@@ -209,6 +209,7 @@ export interface Route {
   contentHash: string;
   distanceMetres: number;
   ascentMetres: number;
+  descentMetres: number;
   maxGradientPercent: number;
   pointCount: number;
   movingSeconds?: number;
@@ -262,6 +263,7 @@ export interface GeoJSONProperties {
   routeName: string;
   distanceMetres: number;
   ascentMetres: number;
+  descentMetres: number;
   maxGradientPercent: number;
   pointCount: number;
   surface?: GeoJSONPropertiesSurface;

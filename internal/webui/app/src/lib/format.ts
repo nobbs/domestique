@@ -43,8 +43,7 @@ export function formatCount(value: number, singular: string, plural = `${singula
   return `${value.toLocaleString()} ${value === 1 ? singular : plural}`;
 }
 
-/** Total ascent. Zero means the source had no usable elevation profile. */
-export function formatAscent(metres: number, system: UnitSystem): string {
+function formatElevationTotal(metres: number, system: UnitSystem): string {
   if (!Number.isFinite(metres) || metres <= 0) {
     return "—";
   }
@@ -52,6 +51,20 @@ export function formatAscent(metres: number, system: UnitSystem): string {
   return system === "imperial"
     ? `${Math.round(metresToFeet(metres)).toLocaleString()} ft`
     : `${Math.round(metres).toLocaleString()} m`;
+}
+
+/**
+ * Total ascent. Renders as a dash for zero or below — which reads as "no
+ * usable elevation profile" for most routes, but is also the true value for
+ * a route that only descends.
+ */
+export function formatAscent(metres: number, system: UnitSystem): string {
+  return formatElevationTotal(metres, system);
+}
+
+/** Total descent. Same dash convention as `formatAscent`, for the same reasons. */
+export function formatDescent(metres: number, system: UnitSystem): string {
+  return formatElevationTotal(metres, system);
 }
 
 /**

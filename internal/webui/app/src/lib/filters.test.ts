@@ -14,6 +14,7 @@ function route(overrides: Partial<Route> = {}): Route {
     contentHash: "hash",
     distanceMetres: 50_000,
     ascentMetres: 800,
+    descentMetres: 700,
     maxGradientPercent: 12,
     pointCount: 400,
     ...overrides,

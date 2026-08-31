@@ -656,5 +656,12 @@ func schemaMigrations() [][]string {
 			`DROP INDEX task_runs_task_index`,
 			`CREATE INDEX task_runs_task_index ON task_runs(task, finished_at_unix DESC, id DESC)`,
 		},
+		{
+			// Total descent, alongside the ascent already stored here. Presentation only.
+			`ALTER TABLE stage_geometry ADD COLUMN descent_metres REAL NOT NULL DEFAULT 0`,
+			// Geometry is rewritten only when a content hash changes, so clearing the
+			// hash is what makes the next run refill the new column once.
+			`UPDATE stage_geometry SET content_hash = ''`,
+		},
 	}
 }

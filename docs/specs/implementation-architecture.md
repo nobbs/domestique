@@ -218,7 +218,7 @@ settles which tier it belongs to.
 
 An answer that depends only on the route belongs to Go. It is the same for every
 viewer, every session and every device, and it is computed once and stored:
-route distance, ascent and maximum gradient in `Summary`; surface classification
+route distance, ascent, descent and maximum gradient in `Summary`; surface classification
 in `surface.Match`, which needs the OpenStreetMap index; the elevation
 normalisation the FIT encoder exports.
 

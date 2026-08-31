@@ -115,6 +115,7 @@ type geometryPropertyView struct {
 	CumulativeSeconds  json.RawMessage `json:"cumulativeSeconds,omitempty"`
 	DistanceMetres     float64         `json:"distanceMetres"`
 	AscentMetres       float64         `json:"ascentMetres"`
+	DescentMetres      float64         `json:"descentMetres"`
 	MaxGradientPercent float64         `json:"maxGradientPercent"`
 	SourceRouteID      int64           `json:"sourceRouteId"`
 	PointCount         int             `json:"pointCount"`
