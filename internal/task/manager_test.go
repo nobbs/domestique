@@ -242,6 +242,34 @@ func TestNextRunAtIsSilentAboutATaskNobodyRegistered(t *testing.T) {
 	assert.False(t, holding, "NextRunAt()")
 }
 
+// Tasks() reports the gap between runs for a task on a fixed schedule, and
+// nothing for one with no schedule or a calendar one — a status page has to
+// tell those apart from a duration it can actually name.
+func TestTasksReportsTheFixedIntervalOnlyForAnEveryScheduledTask(t *testing.T) {
+	t.Parallel()
+
+	manager, _ := newTestManager(t)
+	require.NoError(t, manager.Register(&Definition{
+		Name: "fixed", Run: succeeds(),
+		Schedule:     Every(func() time.Duration { return time.Hour }),
+		InitialDelay: func() time.Duration { return 0 },
+	}), "Register(fixed)")
+	require.NoError(t, manager.Register(&Definition{
+		Name: "calendar", Run: succeeds(),
+		Schedule:     Daily{Zone: func() *time.Location { return time.UTC }, Hour: 3},
+		InitialDelay: func() time.Duration { return 0 },
+	}), "Register(calendar)")
+	require.NoError(t, manager.Register(&Definition{Name: "unscheduled", Run: succeeds()}), "Register(unscheduled)")
+
+	intervals := map[string]time.Duration{}
+	for _, entry := range manager.Tasks() {
+		intervals[entry.Name] = entry.Interval
+	}
+	assert.Equal(t, time.Hour, intervals["fixed"], "fixed")
+	assert.Zero(t, intervals["calendar"], "calendar")
+	assert.Zero(t, intervals["unscheduled"], "unscheduled")
+}
+
 // Cancelling has to stop a schedule that is still waiting out its initial
 // delay, or shutdown would wait for a run that is not coming.
 func TestRunStopsAScheduleStillWaitingToStart(t *testing.T) {
@@ -672,6 +700,11 @@ func TestARefusedAttemptIsRecordedAsSkipped(t *testing.T) {
 	<-held.started
 	require.False(t, manager.Trigger(t.Context(), "other", "slot"), "Trigger(other)")
 
+	// The refusal is recorded off the caller's goroutine, so a "false" from
+	// Trigger does not yet mean the row is written.
+	require.Eventually(t, func() bool {
+		return len(store.recorded()) > 0
+	}, time.Second, time.Millisecond, "the refusal was never recorded")
 	assert.Equal(t, []recordedRun{
 		{
 			task: "other", argument: "slot", outcome: string(Skipped),
@@ -1297,7 +1330,13 @@ func TestARefusalSaysWhichKindOfBusyStoppedIt(t *testing.T) {
 	assert.False(t, manager.Trigger(t.Context(), "a", "slot"), "the same work was accepted twice")
 	assert.False(t, manager.Trigger(t.Context(), "b", ""), "an unrelated task took a held resource")
 
-	assert.Equal(t, []recordedRun{
+	// Both refusals are recorded off the caller's goroutine and in no
+	// particular order relative to each other, so "false" from Trigger does
+	// not yet mean either row is written.
+	require.Eventually(t, func() bool {
+		return len(store.recorded()) >= 2
+	}, time.Second, time.Millisecond, "both refusals were never recorded")
+	assert.ElementsMatch(t, []recordedRun{
 		{task: "a", argument: "slot", outcome: string(Skipped), detail: string(DetailWorking), retain: defaultRetainedRuns},
 		{task: "b", outcome: string(Skipped), detail: string(DetailHeld), retain: defaultRetainedRuns},
 	}, store.recorded(), "recorded refusals")

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -189,7 +190,11 @@ func (m *Manager) refuseCycles() error {
 		}
 		state[name] = visiting
 		for _, successor := range m.tasks[name].successors {
-			if err := walk(successor, append(path, successor)); err != nil {
+			// Cloned rather than appended in place: path's backing array is shared
+			// across sibling successors, and appending onto it would let one
+			// sibling's branch overwrite another's, naming a path in the cycle
+			// message that was never actually walked.
+			if err := walk(successor, append(slices.Clone(path), successor)); err != nil {
 				return err
 			}
 		}
@@ -231,7 +236,10 @@ func (m *Manager) Trigger(ctx context.Context, name, argument string) bool {
 	invocation := Invocation{Task: name, Argument: argument, Trigger: TriggerManual}
 	release, outcome := m.admit(entry, invocation)
 	if outcome != admitStarted {
-		m.refused(ctx, entry, invocation, outcome.detail())
+		// Recorded off the caller's goroutine, the same as an admitted attempt
+		// is: refusing is instant, but writing down that it happened is a SQLite
+		// round trip a 409 response should not wait on.
+		m.triggered.Go(func() { m.refused(ctx, entry, invocation, outcome.detail()) })
 
 		return false
 	}
@@ -264,6 +272,10 @@ type Registered struct {
 	NextRunAt time.Time
 	// Name is what a trigger asks for.
 	Name string
+	// Interval is the gap between runs for a task on a fixed schedule, and zero
+	// for a task with no schedule or a calendar one: a calendar's gap changes
+	// with the wall clock, so no single duration describes it.
+	Interval time.Duration
 	// Running is how many attempts of this task are in flight.
 	Running int
 	// Scheduled reports whether the task runs unasked.
@@ -280,9 +292,14 @@ func (m *Manager) Tasks() []Registered {
 	for _, name := range m.order {
 		entry := m.tasks[name]
 		nextRunAt, _ := entry.startsAt.load()
+		var interval time.Duration
+		if every, ok := entry.definition.Schedule.(Every); ok {
+			interval = every()
+		}
 		tasks = append(tasks, Registered{
 			Name:      name,
 			Scheduled: entry.definition.Schedule != nil,
+			Interval:  interval,
 			Running:   entry.inFlight,
 			NextRunAt: nextRunAt,
 		})
