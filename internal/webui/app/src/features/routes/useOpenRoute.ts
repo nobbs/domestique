@@ -136,7 +136,11 @@ export function useOpenRoute(
       const span = nextSpan(spans, sameHighlight(highlight, next) ? zoomWindow : null);
       setHighlight(next);
       if (span) {
-        onZoomChange(widened(span, routeProfile?.totalDistanceMetres ?? 0));
+        // The profile is null on routes without complete elevation, where
+        // surface spans still exist; a total of 0 would collapse the window.
+        const total =
+          routeProfile?.totalDistanceMetres ?? surfaceSummary?.totalMetres ?? span.endMetres;
+        onZoomChange(widened(span, total));
       }
     },
     [coordinates, surfaceSummary, highlight, zoomWindow, onZoomChange, routeProfile],
