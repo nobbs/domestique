@@ -9,8 +9,8 @@ import (
 
 // TaskSync is the registered name of one whole synchronization. It is named
 // here because a task name is part of what this surface publishes: the page
-// asks for a task rather than for a route, and so does the reprocess request
-// below, which is a synchronization asked for on a stage's behalf.
+// asks for a task rather than for a route, and so does the reprocess route in
+// routes_library.go, which is a synchronization asked for on a stage's behalf.
 const TaskSync = "sync"
 
 const (
