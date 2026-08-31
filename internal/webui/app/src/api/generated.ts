@@ -103,6 +103,8 @@ export interface SurfaceCoverage {
   classified: number;
   total: number;
   incomplete: number;
+  /** How many stages currently have a surface or duration enrichment pass recorded against them as unable to finish. */
+  enrichmentFailures: number;
 }
 
 export interface WahooRateLimit {

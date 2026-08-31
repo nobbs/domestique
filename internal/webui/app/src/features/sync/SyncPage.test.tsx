@@ -25,7 +25,7 @@ function statusBody() {
       deleted: 0,
       schedule: { source: true, targets: true },
       phases: {},
-      surface: { classified: 4, total: 4, incomplete: 0 },
+      surface: { classified: 4, total: 4, incomplete: 0, enrichmentFailures: 0 },
     },
   };
 }

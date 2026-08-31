@@ -1233,6 +1233,7 @@ components:
         - classified
         - total
         - incomplete
+        - enrichmentFailures
       properties:
         generation:
           type: string
@@ -1244,6 +1245,11 @@ components:
         total:
           type: integer
         incomplete:
+          type: integer
+        enrichmentFailures:
+          description: >-
+            How many stages currently have a surface or duration enrichment
+            pass recorded against them as unable to finish.
           type: integer
     WahooRateLimit:
       type: object

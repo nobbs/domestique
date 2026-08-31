@@ -167,7 +167,7 @@ function renderPage(
             },
           }
         : {},
-      surface: { classified: 0, total: 0, incomplete: 0 },
+      surface: { classified: 0, total: 0, incomplete: 0, enrichmentFailures: 0 },
     },
   });
   (options.geometryFor ?? library).forEach((entry, index) => {

@@ -1391,6 +1391,20 @@ func TestHandlerReportsHowMuchOfTheLibraryCouldNotBeClassified(t *testing.T) {
 	assert.Equal(t, 1, view.Sync.Surface.Incomplete, "incomplete")
 }
 
+// A stage a pass keeps failing on is otherwise write-only: nothing but a test
+// ever reads the count back without this on the status surface.
+func TestHandlerReportsHowManyStagesHaveAnEnrichmentFailure(t *testing.T) {
+	state := &fakeState{surfaceClassified: 1, surfaceTotal: 3, enrichmentFailed: 2}
+	handler := newHandler(t, &fakeOAuth{}, state)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/status"))
+	require.Equal(t, http.StatusOK, response.Code, "status")
+	var view openapi.Status
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &view), "decoding status")
+	assert.Equal(t, 2, view.Sync.Surface.EnrichmentFailures, "enrichment failures")
+}
+
 // The quota is Wahoo's own live reading, not something this service keeps a
 // running total of, so it is absent until a request has actually reached
 // Wahoo and reported one.
@@ -2104,6 +2118,8 @@ type fakeState struct {
 	phaseRunErr       error
 	historyErr        error
 	coverageErr       error
+	enrichmentErr     error
+	enrichmentFailed  int
 	reprocessErr      error
 	sourceStageErr    error
 	targetStageErr    error
@@ -2387,6 +2403,14 @@ func (s *fakeState) SurfaceCoverage(context.Context) (classified, total int, err
 	}
 
 	return s.surfaceClassified, s.surfaceTotal, nil
+}
+
+func (s *fakeState) CountStageEnrichmentFailures(context.Context) (count int, err error) {
+	if s.enrichmentErr != nil {
+		return 0, s.enrichmentErr
+	}
+
+	return s.enrichmentFailed, nil
 }
 
 // statusOf reads the status document as the handler serves it.

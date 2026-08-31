@@ -24,6 +24,25 @@ func TestStageEnrichmentFailuresReadBackByStageAndPass(t *testing.T) {
 	}, readFailures(t, store), "recorded failures")
 }
 
+// The count is what a status surface reads back rather than the rows
+// themselves, so it must move the same way ForEachStageEnrichmentFailure does.
+func TestCountStageEnrichmentFailuresCountsEveryStageWithSomethingWrong(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t, testKey(1))
+	count, err := store.CountStageEnrichmentFailures(t.Context())
+	require.NoError(t, err, "CountStageEnrichmentFailures()")
+	assert.Zero(t, count, "a count was reported before anything failed")
+
+	require.NoError(t, store.RecordStageSurfaceFailure(t.Context(), "veloplanner", 7, 1, "ways"), "surface failure")
+	require.NoError(t, store.RecordStageDurationFailure(t.Context(), "veloplanner", 7, 1, "encode"), "duration failure")
+	require.NoError(t, store.RecordStageSurfaceFailure(t.Context(), "veloplanner", 9, 0, "ways"), "second surface failure")
+
+	count, err = store.CountStageEnrichmentFailures(t.Context())
+	require.NoError(t, err, "CountStageEnrichmentFailures()")
+	assert.Equal(t, 3, count, "recorded failures")
+}
+
 // What is here is what is wrong now, so a pass that tries again replaces what
 // it last said rather than adding to it.
 func TestARepeatedStageFailureReplacesTheLastOne(t *testing.T) {

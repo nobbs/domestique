@@ -150,8 +150,15 @@ func (h *Handler) GetStatus(writer http.ResponseWriter, request *http.Request) {
 
 		return
 	}
+	enrichmentFailures, enrichmentErr := h.state.CountStageEnrichmentFailures(request.Context())
+	if enrichmentErr != nil {
+		h.unavailable(writer)
+
+		return
+	}
 	view.Sync.Surface = openapi.SurfaceCoverage{
 		Classified: classified, Total: total, Incomplete: h.syncRuns.SurfaceIncomplete(),
+		EnrichmentFailures: enrichmentFailures,
 	}
 	if remaining, resetAt, known := h.syncRuns.RateLimit(); known {
 		view.Sync.WahooRateLimit = &openapi.WahooRateLimit{

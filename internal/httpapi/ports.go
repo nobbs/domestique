@@ -185,6 +185,7 @@ type StageState interface {
 	StageSurface(ctx context.Context, provider route.Provider, routeID int64, stageOrder int, contentHash string) (json.RawMessage, float64, bool, error)
 	SurfaceCoverage(ctx context.Context) (classified, total int, err error)
 	RequestStageReprocess(ctx context.Context, provider route.Provider, routeID int64, stageOrder int) (found bool, err error)
+	CountStageEnrichmentFailures(ctx context.Context) (count int, err error)
 }
 
 // RunState is what the last synchronization runs recorded, in aggregate and per

@@ -95,6 +95,19 @@ func (s *Store) ForEachStageEnrichmentFailure(
 	return nil
 }
 
+// CountStageEnrichmentFailures reports how many stages currently have some
+// pass recorded against them, for a status surface that wants the number
+// rather than the rows themselves.
+func (s *Store) CountStageEnrichmentFailures(ctx context.Context) (count int, err error) {
+	if err := s.database.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM stage_enrichment_failure
+	`).Scan(&count); err != nil {
+		return 0, fmt.Errorf("counting stage enrichment failures: %w", err)
+	}
+
+	return count, nil
+}
+
 // pruneStageEnrichmentFailure drops what no longer describes anything, in the
 // caller's transaction. A stage that has left the inventory takes its failures
 // with it: what is here is meant to be what is wrong now.

@@ -131,6 +131,8 @@ type SurfaceCoverage struct {
 	Classified int        `json:"classified"`
 	Total      int        `json:"total"`
 	Incomplete int        `json:"incomplete"`
+	// EnrichmentFailures How many stages currently have a surface or duration enrichment pass recorded against them as unable to finish.
+	EnrichmentFailures int `json:"enrichmentFailures"`
 }
 
 type WahooRateLimit struct {

@@ -169,7 +169,7 @@ export const status: Status = {
         deleted: 0,
       },
     },
-    surface: { classified: 4, total: 4, incomplete: 0 },
+    surface: { classified: 4, total: 4, incomplete: 0, enrichmentFailures: 0 },
   },
 };
 

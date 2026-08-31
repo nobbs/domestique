@@ -187,6 +187,19 @@ export function SyncControls() {
           ) : null}
         </p>
       ) : null}
+      {/*
+       * enrichmentFailures is the surface and duration passes together, and
+       * durable rather than reset by the next pass: a stage classification
+       * keeps retrying can still be timed successfully, and vice versa, so
+       * this is the count that would otherwise be write-only.
+       */}
+      {data.sync.surface.enrichmentFailures > 0 ? (
+        <p className="text-sm text-[var(--ink-2)]">
+          {data.sync.surface.enrichmentFailures}{" "}
+          {data.sync.surface.enrichmentFailures === 1 ? "stage has" : "stages have"} an
+          unfinished enrichment pass.
+        </p>
+      ) : null}
       {retryClassification.isError ? (
         <p className="text-sm text-[var(--alert)]" role="alert">
           {retryClassification.error instanceof Error && retryClassification.error.message
