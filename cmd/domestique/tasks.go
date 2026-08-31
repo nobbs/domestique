@@ -202,10 +202,14 @@ func inventoryTasks(
 // last build rather than from this process starting, so restarting the service
 // does not restart the interval.
 func surfaceIndexTask(
-	runner indexBuilder, settings *runtimeconfig.Current, lastBuiltAt time.Time,
+	runner indexBuilder,
+	settings *runtimeconfig.Current,
+	enabled func(string) func() bool,
+	lastBuiltAt time.Time,
 ) task.Definition {
 	return task.Definition{
-		Name: taskSurfaceIndex,
+		Name:    taskSurfaceIndex,
+		Enabled: enabled(taskSurfaceIndex),
 		Notify: &task.Notify{
 			Title:    indexAlertTitle,
 			Suppress: indexAlertSuppression,

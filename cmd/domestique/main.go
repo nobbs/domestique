@@ -115,11 +115,18 @@ func run(ctx context.Context) error {
 		return weatherSeriesOf(hourlies), nil
 	})
 
+	// Read before anything registers a task, so every definition can carry its
+	// own switch.
+	switches, err := newTaskSwitches(ctx, store)
+	if err != nil {
+		return fmt.Errorf("reading the task schedule: %w", err)
+	}
+
 	// Surface enrichment is built whether or not a region is named, since naming
 	// the first one is an edit rather than a restart. With no regions the holder
 	// stays empty, every build returns without work, and stages are served without
 	// a surface.
-	surfaceIndex, indexTask, err := startSurfaceIndex(ctx, settings, runtimeSettings, store)
+	surfaceIndex, indexTask, err := startSurfaceIndex(ctx, settings, runtimeSettings, store, switches.enabledFor)
 	if err != nil {
 		return err
 	}
@@ -155,10 +162,6 @@ func run(ctx context.Context) error {
 	alerts, err := newAlertDecisions(ctx, store)
 	if err != nil {
 		return fmt.Errorf("reading alert decisions: %w", err)
-	}
-	switches, err := newTaskSwitches(ctx, store)
-	if err != nil {
-		return fmt.Errorf("reading the task schedule: %w", err)
 	}
 	tasks, err := registerTasks(
 		store, notifier, alerts,
@@ -276,6 +279,7 @@ func startSurfaceIndex(
 	settings *config.Settings,
 	runtimeSettings *runtimeconfig.Current,
 	store *sqlite.Store,
+	enabled func(string) func() bool,
 ) (*osmindex.Current, task.Definition, error) {
 	directory := filepath.Dir(settings.State.DatabasePath)
 	lastBuiltAt, generation, err := store.SurfaceIndexBuild(ctx)
@@ -305,7 +309,7 @@ func startSurfaceIndex(
 		return nil, task.Definition{}, fmt.Errorf("creating the surface index builder: %w", err)
 	}
 
-	return current, surfaceIndexTask(runner, runtimeSettings, lastBuiltAt), nil
+	return current, surfaceIndexTask(runner, runtimeSettings, enabled, lastBuiltAt), nil
 }
 
 // backgroundTasks is the task layer as this file uses it: run everything

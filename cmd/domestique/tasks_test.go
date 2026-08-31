@@ -124,7 +124,7 @@ func TestSurfaceIndexTaskHoldsOnlyItsOwnIndex(t *testing.T) {
 	t.Parallel()
 
 	builder := &fakeIndexBuilder{outcome: osmindex.Rebuilt}
-	definition := surfaceIndexTask(builder, liveSettings(t), time.Time{})
+	definition := surfaceIndexTask(builder, liveSettings(t), allEnabled, time.Time{})
 
 	assert.Equal(t, taskSurfaceIndex, definition.Name, "name")
 	assert.Equal(t,
@@ -144,7 +144,7 @@ func TestSurfaceIndexTaskHoldsOnlyItsOwnIndex(t *testing.T) {
 func TestSurfaceIndexTaskDelaysTheFirstBuildOfAHostThatHasNeverBuilt(t *testing.T) {
 	t.Parallel()
 
-	definition := surfaceIndexTask(&fakeIndexBuilder{}, liveSettings(t), time.Time{})
+	definition := surfaceIndexTask(&fakeIndexBuilder{}, liveSettings(t), allEnabled, time.Time{})
 
 	assert.Equal(t, osmindex.InitialBuildDelay, definition.InitialDelay(), "InitialDelay()")
 }
@@ -241,7 +241,7 @@ func TestSurfaceIndexTaskReadsItsCadenceFromSettings(t *testing.T) {
 	t.Parallel()
 
 	settings := liveSettings(t)
-	definition := surfaceIndexTask(&fakeIndexBuilder{}, settings, time.Time{})
+	definition := surfaceIndexTask(&fakeIndexBuilder{}, settings, allEnabled, time.Time{})
 
 	at := time.Date(2026, time.August, 30, 9, 0, 0, 0, time.UTC)
 	assert.Equal(t, at.Add(settings.Values().Surface.RebuildInterval), definition.Schedule.NextFire(at), "NextFire()")
@@ -370,7 +370,7 @@ func TestRegisterTasksTakesEveryDefinitionItIsGiven(t *testing.T) {
 	t.Parallel()
 
 	definitions := append(inventoryTasks(&fakeSynchronizer{}, liveSettings(t), allEnabled),
-		surfaceIndexTask(&fakeIndexBuilder{}, liveSettings(t), time.Time{}))
+		surfaceIndexTask(&fakeIndexBuilder{}, liveSettings(t), allEnabled, time.Time{}))
 
 	manager, err := registerTasks(&countingStore{}, &silentNotifier{}, undecided{}, alwaysOn, definitions)
 	require.NoError(t, err, "registerTasks()")
