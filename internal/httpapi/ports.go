@@ -21,8 +21,6 @@ type OAuth interface {
 type SyncPhase string
 
 const (
-	// SyncPhaseAll reads the source and then writes to the targets.
-	SyncPhaseAll SyncPhase = "all"
 	// SyncPhaseSource reads the source library into stored state.
 	SyncPhaseSource SyncPhase = "source"
 	// SyncPhaseTargets reconciles stored state onto the targets.

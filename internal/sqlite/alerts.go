@@ -77,20 +77,3 @@ func (s *Store) SetAlertToggles(ctx context.Context, toggles []AlertToggle) erro
 
 	return nil
 }
-
-// ForgetAlertScope drops every decision made about one task's scope. A slot an
-// operator has removed takes its decisions with it, so re-adding one starts
-// from the task's defaults rather than from what was said about the last slot
-// to carry that name.
-func (s *Store) ForgetAlertScope(ctx context.Context, task, scope string) error {
-	if task == "" || scope == "" {
-		return errors.New("a task and a scope are required")
-	}
-	if _, err := s.database.ExecContext(ctx, `
-		DELETE FROM alert_toggle WHERE task = ? AND scope = ?
-	`, task, scope); err != nil {
-		return fmt.Errorf("forgetting alert toggles: %w", err)
-	}
-
-	return nil
-}

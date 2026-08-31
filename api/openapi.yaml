@@ -952,12 +952,6 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/Error'
-    SyncInProgress:
-      description: A conflicting run is already active.
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/Error'
     AuthorizationFailed:
       description: OAuth request failed safely.
       content:

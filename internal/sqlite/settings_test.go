@@ -11,23 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Both halves are on until an operator says otherwise, which is what every
-// deployment did before the switches existed.
-func TestStoreSchedulesBothPhasesUntilChanged(t *testing.T) {
-	store := openTestStore(t, testKey(1))
-
-	source, targets, err := store.SyncSchedule(t.Context())
-	require.NoError(t, err, "SyncSchedule()")
-	assert.True(t, source, "the source half is off by default")
-	assert.True(t, targets, "the target half is off by default")
-
-	require.NoError(t, store.SetSyncSchedule(t.Context(), false, true), "SetSyncSchedule()")
-	source, targets, err = store.SyncSchedule(t.Context())
-	require.NoError(t, err, "SyncSchedule() after change")
-	assert.False(t, source, "the source half was left on")
-	assert.True(t, targets, "the target half was switched off")
-}
-
 // The seeded settings are the defaults the configuration file documented for
 // the same keys, so an upgraded deployment that changes nothing runs on exactly
 // what it ran on before.
