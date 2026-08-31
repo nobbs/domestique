@@ -23,7 +23,7 @@ type Store interface {
 	// recent attempt over each argument whatever its age.
 	RecordTaskRun(
 		ctx context.Context,
-		task, argument string,
+		task, argument, trigger string,
 		startedAt, finishedAt time.Time,
 		outcome, detail, reference string,
 		retain int,
@@ -582,6 +582,7 @@ func (m *Manager) record(
 		ctx,
 		invocation.Task,
 		invocation.Argument,
+		string(invocation.Trigger),
 		startedAt,
 		finishedAt,
 		string(result.Outcome),

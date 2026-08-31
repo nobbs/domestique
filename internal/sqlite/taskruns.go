@@ -5,6 +5,9 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -12,7 +15,7 @@ import (
 // identifier: the detail is a stable category and the reference is random.
 func (s *Store) RecordTaskRun(
 	ctx context.Context,
-	task, argument string,
+	task, argument, trigger string,
 	startedAt, finishedAt time.Time,
 	outcome, detail, reference string,
 	retain int,
@@ -32,9 +35,9 @@ func (s *Store) RecordTaskRun(
 	defer rollback(transaction)
 
 	if _, err := transaction.ExecContext(ctx, `
-		INSERT INTO task_runs (task, argument, started_at_unix, finished_at_unix, outcome, detail, reference)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-	`, task, argument, startedAt.Unix(), finishedAt.Unix(), outcome, detail, reference); err != nil {
+		INSERT INTO task_runs (task, argument, trigger, started_at_unix, finished_at_unix, outcome, detail, reference)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`, task, argument, trigger, startedAt.Unix(), finishedAt.Unix(), outcome, detail, reference); err != nil {
 		return fmt.Errorf("recording task run: %w", err)
 	}
 	if err := pruneTaskRuns(ctx, transaction, task, retain); err != nil {
@@ -108,6 +111,122 @@ func (s *Store) ForEachTaskRun(
 	}
 
 	return nil
+}
+
+// ForEachTaskRunPage visits one page of recorded attempts, newest first, and
+// returns the cursor for the page after it — empty when the history ends here.
+// An empty task is every task. A cursor this store did not issue is reported as
+// unusable rather than as a failure.
+func (s *Store) ForEachTaskRunPage(
+	ctx context.Context,
+	task, after string,
+	limit int,
+	visit func(task, argument, trigger string, startedAt, finishedAt time.Time, outcome, detail, reference string) error,
+) (next string, usable bool, err error) {
+	if visit == nil {
+		return "", false, errors.New("task run visitor is required")
+	}
+	if limit <= 0 {
+		return "", false, errors.New("a positive page size is required")
+	}
+	finishedBefore, idBefore := int64(math.MaxInt64), int64(math.MaxInt64)
+	if after != "" {
+		finishedAt, id, ok := parseTaskRunCursor(after)
+		if !ok {
+			return "", false, nil
+		}
+		issued, readErr := s.lastTaskRunID(ctx)
+		if readErr != nil {
+			return "", false, readErr
+		}
+		// Ids are handed out from one upwards and the highest only grows, because
+		// pruning never drops the newest attempt of a task. One outside that range
+		// is from a cursor this store never issued.
+		if id <= 0 || id > issued {
+			return "", false, nil
+		}
+		finishedBefore, idBefore = finishedAt, id
+	}
+	// One row past the page, so "is there more" is read rather than guessed.
+	rows, err := s.database.QueryContext(ctx, `
+		SELECT id, task, argument, trigger, started_at_unix, finished_at_unix, outcome, detail, reference
+		FROM task_runs
+		WHERE (finished_at_unix, id) < (?, ?) AND (? = '' OR task = ?)
+		ORDER BY finished_at_unix DESC, id DESC
+		LIMIT ?
+	`, finishedBefore, idBefore, task, task, limit+1)
+	if err != nil {
+		return "", false, fmt.Errorf("reading task runs: %w", err)
+	}
+	defer closeRows(rows)
+
+	visited := 0
+	for rows.Next() {
+		var id, startedUnix, finishedUnix int64
+		var name, argument, trigger, outcome, detail, reference string
+		if err := rows.Scan(
+			&id, &name, &argument, &trigger, &startedUnix, &finishedUnix, &outcome, &detail, &reference,
+		); err != nil {
+			return "", false, fmt.Errorf("reading a task run: %w", err)
+		}
+		if visited == limit {
+			return next, true, nil
+		}
+		visited++
+		next = formatTaskRunCursor(finishedUnix, id)
+		if err := visit(
+			name, argument, trigger,
+			time.Unix(startedUnix, 0).UTC(), time.Unix(finishedUnix, 0).UTC(),
+			outcome, detail, reference,
+		); err != nil {
+			return "", false, err
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return "", false, fmt.Errorf("reading task runs: %w", err)
+	}
+
+	// The page was not filled, so nothing follows it.
+	return "", true, nil
+}
+
+// formatTaskRunCursor names a position in the history. Both halves of the
+// recency tuple travel, because a refusal can commit its row after a later
+// attempt's and an id alone would then skip it.
+func formatTaskRunCursor(finishedUnix, id int64) string {
+	return strconv.FormatInt(finishedUnix, 10) + ":" + strconv.FormatInt(id, 10)
+}
+
+// parseTaskRunCursor reads a position back, reporting a malformed one as
+// unusable rather than as a failure: it is the caller's input.
+func parseTaskRunCursor(cursor string) (finishedUnix, id int64, ok bool) {
+	finishedText, idText, found := strings.Cut(cursor, ":")
+	if !found {
+		return 0, 0, false
+	}
+	finishedUnix, err := strconv.ParseInt(finishedText, 10, 64)
+	if err != nil {
+		return 0, 0, false
+	}
+	id, err = strconv.ParseInt(idText, 10, 64)
+	if err != nil {
+		return 0, 0, false
+	}
+
+	return finishedUnix, id, true
+}
+
+// lastTaskRunID reports the highest id the store has issued to a recorded
+// attempt, or zero when it has recorded none.
+func (s *Store) lastTaskRunID(ctx context.Context) (int64, error) {
+	var highest int64
+	if err := s.database.QueryRowContext(
+		ctx, `SELECT COALESCE(MAX(id), 0) FROM task_runs`,
+	).Scan(&highest); err != nil {
+		return 0, fmt.Errorf("reading task runs: %w", err)
+	}
+
+	return highest, nil
 }
 
 // LastTaskOutcome is what a success is compared against, to tell a routine one

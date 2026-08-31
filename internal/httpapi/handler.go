@@ -222,6 +222,7 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("PUT /v1/settings/alerts", h.SetAlerts)
 	h.mux.HandleFunc("PUT /v1/settings/timezone", h.SetTimezone)
 	h.mux.HandleFunc("GET /v1/tasks", h.ListTasks)
+	h.mux.HandleFunc("GET /v1/tasks/runs", h.GetTaskRuns)
 	h.mux.HandleFunc("PUT /v1/tasks/{name}/schedule", h.SetTaskSchedule)
 	h.mux.HandleFunc("POST /v1/tasks/{name}/run", h.RunTask)
 	h.mux.HandleFunc("POST /v1/tasks/{name}/run/{argument}", h.RunTask)
@@ -244,6 +245,7 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("GET /catalogue", h.GetCataloguePage)
 	h.mux.HandleFunc("GET /sync", h.GetSyncPage)
 	h.mux.HandleFunc("GET /settings", h.GetSettingsPage)
+	h.mux.HandleFunc("GET /settings/tasks", h.GetTasksPage)
 	// Browser routes are explicit application navigation, not OpenAPI operations.
 	// Separate because ServeMux has no pattern for the unmatched-path fallback.
 	h.mux.HandleFunc("/", func(writer http.ResponseWriter, _ *http.Request) {

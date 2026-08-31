@@ -106,6 +106,11 @@ func (h *Handler) GetSettingsPage(writer http.ResponseWriter, request *http.Requ
 	h.index(writer, request)
 }
 
+// GetTasksPage serves the application document for the task history view.
+func (h *Handler) GetTasksPage(writer http.ResponseWriter, request *http.Request) {
+	h.index(writer, request)
+}
+
 // GetSyncPage serves the application document for the synchronization view.
 func (h *Handler) GetSyncPage(writer http.ResponseWriter, request *http.Request) {
 	h.index(writer, request)

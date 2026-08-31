@@ -710,7 +710,10 @@ func TestAnAttemptIsRecordedWithWhatItCameTo(t *testing.T) {
 	require.True(t, manager.Trigger(t.Context(), "a", "slot"), "Trigger()")
 	manager.Wait()
 	assert.Equal(t, []recordedRun{
-		{task: "a", argument: "slot", outcome: string(Blocked), detail: "deletion_limit", retain: 12},
+		{
+			task: "a", argument: "slot", trigger: string(TriggerManual),
+			outcome: string(Blocked), detail: "deletion_limit", retain: 12,
+		},
 	}, store.recorded(), "recorded runs")
 }
 
@@ -745,7 +748,7 @@ func TestARefusedAttemptIsRecordedAsSkipped(t *testing.T) {
 	}, time.Second, time.Millisecond, "the refusal was never recorded")
 	assert.Equal(t, []recordedRun{
 		{
-			task: "other", argument: "slot", outcome: string(Skipped),
+			task: "other", argument: "slot", trigger: string(TriggerManual), outcome: string(Skipped),
 			detail: string(DetailHeld), retain: defaultRetainedRuns,
 		},
 	}, store.recorded(), "recorded runs")
@@ -782,7 +785,7 @@ func TestARefusedScheduledRunIsRecorded(t *testing.T) {
 
 	assert.Contains(t, store.recorded(),
 		recordedRun{
-			task: "scheduled", outcome: string(Skipped),
+			task: "scheduled", trigger: string(TriggerSchedule), outcome: string(Skipped),
 			detail: string(DetailHeld), retain: defaultRetainedRuns,
 		},
 		"a refused scheduled run was not recorded")
@@ -893,6 +896,7 @@ func (n *fakeNotifier) messages() []sentAlert {
 type recordedRun struct {
 	task     string
 	argument string
+	trigger  string
 	outcome  string
 	detail   string
 	retain   int
@@ -918,7 +922,7 @@ type recordingStore struct {
 }
 
 func (s *recordingStore) RecordTaskRun(
-	_ context.Context, task, argument string, startedAt, finishedAt time.Time,
+	_ context.Context, task, argument, trigger string, startedAt, finishedAt time.Time,
 	outcome, detail, reference string, retain int,
 ) error {
 	s.mutex.Lock()
@@ -929,7 +933,7 @@ func (s *recordingStore) RecordTaskRun(
 	}
 	s.reference = reference
 	s.runs = append(s.runs, recordedRun{
-		task: task, argument: argument, outcome: outcome, detail: detail, retain: retain,
+		task: task, argument: argument, trigger: trigger, outcome: outcome, detail: detail, retain: retain,
 	})
 
 	return s.err
@@ -1095,7 +1099,7 @@ func TestASuccessorRefusedByAnotherHolderIsRecorded(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		return slices.Contains(store.recorded(), recordedRun{
-			task: "child", outcome: string(Skipped),
+			task: "child", trigger: string(TriggerChain), outcome: string(Skipped),
 			detail: string(DetailHeld), retain: defaultRetainedRuns,
 		})
 	}, time.Second, time.Millisecond, "a refused successor was not recorded")
@@ -1216,7 +1220,7 @@ func TestATaskWithNothingFollowingItRecordsOnlyItself(t *testing.T) {
 	require.True(t, manager.Trigger(t.Context(), "parent", ""), "Trigger()")
 	manager.Wait()
 	assert.Equal(t, []recordedRun{
-		{task: "parent", outcome: string(Succeeded), retain: defaultRetainedRuns},
+		{task: "parent", trigger: string(TriggerManual), outcome: string(Succeeded), retain: defaultRetainedRuns},
 	}, store.recorded(), "recorded runs")
 }
 
@@ -1337,8 +1341,14 @@ func TestARefusalSaysWhichKindOfBusyStoppedIt(t *testing.T) {
 		return len(store.recorded()) >= 2
 	}, time.Second, time.Millisecond, "both refusals were never recorded")
 	assert.ElementsMatch(t, []recordedRun{
-		{task: "a", argument: "slot", outcome: string(Skipped), detail: string(DetailWorking), retain: defaultRetainedRuns},
-		{task: "b", outcome: string(Skipped), detail: string(DetailHeld), retain: defaultRetainedRuns},
+		{
+			task: "a", argument: "slot", trigger: string(TriggerManual), outcome: string(Skipped),
+			detail: string(DetailWorking), retain: defaultRetainedRuns,
+		},
+		{
+			task: "b", trigger: string(TriggerManual), outcome: string(Skipped),
+			detail: string(DetailHeld), retain: defaultRetainedRuns,
+		},
 	}, store.recorded(), "recorded refusals")
 
 	close(held.release)

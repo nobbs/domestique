@@ -180,6 +180,7 @@ func TestHandlerGatesEveryNonHealthRoute(t *testing.T) {
 		"/routes/veloplanner/1/1",
 		"/catalogue",
 		"/settings",
+		"/settings/tasks",
 		"/sync",
 		"/unknown",
 	}
@@ -212,6 +213,7 @@ func TestBrowserUIRoutesAreRegistered(t *testing.T) {
 		"/catalogue",
 		"/sync",
 		"/settings",
+		"/settings/tasks",
 	}
 
 	for _, path := range paths {
@@ -992,7 +994,9 @@ func TestHandlerSetsPolicyAndCacheHeaders(t *testing.T) {
 
 func TestHandlerServesTheApplicationDocumentForDeepLinks(t *testing.T) {
 	handler := newTestHandler(t)
-	for _, path := range []string{"/", "/routes/veloplanner/12/1", "/catalogue", "/settings", "/sync"} {
+	for _, path := range []string{
+		"/", "/routes/veloplanner/12/1", "/catalogue", "/settings", "/settings/tasks", "/sync",
+	} {
 		t.Run(path, func(t *testing.T) {
 			response := httptest.NewRecorder()
 			handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, path))
@@ -1235,7 +1239,7 @@ func TestHandlerReportsEachPhaseInStatus(t *testing.T) {
 func historyStateFixture() *fakeState {
 	endedAt := time.Date(2026, time.August, 18, 6, 30, 0, 0, time.UTC)
 
-	return &fakeState{history: []recordedRun{
+	return &fakeState{taskHistory: taskHistoryFixture().taskHistory, history: []recordedRun{
 		{
 			reference: "aaaaaaaaaaaa",
 			phase:     "targets", completedAt: endedAt, outcome: "failed", detail: "destination", created: 1,
@@ -2097,6 +2101,18 @@ type recordedRun struct {
 	phaseRun
 }
 
+// recordedTaskRun is one attempt of a background activity as the history holds it.
+type recordedTaskRun struct {
+	startedAt  time.Time
+	finishedAt time.Time
+	task       string
+	argument   string
+	trigger    string
+	outcome    string
+	detail     string
+	reference  string
+}
+
 type phaseRun struct {
 	phase        string
 	completedAt  time.Time
@@ -2112,6 +2128,7 @@ type fakeState struct {
 	reprocessErr      error
 	pendingAuthErr    error
 	historyErr        error
+	taskHistoryErr    error
 	coverageErr       error
 	enrichmentErr     error
 	surfaceErr        error
@@ -2130,6 +2147,7 @@ type fakeState struct {
 	targetRuns        []fakeTargetRun
 	targets           []fakeTarget
 	history           []recordedRun
+	taskHistory       []recordedTaskRun
 	coordinates       json.RawMessage
 	pendingAuth       []string
 	surfaceRanges     json.RawMessage
@@ -2371,6 +2389,49 @@ func (s *fakeState) ForEachSyncRun(
 		}
 	}
 	if start+limit >= len(s.history) {
+		return "", true, nil
+	}
+
+	return strconv.Itoa(start + limit), true, nil
+}
+
+// ForEachTaskRunPage pages over the held task history, narrowing to one task
+// when asked. Its cursor is the position the next page starts at.
+func (s *fakeState) ForEachTaskRunPage(
+	_ context.Context,
+	task, after string,
+	limit int,
+	visit func(task, argument, trigger string, startedAt, finishedAt time.Time, outcome, detail, reference string) error,
+) (next string, usable bool, err error) {
+	if s.taskHistoryErr != nil {
+		return "", false, s.taskHistoryErr
+	}
+	matching := make([]int, 0, len(s.taskHistory))
+	for index := range s.taskHistory {
+		if task == "" || s.taskHistory[index].task == task {
+			matching = append(matching, index)
+		}
+	}
+	start := 0
+	if after != "" {
+		parsed, err := strconv.Atoi(after)
+		// A cursor this fake did not issue is the caller's input, and the store
+		// reports it as unusable rather than as a failure.
+		if err != nil {
+			return "", false, nil //nolint:nilerr // The cursor is unusable, not broken.
+		}
+		start = min(parsed, len(matching))
+	}
+	for index := start; index < min(start+limit, len(matching)); index++ {
+		run := &s.taskHistory[matching[index]]
+		if err := visit(
+			run.task, run.argument, run.trigger, run.startedAt, run.finishedAt,
+			run.outcome, run.detail, run.reference,
+		); err != nil {
+			return "", false, err
+		}
+	}
+	if start+limit >= len(matching) {
 		return "", true, nil
 	}
 

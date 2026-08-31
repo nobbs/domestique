@@ -2,8 +2,10 @@ package httpapi
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"testing"
 	"time"
 
@@ -19,6 +21,13 @@ const tasksPath = "/v1/tasks"
 func tasksHandler(t *testing.T, registered ...RegisteredTask) (*Handler, *fakeTasks) {
 	t.Helper()
 	tasks := &fakeTasks{registered: registered}
+
+	return handlerOverTasks(t, &fakeState{}, tasks), tasks
+}
+
+// handlerOverTasks builds a handler over one state and one task list.
+func handlerOverTasks(t *testing.T, state State, tasks Tasks) *Handler {
+	t.Helper()
 	handler, err := New(
 		&Options{
 			Settings:         settingsWith(testBasemaps()),
@@ -28,11 +37,11 @@ func tasksHandler(t *testing.T, registered ...RegisteredTask) (*Handler, *fakeTa
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
 		},
-		&fakeOAuth{}, &fakeState{}, &fakeSync{accepted: true}, &fakeAssets{}, &fakeWeather{},
+		&fakeOAuth{}, state, &fakeSync{accepted: true}, &fakeAssets{}, &fakeWeather{},
 	)
 	require.NoError(t, err, "New()")
 
-	return handler, tasks
+	return handler
 }
 
 // taskListOf sends a request and decodes the task list it answers with.
@@ -179,4 +188,156 @@ func TestRunTaskAcceptsAPercentEncodedName(t *testing.T) {
 
 	require.Equal(t, http.StatusAccepted, response.Code, response.Body.String())
 	assert.Equal(t, []startedTask{{name: "sync:target", argument: "rider-a"}}, tasks.started, "started")
+}
+
+const taskRunsPath = "/v1/tasks/runs"
+
+// taskHistoryHandler builds a handler over three recorded attempts, newest
+// first, of the two tasks it registers.
+func taskHistoryHandler(t *testing.T) *Handler {
+	t.Helper()
+
+	return handlerOverTasks(t, taskHistoryFixture(), &fakeTasks{registered: []RegisteredTask{
+		{Name: "sync:source"}, {Name: "sync:target"},
+	}})
+}
+
+func taskHistoryFixture() *fakeState {
+	endedAt := time.Date(2026, time.August, 31, 6, 30, 0, 0, time.UTC)
+
+	return &fakeState{taskHistory: []recordedTaskRun{
+		{
+			task: "sync:source", trigger: "manual", reference: "aaaaaaaaaaaa",
+			startedAt: endedAt.Add(-time.Minute), finishedAt: endedAt, outcome: "succeeded",
+		},
+		{
+			task: "sync:target", argument: "rider-a", trigger: "schedule", reference: "bbbbbbbbbbbb",
+			startedAt: endedAt.Add(-time.Hour), finishedAt: endedAt.Add(-time.Hour).Add(time.Minute),
+			outcome: "failed", detail: "destination",
+		},
+		{
+			task: "sync:source", trigger: "schedule", reference: "cccccccccccc",
+			startedAt: endedAt.Add(-2 * time.Hour), finishedAt: endedAt.Add(-2 * time.Hour).Add(time.Minute),
+			outcome: "unchanged",
+		},
+	}}
+}
+
+func taskRunPage(t *testing.T, handler http.Handler, query string) openapi.TaskRunPage {
+	t.Helper()
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, taskRunsPath+query))
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	var view openapi.TaskRunPage
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &view), "decoding the task history")
+
+	return view
+}
+
+// The history is read a page at a time, following the cursor the page before it
+// ended with.
+func TestGetTaskRunsServesTheHistoryOnePageAtATime(t *testing.T) {
+	handler := taskHistoryHandler(t)
+
+	first := taskRunPage(t, handler, "?limit=2")
+	require.Len(t, first.Runs, 2, "the first page")
+	assert.Equal(t, "sync:source", first.Runs[0].Task, "the newest attempt")
+	assert.Equal(t, "manual", value(first.Runs[0].Trigger), "what started it")
+	assert.Equal(t, "succeeded", first.Runs[0].Outcome, "outcome")
+	assert.Equal(t, "aaaaaaaaaaaa", first.Runs[0].Reference, "reference")
+	assert.Equal(t, "2026-08-31T06:30:00Z", wireInstant(first.Runs[0].FinishedAt), "finish")
+	assert.Equal(t, "rider-a", value(first.Runs[1].Argument), "what the attempt was over")
+	assert.Equal(t, "destination", value(first.Runs[1].Detail), "the reason it failed")
+	require.NotEmpty(t, first.Next, "a cursor for the page after the first")
+
+	second := taskRunPage(t, handler, "?limit=2&after="+*first.Next)
+	require.Len(t, second.Runs, 1, "the page after the first")
+	assert.Equal(t, "cccccccccccc", second.Runs[0].Reference, "the oldest attempt")
+	assert.Empty(t, second.Next, "a cursor past the oldest recorded attempt")
+}
+
+// A filter narrows the feed to one task, which is how a page about one activity
+// reads only its own attempts.
+func TestGetTaskRunsNarrowsToOneTask(t *testing.T) {
+	page := taskRunPage(t, taskHistoryHandler(t), "?task=sync%3Asource")
+
+	require.Len(t, page.Runs, 2, "the named task's attempts")
+	for _, run := range page.Runs {
+		assert.Equal(t, "sync:source", run.Task, "an attempt of another task was served")
+	}
+}
+
+// A name this build does not register is refused, so a page built against
+// another build is told rather than shown a history that reads as empty.
+func TestGetTaskRunsRefusesATaskThisBuildDoesNotRegister(t *testing.T) {
+	response := httptest.NewRecorder()
+	taskHistoryHandler(t).ServeHTTP(response, authenticatedRequest(http.MethodGet, taskRunsPath+"?task=invented"))
+
+	require.Equal(t, http.StatusBadRequest, response.Code, response.Body.String())
+	assert.Contains(t, response.Body.String(), "invalid_request", "the error code")
+}
+
+// State this service cannot read is its own fault, and it says so rather than
+// serving an empty history that would read as "nothing has run".
+func TestGetTaskRunsReportsAHistoryItCannotRead(t *testing.T) {
+	state := taskHistoryFixture()
+	state.taskHistoryErr = errors.New("state is unavailable")
+	handler := handlerOverTasks(t, state, &fakeTasks{})
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, taskRunsPath))
+	assert.Equal(t, http.StatusServiceUnavailable, response.Code, response.Body.String())
+}
+
+// A cursor this service did not issue is the caller's mistake, and answering it
+// with the newest page would silently restart the walk.
+func TestGetTaskRunsRefusesACursorItDidNotIssue(t *testing.T) {
+	response := httptest.NewRecorder()
+	taskHistoryHandler(t).ServeHTTP(response, authenticatedRequest(http.MethodGet, taskRunsPath+"?after=the-newest-one"))
+
+	assert.Equal(t, http.StatusBadRequest, response.Code, response.Body.String())
+	assert.Contains(t, response.Body.String(), "invalid_request", "the error code")
+}
+
+// An attempt is served as the aggregate it was recorded as. Anything it touched
+// — a route name, geometry, whatever an upstream said — stays out of the page.
+func TestGetTaskRunsServesNothingAboutWhatAnAttemptTouched(t *testing.T) {
+	response := httptest.NewRecorder()
+	taskHistoryHandler(t).ServeHTTP(response, authenticatedRequest(http.MethodGet, taskRunsPath+"?limit=2"))
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+
+	var page struct {
+		Runs []map[string]any `json:"runs"`
+	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &page), "decoding the task history")
+	require.Len(t, page.Runs, 2, "the page")
+	fields := make([]string, 0, len(page.Runs[1]))
+	for field := range page.Runs[1] {
+		fields = append(fields, field)
+	}
+	slices.Sort(fields)
+	assert.Equal(t, []string{
+		"argument", "detail", "finishedAt", "outcome", "reference", "startedAt", "task", "trigger",
+	}, fields, "the fields a recorded attempt is served as")
+}
+
+// An empty history is a page with nothing in it, not a missing list.
+func TestGetTaskRunsServesAnEmptyHistoryAsAnEmptyPage(t *testing.T) {
+	page := taskRunPage(t, handlerOverTasks(t, &fakeState{}, &fakeTasks{}), "")
+
+	assert.NotNil(t, page.Runs, "an empty page was sent as null")
+	assert.Empty(t, page.Runs, "runs")
+	assert.Empty(t, page.Next, "a cursor for a history with nothing in it")
+}
+
+// The page size is bounded so one request cannot read the whole retained window.
+func TestGetTaskRunsRefusesAPageSizeItWillNotServe(t *testing.T) {
+	handler := taskHistoryHandler(t)
+
+	for _, limit := range []string{"0", "-1", "1000", "all"} {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, taskRunsPath+"?limit="+limit))
+		assert.Equal(t, http.StatusBadRequest, response.Code, "status for limit="+limit)
+	}
 }

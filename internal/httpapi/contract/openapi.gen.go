@@ -356,8 +356,29 @@ type Task struct {
 	Running int `json:"running"`
 	// IntervalSeconds The gap between runs for a task on a fixed schedule. Absent for a task with no schedule, or a calendar one, whose gap changes with the wall clock.
 	IntervalSeconds *int `json:"intervalSeconds,omitempty"`
-	// NextRunAt When the first scheduled run is due. Absent once it has started, and for a task nothing schedules.
+	// NextRunAt When the next scheduled run is due. Absent while an attempt is in flight, and for a task nothing schedules.
 	NextRunAt *time.Time `json:"nextRunAt,omitempty"`
+}
+
+// TaskRun One recorded attempt. It carries the aggregate record and nothing about what the attempt touched.
+type TaskRun struct {
+	Task string `json:"task"`
+	// Argument What the attempt was over, such as a target slot. Absent for a task that covers only one thing.
+	Argument *string `json:"argument,omitempty"`
+	// Trigger What started the attempt: `schedule`, `manual`, or `chain`. Absent for an attempt recorded before this was written down.
+	Trigger    *string   `json:"trigger,omitempty"`
+	StartedAt  time.Time `json:"startedAt"`
+	FinishedAt time.Time `json:"finishedAt"`
+	Outcome    string    `json:"outcome"`
+	// Detail A stable, safe-to-display reason for the outcome. Never provider text, a route name, or an upstream identifier.
+	Detail *string `json:"detail,omitempty"`
+	// Reference The name an alert about this attempt carries.
+	Reference string `json:"reference"`
+}
+
+type TaskRunPage struct {
+	Runs []TaskRun `json:"runs"`
+	Next *string   `json:"next,omitempty"`
 }
 
 type TimezoneUpdate struct {
