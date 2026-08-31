@@ -92,6 +92,8 @@ paths:
                 $ref: '#/components/schemas/TaskList'
         "401":
           $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
   /v1/tasks/{name}/run:
     post:
       tags:

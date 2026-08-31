@@ -739,10 +739,15 @@ export type listTasksResponse401 = {
   status: 401;
 };
 
+export type listTasksResponse403 = {
+  data: ForbiddenResponse;
+  status: 403;
+};
+
 export type listTasksResponseSuccess = listTasksResponse200 & {
   headers: Headers;
 };
-export type listTasksResponseError = listTasksResponse401 & {
+export type listTasksResponseError = (listTasksResponse401 | listTasksResponse403) & {
   headers: Headers;
 };
 
@@ -768,7 +773,7 @@ export const getListTasksQueryKey = () => {
 
 export const getListTasksQueryOptions = <
   TData = Awaited<ReturnType<typeof listTasks>>,
-  TError = ErrorType<UnauthorizedResponse>,
+  TError = ErrorType<UnauthorizedResponse | ForbiddenResponse>,
 >(options?: {
   query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof listTasks>>, TError, TData>>;
   request?: SecondParameter<typeof domestiqueRequest>;
@@ -788,11 +793,11 @@ export const getListTasksQueryOptions = <
 };
 
 export type ListTasksQueryResult = NonNullable<Awaited<ReturnType<typeof listTasks>>>;
-export type ListTasksQueryError = ErrorType<UnauthorizedResponse>;
+export type ListTasksQueryError = ErrorType<UnauthorizedResponse | ForbiddenResponse>;
 
 export function useListTasks<
   TData = Awaited<ReturnType<typeof listTasks>>,
-  TError = ErrorType<UnauthorizedResponse>,
+  TError = ErrorType<UnauthorizedResponse | ForbiddenResponse>,
 >(
   options: {
     query: Partial<UseQueryOptions<Awaited<ReturnType<typeof listTasks>>, TError, TData>> &
@@ -810,7 +815,7 @@ export function useListTasks<
 ): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 export function useListTasks<
   TData = Awaited<ReturnType<typeof listTasks>>,
-  TError = ErrorType<UnauthorizedResponse>,
+  TError = ErrorType<UnauthorizedResponse | ForbiddenResponse>,
 >(
   options?: {
     query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof listTasks>>, TError, TData>> &
@@ -828,7 +833,7 @@ export function useListTasks<
 ): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 export function useListTasks<
   TData = Awaited<ReturnType<typeof listTasks>>,
-  TError = ErrorType<UnauthorizedResponse>,
+  TError = ErrorType<UnauthorizedResponse | ForbiddenResponse>,
 >(
   options?: {
     query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof listTasks>>, TError, TData>>;
@@ -839,7 +844,7 @@ export function useListTasks<
 
 export function useListTasks<
   TData = Awaited<ReturnType<typeof listTasks>>,
-  TError = ErrorType<UnauthorizedResponse>,
+  TError = ErrorType<UnauthorizedResponse | ForbiddenResponse>,
 >(
   options?: {
     query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof listTasks>>, TError, TData>>;
