@@ -58,8 +58,6 @@ func TestRecordTaskRunRefusesIncompleteMetadata(t *testing.T) {
 	}
 }
 
-// A task's history is bounded on its own terms, so one that runs every few
-// minutes cannot evict the history of one that runs weekly.
 func TestRecordTaskRunBoundsEachTaskSeparately(t *testing.T) {
 	t.Parallel()
 
@@ -79,8 +77,6 @@ func TestRecordTaskRunBoundsEachTaskSeparately(t *testing.T) {
 	assert.Len(t, readTaskRuns(t, store, "quiet"), 1, "a chatty task evicted a quiet one's history")
 }
 
-// The last attempt over one argument is what that argument came to, and a
-// status page reads it whatever its age.
 func TestRecordTaskRunKeepsTheLatestAttemptOverEachArgument(t *testing.T) {
 	t.Parallel()
 
@@ -189,8 +185,6 @@ func TestForEachTaskRunStopsWhenTheVisitorDoes(t *testing.T) {
 	assert.Equal(t, 1, visits, "the visitor was called again after giving up")
 }
 
-// What a task did last is what a success is compared against to tell a routine
-// one from the one that ends an incident, and it is asked per argument.
 func TestLastTaskOutcomeReadsTheMostRecentAttemptOverAnArgument(t *testing.T) {
 	t.Parallel()
 
@@ -217,8 +211,6 @@ func TestLastTaskOutcomeReadsTheMostRecentAttemptOverAnArgument(t *testing.T) {
 	assert.Equal(t, "blocked", other, "one argument's history answered for another")
 }
 
-// Staleness is measured against the last success: a failed attempt leaves
-// whatever the task keeps exactly as an earlier success left it.
 func TestLastTaskSuccessSkipsWhatDidNotSucceed(t *testing.T) {
 	t.Parallel()
 
@@ -268,8 +260,6 @@ func TestTaskHistoryLookupsReportNothingRecorded(t *testing.T) {
 	assert.False(t, found, "an unrun task reported a success")
 }
 
-// A fault streak is what the backoff waits on: consecutive faults at the tail
-// of the history, ended by a success and unbroken by anything else.
 func TestTaskFaultStreakCountsBackToTheLastSuccess(t *testing.T) {
 	t.Parallel()
 

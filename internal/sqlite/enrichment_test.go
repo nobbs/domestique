@@ -24,8 +24,7 @@ func TestStageEnrichmentFailuresReadBackByStageAndPass(t *testing.T) {
 	}, readFailures(t, store), "recorded failures")
 }
 
-// The count is what a status surface reads back rather than the rows
-// themselves, so it must move the same way ForEachStageEnrichmentFailure does.
+// The count must move the same way ForEachStageEnrichmentFailure does.
 func TestCountStageEnrichmentFailuresCountsEveryStageWithSomethingWrong(t *testing.T) {
 	t.Parallel()
 
@@ -43,8 +42,6 @@ func TestCountStageEnrichmentFailuresCountsEveryStageWithSomethingWrong(t *testi
 	assert.Equal(t, 3, count, "recorded failures")
 }
 
-// What is here is what is wrong now, so a pass that tries again replaces what
-// it last said rather than adding to it.
 func TestARepeatedStageFailureReplacesTheLastOne(t *testing.T) {
 	t.Parallel()
 
@@ -57,7 +54,6 @@ func TestARepeatedStageFailureReplacesTheLastOne(t *testing.T) {
 	assert.Equal(t, "cache", failures[0].reason, "the recorded reason")
 }
 
-// Stored and still listed as failing cannot both be true.
 func TestStoringAnEnrichmentClearsWhatItLastFailedFor(t *testing.T) {
 	t.Parallel()
 
@@ -125,8 +121,6 @@ func readFailures(t *testing.T, store *Store) []recordedFailure {
 	return failures
 }
 
-// A visitor that gives up stops the read rather than being called again for
-// every remaining row.
 func TestForEachStageEnrichmentFailureStopsWhenTheVisitorDoes(t *testing.T) {
 	t.Parallel()
 
@@ -161,8 +155,6 @@ func TestStoreStageDurationReportsAnUnreadableDatabase(t *testing.T) {
 	), "StoreStageDuration() on a closed database")
 }
 
-// What is here is meant to be what is wrong now, so a stage that has left the
-// inventory takes its failures with it.
 func TestStageEnrichmentFailuresGoWithTheStagesTheyName(t *testing.T) {
 	t.Parallel()
 
@@ -183,7 +175,6 @@ func TestStageEnrichmentFailuresGoWithTheStagesTheyName(t *testing.T) {
 	}, readFailures(t, store), "a stage that left the library kept its failure")
 }
 
-// A pass nothing is asking for cannot be failing.
 func TestClearStageDurationFailuresLeavesTheOtherPassAlone(t *testing.T) {
 	t.Parallel()
 

@@ -18,11 +18,8 @@ func (s *Store) RuntimeSettings(ctx context.Context) (runtimeconfig.Values, erro
 		initialDelaySeconds    int64
 		rebuildIntervalSeconds int64
 	)
-	// success_policy and digest_interval_seconds are not read or written. The
-	// success policy they held is now a decision per task and per reason in the
-	// alert matrix, and the columns are NOT NULL with checks, so a row that keeps
-	// whatever it last held costs nothing while rebuilding the table to drop them
-	// would put every other setting an operator has entered at risk.
+	// success_policy and digest_interval_seconds are unused, superseded by the
+	// per-task alert matrix; both are NOT NULL with CHECK, so dropping them needs a rebuild.
 	if err := s.database.QueryRowContext(ctx, `
 		SELECT allow_empty_source_deletion, stale_after_seconds, sync_initial_delay_seconds,
 			notifications_enabled,

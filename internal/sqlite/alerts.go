@@ -44,8 +44,7 @@ func (s *Store) AlertToggles(ctx context.Context) ([]AlertToggle, error) {
 }
 
 // SetAlertToggles records what an operator decided, replacing each decision
-// whole. Deciding is what creates a row: an alert nobody has ruled on keeps
-// whatever default its task carries.
+// whole.
 func (s *Store) SetAlertToggles(ctx context.Context, toggles []AlertToggle) error {
 	for _, toggle := range toggles {
 		if toggle.Task == "" || toggle.Alert == "" {

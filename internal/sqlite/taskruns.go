@@ -8,10 +8,8 @@ import (
 	"time"
 )
 
-// RecordTaskRun stores what one attempt came to, under the name a message about
-// it can carry, and prunes that task's history back to its bound. It records no
-// provider text, no route name, and no upstream identifier: the detail is a
-// stable category and the reference is random.
+// RecordTaskRun records no provider text, no route name, and no upstream
+// identifier: the detail is a stable category and the reference is random.
 func (s *Store) RecordTaskRun(
 	ctx context.Context,
 	task, argument string,
@@ -50,9 +48,7 @@ func (s *Store) RecordTaskRun(
 }
 
 // pruneTaskRuns drops everything past one task's retained window, in the
-// caller's transaction. The most recent attempt over each argument is kept
-// whatever its age: it is what that argument last came to, and a status page
-// reads it as such.
+// caller's transaction. The most recent attempt per argument is kept regardless of age.
 func pruneTaskRuns(ctx context.Context, transaction *sql.Tx, task string, retain int) error {
 	if _, err := transaction.ExecContext(ctx, `
 		DELETE FROM task_runs
@@ -105,9 +101,8 @@ func (s *Store) ForEachTaskRun(
 	return nil
 }
 
-// LastTaskOutcome returns what a task's most recent recorded attempt over one
-// argument came to. It is what a success is compared against to tell a routine
-// one from the one that ends an incident.
+// LastTaskOutcome is what a success is compared against, to tell a routine one
+// from the one that ends an incident.
 func (s *Store) LastTaskOutcome(
 	ctx context.Context, task, argument string,
 ) (outcome string, found bool, err error) {
@@ -127,9 +122,8 @@ func (s *Store) LastTaskOutcome(
 	return outcome, true, nil
 }
 
-// LastTaskSuccess returns when a task last succeeded over one argument, which
-// is what its staleness is measured against: a failed or skipped attempt leaves
-// whatever the task keeps exactly as an earlier success left it.
+// LastTaskSuccess is what staleness is measured against: a failed or skipped
+// attempt leaves whatever the task keeps exactly as an earlier success left it.
 func (s *Store) LastTaskSuccess(
 	ctx context.Context, task, argument string,
 ) (finishedAt time.Time, found bool, err error) {
@@ -156,10 +150,9 @@ func (s *Store) LastTaskSuccess(
 // further would change nothing.
 const backoffScan = 64
 
-// TaskFaultStreak reports how many of a task's most recent attempts over one
-// argument ended in a fault, and when the last of them finished. A success ends
-// the streak; anything else — a refusal, a run that found nothing to do — is
-// passed over, because neither says the task is broken.
+// TaskFaultStreak counts consecutive faults at the tail of the history. A
+// success ends the streak; anything else — a refusal, a run that found nothing
+// to do — is passed over, because neither says the task is broken.
 func (s *Store) TaskFaultStreak(
 	ctx context.Context, task, argument string,
 ) (faults int, lastAt time.Time, err error) {

@@ -24,7 +24,6 @@ func TestAlertTogglesReadBackWhatWasDecided(t *testing.T) {
 	}, toggles, "stored decisions")
 }
 
-// Deciding again replaces the decision rather than adding to it.
 func TestASecondDecisionReplacesTheFirst(t *testing.T) {
 	t.Parallel()
 

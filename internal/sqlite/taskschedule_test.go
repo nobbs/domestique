@@ -7,9 +7,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// A task absent from the schedule is one nobody has ruled on, which runs. That
-// is what lets a task added to a build reach its schedule without being turned
-// on by hand.
 func TestTaskScheduleReportsOnlyWhatWasDecided(t *testing.T) {
 	t.Parallel()
 
@@ -26,7 +23,6 @@ func TestTaskScheduleReportsOnlyWhatWasDecided(t *testing.T) {
 	}, schedule, "the stored schedule")
 }
 
-// Switching one back on replaces the decision rather than adding a second.
 func TestSetTaskScheduleReplacesAnEarlierDecision(t *testing.T) {
 	t.Parallel()
 
