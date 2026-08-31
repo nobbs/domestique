@@ -372,7 +372,11 @@ describe("TargetConvergenceCard", () => {
         async () =>
           new Response(
             JSON.stringify({
-              error: { code: "task_in_progress", message: "the task is already running, or something it needs is held by another run" },
+              error: {
+                code: "task_in_progress",
+                message:
+                  "the task is already running, or something it needs is held by another run",
+              },
             }),
             { status: 409 },
           ),

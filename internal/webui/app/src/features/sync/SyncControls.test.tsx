@@ -42,7 +42,13 @@ function tasks(source = true, targets = true): TaskList {
   return {
     tasks: [
       { name: "sync:source", scheduled: true, enabled: source, running: 0, intervalSeconds: 3600 },
-      { name: "sync:target", scheduled: true, enabled: targets, running: 0, intervalSeconds: 21600 },
+      {
+        name: "sync:target",
+        scheduled: true,
+        enabled: targets,
+        running: 0,
+        intervalSeconds: 21600,
+      },
     ],
   };
 }
@@ -326,7 +332,11 @@ describe("SyncControls", () => {
         async () =>
           new Response(
             JSON.stringify({
-              error: { code: "task_in_progress", message: "the task is already running, or something it needs is held by another run" },
+              error: {
+                code: "task_in_progress",
+                message:
+                  "the task is already running, or something it needs is held by another run",
+              },
             }),
             { status: 409 },
           ),
@@ -442,7 +452,11 @@ describe("SyncControls", () => {
         async (_input: RequestInfo | URL, _init?: RequestInit) =>
           new Response(
             JSON.stringify({
-              error: { code: "task_in_progress", message: "the task is already running, or something it needs is held by another run" },
+              error: {
+                code: "task_in_progress",
+                message:
+                  "the task is already running, or something it needs is held by another run",
+              },
             }),
             { status: 409 },
           ),
