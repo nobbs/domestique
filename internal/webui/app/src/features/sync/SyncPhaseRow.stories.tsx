@@ -59,7 +59,7 @@ export const Running: Story = { args: { running: true } };
 
 export const TogglesTheSchedule: Story = {
   play: async ({ canvas, args }) => {
-    await userEvent.click(canvas.getByRole("switch", { name: "Hourly: Wahoo targets" }));
+    await userEvent.click(canvas.getByRole("switch", { name: "Every six hours: Wahoo targets" }));
 
     await expect(args.onToggle).toHaveBeenCalled();
   },
