@@ -583,5 +583,23 @@ func schemaMigrations() [][]string {
 				updated_at_unix INTEGER NOT NULL
 			)`,
 		},
+		{
+			// What every background activity came to, refusals included. An attempt
+			// that found its work already current is absent, as is one shutdown ended.
+			// The detail is a stable category, never provider text.
+			`CREATE TABLE task_runs (
+				id               INTEGER PRIMARY KEY,
+				task             TEXT    NOT NULL,
+				argument         TEXT    NOT NULL DEFAULT '',
+				started_at_unix  INTEGER NOT NULL,
+				finished_at_unix INTEGER NOT NULL,
+				outcome          TEXT    NOT NULL,
+				detail           TEXT    NOT NULL DEFAULT ''
+			)`,
+			// Both retention and readback ask for one task's attempts newest first, so
+			// that is the order indexed. Picking the latest attempt per argument scans
+			// one task's retained rows instead, which its own bound keeps small.
+			`CREATE INDEX task_runs_task_index ON task_runs(task, id DESC)`,
+		},
 	}
 }

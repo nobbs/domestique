@@ -8,8 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -85,7 +83,9 @@ func TestRunBuildsNothingWhileNoRegionIsConfigured(t *testing.T) {
 		NewCurrent(), state, notifier)
 	require.NoError(t, err, "NewRunner()")
 
-	runner.Run(t.Context())
+	outcome, err := runner.Run(t.Context())
+	require.NoError(t, err, "Run()")
+	assert.Equal(t, NoRegions, outcome, "Run() outcome")
 	assert.True(t, state.builtAt.IsZero(), "a run with no regions recorded a build")
 	assert.Empty(t, notifier.sent, "a run with no regions notified")
 }
@@ -99,17 +99,20 @@ func TestRunNotifiesOnceForARunOfFailures(t *testing.T) {
 	notifier := &fakeNotifier{}
 	runner := testRunner(t, server, NewCurrent(), state, notifier)
 
-	runner.Run(t.Context())
+	_, err := runner.Run(t.Context())
+	require.Error(t, err, "a failed build reported no error")
 	require.Len(t, notifier.sent, 1, "the first failure was not announced")
 	assert.Contains(t, notifier.sent[0], "surface index", "the message does not say what failed")
 	assert.NotContains(t, notifier.sent[0], server.URL, "the message carries an upstream address")
 
-	runner.Run(t.Context())
+	_, err = runner.Run(t.Context())
+	require.Error(t, err, "a failed build reported no error")
 	assert.Len(t, notifier.sent, 1, "a second failure inside the window was announced again")
 
 	// A failure after the window has passed is worth saying again.
 	state.notifiedAt = state.notifiedAt.Add(-failureNotificationSuppression - time.Hour)
-	runner.Run(t.Context())
+	_, err = runner.Run(t.Context())
+	require.Error(t, err, "a failed build reported no error")
 	assert.Len(t, notifier.sent, 2, "a failure after the suppression window stayed silent")
 }
 
@@ -122,8 +125,9 @@ func TestRunStaysSilentWhenTheBuildIsCancelled(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	runner.Run(ctx)
+	_, err := runner.Run(ctx)
 
+	require.Error(t, err, "a cancelled build reported no error")
 	assert.Empty(t, notifier.sent, "a shutdown was announced as a failure")
 }
 
@@ -144,42 +148,14 @@ func TestRunRecordsAnUnchangedBuild(t *testing.T) {
 	state := &fakeState{}
 	notifier := &fakeNotifier{}
 	runner := testRunnerIn(t, directory, server, current, state, notifier)
-	runner.Run(t.Context())
+	outcome, err := runner.Run(t.Context())
 
+	require.NoError(t, err, "Run()")
+	assert.Equal(t, Unchanged, outcome, "Run() outcome")
 	assert.Empty(t, notifier.sent, "an unchanged check was announced as a failure")
 	assert.Equal(t, generation, state.generation, "the recorded generation")
 	assert.False(t, state.builtAt.IsZero(), "the check was not written down")
 	assert.Equal(t, generation, current.Generation(), "the live index was replaced by an unchanged check")
-}
-
-// Two builds at once is the one way this service could exhaust its host: each
-// one reads a region's whole road network.
-func TestRunRefusesToBuildTwiceAtOnce(t *testing.T) {
-	release := make(chan struct{})
-	var concurrent, started sync.WaitGroup
-	var requests atomic.Int64
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
-		if requests.Add(1) == 1 {
-			started.Done()
-			<-release
-		}
-		writer.WriteHeader(http.StatusServiceUnavailable)
-	}))
-	t.Cleanup(server.Close)
-
-	runner := testRunner(t, server, NewCurrent(), &fakeState{}, &fakeNotifier{})
-
-	started.Add(1)
-	concurrent.Go(func() { runner.Run(t.Context()) })
-	started.Wait()
-
-	// The second call returns rather than waiting on the first, and reaches
-	// nothing while it is held.
-	runner.Run(t.Context())
-	assert.Equal(t, int64(1), requests.Load(), "a second build started while the first was still running")
-
-	close(release)
-	concurrent.Wait()
 }
 
 // Swap deletes the file it replaces, so this only ever finds what a crash left
@@ -332,8 +308,10 @@ func TestRunInstallsWhatItBuilds(t *testing.T) {
 	state := &fakeState{}
 	notifier := &fakeNotifier{}
 
-	testRunnerIn(t, directory, server, current, state, notifier).Run(t.Context())
+	outcome, err := testRunnerIn(t, directory, server, current, state, notifier).Run(t.Context())
 
+	require.NoError(t, err, "Run()")
+	assert.Equal(t, Rebuilt, outcome, "Run() outcome")
 	require.Empty(t, notifier.sent, "a successful build was announced as a failure")
 	generation := generationOf(map[string]string{"europe/germany": digest})
 	assert.Equal(t, generation, current.Generation(), "the generation now being served")

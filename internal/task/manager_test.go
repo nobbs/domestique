@@ -2,6 +2,8 @@ package task
 
 import (
 	"context"
+	"errors"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -22,23 +24,32 @@ func TestRegisterRefusesADefinitionItCannotRun(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			assert.Error(t, NewManager().Register(definition), "Register()")
+			manager, _ := newTestManager(t)
+			assert.Error(t, manager.Register(&definition), "Register()")
 		})
 	}
+}
+
+func TestRegisterRefusesNoDefinitionAtAll(t *testing.T) {
+	t.Parallel()
+
+	manager, _ := newTestManager(t)
+	assert.Error(t, manager.Register(nil), "Register(nil)")
 }
 
 func TestRegisterRefusesTheSameNameTwice(t *testing.T) {
 	t.Parallel()
 
-	manager := NewManager()
-	require.NoError(t, manager.Register(Definition{Name: "a", Run: succeeds()}), "first Register()")
-	assert.Error(t, manager.Register(Definition{Name: "a", Run: succeeds()}), "second Register()")
+	manager, _ := newTestManager(t)
+	require.NoError(t, manager.Register(&Definition{Name: "a", Run: succeeds()}), "first Register()")
+	assert.Error(t, manager.Register(&Definition{Name: "a", Run: succeeds()}), "second Register()")
 }
 
 func TestTriggerRefusesATaskNobodyRegistered(t *testing.T) {
 	t.Parallel()
 
-	assert.False(t, NewManager().Trigger(t.Context(), "absent", ""), "Trigger()")
+	manager, _ := newTestManager(t)
+	assert.False(t, manager.Trigger(t.Context(), "absent", ""), "Trigger()")
 }
 
 // A trigger reports whether the work was taken on, and the work outlives the
@@ -47,8 +58,8 @@ func TestTriggerRunsInTheBackgroundAndWaitWaitsForIt(t *testing.T) {
 	t.Parallel()
 
 	runner := blockOn()
-	manager := NewManager()
-	require.NoError(t, manager.Register(Definition{Name: "a", Run: runner}), "Register()")
+	manager, _ := newTestManager(t)
+	require.NoError(t, manager.Register(&Definition{Name: "a", Run: runner}), "Register()")
 
 	require.True(t, manager.Trigger(t.Context(), "a", "slot"), "Trigger()")
 	<-runner.started
@@ -64,9 +75,9 @@ func TestAnExclusiveResourceRefusesAnyOtherTaskWantingIt(t *testing.T) {
 	t.Parallel()
 
 	held := blockOn()
-	manager := NewManager()
-	require.NoError(t, manager.Register(Definition{Name: "holder", Run: held, Resources: exclusive("inventory")}), "Register(holder)")
-	require.NoError(t, manager.Register(Definition{Name: "other", Run: succeeds(), Resources: exclusive("inventory")}), "Register(other)")
+	manager, _ := newTestManager(t)
+	require.NoError(t, manager.Register(&Definition{Name: "holder", Run: held, Resources: exclusive("inventory")}), "Register(holder)")
+	require.NoError(t, manager.Register(&Definition{Name: "other", Run: succeeds(), Resources: exclusive("inventory")}), "Register(other)")
 
 	require.True(t, manager.Trigger(t.Context(), "holder", ""), "Trigger(holder)")
 	<-held.started
@@ -85,10 +96,10 @@ func TestASharedResourceAdmitsReadersAndRefusesAWriter(t *testing.T) {
 	t.Parallel()
 
 	first, second := blockOn(), blockOn()
-	manager := NewManager()
-	require.NoError(t, manager.Register(Definition{Name: "first", Run: first, Resources: shared("inventory")}), "Register(first)")
-	require.NoError(t, manager.Register(Definition{Name: "second", Run: second, Resources: shared("inventory")}), "Register(second)")
-	require.NoError(t, manager.Register(Definition{Name: "writer", Run: succeeds(), Resources: exclusive("inventory")}), "Register(writer)")
+	manager, _ := newTestManager(t)
+	require.NoError(t, manager.Register(&Definition{Name: "first", Run: first, Resources: shared("inventory")}), "Register(first)")
+	require.NoError(t, manager.Register(&Definition{Name: "second", Run: second, Resources: shared("inventory")}), "Register(second)")
+	require.NoError(t, manager.Register(&Definition{Name: "writer", Run: succeeds(), Resources: exclusive("inventory")}), "Register(writer)")
 
 	require.True(t, manager.Trigger(t.Context(), "first", ""), "Trigger(first)")
 	<-first.started
@@ -105,9 +116,9 @@ func TestUnrelatedResourcesDoNotRefuseEachOther(t *testing.T) {
 	t.Parallel()
 
 	held := blockOn()
-	manager := NewManager()
-	require.NoError(t, manager.Register(Definition{Name: "holder", Run: held, Resources: exclusive("inventory")}), "Register(holder)")
-	require.NoError(t, manager.Register(Definition{Name: "other", Run: succeeds(), Resources: exclusive("surface-index")}), "Register(other)")
+	manager, _ := newTestManager(t)
+	require.NoError(t, manager.Register(&Definition{Name: "holder", Run: held, Resources: exclusive("inventory")}), "Register(holder)")
+	require.NoError(t, manager.Register(&Definition{Name: "other", Run: succeeds(), Resources: exclusive("surface-index")}), "Register(other)")
 
 	require.True(t, manager.Trigger(t.Context(), "holder", ""), "Trigger(holder)")
 	<-held.started
@@ -123,8 +134,8 @@ func TestConcurrencyLimitsHowManyAttemptsOfOneTaskRun(t *testing.T) {
 	t.Parallel()
 
 	held := blockOn()
-	manager := NewManager()
-	require.NoError(t, manager.Register(Definition{Name: "a", Run: held, Concurrency: 2}), "Register()")
+	manager, _ := newTestManager(t)
+	require.NoError(t, manager.Register(&Definition{Name: "a", Run: held, Concurrency: 2}), "Register()")
 
 	require.True(t, manager.Trigger(t.Context(), "a", "one"), "first Trigger()")
 	<-held.started
@@ -139,8 +150,8 @@ func TestAnUnsetConcurrencyAdmitsOneAttempt(t *testing.T) {
 	t.Parallel()
 
 	held := blockOn()
-	manager := NewManager()
-	require.NoError(t, manager.Register(Definition{Name: "a", Run: held}), "Register()")
+	manager, _ := newTestManager(t)
+	require.NoError(t, manager.Register(&Definition{Name: "a", Run: held}), "Register()")
 
 	require.True(t, manager.Trigger(t.Context(), "a", ""), "first Trigger()")
 	<-held.started
@@ -158,7 +169,8 @@ func TestACancelledAttemptIsNotAFailure(t *testing.T) {
 	cancel()
 	entry := &registered{definition: Definition{Name: "a", Run: succeeds()}}
 
-	result := NewManager().attempt(ctx, entry, Invocation{Task: "a"})
+	manager, _ := newTestManager(t)
+	result := manager.attempt(ctx, entry, Invocation{Task: "a"})
 	assert.Equal(t, Cancelled, result.Outcome, "outcome")
 }
 
@@ -172,7 +184,8 @@ func TestAttemptReportsWhatTheRunnerReturned(t *testing.T) {
 		}),
 	}}
 
-	result := NewManager().attempt(t.Context(), entry, Invocation{Task: "a"})
+	manager, _ := newTestManager(t)
+	result := manager.attempt(t.Context(), entry, Invocation{Task: "a"})
 	assert.Equal(t, Result{Outcome: Blocked, Detail: "deletion_limit"}, result, "attempt()")
 }
 
@@ -182,11 +195,11 @@ func TestRunHoldsTheFirstRunAndReportsWhenItIsDue(t *testing.T) {
 	t.Parallel()
 
 	runner := countingRunner()
-	manager := NewManager()
+	manager, _ := newTestManager(t)
 	fired := make(chan time.Time)
 	manager.now = reference
 	manager.after = func(time.Duration) <-chan time.Time { return fired }
-	require.NoError(t, manager.Register(Definition{
+	require.NoError(t, manager.Register(&Definition{
 		Name:         "a",
 		Run:          runner,
 		Schedule:     Every(func() time.Duration { return time.Hour }),
@@ -217,7 +230,8 @@ func TestRunHoldsTheFirstRunAndReportsWhenItIsDue(t *testing.T) {
 func TestNextRunAtIsSilentAboutATaskNobodyRegistered(t *testing.T) {
 	t.Parallel()
 
-	_, holding := NewManager().NextRunAt("absent")
+	manager, _ := newTestManager(t)
+	_, holding := manager.NextRunAt("absent")
 	assert.False(t, holding, "NextRunAt()")
 }
 
@@ -227,9 +241,9 @@ func TestRunStopsAScheduleStillWaitingToStart(t *testing.T) {
 	t.Parallel()
 
 	runner := countingRunner()
-	manager := NewManager()
+	manager, _ := newTestManager(t)
 	manager.after = func(time.Duration) <-chan time.Time { return make(chan time.Time) }
-	require.NoError(t, manager.Register(Definition{
+	require.NoError(t, manager.Register(&Definition{
 		Name:         "a",
 		Run:          runner,
 		Schedule:     Every(func() time.Duration { return time.Hour }),
@@ -255,11 +269,11 @@ func TestRunWaitsForEveryScheduledTask(t *testing.T) {
 	t.Parallel()
 
 	first, second := blockOn(), blockOn()
-	manager := NewManager()
+	manager, _ := newTestManager(t)
 	fired := make(chan time.Time)
 	manager.after = func(time.Duration) <-chan time.Time { return fired }
 	for name, runner := range map[string]*blockingRunner{"first": first, "second": second} {
-		require.NoError(t, manager.Register(Definition{
+		require.NoError(t, manager.Register(&Definition{
 			Name:         name,
 			Run:          runner,
 			Schedule:     Every(func() time.Duration { return time.Hour }),
@@ -294,11 +308,11 @@ func TestAScheduledRunIsRefusedWhileItsResourceIsHeld(t *testing.T) {
 	t.Parallel()
 
 	blocker, scheduled := blockOn(), countingRunner()
-	manager := NewManager()
+	manager, _ := newTestManager(t)
 	fired, waits := make(chan time.Time), make(chan time.Duration, 4)
 	manager.after = func(delay time.Duration) <-chan time.Time { waits <- delay; return fired }
-	require.NoError(t, manager.Register(Definition{Name: "blocker", Run: blocker, Resources: exclusive("inventory")}), "Register(blocker)")
-	require.NoError(t, manager.Register(Definition{
+	require.NoError(t, manager.Register(&Definition{Name: "blocker", Run: blocker, Resources: exclusive("inventory")}), "Register(blocker)")
+	require.NoError(t, manager.Register(&Definition{
 		Name:         "scheduled",
 		Run:          scheduled,
 		Resources:    exclusive("inventory"),
@@ -331,10 +345,10 @@ func TestRunKeepsFiringOnTheSchedule(t *testing.T) {
 	t.Parallel()
 
 	runner := countingRunner()
-	manager := NewManager()
+	manager, _ := newTestManager(t)
 	fired, waits := make(chan time.Time), make(chan time.Duration, 4)
 	manager.after = func(delay time.Duration) <-chan time.Time { waits <- delay; return fired }
-	require.NoError(t, manager.Register(Definition{
+	require.NoError(t, manager.Register(&Definition{
 		Name:         "a",
 		Run:          runner,
 		Schedule:     Every(func() time.Duration { return time.Hour }),
@@ -362,13 +376,13 @@ func TestRunStopsWhenTheCadenceIsEmptied(t *testing.T) {
 	t.Parallel()
 
 	runner := countingRunner()
-	manager := NewManager()
+	manager, _ := newTestManager(t)
 	fired, waits := make(chan time.Time), make(chan time.Duration, 4)
 	manager.after = func(delay time.Duration) <-chan time.Time { waits <- delay; return fired }
 
 	var gaps sync.Mutex
 	gap := time.Hour
-	require.NoError(t, manager.Register(Definition{
+	require.NoError(t, manager.Register(&Definition{
 		Name: "a",
 		Run:  runner,
 		Schedule: Every(func() time.Duration {
@@ -501,8 +515,8 @@ func TestTriggerRefusesOnceTheContextIsDone(t *testing.T) {
 	t.Parallel()
 
 	runner := countingRunner()
-	manager := NewManager()
-	require.NoError(t, manager.Register(Definition{Name: "a", Run: runner}), "Register()")
+	manager, _ := newTestManager(t)
+	require.NoError(t, manager.Register(&Definition{Name: "a", Run: runner}), "Register()")
 
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
@@ -512,6 +526,24 @@ func TestTriggerRefusesOnceTheContextIsDone(t *testing.T) {
 	assert.Zero(t, runner.runs(), "an attempt started after cancellation")
 }
 
+// A wait watches the clock and the context at once and may report that it
+// fired even though both were ready, so the guard is asked directly here rather
+// than through a wait that would answer before reaching it.
+func TestScheduledStartsNothingOnceTheContextIsDone(t *testing.T) {
+	t.Parallel()
+
+	runner := countingRunner()
+	manager, store := newTestManager(t)
+	require.NoError(t, manager.Register(&Definition{Name: "a", Run: runner}), "Register()")
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	manager.scheduled(ctx, manager.tasks["a"])
+
+	assert.Zero(t, runner.runs(), "a scheduled attempt started after cancellation")
+	assert.Empty(t, store.recorded(), "a refusal was recorded during shutdown")
+}
+
 // A wait watches the clock and the context at once, and may report that it
 // fired even though both were ready. Starting work on that report would run one
 // more attempt into a shutdown.
@@ -519,10 +551,10 @@ func TestAScheduledRunDoesNotStartOnceTheContextIsDone(t *testing.T) {
 	t.Parallel()
 
 	runner := countingRunner()
-	manager := NewManager()
+	manager, _ := newTestManager(t)
 	fired := make(chan time.Time, 1)
 	manager.after = func(time.Duration) <-chan time.Time { return fired }
-	require.NoError(t, manager.Register(Definition{
+	require.NoError(t, manager.Register(&Definition{
 		Name:         "a",
 		Run:          runner,
 		Schedule:     Every(func() time.Duration { return time.Hour }),
@@ -535,4 +567,203 @@ func TestAScheduledRunDoesNotStartOnceTheContextIsDone(t *testing.T) {
 
 	manager.Run(ctx)
 	assert.Zero(t, runner.runs(), "a scheduled attempt started after cancellation")
+}
+
+func TestNewManagerNeedsSomewhereToRecord(t *testing.T) {
+	t.Parallel()
+
+	_, err := NewManager(nil)
+	assert.Error(t, err, "NewManager()")
+}
+
+func TestAnAttemptIsRecordedWithWhatItCameTo(t *testing.T) {
+	t.Parallel()
+
+	manager, store := newTestManager(t)
+	require.NoError(t, manager.Register(&Definition{
+		Name:   "a",
+		Retain: 12,
+		Run: RunnerFunc(func(context.Context, Invocation) Result {
+			return Result{Outcome: Blocked, Detail: "deletion_limit"}
+		}),
+	}), "Register()")
+
+	require.True(t, manager.Trigger(t.Context(), "a", "slot"), "Trigger()")
+	manager.Wait()
+	assert.Equal(t, []recordedRun{
+		{task: "a", argument: "slot", outcome: string(Blocked), detail: "deletion_limit", retain: 12},
+	}, store.recorded(), "recorded runs")
+}
+
+// An attempt that found its work already current did nothing, and a history of
+// nothing is what the fan-out over a whole library would otherwise write every
+// tick.
+func TestAnAttemptThatFoundItsWorkCurrentIsNotRecorded(t *testing.T) {
+	t.Parallel()
+
+	manager, store := newTestManager(t)
+	require.NoError(t, manager.Register(&Definition{
+		Name: "a",
+		Run:  RunnerFunc(func(context.Context, Invocation) Result { return Result{Outcome: Current} }),
+	}), "Register()")
+
+	require.True(t, manager.Trigger(t.Context(), "a", ""), "Trigger()")
+	manager.Wait()
+	assert.Empty(t, store.recorded(), "an attempt that did nothing was recorded")
+}
+
+// Shutdown cancels the context every write would need, so a cancelled attempt
+// is not recorded rather than failing to be.
+func TestACancelledAttemptIsNotRecorded(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	manager, store := newTestManager(t)
+	entry := &registered{definition: Definition{Name: "a", Run: succeeds()}}
+
+	manager.attempt(ctx, entry, Invocation{Task: "a"})
+	assert.Empty(t, store.recorded(), "a cancelled attempt was recorded")
+}
+
+// A refusal is the answer to why something did not run, and it is only
+// answerable afterwards if it was written down.
+func TestARefusedAttemptIsRecordedAsSkipped(t *testing.T) {
+	t.Parallel()
+
+	held := blockOn()
+	manager, store := newTestManager(t)
+	require.NoError(t, manager.Register(&Definition{Name: "holder", Run: held, Resources: exclusive("inventory")}), "Register(holder)")
+	require.NoError(t, manager.Register(&Definition{Name: "other", Run: succeeds(), Resources: exclusive("inventory")}), "Register(other)")
+
+	require.True(t, manager.Trigger(t.Context(), "holder", ""), "Trigger(holder)")
+	<-held.started
+	require.False(t, manager.Trigger(t.Context(), "other", "slot"), "Trigger(other)")
+
+	assert.Equal(t, []recordedRun{
+		{task: "other", argument: "slot", outcome: string(Skipped), retain: defaultRetainedRuns},
+	}, store.recorded(), "recorded runs")
+
+	close(held.release)
+	manager.Wait()
+}
+
+func TestARefusedScheduledRunIsRecorded(t *testing.T) {
+	t.Parallel()
+
+	blocker := blockOn()
+	manager, store := newTestManager(t)
+	fired, waits := make(chan time.Time), make(chan time.Duration, 4)
+	manager.after = func(delay time.Duration) <-chan time.Time { waits <- delay; return fired }
+	require.NoError(t, manager.Register(&Definition{Name: "blocker", Run: blocker, Resources: exclusive("inventory")}), "Register(blocker)")
+	require.NoError(t, manager.Register(&Definition{
+		Name:         "scheduled",
+		Run:          countingRunner(),
+		Resources:    exclusive("inventory"),
+		Schedule:     Every(func() time.Duration { return time.Hour }),
+		InitialDelay: func() time.Duration { return time.Minute },
+	}), "Register(scheduled)")
+
+	require.True(t, manager.Trigger(t.Context(), "blocker", ""), "Trigger(blocker)")
+	<-blocker.started
+
+	ctx, cancel := context.WithCancel(t.Context())
+	stopped := make(chan struct{})
+	go func() { defer close(stopped); manager.Run(ctx) }()
+	<-waits
+	fired <- reference()
+	<-waits
+
+	assert.Contains(t, store.recorded(),
+		recordedRun{task: "scheduled", outcome: string(Skipped), retain: defaultRetainedRuns},
+		"a refused scheduled run was not recorded")
+
+	close(blocker.release)
+	manager.Wait()
+	cancel()
+	<-stopped
+}
+
+// A clock that steps backwards mid-attempt must not cost the row: the store
+// refuses a run that finished before it started, and losing the history is
+// worse than recording no measurable time.
+func TestAnAttemptSurvivesAClockThatStepsBackwards(t *testing.T) {
+	t.Parallel()
+
+	manager, store := newTestManager(t)
+	readings := []time.Time{reference(), reference().Add(-time.Hour)}
+	manager.now = func() time.Time {
+		at := readings[0]
+		if len(readings) > 1 {
+			readings = readings[1:]
+		}
+
+		return at
+	}
+	entry := &registered{definition: Definition{Name: "a", Run: succeeds()}}
+
+	manager.attempt(t.Context(), entry, Invocation{Task: "a"})
+	assert.Equal(t, []recordedRun{
+		{task: "a", outcome: string(Succeeded), retain: defaultRetainedRuns},
+	}, store.recorded(), "an attempt was lost to a clock that stepped backwards")
+}
+
+// Losing a history row costs a stale line on a status page, which must not be
+// allowed to rewrite what the attempt actually came to.
+func TestAHistoryThatCannotBeWrittenDoesNotChangeTheOutcome(t *testing.T) {
+	t.Parallel()
+
+	manager, store := newTestManager(t)
+	store.err = errors.New("state unavailable")
+	entry := &registered{definition: Definition{Name: "a", Run: succeeds()}}
+
+	result := manager.attempt(t.Context(), entry, Invocation{Task: "a"})
+	assert.Equal(t, Succeeded, result.Outcome, "outcome")
+}
+
+func newTestManager(t *testing.T) (*Manager, *recordingStore) {
+	t.Helper()
+
+	store := &recordingStore{}
+	manager, err := NewManager(store)
+	require.NoError(t, err, "NewManager()")
+
+	return manager, store
+}
+
+type recordedRun struct {
+	task     string
+	argument string
+	outcome  string
+	detail   string
+	retain   int
+}
+
+type recordingStore struct {
+	err   error
+	runs  []recordedRun
+	mutex sync.Mutex
+}
+
+func (s *recordingStore) RecordTaskRun(
+	_ context.Context, task, argument string, startedAt, finishedAt time.Time, outcome, detail string, retain int,
+) error {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	if finishedAt.Before(startedAt) {
+		return errors.New("an attempt finished before it started")
+	}
+	s.runs = append(s.runs, recordedRun{
+		task: task, argument: argument, outcome: outcome, detail: detail, retain: retain,
+	})
+
+	return s.err
+}
+
+func (s *recordingStore) recorded() []recordedRun {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	return slices.Clone(s.runs)
 }

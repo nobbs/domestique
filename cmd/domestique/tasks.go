@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/nobbs/domestique/internal/httpapi"
@@ -28,6 +29,13 @@ const (
 	resourceSurfaceIndex = "surface-index"
 )
 
+// The reasons a surface index rebuild reports. Both are stable words a status
+// page may show; neither carries an upstream URL or a local path.
+const (
+	detailBuild     task.Detail = "build"
+	detailNoRegions task.Detail = "no_regions"
+)
+
 // synchronizer is the synchronization work the task layer starts, and
 // indexBuilder is the surface index rebuild. Both are declared here so the task
 // definitions can be read without a reporter or a builder behind them.
@@ -41,7 +49,23 @@ type synchronizer interface {
 }
 
 type indexBuilder interface {
-	Run(ctx context.Context)
+	Run(ctx context.Context) (osmindex.Outcome, error)
+}
+
+// registerTasks registers every activity this service runs unasked, over the
+// store their attempts are recorded in.
+func registerTasks(store task.Store, definitions []task.Definition) (*task.Manager, error) {
+	manager, err := task.NewManager(store)
+	if err != nil {
+		return nil, fmt.Errorf("creating the task manager: %w", err)
+	}
+	for index := range definitions {
+		if err := manager.Register(&definitions[index]); err != nil {
+			return nil, fmt.Errorf("registering background tasks: %w", err)
+		}
+	}
+
+	return manager, nil
 }
 
 // inventoryTasks are the activities that reconcile the library, in the order a
@@ -116,9 +140,7 @@ func surfaceIndexTask(
 			)
 		},
 		Run: task.RunnerFunc(func(ctx context.Context, _ task.Invocation) task.Result {
-			runner.Run(ctx)
-
-			return task.Result{Outcome: task.Succeeded}
+			return indexResult(runner.Run(ctx))
 		}),
 	}
 }
@@ -136,6 +158,27 @@ func runSync(ctx context.Context, reporter synchronizer, invocation task.Invocat
 	}
 
 	return reporter.RunBoth(ctx)
+}
+
+// indexResult carries a rebuild's outcome into the task layer's vocabulary. A
+// build that found nothing new still reached its upstream, which is why it is
+// unchanged rather than current.
+func indexResult(outcome osmindex.Outcome, err error) task.Result {
+	if err != nil {
+		return task.Result{Outcome: task.Failed, Detail: detailBuild}
+	}
+	switch outcome {
+	case osmindex.Rebuilt:
+		return task.Result{Outcome: task.Succeeded}
+	case osmindex.Unchanged:
+		return task.Result{Outcome: task.Unchanged}
+	case osmindex.NoRegions:
+		return task.Result{Outcome: task.NotReady, Detail: detailNoRegions}
+	}
+
+	// An outcome this binary has not heard of must not read as a success: the
+	// history would say the map moved when nothing here knows whether it did.
+	return task.Result{Outcome: task.Failed, Detail: detailBuild}
 }
 
 // syncResult carries a synchronization outcome into the task layer's vocabulary,

@@ -7,6 +7,10 @@ import (
 	"time"
 )
 
+// defaultRetainedRuns bounds a task's history when it names no bound of its
+// own. An hourly task keeps roughly a week that way.
+const defaultRetainedRuns = 200
+
 // Outcome is the terminal result of one attempt.
 type Outcome string
 
@@ -20,12 +24,24 @@ const (
 	// NotReady means there was nothing it could safely do yet, because a
 	// setting is unset or a target still awaits onboarding.
 	NotReady Outcome = "not_ready"
-	// Skipped means the attempt did no work, because something else held what
-	// it needed.
+	// Skipped means the attempt did no work, because a resource it needs was
+	// held or the task was already running as many attempts as it may.
 	Skipped Outcome = "skipped"
 	// Cancelled means shutdown ended the attempt. It is never a fault.
 	Cancelled Outcome = "cancelled"
+	// Unchanged means the attempt ran, checked, and found nothing new.
+	Unchanged Outcome = "unchanged"
+	// Current means what the attempt covers was already up to date, so it did
+	// nothing at all.
+	Current Outcome = "current"
 )
+
+// recorded reports whether an attempt with this outcome is written down. One
+// that found its work already current did nothing worth remembering, and a
+// cancelled one cannot write during the shutdown that ended it.
+func (o Outcome) recorded() bool {
+	return o != Current && o != Cancelled
+}
 
 // Detail is a stable, safe-to-display reason for an outcome. It never carries
 // provider response text, a route name, or an upstream identifier.
@@ -93,6 +109,9 @@ type Definition struct {
 	// Concurrency is how many attempts of this task may run at once. Zero means
 	// one, so registering a task never introduces parallelism by accident.
 	Concurrency int
+	// Retain is how many of this task's attempts are kept. Zero means the
+	// default; the most recent attempt over each argument is kept regardless.
+	Retain int
 }
 
 // resources is the set this argument needs, empty when the task named none.
@@ -102,6 +121,15 @@ func (d *Definition) resources(argument string) []Resource {
 	}
 
 	return d.Resources(argument)
+}
+
+// retain is how many of this task's attempts are kept.
+func (d *Definition) retain() int {
+	if d.Retain < 1 {
+		return defaultRetainedRuns
+	}
+
+	return d.Retain
 }
 
 // limit is how many attempts may run at once.

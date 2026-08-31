@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -167,7 +168,7 @@ func TestSyncResultTreatsAnUnknownOutcomeAsAFailure(t *testing.T) {
 func TestSurfaceIndexTaskHoldsOnlyItsOwnIndex(t *testing.T) {
 	t.Parallel()
 
-	builder := &fakeIndexBuilder{}
+	builder := &fakeIndexBuilder{outcome: osmindex.Rebuilt}
 	definition := surfaceIndexTask(builder, liveSettings(t), time.Time{})
 
 	assert.Equal(t, taskSurfaceIndex, definition.Name, "name")
@@ -256,9 +257,17 @@ func (s *fakeSynchronizer) ClearTarget(_ context.Context, targetID string) syncs
 
 func (s *fakeSynchronizer) Annotate(context.Context) { s.annotations++ }
 
-type fakeIndexBuilder struct{ builds int }
+type fakeIndexBuilder struct {
+	err     error
+	outcome osmindex.Outcome
+	builds  int
+}
 
-func (b *fakeIndexBuilder) Run(context.Context) { b.builds++ }
+func (b *fakeIndexBuilder) Run(context.Context) (osmindex.Outcome, error) {
+	b.builds++
+
+	return b.outcome, b.err
+}
 
 // The synchronization cadence is fixed by the rate limits it has to live
 // within; only how long the first run waits after start is an operator's.
@@ -411,3 +420,85 @@ type fakeSyncReporter struct {
 
 func (r *fakeSyncReporter) Running() (syncservice.Phase, bool) { return r.phase, r.phase != "" }
 func (r *fakeSyncReporter) SurfaceIncomplete() int             { return r.incomplete }
+
+// A rebuild reports what it came to so the history says whether the map moved,
+// rather than only that something ran.
+func TestIndexResultSeparatesABuildFromAnUpstreamThatHadNothingNew(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		outcome osmindex.Outcome
+		err     error
+		want    task.Result
+	}{
+		"rebuilt": {
+			outcome: osmindex.Rebuilt, want: task.Result{Outcome: task.Succeeded},
+		},
+		"nothing new upstream": {
+			outcome: osmindex.Unchanged, want: task.Result{Outcome: task.Unchanged},
+		},
+		"no region configured": {
+			outcome: osmindex.NoRegions, want: task.Result{Outcome: task.NotReady, Detail: detailNoRegions},
+		},
+		"failed": {
+			err: errors.New("extract unreachable"), want: task.Result{Outcome: task.Failed, Detail: detailBuild},
+		},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, test.want, indexResult(test.outcome, test.err), "indexResult()")
+		})
+	}
+}
+
+func TestRegisterTasksRefusesADefinitionTheLayerCannotRun(t *testing.T) {
+	t.Parallel()
+
+	_, err := registerTasks(&countingStore{}, []task.Definition{{Name: "", Run: nil}})
+	require.Error(t, err, "registerTasks()")
+}
+
+func TestRegisterTasksNeedsSomewhereToRecord(t *testing.T) {
+	t.Parallel()
+
+	_, err := registerTasks(nil, nil)
+	require.Error(t, err, "registerTasks()")
+}
+
+func TestRegisterTasksTakesEveryDefinitionItIsGiven(t *testing.T) {
+	t.Parallel()
+
+	definitions := append(inventoryTasks(&fakeSynchronizer{}, liveSettings(t)),
+		surfaceIndexTask(&fakeIndexBuilder{}, liveSettings(t), time.Time{}))
+
+	manager, err := registerTasks(&countingStore{}, definitions)
+	require.NoError(t, err, "registerTasks()")
+	for _, definition := range definitions {
+		_, known := manager.NextRunAt(definition.Name)
+		assert.False(t, known, definition.Name+" is holding a first run before anything started")
+	}
+}
+
+// An outcome this binary has not heard of must not read as a success: the
+// history would say the map moved when nothing here knows whether it did.
+func TestIndexResultTreatsAnUnknownOutcomeAsAFailure(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t,
+		task.Result{Outcome: task.Failed, Detail: detailBuild},
+		indexResult("invented", nil),
+		"indexResult()",
+	)
+}
+
+type countingStore struct{ runs int }
+
+func (s *countingStore) RecordTaskRun(
+	context.Context, string, string, time.Time, time.Time, string, string, int,
+) error {
+	s.runs++
+
+	return nil
+}

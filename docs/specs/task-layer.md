@@ -29,9 +29,33 @@ succeeded   the attempt did what it set out to do
 failed      a safe failure stopped it
 blocked     a safety gate refused the work
 not_ready   a setting is unset, or a target still awaits onboarding
-skipped     it never started, because a resource was held or the task was busy
+skipped     it did no work: a resource was held, or the task was at its limit
 cancelled   shutdown ended it; never a fault
+unchanged   it ran, checked, and found nothing new
+current     what it covers was already up to date, so it did nothing at all
 ~~~
+
+## Run history
+
+Every attempt is recorded, with two exceptions. One that found its work already
+`current` did nothing worth remembering, and recording every such attempt is
+what a sweep over a whole library would otherwise write on every tick. One that
+shutdown `cancelled` cannot write during the shutdown that ended it.
+
+A refusal is recorded. It is the answer to why something did not run, and that
+question is only answerable afterwards if the refusal was written down.
+
+`unchanged` and `current` are deliberately separate. A rebuild that reached its
+upstream and found the published data identical did work — it checked — and the
+next delay counts from that check. A stage whose fingerprint already matched
+reached nothing.
+
+History is bounded per task, so a task running every few minutes cannot evict
+the history of one running weekly. The most recent attempt over each argument is
+kept whatever its age: it is what that argument last came to.
+
+A history that cannot be written is logged and does not change what the attempt
+came to. Losing a row costs a stale line on a status page.
 
 ## Mutual exclusion
 
@@ -94,6 +118,6 @@ asking for one overrides them, because asking is the point.
 
 ## Out of scope
 
-Durable run history, notification policy, delayed retry after repeated failure,
-and a bound on how long one attempt may take are not part of this layer yet.
-Nothing here queues work, retries an attempt, or persists anything.
+Notification policy, delayed retry after repeated failure, and a bound on how
+long one attempt may take are not part of this layer yet. Nothing here queues
+work or retries an attempt.
