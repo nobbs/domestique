@@ -1,5 +1,6 @@
 /** UI-domain aliases over the OpenAPI-generated models. */
 import {
+  type AlertSetting,
   type BrowserBasemap,
   type Build,
   type WebUIConfig as GeneratedWebUIConfig,
@@ -29,6 +30,7 @@ import {
 } from "./generated";
 
 export type {
+  AlertSetting,
   BrowserBasemap,
   Build as BuildInfo,
   GeoJSONFeature,

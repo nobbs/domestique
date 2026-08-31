@@ -352,6 +352,17 @@ export interface RideModelSettings {
   coefficientsFile: string;
 }
 
+export interface AlertSetting {
+  /** The background activity the alert is about. */
+  task: string;
+  /** The stable reason the alert names. It never carries provider text, a route name, or an upstream identifier. */
+  alert: string;
+  /** Whether this alert is delivered. */
+  enabled: boolean;
+  /** Whether anybody has ruled on it. An alert nobody has ruled on is delivered, which is not the same as one somebody switched on. */
+  decided: boolean;
+}
+
 /**
  * The settings held in the state database rather than in the configuration file, which take effect on the next run or the next request rather than on the next restart.
  */
@@ -365,6 +376,8 @@ export interface Settings {
   /** The libraries a run reads, in the order it reads them. An empty list is a service nobody has configured yet, not an error. */
   sources: SourceSettings[];
   rideModel: RideModelSettings;
+  /** Every alert this service can raise, and whether it is delivered. An alert nobody has ruled on is delivered: a fault nobody has heard of is the one worth hearing about. */
+  alerts: AlertSetting[];
   /** Whether each credential is stored. This is the whole of what any observable surface is told about one: never the value, only that there is one to replace. */
   secretsSet: SettingsSecretsSet;
   /** The settings still to be entered, in the order the page offers them. Everything a run needs is here, and so are the Pushover credentials while notifications are on, which no run needs but every notification does. Empty is a configured service. */
@@ -431,6 +444,17 @@ export interface NotificationsUpdate {
   applicationToken?: string;
   /** The recipient key, on the same terms as the application token. */
   userKey?: string;
+}
+
+export interface AlertDecision {
+  task: string;
+  alert: string;
+  enabled: boolean;
+}
+
+export interface AlertsUpdate {
+  /** What the operator has decided. Deciding is what creates a record, so an alert left out of this list keeps whatever it had. */
+  alerts: AlertDecision[];
 }
 
 export interface BasemapsUpdate {
@@ -3224,6 +3248,140 @@ export const useSetNotifications = <
   TContext
 > => {
   return useMutation(getSetNotificationsMutationOptions(options), queryClient);
+};
+
+export type setAlertsResponse200 = {
+  data: SettingsStoredResponse;
+  status: 200;
+};
+
+export type setAlertsResponse400 = {
+  data: InvalidRequestResponse;
+  status: 400;
+};
+
+export type setAlertsResponse401 = {
+  data: UnauthorizedResponse;
+  status: 401;
+};
+
+export type setAlertsResponse403 = {
+  data: ForbiddenResponse;
+  status: 403;
+};
+
+export type setAlertsResponse503 = {
+  data: UnavailableResponse;
+  status: 503;
+};
+
+export type setAlertsResponseSuccess = setAlertsResponse200 & {
+  headers: Headers;
+};
+export type setAlertsResponseError = (
+  | setAlertsResponse400
+  | setAlertsResponse401
+  | setAlertsResponse403
+  | setAlertsResponse503
+) & {
+  headers: Headers;
+};
+
+export const getSetAlertsUrl = () => {
+  return `/v1/settings/alerts`;
+};
+
+/**
+ * Records which alerts are delivered. Deciding is what creates a record, so an alert left out keeps whatever it had.
+ */
+export const setAlerts = async (
+  alertsUpdate: AlertsUpdate,
+  options?: Parameters<typeof domestiqueRequest>[1],
+): Promise<setAlertsResponseSuccess> => {
+  const getHeaders = (
+    h?: NonNullable<RequestInit["headers"]>,
+  ): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Array.isArray(h)) return Object.fromEntries(h);
+    return h;
+  };
+  return domestiqueRequest<setAlertsResponseSuccess>(getSetAlertsUrl(), {
+    ...options,
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...getHeaders(options?.headers) },
+    body: JSON.stringify(alertsUpdate),
+  });
+};
+
+export const getSetAlertsMutationOptions = <
+  TError = ErrorType<
+    InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof setAlerts>>,
+    TError,
+    SetAlertsMutationVariables,
+    TContext
+  >;
+  request?: SecondParameter<typeof domestiqueRequest>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof setAlerts>>,
+  TError,
+  SetAlertsMutationVariables,
+  TContext
+> => {
+  const mutationKey = ["setAlerts"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof setAlerts>>,
+    SetAlertsMutationVariables
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return setAlerts(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SetAlertsMutationResult = NonNullable<Awaited<ReturnType<typeof setAlerts>>>;
+export type SetAlertsMutationBody = AlertsUpdate;
+export type SetAlertsMutationError = ErrorType<
+  InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
+>;
+export type SetAlertsMutationVariables = { data: AlertsUpdate };
+
+export const useSetAlerts = <
+  TError = ErrorType<
+    InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
+  >,
+  TContext = unknown,
+>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof setAlerts>>,
+      TError,
+      SetAlertsMutationVariables,
+      TContext
+    >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof setAlerts>>,
+  TError,
+  SetAlertsMutationVariables,
+  TContext
+> => {
+  return useMutation(getSetAlertsMutationOptions(options), queryClient);
 };
 
 export type setBasemapsResponse200 = {

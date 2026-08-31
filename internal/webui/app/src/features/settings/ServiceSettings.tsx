@@ -45,6 +45,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  useSetAlerts,
   useSetBasemaps,
   useSetNotifications,
   useSetRideModel,
@@ -56,6 +57,7 @@ import {
 } from "../../api/generated";
 import { settingsQuery, webUIConfigQuery } from "../../api/queries";
 import {
+  type AlertSetting,
   type BrowserBasemap,
   type Settings,
   SOURCE_PROVIDERS,
@@ -326,6 +328,7 @@ export function ServiceSettings() {
         <SourceSettingsSection key={provider} provider={provider} settings={data} />
       ))}
       <Notifications settings={data} />
+      <Alerts settings={data} />
       <Basemaps settings={data} />
       <SurfaceClassification settings={data} />
       <RideModel settings={data} />
@@ -663,6 +666,92 @@ function Notifications({ settings }: { settings: Settings }) {
         value={userKey}
         onChange={setUserKey}
       />
+    </Section>
+  );
+}
+
+/** One alert's place in the matrix, and the key its pending edit is held under. */
+function alertKey(alert: Pick<AlertSetting, "task" | "alert">): string {
+  return `${alert.task}/${alert.alert}`;
+}
+
+/** The reason an alert names, as prose rather than as the stored slug. */
+function alertLabel(alert: AlertSetting): string {
+  return alert.alert.replaceAll("_", " ");
+}
+
+/**
+ * Which of the things the service can announce actually reach anyone.
+ *
+ * The matrix is what this build declares, not what has been decided: an alert
+ * nobody has ruled on is on, so a fault nobody has heard of is still the one
+ * that wakes them. Only the switches this card has moved are sent, because
+ * leaving one out is what keeps it as it was.
+ */
+function Alerts({ settings }: { settings: Settings }) {
+  const invalidate = useSettingsInvalidation();
+  const [draft, setDraft] = useState<Record<string, boolean>>({});
+  const save = useSetAlerts(saving(() => setDraft({}), invalidate));
+
+  const tasks = [...new Set(settings.alerts.map((alert) => alert.task))];
+
+  return (
+    <Section
+      title="Alerts"
+      description="What the service announces when it goes wrong, one switch per reason. Turning the whole channel off above silences every one of these regardless."
+      save={save}
+      edited={Object.keys(draft).length > 0}
+      onSave={() =>
+        save.mutate({
+          data: {
+            alerts: settings.alerts
+              .filter((alert) => alertKey(alert) in draft)
+              .map((alert) => ({
+                task: alert.task,
+                alert: alert.alert,
+                enabled: draft[alertKey(alert)] ?? alert.enabled,
+              })),
+          },
+        })
+      }
+    >
+      {tasks.length === 0 ? (
+        <FieldDescription>This build announces nothing.</FieldDescription>
+      ) : (
+        tasks.map((taskName) => (
+          <FieldSet key={taskName}>
+            <FieldLegend>{taskName}</FieldLegend>
+            <FieldGroup>
+              {settings.alerts
+                .filter((alert) => alert.task === taskName)
+                .map((alert) => (
+                  <Field key={alertKey(alert)} orientation="horizontal">
+                    <FieldContent>
+                      <FieldTitle>{alertLabel(alert)}</FieldTitle>
+                    </FieldContent>
+                    <Switch
+                      checked={draft[alertKey(alert)] ?? alert.enabled}
+                      aria-label={`${taskName} ${alertLabel(alert)}`}
+                      onCheckedChange={(enabled) =>
+                        setDraft((pending) => {
+                          // A switch put back where it started is not a
+                          // decision. Sending it would record one, and an alert
+                          // nobody has ruled on is not the same as one somebody
+                          // switched on.
+                          const { [alertKey(alert)]: _, ...rest } = pending;
+
+                          return enabled === alert.enabled
+                            ? rest
+                            : { ...rest, [alertKey(alert)]: enabled };
+                        })
+                      }
+                    />
+                  </Field>
+                ))}
+            </FieldGroup>
+          </FieldSet>
+        ))
+      )}
     </Section>
   );
 }

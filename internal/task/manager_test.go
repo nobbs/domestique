@@ -1588,3 +1588,32 @@ func TestAnUndeclaredAlertIsReportedEvenWhenNobodyWantsIt(t *testing.T) {
 	assert.Empty(t, notifier.messages(), "an alert nobody wanted was sent")
 	assert.Len(t, manager.undeclared, 1, "the missing declaration was not noticed")
 }
+
+// The matrix an operator is offered is the tasks' own declarations, in
+// registration order, so the page reads the same way every start.
+func TestDeclarationsListEveryAlertInRegistrationOrder(t *testing.T) {
+	t.Parallel()
+
+	manager, _ := newTestManager(t)
+	require.NoError(t, manager.Register(&Definition{
+		Name: "sync",
+		Run:  countingRunner(),
+		Notify: &Notify{
+			Title:    "Sync failed",
+			Alerts:   []Detail{"source", "destination"},
+			Suppress: time.Hour,
+		},
+	}), "Register(sync)")
+	require.NoError(t, manager.Register(&Definition{Name: "quiet", Run: countingRunner()}), "Register(quiet)")
+	require.NoError(t, manager.Register(&Definition{
+		Name:   "surface:index",
+		Run:    countingRunner(),
+		Notify: &Notify{Title: "Index failed", Alerts: []Detail{"build"}, Suppress: time.Hour},
+	}), "Register(surface:index)")
+
+	assert.Equal(t, []Declaration{
+		{Task: "sync", Alert: "source"},
+		{Task: "sync", Alert: "destination"},
+		{Task: "surface:index", Alert: "build"},
+	}, manager.Declarations(), "Declarations()")
+}

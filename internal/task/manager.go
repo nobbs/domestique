@@ -178,6 +178,24 @@ func (m *Manager) NextRunAt(name string) (time.Time, bool) {
 	return entry.startsAt.load()
 }
 
+// Declarations lists every alert the registered tasks can raise, in
+// registration order. It is what an operator is offered a decision about:
+// anything not here is something no task ever announces.
+func (m *Manager) Declarations() []Declaration {
+	declarations := make([]Declaration, 0, len(m.order))
+	for _, name := range m.order {
+		entry := m.tasks[name]
+		if !entry.definition.alerts() {
+			continue
+		}
+		for _, alert := range entry.definition.Notify.Alerts {
+			declarations = append(declarations, Declaration{Task: name, Alert: alert})
+		}
+	}
+
+	return declarations
+}
+
 // Holding reports whether any attempt currently holds the named resource, which
 // is what makes "something is working on this state" answerable from outside.
 func (m *Manager) Holding(resource string) bool {

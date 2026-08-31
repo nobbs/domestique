@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/nobbs/domestique/internal/httpapi"
 	"github.com/nobbs/domestique/internal/sqlite"
 	"github.com/nobbs/domestique/internal/task"
 )
@@ -102,4 +103,58 @@ func TestAScopedDecisionIsNotADecisionAboutTheTask(t *testing.T) {
 
 	_, decided := decisions.Wanted(t.Context(), "sync:target", "destination")
 	assert.False(t, decided, "a decision about one scope was read as a decision about the task")
+}
+
+// The matrix crosses what the tasks declare with what was decided, and an alert
+// nobody has ruled on reads as enabled — which is what the layer does with it.
+func TestAlertMatrixCrossesDeclarationsWithDecisions(t *testing.T) {
+	t.Parallel()
+
+	store := testStore(t, t.TempDir())
+	require.NoError(t, store.SetAlertToggles(t.Context(), []sqlite.AlertToggle{
+		{Task: "sync", Alert: "destination", Enabled: false},
+	}), "SetAlertToggles()")
+	decisions, err := newAlertDecisions(t.Context(), store)
+	require.NoError(t, err, "newAlertDecisions()")
+
+	matrix := alertMatrix{decisions: decisions, declarations: []task.Declaration{
+		{Task: "sync", Alert: "source"},
+		{Task: "sync", Alert: "destination"},
+	}}
+
+	assert.Equal(t, []httpapi.AlertSetting{
+		{Task: "sync", Alert: "source", Enabled: true, Decided: false},
+		{Task: "sync", Alert: "destination", Enabled: false, Decided: true},
+	}, matrix.Catalogue(), "Catalogue()")
+}
+
+func TestAlertMatrixStoresWhatWasDecided(t *testing.T) {
+	t.Parallel()
+
+	store := testStore(t, t.TempDir())
+	decisions, err := newAlertDecisions(t.Context(), store)
+	require.NoError(t, err, "newAlertDecisions()")
+	matrix := alertMatrix{decisions: decisions, declarations: []task.Declaration{{Task: "sync", Alert: "source"}}}
+
+	require.NoError(t, matrix.Decide(t.Context(), []httpapi.AlertDecision{
+		{Task: "sync", Alert: "source", Enabled: false},
+	}), "Decide()")
+
+	assert.Equal(t, []httpapi.AlertSetting{
+		{Task: "sync", Alert: "source", Enabled: false, Decided: true},
+	}, matrix.Catalogue(), "the decision did not reach the matrix")
+}
+
+func TestAlertMatrixReportsAnUnwritableDatabase(t *testing.T) {
+	t.Parallel()
+
+	store := testStore(t, t.TempDir())
+	decisions, err := newAlertDecisions(t.Context(), store)
+	require.NoError(t, err, "newAlertDecisions()")
+	require.NoError(t, store.Close(), "Close()")
+
+	matrix := alertMatrix{decisions: decisions}
+	require.Error(t, matrix.Decide(t.Context(), []httpapi.AlertDecision{
+		{Task: "sync", Alert: "source", Enabled: false},
+	}), "Decide() on a closed database")
 }

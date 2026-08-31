@@ -206,6 +206,7 @@ func run(ctx context.Context) error {
 	handler, err := httpapi.New(
 		&httpapi.Options{
 			Settings:         runtimeSettings,
+			Alerts:           alertMatrix{decisions: alerts, declarations: tasks.Declarations()},
 			BuildRevision:    buildInfo.Revision,
 			BuildImageDigest: buildInfo.ImageDigest,
 			AccessVerifier:   accessVerifier,

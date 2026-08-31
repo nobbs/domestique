@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 
+	"github.com/nobbs/domestique/internal/httpapi"
 	"github.com/nobbs/domestique/internal/sqlite"
 	"github.com/nobbs/domestique/internal/task"
 )
@@ -37,10 +38,16 @@ func newAlertDecisions(ctx context.Context, store *sqlite.Store) (*alertDecision
 func (d *alertDecisions) Wanted(
 	_ context.Context, taskName string, alert task.Detail,
 ) (enabled, decided bool) {
+	return d.lookup(taskName, string(alert))
+}
+
+// lookup answers the same question without a context, for the callers that
+// have none.
+func (d *alertDecisions) lookup(taskName, alert string) (enabled, decided bool) {
 	d.mutex.RLock()
 	defer d.mutex.RUnlock()
 
-	enabled, decided = d.decided[alertKey{task: taskName, alert: string(alert)}]
+	enabled, decided = d.decided[alertKey{task: taskName, alert: alert}]
 
 	return enabled, decided
 }
@@ -78,4 +85,43 @@ func (d *alertDecisions) Set(ctx context.Context, toggles []sqlite.AlertToggle) 
 	// they made: reporting success here would keep sending the alert they just
 	// switched off.
 	return d.reload(ctx)
+}
+
+// alertMatrix is the settings surface over the alerts: what the registered
+// tasks declare crossed with what an operator has decided about each. The
+// declarations are a fact about this build, so they are read once.
+type alertMatrix struct {
+	decisions    *alertDecisions
+	declarations []task.Declaration
+}
+
+// Catalogue lists every alert the registered tasks can raise. An alert nobody
+// has ruled on reads as enabled, which is what the layer does with it.
+func (m alertMatrix) Catalogue() []httpapi.AlertSetting {
+	catalogue := make([]httpapi.AlertSetting, 0, len(m.declarations))
+	for _, declaration := range m.declarations {
+		enabled, decided := m.decisions.lookup(declaration.Task, string(declaration.Alert))
+		catalogue = append(catalogue, httpapi.AlertSetting{
+			Task:    declaration.Task,
+			Alert:   string(declaration.Alert),
+			Enabled: !decided || enabled,
+			Decided: decided,
+		})
+	}
+
+	return catalogue
+}
+
+// Decide records what an operator decided about the alerts they ruled on.
+func (m alertMatrix) Decide(ctx context.Context, decisions []httpapi.AlertDecision) error {
+	toggles := make([]sqlite.AlertToggle, 0, len(decisions))
+	for _, decision := range decisions {
+		toggles = append(toggles, sqlite.AlertToggle{
+			Task:    decision.Task,
+			Alert:   decision.Alert,
+			Enabled: decision.Enabled,
+		})
+	}
+
+	return m.decisions.Set(ctx, toggles)
 }

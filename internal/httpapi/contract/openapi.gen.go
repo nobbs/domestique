@@ -263,6 +263,8 @@ type Settings struct {
 	// Sources The libraries a run reads, in the order it reads them. An empty list is a service nobody has configured yet, not an error.
 	Sources   []SourceSettings  `json:"sources"`
 	RideModel RideModelSettings `json:"rideModel"`
+	// Alerts Every alert this service can raise, and whether it is delivered. An alert nobody has ruled on is delivered: a fault nobody has heard of is the one worth hearing about.
+	Alerts []AlertSetting `json:"alerts"`
 	// SecretsSet Whether each credential is stored. This is the whole of what any observable surface is told about one: never the value, only that there is one to replace.
 	SecretsSet map[string]bool `json:"secretsSet"`
 	// Missing The settings still to be entered, in the order the page offers them. Everything a run needs is here, and so are the Pushover credentials while notifications are on, which no run needs but every notification does. Empty is a configured service.
@@ -296,6 +298,28 @@ type SourceUpdate struct {
 	Email *string `json:"email,omitempty"`
 	// Password The account's password, on the same terms as the email address.
 	Password *string `json:"password,omitempty"`
+}
+
+type AlertSetting struct {
+	// Task The background activity the alert is about.
+	Task string `json:"task"`
+	// Alert The stable reason the alert names. It never carries provider text, a route name, or an upstream identifier.
+	Alert string `json:"alert"`
+	// Enabled Whether this alert is delivered.
+	Enabled bool `json:"enabled"`
+	// Decided Whether anybody has ruled on it. An alert nobody has ruled on is delivered, which is not the same as one somebody switched on.
+	Decided bool `json:"decided"`
+}
+
+type AlertsUpdate struct {
+	// Alerts What the operator has decided. Deciding is what creates a record, so an alert left out of this list keeps whatever it had.
+	Alerts []AlertDecision `json:"alerts"`
+}
+
+type AlertDecision struct {
+	Task    string `json:"task"`
+	Alert   string `json:"alert"`
+	Enabled bool   `json:"enabled"`
 }
 
 type NotificationsUpdate_SuccessPolicy string

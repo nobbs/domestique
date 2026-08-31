@@ -197,6 +197,11 @@ export const runs: SyncRun[] = [
 
 /** What the service is set to, as the settings form reads it back. */
 export const settings: Settings = {
+  alerts: [
+    { task: "sync", alert: "source", enabled: true, decided: false },
+    { task: "sync", alert: "destination", enabled: false, decided: true },
+    { task: "surface:index", alert: "build", enabled: true, decided: false },
+  ],
   sync: {
     allowEmptySourceDeletion: false,
     staleAfterSeconds: 26 * 3600,

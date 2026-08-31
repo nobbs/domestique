@@ -60,6 +60,10 @@ type Options struct {
 	// Read per request, never held: an edit reaches the page and the CSP at once.
 	Settings SettingsState
 
+	// Alerts are what this service can announce and what an operator has decided
+	// about each. Required.
+	Alerts Alerts
+
 	// BuildRevision and BuildImageDigest name the source commit and the image
 	// running it. Both optional, and published only when well-formed.
 	BuildRevision string
@@ -106,6 +110,7 @@ type Handler struct {
 	mux                 *http.ServeMux
 	rideModelValidation func() *RideModelValidation
 	settings            SettingsState
+	alerts              Alerts
 	buildRevision       string
 	buildImageDigest    string
 	browserOrigin       string
@@ -128,6 +133,9 @@ func New(
 	}
 	if options.AccessVerifier == nil {
 		return nil, errors.New("an access verifier is required")
+	}
+	if options.Alerts == nil {
+		return nil, errors.New("the alert matrix is required")
 	}
 	accessEmail, err := accessEmailOf(options.AccessEmail)
 	if err != nil {
@@ -155,6 +163,7 @@ func New(
 		assets:              assets,
 		weather:             weather,
 		settings:            options.Settings,
+		alerts:              options.Alerts,
 		buildRevision:       publishableRevision(options.BuildRevision),
 		buildImageDigest:    publishableDigest(options.BuildImageDigest),
 		browserOrigin:       browserOrigin,
@@ -208,6 +217,7 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("PUT /v1/settings/targets", h.SetTargets)
 	h.mux.HandleFunc("PUT /v1/settings/sources/{provider}", h.SetSource)
 	h.mux.HandleFunc("PUT /v1/settings/notifications", h.SetNotifications)
+	h.mux.HandleFunc("PUT /v1/settings/alerts", h.SetAlerts)
 	h.mux.HandleFunc("PUT /v1/settings/basemaps", h.SetBasemaps)
 	h.mux.HandleFunc("PUT /v1/settings/surface", h.SetSurface)
 	h.mux.HandleFunc("PUT /v1/settings/ridemodel", h.SetRideModel)

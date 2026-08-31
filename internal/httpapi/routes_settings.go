@@ -237,6 +237,71 @@ func (h *Handler) storeSection(
 	h.writeJSON(writer, http.StatusOK, h.settingsView())
 }
 
+// declaredAlert identifies one alert in the matrix. It is what an alert is,
+// rather than what was decided about it, so a lookup cannot turn on a decision.
+type declaredAlert struct {
+	task  string
+	alert string
+}
+
+// SetAlerts records which alerts an operator wants delivered. An alert left out
+// of the request keeps whatever it had: deciding is what creates a record, and
+// an absent decision is not the same as switching one off.
+func (h *Handler) SetAlerts(writer http.ResponseWriter, request *http.Request) {
+	body, ok := settingsBody[openapi.AlertsUpdate](h, writer, request)
+	if !ok {
+		return
+	}
+
+	catalogue := h.alerts.Catalogue()
+	known := make(map[declaredAlert]struct{}, len(catalogue))
+	for _, alert := range catalogue {
+		known[declaredAlert{task: alert.Task, alert: alert.Alert}] = struct{}{}
+	}
+
+	decisions := make([]AlertDecision, 0, len(body.Alerts))
+	for _, decision := range body.Alerts {
+		// Storing a decision about an alert nothing raises would leave a row
+		// nobody ever reads and a switch the page shows as having an effect.
+		if _, declared := known[declaredAlert{task: decision.Task, alert: decision.Alert}]; !declared {
+			// The reason is named without the request's own strings in it: an
+			// error page is observable, and the page only ever sends alerts
+			// from the matrix it was served.
+			h.error(writer, http.StatusBadRequest, "invalid_request",
+				"the request names an alert no task raises")
+
+			return
+		}
+		decisions = append(decisions, AlertDecision{
+			Task:    decision.Task,
+			Alert:   decision.Alert,
+			Enabled: decision.Enabled,
+		})
+	}
+	if err := h.alerts.Decide(request.Context(), decisions); err != nil {
+		h.unavailable(writer)
+
+		return
+	}
+	h.writeJSON(writer, http.StatusOK, h.settingsView())
+}
+
+// alertSettings renders the alert matrix. It is always a list, never null: an
+// operator who has decided nothing yet still has a matrix to read.
+func alertSettings(catalogue []AlertSetting) []openapi.AlertSetting {
+	settings := make([]openapi.AlertSetting, 0, len(catalogue))
+	for _, alert := range catalogue {
+		settings = append(settings, openapi.AlertSetting{
+			Task:    alert.Task,
+			Alert:   alert.Alert,
+			Enabled: alert.Enabled,
+			Decided: alert.Decided,
+		})
+	}
+
+	return settings
+}
+
 // submitted collects the credentials an edit actually carried. One left out is
 // absent here rather than empty, because absent keeps what is stored and empty
 // removes it.
@@ -295,6 +360,7 @@ func (h *Handler) settingsView() openapi.Settings {
 			Regions:                append([]string{}, values.Surface.Regions...),
 			RebuildIntervalSeconds: int(values.Surface.RebuildInterval / time.Second),
 		},
+		Alerts:     alertSettings(h.alerts.Catalogue()),
 		SecretsSet: make(map[string]bool, len(runtimeconfig.SecretNames())),
 		Missing:    append([]string{}, h.settings.Missing()...),
 	}
