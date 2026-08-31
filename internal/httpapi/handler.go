@@ -197,7 +197,6 @@ func New(
 func (h *Handler) routes() {
 	h.mux.HandleFunc("GET /healthz", h.GetHealth)
 	h.mux.HandleFunc("GET /v1/status", h.GetStatus)
-	h.mux.HandleFunc("PUT /v1/sync/schedule", h.SetSyncSchedule)
 	h.mux.HandleFunc("GET /v1/sync/runs", h.GetSyncRuns)
 	h.mux.HandleFunc("GET /v1/routes", h.GetRoutes)
 	h.mux.HandleFunc("GET /v1/providers/{provider}/sourceRoutes/{sourceRouteId}/routes/{stageOrder}", h.GetRoute)
@@ -223,6 +222,7 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("PUT /v1/settings/alerts", h.SetAlerts)
 	h.mux.HandleFunc("PUT /v1/settings/timezone", h.SetTimezone)
 	h.mux.HandleFunc("GET /v1/tasks", h.ListTasks)
+	h.mux.HandleFunc("PUT /v1/tasks/{name}/schedule", h.SetTaskSchedule)
 	h.mux.HandleFunc("POST /v1/tasks/{name}/run", h.RunTask)
 	h.mux.HandleFunc("POST /v1/tasks/{name}/run/{argument}", h.RunTask)
 	h.mux.HandleFunc("PUT /v1/settings/basemaps", h.SetBasemaps)

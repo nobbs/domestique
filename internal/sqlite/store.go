@@ -640,5 +640,21 @@ func schemaMigrations() [][]string {
 			// route it holds is in, which is what the forecast was already asked in.
 			`ALTER TABLE runtime_settings ADD COLUMN timezone TEXT NOT NULL DEFAULT 'Europe/Berlin'`,
 		},
+		{
+			// Which tasks the schedule may start. A row exists only once somebody
+			// has switched one off or back on; what is absent is a task nobody has
+			// said anything about, which runs.
+			`CREATE TABLE task_schedule (
+				task            TEXT    NOT NULL PRIMARY KEY,
+				enabled         INTEGER NOT NULL CHECK (enabled IN (0, 1)),
+				updated_at_unix INTEGER NOT NULL
+			)`,
+			// The two switches it replaces, carried over by name so an operator who
+			// had turned a half off does not find it running again after a deploy.
+			`INSERT INTO task_schedule (task, enabled, updated_at_unix)
+				SELECT 'sync:source', source_enabled, 0 FROM sync_schedule WHERE id = 1`,
+			`INSERT INTO task_schedule (task, enabled, updated_at_unix)
+				SELECT 'sync:target', targets_enabled, 0 FROM sync_schedule WHERE id = 1`,
+		},
 	}
 }

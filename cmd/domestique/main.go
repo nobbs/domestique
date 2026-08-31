@@ -156,10 +156,14 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("reading alert decisions: %w", err)
 	}
+	switches, err := newTaskSwitches(ctx, store)
+	if err != nil {
+		return fmt.Errorf("reading the task schedule: %w", err)
+	}
 	tasks, err := registerTasks(
 		store, notifier, alerts,
 		func() bool { return runtimeSettings.Values().Notifications.Enabled },
-		append(inventoryTasks(reporter, runtimeSettings), indexTask),
+		append(inventoryTasks(reporter, runtimeSettings, switches.enabledFor), indexTask),
 	)
 	if err != nil {
 		return err
@@ -200,7 +204,7 @@ func run(ctx context.Context) error {
 		&httpapi.Options{
 			Settings:         runtimeSettings,
 			Alerts:           alertMatrix{decisions: alerts, declarations: tasks.Declarations()},
-			Tasks:            taskSurface{ctx: runCtx, manager: tasks},
+			Tasks:            taskSurface{ctx: runCtx, manager: tasks, switches: switches},
 			BuildRevision:    buildInfo.Revision,
 			BuildImageDigest: buildInfo.ImageDigest,
 			AccessVerifier:   accessVerifier,

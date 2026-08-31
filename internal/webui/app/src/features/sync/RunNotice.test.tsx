@@ -44,7 +44,6 @@ function status(phases: Status["sync"]["phases"] = {}): Status {
       created: 0,
       updated: 0,
       deleted: 0,
-      schedule: { source: true, targets: true },
       phases,
       surface: { classified: 0, total: 0, incomplete: 0 },
     },
@@ -192,7 +191,7 @@ describe("RunNotice", () => {
 
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
-        "/v1/tasks/sync/run/source",
+        "/v1/tasks/sync%3Asource/run",
         expect.objectContaining({ method: "POST" }),
       ),
     );

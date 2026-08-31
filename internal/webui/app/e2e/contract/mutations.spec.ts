@@ -34,7 +34,7 @@ test("changing the schedule is stored and read back", async ({ bundlePage: page,
   // The service answers with what it stored, and the client parses that answer
   // rather than assuming the request went through.
   await expect(switchControl).toBeChecked({ checked: !wasScheduled });
-  const put = callsTo(apiCalls, "PUT", "/v1/sync/schedule");
+  const put = callsTo(apiCalls, "PUT", "/v1/tasks/sync%3Asource/schedule");
   expect(put.map((call) => call.status)).toEqual([200]);
 
   // A reload proves the change reached SQLite instead of only the page's cache.

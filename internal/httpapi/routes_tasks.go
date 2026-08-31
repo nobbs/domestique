@@ -7,11 +7,12 @@ import (
 	openapi "github.com/nobbs/domestique/internal/httpapi/contract"
 )
 
-// TaskSync is the registered name of one whole synchronization. It is named
-// here because a task name is part of what this surface publishes: the page
-// asks for a task rather than for a route, and so does the reprocess route in
-// routes_library.go, which is a synchronization asked for on a stage's behalf.
-const TaskSync = "sync"
+// TaskSyncSource is the registered name of the task that reads the source
+// libraries. It is named here because a task name is part of what this surface
+// publishes: the page asks for a task rather than for a route, and so does the
+// reprocess route in routes_library.go, which is a read asked for on a stage's
+// behalf — what the targets hold follows from it.
+const TaskSyncSource = "sync:source"
 
 const (
 	// codeTaskInProgress is what a refused attempt is told.
@@ -35,17 +36,53 @@ func (h *Handler) accepted(writer http.ResponseWriter, start func() bool) {
 
 // ListTasks reports every background activity this build registers.
 func (h *Handler) ListTasks(writer http.ResponseWriter, _ *http.Request) {
+	h.writeJSON(writer, http.StatusOK, h.taskList())
+}
+
+// taskList is what this build registers, as the surface reports it.
+func (h *Handler) taskList() openapi.TaskList {
 	registered := h.tasks.Registered()
 	tasks := make([]openapi.Task, 0, len(registered))
 	for _, task := range registered {
 		tasks = append(tasks, openapi.Task{
 			Name:      task.Name,
 			Scheduled: task.Scheduled,
+			Enabled:   task.Enabled,
 			Running:   task.Running,
 			NextRunAt: optionalTime(task.NextRunAt),
 		})
 	}
-	h.writeJSON(writer, http.StatusOK, openapi.TaskList{Tasks: tasks})
+	return openapi.TaskList{Tasks: tasks}
+}
+
+// SetTaskSchedule sets whether the schedule may start one task, and answers
+// with the list as it now stands.
+func (h *Handler) SetTaskSchedule(writer http.ResponseWriter, request *http.Request) {
+	name := request.PathValue("name")
+	if !h.registers(name) {
+		h.notFound(writer)
+
+		return
+	}
+	body, ok := settingsBody[openapi.TaskScheduleUpdate](h, writer, request)
+	if !ok {
+		return
+	}
+	if err := h.tasks.Schedule(request.Context(), name, body.Enabled); err != nil {
+		h.unavailable(writer)
+
+		return
+	}
+	h.writeJSON(writer, http.StatusOK, h.taskList())
+}
+
+// registers reports whether this build has a task of that name. A name it does
+// not is refused, so a page built against another build asks for nothing that
+// silently does nothing.
+func (h *Handler) registers(name string) bool {
+	return slices.ContainsFunc(h.tasks.Registered(), func(task RegisteredTask) bool {
+		return task.Name == name
+	})
 }
 
 // RunTask starts one attempt of a named task, over an argument when the path
@@ -53,7 +90,7 @@ func (h *Handler) ListTasks(writer http.ResponseWriter, _ *http.Request) {
 // built against another build asks for nothing that silently does nothing.
 func (h *Handler) RunTask(writer http.ResponseWriter, request *http.Request) {
 	name := request.PathValue("name")
-	if !slices.ContainsFunc(h.tasks.Registered(), func(task RegisteredTask) bool { return task.Name == name }) {
+	if !h.registers(name) {
 		h.notFound(writer)
 
 		return

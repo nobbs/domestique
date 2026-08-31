@@ -1,6 +1,10 @@
 package main
 
-import "github.com/nobbs/domestique/internal/httpapi"
+import (
+	"context"
+
+	"github.com/nobbs/domestique/internal/httpapi"
+)
 
 // demoTasks is the task list a demo shows. The shipped binary builds one from a
 // running task layer; a demo has no layer, so this answers with the names an
@@ -14,15 +18,20 @@ var demoTaskNames = []string{ //nolint:gochecknoglobals // a fixture for develop
 }
 
 // Registered lists the demo's tasks, none of them scheduled: a demo has no
-// clock worth showing and nothing that runs unasked.
+// clock worth showing and nothing that runs unasked. All of them read as
+// enabled, which is what a task nobody has ruled on is.
 func (demoTasks) Registered() []httpapi.RegisteredTask {
 	tasks := make([]httpapi.RegisteredTask, 0, len(demoTaskNames))
 	for _, name := range demoTaskNames {
-		tasks = append(tasks, httpapi.RegisteredTask{Name: name})
+		tasks = append(tasks, httpapi.RegisteredTask{Name: name, Enabled: true})
 	}
 
 	return tasks
 }
+
+// Schedule accepts a switch and forgets it: a demo schedules nothing, so there
+// is nothing for one to govern.
+func (demoTasks) Schedule(context.Context, string, bool) error { return nil }
 
 // Run reseeds for the synchronization tasks and accepts the rest without work:
 // a demo has no upstream to reach, no target to write, and no map to index.

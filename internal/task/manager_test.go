@@ -2078,3 +2078,45 @@ func TestBackoffDoublesToItsCap(t *testing.T) {
 	}
 	assert.Zero(t, Backoff{}.delay(3), "a task with no backoff waited")
 }
+
+// A switched-off task waits out its tick rather than leaving its loop, so
+// switching it back on needs no restart.
+func TestASwitchedOffTaskSkipsItsTickAndResumes(t *testing.T) {
+	t.Parallel()
+
+	runner := countingRunner()
+	manager, store := newTestManager(t)
+	on := false
+	entry := &registered{definition: Definition{
+		Name:    "sync",
+		Run:     runner,
+		Enabled: func() bool { return on },
+	}}
+
+	manager.scheduled(t.Context(), entry)
+	assert.Zero(t, runner.runs(), "a switched-off task ran")
+	assert.Empty(t, store.recorded(), "a switched-off tick was recorded")
+
+	on = true
+	manager.scheduled(t.Context(), entry)
+	assert.Equal(t, 1, runner.runs(), "switching a task back on did not resume it")
+}
+
+// The switch governs unattended runs only. An operator asking has already
+// decided, which is also how they run something they keep switched off.
+func TestASwitchedOffTaskStillRunsWhenAskedFor(t *testing.T) {
+	t.Parallel()
+
+	runner := countingRunner()
+	manager, _ := newTestManager(t)
+	require.NoError(t, manager.Register(&Definition{
+		Name:    "sync",
+		Run:     runner,
+		Enabled: func() bool { return false },
+	}), "Register()")
+
+	require.True(t, manager.Trigger(t.Context(), "sync", ""), "Trigger()")
+	manager.Wait()
+
+	assert.Equal(t, 1, runner.runs(), "a switched-off task refused the operator who asked")
+}

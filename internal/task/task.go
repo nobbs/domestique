@@ -244,6 +244,11 @@ type Definition struct {
 	// StaleAfter is how long this task may go without succeeding before it is
 	// announced as stale. Nil is a task nothing is expected of on a clock.
 	StaleAfter func() time.Duration
+	// Enabled is whether the schedule may start this task, read at each tick so
+	// an operator switching it off pauses the schedule rather than ending it,
+	// and switching it back on needs no restart. Nil is always. It governs
+	// unattended runs only: an operator asking has already decided.
+	Enabled func() bool
 	// Notify is what an alert about this task says and how often it may say it.
 	// Nil is a task nothing is announced about.
 	Notify *Notify
@@ -281,6 +286,11 @@ func (d *Definition) staleAfter() time.Duration {
 	}
 
 	return d.StaleAfter()
+}
+
+// enabled reports whether the schedule may start this task now.
+func (d *Definition) enabled() bool {
+	return d.Enabled == nil || d.Enabled()
 }
 
 // resources is the set this argument needs, empty when the task named none.

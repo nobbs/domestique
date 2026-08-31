@@ -134,7 +134,7 @@ func (h *Handler) ReprocessRoute(writer http.ResponseWriter, request *http.Reque
 	}
 	// Both halves, in order: the stage is read and derived again, then written
 	// to every target. Asking for only one would leave the request half met.
-	h.tasks.Run(TaskSync, "")
+	h.tasks.Run(TaskSyncSource, "")
 	h.writeJSON(writer, http.StatusAccepted, openapi.Accepted{Status: "accepted"})
 }
 

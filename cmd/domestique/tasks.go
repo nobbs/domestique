@@ -14,7 +14,7 @@ import (
 
 // The background activities this service runs.
 const (
-	taskSync            = httpapi.TaskSync
+	taskSyncSource      = httpapi.TaskSyncSource
 	taskSyncTarget      = "sync:target"
 	taskSyncClear       = "sync:clear"
 	taskSurfaceAnnotate = "surface:annotate"
@@ -46,9 +46,15 @@ const (
 // task that has given up.
 const (
 	syncBackoffBase     = 30 * time.Second
+	targetBackoffBase   = time.Hour
 	annotateBackoffBase = 5 * time.Minute
 	backoffCap          = 6 * time.Hour
 )
+
+// targetBackstopInterval is how often the targets are reconciled unasked. A
+// source read that stored something asks for them at once, so this catches only
+// the slot that failed alone and the operator who has the read switched off.
+const targetBackstopInterval = 6 * time.Hour
 
 // The reasons a surface index rebuild reports. Both are stable words a status
 // page may show; neither carries an upstream URL or a local path.
@@ -61,8 +67,6 @@ const (
 // indexBuilder is the surface index rebuild. Both are declared here so the task
 // definitions can be read without a reporter or a builder behind them.
 type synchronizer interface {
-	Run(ctx context.Context) syncservice.Result
-	RunBoth(ctx context.Context) syncservice.Result
 	RunPhase(ctx context.Context, phase syncservice.Phase) syncservice.Result
 	ReconcileTarget(ctx context.Context, targetID string) syncservice.Result
 	ClearTarget(ctx context.Context, targetID string) syncservice.Result
@@ -116,38 +120,56 @@ func syncAlerts() *task.Notify {
 
 // inventoryTasks are the activities that reconcile the library, in the order a
 // status page reads best.
-func inventoryTasks(reporter synchronizer, settings *runtimeconfig.Current) []task.Definition {
+func inventoryTasks(
+	reporter synchronizer, settings *runtimeconfig.Current, enabled func(string) func() bool,
+) []task.Definition {
 	inventory := func(string) []task.Resource {
 		return []task.Resource{{Name: resourceInventory, Exclusive: true}}
 	}
 
 	return []task.Definition{
 		{
-			Name:      taskSync,
+			Name:      taskSyncSource,
 			Resources: inventory,
 			Notify:    syncAlerts(),
 			Schedule:  task.Every(func() time.Duration { return syncservice.Interval }),
 			InitialDelay: func() time.Duration {
 				return settings.Values().Sync.InitialDelay
 			},
-			// Only the scheduled pass is expected on a clock. A slot an operator
-			// reconciles by hand is stale the moment they stop asking, which is
-			// not a fault worth waking anyone for.
+			Enabled: enabled(taskSyncSource),
+			// Only the scheduled read is expected on a clock. What the targets
+			// hold follows from it, and a slot an operator reconciles by hand is
+			// stale the moment they stop asking.
 			StaleAfter: func() time.Duration {
 				return settings.Values().Sync.StaleAfter
 			},
 			Backoff: task.Backoff{Base: syncBackoffBase, Cap: backoffCap},
-			Run: task.RunnerFunc(func(ctx context.Context, invocation task.Invocation) task.Result {
-				result := runSync(ctx, reporter, invocation)
+			Run: task.RunnerFunc(func(ctx context.Context, _ task.Invocation) task.Result {
+				result := reporter.RunPhase(ctx, syncservice.PhaseSource)
 
-				return syncResult(&result)
+				return sourceResult(&result)
 			}),
 		},
 		{
 			Name:      taskSyncTarget,
 			Resources: inventory,
 			Notify:    syncAlerts(),
+			// A backstop rather than the timely path: a read that stored
+			// something asks for this straight away. What the schedule is for is
+			// the slot that failed on its own, and the operator who has the
+			// source read switched off entirely.
+			Schedule:     task.Every(func() time.Duration { return targetBackstopInterval }),
+			InitialDelay: func() time.Duration { return targetBackstopInterval },
+			Enabled:      enabled(taskSyncTarget),
+			Backoff:      task.Backoff{Base: targetBackoffBase, Cap: backoffCap},
 			Run: task.RunnerFunc(func(ctx context.Context, invocation task.Invocation) task.Result {
+				// No argument is every configured slot, which is what the schedule
+				// and a source read both ask for. One names the slot alone.
+				if invocation.Argument == "" {
+					result := reporter.RunPhase(ctx, syncservice.PhaseTargets)
+
+					return syncResult(&result)
+				}
 				result := reporter.ReconcileTarget(ctx, invocation.Argument)
 
 				return syncResult(&result)
@@ -207,19 +229,16 @@ func surfaceIndexTask(
 	}
 }
 
-// runSync performs what was asked of the synchronization task. A scheduled run
-// honours the schedule switches; an operator asking for one overrides them,
-// because asking is the point.
-func runSync(ctx context.Context, reporter synchronizer, invocation task.Invocation) syncservice.Result {
-	if invocation.Trigger == task.TriggerSchedule {
-		return reporter.Run(ctx)
-	}
-	switch phase := syncservice.Phase(invocation.Argument); phase {
-	case syncservice.PhaseSource, syncservice.PhaseTargets:
-		return reporter.RunPhase(ctx, phase)
+// sourceResult is what a source read came to, and what follows from it. A read
+// that stored a library asks for the targets to be written and for the ground
+// under the stages to be read again; neither notices on its own.
+func sourceResult(result *syncservice.Result) task.Result {
+	outcome := syncResult(result)
+	if result.SourceStored {
+		outcome.Next = []task.Link{{Task: taskSyncTarget}, {Task: taskSurfaceAnnotate}}
 	}
 
-	return reporter.RunBoth(ctx)
+	return outcome
 }
 
 // indexResult carries a rebuild's outcome into the task layer's vocabulary. A
@@ -251,12 +270,6 @@ func indexResult(outcome osmindex.Outcome, err error) task.Result {
 // syncResult carries a synchronization outcome into the task layer's vocabulary,
 // the failure category travelling as the detail.
 func syncResult(result *syncservice.Result) task.Result {
-	var next []task.Link
-	if result.SourceStored {
-		// An inventory that has just been replaced is worth reading the ground
-		// under again, whether or not any stage in it changed.
-		next = []task.Link{{Task: taskSurfaceAnnotate}}
-	}
 	outcome := task.Failed
 	switch result.Outcome {
 	case syncservice.OutcomeSucceeded:
@@ -271,32 +284,48 @@ func syncResult(result *syncservice.Result) task.Result {
 		outcome = task.Failed
 	}
 
-	return task.Result{Outcome: outcome, Detail: task.Detail(result.Failure), Next: next}
+	return task.Result{Outcome: outcome, Detail: task.Detail(result.Failure)}
 }
 
-// taskSurface adapts the manager to what the HTTP surface reads and starts. It
-// carries the service's own context rather than taking each request's: a
-// request context is cancelled the moment its handler returns, which would end
-// every attempt started over HTTP just after it was accepted.
+// taskSurface adapts the manager to what the HTTP surface reads, starts and
+// switches. It carries the service's own context rather than taking each
+// request's: a request context is cancelled the moment its handler returns,
+// which would end every attempt started over HTTP just after it was accepted.
 type taskSurface struct {
-	ctx     context.Context
-	manager *task.Manager
+	ctx      context.Context
+	manager  *task.Manager
+	switches *taskSwitches
 }
 
 // Registered lists what this build registers, in registration order.
 func (s taskSurface) Registered() []httpapi.RegisteredTask {
+	decided := s.switches.snapshot()
 	registered := s.manager.Tasks()
 	tasks := make([]httpapi.RegisteredTask, 0, len(registered))
 	for _, entry := range registered {
 		tasks = append(tasks, httpapi.RegisteredTask{
 			Name:      entry.Name,
 			Scheduled: entry.Scheduled,
+			Enabled:   enabledOf(decided, entry.Name),
 			Running:   entry.Running,
 			NextRunAt: entry.NextRunAt,
 		})
 	}
 
 	return tasks
+}
+
+// Schedule records whether the schedule may start one task.
+func (s taskSurface) Schedule(ctx context.Context, name string, enabled bool) error {
+	return s.switches.Set(ctx, name, enabled)
+}
+
+// enabledOf is what has been decided about one task, defaulting to on: a task
+// nobody has ruled on runs.
+func enabledOf(decided map[string]bool, name string) bool {
+	enabled, ruled := decided[name]
+
+	return !ruled || enabled
 }
 
 // Run starts one attempt, on exactly the terms the schedule starts one, and
@@ -332,7 +361,7 @@ func syncSurface(
 		// and the task layer knows whether anything holds the inventory at all.
 		ActivityFunc: func() httpapi.SyncActivityState {
 			phase, _ := reporter.Running()
-			startsAt, _ := tasks.NextRunAt(taskSync)
+			startsAt, _ := tasks.NextRunAt(taskSyncSource)
 
 			return httpapi.SyncActivityState{
 				StartsAt: startsAt,

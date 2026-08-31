@@ -11,6 +11,7 @@ import {
   getGetSyncRunsInfiniteQueryKey,
   getGetWeatherQueryOptions,
   getGetWebUIConfigQueryOptions,
+  getListTasksQueryOptions,
   useGetSyncRunsInfinite,
 } from "./generated";
 import {
@@ -21,6 +22,7 @@ import {
   type Settings,
   type Status,
   type SyncRunPage,
+  type TaskList,
   type WeatherForecast,
   webUIConfig,
 } from "./types";
@@ -62,6 +64,16 @@ export const routeGeometryQuery = (provider: string, sourceRouteId: number, stag
       select: (response) => routeGeometry(payload<GeoJSONFeature>(response) as GeoJSONFeature),
       staleTime: 5 * 60 * 1000,
     },
+  });
+
+/**
+ * What this build registers, and whether each runs unasked. It changes only
+ * when an operator edits it or a run starts, so it is read on demand rather
+ * than polled.
+ */
+export const tasksQuery = () =>
+  getListTasksQueryOptions({
+    query: { select: (response) => payload<TaskList>(response) },
   });
 
 export const statusQuery = () =>

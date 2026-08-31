@@ -149,7 +149,6 @@ export const status: Status = {
     created: 0,
     updated: 2,
     deleted: 0,
-    schedule: { source: true, targets: true },
     phases: {
       source: {
         lastCompletedAt: "2026-08-18T06:15:00Z",

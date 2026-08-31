@@ -2,8 +2,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { statusQuery, webUIConfigQuery } from "../../api/queries";
-import type { Status, WebUIConfig } from "../../api/types";
+import { statusQuery, tasksQuery, webUIConfigQuery } from "../../api/queries";
+import type { Status, TaskList, WebUIConfig } from "../../api/types";
 import { activeSummary, idleSummary, SyncControls } from "./SyncControls";
 
 function status(overrides: Partial<Status["sync"]> = {}): Status {
@@ -17,7 +17,6 @@ function status(overrides: Partial<Status["sync"]> = {}): Status {
       created: 0,
       updated: 0,
       deleted: 0,
-      schedule: { source: true, targets: true },
       phases: {},
       surface: { classified: 0, total: 0, incomplete: 0 },
       ...overrides,
@@ -37,7 +36,22 @@ function config(sourceBaseUrls: Record<string, string> = { veloplanner: "https:/
   return value;
 }
 
-function renderControls(value: Status = status(), configValue: WebUIConfig = config()) {
+// tasks is the registered list a test seeds, with each half's switch where the
+// page now reads it.
+function tasks(source = true, targets = true): TaskList {
+  return {
+    tasks: [
+      { name: "sync:source", scheduled: true, enabled: source, running: 0 },
+      { name: "sync:target", scheduled: true, enabled: targets, running: 0 },
+    ],
+  };
+}
+
+function renderControls(
+  value: Status = status(),
+  configValue: WebUIConfig = config(),
+  taskList: TaskList = tasks(),
+) {
   // The seeded status and config are the whole fixture: without this the
   // queries refetch on mount and every assertion below would have to step
   // over a /v1/status or /v1/webui/config call.
@@ -49,6 +63,7 @@ function renderControls(value: Status = status(), configValue: WebUIConfig = con
   });
   client.setQueryData(statusQuery().queryKey, value);
   client.setQueryData(webUIConfigQuery().queryKey, configValue);
+  client.setQueryData(tasksQuery().queryKey, taskList);
 
   return render(
     <QueryClientProvider client={client}>
@@ -153,26 +168,25 @@ describe("SyncControls", () => {
   it("sends both switches when one is changed", async () => {
     const fetchMock = vi.fn(
       async (input: RequestInfo | URL, _init?: RequestInit) =>
-        new Response(
-          JSON.stringify(
-            input === "/v1/status"
-              ? status({ schedule: { source: true, targets: false } })
-              : { source: true, targets: false },
-          ),
-        ),
+        new Response(JSON.stringify(input === "/v1/status" ? status() : tasks(true, false))),
     );
     vi.stubGlobal("fetch", fetchMock);
-    renderControls(status({ schedule: { source: true, targets: true } }));
+    renderControls(status(), config(), tasks(true, true));
 
     await userEvent.click(screen.getByRole("switch", { name: "Hourly: Write to Wahoo" }));
 
     await waitFor(() =>
-      expect(fetchMock.mock.calls.some((call) => call[0] === "/v1/sync/schedule")).toBe(true),
+      expect(
+        fetchMock.mock.calls.some((call) => call[0] === "/v1/tasks/sync%3Atarget/schedule"),
+      ).toBe(true),
     );
-    const scheduleCall = fetchMock.mock.calls.find((call) => call[0] === "/v1/sync/schedule");
+    const scheduleCall = fetchMock.mock.calls.find(
+      (call) => call[0] === "/v1/tasks/sync%3Atarget/schedule",
+    );
+    // One switch travels alone: nothing here carries a value for the other half.
     expect(scheduleCall?.[1]).toMatchObject({
       method: "PUT",
-      body: JSON.stringify({ source: true, targets: false }),
+      body: JSON.stringify({ enabled: false }),
     });
   });
 
@@ -181,30 +195,24 @@ describe("SyncControls", () => {
   it("still runs a half whose schedule is switched off", async () => {
     const fetchMock = vi.fn(
       async (input: RequestInfo | URL, _init?: RequestInit) =>
-        new Response(
-          JSON.stringify(
-            input === "/v1/status"
-              ? status({ schedule: { source: false, targets: false } })
-              : { status: "accepted" },
-          ),
-        ),
+        new Response(JSON.stringify(input === "/v1/status" ? status() : { status: "accepted" })),
     );
     vi.stubGlobal("fetch", fetchMock);
-    renderControls(status({ schedule: { source: false, targets: false } }));
+    renderControls(status(), config(), tasks(false, false));
 
     const sourceButton = screen.getByRole("button", { name: /Read from VeloPlanner/ });
     expect(sourceButton).toBeEnabled();
     await userEvent.click(sourceButton);
 
     await waitFor(() =>
-      expect(fetchMock).toHaveBeenCalledWith("/v1/tasks/sync/run/source", expect.anything()),
+      expect(fetchMock).toHaveBeenCalledWith("/v1/tasks/sync%3Asource/run", expect.anything()),
     );
   });
 
   // Both switches carry the same two words, because the interval the service
   // runs on is fixed at an hour. Which of them is on is the checkbox itself.
   it("shows the state of each switch on the switch", () => {
-    renderControls(status({ schedule: { source: true, targets: false } }));
+    renderControls(status(), config(), tasks(true, false));
 
     expect(screen.getByRole("switch", { name: "Hourly: Read from VeloPlanner" })).toHaveAttribute(
       "aria-checked",

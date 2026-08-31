@@ -9,12 +9,21 @@
 
 /** TASKS are the registered names. `GET /v1/tasks` lists what a build has. */
 export const TASKS = {
-  /** One synchronization. The argument names a half, or none for both. */
-  sync: "sync",
-  /** Reconciling exactly one target slot, named by the argument. */
+  /** Reading every configured source library into the stored inventory. */
+  syncSource: "sync:source",
+  /**
+   * Writing the stored inventory to the targets: every configured slot, or the
+   * one the argument names.
+   */
   syncTarget: "sync:target",
   /** Deleting every owned route from one target slot. Destructive. */
   syncClear: "sync:clear",
   /** One surface-classification pass over the stored library. */
   surfaceAnnotate: "surface:annotate",
+} as const;
+
+/** SYNC_PHASE_TASKS is which task does each half of a synchronization. */
+export const SYNC_PHASE_TASKS = {
+  source: TASKS.syncSource,
+  targets: TASKS.syncTarget,
 } as const;

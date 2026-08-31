@@ -307,7 +307,7 @@ The read-only JSON surface is small:
   authorisation. It reports a fixed category when it is not ready, never a path,
   key, or upstream detail.
 - `GET /v1/status` reports current configuration readiness, last sync outcome,
-  aggregate counts, target authorisation state, the two schedule switches, the
+  aggregate counts, target authorisation state, the
   last run of each half, and how much of the library carries a current surface
   classification together with which map build it was read from. It also reports
   whether every stored route at its current revision has reached every configured
@@ -398,8 +398,9 @@ it.
 - `GET /v1/tasks` lists what this build registers, with whether each runs
   unasked, how many attempts are in flight, and when the first scheduled run is
   due.
-- `PUT /v1/sync/schedule` sets both switches, and answers with the state it
-  stored. A body that names only one switch is refused.
+- `PUT /v1/tasks/{name}/schedule` sets whether the schedule may start one task,
+  and answers with the registered tasks as they now stand. It governs unattended
+  runs only.
 - `POST /v1/providers/{provider}/sourceRoutes/{source-route-id}/routes/{stage-order}/reprocess`
   asks for one route to be worked out again from scratch and starts the
   synchronisation that will do it, as `sync` run on that stage's behalf. It returns `202 Accepted`, or `404` for a
@@ -757,7 +758,7 @@ secret files remain outside Git.
   service's own browser UI.
 - Every HTTP interaction is identity-gated, to one principal, by a signature the
   service verifies itself. Beyond OAuth, the only ones that change anything are
-  the synchronisation triggers, the two schedule switches, the reprocess request,
+  the task triggers and their switches, the reprocess request,
   which discards derived answers so they are worked out again, the
   surface-enrichment retry, which reclassifies stored routes without reading
   VeloPlanner or writing a Wahoo target, and the settings write, which changes

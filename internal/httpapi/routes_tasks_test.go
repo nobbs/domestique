@@ -35,6 +35,19 @@ func tasksHandler(t *testing.T, registered ...RegisteredTask) (*Handler, *fakeTa
 	return handler, tasks
 }
 
+// taskListOf sends a request and decodes the task list it answers with.
+func taskListOf(t *testing.T, handler *Handler, request *http.Request) openapi.TaskList {
+	t.Helper()
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+
+	var view openapi.TaskList
+	require.NoError(t, json.NewDecoder(response.Body).Decode(&view), "decoding the task list")
+
+	return view
+}
+
 func TestListTasksReportsWhatThisBuildRegisters(t *testing.T) {
 	due := time.Date(2026, time.August, 31, 9, 0, 0, 0, time.UTC)
 	handler, _ := tasksHandler(t,

@@ -14,7 +14,6 @@ type RunState interface {
 	// is recorded under, which is the name a notification about it can carry.
 	RecordSyncRun(ctx context.Context, phase string, startedAt, finishedAt time.Time, outcome, detail string, sourceStages, created, updated, deleted int) (string, error)
 	RecordTargetRun(ctx context.Context, targetID string, finishedAt time.Time, outcome, detail string) error
-	SyncSchedule(ctx context.Context) (source, targets bool, err error)
 }
 
 // Reporter adds durable run recording around a synchronization service. It does
@@ -54,25 +53,6 @@ func NewReporter(runner Runner, state RunState) (*Reporter, error) {
 	}
 
 	return &Reporter{runner: runner, state: state, now: time.Now}, nil
-}
-
-// Run performs the scheduled synchronization, each switched-on phase recorded
-// and reported on its own. An unreadable schedule is a failed source run.
-func (r *Reporter) Run(ctx context.Context) Result {
-	source, targets, err := r.state.SyncSchedule(ctx)
-	if err != nil {
-		return r.record(ctx, r.now().UTC(), &Result{
-			Phase: PhaseSource, Outcome: OutcomeFailed, Failure: FailureState,
-		})
-	}
-
-	return r.runPhases(ctx, source, targets)
-}
-
-// RunBoth runs both halves whether or not the schedule has either switched on,
-// which is what an operator asking for a synchronization means by it.
-func (r *Reporter) RunBoth(ctx context.Context) Result {
-	return r.runPhases(ctx, true, true)
 }
 
 // RunPhase runs one half of a synchronization, whether or not the schedule has

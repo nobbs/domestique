@@ -53,6 +53,9 @@ type Tasks interface {
 	// context: an accepted attempt outlives the request that asked for it, and a
 	// request context is cancelled the moment its handler returns.
 	Run(name, argument string) bool
+	// Schedule records whether the schedule may start one task. It governs
+	// unattended runs only: a task switched off still runs when asked for.
+	Schedule(ctx context.Context, name string, enabled bool) error
 }
 
 // RegisteredTask is one background activity and what is true of it now.
@@ -63,8 +66,11 @@ type RegisteredTask struct {
 	Name      string
 	// Running is how many attempts are in flight.
 	Running int
-	// Scheduled reports whether the task runs unasked.
+	// Scheduled reports whether the task has a schedule at all.
 	Scheduled bool
+	// Enabled reports whether the schedule may start it. A task nobody has ruled
+	// on runs.
+	Enabled bool
 }
 
 // Alerts is the alert matrix as this surface needs it: what this service can
