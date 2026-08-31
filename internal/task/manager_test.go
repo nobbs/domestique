@@ -621,23 +621,6 @@ func TestAnAttemptIsRecordedWithWhatItCameTo(t *testing.T) {
 	}, store.recorded(), "recorded runs")
 }
 
-// An attempt that found its work already current did nothing, and a history of
-// nothing is what the fan-out over a whole library would otherwise write every
-// tick.
-func TestAnAttemptThatFoundItsWorkCurrentIsNotRecorded(t *testing.T) {
-	t.Parallel()
-
-	manager, store := newTestManager(t)
-	require.NoError(t, manager.Register(&Definition{
-		Name: "a",
-		Run:  RunnerFunc(func(context.Context, Invocation) Result { return Result{Outcome: Current} }),
-	}), "Register()")
-
-	require.True(t, manager.Trigger(t.Context(), "a", ""), "Trigger()")
-	manager.Wait()
-	assert.Empty(t, store.recorded(), "an attempt that did nothing was recorded")
-}
-
 // Shutdown cancels the context every write would need, so a cancelled attempt
 // is not recorded rather than failing to be.
 func TestACancelledAttemptIsNotRecorded(t *testing.T) {

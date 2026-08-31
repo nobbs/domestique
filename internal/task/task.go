@@ -65,9 +65,6 @@ const (
 	Cancelled Outcome = "cancelled"
 	// Unchanged means the attempt ran, checked, and found nothing new.
 	Unchanged Outcome = "unchanged"
-	// Current means what the attempt covers was already up to date, so it did
-	// nothing at all.
-	Current Outcome = "current"
 )
 
 // alerts reports whether an attempt with this outcome is worth announcing. A
@@ -76,11 +73,10 @@ func (o Outcome) alerts() bool {
 	return o == Failed || o == Blocked
 }
 
-// recorded reports whether an attempt with this outcome is written down. One
-// that found its work already current did nothing worth remembering, and a
+// recorded reports whether an attempt with this outcome is written down. A
 // cancelled one cannot write during the shutdown that ended it.
 func (o Outcome) recorded() bool {
-	return o != Current && o != Cancelled
+	return o != Cancelled
 }
 
 // Detail is a stable, safe-to-display reason for an outcome. It never carries
