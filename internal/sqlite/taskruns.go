@@ -135,14 +135,14 @@ func (s *Store) ForEachTaskRunPage(
 		if !ok {
 			return "", false, nil
 		}
-		issued, readErr := s.lastTaskRunID(ctx)
+		latestFinished, issued, readErr := s.lastTaskRun(ctx)
 		if readErr != nil {
 			return "", false, readErr
 		}
-		// Ids are handed out from one upwards and the highest only grows, because
-		// pruning never drops the newest attempt of a task. One outside that range
-		// is from a cursor this store never issued.
-		if id <= 0 || id > issued {
+		// Both halves are bounded, not just the id: an in-range id beside a
+		// far-future instant would otherwise walk from ahead of the history and
+		// hand back its newest page as though the cursor had been issued.
+		if id <= 0 || id > issued || finishedAt > latestFinished {
 			return "", false, nil
 		}
 		finishedBefore, idBefore = finishedAt, id
@@ -216,17 +216,18 @@ func parseTaskRunCursor(cursor string) (finishedUnix, id int64, ok bool) {
 	return finishedUnix, id, true
 }
 
-// lastTaskRunID reports the highest id the store has issued to a recorded
-// attempt, or zero when it has recorded none.
-func (s *Store) lastTaskRunID(ctx context.Context) (int64, error) {
-	var highest int64
-	if err := s.database.QueryRowContext(
-		ctx, `SELECT COALESCE(MAX(id), 0) FROM task_runs`,
-	).Scan(&highest); err != nil {
-		return 0, fmt.Errorf("reading task runs: %w", err)
+// lastTaskRun reports the furthest position the store has issued a cursor for:
+// the latest instant it has recorded and the highest id. Both are zero when it
+// has recorded nothing. Neither half falls, so a position beyond either is one
+// this store never handed out — a pruned row still sits within both.
+func (s *Store) lastTaskRun(ctx context.Context) (finishedUnix, id int64, err error) {
+	if err := s.database.QueryRowContext(ctx, `
+		SELECT COALESCE(MAX(finished_at_unix), 0), COALESCE(MAX(id), 0) FROM task_runs
+	`).Scan(&finishedUnix, &id); err != nil {
+		return 0, 0, fmt.Errorf("reading task runs: %w", err)
 	}
 
-	return highest, nil
+	return finishedUnix, id, nil
 }
 
 // LastTaskOutcome is what a success is compared against, to tell a routine one
