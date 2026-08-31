@@ -1187,6 +1187,10 @@ func TestSetTaskScheduleRefusesANameThisBuildDoesNotRegister(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, response.Code, response.Body.String())
 }
 
+// A body without the switch is refused before it reaches the handler: enabled
+// is required in the contract, and every route is wrapped by the request
+// validator. Without that, a missing bool would decode as false and switch the
+// task off — so this asserts the validator is doing its job, not the handler.
 func TestSetTaskScheduleRefusesAnythingButOneWholeSwitch(t *testing.T) {
 	for _, body := range []string{`{}`, `{"enabled": true, "other": 1}`, "not json", `{"enabled":true}{"enabled":false}`} {
 		handler, _ := tasksHandler(t, RegisteredTask{Name: "sync:source"})
