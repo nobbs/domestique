@@ -38,11 +38,9 @@ type Options struct {
 	Sources   func() ([]Source, error)
 	TargetIDs func() []string
 
-	// SourceFor builds one library's client on its own. A read of one library
-	// must not depend on another being configured, which building them all
-	// does: the whole set refuses when any one of them is half entered.
-	// A provider this service has no configuration for is not configured rather
-	// than an error.
+	// SourceFor builds one library's client independently of the others, so a
+	// read of one library never depends on the rest being configured. A
+	// provider with no configuration is reported unconfigured, not an error.
 	SourceFor func(provider route.Provider) (source Source, configured bool, err error)
 }
 

@@ -152,12 +152,15 @@ A manual trigger is a state change and carries the browser-origin requirement of
 every state-changing route.
 
 The configured Tailnet user starts one by asking for the task that does it:
-`POST /v1/tasks/sync/run` for both halves, `/run/source` or `/run/targets` for
-one, and `POST /v1/tasks/sync:target/run/{slot}` to reconcile exactly one
-configured target slot without touching the source read or any other target. A
-slot that is not configured is accepted and does no work, recorded as `skipped`
-rather than refused: what an argument means is the task's, and the refusal that
-matters is in the service.
+`POST /v1/tasks/sync:source/run` reads every configured library,
+`POST /v1/tasks/sync:target/run` reconciles every configured slot, and
+`POST /v1/tasks/sync:target/run/{slot}` reconciles exactly one configured
+target slot without touching the source read or any other target. There is no
+longer a single call that does both halves: the target half follows a
+successful source read as a declared chain edge instead. A slot that is not
+configured is accepted and does no work, recorded as `skipped` rather than
+refused: what an argument means is the task's, and the refusal that matters is
+in the service.
 
 Each trigger uses the same reconciliation, durable run record, and Pushover
 notification path as scheduled work. A single-target request applies the same
@@ -812,9 +815,9 @@ The implementation test suite must cover at least:
 - each half running, and being triggered, without the other;
 - a single-target trigger reconciling only the named slot — keeping the same
   ownership, ordering, update-before-delete, and deletion-limit rules — while
-  every other configured target is left completely untouched; an unconfigured
-  target name being refused as not found; and a single-target trigger sharing
-  the same mutual-exclusion and run recording path as a full target phase;
+  every other configured target is left completely untouched; and a
+  single-target trigger sharing the same mutual-exclusion and run recording
+  path as a full target phase;
 - a stored inventory that cannot be read back whole causing zero deletions;
 - a switched-off half being skipped by the timer and still run by a manual
   trigger;

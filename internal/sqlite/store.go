@@ -584,9 +584,8 @@ func schemaMigrations() [][]string {
 			)`,
 		},
 		{
-			// What every background activity came to, refusals included. An attempt
-			// that found its work already current is absent, as is one shutdown ended.
-			// The detail is a stable category, never provider text.
+			// What every background activity came to, refusals included; only an
+			// attempt ended by shutdown is not recorded.
 			`CREATE TABLE task_runs (
 				id               INTEGER PRIMARY KEY,
 				task             TEXT    NOT NULL,
@@ -596,15 +595,13 @@ func schemaMigrations() [][]string {
 				outcome          TEXT    NOT NULL,
 				detail           TEXT    NOT NULL DEFAULT ''
 			)`,
-			// Both retention and readback ask for one task's attempts newest first, so
-			// that is the order indexed. Picking the latest attempt per argument scans
-			// one task's retained rows instead, which its own bound keeps small.
+			// Retention and readback both ask for one task's attempts newest first, so
+			// that is the index order; picking the latest per argument then scans only that task's bound rows.
 			`CREATE INDEX task_runs_task_index ON task_runs(task, id DESC)`,
 		},
 		{
 			// Which stages an enrichment pass could not finish, and why. One row per
-			// stage per pass, replaced when the pass tries again and removed when it
-			// succeeds, so what is here is what is wrong now rather than a log.
+			// stage per pass, replaced when the pass retries and removed when it succeeds.
 			`CREATE TABLE stage_enrichment_failure (
 				provider       TEXT    NOT NULL,
 				route_id       INTEGER NOT NULL,
@@ -622,10 +619,8 @@ func schemaMigrations() [][]string {
 			`UPDATE task_runs SET reference = lower(hex(randomblob(6))) WHERE reference = ''`,
 		},
 		{
-			// Which alerts an operator wants delivered, one row per alert of one
-			// task over one scope. A row exists only once somebody has decided:
-			// what is absent is what nobody has said anything about, which is not
-			// the same as switched off.
+			// Which alerts an operator wants delivered, one row per alert of one task
+			// over one scope. Absent means undecided, not switched off — see AlertToggles.
 			`CREATE TABLE alert_toggle (
 				task       TEXT    NOT NULL,
 				scope      TEXT    NOT NULL DEFAULT '',
@@ -641,9 +636,8 @@ func schemaMigrations() [][]string {
 			`ALTER TABLE runtime_settings ADD COLUMN timezone TEXT NOT NULL DEFAULT 'Europe/Berlin'`,
 		},
 		{
-			// Which tasks the schedule may start. A row exists only once somebody
-			// has switched one off or back on; what is absent is a task nobody has
-			// said anything about, which runs.
+			// Which tasks the schedule may start, one row per task turned off or back
+			// on. Absent means undecided, which runs — see TaskSchedule.
 			`CREATE TABLE task_schedule (
 				task            TEXT    NOT NULL PRIMARY KEY,
 				enabled         INTEGER NOT NULL CHECK (enabled IN (0, 1)),
@@ -655,6 +649,12 @@ func schemaMigrations() [][]string {
 				SELECT 'sync:source', source_enabled, 0 FROM sync_schedule WHERE id = 1`,
 			`INSERT INTO task_schedule (task, enabled, updated_at_unix)
 				SELECT 'sync:target', targets_enabled, 0 FROM sync_schedule WHERE id = 1`,
+		},
+		{
+			// Recency now orders by finished_at rather than id: a refusal can commit
+			// its row after a later attempt's, so id alone no longer tracks event time.
+			`DROP INDEX task_runs_task_index`,
+			`CREATE INDEX task_runs_task_index ON task_runs(task, finished_at_unix DESC, id DESC)`,
 		},
 	}
 }

@@ -45,7 +45,7 @@ function status(phases: Status["sync"]["phases"] = {}): Status {
       updated: 0,
       deleted: 0,
       phases,
-      surface: { classified: 0, total: 0, incomplete: 0 },
+      surface: { classified: 0, total: 0, incomplete: 0, enrichmentFailures: 0 },
     },
   };
 }

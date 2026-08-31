@@ -24,8 +24,25 @@ func TestStageEnrichmentFailuresReadBackByStageAndPass(t *testing.T) {
 	}, readFailures(t, store), "recorded failures")
 }
 
-// What is here is what is wrong now, so a pass that tries again replaces what
-// it last said rather than adding to it.
+// A stage failing both passes is one stage, not two: the count is of stages,
+// not of the rows ForEachStageEnrichmentFailure visits.
+func TestCountStageEnrichmentFailuresCountsEveryStageWithSomethingWrong(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t, testKey(1))
+	count, err := store.CountStageEnrichmentFailures(t.Context())
+	require.NoError(t, err, "CountStageEnrichmentFailures()")
+	assert.Zero(t, count, "a count was reported before anything failed")
+
+	require.NoError(t, store.RecordStageSurfaceFailure(t.Context(), "veloplanner", 7, 1, "ways"), "surface failure")
+	require.NoError(t, store.RecordStageDurationFailure(t.Context(), "veloplanner", 7, 1, "encode"), "duration failure")
+	require.NoError(t, store.RecordStageSurfaceFailure(t.Context(), "veloplanner", 9, 0, "ways"), "second surface failure")
+
+	count, err = store.CountStageEnrichmentFailures(t.Context())
+	require.NoError(t, err, "CountStageEnrichmentFailures()")
+	assert.Equal(t, 2, count, "stages with something wrong")
+}
+
 func TestARepeatedStageFailureReplacesTheLastOne(t *testing.T) {
 	t.Parallel()
 
@@ -38,7 +55,6 @@ func TestARepeatedStageFailureReplacesTheLastOne(t *testing.T) {
 	assert.Equal(t, "cache", failures[0].reason, "the recorded reason")
 }
 
-// Stored and still listed as failing cannot both be true.
 func TestStoringAnEnrichmentClearsWhatItLastFailedFor(t *testing.T) {
 	t.Parallel()
 
@@ -106,8 +122,6 @@ func readFailures(t *testing.T, store *Store) []recordedFailure {
 	return failures
 }
 
-// A visitor that gives up stops the read rather than being called again for
-// every remaining row.
 func TestForEachStageEnrichmentFailureStopsWhenTheVisitorDoes(t *testing.T) {
 	t.Parallel()
 
@@ -142,8 +156,6 @@ func TestStoreStageDurationReportsAnUnreadableDatabase(t *testing.T) {
 	), "StoreStageDuration() on a closed database")
 }
 
-// What is here is meant to be what is wrong now, so a stage that has left the
-// inventory takes its failures with it.
 func TestStageEnrichmentFailuresGoWithTheStagesTheyName(t *testing.T) {
 	t.Parallel()
 
@@ -164,7 +176,6 @@ func TestStageEnrichmentFailuresGoWithTheStagesTheyName(t *testing.T) {
 	}, readFailures(t, store), "a stage that left the library kept its failure")
 }
 
-// A pass nothing is asking for cannot be failing.
 func TestClearStageDurationFailuresLeavesTheOtherPassAlone(t *testing.T) {
 	t.Parallel()
 

@@ -95,10 +95,8 @@ func run(ctx context.Context) error {
 		return fmt.Errorf("creating Pushover client: %w", err)
 	}
 	// There is no API key to configure: the free forecast endpoint needs none.
-	// The zone is read once here: a forecast client holds a loaded location, and
-	// an edit reaches it at the next restart.
 	weatherProvider, err := openmeteo.New(&openmeteo.Options{
-		Timezone: runtimeSettings.Values().Timezone,
+		Timezone: func() string { return runtimeSettings.Values().Timezone },
 	})
 	if err != nil {
 		return fmt.Errorf("creating Open-Meteo client: %w", err)
@@ -170,7 +168,7 @@ func run(ctx context.Context) error {
 	tasks, err := registerTasks(
 		store, notifier, alerts,
 		func() bool { return runtimeSettings.Values().Notifications.Enabled },
-		append(inventoryTasks(reporter, runtimeSettings, switches.enabledFor), indexTask),
+		append(inventoryTasks(reporter, runtimeSettings, switches.enabledFor, destination.targetIDs), indexTask),
 	)
 	if err != nil {
 		return err

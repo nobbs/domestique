@@ -1141,8 +1141,6 @@ func TestHandlerRejectsMalformedLegacyStagePaths(t *testing.T) {
 	}
 }
 
-// A clear is destructive, so a slot this build was never configured with is
-// refused exactly as it is for a reconciliation.
 // What an argument means is the task's, not this surface's, so a slot nobody
 // configured is accepted here and does no work in the service. The guard that
 // matters is there; see TestServiceClearTargetSkipsAnUnconfiguredTarget.
@@ -1174,8 +1172,6 @@ func TestSetTaskScheduleSwitchesOneTask(t *testing.T) {
 	assert.False(t, view.Tasks[1].Enabled, "the switched task is still enabled")
 }
 
-// A name this build does not register is refused, so a page built against
-// another build switches nothing that silently does nothing.
 func TestSetTaskScheduleRefusesANameThisBuildDoesNotRegister(t *testing.T) {
 	handler, _ := tasksHandler(t, RegisteredTask{Name: "sync:source"})
 
@@ -1187,10 +1183,9 @@ func TestSetTaskScheduleRefusesANameThisBuildDoesNotRegister(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, response.Code, response.Body.String())
 }
 
-// A body without the switch is refused before it reaches the handler: enabled
-// is required in the contract, and every route is wrapped by the request
-// validator. Without that, a missing bool would decode as false and switch the
-// task off — so this asserts the validator is doing its job, not the handler.
+// enabled is required in the contract and every route is wrapped by the
+// request validator; without that, a missing bool would decode as false and
+// switch the task off.
 func TestSetTaskScheduleRefusesAnythingButOneWholeSwitch(t *testing.T) {
 	for _, body := range []string{`{}`, `{"enabled": true, "other": 1}`, "not json", `{"enabled":true}{"enabled":false}`} {
 		handler, _ := tasksHandler(t, RegisteredTask{Name: "sync:source"})
@@ -1389,6 +1384,20 @@ func TestHandlerReportsHowMuchOfTheLibraryCouldNotBeClassified(t *testing.T) {
 	var view openapi.Status
 	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &view), "decoding status")
 	assert.Equal(t, 1, view.Sync.Surface.Incomplete, "incomplete")
+}
+
+// A stage a pass keeps failing on is otherwise write-only: nothing but a test
+// ever reads the count back without this on the status surface.
+func TestHandlerReportsHowManyStagesHaveAnEnrichmentFailure(t *testing.T) {
+	state := &fakeState{surfaceClassified: 1, surfaceTotal: 3, enrichmentFailed: 2}
+	handler := newHandler(t, &fakeOAuth{}, state)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/status"))
+	require.Equal(t, http.StatusOK, response.Code, "status")
+	var view openapi.Status
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &view), "decoding status")
+	assert.Equal(t, 2, view.Sync.Surface.EnrichmentFailures, "enrichment failures")
 }
 
 // The quota is Wahoo's own live reading, not something this service keeps a
@@ -2100,31 +2109,33 @@ type phaseRun struct {
 }
 
 type fakeState struct {
-	surfaceErr        error
-	phaseRunErr       error
+	reprocessErr      error
+	pendingAuthErr    error
 	historyErr        error
 	coverageErr       error
-	reprocessErr      error
-	sourceStageErr    error
+	enrichmentErr     error
+	surfaceErr        error
+	phaseRunErr       error
 	targetStageErr    error
-	targetRunErr      error
-	pendingAuthErr    error
 	lastSuccessErr    error
+	targetRunErr      error
+	sourceStageErr    error
+	lastRun           *phaseRun
 	lastSuccessAt     map[string]time.Time
 	targetStages      map[string][]storedStage
+	surfaceHash       string
 	reprocessed       [][2]int64
-	targets           []fakeTarget
-	pendingAuth       []string
+	cumulativeSeconds json.RawMessage
 	sourceStages      []storedStage
 	targetRuns        []fakeTargetRun
-	lastRun           *phaseRun
-	surfaceHash       string
+	targets           []fakeTarget
+	history           []recordedRun
 	coordinates       json.RawMessage
-	cumulativeSeconds json.RawMessage
+	pendingAuth       []string
 	surfaceRanges     json.RawMessage
 	summaries         []route.Summary
 	phaseRuns         []phaseRun
-	history           []recordedRun
+	enrichmentFailed  int
 	surfaceMetres     float64
 	surfaceClassified int
 	surfaceTotal      int
@@ -2389,6 +2400,14 @@ func (s *fakeState) SurfaceCoverage(context.Context) (classified, total int, err
 	return s.surfaceClassified, s.surfaceTotal, nil
 }
 
+func (s *fakeState) CountStageEnrichmentFailures(context.Context) (count int, err error) {
+	if s.enrichmentErr != nil {
+		return 0, s.enrichmentErr
+	}
+
+	return s.enrichmentFailed, nil
+}
+
 // statusOf reads the status document as the handler serves it.
 func statusOf(t *testing.T, handler *Handler) openapi.Status {
 	t.Helper()
@@ -2645,9 +2664,8 @@ func (a *fakeAlerts) Decide(_ context.Context, decisions []AlertDecision) error 
 	return nil
 }
 
-// fakeTasks stands in for the registered background activities. It keeps what
-// it was asked for apart from what it started, so a refused attempt can be told
-// from one the handler never asked for at all.
+// fakeTasks keeps what it was asked for apart from what it started, so a
+// refused attempt can be told from one never asked for at all.
 type fakeTasks struct {
 	scheduleErr error
 	asked       []startedTask

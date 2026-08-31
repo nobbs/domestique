@@ -21,8 +21,6 @@ type OAuth interface {
 type SyncPhase string
 
 const (
-	// SyncPhaseAll reads the source and then writes to the targets.
-	SyncPhaseAll SyncPhase = "all"
 	// SyncPhaseSource reads the source library into stored state.
 	SyncPhaseSource SyncPhase = "source"
 	// SyncPhaseTargets reconciles stored state onto the targets.
@@ -64,6 +62,9 @@ type RegisteredTask struct {
 	// and for a task nothing schedules.
 	NextRunAt time.Time
 	Name      string
+	// Interval is the gap between runs for a task on a fixed schedule, zero for
+	// one with no schedule or a calendar one.
+	Interval time.Duration
 	// Running is how many attempts are in flight.
 	Running int
 	// Scheduled reports whether the task has a schedule at all.
@@ -187,6 +188,7 @@ type StageState interface {
 	StageSurface(ctx context.Context, provider route.Provider, routeID int64, stageOrder int, contentHash string) (json.RawMessage, float64, bool, error)
 	SurfaceCoverage(ctx context.Context) (classified, total int, err error)
 	RequestStageReprocess(ctx context.Context, provider route.Provider, routeID int64, stageOrder int) (found bool, err error)
+	CountStageEnrichmentFailures(ctx context.Context) (count int, err error)
 }
 
 // RunState is what the last synchronization runs recorded, in aggregate and per

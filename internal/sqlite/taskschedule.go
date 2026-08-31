@@ -8,8 +8,8 @@ import (
 )
 
 // TaskSchedule reports which tasks an operator has switched off. A task absent
-// from the result is one nobody has ruled on, which runs: a task added to a
-// build reaches its schedule without anybody having to turn it on.
+// from the result is undecided, which runs: a new task reaches the schedule
+// without anybody turning it on.
 func (s *Store) TaskSchedule(ctx context.Context) (map[string]bool, error) {
 	rows, err := s.database.QueryContext(ctx, `SELECT task, enabled FROM task_schedule`)
 	if err != nil {

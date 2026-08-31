@@ -78,11 +78,8 @@ func (v Values) Validate() (Values, error) {
 	return v, nil
 }
 
-// ValidateTimezone checks that the zone is one this binary can load, and
-// returns it trimmed. It is checked at startup as well as at every edit,
-// because a zone that cannot be loaded leaves every calendar schedule with no
-// answer to when it is next due — a service that runs nothing on time is worse
-// than one that refuses to start.
+// ValidateTimezone rejects a zone this binary cannot load: one that can't be
+// loaded leaves every calendar schedule with no answer to when it is next due.
 func ValidateTimezone(timezone string) (string, error) {
 	timezone = strings.TrimSpace(timezone)
 	if timezone == "" {

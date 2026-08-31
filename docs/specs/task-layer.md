@@ -32,29 +32,21 @@ not_ready   a setting is unset, or a target still awaits onboarding
 skipped     it did no work: see its detail for which kind of busy stopped it
 cancelled   shutdown ended it; never a fault
 unchanged   it ran, checked, and found nothing new
-current     what it covers was already up to date, so it did nothing at all
 ~~~
 
 ## Run history
 
-Every attempt is recorded, with two exceptions. One that found its work already
-`current` did nothing worth remembering, and recording every such attempt is
-what a sweep over a whole library would otherwise write on every tick. One that
-shutdown `cancelled` cannot write during the shutdown that ended it.
+Every attempt is recorded, with one exception: one that shutdown `cancelled`
+cannot write during the shutdown that ended it.
 
 A refusal is recorded, and says which kind of busy stopped it: this service
 working on the very same thing, or working on something else that held what the
 attempt needed. They are the answer to why something did not run, and that is
 only answerable afterwards if it was written down.
 
-A chain link is the exception. One asking for work already under way is dropped
-rather than refused, because the work is happening — which is what the link
-wanted — and the rest of the chain counts it as run.
-
-`unchanged` and `current` are deliberately separate. A rebuild that reached its
-upstream and found the published data identical did work — it checked — and the
-next delay counts from that check. A stage whose fingerprint already matched
-reached nothing.
+A chain successor is the exception. One asking for work already under way is
+dropped rather than refused, because the work is happening — which is what the
+successor wanted — and the rest of the chain counts it as run.
 
 History is bounded per task, so a task running every few minutes cannot evict
 the history of one running weekly. The most recent attempt over each argument is
@@ -86,29 +78,29 @@ The limit and the resource set are taken together or not at all.
 
 ## Chains
 
-An attempt reports the invocations its own result made necessary. What follows
-what is decided by whoever knows the outcome, rather than declared where nobody
-can see it.
+A task declares the tasks it follows, and that declaration is the whole graph:
+an edge naming a task this build does not register, or one that closes a cycle,
+is refused when the graph is resolved rather than found by a depth cap at four
+in the morning.
 
-An attempt releases its resources before its chain starts. A link wanting what
-its parent held would otherwise be refused by its own parent, which is the usual
-case rather than the exception.
+An attempt releases its resources before its chain starts. A successor wanting
+what its parent held would otherwise be refused by its own parent, which is the
+usual case rather than the exception.
 
-A link asking for work already under way is dropped, not refused: the work is
-happening, which is what the link wanted. A link losing a resource to something
-unrelated is a refusal, and is recorded as one.
+A successor asking for work already under way is dropped, not refused: the work
+is happening, which is what the successor wanted. A successor losing a resource
+to something unrelated is a refusal, and is recorded as one.
 
-Because links are chosen while a task runs, nothing can reject a cycle when a
-task is registered. One chain carries one set of what it has already run and
-refuses to run any of it again — a chain runs in order, so branches share that
-set rather than each starting from a copy. A depth limit sits behind it for a
-chain whose arguments keep changing.
+The depth limit and one chain's set of what it has already run sit behind
+registration's cycle refusal, as belt and braces — a chain runs in order, so
+branches share that set rather than each starting from a copy.
 
 These chains are registered:
 
 ~~~text
-sync            stored an inventory  ->  surface:annotate
-surface:index   installed a new map  ->  surface:annotate
+sync:source     stored an inventory   ->  sync:target
+sync:source     stored an inventory   ->  surface:annotate
+surface:index   installed a new map   ->  surface:annotate
 ~~~
 
 A rebuilt index makes every stored classification stale, and nothing else
@@ -144,6 +136,11 @@ Where the wall clock skips the hour a schedule names, the run rolls forward into
 the hour that does exist. Being an hour of wall clock late costs less than being
 skipped until the clocks go back. Where an hour happens twice, the run happens
 in the first of them.
+
+No task this build registers uses a calendar schedule today — every one runs on
+a fixed gap or only when asked — but the mechanism is layer infrastructure
+rather than a feature built for one task, and stays available for whichever
+task next needs a wall-clock time rather than an interval.
 
 ### Backoff
 
@@ -244,23 +241,22 @@ onboarded slot doing nothing until a restart.
 
 ## What follows what
 
-A task declares the tasks it follows, and that declaration is the whole graph.
-An edge naming a task this build does not register, or one that closes a cycle,
-is refused when the graph is resolved rather than found by a depth cap at four
-in the morning. The cap and the set of what one chain has run stay behind that,
-as belt and braces.
-
-What follows an attempt follows a successful one. A read that failed stored
-nothing to write or classify, and a rebuild that found nothing new left every
-stored classification standing.
+What follows an attempt follows a successful one, or one whose result says it
+still stored something worth building on despite not fully succeeding — a
+source read over several libraries where only some of them failed, say. A read
+that stored nothing at all left every classification standing, and a rebuild
+that found nothing new left every stored classification standing too.
 
 Each edge fires on its own, so a task following two predecessors runs after
 each. That is what classification wants: a read leaves stages nobody has
 classified, and a rebuild leaves the stored classifications stale, and neither
 is waiting on the other.
 
-An edge carries no argument. What a successor is over is its own business:
-`sync:target` reconciles every configured slot when nothing names one.
+An edge carries no argument, with one exception: a task may fan a chain out
+over its own arguments instead, one invocation each, rather than the single
+empty-argument invocation every other successor gets. `sync:target` does this
+over its configured slots, so a slot that keeps faulting backs only that slot
+off — not every slot a later successful source read would otherwise reach.
 
 ## Switching a task off
 
@@ -307,11 +303,13 @@ nobody has ruled on is announced: a fault nobody has heard of is the one worth
 hearing about. An alert switched off is not sent and opens no window, so
 switching it back on does not find one it never heard the alert behind.
 
-The suppression window is keyed by the reason as well as the task. A library
-that cannot be read and a target that needs reauthorising are separate problems,
-and one must not silence the other. A failing task is worth one message; the
-same message every tick afterwards is noise an operator learns to ignore, which
-is how the message that mattered gets missed.
+The suppression window is keyed by the reason and the argument as well as the
+task. A library that cannot be read and a target that needs reauthorising are
+separate problems, and one must not silence the other — and the same is true of
+two targets failing for the same reason: one slot's fault must not silence
+another slot's. A failing task is worth one message; the same message every
+tick afterwards is noise an operator learns to ignore, which is how the message
+that mattered gets missed.
 
 Nothing is written down as sent until it has been, so a channel that was down
 does not silence the alert it failed to carry. While the channel is switched off

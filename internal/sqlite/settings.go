@@ -8,33 +8,6 @@ import (
 	"github.com/nobbs/domestique/internal/runtimeconfig"
 )
 
-// SyncSchedule reports which phases the timer is allowed to start.
-func (s *Store) SyncSchedule(ctx context.Context) (source, targets bool, err error) {
-	if err := s.database.QueryRowContext(ctx, `
-		SELECT source_enabled, targets_enabled FROM sync_schedule WHERE id = 1
-	`).Scan(&source, &targets); err != nil {
-		return false, false, fmt.Errorf("reading the sync schedule: %w", err)
-	}
-
-	return source, targets, nil
-}
-
-// SetSyncSchedule records which phases the timer may start from now on.
-//
-// It never starts or stops a run in flight: a phase already running finishes,
-// and the switch decides what the next tick does.
-func (s *Store) SetSyncSchedule(ctx context.Context, source, targets bool) error {
-	if _, err := s.database.ExecContext(ctx, `
-		UPDATE sync_schedule
-		SET source_enabled = ?, targets_enabled = ?, updated_at_unix = ?
-		WHERE id = 1
-	`, source, targets, time.Now().Unix()); err != nil {
-		return fmt.Errorf("storing the sync schedule: %w", err)
-	}
-
-	return nil
-}
-
 // RuntimeSettings reads the settings an operator edits while the service is
 // running. It satisfies runtimeconfig.Store. Both lists come back in the order
 // they were arranged in: the first basemap is what a browser loads by default.
@@ -45,11 +18,8 @@ func (s *Store) RuntimeSettings(ctx context.Context) (runtimeconfig.Values, erro
 		initialDelaySeconds    int64
 		rebuildIntervalSeconds int64
 	)
-	// success_policy and digest_interval_seconds are not read or written. The
-	// success policy they held is now a decision per task and per reason in the
-	// alert matrix, and the columns are NOT NULL with checks, so a row that keeps
-	// whatever it last held costs nothing while rebuilding the table to drop them
-	// would put every other setting an operator has entered at risk.
+	// success_policy and digest_interval_seconds are unused, superseded by the
+	// per-task alert matrix; both are NOT NULL with CHECK, so dropping them needs a rebuild.
 	if err := s.database.QueryRowContext(ctx, `
 		SELECT allow_empty_source_deletion, stale_after_seconds, sync_initial_delay_seconds,
 			notifications_enabled,

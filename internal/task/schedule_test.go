@@ -27,8 +27,6 @@ func TestEveryFiresOneGapAfterThePreviousRun(t *testing.T) {
 	assert.Equal(t, reference().Add(time.Hour), schedule.NextFire(reference()), "NextFire()")
 }
 
-// A gap an operator has emptied is a schedule that is not due again, rather
-// than one due immediately and forever.
 func TestEveryNeverFiresAgainWithoutAPositiveGap(t *testing.T) {
 	t.Parallel()
 
@@ -49,8 +47,6 @@ func TestNextDueWaitsOutAGapStillAhead(t *testing.T) {
 	assert.Equal(t, reference().Add(time.Hour), due, "nextDue()")
 }
 
-// A run that outlasted its gap starts again at once. Queueing the gaps it
-// missed would make one slow run cost several immediate ones.
 func TestNextDueStartsAtOnceWhenTheGapHasElapsed(t *testing.T) {
 	t.Parallel()
 
@@ -67,8 +63,6 @@ func TestNextDueReportsAScheduleThatWillNotFireAgain(t *testing.T) {
 	assert.False(t, scheduled, "nextDue() scheduled a run without a gap")
 }
 
-// A calendar schedule names a wall-clock time, so what it means by two in the
-// morning is two in the morning where the service reads local time.
 func TestDailyFiresAtItsWallClockTimeInTheServiceZone(t *testing.T) {
 	t.Parallel()
 
@@ -83,7 +77,6 @@ func TestDailyFiresAtItsWallClockTimeInTheServiceZone(t *testing.T) {
 	assert.Equal(t, time.Date(2026, time.August, 30, 2, 30, 0, 0, berlin), next.In(berlin), "next fire")
 }
 
-// Past today's time, the next one is tomorrow's rather than one already gone.
 func TestDailyMovesToTheNextDayOnceTodaysTimeHasPassed(t *testing.T) {
 	t.Parallel()
 
@@ -107,8 +100,6 @@ func TestWeeklyFiresOnItsOwnWeekday(t *testing.T) {
 	assert.Equal(t, time.Date(2026, time.August, 31, 2, 0, 0, 0, time.UTC), next, "next fire")
 }
 
-// A schedule already on its weekday, past its time, waits a whole week rather
-// than firing again the same day.
 func TestWeeklyWaitsAWholeWeekFromItsOwnFiring(t *testing.T) {
 	t.Parallel()
 
@@ -120,9 +111,6 @@ func TestWeeklyWaitsAWholeWeekFromItsOwnFiring(t *testing.T) {
 		schedule.NextFire(previous), "next fire")
 }
 
-// The hour a spring-forward skips still has to run. Rolling into the hour that
-// does exist costs an hour of wall clock; refusing would cost the run until the
-// clocks go back.
 func TestADailyScheduleRollsForwardThroughASkippedHour(t *testing.T) {
 	t.Parallel()
 
@@ -139,8 +127,6 @@ func TestADailyScheduleRollsForwardThroughASkippedHour(t *testing.T) {
 	assert.Equal(t, 3, next.Hour(), "the run did not roll into the hour that exists")
 }
 
-// A zone nobody supplied is UTC. A schedule with nowhere to be is still a
-// schedule, and refusing to fire would be the worse answer.
 func TestACalendarScheduleWithNoZoneReadsUTC(t *testing.T) {
 	t.Parallel()
 

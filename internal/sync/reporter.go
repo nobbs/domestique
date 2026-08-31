@@ -89,9 +89,10 @@ func (r *Reporter) ClearTarget(ctx context.Context, targetID string) Result {
 	})
 }
 
-// Annotate runs one classification pass, touching only the local index and cache.
-func (r *Reporter) Annotate(ctx context.Context) {
-	r.annotate(ctx)
+// Annotate runs one classification pass, touching only the local index and
+// cache, and reports how many stages it could not classify.
+func (r *Reporter) Annotate(ctx context.Context) (failed int) {
+	return r.annotate(ctx)
 }
 
 // SurfaceIncomplete reports how many stages the most recently completed
@@ -123,9 +124,8 @@ func (r *Reporter) runPhases(ctx context.Context, source, targets bool) Result {
 	return r.runPhasesWith(ctx, source, targets, nil, nil)
 }
 
-// runPhasesWith is runPhases parameterized over what runs each half, so a
-// trigger scoped to one library or one slot shares every recording and
-// reporting rule. A nil half is the service's own.
+// runPhasesWith is runPhases parameterized over what runs each half; a nil
+// half falls back to the service's own RunSource/RunTargets.
 func (r *Reporter) runPhasesWith(
 	ctx context.Context,
 	source, targets bool,
@@ -141,7 +141,7 @@ func (r *Reporter) runPhasesWith(
 		}
 		r.enter(PhaseSource)
 		result = r.run(ctx, runSource)
-		sourceStored = result.Outcome == OutcomeSucceeded
+		sourceStored = result.AnySourceStored()
 	}
 	if targets {
 		if runTargets == nil {
@@ -150,9 +150,7 @@ func (r *Reporter) runPhasesWith(
 		r.enter(PhaseTargets)
 		result = r.run(ctx, runTargets)
 	}
-	// Enrichment follows any successful source refresh, changed or not: an
-	// unchanged library can still hold stages an earlier pass never got to.
-	// Whoever started this pass is what starts that.
+	// Enrichment is decided by whoever started this pass, not by the reporter.
 	result.SourceStored = sourceStored
 
 	return result
@@ -160,9 +158,11 @@ func (r *Reporter) runPhasesWith(
 
 // annotate runs one classification pass and records what it could not finish,
 // for SurfaceIncomplete to read back.
-func (r *Reporter) annotate(ctx context.Context) {
-	_, failed := r.runner.AnnotateStored(ctx)
+func (r *Reporter) annotate(ctx context.Context) (failed int) {
+	_, failed = r.runner.AnnotateStored(ctx)
 	r.surfaceIncomplete.Store(int64(failed))
+
+	return failed
 }
 
 func (r *Reporter) run(ctx context.Context, phase func(context.Context) Result) Result {

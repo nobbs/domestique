@@ -59,8 +59,6 @@ func TestTriggerRefusesATaskNobodyRegistered(t *testing.T) {
 	assert.False(t, manager.Trigger(t.Context(), "absent", ""), "Trigger()")
 }
 
-// A trigger reports whether the work was taken on, and the work outlives the
-// call. Wait is what makes that safe at shutdown.
 func TestTriggerRunsInTheBackgroundAndWaitWaitsForIt(t *testing.T) {
 	t.Parallel()
 
@@ -76,8 +74,6 @@ func TestTriggerRunsInTheBackgroundAndWaitWaitsForIt(t *testing.T) {
 	assert.Equal(t, 1, runner.runs(), "runs")
 }
 
-// Everything that touches the same state exclusively runs one at a time, even
-// when a different task asked for it.
 func TestAnExclusiveResourceRefusesAnyOtherTaskWantingIt(t *testing.T) {
 	t.Parallel()
 
@@ -98,7 +94,6 @@ func TestAnExclusiveResourceRefusesAnyOtherTaskWantingIt(t *testing.T) {
 	manager.Wait()
 }
 
-// Readers of the same state run together; a writer waits for all of them.
 func TestASharedResourceAdmitsReadersAndRefusesAWriter(t *testing.T) {
 	t.Parallel()
 
@@ -135,8 +130,6 @@ func TestUnrelatedResourcesDoNotRefuseEachOther(t *testing.T) {
 	manager.Wait()
 }
 
-// A task naming no resource can refuse only itself, which is what the
-// concurrency limit is for.
 func TestConcurrencyLimitsHowManyAttemptsOfOneTaskRun(t *testing.T) {
 	t.Parallel()
 
@@ -168,7 +161,6 @@ func TestAnUnsetConcurrencyAdmitsOneAttempt(t *testing.T) {
 	manager.Wait()
 }
 
-// Shutdown is not a fault, so an attempt it ends says so.
 func TestACancelledAttemptIsNotAFailure(t *testing.T) {
 	t.Parallel()
 
@@ -196,8 +188,6 @@ func TestAttemptReportsWhatTheRunnerReturned(t *testing.T) {
 	assert.Equal(t, Result{Outcome: Blocked, Detail: "deletion_limit"}, result, "attempt()")
 }
 
-// A schedule holds its first run back, says so while it is holding it, and
-// stops saying so once the run has started.
 func TestRunHoldsTheFirstRunAndReportsWhenItIsDue(t *testing.T) {
 	t.Parallel()
 
@@ -242,8 +232,31 @@ func TestNextRunAtIsSilentAboutATaskNobodyRegistered(t *testing.T) {
 	assert.False(t, holding, "NextRunAt()")
 }
 
-// Cancelling has to stop a schedule that is still waiting out its initial
-// delay, or shutdown would wait for a run that is not coming.
+func TestTasksReportsTheFixedIntervalOnlyForAnEveryScheduledTask(t *testing.T) {
+	t.Parallel()
+
+	manager, _ := newTestManager(t)
+	require.NoError(t, manager.Register(&Definition{
+		Name: "fixed", Run: succeeds(),
+		Schedule:     Every(func() time.Duration { return time.Hour }),
+		InitialDelay: func() time.Duration { return 0 },
+	}), "Register(fixed)")
+	require.NoError(t, manager.Register(&Definition{
+		Name: "calendar", Run: succeeds(),
+		Schedule:     Daily{Zone: func() *time.Location { return time.UTC }, Hour: 3},
+		InitialDelay: func() time.Duration { return 0 },
+	}), "Register(calendar)")
+	require.NoError(t, manager.Register(&Definition{Name: "unscheduled", Run: succeeds()}), "Register(unscheduled)")
+
+	intervals := map[string]time.Duration{}
+	for _, entry := range manager.Tasks() {
+		intervals[entry.Name] = entry.Interval
+	}
+	assert.Equal(t, time.Hour, intervals["fixed"], "fixed")
+	assert.Zero(t, intervals["calendar"], "calendar")
+	assert.Zero(t, intervals["unscheduled"], "unscheduled")
+}
+
 func TestRunStopsAScheduleStillWaitingToStart(t *testing.T) {
 	t.Parallel()
 
@@ -270,8 +283,6 @@ func TestRunStopsAScheduleStillWaitingToStart(t *testing.T) {
 	assert.Zero(t, runner.runs(), "a run happened after cancellation")
 }
 
-// Run returns only once every scheduled task has stopped, which is what lets
-// the caller close the state those tasks are still reading.
 func TestRunWaitsForEveryScheduledTask(t *testing.T) {
 	t.Parallel()
 
@@ -309,8 +320,6 @@ func TestRunWaitsForEveryScheduledTask(t *testing.T) {
 	<-stopped
 }
 
-// A schedule is refused on exactly the terms a trigger is: whatever holds the
-// resource wins, and the schedule simply comes round again.
 func TestAScheduledRunIsRefusedWhileItsResourceIsHeld(t *testing.T) {
 	t.Parallel()
 
@@ -346,8 +355,6 @@ func TestAScheduledRunIsRefusedWhileItsResourceIsHeld(t *testing.T) {
 	<-stopped
 }
 
-// The gap between runs is a cadence, not a one-off: the schedule keeps firing
-// for as long as its context lives.
 func TestRunKeepsFiringOnTheSchedule(t *testing.T) {
 	t.Parallel()
 
@@ -377,8 +384,6 @@ func TestRunKeepsFiringOnTheSchedule(t *testing.T) {
 	<-stopped
 }
 
-// A cadence an operator has emptied stops the schedule rather than spinning on
-// a gap that is not a gap.
 func TestRunStopsWhenTheCadenceIsEmptied(t *testing.T) {
 	t.Parallel()
 
@@ -418,8 +423,6 @@ func TestRunStopsWhenTheCadenceIsEmptied(t *testing.T) {
 	assert.Equal(t, 1, runner.runs(), "runs")
 }
 
-// A task naming one resource twice must not take it twice, or releasing it once
-// would leave it held forever.
 func TestMergeFoldsARepeatedResourceAndKeepsTheStricterHold(t *testing.T) {
 	t.Parallel()
 
@@ -501,6 +504,29 @@ type counting struct {
 
 func countingRunner() *counting { return &counting{} }
 
+// arguments records the argument each attempt was given, in the order seen.
+type arguments struct {
+	given []string
+	mutex sync.Mutex
+}
+
+func argumentRecorder() *arguments { return &arguments{} }
+
+func (a *arguments) Run(_ context.Context, invocation Invocation) Result {
+	a.mutex.Lock()
+	a.given = append(a.given, invocation.Argument)
+	a.mutex.Unlock()
+
+	return Result{Outcome: Succeeded}
+}
+
+func (a *arguments) arguments() []string {
+	a.mutex.Lock()
+	defer a.mutex.Unlock()
+
+	return slices.Clone(a.given)
+}
+
 func (c *counting) Run(context.Context, Invocation) Result {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
@@ -516,8 +542,6 @@ func (c *counting) runs() int {
 	return c.count
 }
 
-// A service that is shutting down takes on nothing new, rather than accepting
-// work whose only outcome can be that it was cancelled.
 func TestTriggerRefusesOnceTheContextIsDone(t *testing.T) {
 	t.Parallel()
 
@@ -533,9 +557,6 @@ func TestTriggerRefusesOnceTheContextIsDone(t *testing.T) {
 	assert.Zero(t, runner.runs(), "an attempt started after cancellation")
 }
 
-// A wait watches the clock and the context at once and may report that it
-// fired even though both were ready, so the guard is asked directly here rather
-// than through a wait that would answer before reaching it.
 func TestScheduledStartsNothingOnceTheContextIsDone(t *testing.T) {
 	t.Parallel()
 
@@ -551,9 +572,6 @@ func TestScheduledStartsNothingOnceTheContextIsDone(t *testing.T) {
 	assert.Empty(t, store.recorded(), "a refusal was recorded during shutdown")
 }
 
-// A wait watches the clock and the context at once, and may report that it
-// fired even though both were ready. Starting work on that report would run one
-// more attempt into a shutdown.
 func TestAScheduledRunDoesNotStartOnceTheContextIsDone(t *testing.T) {
 	t.Parallel()
 
@@ -621,25 +639,6 @@ func TestAnAttemptIsRecordedWithWhatItCameTo(t *testing.T) {
 	}, store.recorded(), "recorded runs")
 }
 
-// An attempt that found its work already current did nothing, and a history of
-// nothing is what the fan-out over a whole library would otherwise write every
-// tick.
-func TestAnAttemptThatFoundItsWorkCurrentIsNotRecorded(t *testing.T) {
-	t.Parallel()
-
-	manager, store := newTestManager(t)
-	require.NoError(t, manager.Register(&Definition{
-		Name: "a",
-		Run:  RunnerFunc(func(context.Context, Invocation) Result { return Result{Outcome: Current} }),
-	}), "Register()")
-
-	require.True(t, manager.Trigger(t.Context(), "a", ""), "Trigger()")
-	manager.Wait()
-	assert.Empty(t, store.recorded(), "an attempt that did nothing was recorded")
-}
-
-// Shutdown cancels the context every write would need, so a cancelled attempt
-// is not recorded rather than failing to be.
 func TestACancelledAttemptIsNotRecorded(t *testing.T) {
 	t.Parallel()
 
@@ -652,8 +651,6 @@ func TestACancelledAttemptIsNotRecorded(t *testing.T) {
 	assert.Empty(t, store.recorded(), "a cancelled attempt was recorded")
 }
 
-// A refusal is the answer to why something did not run, and it is only
-// answerable afterwards if it was written down.
 func TestARefusedAttemptIsRecordedAsSkipped(t *testing.T) {
 	t.Parallel()
 
@@ -666,6 +663,11 @@ func TestARefusedAttemptIsRecordedAsSkipped(t *testing.T) {
 	<-held.started
 	require.False(t, manager.Trigger(t.Context(), "other", "slot"), "Trigger(other)")
 
+	// The refusal is recorded off the caller's goroutine, so a "false" from
+	// Trigger does not yet mean the row is written.
+	require.Eventually(t, func() bool {
+		return len(store.recorded()) > 0
+	}, time.Second, time.Millisecond, "the refusal was never recorded")
 	assert.Equal(t, []recordedRun{
 		{
 			task: "other", argument: "slot", outcome: string(Skipped),
@@ -716,9 +718,6 @@ func TestARefusedScheduledRunIsRecorded(t *testing.T) {
 	<-stopped
 }
 
-// A clock that steps backwards mid-attempt must not cost the row: the store
-// refuses a run that finished before it started, and losing the history is
-// worse than recording no measurable time.
 func TestAnAttemptSurvivesAClockThatStepsBackwards(t *testing.T) {
 	t.Parallel()
 
@@ -740,8 +739,6 @@ func TestAnAttemptSurvivesAClockThatStepsBackwards(t *testing.T) {
 	}, store.recorded(), "an attempt was lost to a clock that stepped backwards")
 }
 
-// Losing a history row costs a stale line on a status page, which must not be
-// allowed to rewrite what the attempt actually came to.
 func TestAHistoryThatCannotBeWrittenDoesNotChangeTheOutcome(t *testing.T) {
 	t.Parallel()
 
@@ -946,8 +943,6 @@ func (s *recordingStore) recorded() []recordedRun {
 	return slices.Clone(s.runs)
 }
 
-// A successor wanting what its predecessor held has to be able to take it, or every chain
-// between two tasks over the same state would refuse itself.
 func TestASuccessorTakesTheResourceItsPredecessorHeld(t *testing.T) {
 	t.Parallel()
 
@@ -970,8 +965,6 @@ func TestASuccessorTakesTheResourceItsPredecessorHeld(t *testing.T) {
 	assert.Equal(t, 1, followed.runs(), "the chained task never ran")
 }
 
-// Work already under way has the successor's answer, so asking again is dropped
-// rather than recorded as a refusal that means something.
 func TestASuccessorForWorkAlreadyUnderWayIsDroppedQuietly(t *testing.T) {
 	t.Parallel()
 
@@ -1009,8 +1002,6 @@ func TestASuccessorForWorkAlreadyUnderWayIsDroppedQuietly(t *testing.T) {
 	manager.Wait()
 }
 
-// A successor losing a resource to something unrelated is a refusal, and refusals
-// are what answer why a task did not run.
 func TestASuccessorRefusedByAnotherHolderIsRecorded(t *testing.T) {
 	t.Parallel()
 
@@ -1038,8 +1029,57 @@ func TestASuccessorRefusedByAnotherHolderIsRecorded(t *testing.T) {
 	manager.Wait()
 }
 
-// The set of what a chain has run stays behind registration's cycle refusal,
-// so a graph that somehow reached itself still runs each invocation once.
+func TestASuccessorRunsWhenItsPredecessorOnlyAdvanced(t *testing.T) {
+	t.Parallel()
+
+	followed := countingRunner()
+	manager, _ := newTestManager(t)
+	require.NoError(t, manager.Register(&Definition{
+		Name: "parent",
+		Run: RunnerFunc(func(context.Context, Invocation) Result {
+			return Result{Outcome: Failed, Advances: true}
+		}),
+	}), "Register(parent)")
+	require.NoError(t, manager.Register(&Definition{
+		Name: "child", Run: followed, Follows: []string{"parent"},
+	}), "Register(child)")
+	require.NoError(t, manager.Resolve(), "Resolve()")
+
+	require.True(t, manager.Trigger(t.Context(), "parent", ""), "Trigger()")
+	manager.Wait()
+	assert.Equal(t, 1, followed.runs(), "a partial predecessor's successor never ran")
+}
+
+func TestAFanOutSuccessorBacksOffOnlyTheFaultingArgument(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, time.August, 31, 9, 0, 0, 0, time.UTC)
+	seen := argumentRecorder()
+	manager, store := newTestManager(t)
+	manager.now = func() time.Time { return now }
+	store.faultStreak = map[invocationKey]faultStreak{
+		{task: "child", argument: "faulting"}: {faults: 5, lastAt: now},
+	}
+	require.NoError(t, manager.Register(&Definition{
+		Name: "parent",
+		Run: RunnerFunc(func(context.Context, Invocation) Result {
+			return Result{Outcome: Succeeded}
+		}),
+	}), "Register(parent)")
+	require.NoError(t, manager.Register(&Definition{
+		Name:    "child",
+		Run:     seen,
+		Follows: []string{"parent"},
+		FanOut:  func() []string { return []string{"faulting", "healthy"} },
+		Backoff: Backoff{Base: 30 * time.Second, Cap: 6 * time.Hour},
+	}), "Register(child)")
+	require.NoError(t, manager.Resolve(), "Resolve()")
+
+	require.True(t, manager.Trigger(t.Context(), "parent", ""), "Trigger()")
+	manager.Wait()
+	assert.Equal(t, []string{"healthy"}, seen.arguments(), "backoff on one argument held back the other")
+}
+
 func TestAChainWillNotRunTheSameInvocationTwice(t *testing.T) {
 	t.Parallel()
 
@@ -1062,8 +1102,6 @@ func TestAChainWillNotRunTheSameInvocationTwice(t *testing.T) {
 	assert.Equal(t, 1, runs, "a task chained to itself ran again")
 }
 
-// A graph that comes back to where it started is refused where it is declared,
-// so the depth cap behind it is a backstop rather than the only protection.
 func TestResolveRefusesAGraphThatFollowsItself(t *testing.T) {
 	t.Parallel()
 
@@ -1078,8 +1116,6 @@ func TestResolveRefusesAGraphThatFollowsItself(t *testing.T) {
 	require.ErrorContains(t, manager.Resolve(), "follows itself", "Resolve()")
 }
 
-// An edge naming a task this build does not have is refused at the same moment,
-// rather than being an edge that quietly reaches nothing at run time.
 func TestResolveRefusesAnEdgeToATaskNobodyRegistered(t *testing.T) {
 	t.Parallel()
 
@@ -1109,9 +1145,6 @@ func TestATaskWithNothingFollowingItRecordsOnlyItself(t *testing.T) {
 	}, store.recorded(), "recorded runs")
 }
 
-// A runner that gives up must not take the resource with it. Nothing here
-// recovers a panic, so this is about the shape of the code rather than a state
-// the service reaches: what is released on the way out stays released.
 func TestAnAttemptGivesBackWhatItHeldWhenTheRunnerPanics(t *testing.T) {
 	t.Parallel()
 
@@ -1139,9 +1172,6 @@ func TestAnAttemptGivesBackWhatItHeldWhenTheRunnerPanics(t *testing.T) {
 	assert.Equal(t, admitStarted, again, "a runner that gave up stayed listed as working")
 }
 
-// Each edge fires on its own, so a task following two predecessors runs after
-// each of them: a read leaves stages wanting classification and a rebuild
-// leaves the stored ones stale, and neither waits on the other.
 func TestATaskFollowingSeveralRunsAfterEachOfThem(t *testing.T) {
 	t.Parallel()
 
@@ -1163,9 +1193,6 @@ func TestATaskFollowingSeveralRunsAfterEachOfThem(t *testing.T) {
 	assert.Equal(t, 2, shared.runs(), "a task following two predecessors did not run after each")
 }
 
-// Resolving settles the graph the declarations describe, however many times it
-// is asked for it. Adding to what a previous call worked out would run a
-// successor once per resolution.
 func TestResolvingTwiceDescribesTheSameGraph(t *testing.T) {
 	t.Parallel()
 
@@ -1184,9 +1211,6 @@ func TestResolvingTwiceDescribesTheSameGraph(t *testing.T) {
 	assert.Equal(t, 1, following.runs(), "a successor ran once per resolution")
 }
 
-// What follows an attempt follows a successful one: a read that failed stored
-// nothing to write, and a rebuild that found nothing new left every stored
-// classification standing.
 func TestNothingFollowsAnAttemptThatDidNotSucceed(t *testing.T) {
 	t.Parallel()
 
@@ -1217,9 +1241,6 @@ func TestNothingFollowsAnAttemptThatDidNotSucceed(t *testing.T) {
 	}
 }
 
-// The two kinds of busy read differently to whoever asks why nothing happened:
-// this service working on the very same thing is not the same answer as it
-// working on something else.
 func TestARefusalSaysWhichKindOfBusyStoppedIt(t *testing.T) {
 	t.Parallel()
 
@@ -1234,7 +1255,13 @@ func TestARefusalSaysWhichKindOfBusyStoppedIt(t *testing.T) {
 	assert.False(t, manager.Trigger(t.Context(), "a", "slot"), "the same work was accepted twice")
 	assert.False(t, manager.Trigger(t.Context(), "b", ""), "an unrelated task took a held resource")
 
-	assert.Equal(t, []recordedRun{
+	// Both refusals are recorded off the caller's goroutine and in no
+	// particular order relative to each other, so "false" from Trigger does
+	// not yet mean either row is written.
+	require.Eventually(t, func() bool {
+		return len(store.recorded()) >= 2
+	}, time.Second, time.Millisecond, "both refusals were never recorded")
+	assert.ElementsMatch(t, []recordedRun{
 		{task: "a", argument: "slot", outcome: string(Skipped), detail: string(DetailWorking), retain: defaultRetainedRuns},
 		{task: "b", outcome: string(Skipped), detail: string(DetailHeld), retain: defaultRetainedRuns},
 	}, store.recorded(), "recorded refusals")
@@ -1243,8 +1270,6 @@ func TestARefusalSaysWhichKindOfBusyStoppedIt(t *testing.T) {
 	manager.Wait()
 }
 
-// A successor that coalesced onto work already under way has had its answer, so
-// a later one in the same chain must not ask for it again once that work ends.
 func TestACoalescedSuccessorCountsAsRunForTheRestOfTheChain(t *testing.T) {
 	t.Parallel()
 
@@ -1294,9 +1319,6 @@ func TestACoalescedSuccessorCountsAsRunForTheRestOfTheChain(t *testing.T) {
 	assert.Equal(t, 1, runs, "a coalesced successor was asked for again once its work had finished")
 }
 
-// A failing task is worth one message. The same message every tick afterwards
-// is noise an operator learns to ignore, which is how the message that mattered
-// gets missed.
 func TestAFailingTaskIsAnnouncedOncePerWindow(t *testing.T) {
 	t.Parallel()
 
@@ -1331,8 +1353,6 @@ func TestAFailingTaskIsAnnouncedOncePerWindow(t *testing.T) {
 	}
 }
 
-// The window is keyed by the reason as well as the task: a library that cannot
-// be read and a target that needs reauthorising are separate problems.
 func TestTwoReasonsAreAnnouncedSeparately(t *testing.T) {
 	t.Parallel()
 
@@ -1356,6 +1376,56 @@ func TestTwoReasonsAreAnnouncedSeparately(t *testing.T) {
 	manager.Wait()
 
 	assert.Len(t, notifier.messages(), 2, "a second reason was silenced by the first")
+}
+
+func TestTwoArgumentsFailingForTheSameReasonAreAnnouncedSeparately(t *testing.T) {
+	t.Parallel()
+
+	manager, _, notifier := newAlertingManager(t)
+	argument := "rider-a"
+	require.NoError(t, manager.Register(&Definition{
+		Name: "sync:target",
+		Notify: &Notify{
+			Title: "Domestique target failed", Suppress: 6 * time.Hour,
+			Alerts: []Detail{"destination"},
+		},
+		Run: RunnerFunc(func(context.Context, Invocation) Result {
+			return Result{Outcome: Failed, Detail: "destination"}
+		}),
+	}), "Register()")
+
+	require.True(t, manager.Trigger(t.Context(), "sync:target", argument), "first Trigger()")
+	manager.Wait()
+	argument = "rider-b"
+	require.True(t, manager.Trigger(t.Context(), "sync:target", argument), "second Trigger()")
+	manager.Wait()
+
+	assert.Len(t, notifier.messages(), 2, "one slot's failure silenced another slot's")
+}
+
+func TestASuccessClearsTheStaleWindowOnlyForItsOwnArgument(t *testing.T) {
+	t.Parallel()
+
+	manager, store, notifier := newAlertingManager(t)
+	store.notifiedAt = map[string]time.Time{
+		"sync:target:rider-a:stale": time.Date(2026, time.August, 30, 8, 0, 0, 0, time.UTC),
+		"sync:target:rider-b:stale": time.Date(2026, time.August, 30, 8, 0, 0, 0, time.UTC),
+	}
+	require.NoError(t, manager.Register(&Definition{
+		Name:       "sync:target",
+		Notify:     &Notify{Title: "t", Suppress: time.Hour, Alerts: []Detail{DetailStale}},
+		StaleAfter: func() time.Duration { return 24 * time.Hour },
+		Run:        succeeds(),
+	}), "Register()")
+
+	require.True(t, manager.Trigger(t.Context(), "sync:target", "rider-a"), "Trigger()")
+	manager.Wait()
+
+	_, riderAHeld := store.notifiedAt["sync:target:rider-a:stale"]
+	_, riderBHeld := store.notifiedAt["sync:target:rider-b:stale"]
+	assert.False(t, riderAHeld, "a success left its own stale window open")
+	assert.True(t, riderBHeld, "a success on one argument cleared another argument's stale window")
+	assert.Empty(t, notifier.messages(), "a success was announced as stale")
 }
 
 func TestAnAlertNamesTheArgumentItIsAbout(t *testing.T) {
@@ -1383,8 +1453,6 @@ func TestAnAlertNamesTheArgumentItIsAbout(t *testing.T) {
 		sent[0].message, "alert message")
 }
 
-// Nothing is written down as sent until it has been, so a channel that was down
-// does not silence the alert it failed to carry.
 func TestAnAlertThatCouldNotBeSentIsTriedAgain(t *testing.T) {
 	t.Parallel()
 
@@ -1407,10 +1475,6 @@ func TestAnAlertThatCouldNotBeSentIsTriedAgain(t *testing.T) {
 	assert.Empty(t, store.notifiedAt, "a message that never went out was recorded as sent")
 }
 
-// Nothing is announced about an attempt that did no work, and nothing at all
-// about a task that declared no alerts. A fault nobody declared is announced
-// anyway; a success nobody declared is not, because it is noise rather than
-// something an operator is waiting for.
 func TestOnlyATaskThatDeclaredAlertsIsAnnouncedAbout(t *testing.T) {
 	t.Parallel()
 
@@ -1475,9 +1539,6 @@ func TestOnlyATaskThatDeclaredAlertsIsAnnouncedAbout(t *testing.T) {
 	}
 }
 
-// The switch is read at the moment a message would go out, and nothing is
-// written down as sent while it is off: turning it back on must not find a
-// suppression window it never heard the alert behind.
 func TestNothingIsAnnouncedOrRecordedWhileTheChannelIsOff(t *testing.T) {
 	t.Parallel()
 
@@ -1502,9 +1563,6 @@ func TestNothingIsAnnouncedOrRecordedWhileTheChannelIsOff(t *testing.T) {
 	assert.Empty(t, store.notifiedAt, "a suppression window was opened while the channel was off")
 }
 
-// An unreadable suppression history is not licence to send: a channel that has
-// already carried this alert must not carry it again on every tick because the
-// record of it could not be read.
 func TestAnAlertIsHeldBackWhenItsHistoryCannotBeRead(t *testing.T) {
 	t.Parallel()
 
@@ -1527,8 +1585,6 @@ func TestAnAlertIsHeldBackWhenItsHistoryCannotBeRead(t *testing.T) {
 	assert.Empty(t, notifier.messages(), "an alert went out on an unreadable history")
 }
 
-// A message that has gone out has gone out. Failing to write down that it did
-// costs one repeat at the next tick, which beats not sending it at all.
 func TestAnAlertStillGoesOutWhenItsSuppressionCannotBeRecorded(t *testing.T) {
 	t.Parallel()
 
@@ -1551,7 +1607,6 @@ func TestAnAlertStillGoesOutWhenItsSuppressionCannotBeRecorded(t *testing.T) {
 	assert.Len(t, notifier.messages(), 1, "the alert was lost with its suppression record")
 }
 
-// Every message names its run, and no two runs share a name.
 func TestEachAttemptIsNamedSomethingOfItsOwn(t *testing.T) {
 	t.Parallel()
 
@@ -1569,8 +1624,6 @@ func TestEachAttemptIsNamedSomethingOfItsOwn(t *testing.T) {
 	assert.NotEqual(t, first, store.reference, "two runs shared a name")
 }
 
-// A fault nobody has ruled on is announced: one nobody has heard of is the one
-// worth hearing about. A decision an operator has made wins either way.
 func TestAnOperatorsDecisionDecidesWhetherAnAlertGoesOut(t *testing.T) {
 	t.Parallel()
 
@@ -1610,8 +1663,6 @@ func TestAnOperatorsDecisionDecidesWhetherAnAlertGoesOut(t *testing.T) {
 	}
 }
 
-// An alert switched off is not sent and opens no window, so switching it back
-// on does not find one it never heard the alert behind.
 func TestAnAlertSwitchedOffOpensNoWindow(t *testing.T) {
 	t.Parallel()
 
@@ -1634,9 +1685,6 @@ func TestAnAlertSwitchedOffOpensNoWindow(t *testing.T) {
 	assert.Empty(t, store.notifiedAt, "a suppression window was opened for an alert nobody wanted")
 }
 
-// The declaration is what a settings page offers, so a task announcing
-// something it never declared has made that page wrong. It still goes out —
-// silence would be worse — but it says so.
 func TestAnUndeclaredAlertStillGoesOut(t *testing.T) {
 	t.Parallel()
 
@@ -1658,8 +1706,6 @@ func TestAnUndeclaredAlertStillGoesOut(t *testing.T) {
 	assert.Len(t, notifier.messages(), 1, "an undeclared alert was swallowed")
 }
 
-// An alert an operator has switched off is still one the declaration should
-// have mentioned, so saying so does not wait on their decision.
 func TestAnUndeclaredAlertIsReportedEvenWhenNobodyWantsIt(t *testing.T) {
 	t.Parallel()
 
@@ -1685,8 +1731,6 @@ func TestAnUndeclaredAlertIsReportedEvenWhenNobodyWantsIt(t *testing.T) {
 	assert.Len(t, manager.undeclared, 1, "the missing declaration was not noticed")
 }
 
-// The matrix an operator is offered is the tasks' own declarations, in
-// registration order, so the page reads the same way every start.
 func TestDeclarationsListEveryAlertInRegistrationOrder(t *testing.T) {
 	t.Parallel()
 
@@ -1714,9 +1758,6 @@ func TestDeclarationsListEveryAlertInRegistrationOrder(t *testing.T) {
 	}, manager.Declarations(), "Declarations()")
 }
 
-// A success that follows anything else ends an incident, and is announced as
-// its own alert: an operator who silences every routine pass still wants to
-// hear that the thing came back.
 func TestASuccessAfterAFaultIsAnnouncedAsARecovery(t *testing.T) {
 	t.Parallel()
 
@@ -1749,8 +1790,6 @@ func TestASuccessAfterAFaultIsAnnouncedAsARecovery(t *testing.T) {
 	assert.Regexp(t, `^sync succeeded run=[0-9a-f]{12}$`, messages[2].message, "the routine success")
 }
 
-// A routine success and a recovery are separate alerts, so silencing the first
-// leaves the second to come through.
 func TestSilencingRoutineSuccessesLeavesTheRecovery(t *testing.T) {
 	t.Parallel()
 
@@ -1773,8 +1812,6 @@ func TestSilencingRoutineSuccessesLeavesTheRecovery(t *testing.T) {
 	assert.Regexp(t, `^sync succeeded: recovered run=[0-9a-f]{12}$`, messages[0].message, "the recovery")
 }
 
-// An unreadable history must not silence what may be the recovery: one message
-// too many costs a line, a withheld recovery costs an alert.
 func TestAnUnreadableHistoryAnnouncesTheSuccessAsARecovery(t *testing.T) {
 	t.Parallel()
 
@@ -1794,8 +1831,6 @@ func TestAnUnreadableHistoryAnnouncesTheSuccessAsARecovery(t *testing.T) {
 	assert.Contains(t, messages[0].message, "recovered", "an unreadable history withheld the recovery")
 }
 
-// A task that stopped succeeding raises no new fault once its first one is
-// suppressed, so its age is what has to be announced instead.
 func TestATaskThatHasNotSucceededInTooLongIsAnnouncedAsStale(t *testing.T) {
 	t.Parallel()
 
@@ -1864,13 +1899,11 @@ func TestATaskWithinItsBoundIsNotAnnouncedAsStale(t *testing.T) {
 	}
 }
 
-// A success is what freshness is, so it ends the incident rather than waiting
-// out the window an earlier stale alert opened.
 func TestASuccessClearsTheStaleWindow(t *testing.T) {
 	t.Parallel()
 
 	manager, store, notifier := newAlertingManager(t)
-	store.notifiedAt = map[string]time.Time{"sync:stale": time.Date(2026, time.August, 30, 8, 0, 0, 0, time.UTC)}
+	store.notifiedAt = map[string]time.Time{"sync::stale": time.Date(2026, time.August, 30, 8, 0, 0, 0, time.UTC)}
 	require.NoError(t, manager.Register(&Definition{
 		Name:       "sync",
 		Notify:     &Notify{Title: "t", Suppress: time.Hour, Alerts: []Detail{DetailStale}},
@@ -1881,7 +1914,7 @@ func TestASuccessClearsTheStaleWindow(t *testing.T) {
 	require.True(t, manager.Trigger(t.Context(), "sync", ""), "Trigger()")
 	manager.Wait()
 
-	_, held := store.notifiedAt["sync:stale"]
+	_, held := store.notifiedAt["sync::stale"]
 	assert.False(t, held, "a success left the stale window open")
 	assert.NotContains(t, sentAlerts(notifier), "stale", "a success was announced as stale")
 }
@@ -1897,9 +1930,6 @@ func sentAlerts(notifier *fakeNotifier) string {
 	return sent
 }
 
-// A task that declares only its faults keeps announcing only those. Adding
-// success alerts to the layer must not turn every such task into one that
-// announces every pass it makes.
 func TestATaskThatDeclaredOnlyItsFaultsAnnouncesNoSuccess(t *testing.T) {
 	t.Parallel()
 
@@ -1921,9 +1951,6 @@ func TestATaskThatDeclaredOnlyItsFaultsAnnouncesNoSuccess(t *testing.T) {
 	assert.Empty(t, notifier.messages(), "sent alerts")
 }
 
-// A fixed gap runs as soon as its initial delay is out. A calendar schedule
-// waits for the time it names: restarting the service is not two in the
-// morning.
 func TestOnlyAFixedGapRunsAsSoonAsItStarts(t *testing.T) {
 	t.Parallel()
 
@@ -1985,9 +2012,6 @@ func TestOnlyAFixedGapRunsAsSoonAsItStarts(t *testing.T) {
 	}
 }
 
-// A task that keeps faulting waits longer each time rather than retrying on its
-// ordinary schedule, and the wait is read from what is recorded, so a restart
-// neither forgets it nor has to rebuild it.
 func TestAFailingTaskIsHeldBackFromItsSchedule(t *testing.T) {
 	t.Parallel()
 
@@ -2031,8 +2055,6 @@ func TestAFailingTaskIsHeldBackFromItsSchedule(t *testing.T) {
 	}
 }
 
-// An operator asking has already decided, so a backoff never refuses them. It
-// is also the way out of one: the attempt they ask for is what ends the streak.
 func TestABackoffNeverRefusesAnOperator(t *testing.T) {
 	t.Parallel()
 
@@ -2053,8 +2075,6 @@ func TestABackoffNeverRefusesAnOperator(t *testing.T) {
 	assert.Equal(t, 1, runner.runs(), "a backoff refused the operator who asked")
 }
 
-// A history that cannot be read must not hold a task back. Not running is the
-// more expensive of the two ways to be wrong.
 func TestAnUnreadableHistoryDoesNotHoldATaskBack(t *testing.T) {
 	t.Parallel()
 
@@ -2071,8 +2091,6 @@ func TestAnUnreadableHistoryDoesNotHoldATaskBack(t *testing.T) {
 	assert.Equal(t, 1, runner.runs(), "an unreadable history held the task back")
 }
 
-// Doubling without a cap reaches days within a morning, which is a task that
-// has stopped rather than one waiting longer.
 func TestRegisterRefusesABackoffWithNoCap(t *testing.T) {
 	t.Parallel()
 
@@ -2100,8 +2118,6 @@ func TestBackoffDoublesToItsCap(t *testing.T) {
 	assert.Zero(t, Backoff{}.delay(3), "a task with no backoff waited")
 }
 
-// A switched-off task waits out its tick rather than leaving its loop, so
-// switching it back on needs no restart.
 func TestASwitchedOffTaskSkipsItsTickAndResumes(t *testing.T) {
 	t.Parallel()
 
@@ -2123,8 +2139,6 @@ func TestASwitchedOffTaskSkipsItsTickAndResumes(t *testing.T) {
 	assert.Equal(t, 1, runner.runs(), "switching a task back on did not resume it")
 }
 
-// The switch governs unattended runs only. An operator asking has already
-// decided, which is also how they run something they keep switched off.
 func TestASwitchedOffTaskStillRunsWhenAskedFor(t *testing.T) {
 	t.Parallel()
 

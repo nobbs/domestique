@@ -184,6 +184,30 @@ export function formatPrecipitation(millimetres: number, system: UnitSystem): st
 }
 
 /**
+ * Derived from the server's own intervalSeconds, not a duplicated label.
+ * Undefined means no fixed schedule.
+ */
+export function formatCadence(seconds: number | undefined): string {
+  if (seconds === undefined || !Number.isFinite(seconds) || seconds <= 0) {
+    return "No fixed schedule";
+  }
+  if (seconds === 3600) {
+    return "Hourly";
+  }
+  if (seconds % 3600 === 0) {
+    const hours = seconds / 3600;
+
+    return `Every ${hours} hours`;
+  }
+  if (seconds < 60) {
+    return seconds === 1 ? "Every second" : `Every ${seconds} seconds`;
+  }
+  const minutes = Math.round(seconds / 60);
+
+  return minutes === 1 ? "Every minute" : `Every ${minutes} minutes`;
+}
+
+/**
  * Predicted moving time, rounded to the nearest five minutes — coarse enough
  * that it reads as an estimate rather than a promise. Absent, never zero,
  * when nothing has predicted this route's geometry.

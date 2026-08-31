@@ -88,13 +88,7 @@ export function SyncPhaseRow({
         ) : null}
       </div>
       <div className="flex shrink-0 flex-wrap items-center gap-3">
-        {/*
-         * Both rows carry the same two words, so the visible text alone
-         * names neither half. The accessible name says which one, since a
-         * reader arriving at the second switch has no row above it to tell
-         * them apart. The cadence is the service's own and differs per half, so
-         * the switch says which one it schedules.
-         */}
+        {/* Both rows look alike, so the accessible name is what tells the two switches apart. */}
         <div className="flex items-center gap-2 text-sm">
           <Switch
             checked={enabled}

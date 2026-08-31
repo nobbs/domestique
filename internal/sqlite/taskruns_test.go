@@ -58,8 +58,6 @@ func TestRecordTaskRunRefusesIncompleteMetadata(t *testing.T) {
 	}
 }
 
-// A task's history is bounded on its own terms, so one that runs every few
-// minutes cannot evict the history of one that runs weekly.
 func TestRecordTaskRunBoundsEachTaskSeparately(t *testing.T) {
 	t.Parallel()
 
@@ -79,8 +77,6 @@ func TestRecordTaskRunBoundsEachTaskSeparately(t *testing.T) {
 	assert.Len(t, readTaskRuns(t, store, "quiet"), 1, "a chatty task evicted a quiet one's history")
 }
 
-// The last attempt over one argument is what that argument came to, and a
-// status page reads it whatever its age.
 func TestRecordTaskRunKeepsTheLatestAttemptOverEachArgument(t *testing.T) {
 	t.Parallel()
 
@@ -104,6 +100,35 @@ func TestRecordTaskRunKeepsTheLatestAttemptOverEachArgument(t *testing.T) {
 	}
 	assert.ElementsMatch(t, []string{"rider-b", "rider-a"}, arguments,
 		"the last attempt over an argument was evicted by another argument's history")
+}
+
+// The row kept for an argument outside the retain window is the one with the
+// latest finished_at, not the one with the highest id: a refusal recorded off
+// the caller's goroutine can commit, and so be inserted, after a later attempt.
+func TestRecordTaskRunKeepsTheLatestByFinishedAtNotByInsertOrder(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t, testKey(1))
+	at := time.Date(2026, time.August, 30, 9, 0, 0, 0, time.UTC)
+
+	require.NoError(t, store.RecordTaskRun(
+		t.Context(), "sync:target", "rider-a", at, at.Add(time.Minute), "succeeded", "", "reference", 1,
+	), "RecordTaskRun(later, inserted first)")
+	require.NoError(t, store.RecordTaskRun(
+		t.Context(), "sync:target", "rider-a", at.Add(-time.Hour), at.Add(-time.Minute), "skipped", "held", "reference", 1,
+	), "RecordTaskRun(earlier, inserted second)")
+	// Past the retain window of 1, so only the argument's single kept row survives.
+	require.NoError(t, store.RecordTaskRun(
+		t.Context(), "sync:target", "rider-b", at, at, "succeeded", "", "reference", 1,
+	), "RecordTaskRun(rider-b)")
+
+	runs := readTaskRuns(t, store, "sync:target")
+	require.Len(t, runs, 2, "runs")
+	for _, run := range runs {
+		if run.argument == "rider-a" {
+			assert.Equal(t, "succeeded", run.outcome, "the row kept for rider-a was the earlier one, inserted later")
+		}
+	}
 }
 
 func TestForEachTaskRunRefusesAnIncompleteRequest(t *testing.T) {
@@ -189,8 +214,6 @@ func TestForEachTaskRunStopsWhenTheVisitorDoes(t *testing.T) {
 	assert.Equal(t, 1, visits, "the visitor was called again after giving up")
 }
 
-// What a task did last is what a success is compared against to tell a routine
-// one from the one that ends an incident, and it is asked per argument.
 func TestLastTaskOutcomeReadsTheMostRecentAttemptOverAnArgument(t *testing.T) {
 	t.Parallel()
 
@@ -217,8 +240,27 @@ func TestLastTaskOutcomeReadsTheMostRecentAttemptOverAnArgument(t *testing.T) {
 	assert.Equal(t, "blocked", other, "one argument's history answered for another")
 }
 
-// Staleness is measured against the last success: a failed attempt leaves
-// whatever the task keeps exactly as an earlier success left it.
+// A refusal recorded off the caller's goroutine can commit after a later
+// attempt's row, so recency has to follow finished_at rather than insertion
+// order: recording the later event first must not make the earlier one win.
+func TestLastTaskOutcomeFollowsFinishedAtRatherThanInsertOrder(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t, testKey(1))
+	at := time.Date(2026, time.August, 30, 9, 0, 0, 0, time.UTC)
+	require.NoError(t, store.RecordTaskRun(
+		t.Context(), "sync", "rider-a", at, at.Add(time.Minute), "succeeded", "", "reference", 5,
+	), "RecordTaskRun(later, inserted first)")
+	require.NoError(t, store.RecordTaskRun(
+		t.Context(), "sync", "rider-a", at.Add(-time.Hour), at.Add(-time.Minute), "skipped", "held", "reference", 5,
+	), "RecordTaskRun(earlier, inserted second)")
+
+	outcome, found, err := store.LastTaskOutcome(t.Context(), "sync", "rider-a")
+	require.NoError(t, err, "LastTaskOutcome()")
+	assert.True(t, found, "found")
+	assert.Equal(t, "succeeded", outcome, "an earlier attempt inserted later was read as the most recent")
+}
+
 func TestLastTaskSuccessSkipsWhatDidNotSucceed(t *testing.T) {
 	t.Parallel()
 
@@ -268,8 +310,6 @@ func TestTaskHistoryLookupsReportNothingRecorded(t *testing.T) {
 	assert.False(t, found, "an unrun task reported a success")
 }
 
-// A fault streak is what the backoff waits on: consecutive faults at the tail
-// of the history, ended by a success and unbroken by anything else.
 func TestTaskFaultStreakCountsBackToTheLastSuccess(t *testing.T) {
 	t.Parallel()
 

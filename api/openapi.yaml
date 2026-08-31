@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Domestique API
-  version: 1.0.0
+  version: 2.0.0
   description: |
     The API contract served by Domestique. JSON property names are camelCase.
     All routes except `GET /healthz` require the signed Cloudflare Access
@@ -164,7 +164,9 @@ paths:
           browserOrigin: []
       description: >-
         Starts one attempt of a task over one argument, such as a single target
-        slot. Otherwise identical to running it with none.
+        slot. Otherwise identical to running it with none. The `404` is about
+        the task name; an unconfigured argument is the task's own to interpret
+        and is accepted.
       parameters:
         - $ref: '#/components/parameters/TaskName'
         - $ref: '#/components/parameters/TaskArgument'
@@ -950,12 +952,6 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/Error'
-    SyncInProgress:
-      description: A conflicting run is already active.
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/Error'
     AuthorizationFailed:
       description: OAuth request failed safely.
       content:
@@ -1237,6 +1233,7 @@ components:
         - classified
         - total
         - incomplete
+        - enrichmentFailures
       properties:
         generation:
           type: string
@@ -1248,6 +1245,11 @@ components:
         total:
           type: integer
         incomplete:
+          type: integer
+        enrichmentFailures:
+          description: >-
+            How many stages currently have a surface or duration enrichment
+            pass recorded against them as unable to finish.
           type: integer
     WahooRateLimit:
       type: object
@@ -1668,6 +1670,12 @@ components:
         running:
           type: integer
           description: How many attempts of this task are in flight.
+        intervalSeconds:
+          type: integer
+          description: >-
+            The gap between runs for a task on a fixed schedule. Absent for a
+            task with no schedule, or a calendar one, whose gap changes with
+            the wall clock.
         nextRunAt:
           type: string
           format: date-time

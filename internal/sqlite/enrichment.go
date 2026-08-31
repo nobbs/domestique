@@ -32,8 +32,7 @@ func (s *Store) RecordStageDurationFailure(
 }
 
 // recordStageEnrichmentFailure remembers what one pass could not finish for one
-// stage, replacing whatever it last said about that pair. The reason is a
-// stable category, never an upstream message or a local path.
+// stage. reason is a stable category, never an upstream message or a local path.
 func (s *Store) recordStageEnrichmentFailure(
 	ctx context.Context, provider route.Provider, routeID int64, stageOrder int, pass, reason string,
 ) error {
@@ -95,9 +94,23 @@ func (s *Store) ForEachStageEnrichmentFailure(
 	return nil
 }
 
-// pruneStageEnrichmentFailure drops what no longer describes anything, in the
-// caller's transaction. A stage that has left the inventory takes its failures
-// with it: what is here is meant to be what is wrong now.
+// CountStageEnrichmentFailures reports how many stages currently have some
+// pass recorded against them, for a status surface that wants the number
+// rather than the rows themselves.
+func (s *Store) CountStageEnrichmentFailures(ctx context.Context) (count int, err error) {
+	if err := s.database.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM (
+			SELECT 1 FROM stage_enrichment_failure GROUP BY provider, route_id, stage_order
+		)
+	`).Scan(&count); err != nil {
+		return 0, fmt.Errorf("counting stage enrichment failures: %w", err)
+	}
+
+	return count, nil
+}
+
+// pruneStageEnrichmentFailure drops rows whose stage has left the inventory, in
+// the caller's transaction.
 func pruneStageEnrichmentFailure(ctx context.Context, transaction *sql.Tx) error {
 	if _, err := transaction.ExecContext(ctx, `
 		DELETE FROM stage_enrichment_failure
@@ -128,8 +141,7 @@ func (s *Store) ClearStageDurationFailures(ctx context.Context) error {
 }
 
 // clearStageEnrichmentFailure drops what a pass last could not finish, in the
-// caller's transaction. Storing what the pass produced is what clears it, so a
-// stage cannot be listed as failing and enriched at the same time.
+// caller's transaction.
 func clearStageEnrichmentFailure(
 	ctx context.Context, transaction *sql.Tx, provider route.Provider, routeID int64, stageOrder int, pass string,
 ) error {

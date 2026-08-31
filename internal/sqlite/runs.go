@@ -312,26 +312,6 @@ func (s *Store) ForEachTargetRun(
 	return nil
 }
 
-// LastPhaseOutcome returns the outcome of the most recent run recorded for one
-// phase. Runs recorded before phases existed carry none and are not attributed
-// to one, the same rule ForEachPhaseRun applies.
-func (s *Store) LastPhaseOutcome(ctx context.Context, phase string) (outcome string, found bool, err error) {
-	if phase == "" {
-		return "", false, errors.New("phase is required")
-	}
-	if err := s.database.QueryRowContext(ctx, `
-		SELECT outcome FROM sync_runs WHERE phase = ? ORDER BY id DESC LIMIT 1
-	`, phase).Scan(&outcome); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return "", false, nil
-		}
-
-		return "", false, fmt.Errorf("reading the last outcome of a phase: %w", err)
-	}
-
-	return outcome, true, nil
-}
-
 // LastSuccessfulPhaseCompletion returns when a phase last recorded a success,
 // which is what its trusted inventory age is measured against: a failed or
 // skipped run leaves that inventory exactly as an earlier success left it.
@@ -351,44 +331,4 @@ func (s *Store) LastSuccessfulPhaseCompletion(ctx context.Context, phase string)
 	}
 
 	return time.Unix(completedUnix, 0).UTC(), true, nil
-}
-
-// ForEachSuccessfulRunAfter visits the successful runs recorded after the given
-// run, oldest first, carrying each id so the caller can move its window. It
-// selects the counts a digest totals and not the detail column.
-func (s *Store) ForEachSuccessfulRunAfter(
-	ctx context.Context,
-	runID int64,
-	visit func(id int64, phase string, created, updated, deleted int) error,
-) error {
-	if visit == nil {
-		return errors.New("successful run visitor is required")
-	}
-	rows, err := s.database.QueryContext(ctx, `
-		SELECT id, phase, created, updated, deleted
-		FROM sync_runs
-		WHERE phase <> '' AND outcome = ? AND id > ?
-		ORDER BY id
-	`, "succeeded", runID)
-	if err != nil {
-		return fmt.Errorf("reading successful runs: %w", err)
-	}
-	defer closeRows(rows)
-
-	for rows.Next() {
-		var id int64
-		var phase string
-		var created, updated, deleted int
-		if err := rows.Scan(&id, &phase, &created, &updated, &deleted); err != nil {
-			return fmt.Errorf("reading a successful run: %w", err)
-		}
-		if err := visit(id, phase, created, updated, deleted); err != nil {
-			return err
-		}
-	}
-	if err := rows.Err(); err != nil {
-		return fmt.Errorf("reading the successful runs: %w", err)
-	}
-
-	return nil
 }

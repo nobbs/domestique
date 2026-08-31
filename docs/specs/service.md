@@ -387,8 +387,10 @@ it.
   An argument is the task's own to interpret, not this surface's: an
   unconfigured target slot is accepted and recorded as `skipped` rather than
   refused as `404`. The refusal that matters is in the service — a clear or a
-  reconciliation of a slot that is not configured does no work — and the
-  recorded attempt says so where an operator can see it.
+  reconciliation of a slot that is not configured does no work. The attempt is
+  recorded in `task_runs`, but nothing on this surface reads it back; an
+  operator learns of a typo'd slot only by the reconciliation it never
+  produces.
 
   `sync:clear` deletes every route this service owns from one configured slot
   and forgets that slot's route mappings. It is the one deletion the per-target

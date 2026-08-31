@@ -51,7 +51,7 @@ func taskListOf(t *testing.T, handler *Handler, request *http.Request) openapi.T
 func TestListTasksReportsWhatThisBuildRegisters(t *testing.T) {
 	due := time.Date(2026, time.August, 31, 9, 0, 0, 0, time.UTC)
 	handler, _ := tasksHandler(t,
-		RegisteredTask{Name: "sync:source", Scheduled: true, Running: 1, NextRunAt: due},
+		RegisteredTask{Name: "sync:source", Scheduled: true, Running: 1, NextRunAt: due, Interval: time.Hour},
 		RegisteredTask{Name: "sync:clear"},
 	)
 
@@ -67,9 +67,28 @@ func TestListTasksReportsWhatThisBuildRegisters(t *testing.T) {
 	assert.Equal(t, 1, view.Tasks[0].Running, "running")
 	require.NotNil(t, view.Tasks[0].NextRunAt, "the due time")
 	assert.Equal(t, due, view.Tasks[0].NextRunAt.UTC(), "the due time")
+	require.NotNil(t, view.Tasks[0].IntervalSeconds, "the fixed gap between runs")
+	assert.Equal(t, 3600, *view.Tasks[0].IntervalSeconds, "interval seconds")
 	// A task nothing schedules is due at no particular time, and that has to
-	// read as absent rather than as the zero instant.
+	// read as absent rather than as the zero instant. The same task has no
+	// fixed gap either.
 	assert.Nil(t, view.Tasks[1].NextRunAt, "a task nothing schedules reported a due time")
+	assert.Nil(t, view.Tasks[1].IntervalSeconds, "a task nothing schedules reported an interval")
+}
+
+// A sub-second interval must not truncate to a zero that reads as absent's
+// opposite: a task running every instant rather than one with no schedule.
+func TestListTasksOmitsAnIntervalThatRoundsToZero(t *testing.T) {
+	handler, _ := tasksHandler(t, RegisteredTask{Name: "sync:source", Interval: 400 * time.Millisecond})
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, tasksPath))
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+
+	var view openapi.TaskList
+	require.NoError(t, json.NewDecoder(response.Body).Decode(&view), "decoding the task list")
+	require.Len(t, view.Tasks, 1, "tasks")
+	assert.Nil(t, view.Tasks[0].IntervalSeconds, "a sub-second interval was served as intervalSeconds: 0")
 }
 
 // A service with nothing registered still answers with a list, an empty one.
@@ -111,8 +130,6 @@ func TestRunTaskStartsTheNamedTask(t *testing.T) {
 	}
 }
 
-// A name this build does not register is not found, so a page built against
-// another build asks for nothing that silently does nothing.
 func TestRunTaskRefusesANameThisBuildDoesNotRegister(t *testing.T) {
 	handler, tasks := tasksHandler(t, RegisteredTask{Name: "sync:source"})
 

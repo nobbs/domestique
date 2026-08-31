@@ -125,11 +125,6 @@ export const SendsOnlyTheCredentialThatWasTyped: Story = {
   },
 };
 
-/**
- * The alert matrix draws what this build can announce, with an alert nobody has
- * ruled on shown as on. Only the switches that were moved are sent, so leaving
- * one alone keeps whatever it had.
- */
 export const SendsOnlyTheAlertsThatWereSwitched: Story = {
   decorators: [
     (Story) => (
@@ -143,7 +138,6 @@ export const SendsOnlyTheAlertsThatWereSwitched: Story = {
     await expect(canvas.getByRole("switch", { name: "sync source" })).toBeChecked();
     await expect(canvas.getByRole("switch", { name: "sync destination" })).not.toBeChecked();
 
-    // Off and on again is where it started, so it is not a decision to send.
     await userEvent.click(canvas.getByRole("switch", { name: "sync source" }));
     await userEvent.click(canvas.getByRole("switch", { name: "sync source" }));
     await userEvent.click(canvas.getByRole("switch", { name: "surface:index build" }));
@@ -158,7 +152,6 @@ export const SendsOnlyTheAlertsThatWereSwitched: Story = {
   },
 };
 
-/** One zone for the whole service, sent to the endpoint that owns it. */
 export const SavesTheServiceTimezone: Story = {
   decorators: [
     (Story) => (

@@ -7,7 +7,7 @@
  * assertion; state-changing routes also require the same-origin `Origin`
  * header.
  *
- * OpenAPI spec version: 1.0.0
+ * OpenAPI spec version: 2.0.0
  */
 
 import type {
@@ -103,6 +103,8 @@ export interface SurfaceCoverage {
   classified: number;
   total: number;
   incomplete: number;
+  /** How many stages currently have a surface or duration enrichment pass recorded against them as unable to finish. */
+  enrichmentFailures: number;
 }
 
 export interface WahooRateLimit {
@@ -149,6 +151,8 @@ export interface Task {
   enabled: boolean;
   /** How many attempts of this task are in flight. */
   running: number;
+  /** The gap between runs for a task on a fixed schedule. Absent for a task with no schedule, or a calendar one, whose gap changes with the wall clock. */
+  intervalSeconds?: number;
   /** When the first scheduled run is due. Absent once it has started, and for a task nothing schedules. */
   nextRunAt?: string;
 }
@@ -1178,7 +1182,7 @@ export const getRunTaskArgumentUrl = (name: string, argument: string) => {
 };
 
 /**
- * Starts one attempt of a task over one argument, such as a single target slot. Otherwise identical to running it with none.
+ * Starts one attempt of a task over one argument, such as a single target slot. Otherwise identical to running it with none. The `404` is about the task name; an unconfigured argument is the task's own to interpret and is accepted.
  */
 export const runTaskArgument = async (
   name: string,

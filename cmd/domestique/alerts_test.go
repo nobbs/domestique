@@ -43,8 +43,6 @@ func TestAlertDecisionsReportWhatWasDecidedAndWhatWasNot(t *testing.T) {
 	}
 }
 
-// A decision has to reach the running service, not just the database, or an
-// operator switching an alert off would keep being woken by it.
 func TestSettingADecisionTakesEffectAtOnce(t *testing.T) {
 	t.Parallel()
 
@@ -87,9 +85,6 @@ func TestSettingADecisionReportsAnUnreadableDatabase(t *testing.T) {
 	}), "Set() on a closed database")
 }
 
-// Nothing scopes its alerts yet, so a decision about one scope must not be read
-// as a decision about the task: the last scope read would otherwise apply to
-// every one of them.
 func TestAScopedDecisionIsNotADecisionAboutTheTask(t *testing.T) {
 	t.Parallel()
 
@@ -105,8 +100,6 @@ func TestAScopedDecisionIsNotADecisionAboutTheTask(t *testing.T) {
 	assert.False(t, decided, "a decision about one scope was read as a decision about the task")
 }
 
-// The matrix crosses what the tasks declare with what was decided, and an alert
-// nobody has ruled on reads as enabled — which is what the layer does with it.
 func TestAlertMatrixCrossesDeclarationsWithDecisions(t *testing.T) {
 	t.Parallel()
 

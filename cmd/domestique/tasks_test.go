@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -20,7 +21,7 @@ import (
 func TestInventoryTasksAllHoldTheInventoryExclusively(t *testing.T) {
 	t.Parallel()
 
-	definitions := inventoryTasks(&fakeSynchronizer{}, liveSettings(t), allEnabled)
+	definitions := inventoryTasks(&fakeSynchronizer{}, liveSettings(t), allEnabled, twoTargets)
 
 	names := make([]string, 0, len(definitions))
 	for _, definition := range definitions {
@@ -36,14 +37,25 @@ func TestInventoryTasksAllHoldTheInventoryExclusively(t *testing.T) {
 		names, "registered tasks")
 }
 
-// The read runs unasked, and so do the targets — the second as a backstop
-// behind the read that asks for them. Clearing a slot and classifying are
-// things an operator asks for.
+func TestOnlyTheReadDeclaresTheStaleAlert(t *testing.T) {
+	t.Parallel()
+
+	stale := map[string]bool{taskSyncSource: true}
+	for _, definition := range inventoryTasks(&fakeSynchronizer{}, liveSettings(t), allEnabled, twoTargets) {
+		if definition.Notify == nil {
+			continue
+		}
+		assert.Equalf(t, stale[definition.Name],
+			slices.Contains(definition.Notify.Alerts, task.DetailStale),
+			"%s stale alert declared", definition.Name)
+	}
+}
+
 func TestOnlyTheReadAndTheTargetsAreScheduled(t *testing.T) {
 	t.Parallel()
 
 	scheduled := map[string]bool{taskSyncSource: true, taskSyncTarget: true}
-	for _, definition := range inventoryTasks(&fakeSynchronizer{}, liveSettings(t), allEnabled) {
+	for _, definition := range inventoryTasks(&fakeSynchronizer{}, liveSettings(t), allEnabled, twoTargets) {
 		if scheduled[definition.Name] {
 			assert.NotNilf(t, definition.Schedule, "%s is not scheduled", definition.Name)
 
@@ -85,13 +97,24 @@ func TestEachInventoryTaskRunsItsOwnWork(t *testing.T) {
 			t.Parallel()
 
 			synchronizer := &fakeSynchronizer{result: syncservice.Result{Outcome: syncservice.OutcomeSucceeded}}
-			definition := definitionNamed(t, inventoryTasks(synchronizer, liveSettings(t), allEnabled), test.task)
+			definition := definitionNamed(t, inventoryTasks(synchronizer, liveSettings(t), allEnabled, twoTargets), test.task)
 
 			result := definition.Run.Run(t.Context(), task.Invocation{Task: test.task, Argument: test.argument})
 			assert.Equal(t, task.Succeeded, result.Outcome, "outcome")
 			test.expect(t, synchronizer)
 		})
 	}
+}
+
+func TestClassificationRecordsFailureWhenStagesAreLeftUnclassified(t *testing.T) {
+	t.Parallel()
+
+	synchronizer := &fakeSynchronizer{annotationFailed: 2}
+	definition := definitionNamed(t, inventoryTasks(synchronizer, liveSettings(t), allEnabled, twoTargets), taskSurfaceAnnotate)
+
+	result := definition.Run.Run(t.Context(), task.Invocation{Task: taskSurfaceAnnotate})
+	assert.Equal(t, task.Failed, result.Outcome, "outcome")
+	assert.Equal(t, detailIncomplete, result.Detail, "detail")
 }
 
 func TestSyncResultCarriesEveryOutcomeAcross(t *testing.T) {
@@ -115,8 +138,6 @@ func TestSyncResultCarriesEveryOutcomeAcross(t *testing.T) {
 	}
 }
 
-// An outcome this binary has never heard of is a failure rather than a success:
-// nothing may read as done because it could not be understood.
 func TestSyncResultTreatsAnUnknownOutcomeAsAFailure(t *testing.T) {
 	t.Parallel()
 
@@ -174,14 +195,15 @@ func definitionNamed(t *testing.T, definitions []task.Definition, name string) t
 }
 
 type fakeSynchronizer struct {
-	providers   []route.Provider
-	phases      []syncservice.Phase
-	reconciled  []string
-	cleared     []string
-	result      syncservice.Result
-	scheduled   int
-	both        int
-	annotations int
+	providers        []route.Provider
+	phases           []syncservice.Phase
+	reconciled       []string
+	cleared          []string
+	result           syncservice.Result
+	scheduled        int
+	both             int
+	annotations      int
+	annotationFailed int
 }
 
 func (s *fakeSynchronizer) Run(context.Context) syncservice.Result {
@@ -220,7 +242,11 @@ func (s *fakeSynchronizer) ClearTarget(_ context.Context, targetID string) syncs
 	return s.result
 }
 
-func (s *fakeSynchronizer) Annotate(context.Context) { s.annotations++ }
+func (s *fakeSynchronizer) Annotate(context.Context) int {
+	s.annotations++
+
+	return s.annotationFailed
+}
 
 type fakeIndexBuilder struct {
 	err     error
@@ -240,7 +266,7 @@ func TestSyncTaskRunsOnAFixedCadenceAfterASettingsDrivenFirstDelay(t *testing.T)
 	t.Parallel()
 
 	settings := liveSettings(t)
-	definition := definitionNamed(t, inventoryTasks(&fakeSynchronizer{}, settings, allEnabled), taskSyncSource)
+	definition := definitionNamed(t, inventoryTasks(&fakeSynchronizer{}, settings, allEnabled, twoTargets), taskSyncSource)
 
 	at := time.Date(2026, time.August, 30, 9, 0, 0, 0, time.UTC)
 	assert.Equal(t, at.Add(syncservice.Interval), definition.Schedule.NextFire(at), "NextFire()")
@@ -261,15 +287,13 @@ func TestSyncTaskRunsWhatWasAskedOfIt(t *testing.T) {
 	t.Parallel()
 
 	synchronizer := &fakeSynchronizer{result: syncservice.Result{Outcome: syncservice.OutcomeSucceeded}}
-	definition := definitionNamed(t, inventoryTasks(synchronizer, liveSettings(t), allEnabled), taskSyncSource)
+	definition := definitionNamed(t, inventoryTasks(synchronizer, liveSettings(t), allEnabled, twoTargets), taskSyncSource)
 
 	result := definition.Run.Run(t.Context(), task.Invocation{Task: taskSyncSource, Trigger: task.TriggerSchedule})
 	assert.Equal(t, task.Succeeded, result.Outcome, "outcome")
 	assert.Equal(t, []syncservice.Phase{syncservice.PhaseSource}, synchronizer.phases, "phases run")
 }
 
-// Activity is assembled from two places at once, and the status response is
-// built from whatever both of them say at that moment.
 func TestSyncSurfaceReportsActivityFromBothHalves(t *testing.T) {
 	t.Parallel()
 
@@ -326,8 +350,6 @@ type fakeSyncReporter struct {
 func (r *fakeSyncReporter) Running() (syncservice.Phase, bool) { return r.phase, r.phase != "" }
 func (r *fakeSyncReporter) SurfaceIncomplete() int             { return r.incomplete }
 
-// A rebuild reports what it came to so the history says whether the map moved,
-// rather than only that something ran.
 func TestIndexResultSeparatesABuildFromAnUpstreamThatHadNothingNew(t *testing.T) {
 	t.Parallel()
 
@@ -376,7 +398,7 @@ func TestRegisterTasksNeedsSomewhereToRecord(t *testing.T) {
 func TestRegisterTasksTakesEveryDefinitionItIsGiven(t *testing.T) {
 	t.Parallel()
 
-	definitions := append(inventoryTasks(&fakeSynchronizer{}, liveSettings(t), allEnabled),
+	definitions := append(inventoryTasks(&fakeSynchronizer{}, liveSettings(t), allEnabled, twoTargets),
 		surfaceIndexTask(&fakeIndexBuilder{}, liveSettings(t), allEnabled, time.Time{}))
 
 	manager, err := registerTasks(&countingStore{}, &silentNotifier{}, undecided{}, alwaysOn, definitions)
@@ -387,8 +409,6 @@ func TestRegisterTasksTakesEveryDefinitionItIsGiven(t *testing.T) {
 	}
 }
 
-// An outcome this binary has not heard of must not read as a success: the
-// history would say the map moved when nothing here knows whether it did.
 func TestIndexResultTreatsAnUnknownOutcomeAsAFailure(t *testing.T) {
 	t.Parallel()
 
@@ -429,14 +449,13 @@ func (*countingStore) LastFailureNotification(context.Context, string) (time.Tim
 
 func (*countingStore) RecordFailureNotification(context.Context, string, time.Time) error { return nil }
 
-// What follows what is declared, so the graph is the assertion rather than a
-// result carrying links. Classification follows the read and the rebuild alike,
-// because each on its own leaves stages wanting it.
+// Classification follows the read and the rebuild alike, because each on its
+// own leaves stages wanting it.
 func TestTheGraphDeclaresWhatFollowsEveryRead(t *testing.T) {
 	t.Parallel()
 
 	definitions := append(
-		inventoryTasks(&fakeSynchronizer{}, liveSettings(t), allEnabled),
+		inventoryTasks(&fakeSynchronizer{}, liveSettings(t), allEnabled, twoTargets),
 		surfaceIndexTask(&fakeIndexBuilder{}, liveSettings(t), allEnabled, time.Time{}),
 	)
 
@@ -461,8 +480,7 @@ func (undecided) Wanted(context.Context, string, task.Detail) (enabled, decided 
 	return false, false
 }
 
-// The surface a page reads is the manager's own registrations, so a task added
-// to the layer appears without anybody writing an endpoint for it.
+// A task added to the layer appears without anybody writing an endpoint for it.
 func TestTaskSurfaceListsWhatTheManagerRegisters(t *testing.T) {
 	t.Parallel()
 
@@ -493,8 +511,6 @@ func TestTaskSurfaceListsWhatTheManagerRegisters(t *testing.T) {
 	assert.False(t, listed[1].Scheduled, "a task nothing schedules read as scheduled")
 }
 
-// Running through the surface is running through the manager, so an attempt
-// asked for over HTTP is refused on exactly the terms a schedule is.
 func TestTaskSurfaceRunsThroughTheManager(t *testing.T) {
 	t.Parallel()
 
@@ -523,10 +539,6 @@ func TestTaskSurfaceRunsThroughTheManager(t *testing.T) {
 	assert.False(t, surface.Run("invented", ""), "a name nothing registers was accepted")
 }
 
-// An attempt's life is the service's, not the request's. A request context is
-// cancelled the moment its handler returns, so a surface holding one would end
-// every attempt just after accepting it; the surface takes no request context
-// at all, and what it does hold is what the attempt runs under.
 func TestTaskSurfaceRunsUnderTheServiceContext(t *testing.T) {
 	t.Parallel()
 
@@ -584,8 +596,9 @@ func TestTaskSurfaceRunsUnderTheServiceContext(t *testing.T) {
 // allEnabled is a service where nobody has switched anything off.
 func allEnabled(string) func() bool { return func() bool { return true } }
 
-// Switching a task through the surface reaches the store behind it, and the
-// list the page reads back says so.
+// twoTargets is a service configured with two destination slots.
+func twoTargets() []string { return []string{"rider-a", "rider-b"} }
+
 func TestTaskSurfaceSwitchesATaskAndReportsIt(t *testing.T) {
 	t.Parallel()
 
@@ -606,7 +619,6 @@ func TestTaskSurfaceSwitchesATaskAndReportsIt(t *testing.T) {
 	assert.False(t, surface.Registered()[0].Enabled, "the switch did not reach the list")
 }
 
-// A surface built without a schedule to write says so rather than panicking.
 func TestTaskSurfaceRefusesToSwitchWithoutASchedule(t *testing.T) {
 	t.Parallel()
 
@@ -618,13 +630,11 @@ func TestTaskSurfaceRefusesToSwitchWithoutASchedule(t *testing.T) {
 	require.Error(t, surface.Schedule(t.Context(), "sync:target", false), "Schedule() without a schedule")
 }
 
-// The read takes a library the same way the targets take a slot: none is every
-// configured one, a name is that one alone.
 func TestTheReadTakesOneLibraryOrEveryOne(t *testing.T) {
 	t.Parallel()
 
 	synchronizer := &fakeSynchronizer{result: syncservice.Result{Outcome: syncservice.OutcomeSucceeded}}
-	definition := definitionNamed(t, inventoryTasks(synchronizer, liveSettings(t), allEnabled), taskSyncSource)
+	definition := definitionNamed(t, inventoryTasks(synchronizer, liveSettings(t), allEnabled, twoTargets), taskSyncSource)
 
 	definition.Run.Run(t.Context(), task.Invocation{Task: taskSyncSource})
 	assert.Equal(t, []syncservice.Phase{syncservice.PhaseSource}, synchronizer.phases, "phases run")

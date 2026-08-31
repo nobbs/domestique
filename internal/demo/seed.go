@@ -24,7 +24,6 @@ type State interface {
 	UpsertTargetStage(ctx context.Context, targetID string, provider route.Provider, routeID int64, stageOrder int, sourceRevision, contentHash string, wahooRouteID int64) error
 	RecordSyncRun(ctx context.Context, phase string, startedAt, finishedAt time.Time, outcome, detail string, sourceStages, created, updated, deleted int) (string, error)
 	RecordTargetRun(ctx context.Context, targetID string, finishedAt time.Time, outcome, detail string) error
-	SetSyncSchedule(ctx context.Context, source, targets bool) error
 }
 
 // SlotState is the state a seeded Wahoo slot is left in. Between them the three
@@ -152,12 +151,6 @@ func Seed(ctx context.Context, state State, slots []Slot, now time.Time) error {
 
 	if err := seedRuns(ctx, state, len(stages), now); err != nil {
 		return err
-	}
-	// Both halves left on, because a demo of a service that synchronises should
-	// show the switches the way an operator running it would see them. It still
-	// cannot reach a provider: that is the environment's job, not the fixture's.
-	if err := state.SetSyncSchedule(ctx, true, true); err != nil {
-		return fmt.Errorf("demo: setting schedule: %w", err)
 	}
 
 	return nil

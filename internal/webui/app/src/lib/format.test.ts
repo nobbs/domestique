@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   formatAscent,
+  formatCadence,
   formatCount,
   formatDistance,
   formatElevation,
@@ -175,6 +176,33 @@ describe("formatMovingTime", () => {
 
   it("reports hours and minutes together", () => {
     expect(formatMovingTime(2 * 3600 + 47 * 60)).toBe("2 h 45 min");
+  });
+});
+
+describe("formatCadence", () => {
+  it("says nothing about a schedule it does not have", () => {
+    expect(formatCadence(undefined)).toBe("No fixed schedule");
+    expect(formatCadence(0)).toBe("No fixed schedule");
+    expect(formatCadence(-4)).toBe("No fixed schedule");
+    expect(formatCadence(Number.NaN)).toBe("No fixed schedule");
+  });
+
+  it("names an hourly gap specially", () => {
+    expect(formatCadence(3600)).toBe("Hourly");
+  });
+
+  it("reports a gap of whole hours as a count", () => {
+    expect(formatCadence(6 * 3600)).toBe("Every 6 hours");
+  });
+
+  it("reports a gap under an hour in minutes", () => {
+    expect(formatCadence(90)).toBe("Every 2 minutes");
+    expect(formatCadence(60)).toBe("Every minute");
+  });
+
+  it("reports a gap under a minute in seconds rather than rounding it away", () => {
+    expect(formatCadence(30)).toBe("Every 30 seconds");
+    expect(formatCadence(1)).toBe("Every second");
   });
 });
 

@@ -16,7 +16,7 @@ func TestReporterRecordsEverySuccess(t *testing.T) {
 		source:  Result{Phase: PhaseSource, Outcome: OutcomeSucceeded, SourceStages: 3},
 		targets: Result{Phase: PhaseTargets, Outcome: OutcomeSucceeded, SourceStages: 3, Created: 2, Updated: 1},
 	}
-	state := &fakeRunState{source: true, targets: true}
+	state := &fakeRunState{}
 	reporter := newReporter(t, runner, state)
 	now := time.Date(2026, time.August, 17, 8, 0, 0, 0, time.UTC)
 	reporter.now = func() time.Time { return now }
@@ -58,7 +58,10 @@ func TestReporterClearsOneTargetAlone(t *testing.T) {
 // it stored something new to enrich rather than enriching it itself.
 func TestReporterReportsWhetherItStoredANewInventory(t *testing.T) {
 	stored := &reportingRunner{
-		source:  Result{Phase: PhaseSource, Outcome: OutcomeSucceeded},
+		source: Result{
+			Phase: PhaseSource, Outcome: OutcomeSucceeded,
+			Sources: []SourceResult{{Provider: route.ProviderVeloPlanner, Outcome: OutcomeSucceeded}},
+		},
 		targets: Result{Phase: PhaseTargets, Outcome: OutcomeSucceeded},
 	}
 	result := newReporter(t, stored, &fakeRunState{}).RunPhase(t.Context(), PhaseSource)
@@ -74,6 +77,23 @@ func TestReporterReportsWhetherItStoredANewInventory(t *testing.T) {
 	assert.False(t, targetsResult.SourceStored, "a run that stored no inventory reported one")
 }
 
+// Two providers, one storing: the aggregate outcome is the worse of the two,
+// but the phase still reports the successful half's stored inventory.
+func TestReporterReportsAPartialSourceReadAsStored(t *testing.T) {
+	partial := &reportingRunner{
+		source: Result{
+			Phase: PhaseSource, Outcome: OutcomeFailed, Failure: FailureSource,
+			Sources: []SourceResult{
+				{Provider: route.ProviderVeloPlanner, Outcome: OutcomeSucceeded},
+				{Provider: route.ProviderKomoot, Outcome: OutcomeFailed, Failure: FailureSource},
+			},
+		},
+	}
+	result := newReporter(t, partial, &fakeRunState{}).RunPhase(t.Context(), PhaseSource)
+	assert.Equal(t, OutcomeFailed, result.Outcome, "the aggregate outcome hid the failure")
+	assert.True(t, result.SourceStored, "a partial store was not reported as one")
+}
+
 // SurfaceIncomplete is what tells a stage that keeps failing classification
 // apart from one nobody has asked about yet, both otherwise absent alike.
 func TestReporterReportsTheLastAnnotationPassesIncompleteCount(t *testing.T) {
@@ -82,7 +102,7 @@ func TestReporterReportsTheLastAnnotationPassesIncompleteCount(t *testing.T) {
 		annotateClassified: 3,
 		annotateFailed:     2,
 	}
-	reporter := newReporter(t, runner, &fakeRunState{source: true})
+	reporter := newReporter(t, runner, &fakeRunState{})
 	assert.Zero(t, reporter.SurfaceIncomplete(), "an incomplete count was reported before any pass ran")
 
 	reporter.Annotate(t.Context())
@@ -109,7 +129,7 @@ func TestReporterAnnotateRunsOnlyClassification(t *testing.T) {
 }
 
 func TestReporterDoesNotRecordOrNotifySkippedRun(t *testing.T) {
-	state := &fakeRunState{source: true, targets: true}
+	state := &fakeRunState{}
 	runner := &reportingRunner{
 		source:  Result{Phase: PhaseSource, Outcome: OutcomeSkipped},
 		targets: Result{Phase: PhaseTargets, Outcome: OutcomeSkipped},
@@ -231,30 +251,19 @@ func (r *blockingReportingRunner) AnnotateStored(context.Context) (classified, f
 const recordedRunReference = "1a2b3c4d5e6f"
 
 type fakeRunState struct {
-	scheduleErr      error
 	targetRunErr     error
 	lastFailureErr   error
 	recordFailureErr error
 	clearFailureErr  error
 	lastFailure      map[string]time.Time
-	lastPhase        map[string]string
 	lastSuccessAt    map[string]time.Time
 	lastSuccessErr   error
-	successfulRuns   []successfulRun
 	phases           []string
 	recordedRuns     []recordedTargetRun
 	runs             int
-	source           bool
-	targets          bool
 }
 
 // successfulRun is one recorded success as a digest reads it back.
-type successfulRun struct {
-	phase                     string
-	id                        int64
-	created, updated, deleted int
-}
-
 // recordedTargetRun is one slot's result as it reached durable state.
 type recordedTargetRun struct {
 	finishedAt time.Time
@@ -287,20 +296,11 @@ func (s *fakeRunState) RecordSyncRun(
 	phase string,
 	_, finishedAt time.Time,
 	outcome, _ string,
-	_, created, updated, deleted int,
+	_, _, _, _ int,
 ) (string, error) {
 	s.runs++
 	s.phases = append(s.phases, phase)
-	if s.lastPhase == nil {
-		s.lastPhase = make(map[string]string)
-	}
-	s.lastPhase[phase] = outcome
 	if outcome == string(OutcomeSucceeded) {
-		// The store's run ids are monotonic, which is what the digest window is
-		// bounded by; the row count stands in for them here.
-		s.successfulRuns = append(s.successfulRuns, successfulRun{
-			id: int64(s.runs), phase: phase, created: created, updated: updated, deleted: deleted,
-		})
 		if s.lastSuccessAt == nil {
 			s.lastSuccessAt = make(map[string]time.Time)
 		}
@@ -319,14 +319,6 @@ func (s *fakeRunState) LastSuccessfulPhaseCompletion(
 	completedAt, found = s.lastSuccessAt[phase]
 
 	return completedAt, found, nil
-}
-
-func (s *fakeRunState) SyncSchedule(context.Context) (source, targets bool, err error) {
-	if s.scheduleErr != nil {
-		return false, false, s.scheduleErr
-	}
-
-	return s.source, s.targets, nil
 }
 
 func (s *fakeRunState) LastFailureNotification(_ context.Context, category string) (time.Time, bool, error) {
@@ -400,9 +392,8 @@ func TestReporterRecordsNoTargetRunsForASourceRun(t *testing.T) {
 	assert.Empty(t, state.recordedRuns)
 }
 
-// The reporter has to hand the named library to the runner rather than falling
-// back to reading every one: a task that asks for one library and gets all of
-// them looks like it worked.
+// The reporter must hand the named library to the runner rather than fall back
+// to reading every one: a wrong read here still reports success.
 func TestReporterRunSourceProviderReadsTheLibraryItWasGiven(t *testing.T) {
 	t.Parallel()
 

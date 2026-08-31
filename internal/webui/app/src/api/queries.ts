@@ -66,11 +66,7 @@ export const routeGeometryQuery = (provider: string, sourceRouteId: number, stag
     },
   });
 
-/**
- * What this build registers: whether each has a schedule at all, and whether
- * that schedule may start it. It changes only when an operator edits it or a
- * run starts, so it is read on demand rather than polled.
- */
+/** Each registered task's schedule state. Read on demand rather than polled. */
 export const tasksQuery = () =>
   getListTasksQueryOptions({
     query: { select: (response) => payload<TaskList>(response) },

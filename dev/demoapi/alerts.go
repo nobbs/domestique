@@ -7,10 +7,8 @@ import (
 	"github.com/nobbs/domestique/internal/httpapi"
 )
 
-// demoAlerts is an alert matrix held in memory. The shipped binary builds its
-// catalogue from the tasks it registers; a demo registers none, so this stands
-// in a plausible one and remembers what is decided about it for as long as the
-// process runs.
+// demoAlerts is an alert matrix held in memory, standing in for the catalogue
+// the shipped binary builds from its registered tasks.
 type demoAlerts struct {
 	decided map[demoAlert]bool
 	mutex   sync.RWMutex
@@ -23,18 +21,31 @@ type demoAlert struct {
 	alert string
 }
 
-// demoAlertCatalogue is what the shipped binary's tasks declare, which is what
-// makes the settings section look like the one an operator meets.
-var demoAlertCatalogue = []demoAlert{ //nolint:gochecknoglobals // a fixture for development tooling
-	{task: "sync", alert: "state"},
-	{task: "sync", alert: "source"},
-	{task: "sync", alert: "authorization"},
-	{task: "sync", alert: "destination"},
-	{task: "sync", alert: "course"},
-	{task: "sync", alert: "empty_source"},
-	{task: "sync", alert: "deletion_limit"},
-	{task: "surface:index", alert: "build"},
-	{task: "surface:index", alert: "no_regions"},
+// syncFailureAlerts is what a synchronization can fail with, shared by every
+// sync task's slice of the catalogue below.
+var syncFailureAlerts = []string{ //nolint:gochecknoglobals // a fixture for development tooling
+	"state", "source", "authorization", "destination", "course", "empty_source", "deletion_limit",
+}
+
+// demoAlertCatalogue mirrors what the shipped binary's tasks declare, so the
+// settings section looks like the one an operator meets.
+var demoAlertCatalogue = buildDemoAlertCatalogue() //nolint:gochecknoglobals // a fixture for development tooling
+
+func buildDemoAlertCatalogue() []demoAlert {
+	catalogue := make([]demoAlert, 0, 3*(len(syncFailureAlerts)+2)+1+2)
+	for _, task := range []string{"sync:source", "sync:target", "sync:clear"} {
+		catalogue = append(catalogue, demoAlert{task: task, alert: "succeeded"}, demoAlert{task: task, alert: "recovered"})
+		if task == "sync:source" {
+			catalogue = append(catalogue, demoAlert{task: task, alert: "stale"})
+		}
+		for _, alert := range syncFailureAlerts {
+			catalogue = append(catalogue, demoAlert{task: task, alert: alert})
+		}
+	}
+	catalogue = append(catalogue,
+		demoAlert{task: "surface:index", alert: "build"}, demoAlert{task: "surface:index", alert: "no_regions"})
+
+	return catalogue
 }
 
 func newDemoAlerts() *demoAlerts {

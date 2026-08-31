@@ -131,6 +131,8 @@ type SurfaceCoverage struct {
 	Classified int        `json:"classified"`
 	Total      int        `json:"total"`
 	Incomplete int        `json:"incomplete"`
+	// EnrichmentFailures How many stages currently have a surface or duration enrichment pass recorded against them as unable to finish.
+	EnrichmentFailures int `json:"enrichmentFailures"`
 }
 
 type WahooRateLimit struct {
@@ -351,6 +353,8 @@ type Task struct {
 	Enabled bool `json:"enabled"`
 	// Running How many attempts of this task are in flight.
 	Running int `json:"running"`
+	// IntervalSeconds The gap between runs for a task on a fixed schedule. Absent for a task with no schedule, or a calendar one, whose gap changes with the wall clock.
+	IntervalSeconds *int `json:"intervalSeconds,omitempty"`
 	// NextRunAt When the first scheduled run is due. Absent once it has started, and for a task nothing schedules.
 	NextRunAt *time.Time `json:"nextRunAt,omitempty"`
 }

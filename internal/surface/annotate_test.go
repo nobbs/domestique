@@ -30,8 +30,6 @@ func TestAnnotateClassifiesTheStagesAfterOneThatFailed(t *testing.T) {
 		cache.failures, "the stage that failed was not named")
 }
 
-// A count says how many stages are missing a classification; the record says
-// which, and what stopped each one.
 func TestAnnotateNamesWhatStoppedEachStage(t *testing.T) {
 	source := &fakeSource{generation: "abc123", failFor: map[int64]error{1: errors.New("cell unreadable")}}
 	cache := newFakeCache()
@@ -46,8 +44,6 @@ func TestAnnotateNamesWhatStoppedEachStage(t *testing.T) {
 	}, cache.failures, "recorded failures")
 }
 
-// Losing the record of a failure leaves the count as the only account of it,
-// which is what there was before. It must not stop the pass.
 func TestAnnotateCarriesOnWhenAFailureCannotBeRecorded(t *testing.T) {
 	source := &fakeSource{generation: "abc123", failFor: map[int64]error{1: errors.New("cell unreadable")}}
 	cache := newFakeCache()

@@ -16,13 +16,13 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRunTask, useSetTaskSchedule } from "../../api/generated";
 import { statusQuery, tasksQuery, webUIConfigQuery } from "../../api/queries";
-import { SYNC_PHASE_CADENCE, SYNC_PHASE_TASKS, TASKS } from "../../api/tasks";
+import { SYNC_PHASE_TASKS, TASKS } from "../../api/tasks";
 import type { Status, SyncActive, SyncPhase } from "../../api/types";
 import { SYNC_PHASES } from "../../api/types";
 import { Button } from "../../components/Button";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Spinner } from "../../components/ui/spinner";
-import { formatTimestamp } from "../../lib/format";
+import { formatCadence, formatTimestamp } from "../../lib/format";
 import { syncGuidance } from "../../lib/syncGuidance";
 import { phaseLabels, runningPhaseLabels } from "../../lib/syncLabels";
 import { SyncPhaseRow } from "./SyncPhaseRow";
@@ -127,9 +127,7 @@ export function SyncControls() {
     mutation: { onSuccess: invalidateStatus },
   });
 
-  // The task list is required, not decorative: a switch drawn before it arrives
-  // would show a state nobody reported, and pressing it would send the opposite
-  // of a guess.
+  // Required, not decorative: a switch drawn before the task list arrives would show a guess.
   if (isPending || tasks.isPending) {
     return <Skeleton className="h-28 w-full" role="status" aria-label="Loading sync controls" />;
   }
@@ -137,11 +135,13 @@ export function SyncControls() {
     return <p className="text-sm text-[var(--alert)]">The service did not say what it is doing.</p>;
   }
 
-  // Each half is its own task now, so a switch travels alone: nothing here has
-  // to carry a value for the other half, and cannot get it wrong. A task the
-  // service does not list is one nobody has ruled on, which runs.
+  // Each half is its own task, so a switch travels alone. Unlisted defaults to enabled.
   const enabledFor = (phase: SyncPhase) =>
     tasks.data?.tasks?.find((task) => task.name === SYNC_PHASE_TASKS[phase])?.enabled ?? true;
+  const cadenceFor = (phase: SyncPhase) =>
+    formatCadence(
+      tasks.data?.tasks?.find((task) => task.name === SYNC_PHASE_TASKS[phase])?.intervalSeconds,
+    );
   const toggle = (phase: SyncPhase) =>
     schedule.mutate({ name: SYNC_PHASE_TASKS[phase], data: { enabled: !enabledFor(phase) } });
 
@@ -187,6 +187,14 @@ export function SyncControls() {
           ) : null}
         </p>
       ) : null}
+      {/* enrichmentFailures covers surface and duration passes together, and persists across runs. */}
+      {data.sync.surface.enrichmentFailures > 0 ? (
+        <p className="text-sm text-[var(--ink-2)]">
+          {data.sync.surface.enrichmentFailures}{" "}
+          {data.sync.surface.enrichmentFailures === 1 ? "stage has" : "stages have"} an unfinished
+          enrichment pass.
+        </p>
+      ) : null}
       {retryClassification.isError ? (
         <p className="text-sm text-[var(--alert)]" role="alert">
           {retryClassification.error instanceof Error && retryClassification.error.message
@@ -205,7 +213,7 @@ export function SyncControls() {
               label={labels[phase]}
               lastRun={data.sync.phases[phase]}
               enabled={enabledFor(phase)}
-              cadence={SYNC_PHASE_CADENCE[phase]}
+              cadence={cadenceFor(phase)}
               scheduleDisabled={schedule.isPending}
               onToggle={() => toggle(phase)}
               running={run.isPending}

@@ -102,3 +102,15 @@ type Result struct {
 	Updated      int
 	Deleted      int
 }
+
+// AnySourceStored reports whether any configured source stored a fresh
+// inventory this pass; always false for a target or clear result, which leaves Sources empty.
+func (r *Result) AnySourceStored() bool {
+	for _, source := range r.Sources {
+		if source.Outcome == OutcomeSucceeded {
+			return true
+		}
+	}
+
+	return false
+}
