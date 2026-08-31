@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { MixEntry } from "../../lib/mix";
 import { MixRow, placeTags } from "./MixRow";
 
+// Mirrors MixRow.tsx's own constants; keep both in sync if that layout changes.
 const TAG_WIDTH = 62;
 const TAG_GAP = 6;
 

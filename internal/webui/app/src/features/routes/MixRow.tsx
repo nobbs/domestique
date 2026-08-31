@@ -59,13 +59,15 @@ const ASSUMED_WIDTH = 344;
 const FEET_LIMIT = 5280;
 
 /**
- * One length, in the unit the rest of its bar is using.
+ * One length, in the unit its bar is using.
  *
  * `formatDistance` chooses per value, which is right for a figure standing on
  * its own and wrong for a row of them: in miles and feet it gives a bar reading
  * `3598 ft`, `4707 ft`, `16.5 mi`, in which the largest number names the
- * shortest stretch. So the unit is chosen once, from the longest, and every tag
- * is drawn in it.
+ * shortest stretch. So imperial picks its unit once, from the longest, and
+ * draws every tag in it. Metric has no such ft/mi split — only a decimal
+ * place that gets coarser once the longest is over 100 km — so a short tag
+ * still reads in metres beside a row of kilometres.
  */
 function barLength(metres: number, unitSystem: UnitSystem, longest: number): string {
   if (unitSystem === "imperial") {
