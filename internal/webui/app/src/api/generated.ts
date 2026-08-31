@@ -1369,9 +1369,174 @@ export const getTaskRuns = async (
   });
 };
 
+export const getGetTaskRunsInfiniteQueryKey = (params?: GetTaskRunsParams) => {
+  return ["infinite", `/v1/tasks/runs`, ...(params ? [params] : [])] as const;
+};
+
 export const getGetTaskRunsQueryKey = (params?: GetTaskRunsParams) => {
   return [`/v1/tasks/runs`, ...(params ? [params] : [])] as const;
 };
+
+export const getGetTaskRunsInfiniteQueryOptions = <
+  TData = InfiniteData<Awaited<ReturnType<typeof getTaskRuns>>, GetTaskRunsParams["after"]>,
+  TError = ErrorType<
+    InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
+  >,
+>(
+  params?: GetTaskRunsParams,
+  options?: {
+    query?: Partial<
+      UseInfiniteQueryOptions<
+        Awaited<ReturnType<typeof getTaskRuns>>,
+        TError,
+        TData,
+        QueryKey,
+        GetTaskRunsParams["after"]
+      >
+    >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetTaskRunsInfiniteQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getTaskRuns>>,
+    QueryKey,
+    GetTaskRunsParams["after"]
+  > = ({ signal, pageParam }) =>
+    getTaskRuns(
+      { ...params, after: (pageParam ?? params?.after) as string },
+      { signal, ...requestOptions },
+    );
+
+  return { queryKey, queryFn, ...queryOptions } as UseInfiniteQueryOptions<
+    Awaited<ReturnType<typeof getTaskRuns>>,
+    TError,
+    TData,
+    QueryKey,
+    GetTaskRunsParams["after"]
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type GetTaskRunsInfiniteQueryResult = NonNullable<Awaited<ReturnType<typeof getTaskRuns>>>;
+export type GetTaskRunsInfiniteQueryError = ErrorType<
+  InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
+>;
+
+export function useGetTaskRunsInfinite<
+  TData = InfiniteData<Awaited<ReturnType<typeof getTaskRuns>>, GetTaskRunsParams["after"]>,
+  TError = ErrorType<
+    InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
+  >,
+>(
+  params: undefined | GetTaskRunsParams,
+  options: {
+    query: Partial<
+      UseInfiniteQueryOptions<
+        Awaited<ReturnType<typeof getTaskRuns>>,
+        TError,
+        TData,
+        QueryKey,
+        GetTaskRunsParams["after"]
+      >
+    > &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getTaskRuns>>,
+          TError,
+          Awaited<ReturnType<typeof getTaskRuns>>,
+          QueryKey
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseInfiniteQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetTaskRunsInfinite<
+  TData = InfiniteData<Awaited<ReturnType<typeof getTaskRuns>>, GetTaskRunsParams["after"]>,
+  TError = ErrorType<
+    InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
+  >,
+>(
+  params?: GetTaskRunsParams,
+  options?: {
+    query?: Partial<
+      UseInfiniteQueryOptions<
+        Awaited<ReturnType<typeof getTaskRuns>>,
+        TError,
+        TData,
+        QueryKey,
+        GetTaskRunsParams["after"]
+      >
+    > &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getTaskRuns>>,
+          TError,
+          Awaited<ReturnType<typeof getTaskRuns>>,
+          QueryKey
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseInfiniteQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetTaskRunsInfinite<
+  TData = InfiniteData<Awaited<ReturnType<typeof getTaskRuns>>, GetTaskRunsParams["after"]>,
+  TError = ErrorType<
+    InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
+  >,
+>(
+  params?: GetTaskRunsParams,
+  options?: {
+    query?: Partial<
+      UseInfiniteQueryOptions<
+        Awaited<ReturnType<typeof getTaskRuns>>,
+        TError,
+        TData,
+        QueryKey,
+        GetTaskRunsParams["after"]
+      >
+    >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseInfiniteQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+export function useGetTaskRunsInfinite<
+  TData = InfiniteData<Awaited<ReturnType<typeof getTaskRuns>>, GetTaskRunsParams["after"]>,
+  TError = ErrorType<
+    InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
+  >,
+>(
+  params?: GetTaskRunsParams,
+  options?: {
+    query?: Partial<
+      UseInfiniteQueryOptions<
+        Awaited<ReturnType<typeof getTaskRuns>>,
+        TError,
+        TData,
+        QueryKey,
+        GetTaskRunsParams["after"]
+      >
+    >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseInfiniteQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getGetTaskRunsInfiniteQueryOptions(params, options);
+
+  const query = useInfiniteQuery(queryOptions, queryClient) as UseInfiniteQueryResult<
+    TData,
+    TError
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
 
 export const getGetTaskRunsQueryOptions = <
   TData = Awaited<ReturnType<typeof getTaskRuns>>,

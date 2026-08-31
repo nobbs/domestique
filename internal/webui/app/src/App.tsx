@@ -3,6 +3,7 @@ import { Navigate, Route, Routes, useParams } from "react-router";
 import { CataloguePage } from "./features/catalogue/CataloguePage";
 import { AtlasPage } from "./features/routes/AtlasPage";
 import { SettingsPage } from "./features/settings/SettingsPage";
+import { TasksPage } from "./features/settings/tasks/TasksPage";
 import { SyncPage } from "./features/sync/SyncPage";
 import { useThemeChoice } from "./lib/theme";
 
@@ -76,6 +77,7 @@ export function App() {
         path="settings"
         element={<SettingsPage themeChoice={themeChoice} onThemeChoiceChange={setThemeChoice} />}
       />
+      <Route path="settings/tasks" element={<TasksPage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

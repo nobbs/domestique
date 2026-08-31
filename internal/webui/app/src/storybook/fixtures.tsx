@@ -7,6 +7,7 @@ import {
   settingsQuery,
   statusQuery,
   syncRunsQueryKey,
+  taskRunsQueryKey,
   tasksQuery,
   weatherQuery,
   webUIConfigQuery,
@@ -19,6 +20,7 @@ import type {
   Status,
   SyncRun,
   TaskList,
+  TaskRun,
   WebUIConfig,
 } from "../api/types";
 import type { Climb } from "../lib/climbs";
@@ -252,15 +254,38 @@ const config: WebUIConfig = {
   identity: { email: "rider@example.test", signOutUrl: "/cdn-cgi/access/logout" },
 };
 
-/** What this build registers, as the sync page reads it. */
+/** What this build registers, as the sync and tasks pages read it. */
 export const tasks: TaskList = {
   tasks: [
     { name: "sync:source", scheduled: true, enabled: true, running: 0, intervalSeconds: 3600 },
     { name: "sync:target", scheduled: true, enabled: false, running: 0, intervalSeconds: 21600 },
+    { name: "sync:clear", scheduled: false, enabled: true, running: 0 },
     { name: "surface:annotate", scheduled: false, enabled: true, running: 0 },
     { name: "surface:index", scheduled: true, enabled: true, running: 0 },
   ],
 };
+
+/** What the tasks page's history reads, over every task. */
+export const taskRuns: TaskRun[] = [
+  {
+    task: "sync:source",
+    trigger: "schedule",
+    startedAt: "2026-08-18T06:14:58Z",
+    finishedAt: "2026-08-18T06:15:00Z",
+    outcome: "succeeded",
+    reference: "2a3b4c5d6e7f",
+  },
+  {
+    task: "sync:clear",
+    argument: "rider-b",
+    trigger: "manual",
+    startedAt: "2026-08-17T09:00:00Z",
+    finishedAt: "2026-08-17T09:00:02Z",
+    outcome: "skipped",
+    detail: "resource_held",
+    reference: "8f7e6d5c4b3a",
+  },
+];
 
 export function StoryProviders({ children }: { children: ReactNode }) {
   const [client] = useState(() => {
@@ -278,6 +303,10 @@ export function StoryProviders({ children }: { children: ReactNode }) {
     );
     next.setQueryData(syncRunsQueryKey(), {
       pages: [{ runs }],
+      pageParams: [undefined],
+    });
+    next.setQueryData(taskRunsQueryKey(), {
+      pages: [{ runs: taskRuns }],
       pageParams: [undefined],
     });
     next.setQueryData(weatherQuery(weatherSamples).queryKey, {
