@@ -199,6 +199,9 @@ export function formatCadence(seconds: number | undefined): string {
 
     return `Every ${hours} hours`;
   }
+  if (seconds < 60) {
+    return seconds === 1 ? "Every second" : `Every ${seconds} seconds`;
+  }
   const minutes = Math.round(seconds / 60);
 
   return minutes === 1 ? "Every minute" : `Every ${minutes} minutes`;

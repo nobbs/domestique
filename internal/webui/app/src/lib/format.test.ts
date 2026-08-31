@@ -199,6 +199,11 @@ describe("formatCadence", () => {
     expect(formatCadence(90)).toBe("Every 2 minutes");
     expect(formatCadence(60)).toBe("Every minute");
   });
+
+  it("reports a gap under a minute in seconds rather than rounding it away", () => {
+    expect(formatCadence(30)).toBe("Every 30 seconds");
+    expect(formatCadence(1)).toBe("Every second");
+  });
 });
 
 describe("formatMovingTimeUncertainty", () => {
