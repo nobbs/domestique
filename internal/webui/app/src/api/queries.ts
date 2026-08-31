@@ -193,4 +193,7 @@ export function useTaskRuns(task?: string, limit = HISTORY_PAGE_SIZE, enabled = 
 export const taskRunsQueryKey = (task?: string, limit = HISTORY_PAGE_SIZE) =>
   getGetTaskRunsInfiniteQueryKey(taskRunsParams(task, limit));
 
+/** Every task-run page there is, whatever it is filtered or sized to. */
+export const taskRunsQueryPrefix = () => getGetTaskRunsInfiniteQueryKey();
+
 export { HISTORY_PAGE_SIZE, LOOKUP_PAGE_SIZE };

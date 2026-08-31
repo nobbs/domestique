@@ -484,10 +484,12 @@ func TestForEachTaskRunPageRefusesACursorItDidNotIssue(t *testing.T) {
 	at := time.Date(2026, time.August, 30, 9, 0, 0, 0, time.UTC)
 	recordTaskRunAt(t, store, "sync:source", "", "schedule", at, "only")
 
-	// The last one pairs an id in range with an instant ahead of the history: a
-	// position past either half is one this store never handed out.
+	// The last three pair an id in range with an instant outside the history —
+	// ahead of it, at the epoch, behind it. A position past either half at
+	// either end is one this store never handed out.
 	for _, cursor := range []string{
-		"the-newest-one", "12345", "notanumber:1", "12345:notanumber", "12345:0", "12345:999", "9999999999:1",
+		"the-newest-one", "12345", "notanumber:1", "12345:notanumber", "12345:0", "12345:999",
+		"9999999999:1", "0:1", "-5:1",
 	} {
 		visited := 0
 		next, usable, err := store.ForEachTaskRunPage(t.Context(), "", cursor, 10, func(

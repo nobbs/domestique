@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { statusQuery, tasksQuery } from "../../../api/queries";
+import { statusQuery, taskRunsQueryKey, tasksQuery } from "../../../api/queries";
 import type { Status, Task, TaskList } from "../../../api/types";
 import { TaskTable } from "./TaskTable";
 
@@ -56,11 +56,14 @@ function renderTable(tasks: TaskList = taskList(), statusValue: Status = status(
   client.setQueryData(tasksQuery().queryKey, tasks);
   client.setQueryData(statusQuery().queryKey, statusValue);
 
-  return render(
-    <QueryClientProvider client={client}>
-      <TaskTable />
-    </QueryClientProvider>,
-  );
+  return {
+    client,
+    ...render(
+      <QueryClientProvider client={client}>
+        <TaskTable />
+      </QueryClientProvider>,
+    ),
+  };
 }
 
 afterEach(() => {
@@ -165,6 +168,26 @@ describe("TaskTable", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "the task is already running, or something it needs is held by another run",
     );
+  });
+
+  // The refusal is recorded as a skipped attempt, and the history beneath this
+  // table is where an operator reads why a run did not happen.
+  it("refreshes the history after a run is refused", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ error: { code: "task_in_progress", message: "busy" } }), {
+            status: 409,
+          }),
+      ),
+    );
+    const { client } = renderTable();
+    client.setQueryData(taskRunsQueryKey(), { pages: [], pageParams: [] });
+
+    await userEvent.click(screen.getByRole("button", { name: "Run now: sync:source" }));
+
+    await waitFor(() => expect(client.getQueryState(taskRunsQueryKey())?.isInvalidated).toBe(true));
   });
 
   // sync:clear deletes every owned route from one slot, and a run with none

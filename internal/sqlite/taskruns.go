@@ -139,10 +139,10 @@ func (s *Store) ForEachTaskRunPage(
 		if readErr != nil {
 			return "", false, readErr
 		}
-		// Both halves are bounded, not just the id: an in-range id beside a
-		// far-future instant would otherwise walk from ahead of the history and
-		// hand back its newest page as though the cursor had been issued.
-		if id <= 0 || id > issued || finishedAt > latestFinished {
+		// Both halves are bounded at both ends. An instant ahead of the history
+		// would walk from in front of it and hand back its newest page; one behind
+		// every row would read as a history that ends here. Neither was issued.
+		if id <= 0 || id > issued || finishedAt <= 0 || finishedAt > latestFinished {
 			return "", false, nil
 		}
 		finishedBefore, idBefore = finishedAt, id

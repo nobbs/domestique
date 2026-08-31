@@ -11,7 +11,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useRunTask, useRunTaskArgument, useSetTaskSchedule } from "../../../api/generated";
-import { statusQuery, tasksQuery } from "../../../api/queries";
+import { statusQuery, taskRunsQueryPrefix, tasksQuery } from "../../../api/queries";
 import { TASKS } from "../../../api/tasks";
 import type { Task } from "../../../api/types";
 import { Button } from "../../../components/Button";
@@ -38,7 +38,7 @@ function cadenceLabel(task: Task): string {
   return task.scheduled ? formatCadence(task.intervalSeconds) : "On demand";
 }
 
-/** Absent both while an attempt is in flight and for a task nothing schedules; either reads the same here. */
+/** Absent both while the task's own scheduled run is under way and for a task nothing schedules. */
 function nextDueLabel(task: Task): string {
   return task.nextRunAt ? formatTimestamp(task.nextRunAt) : "—";
 }
@@ -52,9 +52,15 @@ export function TaskTable() {
   const tasks = useQuery(tasksQuery());
   const status = useQuery(statusQuery());
   const invalidateTasks = () => queryClient.invalidateQueries({ queryKey: tasksQuery().queryKey });
+  // Settled, unlike the list: a refusal starts nothing, so what is running is
+  // unchanged, but it is recorded, and the history is where its reason is read.
+  const invalidateHistory = () =>
+    queryClient.invalidateQueries({ queryKey: taskRunsQueryPrefix() });
 
   const schedule = useSetTaskSchedule({ mutation: { onSuccess: invalidateTasks } });
-  const run = useRunTask({ mutation: { onSuccess: invalidateTasks } });
+  const run = useRunTask({
+    mutation: { onSuccess: invalidateTasks, onSettled: invalidateHistory },
+  });
 
   // sync:clear is destructive over exactly one slot and a run with none named
   // does nothing (internal/sync/service.go skips a slot it does not
@@ -72,6 +78,7 @@ export function TaskTable() {
 
         return invalidateTasks();
       },
+      onSettled: invalidateHistory,
     },
   });
   const slots = status.data?.targets.map((target) => target.id) ?? [];
