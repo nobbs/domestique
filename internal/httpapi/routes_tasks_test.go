@@ -119,7 +119,7 @@ func TestRunTaskReportsARefusal(t *testing.T) {
 	assert.Contains(t, response.Body.String(), "task_in_progress",
 		"a task conflict was reported under another surface's code")
 	assert.Empty(t, tasks.started, "a refused attempt started work")
-	assert.Len(t, tasks.asked, 1, "the handler never asked")
+	assert.Len(t, tasks.asked, 1, "attempts the handler asked for")
 }
 
 // The list is read-only, so a browser sends no Origin on it and requiring one
