@@ -67,9 +67,9 @@ export const routeGeometryQuery = (provider: string, sourceRouteId: number, stag
   });
 
 /**
- * What this build registers, and whether each runs unasked. It changes only
- * when an operator edits it or a run starts, so it is read on demand rather
- * than polled.
+ * What this build registers: whether each has a schedule at all, and whether
+ * that schedule may start it. It changes only when an operator edits it or a
+ * run starts, so it is read on demand rather than polled.
  */
 export const tasksQuery = () =>
   getListTasksQueryOptions({
