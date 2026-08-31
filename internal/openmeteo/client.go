@@ -47,12 +47,12 @@ const (
 // secret and nothing here belongs in configuration.
 type Options struct {
 	Transport http.RoundTripper
-	BaseURL   string
 	// Timezone reports the IANA zone a forecast is asked and returned in, read
 	// again on every request rather than once: an operator editing the setting
 	// reaches the next forecast, not the next restart. Nil, or one returning
 	// "", is Europe/Berlin, which is where every route this service holds is.
 	Timezone func() string
+	BaseURL  string
 	Timeout  time.Duration
 }
 
@@ -139,8 +139,12 @@ func resolveLocation(raw string, fallback *time.Location) (*time.Location, error
 	if raw == "" {
 		return fallback, nil
 	}
+	location, err := time.LoadLocation(raw)
+	if err != nil {
+		return nil, fmt.Errorf("openmeteo: loading the %s timezone: %w", raw, err)
+	}
 
-	return time.LoadLocation(raw)
+	return location, nil
 }
 
 // Forecast returns one hourly series per coordinate, in the order given, spanning

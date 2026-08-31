@@ -227,9 +227,9 @@ type Definition struct {
 	// Schedule is when the task runs unasked. Nil is a task only a trigger
 	// starts.
 	Schedule Schedule
-	// Resources are what an attempt over this argument must hold before it may
-	// start. Nil needs nothing, so nothing can refuse it.
-	Resources func(argument string) []Resource
+	// Notify is what an alert about this task says and how often it may say it.
+	// Nil is a task nothing is announced about.
+	Notify *Notify
 	// InitialDelay is how long the first scheduled run waits after start. It is
 	// read once, when the schedule starts.
 	InitialDelay func() time.Duration
@@ -241,17 +241,9 @@ type Definition struct {
 	// and switching it back on needs no restart. Nil is always. It governs
 	// unattended runs only: an operator asking has already decided.
 	Enabled func() bool
-	// Notify is what an alert about this task says and how often it may say it.
-	// Nil is a task nothing is announced about.
-	Notify *Notify
-	// Name identifies the task and is what a trigger asks for.
-	Name string
-	// Follows names the tasks this one runs after, and is the whole graph: an
-	// edge to a task nobody registered, or one that closes a cycle, is refused
-	// where the task is registered rather than found by a depth cap at runtime.
-	// Each edge fires on its own: a task that follows two of them runs after
-	// either one, rather than waiting for both.
-	Follows []string
+	// Resources are what an attempt over this argument must hold before it may
+	// start. Nil needs nothing, so nothing can refuse it.
+	Resources func(argument string) []Resource
 	// FanOut names the arguments a chain asking for this task fires it over,
 	// one invocation each, instead of the single empty-argument invocation
 	// every other task's successors get. It exists so backoff and history stay
@@ -260,6 +252,14 @@ type Definition struct {
 	// not every slot a later successful predecessor would otherwise reach. Nil
 	// is every other task's answer: one invocation, the empty argument.
 	FanOut func() []string
+	// Name identifies the task and is what a trigger asks for.
+	Name string
+	// Follows names the tasks this one runs after, and is the whole graph: an
+	// edge to a task nobody registered, or one that closes a cycle, is refused
+	// where the task is registered rather than found by a depth cap at runtime.
+	// Each edge fires on its own: a task that follows two of them runs after
+	// either one, rather than waiting for both.
+	Follows []string
 	// Backoff holds this task back from its own schedule while it keeps
 	// faulting. Its zero value is a task that retries on schedule regardless.
 	Backoff Backoff

@@ -346,19 +346,25 @@ describe("SyncControls", () => {
   // Classification never fails a run, so a route the endpoint keeps refusing is
   // otherwise indistinguishable from one that has not come up yet.
   it("says how much of the library is still unclassified", () => {
-    renderControls(status({ surface: { classified: 1, total: 3, incomplete: 0, enrichmentFailures: 0 } }));
+    renderControls(
+      status({ surface: { classified: 1, total: 3, incomplete: 0, enrichmentFailures: 0 } }),
+    );
 
     expect(screen.getByText(/classified for 1 of 3 routes/)).toBeInTheDocument();
   });
 
   it("counts one route as a route", () => {
-    renderControls(status({ surface: { classified: 0, total: 1, incomplete: 0, enrichmentFailures: 0 } }));
+    renderControls(
+      status({ surface: { classified: 0, total: 1, incomplete: 0, enrichmentFailures: 0 } }),
+    );
 
     expect(screen.getByText(/classified for 0 of 1 route\./)).toBeInTheDocument();
   });
 
   it("says nothing about surfaces once the whole library is classified", () => {
-    renderControls(status({ surface: { classified: 3, total: 3, incomplete: 0, enrichmentFailures: 0 } }));
+    renderControls(
+      status({ surface: { classified: 3, total: 3, incomplete: 0, enrichmentFailures: 0 } }),
+    );
 
     expect(screen.queryByText(/classified for/)).not.toBeInTheDocument();
   });
@@ -367,14 +373,18 @@ describe("SyncControls", () => {
   // from one that has not come up yet — the count and the retry are the two
   // places that difference shows.
   it("offers a retry once a route could not be classified", () => {
-    renderControls(status({ surface: { classified: 1, total: 3, incomplete: 1, enrichmentFailures: 0 } }));
+    renderControls(
+      status({ surface: { classified: 1, total: 3, incomplete: 1, enrichmentFailures: 0 } }),
+    );
 
     expect(screen.getByText(/1 could not be classified last time/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Retry now" })).toBeInTheDocument();
   });
 
   it("offers no retry while nothing has failed to classify", () => {
-    renderControls(status({ surface: { classified: 1, total: 3, incomplete: 0, enrichmentFailures: 0 } }));
+    renderControls(
+      status({ surface: { classified: 1, total: 3, incomplete: 0, enrichmentFailures: 0 } }),
+    );
 
     expect(screen.queryByRole("button", { name: "Retry now" })).not.toBeInTheDocument();
   });
@@ -382,13 +392,17 @@ describe("SyncControls", () => {
   // enrichmentFailures is durable and covers both passes, unlike incomplete,
   // which the next classification pass resets.
   it("reports stages with an unfinished enrichment pass", () => {
-    renderControls(status({ surface: { classified: 3, total: 3, incomplete: 0, enrichmentFailures: 2 } }));
+    renderControls(
+      status({ surface: { classified: 3, total: 3, incomplete: 0, enrichmentFailures: 2 } }),
+    );
 
     expect(screen.getByText(/2 stages have an unfinished enrichment pass/)).toBeInTheDocument();
   });
 
   it("says nothing about enrichment failures once none remain", () => {
-    renderControls(status({ surface: { classified: 3, total: 3, incomplete: 0, enrichmentFailures: 0 } }));
+    renderControls(
+      status({ surface: { classified: 3, total: 3, incomplete: 0, enrichmentFailures: 0 } }),
+    );
 
     expect(screen.queryByText(/unfinished enrichment pass/)).not.toBeInTheDocument();
   });
@@ -399,13 +413,17 @@ describe("SyncControls", () => {
         new Response(
           JSON.stringify(
             input === "/v1/status"
-              ? status({ surface: { classified: 1, total: 3, incomplete: 1, enrichmentFailures: 0 } })
+              ? status({
+                  surface: { classified: 1, total: 3, incomplete: 1, enrichmentFailures: 0 },
+                })
               : { status: "accepted" },
           ),
         ),
     );
     vi.stubGlobal("fetch", fetchMock);
-    renderControls(status({ surface: { classified: 1, total: 3, incomplete: 1, enrichmentFailures: 0 } }));
+    renderControls(
+      status({ surface: { classified: 1, total: 3, incomplete: 1, enrichmentFailures: 0 } }),
+    );
 
     await userEvent.click(screen.getByRole("button", { name: "Retry now" }));
 
@@ -430,7 +448,9 @@ describe("SyncControls", () => {
           ),
       ),
     );
-    renderControls(status({ surface: { classified: 1, total: 3, incomplete: 1, enrichmentFailures: 0 } }));
+    renderControls(
+      status({ surface: { classified: 1, total: 3, incomplete: 1, enrichmentFailures: 0 } }),
+    );
 
     await userEvent.click(screen.getByRole("button", { name: "Retry now" }));
 

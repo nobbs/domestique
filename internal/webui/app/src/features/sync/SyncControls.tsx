@@ -196,8 +196,8 @@ export function SyncControls() {
       {data.sync.surface.enrichmentFailures > 0 ? (
         <p className="text-sm text-[var(--ink-2)]">
           {data.sync.surface.enrichmentFailures}{" "}
-          {data.sync.surface.enrichmentFailures === 1 ? "stage has" : "stages have"} an
-          unfinished enrichment pass.
+          {data.sync.surface.enrichmentFailures === 1 ? "stage has" : "stages have"} an unfinished
+          enrichment pass.
         </p>
       ) : null}
       {retryClassification.isError ? (

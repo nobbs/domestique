@@ -2114,33 +2114,33 @@ type phaseRun struct {
 }
 
 type fakeState struct {
-	surfaceErr        error
-	phaseRunErr       error
+	reprocessErr      error
+	pendingAuthErr    error
 	historyErr        error
 	coverageErr       error
 	enrichmentErr     error
-	enrichmentFailed  int
-	reprocessErr      error
-	sourceStageErr    error
+	surfaceErr        error
+	phaseRunErr       error
 	targetStageErr    error
-	targetRunErr      error
-	pendingAuthErr    error
 	lastSuccessErr    error
+	targetRunErr      error
+	sourceStageErr    error
+	lastRun           *phaseRun
 	lastSuccessAt     map[string]time.Time
 	targetStages      map[string][]storedStage
+	surfaceHash       string
 	reprocessed       [][2]int64
-	targets           []fakeTarget
-	pendingAuth       []string
+	cumulativeSeconds json.RawMessage
 	sourceStages      []storedStage
 	targetRuns        []fakeTargetRun
-	lastRun           *phaseRun
-	surfaceHash       string
+	targets           []fakeTarget
+	history           []recordedRun
 	coordinates       json.RawMessage
-	cumulativeSeconds json.RawMessage
+	pendingAuth       []string
 	surfaceRanges     json.RawMessage
 	summaries         []route.Summary
 	phaseRuns         []phaseRun
-	history           []recordedRun
+	enrichmentFailed  int
 	surfaceMetres     float64
 	surfaceClassified int
 	surfaceTotal      int

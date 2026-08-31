@@ -297,7 +297,7 @@ func (s *fakeRunState) RecordSyncRun(
 	phase string,
 	_, finishedAt time.Time,
 	outcome, _ string,
-	_, created, updated, deleted int,
+	_, _, _, _ int,
 ) (string, error) {
 	s.runs++
 	s.phases = append(s.phases, phase)

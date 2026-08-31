@@ -503,8 +503,8 @@ func countingRunner() *counting { return &counting{} }
 
 // arguments records the argument each attempt was given, in the order seen.
 type arguments struct {
-	mutex sync.Mutex
 	given []string
+	mutex sync.Mutex
 }
 
 func argumentRecorder() *arguments { return &arguments{} }
@@ -1435,7 +1435,7 @@ func TestTwoArgumentsFailingForTheSameReasonAreAnnouncedSeparately(t *testing.T)
 			Title: "Domestique target failed", Suppress: 6 * time.Hour,
 			Alerts: []Detail{"destination"},
 		},
-		Run: RunnerFunc(func(_ context.Context, invocation Invocation) Result {
+		Run: RunnerFunc(func(context.Context, Invocation) Result {
 			return Result{Outcome: Failed, Detail: "destination"}
 		}),
 	}), "Register()")
