@@ -1141,8 +1141,6 @@ func TestHandlerRejectsMalformedLegacyStagePaths(t *testing.T) {
 	}
 }
 
-// A clear is destructive, so a slot this build was never configured with is
-// refused exactly as it is for a reconciliation.
 // What an argument means is the task's, not this surface's, so a slot nobody
 // configured is accepted here and does no work in the service. The guard that
 // matters is there; see TestServiceClearTargetSkipsAnUnconfiguredTarget.
