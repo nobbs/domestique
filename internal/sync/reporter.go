@@ -151,12 +151,19 @@ func (r *Reporter) trigger(ctx context.Context, source, targets bool) bool {
 	if !source && !targets {
 		return false
 	}
+
+	return r.background(func() { _ = r.runPhases(ctx, source, targets) })
+}
+
+// background runs work under the single-flight guard, reporting whether it was
+// accepted. Accepted work is what Wait waits for.
+func (r *Reporter) background(work func()) bool {
 	if !r.running.CompareAndSwap(false, true) {
 		return false
 	}
 	r.triggered.Go(func() {
 		defer r.running.Store(false)
-		_ = r.runPhases(ctx, source, targets)
+		work()
 	})
 
 	return true
@@ -165,47 +172,27 @@ func (r *Reporter) trigger(ctx context.Context, source, targets bool) bool {
 // TriggerTarget starts a manual reconciliation of exactly one configured target
 // in the background. False when any synchronization is already running.
 func (r *Reporter) TriggerTarget(ctx context.Context, targetID string) bool {
-	if !r.running.CompareAndSwap(false, true) {
-		return false
-	}
-	r.triggered.Go(func() {
-		defer r.running.Store(false)
+	return r.background(func() {
 		_ = r.runPhasesWith(ctx, false, true, func(ctx context.Context) Result {
 			return r.runner.RunTarget(ctx, targetID)
 		})
 	})
-
-	return true
 }
 
 // TriggerClear deletes every route this service owns from one target and forgets
 // its stage mappings. False when another operation is already running.
 func (r *Reporter) TriggerClear(ctx context.Context, targetID string) bool {
-	if !r.running.CompareAndSwap(false, true) {
-		return false
-	}
-	r.triggered.Go(func() {
-		defer r.running.Store(false)
+	return r.background(func() {
 		_ = r.runPhasesWith(ctx, false, true, func(ctx context.Context) Result {
 			return r.runner.ClearTarget(ctx, targetID)
 		})
 	})
-
-	return true
 }
 
 // TriggerAnnotate starts one classification pass in the background, touching
 // only the local index and cache. False when another operation is running.
 func (r *Reporter) TriggerAnnotate(ctx context.Context) bool {
-	if !r.running.CompareAndSwap(false, true) {
-		return false
-	}
-	r.triggered.Go(func() {
-		defer r.running.Store(false)
-		r.annotate(ctx)
-	})
-
-	return true
+	return r.background(func() { r.annotate(ctx) })
 }
 
 // SurfaceIncomplete reports how many stages the most recently completed
