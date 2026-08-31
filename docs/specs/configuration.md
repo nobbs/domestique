@@ -69,9 +69,9 @@ What the file does not carry is as much a part of its contract as what it does.
 There is no source and no source credential, no Wahoo application and no target
 slot, no notification credential, no ride model, and no delay before the first
 run — nor a basemap list, a surface region or rebuild cadence, a staleness
-bound, an empty-source deletion gate, or a notification switch,
-digest period, or Pushover origin. Every one of those is a runtime setting, and
-the decoder refuses it here by name.
+bound, an empty-source deletion gate, or a notification switch or Pushover
+origin. Every one of those is a runtime setting, and the decoder refuses it here
+by name.
 
 ## Secret input
 
@@ -188,8 +188,8 @@ carry on the wire.
 A deployment that has never opened the settings page runs on the seeded
 defaults, which are the ones each rule names below: deletion denied, a 24-hour
 staleness bound, a one-minute delay before the first run, notifications on with
-a message per successful run, a 24-hour digest period, Pushover's own origin, a
-single keyless basemap, no surface regions, and a weekly index rebuild.
+nothing yet ruled on in the alert matrix, Pushover's own origin, a single
+keyless basemap, no surface regions, and a weekly index rebuild.
 
 The settings that name an upstream have no default. An OAuth application, a
 target slot name, and a library account belong to one operator. They are seeded
