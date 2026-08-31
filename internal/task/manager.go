@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -83,6 +84,12 @@ type Manager struct {
 type registered struct {
 	// startsAt holds the instant the first scheduled run is due, and only while
 	// it is still due.
+	// round is what each predecessor of a joining task came to this time round,
+	// and is nil between rounds. Guarded by the manager's mutex.
+	round map[string]Outcome
+	// successors are the tasks whose Follows name this one, resolved once when
+	// the last task is registered.
+	successors []string
 	startsAt   startsAt
 	definition Definition
 	inFlight   int
@@ -138,6 +145,61 @@ func (m *Manager) Register(definition *Definition) error {
 	}
 	m.tasks[definition.Name] = &registered{definition: *definition}
 	m.order = append(m.order, definition.Name)
+
+	return nil
+}
+
+// Resolve settles the graph the registrations declare: every edge names a task
+// this build has, and no cycle closes. It is what makes the depth cap a
+// backstop rather than the only protection, and must be called before Run.
+func (m *Manager) Resolve() error {
+	for _, name := range m.order {
+		entry := m.tasks[name]
+		for _, follows := range entry.definition.Follows {
+			predecessor, known := m.tasks[follows]
+			if !known {
+				return fmt.Errorf("task %q follows %q, which nothing registers", name, follows)
+			}
+			predecessor.successors = append(predecessor.successors, name)
+		}
+	}
+
+	return m.refuseCycles()
+}
+
+// refuseCycles walks every task's successors and refuses a graph that comes
+// back to where it started. A cycle would otherwise be found by the depth cap,
+// once, at four in the morning.
+func (m *Manager) refuseCycles() error {
+	const (
+		visiting = 1
+		settled  = 2
+	)
+	state := make(map[string]int, len(m.order))
+
+	var walk func(name string, path []string) error
+	walk = func(name string, path []string) error {
+		switch state[name] {
+		case settled:
+			return nil
+		case visiting:
+			return fmt.Errorf("task %q follows itself, through %s", name, strings.Join(path, " then "))
+		}
+		state[name] = visiting
+		for _, successor := range m.tasks[name].successors {
+			if err := walk(successor, append(path, successor)); err != nil {
+				return err
+			}
+		}
+		state[name] = settled
+
+		return nil
+	}
+	for _, name := range m.order {
+		if err := walk(name, []string{name}); err != nil {
+			return err
+		}
+	}
 
 	return nil
 }
@@ -363,10 +425,7 @@ func (m *Manager) perform(
 	visited[keyOf(invocation)] = struct{}{}
 
 	result := m.attemptAndRelease(ctx, entry, invocation, release)
-	if len(result.Next) == 0 {
-		return
-	}
-	m.chain(ctx, result.Next, visited, depth+1)
+	m.chain(ctx, entry, result, visited, depth+1)
 }
 
 // attemptAndRelease runs one attempt and gives back what it held, whatever
@@ -380,33 +439,69 @@ func (m *Manager) attemptAndRelease(
 	return m.attempt(ctx, entry, invocation)
 }
 
-// chain runs what one attempt asked should follow it. Links are chosen at run
-// time, so nothing can reject a cycle at registration: the set of what this
-// chain has already run is carried down it, and the depth is capped behind that.
-func (m *Manager) chain(ctx context.Context, links []Link, visited map[invocationKey]struct{}, depth int) {
+// chain runs what follows this task, which its registration declared. The
+// depth cap and the set of what this chain has run stay as belt and braces
+// behind registration refusing a cycle.
+func (m *Manager) chain(
+	ctx context.Context, entry *registered, result Result, visited map[invocationKey]struct{}, depth int,
+) {
+	if len(entry.definition.Follows) == 0 && len(entry.successors) == 0 {
+		return
+	}
 	if depth >= maxChainDepth {
-		slog.Warn("task chain truncated", "depth", depth, "dropped", len(links))
+		slog.Warn("task chain truncated", "depth", depth, "dropped", len(entry.successors))
 
 		return
 	}
-	for _, link := range links {
-		m.linked(ctx, link, visited, depth)
+	for _, name := range entry.successors {
+		successor := m.tasks[name]
+		if successor.definition.Join && !m.roundClosed(successor, entry.definition.Name, result.Outcome) {
+			continue
+		}
+		m.linked(ctx, name, visited, depth)
 	}
+}
+
+// roundClosed records what one predecessor came to and reports whether the
+// round this successor waits on is over: every predecessor that started has
+// finished, and none of them faulted.
+//
+// A predecessor that was never configured reports not_ready rather than
+// succeeding, and must not hold the round open for ever — being absent is not
+// the same as having gone wrong.
+func (m *Manager) roundClosed(successor *registered, predecessor string, outcome Outcome) bool {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+
+	if successor.round == nil {
+		successor.round = make(map[string]Outcome, len(successor.definition.Follows))
+	}
+	successor.round[predecessor] = outcome
+	if len(successor.round) < len(successor.definition.Follows) {
+		return false
+	}
+
+	faulted := false
+	for _, came := range successor.round {
+		faulted = faulted || came.alerts()
+	}
+	successor.round = nil
+
+	return !faulted
 }
 
 // linked runs one chain link. Work already under way is left to finish rather
 // than refused: a link asking for what is happening anyway has its answer, and
 // admission is what decides that, so nothing can change between asking and
 // starting.
-func (m *Manager) linked(ctx context.Context, link Link, visited map[invocationKey]struct{}, depth int) {
-	entry, known := m.tasks[link.Task]
+func (m *Manager) linked(ctx context.Context, name string, visited map[invocationKey]struct{}, depth int) {
+	entry, known := m.tasks[name]
 	if !known || ctx.Err() != nil {
 		return
 	}
-	invocation := Invocation{Task: link.Task, Argument: link.Argument, Trigger: TriggerChain}
+	invocation := Invocation{Task: name, Trigger: TriggerChain}
 	if _, seen := visited[keyOf(invocation)]; seen {
-		slog.Warn("task chain asked again for what it had already run",
-			"task", link.Task, "argument", link.Argument, "depth", depth)
+		slog.Warn("task chain asked again for what it had already run", "task", name, "depth", depth)
 
 		return
 	}
