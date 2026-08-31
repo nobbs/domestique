@@ -7,7 +7,7 @@
  * assertion; state-changing routes also require the same-origin `Origin`
  * header.
  *
- * OpenAPI spec version: 1.0.0
+ * OpenAPI spec version: 2.0.0
  */
 
 import type {
