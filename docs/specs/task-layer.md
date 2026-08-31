@@ -137,6 +137,11 @@ the hour that does exist. Being an hour of wall clock late costs less than being
 skipped until the clocks go back. Where an hour happens twice, the run happens
 in the first of them.
 
+No task this build registers uses a calendar schedule today — every one runs on
+a fixed gap or only when asked — but the mechanism is layer infrastructure
+rather than a feature built for one task, and stays available for whichever
+task next needs a wall-clock time rather than an interval.
+
 ### Backoff
 
 A task may hold itself back from its own schedule while it keeps faulting. The

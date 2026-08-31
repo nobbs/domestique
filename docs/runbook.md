@@ -38,9 +38,10 @@ A message arrives titled for its task — `Domestique sync` — with a body nami
 the task, what it was over, and one stable category:
 
 ```text
-sync targets failed: deletion_limit
+sync:target failed: deletion_limit run=4f2a9c1d08ab
 ```
 
+The run reference at the end is what to look up if you need the full record.
 The first occurrence of a category is sent; matching ones are then suppressed
 for six hours, and the first following success arrives as `recovered`. Silencing
 the routine `succeeded` leaves `recovered` to come through, so a quiet
@@ -58,15 +59,15 @@ It answers `503` with `state_unreadable` or `state_incomplete` when the process
 cannot do its job with what the host gave it. It makes no upstream call and
 stays ready while a target waits for its one-time authorisation.
 
-| Category | Half | What it means | Section |
+| Category | Task | What it means | Section |
 | --- | --- | --- | --- |
-| `authorization` | targets | A Wahoo account rejected this service's authorisation | [Reconnect a Wahoo account](#reconnect-a-wahoo-account) |
-| `empty_source` | source | The library came back empty after previously holding routes | [A deletion was blocked](#a-deletion-was-blocked) |
-| `deletion_limit` | targets | More owned routes would go than the per-run maximum | [A deletion was blocked](#a-deletion-was-blocked) |
-| `source` | source | The library did not arrive complete or valid | [The library is not being read](#the-library-is-not-being-read) |
-| `destination` | targets | A Wahoo operation did not complete | [A write to Wahoo did not complete](#a-write-to-wahoo-did-not-complete) |
-| `course` | targets | A route could not be encoded as a course | [A write to Wahoo did not complete](#a-write-to-wahoo-did-not-complete) |
-| `state` | either | Stored state could not be read or written safely | [State cannot be read](#state-cannot-be-read-or-has-been-lost) |
+| `authorization` | sync:target, sync:clear | A Wahoo account rejected this service's authorisation | [Reconnect a Wahoo account](#reconnect-a-wahoo-account) |
+| `empty_source` | sync:source | The library came back empty after previously holding routes | [A deletion was blocked](#a-deletion-was-blocked) |
+| `deletion_limit` | sync:target, sync:clear | More owned routes would go than the per-run maximum | [A deletion was blocked](#a-deletion-was-blocked) |
+| `source` | sync:source | The library did not arrive complete or valid | [The library is not being read](#the-library-is-not-being-read) |
+| `destination` | sync:target, sync:clear | A Wahoo operation did not complete | [A write to Wahoo did not complete](#a-write-to-wahoo-did-not-complete) |
+| `course` | sync:target, sync:clear | A route could not be encoded as a course | [A write to Wahoo did not complete](#a-write-to-wahoo-did-not-complete) |
+| `state` | sync:source, sync:target, sync:clear | Stored state could not be read or written safely | [State cannot be read](#state-cannot-be-read-or-has-been-lost) |
 
 Two of those are gates rather than faults. A **blocked** run is the service
 working correctly: nothing was written, nothing was removed, and the way past it
