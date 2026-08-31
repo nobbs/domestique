@@ -199,8 +199,9 @@ type Backoff struct {
 	// Base is the wait after the first fault. Zero is a task with no backoff,
 	// which retries on its ordinary schedule.
 	Base time.Duration
-	// Cap bounds the doubling. Zero is uncapped, which is almost never what a
-	// task means, so registering a base without a cap is refused.
+	// Cap bounds the doubling, and is never shorter than Base: registering a
+	// backoff without a cap is refused, because uncapped doubling reaches days
+	// within a morning. Every wait this returns is therefore at most Cap.
 	Cap time.Duration
 }
 
