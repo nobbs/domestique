@@ -6,9 +6,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// The demo's alert matrix must name the tasks the demo actually registers
-// (dev/demoapi/tasks.go), not the pre-split "sync" the shipped build no
-// longer has.
+// Names must match dev/demoapi/tasks.go, not the pre-split "sync" the shipped
+// build no longer has.
 func TestDemoAlertCatalogueNamesTheSplitTasks(t *testing.T) {
 	t.Parallel()
 
@@ -22,8 +21,6 @@ func TestDemoAlertCatalogueNamesTheSplitTasks(t *testing.T) {
 	assert.True(t, seen["sync:clear"], "sync:clear is missing from the catalogue")
 }
 
-// Only sync:source has a StaleAfter bound; offering the switch for the other
-// two would be a decoration that can never fire.
 func TestDemoAlertCatalogueDeclaresStaleOnlyForTheRead(t *testing.T) {
 	t.Parallel()
 

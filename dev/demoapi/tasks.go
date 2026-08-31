@@ -7,16 +7,12 @@ import (
 	"github.com/nobbs/domestique/internal/httpapi"
 )
 
-// demoTasks is the task list a demo shows. The shipped binary builds one from a
-// running task layer; a demo has no layer, so this answers with the names an
-// operator meets and nothing about a schedule. Running one of the
-// synchronization tasks reseeds the library, which is the only work a demo does.
+// demoTasks stands in for a running task layer: no schedule, and running a
+// synchronization task just reseeds the library.
 type demoTasks struct {
 	reseed func() bool
-	// switched is what an operator has turned off here. A demo keeps it in
-	// memory rather than in the database: the page has to see its own edit come
-	// back, or the switch reads as broken, and nothing in a demo is scheduled
-	// for it to govern anyway.
+	// switched is kept in memory, not the database: the page must see its own
+	// edit come back, and nothing in a demo is scheduled for it to govern anyway.
 	switched map[string]bool
 	mutex    *sync.RWMutex
 }
@@ -25,10 +21,8 @@ func newDemoTasks(reseed func() bool) demoTasks {
 	return demoTasks{reseed: reseed, switched: make(map[string]bool), mutex: &sync.RWMutex{}}
 }
 
-// demoTaskNames are what the shipped binary registers, in the order it does,
-// with whether each has a schedule there. A demo runs none of them on a clock,
-// but reporting them all as scheduled would draw a switch for the two that an
-// operator can only ask for.
+// demoTaskNames mirrors what the shipped binary registers, in order, with
+// whether each has a schedule there — the two without one are ask-only.
 var demoTaskNames = []struct { //nolint:gochecknoglobals // a fixture for development tooling
 	name      string
 	scheduled bool
@@ -40,9 +34,8 @@ var demoTaskNames = []struct { //nolint:gochecknoglobals // a fixture for develo
 	{name: "surface:index", scheduled: true},
 }
 
-// Registered lists the demo's tasks. They read as scheduled and enabled, which
-// is what the shipped binary's are: the page draws a switch per task, and one
-// with nothing to draw is a page that looks broken rather than empty.
+// Registered lists the demo's tasks, so the page has a switch to draw per task
+// instead of looking broken and empty.
 func (t demoTasks) Registered() []httpapi.RegisteredTask {
 	t.mutex.RLock()
 	defer t.mutex.RUnlock()

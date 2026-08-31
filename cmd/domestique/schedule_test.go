@@ -7,8 +7,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// A task nobody has ruled on runs, so one added to a build reaches its schedule
-// without anybody turning it on.
 func TestTaskSwitchesRunWhatNobodyHasRuledOn(t *testing.T) {
 	t.Parallel()
 
@@ -22,8 +20,6 @@ func TestTaskSwitchesRunWhatNobodyHasRuledOn(t *testing.T) {
 	assert.True(t, switches.enabledFor("sync:source")(), "the carried-over read switch")
 }
 
-// A decision has to reach the running service, not just the database, or an
-// operator switching a task off would watch it run on the next tick.
 func TestSettingASwitchTakesEffectAtOnce(t *testing.T) {
 	t.Parallel()
 
@@ -53,8 +49,6 @@ func TestTaskSwitchesReportWhatWasDecided(t *testing.T) {
 	assert.False(t, ruled, "a task nobody ruled on appeared in the snapshot")
 }
 
-// A service that could not read the switches would run what an operator had
-// deliberately switched off, so it refuses to start instead.
 func TestTaskSwitchesReportAnUnreadableDatabase(t *testing.T) {
 	t.Parallel()
 

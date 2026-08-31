@@ -37,10 +37,6 @@ func TestInventoryTasksAllHoldTheInventoryExclusively(t *testing.T) {
 		names, "registered tasks")
 }
 
-// A stale switch only appears for a task that can actually go stale.
-// sync:target and sync:clear declare no StaleAfter bound, so checkStale never
-// raises it for them: offering the switch anyway would be a decoration nobody
-// can turn into anything.
 func TestOnlyTheReadDeclaresTheStaleAlert(t *testing.T) {
 	t.Parallel()
 
@@ -55,9 +51,6 @@ func TestOnlyTheReadDeclaresTheStaleAlert(t *testing.T) {
 	}
 }
 
-// The read runs unasked, and so do the targets — the second as a backstop
-// behind the read that asks for them. Clearing a slot and classifying are
-// things an operator asks for.
 func TestOnlyTheReadAndTheTargetsAreScheduled(t *testing.T) {
 	t.Parallel()
 
@@ -113,9 +106,6 @@ func TestEachInventoryTaskRunsItsOwnWork(t *testing.T) {
 	}
 }
 
-// A classification pass that left stages unclassified is recorded as failed
-// rather than succeeded, so its run history is honest and its own backoff can
-// hold it back the way every other task's can.
 func TestClassificationRecordsFailureWhenStagesAreLeftUnclassified(t *testing.T) {
 	t.Parallel()
 
@@ -148,8 +138,6 @@ func TestSyncResultCarriesEveryOutcomeAcross(t *testing.T) {
 	}
 }
 
-// An outcome this binary has never heard of is a failure rather than a success:
-// nothing may read as done because it could not be understood.
 func TestSyncResultTreatsAnUnknownOutcomeAsAFailure(t *testing.T) {
 	t.Parallel()
 
@@ -306,8 +294,6 @@ func TestSyncTaskRunsWhatWasAskedOfIt(t *testing.T) {
 	assert.Equal(t, []syncservice.Phase{syncservice.PhaseSource}, synchronizer.phases, "phases run")
 }
 
-// Activity is assembled from two places at once, and the status response is
-// built from whatever both of them say at that moment.
 func TestSyncSurfaceReportsActivityFromBothHalves(t *testing.T) {
 	t.Parallel()
 
@@ -364,8 +350,6 @@ type fakeSyncReporter struct {
 func (r *fakeSyncReporter) Running() (syncservice.Phase, bool) { return r.phase, r.phase != "" }
 func (r *fakeSyncReporter) SurfaceIncomplete() int             { return r.incomplete }
 
-// A rebuild reports what it came to so the history says whether the map moved,
-// rather than only that something ran.
 func TestIndexResultSeparatesABuildFromAnUpstreamThatHadNothingNew(t *testing.T) {
 	t.Parallel()
 
@@ -425,8 +409,6 @@ func TestRegisterTasksTakesEveryDefinitionItIsGiven(t *testing.T) {
 	}
 }
 
-// An outcome this binary has not heard of must not read as a success: the
-// history would say the map moved when nothing here knows whether it did.
 func TestIndexResultTreatsAnUnknownOutcomeAsAFailure(t *testing.T) {
 	t.Parallel()
 
@@ -467,9 +449,8 @@ func (*countingStore) LastFailureNotification(context.Context, string) (time.Tim
 
 func (*countingStore) RecordFailureNotification(context.Context, string, time.Time) error { return nil }
 
-// What follows what is declared, so the graph is the assertion rather than a
-// result carrying links. Classification follows the read and the rebuild alike,
-// because each on its own leaves stages wanting it.
+// Classification follows the read and the rebuild alike, because each on its
+// own leaves stages wanting it.
 func TestTheGraphDeclaresWhatFollowsEveryRead(t *testing.T) {
 	t.Parallel()
 
@@ -499,8 +480,7 @@ func (undecided) Wanted(context.Context, string, task.Detail) (enabled, decided 
 	return false, false
 }
 
-// The surface a page reads is the manager's own registrations, so a task added
-// to the layer appears without anybody writing an endpoint for it.
+// A task added to the layer appears without anybody writing an endpoint for it.
 func TestTaskSurfaceListsWhatTheManagerRegisters(t *testing.T) {
 	t.Parallel()
 
@@ -531,8 +511,6 @@ func TestTaskSurfaceListsWhatTheManagerRegisters(t *testing.T) {
 	assert.False(t, listed[1].Scheduled, "a task nothing schedules read as scheduled")
 }
 
-// Running through the surface is running through the manager, so an attempt
-// asked for over HTTP is refused on exactly the terms a schedule is.
 func TestTaskSurfaceRunsThroughTheManager(t *testing.T) {
 	t.Parallel()
 
@@ -561,10 +539,6 @@ func TestTaskSurfaceRunsThroughTheManager(t *testing.T) {
 	assert.False(t, surface.Run("invented", ""), "a name nothing registers was accepted")
 }
 
-// An attempt's life is the service's, not the request's. A request context is
-// cancelled the moment its handler returns, so a surface holding one would end
-// every attempt just after accepting it; the surface takes no request context
-// at all, and what it does hold is what the attempt runs under.
 func TestTaskSurfaceRunsUnderTheServiceContext(t *testing.T) {
 	t.Parallel()
 
@@ -625,8 +599,6 @@ func allEnabled(string) func() bool { return func() bool { return true } }
 // twoTargets is a service configured with two destination slots.
 func twoTargets() []string { return []string{"rider-a", "rider-b"} }
 
-// Switching a task through the surface reaches the store behind it, and the
-// list the page reads back says so.
 func TestTaskSurfaceSwitchesATaskAndReportsIt(t *testing.T) {
 	t.Parallel()
 
@@ -647,7 +619,6 @@ func TestTaskSurfaceSwitchesATaskAndReportsIt(t *testing.T) {
 	assert.False(t, surface.Registered()[0].Enabled, "the switch did not reach the list")
 }
 
-// A surface built without a schedule to write says so rather than panicking.
 func TestTaskSurfaceRefusesToSwitchWithoutASchedule(t *testing.T) {
 	t.Parallel()
 
@@ -659,8 +630,6 @@ func TestTaskSurfaceRefusesToSwitchWithoutASchedule(t *testing.T) {
 	require.Error(t, surface.Schedule(t.Context(), "sync:target", false), "Schedule() without a schedule")
 }
 
-// The read takes a library the same way the targets take a slot: none is every
-// configured one, a name is that one alone.
 func TestTheReadTakesOneLibraryOrEveryOne(t *testing.T) {
 	t.Parallel()
 

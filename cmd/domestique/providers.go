@@ -240,11 +240,9 @@ func sources(settings *runtimeconfig.Current) ([]syncservice.Source, error) {
 	return built, nil
 }
 
-// sourceFor builds one library's client, for a read asked for over that library
-// alone. Unlike sources it does not refuse when another library is half
-// configured: nothing it reads is written on any other library's behalf. A
-// provider that is not configured, or whose credentials are not entered yet, is
-// no client rather than an error.
+// sourceFor builds one library's client. Unlike sources it never refuses for
+// another library's missing credentials; an unconfigured provider returns no
+// client rather than an error.
 func sourceFor(
 	settings *runtimeconfig.Current, provider route.Provider,
 ) (source syncservice.Source, configured bool, err error) {
@@ -344,9 +342,8 @@ func (p *rideModelProvider) reload(ctx context.Context, settings *runtimeconfig.
 	if err := p.store.PruneStageDurationsWithDifferentFingerprint(ctx, fingerprint); err != nil {
 		return fmt.Errorf("pruning stale ride model predictions: %w", err)
 	}
-	// A stage cannot be failing a pass nothing is asking for. A replaced file is
-	// a different question: its predictions are pruned above, and the failures
-	// it left are replaced by whatever the next pass finds.
+	// Only clear stale failures when no file replaces the old one; a
+	// replacement's predictions are already pruned above.
 	if path == "" {
 		if err := p.store.ClearStageDurationFailures(ctx); err != nil {
 			return fmt.Errorf("clearing stale ride model failures: %w", err)

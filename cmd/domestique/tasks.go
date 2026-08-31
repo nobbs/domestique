@@ -22,16 +22,14 @@ const (
 	taskSurfaceIndex    = "surface:index"
 )
 
-// The state a task holds while it works. Everything that reads or writes the
-// trusted inventory takes the same one, so no two of them overlap; a surface
-// index build touches neither, and runs beside them.
+// Everything reading or writing the trusted inventory takes resourceInventory
+// so none overlap; a surface index build takes neither and runs beside them.
 const (
 	resourceInventory    = "inventory"
 	resourceSurfaceIndex = "surface-index"
 )
 
-// What an alert about each task says, and how long one silences the next. A
-// failing library is worth hearing about the same morning; a failing weekly
+// A failing library is worth hearing about the same morning; a failing weekly
 // rebuild is not worth hearing about more than once between builds.
 const (
 	syncAlertTitle        = "Domestique sync"
@@ -40,11 +38,9 @@ const (
 	indexAlertSuppression = 7 * 24 * time.Hour
 )
 
-// How long a failing activity waits before its schedule may start it again.
 // Reaching an upstream and reading the ground under a stage fail for different
-// reasons and recover on different timescales, so they wait differently; both
-// stop doubling at six hours, which is a morning's worth of quiet rather than a
-// task that has given up.
+// reasons and recover on different timescales, hence different bases; both cap
+// at six hours, a morning's quiet rather than giving up.
 const (
 	syncBackoffBase     = 30 * time.Second
 	targetBackoffBase   = time.Hour
@@ -52,9 +48,9 @@ const (
 	backoffCap          = 6 * time.Hour
 )
 
-// targetBackstopInterval is how often the targets are reconciled unasked. A
-// source read that stored something asks for them at once, so this catches only
-// the slot that failed alone and the operator who has the read switched off.
+// targetBackstopInterval is how often targets are reconciled unasked; a
+// successful source read already asks for them at once, so this only catches a
+// slot that failed alone or an operator with the read switched off.
 const targetBackstopInterval = 6 * time.Hour
 
 // The reasons a surface index rebuild reports. Both are stable words a status
@@ -68,9 +64,9 @@ const (
 // is recorded as failed rather than succeeded.
 const detailIncomplete task.Detail = "incomplete"
 
-// synchronizer is the synchronization work the task layer starts, and
-// indexBuilder is the surface index rebuild. Both are declared here so the task
-// definitions can be read without a reporter or a builder behind them.
+// synchronizer is the sync work the task layer starts; indexBuilder is the
+// surface index rebuild. Both live here so definitions can be read without a
+// reporter or builder behind them.
 type synchronizer interface {
 	RunPhase(ctx context.Context, phase syncservice.Phase) syncservice.Result
 	RunSourceProvider(ctx context.Context, provider route.Provider) syncservice.Result
@@ -98,9 +94,9 @@ func registerTasks(
 			return nil, fmt.Errorf("registering background tasks: %w", err)
 		}
 	}
-	// The graph is settled before anything runs, so an edge naming a task this
-	// build does not have, or one that closes a cycle, refuses the start rather
-	// than surfacing once at four in the morning.
+	// The graph is settled before anything runs: an edge naming a task this
+	// build lacks, or closing a cycle, refuses the start instead of surfacing at
+	// four in the morning.
 	if err := manager.Resolve(); err != nil {
 		return nil, fmt.Errorf("resolving what follows what: %w", err)
 	}
@@ -108,11 +104,10 @@ func registerTasks(
 	return manager, nil
 }
 
-// syncAlerts is what a synchronization can be announced for. Every failure
-// category the sync package reports is here, so an operator rules on each
-// rather than meeting one for the first time at four in the morning. stale is
-// left out for a task with no StaleAfter bound: a switch for an alert that can
-// never fire is a decoration, not a decision.
+// syncAlerts covers every failure category the sync package reports, so an
+// operator can rule on each in advance. stale is included only when the task
+// has a StaleAfter bound — a switch for an alert that can never fire is a
+// decoration, not a decision.
 func syncAlerts(stale bool) *task.Notify {
 	alerts := []task.Detail{
 		task.DetailSucceeded,
@@ -175,23 +170,17 @@ func inventoryTasks(
 			Name:      taskSyncTarget,
 			Resources: inventory,
 			Notify:    syncAlerts(false),
-			// A backstop rather than the timely path: a read that stored
-			// something asks for this straight away. What the schedule is for is
-			// the slot that failed on its own, and the operator who has the
-			// source read switched off entirely.
+			// A backstop, not the timely path: a successful source read already
+			// asks for this immediately.
 			Schedule:     task.Every(func() time.Duration { return targetBackstopInterval }),
 			InitialDelay: func() time.Duration { return targetBackstopInterval },
 			Enabled:      enabled(taskSyncTarget),
 			Follows:      []string{taskSyncSource},
-			// A chain asks per slot rather than for every slot at once, so one
-			// slot's fault backs only that slot off. Otherwise a single failing
-			// slot would hold every slot back from a source read that just
-			// succeeded, for as long as the backoff cap.
+			// Backoff runs per slot, not for all at once, so one slot's fault
+			// doesn't hold the rest back for as long as the backoff cap.
 			FanOut:  targetIDs,
 			Backoff: task.Backoff{Base: targetBackoffBase, Cap: backoffCap},
 			Run: task.RunnerFunc(func(ctx context.Context, invocation task.Invocation) task.Result {
-				// No argument is every configured slot, which is what the schedule
-				// and a source read both ask for. One names the slot alone.
 				if invocation.Argument == "" {
 					result := reporter.RunPhase(ctx, syncservice.PhaseTargets)
 
@@ -228,9 +217,8 @@ func inventoryTasks(
 	}
 }
 
-// surfaceIndexTask rebuilds the surface index. Its initial delay counts from the
-// last build rather than from this process starting, so restarting the service
-// does not restart the interval.
+// surfaceIndexTask rebuilds the surface index; its initial delay counts from
+// the last build, not from process start, so a restart doesn't restart it.
 func surfaceIndexTask(
 	runner indexBuilder,
 	settings *runtimeconfig.Current,
@@ -264,8 +252,8 @@ func surfaceIndexTask(
 }
 
 // indexResult carries a rebuild's outcome into the task layer's vocabulary. A
-// build that found nothing new still reached its upstream, which is why it is
-// unchanged rather than current.
+// build that found nothing new still reached its upstream, so it reports
+// unchanged rather than failed.
 func indexResult(outcome osmindex.Outcome, err error) task.Result {
 	if err != nil {
 		return task.Result{Outcome: task.Failed, Detail: detailBuild}
@@ -306,17 +294,14 @@ func syncResult(result *syncservice.Result) task.Result {
 	return task.Result{
 		Outcome: outcome,
 		Detail:  task.Detail(result.Failure),
-		// A source read that stored at least one provider's inventory is worth
-		// reconciling and classifying even when another provider failed and
-		// dragged the aggregate outcome down.
+		// Worth reconciling and classifying once any provider stored inventory,
+		// even if another provider failed and dragged the aggregate outcome down.
 		Advances: result.AnySourceStored(),
 	}
 }
 
 // taskSurface adapts the manager to what the HTTP surface reads, starts and
-// switches. It carries the service's own context rather than taking each
-// request's: a request context is cancelled the moment its handler returns,
-// which would end every attempt started over HTTP just after it was accepted.
+// switches.
 type taskSurface struct {
 	ctx      context.Context
 	manager  *task.Manager
@@ -355,16 +340,14 @@ func enabledOf(decided map[string]bool, name string) bool {
 	return !ruled || enabled
 }
 
-// Run starts one attempt, on exactly the terms the schedule starts one, and
-// under the same context — so it ends when the service does rather than when
-// the request that asked for it does.
+// Run starts one attempt under the service's own context, not the request's —
+// so it ends when the service does, not when the request that asked for it does.
 func (s taskSurface) Run(name, argument string) bool {
 	return s.manager.Trigger(s.ctx, name, argument)
 }
 
-// taskStarter is the task layer as the HTTP boundary needs it, and syncReporter
-// is what only the reporter can answer. Both are narrow so the adaptation below
-// can be read without a manager or a reporter behind it.
+// taskStarter is the task layer as the HTTP boundary needs it; syncReporter is
+// what only the reporter can answer.
 type taskStarter interface {
 	Trigger(ctx context.Context, name, argument string) bool
 	Holding(resource string) bool

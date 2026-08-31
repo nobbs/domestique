@@ -7,10 +7,8 @@ import (
 	"github.com/nobbs/domestique/internal/httpapi"
 )
 
-// demoAlerts is an alert matrix held in memory. The shipped binary builds its
-// catalogue from the tasks it registers; a demo registers none, so this stands
-// in a plausible one and remembers what is decided about it for as long as the
-// process runs.
+// demoAlerts is an alert matrix held in memory, standing in for the catalogue
+// the shipped binary builds from its registered tasks.
 type demoAlerts struct {
 	decided map[demoAlert]bool
 	mutex   sync.RWMutex
@@ -29,10 +27,8 @@ var syncFailureAlerts = []string{ //nolint:gochecknoglobals // a fixture for dev
 	"state", "source", "authorization", "destination", "course", "empty_source", "deletion_limit",
 }
 
-// demoAlertCatalogue is what the shipped binary's tasks declare, which is what
-// makes the settings section look like the one an operator meets. Only
-// sync:source declares stale: the other two sync tasks have no StaleAfter
-// bound, so the alert can never fire for them.
+// demoAlertCatalogue mirrors what the shipped binary's tasks declare, so the
+// settings section looks like the one an operator meets.
 var demoAlertCatalogue = buildDemoAlertCatalogue() //nolint:gochecknoglobals // a fixture for development tooling
 
 func buildDemoAlertCatalogue() []demoAlert {

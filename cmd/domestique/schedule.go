@@ -9,10 +9,8 @@ import (
 	"github.com/nobbs/domestique/internal/sqlite"
 )
 
-// taskSwitches answers whether the schedule may start a task, from a snapshot
-// it refreshes when a switch is written. Reading them is part of starting: a
-// service that could not read them would run what an operator had deliberately
-// switched off.
+// taskSwitches is an in-memory snapshot of whether the schedule may start each
+// task, refreshed whenever a switch is written.
 type taskSwitches struct {
 	store   *sqlite.Store
 	enabled map[string]bool

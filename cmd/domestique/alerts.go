@@ -9,11 +9,8 @@ import (
 	"github.com/nobbs/domestique/internal/task"
 )
 
-// alertDecisions answers what an operator has ruled about each alert, from a
-// snapshot it refreshes when the decisions are written. Reading them is part of
-// starting: a service that could not read them would announce what an operator
-// had deliberately silenced, and it already refuses to start on a state file it
-// cannot read.
+// alertDecisions is an in-memory snapshot of what an operator has ruled about
+// each alert, refreshed whenever a decision is written.
 type alertDecisions struct {
 	store   *sqlite.Store
 	decided map[alertKey]bool
@@ -81,22 +78,20 @@ func (d *alertDecisions) Set(ctx context.Context, toggles []sqlite.AlertToggle) 
 	if err := d.store.SetAlertToggles(ctx, toggles); err != nil {
 		return err //nolint:wrapcheck // the store already names what it was writing
 	}
-	// A decision the running service has not read is one an operator believes
-	// they made: reporting success here would keep sending the alert they just
-	// switched off.
+	// Reload before reporting success, or the running service would keep
+	// sending the alert an operator just switched off.
 	return d.reload(ctx)
 }
 
-// alertMatrix is the settings surface over the alerts: what the registered
-// tasks declare crossed with what an operator has decided about each. The
-// declarations are a fact about this build, so they are read once.
+// alertMatrix crosses what the registered tasks declare against what an
+// operator has decided about each alert.
 type alertMatrix struct {
 	decisions    *alertDecisions
 	declarations []task.Declaration
 }
 
 // Catalogue lists every alert the registered tasks can raise. An alert nobody
-// has ruled on reads as enabled, which is what the layer does with it.
+// has ruled on reads as enabled.
 func (m alertMatrix) Catalogue() []httpapi.AlertSetting {
 	catalogue := make([]httpapi.AlertSetting, 0, len(m.declarations))
 	for _, declaration := range m.declarations {

@@ -58,8 +58,6 @@ func TestSourcesFollowTheConfiguredLibraries(t *testing.T) {
 	assert.Equal(t, route.ProviderKomoot, built[1].Provider(), "second source")
 }
 
-// A read asked for over one library writes nothing on any other's behalf, so it
-// is not held back by a library somebody has half configured.
 func TestSourceForBuildsOneLibraryWhateverTheOthersAreMissing(t *testing.T) {
 	t.Parallel()
 
@@ -75,8 +73,6 @@ func TestSourceForBuildsOneLibraryWhateverTheOthersAreMissing(t *testing.T) {
 		runtimeconfig.SecretKomootPassword: runtimeconfig.NewSecret([]byte("secret")),
 	}), "SetSecrets()")
 
-	// Building them all refuses here, because VeloPlanner's credentials are not
-	// entered. Komoot's own read does not depend on that.
 	_, err := sources(current)
 	require.Error(t, err, "sources() with one library missing its credentials")
 
@@ -86,8 +82,6 @@ func TestSourceForBuildsOneLibraryWhateverTheOthersAreMissing(t *testing.T) {
 	require.NotNil(t, built, "no client was built for a configured library")
 	assert.Equal(t, route.ProviderKomoot, built.Provider(), "the library that was built")
 
-	// The one whose credentials are missing is not ready rather than a fault,
-	// and so is one nobody has configured at all.
 	half, configured, err := sourceFor(current, route.ProviderVeloPlanner)
 	require.NoError(t, err, "sourceFor() with the credentials not entered")
 	assert.False(t, configured, "a library without credentials reported itself configured")
