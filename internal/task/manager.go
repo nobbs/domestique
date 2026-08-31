@@ -452,7 +452,7 @@ func (m *Manager) attemptAndRelease(
 func (m *Manager) chain(
 	ctx context.Context, entry *registered, visited map[invocationKey]struct{}, depth int,
 ) {
-	if len(entry.definition.Follows) == 0 && len(entry.successors) == 0 {
+	if len(entry.successors) == 0 {
 		return
 	}
 	if depth >= maxChainDepth {
