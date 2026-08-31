@@ -120,7 +120,7 @@ func (r *Reporter) enter(phase Phase) {
 // runPhases runs the requested phases in order and returns the last result.
 // Source before targets, so one tick carries a change all the way through.
 func (r *Reporter) runPhases(ctx context.Context, source, targets bool) Result {
-	return r.runPhasesWith(ctx, source, targets, nil, r.runner.RunTargets)
+	return r.runPhasesWith(ctx, source, targets, nil, nil)
 }
 
 // runPhasesWith is runPhases parameterized over what runs each half, so a
@@ -144,6 +144,9 @@ func (r *Reporter) runPhasesWith(
 		sourceStored = result.Outcome == OutcomeSucceeded
 	}
 	if targets {
+		if runTargets == nil {
+			runTargets = r.runner.RunTargets
+		}
 		r.enter(PhaseTargets)
 		result = r.run(ctx, runTargets)
 	}
