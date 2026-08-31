@@ -115,7 +115,12 @@ export const SubKilometreClass: Story = {
   ),
 };
 
-/** No classes at all — the row falls back to the absence copy instead of an empty bar. */
+/** No classes at all — both rows fall back to a faded placeholder bar. */
 export const NoData: Story = {
   render: () => <Pair gradient={[]} surfaceMix={[]} />,
+};
+
+/** Only one dataset missing — its faded bar sits beside the other's real one. */
+export const OneDatasetMissing: Story = {
+  render: () => <Pair gradient={bandEntries(bands, route.distanceMetres)} surfaceMix={[]} />,
 };

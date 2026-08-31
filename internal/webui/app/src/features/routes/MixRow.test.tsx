@@ -70,4 +70,20 @@ describe("MixRow", () => {
     expect(screen.getByText("120 km")).toBeInTheDocument();
     expect(screen.getByText("13 km")).toBeInTheDocument();
   });
+
+  it("renders a faded placeholder bar instead of a bar when there are no classes", () => {
+    render(
+      <MixRow
+        classesLabel="Gradient bands"
+        entries={[]}
+        absence="No elevation data."
+        tagSide="above"
+        highlight={null}
+        onHighlightChange={() => {}}
+        unitSystem="metric"
+      />,
+    );
+
+    expect(screen.getByText("No elevation data.")).toHaveClass("sr-only");
+  });
 });

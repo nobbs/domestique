@@ -172,7 +172,14 @@ export function MixRow({
   );
 
   if (entries.length === 0) {
-    return <p className="text-xs text-[var(--ink-2)]">{absence}</p>;
+    return (
+      <div
+        className={`bg-[var(--ink-2)] opacity-15 ${above ? "rounded-t-md" : "rounded-b-md"}`}
+        style={{ height: BAR_HEIGHT }}
+      >
+        <span className="sr-only">{absence}</span>
+      </div>
+    );
   }
 
   return (
