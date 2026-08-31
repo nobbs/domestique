@@ -164,7 +164,9 @@ paths:
           browserOrigin: []
       description: >-
         Starts one attempt of a task over one argument, such as a single target
-        slot. Otherwise identical to running it with none.
+        slot. Otherwise identical to running it with none. The `404` is about
+        the task name; an unconfigured argument is the task's own to interpret
+        and is accepted.
       parameters:
         - $ref: '#/components/parameters/TaskName'
         - $ref: '#/components/parameters/TaskArgument'

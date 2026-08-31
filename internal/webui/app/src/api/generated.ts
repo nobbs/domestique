@@ -1178,7 +1178,7 @@ export const getRunTaskArgumentUrl = (name: string, argument: string) => {
 };
 
 /**
- * Starts one attempt of a task over one argument, such as a single target slot. Otherwise identical to running it with none.
+ * Starts one attempt of a task over one argument, such as a single target slot. Otherwise identical to running it with none. The `404` is about the task name; an unconfigured argument is the task's own to interpret and is accepted.
  */
 export const runTaskArgument = async (
   name: string,
