@@ -1142,14 +1142,20 @@ func TestHandlerRejectsMalformedLegacyStagePaths(t *testing.T) {
 
 // A clear is destructive, so a slot this build was never configured with is
 // refused exactly as it is for a reconciliation.
-func TestHandlerRejectsClearingAnUnconfiguredTarget(t *testing.T) {
-	trigger := &fakeSync{accepted: true}
-	handler := newHandlerWithSync(t, &fakeOAuth{}, &fakeState{}, trigger)
+// What an argument means is the task's, not this surface's, so a slot nobody
+// configured is accepted here and does no work in the service. The guard that
+// matters is there; see TestServiceClearTargetSkipsAnUnconfiguredTarget.
+func TestHandlerPassesAnUnconfiguredTargetThroughToTheTask(t *testing.T) {
+	handler := newHandlerWithSync(t, &fakeOAuth{}, &fakeState{}, &fakeSync{accepted: true})
+	tasks, ok := handler.tasks.(*fakeTasks)
+	require.True(t, ok, "the handler was not built over a fake task list")
+	tasks.registered = append(tasks.registered, RegisteredTask{Name: "sync:clear"})
 
 	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/targets/unknown/clear"))
-	assert.Equal(t, http.StatusNotFound, response.Code, "POST /v1/targets/unknown/clear status")
-	assert.Empty(t, trigger.clearTriggers, "an unconfigured target was cleared")
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/tasks/sync%3Aclear/run/unknown"))
+
+	require.Equal(t, http.StatusAccepted, response.Code, response.Body.String())
+	assert.Equal(t, []startedTask{{name: "sync:clear", argument: "unknown"}}, tasks.started, "started")
 }
 
 func TestHandlerSwitchesEitherHalfOfTheSchedule(t *testing.T) {

@@ -2,10 +2,10 @@ package main
 
 import "github.com/nobbs/domestique/internal/httpapi"
 
-// demoTasks is the task list a demo shows. The shipped binary builds one from
-// what it registers; a demo registers none, so this stands in the names an
-// operator meets. Running one of the synchronization tasks reseeds the library,
-// which is the only work a demo has to do.
+// demoTasks is the task list a demo shows. The shipped binary builds one from a
+// running task layer; a demo has no layer, so this answers with the names an
+// operator meets and nothing about a schedule. Running one of the
+// synchronization tasks reseeds the library, which is the only work a demo does.
 type demoTasks struct{ reseed func() bool }
 
 // demoTaskNames are what the shipped binary registers, in the order it does.
