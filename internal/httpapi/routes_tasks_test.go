@@ -76,6 +76,21 @@ func TestListTasksReportsWhatThisBuildRegisters(t *testing.T) {
 	assert.Nil(t, view.Tasks[1].IntervalSeconds, "a task nothing schedules reported an interval")
 }
 
+// A sub-second interval must not truncate to a zero that reads as absent's
+// opposite: a task running every instant rather than one with no schedule.
+func TestListTasksOmitsAnIntervalThatRoundsToZero(t *testing.T) {
+	handler, _ := tasksHandler(t, RegisteredTask{Name: "sync:source", Interval: 400 * time.Millisecond})
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, tasksPath))
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+
+	var view openapi.TaskList
+	require.NoError(t, json.NewDecoder(response.Body).Decode(&view), "decoding the task list")
+	require.Len(t, view.Tasks, 1, "tasks")
+	assert.Nil(t, view.Tasks[0].IntervalSeconds, "a sub-second interval was served as intervalSeconds: 0")
+}
+
 // A service with nothing registered still answers with a list, an empty one.
 func TestListTasksSendsAnEmptyListAsAList(t *testing.T) {
 	handler, _ := tasksHandler(t)

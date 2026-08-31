@@ -49,10 +49,10 @@ func optionalString(value string) *string {
 // optionalIntervalSeconds omits a task with no fixed gap between runs rather
 // than serving a zero that would read as one running every instant.
 func optionalIntervalSeconds(interval time.Duration) *int {
-	if interval <= 0 {
+	seconds := int(interval.Round(time.Second) / time.Second)
+	if seconds <= 0 {
 		return nil
 	}
-	seconds := int(interval / time.Second)
 
 	return &seconds
 }
