@@ -73,9 +73,8 @@ type Manager struct {
 	order      []string
 
 	// mutex guards admission alone: a slot and a resource set are taken
-	// together or not at all, so an attempt can never hold one and want the
-	// other. undeclaredMutex is separate so that invariant stays easy to
-	// reason about.
+	// together or not at all. undeclaredMutex is separate so that invariant
+	// stays easy to reason about.
 	mutex           sync.Mutex
 	undeclaredMutex sync.Mutex
 	triggered       sync.WaitGroup
@@ -83,11 +82,11 @@ type Manager struct {
 
 // registered is one task and what the manager knows about it right now.
 type registered struct {
-	// startsAt holds the instant the first scheduled run is due, and only while
-	// it is still due.
 	// successors are the tasks whose Follows name this one, worked out afresh by
 	// each Resolve and settled before anything runs.
 	successors []string
+	// startsAt holds the instant the first scheduled run is due, and only while
+	// it is still due.
 	startsAt   startsAt
 	definition Definition
 	inFlight   int
@@ -95,8 +94,8 @@ type registered struct {
 
 // NewManager creates an empty manager over the store its attempts are recorded
 // in and the channel its alerts go out on. Nothing runs until Run is called.
-// enabled is read at the moment a message would go out rather than captured,
-// because an operator edits it while the service runs.
+// enabled is read at the moment a message would go out, not captured, so an
+// operator's edit takes effect while the service runs.
 func NewManager(store Store, notifier Notifier, alerts Alerts, enabled func() bool) (*Manager, error) {
 	if store == nil || notifier == nil || alerts == nil || enabled == nil {
 		return nil, errors.New("task: a run store, a notifier, alert decisions and a switch are required")
@@ -371,9 +370,8 @@ func (m *Manager) follow(ctx context.Context, entry *registered) {
 }
 
 // scheduled performs one attempt from the schedule, which is refused on exactly
-// the terms a trigger is. A wait that ended as the context was cancelled can
-// still report that it fired, so cancellation is checked before starting work
-// rather than left to the runner to notice.
+// the terms a trigger is. Cancellation is checked before starting work rather
+// than left to the runner to notice.
 func (m *Manager) scheduled(ctx context.Context, entry *registered) {
 	if ctx.Err() != nil {
 		return
@@ -400,10 +398,6 @@ func (m *Manager) scheduled(ctx context.Context, entry *registered) {
 // backingOff reports whether a failing task is still being held back from its
 // own schedule. It is read from the recorded history rather than kept in
 // memory, so a restart neither forgets a backoff nor needs to rebuild one.
-//
-// Nothing is recorded about an attempt that was held back. The task is already
-// in its history as failing, and a row per suppressed tick would bury that
-// under the waiting.
 func (m *Manager) backingOff(ctx context.Context, entry *registered, invocation Invocation) bool {
 	if entry.definition.Backoff.Base <= 0 {
 		return false
@@ -425,12 +419,8 @@ func (m *Manager) backingOff(ctx context.Context, entry *registered, invocation 
 }
 
 // perform runs one attempt and then whatever registration declared follows it.
-// The resources are released before the chain starts, because a successor
-// wanting what its predecessor held would otherwise be refused by it every
-// time.
-//
-// One chain shares one set of what it has run. A chain is sequential, so
-// siblings see each other rather than each starting from its parent's copy.
+// Resources release before the chain starts, so a successor wanting what its
+// predecessor held is not refused by it.
 func (m *Manager) perform(
 	ctx context.Context,
 	entry *registered,
@@ -503,10 +493,9 @@ func (m *Manager) runSuccessor(
 	}
 }
 
-// runSuccessorOver runs one successor over one argument. Work already under way
-// is left to finish rather than refused: asking for what is happening anyway
-// has its answer, and admission is what decides that, so nothing can change
-// between asking and starting.
+// runSuccessorOver runs one successor over one argument. Work already under
+// way is left to finish rather than refused: admission decides that, so
+// nothing can change between asking and starting.
 func (m *Manager) runSuccessorOver(
 	ctx context.Context, entry *registered, name, argument string,
 	visited map[invocationKey]struct{}, depth int,
@@ -601,11 +590,9 @@ func (m *Manager) record(
 	m.checkStale(ctx, entry, invocation, result, reference, finishedAt)
 }
 
-// alertFor is what this attempt is announced as, empty when it is not announced
-// at all. A fault is announced as the reason it gave. A success is a recovery
-// when it ends a run of anything else, and routine otherwise — two alerts
-// rather than one, because an operator who silences every routine pass still
-// wants to hear that the thing came back.
+// alertFor is what this attempt is announced as, empty when it is not
+// announced at all. A fault is announced as the reason it gave; a success is
+// a recovery when it ends a run of anything else, and routine otherwise.
 func (m *Manager) alertFor(
 	ctx context.Context, entry *registered, invocation Invocation, result Result,
 ) Detail {
@@ -629,9 +616,8 @@ func (m *Manager) alertFor(
 }
 
 // endsAnIncident reports whether this success follows something that was not
-// one. Anything else counts, including the not_ready a target awaiting its
-// authorization records: what an operator wants to hear is that the task is
-// doing its work again.
+// one. Anything else counts, including the not_ready a target awaiting
+// authorization records.
 func (m *Manager) endsAnIncident(ctx context.Context, invocation Invocation) bool {
 	outcome, found, err := m.store.LastTaskOutcome(ctx, invocation.Task, invocation.Argument)
 	if err != nil {
@@ -692,19 +678,15 @@ func (m *Manager) clearAlert(ctx context.Context, invocation Invocation, alert D
 }
 
 // alertCategory names one task's suppression window for one alert, over one
-// argument. Backoff and staleness are both tracked per argument; the
-// suppression window matches, so a fault on one target slot does not silence
-// the same reason on another, and a success on one argument does not end
-// another argument's incident.
+// argument, matching how backoff and staleness are tracked: a fault on one
+// target slot does not silence the same reason on another.
 func alertCategory(invocation Invocation, alert Detail) string {
 	return invocation.Task + ":" + invocation.Argument + ":" + string(alert)
 }
 
 // announce sends one alert, no more often than the task's own suppression
-// window allows. The window is keyed by the reason and the argument as well as
-// the task: a library that cannot be read and a target that needs
-// reauthorising are separate problems, and so are two targets failing for the
-// same reason, and are worth saying separately.
+// window allows. The window is keyed by the reason and the argument as well
+// as the task, so two targets failing for the same reason say so separately.
 func (m *Manager) announce(
 	ctx context.Context,
 	entry *registered,
@@ -747,11 +729,9 @@ func newRunReference() string {
 	return hex.EncodeToString(reference)
 }
 
-// reportUndeclared says once that a task raised something it never declared.
-// Whether the declaration is complete is a fact about this build rather than
-// about this run, so it is said whatever an operator has decided and whatever
-// the window allows — and said once, because repeating it every tick would
-// bury it.
+// reportUndeclared says once that a task raised something it never declared,
+// whatever an operator has decided and whatever the suppression window
+// allows — a missing declaration is a fact about this build, not this run.
 func (m *Manager) reportUndeclared(entry *registered, task string, alert Detail) {
 	if entry.definition.declares(alert) {
 		return
@@ -781,10 +761,8 @@ func (m *Manager) wanted(ctx context.Context, task string, alert Detail) bool {
 }
 
 // alertMessage says which task is being announced, over what, and why. The
-// reason is left off when it only repeats the outcome, and the outcome is left
-// off when what is announced is not one attempt's. Every message names its run:
-// the reference is random and means nothing on its own, which is what makes it
-// safe to send.
+// reason is left off when it only repeats the outcome, and the outcome is
+// left off when what is announced is not one attempt's.
 func alertMessage(invocation Invocation, outcome Outcome, alert Detail, reference string) string {
 	message := invocation.Task
 	if invocation.Argument != "" {

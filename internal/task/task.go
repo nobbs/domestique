@@ -8,8 +8,8 @@ import (
 	"time"
 )
 
-// admission is why an attempt may or may not start. Telling the two refusals
-// apart is what lets a chain coalesce onto work already happening while still
+// admission is why an attempt may or may not start. The two refusals are kept
+// apart so a chain can coalesce onto work already happening while still
 // recording one that genuinely lost a resource.
 type admission int
 
@@ -36,9 +36,8 @@ func (a admission) detail() Detail {
 // collision.
 const runReferenceBytes = 6
 
-// maxChainDepth bounds how far one attempt's consequences may reach. Every
-// chain the service registers is one or two edges long; this is the backstop
-// behind the set of what a chain has already run.
+// maxChainDepth bounds how far one attempt's consequences may reach, as a
+// backstop behind the set of what a chain has already run.
 const maxChainDepth = 8
 
 // defaultRetainedRuns bounds a task's history when it names no bound of its
@@ -83,9 +82,8 @@ func (o Outcome) recorded() bool {
 // provider response text, a route name, or an upstream identifier.
 type Detail string
 
-// Why an attempt did no work. They are separate because they mean different
-// things to whoever reads the history: one is this service busy with the very
-// same work, the other is it busy with something else.
+// Why an attempt did no work: one is this service already busy with the same
+// work, the other is it busy with something else.
 const (
 	// DetailWorking means the same task over the same argument was already
 	// being worked on.
@@ -94,23 +92,20 @@ const (
 	DetailHeld Detail = "resource_held"
 )
 
-// What an attempt is announced for besides a fault. They are alerts like any
-// other, declared by the task and ruled on one at a time, so an operator who
-// wants to hear about a library that stopped refreshing but not about every
-// routine pass can have exactly that.
+// What an attempt is announced for besides a fault. They are declared by the
+// task and ruled on one at a time, so an operator can silence routine success
+// without silencing a recovery or staleness.
 const (
 	// DetailSucceeded means the attempt did its work and nothing was wrong
-	// before it — either the one before also succeeded, or there was none. It is
-	// the routine traffic an operator most often switches off.
+	// before it. It is the routine traffic an operator most often switches off.
 	DetailSucceeded Detail = "succeeded"
 	// DetailRecovered means the attempt succeeded where the one before it did
-	// not. It ends an incident, which is worth hearing even from a task whose
-	// routine successes are silenced.
+	// not, ending an incident even for a task whose routine successes are
+	// silenced.
 	DetailRecovered Detail = "recovered"
 	// DetailStale means the task has gone longer than its bound without
-	// succeeding. A task that stopped succeeding raises no new fault once its
-	// first one is suppressed, so without this it goes quiet exactly when it
-	// matters.
+	// succeeding — worth raising on its own, since a stopped task otherwise
+	// stays quiet once its first failure alert is suppressed.
 	DetailStale Detail = "stale"
 )
 
@@ -120,8 +115,7 @@ type Result struct {
 	Detail  Detail
 	// Advances lets successors run even when Outcome is not Succeeded, for an
 	// attempt whose failure was partial and still stored something worth
-	// building on. The attempt's own outcome is unaffected: this only widens
-	// what follows it.
+	// building on. The attempt's own outcome is unaffected.
 	Advances bool
 }
 
@@ -164,13 +158,11 @@ func (f RunnerFunc) Run(ctx context.Context, invocation Invocation) Result {
 type Notify struct {
 	// Title is what a message about this task is titled.
 	Title string
-	// Alerts are the reasons this task can be announced for. Declaring them is
-	// what lets an operator rule on each separately, rather than discovering
-	// one exists by being woken by it.
+	// Alerts are the reasons this task can be announced for, so an operator can
+	// rule on each separately rather than discovering one by being woken by it.
 	Alerts []Detail
-	// Suppress is how long one alert silences the next for the same reason. A
-	// failing task is worth one message, and the same message every tick
-	// afterwards is noise an operator learns to ignore.
+	// Suppress is how long one alert silences the next for the same reason,
+	// so a failing task doesn't repeat the same message every tick.
 	Suppress time.Duration
 }
 
@@ -181,19 +173,16 @@ type Declaration struct {
 }
 
 // Backoff holds a failing task back from its own schedule, doubling the wait
-// with each consecutive fault. A task that cannot reach an upstream retrying
-// every minute is a task hammering something already in trouble; one that waits
-// longer each time still recovers on its own, later.
-//
-// It is a floor under the next attempt, never a ceiling: a schedule due after
-// the backoff has expired still waits for its own time.
+// with each consecutive fault. It is a floor under the next attempt, never a
+// ceiling: a schedule due after the backoff has expired still waits for its
+// own time.
 type Backoff struct {
 	// Base is the wait after the first fault. Zero is a task with no backoff,
 	// which retries on its ordinary schedule.
 	Base time.Duration
-	// Cap bounds the doubling, and is never shorter than Base: registering a
-	// backoff without a cap is refused, because uncapped doubling reaches days
-	// within a morning. Every wait this returns is therefore at most Cap.
+	// Cap bounds the doubling and is never shorter than Base — registering a
+	// backoff without one is refused, since uncapped doubling reaches days
+	// within a morning.
 	Cap time.Duration
 }
 
@@ -237,9 +226,8 @@ type Definition struct {
 	// announced as stale. Nil is a task nothing is expected of on a clock.
 	StaleAfter func() time.Duration
 	// Enabled is whether the schedule may start this task, read at each tick so
-	// an operator switching it off pauses the schedule rather than ending it,
-	// and switching it back on needs no restart. Nil is always. It governs
-	// unattended runs only: an operator asking has already decided.
+	// switching it off pauses the schedule rather than ending it. Nil is always.
+	// It governs unattended runs only: an operator asking has already decided.
 	Enabled func() bool
 	// Resources are what an attempt over this argument must hold before it may
 	// start. Nil needs nothing, so nothing can refuse it.
@@ -247,18 +235,16 @@ type Definition struct {
 	// FanOut names the arguments a chain asking for this task fires it over,
 	// one invocation each, instead of the single empty-argument invocation
 	// every other task's successors get. It exists so backoff and history stay
-	// keyed per argument for a task whose empty argument otherwise means every
-	// configured slot at once: one slot's fault then holds only that slot back,
-	// not every slot a later successful predecessor would otherwise reach. Nil
-	// is every other task's answer: one invocation, the empty argument.
+	// keyed per argument, rather than one fault holding back every slot a task
+	// with an empty argument would otherwise cover. Nil means one invocation,
+	// the empty argument.
 	FanOut func() []string
 	// Name identifies the task and is what a trigger asks for.
 	Name string
 	// Follows names the tasks this one runs after, and is the whole graph: an
 	// edge to a task nobody registered, or one that closes a cycle, is refused
-	// where the task is registered rather than found by a depth cap at runtime.
-	// Each edge fires on its own: a task that follows two of them runs after
-	// either one, rather than waiting for both.
+	// at registration rather than found by a depth cap at runtime. Each edge
+	// fires on its own — a task following two of them runs after either one.
 	Follows []string
 	// Backoff holds this task back from its own schedule while it keeps
 	// faulting. Its zero value is a task that retries on schedule regardless.
@@ -277,9 +263,7 @@ func (d *Definition) declares(alert Detail) bool {
 	return d.Notify != nil && slices.Contains(d.Notify.Alerts, alert)
 }
 
-// alerts reports whether anything is announced about this task. What it says
-// and how often are the same declaration, so a task cannot be announced about
-// without a window to announce within.
+// alerts reports whether anything is announced about this task.
 func (d *Definition) alerts() bool {
 	return d.Notify != nil
 }

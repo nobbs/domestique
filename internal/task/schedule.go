@@ -10,10 +10,9 @@ type Schedule interface {
 }
 
 // firesAtStart marks a schedule whose first run is the moment it starts rather
-// than a time of its own. A fixed gap has no time of its own to wait for, so it
-// runs and then counts; a calendar schedule does, and starting the service is
-// not it. The method is unexported, so a schedule from outside this package is
-// treated as a calendar one, which is the safer of the two to be wrong about.
+// than a time of its own, like a fixed gap. The method is unexported, so a
+// schedule from outside this package defaults to the calendar behavior — the
+// safer of the two to be wrong about.
 type firesAtStart interface{ firesAtStart() }
 
 // Every is a fixed gap between runs. The gap is read again before each wait, so
@@ -36,7 +35,7 @@ func (e Every) NextFire(previous time.Time) time.Time {
 
 // nextDue is when a run last due at previous should next start. A gap that has
 // already elapsed starts the next run at once rather than queueing the ones it
-// missed, and the cadence carries on from there.
+// missed.
 func nextDue(schedule Schedule, previous, now time.Time) (time.Time, bool) {
 	due := schedule.NextFire(previous)
 	if due.IsZero() {
@@ -51,8 +50,7 @@ func nextDue(schedule Schedule, previous, now time.Time) (time.Time, bool) {
 
 // Zone is where local time is read, supplied as a function so an operator's
 // edit reaches the next wait rather than the next restart. A nil zone, or one
-// that reports nothing, is UTC: a schedule with nowhere to be is still a
-// schedule, and refusing to fire would be the worse answer.
+// that reports nothing, is UTC.
 type Zone func() *time.Location
 
 func (z Zone) location() *time.Location {
@@ -104,10 +102,10 @@ const daysSearched = 8
 // accepts whose wall-clock time has not already passed.
 //
 // The walk is over calendar days rather than fixed 24-hour steps, because those
-// are not the same thing twice a year. Where the wall clock skips the hour the
-// schedule names, time.Date rolls forward into the hour that does exist rather
-// than refusing: a run that would have happened at two in the morning happens,
-// an hour of wall clock late, instead of being skipped until the autumn.
+// are not the same thing twice a year. Where the wall clock skips the named
+// hour, time.Date rolls forward into the hour that does exist rather than
+// refusing, so a spring-forward run happens an hour late instead of being
+// skipped until autumn.
 func nextWallClock(previous time.Time, zone Zone, hour, minute int, accepts func(time.Time) bool) time.Time {
 	location := zone.location()
 	local := previous.In(location)
