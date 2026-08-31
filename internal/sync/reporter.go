@@ -123,8 +123,9 @@ func (r *Reporter) runPhases(ctx context.Context, source, targets bool) Result {
 	return r.runPhasesWith(ctx, source, targets, nil, r.runner.RunTargets)
 }
 
-// runPhasesWith is runPhases parameterized over what reconciles the target half,
-// so a single-target trigger shares every recording and reporting rule.
+// runPhasesWith is runPhases parameterized over what runs each half, so a
+// trigger scoped to one library or one slot shares every recording and
+// reporting rule. A nil half is the service's own.
 func (r *Reporter) runPhasesWith(
 	ctx context.Context,
 	source, targets bool,

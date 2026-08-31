@@ -408,7 +408,7 @@ func (m *Manager) backingOff(ctx context.Context, entry *registered, invocation 
 }
 
 // perform runs one attempt and then whatever it asked should follow. The
-// resources are released before the chain starts, because a link wanting what
+// resources are released before the chain starts, because a successor wanting what
 // its parent held would otherwise be refused by it every time.
 //
 // One chain shares one set of what it has run. A chain is sequential, so
@@ -436,7 +436,7 @@ func (m *Manager) perform(
 }
 
 // attemptAndRelease runs one attempt and gives back what it held, whatever
-// becomes of the runner. Releasing before the chain is what lets a link take
+// becomes of the runner. Releasing before the chain is what lets a successor take
 // what its parent was holding.
 func (m *Manager) attemptAndRelease(
 	ctx context.Context, entry *registered, invocation Invocation, release func(),
@@ -461,15 +461,17 @@ func (m *Manager) chain(
 		return
 	}
 	for _, name := range entry.successors {
-		m.linked(ctx, name, visited, depth)
+		m.runSuccessor(ctx, name, visited, depth)
 	}
 }
 
-// linked runs one chain link. Work already under way is left to finish rather
-// than refused: a link asking for what is happening anyway has its answer, and
+// runSuccessor runs one successor. Work already under way is left to finish rather
+// than refused: asking for what is happening anyway has its answer, and
 // admission is what decides that, so nothing can change between asking and
 // starting.
-func (m *Manager) linked(ctx context.Context, name string, visited map[invocationKey]struct{}, depth int) {
+func (m *Manager) runSuccessor(
+	ctx context.Context, name string, visited map[invocationKey]struct{}, depth int,
+) {
 	entry, known := m.tasks[name]
 	if !known || ctx.Err() != nil {
 		return
@@ -480,7 +482,7 @@ func (m *Manager) linked(ctx context.Context, name string, visited map[invocatio
 
 		return
 	}
-	// A link is asked for by something that succeeded, but a task that keeps
+	// A successor is asked for by something that succeeded, but a task that keeps
 	// faulting is hammering whatever it cannot reach whether the asking came
 	// from a schedule or from a chain.
 	if m.backingOff(ctx, entry, invocation) {
@@ -491,7 +493,7 @@ func (m *Manager) linked(ctx context.Context, name string, visited map[invocatio
 	release, outcome := m.admit(entry, invocation)
 	switch outcome {
 	case admitWorking:
-		// The work is happening, which is what the link asked for, so the rest
+		// The work is happening, which is what the edge asked for, so the rest
 		// of the chain treats it as run rather than asking again once it ends.
 		visited[keyOf(invocation)] = struct{}{}
 

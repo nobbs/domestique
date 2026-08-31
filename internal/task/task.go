@@ -37,7 +37,7 @@ func (a admission) detail() Detail {
 const runReferenceBytes = 6
 
 // maxChainDepth bounds how far one attempt's consequences may reach. Every
-// chain the service registers is one or two links long; this is the backstop
+// chain the service registers is one or two edges long; this is the backstop
 // behind the set of what a chain has already run.
 const maxChainDepth = 8
 
