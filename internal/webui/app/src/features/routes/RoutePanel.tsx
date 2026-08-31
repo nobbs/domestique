@@ -114,6 +114,8 @@ export interface RoutePanelProps {
   bands: BandShare[];
   highlight: Highlight | null;
   onHighlightChange: (highlight: Highlight | null) => void;
+  /** Puts the highlight away on collapse, without touching the zoom. */
+  onHighlightClear: () => void;
   /**
    * Whether the panel rests as a pill.
    *
@@ -150,6 +152,7 @@ export function RoutePanel({
   bands,
   highlight,
   onHighlightChange,
+  onHighlightClear,
   collapsed,
   onCollapsedChange,
   libraryCount,
@@ -187,12 +190,11 @@ export function RoutePanel({
             onClick={() => {
               const next = !collapsed;
               onCollapsedChange(next);
-              // Collapsing takes the class labels away with it, and a pressed
-              // one is the only way to give the whole route back. Rather than
-              // leave the map lit with no visible cause, putting the card away
-              // puts the question away too.
+              // Collapsing takes the class labels away with it, so a class
+              // picked before is left with no visible cause. Clears only the
+              // highlight, not a zoom the reader dragged in separately.
               if (next) {
-                onHighlightChange(null);
+                onHighlightClear();
               }
             }}
             className="flex min-w-0 items-center gap-2 rounded-lg px-2 py-1 text-left hover:bg-[var(--base)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent)]"

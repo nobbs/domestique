@@ -297,6 +297,7 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
     selectClimb,
     surface,
     surfaceSummary,
+    scopeHighlight,
   } = useOpenRoute(openCoordinates, openGeometry, startAt);
   /*
    * What the reader has put away, and it sticks across routes: someone who
@@ -470,7 +471,7 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
             zoomWindow={shownWindow}
             onZoomChange={onZoomChange}
             highlight={highlight}
-            onHighlightChange={setHighlight}
+            onHighlightChange={scopeHighlight}
             unitSystem={unitSystem}
             open={dockOpen}
             onOpenChange={setDockOpen}
@@ -541,7 +542,8 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
           }
           bands={gradient}
           highlight={highlight}
-          onHighlightChange={setHighlight}
+          onHighlightChange={scopeHighlight}
+          onHighlightClear={() => setHighlight(null)}
           collapsed={panelCollapsed}
           onCollapsedChange={setPanelCollapsed}
           libraryCount={library.length}
