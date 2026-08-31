@@ -65,6 +65,7 @@ import {
 } from "../../api/types";
 import { Button } from "../../components/Button";
 import { providerLabel } from "../../lib/provider";
+import { RegionPicker } from "./regions/RegionPicker";
 
 const SECONDS_PER_HOUR = 3600;
 const SECONDS_PER_MINUTE = 60;
@@ -856,18 +857,15 @@ function SurfaceClassification({ settings }: { settings: Settings }) {
       title="Surface classification"
       save={save}
       edited={draft !== null}
-      onSave={() => save.mutate({ data: { ...values, regions: entered(values.regions) } })}
+      onSave={() => save.mutate({ data: values })}
     >
       <Field>
-        <FieldLabel htmlFor={`${id}-regions`}>Geofabrik regions, one per line</FieldLabel>
-        <Textarea
-          id={`${id}-regions`}
-          rows={3}
-          value={values.regions.join("\n")}
-          onChange={(event) => setDraft({ ...values, regions: event.target.value.split("\n") })}
+        <RegionPicker
+          value={values.regions}
+          onChange={(regions) => setDraft({ ...values, regions })}
         />
         <FieldDescription>
-          An empty list switches classification off. Naming a region does not build the index: the
+          Choosing no region switches classification off. Naming one does not build the index: the
           next rebuild on the schedule below does, and routes are classified on the pass after that.
         </FieldDescription>
       </Field>
