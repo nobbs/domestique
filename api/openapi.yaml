@@ -73,6 +73,76 @@ paths:
           $ref: '#/components/responses/Forbidden'
         "503":
           $ref: '#/components/responses/Unavailable'
+  /v1/tasks:
+    get:
+      tags:
+        - browser-api
+      operationId: listTasks
+      security:
+        - accessAssertion: []
+      description: >-
+        Every background activity this build registers, in the order a status
+        page reads best.
+      responses:
+        "200":
+          description: The registered tasks.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskList'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+  /v1/tasks/{name}/run:
+    post:
+      tags:
+        - browser-api
+      operationId: runTask
+      security:
+        - accessAssertion: []
+          browserOrigin: []
+      description: >-
+        Starts one attempt of a task and reports whether it was accepted. An
+        accepted attempt continues independently of this request.
+      parameters:
+        - $ref: '#/components/parameters/TaskName'
+      responses:
+        "202":
+          $ref: '#/components/responses/Accepted'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/TaskInProgress'
+  /v1/tasks/{name}/run/{argument}:
+    post:
+      tags:
+        - browser-api
+      operationId: runTaskArgument
+      security:
+        - accessAssertion: []
+          browserOrigin: []
+      description: >-
+        Starts one attempt of a task over one argument, such as a single target
+        slot. Otherwise identical to running it with none.
+      parameters:
+        - $ref: '#/components/parameters/TaskName'
+        - $ref: '#/components/parameters/TaskArgument'
+      responses:
+        "202":
+          $ref: '#/components/responses/Accepted'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/TaskInProgress'
   /v1/sync:
     post:
       tags:
@@ -862,6 +932,22 @@ components:
       name: Origin
       description: Exact browser origin configured for this service. Required by every operation that starts a run or writes state, and modelled as a security scheme rather than a parameter because a request without it is refused rather than misread.
   parameters:
+    TaskName:
+      name: name
+      in: path
+      required: true
+      description: The task's registered name, such as sync or surface:index.
+      schema:
+        type: string
+        minLength: 1
+    TaskArgument:
+      name: argument
+      in: path
+      required: true
+      description: What the attempt is over, such as a target slot name.
+      schema:
+        type: string
+        minLength: 1
     Target:
       name: target
       in: path
@@ -955,6 +1041,14 @@ components:
             $ref: '#/components/schemas/Error'
     ProviderUnavailable:
       description: Provider request failed without exposing provider detail.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    TaskInProgress:
+      description: >-
+        The attempt was refused. This exact work is already happening, or
+        something it needs is held by another run. Neither is a fault.
       content:
         application/json:
           schema:
@@ -1647,6 +1741,39 @@ components:
           minItems: 1
           items:
             $ref: '#/components/schemas/BrowserBasemap'
+    TaskList:
+      type: object
+      additionalProperties: false
+      required:
+        - tasks
+      properties:
+        tasks:
+          type: array
+          items:
+            $ref: '#/components/schemas/Task'
+    Task:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+        - scheduled
+        - running
+      properties:
+        name:
+          type: string
+          description: What a trigger asks for.
+        scheduled:
+          type: boolean
+          description: Whether the task runs unasked.
+        running:
+          type: integer
+          description: How many attempts of this task are in flight.
+        nextRunAt:
+          type: string
+          format: date-time
+          description: >-
+            When the first scheduled run is due. Absent once it has started, and
+            for a task nothing schedules.
     TimezoneUpdate:
       type: object
       additionalProperties: false

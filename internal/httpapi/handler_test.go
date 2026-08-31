@@ -585,6 +585,7 @@ func TestHandlerPublishesTheWayOutWhenOneIsConfigured(t *testing.T) {
 	handler, err := New(
 		&Options{
 			Alerts:           &fakeAlerts{},
+			Tasks:            &fakeTasks{},
 			Settings:         settingsWith(twoProviderBasemaps()),
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
@@ -619,6 +620,7 @@ func TestNewRefusesAnAccessEmailThatIsNotOne(t *testing.T) {
 			_, err := New(
 				&Options{
 					Alerts:           &fakeAlerts{},
+					Tasks:            &fakeTasks{},
 					Settings:         settingsWith(twoProviderBasemaps()),
 					AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 					AccessEmail:      value,
@@ -648,6 +650,7 @@ func TestNewRefusesASignOutURLThatLeavesThisOrigin(t *testing.T) {
 			_, err := New(
 				&Options{
 					Alerts:           &fakeAlerts{},
+					Tasks:            &fakeTasks{},
 					Settings:         settingsWith(twoProviderBasemaps()),
 					AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 					AccessEmail:      testAccessEmail,
@@ -666,6 +669,7 @@ func TestHandlerServesEveryConfiguredBasemapInOrder(t *testing.T) {
 	handler, err := New(
 		&Options{
 			Alerts:           &fakeAlerts{},
+			Tasks:            &fakeTasks{},
 			Settings:         settingsWith(twoProviderBasemaps()),
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
@@ -702,6 +706,7 @@ func TestHandlerOmitsAnUnconfiguredDarkTileStyle(t *testing.T) {
 	handler, err := New(
 		&Options{
 			Alerts:           &fakeAlerts{},
+			Tasks:            &fakeTasks{},
 			Settings:         settingsWith(testBasemaps()),
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
@@ -722,6 +727,7 @@ func TestHandlerOmitsAnUnconfiguredSourceBaseURL(t *testing.T) {
 	handler, err := New(
 		&Options{
 			Alerts:           &fakeAlerts{},
+			Tasks:            &fakeTasks{},
 			Settings:         settingsWith(testBasemaps()),
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
@@ -742,6 +748,7 @@ func TestHandlerServesEveryConfiguredSourceKeyedByProvider(t *testing.T) {
 	handler, err := New(
 		&Options{
 			Alerts: &fakeAlerts{},
+			Tasks:  &fakeTasks{},
 			Settings: withSources(settingsWith(testBasemaps()),
 				runtimeconfig.Source{Provider: route.ProviderVeloPlanner, BaseURL: testSourceBaseURL},
 				runtimeconfig.Source{Provider: route.ProviderKomoot, BaseURL: testKomootBaseURL},
@@ -835,6 +842,7 @@ func newHandlerWithBuild(t *testing.T, revision, imageDigest string) *Handler {
 	handler, err := New(
 		&Options{
 			Alerts:           &fakeAlerts{},
+			Tasks:            &fakeTasks{},
 			Settings:         settingsWith(testBasemaps()),
 			BuildRevision:    revision,
 			BuildImageDigest: imageDigest,
@@ -856,6 +864,7 @@ func TestHandlerNamesEveryBasemapOriginInThePolicy(t *testing.T) {
 	handler, err := New(
 		&Options{
 			Alerts:           &fakeAlerts{},
+			Tasks:            &fakeTasks{},
 			Settings:         settingsWith(twoProviderBasemaps()),
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
@@ -888,6 +897,7 @@ func TestHandlerNamesOneOriginOnceForTwoBasemapsSharingIt(t *testing.T) {
 	handler, err := New(
 		&Options{
 			Alerts: &fakeAlerts{},
+			Tasks:  &fakeTasks{},
 			Settings: settingsWith([]runtimeconfig.Basemap{
 				{Name: "Streets", StyleURL: testTileStyleURL},
 				{Name: "Outdoors", StyleURL: "https://tiles.example.test/styles/outdoors"},
@@ -914,6 +924,7 @@ func TestHandlerAcceptsADarkStyleOnItsOriginRegardlessOfHostCase(t *testing.T) {
 	handler, err := New(
 		&Options{
 			Alerts: &fakeAlerts{},
+			Tasks:  &fakeTasks{},
 			Settings: settingsWith([]runtimeconfig.Basemap{{
 				Name:         "Streets",
 				StyleURL:     testTileStyleURL,
@@ -1890,6 +1901,7 @@ func TestNewRejectsIncompleteOptions(t *testing.T) {
 		// read back, not a third time here; see internal/runtimeconfig.
 		{name: "no settings", options: &Options{
 			Alerts:           &fakeAlerts{},
+			Tasks:            &fakeTasks{},
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
@@ -1913,6 +1925,7 @@ func newHandlerWithVerifier(t *testing.T, verifier AccessVerifier) *Handler {
 	handler, err := New(
 		&Options{
 			Alerts:           &fakeAlerts{},
+			Tasks:            &fakeTasks{},
 			Settings:         settingsWith(testBasemaps()),
 			AccessVerifier:   verifier,
 			AccessEmail:      testAccessEmail,
@@ -1932,6 +1945,7 @@ func newHandlerWithSurfaceIndex(t *testing.T, index func() (string, time.Time, b
 	handler, err := New(
 		&Options{
 			Alerts:           &fakeAlerts{},
+			Tasks:            &fakeTasks{},
 			Settings:         settingsWith(testBasemaps()),
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
@@ -1953,6 +1967,7 @@ func newHandlerWithWeather(t *testing.T, weather Weather) *Handler {
 	handler, err := New(
 		&Options{
 			Alerts:           &fakeAlerts{},
+			Tasks:            &fakeTasks{},
 			Settings:         settingsWith(testBasemaps()),
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
@@ -1979,6 +1994,7 @@ func newHandlerWithStaleAfter(t *testing.T, state State, staleAfter time.Duratio
 	handler, err := New(
 		&Options{
 			Alerts:           &fakeAlerts{},
+			Tasks:            &fakeTasks{},
 			Settings:         settings,
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
@@ -1999,6 +2015,7 @@ func newHandlerWithTargets(t *testing.T, state State, targetIDs ...string) *Hand
 	handler, err := New(
 		&Options{
 			Alerts:           &fakeAlerts{},
+			Tasks:            &fakeTasks{},
 			Settings:         withTargets(settingsWith(testBasemaps()), targetIDs...),
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
@@ -2018,6 +2035,7 @@ func newHandlerWithLiveSync(t *testing.T, state State, activity SyncActivityStat
 	handler, err := New(
 		&Options{
 			Alerts:           &fakeAlerts{},
+			Tasks:            &fakeTasks{},
 			Settings:         withTargets(settingsWith(testBasemaps()), "rider-a", "rider-b"),
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
@@ -2038,6 +2056,7 @@ func newHandlerWithRideModelValidation(t *testing.T, state State, validation *Ri
 	handler, err := New(
 		&Options{
 			Alerts:                  &fakeAlerts{},
+			Tasks:                   &fakeTasks{},
 			Settings:                settingsWith(testBasemaps()),
 			AccessVerifier:          &recordingVerifier{email: testAccessEmail},
 			AccessEmail:             testAccessEmail,
@@ -2056,6 +2075,7 @@ func newHandlerWithSync(t *testing.T, oauthService OAuth, state State, syncRuns 
 	handler, err := New(
 		&Options{
 			Alerts: &fakeAlerts{catalogue: []AlertSetting{{Task: "sync", Alert: "source", Enabled: true}}},
+			Tasks:  &fakeTasks{registered: []RegisteredTask{{Name: "sync"}}},
 			Settings: withSources(settingsWith(testBasemapsWithDark()),
 				runtimeconfig.Source{Provider: route.ProviderVeloPlanner, BaseURL: testSourceBaseURL}),
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
@@ -2793,4 +2813,32 @@ func (a *fakeAlerts) Decide(_ context.Context, decisions []AlertDecision) error 
 	}
 
 	return nil
+}
+
+// fakeTasks stands in for the registered background activities. It keeps what
+// it was asked for apart from what it started, so a refused attempt can be told
+// from one the handler never asked for at all.
+type fakeTasks struct {
+	asked      []startedTask
+	started    []startedTask
+	registered []RegisteredTask
+	refuse     bool
+}
+
+type startedTask struct {
+	name     string
+	argument string
+}
+
+func (t *fakeTasks) Registered() []RegisteredTask { return t.registered }
+
+func (t *fakeTasks) Run(name, argument string) bool {
+	attempt := startedTask{name: name, argument: argument}
+	t.asked = append(t.asked, attempt)
+	if t.refuse {
+		return false
+	}
+	t.started = append(t.started, attempt)
+
+	return true
 }

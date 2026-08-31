@@ -339,6 +339,21 @@ type BasemapsUpdate struct {
 	Basemaps []BrowserBasemap `json:"basemaps"`
 }
 
+type TaskList struct {
+	Tasks []Task `json:"tasks"`
+}
+
+type Task struct {
+	// Name What a trigger asks for.
+	Name string `json:"name"`
+	// Scheduled Whether the task runs unasked.
+	Scheduled bool `json:"scheduled"`
+	// Running How many attempts of this task are in flight.
+	Running int `json:"running"`
+	// NextRunAt When the first scheduled run is due. Absent once it has started, and for a task nothing schedules.
+	NextRunAt *time.Time `json:"nextRunAt,omitempty"`
+}
+
 type TimezoneUpdate struct {
 	// Timezone An IANA zone name this service can load, such as Europe/Berlin.
 	Timezone string `json:"timezone"`

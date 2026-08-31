@@ -551,3 +551,123 @@ type undecided struct{}
 func (undecided) Wanted(context.Context, string, task.Detail) (enabled, decided bool) {
 	return false, false
 }
+
+// The surface a page reads is the manager's own registrations, so a task added
+// to the layer appears without anybody writing an endpoint for it.
+func TestTaskSurfaceListsWhatTheManagerRegisters(t *testing.T) {
+	t.Parallel()
+
+	manager, err := registerTasks(
+		&countingStore{}, &silentNotifier{}, undecided{}, alwaysOn,
+		[]task.Definition{
+			{
+				Name:         "scheduled",
+				Run:          task.RunnerFunc(func(context.Context, task.Invocation) task.Result { return task.Result{Outcome: task.Succeeded} }),
+				Schedule:     task.Every(func() time.Duration { return time.Hour }),
+				InitialDelay: func() time.Duration { return time.Minute },
+			},
+			{
+				Name: "asked for",
+				Run:  task.RunnerFunc(func(context.Context, task.Invocation) task.Result { return task.Result{Outcome: task.Succeeded} }),
+			},
+		},
+	)
+	require.NoError(t, err, "registerTasks()")
+
+	surface := taskSurface{ctx: t.Context(), manager: manager}
+	listed := surface.Registered()
+
+	require.Len(t, listed, 2, "listed tasks")
+	assert.Equal(t, "scheduled", listed[0].Name, "the first task")
+	assert.True(t, listed[0].Scheduled, "a scheduled task did not read as one")
+	assert.Equal(t, "asked for", listed[1].Name, "the second task")
+	assert.False(t, listed[1].Scheduled, "a task nothing schedules read as scheduled")
+}
+
+// Running through the surface is running through the manager, so an attempt
+// asked for over HTTP is refused on exactly the terms a schedule is.
+func TestTaskSurfaceRunsThroughTheManager(t *testing.T) {
+	t.Parallel()
+
+	ran := make(chan task.Invocation, 1)
+	manager, err := registerTasks(
+		&countingStore{}, &silentNotifier{}, undecided{}, alwaysOn,
+		[]task.Definition{{
+			Name: "sync:target",
+			Run: task.RunnerFunc(func(_ context.Context, invocation task.Invocation) task.Result {
+				ran <- invocation
+
+				return task.Result{Outcome: task.Succeeded}
+			}),
+		}},
+	)
+	require.NoError(t, err, "registerTasks()")
+
+	surface := taskSurface{ctx: t.Context(), manager: manager}
+	require.True(t, surface.Run("sync:target", "rider-a"), "Run()")
+	manager.Wait()
+
+	invocation := <-ran
+	assert.Equal(t, "rider-a", invocation.Argument, "the argument reached the runner")
+	assert.Equal(t, task.TriggerManual, invocation.Trigger, "an operator's attempt was not recorded as one")
+
+	assert.False(t, surface.Run("invented", ""), "a name nothing registers was accepted")
+}
+
+// An attempt's life is the service's, not the request's. A request context is
+// cancelled the moment its handler returns, so a surface holding one would end
+// every attempt just after accepting it; the surface takes no request context
+// at all, and what it does hold is what the attempt runs under.
+func TestTaskSurfaceRunsUnderTheServiceContext(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		stopService bool
+		wantErr     bool
+	}{
+		"while the service runs": {},
+		"once the service stops": {stopService: true, wantErr: true},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			started := make(chan struct{})
+			observed := make(chan error, 1)
+			manager, err := registerTasks(
+				&countingStore{}, &silentNotifier{}, undecided{}, alwaysOn,
+				[]task.Definition{{
+					Name: "slow",
+					Run: task.RunnerFunc(func(ctx context.Context, _ task.Invocation) task.Result {
+						close(started)
+						select {
+						case <-ctx.Done():
+						case <-time.After(50 * time.Millisecond):
+						}
+						observed <- ctx.Err()
+
+						return task.Result{Outcome: task.Succeeded}
+					}),
+				}},
+			)
+			require.NoError(t, err, "registerTasks()")
+
+			service, stopService := context.WithCancel(t.Context())
+			defer stopService()
+			require.True(t, taskSurface{ctx: service, manager: manager}.Run("slow", ""), "Run()")
+
+			<-started
+			if test.stopService {
+				stopService()
+			}
+			manager.Wait()
+
+			if test.wantErr {
+				assert.Error(t, <-observed, "the attempt outlived the service that started it")
+
+				return
+			}
+			assert.NoError(t, <-observed, "the attempt was cancelled while the service was still running")
+		})
+	}
+}

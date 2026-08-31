@@ -55,6 +55,30 @@ type Sync interface {
 	RateLimit() (remaining int, resetAt time.Time, ok bool)
 }
 
+// Tasks is the background activities as this surface needs them: what this
+// build registers, and a way to start one.
+type Tasks interface {
+	// Registered lists every task, in a stable order, with what is known about
+	// each right now.
+	Registered() []RegisteredTask
+	// Run starts one attempt and reports whether it was accepted. It takes no
+	// context: an accepted attempt outlives the request that asked for it, and a
+	// request context is cancelled the moment its handler returns.
+	Run(name, argument string) bool
+}
+
+// RegisteredTask is one background activity and what is true of it now.
+type RegisteredTask struct {
+	// NextRunAt is when the first scheduled run is due, zero once it has started
+	// and for a task nothing schedules.
+	NextRunAt time.Time
+	Name      string
+	// Running is how many attempts are in flight.
+	Running int
+	// Scheduled reports whether the task runs unasked.
+	Scheduled bool
+}
+
 // Alerts is the alert matrix as this surface needs it: what this service can
 // raise, what an operator has decided about each, and a way to decide.
 type Alerts interface {

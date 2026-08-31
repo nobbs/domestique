@@ -174,6 +174,23 @@ waiting.
 A backoff never refuses an operator. Asking is a decision already made, and the
 attempt they ask for is also the way out: a success ends the streak.
 
+## The HTTP surface
+
+`GET /v1/tasks` lists every background activity this build registers, in
+registration order, with what is known about each right now: whether it runs
+unasked, how many attempts are in flight, and when the first scheduled run is
+due. A task nothing schedules reports no due time, which reads as absent rather
+than as the zero instant.
+
+`POST /v1/tasks/{name}/run`, and `POST /v1/tasks/{name}/run/{argument}` for one
+over an argument, start a single attempt on exactly the terms a schedule starts
+one. `202` means the attempt was accepted and continues independently of the
+request. `409` means it was refused, which is not a fault: either this exact
+work is already happening, or something it needs is held by another run.
+
+A name this build does not register is refused as not found, so a page built
+against a different build asks for nothing that silently does nothing.
+
 ## The service timezone
 
 One zone for the whole service, not one per reader. A run happens once, and it

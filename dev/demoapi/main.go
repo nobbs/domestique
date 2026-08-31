@@ -206,6 +206,7 @@ func newHandler(
 		&httpapi.Options{
 			Settings:         runtimeSettings,
 			Alerts:           newDemoAlerts(),
+			Tasks:            demoTasks{},
 			BuildRevision:    "demo",
 			AccessVerifier:   team,
 			AccessEmail:      settings.Access.Cloudflare.AllowedEmail,

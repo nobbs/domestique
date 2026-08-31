@@ -32,6 +32,18 @@ var mutableRoutes = []struct { //nolint:gochecknoglobals // test fixture, read-o
 	{method: http.MethodPut, target: settingsSyncPath, body: syncSubmission},
 	{method: http.MethodPut, target: settingsAlertsPath, body: alertsSubmission},
 	{method: http.MethodPut, target: settingsTimezonePath, body: `{"timezone": "Europe/Berlin"}`},
+	{method: http.MethodPost, target: "/v1/tasks/sync/run"},
+	{method: http.MethodPost, target: "/v1/tasks/sync/run/rider-a"},
+}
+
+// askedTasks is what the handler's task list was asked for, so a refused
+// request can be shown to have reached nothing behind the gate.
+func askedTasks(t *testing.T, handler *Handler) []startedTask {
+	t.Helper()
+	tasks, ok := handler.tasks.(*fakeTasks)
+	require.True(t, ok, "the handler was not built over a fake task list")
+
+	return tasks.asked
 }
 
 // decidedAlerts is what the handler's matrix was told, so a refused request can
@@ -81,6 +93,7 @@ func TestMutableRoutesRejectForeignProvenance(t *testing.T) {
 				assert.Zerof(t, state.scheduleWrites, "%s %s wrote the schedule", route.method, route.target)
 				assert.Emptyf(t, state.reprocessed, "%s %s reprocessed a stage", route.method, route.target)
 				assert.Emptyf(t, decidedAlerts(t, handler), "%s %s decided an alert", route.method, route.target)
+				assert.Emptyf(t, askedTasks(t, handler), "%s %s reached the task layer", route.method, route.target)
 			}
 		})
 	}
@@ -209,6 +222,7 @@ func TestNewRequiresABrowserOrigin(t *testing.T) {
 	_, err := New(
 		&Options{
 			Alerts:         &fakeAlerts{},
+			Tasks:          &fakeTasks{},
 			Settings:       settingsWith(testBasemaps()),
 			AccessVerifier: &recordingVerifier{email: testAccessEmail},
 			AccessEmail:    testAccessEmail,

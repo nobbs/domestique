@@ -64,6 +64,10 @@ type Options struct {
 	// about each. Required.
 	Alerts Alerts
 
+	// Tasks are the background activities this handler lists and starts.
+	// Required.
+	Tasks Tasks
+
 	// BuildRevision and BuildImageDigest name the source commit and the image
 	// running it. Both optional, and published only when well-formed.
 	BuildRevision string
@@ -111,6 +115,7 @@ type Handler struct {
 	rideModelValidation func() *RideModelValidation
 	settings            SettingsState
 	alerts              Alerts
+	tasks               Tasks
 	buildRevision       string
 	buildImageDigest    string
 	browserOrigin       string
@@ -136,6 +141,9 @@ func New(
 	}
 	if options.Alerts == nil {
 		return nil, errors.New("the alert matrix is required")
+	}
+	if options.Tasks == nil {
+		return nil, errors.New("the task list is required")
 	}
 	accessEmail, err := accessEmailOf(options.AccessEmail)
 	if err != nil {
@@ -164,6 +172,7 @@ func New(
 		weather:             weather,
 		settings:            options.Settings,
 		alerts:              options.Alerts,
+		tasks:               options.Tasks,
 		buildRevision:       publishableRevision(options.BuildRevision),
 		buildImageDigest:    publishableDigest(options.BuildImageDigest),
 		browserOrigin:       browserOrigin,
@@ -219,6 +228,9 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("PUT /v1/settings/notifications", h.SetNotifications)
 	h.mux.HandleFunc("PUT /v1/settings/alerts", h.SetAlerts)
 	h.mux.HandleFunc("PUT /v1/settings/timezone", h.SetTimezone)
+	h.mux.HandleFunc("GET /v1/tasks", h.ListTasks)
+	h.mux.HandleFunc("POST /v1/tasks/{name}/run", h.RunTask)
+	h.mux.HandleFunc("POST /v1/tasks/{name}/run/{argument}", h.RunTask)
 	h.mux.HandleFunc("PUT /v1/settings/basemaps", h.SetBasemaps)
 	h.mux.HandleFunc("PUT /v1/settings/surface", h.SetSurface)
 	h.mux.HandleFunc("PUT /v1/settings/ridemodel", h.SetRideModel)
