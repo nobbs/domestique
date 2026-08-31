@@ -52,4 +52,21 @@ describe("MixRow", () => {
     expect(screen.getByText("200 m")).toBeInTheDocument();
     expect(screen.getByText("54.4 km")).toBeInTheDocument();
   });
+
+  it("drops the km decimal once the row's longest class passes 100 km", () => {
+    render(
+      <MixRow
+        classesLabel="Gradient bands"
+        entries={[entry("flat", 0.9, 120_000), entry("9%", 0.1, 13_000)]}
+        absence="No elevation data."
+        tagSide="above"
+        highlight={null}
+        onHighlightChange={() => {}}
+        unitSystem="metric"
+      />,
+    );
+
+    expect(screen.getByText("120 km")).toBeInTheDocument();
+    expect(screen.getByText("13 km")).toBeInTheDocument();
+  });
 });
