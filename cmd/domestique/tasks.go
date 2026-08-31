@@ -110,24 +110,26 @@ func registerTasks(
 
 // syncAlerts is what a synchronization can be announced for. Every failure
 // category the sync package reports is here, so an operator rules on each
-// rather than meeting one for the first time at four in the morning.
-func syncAlerts() *task.Notify {
-	return &task.Notify{
-		Title:    syncAlertTitle,
-		Suppress: syncAlertSuppression,
-		Alerts: []task.Detail{
-			task.DetailSucceeded,
-			task.DetailRecovered,
-			task.DetailStale,
-			task.Detail(syncservice.FailureState),
-			task.Detail(syncservice.FailureSource),
-			task.Detail(syncservice.FailureAuthorization),
-			task.Detail(syncservice.FailureDestination),
-			task.Detail(syncservice.FailureCourse),
-			task.Detail(syncservice.FailureEmptySource),
-			task.Detail(syncservice.FailureDeletionLimit),
-		},
+// rather than meeting one for the first time at four in the morning. stale is
+// left out for a task with no StaleAfter bound: a switch for an alert that can
+// never fire is a decoration, not a decision.
+func syncAlerts(stale bool) *task.Notify {
+	alerts := []task.Detail{
+		task.DetailSucceeded,
+		task.DetailRecovered,
+		task.Detail(syncservice.FailureState),
+		task.Detail(syncservice.FailureSource),
+		task.Detail(syncservice.FailureAuthorization),
+		task.Detail(syncservice.FailureDestination),
+		task.Detail(syncservice.FailureCourse),
+		task.Detail(syncservice.FailureEmptySource),
+		task.Detail(syncservice.FailureDeletionLimit),
 	}
+	if stale {
+		alerts = append(alerts, task.DetailStale)
+	}
+
+	return &task.Notify{Title: syncAlertTitle, Suppress: syncAlertSuppression, Alerts: alerts}
 }
 
 // inventoryTasks are the activities that reconcile the library, in the order a
@@ -144,7 +146,7 @@ func inventoryTasks(
 		{
 			Name:      taskSyncSource,
 			Resources: inventory,
-			Notify:    syncAlerts(),
+			Notify:    syncAlerts(true),
 			Schedule:  task.Every(func() time.Duration { return syncservice.Interval }),
 			InitialDelay: func() time.Duration {
 				return settings.Values().Sync.InitialDelay
@@ -172,7 +174,7 @@ func inventoryTasks(
 		{
 			Name:      taskSyncTarget,
 			Resources: inventory,
-			Notify:    syncAlerts(),
+			Notify:    syncAlerts(false),
 			// A backstop rather than the timely path: a read that stored
 			// something asks for this straight away. What the schedule is for is
 			// the slot that failed on its own, and the operator who has the
@@ -203,7 +205,7 @@ func inventoryTasks(
 		{
 			Name:      taskSyncClear,
 			Resources: inventory,
-			Notify:    syncAlerts(),
+			Notify:    syncAlerts(false),
 			Run: task.RunnerFunc(func(ctx context.Context, invocation task.Invocation) task.Result {
 				result := reporter.ClearTarget(ctx, invocation.Argument)
 

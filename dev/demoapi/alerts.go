@@ -23,18 +23,33 @@ type demoAlert struct {
 	alert string
 }
 
+// syncFailureAlerts is what a synchronization can fail with, shared by every
+// sync task's slice of the catalogue below.
+var syncFailureAlerts = []string{ //nolint:gochecknoglobals // a fixture for development tooling
+	"state", "source", "authorization", "destination", "course", "empty_source", "deletion_limit",
+}
+
 // demoAlertCatalogue is what the shipped binary's tasks declare, which is what
-// makes the settings section look like the one an operator meets.
-var demoAlertCatalogue = []demoAlert{ //nolint:gochecknoglobals // a fixture for development tooling
-	{task: "sync", alert: "state"},
-	{task: "sync", alert: "source"},
-	{task: "sync", alert: "authorization"},
-	{task: "sync", alert: "destination"},
-	{task: "sync", alert: "course"},
-	{task: "sync", alert: "empty_source"},
-	{task: "sync", alert: "deletion_limit"},
-	{task: "surface:index", alert: "build"},
-	{task: "surface:index", alert: "no_regions"},
+// makes the settings section look like the one an operator meets. Only
+// sync:source declares stale: the other two sync tasks have no StaleAfter
+// bound, so the alert can never fire for them.
+var demoAlertCatalogue = buildDemoAlertCatalogue() //nolint:gochecknoglobals // a fixture for development tooling
+
+func buildDemoAlertCatalogue() []demoAlert {
+	catalogue := make([]demoAlert, 0, 3*(len(syncFailureAlerts)+2)+1+2)
+	for _, task := range []string{"sync:source", "sync:target", "sync:clear"} {
+		catalogue = append(catalogue, demoAlert{task: task, alert: "succeeded"}, demoAlert{task: task, alert: "recovered"})
+		if task == "sync:source" {
+			catalogue = append(catalogue, demoAlert{task: task, alert: "stale"})
+		}
+		for _, alert := range syncFailureAlerts {
+			catalogue = append(catalogue, demoAlert{task: task, alert: alert})
+		}
+	}
+	catalogue = append(catalogue,
+		demoAlert{task: "surface:index", alert: "build"}, demoAlert{task: "surface:index", alert: "no_regions"})
+
+	return catalogue
 }
 
 func newDemoAlerts() *demoAlerts {

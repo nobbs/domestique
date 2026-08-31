@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -34,6 +35,24 @@ func TestInventoryTasksAllHoldTheInventoryExclusively(t *testing.T) {
 	assert.Equal(t,
 		[]string{taskSyncSource, taskSyncTarget, taskSyncClear, taskSurfaceAnnotate},
 		names, "registered tasks")
+}
+
+// A stale switch only appears for a task that can actually go stale.
+// sync:target and sync:clear declare no StaleAfter bound, so checkStale never
+// raises it for them: offering the switch anyway would be a decoration nobody
+// can turn into anything.
+func TestOnlyTheReadDeclaresTheStaleAlert(t *testing.T) {
+	t.Parallel()
+
+	stale := map[string]bool{taskSyncSource: true}
+	for _, definition := range inventoryTasks(&fakeSynchronizer{}, liveSettings(t), allEnabled, twoTargets) {
+		if definition.Notify == nil {
+			continue
+		}
+		assert.Equalf(t, stale[definition.Name],
+			slices.Contains(definition.Notify.Alerts, task.DetailStale),
+			"%s stale alert declared", definition.Name)
+	}
 }
 
 // The read runs unasked, and so do the targets — the second as a backstop
