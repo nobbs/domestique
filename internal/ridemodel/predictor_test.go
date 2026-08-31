@@ -343,8 +343,6 @@ func TestPredictorStopsOnACancelledContext(t *testing.T) {
 	require.Error(t, err, "Predict() on a cancelled context")
 }
 
-// A count says how many stages are missing a prediction; the record says which,
-// and what stopped each one.
 func TestPredictNamesWhatStoppedAStage(t *testing.T) {
 	t.Parallel()
 
@@ -360,8 +358,6 @@ func TestPredictNamesWhatStoppedAStage(t *testing.T) {
 	assert.Equal(t, map[route.Key]string{stage.Key(): ReasonCache}, cache.failures, "recorded failures")
 }
 
-// Losing the record of a failure leaves the count as the only account of it.
-// It must not stop the pass.
 func TestPredictCarriesOnWhenAFailureCannotBeRecorded(t *testing.T) {
 	t.Parallel()
 

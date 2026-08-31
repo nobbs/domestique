@@ -591,8 +591,6 @@ func TestMissingSkipsPushoverWhenNotificationsAreOff(t *testing.T) {
 	assert.NotContains(t, current.Missing(), "notifications.pushover.user_key")
 }
 
-// A zone this binary cannot load leaves every calendar schedule with no answer
-// to when it is next due, so it is refused where it is entered.
 func TestValidateTimezone(t *testing.T) {
 	tests := map[string]struct {
 		timezone string
@@ -620,8 +618,6 @@ func TestValidateTimezone(t *testing.T) {
 	}
 }
 
-// The zone travels with the binary rather than depending on what the runtime
-// image carries: the hardened base image ships no timezone database.
 func TestTheTimezoneDatabaseTravelsWithTheBinary(t *testing.T) {
 	for _, zone := range []string{"Europe/Berlin", "America/New_York", "Australia/Sydney"} {
 		_, err := ValidateTimezone(zone)

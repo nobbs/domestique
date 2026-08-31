@@ -18,10 +18,8 @@ import (
 // Values is one complete set of runtime settings. It is copied by value and
 // replaced whole: an edit writes every field.
 type Values struct {
-	// Timezone is the IANA zone this service reads local time in: what a
-	// calendar schedule means by two in the morning, and what hour a forecast
-	// describes. One zone rather than one per reader, because a run happens once
-	// and has to happen at a time somebody chose.
+	// Timezone is the IANA zone this service reads local time in. One zone
+	// rather than one per reader: a run happens once, at a time somebody chose.
 	Timezone string
 
 	Notifications Notifications

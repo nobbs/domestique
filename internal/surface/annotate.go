@@ -147,9 +147,8 @@ func (a *Annotator) annotateStage(ctx context.Context, stage *route.Route, gener
 	return ""
 }
 
-// recordFailure names the stage a pass could not finish. A failure that cannot
-// itself be written down leaves the count as the only account of it, which is
-// what there was before.
+// recordFailure names the stage a pass could not finish. A failure that
+// cannot itself be written down leaves the count as the only account of it.
 func (a *Annotator) recordFailure(ctx context.Context, key route.Key, reason string) {
 	// A shutdown reaching the write is the shutdown, not a lost record: this
 	// pass had already decided to record nothing about a cancelled stage.

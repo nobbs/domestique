@@ -115,9 +115,7 @@ func New(options *Options) (*Client, error) {
 	if zone == nil {
 		zone = func() string { return "" }
 	}
-	// Resolved once here to fail fast at startup on a zone this build cannot
-	// load. Every actual request resolves again, read fresh: a settings edit
-	// reaches the next forecast rather than the next restart.
+	// Resolved once here to fail fast at startup on a zone this build cannot load.
 	if _, err := resolveLocation(zone(), fallback); err != nil {
 		return nil, err
 	}
@@ -133,8 +131,6 @@ func New(options *Options) (*Client, error) {
 	}, nil
 }
 
-// resolveLocation loads the named zone, or reports the fallback for an empty
-// one.
 func resolveLocation(raw string, fallback *time.Location) (*time.Location, error) {
 	if raw == "" {
 		return fallback, nil

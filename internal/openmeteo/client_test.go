@@ -329,8 +329,6 @@ func writeResponse(t *testing.T, writer http.ResponseWriter, status int, body st
 	assert.NoError(t, err, "writing the response")
 }
 
-// The forecast is asked in the service's own zone, so a returned hour describes
-// where the rider reads it. Changing the setting changes the request.
 func TestClientAsksInTheConfiguredZone(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		assert.Equal(t, "Europe/Lisbon", request.URL.Query().Get("timezone"), "the zone asked for")
@@ -363,8 +361,6 @@ func TestClientAsksInTheConfiguredZone(t *testing.T) {
 	require.NoError(t, err, "Forecast()")
 }
 
-// A zone edited after the client was built reaches the next forecast: the zone
-// is read again on every request rather than resolved once at construction.
 func TestClientReadsAnEditedZoneOnTheNextForecastRatherThanTheNextRestart(t *testing.T) {
 	seen := make(chan string, 2)
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
@@ -399,8 +395,6 @@ func TestClientReadsAnEditedZoneOnTheNextForecastRatherThanTheNextRestart(t *tes
 	assert.Equal(t, "Europe/Lisbon", <-seen, "the edited zone never reached the second request")
 }
 
-// A zone this binary cannot load is refused where the client is built, rather
-// than leaving every forecast to fail one request at a time.
 func TestNewRefusesAZoneItCannotLoad(t *testing.T) {
 	_, err := New(&Options{Timezone: func() string { return "Middle/Earth" }})
 
