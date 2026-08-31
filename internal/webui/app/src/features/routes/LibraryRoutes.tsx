@@ -22,8 +22,11 @@ export interface LibraryRoutesProps {
   lines: MapLine[];
   /** The route that makes the rest of the library contextual. */
   pickedKey: string | null;
-  /** The route painted in the accent while its full overlay is absent. */
-  accentKey?: string | null;
+  /**
+   * Whether the picked route has its own overlay, which puts the library away
+   * entirely: the routes that share its roads were being hit instead of it.
+   */
+  overlaid?: boolean;
   hoveredKey?: string | null;
   /** Mount the transparent target under this id when the parent handles picks. */
   hitLayerId?: string;
@@ -45,7 +48,7 @@ function collectionOf(lines: MapLine[]) {
 export function LibraryRoutes({
   lines,
   pickedKey,
-  accentKey = pickedKey,
+  overlaid = false,
   hoveredKey = null,
   hitLayerId,
 }: LibraryRoutesProps) {
@@ -55,26 +58,34 @@ export function LibraryRoutes({
 
   return (
     <Source id="library-lines" type="geojson" data={library}>
+      {/*
+       * Hidden rather than unmounted while the overlay is up: the source stays
+       * uploaded, so leaving a route does not re-upload the whole library.
+       */}
       <Layer
         id="library-line"
         type="line"
-        layout={{ "line-cap": "round", "line-join": "round" }}
+        layout={{
+          "line-cap": "round",
+          "line-join": "round",
+          visibility: overlaid ? "none" : "visible",
+        }}
         paint={{
           "line-color": LIBRARY_INK[theme],
           "line-width": 2,
           "line-opacity": pickedKey === null ? LIBRARY_OPACITY : CONTEXT_OPACITY,
         }}
       />
-      {accentKey !== null ? (
+      {!overlaid && pickedKey !== null ? (
         <Layer
           id="library-selected-line"
           type="line"
-          filter={["==", ["get", "key"], accentKey]}
+          filter={["==", ["get", "key"], pickedKey]}
           layout={{ "line-cap": "round", "line-join": "round" }}
           paint={{ "line-color": SELECTION_ACCENT[theme], "line-width": 3, "line-opacity": 1 }}
         />
       ) : null}
-      {hoveredKey !== null && hoveredKey !== accentKey ? (
+      {!overlaid && hoveredKey !== null && hoveredKey !== pickedKey ? (
         <Layer
           id="library-hover-line"
           type="line"
@@ -83,7 +94,7 @@ export function LibraryRoutes({
           paint={{ "line-color": SELECTION_ACCENT[theme], "line-width": 3, "line-opacity": 0.75 }}
         />
       ) : null}
-      {hitLayerId ? (
+      {hitLayerId && !overlaid ? (
         <Layer
           id={hitLayerId}
           type="line"

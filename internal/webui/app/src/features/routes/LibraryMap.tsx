@@ -59,14 +59,18 @@ export function LibraryMap({
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const hasOverlay = children !== null && children !== undefined;
+  // An opened route has the map to itself: the library is put away, so there is
+  // nothing under the pointer to light, point at, or land a pick on.
+  const pickable = onPick !== undefined && !hasOverlay;
+  const focusedKey = hasOverlay ? null : hoveredKey;
 
   return (
     <CartographyProvider dark={darkBasemap}>
       <MapWidget
         styleUrl={styleUrl}
         ariaLabel="Map of the route library"
-        interactiveLayerIds={onPick ? [LIBRARY_HIT_LAYER] : []}
-        cursor={hoveredKey !== null && hoveredKey !== inertKey ? "pointer" : ""}
+        interactiveLayerIds={pickable ? [LIBRARY_HIT_LAYER] : []}
+        cursor={focusedKey !== null && focusedKey !== inertKey ? "pointer" : ""}
         onMouseMove={(event) => setHoveredKey(keyAt(event))}
         onMouseOut={() => setHoveredKey(null)}
         onClick={(event) => {
@@ -99,8 +103,8 @@ export function LibraryMap({
         <LibraryRoutes
           lines={lines}
           pickedKey={pickedKey}
-          accentKey={hasOverlay ? null : pickedKey}
-          hoveredKey={hoveredKey}
+          overlaid={hasOverlay}
+          hoveredKey={focusedKey}
           {...(onPick ? { hitLayerId: LIBRARY_HIT_LAYER } : {})}
         />
         {children}
