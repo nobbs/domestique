@@ -21,7 +21,7 @@ const BASE = "https://download.geofabrik.de/";
 const INDEX = `${BASE}index-v1-nogeom.json`;
 const SUFFIX = "-latest.osm.pbf";
 
-/** The country this setting exists for, and the only subtree that is measured. */
+/** The country this setting exists for; leads the picker and seeds the sanity check below. */
 const GERMANY_SLUG = "europe/germany";
 
 /** Matches `runtimeconfig.regionSlug`, so the catalogue cannot offer a slug the service refuses. */

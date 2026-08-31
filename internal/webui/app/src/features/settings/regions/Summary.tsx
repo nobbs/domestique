@@ -1,9 +1,9 @@
 /**
  * What a selection costs and what is wrong with it, said under the picker.
  *
- * Only Germany's extracts are measured, so this has to be able to say "some of
- * this is unpriced" without either hiding the gap or reporting a four-gigabyte
- * download as nothing.
+ * 20 of 555 catalogue entries carry no published size, so this has to be able
+ * to say "some of this is unpriced" without either hiding the gap or reporting
+ * a four-gigabyte download as nothing.
  */
 
 import { Badge } from "@/components/ui/badge";
@@ -41,8 +41,7 @@ export function Summary({ value }: { value: readonly string[] }) {
         <p className="text-[var(--ink-2)]">
           {unmeasured === 1 ? "One selected region has" : `${unmeasured} selected regions have`} no
           published size, so{" "}
-          {measured > 0 ? "the totals above are a floor" : "the cost is not known here"}. Sizes are
-          collected for Germany.
+          {measured > 0 ? "the totals above are a floor" : "the cost is not known here"}.
         </p>
       ) : null}
       {doubled.length > 0 ? (
@@ -65,9 +64,9 @@ export function Summary({ value }: { value: readonly string[] }) {
 /**
  * One region's size, shown beside its name wherever a variant lists regions.
  *
- * A region with no published size renders nothing at all. Most of the catalogue
- * is unmeasured, so a badge saying so would be on hundreds of rows and would
- * read as a fault rather than as an absence.
+ * A region with no published size renders nothing at all. The unmeasured cases
+ * are a handful of islands and territories Geofabrik itself leaves unpriced, so
+ * a badge saying so would read as a fault rather than as an absence.
  */
 export function Size({ bytes }: { bytes: number | null }) {
   if (bytes === null) {
