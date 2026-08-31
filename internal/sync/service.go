@@ -131,6 +131,34 @@ func (s *Service) RunSource(ctx context.Context) Result {
 	return result
 }
 
+// RunSourceProvider reads exactly one configured source library, leaving every
+// other source's stored stages untouched. A provider this service is not
+// configured for is not ready rather than a fault: absent is not broken.
+func (s *Service) RunSourceProvider(ctx context.Context, provider route.Provider) Result {
+	sources, err := s.sources()
+	if err != nil {
+		return Result{Phase: PhaseSource, Outcome: OutcomeFailed, Failure: FailureState}
+	}
+	for _, source := range sources {
+		if source.Provider() != provider {
+			continue
+		}
+		outcome, failure, stageCount := s.runOneSource(ctx, source, provider)
+
+		return Result{
+			Phase:        PhaseSource,
+			Outcome:      outcome,
+			Failure:      failure,
+			SourceStages: stageCount,
+			Sources: []SourceResult{{
+				Provider: provider, Outcome: outcome, Failure: failure, StageCount: stageCount,
+			}},
+		}
+	}
+
+	return Result{Phase: PhaseSource, Outcome: OutcomeNotReady}
+}
+
 // runOneSource reads and stores one configured source's own share of the
 // trusted inventory, leaving every other source's stored stages untouched.
 func (s *Service) runOneSource(

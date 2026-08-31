@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nobbs/domestique/internal/route"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -154,6 +156,12 @@ type reportingRunner struct {
 	annotateFailed     int
 }
 
+func (r *reportingRunner) RunSourceProvider(_ context.Context, _ route.Provider) Result {
+	r.sourceRuns++
+
+	return r.source
+}
+
 func (r *reportingRunner) RunSource(context.Context) Result {
 	r.sourceRuns++
 
@@ -188,6 +196,10 @@ func (r *reportingRunner) AnnotateStored(context.Context) (classified, failed in
 type blockingReportingRunner struct {
 	started chan struct{}
 	release chan struct{}
+}
+
+func (r *blockingReportingRunner) RunSourceProvider(ctx context.Context, _ route.Provider) Result {
+	return r.RunSource(ctx)
 }
 
 func (r *blockingReportingRunner) RunSource(context.Context) Result {

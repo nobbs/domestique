@@ -1490,3 +1490,32 @@ func TestServiceReportsNoTargetOutcomesForASourceRun(t *testing.T) {
 
 	assert.Empty(t, service.RunSource(t.Context()).Targets)
 }
+
+// A read of one library leaves every other library's stored stages alone, which
+// is what lets each have its own task, its own alert and its own backoff.
+func TestServiceRunSourceProviderReadsOnlyTheLibraryItNames(t *testing.T) {
+	state := newFakeState("a", "b")
+	desired := testStage(t, 1, 1, "new", "new-hash")
+	service := newService(t, state, &fakeSource{stages: []route.Route{desired}}, &fakeEncoder{}, newFakeTarget(), false)
+
+	result := service.RunSourceProvider(t.Context(), route.ProviderVeloPlanner)
+
+	assert.Equal(t, OutcomeSucceeded, result.Outcome, "RunSourceProvider() outcome")
+	assert.Equal(t, 1, result.SourceStages, "stages read")
+	require.Len(t, result.Sources, 1, "libraries reported")
+	assert.Equal(t, route.ProviderVeloPlanner, result.Sources[0].Provider, "the library reported")
+}
+
+// A library nobody configured is not ready rather than a fault: being absent is
+// not the same as having gone wrong, and a join reading this must not treat it
+// as one.
+func TestServiceRunSourceProviderIsNotReadyForAnUnconfiguredLibrary(t *testing.T) {
+	state := newFakeState("a", "b")
+	source := &fakeSource{stages: []route.Route{testStage(t, 1, 1, "new", "new-hash")}}
+	service := newService(t, state, source, &fakeEncoder{}, newFakeTarget(), false)
+
+	result := service.RunSourceProvider(t.Context(), route.ProviderKomoot)
+
+	assert.Equal(t, OutcomeNotReady, result.Outcome, "RunSourceProvider() outcome")
+	assert.Zero(t, result.SourceStages, "an unconfigured library reported stages")
+}
