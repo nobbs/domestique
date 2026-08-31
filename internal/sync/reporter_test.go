@@ -73,26 +73,24 @@ func TestReporterRunsNothingAndReportsAnUnreadableSchedule(t *testing.T) {
 
 // An operator asking for a phase has already decided; the switch only ever
 // governed what happens unattended.
-func TestReporterTriggersAPhaseTheScheduleHasSwitchedOff(t *testing.T) {
+func TestReporterRunsAPhaseTheScheduleHasSwitchedOff(t *testing.T) {
 	runner := &reportingRunner{targets: Result{Phase: PhaseTargets, Outcome: OutcomeSucceeded}}
 	state := &fakeRunState{}
 	reporter := newReporter(t, runner, state, &fakeNotifier{})
 
-	require.True(t, reporter.TriggerPhase(t.Context(), PhaseTargets), "TriggerPhase() rejected the run")
-	reporter.Wait()
+	reporter.RunPhase(t.Context(), PhaseTargets)
 	assert.Equal(t, 1, runner.targetRuns, "target runs")
 	assert.Zero(t, runner.sourceRuns, "the source phase ran for a target trigger")
 }
 
 // A target-specific trigger reconciles exactly the slot asked for, through
 // RunTarget rather than RunTargets, and touches the source phase not at all.
-func TestReporterTriggersOneTargetAlone(t *testing.T) {
+func TestReporterReconcilesOneTargetAlone(t *testing.T) {
 	runner := &reportingRunner{targets: Result{Phase: PhaseTargets, Outcome: OutcomeSucceeded, Updated: 1}}
 	state := &fakeRunState{}
 	reporter := newReporter(t, runner, state, &fakeNotifier{})
 
-	require.True(t, reporter.TriggerTarget(t.Context(), "rider-a"), "TriggerTarget() rejected the run")
-	reporter.Wait()
+	reporter.ReconcileTarget(t.Context(), "rider-a")
 	assert.Equal(t, []string{"rider-a"}, runner.targetRunIDs, "target reconciled")
 	assert.Zero(t, runner.sourceRuns, "the source phase ran for a single-target trigger")
 	assert.Equal(t, []string{"targets"}, state.phases, "recorded phases")
@@ -101,41 +99,15 @@ func TestReporterTriggersOneTargetAlone(t *testing.T) {
 // A clear runs through the same recording and notification path as any other
 // target work, so a cleared account appears in history as the deletion it was
 // rather than as an unexplained drop in what that account holds.
-func TestReporterTriggersAClearOfOneTargetAlone(t *testing.T) {
+func TestReporterClearsOneTargetAlone(t *testing.T) {
 	runner := &reportingRunner{targets: Result{Phase: PhaseTargets, Outcome: OutcomeSucceeded, Deleted: 4}}
 	state := &fakeRunState{}
 	reporter := newReporter(t, runner, state, &fakeNotifier{})
 
-	require.True(t, reporter.TriggerClear(t.Context(), "rider-a"), "TriggerClear() rejected the run")
-	reporter.Wait()
+	reporter.ClearTarget(t.Context(), "rider-a")
 	assert.Equal(t, []string{"rider-a"}, runner.clearedIDs, "target cleared")
 	assert.Zero(t, runner.sourceRuns, "the source phase ran for a clear")
 	assert.Equal(t, []string{"targets"}, state.phases, "recorded phases")
-}
-
-// Deleting everything an account holds must never race a run writing to it.
-func TestReporterTriggerClearRejectsOverlappingRun(t *testing.T) {
-	runner := &blockingReportingRunner{started: make(chan struct{}), release: make(chan struct{})}
-	state := &fakeRunState{}
-	reporter := newReporter(t, runner, state, &fakeNotifier{})
-	require.True(t, reporter.Trigger(t.Context()), "Trigger() rejected the first run")
-	<-runner.started
-	assert.False(t, reporter.TriggerClear(t.Context(), "rider-a"), "TriggerClear() accepted a run while one was active")
-	close(runner.release)
-	reporter.Wait()
-}
-
-// A single-target trigger shares the same mutual exclusion as any other run:
-// it must not start while one is already in flight, full or scoped.
-func TestReporterTriggerTargetRejectsOverlappingRun(t *testing.T) {
-	runner := &blockingReportingRunner{started: make(chan struct{}), release: make(chan struct{})}
-	state := &fakeRunState{}
-	reporter := newReporter(t, runner, state, &fakeNotifier{})
-	require.True(t, reporter.Trigger(t.Context()), "Trigger() rejected the first run")
-	<-runner.started
-	assert.False(t, reporter.TriggerTarget(t.Context(), "rider-a"), "TriggerTarget() accepted a run while one was active")
-	close(runner.release)
-	reporter.Wait()
 }
 
 func TestReporterSuppressesMatchingFailureForSixHours(t *testing.T) {
@@ -407,42 +379,15 @@ func TestReporterReportsTheLastAnnotationPassesIncompleteCount(t *testing.T) {
 
 // A manual retry classifies without touching either phase, and reports the
 // same way a scheduled pass does.
-func TestReporterTriggerAnnotateRunsOnlyClassification(t *testing.T) {
+func TestReporterAnnotateRunsOnlyClassification(t *testing.T) {
 	runner := &reportingRunner{annotateFailed: 1}
 	reporter := newReporter(t, runner, &fakeRunState{}, &fakeNotifier{})
 
-	require.True(t, reporter.TriggerAnnotate(t.Context()), "TriggerAnnotate() rejected the run")
-	reporter.Wait()
+	reporter.Annotate(t.Context())
 	assert.Equal(t, 1, runner.annotations, "annotation passes")
-	assert.Zero(t, runner.sourceRuns, "TriggerAnnotate read the source")
-	assert.Zero(t, runner.targetRuns, "TriggerAnnotate wrote a target")
+	assert.Zero(t, runner.sourceRuns, "Annotate read the source")
+	assert.Zero(t, runner.targetRuns, "Annotate wrote a target")
 	assert.Equal(t, 1, reporter.SurfaceIncomplete(), "SurfaceIncomplete()")
-}
-
-// The single-flight guard is shared with ordinary synchronization: an
-// annotation pass and a sync must never run at the same time.
-func TestReporterTriggerAnnotateRejectsOverlappingRun(t *testing.T) {
-	runner := &blockingReportingRunner{started: make(chan struct{}), release: make(chan struct{})}
-	reporter := newReporter(t, runner, &fakeRunState{}, &fakeNotifier{})
-	require.True(t, reporter.Trigger(t.Context()), "Trigger() rejected the first run")
-	<-runner.started
-
-	assert.False(t, reporter.TriggerAnnotate(t.Context()), "TriggerAnnotate() ran while a sync was active")
-	close(runner.release)
-	reporter.Wait()
-}
-
-// A sync must never start while an annotation pass triggered on its own is
-// still running.
-func TestReporterTriggerRejectsOverlappingAnnotate(t *testing.T) {
-	runner := &blockingAnnotateRunner{started: make(chan struct{}), release: make(chan struct{})}
-	reporter := newReporter(t, runner, &fakeRunState{}, &fakeNotifier{})
-	require.True(t, reporter.TriggerAnnotate(t.Context()), "TriggerAnnotate() rejected the first pass")
-	<-runner.started
-
-	assert.False(t, reporter.Trigger(t.Context()), "Trigger() ran while an annotation pass was active")
-	close(runner.release)
-	reporter.Wait()
 }
 
 func TestReporterDoesNotRecordOrNotifySkippedRun(t *testing.T) {
@@ -459,37 +404,26 @@ func TestReporterDoesNotRecordOrNotifySkippedRun(t *testing.T) {
 	assert.Empty(t, notifier.messages, "a skipped run was notified")
 }
 
-func TestReporterTriggerRejectsOverlappingRun(t *testing.T) {
-	runner := &blockingReportingRunner{started: make(chan struct{}), release: make(chan struct{})}
-	state := &fakeRunState{}
-	reporter := newReporter(t, runner, state, &fakeNotifier{})
-	require.True(t, reporter.Trigger(t.Context()), "Trigger() rejected the first run")
-	<-runner.started
-	assert.False(t, reporter.Trigger(t.Context()), "Trigger() accepted a run while one was active")
-	close(runner.release)
-	reporter.Wait()
-	assert.Equal(t, 2, state.runs, "recorded runs")
-}
-
 // A status response is built while a run is in flight, so whatever it says
 // about one has to be true at the moment it is asked.
 func TestReporterReportsThePhaseInFlight(t *testing.T) {
 	runner := &blockingReportingRunner{started: make(chan struct{}), release: make(chan struct{})}
 	reporter := newReporter(t, runner, &fakeRunState{}, &fakeNotifier{})
 	phase, running := reporter.Running()
-	assert.False(t, running, "Running() reported a run before one started")
+	assert.False(t, running, "Running() named a phase before a run started")
 	assert.Empty(t, phase, "Running() named a phase before a run started")
 
-	require.True(t, reporter.Trigger(t.Context()), "Trigger() rejected the run")
+	finished := make(chan struct{})
+	go func() { defer close(finished); reporter.RunBoth(t.Context()) }()
 	<-runner.started
 	phase, running = reporter.Running()
-	assert.True(t, running, "Running() reported no run while one was in flight")
+	assert.True(t, running, "Running() reported no phase while one was in flight")
 	assert.Equal(t, PhaseSource, phase, "Running() phase")
 
 	close(runner.release)
-	reporter.Wait()
+	<-finished
 	phase, running = reporter.Running()
-	assert.False(t, running, "Running() reported a run after the last phase finished")
+	assert.False(t, running, "Running() named a phase after the last phase finished")
 	assert.Empty(t, phase, "Running() named a phase after the last phase finished")
 }
 
@@ -561,37 +495,6 @@ func (r *blockingReportingRunner) ClearTarget(context.Context, string) Result {
 }
 
 func (r *blockingReportingRunner) AnnotateStored(context.Context) (classified, failed int) {
-	return 0, 0
-}
-
-// blockingAnnotateRunner blocks in AnnotateStored, the mirror of
-// blockingReportingRunner blocking in RunSource, for tests that need an
-// annotation pass to still be under way when they check the guard.
-type blockingAnnotateRunner struct {
-	started chan struct{}
-	release chan struct{}
-}
-
-func (r *blockingAnnotateRunner) RunSource(context.Context) Result {
-	return Result{Phase: PhaseSource, Outcome: OutcomeSucceeded}
-}
-
-func (r *blockingAnnotateRunner) RunTargets(context.Context) Result {
-	return Result{Phase: PhaseTargets, Outcome: OutcomeSucceeded}
-}
-
-func (r *blockingAnnotateRunner) RunTarget(context.Context, string) Result {
-	return Result{Phase: PhaseTargets, Outcome: OutcomeSucceeded}
-}
-
-func (r *blockingAnnotateRunner) ClearTarget(context.Context, string) Result {
-	return Result{Phase: PhaseTargets, Outcome: OutcomeSucceeded}
-}
-
-func (r *blockingAnnotateRunner) AnnotateStored(context.Context) (classified, failed int) {
-	close(r.started)
-	<-r.release
-
 	return 0, 0
 }
 

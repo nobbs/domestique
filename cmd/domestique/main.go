@@ -26,10 +26,10 @@ import (
 	"github.com/nobbs/domestique/internal/pushover"
 	"github.com/nobbs/domestique/internal/readiness"
 	"github.com/nobbs/domestique/internal/runtimeconfig"
-	"github.com/nobbs/domestique/internal/schedule"
 	"github.com/nobbs/domestique/internal/sqlite"
 	"github.com/nobbs/domestique/internal/surface"
 	syncservice "github.com/nobbs/domestique/internal/sync"
+	"github.com/nobbs/domestique/internal/task"
 	"github.com/nobbs/domestique/internal/webui"
 )
 
@@ -115,7 +115,7 @@ func run(ctx context.Context) error {
 	// the first one is an edit rather than a restart. With no regions the holder
 	// stays empty, every build returns without work, and stages are served without
 	// a surface.
-	surfaceIndex, indexScheduler, err := startSurfaceIndex(ctx, settings, runtimeSettings, store, notifier)
+	surfaceIndex, indexTask, err := startSurfaceIndex(ctx, settings, runtimeSettings, store, notifier)
 	if err != nil {
 		return err
 	}
@@ -159,17 +159,11 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("creating sync reporter: %w", err)
 	}
-	// The reporter answers with a result nobody on this path consumes; the
-	// scheduler wants a runner that answers with nothing.
-	scheduler, err := schedule.New(
-		schedule.Options{
-			InitialDelay: runtimeSettings.Values().Sync.InitialDelay,
-			Interval:     syncservice.Interval,
-		},
-		schedule.RunnerFunc(func(ctx context.Context) { _ = reporter.Run(ctx) }),
-	)
-	if err != nil {
-		return fmt.Errorf("creating scheduler: %w", err)
+	tasks := task.NewManager()
+	for _, definition := range append(inventoryTasks(reporter, runtimeSettings), indexTask) {
+		if registerErr := tasks.Register(definition); registerErr != nil {
+			return fmt.Errorf("registering background tasks: %w", registerErr)
+		}
 	}
 	assets, err := webui.New()
 	if err != nil {
@@ -229,43 +223,7 @@ func run(ctx context.Context) error {
 		},
 		oauthService,
 		store,
-		// The HTTP surface names a phase; the reporter decides what running one
-		// means. Manual triggers deliberately ignore the schedule switches.
-		httpapi.SyncFuncs{
-			TriggerFunc: func(phase httpapi.SyncPhase) bool {
-				switch phase {
-				case httpapi.SyncPhaseSource:
-					return reporter.TriggerPhase(runCtx, syncservice.PhaseSource)
-				case httpapi.SyncPhaseTargets:
-					return reporter.TriggerPhase(runCtx, syncservice.PhaseTargets)
-				case httpapi.SyncPhaseAll:
-					return reporter.Trigger(runCtx)
-				}
-
-				return false
-			},
-			TriggerTargetFunc: func(targetID string) bool {
-				return reporter.TriggerTarget(runCtx, targetID)
-			},
-			TriggerClearFunc: func(targetID string) bool {
-				return reporter.TriggerClear(runCtx, targetID)
-			},
-			// Two halves of one answer: the reporter knows what is running now,
-			// and the scheduler knows what it is still holding back.
-			ActivityFunc: func() httpapi.SyncActivityState {
-				phase, running := reporter.Running()
-				startsAt, _ := scheduler.NextRunAt()
-
-				return httpapi.SyncActivityState{
-					StartsAt: startsAt,
-					Phase:    httpapi.SyncPhase(phase),
-					Running:  running,
-				}
-			},
-			TriggerAnnotateFunc:   func() bool { return reporter.TriggerAnnotate(runCtx) },
-			SurfaceIncompleteFunc: reporter.SurfaceIncomplete,
-			RateLimitFunc:         destination.RateLimit,
-		},
+		syncSurface(runCtx, tasks, reporter, destination.RateLimit),
 		assets,
 		weather,
 	)
@@ -300,8 +258,7 @@ func run(ctx context.Context) error {
 		ReadTimeout:       httpReadTimeout,
 		WriteTimeout:      httpWriteTimeout,
 	}
-	return serve(runCtx, cancel, server, readinessServer,
-		[]schedulerRunner{scheduler, indexScheduler}, reporter)
+	return serve(runCtx, cancel, server, readinessServer, tasks)
 }
 
 // startSurfaceIndex prepares the surface index and the schedule that rebuilds it.
@@ -315,11 +272,11 @@ func startSurfaceIndex(
 	runtimeSettings *runtimeconfig.Current,
 	store *sqlite.Store,
 	notifier *pushover.Client,
-) (*osmindex.Current, *schedule.Scheduler, error) {
+) (*osmindex.Current, task.Definition, error) {
 	directory := filepath.Dir(settings.State.DatabasePath)
 	lastBuiltAt, generation, err := store.SurfaceIndexBuild(ctx)
 	if err != nil {
-		return nil, nil, fmt.Errorf("reading the last surface index build: %w", err)
+		return nil, task.Definition{}, fmt.Errorf("reading the last surface index build: %w", err)
 	}
 
 	current := osmindex.NewCurrent()
@@ -341,30 +298,16 @@ func startSurfaceIndex(
 		return runtimeSettings.Values().Surface.Regions
 	}, current, store, notifier)
 	if err != nil {
-		return nil, nil, fmt.Errorf("creating the surface index builder: %w", err)
+		return nil, task.Definition{}, fmt.Errorf("creating the surface index builder: %w", err)
 	}
 
-	scheduler, err := schedule.New(schedule.Options{
-		InitialDelay: osmindex.InitialDelay(
-			lastBuiltAt, runtimeSettings.Values().Surface.RebuildInterval,
-			osmindex.InitialBuildDelay, time.Now().UTC(),
-		),
-		IntervalFunc: func() time.Duration {
-			return runtimeSettings.Values().Surface.RebuildInterval
-		},
-	}, runner)
-	if err != nil {
-		return nil, nil, fmt.Errorf("creating the surface index scheduler: %w", err)
-	}
-
-	return current, scheduler, nil
+	return current, surfaceIndexTask(runner, runtimeSettings, lastBuiltAt), nil
 }
 
-type schedulerRunner interface {
+// backgroundTasks is the task layer as this file uses it: run everything
+// scheduled, and wait for everything triggered.
+type backgroundTasks interface {
 	Run(context.Context)
-}
-
-type manualSyncWaiter interface {
 	Wait()
 }
 
@@ -375,17 +318,14 @@ func serve(
 	ctx context.Context,
 	cancel context.CancelFunc,
 	server, readinessServer *http.Server,
-	schedulers []schedulerRunner,
-	manualSync manualSyncWaiter,
+	tasks backgroundTasks,
 ) error {
 	defer cancel()
 	serverErrors := make(chan error, 2)
 	go func() { serverErrors <- server.ListenAndServe() }()
 	go func() { serverErrors <- readinessServer.ListenAndServe() }()
 	var scheduled sync.WaitGroup
-	for _, scheduler := range schedulers {
-		scheduled.Go(func() { scheduler.Run(ctx) })
-	}
+	scheduled.Go(func() { tasks.Run(ctx) })
 
 	var servingErr error
 	select {
@@ -400,7 +340,7 @@ func serve(
 	defer shutdownCancel()
 	shutdownErr := errors.Join(server.Shutdown(shutdownCtx), readinessServer.Shutdown(shutdownCtx))
 	scheduled.Wait()
-	manualSync.Wait()
+	tasks.Wait()
 	if shutdownErr != nil {
 		shutdownErr = fmt.Errorf("shutting down HTTP: %w", shutdownErr)
 	}

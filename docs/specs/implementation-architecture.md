@@ -157,14 +157,15 @@ second provider is a new adapter satisfying this same interface with its own
 provider value; it requires no change to the interface, the identity type, or
 any package that consumes a `route.Key`.
 
-The schedule package starts one run per tick through a one-method interface.
-Which halves that run performs is a policy the sync package owns.
+The task package starts one attempt per invocation through a one-method
+interface. Which halves a synchronisation performs is a policy the sync package
+owns.
 
 The OAuth package owns separate, narrow Wahoo and state interfaces for
 authorisation state. It does not reuse the sync interfaces merely because SQLite
 and Wahoo implement both sets of behaviour.
 
-The schedule package owns a one-method Runner interface so its tests can observe
+The task package owns a one-method Runner interface so its tests can observe
 triggering without starting a sync. The HTTP package depends on concrete sync
 and OAuth application services unless a test requires a smaller local interface.
 It also declares a two-method `Assets` interface for serving the browser bundle,
