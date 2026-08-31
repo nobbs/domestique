@@ -432,7 +432,11 @@ func TestIndexResultSeparatesABuildFromAnUpstreamThatHadNothingNew(t *testing.T)
 		want    task.Result
 	}{
 		"rebuilt": {
-			outcome: osmindex.Rebuilt, want: task.Result{Outcome: task.Succeeded},
+			outcome: osmindex.Rebuilt,
+			want: task.Result{
+				Outcome: task.Succeeded,
+				Next:    []task.Link{{Task: taskSurfaceAnnotate}},
+			},
 		},
 		"nothing new upstream": {
 			outcome: osmindex.Unchanged, want: task.Result{Outcome: task.Unchanged},
@@ -501,4 +505,16 @@ func (s *countingStore) RecordTaskRun(
 	s.runs++
 
 	return nil
+}
+
+// A refreshed inventory is worth reading the ground under again; a pass that
+// stored nothing asks for nothing.
+func TestSyncResultAsksForClassificationOnlyAfterStoringAnInventory(t *testing.T) {
+	t.Parallel()
+
+	stored := syncResult(&syncservice.Result{Outcome: syncservice.OutcomeSucceeded, SourceStored: true})
+	assert.Equal(t, []task.Link{{Task: taskSurfaceAnnotate}}, stored.Next, "a stored inventory asked for no classification")
+
+	untouched := syncResult(&syncservice.Result{Outcome: syncservice.OutcomeSucceeded})
+	assert.Empty(t, untouched.Next, "a pass that stored nothing asked for classification anyway")
 }

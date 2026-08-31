@@ -29,7 +29,7 @@ succeeded   the attempt did what it set out to do
 failed      a safe failure stopped it
 blocked     a safety gate refused the work
 not_ready   a setting is unset, or a target still awaits onboarding
-skipped     it did no work: a resource was held, or the task was at its limit
+skipped     it did no work: see its detail for which kind of busy stopped it
 cancelled   shutdown ended it; never a fault
 unchanged   it ran, checked, and found nothing new
 current     what it covers was already up to date, so it did nothing at all
@@ -42,8 +42,14 @@ Every attempt is recorded, with two exceptions. One that found its work already
 what a sweep over a whole library would otherwise write on every tick. One that
 shutdown `cancelled` cannot write during the shutdown that ended it.
 
-A refusal is recorded. It is the answer to why something did not run, and that
-question is only answerable afterwards if the refusal was written down.
+A refusal is recorded, and says which kind of busy stopped it: this service
+working on the very same thing, or working on something else that held what the
+attempt needed. They are the answer to why something did not run, and that is
+only answerable afterwards if it was written down.
+
+A chain link is the exception. One asking for work already under way is dropped
+rather than refused, because the work is happening — which is what the link
+wanted — and the rest of the chain counts it as run.
 
 `unchanged` and `current` are deliberately separate. A rebuild that reached its
 upstream and found the published data identical did work — it checked — and the
@@ -77,6 +83,36 @@ surface index build takes `surface-index`, touches neither, and runs beside them
 A task's concurrency limit is how many of its attempts may run at once. It
 defaults to one, so registering a task never introduces parallelism by accident.
 The limit and the resource set are taken together or not at all.
+
+## Chains
+
+An attempt reports the invocations its own result made necessary. What follows
+what is decided by whoever knows the outcome, rather than declared where nobody
+can see it.
+
+An attempt releases its resources before its chain starts. A link wanting what
+its parent held would otherwise be refused by its own parent, which is the usual
+case rather than the exception.
+
+A link asking for work already under way is dropped, not refused: the work is
+happening, which is what the link wanted. A link losing a resource to something
+unrelated is a refusal, and is recorded as one.
+
+Because links are chosen while a task runs, nothing can reject a cycle when a
+task is registered. One chain carries one set of what it has already run and
+refuses to run any of it again — a chain runs in order, so branches share that
+set rather than each starting from a copy. A depth limit sits behind it for a
+chain whose arguments keep changing.
+
+These chains are registered:
+
+~~~text
+sync            stored an inventory  ->  surface:annotate
+surface:index   installed a new map  ->  surface:annotate
+~~~
+
+A rebuilt index makes every stored classification stale, and nothing else
+notices that.
 
 ## Scheduling
 

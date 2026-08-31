@@ -641,7 +641,10 @@ func TestARefusedAttemptIsRecordedAsSkipped(t *testing.T) {
 	require.False(t, manager.Trigger(t.Context(), "other", "slot"), "Trigger(other)")
 
 	assert.Equal(t, []recordedRun{
-		{task: "other", argument: "slot", outcome: string(Skipped), retain: defaultRetainedRuns},
+		{
+			task: "other", argument: "slot", outcome: string(Skipped),
+			detail: string(DetailHeld), retain: defaultRetainedRuns,
+		},
 	}, store.recorded(), "recorded runs")
 
 	close(held.release)
@@ -675,7 +678,10 @@ func TestARefusedScheduledRunIsRecorded(t *testing.T) {
 	<-waits
 
 	assert.Contains(t, store.recorded(),
-		recordedRun{task: "scheduled", outcome: string(Skipped), retain: defaultRetainedRuns},
+		recordedRun{
+			task: "scheduled", outcome: string(Skipped),
+			detail: string(DetailHeld), retain: defaultRetainedRuns,
+		},
 		"a refused scheduled run was not recorded")
 
 	close(blocker.release)
@@ -766,4 +772,331 @@ func (s *recordingStore) recorded() []recordedRun {
 	defer s.mutex.Unlock()
 
 	return slices.Clone(s.runs)
+}
+
+// A link wanting what its parent held has to be able to take it, or every chain
+// between two tasks over the same state would refuse itself.
+func TestAChainLinkTakesTheResourceItsParentHeld(t *testing.T) {
+	t.Parallel()
+
+	followed := countingRunner()
+	manager, _ := newTestManager(t)
+	require.NoError(t, manager.Register(&Definition{
+		Name:      "parent",
+		Resources: exclusive("inventory"),
+		Run: RunnerFunc(func(context.Context, Invocation) Result {
+			return Result{Outcome: Succeeded, Next: []Link{{Task: "child"}}}
+		}),
+	}), "Register(parent)")
+	require.NoError(t, manager.Register(&Definition{
+		Name: "child", Run: followed, Resources: exclusive("inventory"),
+	}), "Register(child)")
+
+	require.True(t, manager.Trigger(t.Context(), "parent", ""), "Trigger()")
+	manager.Wait()
+	assert.Equal(t, 1, followed.runs(), "the chained task never ran")
+}
+
+func TestAChainCarriesTheArgumentItNames(t *testing.T) {
+	t.Parallel()
+
+	followed := blockOn()
+	close(followed.release)
+	manager, _ := newTestManager(t)
+	require.NoError(t, manager.Register(&Definition{
+		Name: "parent",
+		Run: RunnerFunc(func(context.Context, Invocation) Result {
+			return Result{Outcome: Succeeded, Next: []Link{{Task: "child", Argument: "stage-7"}}}
+		}),
+	}), "Register(parent)")
+	require.NoError(t, manager.Register(&Definition{Name: "child", Run: followed}), "Register(child)")
+
+	require.True(t, manager.Trigger(t.Context(), "parent", ""), "Trigger()")
+	manager.Wait()
+	assert.Equal(t, "stage-7", followed.argument(), "the argument the chained task was given")
+}
+
+// Work already under way has the link's answer, so asking again is dropped
+// rather than recorded as a refusal that means something.
+func TestAChainLinkForWorkAlreadyUnderWayIsDroppedQuietly(t *testing.T) {
+	t.Parallel()
+
+	held := blockOn()
+	manager, store := newTestManager(t)
+	require.NoError(t, manager.Register(&Definition{Name: "child", Run: held}), "Register(child)")
+	require.NoError(t, manager.Register(&Definition{
+		Name: "parent",
+		Run: RunnerFunc(func(context.Context, Invocation) Result {
+			return Result{Outcome: Succeeded, Next: []Link{{Task: "child"}}}
+		}),
+	}), "Register(parent)")
+
+	require.True(t, manager.Trigger(t.Context(), "child", ""), "Trigger(child)")
+	<-held.started
+	require.True(t, manager.Trigger(t.Context(), "parent", ""), "Trigger(parent)")
+
+	require.Eventually(t, func() bool {
+		for _, run := range store.recorded() {
+			if run.task == "parent" {
+				return true
+			}
+		}
+
+		return false
+	}, time.Second, time.Millisecond, "the parent never finished")
+
+	for _, run := range store.recorded() {
+		assert.NotEqual(t, string(Skipped), run.outcome, "a coalesced link was recorded as a refusal")
+	}
+	close(held.release)
+	manager.Wait()
+}
+
+// A link losing a resource to something unrelated is a refusal, and refusals
+// are what answer why a task did not run.
+func TestAChainLinkRefusedByAnotherHolderIsRecorded(t *testing.T) {
+	t.Parallel()
+
+	held := blockOn()
+	manager, store := newTestManager(t)
+	require.NoError(t, manager.Register(&Definition{Name: "holder", Run: held, Resources: exclusive("index")}), "Register(holder)")
+	require.NoError(t, manager.Register(&Definition{Name: "child", Run: succeeds(), Resources: exclusive("index")}), "Register(child)")
+	require.NoError(t, manager.Register(&Definition{
+		Name: "parent",
+		Run: RunnerFunc(func(context.Context, Invocation) Result {
+			return Result{Outcome: Succeeded, Next: []Link{{Task: "child"}}}
+		}),
+	}), "Register(parent)")
+
+	require.True(t, manager.Trigger(t.Context(), "holder", ""), "Trigger(holder)")
+	<-held.started
+	require.True(t, manager.Trigger(t.Context(), "parent", ""), "Trigger(parent)")
+
+	require.Eventually(t, func() bool {
+		return slices.Contains(store.recorded(), recordedRun{
+			task: "child", outcome: string(Skipped),
+			detail: string(DetailHeld), retain: defaultRetainedRuns,
+		})
+	}, time.Second, time.Millisecond, "a refused chain link was not recorded")
+
+	close(held.release)
+	manager.Wait()
+}
+
+// Links are chosen while a task runs, so nothing can reject a cycle when it is
+// registered. What a chain has already run is carried down it instead.
+func TestAChainWillNotRunTheSameInvocationTwice(t *testing.T) {
+	t.Parallel()
+
+	runs := 0
+	manager, _ := newTestManager(t)
+	require.NoError(t, manager.Register(&Definition{
+		Name: "loop",
+		Run: RunnerFunc(func(context.Context, Invocation) Result {
+			runs++
+
+			return Result{Outcome: Succeeded, Next: []Link{{Task: "loop"}}}
+		}),
+	}), "Register()")
+
+	require.True(t, manager.Trigger(t.Context(), "loop", ""), "Trigger()")
+	manager.Wait()
+	assert.Equal(t, 1, runs, "a task chained to itself ran again")
+}
+
+// Two tasks each asking for the other cannot be caught by the set alone once
+// the arguments differ, so the depth behind it is what ends the chain.
+func TestAChainStopsAtItsDepthLimit(t *testing.T) {
+	t.Parallel()
+
+	runs := 0
+	manager, _ := newTestManager(t)
+	require.NoError(t, manager.Register(&Definition{
+		Name:        "endless",
+		Concurrency: maxChainDepth + 2,
+		Run: RunnerFunc(func(_ context.Context, invocation Invocation) Result {
+			runs++
+
+			return Result{
+				Outcome: Succeeded,
+				Next:    []Link{{Task: "endless", Argument: invocation.Argument + "x"}},
+			}
+		}),
+	}), "Register()")
+
+	require.True(t, manager.Trigger(t.Context(), "endless", ""), "Trigger()")
+	manager.Wait()
+	assert.Equal(t, maxChainDepth, runs, "the chain did not stop at its depth limit")
+}
+
+func TestAChainIgnoresATaskNobodyRegistered(t *testing.T) {
+	t.Parallel()
+
+	manager, store := newTestManager(t)
+	require.NoError(t, manager.Register(&Definition{
+		Name: "parent",
+		Run: RunnerFunc(func(context.Context, Invocation) Result {
+			return Result{Outcome: Succeeded, Next: []Link{{Task: "absent"}}}
+		}),
+	}), "Register()")
+
+	require.True(t, manager.Trigger(t.Context(), "parent", ""), "Trigger()")
+	manager.Wait()
+	assert.Equal(t, []recordedRun{
+		{task: "parent", outcome: string(Succeeded), retain: defaultRetainedRuns},
+	}, store.recorded(), "recorded runs")
+}
+
+// A runner that gives up must not take the resource with it. Nothing here
+// recovers a panic, so this is about the shape of the code rather than a state
+// the service reaches: what is released on the way out stays released.
+func TestAnAttemptGivesBackWhatItHeldWhenTheRunnerPanics(t *testing.T) {
+	t.Parallel()
+
+	manager, _ := newTestManager(t)
+	require.NoError(t, manager.Register(&Definition{
+		Name:      "a",
+		Resources: exclusive("inventory"),
+		Run:       RunnerFunc(func(context.Context, Invocation) Result { panic("the runner gave up") }),
+	}), "Register()")
+
+	entry := manager.tasks["a"]
+	invocation := Invocation{Task: "a"}
+	release, outcome := manager.admit(entry, invocation)
+	require.Equal(t, admitStarted, outcome, "admit()")
+
+	func() {
+		defer func() {
+			assert.NotNil(t, recover(), "the runner did not give up after all")
+		}()
+		manager.perform(t.Context(), entry, invocation, release, nil, 0)
+	}()
+
+	assert.False(t, manager.Holding("inventory"), "a runner that gave up kept the resource")
+	_, again := manager.admit(entry, invocation)
+	assert.Equal(t, admitStarted, again, "a runner that gave up stayed listed as working")
+}
+
+// One chain shares one set of what it has run, so a task named twice in the
+// same list runs once rather than once per naming.
+func TestAChainRunsAnInvocationOnceHoweverManyLinksNameIt(t *testing.T) {
+	t.Parallel()
+
+	followed := countingRunner()
+	manager, _ := newTestManager(t)
+	require.NoError(t, manager.Register(&Definition{
+		Name: "parent",
+		Run: RunnerFunc(func(context.Context, Invocation) Result {
+			return Result{Outcome: Succeeded, Next: []Link{{Task: "child"}, {Task: "child"}}}
+		}),
+	}), "Register(parent)")
+	require.NoError(t, manager.Register(&Definition{Name: "child", Run: followed}), "Register(child)")
+
+	require.True(t, manager.Trigger(t.Context(), "parent", ""), "Trigger()")
+	manager.Wait()
+	assert.Equal(t, 1, followed.runs(), "a task named twice in one chain ran more than once")
+}
+
+// A link one branch reaches is a link every later branch has already had, so a
+// sibling naming it again finds it run.
+func TestAChainSharesWhatItHasRunAcrossBranches(t *testing.T) {
+	t.Parallel()
+
+	shared := countingRunner()
+	manager, _ := newTestManager(t)
+	require.NoError(t, manager.Register(&Definition{
+		Name: "parent",
+		Run: RunnerFunc(func(context.Context, Invocation) Result {
+			return Result{Outcome: Succeeded, Next: []Link{{Task: "first"}, {Task: "shared"}}}
+		}),
+	}), "Register(parent)")
+	require.NoError(t, manager.Register(&Definition{
+		Name: "first",
+		Run: RunnerFunc(func(context.Context, Invocation) Result {
+			return Result{Outcome: Succeeded, Next: []Link{{Task: "shared"}}}
+		}),
+	}), "Register(first)")
+	require.NoError(t, manager.Register(&Definition{Name: "shared", Run: shared}), "Register(shared)")
+
+	require.True(t, manager.Trigger(t.Context(), "parent", ""), "Trigger()")
+	manager.Wait()
+	assert.Equal(t, 1, shared.runs(), "a link two branches reached ran twice")
+}
+
+// The two kinds of busy read differently to whoever asks why nothing happened:
+// this service working on the very same thing is not the same answer as it
+// working on something else.
+func TestARefusalSaysWhichKindOfBusyStoppedIt(t *testing.T) {
+	t.Parallel()
+
+	held := blockOn()
+	manager, store := newTestManager(t)
+	require.NoError(t, manager.Register(&Definition{Name: "a", Run: held, Resources: exclusive("inventory")}), "Register(a)")
+	require.NoError(t, manager.Register(&Definition{Name: "b", Run: succeeds(), Resources: exclusive("inventory")}), "Register(b)")
+
+	require.True(t, manager.Trigger(t.Context(), "a", "slot"), "Trigger(a)")
+	<-held.started
+
+	assert.False(t, manager.Trigger(t.Context(), "a", "slot"), "the same work was accepted twice")
+	assert.False(t, manager.Trigger(t.Context(), "b", ""), "an unrelated task took a held resource")
+
+	assert.Equal(t, []recordedRun{
+		{task: "a", argument: "slot", outcome: string(Skipped), detail: string(DetailWorking), retain: defaultRetainedRuns},
+		{task: "b", outcome: string(Skipped), detail: string(DetailHeld), retain: defaultRetainedRuns},
+	}, store.recorded(), "recorded refusals")
+
+	close(held.release)
+	manager.Wait()
+}
+
+// A link that coalesced onto work already under way has had its answer, so a
+// later link in the same chain must not ask for it again once that work ends.
+func TestACoalescedLinkCountsAsRunForTheRestOfTheChain(t *testing.T) {
+	t.Parallel()
+
+	var childRuns sync.Mutex
+	runs := 0
+	started, release, finished := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	child := RunnerFunc(func(context.Context, Invocation) Result {
+		childRuns.Lock()
+		runs++
+		first := runs == 1
+		childRuns.Unlock()
+
+		if first {
+			close(started)
+			<-release
+			close(finished)
+		}
+
+		return Result{Outcome: Succeeded}
+	})
+
+	manager, _ := newTestManager(t)
+	require.NoError(t, manager.Register(&Definition{Name: "child", Run: child}), "Register(child)")
+	require.NoError(t, manager.Register(&Definition{
+		Name: "sibling",
+		Run: RunnerFunc(func(context.Context, Invocation) Result {
+			// Let the held run finish, so the link below is asked after it ends.
+			close(release)
+			<-finished
+
+			return Result{Outcome: Succeeded, Next: []Link{{Task: "child"}}}
+		}),
+	}), "Register(sibling)")
+	require.NoError(t, manager.Register(&Definition{
+		Name: "parent",
+		Run: RunnerFunc(func(context.Context, Invocation) Result {
+			return Result{Outcome: Succeeded, Next: []Link{{Task: "child"}, {Task: "sibling"}}}
+		}),
+	}), "Register(parent)")
+
+	require.True(t, manager.Trigger(t.Context(), "child", ""), "Trigger(child)")
+	<-started
+	require.True(t, manager.Trigger(t.Context(), "parent", ""), "Trigger(parent)")
+	manager.Wait()
+
+	childRuns.Lock()
+	defer childRuns.Unlock()
+	assert.Equal(t, 1, runs, "a coalesced link was asked for again once its work had finished")
 }

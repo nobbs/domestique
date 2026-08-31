@@ -337,23 +337,24 @@ func TestReporterSendsAStaleAlertItCannotRecordTheSuppressionOf(t *testing.T) {
 	assert.Len(t, notifier.messages, 1, "want one stale alert sent despite the suppression record failing to write")
 }
 
-// Enrichment follows the work a rider is waiting for, and only happens when a
-// pass stored something new to enrich.
-func TestReporterEnrichesOnlyAfterStoringANewInventory(t *testing.T) {
+// Enrichment follows the work a rider is waiting for, so a pass reports whether
+// it stored something new to enrich rather than enriching it itself.
+func TestReporterReportsWhetherItStoredANewInventory(t *testing.T) {
 	stored := &reportingRunner{
 		source:  Result{Phase: PhaseSource, Outcome: OutcomeSucceeded},
 		targets: Result{Phase: PhaseTargets, Outcome: OutcomeSucceeded},
 	}
-	newReporter(t, stored, &fakeRunState{source: true, targets: true}, &fakeNotifier{}).Run(t.Context())
-	assert.Equal(t, 1, stored.annotations, "annotation passes")
+	result := newReporter(t, stored, &fakeRunState{source: true, targets: true}, &fakeNotifier{}).Run(t.Context())
+	assert.True(t, result.SourceStored, "a pass that stored an inventory did not say so")
+	assert.Zero(t, stored.annotations, "the reporter enriched what it stored instead of reporting it")
 
 	failed := &reportingRunner{source: Result{Phase: PhaseSource, Outcome: OutcomeFailed, Failure: FailureSource}}
-	newReporter(t, failed, &fakeRunState{source: true}, &fakeNotifier{}).Run(t.Context())
-	assert.Zero(t, failed.annotations, "a failed read was enriched anyway")
+	failedResult := newReporter(t, failed, &fakeRunState{source: true}, &fakeNotifier{}).Run(t.Context())
+	assert.False(t, failedResult.SourceStored, "a failed read reported a stored inventory")
 
 	targetsOnly := &reportingRunner{targets: Result{Phase: PhaseTargets, Outcome: OutcomeSucceeded}}
-	newReporter(t, targetsOnly, &fakeRunState{targets: true}, &fakeNotifier{}).Run(t.Context())
-	assert.Zero(t, targetsOnly.annotations, "a run that stored no inventory was enriched anyway")
+	targetsResult := newReporter(t, targetsOnly, &fakeRunState{targets: true}, &fakeNotifier{}).Run(t.Context())
+	assert.False(t, targetsResult.SourceStored, "a run that stored no inventory reported one")
 }
 
 // SurfaceIncomplete is what tells a stage that keeps failing classification
@@ -367,13 +368,13 @@ func TestReporterReportsTheLastAnnotationPassesIncompleteCount(t *testing.T) {
 	reporter := newReporter(t, runner, &fakeRunState{source: true}, &fakeNotifier{})
 	assert.Zero(t, reporter.SurfaceIncomplete(), "an incomplete count was reported before any pass ran")
 
-	reporter.Run(t.Context())
+	reporter.Annotate(t.Context())
 	assert.Equal(t, 2, reporter.SurfaceIncomplete(), "SurfaceIncomplete()")
 
 	// A pass that catches up moves the gauge back down, rather than latching
 	// the worst count any pass ever saw.
 	runner.annotateFailed = 0
-	reporter.Run(t.Context())
+	reporter.Annotate(t.Context())
 	assert.Zero(t, reporter.SurfaceIncomplete(), "a recovered pass left the old incomplete count in place")
 }
 

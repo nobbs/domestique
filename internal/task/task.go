@@ -7,6 +7,34 @@ import (
 	"time"
 )
 
+// admission is why an attempt may or may not start. Telling the two refusals
+// apart is what lets a chain coalesce onto work already happening while still
+// recording one that genuinely lost a resource.
+type admission int
+
+const (
+	// admitStarted means the attempt has taken what it needs.
+	admitStarted admission = iota
+	// admitWorking means this exact invocation is already being worked on.
+	admitWorking
+	// admitHeld means a resource or a concurrency slot was not free.
+	admitHeld
+)
+
+// detail is what a refused admission is recorded as.
+func (a admission) detail() Detail {
+	if a == admitWorking {
+		return DetailWorking
+	}
+
+	return DetailHeld
+}
+
+// maxChainDepth bounds how far one attempt's consequences may reach. Every
+// chain the service registers is one or two links long; this is the backstop
+// behind the set of what a chain has already run.
+const maxChainDepth = 8
+
 // defaultRetainedRuns bounds a task's history when it names no bound of its
 // own. An hourly task keeps roughly a week that way.
 const defaultRetainedRuns = 200
@@ -47,10 +75,30 @@ func (o Outcome) recorded() bool {
 // provider response text, a route name, or an upstream identifier.
 type Detail string
 
-// Result is what one attempt came to.
+// Why an attempt did no work. They are separate because they mean different
+// things to whoever reads the history: one is this service busy with the very
+// same work, the other is it busy with something else.
+const (
+	// DetailWorking means the same task over the same argument was already
+	// being worked on.
+	DetailWorking Detail = "already_working"
+	// DetailHeld means a resource or a concurrency slot was not free.
+	DetailHeld Detail = "resource_held"
+)
+
+// Link is one invocation a finished attempt asks for. A task returns links for
+// the work its own result made necessary, so what follows what is decided by
+// whoever knows, rather than declared where nobody can see the outcome.
+type Link struct {
+	Task     string
+	Argument string
+}
+
+// Result is what one attempt came to, and what it asks should happen next.
 type Result struct {
 	Outcome Outcome
 	Detail  Detail
+	Next    []Link
 }
 
 // Trigger names what started an attempt. A task whose scheduled behaviour
@@ -62,6 +110,8 @@ const (
 	TriggerSchedule Trigger = "schedule"
 	// TriggerManual is an operator asking for the task directly.
 	TriggerManual Trigger = "manual"
+	// TriggerChain is another attempt that finished and asked for this one.
+	TriggerChain Trigger = "chain"
 )
 
 // Invocation is one attempt: which task, over which argument, and what started
