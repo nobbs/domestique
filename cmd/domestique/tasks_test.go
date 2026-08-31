@@ -442,12 +442,12 @@ func TestTheGraphDeclaresWhatFollowsEveryRead(t *testing.T) {
 
 	targets := definitionNamed(t, definitions, taskSyncTarget)
 	assert.Equal(t, []string{taskSyncSource}, targets.Follows, "what the targets follow")
-	assert.True(t, targets.Join, "the targets run after the first read rather than all of them")
+	assert.True(t, targets.Join, "the targets do not wait for every predecessor")
 
 	annotate := definitionNamed(t, definitions, taskSurfaceAnnotate)
 	assert.Equal(t, []string{taskSyncSource, taskSurfaceIndex}, annotate.Follows,
 		"what classification follows")
-	assert.True(t, annotate.Join, "classification runs after the first of its predecessors")
+	assert.True(t, annotate.Join, "classification does not wait for every predecessor")
 }
 
 func alwaysOn() bool { return true }
