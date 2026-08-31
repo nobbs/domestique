@@ -174,11 +174,11 @@ export function MixRow({
   if (entries.length === 0) {
     return (
       <div
+        role="img"
+        aria-label={`${classesLabel}: ${absence}`}
         className={`bg-[var(--ink-2)] opacity-15 ${above ? "rounded-t-md" : "rounded-b-md"}`}
         style={{ height: BAR_HEIGHT }}
-      >
-        <span className="sr-only">{absence}</span>
-      </div>
+      />
     );
   }
 

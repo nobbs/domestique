@@ -71,7 +71,7 @@ describe("MixRow", () => {
     expect(screen.getByText("13 km")).toBeInTheDocument();
   });
 
-  it("renders a faded placeholder bar with sr-only absence copy when there are no classes", () => {
+  it("renders a faded placeholder bar labelled with the row and the absence copy when there are no classes", () => {
     render(
       <MixRow
         classesLabel="Gradient bands"
@@ -84,6 +84,8 @@ describe("MixRow", () => {
       />,
     );
 
-    expect(screen.getByText("No elevation data.")).toHaveClass("sr-only");
+    expect(
+      screen.getByRole("img", { name: "Gradient bands: No elevation data." }),
+    ).toBeInTheDocument();
   });
 });
