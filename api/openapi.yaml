@@ -1726,8 +1726,10 @@ components:
           type: string
           format: date-time
           description: >-
-            When the next scheduled run is due. Absent while an attempt is in
-            flight, and for a task nothing schedules.
+            When the next scheduled run is due. Absent for a task nothing
+            schedules, and while the task's own scheduled run is under way. A
+            run somebody asked for does not disturb the schedule, so this stays
+            put during one.
     TaskRun:
       type: object
       additionalProperties: false

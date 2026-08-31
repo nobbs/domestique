@@ -58,8 +58,8 @@ type Tasks interface {
 
 // RegisteredTask is one background activity and what is true of it now.
 type RegisteredTask struct {
-	// NextRunAt is when the next scheduled run is due, zero while an attempt is
-	// in flight and for a task nothing schedules.
+	// NextRunAt is when the next scheduled run is due, zero for a task nothing
+	// schedules and while the schedule's own attempt runs.
 	NextRunAt time.Time
 	Name      string
 	// Interval is the gap between runs for a task on a fixed schedule, zero for

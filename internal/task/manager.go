@@ -85,8 +85,8 @@ type registered struct {
 	// successors are the tasks whose Follows name this one, worked out afresh by
 	// each Resolve and settled before anything runs.
 	successors []string
-	// nextDueAt holds the instant the next scheduled run is due, published only
-	// while no attempt for this task is in flight.
+	// nextDueAt holds the instant the next scheduled run is due, cleared while
+	// the schedule's own attempt runs — a fixed gap counts from its finish.
 	nextDueAt  nextDueAt
 	definition Definition
 	inFlight   int
@@ -252,8 +252,8 @@ func (m *Manager) Wait() {
 	m.triggered.Wait()
 }
 
-// NextRunAt reports when a task's next scheduled run is due, while it is
-// still scheduled and no attempt of it is in flight.
+// NextRunAt reports when a task's next scheduled run is due. A manual or chain
+// attempt leaves it standing: only the schedule's own run resets the gap.
 func (m *Manager) NextRunAt(name string) (time.Time, bool) {
 	entry, known := m.tasks[name]
 	if !known {
@@ -265,8 +265,8 @@ func (m *Manager) NextRunAt(name string) (time.Time, bool) {
 
 // Registered is one task as a surface outside this package reads it.
 type Registered struct {
-	// NextRunAt is when the next scheduled run is due, zero while an attempt is
-	// in flight and for a task nothing schedules.
+	// NextRunAt is when the next scheduled run is due, zero for a task nothing
+	// schedules and while the schedule's own attempt runs.
 	NextRunAt time.Time
 	// Name is what a trigger asks for.
 	Name string

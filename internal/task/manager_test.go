@@ -254,7 +254,7 @@ func TestNextRunAtReportsTheNextTickOnceTheFirstRunHasCompleted(t *testing.T) {
 	<-stopped
 }
 
-func TestNextRunAtIsZeroWhileAnAttemptIsInFlight(t *testing.T) {
+func TestNextRunAtIsZeroWhileTheScheduledAttemptIsInFlight(t *testing.T) {
 	t.Parallel()
 
 	runner := blockOn()
@@ -287,6 +287,45 @@ func TestNextRunAtIsZeroWhileAnAttemptIsInFlight(t *testing.T) {
 	close(runner.release)
 	cancel()
 	<-stopped
+}
+
+// An operator asking for a task does not reset its cadence: the schedule is
+// still waiting out the gap it was already waiting out.
+func TestNextRunAtSurvivesAnAttemptNobodyScheduled(t *testing.T) {
+	t.Parallel()
+
+	runner := blockOn()
+	manager, _ := newTestManager(t)
+	manager.now = reference
+	manager.after = func(time.Duration) <-chan time.Time { return make(chan time.Time) }
+	require.NoError(t, manager.Register(&Definition{
+		Name:         "a",
+		Run:          runner,
+		Schedule:     Every(func() time.Duration { return time.Hour }),
+		InitialDelay: func() time.Duration { return time.Minute },
+	}), "Register()")
+
+	ctx, cancel := context.WithCancel(t.Context())
+	stopped := make(chan struct{})
+	go func() { defer close(stopped); manager.Run(ctx) }()
+
+	require.Eventually(t, func() bool {
+		_, holding := manager.NextRunAt("a")
+
+		return holding
+	}, time.Second, time.Millisecond, "the initial delay was never reported")
+
+	require.True(t, manager.Trigger(ctx, "a", ""), "Trigger()")
+	<-runner.started
+
+	due, holding := manager.NextRunAt("a")
+	assert.True(t, holding, "NextRunAt() while a triggered attempt is in flight")
+	assert.Equal(t, reference().Add(time.Minute), due, "NextRunAt() during a triggered attempt")
+
+	close(runner.release)
+	cancel()
+	<-stopped
+	manager.Wait()
 }
 
 func TestNextRunAtIsZeroForATaskNothingSchedules(t *testing.T) {

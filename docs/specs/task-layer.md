@@ -183,9 +183,15 @@ attempt they ask for is also the way out: a success ends the streak.
 registration order, with what is known about each right now: whether it runs
 unasked, how many attempts are in flight, and when the next scheduled run is
 due. A task nothing schedules reports no due time, and neither does one whose
-attempt is in flight — a fixed gap counts from the finish, so until then there
-is no next instant to report. Both read as absent rather than as the zero
-instant, and how many are in flight is what says which of the two it is.
+own scheduled run is under way — a fixed gap counts from the finish, so until
+then there is no next instant to report. Both read as absent rather than as the
+zero instant.
+
+A task running because somebody asked for it, or because it follows something
+that finished, still reports its due time. That run did not disturb the
+schedule, which is still waiting out the gap it was already waiting out, so the
+instant is as true during it as it was before. Attempts in flight and the next
+due time answer different questions, and a page may well show both.
 
 `POST /v1/tasks/{name}/run`, and `POST /v1/tasks/{name}/run/{argument}` for one
 over an argument, start a single attempt on exactly the terms a schedule starts

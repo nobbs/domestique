@@ -356,7 +356,7 @@ type Task struct {
 	Running int `json:"running"`
 	// IntervalSeconds The gap between runs for a task on a fixed schedule. Absent for a task with no schedule, or a calendar one, whose gap changes with the wall clock.
 	IntervalSeconds *int `json:"intervalSeconds,omitempty"`
-	// NextRunAt When the next scheduled run is due. Absent while an attempt is in flight, and for a task nothing schedules.
+	// NextRunAt When the next scheduled run is due. Absent for a task nothing schedules, and while the task's own scheduled run is under way. A run somebody asked for does not disturb the schedule, so this stays put during one.
 	NextRunAt *time.Time `json:"nextRunAt,omitempty"`
 }
 
