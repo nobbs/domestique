@@ -298,7 +298,7 @@ func (m *Manager) backingOff(ctx context.Context, entry *registered, invocation 
 		return false
 	}
 	slog.Info("task held back after repeated faults",
-		"task", invocation.Task, "faults", faults, "wait", wait)
+		"task", invocation.Task, "argument", invocation.Argument, "faults", faults, "wait", wait)
 
 	return true
 }
