@@ -353,7 +353,7 @@ func TestClientAsksInTheConfiguredZone(t *testing.T) {
 		BaseURL:   server.URL,
 		Timeout:   time.Second,
 		Transport: server.Client().Transport,
-		Timezone:  "Europe/Lisbon",
+		Timezone:  func() string { return "Europe/Lisbon" },
 	})
 	require.NoError(t, err, "New()")
 
@@ -363,10 +363,46 @@ func TestClientAsksInTheConfiguredZone(t *testing.T) {
 	require.NoError(t, err, "Forecast()")
 }
 
+// A zone edited after the client was built reaches the next forecast: the zone
+// is read again on every request rather than resolved once at construction.
+func TestClientReadsAnEditedZoneOnTheNextForecastRatherThanTheNextRestart(t *testing.T) {
+	seen := make(chan string, 2)
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		seen <- request.URL.Query().Get("timezone")
+		writer.Header().Set("Content-Type", "application/json")
+		writeResponse(t, writer, http.StatusOK, `{"hourly":{"time":["2026-08-24T07:00"],
+			"temperature_2m":[18.4],"apparent_temperature":[17.1],"precipitation":[0],
+			"precipitation_probability":[10],"wind_speed_10m":[12.3],
+			"wind_direction_10m":[240],"weather_code":[1]}}`)
+	}))
+	defer server.Close()
+
+	zone := "Europe/Berlin"
+	client, err := New(&Options{
+		BaseURL:   server.URL,
+		Timeout:   time.Second,
+		Transport: server.Client().Transport,
+		Timezone:  func() string { return zone },
+	})
+	require.NoError(t, err, "New()")
+
+	from := time.Date(2026, 8, 24, 6, 5, 0, 0, time.UTC)
+	to := time.Date(2026, 8, 24, 6, 40, 0, 0, time.UTC)
+	_, err = client.Forecast(t.Context(), []Coordinate{{Latitude: 50.11, Longitude: 8.68}}, from, to)
+	require.NoError(t, err, "first Forecast()")
+
+	zone = "Europe/Lisbon"
+	_, err = client.Forecast(t.Context(), []Coordinate{{Latitude: 50.11, Longitude: 8.68}}, from, to)
+	require.NoError(t, err, "second Forecast()")
+
+	assert.Equal(t, "Europe/Berlin", <-seen, "the first request")
+	assert.Equal(t, "Europe/Lisbon", <-seen, "the edited zone never reached the second request")
+}
+
 // A zone this binary cannot load is refused where the client is built, rather
 // than leaving every forecast to fail one request at a time.
 func TestNewRefusesAZoneItCannotLoad(t *testing.T) {
-	_, err := New(&Options{Timezone: "Middle/Earth"})
+	_, err := New(&Options{Timezone: func() string { return "Middle/Earth" }})
 
 	require.Error(t, err, "New() accepted a zone it cannot load")
 	assert.Contains(t, err.Error(), "Middle/Earth", "the message names the zone")

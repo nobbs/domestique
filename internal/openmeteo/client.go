@@ -48,9 +48,11 @@ const (
 type Options struct {
 	Transport http.RoundTripper
 	BaseURL   string
-	// Timezone is the IANA zone a forecast is asked and returned in. Empty is
-	// Europe/Berlin, which is where every route this service holds is.
-	Timezone string
+	// Timezone reports the IANA zone a forecast is asked and returned in, read
+	// again on every request rather than once: an operator editing the setting
+	// reaches the next forecast, not the next restart. Nil, or one returning
+	// "", is Europe/Berlin, which is where every route this service holds is.
+	Timezone func() string
 	Timeout  time.Duration
 }
 
@@ -77,7 +79,8 @@ type Hourly struct {
 type Client struct {
 	client   *http.Client
 	baseURL  *url.URL
-	location *time.Location
+	zone     func() string
+	fallback *time.Location
 }
 
 // New creates an Open-Meteo client without contacting the upstream service.
@@ -104,16 +107,19 @@ func New(options *Options) (*Client, error) {
 	if transport == nil {
 		transport = http.DefaultTransport
 	}
-	// One zone for the whole service keeps a returned timestamp describing where
-	// the rider reads it rather than where the route happens to be. Loaded once
-	// here, on the client, rather than kept as package state.
-	zone := options.Timezone
-	if zone == "" {
-		zone = defaultTimezone
-	}
-	location, err := time.LoadLocation(zone)
+	fallback, err := time.LoadLocation(defaultTimezone)
 	if err != nil {
-		return nil, fmt.Errorf("openmeteo: loading the %s timezone: %w", zone, err)
+		return nil, fmt.Errorf("openmeteo: loading the default %s timezone: %w", defaultTimezone, err)
+	}
+	zone := options.Timezone
+	if zone == nil {
+		zone = func() string { return "" }
+	}
+	// Resolved once here to fail fast at startup on a zone this build cannot
+	// load. Every actual request resolves again, read fresh: a settings edit
+	// reaches the next forecast rather than the next restart.
+	if _, err := resolveLocation(zone(), fallback); err != nil {
+		return nil, err
 	}
 
 	return &Client{
@@ -122,8 +128,19 @@ func New(options *Options) (*Client, error) {
 			Transport: transport,
 		},
 		baseURL:  parsedBaseURL,
-		location: location,
+		zone:     zone,
+		fallback: fallback,
 	}, nil
+}
+
+// resolveLocation loads the named zone, or reports the fallback for an empty
+// one.
+func resolveLocation(raw string, fallback *time.Location) (*time.Location, error) {
+	if raw == "" {
+		return fallback, nil
+	}
+
+	return time.LoadLocation(raw)
 }
 
 // Forecast returns one hourly series per coordinate, in the order given, spanning
@@ -137,6 +154,14 @@ func (c *Client) Forecast(ctx context.Context, at []Coordinate, from, to time.Ti
 	}
 	if to.Before(from) {
 		return nil, errors.New("openmeteo: to must not be before from")
+	}
+	location, err := resolveLocation(c.zone(), c.fallback)
+	if err != nil {
+		// A live setting was validated when it was written, so a load failure
+		// here is the tzdata database changing under a running process. A
+		// forecast in a stale zone is a smaller problem than a forecast that
+		// stopped working, so this falls back rather than failing the request.
+		location = c.fallback
 	}
 
 	latitudes := make([]string, len(at))
@@ -152,9 +177,9 @@ func (c *Client) Forecast(ctx context.Context, at []Coordinate, from, to time.Ti
 		"latitude":   {strings.Join(latitudes, ",")},
 		"longitude":  {strings.Join(longitudes, ",")},
 		"hourly":     {hourlyParams},
-		"timezone":   {c.location.String()},
-		"start_hour": {floorHour(from.In(c.location)).Format(hourFormat)},
-		"end_hour":   {ceilHour(to.In(c.location)).Format(hourFormat)},
+		"timezone":   {location.String()},
+		"start_hour": {floorHour(from.In(location)).Format(hourFormat)},
+		"end_hour":   {ceilHour(to.In(location)).Format(hourFormat)},
 	}.Encode()
 
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), http.NoBody)
@@ -195,7 +220,7 @@ func (c *Client) Forecast(ctx context.Context, at []Coordinate, from, to time.Ti
 
 	result := make([]Hourly, len(raw))
 	for i := range raw {
-		hourly, parseErr := raw[i].Hourly.parse(c.location)
+		hourly, parseErr := raw[i].Hourly.parse(location)
 		if parseErr != nil {
 			return nil, parseErr
 		}
