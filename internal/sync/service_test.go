@@ -863,6 +863,7 @@ func TestServiceReadsTheLibrariesConfiguredWhenARunStarts(t *testing.T) {
 		&Options{
 			AllowEmptySourceDeletion: emptySourceDeletion(false),
 			Sources:                  func() ([]Source, error) { return sources, nil },
+			SourceFor:                func(route.Provider) (Source, bool, error) { return nil, false, nil },
 			TargetIDs:                func() []string { return []string{"a"} },
 		},
 		state, identityProcessor{}, &fakeEncoder{}, newFakeTarget(), nil, nil,
@@ -884,7 +885,22 @@ func syncOptions(allowEmpty bool, sources []Source, targetIDs ...string) *Option
 	return &Options{
 		AllowEmptySourceDeletion: emptySourceDeletion(allowEmpty),
 		Sources:                  func() ([]Source, error) { return sources, nil },
+		SourceFor:                sourceAmong(sources),
 		TargetIDs:                func() []string { return targetIDs },
+	}
+}
+
+// sourceAmong is the per-provider builder over a fixed set of libraries: the
+// one that is asked for, or none.
+func sourceAmong(sources []Source) func(route.Provider) (Source, bool, error) {
+	return func(provider route.Provider) (Source, bool, error) {
+		for _, source := range sources {
+			if source.Provider() == provider {
+				return source, true, nil
+			}
+		}
+
+		return nil, false, nil
 	}
 }
 
@@ -1489,4 +1505,67 @@ func TestServiceReportsNoTargetOutcomesForASourceRun(t *testing.T) {
 	service := newService(t, state, &fakeSource{stages: []route.Route{desired}}, &fakeEncoder{}, newFakeTarget(), false)
 
 	assert.Empty(t, service.RunSource(t.Context()).Targets)
+}
+
+// A read of one library leaves every other library's stored stages alone, which
+// is what lets each have its own task, its own alert and its own backoff.
+func TestServiceRunSourceProviderReadsOnlyTheLibraryItNames(t *testing.T) {
+	state := newFakeState("a", "b")
+	desired := testStage(t, 1, 1, "new", "new-hash")
+	service := newService(t, state, &fakeSource{stages: []route.Route{desired}}, &fakeEncoder{}, newFakeTarget(), false)
+
+	result := service.RunSourceProvider(t.Context(), route.ProviderVeloPlanner)
+
+	assert.Equal(t, OutcomeSucceeded, result.Outcome, "RunSourceProvider() outcome")
+	assert.Equal(t, 1, result.SourceStages, "stages read")
+	require.Len(t, result.Sources, 1, "libraries reported")
+	assert.Equal(t, route.ProviderVeloPlanner, result.Sources[0].Provider, "the library reported")
+}
+
+// A library nobody configured is not ready rather than a fault: being absent is
+// not the same as having gone wrong, and what follows a read must not be held
+// back by a library this build was never given.
+func TestServiceRunSourceProviderIsNotReadyForAnUnconfiguredLibrary(t *testing.T) {
+	state := newFakeState("a", "b")
+	source := &fakeSource{stages: []route.Route{testStage(t, 1, 1, "new", "new-hash")}}
+	service := newService(t, state, source, &fakeEncoder{}, newFakeTarget(), false)
+
+	result := service.RunSourceProvider(t.Context(), route.ProviderKomoot)
+
+	assert.Equal(t, OutcomeNotReady, result.Outcome, "RunSourceProvider() outcome")
+	assert.Zero(t, result.SourceStages, "an unconfigured library reported stages")
+}
+
+// Building every library at once refuses when any one of them is half
+// configured. A read over one library must not inherit that: nothing it reads
+// is written on another library's behalf.
+func TestServiceRunSourceProviderIgnoresWhetherTheOtherLibrariesAreReadable(t *testing.T) {
+	state := newFakeState("a", "b")
+	source := &fakeSource{stages: []route.Route{testStage(t, 1, 1, "new", "new-hash")}}
+	options := syncOptions(false, []Source{source}, "a", "b")
+	options.Sources = func() ([]Source, error) { return nil, errors.New("komoot credentials are not configured yet") }
+	service, err := New(options, state, identityProcessor{}, &fakeEncoder{}, newFakeTarget(), nil, nil)
+	require.NoError(t, err, "New()")
+
+	result := service.RunSourceProvider(t.Context(), route.ProviderVeloPlanner)
+
+	assert.Equal(t, OutcomeSucceeded, result.Outcome, "RunSourceProvider() outcome")
+	assert.Equal(t, 1, result.SourceStages, "stages read")
+}
+
+// A library that is configured but cannot be built is a fault, and is reported
+// as this service's own rather than as the library having refused.
+func TestServiceRunSourceProviderReportsALibraryItCannotBuild(t *testing.T) {
+	state := newFakeState("a", "b")
+	options := syncOptions(false, nil, "a", "b")
+	options.SourceFor = func(route.Provider) (Source, bool, error) {
+		return nil, false, errors.New("unknown source provider")
+	}
+	service, err := New(options, state, identityProcessor{}, &fakeEncoder{}, newFakeTarget(), nil, nil)
+	require.NoError(t, err, "New()")
+
+	result := service.RunSourceProvider(t.Context(), route.ProviderKomoot)
+
+	assert.Equal(t, OutcomeFailed, result.Outcome, "RunSourceProvider() outcome")
+	assert.Equal(t, FailureState, result.Failure, "RunSourceProvider() failure")
 }

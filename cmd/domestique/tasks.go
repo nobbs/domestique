@@ -7,6 +7,7 @@ import (
 
 	"github.com/nobbs/domestique/internal/httpapi"
 	"github.com/nobbs/domestique/internal/osmindex"
+	"github.com/nobbs/domestique/internal/route"
 	"github.com/nobbs/domestique/internal/runtimeconfig"
 	syncservice "github.com/nobbs/domestique/internal/sync"
 	"github.com/nobbs/domestique/internal/task"
@@ -68,6 +69,7 @@ const (
 // definitions can be read without a reporter or a builder behind them.
 type synchronizer interface {
 	RunPhase(ctx context.Context, phase syncservice.Phase) syncservice.Result
+	RunSourceProvider(ctx context.Context, provider route.Provider) syncservice.Result
 	ReconcileTarget(ctx context.Context, targetID string) syncservice.Result
 	ClearTarget(ctx context.Context, targetID string) syncservice.Result
 	Annotate(ctx context.Context)
@@ -91,6 +93,12 @@ func registerTasks(
 		if err := manager.Register(&definitions[index]); err != nil {
 			return nil, fmt.Errorf("registering background tasks: %w", err)
 		}
+	}
+	// The graph is settled before anything runs, so an edge naming a task this
+	// build does not have, or one that closes a cycle, refuses the start rather
+	// than surfacing once at four in the morning.
+	if err := manager.Resolve(); err != nil {
+		return nil, fmt.Errorf("resolving what follows what: %w", err)
 	}
 
 	return manager, nil
@@ -137,17 +145,23 @@ func inventoryTasks(
 				return settings.Values().Sync.InitialDelay
 			},
 			Enabled: enabled(taskSyncSource),
-			// Only the scheduled read is expected on a clock. What the targets
-			// hold follows from it, and a slot an operator reconciles by hand is
-			// stale the moment they stop asking.
+			// Only the scheduled read is expected on a clock. A library an
+			// operator reads by hand is stale the moment they stop asking.
 			StaleAfter: func() time.Duration {
 				return settings.Values().Sync.StaleAfter
 			},
 			Backoff: task.Backoff{Base: syncBackoffBase, Cap: backoffCap},
-			Run: task.RunnerFunc(func(ctx context.Context, _ task.Invocation) task.Result {
-				result := reporter.RunPhase(ctx, syncservice.PhaseSource)
+			Run: task.RunnerFunc(func(ctx context.Context, invocation task.Invocation) task.Result {
+				// No argument is every configured library. One names the library
+				// alone, the same shape the targets take a slot in.
+				if invocation.Argument == "" {
+					result := reporter.RunPhase(ctx, syncservice.PhaseSource)
 
-				return sourceResult(&result)
+					return syncResult(&result)
+				}
+				result := reporter.RunSourceProvider(ctx, route.Provider(invocation.Argument))
+
+				return syncResult(&result)
 			}),
 		},
 		{
@@ -161,6 +175,7 @@ func inventoryTasks(
 			Schedule:     task.Every(func() time.Duration { return targetBackstopInterval }),
 			InitialDelay: func() time.Duration { return targetBackstopInterval },
 			Enabled:      enabled(taskSyncTarget),
+			Follows:      []string{taskSyncSource},
 			Backoff:      task.Backoff{Base: targetBackoffBase, Cap: backoffCap},
 			Run: task.RunnerFunc(func(ctx context.Context, invocation task.Invocation) task.Result {
 				// No argument is every configured slot, which is what the schedule
@@ -188,6 +203,7 @@ func inventoryTasks(
 		{
 			Name:      taskSurfaceAnnotate,
 			Resources: inventory,
+			Follows:   []string{taskSyncSource, taskSurfaceIndex},
 			Backoff:   task.Backoff{Base: annotateBackoffBase, Cap: backoffCap},
 			Run: task.RunnerFunc(func(ctx context.Context, _ task.Invocation) task.Result {
 				reporter.Annotate(ctx)
@@ -233,18 +249,6 @@ func surfaceIndexTask(
 	}
 }
 
-// sourceResult is what a source read came to, and what follows from it. A read
-// that stored a library asks for the targets to be written and for the ground
-// under the stages to be read again; neither notices on its own.
-func sourceResult(result *syncservice.Result) task.Result {
-	outcome := syncResult(result)
-	if result.SourceStored {
-		outcome.Next = []task.Link{{Task: taskSyncTarget}, {Task: taskSurfaceAnnotate}}
-	}
-
-	return outcome
-}
-
 // indexResult carries a rebuild's outcome into the task layer's vocabulary. A
 // build that found nothing new still reached its upstream, which is why it is
 // unchanged rather than current.
@@ -256,10 +260,7 @@ func indexResult(outcome osmindex.Outcome, err error) task.Result {
 	case osmindex.Rebuilt:
 		// A new generation makes every stored classification stale, and nothing
 		// else notices that.
-		return task.Result{
-			Outcome: task.Succeeded,
-			Next:    []task.Link{{Task: taskSurfaceAnnotate}},
-		}
+		return task.Result{Outcome: task.Succeeded}
 	case osmindex.Unchanged:
 		return task.Result{Outcome: task.Unchanged}
 	case osmindex.NoRegions:

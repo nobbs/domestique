@@ -305,6 +305,14 @@ prior route count. A source that had routes and now reports none is blocked for
 that source alone unless the operator's empty-source acknowledgement is set, and
 every other configured source proceeds independently of it.
 
+A read asked for over one source builds that source alone. Building every source
+at once refuses when any one of them has been named but not given credentials,
+because a partial set read as the whole inventory is what the deletion gate
+exists to prevent; a read scoped to one source carries no such claim, so a
+source half configured holds back only itself. A source that is named but has no
+credentials yet, and one nobody named at all, are both not ready rather than
+failures.
+
 A route's identity carries the provider that issued it. Two sources reporting the
 same source route ID and stage order store as two distinct routes.
 

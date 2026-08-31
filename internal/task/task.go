@@ -37,7 +37,7 @@ func (a admission) detail() Detail {
 const runReferenceBytes = 6
 
 // maxChainDepth bounds how far one attempt's consequences may reach. Every
-// chain the service registers is one or two links long; this is the backstop
+// chain the service registers is one or two edges long; this is the backstop
 // behind the set of what a chain has already run.
 const maxChainDepth = 8
 
@@ -118,19 +118,10 @@ const (
 	DetailStale Detail = "stale"
 )
 
-// Link is one invocation a finished attempt asks for. A task returns links for
-// the work its own result made necessary, so what follows what is decided by
-// whoever knows, rather than declared where nobody can see the outcome.
-type Link struct {
-	Task     string
-	Argument string
-}
-
-// Result is what one attempt came to, and what it asks should happen next.
+// Result is what one attempt came to.
 type Result struct {
 	Outcome Outcome
 	Detail  Detail
-	Next    []Link
 }
 
 // Trigger names what started an attempt. A task whose scheduled behaviour
@@ -254,6 +245,12 @@ type Definition struct {
 	Notify *Notify
 	// Name identifies the task and is what a trigger asks for.
 	Name string
+	// Follows names the tasks this one runs after, and is the whole graph: an
+	// edge to a task nobody registered, or one that closes a cycle, is refused
+	// where the task is registered rather than found by a depth cap at runtime.
+	// Each edge fires on its own: a task that follows two of them runs after
+	// either one, rather than waiting for both.
+	Follows []string
 	// Backoff holds this task back from its own schedule while it keeps
 	// faulting. Its zero value is a task that retries on schedule regardless.
 	Backoff Backoff

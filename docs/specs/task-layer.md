@@ -219,22 +219,48 @@ is checked rather than inferred.
 
 | Task | Argument | Resources | Schedule |
 | --- | --- | --- | --- |
-| `sync:source` | none | `inventory` exclusive | every hour |
+| `sync:source` | library, or none for every one | `inventory` exclusive | every hour |
 | `sync:target` | target slot, or none for every one | `inventory` exclusive | every six hours |
 | `sync:clear` | target slot | `inventory` exclusive | none |
 | `surface:annotate` | none | `inventory` exclusive | none |
 | `surface:index` | none | `surface-index` exclusive | the configured rebuild interval |
 
-A read that stored a library asks for the targets to be written and for the
-ground under the stages to be read again. So `sync:target`'s own schedule is a
-backstop rather than the timely path: what it catches is a slot that failed on
-its own, and an operator who has the read switched off entirely.
+The read takes a library the same way the targets take a slot: none is every
+configured one, a name is that one alone. One task rather than one per library,
+for the reason the targets are one task — the configured set is a runtime
+setting and tasks are registered at startup, so a library added through the
+settings page would otherwise wait for a restart.
+
+`sync:target` follows the read. `surface:annotate` follows both the read and the
+index rebuild, and runs after each: either alone leaves stages wanting it.
+`sync:target`'s own schedule is a backstop behind its edge — what it catches is a
+slot that failed on its own, and an operator who has the read switched off.
 
 `sync:target` takes a slot name or nothing. Nothing is every configured slot,
 which is what both the schedule and a source read ask for; a name is that slot
 alone. It is one task rather than one per slot because slots are a runtime
 setting and tasks are registered at startup — per-slot tasks would leave a newly
 onboarded slot doing nothing until a restart.
+
+## What follows what
+
+A task declares the tasks it follows, and that declaration is the whole graph.
+An edge naming a task this build does not register, or one that closes a cycle,
+is refused when the graph is resolved rather than found by a depth cap at four
+in the morning. The cap and the set of what one chain has run stay behind that,
+as belt and braces.
+
+What follows an attempt follows a successful one. A read that failed stored
+nothing to write or classify, and a rebuild that found nothing new left every
+stored classification standing.
+
+Each edge fires on its own, so a task following two predecessors runs after
+each. That is what classification wants: a read leaves stages nobody has
+classified, and a rebuild leaves the stored classifications stale, and neither
+is waiting on the other.
+
+An edge carries no argument. What a successor is over is its own business:
+`sync:target` reconciles every configured slot when nothing names one.
 
 ## Switching a task off
 

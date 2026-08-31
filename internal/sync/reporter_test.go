@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nobbs/domestique/internal/route"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -154,6 +156,12 @@ type reportingRunner struct {
 	annotateFailed     int
 }
 
+func (r *reportingRunner) RunSourceProvider(_ context.Context, _ route.Provider) Result {
+	r.sourceRuns++
+
+	return r.source
+}
+
 func (r *reportingRunner) RunSource(context.Context) Result {
 	r.sourceRuns++
 
@@ -188,6 +196,10 @@ func (r *reportingRunner) AnnotateStored(context.Context) (classified, failed in
 type blockingReportingRunner struct {
 	started chan struct{}
 	release chan struct{}
+}
+
+func (r *blockingReportingRunner) RunSourceProvider(ctx context.Context, _ route.Provider) Result {
+	return r.RunSource(ctx)
 }
 
 func (r *blockingReportingRunner) RunSource(context.Context) Result {
@@ -386,4 +398,39 @@ func TestReporterRecordsNoTargetRunsForASourceRun(t *testing.T) {
 
 	reporter.RunPhase(t.Context(), PhaseSource)
 	assert.Empty(t, state.recordedRuns)
+}
+
+// The reporter has to hand the named library to the runner rather than falling
+// back to reading every one: a task that asks for one library and gets all of
+// them looks like it worked.
+func TestReporterRunSourceProviderReadsTheLibraryItWasGiven(t *testing.T) {
+	t.Parallel()
+
+	runner := &recordingSourceRunner{}
+	runner.source = Result{Phase: PhaseSource, Outcome: OutcomeSucceeded}
+	reporter := newReporter(t, runner, &fakeRunState{})
+
+	reporter.RunSourceProvider(t.Context(), route.ProviderKomoot)
+
+	assert.Equal(t, []route.Provider{route.ProviderKomoot}, runner.asked, "the library the runner was asked for")
+	assert.Zero(t, runner.wholePhaseRuns, "the reporter read every library instead of the one it was given")
+}
+
+// recordingSourceRunner tells a read of one library from a read of them all.
+type recordingSourceRunner struct {
+	asked []route.Provider
+	reportingRunner
+	wholePhaseRuns int
+}
+
+func (r *recordingSourceRunner) RunSourceProvider(_ context.Context, provider route.Provider) Result {
+	r.asked = append(r.asked, provider)
+
+	return r.source
+}
+
+func (r *recordingSourceRunner) RunSource(context.Context) Result {
+	r.wholePhaseRuns++
+
+	return r.source
 }

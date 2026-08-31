@@ -25,6 +25,7 @@ import (
 	"github.com/nobbs/domestique/internal/osmindex"
 	"github.com/nobbs/domestique/internal/pushover"
 	"github.com/nobbs/domestique/internal/readiness"
+	"github.com/nobbs/domestique/internal/route"
 	"github.com/nobbs/domestique/internal/runtimeconfig"
 	"github.com/nobbs/domestique/internal/sqlite"
 	"github.com/nobbs/domestique/internal/surface"
@@ -148,6 +149,9 @@ func run(ctx context.Context) error {
 	reconciler, err := syncservice.New(&syncservice.Options{
 		TargetIDs: destination.targetIDs,
 		Sources:   func() ([]syncservice.Source, error) { return sources(runtimeSettings) },
+		SourceFor: func(provider route.Provider) (syncservice.Source, bool, error) {
+			return sourceFor(runtimeSettings, provider)
+		},
 		AllowEmptySourceDeletion: func() bool {
 			return runtimeSettings.Values().Sync.AllowEmptySourceDeletion
 		},

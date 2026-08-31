@@ -37,6 +37,13 @@ type Options struct {
 	// settings an operator edits while the service runs. Empty means unconfigured.
 	Sources   func() ([]Source, error)
 	TargetIDs func() []string
+
+	// SourceFor builds one library's client on its own. A read of one library
+	// must not depend on another being configured, which building them all
+	// does: the whole set refuses when any one of them is half entered.
+	// A provider this service has no configuration for is not configured rather
+	// than an error.
+	SourceFor func(provider route.Provider) (source Source, configured bool, err error)
 }
 
 // Service reconciles a complete source inventory to each configured target.
@@ -44,6 +51,7 @@ type Options struct {
 type Service struct {
 	state                    State
 	sources                  func() ([]Source, error)
+	sourceFor                func(route.Provider) (Source, bool, error)
 	processor                Processor
 	encoder                  Encoder
 	target                   Target
@@ -67,7 +75,7 @@ func New(
 	if options == nil || state == nil || processor == nil || encoder == nil || target == nil {
 		return nil, errors.New("sync options and dependencies are required")
 	}
-	if options.Sources == nil || options.TargetIDs == nil {
+	if options.Sources == nil || options.SourceFor == nil || options.TargetIDs == nil {
 		return nil, errors.New("sync requires its sources and targets to be readable")
 	}
 	if options.AllowEmptySourceDeletion == nil {
@@ -77,6 +85,7 @@ func New(
 	return &Service{
 		state:                    state,
 		sources:                  options.Sources,
+		sourceFor:                options.SourceFor,
 		processor:                processor,
 		encoder:                  encoder,
 		target:                   target,
@@ -129,6 +138,30 @@ func (s *Service) RunSource(ctx context.Context) Result {
 	}
 
 	return result
+}
+
+// RunSourceProvider reads exactly one configured source library, leaving every
+// other source's stored stages untouched. A provider this service is not
+// configured for is not ready rather than a fault: absent is not broken.
+func (s *Service) RunSourceProvider(ctx context.Context, provider route.Provider) Result {
+	source, configured, err := s.sourceFor(provider)
+	if err != nil {
+		return Result{Phase: PhaseSource, Outcome: OutcomeFailed, Failure: FailureState}
+	}
+	if !configured {
+		return Result{Phase: PhaseSource, Outcome: OutcomeNotReady}
+	}
+	outcome, failure, stageCount := s.runOneSource(ctx, source, provider)
+
+	return Result{
+		Phase:        PhaseSource,
+		Outcome:      outcome,
+		Failure:      failure,
+		SourceStages: stageCount,
+		Sources: []SourceResult{{
+			Provider: provider, Outcome: outcome, Failure: failure, StageCount: stageCount,
+		}},
+	}
 }
 
 // runOneSource reads and stores one configured source's own share of the

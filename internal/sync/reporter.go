@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"sync/atomic"
 	"time"
+
+	"github.com/nobbs/domestique/internal/route"
 )
 
 // RunState records terminal run data and failure-notification delivery state.
@@ -38,6 +40,8 @@ type Runner interface {
 	// RunTarget reconciles exactly one configured target, on the same terms as
 	// RunTargets scoped to that slot alone.
 	RunTarget(ctx context.Context, targetID string) Result
+	// RunSourceProvider reads exactly one configured source library.
+	RunSourceProvider(ctx context.Context, provider route.Provider) Result
 	// ClearTarget deletes every owned route from exactly one configured
 	// target and forgets its stage mappings. Only an operator asks for it.
 	ClearTarget(ctx context.Context, targetID string) Result
@@ -61,10 +65,18 @@ func (r *Reporter) RunPhase(ctx context.Context, phase Phase) Result {
 	return r.runPhases(ctx, phase == PhaseSource, phase == PhaseTargets)
 }
 
+// RunSourceProvider reads exactly one library, on the same recording terms as
+// the whole source phase.
+func (r *Reporter) RunSourceProvider(ctx context.Context, provider route.Provider) Result {
+	return r.runPhasesWith(ctx, true, false, func(ctx context.Context) Result {
+		return r.runner.RunSourceProvider(ctx, provider)
+	}, nil)
+}
+
 // ReconcileTarget reconciles exactly one configured target, on the same
 // recording and reporting terms as a scheduled target phase.
 func (r *Reporter) ReconcileTarget(ctx context.Context, targetID string) Result {
-	return r.runPhasesWith(ctx, false, true, func(ctx context.Context) Result {
+	return r.runPhasesWith(ctx, false, true, nil, func(ctx context.Context) Result {
 		return r.runner.RunTarget(ctx, targetID)
 	})
 }
@@ -72,7 +84,7 @@ func (r *Reporter) ReconcileTarget(ctx context.Context, targetID string) Result 
 // ClearTarget deletes every route this service owns from one target and forgets
 // its stage mappings.
 func (r *Reporter) ClearTarget(ctx context.Context, targetID string) Result {
-	return r.runPhasesWith(ctx, false, true, func(ctx context.Context) Result {
+	return r.runPhasesWith(ctx, false, true, nil, func(ctx context.Context) Result {
 		return r.runner.ClearTarget(ctx, targetID)
 	})
 }
@@ -108,22 +120,33 @@ func (r *Reporter) enter(phase Phase) {
 // runPhases runs the requested phases in order and returns the last result.
 // Source before targets, so one tick carries a change all the way through.
 func (r *Reporter) runPhases(ctx context.Context, source, targets bool) Result {
-	return r.runPhasesWith(ctx, source, targets, r.runner.RunTargets)
+	return r.runPhasesWith(ctx, source, targets, nil, nil)
 }
 
-// runPhasesWith is runPhases parameterized over what reconciles the target half,
-// so a single-target trigger shares every recording and reporting rule.
-func (r *Reporter) runPhasesWith(ctx context.Context, source, targets bool, runTargets func(context.Context) Result) Result {
+// runPhasesWith is runPhases parameterized over what runs each half, so a
+// trigger scoped to one library or one slot shares every recording and
+// reporting rule. A nil half is the service's own.
+func (r *Reporter) runPhasesWith(
+	ctx context.Context,
+	source, targets bool,
+	runSource, runTargets func(context.Context) Result,
+) Result {
 	defer r.phase.Store(nil)
 
 	result := Result{Outcome: OutcomeSkipped}
 	sourceStored := false
 	if source {
+		if runSource == nil {
+			runSource = r.runner.RunSource
+		}
 		r.enter(PhaseSource)
-		result = r.run(ctx, r.runner.RunSource)
+		result = r.run(ctx, runSource)
 		sourceStored = result.Outcome == OutcomeSucceeded
 	}
 	if targets {
+		if runTargets == nil {
+			runTargets = r.runner.RunTargets
+		}
 		r.enter(PhaseTargets)
 		result = r.run(ctx, runTargets)
 	}

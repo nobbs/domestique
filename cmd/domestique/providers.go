@@ -240,6 +240,38 @@ func sources(settings *runtimeconfig.Current) ([]syncservice.Source, error) {
 	return built, nil
 }
 
+// sourceFor builds one library's client, for a read asked for over that library
+// alone. Unlike sources it does not refuse when another library is half
+// configured: nothing it reads is written on any other library's behalf. A
+// provider that is not configured, or whose credentials are not entered yet, is
+// no client rather than an error.
+func sourceFor(
+	settings *runtimeconfig.Current, provider route.Provider,
+) (source syncservice.Source, configured bool, err error) {
+	for _, source := range settings.Values().Sources {
+		if source.Provider != provider {
+			continue
+		}
+		emailName, passwordName, known := runtimeconfig.SourceSecretNames(source.Provider)
+		if !known {
+			return nil, false, fmt.Errorf("unknown source provider %q", source.Provider)
+		}
+		email := settings.Secret(emailName).Bytes()
+		password := settings.Secret(passwordName).Bytes()
+		if len(email) == 0 || len(password) == 0 {
+			return nil, false, nil
+		}
+		client, err := newSource(source, email, password)
+		if err != nil {
+			return nil, false, err
+		}
+
+		return client, true, nil
+	}
+
+	return nil, false, nil
+}
+
 func newSource(source runtimeconfig.Source, email, password []byte) (syncservice.Source, error) {
 	switch source.Provider {
 	case route.ProviderVeloPlanner:
