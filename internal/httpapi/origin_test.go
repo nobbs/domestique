@@ -43,6 +43,18 @@ func askedTasks(t *testing.T, handler *Handler) []startedTask {
 	return tasks.asked
 }
 
+// scheduledTasks is what the handler was told to switch, so a refused request
+// can be shown to have written no schedule. The schedule is held by the task
+// layer rather than the store, so watching the store would see nothing either
+// way.
+func scheduledTasks(t *testing.T, handler *Handler) []scheduledTask {
+	t.Helper()
+	tasks, ok := handler.tasks.(*fakeTasks)
+	require.True(t, ok, "the handler was not built over a fake task list")
+
+	return tasks.scheduled
+}
+
 // decidedAlerts is what the handler's matrix was told, so a refused request can
 // be shown to have decided nothing.
 func decidedAlerts(t *testing.T, handler *Handler) []AlertDecision {
@@ -87,10 +99,10 @@ func TestMutableRoutesRejectForeignProvenance(t *testing.T) {
 
 				assert.Equalf(t, http.StatusForbidden, response.Code, "%s %s", route.method, route.target)
 				assert.Zerof(t, trigger.calls, "%s %s started a run", route.method, route.target)
-				assert.Zerof(t, state.scheduleWrites, "%s %s wrote the schedule", route.method, route.target)
 				assert.Emptyf(t, state.reprocessed, "%s %s reprocessed a stage", route.method, route.target)
 				assert.Emptyf(t, decidedAlerts(t, handler), "%s %s decided an alert", route.method, route.target)
 				assert.Emptyf(t, askedTasks(t, handler), "%s %s reached the task layer", route.method, route.target)
+				assert.Emptyf(t, scheduledTasks(t, handler), "%s %s wrote a schedule", route.method, route.target)
 			}
 		})
 	}

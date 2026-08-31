@@ -165,7 +165,6 @@ type State interface {
 	TargetState
 	StageState
 	RunState
-	ScheduleState
 }
 
 // TargetState is what is known locally about each configured Wahoo account.
@@ -220,12 +219,6 @@ type SettingsState interface {
 	// Missing names the settings a run still needs, so the page can say what is
 	// left rather than leaving an operator to find out from a failed run.
 	Missing() []string
-}
-
-// ScheduleState is the pair of switches governing unattended runs.
-type ScheduleState interface {
-	SyncSchedule(ctx context.Context) (source, targets bool, err error)
-	SetSyncSchedule(ctx context.Context, source, targets bool) error
 }
 
 // AccessVerifier proves the identity behind a Cloudflare Access assertion. It

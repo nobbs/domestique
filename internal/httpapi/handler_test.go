@@ -2100,7 +2100,6 @@ type fakeState struct {
 	surfaceErr        error
 	phaseRunErr       error
 	historyErr        error
-	scheduleErr       error
 	coverageErr       error
 	reprocessErr      error
 	sourceStageErr    error
@@ -2124,11 +2123,8 @@ type fakeState struct {
 	phaseRuns         []phaseRun
 	history           []recordedRun
 	surfaceMetres     float64
-	scheduleWrites    int
 	surfaceClassified int
 	surfaceTotal      int
-	scheduleSource    bool
-	scheduleTargets   bool
 }
 
 // fakeTarget is one configured slot and the authorisation state it is in.
@@ -2388,24 +2384,6 @@ func (s *fakeState) SurfaceCoverage(context.Context) (classified, total int, err
 	}
 
 	return s.surfaceClassified, s.surfaceTotal, nil
-}
-
-func (s *fakeState) SyncSchedule(context.Context) (source, targets bool, err error) {
-	if s.scheduleErr != nil {
-		return false, false, s.scheduleErr
-	}
-
-	return s.scheduleSource, s.scheduleTargets, nil
-}
-
-func (s *fakeState) SetSyncSchedule(_ context.Context, source, targets bool) error {
-	if s.scheduleErr != nil {
-		return s.scheduleErr
-	}
-	s.scheduleSource, s.scheduleTargets = source, targets
-	s.scheduleWrites++
-
-	return nil
 }
 
 // statusOf reads the status document as the handler serves it.
@@ -2671,6 +2649,7 @@ type fakeTasks struct {
 	scheduleErr error
 	asked       []startedTask
 	started     []startedTask
+	scheduled   []scheduledTask
 	registered  []RegisteredTask
 	refuse      bool
 }
@@ -2680,9 +2659,15 @@ type startedTask struct {
 	argument string
 }
 
+type scheduledTask struct {
+	name    string
+	enabled bool
+}
+
 func (t *fakeTasks) Registered() []RegisteredTask { return t.registered }
 
 func (t *fakeTasks) Schedule(_ context.Context, name string, enabled bool) error {
+	t.scheduled = append(t.scheduled, scheduledTask{name: name, enabled: enabled})
 	if t.scheduleErr != nil {
 		return t.scheduleErr
 	}
