@@ -89,9 +89,10 @@ func (r *Reporter) ClearTarget(ctx context.Context, targetID string) Result {
 	})
 }
 
-// Annotate runs one classification pass, touching only the local index and cache.
-func (r *Reporter) Annotate(ctx context.Context) {
-	r.annotate(ctx)
+// Annotate runs one classification pass, touching only the local index and
+// cache, and reports how many stages it could not classify.
+func (r *Reporter) Annotate(ctx context.Context) (failed int) {
+	return r.annotate(ctx)
 }
 
 // SurfaceIncomplete reports how many stages the most recently completed
@@ -160,9 +161,11 @@ func (r *Reporter) runPhasesWith(
 
 // annotate runs one classification pass and records what it could not finish,
 // for SurfaceIncomplete to read back.
-func (r *Reporter) annotate(ctx context.Context) {
-	_, failed := r.runner.AnnotateStored(ctx)
+func (r *Reporter) annotate(ctx context.Context) (failed int) {
+	_, failed = r.runner.AnnotateStored(ctx)
 	r.surfaceIncomplete.Store(int64(failed))
+
+	return failed
 }
 
 func (r *Reporter) run(ctx context.Context, phase func(context.Context) Result) Result {

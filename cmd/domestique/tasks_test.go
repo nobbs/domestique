@@ -94,6 +94,20 @@ func TestEachInventoryTaskRunsItsOwnWork(t *testing.T) {
 	}
 }
 
+// A classification pass that left stages unclassified is recorded as failed
+// rather than succeeded, so its run history is honest and its own backoff can
+// hold it back the way every other task's can.
+func TestClassificationRecordsFailureWhenStagesAreLeftUnclassified(t *testing.T) {
+	t.Parallel()
+
+	synchronizer := &fakeSynchronizer{annotationFailed: 2}
+	definition := definitionNamed(t, inventoryTasks(synchronizer, liveSettings(t), allEnabled, twoTargets), taskSurfaceAnnotate)
+
+	result := definition.Run.Run(t.Context(), task.Invocation{Task: taskSurfaceAnnotate})
+	assert.Equal(t, task.Failed, result.Outcome, "outcome")
+	assert.Equal(t, detailIncomplete, result.Detail, "detail")
+}
+
 func TestSyncResultCarriesEveryOutcomeAcross(t *testing.T) {
 	t.Parallel()
 
@@ -174,14 +188,15 @@ func definitionNamed(t *testing.T, definitions []task.Definition, name string) t
 }
 
 type fakeSynchronizer struct {
-	providers   []route.Provider
-	phases      []syncservice.Phase
-	reconciled  []string
-	cleared     []string
-	result      syncservice.Result
-	scheduled   int
-	both        int
-	annotations int
+	providers        []route.Provider
+	phases           []syncservice.Phase
+	reconciled       []string
+	cleared          []string
+	result           syncservice.Result
+	scheduled        int
+	both             int
+	annotations      int
+	annotationFailed int
 }
 
 func (s *fakeSynchronizer) Run(context.Context) syncservice.Result {
@@ -220,7 +235,11 @@ func (s *fakeSynchronizer) ClearTarget(_ context.Context, targetID string) syncs
 	return s.result
 }
 
-func (s *fakeSynchronizer) Annotate(context.Context) { s.annotations++ }
+func (s *fakeSynchronizer) Annotate(context.Context) int {
+	s.annotations++
+
+	return s.annotationFailed
+}
 
 type fakeIndexBuilder struct {
 	err     error

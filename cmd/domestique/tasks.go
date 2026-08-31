@@ -64,6 +64,10 @@ const (
 	detailNoRegions task.Detail = "no_regions"
 )
 
+// detailIncomplete is why a classification pass that left stages unclassified
+// is recorded as failed rather than succeeded.
+const detailIncomplete task.Detail = "incomplete"
+
 // synchronizer is the synchronization work the task layer starts, and
 // indexBuilder is the surface index rebuild. Both are declared here so the task
 // definitions can be read without a reporter or a builder behind them.
@@ -72,7 +76,7 @@ type synchronizer interface {
 	RunSourceProvider(ctx context.Context, provider route.Provider) syncservice.Result
 	ReconcileTarget(ctx context.Context, targetID string) syncservice.Result
 	ClearTarget(ctx context.Context, targetID string) syncservice.Result
-	Annotate(ctx context.Context)
+	Annotate(ctx context.Context) (failed int)
 }
 
 type indexBuilder interface {
@@ -212,7 +216,9 @@ func inventoryTasks(
 			Follows:   []string{taskSyncSource, taskSurfaceIndex},
 			Backoff:   task.Backoff{Base: annotateBackoffBase, Cap: backoffCap},
 			Run: task.RunnerFunc(func(ctx context.Context, _ task.Invocation) task.Result {
-				reporter.Annotate(ctx)
+				if failed := reporter.Annotate(ctx); failed > 0 {
+					return task.Result{Outcome: task.Failed, Detail: detailIncomplete}
+				}
 
 				return task.Result{Outcome: task.Succeeded}
 			}),
