@@ -650,5 +650,11 @@ func schemaMigrations() [][]string {
 			`INSERT INTO task_schedule (task, enabled, updated_at_unix)
 				SELECT 'sync:target', targets_enabled, 0 FROM sync_schedule WHERE id = 1`,
 		},
+		{
+			// Recency now orders by finished_at rather than id: a refusal can commit
+			// its row after a later attempt's, so id alone no longer tracks event time.
+			`DROP INDEX task_runs_task_index`,
+			`CREATE INDEX task_runs_task_index ON task_runs(task, finished_at_unix DESC, id DESC)`,
+		},
 	}
 }
