@@ -150,3 +150,53 @@ func (s *Store) LastTaskSuccess(
 
 	return time.Unix(finishedUnix, 0).UTC(), true, nil
 }
+
+// backoffScan bounds how far back a fault streak is counted. A task that has
+// failed this many times running is as backed off as the cap allows, so reading
+// further would change nothing.
+const backoffScan = 64
+
+// TaskFaultStreak reports how many of a task's most recent attempts over one
+// argument ended in a fault, and when the last of them finished. A success ends
+// the streak; anything else — a refusal, a run that found nothing to do — is
+// passed over, because neither says the task is broken.
+func (s *Store) TaskFaultStreak(
+	ctx context.Context, task, argument string,
+) (faults int, lastAt time.Time, err error) {
+	if task == "" {
+		return 0, time.Time{}, errors.New("task is required")
+	}
+	rows, err := s.database.QueryContext(ctx, `
+		SELECT outcome, finished_at_unix FROM task_runs
+		WHERE task = ? AND argument = ? ORDER BY id DESC LIMIT ?
+	`, task, argument, backoffScan)
+	if err != nil {
+		return 0, time.Time{}, fmt.Errorf("reading a task's fault streak: %w", err)
+	}
+	defer closeRows(rows)
+
+	for rows.Next() {
+		var (
+			outcome    string
+			finishedAt int64
+		)
+		if err := rows.Scan(&outcome, &finishedAt); err != nil {
+			return 0, time.Time{}, fmt.Errorf("reading a task's fault streak: %w", err)
+		}
+		if outcome == "succeeded" {
+			break
+		}
+		if outcome != "failed" && outcome != "blocked" {
+			continue
+		}
+		if faults == 0 {
+			lastAt = time.Unix(finishedAt, 0).UTC()
+		}
+		faults++
+	}
+	if err := rows.Err(); err != nil {
+		return 0, time.Time{}, fmt.Errorf("reading a task's fault streak: %w", err)
+	}
+
+	return faults, lastAt, nil
+}

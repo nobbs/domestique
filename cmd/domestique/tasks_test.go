@@ -515,6 +515,12 @@ func (*countingStore) LastTaskSuccess(context.Context, string, string) (finished
 	return time.Time{}, false, nil
 }
 
+func (*countingStore) TaskFaultStreak(
+	context.Context, string, string,
+) (faults int, lastAt time.Time, err error) {
+	return 0, time.Time{}, nil
+}
+
 func (*countingStore) LastFailureNotification(context.Context, string) (time.Time, bool, error) {
 	return time.Time{}, false, nil
 }
