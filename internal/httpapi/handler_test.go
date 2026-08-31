@@ -2832,7 +2832,7 @@ type startedTask struct {
 
 func (t *fakeTasks) Registered() []RegisteredTask { return t.registered }
 
-func (t *fakeTasks) Run(_ context.Context, name, argument string) bool {
+func (t *fakeTasks) Run(name, argument string) bool {
 	attempt := startedTask{name: name, argument: argument}
 	t.asked = append(t.asked, attempt)
 	if t.refuse {

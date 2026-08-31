@@ -574,7 +574,7 @@ func TestTaskSurfaceListsWhatTheManagerRegisters(t *testing.T) {
 	)
 	require.NoError(t, err, "registerTasks()")
 
-	surface := taskSurface{manager: manager}
+	surface := taskSurface{ctx: t.Context(), manager: manager}
 	listed := surface.Registered()
 
 	require.Len(t, listed, 2, "listed tasks")
@@ -603,13 +603,53 @@ func TestTaskSurfaceRunsThroughTheManager(t *testing.T) {
 	)
 	require.NoError(t, err, "registerTasks()")
 
-	surface := taskSurface{manager: manager}
-	require.True(t, surface.Run(t.Context(), "sync:target", "rider-a"), "Run()")
+	surface := taskSurface{ctx: t.Context(), manager: manager}
+	require.True(t, surface.Run("sync:target", "rider-a"), "Run()")
 	manager.Wait()
 
 	invocation := <-ran
 	assert.Equal(t, "rider-a", invocation.Argument, "the argument reached the runner")
 	assert.Equal(t, task.TriggerManual, invocation.Trigger, "an operator's attempt was not recorded as one")
 
-	assert.False(t, surface.Run(t.Context(), "invented", ""), "a name nothing registers was accepted")
+	assert.False(t, surface.Run("invented", ""), "a name nothing registers was accepted")
+}
+
+// An accepted attempt outlives the request that asked for it. A request context
+// is cancelled the moment its handler returns, so a surface holding one would
+// end every attempt just after accepting it.
+func TestTaskSurfaceRunsOutlastTheRequestThatAskedForThem(t *testing.T) {
+	t.Parallel()
+
+	started := make(chan struct{})
+	finished := make(chan error, 1)
+	manager, err := registerTasks(
+		&countingStore{}, &silentNotifier{}, undecided{}, alwaysOn,
+		[]task.Definition{{
+			Name: "slow",
+			Run: task.RunnerFunc(func(ctx context.Context, _ task.Invocation) task.Result {
+				close(started)
+				// Long enough that a request-scoped context would already be done.
+				select {
+				case <-ctx.Done():
+				case <-time.After(50 * time.Millisecond):
+				}
+				finished <- ctx.Err()
+
+				return task.Result{Outcome: task.Succeeded}
+			}),
+		}},
+	)
+	require.NoError(t, err, "registerTasks()")
+
+	// The service context outlives the request; the request's own is cancelled
+	// as soon as its handler would have returned.
+	_, cancelRequest := context.WithCancel(t.Context())
+	surface := taskSurface{ctx: t.Context(), manager: manager}
+
+	require.True(t, surface.Run("slow", ""), "Run()")
+	<-started
+	cancelRequest()
+
+	manager.Wait()
+	assert.NoError(t, <-finished, "the attempt was cancelled with the request that asked for it")
 }

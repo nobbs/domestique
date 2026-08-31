@@ -61,9 +61,10 @@ type Tasks interface {
 	// Registered lists every task, in a stable order, with what is known about
 	// each right now.
 	Registered() []RegisteredTask
-	// Run starts one attempt and reports whether it was accepted. An accepted
-	// attempt continues independently of the request that asked for it.
-	Run(ctx context.Context, name, argument string) bool
+	// Run starts one attempt and reports whether it was accepted. It takes no
+	// context: an accepted attempt outlives the request that asked for it, and a
+	// request context is cancelled the moment its handler returns.
+	Run(name, argument string) bool
 }
 
 // RegisteredTask is one background activity and what is true of it now.

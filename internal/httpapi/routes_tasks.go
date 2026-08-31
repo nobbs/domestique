@@ -44,6 +44,6 @@ func (h *Handler) RunTask(writer http.ResponseWriter, request *http.Request) {
 	}
 	argument := request.PathValue("argument")
 	h.accepted(writer, codeTaskInProgress, taskInProgress, func() bool {
-		return h.tasks.Run(request.Context(), name, argument)
+		return h.tasks.Run(name, argument)
 	})
 }

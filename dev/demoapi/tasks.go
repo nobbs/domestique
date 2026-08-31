@@ -1,10 +1,6 @@
 package main
 
-import (
-	"context"
-
-	"github.com/nobbs/domestique/internal/httpapi"
-)
+import "github.com/nobbs/domestique/internal/httpapi"
 
 // demoTasks is the task list a demo shows. The shipped binary builds one from
 // what it registers; a demo registers none, so this stands in the names an
@@ -30,4 +26,4 @@ func (demoTasks) Registered() []httpapi.RegisteredTask {
 
 // Run accepts any registered name. Nothing happens: a demo has no upstream to
 // reach and no target to write.
-func (demoTasks) Run(context.Context, string, string) bool { return true }
+func (demoTasks) Run(string, string) bool { return true }

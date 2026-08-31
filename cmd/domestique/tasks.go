@@ -274,8 +274,14 @@ func syncResult(result *syncservice.Result) task.Result {
 	return task.Result{Outcome: outcome, Detail: task.Detail(result.Failure), Next: next}
 }
 
-// taskSurface adapts the manager to what the HTTP surface reads and starts.
-type taskSurface struct{ manager *task.Manager }
+// taskSurface adapts the manager to what the HTTP surface reads and starts. It
+// carries the service's own context rather than taking each request's: a
+// request context is cancelled the moment its handler returns, which would end
+// every attempt started over HTTP just after it was accepted.
+type taskSurface struct {
+	ctx     context.Context
+	manager *task.Manager
+}
 
 // Registered lists what this build registers, in registration order.
 func (s taskSurface) Registered() []httpapi.RegisteredTask {
@@ -293,9 +299,11 @@ func (s taskSurface) Registered() []httpapi.RegisteredTask {
 	return tasks
 }
 
-// Run starts one attempt, on exactly the terms the schedule starts one.
-func (s taskSurface) Run(ctx context.Context, name, argument string) bool {
-	return s.manager.Trigger(ctx, name, argument)
+// Run starts one attempt, on exactly the terms the schedule starts one, and
+// under the same context — so it ends when the service does rather than when
+// the request that asked for it does.
+func (s taskSurface) Run(name, argument string) bool {
+	return s.manager.Trigger(s.ctx, name, argument)
 }
 
 // taskStarter is the task layer as the HTTP boundary needs it, and syncReporter
