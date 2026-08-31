@@ -471,8 +471,6 @@ func TestGetSettingsCarriesEveryAlertTheServiceCanRaise(t *testing.T) {
 	}, view.Alerts, "the alert matrix")
 }
 
-// A service with nothing to announce still has a matrix, an empty one. The page
-// has to tell that from a field it was not given.
 func TestGetSettingsSendsAnEmptyAlertMatrixAsAList(t *testing.T) {
 	handler, _ := alertsHandler(t)
 

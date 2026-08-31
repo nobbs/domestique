@@ -1172,8 +1172,6 @@ func TestSetTaskScheduleSwitchesOneTask(t *testing.T) {
 	assert.False(t, view.Tasks[1].Enabled, "the switched task is still enabled")
 }
 
-// A name this build does not register is refused, so a page built against
-// another build switches nothing that silently does nothing.
 func TestSetTaskScheduleRefusesANameThisBuildDoesNotRegister(t *testing.T) {
 	handler, _ := tasksHandler(t, RegisteredTask{Name: "sync:source"})
 
@@ -1185,10 +1183,9 @@ func TestSetTaskScheduleRefusesANameThisBuildDoesNotRegister(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, response.Code, response.Body.String())
 }
 
-// A body without the switch is refused before it reaches the handler: enabled
-// is required in the contract, and every route is wrapped by the request
-// validator. Without that, a missing bool would decode as false and switch the
-// task off — so this asserts the validator is doing its job, not the handler.
+// enabled is required in the contract and every route is wrapped by the
+// request validator; without that, a missing bool would decode as false and
+// switch the task off.
 func TestSetTaskScheduleRefusesAnythingButOneWholeSwitch(t *testing.T) {
 	for _, body := range []string{`{}`, `{"enabled": true, "other": 1}`, "not json", `{"enabled":true}{"enabled":false}`} {
 		handler, _ := tasksHandler(t, RegisteredTask{Name: "sync:source"})
@@ -2667,9 +2664,8 @@ func (a *fakeAlerts) Decide(_ context.Context, decisions []AlertDecision) error 
 	return nil
 }
 
-// fakeTasks stands in for the registered background activities. It keeps what
-// it was asked for apart from what it started, so a refused attempt can be told
-// from one the handler never asked for at all.
+// fakeTasks keeps what it was asked for apart from what it started, so a
+// refused attempt can be told from one never asked for at all.
 type fakeTasks struct {
 	scheduleErr error
 	asked       []startedTask

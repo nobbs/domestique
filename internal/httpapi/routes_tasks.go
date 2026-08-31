@@ -8,10 +8,7 @@ import (
 )
 
 // TaskSyncSource is the registered name of the task that reads the source
-// libraries. It is named here because a task name is part of what this surface
-// publishes: the page asks for a task rather than for a route, and so does the
-// reprocess route in routes_library.go, which is a read asked for on a stage's
-// behalf — what the targets hold follows from it.
+// libraries, also used by the reprocess route in routes_library.go.
 const TaskSyncSource = "sync:source"
 
 const (
@@ -87,8 +84,7 @@ func (h *Handler) registers(name string) bool {
 }
 
 // RunTask starts one attempt of a named task, over an argument when the path
-// carries one. A name this build does not register is not found, so a page
-// built against another build asks for nothing that silently does nothing.
+// carries one.
 func (h *Handler) RunTask(writer http.ResponseWriter, request *http.Request) {
 	name := request.PathValue("name")
 	if !h.registers(name) {

@@ -115,8 +115,6 @@ func TestRunTaskStartsTheNamedTask(t *testing.T) {
 	}
 }
 
-// A name this build does not register is not found, so a page built against
-// another build asks for nothing that silently does nothing.
 func TestRunTaskRefusesANameThisBuildDoesNotRegister(t *testing.T) {
 	handler, tasks := tasksHandler(t, RegisteredTask{Name: "sync:source"})
 
