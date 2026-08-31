@@ -16,6 +16,7 @@ function route(title: string, overrides: Partial<Route> = {}): Route {
     contentHash: `hash-${title}`,
     distanceMetres: 10_000,
     ascentMetres: 100,
+    descentMetres: 80,
     maxGradientPercent: 5,
     pointCount: 10,
     movingSeconds: 3_600,

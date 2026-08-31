@@ -114,6 +114,8 @@ under other names.
 
 **ascent** — total metres climbed over a route, shown as "Ascent".
 
+**descent** — total metres lost over a route, shown as "Descent".
+
 **climb** — one named sustained ascent within a route, of the kind `ClimbsList`
 enumerates. A route's total ascent is not a climb.
 

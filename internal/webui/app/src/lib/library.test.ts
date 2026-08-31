@@ -14,6 +14,7 @@ function stage(overrides: Partial<Route> = {}): Route {
     contentHash: "hash",
     distanceMetres: 42_500,
     ascentMetres: 620,
+    descentMetres: 540,
     maxGradientPercent: 11.4,
     pointCount: 1200,
     ...overrides,

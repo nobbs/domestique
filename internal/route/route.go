@@ -107,6 +107,7 @@ type Summary struct {
 	Bounds             Bounds
 	DistanceMetres     float64
 	AscentMetres       float64
+	DescentMetres      float64
 	MaxGradientPercent float64
 	SourceRouteID      int64
 	PointCount         int
@@ -284,6 +285,26 @@ func (s *Route) ElevationGainMetres() float64 {
 	}
 
 	return gain
+}
+
+// ElevationLossMetres returns the total descent in the route profile, summing
+// the negative steps as stored. Same profile, same guard as
+// ElevationGainMetres — see its comment for why raw altitude cannot be summed
+// directly.
+func (s *Route) ElevationLossMetres() float64 {
+	if !s.hasCompleteElevation() {
+		return 0
+	}
+
+	loss := 0.0
+	for index := 1; index < len(s.geometry); index++ {
+		step := *s.geometry[index].Elevation - *s.geometry[index-1].Elevation
+		if step < 0 {
+			loss -= step
+		}
+	}
+
+	return loss
 }
 
 // MaxGradientPercent returns the steepest sustained gradient, measured across a

@@ -152,6 +152,30 @@ func TestStageElevationGainMetres(t *testing.T) {
 	}
 }
 
+func TestStageElevationLossMetres(t *testing.T) {
+	// Roughly 111 m of northing per 0.001 degrees of latitude.
+	const step = 0.001
+
+	tests := []struct {
+		name       string
+		elevations []float64
+		want       float64
+	}{
+		{name: "flat", elevations: []float64{100, 100, 100}, want: 0},
+		{name: "monotonic descent", elevations: []float64{200, 150, 100}, want: 100},
+		{name: "climb is not counted", elevations: []float64{100, 150, 200}, want: 0},
+		{name: "only the descending parts", elevations: []float64{170, 120, 150, 100}, want: 100},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			stage := elevationTestStage(t, test.elevations, step)
+
+			assert.InDelta(t, test.want, stage.ElevationLossMetres(), 0.001)
+		})
+	}
+}
+
 func TestStageMaxGradientPercent(t *testing.T) {
 	// 0.0018 degrees of latitude is about 200 m, so each step spans two
 	// gradient windows and a gradient is measurable.

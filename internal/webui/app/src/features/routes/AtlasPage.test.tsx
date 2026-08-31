@@ -93,6 +93,7 @@ function route(
     contentHash: `hash-${sourceRouteId}-${stageOrder}`,
     distanceMetres: 10_000 * stageOrder + sourceRouteId,
     ascentMetres: 100 * stageOrder,
+    descentMetres: 80 * stageOrder,
     maxGradientPercent: 8,
     pointCount: 100,
   };

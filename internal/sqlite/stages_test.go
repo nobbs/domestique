@@ -113,10 +113,11 @@ func TestStoreCachesStageGeometryForTheMapView(t *testing.T) {
 
 func TestStoreCachesElevationStatistics(t *testing.T) {
 	store := openTestStore(t, testKey(1))
-	// A climb of 40 m spread over roughly 400 m of northing.
-	geometry := make([]route.Point, 0, 5)
-	for index := range 5 {
-		elevation := 100 + float64(index)*10
+	// A climb of 40 m followed by a descent of 15 m, so ascent and descent are
+	// distinct — not just mirrors of each other — over roughly 500 m of northing.
+	elevations := []float64{100, 110, 120, 130, 140, 125}
+	geometry := make([]route.Point, 0, len(elevations))
+	for index, elevation := range elevations {
 		geometry = append(geometry, route.Point{
 			Longitude: 8.4,
 			Latitude:  49.0 + float64(index)*0.0009,
@@ -130,6 +131,7 @@ func TestStoreCachesElevationStatistics(t *testing.T) {
 	require.NoError(t, err, "StageGeometry()")
 	require.True(t, found, "StageGeometry() did not find the stored stage")
 	assert.InDelta(t, 40.0, summary.AscentMetres, 0.001, "AscentMetres")
+	assert.InDelta(t, 15.0, summary.DescentMetres, 0.001, "DescentMetres")
 	assert.Positive(t, summary.MaxGradientPercent, "MaxGradientPercent")
 
 	var listed route.Summary
@@ -139,6 +141,7 @@ func TestStoreCachesElevationStatistics(t *testing.T) {
 		return nil
 	}), "ForEachStageSummary()")
 	assert.InDelta(t, summary.AscentMetres, listed.AscentMetres, 0.001, "listed AscentMetres")
+	assert.InDelta(t, summary.DescentMetres, listed.DescentMetres, 0.001, "listed DescentMetres")
 }
 
 // A stage cached before the statistics existed must still be readable; the
@@ -148,13 +151,14 @@ func TestStoreReadsGeometryCachedBeforeElevationStatistics(t *testing.T) {
 	stage := storeTestStage(t, 1, 1, "revision", "hash")
 	require.NoError(t, store.StoreTrustedInventory(t.Context(), route.ProviderVeloPlanner, []route.Route{stage}), "StoreTrustedInventory()")
 	_, err := store.database.ExecContext(t.Context(),
-		`UPDATE stage_geometry SET ascent_metres = 0, max_gradient_percent = 0`)
+		`UPDATE stage_geometry SET ascent_metres = 0, descent_metres = 0, max_gradient_percent = 0`)
 	require.NoError(t, err, "clearing statistics")
 
 	summary, _, _, found, err := store.StageGeometry(t.Context(), route.ProviderVeloPlanner, 1, 1)
 	require.NoError(t, err, "StageGeometry()")
 	require.True(t, found, "StageGeometry() did not find the stored stage")
 	assert.Zero(t, summary.AscentMetres, "AscentMetres")
+	assert.Zero(t, summary.DescentMetres, "DescentMetres")
 	assert.Zero(t, summary.MaxGradientPercent, "MaxGradientPercent")
 }
 
