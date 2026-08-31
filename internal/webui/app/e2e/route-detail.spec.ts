@@ -207,14 +207,22 @@ test("picking a surface class out of the key repaints the map", async ({ offline
   await gravel.click();
 
   await expect(gravel).toHaveAttribute("aria-pressed", "true");
+  // Picking a class also frames its first stretch in the shared zoom window.
+  await expect(page.getByLabel("Elevation summary")).toContainText("km shown");
   const after = await settleMap(page);
   // The map dims everything but the chosen class, so the canvas has to differ.
   // Comparing the map against itself within the run is what makes this a visual
   // assertion without a stored image to go stale.
   expect(after.equals(before)).toBe(false);
 
+  // A second press steps along the class rather than letting go; alt-click is
+  // what gives the whole route back.
   await gravel.click();
+  await expect(gravel).toHaveAttribute("aria-pressed", "true");
+
+  await gravel.click({ modifiers: ["Alt"] });
   await expect(gravel).toHaveAttribute("aria-pressed", "false");
+  await expect(page.getByLabel("Elevation summary")).not.toContainText("km shown");
 });
 
 test("a route nobody classified says so rather than showing an empty key", async ({
