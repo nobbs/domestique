@@ -3,6 +3,7 @@ import {
   formatAscent,
   formatCadence,
   formatCount,
+  formatDescent,
   formatDistance,
   formatElevation,
   formatGradient,
@@ -142,6 +143,21 @@ describe("formatAscent", () => {
 
   it("reports total climbing in feet for the imperial system", () => {
     expect(formatAscent(2730, "imperial")).toBe("8,957 ft");
+  });
+});
+
+describe("formatDescent", () => {
+  it("says nothing for a route that only climbs, or has no usable elevation profile", () => {
+    expect(formatDescent(0, "metric")).toBe("—");
+    expect(formatDescent(-4, "metric")).toBe("—");
+  });
+
+  it("reports total descending in metres for the metric system", () => {
+    expect(formatDescent(2690, "metric")).toBe("2,690 m");
+  });
+
+  it("reports total descending in feet for the imperial system", () => {
+    expect(formatDescent(2690, "imperial")).toBe("8,825 ft");
   });
 });
 

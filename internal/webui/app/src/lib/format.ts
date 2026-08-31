@@ -53,12 +53,16 @@ function formatElevationTotal(metres: number, system: UnitSystem): string {
     : `${Math.round(metres).toLocaleString()} m`;
 }
 
-/** Total ascent. Zero means the source had no usable elevation profile. */
+/**
+ * Total ascent. Renders as a dash for zero or below — which reads as "no
+ * usable elevation profile" for most routes, but is also the true value for
+ * a route that only descends.
+ */
 export function formatAscent(metres: number, system: UnitSystem): string {
   return formatElevationTotal(metres, system);
 }
 
-/** Total descent. Zero means the source had no usable elevation profile. */
+/** Total descent. Same dash convention as `formatAscent`, for the same reasons. */
 export function formatDescent(metres: number, system: UnitSystem): string {
   return formatElevationTotal(metres, system);
 }

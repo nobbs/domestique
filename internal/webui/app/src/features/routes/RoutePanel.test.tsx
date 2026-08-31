@@ -52,6 +52,14 @@ function renderPanel(overrides: Partial<RoutePanelProps> = {}) {
 }
 
 describe("RoutePanel", () => {
+  it("rests as a pill with the headline figures, not the full grid", () => {
+    renderPanel({ collapsed: true });
+
+    expect(screen.getByText("42.5 km · 620 m")).toBeInTheDocument();
+    expect(screen.queryByText("Elevation")).toBeNull();
+    expect(screen.queryByText("Moving time")).toBeNull();
+  });
+
   it("shows nothing for a route nothing has predicted", () => {
     renderPanel({ route: route() });
 
