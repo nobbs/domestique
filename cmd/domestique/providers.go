@@ -248,20 +248,20 @@ func sources(settings *runtimeconfig.Current) ([]syncservice.Source, error) {
 func sourceFor(
 	settings *runtimeconfig.Current, provider route.Provider,
 ) (source syncservice.Source, configured bool, err error) {
-	for _, source := range settings.Values().Sources {
-		if source.Provider != provider {
+	for _, entry := range settings.Values().Sources {
+		if entry.Provider != provider {
 			continue
 		}
-		emailName, passwordName, known := runtimeconfig.SourceSecretNames(source.Provider)
+		emailName, passwordName, known := runtimeconfig.SourceSecretNames(entry.Provider)
 		if !known {
-			return nil, false, fmt.Errorf("unknown source provider %q", source.Provider)
+			return nil, false, fmt.Errorf("unknown source provider %q", entry.Provider)
 		}
 		email := settings.Secret(emailName).Bytes()
 		password := settings.Secret(passwordName).Bytes()
 		if len(email) == 0 || len(password) == 0 {
 			return nil, false, nil
 		}
-		client, err := newSource(source, email, password)
+		client, err := newSource(entry, email, password)
 		if err != nil {
 			return nil, false, err
 		}
