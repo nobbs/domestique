@@ -68,9 +68,9 @@ func (r *Reporter) RunPhase(ctx context.Context, phase Phase) Result {
 // RunSourceProvider reads exactly one library, on the same recording terms as
 // the whole source phase.
 func (r *Reporter) RunSourceProvider(ctx context.Context, provider route.Provider) Result {
-	return r.runPhasesWith(ctx, true, false, nil, func(ctx context.Context) Result {
+	return r.runPhasesWith(ctx, true, false, func(ctx context.Context) Result {
 		return r.runner.RunSourceProvider(ctx, provider)
-	})
+	}, nil)
 }
 
 // ReconcileTarget reconciles exactly one configured target, on the same
