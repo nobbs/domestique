@@ -135,6 +135,9 @@ func (s *Store) StoreTrustedInventory(ctx context.Context, provider route.Provid
 	if err := pruneStageDuration(ctx, transaction); err != nil {
 		return err
 	}
+	if err := pruneStageEnrichmentFailure(ctx, transaction); err != nil {
+		return err
+	}
 	if err := transaction.Commit(); err != nil {
 		return fmt.Errorf("committing trusted inventory update: %w", err)
 	}

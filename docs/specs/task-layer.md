@@ -152,6 +152,26 @@ is checked rather than inferred.
 A scheduled `sync` honours the schedule switches for each half. An operator
 asking for one overrides them, because asking is the point.
 
+## Enrichment failures
+
+Classifying the ground under a stage and timing it are passes over the whole
+stored inventory, not tasks of their own. A stage either pass could not finish
+is named, with a stable reason for what stopped it, and the record is replaced
+when the pass tries again and removed when it succeeds. What is there is what is
+wrong now, rather than a log of everything that ever went wrong.
+
+Storing what a pass produced is what clears its failure, in the same
+transaction, so a stage cannot be enriched and listed as failing at once.
+
+A failure goes when the stage it names leaves the library, and when the pass it
+names stops being configured at all: a stage cannot be failing something nothing
+is asking for. A pass whose inputs merely changed keeps its failures until the
+next attempt replaces or clears them.
+
+A pass a shutdown ended records nothing about the stage it was on. Whatever
+reached it was the cancellation rather than anything about that stage, and a row
+blaming the map for a service that was stopping would outlast the shutdown.
+
 ## Out of scope
 
 Notification policy, delayed retry after repeated failure, and a bound on how

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 
 	"github.com/nobbs/domestique/internal/route"
 	"github.com/nobbs/domestique/internal/surface"
@@ -29,6 +30,11 @@ type Cache interface {
 	StageDurationFingerprint(
 		ctx context.Context, provider route.Provider, routeID int64, stageOrder int,
 	) (contentHash, surfaceGeneration, coefficientFingerprint string, found bool, err error)
+	// RecordStageDurationFailure remembers that a stage could not be timed, and
+	// why. Storing a prediction for it clears that.
+	RecordStageDurationFailure(
+		ctx context.Context, provider route.Provider, routeID int64, stageOrder int, reason string,
+	) error
 	// StoreStageDuration caches one stage's prediction, or its absence:
 	// movingSeconds is nil for a stage with no usable elevation, which is
 	// recorded rather than left to be asked about again every run.
@@ -82,7 +88,14 @@ func (p *Predictor) Predict(ctx context.Context, stages []route.Route) (predicte
 			continue
 		}
 
-		if predictErr := p.predictStage(ctx, stage, surfaceGeneration); predictErr != nil {
+		if reason := p.predictStage(ctx, stage, surfaceGeneration); reason != "" {
+			// A pass a shutdown ended has learned nothing about this stage, so
+			// it records nothing about it and stops here rather than at the top
+			// of the next turn.
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return predicted, failed, fmt.Errorf("ridemodel: predicting stages: %w", ctxErr)
+			}
+			p.recordFailure(ctx, key, reason)
 			failed++
 
 			continue
@@ -93,7 +106,18 @@ func (p *Predictor) Predict(ctx context.Context, stages []route.Route) (predicte
 	return predicted, failed, nil
 }
 
-func (p *Predictor) predictStage(ctx context.Context, stage *route.Route, surfaceGeneration string) error {
+// What a stage could not be timed for. They are stable words a status surface
+// may show, and name a part of this service rather than an upstream.
+const (
+	// ReasonEncode means the predicted series could not be written down.
+	ReasonEncode = "encode"
+	// ReasonCache means it could not be stored.
+	ReasonCache = "cache"
+)
+
+// predictStage predicts one stage and caches the result, reporting what stopped
+// it or an empty reason when nothing did.
+func (p *Predictor) predictStage(ctx context.Context, stage *route.Route, surfaceGeneration string) string {
 	geometry := stage.Geometry()
 	kinds := p.surfaceKinds(ctx, stage, len(geometry))
 	if kinds == nil {
@@ -112,7 +136,7 @@ func (p *Predictor) predictStage(ctx context.Context, stage *route.Route, surfac
 		movingSeconds = &result.MovingSeconds
 		encoded, encodeErr := json.Marshal(result.CumulativeSeconds)
 		if encodeErr != nil {
-			return fmt.Errorf("ridemodel: encoding cumulative series: %w", encodeErr)
+			return ReasonEncode
 		}
 		cumulative = encoded
 	}
@@ -123,10 +147,22 @@ func (p *Predictor) predictStage(ctx context.Context, stage *route.Route, surfac
 		stage.ContentHash(), surfaceGeneration, p.coefficients.Fingerprint,
 		movingSeconds, cumulative,
 	); err != nil {
-		return fmt.Errorf("ridemodel: caching prediction: %w", err)
+		return ReasonCache
 	}
 
-	return nil
+	return ""
+}
+
+// recordFailure names the stage a pass could not finish. A failure that cannot
+// itself be written down leaves the count as the only account of it.
+func (p *Predictor) recordFailure(ctx context.Context, key route.Key, reason string) {
+	// A shutdown reaching the write is the shutdown, not a lost record: this
+	// pass had already decided to record nothing about a cancelled stage.
+	if err := p.cache.RecordStageDurationFailure(
+		ctx, key.Provider(), key.SourceRouteID(), key.StageOrder(), reason,
+	); err != nil && ctx.Err() == nil {
+		slog.Warn("stage prediction failure not recorded", "reason", reason, "error", err)
+	}
 }
 
 // currentSurfaceGeneration is the value a duration is fingerprinted against. It

@@ -26,6 +26,37 @@ func TestAnnotateClassifiesTheStagesAfterOneThatFailed(t *testing.T) {
 	assert.Equal(t, 2, classified)
 	assert.Equal(t, 1, failed)
 	assert.Contains(t, cache.stored, testKey(3), "the stage after the failure was never classified")
+	assert.Equal(t, map[route.Key]string{testKey(2): ReasonWays},
+		cache.failures, "the stage that failed was not named")
+}
+
+// A count says how many stages are missing a classification; the record says
+// which, and what stopped each one.
+func TestAnnotateNamesWhatStoppedEachStage(t *testing.T) {
+	source := &fakeSource{generation: "abc123", failFor: map[int64]error{1: errors.New("cell unreadable")}}
+	cache := newFakeCache()
+	cache.storeErr = map[route.Key]error{testKey(2): errors.New("state unavailable")}
+
+	_, failed, err := NewAnnotator(source, cache).Annotate(t.Context(), testStages(t, 1, 2))
+	require.NoError(t, err)
+	assert.Equal(t, 2, failed, "failed stages")
+	assert.Equal(t, map[route.Key]string{
+		testKey(1): ReasonWays,
+		testKey(2): ReasonCache,
+	}, cache.failures, "recorded failures")
+}
+
+// Losing the record of a failure leaves the count as the only account of it,
+// which is what there was before. It must not stop the pass.
+func TestAnnotateCarriesOnWhenAFailureCannotBeRecorded(t *testing.T) {
+	source := &fakeSource{generation: "abc123", failFor: map[int64]error{1: errors.New("cell unreadable")}}
+	cache := newFakeCache()
+	cache.failureErr = errors.New("state unavailable")
+
+	classified, failed, err := NewAnnotator(source, cache).Annotate(t.Context(), testStages(t, 1, 2))
+	require.NoError(t, err, "Annotate()")
+	assert.Equal(t, 1, classified, "classified stages")
+	assert.Equal(t, 1, failed, "failed stages")
 }
 
 // Until a first index has been built there is nothing to read, and recording
@@ -98,6 +129,7 @@ func testStages(t *testing.T, routeIDs ...int64) []route.Route {
 type fakeSource struct {
 	failFor    map[int64]error
 	asked      map[int64]bool
+	whileAsked func()
 	generation string
 }
 
@@ -109,6 +141,9 @@ func (s *fakeSource) Ways(_ context.Context, points []route.Point) ([]Way, error
 	}
 	routeID := int64(points[0].Latitude)
 	s.asked[routeID] = true
+	if s.whileAsked != nil {
+		s.whileAsked()
+	}
 	if err, found := s.failFor[routeID]; found {
 		return nil, err
 	}
@@ -128,6 +163,9 @@ type fakeCache struct {
 	hashes      map[route.Key]string
 	generations map[route.Key]string
 	stored      map[route.Key][]byte
+	failures    map[route.Key]string
+	storeErr    map[route.Key]error
+	failureErr  error
 }
 
 func newFakeCache() *fakeCache {
@@ -135,7 +173,16 @@ func newFakeCache() *fakeCache {
 		hashes:      make(map[route.Key]string),
 		generations: make(map[route.Key]string),
 		stored:      make(map[route.Key][]byte),
+		failures:    make(map[route.Key]string),
 	}
+}
+
+func (c *fakeCache) RecordStageSurfaceFailure(
+	_ context.Context, provider route.Provider, routeID int64, stageOrder int, reason string,
+) error {
+	c.failures[route.NewKey(provider, routeID, stageOrder)] = reason
+
+	return c.failureErr
 }
 
 func (c *fakeCache) StageSurfaceHash(
@@ -151,6 +198,9 @@ func (c *fakeCache) StoreStageSurface(
 	_ context.Context, provider route.Provider, routeID int64, stageOrder int, contentHash, generation string, ranges []byte, _ float64,
 ) error {
 	key := route.NewKey(provider, routeID, stageOrder)
+	if err := c.storeErr[key]; err != nil {
+		return err
+	}
 	c.hashes[key] = contentHash
 	c.generations[key] = generation
 	c.stored[key] = ranges
@@ -161,4 +211,23 @@ func (c *fakeCache) StoreStageSurface(
 // testKey is the identity testStages gives a stage built from a route ID.
 func testKey(routeID int64) route.Key {
 	return route.NewKey(route.ProviderVeloPlanner, routeID, 1)
+}
+
+// A shutdown reaching the map mid-pass is not something the stage did. Recording
+// it would leave a row blaming the map for a service that was stopping.
+func TestAnnotateRecordsNothingForAStageAShutdownInterrupted(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	source := &fakeSource{
+		generation: "abc123",
+		failFor:    map[int64]error{1: context.Canceled},
+		whileAsked: cancel,
+	}
+	cache := newFakeCache()
+
+	classified, failed, err := NewAnnotator(source, cache).Annotate(ctx, testStages(t, 1, 2))
+
+	require.ErrorIs(t, err, context.Canceled, "Annotate()")
+	assert.Zero(t, classified, "classified stages")
+	assert.Zero(t, failed, "a stage interrupted by a shutdown counted as failed")
+	assert.Empty(t, cache.failures, "a shutdown was recorded as a stage failure")
 }
