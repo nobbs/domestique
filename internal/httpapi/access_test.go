@@ -60,6 +60,7 @@ func newAccessHandler(t *testing.T, verifier AccessVerifier, oauthService OAuth)
 	handler, err := New(
 		&Options{
 			Alerts:           &fakeAlerts{},
+			Tasks:            &fakeTasks{},
 			Settings:         settingsWith(testBasemaps()),
 			AccessVerifier:   verifier,
 			AccessEmail:      testAccessEmail,
@@ -227,12 +228,14 @@ func TestNewRequiresAccessConfiguration(t *testing.T) {
 	cases := map[string]*Options{
 		"no verifier": {
 			Alerts:           &fakeAlerts{},
+			Tasks:            &fakeTasks{},
 			Settings:         settingsWith(testBasemaps()),
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,
 		},
 		"no email": {
 			Alerts:           &fakeAlerts{},
+			Tasks:            &fakeTasks{},
 			Settings:         settingsWith(testBasemaps()),
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			BrowserOriginURL: testBrowserOriginURL,
@@ -251,6 +254,7 @@ func TestNewRequiresAccessConfiguration(t *testing.T) {
 func TestNewRequiresAWeatherProvider(t *testing.T) {
 	_, err := New(&Options{
 		Alerts:           &fakeAlerts{},
+		Tasks:            &fakeTasks{},
 		Settings:         settingsWith(testBasemaps()),
 		AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 		AccessEmail:      testAccessEmail,

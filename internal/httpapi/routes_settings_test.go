@@ -75,6 +75,7 @@ func settingsHandler(t *testing.T) (*Handler, *staticSettings) {
 	handler, err := New(
 		&Options{
 			Alerts:           &fakeAlerts{},
+			Tasks:            &fakeTasks{},
 			Settings:         settings,
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
@@ -443,6 +444,7 @@ func alertsHandler(t *testing.T, catalogue ...AlertSetting) (*Handler, *fakeAler
 		&Options{
 			Settings:         settingsWith(testBasemaps()),
 			Alerts:           alerts,
+			Tasks:            &fakeTasks{},
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
 			AccessEmail:      testAccessEmail,
 			BrowserOriginURL: testBrowserOriginURL,

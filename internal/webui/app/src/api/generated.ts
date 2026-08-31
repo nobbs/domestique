@@ -146,6 +146,21 @@ export interface Status {
   sync: SyncStatus;
 }
 
+export interface Task {
+  /** What a trigger asks for. */
+  name: string;
+  /** Whether the task runs unasked. */
+  scheduled: boolean;
+  /** How many attempts of this task are in flight. */
+  running: number;
+  /** When the first scheduled run is due. Absent once it has started, and for a task nothing schedules. */
+  nextRunAt?: string;
+}
+
+export interface TaskList {
+  tasks: Task[];
+}
+
 export type SyncRunPhase = (typeof SyncRunPhase)[keyof typeof SyncRunPhase];
 
 export const SyncRunPhase = {
@@ -510,14 +525,14 @@ export type UnavailableResponse = Error;
 export type AcceptedResponse = Accepted;
 
 /**
- * A conflicting run is already active.
- */
-export type SyncInProgressResponse = Error;
-
-/**
  * Resource was not found.
  */
 export type NotFoundResponse = Error;
+
+/**
+ * A conflicting run is already active.
+ */
+export type SyncInProgressResponse = Error;
 
 /**
  * Request is malformed.
@@ -708,6 +723,384 @@ export function useGetStatus<
 
   return withQueryKey(query, queryOptions.queryKey);
 }
+
+export type listTasksResponse200 = {
+  data: TaskList;
+  status: 200;
+};
+
+export type listTasksResponse401 = {
+  data: UnauthorizedResponse;
+  status: 401;
+};
+
+export type listTasksResponseSuccess = listTasksResponse200 & {
+  headers: Headers;
+};
+export type listTasksResponseError = listTasksResponse401 & {
+  headers: Headers;
+};
+
+export const getListTasksUrl = () => {
+  return `/v1/tasks`;
+};
+
+/**
+ * Every background activity this build registers, in the order a status page reads best.
+ */
+export const listTasks = async (
+  options?: Parameters<typeof domestiqueRequest>[1],
+): Promise<listTasksResponseSuccess> => {
+  return domestiqueRequest<listTasksResponseSuccess>(getListTasksUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListTasksQueryKey = () => {
+  return [`/v1/tasks`] as const;
+};
+
+export const getListTasksQueryOptions = <
+  TData = Awaited<ReturnType<typeof listTasks>>,
+  TError = ErrorType<UnauthorizedResponse>,
+>(options?: {
+  query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof listTasks>>, TError, TData>>;
+  request?: SecondParameter<typeof domestiqueRequest>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListTasksQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listTasks>>> = ({ signal }) =>
+    listTasks({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listTasks>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type ListTasksQueryResult = NonNullable<Awaited<ReturnType<typeof listTasks>>>;
+export type ListTasksQueryError = ErrorType<UnauthorizedResponse>;
+
+export function useListTasks<
+  TData = Awaited<ReturnType<typeof listTasks>>,
+  TError = ErrorType<UnauthorizedResponse>,
+>(
+  options: {
+    query: Partial<UseQueryOptions<Awaited<ReturnType<typeof listTasks>>, TError, TData>> &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listTasks>>,
+          TError,
+          Awaited<ReturnType<typeof listTasks>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useListTasks<
+  TData = Awaited<ReturnType<typeof listTasks>>,
+  TError = ErrorType<UnauthorizedResponse>,
+>(
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof listTasks>>, TError, TData>> &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listTasks>>,
+          TError,
+          Awaited<ReturnType<typeof listTasks>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useListTasks<
+  TData = Awaited<ReturnType<typeof listTasks>>,
+  TError = ErrorType<UnauthorizedResponse>,
+>(
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof listTasks>>, TError, TData>>;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+export function useListTasks<
+  TData = Awaited<ReturnType<typeof listTasks>>,
+  TError = ErrorType<UnauthorizedResponse>,
+>(
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof listTasks>>, TError, TData>>;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getListTasksQueryOptions(options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export type runTaskResponse202 = {
+  data: AcceptedResponse;
+  status: 202;
+};
+
+export type runTaskResponse401 = {
+  data: UnauthorizedResponse;
+  status: 401;
+};
+
+export type runTaskResponse403 = {
+  data: ForbiddenResponse;
+  status: 403;
+};
+
+export type runTaskResponse404 = {
+  data: NotFoundResponse;
+  status: 404;
+};
+
+export type runTaskResponse409 = {
+  data: SyncInProgressResponse;
+  status: 409;
+};
+
+export type runTaskResponseSuccess = runTaskResponse202 & {
+  headers: Headers;
+};
+export type runTaskResponseError = (
+  | runTaskResponse401
+  | runTaskResponse403
+  | runTaskResponse404
+  | runTaskResponse409
+) & {
+  headers: Headers;
+};
+
+export const getRunTaskUrl = (name: string) => {
+  return `/v1/tasks/${encodeURIComponent(String(name))}/run`;
+};
+
+/**
+ * Starts one attempt of a task and reports whether it was accepted. An accepted attempt continues independently of this request.
+ */
+export const runTask = async (
+  name: string,
+  options?: Parameters<typeof domestiqueRequest>[1],
+): Promise<runTaskResponseSuccess> => {
+  return domestiqueRequest<runTaskResponseSuccess>(getRunTaskUrl(name), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getRunTaskMutationOptions = <
+  TError = ErrorType<
+    UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | SyncInProgressResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof runTask>>,
+    TError,
+    RunTaskMutationVariables,
+    TContext
+  >;
+  request?: SecondParameter<typeof domestiqueRequest>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof runTask>>,
+  TError,
+  RunTaskMutationVariables,
+  TContext
+> => {
+  const mutationKey = ["runTask"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof runTask>>,
+    RunTaskMutationVariables
+  > = (props) => {
+    const { name } = props ?? {};
+
+    return runTask(name, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RunTaskMutationResult = NonNullable<Awaited<ReturnType<typeof runTask>>>;
+
+export type RunTaskMutationError = ErrorType<
+  UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | SyncInProgressResponse
+>;
+export type RunTaskMutationVariables = { name: string };
+
+export const useRunTask = <
+  TError = ErrorType<
+    UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | SyncInProgressResponse
+  >,
+  TContext = unknown,
+>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof runTask>>,
+      TError,
+      RunTaskMutationVariables,
+      TContext
+    >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof runTask>>,
+  TError,
+  RunTaskMutationVariables,
+  TContext
+> => {
+  return useMutation(getRunTaskMutationOptions(options), queryClient);
+};
+
+export type runTaskArgumentResponse202 = {
+  data: AcceptedResponse;
+  status: 202;
+};
+
+export type runTaskArgumentResponse401 = {
+  data: UnauthorizedResponse;
+  status: 401;
+};
+
+export type runTaskArgumentResponse403 = {
+  data: ForbiddenResponse;
+  status: 403;
+};
+
+export type runTaskArgumentResponse404 = {
+  data: NotFoundResponse;
+  status: 404;
+};
+
+export type runTaskArgumentResponse409 = {
+  data: SyncInProgressResponse;
+  status: 409;
+};
+
+export type runTaskArgumentResponseSuccess = runTaskArgumentResponse202 & {
+  headers: Headers;
+};
+export type runTaskArgumentResponseError = (
+  | runTaskArgumentResponse401
+  | runTaskArgumentResponse403
+  | runTaskArgumentResponse404
+  | runTaskArgumentResponse409
+) & {
+  headers: Headers;
+};
+
+export const getRunTaskArgumentUrl = (name: string, argument: string) => {
+  return `/v1/tasks/${encodeURIComponent(String(name))}/run/${encodeURIComponent(String(argument))}`;
+};
+
+/**
+ * Starts one attempt of a task over one argument, such as a single target slot. Otherwise identical to running it with none.
+ */
+export const runTaskArgument = async (
+  name: string,
+  argument: string,
+  options?: Parameters<typeof domestiqueRequest>[1],
+): Promise<runTaskArgumentResponseSuccess> => {
+  return domestiqueRequest<runTaskArgumentResponseSuccess>(getRunTaskArgumentUrl(name, argument), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getRunTaskArgumentMutationOptions = <
+  TError = ErrorType<
+    UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | SyncInProgressResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof runTaskArgument>>,
+    TError,
+    RunTaskArgumentMutationVariables,
+    TContext
+  >;
+  request?: SecondParameter<typeof domestiqueRequest>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof runTaskArgument>>,
+  TError,
+  RunTaskArgumentMutationVariables,
+  TContext
+> => {
+  const mutationKey = ["runTaskArgument"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof runTaskArgument>>,
+    RunTaskArgumentMutationVariables
+  > = (props) => {
+    const { name, argument } = props ?? {};
+
+    return runTaskArgument(name, argument, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RunTaskArgumentMutationResult = NonNullable<
+  Awaited<ReturnType<typeof runTaskArgument>>
+>;
+
+export type RunTaskArgumentMutationError = ErrorType<
+  UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | SyncInProgressResponse
+>;
+export type RunTaskArgumentMutationVariables = { name: string; argument: string };
+
+export const useRunTaskArgument = <
+  TError = ErrorType<
+    UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | SyncInProgressResponse
+  >,
+  TContext = unknown,
+>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof runTaskArgument>>,
+      TError,
+      RunTaskArgumentMutationVariables,
+      TContext
+    >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof runTaskArgument>>,
+  TError,
+  RunTaskArgumentMutationVariables,
+  TContext
+> => {
+  return useMutation(getRunTaskArgumentMutationOptions(options), queryClient);
+};
 
 export type triggerSyncResponse202 = {
   data: AcceptedResponse;

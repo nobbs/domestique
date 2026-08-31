@@ -200,6 +200,7 @@ func run(ctx context.Context) error {
 		&httpapi.Options{
 			Settings:         runtimeSettings,
 			Alerts:           alertMatrix{decisions: alerts, declarations: tasks.Declarations()},
+			Tasks:            taskSurface{manager: tasks},
 			BuildRevision:    buildInfo.Revision,
 			BuildImageDigest: buildInfo.ImageDigest,
 			AccessVerifier:   accessVerifier,

@@ -209,6 +209,7 @@ func TestNewRequiresABrowserOrigin(t *testing.T) {
 	_, err := New(
 		&Options{
 			Alerts:         &fakeAlerts{},
+			Tasks:          &fakeTasks{},
 			Settings:       settingsWith(testBasemaps()),
 			AccessVerifier: &recordingVerifier{email: testAccessEmail},
 			AccessEmail:    testAccessEmail,

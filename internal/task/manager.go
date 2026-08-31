@@ -193,6 +193,40 @@ func (m *Manager) NextRunAt(name string) (time.Time, bool) {
 	return entry.startsAt.load()
 }
 
+// Registered is one task as a surface outside this package reads it.
+type Registered struct {
+	// NextRunAt is when the first scheduled run is due, and is zero once it has
+	// started or for a task nothing schedules.
+	NextRunAt time.Time
+	// Name is what a trigger asks for.
+	Name string
+	// Running is how many attempts of this task are in flight.
+	Running int
+	// Scheduled reports whether the task runs unasked.
+	Scheduled bool
+}
+
+// Tasks lists every registered task in registration order, with what the
+// manager knows about each right now.
+func (m *Manager) Tasks() []Registered {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+
+	tasks := make([]Registered, 0, len(m.order))
+	for _, name := range m.order {
+		entry := m.tasks[name]
+		nextRunAt, _ := entry.startsAt.load()
+		tasks = append(tasks, Registered{
+			Name:      name,
+			Scheduled: entry.definition.Schedule != nil,
+			Running:   entry.inFlight,
+			NextRunAt: nextRunAt,
+		})
+	}
+
+	return tasks
+}
+
 // Declarations lists every alert the registered tasks can raise, in
 // registration order. It is what an operator is offered a decision about:
 // anything not here is something no task ever announces.

@@ -277,6 +277,30 @@ func syncResult(result *syncservice.Result) task.Result {
 // taskStarter is the task layer as the HTTP boundary needs it, and syncReporter
 // is what only the reporter can answer. Both are narrow so the adaptation below
 // can be read without a manager or a reporter behind it.
+// taskSurface adapts the manager to what the HTTP surface reads and starts.
+type taskSurface struct{ manager *task.Manager }
+
+// Registered lists what this build registers, in registration order.
+func (s taskSurface) Registered() []httpapi.RegisteredTask {
+	registered := s.manager.Tasks()
+	tasks := make([]httpapi.RegisteredTask, 0, len(registered))
+	for _, entry := range registered {
+		tasks = append(tasks, httpapi.RegisteredTask{
+			Name:      entry.Name,
+			Scheduled: entry.Scheduled,
+			Running:   entry.Running,
+			NextRunAt: entry.NextRunAt,
+		})
+	}
+
+	return tasks
+}
+
+// Run starts one attempt, on exactly the terms the schedule starts one.
+func (s taskSurface) Run(ctx context.Context, name, argument string) bool {
+	return s.manager.Trigger(ctx, name, argument)
+}
+
 type taskStarter interface {
 	Trigger(ctx context.Context, name, argument string) bool
 	Holding(resource string) bool

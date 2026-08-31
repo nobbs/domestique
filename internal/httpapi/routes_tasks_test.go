@@ -1,0 +1,132 @@
+package httpapi
+
+import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	openapi "github.com/nobbs/domestique/internal/httpapi/contract"
+)
+
+const tasksPath = "/v1/tasks"
+
+// tasksHandler builds a handler over a task list a test can read back.
+func tasksHandler(t *testing.T, registered ...RegisteredTask) (*Handler, *fakeTasks) {
+	t.Helper()
+	tasks := &fakeTasks{registered: registered}
+	handler, err := New(
+		&Options{
+			Settings:         settingsWith(testBasemaps()),
+			Alerts:           &fakeAlerts{},
+			Tasks:            tasks,
+			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
+			AccessEmail:      testAccessEmail,
+			BrowserOriginURL: testBrowserOriginURL,
+		},
+		&fakeOAuth{}, &fakeState{}, &fakeSync{accepted: true}, &fakeAssets{}, &fakeWeather{},
+	)
+	require.NoError(t, err, "New()")
+
+	return handler, tasks
+}
+
+func TestListTasksReportsWhatThisBuildRegisters(t *testing.T) {
+	due := time.Date(2026, time.August, 31, 9, 0, 0, 0, time.UTC)
+	handler, _ := tasksHandler(t,
+		RegisteredTask{Name: "sync", Scheduled: true, Running: 1, NextRunAt: due},
+		RegisteredTask{Name: "sync:target"},
+	)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, tasksPath))
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+
+	var view openapi.TaskList
+	require.NoError(t, json.NewDecoder(response.Body).Decode(&view), "decoding the task list")
+	require.Len(t, view.Tasks, 2, "tasks")
+	assert.Equal(t, "sync", view.Tasks[0].Name, "the first task")
+	assert.True(t, view.Tasks[0].Scheduled, "scheduled")
+	assert.Equal(t, 1, view.Tasks[0].Running, "running")
+	require.NotNil(t, view.Tasks[0].NextRunAt, "the due time")
+	assert.Equal(t, due, view.Tasks[0].NextRunAt.UTC(), "the due time")
+	// A task nothing schedules is due at no particular time, and that has to
+	// read as absent rather than as the zero instant.
+	assert.Nil(t, view.Tasks[1].NextRunAt, "a task nothing schedules reported a due time")
+}
+
+// A service with nothing registered still answers with a list, an empty one.
+func TestListTasksSendsAnEmptyListAsAList(t *testing.T) {
+	handler, _ := tasksHandler(t)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, tasksPath))
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+
+	var view openapi.TaskList
+	require.NoError(t, json.NewDecoder(response.Body).Decode(&view), "decoding the task list")
+	assert.NotNil(t, view.Tasks, "an empty list was sent as null")
+	assert.Empty(t, view.Tasks, "tasks")
+}
+
+func TestRunTaskStartsTheNamedTask(t *testing.T) {
+	tests := map[string]struct {
+		target   string
+		argument string
+	}{
+		"with no argument": {target: "/v1/tasks/sync/run"},
+		"over an argument": {target: "/v1/tasks/sync/run/rider-a", argument: "rider-a"},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			handler, tasks := tasksHandler(t, RegisteredTask{Name: "sync"})
+
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, test.target))
+
+			require.Equal(t, http.StatusAccepted, response.Code, response.Body.String())
+			assert.Equal(t, []startedTask{{name: "sync", argument: test.argument}}, tasks.started, "started")
+		})
+	}
+}
+
+// A name this build does not register is not found, so a page built against
+// another build asks for nothing that silently does nothing.
+func TestRunTaskRefusesANameThisBuildDoesNotRegister(t *testing.T) {
+	handler, tasks := tasksHandler(t, RegisteredTask{Name: "sync"})
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/tasks/invented/run"))
+
+	require.Equal(t, http.StatusNotFound, response.Code, response.Body.String())
+	assert.Empty(t, tasks.started, "a task this build does not register was started")
+}
+
+// A refusal is not a fault: the work is already happening, or something it
+// needs is held. Either way the caller is told rather than left waiting.
+func TestRunTaskReportsARefusal(t *testing.T) {
+	handler, tasks := tasksHandler(t, RegisteredTask{Name: "sync"})
+	tasks.refuse = true
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/tasks/sync/run"))
+
+	assert.Equal(t, http.StatusConflict, response.Code, response.Body.String())
+}
+
+// The list is read-only, so a browser sends no Origin on it and requiring one
+// would refuse the whole page.
+func TestListTasksNeedsNoOrigin(t *testing.T) {
+	handler, _ := tasksHandler(t, RegisteredTask{Name: "sync"})
+
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, tasksPath, http.NoBody)
+	request.Header.Set(assertionHeader, testAssertion)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	assert.Equal(t, http.StatusOK, response.Code, response.Body.String())
+}
