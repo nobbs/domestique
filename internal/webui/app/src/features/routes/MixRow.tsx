@@ -49,6 +49,8 @@ const LEADER_HEIGHT = 12;
  */
 const TAG_WIDTH = 62;
 const TAG_HEIGHT = 26;
+/** Clearance between two pushed-apart tags, so their text never runs together. */
+const TAG_GAP = 6;
 
 /** The card's own content width, until the bar has been measured. */
 const ASSUMED_WIDTH = 344;
@@ -57,13 +59,15 @@ const ASSUMED_WIDTH = 344;
 const FEET_LIMIT = 5280;
 
 /**
- * One length, in the unit the rest of its bar is using.
+ * One length, in the unit its bar is using.
  *
  * `formatDistance` chooses per value, which is right for a figure standing on
  * its own and wrong for a row of them: in miles and feet it gives a bar reading
  * `3598 ft`, `4707 ft`, `16.5 mi`, in which the largest number names the
- * shortest stretch. So the unit is chosen once, from the longest, and every tag
- * is drawn in it.
+ * shortest stretch. So imperial picks its unit once, from the longest, and
+ * draws every tag in it. Metric has no such ft/mi split — only a decimal
+ * place that gets coarser once the longest is over 100 km — so a short tag
+ * still reads in metres beside a row of kilometres.
  */
 function barLength(metres: number, unitSystem: UnitSystem, longest: number): string {
   if (unitSystem === "imperial") {
@@ -74,9 +78,11 @@ function barLength(metres: number, unitSystem: UnitSystem, longest: number): str
     return `${metresToMiles(metres).toFixed(metresToMiles(longest) < 100 ? 1 : 0)} mi`;
   }
 
-  return longest < 1_000
-    ? `${Math.round(metres)} m`
-    : `${(metres / 1_000).toFixed(longest < 100_000 ? 1 : 0)} km`;
+  if (metres < 1_000) {
+    return `${Math.round(metres)} m`;
+  }
+
+  return `${(metres / 1_000).toFixed(longest < 100_000 ? 1 : 0)} km`;
 }
 
 /**
@@ -98,10 +104,10 @@ export function placeTags(shares: number[], extent: number): { middle: number; l
 
   const lefts: number[] = [];
   let rightmost = 0;
-  for (const middle of middles) {
+  for (const [index, middle] of middles.entries()) {
     const left = Math.max(middle - TAG_WIDTH / 2, rightmost);
     lefts.push(left);
-    rightmost = left + TAG_WIDTH;
+    rightmost = left + TAG_WIDTH + (index < middles.length - 1 ? TAG_GAP : 0);
   }
 
   // The forward pass can push the last tag off the end. Walking back from the
@@ -112,7 +118,7 @@ export function placeTags(shares: number[], extent: number): { middle: number; l
     for (let index = lefts.length - 1; index >= 0; index--) {
       const left = Math.max(Math.min(lefts[index] ?? 0, wall - TAG_WIDTH), 0);
       lefts[index] = left;
-      wall = left;
+      wall = left - (index > 0 ? TAG_GAP : 0);
     }
   }
 
