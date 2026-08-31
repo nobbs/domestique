@@ -266,7 +266,7 @@ container never share a database file. That configuration names the deployed
 Cloudflare Access application, read out of the running container at setup time,
 so the identity gate behaves there exactly as it does in production.
 
-That environment may read VeloPlanner, so a manual `POST /v1/sync` refreshes
+That environment may read VeloPlanner, so a manual `POST /v1/tasks/sync/run` refreshes
 real routes and geometry. It must never reach Wahoo, which is enforced in depth:
 the state encryption key is a placeholder, so the stored refresh tokens cannot
 be decrypted and a run fails at the state step, which precedes any Wahoo

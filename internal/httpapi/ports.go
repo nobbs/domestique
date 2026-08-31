@@ -29,24 +29,12 @@ const (
 	SyncPhaseTargets SyncPhase = "targets"
 )
 
-// Sync is the synchronization process behind this surface: it starts a manual
-// run and says what has not finished. Both answers come from the process, since
-// a run that has not finished has recorded nothing.
+// Sync is what only the synchronization process can answer about itself. What
+// starts a run is the task layer's; this is what has not finished, which a run
+// that has not finished has recorded nowhere else.
 type Sync interface {
-	// Trigger starts one manual synchronization and reports whether it was
-	// accepted. An accepted run continues independently of the HTTP request.
-	Trigger(phase SyncPhase) bool
-	// TriggerTarget starts a manual reconciliation of exactly one configured
-	// target, on the same terms as Trigger scoped to that slot alone.
-	TriggerTarget(targetID string) bool
-	// TriggerClear starts a manual clear of exactly one configured target,
-	// deleting every route this service owns there. Destructive.
-	TriggerClear(targetID string) bool
 	// Activity reports the run that has not finished, if there is one.
 	Activity() SyncActivityState
-	// TriggerAnnotate starts one surface-classification pass. It never reads the
-	// source or writes a target, and shares Trigger's single-flight guard.
-	TriggerAnnotate() bool
 	// SurfaceIncomplete reports how many stages the most recently completed
 	// classification pass could not classify.
 	SurfaceIncomplete() int
@@ -119,36 +107,12 @@ type SyncActivityState struct {
 	Running bool
 }
 
-// SyncFuncs adapts a pair of functions to Sync for manual wiring. An unset
-// ActivityFunc reports no work under way.
+// SyncFuncs adapts functions to Sync for manual wiring. An unset ActivityFunc
+// reports no work under way.
 type SyncFuncs struct {
-	TriggerFunc           func(phase SyncPhase) bool
-	TriggerTargetFunc     func(targetID string) bool
-	TriggerClearFunc      func(targetID string) bool
 	ActivityFunc          func() SyncActivityState
-	TriggerAnnotateFunc   func() bool
 	SurfaceIncompleteFunc func() int
 	RateLimitFunc         func() (remaining int, resetAt time.Time, ok bool)
-}
-
-// Trigger starts the adapted manual synchronization.
-func (f SyncFuncs) Trigger(phase SyncPhase) bool {
-	return f.TriggerFunc(phase)
-}
-
-// TriggerTarget starts the adapted manual single-target reconciliation.
-func (f SyncFuncs) TriggerTarget(targetID string) bool {
-	return f.TriggerTargetFunc(targetID)
-}
-
-// TriggerClear starts the adapted manual single-target clear. An unset
-// TriggerClearFunc refuses rather than panicking.
-func (f SyncFuncs) TriggerClear(targetID string) bool {
-	if f.TriggerClearFunc == nil {
-		return false
-	}
-
-	return f.TriggerClearFunc(targetID)
 }
 
 // Activity reports the adapted process state.
@@ -158,16 +122,6 @@ func (f SyncFuncs) Activity() SyncActivityState {
 	}
 
 	return f.ActivityFunc()
-}
-
-// TriggerAnnotate starts the adapted manual classification pass. False when
-// unset, the honest answer from a process with no classification pass to run.
-func (f SyncFuncs) TriggerAnnotate() bool {
-	if f.TriggerAnnotateFunc == nil {
-		return false
-	}
-
-	return f.TriggerAnnotateFunc()
 }
 
 // SurfaceIncomplete reports the adapted process's incomplete count. Zero when

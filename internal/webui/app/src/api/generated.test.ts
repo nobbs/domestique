@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getRouteGeometry, getSyncRuns, getWeather, triggerSync } from "./generated";
+import { getRouteGeometry, getSyncRuns, getWeather, runTask } from "./generated";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -29,7 +29,7 @@ describe("generated browser operations", () => {
       vi.fn(async () => new Response(JSON.stringify({ status: "accepted" }), { status: 202 })),
     );
 
-    await expect(triggerSync()).resolves.toMatchObject({
+    await expect(runTask("sync")).resolves.toMatchObject({
       status: 202,
       data: { status: "accepted" },
     });
@@ -40,16 +40,16 @@ describe("generated browser operations", () => {
       "fetch",
       vi.fn(
         async () =>
-          new Response(JSON.stringify({ error: { code: "sync_in_progress", message: "busy" } }), {
+          new Response(JSON.stringify({ error: { code: "task_in_progress", message: "busy" } }), {
             status: 409,
           }),
       ),
     );
 
-    await expect(triggerSync()).rejects.toMatchObject({
+    await expect(runTask("sync")).rejects.toMatchObject({
       name: "ApiError",
       status: 409,
-      code: "sync_in_progress",
+      code: "task_in_progress",
     });
   });
 

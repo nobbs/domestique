@@ -286,11 +286,11 @@ describe("TargetConvergenceCard", () => {
     await userEvent.click(screen.getByRole("button", { name: "Reconcile now: rider-b" }));
 
     await waitFor(() =>
-      expect(fetchMock.mock.calls.some((call) => call[0] === "/v1/sync/targets/rider-b")).toBe(
+      expect(fetchMock.mock.calls.some((call) => call[0] === "/v1/tasks/sync%3Atarget/run/rider-b")).toBe(
         true,
       ),
     );
-    expect(fetchMock.mock.calls.some((call) => call[0] === "/v1/sync/targets/rider-a")).toBe(false);
+    expect(fetchMock.mock.calls.some((call) => call[0] === "/v1/tasks/sync%3Atarget/run/rider-a")).toBe(false);
   });
 
   // Deleting everything a target holds must not be one click away, and the
@@ -323,7 +323,7 @@ describe("TargetConvergenceCard", () => {
 
     await userEvent.click(confirm);
     await waitFor(() =>
-      expect(fetchMock.mock.calls.some((call) => call[0] === "/v1/targets/rider-a/clear")).toBe(
+      expect(fetchMock.mock.calls.some((call) => call[0] === "/v1/tasks/sync%3Aclear/run/rider-a")).toBe(
         true,
       ),
     );
@@ -353,7 +353,7 @@ describe("TargetConvergenceCard", () => {
     await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
 
     expect(screen.getByRole("button", { name: "Delete all routes…" })).toBeInTheDocument();
-    expect(fetchMock.mock.calls.some((call) => String(call[0]).includes("/clear"))).toBe(false);
+    expect(fetchMock.mock.calls.some((call) => String(call[0]).includes("sync%3Aclear"))).toBe(false);
 
     // Reopening starts from empty rather than from what was typed before.
     await userEvent.click(screen.getByRole("button", { name: "Delete all routes…" }));

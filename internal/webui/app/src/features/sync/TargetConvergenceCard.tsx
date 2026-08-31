@@ -15,8 +15,9 @@
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { useClearTarget, useTriggerTargetSync } from "../../api/generated";
+import { useRunTaskArgument } from "../../api/generated";
 import { statusQuery } from "../../api/queries";
+import { TASKS } from "../../api/tasks";
 import { Skeleton } from "../../components/ui/skeleton";
 import { formatCount, formatTimestamp } from "../../lib/format";
 import { TargetRow } from "./TargetRow";
@@ -25,7 +26,7 @@ import { TargetRow } from "./TargetRow";
 export function TargetConvergenceCard() {
   const queryClient = useQueryClient();
   const { data, isPending, isError } = useQuery(statusQuery());
-  const reconcile = useTriggerTargetSync({
+  const reconcile = useRunTaskArgument({
     mutation: {
       onSuccess: () => queryClient.invalidateQueries({ queryKey: statusQuery().queryKey }),
     },
@@ -35,7 +36,7 @@ export function TargetConvergenceCard() {
   // from ever being open at once.
   const [clearing, setClearing] = useState<string | null>(null);
   const [confirmation, setConfirmation] = useState("");
-  const clear = useClearTarget({
+  const clear = useRunTaskArgument({
     mutation: {
       onSuccess: () => {
         setClearing(null);
@@ -63,7 +64,7 @@ export function TargetConvergenceCard() {
             key={target.id}
             target={target}
             reconciling={reconcile.isPending}
-            onReconcile={() => reconcile.mutate({ target: target.id })}
+            onReconcile={() => reconcile.mutate({ name: TASKS.syncTarget, argument: target.id })}
             clear={{
               open: clearing === target.id,
               onOpenChange: (open) => {
@@ -75,7 +76,7 @@ export function TargetConvergenceCard() {
               confirmation,
               onConfirmationChange: setConfirmation,
               pending: clear.isPending,
-              onConfirm: () => clear.mutate({ target: target.id }),
+              onConfirm: () => clear.mutate({ name: TASKS.syncClear, argument: target.id }),
             }}
           />
         ))}

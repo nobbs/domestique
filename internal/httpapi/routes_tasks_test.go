@@ -134,3 +134,15 @@ func TestListTasksNeedsNoOrigin(t *testing.T) {
 	handler.ServeHTTP(response, request)
 	assert.Equal(t, http.StatusOK, response.Code, response.Body.String())
 }
+
+// A task name carries a colon, which a browser client percent-encodes. The
+// route has to see the name the operator asked for rather than the escape.
+func TestRunTaskAcceptsAPercentEncodedName(t *testing.T) {
+	handler, tasks := tasksHandler(t, RegisteredTask{Name: "sync:target"})
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/tasks/sync%3Atarget/run/rider-a"))
+
+	require.Equal(t, http.StatusAccepted, response.Code, response.Body.String())
+	assert.Equal(t, []startedTask{{name: "sync:target", argument: "rider-a"}}, tasks.started, "started")
+}

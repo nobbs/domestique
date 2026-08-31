@@ -192,7 +192,7 @@ describe("RunNotice", () => {
 
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
-        "/v1/sync/source",
+        "/v1/tasks/sync/run/source",
         expect.objectContaining({ method: "POST" }),
       ),
     );

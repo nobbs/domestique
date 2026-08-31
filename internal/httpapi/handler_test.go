@@ -1019,28 +1019,21 @@ func TestHandlerRunsCallerBoundOAuthFlow(t *testing.T) {
 	assert.Equal(t, "/", callbackResponse.Header().Get("Location"), "callback location")
 }
 
-func TestHandlerAcceptsManualSync(t *testing.T) {
-	trigger := &fakeSync{accepted: true}
-	handler := newHandlerWithSync(t, &fakeOAuth{}, &fakeState{}, trigger)
-	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/sync"))
-	assert.Equal(t, http.StatusAccepted, response.Code, "sync status")
-	assert.Equal(t, 1, trigger.calls, "trigger calls")
-}
-
 // Redoing a stage is one request: mark it, then start the run that will honour
 // the mark. Both halves, because the stage has to be read again before it can be
 // written again.
 func TestHandlerReprocessesOneStageAndStartsARun(t *testing.T) {
 	state := surfaceState()
-	trigger := &fakeSync{accepted: true}
-	handler := newHandlerWithSync(t, &fakeOAuth{}, state, trigger)
+	handler := newHandlerWithSync(t, &fakeOAuth{}, state, &fakeSync{accepted: true})
+	tasks, ok := handler.tasks.(*fakeTasks)
+	require.True(t, ok, "the handler was not built over a fake task list")
 
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/providers/veloplanner/sourceRoutes/12/routes/1/reprocess"))
 	require.Equal(t, http.StatusAccepted, response.Code, "reprocess status")
 	assert.Equal(t, [][2]int64{{12, 1}}, state.reprocessed, "reprocessed stages")
-	assert.Equal(t, []SyncPhase{SyncPhaseAll}, trigger.phases, "triggered phases")
+	// A reprocess is a whole synchronization asked for on a stage's behalf.
+	assert.Equal(t, []startedTask{{name: TaskSync}}, tasks.started, "started tasks")
 }
 
 // A run already in flight may be past this stage or may not include it, so the
@@ -1147,68 +1140,6 @@ func TestHandlerRejectsMalformedLegacyStagePaths(t *testing.T) {
 	}
 }
 
-// Each half is triggerable on its own, because each is separately switched off
-// and separately worth starting by hand.
-func TestHandlerTriggersEachPhaseOnItsOwn(t *testing.T) {
-	for path, want := range map[string]SyncPhase{
-		"/v1/sync":         SyncPhaseAll,
-		"/v1/sync/source":  SyncPhaseSource,
-		"/v1/sync/targets": SyncPhaseTargets,
-	} {
-		trigger := &fakeSync{accepted: true}
-		handler := newHandlerWithSync(t, &fakeOAuth{}, &fakeState{}, trigger)
-		response := httptest.NewRecorder()
-		handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, path))
-		assert.Equalf(t, http.StatusAccepted, response.Code, "POST %s status", path)
-		assert.Equalf(t, []SyncPhase{want}, trigger.phases, "POST %s triggered phases", path)
-	}
-}
-
-// A configured slot is triggered by name and mutates no other target: the
-// handler validates the path value before the sync process ever sees it.
-func TestHandlerTriggersOneConfiguredTarget(t *testing.T) {
-	trigger := &fakeSync{accepted: true}
-	handler := newHandlerWithSync(t, &fakeOAuth{}, &fakeState{}, trigger)
-
-	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/sync/targets/rider-a"))
-	assert.Equal(t, http.StatusAccepted, response.Code, "POST /v1/sync/targets/rider-a status")
-	assert.Equal(t, []string{"rider-a"}, trigger.targetTriggers, "triggered target")
-}
-
-// A target this build was never configured with is refused outright, the same
-// way the OAuth start route refuses one: there is no slot to reconcile.
-func TestHandlerRejectsAnUnconfiguredTargetTrigger(t *testing.T) {
-	trigger := &fakeSync{accepted: true}
-	handler := newHandlerWithSync(t, &fakeOAuth{}, &fakeState{}, trigger)
-
-	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/sync/targets/unknown"))
-	assert.Equal(t, http.StatusNotFound, response.Code, "POST /v1/sync/targets/unknown status")
-	assert.Empty(t, trigger.targetTriggers, "an unconfigured target was triggered")
-}
-
-// A single-target trigger refuses the same way a full one does when a
-// synchronization is already running.
-func TestHandlerRefusesADuplicateTargetTrigger(t *testing.T) {
-	trigger := &fakeSync{accepted: false}
-	handler := newHandlerWithSync(t, &fakeOAuth{}, &fakeState{}, trigger)
-
-	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/sync/targets/rider-a"))
-	assert.Equal(t, http.StatusConflict, response.Code, "POST /v1/sync/targets/rider-a status")
-}
-
-func TestHandlerClearsASingleTarget(t *testing.T) {
-	trigger := &fakeSync{accepted: true}
-	handler := newHandlerWithSync(t, &fakeOAuth{}, &fakeState{}, trigger)
-
-	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/targets/rider-a/clear"))
-	assert.Equal(t, http.StatusAccepted, response.Code, "POST /v1/targets/rider-a/clear status")
-	assert.Equal(t, []string{"rider-a"}, trigger.clearTriggers, "cleared target")
-}
-
 // A clear is destructive, so a slot this build was never configured with is
 // refused exactly as it is for a reconciliation.
 func TestHandlerRejectsClearingAnUnconfiguredTarget(t *testing.T) {
@@ -1219,39 +1150,6 @@ func TestHandlerRejectsClearingAnUnconfiguredTarget(t *testing.T) {
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/targets/unknown/clear"))
 	assert.Equal(t, http.StatusNotFound, response.Code, "POST /v1/targets/unknown/clear status")
 	assert.Empty(t, trigger.clearTriggers, "an unconfigured target was cleared")
-}
-
-// It shares the single-flight guard: a clear must never race a run writing to
-// the same target.
-func TestHandlerRefusesAClearWhileSomethingIsRunning(t *testing.T) {
-	trigger := &fakeSync{accepted: false}
-	handler := newHandlerWithSync(t, &fakeOAuth{}, &fakeState{}, trigger)
-
-	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/targets/rider-a/clear"))
-	assert.Equal(t, http.StatusConflict, response.Code, "POST /v1/targets/rider-a/clear status")
-}
-
-// A surface retry is triggered independently of either sync phase, and never
-// starts a synchronization: it must never read the source or write a target.
-func TestHandlerTriggersASurfaceRetryWithoutStartingASync(t *testing.T) {
-	trigger := &fakeSync{annotateAccepted: true}
-	handler := newHandlerWithSync(t, &fakeOAuth{}, &fakeState{}, trigger)
-
-	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/sync/surface"))
-	assert.Equal(t, http.StatusAccepted, response.Code, "surface retry status")
-	assert.Equal(t, 1, trigger.annotateCalls, "TriggerAnnotate calls")
-	assert.Empty(t, trigger.phases, "the surface retry also triggered a phase")
-}
-
-// The surface retry shares the same single-flight guard as an ordinary sync.
-func TestHandlerRejectsAnOverlappingSurfaceRetry(t *testing.T) {
-	handler := newHandlerWithSync(t, &fakeOAuth{}, &fakeState{}, &fakeSync{})
-
-	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/sync/surface"))
-	assert.Equal(t, http.StatusConflict, response.Code, "surface retry status")
 }
 
 func TestHandlerSwitchesEitherHalfOfTheSchedule(t *testing.T) {
@@ -1715,10 +1613,13 @@ func TestHandlerOmitsWorkUnderWayWhenNothingIsRunning(t *testing.T) {
 func TestHandlerRefusesADuplicateTriggerWithoutManufacturingASecondRun(t *testing.T) {
 	syncRuns := &fakeSync{activity: SyncActivityState{Phase: SyncPhaseSource, Running: true}}
 	handler := newHandlerWithSync(t, &fakeOAuth{}, &fakeState{}, syncRuns)
+	tasks, ok := handler.tasks.(*fakeTasks)
+	require.True(t, ok, "the handler was not built over a fake task list")
+	tasks.refuse = true
 
 	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/sync"))
-	require.Equal(t, http.StatusConflict, response.Code, "POST /v1/sync status")
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/tasks/sync/run"))
+	require.Equal(t, http.StatusConflict, response.Code, "POST /v1/tasks/sync/run status")
 
 	view := statusOf(t, handler)
 	assert.Equal(t, runningState, view.Sync.State, "sync state")
@@ -1726,85 +1627,27 @@ func TestHandlerRefusesADuplicateTriggerWithoutManufacturingASecondRun(t *testin
 	assert.Equal(t, "source", string(value(view.Sync.Active.Phase)), "active phase")
 }
 
-// A wiring that never offered a clear must refuse it rather than panic on a
-// nil function, so a build without the control answers the route safely.
-func TestSyncFuncsRefuseAClearItWasNotGiven(t *testing.T) {
-	funcs := SyncFuncs{TriggerFunc: func(SyncPhase) bool { return true }}
-
-	assert.False(t, funcs.TriggerClear("rider-a"), "an unwired clear was accepted")
-}
-
-func TestSyncFuncsAdaptAPairOfFunctions(t *testing.T) {
+func TestSyncFuncsAdaptWhatOnlyTheReporterAnswers(t *testing.T) {
 	activity := SyncActivityState{Phase: SyncPhaseSource, Running: true}
-
-	var asked SyncPhase
-	var annotateCalls int
-
-	var askedTarget string
-	var askedClear string
-
 	funcs := SyncFuncs{
-		TriggerFunc: func(phase SyncPhase) bool {
-			asked = phase
-
-			return true
-		},
-		TriggerTargetFunc: func(targetID string) bool {
-			askedTarget = targetID
-
-			return true
-		},
-		TriggerClearFunc: func(targetID string) bool {
-			askedClear = targetID
-
-			return true
-		},
-		ActivityFunc: func() SyncActivityState { return activity },
-		TriggerAnnotateFunc: func() bool {
-			annotateCalls++
-
-			return true
-		},
+		ActivityFunc:          func() SyncActivityState { return activity },
 		SurfaceIncompleteFunc: func() int { return 3 },
 	}
 
-	assert.True(t, funcs.Trigger(SyncPhaseTargets), "trigger")
-	assert.Equal(t, SyncPhaseTargets, asked, "the phase the trigger was asked for")
-	assert.True(t, funcs.TriggerTarget("rider-a"), "trigger target")
-	assert.Equal(t, "rider-a", askedTarget, "the target the trigger was asked for")
-	assert.True(t, funcs.TriggerClear("rider-b"), "trigger clear")
-	assert.Equal(t, "rider-b", askedClear, "the target the clear was asked for")
 	assert.Equal(t, activity, funcs.Activity(), "activity")
-	assert.True(t, funcs.TriggerAnnotate(), "TriggerAnnotate()")
-	assert.Equal(t, 1, annotateCalls, "TriggerAnnotate calls")
 	assert.Equal(t, 3, funcs.SurfaceIncomplete(), "SurfaceIncomplete()")
 }
 
 // A process whose runs begin and end inside the request that asked for one has
 // no in-flight window to describe, so it wires no ActivityFunc at all.
 func TestSyncFuncsReportNothingUnderWayWithoutAnActivityFunc(t *testing.T) {
-	funcs := SyncFuncs{
-		TriggerFunc:       func(SyncPhase) bool { return false },
-		TriggerTargetFunc: func(string) bool { return false },
-	}
-
-	assert.Equal(t, SyncActivityState{}, funcs.Activity(), "activity")
+	assert.Equal(t, SyncActivityState{}, SyncFuncs{}.Activity(), "activity")
 }
 
 // A process that tracks no incomplete count wires no SurfaceIncompleteFunc,
 // and zero is the honest answer for one that tracks none.
 func TestSyncFuncsReportNoIncompleteCountWithoutAFunc(t *testing.T) {
-	funcs := SyncFuncs{TriggerFunc: func(SyncPhase) bool { return false }}
-
-	assert.Zero(t, funcs.SurfaceIncomplete(), "SurfaceIncomplete()")
-}
-
-// A process with no classification pass to run, such as the demo build, wires
-// no TriggerAnnotateFunc at all. That must not panic a request that reaches it.
-func TestSyncFuncsRefuseAnAnnotationTriggerWithoutAFunc(t *testing.T) {
-	funcs := SyncFuncs{TriggerFunc: func(SyncPhase) bool { return false }}
-
-	assert.False(t, funcs.TriggerAnnotate(), "TriggerAnnotate()")
+	assert.Zero(t, SyncFuncs{}.SurfaceIncomplete(), "SurfaceIncomplete()")
 }
 
 // An operator who has started the browser flow and not finished it is in a
@@ -1864,13 +1707,6 @@ func TestHandlerReportsUnreadableScheduleAsUnavailable(t *testing.T) {
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/status"))
 	assert.Equal(t, http.StatusServiceUnavailable, response.Code, "status")
-}
-
-func TestHandlerRejectsOverlappingManualSync(t *testing.T) {
-	handler := newHandlerWithSync(t, &fakeOAuth{}, &fakeState{}, &fakeSync{})
-	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/sync"))
-	assert.Equal(t, http.StatusConflict, response.Code, "sync status")
 }
 
 func TestHandlerRejectsInactiveTarget(t *testing.T) {

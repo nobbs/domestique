@@ -197,7 +197,7 @@ describe("SyncControls", () => {
     await userEvent.click(sourceButton);
 
     await waitFor(() =>
-      expect(fetchMock).toHaveBeenCalledWith("/v1/sync/source", expect.anything()),
+      expect(fetchMock).toHaveBeenCalledWith("/v1/tasks/sync/run/source", expect.anything()),
     );
   });
 
@@ -387,7 +387,7 @@ describe("SyncControls", () => {
 
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
-        "/v1/sync/surface",
+        "/v1/tasks/surface%3Aannotate/run",
         expect.objectContaining({ method: "POST" }),
       ),
     );

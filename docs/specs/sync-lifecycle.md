@@ -151,12 +151,13 @@ state, token, Wahoo account identity, or upstream response.
 A manual trigger is a state change and carries the browser-origin requirement of
 every state-changing route.
 
-The configured Tailnet user can request `POST /v1/sync` to start an immediate
-synchronisation of both halves, or `POST /v1/sync/source` and
-`POST /v1/sync/targets` to start one. `POST /v1/sync/targets/{target}`
-reconciles exactly one configured target slot without touching the source read
-or any other target. `{target}` must name a configured slot; a request naming
-any other is refused as not found, as the OAuth start route refuses one.
+The configured Tailnet user starts one by asking for the task that does it:
+`POST /v1/tasks/sync/run` for both halves, `/run/source` or `/run/targets` for
+one, and `POST /v1/tasks/sync:target/run/{slot}` to reconcile exactly one
+configured target slot without touching the source read or any other target. A
+slot that is not configured is accepted and does no work, recorded as `skipped`
+rather than refused: what an argument means is the task's, and the refusal that
+matters is in the service.
 
 Each trigger uses the same reconciliation, durable run record, and Pushover
 notification path as scheduled work. A single-target request applies the same
@@ -175,13 +176,11 @@ it. The switches govern unattended runs only.
 
 ## Retrying enrichment
 
-`POST /v1/sync/surface` asks for one immediate classification pass on the same
-terms as a manual trigger: it carries the browser-origin requirement, and the
-service returns `202` only when no synchronisation or other classification pass
-is active, `409` otherwise. It shares one mutual exclusion with every other
-manual trigger above — `POST /v1/sync`, `POST /v1/sync/source`,
-`POST /v1/sync/targets`, and `POST /v1/sync/targets/{target}`. None of the five
-may run while another is in flight.
+`POST /v1/tasks/surface:annotate/run` asks for one immediate classification pass
+on the same terms as any other task: it carries the browser-origin requirement,
+and the service returns `202` only when nothing else holds the stored library,
+`409` otherwise. Every task above holds it exclusively, so none of them may run
+while another is in flight.
 
 It never reads VeloPlanner and never writes a Wahoo target. It reclassifies the
 routes already stored against the local surface index and cache alone, which is
@@ -591,7 +590,8 @@ route does not count.
 `surface.incomplete` counts routes the most recently completed classification
 pass could not classify, and tells those apart from routes waiting their turn.
 It answers from the last completed pass alone, whether that pass ran on the
-schedule or through `POST /v1/sync/surface`. It is not durable and reads zero
+schedule or through `POST /v1/tasks/surface:annotate/run`. It is not durable and
+reads zero
 after a restart until a pass has run again.
 
 `surface.generation` and `surface.built_at` name the surface index those
@@ -751,7 +751,7 @@ credentials. Authentication failures use 401; an authenticated but unpermitted
 identity uses 403; a request that does not come from the browser UI's origin
 also uses 403; malformed client input uses 400.
 
-The OAuth start, callback, the protected `POST /v1/sync` triggers, the protected
+The OAuth start, callback, the protected `POST /v1/tasks` triggers, the protected
 `PUT /v1/sync/schedule` switch, the protected
 `POST /v1/providers/{provider}/sourceRoutes/{source-route-id}/routes/{stage-order}/reprocess`
 request, and the protected `PUT /v1/settings/*` section writes are the only
@@ -820,7 +820,7 @@ The implementation test suite must cover at least:
   data;
 - `GET /v1/status` reporting the trusted inventory's age and freshness from
   local state alone; and
-- `POST /v1/sync/surface` running a classification pass without reading the
+- `POST /v1/tasks/surface:annotate/run` running a classification pass without reading the
   source or writing a target, refusing to start one alongside a synchronisation
   or another such pass in either direction, and `GET /v1/status` reporting
   `incomplete` from the most recently completed pass, reading zero again after
