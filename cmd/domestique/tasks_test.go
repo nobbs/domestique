@@ -11,6 +11,7 @@ import (
 
 	"github.com/nobbs/domestique/internal/httpapi"
 	"github.com/nobbs/domestique/internal/osmindex"
+	"github.com/nobbs/domestique/internal/route"
 	"github.com/nobbs/domestique/internal/runtimeconfig"
 	syncservice "github.com/nobbs/domestique/internal/sync"
 	"github.com/nobbs/domestique/internal/task"
@@ -30,7 +31,9 @@ func TestInventoryTasksAllHoldTheInventoryExclusively(t *testing.T) {
 			definition.Name+" resources",
 		)
 	}
-	assert.Equal(t, []string{taskSyncSource, taskSyncTarget, taskSyncClear, taskSurfaceAnnotate}, names, "registered tasks")
+	assert.Equal(t,
+		[]string{taskSyncSource, taskSyncTarget, taskSyncClear, taskSurfaceAnnotate},
+		names, "registered tasks")
 }
 
 // The read runs unasked, and so do the targets — the second as a backstop
@@ -160,9 +163,9 @@ func liveSettings(t *testing.T) *runtimeconfig.Current {
 func definitionNamed(t *testing.T, definitions []task.Definition, name string) task.Definition {
 	t.Helper()
 
-	for _, definition := range definitions {
-		if definition.Name == name {
-			return definition
+	for index := range definitions {
+		if definitions[index].Name == name {
+			return definitions[index]
 		}
 	}
 	t.Fatalf("no task named %q was registered", name)
@@ -171,6 +174,7 @@ func definitionNamed(t *testing.T, definitions []task.Definition, name string) t
 }
 
 type fakeSynchronizer struct {
+	providers   []route.Provider
 	phases      []syncservice.Phase
 	reconciled  []string
 	cleared     []string
@@ -188,6 +192,12 @@ func (s *fakeSynchronizer) Run(context.Context) syncservice.Result {
 
 func (s *fakeSynchronizer) RunBoth(context.Context) syncservice.Result {
 	s.both++
+
+	return s.result
+}
+
+func (s *fakeSynchronizer) RunSourceProvider(_ context.Context, provider route.Provider) syncservice.Result {
+	s.providers = append(s.providers, provider)
 
 	return s.result
 }
@@ -328,10 +338,7 @@ func TestIndexResultSeparatesABuildFromAnUpstreamThatHadNothingNew(t *testing.T)
 	}{
 		"rebuilt": {
 			outcome: osmindex.Rebuilt,
-			want: task.Result{
-				Outcome: task.Succeeded,
-				Next:    []task.Link{{Task: taskSurfaceAnnotate}},
-			},
+			want:    task.Result{Outcome: task.Succeeded},
 		},
 		"nothing new upstream": {
 			outcome: osmindex.Unchanged, want: task.Result{Outcome: task.Unchanged},
@@ -422,25 +429,25 @@ func (*countingStore) LastFailureNotification(context.Context, string) (time.Tim
 
 func (*countingStore) RecordFailureNotification(context.Context, string, time.Time) error { return nil }
 
-// A refreshed inventory is worth reading the ground under again; a pass that
-// stored nothing asks for nothing.
-// A read that stored a library asks for the targets to be written and for the
-// ground under the stages to be read again. One that stored nothing asks for
-// neither, and a target reconciliation never asks for anything.
-func TestSourceResultAsksForWhatFollowsAStoredInventory(t *testing.T) {
+// What follows what is declared, so the graph is the assertion rather than a
+// result carrying links. Both joins wait on every read, and the classification
+// pass waits on the index rebuild too.
+func TestTheGraphDeclaresWhatFollowsEveryRead(t *testing.T) {
 	t.Parallel()
 
-	stored := sourceResult(&syncservice.Result{Outcome: syncservice.OutcomeSucceeded, SourceStored: true})
-	assert.Equal(t, []task.Link{
-		{Task: taskSyncTarget},
-		{Task: taskSurfaceAnnotate},
-	}, stored.Next, "what a stored inventory asked for")
+	definitions := append(
+		inventoryTasks(&fakeSynchronizer{}, liveSettings(t), allEnabled),
+		surfaceIndexTask(&fakeIndexBuilder{}, liveSettings(t), allEnabled, time.Time{}),
+	)
 
-	untouched := sourceResult(&syncservice.Result{Outcome: syncservice.OutcomeSucceeded})
-	assert.Empty(t, untouched.Next, "a read that stored nothing asked for something anyway")
+	targets := definitionNamed(t, definitions, taskSyncTarget)
+	assert.Equal(t, []string{taskSyncSource}, targets.Follows, "what the targets follow")
+	assert.True(t, targets.Join, "the targets run after the first read rather than all of them")
 
-	reconciled := syncResult(&syncservice.Result{Outcome: syncservice.OutcomeSucceeded, SourceStored: true})
-	assert.Empty(t, reconciled.Next, "a target reconciliation asked for something to follow it")
+	annotate := definitionNamed(t, definitions, taskSurfaceAnnotate)
+	assert.Equal(t, []string{taskSyncSource, taskSurfaceIndex}, annotate.Follows,
+		"what classification follows")
+	assert.True(t, annotate.Join, "classification runs after the first of its predecessors")
 }
 
 func alwaysOn() bool { return true }
@@ -611,4 +618,22 @@ func TestTaskSurfaceRefusesToSwitchWithoutASchedule(t *testing.T) {
 
 	assert.NotPanics(t, func() { _ = surface.Registered() }, "listing without a schedule panicked")
 	require.Error(t, surface.Schedule(t.Context(), "sync:target", false), "Schedule() without a schedule")
+}
+
+// The read takes a library the same way the targets take a slot: none is every
+// configured one, a name is that one alone.
+func TestTheReadTakesOneLibraryOrEveryOne(t *testing.T) {
+	t.Parallel()
+
+	synchronizer := &fakeSynchronizer{result: syncservice.Result{Outcome: syncservice.OutcomeSucceeded}}
+	definition := definitionNamed(t, inventoryTasks(synchronizer, liveSettings(t), allEnabled), taskSyncSource)
+
+	definition.Run.Run(t.Context(), task.Invocation{Task: taskSyncSource})
+	assert.Equal(t, []syncservice.Phase{syncservice.PhaseSource}, synchronizer.phases, "phases run")
+	assert.Empty(t, synchronizer.providers, "reading everything named a library")
+
+	definition.Run.Run(t.Context(), task.Invocation{
+		Task: taskSyncSource, Argument: string(route.ProviderKomoot),
+	})
+	assert.Equal(t, []route.Provider{route.ProviderKomoot}, synchronizer.providers, "the library read")
 }
