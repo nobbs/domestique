@@ -120,7 +120,12 @@ export const NoData: Story = {
   render: () => <Pair gradient={[]} surfaceMix={[]} />,
 };
 
-/** Only one dataset missing — its faded bar sits beside the other's real one. */
-export const OneDatasetMissing: Story = {
+/** Surface missing — its faded bar sits below the gradient's real one. */
+export const SurfaceMissing: Story = {
   render: () => <Pair gradient={bandEntries(bands, route.distanceMetres)} surfaceMix={[]} />,
+};
+
+/** Gradient missing — its faded bar sits above the surface's real one. */
+export const GradientMissing: Story = {
+  render: () => <Pair gradient={[]} surfaceMix={surfaceEntries(surface)} />,
 };
