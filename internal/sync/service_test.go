@@ -478,10 +478,8 @@ func TestServiceRunTargetKeepsTheDeletionLimit(t *testing.T) {
 	assert.Empty(t, target.deletedRouteIDs, "deleted routes")
 }
 
-// A target this service was never configured with performs no work. This is the
-// only guard: the HTTP surface names a task and passes the argument through
-// without knowing what slots a task accepts, so nothing refuses the name before
-// it arrives here.
+// This is the only guard against an unconfigured target: the HTTP surface
+// passes the slot name through without checking it first.
 func TestServiceRunTargetSkipsAnUnconfiguredTarget(t *testing.T) {
 	state := newFakeState("a", "b")
 	target := newFakeTarget()
@@ -492,9 +490,8 @@ func TestServiceRunTargetSkipsAnUnconfiguredTarget(t *testing.T) {
 	assert.Empty(t, target.refreshTokens, "an unconfigured target was contacted")
 }
 
-// Clearing is the one deletion no per-run limit bounds, so the guard that keeps
-// it to a configured slot is the one that matters most. Nothing refuses the name
-// before it arrives here.
+// Clearing has no per-run deletion limit, so this guard against an
+// unconfigured target is the only check before deletion runs.
 func TestServiceClearTargetSkipsAnUnconfiguredTarget(t *testing.T) {
 	state := newFakeState("a", "b")
 	target := newFakeTarget()
@@ -1507,8 +1504,8 @@ func TestServiceReportsNoTargetOutcomesForASourceRun(t *testing.T) {
 	assert.Empty(t, service.RunSource(t.Context()).Targets)
 }
 
-// A read of one library leaves every other library's stored stages alone, which
-// is what lets each have its own task, its own alert and its own backoff.
+// Each library gets its own task, alert, and backoff, so reading one must not
+// touch another's stored stages.
 func TestServiceRunSourceProviderReadsOnlyTheLibraryItNames(t *testing.T) {
 	state := newFakeState("a", "b")
 	desired := testStage(t, 1, 1, "new", "new-hash")
@@ -1522,9 +1519,6 @@ func TestServiceRunSourceProviderReadsOnlyTheLibraryItNames(t *testing.T) {
 	assert.Equal(t, route.ProviderVeloPlanner, result.Sources[0].Provider, "the library reported")
 }
 
-// A library nobody configured is not ready rather than a fault: being absent is
-// not the same as having gone wrong, and what follows a read must not be held
-// back by a library this build was never given.
 func TestServiceRunSourceProviderIsNotReadyForAnUnconfiguredLibrary(t *testing.T) {
 	state := newFakeState("a", "b")
 	source := &fakeSource{stages: []route.Route{testStage(t, 1, 1, "new", "new-hash")}}
@@ -1536,9 +1530,6 @@ func TestServiceRunSourceProviderIsNotReadyForAnUnconfiguredLibrary(t *testing.T
 	assert.Zero(t, result.SourceStages, "an unconfigured library reported stages")
 }
 
-// Building every library at once refuses when any one of them is half
-// configured. A read over one library must not inherit that: nothing it reads
-// is written on another library's behalf.
 func TestServiceRunSourceProviderIgnoresWhetherTheOtherLibrariesAreReadable(t *testing.T) {
 	state := newFakeState("a", "b")
 	source := &fakeSource{stages: []route.Route{testStage(t, 1, 1, "new", "new-hash")}}

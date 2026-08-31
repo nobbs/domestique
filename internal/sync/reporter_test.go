@@ -77,9 +77,8 @@ func TestReporterReportsWhetherItStoredANewInventory(t *testing.T) {
 	assert.False(t, targetsResult.SourceStored, "a run that stored no inventory reported one")
 }
 
-// A source phase over two providers where only one stores still reports a
-// stored inventory: the aggregate outcome is the worse of the two, but the
-// half that succeeded is worth building on.
+// Two providers, one storing: the aggregate outcome is the worse of the two,
+// but the phase still reports the successful half's stored inventory.
 func TestReporterReportsAPartialSourceReadAsStored(t *testing.T) {
 	partial := &reportingRunner{
 		source: Result{
@@ -393,9 +392,8 @@ func TestReporterRecordsNoTargetRunsForASourceRun(t *testing.T) {
 	assert.Empty(t, state.recordedRuns)
 }
 
-// The reporter has to hand the named library to the runner rather than falling
-// back to reading every one: a task that asks for one library and gets all of
-// them looks like it worked.
+// The reporter must hand the named library to the runner rather than fall back
+// to reading every one: a wrong read here still reports success.
 func TestReporterRunSourceProviderReadsTheLibraryItWasGiven(t *testing.T) {
 	t.Parallel()
 
