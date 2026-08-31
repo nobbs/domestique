@@ -24,7 +24,8 @@ func TestStageEnrichmentFailuresReadBackByStageAndPass(t *testing.T) {
 	}, readFailures(t, store), "recorded failures")
 }
 
-// The count must move the same way ForEachStageEnrichmentFailure does.
+// A stage failing both passes is one stage, not two: the count is of stages,
+// not of the rows ForEachStageEnrichmentFailure visits.
 func TestCountStageEnrichmentFailuresCountsEveryStageWithSomethingWrong(t *testing.T) {
 	t.Parallel()
 
@@ -39,7 +40,7 @@ func TestCountStageEnrichmentFailuresCountsEveryStageWithSomethingWrong(t *testi
 
 	count, err = store.CountStageEnrichmentFailures(t.Context())
 	require.NoError(t, err, "CountStageEnrichmentFailures()")
-	assert.Equal(t, 3, count, "recorded failures")
+	assert.Equal(t, 2, count, "stages with something wrong")
 }
 
 func TestARepeatedStageFailureReplacesTheLastOne(t *testing.T) {

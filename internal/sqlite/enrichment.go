@@ -99,7 +99,9 @@ func (s *Store) ForEachStageEnrichmentFailure(
 // rather than the rows themselves.
 func (s *Store) CountStageEnrichmentFailures(ctx context.Context) (count int, err error) {
 	if err := s.database.QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM stage_enrichment_failure
+		SELECT COUNT(*) FROM (
+			SELECT 1 FROM stage_enrichment_failure GROUP BY provider, route_id, stage_order
+		)
 	`).Scan(&count); err != nil {
 		return 0, fmt.Errorf("counting stage enrichment failures: %w", err)
 	}
