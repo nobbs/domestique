@@ -103,8 +103,6 @@ func (h *Handler) SetNotifications(writer http.ResponseWriter, request *http.Req
 	h.storeSection(writer, request, func(values runtimeconfig.Values) runtimeconfig.Values {
 		values.Notifications = runtimeconfig.Notifications{
 			Enabled:         body.Enabled,
-			Policy:          runtimeconfig.SuccessPolicy(body.SuccessPolicy),
-			DigestInterval:  time.Duration(body.DigestIntervalSeconds) * time.Second,
 			PushoverBaseURL: body.PushoverBaseURL,
 		}
 
@@ -339,10 +337,8 @@ func (h *Handler) settingsView() openapi.Settings {
 			InitialDelaySeconds:      int(values.Sync.InitialDelay / time.Second),
 		},
 		Notifications: openapi.NotificationSettings{
-			Enabled:               values.Notifications.Enabled,
-			SuccessPolicy:         openapi.NotificationSettings_SuccessPolicy(values.Notifications.Policy),
-			DigestIntervalSeconds: int(values.Notifications.DigestInterval / time.Second),
-			PushoverBaseURL:       values.Notifications.PushoverBaseURL,
+			Enabled:         values.Notifications.Enabled,
+			PushoverBaseURL: values.Notifications.PushoverBaseURL,
 		},
 		Wahoo: openapi.WahooSettings{
 			APIBaseURL:   values.Wahoo.APIBaseURL,

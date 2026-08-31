@@ -279,24 +279,9 @@ export interface SyncSettings {
   initialDelaySeconds: number;
 }
 
-export type NotificationSettingsSuccessPolicy =
-  (typeof NotificationSettingsSuccessPolicy)[keyof typeof NotificationSettingsSuccessPolicy];
-
-export const NotificationSettingsSuccessPolicy = {
-  every: "every",
-  quiet: "quiet",
-  digest: "digest",
-} as const;
-
 export interface NotificationSettings {
   /** The switch for the whole channel. Off suppresses a failure and a stale inventory as surely as it suppresses a routine success. */
   enabled: boolean;
-  successPolicy: NotificationSettingsSuccessPolicy;
-  /**
-   * The period one digest covers, read only by the digest policy.
-   * @minimum 1
-   */
-  digestIntervalSeconds: number;
   /** The origin the application token and user key are sent to. */
   pushoverBaseUrl: string;
 }
@@ -420,24 +405,9 @@ export interface SourceUpdate {
   password?: string;
 }
 
-export type NotificationsUpdateSuccessPolicy =
-  (typeof NotificationsUpdateSuccessPolicy)[keyof typeof NotificationsUpdateSuccessPolicy];
-
-export const NotificationsUpdateSuccessPolicy = {
-  every: "every",
-  quiet: "quiet",
-  digest: "digest",
-} as const;
-
 export interface NotificationsUpdate {
   /** The switch for the whole channel. Off suppresses a failure and a stale inventory as surely as it suppresses a routine success. */
   enabled: boolean;
-  successPolicy: NotificationsUpdateSuccessPolicy;
-  /**
-   * The period one digest covers, read only by the digest policy.
-   * @minimum 1
-   */
-  digestIntervalSeconds: number;
   /** The origin the application token and user key are sent to. */
   pushoverBaseUrl: string;
   /** The Pushover application's token, sent only when it was typed. The rules the application secret follows apply here too. */

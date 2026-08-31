@@ -322,20 +322,9 @@ type AlertDecision struct {
 	Enabled bool   `json:"enabled"`
 }
 
-type NotificationsUpdate_SuccessPolicy string
-
-const (
-	NotificationsUpdate_SuccessPolicyEvery  NotificationsUpdate_SuccessPolicy = "every"
-	NotificationsUpdate_SuccessPolicyQuiet  NotificationsUpdate_SuccessPolicy = "quiet"
-	NotificationsUpdate_SuccessPolicyDigest NotificationsUpdate_SuccessPolicy = "digest"
-)
-
 type NotificationsUpdate struct {
 	// Enabled The switch for the whole channel. Off suppresses a failure and a stale inventory as surely as it suppresses a routine success.
-	Enabled       bool                              `json:"enabled"`
-	SuccessPolicy NotificationsUpdate_SuccessPolicy `json:"successPolicy"`
-	// DigestIntervalSeconds The period one digest covers, read only by the digest policy.
-	DigestIntervalSeconds int `json:"digestIntervalSeconds"`
+	Enabled bool `json:"enabled"`
 	// PushoverBaseURL The origin the application token and user key are sent to.
 	PushoverBaseURL string `json:"pushoverBaseUrl"`
 	// ApplicationToken The Pushover application's token, sent only when it was typed. The rules the application secret follows apply here too.
@@ -357,20 +346,9 @@ type SyncSettings struct {
 	InitialDelaySeconds int `json:"initialDelaySeconds"`
 }
 
-type NotificationSettings_SuccessPolicy string
-
-const (
-	NotificationSettings_SuccessPolicyEvery  NotificationSettings_SuccessPolicy = "every"
-	NotificationSettings_SuccessPolicyQuiet  NotificationSettings_SuccessPolicy = "quiet"
-	NotificationSettings_SuccessPolicyDigest NotificationSettings_SuccessPolicy = "digest"
-)
-
 type NotificationSettings struct {
 	// Enabled The switch for the whole channel. Off suppresses a failure and a stale inventory as surely as it suppresses a routine success.
-	Enabled       bool                               `json:"enabled"`
-	SuccessPolicy NotificationSettings_SuccessPolicy `json:"successPolicy"`
-	// DigestIntervalSeconds The period one digest covers, read only by the digest policy.
-	DigestIntervalSeconds int `json:"digestIntervalSeconds"`
+	Enabled bool `json:"enabled"`
 	// PushoverBaseURL The origin the application token and user key are sent to.
 	PushoverBaseURL string `json:"pushoverBaseUrl"`
 }

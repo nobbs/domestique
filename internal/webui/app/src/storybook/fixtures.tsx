@@ -209,8 +209,6 @@ export const settings: Settings = {
   },
   notifications: {
     enabled: true,
-    successPolicy: "digest",
-    digestIntervalSeconds: 24 * 3600,
     pushoverBaseUrl: "https://api.pushover.net",
   },
   basemaps: [{ name: "Streets", styleUrl: "https://tiles.example.test/streets.json" }],

@@ -102,8 +102,6 @@ func settingsWith(basemaps []runtimeconfig.Basemap) *staticSettings {
 		Sync: runtimeconfig.Sync{StaleAfter: 26 * time.Hour, InitialDelay: time.Minute},
 		Notifications: runtimeconfig.Notifications{
 			Enabled:         true,
-			Policy:          runtimeconfig.SuccessPolicyEvery,
-			DigestInterval:  24 * time.Hour,
 			PushoverBaseURL: "https://api.pushover.net",
 		},
 		Basemaps: basemaps,

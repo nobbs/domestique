@@ -87,8 +87,6 @@ func validValues() Values {
 		Sync: Sync{StaleAfter: 24 * time.Hour, InitialDelay: time.Minute},
 		Notifications: Notifications{
 			Enabled:         true,
-			Policy:          SuccessPolicyDigest,
-			DigestInterval:  24 * time.Hour,
 			PushoverBaseURL: "https://api.pushover.net",
 		},
 		Basemaps: []Basemap{{Name: "Streets", StyleURL: "https://tiles.example.test/styles/bright"}},
@@ -104,7 +102,6 @@ func TestLoadPublishesTheStoredSettings(t *testing.T) {
 
 	values := current.Values()
 	assert.Equal(t, 24*time.Hour, values.Sync.StaleAfter, "Sync.StaleAfter")
-	assert.Equal(t, SuccessPolicyDigest, values.Notifications.Policy, "Notifications.Policy")
 	assert.Equal(t, []string{"europe/germany"}, values.Surface.Regions, "Surface.Regions")
 	assert.Zero(t, store.writes, "reading settings must not write them back")
 }
@@ -113,11 +110,11 @@ func TestLoadPublishesTheStoredSettings(t *testing.T) {
 // startup failure naming the setting, not a service running on it.
 func TestLoadRefusesStoredSettingsThatFailTheirOwnRules(t *testing.T) {
 	values := validValues()
-	values.Notifications.Policy = "loudly"
+	values.Notifications.PushoverBaseURL = "http://api.pushover.net"
 
 	_, err := Load(t.Context(), &stubStore{values: values})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "notifications.success_policy")
+	assert.Contains(t, err.Error(), "notifications.pushover.base_url")
 }
 
 func TestLoadReportsAStoreThatCannotBeRead(t *testing.T) {
@@ -213,18 +210,6 @@ func TestValidateNotifications(t *testing.T) {
 		name    string
 		wantErr string
 	}{
-		{name: "a policy that is not one of the three", mutate: func(n *Notifications) { n.Policy = "sometimes" }, wantErr: "success_policy"},
-		{name: "a digest with no period", mutate: func(n *Notifications) { n.DigestInterval = 0 }, wantErr: "at least 1s"},
-		{
-			name:    "a period below the second these settings are stored in",
-			mutate:  func(n *Notifications) { n.DigestInterval = 500 * time.Millisecond },
-			wantErr: "at least 1s",
-		},
-		{
-			name:    "a period reaching past the recorded history",
-			mutate:  func(n *Notifications) { n.DigestInterval = 8 * 24 * time.Hour },
-			wantErr: "must not exceed",
-		},
 		{
 			name:    "an origin with a path",
 			mutate:  func(n *Notifications) { n.PushoverBaseURL = "https://api.pushover.net/1" },
@@ -247,14 +232,6 @@ func TestValidateNotifications(t *testing.T) {
 		})
 	}
 
-	// The period is checked whichever policy is selected, so switching to a
-	// digest later cannot be the moment the setting turns out to be invalid.
-	quiet := valid
-	quiet.Policy = SuccessPolicyQuiet
-	quiet.DigestInterval = 0
-	_, err := ValidateNotifications(quiet)
-	require.Error(t, err)
-
 	trailing := valid
 	trailing.PushoverBaseURL = " " + valid.PushoverBaseURL + " "
 	normalised, err := ValidateNotifications(trailing)
@@ -271,7 +248,7 @@ func TestValidateReportsEachFailingSetting(t *testing.T) {
 		wantErr string
 	}{
 		{name: "sync", mutate: func(v *Values) { v.Sync.StaleAfter = 0 }, wantErr: "sync.stale_after"},
-		{name: "notifications", mutate: func(v *Values) { v.Notifications.DigestInterval = 0 }, wantErr: "digest_interval"},
+		{name: "notifications", mutate: func(v *Values) { v.Notifications.PushoverBaseURL = "nonsense" }, wantErr: "pushover"},
 		{name: "basemaps", mutate: func(v *Values) { v.Basemaps = nil }, wantErr: "webui.basemaps"},
 		{name: "surface", mutate: func(v *Values) { v.Surface.Regions = []string{"Europe"} }, wantErr: "surface.regions"},
 	}

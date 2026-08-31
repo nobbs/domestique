@@ -11,10 +11,6 @@ import (
 	"time"
 )
 
-// maxDigestInterval bounds the period one digest may cover. The run history is a
-// bounded window, and a longer period would total runs already pruned from it.
-const maxDigestInterval = 7 * 24 * time.Hour
-
 // minimumInterval is the floor under every duration here. These are stored as
 // whole seconds, so anything shorter is written as zero and then refused.
 const minimumInterval = time.Second
@@ -166,29 +162,8 @@ func ValidateSync(sync Sync) error {
 	return nil
 }
 
-// ValidateNotifications checks the success policy, the period a digest covers,
-// and the origin the credentials are sent to. A digest with no positive
-// interval would either never be sent or be sent on every run, and neither is
-// what the setting means.
+// ValidateNotifications checks the origin the credentials are sent to.
 func ValidateNotifications(notifications Notifications) (Notifications, error) {
-	switch notifications.Policy {
-	case SuccessPolicyEvery, SuccessPolicyQuiet, SuccessPolicyDigest:
-	default:
-		return Notifications{}, errors.New("notifications.success_policy must be every, quiet, or digest")
-	}
-	// The period is checked whatever the policy reads it. A setting that is only
-	// consulted by one policy is still a setting an operator will switch to, and
-	// finding out then that it was never valid is the wrong moment.
-	if notifications.DigestInterval < minimumInterval {
-		return Notifications{}, errors.New("notifications.digest_interval must be at least 1s")
-	}
-	if notifications.DigestInterval > maxDigestInterval {
-		return Notifications{}, fmt.Errorf(
-			"notifications.digest_interval must not exceed %s, which is as far back as the recorded run history reaches",
-			maxDigestInterval,
-		)
-	}
-
 	notifications.PushoverBaseURL = strings.TrimSpace(notifications.PushoverBaseURL)
 	if err := ValidateHTTPSOrigin("notifications.pushover.base_url", notifications.PushoverBaseURL); err != nil {
 		return Notifications{}, err

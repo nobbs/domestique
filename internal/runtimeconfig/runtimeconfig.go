@@ -81,36 +81,17 @@ type Sync struct {
 }
 
 // Notifications holds what reaches the operator's phone, and where it is sent.
+// Which of them are sent is not here: that is a decision per task and per
+// reason, and it lives in the alert matrix.
 type Notifications struct {
-	// Policy names what a routine successful run notifies.
-	Policy SuccessPolicy
-
 	// PushoverBaseURL is the origin the application token and user key are sent to.
 	// A setting so a demo environment can point it somewhere that goes nowhere.
 	PushoverBaseURL string
-
-	// DigestInterval separates two digests. Read only by SuccessPolicyDigest, and
-	// validated whatever the policy in force is.
-	DigestInterval time.Duration
 
 	// Enabled is the switch for the whole channel. Off suppresses failures too,
 	// not only routine success.
 	Enabled bool
 }
-
-// SuccessPolicy names what a routine successful run notifies. It never governs a
-// failure, a blocked run, or the first success that ends one.
-type SuccessPolicy string
-
-const (
-	// SuccessPolicyEvery pushes one message per successful run.
-	SuccessPolicyEvery SuccessPolicy = "every"
-	// SuccessPolicyQuiet pushes nothing for a routine success.
-	SuccessPolicyQuiet SuccessPolicy = "quiet"
-	// SuccessPolicyDigest replaces routine success pushes with one aggregate
-	// message per interval.
-	SuccessPolicyDigest SuccessPolicy = "digest"
-)
 
 // Basemap is one cartography the map can load.
 type Basemap struct {

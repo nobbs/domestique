@@ -69,7 +69,7 @@ What the file does not carry is as much a part of its contract as what it does.
 There is no source and no source credential, no Wahoo application and no target
 slot, no notification credential, no ride model, and no delay before the first
 run — nor a basemap list, a surface region or rebuild cadence, a staleness
-bound, an empty-source deletion gate, or a notification switch, success policy,
+bound, an empty-source deletion gate, or a notification switch,
 digest period, or Pushover origin. Every one of those is a runtime setting, and
 the decoder refuses it here by name.
 
@@ -287,20 +287,13 @@ the one setting here that is not in force from the next run.
 ### Notifications
 
 `notifications.enabled` is the switch for the whole channel, and it is on by
-default. Off is not a quieter success policy: it suppresses a failure, a blocked
-run, and a stale inventory as surely as it suppresses a routine success. Every
-surface offering it states that.
+default. Off is not a quieter setting: it suppresses a failure, a blocked run,
+and a stale task as surely as it suppresses a routine success. Every surface
+offering it states that.
 
-`notifications.success_policy` is `every`, `quiet`, or `digest`, defaulting to
-`every`. It governs routine success alone. It never suppresses a failure, a
-blocked run, or the first success that ends one; only the switch above does.
-[The sync lifecycle specification](sync-lifecycle.md#notifications) states what
-each policy delivers.
-
-`notifications.digest_interval` is at least a second, at most seven days, and
-defaults to 24 hours. The upper bound is the reach of the recorded run history;
-a longer period would total a window whose earliest runs have already been
-pruned. It is checked whatever the policy in force is.
+Which of them are sent is not a setting here. It is a decision per task and per
+reason, held in the alert matrix; see
+[the task layer specification](task-layer.md#the-alert-matrix).
 
 `notifications.pushover.base_url` is an absolute HTTPS origin without a path,
 defaulting to Pushover's own. It is a setting rather than a compiled-in
