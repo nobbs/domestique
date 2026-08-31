@@ -25,9 +25,19 @@ func newDemoTasks(reseed func() bool) demoTasks {
 	return demoTasks{reseed: reseed, switched: make(map[string]bool), mutex: &sync.RWMutex{}}
 }
 
-// demoTaskNames are what the shipped binary registers, in the order it does.
-var demoTaskNames = []string{ //nolint:gochecknoglobals // a fixture for development tooling
-	httpapi.TaskSyncSource, "sync:target", "sync:clear", "surface:annotate", "surface:index",
+// demoTaskNames are what the shipped binary registers, in the order it does,
+// with whether each has a schedule there. A demo runs none of them on a clock,
+// but reporting them all as scheduled would draw a switch for the two that an
+// operator can only ask for.
+var demoTaskNames = []struct { //nolint:gochecknoglobals // a fixture for development tooling
+	name      string
+	scheduled bool
+}{
+	{name: httpapi.TaskSyncSource, scheduled: true},
+	{name: "sync:target", scheduled: true},
+	{name: "sync:clear"},
+	{name: "surface:annotate"},
+	{name: "surface:index", scheduled: true},
 }
 
 // Registered lists the demo's tasks. They read as scheduled and enabled, which
@@ -38,10 +48,10 @@ func (t demoTasks) Registered() []httpapi.RegisteredTask {
 	defer t.mutex.RUnlock()
 
 	tasks := make([]httpapi.RegisteredTask, 0, len(demoTaskNames))
-	for _, name := range demoTaskNames {
-		enabled, ruled := t.switched[name]
+	for _, task := range demoTaskNames {
+		enabled, ruled := t.switched[task.name]
 		tasks = append(tasks, httpapi.RegisteredTask{
-			Name: name, Scheduled: true, Enabled: !ruled || enabled,
+			Name: task.name, Scheduled: task.scheduled, Enabled: !ruled || enabled,
 		})
 	}
 
