@@ -89,7 +89,7 @@ test("asking for a run now is accepted", async ({ bundlePage: page, apiCalls }) 
   // fetched from anywhere and the run it reports is a real one.
   await expect(async () => {
     expect(
-      callsTo(apiCalls, "POST", "/v1/tasks/sync/run/source").map((call) => call.status),
+      callsTo(apiCalls, "POST", "/v1/tasks/sync%3Asource/run").map((call) => call.status),
     ).toEqual([202]);
   }).toPass();
   // The card is still the one the status view drives, and it did not fall into an
@@ -126,7 +126,7 @@ test("a state-changing request without the configured origin is refused", async 
   // identity, the same route, a different origin. This is the one request in the
   // suite that is meant to fail, and it fails at the provenance check rather than
   // at the handler.
-  const refused = await page.request.post("/v1/tasks/sync/run/source", {
+  const refused = await page.request.post("/v1/tasks/sync%3Asource/run", {
     headers: { ...identity, origin: "https://elsewhere.example.test" },
   });
 
