@@ -1157,6 +1157,27 @@ func TestATaskFollowingSeveralRunsAfterEachOfThem(t *testing.T) {
 	assert.Equal(t, 2, shared.runs(), "a task following two predecessors did not run after each")
 }
 
+// Resolving settles the graph the declarations describe, however many times it
+// is asked for it. Adding to what a previous call worked out would run a
+// successor once per resolution.
+func TestResolvingTwiceDescribesTheSameGraph(t *testing.T) {
+	t.Parallel()
+
+	following := countingRunner()
+	manager, _ := newTestManager(t)
+	require.NoError(t, manager.Register(&Definition{Name: "first", Run: succeeds()}), "Register(first)")
+	require.NoError(t, manager.Register(&Definition{
+		Name: "following", Run: following, Follows: []string{"first"},
+	}), "Register(following)")
+	require.NoError(t, manager.Resolve(), "Resolve()")
+	require.NoError(t, manager.Resolve(), "Resolve() a second time")
+
+	require.True(t, manager.Trigger(t.Context(), "first", ""), "Trigger(first)")
+	manager.Wait()
+
+	assert.Equal(t, 1, following.runs(), "a successor ran once per resolution")
+}
+
 // What follows an attempt follows a successful one: a read that failed stored
 // nothing to write, and a rebuild that found nothing new left every stored
 // classification standing.

@@ -150,6 +150,11 @@ func (m *Manager) Register(definition *Definition) error {
 // this build has, and no cycle closes. It is what makes the depth cap a
 // backstop rather than the only protection, and must be called before Run.
 func (m *Manager) Resolve() error {
+	// Settled from the declarations each time, so resolving twice describes the
+	// same graph rather than one with every edge doubled.
+	for _, name := range m.order {
+		m.tasks[name].successors = nil
+	}
 	for _, name := range m.order {
 		entry := m.tasks[name]
 		for _, follows := range entry.definition.Follows {
