@@ -71,7 +71,7 @@ describe("MixRow", () => {
     expect(screen.getByText("13 km")).toBeInTheDocument();
   });
 
-  it("renders a faded placeholder bar instead of a bar when there are no classes", () => {
+  it("renders a faded placeholder bar with sr-only absence copy when there are no classes", () => {
     render(
       <MixRow
         classesLabel="Gradient bands"
