@@ -5,7 +5,6 @@ import {
   type Build,
   type WebUIConfig as GeneratedWebUIConfig,
   type GeoJSONFeature,
-  NotificationSettingsSuccessPolicy,
   type Route,
   type RouteValidation,
   type Settings,
@@ -65,9 +64,6 @@ export type TargetConvergence = TargetStatusConvergence;
 
 export const SYNC_PHASES = ["source", "targets"] as const;
 export type SyncPhase = (typeof SYNC_PHASES)[number];
-
-export const SUCCESS_POLICIES = Object.values(NotificationSettingsSuccessPolicy);
-export type SuccessPolicy = (typeof SUCCESS_POLICIES)[number];
 
 export const SOURCE_PROVIDERS = Object.values(SourceSettingsProvider);
 export type SourceProvider = (typeof SOURCE_PROVIDERS)[number];

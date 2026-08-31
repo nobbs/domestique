@@ -769,87 +769,16 @@ identity-bound, and expiring.
 
 ## Notifications
 
-Every terminal run updates the stored run record. The first occurrence of a
-failure category in a half sends one failure message; matching failures in that
-half are suppressed for six hours. The first following success is the recovery
-signal. Suppression is keyed by half and category together.
+Nothing about a run is announced from here. Every terminal run updates the stored
+run record, and what reaches an operator's phone — the failure categories, the
+routine success, the recovery that follows anything else, and the age of a task
+that has stopped succeeding — is the task layer's, along with the switch for the
+whole channel and the suppression windows. See
+[the task layer specification](task-layer.md#alerts).
 
-### The channel switch
-
-`notifications.enabled` is a runtime setting, and it suppresses every signal
-below. While it is off nothing is sent: a failure, a blocked run, a recovery, and
-a stale inventory are held back exactly as a routine success is.
-
-A suppression window is recorded only by a message that was actually sent. While
-the channel is off no suppression window is recorded, so switching the channel
-back on finds no window standing behind an unsent alert.
-
-### Trusted inventory staleness
-
-Trusted-inventory staleness is an independent check, evaluated on every tick
-regardless of what that tick's phases did, and it starts no provider work. Each
-tick compares how long it has been since the source phase last succeeded against
-`sync.stale_after`.
-
-The first tick the age crosses `sync.stale_after` sends one message. A further
-stale tick is suppressed for six hours, using the same window and the same
-`notification_state` category an ordinary phase failure uses, kept apart from any
-real phase-and-failure pair. A source phase that then succeeds sends the recovery
-signal unconditionally, never held back by the success policy, and closes the
-suppression record: a later success with no new stale incident in between sends
-nothing further. A service whose source phase has never succeeded has no trusted
-inventory to call stale and is never notified as one.
-
-### The success policy
-
-`notifications.success_policy` decides what a *routine* success sends. A routine
-success is one whose half's previous recorded run also succeeded. The recovery
-signal is not routine, and neither is a failure or a blocked run. No policy
-suppresses those three; only the channel switch does.
-
-| Policy | A routine success sends |
-| --- | --- |
-| `every` | one message carrying the counts that half actually produced |
-| `quiet` | nothing |
-| `digest` | nothing directly; it is totalled into the next digest |
-
-Whether a success is a recovery is read from the half's own previous recorded
-run, so the answer survives a restart and matches the history
-`GET /v1/sync/runs` returns. Any recorded outcome other than a success makes the
-next one a recovery, not only a failure or a blocked run: a half left needing
-onboarding records that it is not ready and notifies nothing, so the alert that
-preceded it is still open and the success that follows closes it. A history that
-cannot be read is treated as a recovery.
-
-### The digest
-
-Under `digest`, one aggregate message covers each `notifications.digest_interval`.
-It carries how many runs of each half succeeded in the period and the totals of
-the routes they created, updated, and deleted. It names no route, no target, no
-run reference, and no failure category.
-
-The digest is sent by the first pass to finish after the interval elapses, rather
-than by a timer of its own. It is considered once per pass, after both halves are
-recorded, so a window never closes between the two halves of one pass.
-
-An interval that no run succeeded in sends nothing and still moves the window on.
-
-The first digest of a newly configured policy sends nothing and starts the clock.
-The window it starts is durable and belongs to the digest rather than to the
-policy in force: switching away from `digest` and back resumes from the last
-window this service closed, and the runs in between are reported in the first
-digest that follows, as far back as the retained run history reaches. A digest
-totals recorded runs and reports no run that pruning has already removed.
-
-The window is bounded by run identity rather than by the clock; two runs of one
-pass are recorded within the same second.
-
-Notification content contains only the run result, target count, aggregate
-counts, a safe failure category, and — for a message about a single run — that
-run's opaque reference. It never contains a route title, source identity, Wahoo
-identity, credential, token, secret path, or upstream body. The reference names
-which run the message is about and resolves to that run's record in
-`GET /v1/sync/runs`.
+Notification content contains only the run result, a safe failure category, and
+the run's opaque reference. It never contains a route title, source identity,
+Wahoo identity, credential, token, secret path, or upstream body.
 
 ## Required tests
 
@@ -873,8 +802,7 @@ The implementation test suite must cover at least:
   ownership, ordering, update-before-delete, and deletion-limit rules — while
   every other configured target is left completely untouched; an unconfigured
   target name being refused as not found; and a single-target trigger sharing
-  the same mutual-exclusion, run recording, and notification path as a full
-  target phase;
+  the same mutual-exclusion and run recording path as a full target phase;
 - a stored inventory that cannot be read back whole causing zero deletions;
 - a switched-off half being skipped by the timer and still run by a manual
   trigger;
@@ -890,20 +818,8 @@ The implementation test suite must cover at least:
   of each half, and naming runs recorded before references existed;
 - JSON responses and Pushover messages containing no secret or raw upstream
   data;
-- each success policy delivering what it states for a routine success, while
-  `quiet` and `digest` still deliver failures, blocked runs, and the first
-  success that ends one — including across a half left needing onboarding;
-- a switched-off channel sending none of those, staleness included, and leaving
-  no suppression window behind for the moment it is switched back on;
-- a digest totalling one interval of successful runs, carrying no run reference
-  or target identity, starting its clock without reporting prior history, and
-  passing over an interval that nothing succeeded in without leaving its runs to
-  be counted twice;
-- trusted-inventory staleness: no alert before any successful source run, one
-  alert once the age crosses `sync.stale_after`, that alert suppressed for six
-  hours, an unconditional recovery message on the next source success, and
-  `GET /v1/status` reporting the same age and freshness from local state alone;
-  and
+- `GET /v1/status` reporting the trusted inventory's age and freshness from
+  local state alone; and
 - `POST /v1/sync/surface` running a classification pass without reading the
   source or writing a target, refusing to start one alongside a synchronisation
   or another such pass in either direction, and `GET /v1/status` reporting

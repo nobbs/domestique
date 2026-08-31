@@ -46,8 +46,6 @@ const (
 	targetsSubmission       = `{"targets": ["rider-b"]}`
 	notificationsSubmission = `{
 		"enabled": false,
-		"successPolicy": "digest",
-		"digestIntervalSeconds": 3600,
 		"pushoverBaseUrl": "https://pushover.example.test",
 		"applicationToken": "application-token",
 		"userKey": "user-key"
@@ -113,7 +111,6 @@ func TestGetSettingsServesWhatIsInForce(t *testing.T) {
 	view := settingsOf(t, handler, authenticatedRequest(http.MethodGet, settingsPath))
 	assert.False(t, view.Sync.AllowEmptySourceDeletion, "the deletion gate")
 	assert.Equal(t, int((26 * time.Hour).Seconds()), view.Sync.StaleAfterSeconds, "stale after")
-	assert.Equal(t, openapi.NotificationSettings_SuccessPolicyEvery, view.Notifications.SuccessPolicy, "policy")
 	require.Len(t, view.Basemaps, 1, "basemaps")
 	assert.Equal(t, "Streets", view.Basemaps[0].Name, "basemap name")
 	assert.Empty(t, view.Surface.Regions, "regions")
@@ -154,7 +151,6 @@ func TestEachSectionIsStoredByItsOwnEndpoint(t *testing.T) {
 			stored: func(t *testing.T, values runtimeconfig.Values) {
 				t.Helper()
 				assert.False(t, values.Notifications.Enabled, "the switch")
-				assert.Equal(t, runtimeconfig.SuccessPolicyDigest, values.Notifications.Policy, "the policy")
 				assert.Equal(t, "https://pushover.example.test", values.Notifications.PushoverBaseURL, "the origin")
 			},
 		},
@@ -380,14 +376,16 @@ func TestARefusedSectionStoresNoCredential(t *testing.T) {
 // back through at startup.
 func TestASectionRefusesASettingThatFailsItsRules(t *testing.T) {
 	handler, settings := settingsHandler(t)
-	body := strings.Replace(notificationsSubmission, `"digestIntervalSeconds": 3600`,
-		`"digestIntervalSeconds": 2592000`, 1)
+	body := strings.Replace(notificationsSubmission,
+		`"pushoverBaseUrl": "https://pushover.example.test"`,
+		`"pushoverBaseUrl": "http://pushover.example.test"`, 1)
 
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, authenticatedRequestWithBody(http.MethodPut, settingsNotificationsPath, body))
 	require.Equal(t, http.StatusBadRequest, response.Code, response.Body.String())
-	assert.Contains(t, response.Body.String(), "notifications.digest_interval", "the message names the setting")
-	assert.Equal(t, 24*time.Hour, settings.Values().Notifications.DigestInterval, "a refused edit reached the settings")
+	assert.Contains(t, response.Body.String(), "notifications.pushover.base_url", "the message names the setting")
+	assert.Equal(t, "https://api.pushover.net", settings.Values().Notifications.PushoverBaseURL,
+		"a refused edit reached the settings")
 }
 
 func TestASectionReportsAStoreThatCannotBeWritten(t *testing.T) {

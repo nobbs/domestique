@@ -1578,25 +1578,16 @@ components:
       additionalProperties: false
       required:
         - enabled
-        - successPolicy
-        - digestIntervalSeconds
         - pushoverBaseUrl
       properties:
         enabled:
           type: boolean
           description: >-
-            The switch for the whole channel. Off suppresses a failure and a
-            stale inventory as surely as it suppresses a routine success.
-        successPolicy:
-          type: string
-          enum:
-            - every
-            - quiet
-            - digest
-        digestIntervalSeconds:
-          type: integer
-          minimum: 1
-          description: The period one digest covers, read only by the digest policy.
+            The switch for the whole channel. Off, nothing is sent at all: a
+            failure, a blocked run, a recovery and a task that has stopped
+            succeeding are held back as surely as a routine success is. Which
+            alerts are sent while it is on is a decision per task and per
+            reason, held in the alert matrix.
         pushoverBaseUrl:
           type: string
           format: uri
@@ -1652,25 +1643,16 @@ components:
       additionalProperties: false
       required:
         - enabled
-        - successPolicy
-        - digestIntervalSeconds
         - pushoverBaseUrl
       properties:
         enabled:
           type: boolean
           description: >-
-            The switch for the whole channel. Off suppresses a failure and a
-            stale inventory as surely as it suppresses a routine success.
-        successPolicy:
-          type: string
-          enum:
-            - every
-            - quiet
-            - digest
-        digestIntervalSeconds:
-          type: integer
-          minimum: 1
-          description: The period one digest covers, read only by the digest policy.
+            The switch for the whole channel. Off, nothing is sent at all: a
+            failure, a blocked run, a recovery and a task that has stopped
+            succeeding are held back as surely as a routine success is. Which
+            alerts are sent while it is on is a decision per task and per
+            reason, held in the alert matrix.
         pushoverBaseUrl:
           type: string
           format: uri

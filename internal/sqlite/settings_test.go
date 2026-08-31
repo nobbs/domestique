@@ -40,8 +40,6 @@ func TestStoreSeedsTheDocumentedRuntimeSettings(t *testing.T) {
 	assert.False(t, values.Sync.AllowEmptySourceDeletion, "final-library deletion is denied until asked for")
 	assert.Equal(t, 24*time.Hour, values.Sync.StaleAfter, "Sync.StaleAfter")
 	assert.True(t, values.Notifications.Enabled, "notifications are on")
-	assert.Equal(t, runtimeconfig.SuccessPolicyEvery, values.Notifications.Policy, "Notifications.Policy")
-	assert.Equal(t, 24*time.Hour, values.Notifications.DigestInterval, "Notifications.DigestInterval")
 	assert.Equal(t, "https://api.pushover.net", values.Notifications.PushoverBaseURL, "Notifications.PushoverBaseURL")
 	require.Len(t, values.Basemaps, 1, "Basemaps")
 	assert.Equal(t, "Streets", values.Basemaps[0].Name, "Basemaps[0].Name")
@@ -94,8 +92,6 @@ func TestStoreKeepsTheRuntimeSettingsItWasGiven(t *testing.T) {
 		RideModel: runtimeconfig.RideModel{CoefficientsFile: "/etc/domestique/ridemodel.toml"},
 		Notifications: runtimeconfig.Notifications{
 			Enabled:         false,
-			Policy:          runtimeconfig.SuccessPolicyDigest,
-			DigestInterval:  6 * time.Hour,
 			PushoverBaseURL: "https://pushover.example.test",
 		},
 		Basemaps: []runtimeconfig.Basemap{

@@ -43,12 +43,16 @@ func (s *Store) RuntimeSettings(ctx context.Context) (runtimeconfig.Values, erro
 		values                 runtimeconfig.Values
 		staleAfterSeconds      int64
 		initialDelaySeconds    int64
-		digestIntervalSeconds  int64
 		rebuildIntervalSeconds int64
 	)
+	// success_policy and digest_interval_seconds are not read or written. The
+	// success policy they held is now a decision per task and per reason in the
+	// alert matrix, and the columns are NOT NULL with checks, so a row that keeps
+	// whatever it last held costs nothing while rebuilding the table to drop them
+	// would put every other setting an operator has entered at risk.
 	if err := s.database.QueryRowContext(ctx, `
 		SELECT allow_empty_source_deletion, stale_after_seconds, sync_initial_delay_seconds,
-			notifications_enabled, success_policy, digest_interval_seconds,
+			notifications_enabled,
 			pushover_base_url, surface_rebuild_interval_seconds,
 			wahoo_api_base_url, wahoo_oauth_base_url, wahoo_client_id,
 			ridemodel_coefficients_file
@@ -56,7 +60,7 @@ func (s *Store) RuntimeSettings(ctx context.Context) (runtimeconfig.Values, erro
 		WHERE id = 1
 	`).Scan(
 		&values.Sync.AllowEmptySourceDeletion, &staleAfterSeconds, &initialDelaySeconds,
-		&values.Notifications.Enabled, &values.Notifications.Policy, &digestIntervalSeconds,
+		&values.Notifications.Enabled,
 		&values.Notifications.PushoverBaseURL, &rebuildIntervalSeconds,
 		&values.Wahoo.APIBaseURL, &values.Wahoo.OAuthBaseURL, &values.Wahoo.ClientID,
 		&values.RideModel.CoefficientsFile,
@@ -65,7 +69,6 @@ func (s *Store) RuntimeSettings(ctx context.Context) (runtimeconfig.Values, erro
 	}
 	values.Sync.StaleAfter = time.Duration(staleAfterSeconds) * time.Second
 	values.Sync.InitialDelay = time.Duration(initialDelaySeconds) * time.Second
-	values.Notifications.DigestInterval = time.Duration(digestIntervalSeconds) * time.Second
 	values.Surface.RebuildInterval = time.Duration(rebuildIntervalSeconds) * time.Second
 
 	basemaps, err := s.runtimeBasemaps(ctx)
@@ -107,7 +110,7 @@ func (s *Store) SetRuntimeSettings(ctx context.Context, values runtimeconfig.Val
 	if _, err := transaction.ExecContext(ctx, `
 		UPDATE runtime_settings
 		SET allow_empty_source_deletion = ?, stale_after_seconds = ?, sync_initial_delay_seconds = ?,
-			notifications_enabled = ?, success_policy = ?, digest_interval_seconds = ?,
+			notifications_enabled = ?,
 			pushover_base_url = ?, surface_rebuild_interval_seconds = ?,
 			wahoo_api_base_url = ?, wahoo_oauth_base_url = ?, wahoo_client_id = ?,
 			ridemodel_coefficients_file = ?, updated_at_unix = ?
@@ -115,8 +118,7 @@ func (s *Store) SetRuntimeSettings(ctx context.Context, values runtimeconfig.Val
 	`,
 		values.Sync.AllowEmptySourceDeletion, int64(values.Sync.StaleAfter/time.Second),
 		int64(values.Sync.InitialDelay/time.Second),
-		values.Notifications.Enabled, string(values.Notifications.Policy),
-		int64(values.Notifications.DigestInterval/time.Second),
+		values.Notifications.Enabled,
 		values.Notifications.PushoverBaseURL,
 		int64(values.Surface.RebuildInterval/time.Second),
 		values.Wahoo.APIBaseURL, values.Wahoo.OAuthBaseURL, values.Wahoo.ClientID,

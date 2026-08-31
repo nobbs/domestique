@@ -39,7 +39,6 @@ import {
   FieldTitle,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
@@ -62,20 +61,12 @@ import {
   type Settings,
   SOURCE_PROVIDERS,
   type SourceProvider,
-  SUCCESS_POLICIES,
-  type SuccessPolicy,
 } from "../../api/types";
 import { Button } from "../../components/Button";
 import { providerLabel } from "../../lib/provider";
 
 const SECONDS_PER_HOUR = 3600;
 const SECONDS_PER_MINUTE = 60;
-
-const POLICY_LABELS: Record<SuccessPolicy, string> = {
-  every: "One message per successful run",
-  quiet: "Nothing — leaving failures and recoveries as the only traffic",
-  digest: "One summary per period",
-};
 
 /**
  * Where a library is reached when it is first turned on, which is the address
@@ -607,38 +598,6 @@ function Notifications({ settings }: { settings: Settings }) {
           aria-label="Send notifications"
           onCheckedChange={(enabled) => edit({ enabled })}
         />
-      </Field>
-      <FieldSet>
-        <FieldLegend>When a run succeeds, send</FieldLegend>
-        <RadioGroup
-          value={values.successPolicy}
-          onValueChange={(policy) => edit({ successPolicy: policy as SuccessPolicy })}
-        >
-          <FieldGroup>
-            {SUCCESS_POLICIES.map((policy) => (
-              <FieldLabel key={policy}>
-                <Field orientation="horizontal">
-                  <RadioGroupItem value={policy} />
-                  <span>{POLICY_LABELS[policy]}</span>
-                </Field>
-              </FieldLabel>
-            ))}
-          </FieldGroup>
-        </RadioGroup>
-      </FieldSet>
-      <Field>
-        <FieldLabel htmlFor={`${id}-digest`}>One summary covers (hours)</FieldLabel>
-        <Input
-          id={`${id}-digest`}
-          type="number"
-          min={1}
-          step="any"
-          value={inHours(values.digestIntervalSeconds)}
-          onChange={(event) =>
-            edit({ digestIntervalSeconds: fromHours(Number(event.target.value)) })
-          }
-        />
-        <FieldDescription>Read by the summary policy alone.</FieldDescription>
       </Field>
       <Field>
         <FieldLabel htmlFor={`${id}-pushover`}>Pushover address</FieldLabel>

@@ -28,7 +28,6 @@ export const WhatTheServiceIsSetTo: Story = {
     await expect(canvas.getByLabelText("Geofabrik regions, one per line")).toHaveValue(
       "europe/germany",
     );
-    await expect(canvas.getByRole("radio", { name: "One summary per period" })).toBeChecked();
   },
 };
 
