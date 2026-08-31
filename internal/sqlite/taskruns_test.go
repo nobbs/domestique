@@ -102,6 +102,35 @@ func TestRecordTaskRunKeepsTheLatestAttemptOverEachArgument(t *testing.T) {
 		"the last attempt over an argument was evicted by another argument's history")
 }
 
+// The row kept for an argument outside the retain window is the one with the
+// latest finished_at, not the one with the highest id: a refusal recorded off
+// the caller's goroutine can commit, and so be inserted, after a later attempt.
+func TestRecordTaskRunKeepsTheLatestByFinishedAtNotByInsertOrder(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t, testKey(1))
+	at := time.Date(2026, time.August, 30, 9, 0, 0, 0, time.UTC)
+
+	require.NoError(t, store.RecordTaskRun(
+		t.Context(), "sync:target", "rider-a", at, at.Add(time.Minute), "succeeded", "", "reference", 1,
+	), "RecordTaskRun(later, inserted first)")
+	require.NoError(t, store.RecordTaskRun(
+		t.Context(), "sync:target", "rider-a", at.Add(-time.Hour), at.Add(-time.Minute), "skipped", "held", "reference", 1,
+	), "RecordTaskRun(earlier, inserted second)")
+	// Past the retain window of 1, so only the argument's single kept row survives.
+	require.NoError(t, store.RecordTaskRun(
+		t.Context(), "sync:target", "rider-b", at, at, "succeeded", "", "reference", 1,
+	), "RecordTaskRun(rider-b)")
+
+	runs := readTaskRuns(t, store, "sync:target")
+	require.Len(t, runs, 2, "runs")
+	for _, run := range runs {
+		if run.argument == "rider-a" {
+			assert.Equal(t, "succeeded", run.outcome, "the row kept for rider-a was the earlier one, inserted later")
+		}
+	}
+}
+
 func TestForEachTaskRunRefusesAnIncompleteRequest(t *testing.T) {
 	t.Parallel()
 
@@ -209,6 +238,27 @@ func TestLastTaskOutcomeReadsTheMostRecentAttemptOverAnArgument(t *testing.T) {
 	require.NoError(t, err, "LastTaskOutcome(rider-b)")
 	assert.True(t, found, "found")
 	assert.Equal(t, "blocked", other, "one argument's history answered for another")
+}
+
+// A refusal recorded off the caller's goroutine can commit after a later
+// attempt's row, so recency has to follow finished_at rather than insertion
+// order: recording the later event first must not make the earlier one win.
+func TestLastTaskOutcomeFollowsFinishedAtRatherThanInsertOrder(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t, testKey(1))
+	at := time.Date(2026, time.August, 30, 9, 0, 0, 0, time.UTC)
+	require.NoError(t, store.RecordTaskRun(
+		t.Context(), "sync", "rider-a", at, at.Add(time.Minute), "succeeded", "", "reference", 5,
+	), "RecordTaskRun(later, inserted first)")
+	require.NoError(t, store.RecordTaskRun(
+		t.Context(), "sync", "rider-a", at.Add(-time.Hour), at.Add(-time.Minute), "skipped", "held", "reference", 5,
+	), "RecordTaskRun(earlier, inserted second)")
+
+	outcome, found, err := store.LastTaskOutcome(t.Context(), "sync", "rider-a")
+	require.NoError(t, err, "LastTaskOutcome()")
+	assert.True(t, found, "found")
+	assert.Equal(t, "succeeded", outcome, "an earlier attempt inserted later was read as the most recent")
 }
 
 func TestLastTaskSuccessSkipsWhatDidNotSucceed(t *testing.T) {

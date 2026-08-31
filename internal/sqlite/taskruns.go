@@ -48,14 +48,23 @@ func (s *Store) RecordTaskRun(
 }
 
 // pruneTaskRuns drops everything past one task's retained window, in the
-// caller's transaction. The most recent attempt per argument is kept regardless of age.
+// caller's transaction. The most recent attempt per argument is kept
+// regardless of age. Recency is (finished_at_unix, id): a refusal recorded
+// off the caller's goroutine can commit after a later attempt's row, so id
+// alone no longer tracks insertion order against real event time.
 func pruneTaskRuns(ctx context.Context, transaction *sql.Tx, task string, retain int) error {
 	if _, err := transaction.ExecContext(ctx, `
 		DELETE FROM task_runs
 		WHERE task = ?
-		  AND id NOT IN (SELECT id FROM task_runs WHERE task = ? ORDER BY id DESC LIMIT ?)
-		  AND id NOT IN (SELECT MAX(id) FROM task_runs WHERE task = ? GROUP BY argument)
-	`, task, task, retain, task); err != nil {
+		  AND id NOT IN (
+			SELECT id FROM task_runs WHERE task = ? ORDER BY finished_at_unix DESC, id DESC LIMIT ?
+		  )
+		  AND EXISTS (
+			SELECT 1 FROM task_runs newer
+			WHERE newer.task = task_runs.task AND newer.argument = task_runs.argument
+			  AND (newer.finished_at_unix, newer.id) > (task_runs.finished_at_unix, task_runs.id)
+		  )
+	`, task, task, retain); err != nil {
 		return fmt.Errorf("pruning task runs: %w", err)
 	}
 
@@ -75,7 +84,7 @@ func (s *Store) ForEachTaskRun(
 
 	rows, err := s.database.QueryContext(ctx, `
 		SELECT argument, started_at_unix, finished_at_unix, outcome, detail
-		FROM task_runs WHERE task = ? ORDER BY id DESC
+		FROM task_runs WHERE task = ? ORDER BY finished_at_unix DESC, id DESC
 	`, task)
 	if err != nil {
 		return fmt.Errorf("reading task runs: %w", err)
@@ -110,7 +119,8 @@ func (s *Store) LastTaskOutcome(
 		return "", false, errors.New("task is required")
 	}
 	if err := s.database.QueryRowContext(ctx, `
-		SELECT outcome FROM task_runs WHERE task = ? AND argument = ? ORDER BY id DESC LIMIT 1
+		SELECT outcome FROM task_runs WHERE task = ? AND argument = ?
+		ORDER BY finished_at_unix DESC, id DESC LIMIT 1
 	`, task, argument).Scan(&outcome); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return "", false, nil
@@ -133,7 +143,8 @@ func (s *Store) LastTaskSuccess(
 	var finishedUnix int64
 	if err := s.database.QueryRowContext(ctx, `
 		SELECT finished_at_unix FROM task_runs
-		WHERE task = ? AND argument = ? AND outcome = ? ORDER BY id DESC LIMIT 1
+		WHERE task = ? AND argument = ? AND outcome = ?
+		ORDER BY finished_at_unix DESC, id DESC LIMIT 1
 	`, task, argument, "succeeded").Scan(&finishedUnix); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return time.Time{}, false, nil
@@ -161,7 +172,8 @@ func (s *Store) TaskFaultStreak(
 	}
 	rows, err := s.database.QueryContext(ctx, `
 		SELECT outcome, finished_at_unix FROM task_runs
-		WHERE task = ? AND argument = ? ORDER BY id DESC LIMIT ?
+		WHERE task = ? AND argument = ?
+		ORDER BY finished_at_unix DESC, id DESC LIMIT ?
 	`, task, argument, backoffScan)
 	if err != nil {
 		return 0, time.Time{}, fmt.Errorf("reading a task's fault streak: %w", err)
