@@ -9,6 +9,7 @@ const meta = {
   args: {
     phase: "targets",
     label: "Wahoo targets",
+    cadence: "Every six hours",
     lastRun: {
       lastCompletedAt: "2026-08-18T06:30:00Z",
       lastResult: "succeeded",

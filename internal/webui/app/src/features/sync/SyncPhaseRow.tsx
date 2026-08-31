@@ -38,6 +38,8 @@ export interface SyncPhaseRowProps {
   label: string;
   lastRun: SyncPhaseRun | undefined;
   enabled: boolean;
+  /** How often the schedule starts this half, in the words the switch shows. */
+  cadence: string;
   scheduleDisabled: boolean;
   onToggle: () => void;
   running: boolean;
@@ -56,6 +58,7 @@ export function SyncPhaseRow({
   label,
   lastRun,
   enabled,
+  cadence,
   scheduleDisabled,
   onToggle,
   running,
@@ -89,17 +92,17 @@ export function SyncPhaseRow({
          * Both rows carry the same two words, so the visible text alone
          * names neither half. The accessible name says which one, since a
          * reader arriving at the second switch has no row above it to tell
-         * them apart. The interval is the service's own and is fixed at an
-         * hour, so the switch can say what it schedules.
+         * them apart. The cadence is the service's own and differs per half, so
+         * the switch says which one it schedules.
          */}
         <div className="flex items-center gap-2 text-sm">
           <Switch
             checked={enabled}
             disabled={scheduleDisabled}
             onCheckedChange={onToggle}
-            aria-label={`Hourly: ${label}`}
+            aria-label={`${cadence}: ${label}`}
           />
-          <span>Hourly</span>
+          <span>{cadence}</span>
         </div>
         <Button
           variant="outline"

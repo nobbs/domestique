@@ -137,7 +137,9 @@ describe("SyncControls", () => {
     expect(
       screen.getByRole("switch", { name: "Hourly: Read from VeloPlanner" }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("switch", { name: "Hourly: Write to Wahoo" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("switch", { name: "Every six hours: Write to Wahoo" }),
+    ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Run now: Read from VeloPlanner" }),
     ).toBeInTheDocument();
@@ -173,7 +175,7 @@ describe("SyncControls", () => {
     vi.stubGlobal("fetch", fetchMock);
     renderControls(status(), config(), tasks(true, true));
 
-    await userEvent.click(screen.getByRole("switch", { name: "Hourly: Write to Wahoo" }));
+    await userEvent.click(screen.getByRole("switch", { name: "Every six hours: Write to Wahoo" }));
 
     await waitFor(() =>
       expect(
@@ -209,8 +211,8 @@ describe("SyncControls", () => {
     );
   });
 
-  // Both switches carry the same two words, because the interval the service
-  // runs on is fixed at an hour. Which of them is on is the checkbox itself.
+  // Each switch says its own cadence, because the two halves no longer run on
+  // the same one. Which of them is on is the checkbox itself.
   it("shows the state of each switch on the switch", () => {
     renderControls(status(), config(), tasks(true, false));
 
@@ -218,7 +220,7 @@ describe("SyncControls", () => {
       "aria-checked",
       "true",
     );
-    expect(screen.getByRole("switch", { name: "Hourly: Write to Wahoo" })).toHaveAttribute(
+    expect(screen.getByRole("switch", { name: "Every six hours: Write to Wahoo" })).toHaveAttribute(
       "aria-checked",
       "false",
     );
