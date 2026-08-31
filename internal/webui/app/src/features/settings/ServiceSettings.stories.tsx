@@ -158,6 +158,30 @@ export const SendsOnlyTheAlertsThatWereSwitched: Story = {
   },
 };
 
+/** One zone for the whole service, sent to the endpoint that owns it. */
+export const SavesTheServiceTimezone: Story = {
+  decorators: [
+    (Story) => (
+      <StubbedFetch respond={respond}>
+        <Story />
+      </StubbedFetch>
+    ),
+  ],
+  play: async ({ canvas }) => {
+    written.length = 0;
+    const zone = canvas.getByLabelText("IANA zone");
+    await expect(zone).toHaveValue("Europe/Berlin");
+
+    await userEvent.clear(zone);
+    await userEvent.type(zone, "Europe/Lisbon");
+    await userEvent.click(canvas.getByRole("button", { name: "Save Timezone" }));
+
+    await waitFor(() => expect(written).toHaveLength(1));
+    await expect(written[0]?.url).toContain("/v1/settings/timezone");
+    await expect(written[0]?.body).toEqual({ timezone: "Europe/Lisbon" });
+  },
+};
+
 interface Written {
   url: string;
   // biome-ignore lint/suspicious/noExplicitAny: the body under assertion is one section of a settings document

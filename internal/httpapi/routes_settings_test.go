@@ -31,6 +31,7 @@ const (
 	settingsRideModelPath     = "/v1/settings/ridemodel"
 	settingsSyncPath          = "/v1/settings/sync"
 	settingsAlertsPath        = "/v1/settings/alerts"
+	settingsTimezonePath      = "/v1/settings/timezone"
 )
 
 // Each of these differs from settingsWith in every field it carries, so a test
@@ -521,4 +522,27 @@ func TestSetAlertsReportsAStoreThatCannotBeWritten(t *testing.T) {
 		`{"alerts": [{"task": "sync", "alert": "failed", "enabled": false}]}`))
 
 	assert.Equal(t, http.StatusServiceUnavailable, response.Code, response.Body.String())
+}
+
+func TestSetTimezoneStoresTheZoneAndAnswersWithIt(t *testing.T) {
+	handler, settings := settingsHandler(t)
+
+	view := saveSection(t, handler, settingsTimezonePath, `{"timezone": "Europe/Lisbon"}`)
+
+	assert.Equal(t, "Europe/Lisbon", view.Timezone, "the answered zone")
+	assert.Equal(t, "Europe/Lisbon", settings.Values().Timezone, "the stored zone")
+}
+
+// A zone this service cannot load has no local time, so a schedule reading it
+// would have no time to run at. It is refused where it is entered.
+func TestSetTimezoneRefusesAZoneItCannotLoad(t *testing.T) {
+	handler, settings := settingsHandler(t)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequestWithBody(
+		http.MethodPut, settingsTimezonePath, `{"timezone": "Middle/Earth"}`))
+
+	require.Equal(t, http.StatusBadRequest, response.Code, response.Body.String())
+	assert.Contains(t, response.Body.String(), "timezone", "the message names the setting")
+	assert.Equal(t, "Europe/Berlin", settings.Values().Timezone, "a refused edit reached the settings")
 }

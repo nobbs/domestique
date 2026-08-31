@@ -52,6 +52,7 @@ import {
   useSetSurface,
   useSetSync,
   useSetTargets,
+  useSetTimezone,
   useSetWahooApplication,
 } from "../../api/generated";
 import { settingsQuery, webUIConfigQuery } from "../../api/queries";
@@ -313,6 +314,7 @@ export function ServiceSettings() {
   return (
     <Sections>
       <Missing missing={data.missing} />
+      <Timezone settings={data} />
       <WahooApplication settings={data} />
       <Targets settings={data} />
       {SOURCE_PROVIDERS.map((provider) => (
@@ -625,6 +627,43 @@ function Notifications({ settings }: { settings: Settings }) {
         value={userKey}
         onChange={setUserKey}
       />
+    </Section>
+  );
+}
+
+/**
+ * The zone this service reads local time in.
+ *
+ * One zone for the whole service rather than one per reader: a run happens
+ * once, and it has to happen at a time somebody chose.
+ */
+function Timezone({ settings }: { settings: Settings }) {
+  const id = useId();
+  const invalidate = useSettingsInvalidation();
+  const [draft, setDraft] = useState<string | null>(null);
+  const save = useSetTimezone(saving(() => setDraft(null), invalidate));
+
+  const value = draft ?? settings.timezone;
+
+  return (
+    <Section
+      title="Timezone"
+      save={save}
+      edited={draft !== null}
+      onSave={() => save.mutate({ data: { timezone: value } })}
+    >
+      <Field>
+        <FieldLabel htmlFor={`${id}-timezone`}>IANA zone</FieldLabel>
+        <Input
+          id={`${id}-timezone`}
+          value={value}
+          onChange={(event) => setDraft(event.target.value)}
+        />
+        <FieldDescription>
+          What a scheduled time of day means, and what hour a forecast describes. A zone this
+          service cannot load is refused.
+        </FieldDescription>
+      </Field>
     </Section>
   );
 }

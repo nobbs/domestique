@@ -5,6 +5,7 @@ import (
 	"errors"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -1874,4 +1875,68 @@ func TestATaskThatDeclaredOnlyItsFaultsAnnouncesNoSuccess(t *testing.T) {
 	manager.Wait()
 
 	assert.Empty(t, notifier.messages(), "sent alerts")
+}
+
+// A fixed gap runs as soon as its initial delay is out. A calendar schedule
+// waits for the time it names: restarting the service is not two in the
+// morning.
+func TestOnlyAFixedGapRunsAsSoonAsItStarts(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		schedule Schedule
+		want     int
+	}{
+		"a fixed gap":       {schedule: Every(func() time.Duration { return time.Hour }), want: 1},
+		"a daily calendar":  {schedule: Daily{Hour: 2}},
+		"a weekly calendar": {schedule: Weekly{Weekday: time.Monday, Hour: 2}},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			runner := countingRunner()
+			manager, _ := newTestManager(t)
+			// The initial delay elapses at once; the wait after it never does.
+			// Reaching that second wait is what says the schedule has decided
+			// whether to run at start, so the count is read then rather than
+			// after a delay chosen by guesswork.
+			var waits atomic.Int64
+			waiting := make(chan struct{}, 1)
+			manager.after = func(time.Duration) <-chan time.Time {
+				if waits.Add(1) == 1 {
+					elapsed := make(chan time.Time, 1)
+					elapsed <- time.Time{}
+
+					return elapsed
+				}
+				select {
+				case waiting <- struct{}{}:
+				default:
+				}
+
+				return make(chan time.Time)
+			}
+			require.NoError(t, manager.Register(&Definition{
+				Name:         "a",
+				Run:          runner,
+				Schedule:     test.schedule,
+				InitialDelay: func() time.Duration { return 0 },
+			}), "Register()")
+
+			ctx, cancel := context.WithCancel(t.Context())
+			done := make(chan struct{})
+			go func() { defer close(done); manager.Run(ctx) }()
+			select {
+			case <-waiting:
+			case <-time.After(time.Second):
+				t.Fatal("the schedule never reached the wait after its initial delay")
+			}
+			runs := runner.runs()
+			cancel()
+			<-done
+
+			assert.Equal(t, test.want, runs, "runs at start")
+		})
+	}
 }

@@ -84,7 +84,8 @@ func replaceWith(values Values) func(Values) Values {
 
 func validValues() Values {
 	return Values{
-		Sync: Sync{StaleAfter: 24 * time.Hour, InitialDelay: time.Minute},
+		Timezone: "Europe/Berlin",
+		Sync:     Sync{StaleAfter: 24 * time.Hour, InitialDelay: time.Minute},
 		Notifications: Notifications{
 			Enabled:         true,
 			PushoverBaseURL: "https://api.pushover.net",
@@ -588,4 +589,42 @@ func TestMissingSkipsPushoverWhenNotificationsAreOff(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.NotContains(t, current.Missing(), "notifications.pushover.user_key")
+}
+
+// A zone this binary cannot load leaves every calendar schedule with no answer
+// to when it is next due, so it is refused where it is entered.
+func TestValidateTimezone(t *testing.T) {
+	tests := map[string]struct {
+		timezone string
+		want     string
+		wantErr  string
+	}{
+		"a zone this binary carries": {timezone: "Europe/Berlin", want: "Europe/Berlin"},
+		"UTC":                        {timezone: "UTC", want: "UTC"},
+		"surrounded by whitespace":   {timezone: "  Europe/Berlin  ", want: "Europe/Berlin"},
+		"a zone nobody has":          {timezone: "Middle/Earth", wantErr: "not a zone"},
+		"nothing at all":             {timezone: "   ", wantErr: "required"},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			timezone, err := ValidateTimezone(test.timezone)
+			if test.wantErr != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), test.wantErr)
+
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, test.want, timezone, "the normalised zone")
+		})
+	}
+}
+
+// The zone travels with the binary rather than depending on what the runtime
+// image carries: the hardened base image ships no timezone database.
+func TestTheTimezoneDatabaseTravelsWithTheBinary(t *testing.T) {
+	for _, zone := range []string{"Europe/Berlin", "America/New_York", "Australia/Sydney"} {
+		_, err := ValidateTimezone(zone)
+		require.NoErrorf(t, err, "%s is not loadable from this binary", zone)
+	}
 }

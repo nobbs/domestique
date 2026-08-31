@@ -9,9 +9,19 @@ type Schedule interface {
 	NextFire(previous time.Time) time.Time
 }
 
+// firesAtStart marks a schedule whose first run is the moment it starts rather
+// than a time of its own. A fixed gap has no time of its own to wait for, so it
+// runs and then counts; a calendar schedule does, and starting the service is
+// not it. The method is unexported, so a schedule from outside this package is
+// treated as a calendar one, which is the safer of the two to be wrong about.
+type firesAtStart interface{ firesAtStart() }
+
 // Every is a fixed gap between runs. The gap is read again before each wait, so
 // an operator's edit takes effect at the next gap rather than the next restart.
 type Every func() time.Duration
+
+// firesAtStart marks Every as running as soon as its initial delay is out.
+func (Every) firesAtStart() {}
 
 // NextFire returns previous plus the gap, or the zero time when the gap is not
 // a positive duration.
@@ -37,4 +47,78 @@ func nextDue(schedule Schedule, previous, now time.Time) (time.Time, bool) {
 	}
 
 	return due, true
+}
+
+// Zone is where local time is read, supplied as a function so an operator's
+// edit reaches the next wait rather than the next restart. A nil zone, or one
+// that reports nothing, is UTC: a schedule with nowhere to be is still a
+// schedule, and refusing to fire would be the worse answer.
+type Zone func() *time.Location
+
+func (z Zone) location() *time.Location {
+	if z == nil {
+		return time.UTC
+	}
+	if location := z(); location != nil {
+		return location
+	}
+
+	return time.UTC
+}
+
+// Daily fires once a day at a wall-clock time, in the zone the service reads
+// local time in.
+type Daily struct {
+	Zone   Zone
+	Hour   int
+	Minute int
+}
+
+// NextFire is the first occurrence of the wall-clock time strictly after
+// previous.
+func (d Daily) NextFire(previous time.Time) time.Time {
+	return nextWallClock(previous, d.Zone, d.Hour, d.Minute, func(time.Time) bool { return true })
+}
+
+// Weekly fires once a week, on one weekday at a wall-clock time.
+type Weekly struct {
+	Zone    Zone
+	Weekday time.Weekday
+	Hour    int
+	Minute  int
+}
+
+// NextFire is the first occurrence of the weekday and wall-clock time strictly
+// after previous.
+func (w Weekly) NextFire(previous time.Time) time.Time {
+	return nextWallClock(previous, w.Zone, w.Hour, w.Minute, func(candidate time.Time) bool {
+		return candidate.Weekday() == w.Weekday
+	})
+}
+
+// daysSearched bounds the walk forward. A week and a day covers every weekday
+// from any starting point, with a day to spare for one a zone shift moved.
+const daysSearched = 8
+
+// nextWallClock walks day by day from previous for the first day the schedule
+// accepts whose wall-clock time has not already passed.
+//
+// The walk is over calendar days rather than fixed 24-hour steps, because those
+// are not the same thing twice a year. Where the wall clock skips the hour the
+// schedule names, time.Date rolls forward into the hour that does exist rather
+// than refusing: a run that would have happened at two in the morning happens,
+// an hour of wall clock late, instead of being skipped until the autumn.
+func nextWallClock(previous time.Time, zone Zone, hour, minute int, accepts func(time.Time) bool) time.Time {
+	location := zone.location()
+	local := previous.In(location)
+	for day := range daysSearched {
+		candidate := time.Date(
+			local.Year(), local.Month(), local.Day()+day, hour, minute, 0, 0, location,
+		)
+		if candidate.After(previous) && accepts(candidate) {
+			return candidate
+		}
+	}
+
+	return time.Time{}
 }

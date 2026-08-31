@@ -16,16 +16,18 @@ import (
 	"strings"
 	"time"
 
-	// Open-Meteo is always asked in Europe/Berlin local time, so this
-	// service's own timezone database must be complete regardless of what the
-	// runtime image carries. The hardened base image is not guaranteed to
-	// ship one.
+	// Open-Meteo is asked in the service's own local time, so this service's
+	// timezone database must be complete regardless of what the runtime image
+	// carries. The hardened base image is not guaranteed to ship one.
 	_ "time/tzdata"
 )
 
 const (
 	defaultBaseURL = "https://api.open-meteo.com"
-	defaultTimeout = 15 * time.Second
+	// defaultTimezone is where every route this service holds is, and what the
+	// forecast was asked in before the zone became a setting.
+	defaultTimezone = "Europe/Berlin"
+	defaultTimeout  = 15 * time.Second
 	// maximumBodyBytes bounds a response for the largest request the httpapi
 	// boundary allows: 48 points over its 17-day window, roughly 1.05 MB of
 	// column-oriented JSON. This leaves headroom without being unbounded.
@@ -46,7 +48,10 @@ const (
 type Options struct {
 	Transport http.RoundTripper
 	BaseURL   string
-	Timeout   time.Duration
+	// Timezone is the IANA zone a forecast is asked and returned in. Empty is
+	// Europe/Berlin, which is where every route this service holds is.
+	Timezone string
+	Timeout  time.Duration
 }
 
 // Coordinate is one point Forecast asks about.
@@ -99,13 +104,16 @@ func New(options *Options) (*Client, error) {
 	if transport == nil {
 		transport = http.DefaultTransport
 	}
-	// Every route this service holds is in Germany, and a fixed zone keeps a
-	// returned timestamp describing where the rider reads it rather than
-	// where the route happens to be. Loaded once here, on the client, rather
-	// than kept as package state.
-	location, err := time.LoadLocation("Europe/Berlin")
+	// One zone for the whole service keeps a returned timestamp describing where
+	// the rider reads it rather than where the route happens to be. Loaded once
+	// here, on the client, rather than kept as package state.
+	zone := options.Timezone
+	if zone == "" {
+		zone = defaultTimezone
+	}
+	location, err := time.LoadLocation(zone)
 	if err != nil {
-		return nil, fmt.Errorf("openmeteo: loading the Europe/Berlin timezone: %w", err)
+		return nil, fmt.Errorf("openmeteo: loading the %s timezone: %w", zone, err)
 	}
 
 	return &Client{
@@ -119,8 +127,8 @@ func New(options *Options) (*Client, error) {
 }
 
 // Forecast returns one hourly series per coordinate, in the order given, spanning
-// from..to. from is rounded down and to rounded up to the nearest Europe/Berlin
-// local hour, so a window that does not land on the hour still gets every hour a
+// from..to. from is rounded down and to rounded up to the nearest local hour in
+// the service's zone, so a window that does not land on the hour still gets every hour a
 // point could resolve to. Open-Meteo replies with an array for several
 // coordinates and a bare object for exactly one; both are handled.
 func (c *Client) Forecast(ctx context.Context, at []Coordinate, from, to time.Time) (hourlies []Hourly, err error) {
@@ -144,7 +152,7 @@ func (c *Client) Forecast(ctx context.Context, at []Coordinate, from, to time.Ti
 		"latitude":   {strings.Join(latitudes, ",")},
 		"longitude":  {strings.Join(longitudes, ",")},
 		"hourly":     {hourlyParams},
-		"timezone":   {"Europe/Berlin"},
+		"timezone":   {c.location.String()},
 		"start_hour": {floorHour(from.In(c.location)).Format(hourFormat)},
 		"end_hour":   {ceilHour(to.In(c.location)).Format(hourFormat)},
 	}.Encode()

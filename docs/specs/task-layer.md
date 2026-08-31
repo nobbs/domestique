@@ -126,6 +126,36 @@ queueing the ones it missed, and the cadence carries on from there.
 
 A task with no schedule runs only when something asks for it.
 
+### Fixed gaps and calendars
+
+A fixed gap has no time of its own to wait for, so it runs as soon as its
+initial delay is out and counts from there. A calendar schedule names a
+wall-clock time — a time of day, or a weekday and a time of day — and waits for
+it: restarting the service at three on a Wednesday afternoon is not "every
+Monday at two". A schedule that says nothing about which it is is treated as a
+calendar one, which is the safer of the two to be wrong about.
+
+A calendar schedule reads the service's own zone rather than the host's, and
+reads it again before each wait. A run that was missed because the service was
+not running is not made up: the next occurrence is the next one, not the one
+that has already gone.
+
+Where the wall clock skips the hour a schedule names, the run rolls forward into
+the hour that does exist. Being an hour of wall clock late costs less than being
+skipped until the clocks go back. Where an hour happens twice, the run happens
+in the first of them.
+
+## The service timezone
+
+One zone for the whole service, not one per reader. A run happens once, and it
+has to happen at a time somebody chose; a forecast hour has to describe where
+the rider reads it. It is an IANA zone name, defaulting to `Europe/Berlin`.
+
+A zone this binary cannot load is refused where it is entered and at startup,
+because a calendar schedule reading it would have no answer to when it is next
+due. The zone database travels inside the binary rather than depending on what
+the runtime image carries.
+
 ## Shutdown
 
 An attempt is bounded by shutdown, and by whatever bounds the work it does.
