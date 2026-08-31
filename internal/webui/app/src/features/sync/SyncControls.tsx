@@ -16,13 +16,13 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRunTask, useSetTaskSchedule } from "../../api/generated";
 import { statusQuery, tasksQuery, webUIConfigQuery } from "../../api/queries";
-import { SYNC_PHASE_CADENCE, SYNC_PHASE_TASKS, TASKS } from "../../api/tasks";
+import { SYNC_PHASE_TASKS, TASKS } from "../../api/tasks";
 import type { Status, SyncActive, SyncPhase } from "../../api/types";
 import { SYNC_PHASES } from "../../api/types";
 import { Button } from "../../components/Button";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Spinner } from "../../components/ui/spinner";
-import { formatTimestamp } from "../../lib/format";
+import { formatCadence, formatTimestamp } from "../../lib/format";
 import { syncGuidance } from "../../lib/syncGuidance";
 import { phaseLabels, runningPhaseLabels } from "../../lib/syncLabels";
 import { SyncPhaseRow } from "./SyncPhaseRow";
@@ -142,6 +142,10 @@ export function SyncControls() {
   // service does not list is one nobody has ruled on, which runs.
   const enabledFor = (phase: SyncPhase) =>
     tasks.data?.tasks?.find((task) => task.name === SYNC_PHASE_TASKS[phase])?.enabled ?? true;
+  const cadenceFor = (phase: SyncPhase) =>
+    formatCadence(
+      tasks.data?.tasks?.find((task) => task.name === SYNC_PHASE_TASKS[phase])?.intervalSeconds,
+    );
   const toggle = (phase: SyncPhase) =>
     schedule.mutate({ name: SYNC_PHASE_TASKS[phase], data: { enabled: !enabledFor(phase) } });
 
@@ -218,7 +222,7 @@ export function SyncControls() {
               label={labels[phase]}
               lastRun={data.sync.phases[phase]}
               enabled={enabledFor(phase)}
-              cadence={SYNC_PHASE_CADENCE[phase]}
+              cadence={cadenceFor(phase)}
               scheduleDisabled={schedule.isPending}
               onToggle={() => toggle(phase)}
               running={run.isPending}

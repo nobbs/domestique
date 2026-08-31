@@ -334,6 +334,7 @@ func (s taskSurface) Registered() []httpapi.RegisteredTask {
 			Scheduled: entry.Scheduled,
 			Enabled:   enabledOf(decided, entry.Name),
 			Running:   entry.Running,
+			Interval:  entry.Interval,
 			NextRunAt: entry.NextRunAt,
 		})
 	}

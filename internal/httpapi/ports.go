@@ -62,6 +62,9 @@ type RegisteredTask struct {
 	// and for a task nothing schedules.
 	NextRunAt time.Time
 	Name      string
+	// Interval is the gap between runs for a task on a fixed schedule, zero for
+	// one with no schedule or a calendar one.
+	Interval time.Duration
 	// Running is how many attempts are in flight.
 	Running int
 	// Scheduled reports whether the task has a schedule at all.

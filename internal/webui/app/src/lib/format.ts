@@ -184,6 +184,30 @@ export function formatPrecipitation(millimetres: number, system: UnitSystem): st
 }
 
 /**
+ * How often a task with a fixed schedule runs unasked, from the server's own
+ * intervalSeconds rather than a label duplicated on this side of the wire:
+ * changing the interval on the service must not silently make this lie.
+ * Undefined is a task with no schedule, or a calendar one this format cannot
+ * name a single gap for.
+ */
+export function formatCadence(seconds: number | undefined): string {
+  if (seconds === undefined || !Number.isFinite(seconds) || seconds <= 0) {
+    return "No fixed schedule";
+  }
+  if (seconds === 3600) {
+    return "Hourly";
+  }
+  if (seconds % 3600 === 0) {
+    const hours = seconds / 3600;
+
+    return `Every ${hours} hours`;
+  }
+  const minutes = Math.round(seconds / 60);
+
+  return minutes === 1 ? "Every minute" : `Every ${minutes} minutes`;
+}
+
+/**
  * Predicted moving time, rounded to the nearest five minutes — coarse enough
  * that it reads as an estimate rather than a promise. Absent, never zero,
  * when nothing has predicted this route's geometry.

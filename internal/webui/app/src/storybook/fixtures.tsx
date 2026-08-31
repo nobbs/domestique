@@ -254,8 +254,8 @@ const config: WebUIConfig = {
 /** What this build registers, as the sync page reads it. */
 export const tasks: TaskList = {
   tasks: [
-    { name: "sync:source", scheduled: true, enabled: true, running: 0 },
-    { name: "sync:target", scheduled: true, enabled: false, running: 0 },
+    { name: "sync:source", scheduled: true, enabled: true, running: 0, intervalSeconds: 3600 },
+    { name: "sync:target", scheduled: true, enabled: false, running: 0, intervalSeconds: 21600 },
     { name: "surface:annotate", scheduled: false, enabled: true, running: 0 },
     { name: "surface:index", scheduled: true, enabled: true, running: 0 },
   ],

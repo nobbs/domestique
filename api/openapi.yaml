@@ -1670,6 +1670,12 @@ components:
         running:
           type: integer
           description: How many attempts of this task are in flight.
+        intervalSeconds:
+          type: integer
+          description: >-
+            The gap between runs for a task on a fixed schedule. Absent for a
+            task with no schedule, or a calendar one, whose gap changes with
+            the wall clock.
         nextRunAt:
           type: string
           format: date-time

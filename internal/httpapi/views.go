@@ -46,6 +46,17 @@ func optionalString(value string) *string {
 	return &value
 }
 
+// optionalIntervalSeconds omits a task with no fixed gap between runs rather
+// than serving a zero that would read as one running every instant.
+func optionalIntervalSeconds(interval time.Duration) *int {
+	if interval <= 0 {
+		return nil
+	}
+	seconds := int(interval / time.Second)
+
+	return &seconds
+}
+
 // boolValue and stringValue read an omitted field back as the value its
 // absence stands for, which is the direction a submitted body travels.
 func boolValue(value *bool) bool {

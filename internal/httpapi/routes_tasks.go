@@ -45,11 +45,12 @@ func (h *Handler) taskList() openapi.TaskList {
 	tasks := make([]openapi.Task, 0, len(registered))
 	for _, task := range registered {
 		tasks = append(tasks, openapi.Task{
-			Name:      task.Name,
-			Scheduled: task.Scheduled,
-			Enabled:   task.Enabled,
-			Running:   task.Running,
-			NextRunAt: optionalTime(task.NextRunAt),
+			Name:            task.Name,
+			Scheduled:       task.Scheduled,
+			Enabled:         task.Enabled,
+			Running:         task.Running,
+			IntervalSeconds: optionalIntervalSeconds(task.Interval),
+			NextRunAt:       optionalTime(task.NextRunAt),
 		})
 	}
 	return openapi.TaskList{Tasks: tasks}

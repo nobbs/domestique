@@ -151,6 +151,8 @@ export interface Task {
   enabled: boolean;
   /** How many attempts of this task are in flight. */
   running: number;
+  /** The gap between runs for a task on a fixed schedule. Absent for a task with no schedule, or a calendar one, whose gap changes with the wall clock. */
+  intervalSeconds?: number;
   /** When the first scheduled run is due. Absent once it has started, and for a task nothing schedules. */
   nextRunAt?: string;
 }

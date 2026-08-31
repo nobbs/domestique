@@ -27,13 +27,3 @@ export const SYNC_PHASE_TASKS = {
   source: TASKS.syncSource,
   targets: TASKS.syncTarget,
 } as const;
-
-/**
- * How often each half runs unasked, in the words the switch shows. The read is
- * the timely one; a read that stored a library asks for the targets at once, so
- * the target schedule is a backstop behind it rather than a second cadence.
- */
-export const SYNC_PHASE_CADENCE = {
-  source: "Hourly",
-  targets: "Every six hours",
-} as const;

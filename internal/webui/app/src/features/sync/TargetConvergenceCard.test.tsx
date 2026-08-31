@@ -372,7 +372,7 @@ describe("TargetConvergenceCard", () => {
         async () =>
           new Response(
             JSON.stringify({
-              error: { code: "sync_in_progress", message: "a synchronization is already running" },
+              error: { code: "task_in_progress", message: "the task is already running, or something it needs is held by another run" },
             }),
             { status: 409 },
           ),
@@ -383,7 +383,7 @@ describe("TargetConvergenceCard", () => {
     await userEvent.click(screen.getByRole("button", { name: "Reconcile now: rider-a" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "a synchronization is already running",
+      "the task is already running, or something it needs is held by another run",
     );
   });
 });

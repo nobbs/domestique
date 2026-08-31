@@ -41,8 +41,8 @@ function config(sourceBaseUrls: Record<string, string> = { veloplanner: "https:/
 function tasks(source = true, targets = true): TaskList {
   return {
     tasks: [
-      { name: "sync:source", scheduled: true, enabled: source, running: 0 },
-      { name: "sync:target", scheduled: true, enabled: targets, running: 0 },
+      { name: "sync:source", scheduled: true, enabled: source, running: 0, intervalSeconds: 3600 },
+      { name: "sync:target", scheduled: true, enabled: targets, running: 0, intervalSeconds: 21600 },
     ],
   };
 }
@@ -138,7 +138,7 @@ describe("SyncControls", () => {
       screen.getByRole("switch", { name: "Hourly: Read from VeloPlanner" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("switch", { name: "Every six hours: Write to Wahoo" }),
+      screen.getByRole("switch", { name: "Every 6 hours: Write to Wahoo" }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Run now: Read from VeloPlanner" }),
@@ -175,7 +175,7 @@ describe("SyncControls", () => {
     vi.stubGlobal("fetch", fetchMock);
     renderControls(status(), config(), tasks(true, true));
 
-    await userEvent.click(screen.getByRole("switch", { name: "Every six hours: Write to Wahoo" }));
+    await userEvent.click(screen.getByRole("switch", { name: "Every 6 hours: Write to Wahoo" }));
 
     await waitFor(() =>
       expect(
@@ -220,7 +220,7 @@ describe("SyncControls", () => {
       "aria-checked",
       "true",
     );
-    expect(screen.getByRole("switch", { name: "Every six hours: Write to Wahoo" })).toHaveAttribute(
+    expect(screen.getByRole("switch", { name: "Every 6 hours: Write to Wahoo" })).toHaveAttribute(
       "aria-checked",
       "false",
     );
@@ -326,7 +326,7 @@ describe("SyncControls", () => {
         async () =>
           new Response(
             JSON.stringify({
-              error: { code: "sync_in_progress", message: "a synchronization is already running" },
+              error: { code: "task_in_progress", message: "the task is already running, or something it needs is held by another run" },
             }),
             { status: 409 },
           ),
@@ -339,7 +339,7 @@ describe("SyncControls", () => {
     // An error the operator caused by pressing something is announced, not
     // queued behind whatever else a screen reader is saying.
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "a synchronization is already running",
+      "the task is already running, or something it needs is held by another run",
     );
   });
 
@@ -442,7 +442,7 @@ describe("SyncControls", () => {
         async (_input: RequestInfo | URL, _init?: RequestInit) =>
           new Response(
             JSON.stringify({
-              error: { code: "sync_in_progress", message: "a synchronization is already running" },
+              error: { code: "task_in_progress", message: "the task is already running, or something it needs is held by another run" },
             }),
             { status: 409 },
           ),
@@ -455,7 +455,7 @@ describe("SyncControls", () => {
     await userEvent.click(screen.getByRole("button", { name: "Retry now" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "a synchronization is already running",
+      "the task is already running, or something it needs is held by another run",
     );
   });
 });

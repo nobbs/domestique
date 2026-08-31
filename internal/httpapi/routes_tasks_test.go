@@ -51,7 +51,7 @@ func taskListOf(t *testing.T, handler *Handler, request *http.Request) openapi.T
 func TestListTasksReportsWhatThisBuildRegisters(t *testing.T) {
 	due := time.Date(2026, time.August, 31, 9, 0, 0, 0, time.UTC)
 	handler, _ := tasksHandler(t,
-		RegisteredTask{Name: "sync:source", Scheduled: true, Running: 1, NextRunAt: due},
+		RegisteredTask{Name: "sync:source", Scheduled: true, Running: 1, NextRunAt: due, Interval: time.Hour},
 		RegisteredTask{Name: "sync:clear"},
 	)
 
@@ -67,9 +67,13 @@ func TestListTasksReportsWhatThisBuildRegisters(t *testing.T) {
 	assert.Equal(t, 1, view.Tasks[0].Running, "running")
 	require.NotNil(t, view.Tasks[0].NextRunAt, "the due time")
 	assert.Equal(t, due, view.Tasks[0].NextRunAt.UTC(), "the due time")
+	require.NotNil(t, view.Tasks[0].IntervalSeconds, "the fixed gap between runs")
+	assert.Equal(t, 3600, *view.Tasks[0].IntervalSeconds, "interval seconds")
 	// A task nothing schedules is due at no particular time, and that has to
-	// read as absent rather than as the zero instant.
+	// read as absent rather than as the zero instant. The same task has no
+	// fixed gap either.
 	assert.Nil(t, view.Tasks[1].NextRunAt, "a task nothing schedules reported a due time")
+	assert.Nil(t, view.Tasks[1].IntervalSeconds, "a task nothing schedules reported an interval")
 }
 
 // A service with nothing registered still answers with a list, an empty one.
