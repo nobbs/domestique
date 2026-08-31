@@ -584,8 +584,8 @@ func schemaMigrations() [][]string {
 			)`,
 		},
 		{
-			// What every background activity came to, refusals included; an attempt
-			// that found its work already current, or one ended by shutdown, is not recorded.
+			// What every background activity came to, refusals included; only an
+			// attempt ended by shutdown is not recorded.
 			`CREATE TABLE task_runs (
 				id               INTEGER PRIMARY KEY,
 				task             TEXT    NOT NULL,
