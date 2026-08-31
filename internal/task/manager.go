@@ -84,8 +84,8 @@ type Manager struct {
 type registered struct {
 	// startsAt holds the instant the first scheduled run is due, and only while
 	// it is still due.
-	// successors are the tasks whose Follows name this one, resolved once when
-	// the last task is registered.
+	// successors are the tasks whose Follows name this one, worked out afresh by
+	// each Resolve and settled before anything runs.
 	successors []string
 	startsAt   startsAt
 	definition Definition
@@ -407,9 +407,10 @@ func (m *Manager) backingOff(ctx context.Context, entry *registered, invocation 
 	return true
 }
 
-// perform runs one attempt and then whatever it asked should follow. The
-// resources are released before the chain starts, because a successor wanting what
-// its parent held would otherwise be refused by it every time.
+// perform runs one attempt and then whatever registration declared follows it.
+// The resources are released before the chain starts, because a successor
+// wanting what its predecessor held would otherwise be refused by it every
+// time.
 //
 // One chain shares one set of what it has run. A chain is sequential, so
 // siblings see each other rather than each starting from its parent's copy.
