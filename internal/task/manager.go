@@ -26,9 +26,16 @@ type Store interface {
 		outcome, detail, reference string,
 		retain int,
 	) error
+	// LastTaskOutcome reports what this task's most recent recorded attempt over
+	// one argument came to.
+	LastTaskOutcome(ctx context.Context, task, argument string) (outcome string, found bool, err error)
+	// LastTaskSuccess reports when this task last succeeded over one argument.
+	LastTaskSuccess(ctx context.Context, task, argument string) (finishedAt time.Time, found bool, err error)
 	// LastFailureNotification reports when an alert of this kind last went out.
 	LastFailureNotification(ctx context.Context, category string) (sentAt time.Time, found bool, err error)
-	// RecordFailureNotification remembers that one did.
+	// RecordFailureNotification remembers that one did, or forgets that one ever
+	// had when sentAt is the zero value. Forgetting is what ends an incident, so
+	// the next alert of that kind is not held back by a window opened for it.
 	RecordFailureNotification(ctx context.Context, category string, sentAt time.Time) error
 }
 
@@ -365,6 +372,9 @@ func (m *Manager) record(
 	if !result.Outcome.recorded() {
 		return
 	}
+	// Asked before recording, because the question is what this task did last
+	// and this attempt is about to become the answer to it.
+	alert := m.alertFor(ctx, entry, invocation, result)
 	// A wall clock that stepped backwards mid-attempt would leave the store
 	// refusing a run that finished before it started, costing the row entirely.
 	// No measurable time is the lesser wrong.
@@ -388,14 +398,56 @@ func (m *Manager) record(
 
 		return
 	}
-	m.announce(ctx, entry, invocation, result, reference, finishedAt)
+	m.announce(ctx, entry, invocation, alert, alertMessage(invocation, result.Outcome, alert, reference), finishedAt)
+	m.checkStale(ctx, entry, invocation, result, reference, finishedAt)
 }
 
-// announce sends one alert for a run that went wrong, no more often than the
-// task's own suppression window allows. The window is keyed by the reason as
-// well as the task: a library that cannot be read and a target that needs
-// reauthorising are separate problems and are worth saying separately.
-func (m *Manager) announce(
+// alertFor is what this attempt is announced as, empty when it is not announced
+// at all. A fault is announced as the reason it gave. A success is a recovery
+// when it ends a run of anything else, and routine otherwise — two alerts
+// rather than one, because an operator who silences every routine pass still
+// wants to hear that the thing came back.
+func (m *Manager) alertFor(
+	ctx context.Context, entry *registered, invocation Invocation, result Result,
+) Detail {
+	if result.Outcome.alerts() {
+		return result.Detail
+	}
+	if result.Outcome != Succeeded {
+		return ""
+	}
+	// A success is opt-in where a fault is not. A fault nobody declared is
+	// still worth hearing about, but a routine success nobody asked for is
+	// noise an operator could not have switched off in advance.
+	if m.endsAnIncident(ctx, invocation) && entry.definition.declares(DetailRecovered) {
+		return DetailRecovered
+	}
+	if entry.definition.declares(DetailSucceeded) {
+		return DetailSucceeded
+	}
+
+	return ""
+}
+
+// endsAnIncident reports whether this success follows something that was not
+// one. Anything else counts, including the not_ready a target awaiting its
+// authorization records: what an operator wants to hear is that the task is
+// doing its work again.
+func (m *Manager) endsAnIncident(ctx context.Context, invocation Invocation) bool {
+	outcome, found, err := m.store.LastTaskOutcome(ctx, invocation.Task, invocation.Argument)
+	if err != nil {
+		// An unreadable history must not silence what may be the recovery: one
+		// message too many costs a line, a withheld recovery costs an alert.
+		return true
+	}
+
+	return found && outcome != string(Succeeded)
+}
+
+// checkStale announces a task that has gone too long without succeeding. A task
+// that stopped succeeding raises no new fault once its first one is suppressed,
+// so this is asked after every attempt rather than only after a failed one.
+func (m *Manager) checkStale(
 	ctx context.Context,
 	entry *registered,
 	invocation Invocation,
@@ -403,19 +455,67 @@ func (m *Manager) announce(
 	reference string,
 	now time.Time,
 ) {
-	if !entry.definition.alerts() || !result.Outcome.alerts() || !m.enabled() {
+	// Declared before it can be ruled on, for the same reason a success is: an
+	// age nobody asked to hear about is not a fault anyone is waiting for.
+	bound := entry.definition.staleAfter()
+	if bound <= 0 || !entry.definition.declares(DetailStale) {
 		return
 	}
-	m.reportUndeclared(entry, invocation.Task, result.Detail)
-	if !m.wanted(ctx, invocation.Task, result.Detail) {
+	// A success is what freshness is, so it ends the incident rather than being
+	// measured against it.
+	if result.Outcome == Succeeded {
+		m.clearAlert(ctx, invocation.Task, DetailStale)
+
 		return
 	}
-	category := invocation.Task + ":" + string(result.Detail)
+	lastSuccess, found, err := m.store.LastTaskSuccess(ctx, invocation.Task, invocation.Argument)
+	if err != nil || !found {
+		return
+	}
+	// Compared in whole seconds, the same precision the status surface reports
+	// an age in: a sub-second remainder must not let this alert and that
+	// response disagree on whether the task is stale.
+	if now.Sub(lastSuccess)/time.Second < bound/time.Second {
+		return
+	}
+	// Named without an outcome: what is being announced is how long the task has
+	// gone without succeeding, not what the attempt that noticed came to.
+	m.announce(ctx, entry, invocation, DetailStale, alertMessage(invocation, "", DetailStale, reference), now)
+}
+
+// clearAlert forgets that an alert went out, so the next one is not held back
+// by a window opened for an incident that is over.
+func (m *Manager) clearAlert(ctx context.Context, task string, alert Detail) {
+	if err := m.store.RecordFailureNotification(ctx, task+":"+string(alert), time.Time{}); err != nil {
+		slog.Warn("alert suppression not cleared", "task", task, "alert", alert, "error", err)
+	}
+}
+
+// announce sends one alert, no more often than the task's own suppression
+// window allows. The window is keyed by the reason as well as the task: a
+// library that cannot be read and a target that needs reauthorising are
+// separate problems and are worth saying separately.
+func (m *Manager) announce(
+	ctx context.Context,
+	entry *registered,
+	invocation Invocation,
+	alert Detail,
+	message string,
+	now time.Time,
+) {
+	if alert == "" || !entry.definition.alerts() || !m.enabled() {
+		return
+	}
+	m.reportUndeclared(entry, invocation.Task, alert)
+	if !m.wanted(ctx, invocation.Task, alert) {
+		return
+	}
+	category := invocation.Task + ":" + string(alert)
 	lastSentAt, found, err := m.store.LastFailureNotification(ctx, category)
 	if err != nil || (found && now.Sub(lastSentAt) < entry.definition.Notify.Suppress) {
 		return
 	}
-	if err := m.notifier.Send(ctx, entry.definition.Notify.Title, alertMessage(invocation, result, reference)); err != nil {
+	if err := m.notifier.Send(ctx, entry.definition.Notify.Title, message); err != nil {
 		return
 	}
 	// Nothing is written down as sent until it has been, so a delivery that
@@ -470,17 +570,22 @@ func (m *Manager) wanted(ctx context.Context, task string, alert Detail) bool {
 	return enabled
 }
 
-// alertMessage says which task went wrong, over what, and why. Every message
-// names its run: the reference is random and means nothing on its own, which is
-// what makes it safe to send.
-func alertMessage(invocation Invocation, result Result, reference string) string {
+// alertMessage says which task is being announced, over what, and why. The
+// reason is left off when it only repeats the outcome, and the outcome is left
+// off when what is announced is not one attempt's. Every message names its run:
+// the reference is random and means nothing on its own, which is what makes it
+// safe to send.
+func alertMessage(invocation Invocation, outcome Outcome, alert Detail, reference string) string {
 	message := invocation.Task
 	if invocation.Argument != "" {
 		message += " " + invocation.Argument
 	}
-	message += " " + string(result.Outcome)
-	if result.Detail != "" {
-		message += ": " + string(result.Detail)
+	if outcome == "" {
+		return message + " " + string(alert) + " run=" + reference
+	}
+	message += " " + string(outcome)
+	if alert != "" && string(alert) != string(outcome) {
+		message += ": " + string(alert)
 	}
 
 	return message + " run=" + reference

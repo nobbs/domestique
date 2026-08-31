@@ -828,8 +828,10 @@ type recordedRun struct {
 type recordingStore struct {
 	err         error
 	historyErr  error
+	outcomeErr  error
 	suppressErr error
 	notifiedAt  map[string]time.Time
+	succeededAt map[invocationKey]time.Time
 	reference   string
 	runs        []recordedRun
 	mutex       sync.Mutex
@@ -853,6 +855,40 @@ func (s *recordingStore) RecordTaskRun(
 	return s.err
 }
 
+// LastTaskOutcome answers from what has been recorded here, so a test that
+// records a failure and then a success gets the recovery it set up.
+func (s *recordingStore) LastTaskOutcome(
+	_ context.Context, task, argument string,
+) (outcome string, found bool, err error) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	if s.outcomeErr != nil {
+		return "", false, s.outcomeErr
+	}
+	for _, run := range slices.Backward(s.runs) {
+		if run.task == task && run.argument == argument {
+			return run.outcome, true, nil
+		}
+	}
+
+	return "", false, nil
+}
+
+func (s *recordingStore) LastTaskSuccess(
+	_ context.Context, task, argument string,
+) (finishedAt time.Time, found bool, err error) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	if s.outcomeErr != nil {
+		return time.Time{}, false, s.outcomeErr
+	}
+	at, found := s.succeededAt[invocationKey{task: task, argument: argument}]
+
+	return at, found, nil
+}
+
 func (s *recordingStore) LastFailureNotification(_ context.Context, category string) (time.Time, bool, error) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
@@ -869,7 +905,12 @@ func (s *recordingStore) RecordFailureNotification(_ context.Context, category s
 	if s.notifiedAt == nil {
 		s.notifiedAt = make(map[string]time.Time)
 	}
-	s.notifiedAt[category] = sentAt
+	// The zero time clears the record, the same as the store this stands in for.
+	if sentAt.IsZero() {
+		delete(s.notifiedAt, category)
+	} else {
+		s.notifiedAt[category] = sentAt
+	}
 
 	return s.suppressErr
 }
@@ -1321,16 +1362,18 @@ func TestAnAlertThatCouldNotBeSentIsTriedAgain(t *testing.T) {
 	assert.Empty(t, store.notifiedAt, "a message that never went out was recorded as sent")
 }
 
-// Nothing is announced about an outcome that is not a fault, and nothing at all
-// about a task that declared no alerts.
-func TestOnlyAFaultingTaskThatDeclaredAlertsIsAnnounced(t *testing.T) {
+// Nothing is announced about an attempt that did no work, and nothing at all
+// about a task that declared no alerts. A fault nobody declared is announced
+// anyway; a success nobody declared is not, because it is noise rather than
+// something an operator is waiting for.
+func TestOnlyATaskThatDeclaredAlertsIsAnnouncedAbout(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {
 		definition Definition
 		want       int
 	}{
-		"a refusal is not a fault": {
+		"a refusal did no work": {
 			definition: Definition{
 				Name:   "a",
 				Notify: &Notify{Title: "t", Suppress: time.Hour},
@@ -1339,12 +1382,20 @@ func TestOnlyAFaultingTaskThatDeclaredAlertsIsAnnounced(t *testing.T) {
 				}),
 			},
 		},
-		"a success is not a fault": {
+		"a success nobody asked to hear about": {
 			definition: Definition{
 				Name:   "a",
 				Notify: &Notify{Title: "t", Suppress: time.Hour},
 				Run:    succeeds(),
 			},
+		},
+		"a success that was declared": {
+			definition: Definition{
+				Name:   "a",
+				Notify: &Notify{Title: "t", Suppress: time.Hour, Alerts: []Detail{DetailSucceeded}},
+				Run:    succeeds(),
+			},
+			want: 1,
 		},
 		"a task that declared nothing": {
 			definition: Definition{
@@ -1616,4 +1667,211 @@ func TestDeclarationsListEveryAlertInRegistrationOrder(t *testing.T) {
 		{Task: "sync", Alert: "destination"},
 		{Task: "surface:index", Alert: "build"},
 	}, manager.Declarations(), "Declarations()")
+}
+
+// A success that follows anything else ends an incident, and is announced as
+// its own alert: an operator who silences every routine pass still wants to
+// hear that the thing came back.
+func TestASuccessAfterAFaultIsAnnouncedAsARecovery(t *testing.T) {
+	t.Parallel()
+
+	manager, _, notifier := newAlertingManager(t)
+	outcome := Failed
+	require.NoError(t, manager.Register(&Definition{
+		Name: "sync",
+		Notify: &Notify{
+			Title:    "t",
+			Suppress: time.Hour,
+			Alerts:   []Detail{DetailSucceeded, DetailRecovered, "destination"},
+		},
+		Run: RunnerFunc(func(context.Context, Invocation) Result {
+			return Result{Outcome: outcome, Detail: "destination"}
+		}),
+	}), "Register()")
+
+	require.True(t, manager.Trigger(t.Context(), "sync", ""), "Trigger(failing)")
+	manager.Wait()
+	outcome = Succeeded
+	require.True(t, manager.Trigger(t.Context(), "sync", ""), "Trigger(recovering)")
+	manager.Wait()
+	require.True(t, manager.Trigger(t.Context(), "sync", ""), "Trigger(routine)")
+	manager.Wait()
+
+	messages := notifier.messages()
+	require.Len(t, messages, 3, "sent alerts")
+	assert.Regexp(t, `^sync failed: destination run=[0-9a-f]{12}$`, messages[0].message, "the fault")
+	assert.Regexp(t, `^sync succeeded: recovered run=[0-9a-f]{12}$`, messages[1].message, "the recovery")
+	assert.Regexp(t, `^sync succeeded run=[0-9a-f]{12}$`, messages[2].message, "the routine success")
+}
+
+// A routine success and a recovery are separate alerts, so silencing the first
+// leaves the second to come through.
+func TestSilencingRoutineSuccessesLeavesTheRecovery(t *testing.T) {
+	t.Parallel()
+
+	manager, store, notifier, decisions := newDecidingManager(t)
+	decisions.decided[DetailSucceeded] = false
+	store.runs = []recordedRun{{task: "sync", outcome: string(Failed)}}
+	require.NoError(t, manager.Register(&Definition{
+		Name:   "sync",
+		Notify: &Notify{Title: "t", Suppress: time.Hour, Alerts: []Detail{DetailSucceeded, DetailRecovered}},
+		Run:    succeeds(),
+	}), "Register()")
+
+	require.True(t, manager.Trigger(t.Context(), "sync", ""), "Trigger(recovering)")
+	manager.Wait()
+	require.True(t, manager.Trigger(t.Context(), "sync", ""), "Trigger(routine)")
+	manager.Wait()
+
+	messages := notifier.messages()
+	require.Len(t, messages, 1, "the routine success was announced or the recovery was not")
+	assert.Regexp(t, `^sync succeeded: recovered run=[0-9a-f]{12}$`, messages[0].message, "the recovery")
+}
+
+// An unreadable history must not silence what may be the recovery: one message
+// too many costs a line, a withheld recovery costs an alert.
+func TestAnUnreadableHistoryAnnouncesTheSuccessAsARecovery(t *testing.T) {
+	t.Parallel()
+
+	manager, store, notifier := newAlertingManager(t)
+	store.outcomeErr = errors.New("state unavailable")
+	require.NoError(t, manager.Register(&Definition{
+		Name:   "sync",
+		Notify: &Notify{Title: "t", Suppress: time.Hour, Alerts: []Detail{DetailSucceeded, DetailRecovered}},
+		Run:    succeeds(),
+	}), "Register()")
+
+	require.True(t, manager.Trigger(t.Context(), "sync", ""), "Trigger()")
+	manager.Wait()
+
+	messages := notifier.messages()
+	require.Len(t, messages, 1, "sent alerts")
+	assert.Contains(t, messages[0].message, "recovered", "an unreadable history withheld the recovery")
+}
+
+// A task that stopped succeeding raises no new fault once its first one is
+// suppressed, so its age is what has to be announced instead.
+func TestATaskThatHasNotSucceededInTooLongIsAnnouncedAsStale(t *testing.T) {
+	t.Parallel()
+
+	manager, store, notifier := newAlertingManager(t)
+	now := time.Date(2026, time.August, 30, 9, 0, 0, 0, time.UTC)
+	manager.now = func() time.Time { return now }
+	store.succeededAt = map[invocationKey]time.Time{{task: "sync"}: now.Add(-25 * time.Hour)}
+	require.NoError(t, manager.Register(&Definition{
+		Name:       "sync",
+		Notify:     &Notify{Title: "t", Suppress: time.Hour, Alerts: []Detail{DetailStale, "destination"}},
+		StaleAfter: func() time.Duration { return 24 * time.Hour },
+		Run: RunnerFunc(func(context.Context, Invocation) Result {
+			return Result{Outcome: Failed, Detail: "destination"}
+		}),
+	}), "Register()")
+
+	require.True(t, manager.Trigger(t.Context(), "sync", ""), "Trigger()")
+	manager.Wait()
+
+	messages := notifier.messages()
+	require.Len(t, messages, 2, "sent alerts")
+	assert.Regexp(t, `^sync failed: destination run=[0-9a-f]{12}$`, messages[0].message, "the fault")
+	assert.Regexp(t, `^sync stale run=[0-9a-f]{12}$`, messages[1].message, "the staleness")
+}
+
+func TestATaskWithinItsBoundIsNotAnnouncedAsStale(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		succeeded map[invocationKey]time.Time
+		bound     time.Duration
+	}{
+		"inside the bound": {
+			bound:     24 * time.Hour,
+			succeeded: map[invocationKey]time.Time{{task: "sync"}: time.Date(2026, time.August, 29, 10, 0, 0, 0, time.UTC)},
+		},
+		// Nothing is stale before it has ever been fresh: a task nobody has run
+		// yet is waiting, not overdue.
+		"never succeeded": {bound: 24 * time.Hour},
+		"no bound at all": {
+			succeeded: map[invocationKey]time.Time{{task: "sync"}: time.Date(2020, time.January, 1, 0, 0, 0, 0, time.UTC)},
+		},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			manager, store, notifier := newAlertingManager(t)
+			manager.now = func() time.Time { return time.Date(2026, time.August, 30, 9, 0, 0, 0, time.UTC) }
+			store.succeededAt = test.succeeded
+			bound := test.bound
+			require.NoError(t, manager.Register(&Definition{
+				Name:       "sync",
+				Notify:     &Notify{Title: "t", Suppress: time.Hour, Alerts: []Detail{DetailStale}},
+				StaleAfter: func() time.Duration { return bound },
+				Run: RunnerFunc(func(context.Context, Invocation) Result {
+					return Result{Outcome: Failed, Detail: "destination"}
+				}),
+			}), "Register()")
+
+			require.True(t, manager.Trigger(t.Context(), "sync", ""), "Trigger()")
+			manager.Wait()
+
+			assert.NotContains(t, sentAlerts(notifier), "stale", "the task was announced as stale")
+		})
+	}
+}
+
+// A success is what freshness is, so it ends the incident rather than waiting
+// out the window an earlier stale alert opened.
+func TestASuccessClearsTheStaleWindow(t *testing.T) {
+	t.Parallel()
+
+	manager, store, notifier := newAlertingManager(t)
+	store.notifiedAt = map[string]time.Time{"sync:stale": time.Date(2026, time.August, 30, 8, 0, 0, 0, time.UTC)}
+	require.NoError(t, manager.Register(&Definition{
+		Name:       "sync",
+		Notify:     &Notify{Title: "t", Suppress: time.Hour, Alerts: []Detail{DetailStale}},
+		StaleAfter: func() time.Duration { return 24 * time.Hour },
+		Run:        succeeds(),
+	}), "Register()")
+
+	require.True(t, manager.Trigger(t.Context(), "sync", ""), "Trigger()")
+	manager.Wait()
+
+	_, held := store.notifiedAt["sync:stale"]
+	assert.False(t, held, "a success left the stale window open")
+	assert.NotContains(t, sentAlerts(notifier), "stale", "a success was announced as stale")
+}
+
+// sentAlerts is every message that went out, joined, for the assertions that
+// care only whether one reason was among them.
+func sentAlerts(notifier *fakeNotifier) string {
+	sent := ""
+	for _, message := range notifier.messages() {
+		sent += message.message + "\n"
+	}
+
+	return sent
+}
+
+// A task that declares only its faults keeps announcing only those. Adding
+// success alerts to the layer must not turn every such task into one that
+// announces every pass it makes.
+func TestATaskThatDeclaredOnlyItsFaultsAnnouncesNoSuccess(t *testing.T) {
+	t.Parallel()
+
+	manager, store, notifier := newAlertingManager(t)
+	store.succeededAt = map[invocationKey]time.Time{
+		{task: "surface:index"}: time.Date(2020, time.January, 1, 0, 0, 0, 0, time.UTC),
+	}
+	require.NoError(t, manager.Register(&Definition{
+		Name:   "surface:index",
+		Notify: &Notify{Title: "t", Suppress: time.Hour, Alerts: []Detail{"build"}},
+		// A bound with nothing declared against it says nothing either.
+		StaleAfter: func() time.Duration { return time.Hour },
+		Run:        succeeds(),
+	}), "Register()")
+
+	require.True(t, manager.Trigger(t.Context(), "surface:index", ""), "Trigger()")
+	manager.Wait()
+
+	assert.Empty(t, notifier.messages(), "sent alerts")
 }

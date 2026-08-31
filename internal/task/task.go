@@ -98,6 +98,26 @@ const (
 	DetailHeld Detail = "resource_held"
 )
 
+// What an attempt is announced for besides a fault. They are alerts like any
+// other, declared by the task and ruled on one at a time, so an operator who
+// wants to hear about a library that stopped refreshing but not about every
+// routine pass can have exactly that.
+const (
+	// DetailSucceeded means the attempt did its work and nothing was wrong
+	// before it — either the one before also succeeded, or there was none. It is
+	// the routine traffic an operator most often switches off.
+	DetailSucceeded Detail = "succeeded"
+	// DetailRecovered means the attempt succeeded where the one before it did
+	// not. It ends an incident, which is worth hearing even from a task whose
+	// routine successes are silenced.
+	DetailRecovered Detail = "recovered"
+	// DetailStale means the task has gone longer than its bound without
+	// succeeding. A task that stopped succeeding raises no new fault once its
+	// first one is suppressed, so without this it goes quiet exactly when it
+	// matters.
+	DetailStale Detail = "stale"
+)
+
 // Link is one invocation a finished attempt asks for. A task returns links for
 // the work its own result made necessary, so what follows what is decided by
 // whoever knows, rather than declared where nobody can see the outcome.
@@ -187,6 +207,9 @@ type Definition struct {
 	// InitialDelay is how long the first scheduled run waits after start. It is
 	// read once, when the schedule starts.
 	InitialDelay func() time.Duration
+	// StaleAfter is how long this task may go without succeeding before it is
+	// announced as stale. Nil is a task nothing is expected of on a clock.
+	StaleAfter func() time.Duration
 	// Notify is what an alert about this task says and how often it may say it.
 	// Nil is a task nothing is announced about.
 	Notify *Notify
@@ -211,6 +234,16 @@ func (d *Definition) declares(alert Detail) bool {
 // without a window to announce within.
 func (d *Definition) alerts() bool {
 	return d.Notify != nil
+}
+
+// staleAfter is how long this task may go without succeeding, zero when it is
+// not expected to on a clock.
+func (d *Definition) staleAfter() time.Duration {
+	if d.StaleAfter == nil {
+		return 0
+	}
+
+	return d.StaleAfter()
 }
 
 // resources is the set this argument needs, empty when the task named none.

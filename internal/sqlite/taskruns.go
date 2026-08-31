@@ -104,3 +104,49 @@ func (s *Store) ForEachTaskRun(
 
 	return nil
 }
+
+// LastTaskOutcome returns what a task's most recent recorded attempt over one
+// argument came to. It is what a success is compared against to tell a routine
+// one from the one that ends an incident.
+func (s *Store) LastTaskOutcome(
+	ctx context.Context, task, argument string,
+) (outcome string, found bool, err error) {
+	if task == "" {
+		return "", false, errors.New("task is required")
+	}
+	if err := s.database.QueryRowContext(ctx, `
+		SELECT outcome FROM task_runs WHERE task = ? AND argument = ? ORDER BY id DESC LIMIT 1
+	`, task, argument).Scan(&outcome); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", false, nil
+		}
+
+		return "", false, fmt.Errorf("reading the last outcome of a task: %w", err)
+	}
+
+	return outcome, true, nil
+}
+
+// LastTaskSuccess returns when a task last succeeded over one argument, which
+// is what its staleness is measured against: a failed or skipped attempt leaves
+// whatever the task keeps exactly as an earlier success left it.
+func (s *Store) LastTaskSuccess(
+	ctx context.Context, task, argument string,
+) (finishedAt time.Time, found bool, err error) {
+	if task == "" {
+		return time.Time{}, false, errors.New("task is required")
+	}
+	var finishedUnix int64
+	if err := s.database.QueryRowContext(ctx, `
+		SELECT finished_at_unix FROM task_runs
+		WHERE task = ? AND argument = ? AND outcome = ? ORDER BY id DESC LIMIT 1
+	`, task, argument, "succeeded").Scan(&finishedUnix); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return time.Time{}, false, nil
+		}
+
+		return time.Time{}, false, fmt.Errorf("reading the last success of a task: %w", err)
+	}
+
+	return time.Unix(finishedUnix, 0).UTC(), true, nil
+}

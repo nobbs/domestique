@@ -160,10 +160,24 @@ without the other is refused where the task is registered: a window left at zero
 would either silence the task or repeat itself every tick, and neither is what
 leaving it out meant.
 
-Only a fault is announced: a run that failed, or one a safety gate blocked. An
-attempt that did no work because something else held what it needed is not a
-fault — this service was busy, which is not the same as broken — and neither is
-a success or a run that found nothing to do.
+A fault is announced: a run that failed, or one a safety gate blocked. So is a
+success, as one of two alerts — the routine kind, and the kind that follows
+anything else and so ends an incident. They are separate because an operator who
+silences every routine pass still wants to hear that the thing came back.
+
+An attempt that did no work because something else held what it needed is
+announced as nothing at all: this service was busy, which is not the same as
+broken. Nor is a run that found its work already done.
+
+A task may also be announced for how long it has gone without succeeding. One
+that stopped succeeding raises no new fault once its first one is suppressed, so
+without this it goes quiet exactly when it matters. The bound is the task's own,
+read when the question is asked, and a task that names none is not expected on a
+clock. Nothing is stale before it has ever been fresh: a task nobody has run yet
+is waiting, not overdue.
+
+A success is what freshness is, so it ends the staleness incident rather than
+waiting out the window an earlier alert opened.
 
 An operator rules on each alert separately, and a task declares which alerts it
 can raise so that ruling on one is possible before being woken by it. An alert
@@ -224,6 +238,6 @@ blaming the map for a service that was stopping would outlast the shutdown.
 
 ## Out of scope
 
-Notification policy, delayed retry after repeated failure, and a bound on how
-long one attempt may take are not part of this layer yet. Nothing here queues
-work or retries an attempt.
+Delayed retry after repeated failure and a bound on how long one attempt may
+take are not part of this layer yet. Nothing here queues work or retries an
+attempt.

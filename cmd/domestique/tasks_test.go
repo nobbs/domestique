@@ -507,6 +507,14 @@ func (s *countingStore) RecordTaskRun(
 	return nil
 }
 
+func (*countingStore) LastTaskOutcome(context.Context, string, string) (outcome string, found bool, err error) {
+	return "", false, nil
+}
+
+func (*countingStore) LastTaskSuccess(context.Context, string, string) (finishedAt time.Time, found bool, err error) {
+	return time.Time{}, false, nil
+}
+
 func (*countingStore) LastFailureNotification(context.Context, string) (time.Time, bool, error) {
 	return time.Time{}, false, nil
 }
