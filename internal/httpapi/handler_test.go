@@ -2815,8 +2815,11 @@ func (a *fakeAlerts) Decide(_ context.Context, decisions []AlertDecision) error 
 	return nil
 }
 
-// fakeTasks stands in for the registered background activities.
+// fakeTasks stands in for the registered background activities. It keeps what
+// it was asked for apart from what it started, so a refused attempt can be told
+// from one the handler never asked for at all.
 type fakeTasks struct {
+	asked      []startedTask
 	started    []startedTask
 	registered []RegisteredTask
 	refuse     bool
@@ -2830,7 +2833,12 @@ type startedTask struct {
 func (t *fakeTasks) Registered() []RegisteredTask { return t.registered }
 
 func (t *fakeTasks) Run(_ context.Context, name, argument string) bool {
-	t.started = append(t.started, startedTask{name: name, argument: argument})
+	attempt := startedTask{name: name, argument: argument}
+	t.asked = append(t.asked, attempt)
+	if t.refuse {
+		return false
+	}
+	t.started = append(t.started, attempt)
 
-	return !t.refuse
+	return true
 }

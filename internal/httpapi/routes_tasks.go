@@ -7,10 +7,15 @@ import (
 	openapi "github.com/nobbs/domestique/internal/httpapi/contract"
 )
 
-// taskInProgress is what a refused attempt is told. A task refuses for one of
-// two reasons — this exact work is already happening, or something else holds
-// what it needs — and neither is a fault, so both read the same from here.
-const taskInProgress = "the task is already running, or something it needs is held by another run"
+const (
+	// codeTaskInProgress is what a refused attempt is told, kept apart from the
+	// sync surface's own code so a caller can tell the two conflicts apart.
+	codeTaskInProgress = "task_in_progress"
+	// taskInProgress is why. A task refuses for one of two reasons — this exact
+	// work is already happening, or something else holds what it needs — and
+	// neither is a fault, so both read the same from here.
+	taskInProgress = "the task is already running, or something it needs is held by another run"
+)
 
 // ListTasks reports every background activity this build registers.
 func (h *Handler) ListTasks(writer http.ResponseWriter, _ *http.Request) {
@@ -38,7 +43,7 @@ func (h *Handler) RunTask(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 	argument := request.PathValue("argument")
-	h.accepted(writer, taskInProgress, func() bool {
+	h.accepted(writer, codeTaskInProgress, taskInProgress, func() bool {
 		return h.tasks.Run(request.Context(), name, argument)
 	})
 }

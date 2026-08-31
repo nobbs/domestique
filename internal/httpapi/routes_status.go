@@ -33,6 +33,9 @@ func reportedAuthorization(stored string, inFlight bool) string {
 
 // What a refused trigger tells the caller is already under way.
 const (
+	// codeSyncInProgress is what a refused sync trigger is told. A refusal names
+	// what refused it, so a caller can tell one surface's conflict from another's.
+	codeSyncInProgress       = "sync_in_progress"
 	syncInProgress           = "a synchronization is already running"
 	syncOrAnnotateInProgress = "a synchronization or classification pass is already running"
 )
@@ -360,7 +363,7 @@ func (h *Handler) TriggerTargetSync(writer http.ResponseWriter, request *http.Re
 
 		return
 	}
-	h.accepted(writer, syncInProgress, func() bool { return h.syncRuns.TriggerTarget(targetID) })
+	h.accepted(writer, codeSyncInProgress, syncInProgress, func() bool { return h.syncRuns.TriggerTarget(targetID) })
 }
 
 // ClearTarget queues the deletion of every route this service owns on exactly one
@@ -372,18 +375,20 @@ func (h *Handler) ClearTarget(writer http.ResponseWriter, request *http.Request)
 
 		return
 	}
-	h.accepted(writer, syncInProgress, func() bool { return h.syncRuns.TriggerClear(targetID) })
+	h.accepted(writer, codeSyncInProgress, syncInProgress, func() bool { return h.syncRuns.TriggerClear(targetID) })
 }
 
 func (h *Handler) trigger(writer http.ResponseWriter, phase SyncPhase) {
-	h.accepted(writer, syncInProgress, func() bool { return h.syncRuns.Trigger(phase) })
+	h.accepted(writer, codeSyncInProgress, syncInProgress, func() bool { return h.syncRuns.Trigger(phase) })
 }
 
 // accepted reports what a manual trigger came to: 202 when the process took the
-// work, 409 when something is already running.
-func (h *Handler) accepted(writer http.ResponseWriter, conflict string, start func() bool) {
+// work, 409 under the given code when something is already running. The code is
+// the caller's because a refusal names what refused: a task conflict and a sync
+// conflict are told apart by it rather than by the message.
+func (h *Handler) accepted(writer http.ResponseWriter, code, conflict string, start func() bool) {
 	if !start() {
-		h.error(writer, http.StatusConflict, "sync_in_progress", conflict)
+		h.error(writer, http.StatusConflict, code, conflict)
 
 		return
 	}
@@ -393,7 +398,7 @@ func (h *Handler) accepted(writer http.ResponseWriter, conflict string, start fu
 // TriggerSurfaceSync queues one classification pass, independent of either half.
 // It reads no source and writes no target, and shares their single-flight guard.
 func (h *Handler) TriggerSurfaceSync(writer http.ResponseWriter, _ *http.Request) {
-	h.accepted(writer, syncOrAnnotateInProgress, func() bool { return h.syncRuns.TriggerAnnotate() })
+	h.accepted(writer, codeSyncInProgress, syncOrAnnotateInProgress, func() bool { return h.syncRuns.TriggerAnnotate() })
 }
 
 // trustedInventoryFreshness reports the inventory's age against the configured

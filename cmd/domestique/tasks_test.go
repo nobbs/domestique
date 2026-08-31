@@ -551,3 +551,65 @@ type undecided struct{}
 func (undecided) Wanted(context.Context, string, task.Detail) (enabled, decided bool) {
 	return false, false
 }
+
+// The surface a page reads is the manager's own registrations, so a task added
+// to the layer appears without anybody writing an endpoint for it.
+func TestTaskSurfaceListsWhatTheManagerRegisters(t *testing.T) {
+	t.Parallel()
+
+	manager, err := registerTasks(
+		&countingStore{}, &silentNotifier{}, undecided{}, alwaysOn,
+		[]task.Definition{
+			{
+				Name:         "scheduled",
+				Run:          task.RunnerFunc(func(context.Context, task.Invocation) task.Result { return task.Result{Outcome: task.Succeeded} }),
+				Schedule:     task.Every(func() time.Duration { return time.Hour }),
+				InitialDelay: func() time.Duration { return time.Minute },
+			},
+			{
+				Name: "asked for",
+				Run:  task.RunnerFunc(func(context.Context, task.Invocation) task.Result { return task.Result{Outcome: task.Succeeded} }),
+			},
+		},
+	)
+	require.NoError(t, err, "registerTasks()")
+
+	surface := taskSurface{manager: manager}
+	listed := surface.Registered()
+
+	require.Len(t, listed, 2, "listed tasks")
+	assert.Equal(t, "scheduled", listed[0].Name, "the first task")
+	assert.True(t, listed[0].Scheduled, "a scheduled task did not read as one")
+	assert.Equal(t, "asked for", listed[1].Name, "the second task")
+	assert.False(t, listed[1].Scheduled, "a task nothing schedules read as scheduled")
+}
+
+// Running through the surface is running through the manager, so an attempt
+// asked for over HTTP is refused on exactly the terms a schedule is.
+func TestTaskSurfaceRunsThroughTheManager(t *testing.T) {
+	t.Parallel()
+
+	ran := make(chan task.Invocation, 1)
+	manager, err := registerTasks(
+		&countingStore{}, &silentNotifier{}, undecided{}, alwaysOn,
+		[]task.Definition{{
+			Name: "sync:target",
+			Run: task.RunnerFunc(func(_ context.Context, invocation task.Invocation) task.Result {
+				ran <- invocation
+
+				return task.Result{Outcome: task.Succeeded}
+			}),
+		}},
+	)
+	require.NoError(t, err, "registerTasks()")
+
+	surface := taskSurface{manager: manager}
+	require.True(t, surface.Run(t.Context(), "sync:target", "rider-a"), "Run()")
+	manager.Wait()
+
+	invocation := <-ran
+	assert.Equal(t, "rider-a", invocation.Argument, "the argument reached the runner")
+	assert.Equal(t, task.TriggerManual, invocation.Trigger, "an operator's attempt was not recorded as one")
+
+	assert.False(t, surface.Run(t.Context(), "invented", ""), "a name nothing registers was accepted")
+}

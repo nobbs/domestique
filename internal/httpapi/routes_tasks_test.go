@@ -103,7 +103,7 @@ func TestRunTaskRefusesANameThisBuildDoesNotRegister(t *testing.T) {
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/tasks/invented/run"))
 
 	require.Equal(t, http.StatusNotFound, response.Code, response.Body.String())
-	assert.Empty(t, tasks.started, "a task this build does not register was started")
+	assert.Empty(t, tasks.asked, "a task this build does not register was asked for")
 }
 
 // A refusal is not a fault: the work is already happening, or something it
@@ -115,7 +115,11 @@ func TestRunTaskReportsARefusal(t *testing.T) {
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/tasks/sync/run"))
 
-	assert.Equal(t, http.StatusConflict, response.Code, response.Body.String())
+	require.Equal(t, http.StatusConflict, response.Code, response.Body.String())
+	assert.Contains(t, response.Body.String(), "task_in_progress",
+		"a task conflict was reported under another surface's code")
+	assert.Empty(t, tasks.started, "a refused attempt started work")
+	assert.Len(t, tasks.asked, 1, "the handler never asked")
 }
 
 // The list is read-only, so a browser sends no Origin on it and requiring one
