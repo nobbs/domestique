@@ -11,13 +11,15 @@ import (
 )
 
 // mutableRoutes is every route that starts a run or writes state. A route added
-// to this surface belongs here, and the provenance tests below cover it.
+// to this surface belongs here, and the provenance tests below cover it. The
+// task routes carry the names a real build registers, percent-encoded as the
+// page sends them, so the guard is checked over the requests it actually sees.
 var mutableRoutes = []struct { //nolint:gochecknoglobals // test fixture, read-only
 	method string
 	target string
 	body   string
 }{
-	{method: http.MethodPut, target: "/v1/tasks/sync/schedule", body: `{"enabled":true}`},
+	{method: http.MethodPut, target: "/v1/tasks/sync%3Asource/schedule", body: `{"enabled":true}`},
 	{method: http.MethodPost, target: "/v1/routes/12/stages/1/reprocess"},
 	{method: http.MethodPut, target: settingsWahooPath, body: wahooSubmission},
 	{method: http.MethodPut, target: settingsTargetsPath, body: targetsSubmission},
@@ -29,8 +31,8 @@ var mutableRoutes = []struct { //nolint:gochecknoglobals // test fixture, read-o
 	{method: http.MethodPut, target: settingsSyncPath, body: syncSubmission},
 	{method: http.MethodPut, target: settingsAlertsPath, body: alertsSubmission},
 	{method: http.MethodPut, target: settingsTimezonePath, body: `{"timezone": "Europe/Berlin"}`},
-	{method: http.MethodPost, target: "/v1/tasks/sync/run"},
-	{method: http.MethodPost, target: "/v1/tasks/sync/run/rider-a"},
+	{method: http.MethodPost, target: "/v1/tasks/sync%3Asource/run"},
+	{method: http.MethodPost, target: "/v1/tasks/sync%3Atarget/run/rider-a"},
 }
 
 // askedTasks is what the handler's task list was asked for, so a refused

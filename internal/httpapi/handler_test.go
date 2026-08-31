@@ -1640,8 +1640,8 @@ func TestHandlerRefusesADuplicateTriggerWithoutManufacturingASecondRun(t *testin
 	tasks.refuse = true
 
 	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/tasks/sync/run"))
-	require.Equal(t, http.StatusConflict, response.Code, "POST /v1/tasks/sync/run status")
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/tasks/sync%3Asource/run"))
+	require.Equal(t, http.StatusConflict, response.Code, "POST /v1/tasks/sync%3Asource/run status")
 
 	view := statusOf(t, handler)
 	assert.Equal(t, runningState, view.Sync.State, "sync state")
@@ -1924,7 +1924,10 @@ func newHandlerWithSync(t *testing.T, oauthService OAuth, state State, syncRuns 
 	handler, err := New(
 		&Options{
 			Alerts: &fakeAlerts{catalogue: []AlertSetting{{Task: "sync", Alert: "source", Enabled: true}}},
-			Tasks:  &fakeTasks{registered: []RegisteredTask{{Name: "sync"}}},
+			Tasks: &fakeTasks{registered: []RegisteredTask{
+				{Name: "sync:source", Scheduled: true, Enabled: true},
+				{Name: "sync:target", Scheduled: true, Enabled: true},
+			}},
 			Settings: withSources(settingsWith(testBasemapsWithDark()),
 				runtimeconfig.Source{Provider: route.ProviderVeloPlanner, BaseURL: testSourceBaseURL}),
 			AccessVerifier:   &recordingVerifier{email: testAccessEmail},

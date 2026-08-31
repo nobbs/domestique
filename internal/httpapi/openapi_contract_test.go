@@ -135,7 +135,7 @@ func TestOpenAPIContractResponses(t *testing.T) {
 			}
 			target = strings.NewReplacer(
 				"{provider}", "veloplanner", "{sourceRouteId}", "12", "{stageOrder}", "1",
-				"{routeId}", "12", "{stage}", "1", "{asset}", "app.js", "{name}", "sync",
+				"{routeId}", "12", "{stage}", "1", "{asset}", "app.js", "{name}", "sync%3Asource",
 			).Replace(target)
 			request := httptest.NewRequestWithContext(context.Background(), test.method, target, http.NoBody)
 			if test.authenticated {
