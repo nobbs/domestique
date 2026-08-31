@@ -32,6 +32,12 @@ type Store interface {
 	RecordFailureNotification(ctx context.Context, category string, sentAt time.Time) error
 }
 
+// Alerts says which alerts an operator has ruled on. An alert nobody has ruled
+// on is not in the map, which is not the same as one switched off.
+type Alerts interface {
+	Wanted(ctx context.Context, task string, alert Detail) (enabled, decided bool)
+}
+
 // Notifier delivers already-safe alert text.
 type Notifier interface {
 	Send(ctx context.Context, title, message string) error
@@ -44,19 +50,23 @@ type Manager struct {
 	after    func(time.Duration) <-chan time.Time
 	store    Store
 	notifier Notifier
+	alerts   Alerts
 	enabled  func() bool
 
-	shared    map[string]int
-	exclusive map[string]struct{}
-	running   map[invocationKey]struct{}
-	tasks     map[string]*registered
-	order     []string
+	shared     map[string]int
+	exclusive  map[string]struct{}
+	running    map[invocationKey]struct{}
+	tasks      map[string]*registered
+	undeclared map[declarationKey]struct{}
+	order      []string
 
 	// mutex guards admission alone: a slot and a resource set are taken
 	// together or not at all, so an attempt can never hold one and want the
-	// other.
-	mutex     sync.Mutex
-	triggered sync.WaitGroup
+	// other. undeclaredMutex is separate so that invariant stays easy to
+	// reason about.
+	mutex           sync.Mutex
+	undeclaredMutex sync.Mutex
+	triggered       sync.WaitGroup
 }
 
 // registered is one task and what the manager knows about it right now.
@@ -72,21 +82,23 @@ type registered struct {
 // in and the channel its alerts go out on. Nothing runs until Run is called.
 // enabled is read at the moment a message would go out rather than captured,
 // because an operator edits it while the service runs.
-func NewManager(store Store, notifier Notifier, enabled func() bool) (*Manager, error) {
-	if store == nil || notifier == nil || enabled == nil {
-		return nil, errors.New("task: a run store, a notifier and a notification switch are required")
+func NewManager(store Store, notifier Notifier, alerts Alerts, enabled func() bool) (*Manager, error) {
+	if store == nil || notifier == nil || alerts == nil || enabled == nil {
+		return nil, errors.New("task: a run store, a notifier, alert decisions and a switch are required")
 	}
 
 	return &Manager{
-		now:       time.Now,
-		after:     time.After,
-		store:     store,
-		notifier:  notifier,
-		enabled:   enabled,
-		shared:    make(map[string]int),
-		exclusive: make(map[string]struct{}),
-		running:   make(map[invocationKey]struct{}),
-		tasks:     make(map[string]*registered),
+		now:        time.Now,
+		after:      time.After,
+		store:      store,
+		notifier:   notifier,
+		alerts:     alerts,
+		enabled:    enabled,
+		shared:     make(map[string]int),
+		exclusive:  make(map[string]struct{}),
+		running:    make(map[invocationKey]struct{}),
+		tasks:      make(map[string]*registered),
+		undeclared: make(map[declarationKey]struct{}),
 	}, nil
 }
 
@@ -376,6 +388,10 @@ func (m *Manager) announce(
 	if !entry.definition.alerts() || !result.Outcome.alerts() || !m.enabled() {
 		return
 	}
+	m.reportUndeclared(entry, invocation.Task, result.Detail)
+	if !m.wanted(ctx, invocation.Task, result.Detail) {
+		return
+	}
 	category := invocation.Task + ":" + string(result.Detail)
 	lastSentAt, found, err := m.store.LastFailureNotification(ctx, category)
 	if err != nil || (found && now.Sub(lastSentAt) < entry.definition.Notify.Suppress) {
@@ -401,6 +417,39 @@ func newRunReference() string {
 	_, _ = rand.Read(reference)
 
 	return hex.EncodeToString(reference)
+}
+
+// reportUndeclared says once that a task raised something it never declared.
+// Whether the declaration is complete is a fact about this build rather than
+// about this run, so it is said whatever an operator has decided and whatever
+// the window allows — and said once, because repeating it every tick would
+// bury it.
+func (m *Manager) reportUndeclared(entry *registered, task string, alert Detail) {
+	if entry.definition.declares(alert) {
+		return
+	}
+
+	key := declarationKey{task: task, alert: alert}
+	m.undeclaredMutex.Lock()
+	_, said := m.undeclared[key]
+	m.undeclared[key] = struct{}{}
+	m.undeclaredMutex.Unlock()
+
+	if !said {
+		slog.Warn("task announced something it had not declared", "task", task, "alert", alert)
+	}
+}
+
+// wanted reports whether an operator wants this alert delivered. One they have
+// ruled on is their decision; one nobody has ruled on is announced, because a
+// fault nobody has heard of is the one worth hearing about.
+func (m *Manager) wanted(ctx context.Context, task string, alert Detail) bool {
+	enabled, decided := m.alerts.Wanted(ctx, task, alert)
+	if !decided {
+		return true
+	}
+
+	return enabled
 }
 
 // alertMessage says which task went wrong, over what, and why. Every message
@@ -447,6 +496,13 @@ func (m *Manager) admit(entry *registered, invocation Invocation) (func(), admis
 	entry.inFlight++
 
 	return func() { m.release(entry, key, wanted) }, admitStarted
+}
+
+// declarationKey names one alert of one task, for the once-per-build report
+// that its declaration does not mention it.
+type declarationKey struct {
+	task  string
+	alert Detail
 }
 
 // invocationKey names one task's work over one argument. It is a pair rather

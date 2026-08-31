@@ -579,9 +579,18 @@ func TestNewManagerNeedsSomewhereToRecord(t *testing.T) {
 	t.Parallel()
 
 	for name, build := range map[string]func() (*Manager, error){
-		"no store":    func() (*Manager, error) { return NewManager(nil, &fakeNotifier{}, alwaysOn) },
-		"no notifier": func() (*Manager, error) { return NewManager(&recordingStore{}, nil, alwaysOn) },
-		"no switch":   func() (*Manager, error) { return NewManager(&recordingStore{}, &fakeNotifier{}, nil) },
+		"no store": func() (*Manager, error) {
+			return NewManager(nil, &fakeNotifier{}, &fakeAlerts{}, alwaysOn)
+		},
+		"no notifier": func() (*Manager, error) {
+			return NewManager(&recordingStore{}, nil, &fakeAlerts{}, alwaysOn)
+		},
+		"no decisions": func() (*Manager, error) {
+			return NewManager(&recordingStore{}, &fakeNotifier{}, nil, alwaysOn)
+		},
+		"no switch": func() (*Manager, error) {
+			return NewManager(&recordingStore{}, &fakeNotifier{}, &fakeAlerts{}, nil)
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -754,11 +763,30 @@ func newTestManager(t *testing.T) (*Manager, *recordingStore) {
 func newAlertingManager(t *testing.T) (*Manager, *recordingStore, *fakeNotifier) {
 	t.Helper()
 
-	store, notifier := &recordingStore{}, &fakeNotifier{}
-	manager, err := NewManager(store, notifier, alwaysOn)
-	require.NoError(t, err, "NewManager()")
+	manager, store, notifier, _ := newDecidingManager(t)
 
 	return manager, store, notifier
+}
+
+func newDecidingManager(t *testing.T) (*Manager, *recordingStore, *fakeNotifier, *fakeAlerts) {
+	t.Helper()
+
+	store, notifier, decisions := &recordingStore{}, &fakeNotifier{}, &fakeAlerts{decided: map[Detail]bool{}}
+	manager, err := NewManager(store, notifier, decisions, alwaysOn)
+	require.NoError(t, err, "NewManager()")
+
+	return manager, store, notifier, decisions
+}
+
+// fakeAlerts stands in for what an operator has ruled on.
+type fakeAlerts struct {
+	decided map[Detail]bool
+}
+
+func (a *fakeAlerts) Wanted(_ context.Context, _ string, alert Detail) (enabled, decided bool) {
+	enabled, decided = a.decided[alert]
+
+	return enabled, decided
 }
 
 func alwaysOn() bool { return true }
@@ -1190,8 +1218,11 @@ func TestAFailingTaskIsAnnouncedOncePerWindow(t *testing.T) {
 	now := reference()
 	manager.now = func() time.Time { return now }
 	require.NoError(t, manager.Register(&Definition{
-		Name:   "sync",
-		Notify: &Notify{Title: "Domestique sync failed", Suppress: 6 * time.Hour},
+		Name: "sync",
+		Notify: &Notify{
+			Title: "Domestique sync failed", Suppress: 6 * time.Hour,
+			Alerts: []Detail{"destination", "source"},
+		},
 		Run: RunnerFunc(func(context.Context, Invocation) Result {
 			return Result{Outcome: Failed, Detail: "destination"}
 		}),
@@ -1222,8 +1253,11 @@ func TestTwoReasonsAreAnnouncedSeparately(t *testing.T) {
 	manager, _, notifier := newAlertingManager(t)
 	detail := Detail("source")
 	require.NoError(t, manager.Register(&Definition{
-		Name:   "sync",
-		Notify: &Notify{Title: "Domestique sync failed", Suppress: 6 * time.Hour},
+		Name: "sync",
+		Notify: &Notify{
+			Title: "Domestique sync failed", Suppress: 6 * time.Hour,
+			Alerts: []Detail{"destination", "source"},
+		},
 		Run: RunnerFunc(func(context.Context, Invocation) Result {
 			return Result{Outcome: Failed, Detail: detail}
 		}),
@@ -1243,8 +1277,11 @@ func TestAnAlertNamesTheArgumentItIsAbout(t *testing.T) {
 
 	manager, _, notifier := newAlertingManager(t)
 	require.NoError(t, manager.Register(&Definition{
-		Name:   "sync:target",
-		Notify: &Notify{Title: "Domestique sync failed", Suppress: time.Hour},
+		Name: "sync:target",
+		Notify: &Notify{
+			Title: "Domestique sync failed", Suppress: time.Hour,
+			Alerts: []Detail{"destination"},
+		},
 		Run: RunnerFunc(func(context.Context, Invocation) Result {
 			return Result{Outcome: Blocked, Detail: "deletion_limit"}
 		}),
@@ -1268,8 +1305,11 @@ func TestAnAlertThatCouldNotBeSentIsTriedAgain(t *testing.T) {
 	manager, store, notifier := newAlertingManager(t)
 	notifier.err = errors.New("channel unreachable")
 	require.NoError(t, manager.Register(&Definition{
-		Name:   "sync",
-		Notify: &Notify{Title: "Domestique sync failed", Suppress: 6 * time.Hour},
+		Name: "sync",
+		Notify: &Notify{
+			Title: "Domestique sync failed", Suppress: 6 * time.Hour,
+			Alerts: []Detail{"destination", "source"},
+		},
 		Run: RunnerFunc(func(context.Context, Invocation) Result {
 			return Result{Outcome: Failed, Detail: "destination"}
 		}),
@@ -1346,11 +1386,14 @@ func TestNothingIsAnnouncedOrRecordedWhileTheChannelIsOff(t *testing.T) {
 	t.Parallel()
 
 	store, notifier := &recordingStore{}, &fakeNotifier{}
-	manager, err := NewManager(store, notifier, func() bool { return false })
+	manager, err := NewManager(store, notifier, &fakeAlerts{}, func() bool { return false })
 	require.NoError(t, err, "NewManager()")
 	require.NoError(t, manager.Register(&Definition{
-		Name:   "sync",
-		Notify: &Notify{Title: "Domestique sync failed", Suppress: 6 * time.Hour},
+		Name: "sync",
+		Notify: &Notify{
+			Title: "Domestique sync failed", Suppress: 6 * time.Hour,
+			Alerts: []Detail{"destination", "source"},
+		},
 		Run: RunnerFunc(func(context.Context, Invocation) Result {
 			return Result{Outcome: Failed, Detail: "destination"}
 		}),
@@ -1372,8 +1415,11 @@ func TestAnAlertIsHeldBackWhenItsHistoryCannotBeRead(t *testing.T) {
 	manager, store, notifier := newAlertingManager(t)
 	store.historyErr = errors.New("state unavailable")
 	require.NoError(t, manager.Register(&Definition{
-		Name:   "sync",
-		Notify: &Notify{Title: "Domestique sync failed", Suppress: time.Hour},
+		Name: "sync",
+		Notify: &Notify{
+			Title: "Domestique sync failed", Suppress: time.Hour,
+			Alerts: []Detail{"destination"},
+		},
 		Run: RunnerFunc(func(context.Context, Invocation) Result {
 			return Result{Outcome: Failed, Detail: "destination"}
 		}),
@@ -1393,8 +1439,11 @@ func TestAnAlertStillGoesOutWhenItsSuppressionCannotBeRecorded(t *testing.T) {
 	manager, store, notifier := newAlertingManager(t)
 	store.suppressErr = errors.New("state unavailable")
 	require.NoError(t, manager.Register(&Definition{
-		Name:   "sync",
-		Notify: &Notify{Title: "Domestique sync failed", Suppress: time.Hour},
+		Name: "sync",
+		Notify: &Notify{
+			Title: "Domestique sync failed", Suppress: time.Hour,
+			Alerts: []Detail{"destination"},
+		},
 		Run: RunnerFunc(func(context.Context, Invocation) Result {
 			return Result{Outcome: Failed, Detail: "destination"}
 		}),
@@ -1422,4 +1471,120 @@ func TestEachAttemptIsNamedSomethingOfItsOwn(t *testing.T) {
 
 	assert.Regexp(t, `^[0-9a-f]{12}$`, first, "a run was named something unexpected")
 	assert.NotEqual(t, first, store.reference, "two runs shared a name")
+}
+
+// A fault nobody has ruled on is announced: one nobody has heard of is the one
+// worth hearing about. A decision an operator has made wins either way.
+func TestAnOperatorsDecisionDecidesWhetherAnAlertGoesOut(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		decided map[Detail]bool
+		want    int
+	}{
+		"nobody has ruled on it": {decided: map[Detail]bool{}, want: 1},
+		"switched on":            {decided: map[Detail]bool{"destination": true}, want: 1},
+		"switched off":           {decided: map[Detail]bool{"destination": false}, want: 0},
+		"another alert switched off": {
+			decided: map[Detail]bool{"source": false}, want: 1,
+		},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			manager, _, notifier, decisions := newDecidingManager(t)
+			decisions.decided = test.decided
+			require.NoError(t, manager.Register(&Definition{
+				Name: "sync",
+				Notify: &Notify{
+					Title: "Domestique sync failed", Suppress: time.Hour,
+					Alerts: []Detail{"destination"},
+				},
+				Run: RunnerFunc(func(context.Context, Invocation) Result {
+					return Result{Outcome: Failed, Detail: "destination"}
+				}),
+			}), "Register()")
+
+			require.True(t, manager.Trigger(t.Context(), "sync", ""), "Trigger()")
+			manager.Wait()
+
+			assert.Len(t, notifier.messages(), test.want, "sent alerts")
+		})
+	}
+}
+
+// An alert switched off is not sent and opens no window, so switching it back
+// on does not find one it never heard the alert behind.
+func TestAnAlertSwitchedOffOpensNoWindow(t *testing.T) {
+	t.Parallel()
+
+	manager, store, _, decisions := newDecidingManager(t)
+	decisions.decided = map[Detail]bool{"destination": false}
+	require.NoError(t, manager.Register(&Definition{
+		Name: "sync",
+		Notify: &Notify{
+			Title: "Domestique sync failed", Suppress: time.Hour,
+			Alerts: []Detail{"destination"},
+		},
+		Run: RunnerFunc(func(context.Context, Invocation) Result {
+			return Result{Outcome: Failed, Detail: "destination"}
+		}),
+	}), "Register()")
+
+	require.True(t, manager.Trigger(t.Context(), "sync", ""), "Trigger()")
+	manager.Wait()
+
+	assert.Empty(t, store.notifiedAt, "a suppression window was opened for an alert nobody wanted")
+}
+
+// The declaration is what a settings page offers, so a task announcing
+// something it never declared has made that page wrong. It still goes out —
+// silence would be worse — but it says so.
+func TestAnUndeclaredAlertStillGoesOut(t *testing.T) {
+	t.Parallel()
+
+	manager, _, notifier := newAlertingManager(t)
+	require.NoError(t, manager.Register(&Definition{
+		Name: "sync",
+		Notify: &Notify{
+			Title: "Domestique sync failed", Suppress: time.Hour,
+			Alerts: []Detail{"source"},
+		},
+		Run: RunnerFunc(func(context.Context, Invocation) Result {
+			return Result{Outcome: Failed, Detail: "never_declared"}
+		}),
+	}), "Register()")
+
+	require.True(t, manager.Trigger(t.Context(), "sync", ""), "Trigger()")
+	manager.Wait()
+
+	assert.Len(t, notifier.messages(), 1, "an undeclared alert was swallowed")
+}
+
+// An alert an operator has switched off is still one the declaration should
+// have mentioned, so saying so does not wait on their decision.
+func TestAnUndeclaredAlertIsReportedEvenWhenNobodyWantsIt(t *testing.T) {
+	t.Parallel()
+
+	manager, _, notifier, decisions := newDecidingManager(t)
+	decisions.decided = map[Detail]bool{"never_declared": false}
+	require.NoError(t, manager.Register(&Definition{
+		Name: "sync",
+		Notify: &Notify{
+			Title: "Domestique sync failed", Suppress: time.Hour,
+			Alerts: []Detail{"source"},
+		},
+		Run: RunnerFunc(func(context.Context, Invocation) Result {
+			return Result{Outcome: Failed, Detail: "never_declared"}
+		}),
+	}), "Register()")
+
+	require.True(t, manager.Trigger(t.Context(), "sync", ""), "first Trigger()")
+	manager.Wait()
+	require.True(t, manager.Trigger(t.Context(), "sync", ""), "second Trigger()")
+	manager.Wait()
+
+	assert.Empty(t, notifier.messages(), "an alert nobody wanted was sent")
+	assert.Len(t, manager.undeclared, 1, "the missing declaration was not noticed")
 }

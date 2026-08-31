@@ -4,6 +4,7 @@ package task
 
 import (
 	"context"
+	"slices"
 	"time"
 )
 
@@ -151,6 +152,10 @@ func (f RunnerFunc) Run(ctx context.Context, invocation Invocation) Result {
 type Notify struct {
 	// Title is what a message about this task is titled.
 	Title string
+	// Alerts are the reasons this task can be announced for. Declaring them is
+	// what lets an operator rule on each separately, rather than discovering
+	// one exists by being woken by it.
+	Alerts []Detail
 	// Suppress is how long one alert silences the next for the same reason. A
 	// failing task is worth one message, and the same message every tick
 	// afterwards is noise an operator learns to ignore.
@@ -187,6 +192,12 @@ type Definition struct {
 	// Retain is how many of this task's attempts are kept. Zero means the
 	// default; the most recent attempt over each argument is kept regardless.
 	Retain int
+}
+
+// declares reports whether this task said in advance that it could be
+// announced for this reason.
+func (d *Definition) declares(alert Detail) bool {
+	return d.Notify != nil && slices.Contains(d.Notify.Alerts, alert)
 }
 
 // alerts reports whether anything is announced about this task. What it says
