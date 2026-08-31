@@ -119,7 +119,7 @@ func run(ctx context.Context) error {
 	// own switch.
 	switches, err := newTaskSwitches(ctx, store)
 	if err != nil {
-		return fmt.Errorf("reading the task schedule: %w", err)
+		return err
 	}
 
 	// Surface enrichment is built whether or not a region is named, since naming
