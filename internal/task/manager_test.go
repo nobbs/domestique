@@ -826,6 +826,12 @@ type recordedRun struct {
 	retain   int
 }
 
+// faultStreak is what a task's recent history came to, as a backoff reads it.
+type faultStreak struct {
+	lastAt time.Time
+	faults int
+}
+
 type recordingStore struct {
 	err         error
 	historyErr  error
@@ -833,6 +839,7 @@ type recordingStore struct {
 	suppressErr error
 	notifiedAt  map[string]time.Time
 	succeededAt map[invocationKey]time.Time
+	faultStreak map[invocationKey]faultStreak
 	reference   string
 	runs        []recordedRun
 	mutex       sync.Mutex
@@ -888,6 +895,22 @@ func (s *recordingStore) LastTaskSuccess(
 	at, found := s.succeededAt[invocationKey{task: task, argument: argument}]
 
 	return at, found, nil
+}
+
+func (s *recordingStore) TaskFaultStreak(
+	_ context.Context, task, argument string,
+) (faults int, lastAt time.Time, err error) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	if s.outcomeErr != nil {
+		return 0, time.Time{}, s.outcomeErr
+	}
+	if streak, held := s.faultStreak[invocationKey{task: task, argument: argument}]; held {
+		return streak.faults, streak.lastAt, nil
+	}
+
+	return 0, time.Time{}, nil
 }
 
 func (s *recordingStore) LastFailureNotification(_ context.Context, category string) (time.Time, bool, error) {
@@ -1939,4 +1962,119 @@ func TestOnlyAFixedGapRunsAsSoonAsItStarts(t *testing.T) {
 			assert.Equal(t, test.want, runs, "runs at start")
 		})
 	}
+}
+
+// A task that keeps faulting waits longer each time rather than retrying on its
+// ordinary schedule, and the wait is read from what is recorded, so a restart
+// neither forgets it nor has to rebuild it.
+func TestAFailingTaskIsHeldBackFromItsSchedule(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, time.August, 31, 9, 0, 0, 0, time.UTC)
+	tests := map[string]struct {
+		streak  faultStreak
+		wantRun bool
+	}{
+		"nothing has faulted":         {wantRun: true},
+		"one fault, still waiting":    {streak: faultStreak{faults: 1, lastAt: now.Add(-10 * time.Second)}},
+		"one fault, wait served":      {streak: faultStreak{faults: 1, lastAt: now.Add(-40 * time.Second)}, wantRun: true},
+		"three faults, still waiting": {streak: faultStreak{faults: 3, lastAt: now.Add(-90 * time.Second)}},
+		"three faults, wait served":   {streak: faultStreak{faults: 3, lastAt: now.Add(-3 * time.Minute)}, wantRun: true},
+		// The doubling stops at the cap rather than reaching days by morning.
+		"far past the cap": {streak: faultStreak{faults: 40, lastAt: now.Add(-7 * time.Hour)}, wantRun: true},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			runner := countingRunner()
+			manager, store := newTestManager(t)
+			manager.now = func() time.Time { return now }
+			store.faultStreak = map[invocationKey]faultStreak{{task: "sync"}: test.streak}
+			entry := &registered{definition: Definition{
+				Name:    "sync",
+				Run:     runner,
+				Backoff: Backoff{Base: 30 * time.Second, Cap: 6 * time.Hour},
+			}}
+			manager.tasks["sync"] = entry
+			manager.order = append(manager.order, "sync")
+
+			manager.scheduled(t.Context(), entry)
+
+			want := 0
+			if test.wantRun {
+				want = 1
+			}
+			assert.Equal(t, want, runner.runs(), "attempts")
+		})
+	}
+}
+
+// An operator asking has already decided, so a backoff never refuses them. It
+// is also the way out of one: the attempt they ask for is what ends the streak.
+func TestABackoffNeverRefusesAnOperator(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, time.August, 31, 9, 0, 0, 0, time.UTC)
+	runner := countingRunner()
+	manager, store := newTestManager(t)
+	manager.now = func() time.Time { return now }
+	store.faultStreak = map[invocationKey]faultStreak{{task: "sync"}: {faults: 5, lastAt: now}}
+	require.NoError(t, manager.Register(&Definition{
+		Name:    "sync",
+		Run:     runner,
+		Backoff: Backoff{Base: 30 * time.Second, Cap: 6 * time.Hour},
+	}), "Register()")
+
+	require.True(t, manager.Trigger(t.Context(), "sync", ""), "Trigger()")
+	manager.Wait()
+
+	assert.Equal(t, 1, runner.runs(), "a backoff refused the operator who asked")
+}
+
+// A history that cannot be read must not hold a task back. Not running is the
+// more expensive of the two ways to be wrong.
+func TestAnUnreadableHistoryDoesNotHoldATaskBack(t *testing.T) {
+	t.Parallel()
+
+	runner := countingRunner()
+	manager, store := newTestManager(t)
+	store.outcomeErr = errors.New("state unavailable")
+	entry := &registered{definition: Definition{
+		Name: "sync", Run: runner, Backoff: Backoff{Base: time.Hour, Cap: 6 * time.Hour},
+	}}
+	manager.tasks["sync"] = entry
+
+	manager.scheduled(t.Context(), entry)
+
+	assert.Equal(t, 1, runner.runs(), "an unreadable history held the task back")
+}
+
+// Doubling without a cap reaches days within a morning, which is a task that
+// has stopped rather than one waiting longer.
+func TestRegisterRefusesABackoffWithNoCap(t *testing.T) {
+	t.Parallel()
+
+	manager, _ := newTestManager(t)
+
+	require.Error(t, manager.Register(&Definition{
+		Name: "sync", Run: succeeds(), Backoff: Backoff{Base: time.Minute},
+	}), "Register() accepted an uncapped backoff")
+}
+
+func TestBackoffDoublesToItsCap(t *testing.T) {
+	t.Parallel()
+
+	backoff := Backoff{Base: 30 * time.Second, Cap: 2 * time.Minute}
+	for faults, want := range map[int]time.Duration{
+		0: 0,
+		1: 30 * time.Second,
+		2: time.Minute,
+		3: 2 * time.Minute,
+		4: 2 * time.Minute,
+		9: 2 * time.Minute,
+	} {
+		assert.Equalf(t, want, backoff.delay(faults), "delay(%d)", faults)
+	}
+	assert.Zero(t, Backoff{}.delay(3), "a task with no backoff waited")
 }

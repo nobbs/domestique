@@ -39,6 +39,17 @@ const (
 	indexAlertSuppression = 7 * 24 * time.Hour
 )
 
+// How long a failing activity waits before its schedule may start it again.
+// Reaching an upstream and reading the ground under a stage fail for different
+// reasons and recover on different timescales, so they wait differently; both
+// stop doubling at six hours, which is a morning's worth of quiet rather than a
+// task that has given up.
+const (
+	syncBackoffBase     = 30 * time.Second
+	annotateBackoffBase = 5 * time.Minute
+	backoffCap          = 6 * time.Hour
+)
+
 // The reasons a surface index rebuild reports. Both are stable words a status
 // page may show; neither carries an upstream URL or a local path.
 const (
@@ -125,6 +136,7 @@ func inventoryTasks(reporter synchronizer, settings *runtimeconfig.Current) []ta
 			StaleAfter: func() time.Duration {
 				return settings.Values().Sync.StaleAfter
 			},
+			Backoff: task.Backoff{Base: syncBackoffBase, Cap: backoffCap},
 			Run: task.RunnerFunc(func(ctx context.Context, invocation task.Invocation) task.Result {
 				result := runSync(ctx, reporter, invocation)
 
@@ -154,6 +166,7 @@ func inventoryTasks(reporter synchronizer, settings *runtimeconfig.Current) []ta
 		{
 			Name:      taskSurfaceAnnotate,
 			Resources: inventory,
+			Backoff:   task.Backoff{Base: annotateBackoffBase, Cap: backoffCap},
 			Run: task.RunnerFunc(func(ctx context.Context, _ task.Invocation) task.Result {
 				reporter.Annotate(ctx)
 

@@ -145,6 +145,35 @@ the hour that does exist. Being an hour of wall clock late costs less than being
 skipped until the clocks go back. Where an hour happens twice, the run happens
 in the first of them.
 
+### Backoff
+
+A task may hold itself back from its own schedule while it keeps faulting. The
+wait doubles with each consecutive fault, from a base to a cap; a base without a
+cap is refused where the task is registered, because uncapped doubling reaches
+days within a morning, which is a task that has stopped rather than one waiting
+longer.
+
+The wait is a floor under the next attempt, never a ceiling. A schedule due after
+the backoff has expired still waits for its own time.
+
+What counts as a fault is a failed or blocked attempt. A success ends the
+streak. Anything else — a refusal because something else held what the task
+needed, a run that found nothing to do — is passed over: the task was busy, not
+broken.
+
+The streak is read from the recorded history rather than kept in memory, so a
+restart neither forgets a backoff nor has to rebuild one, and it is counted per
+argument: one target slot failing does not hold back another. A history that
+cannot be read holds nothing back, because not running is the more expensive of
+the two ways to be wrong.
+
+Nothing is recorded about an attempt that was held back. The task is already in
+its history as failing, and a row per suppressed tick would bury that under the
+waiting.
+
+A backoff never refuses an operator. Asking is a decision already made, and the
+attempt they ask for is also the way out: a success ends the streak.
+
 ## The service timezone
 
 One zone for the whole service, not one per reader. A run happens once, and it

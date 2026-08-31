@@ -31,6 +31,9 @@ type Store interface {
 	LastTaskOutcome(ctx context.Context, task, argument string) (outcome string, found bool, err error)
 	// LastTaskSuccess reports when this task last succeeded over one argument.
 	LastTaskSuccess(ctx context.Context, task, argument string) (finishedAt time.Time, found bool, err error)
+	// TaskFaultStreak reports how many of this task's most recent attempts over
+	// one argument ended in a fault, and when the last of them finished.
+	TaskFaultStreak(ctx context.Context, task, argument string) (faults int, lastAt time.Time, err error)
 	// LastFailureNotification reports when an alert of this kind last went out.
 	LastFailureNotification(ctx context.Context, category string) (sentAt time.Time, found bool, err error)
 	// RecordFailureNotification remembers that one did, or forgets that one ever
@@ -124,6 +127,11 @@ func (m *Manager) Register(definition *Definition) error {
 	// every tick, and neither is what leaving it out meant.
 	if definition.Notify != nil && (definition.Notify.Title == "" || definition.Notify.Suppress <= 0) {
 		return fmt.Errorf("task %q: an announced task needs a title and a suppression window", definition.Name)
+	}
+	// Uncapped doubling reaches days within a morning, which is a task that has
+	// stopped rather than one waiting longer.
+	if definition.Backoff.Base > 0 && definition.Backoff.Cap < definition.Backoff.Base {
+		return fmt.Errorf("task %q: a backoff needs a cap no shorter than its base", definition.Name)
 	}
 	if _, exists := m.tasks[definition.Name]; exists {
 		return fmt.Errorf("task %q is already registered", definition.Name)
@@ -256,6 +264,9 @@ func (m *Manager) scheduled(ctx context.Context, entry *registered) {
 		return
 	}
 	invocation := Invocation{Task: entry.definition.Name, Trigger: TriggerSchedule}
+	if m.backingOff(ctx, entry, invocation) {
+		return
+	}
 	release, outcome := m.admit(entry, invocation)
 	if outcome != admitStarted {
 		m.refused(ctx, entry, invocation, outcome.detail())
@@ -263,6 +274,33 @@ func (m *Manager) scheduled(ctx context.Context, entry *registered) {
 		return
 	}
 	m.perform(ctx, entry, invocation, release, nil, 0)
+}
+
+// backingOff reports whether a failing task is still being held back from its
+// own schedule. It is read from the recorded history rather than kept in
+// memory, so a restart neither forgets a backoff nor needs to rebuild one.
+//
+// Nothing is recorded about an attempt that was held back. The task is already
+// in its history as failing, and a row per suppressed tick would bury that
+// under the waiting.
+func (m *Manager) backingOff(ctx context.Context, entry *registered, invocation Invocation) bool {
+	if entry.definition.Backoff.Base <= 0 {
+		return false
+	}
+	faults, lastAt, err := m.store.TaskFaultStreak(ctx, invocation.Task, invocation.Argument)
+	if err != nil || faults == 0 {
+		// A history that cannot be read must not hold a task back: not running is
+		// the more expensive of the two ways to be wrong here.
+		return false
+	}
+	wait := entry.definition.Backoff.delay(faults)
+	if m.now().UTC().Sub(lastAt) >= wait {
+		return false
+	}
+	slog.Info("task held back after repeated faults",
+		"task", invocation.Task, "argument", invocation.Argument, "faults", faults, "wait", wait)
+
+	return true
 }
 
 // perform runs one attempt and then whatever it asked should follow. The
@@ -329,6 +367,14 @@ func (m *Manager) linked(ctx context.Context, link Link, visited map[invocationK
 	if _, seen := visited[keyOf(invocation)]; seen {
 		slog.Warn("task chain asked again for what it had already run",
 			"task", link.Task, "argument", link.Argument, "depth", depth)
+
+		return
+	}
+	// A link is asked for by something that succeeded, but a task that keeps
+	// faulting is hammering whatever it cannot reach whether the asking came
+	// from a schedule or from a chain.
+	if m.backingOff(ctx, entry, invocation) {
+		visited[keyOf(invocation)] = struct{}{}
 
 		return
 	}

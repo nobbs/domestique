@@ -188,6 +188,40 @@ type Declaration struct {
 	Alert Detail
 }
 
+// Backoff holds a failing task back from its own schedule, doubling the wait
+// with each consecutive fault. A task that cannot reach an upstream retrying
+// every minute is a task hammering something already in trouble; one that waits
+// longer each time still recovers on its own, later.
+//
+// It is a floor under the next attempt, never a ceiling: a schedule due after
+// the backoff has expired still waits for its own time.
+type Backoff struct {
+	// Base is the wait after the first fault. Zero is a task with no backoff,
+	// which retries on its ordinary schedule.
+	Base time.Duration
+	// Cap bounds the doubling, and is never shorter than Base: registering a
+	// backoff without a cap is refused, because uncapped doubling reaches days
+	// within a morning. Every wait this returns is therefore at most Cap.
+	Cap time.Duration
+}
+
+// delay is how long a task with this many consecutive faults waits. The first
+// fault waits Base, the second twice that, and so on to Cap.
+func (b Backoff) delay(faults int) time.Duration {
+	if b.Base <= 0 || faults <= 0 {
+		return 0
+	}
+	wait := b.Base
+	for range faults - 1 {
+		wait *= 2
+		if wait >= b.Cap {
+			return b.Cap
+		}
+	}
+
+	return min(wait, b.Cap)
+}
+
 // Resource is state an attempt needs before it may start. Two attempts wanting
 // the same name serialize unless both want it shared.
 type Resource struct {
@@ -215,6 +249,9 @@ type Definition struct {
 	Notify *Notify
 	// Name identifies the task and is what a trigger asks for.
 	Name string
+	// Backoff holds this task back from its own schedule while it keeps
+	// faulting. Its zero value is a task that retries on schedule regardless.
+	Backoff Backoff
 	// Concurrency is how many attempts of this task may run at once. Zero means
 	// one, so registering a task never introduces parallelism by accident.
 	Concurrency int

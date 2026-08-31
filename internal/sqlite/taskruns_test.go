@@ -267,3 +267,60 @@ func TestTaskHistoryLookupsReportNothingRecorded(t *testing.T) {
 	require.NoError(t, err, "LastTaskSuccess()")
 	assert.False(t, found, "an unrun task reported a success")
 }
+
+// A fault streak is what the backoff waits on: consecutive faults at the tail
+// of the history, ended by a success and unbroken by anything else.
+func TestTaskFaultStreakCountsBackToTheLastSuccess(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t, testKey(1))
+	at := time.Date(2026, time.August, 31, 9, 0, 0, 0, time.UTC)
+	record := func(minute int, outcome string) {
+		t.Helper()
+		when := at.Add(time.Duration(minute) * time.Minute)
+		require.NoError(t, store.RecordTaskRun(
+			t.Context(), "sync", "", when, when, outcome, "", "reference", 50,
+		), "RecordTaskRun("+outcome+")")
+	}
+	record(0, "failed")
+	record(1, "succeeded")
+	record(2, "failed")
+	// Neither ends the streak nor counts towards it: the task was busy, not broken.
+	record(3, "skipped")
+	record(4, "blocked")
+
+	faults, lastAt, err := store.TaskFaultStreak(t.Context(), "sync", "")
+	require.NoError(t, err, "TaskFaultStreak()")
+	assert.Equal(t, 2, faults, "faults since the last success")
+	assert.Equal(t, at.Add(4*time.Minute), lastAt, "when the last fault finished")
+}
+
+func TestTaskFaultStreakIsPerArgumentAndReportsNoStreak(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t, testKey(1))
+	at := time.Date(2026, time.August, 31, 9, 0, 0, 0, time.UTC)
+	require.NoError(t, store.RecordTaskRun(
+		t.Context(), "sync:target", "rider-a", at, at, "failed", "", "reference", 50,
+	), "RecordTaskRun(rider-a)")
+
+	faults, _, err := store.TaskFaultStreak(t.Context(), "sync:target", "rider-b")
+	require.NoError(t, err, "TaskFaultStreak(rider-b)")
+	assert.Zero(t, faults, "one slot's faults held another back")
+
+	faults, _, err = store.TaskFaultStreak(t.Context(), "sync:target", "rider-a")
+	require.NoError(t, err, "TaskFaultStreak(rider-a)")
+	assert.Equal(t, 1, faults, "faults")
+}
+
+func TestTaskFaultStreakRefusesAnIncompleteRequestAndReportsAnUnreadableDatabase(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t, testKey(1))
+	_, _, err := store.TaskFaultStreak(t.Context(), "", "")
+	require.Error(t, err, "TaskFaultStreak() with no task")
+
+	require.NoError(t, store.Close(), "Close()")
+	_, _, err = store.TaskFaultStreak(t.Context(), "sync", "")
+	require.Error(t, err, "TaskFaultStreak() on a closed database")
+}
