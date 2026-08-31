@@ -215,13 +215,88 @@ func TestRunHoldsTheFirstRunAndReportsWhenItIsDue(t *testing.T) {
 	due, _ := manager.NextRunAt("a")
 	assert.Equal(t, reference().Add(5*time.Minute), due, "NextRunAt()")
 
+	cancel()
+	<-stopped
+	assert.Zero(t, runner.runs(), "a run happened before the initial delay fired")
+}
+
+func TestNextRunAtReportsTheNextTickOnceTheFirstRunHasCompleted(t *testing.T) {
+	t.Parallel()
+
+	runner := countingRunner()
+	manager, _ := newTestManager(t)
+	manager.now = reference
+	fired, waits := make(chan time.Time), make(chan time.Duration, 4)
+	manager.after = func(delay time.Duration) <-chan time.Time { waits <- delay; return fired }
+	require.NoError(t, manager.Register(&Definition{
+		Name:         "a",
+		Run:          runner,
+		Schedule:     Every(func() time.Duration { return time.Hour }),
+		InitialDelay: func() time.Duration { return time.Minute },
+	}), "Register()")
+
+	ctx, cancel := context.WithCancel(t.Context())
+	stopped := make(chan struct{})
+	go func() { defer close(stopped); manager.Run(ctx) }()
+
+	assert.Equal(t, time.Minute, <-waits, "the first wait is the initial delay")
 	fired <- reference()
-	require.Eventually(t, func() bool { return runner.runs() == 1 }, time.Second, time.Millisecond, "the first run never happened")
-	_, holding := manager.NextRunAt("a")
-	assert.False(t, holding, "a run that has started is still reported as held back")
+
+	// The loop asking for the gap from the first run's due instant is proof the
+	// first run has already completed and the next tick has been published.
+	assert.Equal(t, 61*time.Minute, <-waits, "the wait after the first run")
+	require.Equal(t, 1, runner.runs(), "the first run")
+	due, holding := manager.NextRunAt("a")
+	assert.True(t, holding, "NextRunAt() after the first run")
+	assert.Equal(t, reference().Add(61*time.Minute), due, "NextRunAt() reports the next tick, not the first")
 
 	cancel()
 	<-stopped
+}
+
+func TestNextRunAtIsZeroWhileAnAttemptIsInFlight(t *testing.T) {
+	t.Parallel()
+
+	runner := blockOn()
+	manager, _ := newTestManager(t)
+	fired := make(chan time.Time)
+	manager.after = func(time.Duration) <-chan time.Time { return fired }
+	require.NoError(t, manager.Register(&Definition{
+		Name:         "a",
+		Run:          runner,
+		Schedule:     Every(func() time.Duration { return time.Hour }),
+		InitialDelay: func() time.Duration { return time.Minute },
+	}), "Register()")
+
+	ctx, cancel := context.WithCancel(t.Context())
+	stopped := make(chan struct{})
+	go func() { defer close(stopped); manager.Run(ctx) }()
+
+	require.Eventually(t, func() bool {
+		_, holding := manager.NextRunAt("a")
+
+		return holding
+	}, time.Second, time.Millisecond, "the initial delay was never reported")
+
+	fired <- reference()
+	<-runner.started
+
+	_, holding := manager.NextRunAt("a")
+	assert.False(t, holding, "NextRunAt() while the run is in flight")
+
+	close(runner.release)
+	cancel()
+	<-stopped
+}
+
+func TestNextRunAtIsZeroForATaskNothingSchedules(t *testing.T) {
+	t.Parallel()
+
+	manager, _ := newTestManager(t)
+	require.NoError(t, manager.Register(&Definition{Name: "a", Run: succeeds()}), "Register()")
+
+	_, holding := manager.NextRunAt("a")
+	assert.False(t, holding, "NextRunAt()")
 }
 
 func TestNextRunAtIsSilentAboutATaskNobodyRegistered(t *testing.T) {
