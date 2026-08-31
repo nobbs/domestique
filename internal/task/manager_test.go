@@ -977,13 +977,16 @@ func TestAChainLinkForWorkAlreadyUnderWayIsDroppedQuietly(t *testing.T) {
 
 	held := blockOn()
 	manager, store := newTestManager(t)
-	require.NoError(t, manager.Register(&Definition{Name: "child", Run: held}), "Register(child)")
+	require.NoError(t, manager.Register(&Definition{
+		Name: "child", Run: held, Follows: []string{"parent"},
+	}), "Register(child)")
 	require.NoError(t, manager.Register(&Definition{
 		Name: "parent",
 		Run: RunnerFunc(func(context.Context, Invocation) Result {
 			return Result{Outcome: Succeeded}
 		}),
 	}), "Register(parent)")
+	require.NoError(t, manager.Resolve(), "Resolve()")
 
 	require.True(t, manager.Trigger(t.Context(), "child", ""), "Trigger(child)")
 	<-held.started
@@ -1050,6 +1053,9 @@ func TestAChainWillNotRunTheSameInvocationTwice(t *testing.T) {
 			return Result{Outcome: Succeeded}
 		}),
 	}), "Register()")
+	// The graph a correct Resolve refuses, reached behind its back: the set of
+	// what this chain has run is what has to stop it.
+	manager.tasks["loop"].successors = []string{"loop"}
 
 	require.True(t, manager.Trigger(t.Context(), "loop", ""), "Trigger()")
 	manager.Wait()
