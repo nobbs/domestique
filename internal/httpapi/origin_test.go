@@ -31,6 +31,7 @@ var mutableRoutes = []struct { //nolint:gochecknoglobals // test fixture, read-o
 	{method: http.MethodPut, target: settingsRideModelPath, body: rideModelSubmission},
 	{method: http.MethodPut, target: settingsSyncPath, body: syncSubmission},
 	{method: http.MethodPut, target: settingsAlertsPath, body: alertsSubmission},
+	{method: http.MethodPut, target: settingsTimezonePath, body: `{"timezone": "Europe/Berlin"}`},
 }
 
 // decidedAlerts is what the handler's matrix was told, so a refused request can

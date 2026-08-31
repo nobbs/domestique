@@ -73,6 +73,18 @@ bound, an empty-source deletion gate, or a notification switch or Pushover
 origin. Every one of those is a runtime setting, and the decoder refuses it here
 by name.
 
+### Timezone
+
+`timezone` is an IANA zone name this service can load, defaulting to
+`Europe/Berlin`. It is what a scheduled time of day means and what hour a
+forecast describes — one zone for the whole service, because a run happens once
+and has to happen at a time somebody chose.
+
+A zone that cannot be loaded is refused where it is entered and at startup: a
+calendar schedule reading it would have no answer to when it is next due. The
+zone database travels inside the binary, so the choice does not depend on what
+the runtime image carries.
+
 ## Secret input
 
 The file names exactly one secret, and it is the one every other secret is kept

@@ -218,6 +218,7 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("PUT /v1/settings/sources/{provider}", h.SetSource)
 	h.mux.HandleFunc("PUT /v1/settings/notifications", h.SetNotifications)
 	h.mux.HandleFunc("PUT /v1/settings/alerts", h.SetAlerts)
+	h.mux.HandleFunc("PUT /v1/settings/timezone", h.SetTimezone)
 	h.mux.HandleFunc("PUT /v1/settings/basemaps", h.SetBasemaps)
 	h.mux.HandleFunc("PUT /v1/settings/surface", h.SetSurface)
 	h.mux.HandleFunc("PUT /v1/settings/ridemodel", h.SetRideModel)

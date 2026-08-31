@@ -242,6 +242,19 @@ type declaredAlert struct {
 	alert string
 }
 
+// SetTimezone replaces the zone this service reads local time in.
+func (h *Handler) SetTimezone(writer http.ResponseWriter, request *http.Request) {
+	body, ok := settingsBody[openapi.TimezoneUpdate](h, writer, request)
+	if !ok {
+		return
+	}
+	h.storeSection(writer, request, func(values runtimeconfig.Values) runtimeconfig.Values {
+		values.Timezone = body.Timezone
+
+		return values
+	}, nil)
+}
+
 // SetAlerts records which alerts an operator wants delivered. An alert left out
 // of the request keeps whatever it had: deciding is what creates a record, and
 // an absent decision is not the same as switching one off.
@@ -356,6 +369,7 @@ func (h *Handler) settingsView() openapi.Settings {
 			Regions:                append([]string{}, values.Surface.Regions...),
 			RebuildIntervalSeconds: int(values.Surface.RebuildInterval / time.Second),
 		},
+		Timezone:   values.Timezone,
 		Alerts:     alertSettings(h.alerts.Catalogue()),
 		SecretsSet: make(map[string]bool, len(runtimeconfig.SecretNames())),
 		Missing:    append([]string{}, h.settings.Missing()...),

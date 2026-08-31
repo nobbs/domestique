@@ -328,3 +328,46 @@ func writeResponse(t *testing.T, writer http.ResponseWriter, status int, body st
 	_, err := writer.Write([]byte(body))
 	assert.NoError(t, err, "writing the response")
 }
+
+// The forecast is asked in the service's own zone, so a returned hour describes
+// where the rider reads it. Changing the setting changes the request.
+func TestClientAsksInTheConfiguredZone(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		assert.Equal(t, "Europe/Lisbon", request.URL.Query().Get("timezone"), "the zone asked for")
+		// 06:05 and 06:40 UTC are 07:05 and 07:40 in Lisbon, an hour behind Berlin.
+		assert.Equal(t, "2026-08-24T07:00", request.URL.Query().Get("start_hour"), "start hour")
+
+		writer.Header().Set("Content-Type", "application/json")
+		writeResponse(t, writer, http.StatusOK, `{"hourly":{"time":["2026-08-24T07:00"],
+			"temperature_2m":[18.4],
+			"apparent_temperature":[17.1],
+			"precipitation":[0],
+			"precipitation_probability":[10],
+			"wind_speed_10m":[12.3],
+			"wind_direction_10m":[240],
+			"weather_code":[1]}}`)
+	}))
+	defer server.Close()
+
+	client, err := New(&Options{
+		BaseURL:   server.URL,
+		Timeout:   time.Second,
+		Transport: server.Client().Transport,
+		Timezone:  "Europe/Lisbon",
+	})
+	require.NoError(t, err, "New()")
+
+	from := time.Date(2026, 8, 24, 6, 5, 0, 0, time.UTC)
+	to := time.Date(2026, 8, 24, 6, 40, 0, 0, time.UTC)
+	_, err = client.Forecast(t.Context(), []Coordinate{{Latitude: 50.11, Longitude: 8.68}}, from, to)
+	require.NoError(t, err, "Forecast()")
+}
+
+// A zone this binary cannot load is refused where the client is built, rather
+// than leaving every forecast to fail one request at a time.
+func TestNewRefusesAZoneItCannotLoad(t *testing.T) {
+	_, err := New(&Options{Timezone: "Middle/Earth"})
+
+	require.Error(t, err, "New() accepted a zone it cannot load")
+	assert.Contains(t, err.Error(), "Middle/Earth", "the message names the zone")
+}

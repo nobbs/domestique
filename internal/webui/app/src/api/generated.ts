@@ -352,6 +352,8 @@ export interface AlertSetting {
  * The settings held in the state database rather than in the configuration file, which take effect on the next run or the next request rather than on the next restart.
  */
 export interface Settings {
+  /** The IANA zone this service reads local time in: what a scheduled time of day means, and what hour a forecast describes. */
+  timezone: string;
   sync: SyncSettings;
   notifications: NotificationSettings;
   /** @minItems 1 */
@@ -430,6 +432,11 @@ export interface AlertsUpdate {
 export interface BasemapsUpdate {
   /** @minItems 1 */
   basemaps: BrowserBasemap[];
+}
+
+export interface TimezoneUpdate {
+  /** An IANA zone name this service can load, such as Europe/Berlin. */
+  timezone: string;
 }
 
 export interface SourceBaseUrls {
@@ -3754,6 +3761,140 @@ export const useSetRideModel = <
   TContext
 > => {
   return useMutation(getSetRideModelMutationOptions(options), queryClient);
+};
+
+export type setTimezoneResponse200 = {
+  data: SettingsStoredResponse;
+  status: 200;
+};
+
+export type setTimezoneResponse400 = {
+  data: InvalidRequestResponse;
+  status: 400;
+};
+
+export type setTimezoneResponse401 = {
+  data: UnauthorizedResponse;
+  status: 401;
+};
+
+export type setTimezoneResponse403 = {
+  data: ForbiddenResponse;
+  status: 403;
+};
+
+export type setTimezoneResponse503 = {
+  data: UnavailableResponse;
+  status: 503;
+};
+
+export type setTimezoneResponseSuccess = setTimezoneResponse200 & {
+  headers: Headers;
+};
+export type setTimezoneResponseError = (
+  | setTimezoneResponse400
+  | setTimezoneResponse401
+  | setTimezoneResponse403
+  | setTimezoneResponse503
+) & {
+  headers: Headers;
+};
+
+export const getSetTimezoneUrl = () => {
+  return `/v1/settings/timezone`;
+};
+
+/**
+ * Replaces the zone this service reads local time in. A zone it cannot load is refused, because a schedule with no local time has no time to run at.
+ */
+export const setTimezone = async (
+  timezoneUpdate: TimezoneUpdate,
+  options?: Parameters<typeof domestiqueRequest>[1],
+): Promise<setTimezoneResponseSuccess> => {
+  const getHeaders = (
+    h?: NonNullable<RequestInit["headers"]>,
+  ): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Array.isArray(h)) return Object.fromEntries(h);
+    return h;
+  };
+  return domestiqueRequest<setTimezoneResponseSuccess>(getSetTimezoneUrl(), {
+    ...options,
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...getHeaders(options?.headers) },
+    body: JSON.stringify(timezoneUpdate),
+  });
+};
+
+export const getSetTimezoneMutationOptions = <
+  TError = ErrorType<
+    InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof setTimezone>>,
+    TError,
+    SetTimezoneMutationVariables,
+    TContext
+  >;
+  request?: SecondParameter<typeof domestiqueRequest>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof setTimezone>>,
+  TError,
+  SetTimezoneMutationVariables,
+  TContext
+> => {
+  const mutationKey = ["setTimezone"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof setTimezone>>,
+    SetTimezoneMutationVariables
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return setTimezone(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SetTimezoneMutationResult = NonNullable<Awaited<ReturnType<typeof setTimezone>>>;
+export type SetTimezoneMutationBody = TimezoneUpdate;
+export type SetTimezoneMutationError = ErrorType<
+  InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
+>;
+export type SetTimezoneMutationVariables = { data: TimezoneUpdate };
+
+export const useSetTimezone = <
+  TError = ErrorType<
+    InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
+  >,
+  TContext = unknown,
+>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof setTimezone>>,
+      TError,
+      SetTimezoneMutationVariables,
+      TContext
+    >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof setTimezone>>,
+  TError,
+  SetTimezoneMutationVariables,
+  TContext
+> => {
+  return useMutation(getSetTimezoneMutationOptions(options), queryClient);
 };
 
 export type setSyncResponse200 = {

@@ -9,6 +9,11 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	// A zone this binary cannot load is a zone an operator cannot choose, so the
+	// database travels with the binary rather than depending on what the runtime
+	// image happens to carry. The hardened base image ships none.
+	_ "time/tzdata"
 )
 
 // minimumInterval is the floor under every duration here. These are stored as
@@ -25,8 +30,12 @@ const maxTargets = 2
 //
 //nolint:gocritic // value receiver: validation returns a normalised copy rather than editing the caller's.
 func (v Values) Validate() (Values, error) {
-	if err := ValidateSync(v.Sync); err != nil {
+	timezone, err := ValidateTimezone(v.Timezone)
+	if err != nil {
 		return Values{}, err
+	}
+	if syncErr := ValidateSync(v.Sync); syncErr != nil {
+		return Values{}, syncErr
 	}
 	notifications, err := ValidateNotifications(v.Notifications)
 	if err != nil {
@@ -58,6 +67,7 @@ func (v Values) Validate() (Values, error) {
 		return Values{}, err
 	}
 
+	v.Timezone = timezone
 	v.Notifications = notifications
 	v.RideModel = rideModel
 	v.Basemaps = basemaps
@@ -66,6 +76,23 @@ func (v Values) Validate() (Values, error) {
 	v.Sources = sources
 
 	return v, nil
+}
+
+// ValidateTimezone checks that the zone is one this binary can load, and
+// returns it trimmed. It is checked at startup as well as at every edit,
+// because a zone that cannot be loaded leaves every calendar schedule with no
+// answer to when it is next due — a service that runs nothing on time is worse
+// than one that refuses to start.
+func ValidateTimezone(timezone string) (string, error) {
+	timezone = strings.TrimSpace(timezone)
+	if timezone == "" {
+		return "", errors.New("timezone is required")
+	}
+	if _, err := time.LoadLocation(timezone); err != nil {
+		return "", fmt.Errorf("timezone %q is not a zone this service knows", timezone)
+	}
+
+	return timezone, nil
 }
 
 // ValidateWahoo checks the OAuth application and the destination slots, and

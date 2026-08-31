@@ -255,6 +255,8 @@ func (m Settings_SecretsSet) MarshalJSON() ([]byte, error) {
 
 // Settings The settings held in the state database rather than in the configuration file, which take effect on the next run or the next request rather than on the next restart.
 type Settings struct {
+	// Timezone The IANA zone this service reads local time in: what a scheduled time of day means, and what hour a forecast describes.
+	Timezone      string               `json:"timezone"`
 	Sync          SyncSettings         `json:"sync"`
 	Notifications NotificationSettings `json:"notifications"`
 	Basemaps      []BrowserBasemap     `json:"basemaps"`
@@ -335,6 +337,11 @@ type NotificationsUpdate struct {
 
 type BasemapsUpdate struct {
 	Basemaps []BrowserBasemap `json:"basemaps"`
+}
+
+type TimezoneUpdate struct {
+	// Timezone An IANA zone name this service can load, such as Europe/Berlin.
+	Timezone string `json:"timezone"`
 }
 
 type SyncSettings struct {

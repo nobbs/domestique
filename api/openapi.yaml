@@ -701,6 +701,35 @@ paths:
           $ref: '#/components/responses/Forbidden'
         "503":
           $ref: '#/components/responses/Unavailable'
+  /v1/settings/timezone:
+    put:
+      tags:
+        - browser-api
+      operationId: setTimezone
+      security:
+        - accessAssertion: []
+          browserOrigin: []
+      description: >-
+        Replaces the zone this service reads local time in. A zone it cannot
+        load is refused, because a schedule with no local time has no time to
+        run at.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TimezoneUpdate'
+      responses:
+        "200":
+          $ref: '#/components/responses/SettingsStored'
+        "400":
+          $ref: '#/components/responses/InvalidRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "503":
+          $ref: '#/components/responses/Unavailable'
   /v1/settings/sync:
     put:
       tags:
@@ -1394,6 +1423,7 @@ components:
         configuration file, which take effect on the next run or the next
         request rather than on the next restart.
       required:
+        - timezone
         - sync
         - notifications
         - basemaps
@@ -1405,6 +1435,11 @@ components:
         - secretsSet
         - missing
       properties:
+        timezone:
+          type: string
+          description: >-
+            The IANA zone this service reads local time in: what a scheduled
+            time of day means, and what hour a forecast describes.
         sync:
           $ref: '#/components/schemas/SyncSettings'
         notifications:
@@ -1612,6 +1647,16 @@ components:
           minItems: 1
           items:
             $ref: '#/components/schemas/BrowserBasemap'
+    TimezoneUpdate:
+      type: object
+      additionalProperties: false
+      required:
+        - timezone
+      properties:
+        timezone:
+          type: string
+          description: >-
+            An IANA zone name this service can load, such as Europe/Berlin.
     SyncSettings:
       type: object
       additionalProperties: false

@@ -227,7 +227,12 @@ func (m *Manager) follow(ctx context.Context, entry *registered) {
 	if !started {
 		return
 	}
-	m.scheduled(ctx, entry)
+	// A fixed gap runs and then counts. A calendar schedule waits for the time
+	// it names: a restart at three on a Wednesday afternoon is not "every Monday
+	// at two".
+	if _, atStart := entry.definition.Schedule.(firesAtStart); atStart {
+		m.scheduled(ctx, entry)
+	}
 
 	for {
 		next, scheduled := nextDue(entry.definition.Schedule, due, m.now().UTC())

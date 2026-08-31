@@ -55,7 +55,7 @@ func (s *Store) RuntimeSettings(ctx context.Context) (runtimeconfig.Values, erro
 			notifications_enabled,
 			pushover_base_url, surface_rebuild_interval_seconds,
 			wahoo_api_base_url, wahoo_oauth_base_url, wahoo_client_id,
-			ridemodel_coefficients_file
+			ridemodel_coefficients_file, timezone
 		FROM runtime_settings
 		WHERE id = 1
 	`).Scan(
@@ -63,7 +63,7 @@ func (s *Store) RuntimeSettings(ctx context.Context) (runtimeconfig.Values, erro
 		&values.Notifications.Enabled,
 		&values.Notifications.PushoverBaseURL, &rebuildIntervalSeconds,
 		&values.Wahoo.APIBaseURL, &values.Wahoo.OAuthBaseURL, &values.Wahoo.ClientID,
-		&values.RideModel.CoefficientsFile,
+		&values.RideModel.CoefficientsFile, &values.Timezone,
 	); err != nil {
 		return runtimeconfig.Values{}, fmt.Errorf("reading the runtime settings: %w", err)
 	}
@@ -113,7 +113,7 @@ func (s *Store) SetRuntimeSettings(ctx context.Context, values runtimeconfig.Val
 			notifications_enabled = ?,
 			pushover_base_url = ?, surface_rebuild_interval_seconds = ?,
 			wahoo_api_base_url = ?, wahoo_oauth_base_url = ?, wahoo_client_id = ?,
-			ridemodel_coefficients_file = ?, updated_at_unix = ?
+			ridemodel_coefficients_file = ?, timezone = ?, updated_at_unix = ?
 		WHERE id = 1
 	`,
 		values.Sync.AllowEmptySourceDeletion, int64(values.Sync.StaleAfter/time.Second),
@@ -122,7 +122,7 @@ func (s *Store) SetRuntimeSettings(ctx context.Context, values runtimeconfig.Val
 		values.Notifications.PushoverBaseURL,
 		int64(values.Surface.RebuildInterval/time.Second),
 		values.Wahoo.APIBaseURL, values.Wahoo.OAuthBaseURL, values.Wahoo.ClientID,
-		values.RideModel.CoefficientsFile,
+		values.RideModel.CoefficientsFile, values.Timezone,
 		time.Now().Unix(),
 	); err != nil {
 		return fmt.Errorf("storing the runtime settings: %w", err)

@@ -197,6 +197,7 @@ export const runs: SyncRun[] = [
 
 /** What the service is set to, as the settings form reads it back. */
 export const settings: Settings = {
+  timezone: "Europe/Berlin",
   alerts: [
     { task: "sync", alert: "source", enabled: true, decided: false },
     { task: "sync", alert: "destination", enabled: false, decided: true },

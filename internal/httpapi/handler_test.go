@@ -99,7 +99,8 @@ func withSources(settings *staticSettings, sources ...runtimeconfig.Source) *sta
 // whichever basemap list the test is about.
 func settingsWith(basemaps []runtimeconfig.Basemap) *staticSettings {
 	return &staticSettings{values: runtimeconfig.Values{
-		Sync: runtimeconfig.Sync{StaleAfter: 26 * time.Hour, InitialDelay: time.Minute},
+		Timezone: "Europe/Berlin",
+		Sync:     runtimeconfig.Sync{StaleAfter: 26 * time.Hour, InitialDelay: time.Minute},
 		Notifications: runtimeconfig.Notifications{
 			Enabled:         true,
 			PushoverBaseURL: "https://api.pushover.net",

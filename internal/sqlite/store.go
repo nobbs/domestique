@@ -635,5 +635,10 @@ func schemaMigrations() [][]string {
 				PRIMARY KEY (task, scope, alert)
 			)`,
 		},
+		{
+			// The zone this service reads local time in. Seeded with the one every
+			// route it holds is in, which is what the forecast was already asked in.
+			`ALTER TABLE runtime_settings ADD COLUMN timezone TEXT NOT NULL DEFAULT 'Europe/Berlin'`,
+		},
 	}
 }
