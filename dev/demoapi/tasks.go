@@ -3,9 +3,15 @@ package main
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/nobbs/domestique/internal/httpapi"
+	syncservice "github.com/nobbs/domestique/internal/sync"
 )
+
+// targetBackstopInterval mirrors cmd/domestique/tasks.go's constant of the
+// same name: the demo's task list is read by the same page.
+const targetBackstopInterval = 6 * time.Hour
 
 // demoTasks stands in for a running task layer: no schedule, and running a
 // synchronization task just reseeds the library.
@@ -26,9 +32,10 @@ func newDemoTasks(reseed func() bool) demoTasks {
 var demoTaskNames = []struct { //nolint:gochecknoglobals // a fixture for development tooling
 	name      string
 	scheduled bool
+	interval  time.Duration
 }{
-	{name: httpapi.TaskSyncSource, scheduled: true},
-	{name: "sync:target", scheduled: true},
+	{name: httpapi.TaskSyncSource, scheduled: true, interval: syncservice.Interval},
+	{name: "sync:target", scheduled: true, interval: targetBackstopInterval},
 	{name: "sync:clear"},
 	{name: "surface:annotate"},
 	{name: "surface:index", scheduled: true},
@@ -44,7 +51,7 @@ func (t demoTasks) Registered() []httpapi.RegisteredTask {
 	for _, task := range demoTaskNames {
 		enabled, ruled := t.switched[task.name]
 		tasks = append(tasks, httpapi.RegisteredTask{
-			Name: task.name, Scheduled: task.scheduled, Enabled: !ruled || enabled,
+			Name: task.name, Scheduled: task.scheduled, Enabled: !ruled || enabled, Interval: task.interval,
 		})
 	}
 
