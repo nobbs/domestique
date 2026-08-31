@@ -17,9 +17,6 @@ var mutableRoutes = []struct { //nolint:gochecknoglobals // test fixture, read-o
 	target string
 	body   string
 }{
-	{method: http.MethodPost, target: "/v1/sync"},
-	{method: http.MethodPost, target: "/v1/sync/source"},
-	{method: http.MethodPost, target: "/v1/sync/targets"},
 	{method: http.MethodPut, target: "/v1/sync/schedule", body: `{"source":true,"targets":true}`},
 	{method: http.MethodPost, target: "/v1/routes/12/stages/1/reprocess"},
 	{method: http.MethodPut, target: settingsWahooPath, body: wahooSubmission},
@@ -126,7 +123,7 @@ func TestMutableRoutesAcceptTheBrowserOrigin(t *testing.T) {
 func TestIdentityIsSettledBeforeProvenance(t *testing.T) {
 	handler := newTestHandler(t)
 
-	request := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/sync", http.NoBody)
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/tasks/sync/run", http.NoBody)
 	request.Header.Set("Origin", "https://evil.example.test")
 
 	response := httptest.NewRecorder()

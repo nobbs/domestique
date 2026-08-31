@@ -197,12 +197,6 @@ func New(
 func (h *Handler) routes() {
 	h.mux.HandleFunc("GET /healthz", h.GetHealth)
 	h.mux.HandleFunc("GET /v1/status", h.GetStatus)
-	h.mux.HandleFunc("POST /v1/sync", h.TriggerSync)
-	h.mux.HandleFunc("POST /v1/sync/source", h.TriggerSourceSync)
-	h.mux.HandleFunc("POST /v1/sync/targets", h.TriggerTargetsSync)
-	h.mux.HandleFunc("POST /v1/sync/targets/{target}", h.TriggerTargetSync)
-	h.mux.HandleFunc("POST /v1/targets/{target}/clear", h.ClearTarget)
-	h.mux.HandleFunc("POST /v1/sync/surface", h.TriggerSurfaceSync)
 	h.mux.HandleFunc("PUT /v1/sync/schedule", h.SetSyncSchedule)
 	h.mux.HandleFunc("GET /v1/sync/runs", h.GetSyncRuns)
 	h.mux.HandleFunc("GET /v1/routes", h.GetRoutes)

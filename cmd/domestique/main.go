@@ -224,7 +224,7 @@ func run(ctx context.Context) error {
 		},
 		oauthService,
 		store,
-		syncSurface(runCtx, tasks, reporter, destination.RateLimit),
+		syncSurface(tasks, reporter, destination.RateLimit),
 		assets,
 		weather,
 	)

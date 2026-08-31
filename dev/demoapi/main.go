@@ -206,7 +206,7 @@ func newHandler(
 		&httpapi.Options{
 			Settings:         runtimeSettings,
 			Alerts:           newDemoAlerts(),
-			Tasks:            demoTasks{},
+			Tasks:            demoTasks{reseed: demoReseeder.trigger},
 			BuildRevision:    "demo",
 			AccessVerifier:   team,
 			AccessEmail:      settings.Access.Cloudflare.AllowedEmail,
@@ -214,11 +214,7 @@ func newHandler(
 		},
 		oauthService,
 		store,
-		httpapi.SyncFuncs{
-			TriggerFunc:       demoReseeder.trigger,
-			TriggerTargetFunc: demoReseeder.triggerTarget,
-			TriggerClearFunc:  demoReseeder.triggerClear,
-		},
+		httpapi.SyncFuncs{},
 		bundleAssets(),
 		httpapi.WeatherFunc(syntheticWeather),
 	)
@@ -271,7 +267,7 @@ type reseeder struct {
 	slots   []demo.Slot
 }
 
-func (r reseeder) trigger(_ httpapi.SyncPhase) bool {
+func (r reseeder) trigger() bool {
 	if !r.running.CompareAndSwap(false, true) {
 		return false
 	}
@@ -282,20 +278,6 @@ func (r reseeder) trigger(_ httpapi.SyncPhase) bool {
 	}
 
 	return true
-}
-
-// triggerTarget re-seeds the whole demo library, the same as trigger: a demo
-// target names no real Wahoo account to isolate work against.
-func (r reseeder) triggerTarget(_ string) bool {
-	return r.trigger("")
-}
-
-// triggerClear answers the clear control so the demo can exercise it, and
-// re-seeds like every other trigger here. It deletes nothing: a demo target names
-// no Wahoo account. What it offers is the control's real shape — accepted,
-// refused while something else runs, and the page settling afterwards.
-func (r reseeder) triggerClear(_ string) bool {
-	return r.trigger("")
 }
 
 // seed fills the database with the synthetic library. The clock is the wall

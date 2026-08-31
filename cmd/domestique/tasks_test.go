@@ -303,66 +303,6 @@ func TestSyncTaskRunsWhatWasAskedOfIt(t *testing.T) {
 	assert.Equal(t, 1, synchronizer.scheduled, "scheduled runs")
 }
 
-// The HTTP boundary names a phase; each one has to reach the task that performs
-// it, and a phase this binary does not serve reaches nothing.
-func TestSyncSurfaceCarriesEveryPhaseToTheTaskLayer(t *testing.T) {
-	t.Parallel()
-
-	tests := map[httpapi.SyncPhase]string{
-		httpapi.SyncPhaseAll:     "",
-		httpapi.SyncPhaseSource:  string(syncservice.PhaseSource),
-		httpapi.SyncPhaseTargets: string(syncservice.PhaseTargets),
-	}
-	for phase, argument := range tests {
-		t.Run(string(phase), func(t *testing.T) {
-			t.Parallel()
-
-			starter := &fakeStarter{accept: true}
-			surface := syncSurface(t.Context(), starter, &fakeSyncReporter{}, nil)
-
-			assert.True(t, surface.Trigger(phase), "Trigger()")
-			assert.Equal(t, []started{{name: taskSync, argument: argument}}, starter.starts, "started tasks")
-		})
-	}
-}
-
-func TestSyncSurfaceRefusesAPhaseItDoesNotServe(t *testing.T) {
-	t.Parallel()
-
-	starter := &fakeStarter{accept: true}
-	surface := syncSurface(t.Context(), starter, &fakeSyncReporter{}, nil)
-
-	assert.False(t, surface.Trigger("invented"), "Trigger()")
-	assert.Empty(t, starter.starts, "a phase this service does not serve started a task")
-}
-
-func TestSyncSurfaceStartsTheTargetAndClassificationTasks(t *testing.T) {
-	t.Parallel()
-
-	starter := &fakeStarter{accept: true}
-	surface := syncSurface(t.Context(), starter, &fakeSyncReporter{}, nil)
-
-	require.True(t, surface.TriggerTarget("rider-a"), "TriggerTarget()")
-	require.True(t, surface.TriggerClear("rider-b"), "TriggerClear()")
-	require.True(t, surface.TriggerAnnotate(), "TriggerAnnotate()")
-	assert.Equal(t, []started{
-		{name: taskSyncTarget, argument: "rider-a"},
-		{name: taskSyncClear, argument: "rider-b"},
-		{name: taskSurfaceAnnotate},
-	}, starter.starts, "started tasks")
-}
-
-func TestSyncSurfaceReportsARefusedTrigger(t *testing.T) {
-	t.Parallel()
-
-	surface := syncSurface(t.Context(), &fakeStarter{}, &fakeSyncReporter{}, nil)
-
-	assert.False(t, surface.Trigger(httpapi.SyncPhaseAll), "Trigger()")
-	assert.False(t, surface.TriggerTarget("rider-a"), "TriggerTarget()")
-	assert.False(t, surface.TriggerClear("rider-a"), "TriggerClear()")
-	assert.False(t, surface.TriggerAnnotate(), "TriggerAnnotate()")
-}
-
 // Activity is assembled from two places at once, and the status response is
 // built from whatever both of them say at that moment.
 func TestSyncSurfaceReportsActivityFromBothHalves(t *testing.T) {
@@ -371,7 +311,7 @@ func TestSyncSurfaceReportsActivityFromBothHalves(t *testing.T) {
 	due := time.Date(2026, time.August, 30, 9, 5, 0, 0, time.UTC)
 	starter := &fakeStarter{holding: true, nextRunAt: due, held: true}
 	reporter := &fakeSyncReporter{phase: syncservice.PhaseTargets, incomplete: 3}
-	surface := syncSurface(t.Context(), starter, reporter, nil)
+	surface := syncSurface(starter, reporter, nil)
 
 	assert.Equal(t, httpapi.SyncActivityState{
 		StartsAt: due,

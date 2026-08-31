@@ -14,7 +14,7 @@ import (
 
 // The background activities this service runs.
 const (
-	taskSync            = "sync"
+	taskSync            = httpapi.TaskSync
 	taskSyncTarget      = "sync:target"
 	taskSyncClear       = "sync:clear"
 	taskSurfaceAnnotate = "surface:annotate"
@@ -320,40 +320,14 @@ type syncReporter interface {
 	SurfaceIncomplete() int
 }
 
-// syncSurface adapts the task layer to what the HTTP boundary asks of it: start
-// work, and say what is under way. The HTTP surface names a phase; what running
-// one means is the sync package's to decide, and a manual trigger deliberately
-// ignores the schedule switches.
+// syncSurface says what is under way. Starting work is the task layer's, asked
+// for by name; what is left here is the part only the reporter can answer.
 func syncSurface(
-	ctx context.Context,
 	tasks taskStarter,
 	reporter syncReporter,
 	rateLimit func() (int, time.Time, bool),
 ) httpapi.SyncFuncs {
 	return httpapi.SyncFuncs{
-		TriggerFunc: func(phase httpapi.SyncPhase) bool {
-			argument := ""
-			switch phase {
-			case httpapi.SyncPhaseAll:
-			case httpapi.SyncPhaseSource:
-				argument = string(syncservice.PhaseSource)
-			case httpapi.SyncPhaseTargets:
-				argument = string(syncservice.PhaseTargets)
-			default:
-				return false
-			}
-
-			return tasks.Trigger(ctx, taskSync, argument)
-		},
-		TriggerTargetFunc: func(targetID string) bool {
-			return tasks.Trigger(ctx, taskSyncTarget, targetID)
-		},
-		TriggerClearFunc: func(targetID string) bool {
-			return tasks.Trigger(ctx, taskSyncClear, targetID)
-		},
-		TriggerAnnotateFunc: func() bool {
-			return tasks.Trigger(ctx, taskSurfaceAnnotate, "")
-		},
 		// Two halves of one answer: the reporter knows which half is in flight,
 		// and the task layer knows whether anything holds the inventory at all.
 		ActivityFunc: func() httpapi.SyncActivityState {

@@ -2,11 +2,11 @@ package main
 
 import "github.com/nobbs/domestique/internal/httpapi"
 
-// demoTasks is the task list a demo shows. The shipped binary builds one from
-// what it registers; a demo registers none, so this stands in the names an
-// operator meets and accepts a run of any of them without doing work — the
-// reseeder behind the sync page is what a demo actually runs.
-type demoTasks struct{}
+// demoTasks is the task list a demo shows. The shipped binary builds one from a
+// running task layer; a demo has no layer, so this answers with the names an
+// operator meets and nothing about a schedule. Running one of the
+// synchronization tasks reseeds the library, which is the only work a demo does.
+type demoTasks struct{ reseed func() bool }
 
 // demoTaskNames are what the shipped binary registers, in the order it does.
 var demoTaskNames = []string{ //nolint:gochecknoglobals // a fixture for development tooling
@@ -24,6 +24,13 @@ func (demoTasks) Registered() []httpapi.RegisteredTask {
 	return tasks
 }
 
-// Run accepts any registered name. Nothing happens: a demo has no upstream to
-// reach and no target to write.
-func (demoTasks) Run(string, string) bool { return true }
+// Run reseeds for the synchronization tasks and accepts the rest without work:
+// a demo has no upstream to reach, no target to write, and no map to index.
+func (t demoTasks) Run(name, _ string) bool {
+	switch name {
+	case "sync", "sync:target", "sync:clear":
+		return t.reseed()
+	default:
+		return true
+	}
+}

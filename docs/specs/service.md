@@ -378,33 +378,32 @@ the reprocess request, the enrichment retry, and the settings write —
 additionally require the browser origin described above, and answer 403 without
 it.
 
-- `POST /v1/sync` queues one immediate synchronisation of both halves through
-  the same reporting path as the schedule. It returns `202 Accepted`, or `409
-  Conflict` when a scheduled or manual synchronisation is already running.
-- `POST /v1/sync/source` and `POST /v1/sync/targets` queue one half on the same
-  terms.
-- `POST /v1/sync/targets/{target}` reconciles exactly one configured target
-  slot, on the same terms as `POST /v1/sync/targets` scoped to that slot alone.
-  `{target}` must name a configured slot, or the request is refused as `404`.
-- `POST /v1/targets/{target}/clear` deletes every route this service owns from
-  exactly one configured slot and forgets that slot's route mappings. It is the
-  one deletion the per-target deletion limit does not bound, and is reachable
-  only this way; nothing schedules it. It still deletes only routes carrying an
-  external ID this service issued, and leaves the stored library untouched, so
-  the next reconciliation rebuilds the target. It returns `202 Accepted`, `404`
-  for a slot that is not configured, or `409 Conflict` while any run is under
-  way.
+- `POST /v1/tasks/{name}/run`, and `/run/{argument}` for one over an argument,
+  start a single attempt of a background activity. It returns `202 Accepted`,
+  or `409 Conflict` when that exact work is already happening or something it
+  needs is held by another run. A name this build does not register is refused
+  as `404`.
+
+  An argument is the task's own to interpret, not this surface's: an
+  unconfigured target slot is accepted and recorded as `skipped` rather than
+  refused as `404`. The refusal that matters is in the service — a clear or a
+  reconciliation of a slot that is not configured does no work — and the
+  recorded attempt says so where an operator can see it.
+
+  `sync:clear` deletes every route this service owns from one configured slot
+  and forgets that slot's route mappings. It is the one deletion the per-target
+  deletion limit does not bound, and nothing schedules it. It still deletes only
+  routes carrying an external ID this service issued, and leaves the stored
+  library untouched, so the next reconciliation rebuilds the target.
+- `GET /v1/tasks` lists what this build registers, with whether each runs
+  unasked, how many attempts are in flight, and when the first scheduled run is
+  due.
 - `PUT /v1/sync/schedule` sets both switches, and answers with the state it
   stored. A body that names only one switch is refused.
 - `POST /v1/providers/{provider}/sourceRoutes/{source-route-id}/routes/{stage-order}/reprocess`
   asks for one route to be worked out again from scratch and starts the
-  synchronisation that will do it. It returns `202 Accepted`, or `404` for a
+  synchronisation that will do it, as `sync` run on that stage's behalf. It returns `202 Accepted`, or `404` for a
   route that is not in the stored inventory.
-- `POST /v1/sync/surface` queues one immediate surface-classification pass,
-  independently of either sync half. It returns `202 Accepted`, or `409
-  Conflict` when a synchronisation or another such pass is already running. It
-  never reads VeloPlanner or writes a Wahoo target, and carries none of the other
-  triggers' provider risk.
 - The settings are written one section at a time, over one endpoint per
   section: `PUT /v1/settings/wahoo` for the registered application,
   `/v1/settings/targets` for the slots it writes to,

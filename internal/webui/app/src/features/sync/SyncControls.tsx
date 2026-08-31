@@ -14,13 +14,9 @@
  */
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  useSetSyncSchedule,
-  useTriggerSourceSync,
-  useTriggerSurfaceSync,
-  useTriggerTargetsSync,
-} from "../../api/generated";
+import { useRunTask, useRunTaskArgument, useSetSyncSchedule } from "../../api/generated";
 import { statusQuery, webUIConfigQuery } from "../../api/queries";
+import { TASKS } from "../../api/tasks";
 import type { Status, SyncActive, SyncPhase } from "../../api/types";
 import { SYNC_PHASES } from "../../api/types";
 import { Button } from "../../components/Button";
@@ -119,13 +115,13 @@ export function SyncControls() {
   const schedule = useSetSyncSchedule({
     mutation: { onSuccess: invalidateStatus },
   });
-  const sourceRun = useTriggerSourceSync({ mutation: { onSuccess: invalidateStatus } });
-  const targetsRun = useTriggerTargetsSync({ mutation: { onSuccess: invalidateStatus } });
+  const sourceRun = useRunTaskArgument({ mutation: { onSuccess: invalidateStatus } });
+  const targetsRun = useRunTaskArgument({ mutation: { onSuccess: invalidateStatus } });
   // Each phase now has its own mutation, so each keeps its own terminal state
   // and a failure would otherwise outlive the successful run of the other half.
   // The banner belongs to whichever phase was asked for last.
   const lastRun = targetsRun.submittedAt >= sourceRun.submittedAt ? targetsRun : sourceRun;
-  const retryClassification = useTriggerSurfaceSync({
+  const retryClassification = useRunTask({
     mutation: { onSuccess: invalidateStatus },
   });
 
@@ -175,7 +171,7 @@ export function SyncControls() {
               <Button
                 variant="outline"
                 disabled={retryClassification.isPending}
-                onClick={() => retryClassification.mutate()}
+                onClick={() => retryClassification.mutate({ name: TASKS.surfaceAnnotate })}
               >
                 {retryClassification.isPending ? <Spinner aria-label="Requesting retry" /> : null}
                 {retryClassification.isPending ? "Requesting…" : "Retry now"}
@@ -205,7 +201,7 @@ export function SyncControls() {
               scheduleDisabled={schedule.isPending}
               onToggle={() => toggle(phase)}
               running={run.isPending}
-              onRun={() => run.mutate()}
+              onRun={() => run.mutate({ name: TASKS.sync, argument: phase })}
             />
           );
         })}

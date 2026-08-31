@@ -478,9 +478,10 @@ func TestServiceRunTargetKeepsTheDeletionLimit(t *testing.T) {
 	assert.Empty(t, target.deletedRouteIDs, "deleted routes")
 }
 
-// A target this service was never configured with performs no work, the same
-// defensive answer a concurrent run gives: the caller is expected to have
-// already refused the slot.
+// A target this service was never configured with performs no work. This is the
+// only guard: the HTTP surface names a task and passes the argument through
+// without knowing what slots a task accepts, so nothing refuses the name before
+// it arrives here.
 func TestServiceRunTargetSkipsAnUnconfiguredTarget(t *testing.T) {
 	state := newFakeState("a", "b")
 	target := newFakeTarget()
@@ -488,6 +489,20 @@ func TestServiceRunTargetSkipsAnUnconfiguredTarget(t *testing.T) {
 
 	result := service.RunTarget(t.Context(), "unknown")
 	assert.Equal(t, OutcomeSkipped, result.Outcome, "RunTarget() outcome")
+	assert.Empty(t, target.refreshTokens, "an unconfigured target was contacted")
+}
+
+// Clearing is the one deletion no per-run limit bounds, so the guard that keeps
+// it to a configured slot is the one that matters most. Nothing refuses the name
+// before it arrives here.
+func TestServiceClearTargetSkipsAnUnconfiguredTarget(t *testing.T) {
+	state := newFakeState("a", "b")
+	target := newFakeTarget()
+	service := newService(t, state, &fakeSource{}, &fakeEncoder{}, target, false)
+
+	result := service.ClearTarget(t.Context(), "unknown")
+	assert.Equal(t, OutcomeSkipped, result.Outcome, "ClearTarget() outcome")
+	assert.Empty(t, target.deletedRouteIDs, "an unconfigured target had routes deleted")
 	assert.Empty(t, target.refreshTokens, "an unconfigured target was contacted")
 }
 

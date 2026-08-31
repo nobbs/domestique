@@ -110,7 +110,7 @@ func TestOpenAPIContractResponses(t *testing.T) {
 		{"status", "/v1/status", http.MethodGet, "application/json", cacheAPI, "", http.StatusOK, true},
 		{"unauthorized", "/v1/status", http.MethodGet, "application/json", cacheAPI, "", http.StatusUnauthorized, false},
 		{"geometry", "/v1/providers/{provider}/sourceRoutes/{sourceRouteId}/routes/{stageOrder}/geometry", http.MethodGet, "application/geo+json", cacheAPI, "", http.StatusOK, true},
-		{"trigger", "/v1/sync", http.MethodPost, "application/json", cacheAPI, "", http.StatusAccepted, true},
+		{"trigger", "/v1/tasks/{name}/run", http.MethodPost, "application/json", cacheAPI, "", http.StatusAccepted, true},
 		{"legacy redirect", "/v1/routes/{routeId}/stages/{stage}", http.MethodGet, "", cacheAPI, "/v1/providers/veloplanner/sourceRoutes/12/routes/1", http.StatusPermanentRedirect, true},
 		{"unmatched", "", http.MethodGet, "application/json", cacheAPI, "", document.Fallback.Status, true},
 	}
@@ -135,7 +135,7 @@ func TestOpenAPIContractResponses(t *testing.T) {
 			}
 			target = strings.NewReplacer(
 				"{provider}", "veloplanner", "{sourceRouteId}", "12", "{stageOrder}", "1",
-				"{routeId}", "12", "{stage}", "1", "{asset}", "app.js",
+				"{routeId}", "12", "{stage}", "1", "{asset}", "app.js", "{name}", "sync",
 			).Replace(target)
 			request := httptest.NewRequestWithContext(context.Background(), test.method, target, http.NoBody)
 			if test.authenticated {
