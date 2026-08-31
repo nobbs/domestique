@@ -578,3 +578,37 @@ func TestTaskSurfaceRunsUnderTheServiceContext(t *testing.T) {
 
 // allEnabled is a service where nobody has switched anything off.
 func allEnabled(string) func() bool { return func() bool { return true } }
+
+// Switching a task through the surface reaches the store behind it, and the
+// list the page reads back says so.
+func TestTaskSurfaceSwitchesATaskAndReportsIt(t *testing.T) {
+	t.Parallel()
+
+	store := testStore(t, t.TempDir())
+	switches, err := newTaskSwitches(t.Context(), store)
+	require.NoError(t, err, "newTaskSwitches()")
+	manager, err := registerTasks(
+		&countingStore{}, &silentNotifier{}, undecided{}, alwaysOn,
+		[]task.Definition{{Name: "sync:target", Run: task.RunnerFunc(func(context.Context, task.Invocation) task.Result {
+			return task.Result{Outcome: task.Succeeded}
+		})}},
+	)
+	require.NoError(t, err, "registerTasks()")
+	surface := taskSurface{ctx: t.Context(), manager: manager, switches: switches}
+
+	require.True(t, surface.Registered()[0].Enabled, "a task nobody ruled on read as switched off")
+	require.NoError(t, surface.Schedule(t.Context(), "sync:target", false), "Schedule()")
+	assert.False(t, surface.Registered()[0].Enabled, "the switch did not reach the list")
+}
+
+// A surface built without a schedule to write says so rather than panicking.
+func TestTaskSurfaceRefusesToSwitchWithoutASchedule(t *testing.T) {
+	t.Parallel()
+
+	manager, err := registerTasks(&countingStore{}, &silentNotifier{}, undecided{}, alwaysOn, nil)
+	require.NoError(t, err, "registerTasks()")
+	surface := taskSurface{ctx: t.Context(), manager: manager}
+
+	assert.NotPanics(t, func() { _ = surface.Registered() }, "listing without a schedule panicked")
+	require.Error(t, surface.Schedule(t.Context(), "sync:target", false), "Schedule() without a schedule")
+}

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"maps"
 	"sync"
 
@@ -72,6 +73,9 @@ func (s *taskSwitches) reload(ctx context.Context) error {
 // Set records a switch and refreshes the snapshot behind it. A decision the
 // running service has not read is one an operator believes they made.
 func (s *taskSwitches) Set(ctx context.Context, task string, enabled bool) error {
+	if s == nil {
+		return errors.New("this service holds no task schedule to write")
+	}
 	if err := s.store.SetTaskSchedule(ctx, task, enabled); err != nil {
 		return err //nolint:wrapcheck // the store already names what it was writing
 	}
