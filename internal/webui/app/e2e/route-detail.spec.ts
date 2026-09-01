@@ -236,9 +236,8 @@ test("a route nobody classified says so rather than showing an empty key", async
   );
 
   // The two mixes are folded, and an absence is still one of the things they
-  // have to be able to say once opened.
-
-  await expect(page.getByText("Surface not classified yet.")).toBeVisible();
+  // have to be able to say — folded, the surface's is the faded bar's own name.
+  await expect(page.getByRole("img", { name: /Surface not classified yet\.$/ })).toBeVisible();
   // The same route has no elevation either, which is a second absence the page
   // has to state instead of drawing a flat line through it.
   await expect(page.getByText(/no elevation data/)).toBeVisible();
