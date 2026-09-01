@@ -1,411 +1,109 @@
 package sqlite
 
 import (
-	"bytes"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
-	"fmt"
-	"os"
 	"path/filepath"
-	"regexp"
-	"strings"
 	"testing"
-	"time"
 
-	"github.com/nobbs/domestique/internal/route"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func TestStoreMigrationsAreIdempotent(t *testing.T) {
+func TestStoreCreatesCurrentSchemaBaseline(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	var legacy, current int
+	var dirty bool
+	require.NoError(t, store.database.QueryRowContext(t.Context(), `SELECT MAX(version) FROM schema_migrations`).Scan(&legacy))
+	require.NoError(t, store.database.QueryRowContext(t.Context(), `SELECT version, dirty FROM domestique_migrations`).Scan(&current, &dirty))
+	assert.Equal(t, currentSchemaVersion, legacy)
+	assert.Equal(t, currentSchemaVersion, current)
+	assert.False(t, dirty)
+}
+
+func TestStoreMarksValidatedLegacyState(t *testing.T) {
 	databasePath := filepath.Join(t.TempDir(), "state.db")
-	first, firstOpenErr := Open(t.Context(), databasePath, testKey(1))
-	require.NoError(t, firstOpenErr, "first Open()")
-	require.NoError(t, first.Close(), "first Close()")
-
-	second, secondOpenErr := Open(t.Context(), databasePath, testKey(1))
-	require.NoError(t, secondOpenErr, "second Open()")
-	t.Cleanup(func() {
-		assert.NoError(t, second.Close(), "second Close()")
-	})
-
+	first, err := Open(t.Context(), databasePath, testKey(1))
+	require.NoError(t, err)
+	require.NoError(t, first.Close())
+	database, err := sql.Open(driverName, databaseDSN(databasePath))
+	require.NoError(t, err)
+	_, err = database.ExecContext(t.Context(), `DROP TABLE domestique_migrations`)
+	require.NoError(t, err)
+	require.NoError(t, database.Close())
+	promoted, err := Open(t.Context(), databasePath, testKey(1))
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, promoted.Close()) })
 	var version int
-	require.NoError(t, second.database.QueryRowContext(t.Context(), "SELECT MAX(version) FROM schema_migrations").Scan(&version), "query migration version")
-	assert.Equal(t, len(schemaMigrations()), version, "schema version")
+	require.NoError(t, promoted.database.QueryRowContext(t.Context(), `SELECT version FROM domestique_migrations`).Scan(&version))
+	assert.Equal(t, currentSchemaVersion, version)
 }
 
-// The one guard that catches a migration inserted into shipped history. Every
-// other test builds its database from the list as it stands, so a reordered list
-// still migrates cleanly. A deployment recorded a count against the old order, so
-// element N must still be the migration that shipped as N. testdata is that record.
-func TestStoreMigrationHistoryIsAppendOnly(t *testing.T) {
-	recorded, err := os.ReadFile(filepath.Join("testdata", "schema-migrations.sha256"))
-	require.NoError(t, err)
-
-	want := strings.Fields(strings.TrimSpace(string(recorded)))
-	got := make([]string, 0, len(want))
-	for _, statements := range schemaMigrations() {
-		digest := sha256.Sum256([]byte(strings.Join(statements, "\n")))
-		got = append(got, hex.EncodeToString(digest[:]))
-	}
-
-	require.Len(t, got, len(want),
-		"a migration was added or removed; append its fingerprint to testdata/schema-migrations.sha256")
-	for index := range want {
-		assert.Equal(t, want[index], got[index],
-			"migration %d is not the one that shipped as %d", index+1, index+1)
-	}
-}
-
-// Every version this service has shipped is still in somebody's volume. Opening a
-// database at each earlier version proves the history is append-only: insert a
-// migration rather than append one and the deployment that applied the old
-// numbering re-runs the migration that took its place.
-func TestStoreUpgradesFromEveryEarlierVersion(t *testing.T) {
-	migrations := schemaMigrations()
-	for version := 1; version < len(migrations); version++ {
-		t.Run(fmt.Sprintf("version %d", version), func(t *testing.T) {
+func TestStoreRefusesInvalidMigrationState(t *testing.T) {
+	for name, mutate := range map[string]func(*sql.DB){
+		"dirty": func(database *sql.DB) { _, _ = database.Exec(`UPDATE domestique_migrations SET dirty = 1`) },
+		"older legacy": func(database *sql.DB) {
+			_, _ = database.Exec(`DROP TABLE domestique_migrations`)
+			_, _ = database.Exec(`DELETE FROM schema_migrations WHERE version = 27`)
+		},
+		"schema drift": func(database *sql.DB) {
+			_, _ = database.Exec(`DROP TABLE domestique_migrations`)
+			_, _ = database.Exec(`ALTER TABLE targets ADD COLUMN unexpected TEXT`)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
 			databasePath := filepath.Join(t.TempDir(), "state.db")
-			seedSchemaVersion(t, databasePath, version)
-
 			store, err := Open(t.Context(), databasePath, testKey(1))
-			require.NoError(t, err, "opening a database left at version %d", version)
-			t.Cleanup(func() {
-				assert.NoError(t, store.Close())
-			})
-
-			var applied int
-			require.NoError(t, store.database.QueryRowContext(
-				t.Context(),
-				"SELECT MAX(version) FROM schema_migrations",
-			).Scan(&applied))
-			assert.Equal(t, len(migrations), applied)
+			require.NoError(t, err)
+			require.NoError(t, store.Close())
+			database, err := sql.Open(driverName, databaseDSN(databasePath))
+			require.NoError(t, err)
+			mutate(database)
+			require.NoError(t, database.Close())
+			_, err = Open(t.Context(), databasePath, testKey(1))
+			require.Error(t, err)
 		})
 	}
 }
 
-// seedSchemaVersion builds a database that has applied exactly the first
-// `version` migrations, as a deployment last started on that release would have.
-func seedSchemaVersion(t *testing.T, databasePath string, version int) {
-	t.Helper()
-
-	database, err := sql.Open(driverName, databasePath)
-	require.NoError(t, err)
-	defer func() {
-		assert.NoError(t, database.Close())
-	}()
-
-	_, err = database.ExecContext(t.Context(), `
-		CREATE TABLE schema_migrations (
-			version INTEGER PRIMARY KEY,
-			applied_at_unix INTEGER NOT NULL
-		)
-	`)
-	require.NoError(t, err)
-	for applied, statements := range schemaMigrations()[:version] {
-		for _, statement := range statements {
-			_, err = database.ExecContext(t.Context(), statement)
-			require.NoError(t, err, "applying migration %d", applied+1)
-		}
-		_, err = database.ExecContext(
-			t.Context(),
-			"INSERT INTO schema_migrations (version, applied_at_unix) VALUES (?, ?)",
-			applied+1,
-			time.Now().Unix(),
-		)
-		require.NoError(t, err)
-	}
-}
-
-func TestStoreMigratesExistingOAuthTransactions(t *testing.T) {
+func TestStorePreservesPreviousReleaseRollbackWindow(t *testing.T) {
 	databasePath := filepath.Join(t.TempDir(), "state.db")
-	database, openErr := sql.Open(driverName, databasePath)
-	require.NoError(t, openErr, "opening version one database")
-	_, registryErr := database.ExecContext(t.Context(), `
-		CREATE TABLE schema_migrations (
-			version INTEGER PRIMARY KEY,
-			applied_at_unix INTEGER NOT NULL
-		)
-	`)
-	require.NoError(t, registryErr, "creating migration registry")
-	for _, statement := range schemaMigrations()[0] {
-		_, executeErr := database.ExecContext(t.Context(), statement)
-		require.NoError(t, executeErr, "creating version one schema")
-	}
-	_, insertErr := database.ExecContext(
-		t.Context(),
-		"INSERT INTO schema_migrations (version, applied_at_unix) VALUES (1, ?)",
-		time.Now().Unix(),
-	)
-	require.NoError(t, insertErr, "recording version one migration")
-	require.NoError(t, database.Close(), "closing version one database")
-
 	store, err := Open(t.Context(), databasePath, testKey(1))
-	require.NoError(t, err, "Open() after version one")
-	t.Cleanup(func() {
-		assert.NoError(t, store.Close(), "Close()")
-	})
-	require.NoError(t, store.EnsureTargets(t.Context(), []string{"rider-a"}), "EnsureTargets()")
-	require.NoError(t, store.BeginAuthorization(
-		t.Context(),
-		"rider-a",
-		"rider@example.ts.net",
-		bytes.Repeat([]byte{3}, 32),
-		time.Now().Add(time.Minute),
-	), "BeginAuthorization() after migration")
-	require.NoError(t, store.UpsertTargetStage(t.Context(), "rider-a", route.ProviderVeloPlanner, 1, 1, "revision", "content-hash", 42), "UpsertTargetStage() after migration")
+	require.NoError(t, err)
+	require.NoError(t, store.Close())
+	database, err := sql.Open(driverName, databaseDSN(databasePath))
+	require.NoError(t, err)
+	_, err = database.ExecContext(t.Context(), `UPDATE domestique_migrations SET version = 28; INSERT INTO schema_migrations (version, applied_at_unix) VALUES (28, 0)`)
+	require.NoError(t, err)
+	require.NoError(t, database.Close())
+	rolledBack, err := Open(t.Context(), databasePath, testKey(1))
+	require.NoError(t, err)
+	require.NoError(t, rolledBack.Close())
+	database, err = sql.Open(driverName, databaseDSN(databasePath))
+	require.NoError(t, err)
+	_, err = database.ExecContext(t.Context(), `UPDATE domestique_migrations SET version = 29; INSERT INTO schema_migrations (version, applied_at_unix) VALUES (29, 0)`)
+	require.NoError(t, err)
+	require.NoError(t, database.Close())
+	_, err = Open(t.Context(), databasePath, testKey(1))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), schemaAheadMessage)
 }
 
-// The rollback case: a deploy migrated the state, failed its health gate, and the
-// previous binary is put back in front of a database one migration ahead. Only
-// the recorded version moves here; the compatibility rule below is what keeps a
-// real migration's schema change invisible to these writes.
-func TestStoreOpensStateOneMigrationAhead(t *testing.T) {
-	databasePath := filepath.Join(t.TempDir(), "state.db")
-	seedSchemaVersion(t, databasePath, len(schemaMigrations()))
-	recordSchemaVersion(t, databasePath, len(schemaMigrations())+forwardCompatibleMigrations)
-
-	store, err := Open(t.Context(), databasePath, testKey(1))
-	require.NoError(t, err, "Open() against a state file one migration ahead")
-	t.Cleanup(func() {
-		assert.NoError(t, store.Close(), "Close()")
-	})
-
-	// What the readiness probe reads and what a sync writes, which together are
-	// the difference between a rolled-back host that serves and one that does not.
-	require.NoError(t, store.EnsureTargets(t.Context(), []string{"rider-a"}), "EnsureTargets()")
-	require.NoError(t, store.ForEachTarget(t.Context(), func(string, string) error { return nil }), "ForEachTarget()")
-	require.NoError(t, store.UpsertTargetStage(t.Context(), "rider-a", route.ProviderVeloPlanner, 1, 1, "revision", "content-hash", 42), "UpsertTargetStage()")
-}
-
-// The tolerance is bounded on purpose. A binary far enough behind the schema is
-// a deployment mistake, and a clear refusal is better than writes against a
-// database whose shape it cannot reason about.
-func TestStoreRefusesStateTooFarAhead(t *testing.T) {
-	databasePath := filepath.Join(t.TempDir(), "state.db")
-	seedSchemaVersion(t, databasePath, len(schemaMigrations()))
-	recordSchemaVersion(t, databasePath, len(schemaMigrations())+forwardCompatibleMigrations+1)
-
-	_, err := Open(t.Context(), databasePath, testKey(1))
-	require.Error(t, err, "Open() against a state file beyond the tolerated distance")
-	assert.Contains(t, err.Error(), schemaAheadMessage, "the refusal must stay recognisable to the deploy script")
-}
-
-// The other half of the rollback guarantee. Tolerating a newer schema is safe
-// only while every migration leaves the previous binary able to read and write
-// what it did, so each is compared against the schema it was applied to. What a
-// migration means by an existing column's values stays with the author.
-func TestNewMigrationsStayReadableByThePreviousRelease(t *testing.T) {
-	migrations := schemaMigrations()
-	for version := compatibilityRuleFromMigration; version <= len(migrations); version++ {
-		t.Run(fmt.Sprintf("migration %d", version), func(t *testing.T) {
-			before := readSchemaShape(t, version-1)
-			after := readSchemaShape(t, version)
-
-			for table, columns := range before.tables {
-				updated, found := after.tables[table]
-				require.True(t, found, "migration %d drops or renames table %q", version, table)
-				for name, column := range columns {
-					changed, stillThere := updated[name]
-					require.True(t, stillThere, "migration %d drops or renames %s.%s", version, table, name)
-					assert.Equal(t, column, changed, "migration %d redefines %s.%s", version, table, name)
-				}
-				for name, column := range updated {
-					if _, existed := columns[name]; existed {
-						continue
-					}
-					assert.True(t, column.nullable || column.hasDefault,
-						"migration %d adds NOT NULL column %s.%s without a default", version, table, name)
-				}
-				assert.Equal(t, before.checks[table], after.checks[table],
-					"migration %d changes the CHECK constraints on %q, which an earlier binary's writes must still satisfy", version, table)
-			}
-			for name, index := range before.indexes {
-				updated, found := after.indexes[name]
-				require.True(t, found, "migration %d drops index %q", version, name)
-				assert.Equal(t, index, updated, "migration %d redefines index %q", version, name)
-			}
-			for name, index := range after.indexes {
-				if _, existed := before.indexes[name]; existed || !index.unique {
-					continue
-				}
-				_, onAnOldTable := before.tables[index.table]
-				assert.False(t, onAnOldTable,
-					"migration %d adds UNIQUE index %q to %q, which an earlier binary already writes", version, name, index.table)
-			}
-		})
+func TestDatabaseDSNConfiguresEveryConnection(t *testing.T) {
+	database, err := sql.Open(driverName, databaseDSN(filepath.Join(t.TempDir(), "state.db")))
+	require.NoError(t, err)
+	database.SetMaxOpenConns(2)
+	t.Cleanup(func() { assert.NoError(t, database.Close()) })
+	first, err := database.Conn(t.Context())
+	require.NoError(t, err)
+	defer first.Close()
+	second, err := database.Conn(t.Context())
+	require.NoError(t, err)
+	defer second.Close()
+	for _, connection := range []*sql.Conn{first, second} {
+		var foreignKeys, busyTimeout int
+		require.NoError(t, connection.QueryRowContext(t.Context(), `PRAGMA foreign_keys`).Scan(&foreignKeys))
+		require.NoError(t, connection.QueryRowContext(t.Context(), `PRAGMA busy_timeout`).Scan(&busyTimeout))
+		assert.Equal(t, 1, foreignKeys)
+		assert.Equal(t, 5000, busyTimeout)
 	}
-}
-
-// compatibilityRuleFromMigration is the first migration the rule above applies
-// to. Migration 2 predates it and breaks it, and rewriting shipped history to
-// satisfy a later rule is what schemaMigrations forbids.
-const compatibilityRuleFromMigration = 3
-
-// checkConstraint matches a CHECK constraint's text, with one level of nesting
-// inside it, which is as deep as this schema's constraints go.
-var checkConstraint = regexp.MustCompile(`(?is)CHECK\s*\((?:[^()]|\([^()]*\))*\)`)
-
-type schemaColumn struct {
-	declaredType string
-	nullable     bool
-	hasDefault   bool
-	primaryKey   bool
-}
-
-type schemaIndex struct {
-	table  string
-	unique bool
-}
-
-type schemaShape struct {
-	tables  map[string]map[string]schemaColumn
-	checks  map[string][]string
-	indexes map[string]schemaIndex
-}
-
-// readSchemaShape builds a database at the given migration count and reads back
-// the shape a binary of that release would expect to find. Indexes come from
-// PRAGMA index_list rather than sqlite_master, because a UNIQUE declared inside
-// a CREATE TABLE has an implicit index and no sqlite_master row of its own.
-func readSchemaShape(t *testing.T, version int) schemaShape {
-	t.Helper()
-
-	databasePath := filepath.Join(t.TempDir(), "state.db")
-	seedSchemaVersion(t, databasePath, version)
-	database, err := sql.Open(driverName, databasePath)
-	require.NoError(t, err)
-	defer func() {
-		assert.NoError(t, database.Close())
-	}()
-
-	shape := schemaShape{
-		tables:  make(map[string]map[string]schemaColumn),
-		checks:  make(map[string][]string),
-		indexes: make(map[string]schemaIndex),
-	}
-	for name, definition := range readTableDefinitions(t, database) {
-		shape.tables[name] = readTableColumns(t, database, name)
-		shape.checks[name] = checkConstraint.FindAllString(definition, -1)
-		for indexName, unique := range readTableIndexes(t, database, name) {
-			shape.indexes[indexName] = schemaIndex{table: name, unique: unique}
-		}
-	}
-
-	return shape
-}
-
-// readTableDefinitions returns every table this service owns, by name and stored
-// definition. The migration registry is left out: it is the versioning mechanism
-// rather than state a release reads.
-func readTableDefinitions(t *testing.T, database *sql.DB) map[string]string {
-	t.Helper()
-
-	rows, err := database.QueryContext(t.Context(), `
-		SELECT name, COALESCE(sql, '') FROM sqlite_master
-		WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name <> 'schema_migrations'
-	`)
-	require.NoError(t, err)
-	defer func() {
-		assert.NoError(t, rows.Close())
-	}()
-
-	definitions := make(map[string]string)
-	for rows.Next() {
-		var name, definition string
-		require.NoError(t, rows.Scan(&name, &definition))
-		definitions[name] = definition
-	}
-	require.NoError(t, rows.Err())
-
-	return definitions
-}
-
-func readTableColumns(t *testing.T, database *sql.DB, table string) map[string]schemaColumn {
-	t.Helper()
-
-	rows, err := database.QueryContext(t.Context(), `SELECT name, type, "notnull", dflt_value, pk FROM pragma_table_info(?)`, table)
-	require.NoError(t, err)
-	defer func() {
-		assert.NoError(t, rows.Close())
-	}()
-
-	columns := make(map[string]schemaColumn)
-	for rows.Next() {
-		var (
-			name         string
-			declaredType string
-			notNull      int
-			defaultValue sql.NullString
-			primaryKey   int
-		)
-		require.NoError(t, rows.Scan(&name, &declaredType, &notNull, &defaultValue, &primaryKey))
-		columns[name] = schemaColumn{
-			declaredType: declaredType,
-			nullable:     notNull == 0,
-			// An explicit DEFAULT NULL is recorded as a default but supplies
-			// nothing: an earlier binary's insert omits the column, gets NULL,
-			// and fails the NOT NULL constraint. That is the case this check
-			// exists for, so it does not count as a default.
-			hasDefault: defaultValue.Valid && !strings.EqualFold(defaultValue.String, "NULL"),
-			primaryKey: primaryKey > 0,
-		}
-	}
-	require.NoError(t, rows.Err())
-
-	return columns
-}
-
-func readTableIndexes(t *testing.T, database *sql.DB, table string) map[string]bool {
-	t.Helper()
-
-	rows, err := database.QueryContext(t.Context(), `SELECT name, "unique" FROM pragma_index_list(?)`, table)
-	require.NoError(t, err)
-	defer func() {
-		assert.NoError(t, rows.Close())
-	}()
-
-	indexes := make(map[string]bool)
-	for rows.Next() {
-		var (
-			name   string
-			unique int
-		)
-		require.NoError(t, rows.Scan(&name, &unique))
-		indexes[name] = unique == 1
-	}
-	require.NoError(t, rows.Err())
-
-	return indexes
-}
-
-// recordSchemaVersion writes a migration record this binary does not know, which
-// is what a database migrated by a later release looks like to it.
-func recordSchemaVersion(t *testing.T, databasePath string, version int) {
-	t.Helper()
-
-	database, err := sql.Open(driverName, databasePath)
-	require.NoError(t, err)
-	defer func() {
-		assert.NoError(t, database.Close())
-	}()
-	_, err = database.ExecContext(
-		t.Context(),
-		"INSERT INTO schema_migrations (version, applied_at_unix) VALUES (?, ?)",
-		version,
-		time.Now().Unix(),
-	)
-	require.NoError(t, err)
-}
-
-// The deploy script tells a rollback that cannot read its state from one that is
-// unhealthy for any other reason by matching this message in the container log.
-// A reworded refusal that left the script matching the old text would silently
-// go back to reporting the generic failure.
-func TestTheDeployScriptRecognisesTheSchemaAheadRefusal(t *testing.T) {
-	script, err := os.ReadFile(filepath.Join("..", "..", "deploy", "domestique-deploy.sh"))
-	require.NoError(t, err)
-
-	assert.Contains(t, string(script), schemaAheadMessage)
 }

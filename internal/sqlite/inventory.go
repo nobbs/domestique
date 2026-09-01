@@ -2,12 +2,12 @@ package sqlite
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/nobbs/domestique/internal/route"
+	generated "github.com/nobbs/domestique/internal/sqlite/sqlc"
 )
 
 // TrustedInventory rebuilds the stored source inventory as the stages a target
@@ -16,62 +16,29 @@ import (
 // the source pass derived. A stage whose geometry is missing or cached against a
 // different hash fails the whole read — a smaller library reads as a deletion.
 func (s *Store) TrustedInventory(ctx context.Context) ([]route.Route, error) {
-	rows, err := s.database.QueryContext(ctx, `
-		SELECT
-			source_stages.provider,
-			source_stages.route_id,
-			source_stages.stage_order,
-			source_stages.source_revision,
-			source_stages.content_hash,
-			stage_geometry.content_hash,
-			stage_geometry.route_name,
-			stage_geometry.stage_name,
-			stage_geometry.coordinates
-		FROM source_stages
-		LEFT JOIN stage_geometry
-			ON stage_geometry.provider = source_stages.provider
-			AND stage_geometry.route_id = source_stages.route_id
-			AND stage_geometry.stage_order = source_stages.stage_order
-		ORDER BY source_stages.provider, source_stages.route_id, source_stages.stage_order
-	`)
+	rows, err := generated.New(s.database).ListTrustedInventory(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("reading the trusted inventory: %w", err)
 	}
-	defer closeRows(rows)
 
 	stages := make([]route.Route, 0)
-	for rows.Next() {
-		var provider route.Provider
-		var routeID int64
-		var stageOrder int
-		var revision, contentHash string
-		var geometryHash, routeName, stageName sql.NullString
-		var coordinates []byte
-		if err := rows.Scan(
-			&provider, &routeID, &stageOrder, &revision, &contentHash,
-			&geometryHash, &routeName, &stageName, &coordinates,
-		); err != nil {
-			return nil, fmt.Errorf("reading a trusted inventory stage: %w", err)
-		}
-		if !geometryHash.Valid || geometryHash.String != contentHash {
+	for _, row := range rows {
+		if !row.GeometryHash.Valid || row.GeometryHash.String != row.ContentHash {
 			return nil, fmt.Errorf(
-				"trusted inventory stage %d/%d has no geometry for its content hash", routeID, stageOrder,
+				"trusted inventory stage %d/%d has no geometry for its content hash", row.RouteID, row.StageOrder,
 			)
 		}
-		points, err := decodeCoordinates(coordinates)
+		points, err := decodeCoordinates(row.Coordinates)
 		if err != nil {
 			return nil, err
 		}
 		stage, err := route.NewRoute(
-			provider, routeID, stageOrder, revision, routeName.String, stageName.String, points, contentHash,
+			route.Provider(row.Provider), row.RouteID, int(row.StageOrder), row.SourceRevision, row.RouteName.String, row.StageName.String, points, row.ContentHash,
 		)
 		if err != nil {
-			return nil, fmt.Errorf("rebuilding trusted inventory stage %d/%d: %w", routeID, stageOrder, err)
+			return nil, fmt.Errorf("rebuilding trusted inventory stage %d/%d: %w", row.RouteID, row.StageOrder, err)
 		}
 		stages = append(stages, stage)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("reading the trusted inventory: %w", err)
 	}
 
 	return stages, nil
@@ -207,15 +174,10 @@ func (s *Store) UpsertTargetStage(
 		return errors.New("complete target stage metadata is required")
 	}
 
-	if _, err := s.database.ExecContext(ctx, `
-		INSERT INTO target_stages (
-			target_slot, provider, route_id, stage_order, wahoo_route_id, content_hash, source_revision
-		) VALUES (?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(target_slot, provider, route_id, stage_order) DO UPDATE SET
-			wahoo_route_id = excluded.wahoo_route_id,
-			content_hash = excluded.content_hash,
-			source_revision = excluded.source_revision
-	`, targetID, provider, routeID, stageOrder, wahooRouteID, contentHash, sourceRevision); err != nil {
+	if err := generated.New(s.database).UpsertTargetStage(ctx, generated.UpsertTargetStageParams{
+		TargetSlot: targetID, Provider: string(provider), RouteID: routeID, StageOrder: int64(stageOrder),
+		WahooRouteID: wahooRouteID, ContentHash: contentHash, SourceRevision: sourceRevision,
+	}); err != nil {
 		return fmt.Errorf("storing target stage: %w", err)
 	}
 

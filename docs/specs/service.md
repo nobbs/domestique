@@ -548,6 +548,17 @@ remain possible after a migration:
 The rollback path never restores or replaces state; the tolerance is what makes
 the previous image usable against a state file the failed deploy migrated.
 
+The initial `golang-migrate` migration is a current-schema baseline at legacy
+version 27. Existing databases are adopted only when their
+`schema_migrations` watermark is the contiguous legacy sequence through version
+27 and their schema matches the baseline; the baseline is then marked applied
+without running its DDL. Older, dirty, or drifted databases are rejected.
+
+`schema_migrations` remains the compatibility watermark for prior application
+releases, while `domestique_migrations` is owned by `golang-migrate`. Each
+future migration advances both watermarks at the same version so the previous
+release can open a database that is one migration ahead.
+
 Two migrations are recorded exceptions to the first rule.
 
 The migration that gave a route's identity its provider widened the primary key

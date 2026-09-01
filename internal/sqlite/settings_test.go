@@ -214,3 +214,23 @@ func TestStoreRejectsCredentialsWrittenUnderAnotherKey(t *testing.T) {
 	_, err = reopened.RuntimeSecrets(t.Context())
 	require.ErrorIs(t, err, ErrStateUnreadable, "RuntimeSecrets()")
 }
+
+func TestStoreRollsBackSettingsWhenCredentialWriteFails(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	before, err := store.RuntimeSettings(t.Context())
+	require.NoError(t, err)
+	after := before
+	after.Notifications.Enabled = !before.Notifications.Enabled
+	_, err = store.database.ExecContext(t.Context(), `
+		CREATE TRIGGER reject_runtime_secret BEFORE INSERT ON runtime_secret
+		BEGIN SELECT RAISE(ABORT, 'credential write failed'); END
+	`)
+	require.NoError(t, err)
+	err = store.SetRuntimeSettingsAndSecrets(t.Context(), after, map[runtimeconfig.SecretName]runtimeconfig.Secret{
+		runtimeconfig.SecretWahooClientSecret: runtimeconfig.NewSecret([]byte("secret")),
+	})
+	require.Error(t, err)
+	got, err := store.RuntimeSettings(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, before, got)
+}

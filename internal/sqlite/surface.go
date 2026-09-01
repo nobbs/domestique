@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/nobbs/domestique/internal/route"
+	generated "github.com/nobbs/domestique/internal/sqlite/sqlc"
 )
 
 // StageSurface returns one stage's cached surface classification, but only where
@@ -82,17 +83,10 @@ func (s *Store) StoreStageSurface(
 	}
 	defer rollback(transaction)
 
-	if _, err := transaction.ExecContext(ctx, `
-		INSERT INTO stage_surface (
-			provider, route_id, stage_order, content_hash, index_generation, ranges, matched_metres, updated_at_unix
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT (provider, route_id, stage_order) DO UPDATE SET
-			content_hash = excluded.content_hash,
-			index_generation = excluded.index_generation,
-			ranges = excluded.ranges,
-			matched_metres = excluded.matched_metres,
-			updated_at_unix = excluded.updated_at_unix
-	`, provider, routeID, stageOrder, contentHash, indexGeneration, ranges, matchedMetres, time.Now().UTC().Unix()); err != nil {
+	if err := generated.New(s.database).WithTx(transaction).UpsertStageSurface(ctx, generated.UpsertStageSurfaceParams{
+		Provider: string(provider), RouteID: routeID, StageOrder: int64(stageOrder), ContentHash: contentHash,
+		IndexGeneration: indexGeneration, Ranges: ranges, MatchedMetres: matchedMetres, UpdatedAtUnix: time.Now().UTC().Unix(),
+	}); err != nil {
 		return fmt.Errorf("storing stage surface: %w", err)
 	}
 	// Stored and still listed as failing cannot both be true, so the two move

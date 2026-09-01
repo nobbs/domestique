@@ -1,10 +1,8 @@
 package sqlite
 
 import (
-	"database/sql"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -220,37 +218,6 @@ func TestStoreBoundsTheRecordedHistoryAndKeepsEachPhasesLastRun(t *testing.T) {
 	`).Scan(&runs, &targetRuns), "counting retained runs")
 	assert.Equal(t, retainedSyncRuns+1, runs, "retained runs, plus the target half's last one")
 	assert.Equal(t, 1, targetRuns, "the target half's last run was pruned with the rest")
-}
-
-// syncRunReferenceVersion is the migration that named the recorded runs. It is
-// pinned rather than counted from the end of the list, because what the test
-// below needs is the schema immediately before that one migration, which stops
-// being the last one the moment another is appended.
-const syncRunReferenceVersion = 11
-
-// A deployment upgrading into this feature has a history already, and it is as
-// addressable as anything recorded after the upgrade.
-func TestStoreNamesRunsRecordedBeforeReferencesExisted(t *testing.T) {
-	databasePath := filepath.Join(t.TempDir(), "state.db")
-	seedSchemaVersion(t, databasePath, syncRunReferenceVersion-1)
-	database, err := sql.Open(driverName, databasePath)
-	require.NoError(t, err, "opening the seeded database")
-	_, err = database.ExecContext(t.Context(), `
-		INSERT INTO sync_runs (phase, started_at_unix, finished_at_unix, outcome, detail)
-		VALUES ('source', 100, 160, 'succeeded', '')
-	`)
-	require.NoError(t, err, "recording a run under the earlier schema")
-	require.NoError(t, database.Close(), "closing the seeded database")
-
-	store, err := Open(t.Context(), databasePath, testKey(1))
-	require.NoError(t, err, "Open()")
-	t.Cleanup(func() {
-		assert.NoError(t, store.Close(), "Close()")
-	})
-
-	page, _ := readSyncRunPage(t, store, "", 10)
-	require.Len(t, page, 1, "the run recorded under the earlier schema")
-	assert.Len(t, page[0], 2*syncRunReferenceBytes, "the reference the migration gave it")
 }
 
 // readSyncRunPage collects one page of the recorded history as the references it

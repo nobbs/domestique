@@ -222,12 +222,12 @@ type SettingsState interface {
 	// handed the settings as they are at the moment of the write, so two
 	// sections saved at once do not each undo the other.
 	Update(ctx context.Context, change func(runtimeconfig.Values) runtimeconfig.Values) error
+	UpdateWithSecrets(ctx context.Context, change func(runtimeconfig.Values) runtimeconfig.Values, secrets map[runtimeconfig.SecretName]runtimeconfig.Secret) error
 
 	// SecretIsSet is all this handler is ever told about a credential. The
 	// value itself is never read here, so it cannot reach a response by
 	// accident.
 	SecretIsSet(name runtimeconfig.SecretName) bool
-	SetSecrets(ctx context.Context, secrets map[runtimeconfig.SecretName]runtimeconfig.Secret) error
 
 	// Missing names the settings a run still needs, so the page can say what is
 	// left rather than leaving an operator to find out from a failed run.

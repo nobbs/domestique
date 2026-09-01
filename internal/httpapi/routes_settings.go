@@ -217,18 +217,13 @@ func (h *Handler) storeSection(
 	// The rules are the runtime settings package's own — the same ones the
 	// stored values were read back through at startup — so the message names
 	// the setting that is wrong rather than the section it was in.
-	if err := h.settings.Update(request.Context(), change); err != nil {
+	if err := h.settings.UpdateWithSecrets(request.Context(), change, secrets); err != nil {
 		if errors.Is(err, runtimeconfig.ErrStore) {
 			h.unavailable(writer)
 
 			return
 		}
 		h.error(writer, http.StatusBadRequest, "invalid_request", err.Error())
-
-		return
-	}
-	if err := h.settings.SetSecrets(request.Context(), secrets); err != nil {
-		h.unavailable(writer)
 
 		return
 	}

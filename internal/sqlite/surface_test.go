@@ -1,10 +1,7 @@
 package sqlite
 
 import (
-	"database/sql"
-	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/nobbs/domestique/internal/route"
 	"github.com/stretchr/testify/assert"
@@ -65,36 +62,6 @@ func TestStoreCachesStageSurfaceAgainstTheGeometryItDescribes(t *testing.T) {
 	require.True(t, found, "StageSurfaceHash() did not find the stored hash")
 	assert.Equal(t, "content-hash", hash, "StageSurfaceHash()")
 	assert.Equal(t, "index-gen", generation, "StageSurfaceHash() generation")
-}
-
-func TestStoreMigratesStoredSurfaceRangesToCamelCase(t *testing.T) {
-	databasePath := filepath.Join(t.TempDir(), "state.db")
-	// The state is seeded one short of the migration that rewrites the field
-	// names, which is 16 and stays 16 however many migrations are appended after
-	// it. Counting back from the end of the list instead would quietly stop
-	// testing this migration the moment another one shipped.
-	seedSchemaVersion(t, databasePath, 15)
-
-	database, err := sql.Open(driverName, databasePath)
-	require.NoError(t, err, "opening state before the range migration")
-	_, err = database.ExecContext(t.Context(), `
-		INSERT INTO stage_surface (
-			provider, route_id, stage_order, content_hash, index_generation, ranges, matched_metres, updated_at_unix
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-	`, route.ProviderVeloPlanner, 7, 2, "content-hash", "index-gen", `[{"kind":"asphalt","start_index":0,"end_index":1}]`, 1234.5, time.Now().Unix())
-	require.NoError(t, err, "storing the prior wire shape")
-	require.NoError(t, database.Close(), "closing state before migration")
-
-	store, err := Open(t.Context(), databasePath, testKey(1))
-	require.NoError(t, err, "opening state applies the range migration")
-	t.Cleanup(func() {
-		assert.NoError(t, store.Close(), "closing migrated state")
-	})
-
-	ranges, _, found, err := store.StageSurface(t.Context(), route.ProviderVeloPlanner, 7, 2, "content-hash")
-	require.NoError(t, err, "reading migrated ranges")
-	require.True(t, found, "migrated surface range")
-	assert.JSONEq(t, `[{"kind":"asphalt","startIndex":0,"endIndex":1}]`, string(ranges), "migrated range fields")
 }
 
 func TestStoreHidesASurfaceMeasuredAgainstOtherGeometry(t *testing.T) {

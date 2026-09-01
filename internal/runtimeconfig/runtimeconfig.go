@@ -131,6 +131,7 @@ type Surface struct {
 type Store interface {
 	RuntimeSettings(ctx context.Context) (Values, error)
 	SetRuntimeSettings(ctx context.Context, values Values) error
+	SetRuntimeSettingsAndSecrets(ctx context.Context, values Values, secrets map[SecretName]Secret) error
 	RuntimeSecrets(ctx context.Context) (map[SecretName]Secret, error)
 	// SetRuntimeSecrets replaces only the credentials it is given. A secret
 	// carrying no bytes is removed rather than stored empty.
@@ -255,6 +256,38 @@ func (c *Current) Update(ctx context.Context, change func(Values) Values) error 
 	c.values.Store(&validated)
 	c.generation.Add(1)
 
+	return nil
+}
+
+// UpdateWithSecrets applies one settings-section edit and its submitted credentials atomically.
+func (c *Current) UpdateWithSecrets(ctx context.Context, change func(Values) Values, secrets map[SecretName]Secret) error {
+	c.writing.Lock()
+	defer c.writing.Unlock()
+	validated, err := change(c.values.Load().clone()).Validate()
+	if err != nil {
+		return err
+	}
+	for name := range secrets {
+		if !slices.Contains(SecretNames(), name) {
+			return fmt.Errorf("unknown secret %q", name)
+		}
+	}
+	if err := c.store.SetRuntimeSettingsAndSecrets(ctx, validated, secrets); err != nil {
+		return fmt.Errorf("%w: %w", ErrStore, err)
+	}
+	stored := *c.secrets.Load()
+	replaced := make(map[SecretName]Secret, len(stored)+len(secrets))
+	maps.Copy(replaced, stored)
+	for name, secret := range secrets {
+		if secret.IsSet() {
+			replaced[name] = secret
+		} else {
+			delete(replaced, name)
+		}
+	}
+	c.values.Store(&validated)
+	c.secrets.Store(&replaced)
+	c.generation.Add(1)
 	return nil
 }
 

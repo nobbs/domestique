@@ -62,6 +62,28 @@ func (s *staticSettings) Update(_ context.Context, change func(runtimeconfig.Val
 	return nil
 }
 
+func (s *staticSettings) UpdateWithSecrets(_ context.Context, change func(runtimeconfig.Values) runtimeconfig.Values, secrets map[runtimeconfig.SecretName]runtimeconfig.Secret) error {
+	values, err := change(s.values).Validate()
+	if err != nil {
+		return err
+	}
+	if s.storeFail != nil {
+		return fmt.Errorf("%w: %w", runtimeconfig.ErrStore, s.storeFail)
+	}
+	s.values = values
+	if s.secrets == nil {
+		s.secrets = make(map[runtimeconfig.SecretName]runtimeconfig.Secret, len(secrets))
+	}
+	for name, secret := range secrets {
+		if secret.IsSet() {
+			s.secrets[name] = secret
+		} else {
+			delete(s.secrets, name)
+		}
+	}
+	return nil
+}
+
 func (s *staticSettings) SecretIsSet(name runtimeconfig.SecretName) bool {
 	return s.secrets[name].IsSet()
 }

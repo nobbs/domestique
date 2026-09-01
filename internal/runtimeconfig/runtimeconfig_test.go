@@ -48,6 +48,27 @@ func (s *stubStore) SetRuntimeSettings(_ context.Context, values Values) error {
 	return nil
 }
 
+func (s *stubStore) SetRuntimeSettingsAndSecrets(_ context.Context, values Values, secrets map[SecretName]Secret) error {
+	if s.writeErr != nil {
+		return s.writeErr
+	}
+	s.writing.Lock()
+	defer s.writing.Unlock()
+	s.values = values
+	if s.secrets == nil {
+		s.secrets = make(map[SecretName]Secret, len(secrets))
+	}
+	for name, secret := range secrets {
+		if secret.IsSet() {
+			s.secrets[name] = secret
+		} else {
+			delete(s.secrets, name)
+		}
+	}
+	s.writes++
+	return nil
+}
+
 func (s *stubStore) RuntimeSecrets(context.Context) (map[SecretName]Secret, error) {
 	if s.readErr != nil {
 		return nil, s.readErr

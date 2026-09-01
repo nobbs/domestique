@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"time"
 
@@ -76,6 +77,16 @@ func (s *Store) SetRuntimeSettings(ctx context.Context, values runtimeconfig.Val
 		return fmt.Errorf("starting the runtime settings write: %w", err)
 	}
 	defer rollback(transaction)
+	if err := s.writeRuntimeSettings(ctx, transaction, values); err != nil {
+		return err
+	}
+	if err := transaction.Commit(); err != nil {
+		return fmt.Errorf("committing the runtime settings: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) writeRuntimeSettings(ctx context.Context, transaction *sql.Tx, values runtimeconfig.Values) error {
 
 	if _, err := transaction.ExecContext(ctx, `
 		UPDATE runtime_settings
@@ -151,10 +162,6 @@ func (s *Store) SetRuntimeSettings(ctx context.Context, values runtimeconfig.Val
 		`, targetID, AuthorizationNotAuthorized, time.Now().Unix()); err != nil {
 			return fmt.Errorf("creating target slot: %w", err)
 		}
-	}
-
-	if err := transaction.Commit(); err != nil {
-		return fmt.Errorf("committing the runtime settings: %w", err)
 	}
 
 	return nil
@@ -277,6 +284,18 @@ func (s *Store) SetRuntimeSecrets(
 		return fmt.Errorf("starting the runtime secrets write: %w", err)
 	}
 	defer rollback(transaction)
+	if err := s.writeRuntimeSecrets(ctx, transaction, secrets); err != nil {
+		return err
+	}
+	if err := transaction.Commit(); err != nil {
+		return fmt.Errorf("committing the runtime secrets: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) writeRuntimeSecrets(
+	ctx context.Context, transaction *sql.Tx, secrets map[runtimeconfig.SecretName]runtimeconfig.Secret,
+) error {
 
 	for name, secret := range secrets {
 		if !secret.IsSet() {
@@ -300,10 +319,27 @@ func (s *Store) SetRuntimeSecrets(
 		}
 	}
 
-	if err := transaction.Commit(); err != nil {
-		return fmt.Errorf("committing the runtime secrets: %w", err)
-	}
+	return nil
+}
 
+// SetRuntimeSettingsAndSecrets commits a settings section and its credentials together.
+func (s *Store) SetRuntimeSettingsAndSecrets(
+	ctx context.Context, values runtimeconfig.Values, secrets map[runtimeconfig.SecretName]runtimeconfig.Secret,
+) error {
+	transaction, err := s.database.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("starting the runtime settings write: %w", err)
+	}
+	defer rollback(transaction)
+	if err := s.writeRuntimeSettings(ctx, transaction, values); err != nil {
+		return err
+	}
+	if err := s.writeRuntimeSecrets(ctx, transaction, secrets); err != nil {
+		return err
+	}
+	if err := transaction.Commit(); err != nil {
+		return fmt.Errorf("committing runtime settings and secrets: %w", err)
+	}
 	return nil
 }
 
