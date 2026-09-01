@@ -63,18 +63,9 @@ func (s *Store) RuntimeSettings(ctx context.Context) (runtimeconfig.Values, erro
 //
 //nolint:gocritic // value param: this method conforms to the runtimeconfig.Store contract.
 func (s *Store) SetRuntimeSettings(ctx context.Context, values runtimeconfig.Values) error {
-	transaction, err := s.database.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("starting the runtime settings write: %w", err)
-	}
-	defer rollback(transaction)
-	if err := s.writeRuntimeSettings(ctx, s.queries.WithTx(transaction), &values); err != nil {
-		return err
-	}
-	if err := transaction.Commit(); err != nil {
-		return fmt.Errorf("committing the runtime settings: %w", err)
-	}
-	return nil
+	return s.withTx(ctx, "runtime settings", func(queries *sqlcgen.Queries) error {
+		return s.writeRuntimeSettings(ctx, queries, &values)
+	})
 }
 
 func (s *Store) writeRuntimeSettings(ctx context.Context, queries *sqlcgen.Queries, values *runtimeconfig.Values) error {
@@ -211,18 +202,9 @@ func (s *Store) RuntimeSecrets(ctx context.Context) (map[runtimeconfig.SecretNam
 func (s *Store) SetRuntimeSecrets(
 	ctx context.Context, secrets map[runtimeconfig.SecretName]runtimeconfig.Secret,
 ) error {
-	transaction, err := s.database.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("starting the runtime secrets write: %w", err)
-	}
-	defer rollback(transaction)
-	if err := s.writeRuntimeSecrets(ctx, s.queries.WithTx(transaction), secrets); err != nil {
-		return err
-	}
-	if err := transaction.Commit(); err != nil {
-		return fmt.Errorf("committing the runtime secrets: %w", err)
-	}
-	return nil
+	return s.withTx(ctx, "runtime secrets", func(queries *sqlcgen.Queries) error {
+		return s.writeRuntimeSecrets(ctx, queries, secrets)
+	})
 }
 
 func (s *Store) writeRuntimeSecrets(
@@ -256,22 +238,12 @@ func (s *Store) writeRuntimeSecrets(
 func (s *Store) SetRuntimeSettingsAndSecrets(
 	ctx context.Context, values runtimeconfig.Values, secrets map[runtimeconfig.SecretName]runtimeconfig.Secret,
 ) error {
-	transaction, err := s.database.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("starting the runtime settings write: %w", err)
-	}
-	defer rollback(transaction)
-	queries := s.queries.WithTx(transaction)
-	if err := s.writeRuntimeSettings(ctx, queries, &values); err != nil {
-		return err
-	}
-	if err := s.writeRuntimeSecrets(ctx, queries, secrets); err != nil {
-		return err
-	}
-	if err := transaction.Commit(); err != nil {
-		return fmt.Errorf("committing runtime settings and secrets: %w", err)
-	}
-	return nil
+	return s.withTx(ctx, "runtime settings and secrets", func(queries *sqlcgen.Queries) error {
+		if err := s.writeRuntimeSettings(ctx, queries, &values); err != nil {
+			return err
+		}
+		return s.writeRuntimeSecrets(ctx, queries, secrets)
+	})
 }
 
 func (s *Store) runtimeSurfaceRegions(ctx context.Context) ([]string, error) {
