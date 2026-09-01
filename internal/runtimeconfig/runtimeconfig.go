@@ -228,30 +228,42 @@ func (c *Current) SetSecrets(ctx context.Context, secrets map[SecretName]Secret)
 	c.writing.Lock()
 	defer c.writing.Unlock()
 
-	for name := range secrets {
-		if !slices.Contains(SecretNames(), name) {
-			return fmt.Errorf("unknown secret %q", name)
-		}
+	if err := validateSecretNames(secrets); err != nil {
+		return err
 	}
 	if err := c.store.SetRuntimeSecrets(ctx, secrets); err != nil {
 		return fmt.Errorf("%w: %w", ErrStore, err)
 	}
 
 	current := c.snapshot.Load()
-	replaced := make(map[SecretName]Secret, len(current.secrets)+len(secrets))
-	maps.Copy(replaced, current.secrets)
-	for name, secret := range secrets {
+	c.snapshot.Store(&Snapshot{
+		values: current.values, secrets: mergeSecrets(current.secrets, secrets), generation: current.generation + 1,
+	})
+
+	return nil
+}
+
+func validateSecretNames(secrets map[SecretName]Secret) error {
+	for name := range secrets {
+		if !slices.Contains(SecretNames(), name) {
+			return fmt.Errorf("unknown secret %q", name)
+		}
+	}
+	return nil
+}
+
+// mergeSecrets overlays incoming on current; an unset incoming secret removes the credential.
+func mergeSecrets(current, incoming map[SecretName]Secret) map[SecretName]Secret {
+	replaced := make(map[SecretName]Secret, len(current)+len(incoming))
+	maps.Copy(replaced, current)
+	for name, secret := range incoming {
 		if secret.IsSet() {
 			replaced[name] = secret
 		} else {
 			delete(replaced, name)
 		}
 	}
-	c.snapshot.Store(&Snapshot{
-		values: current.values, secrets: replaced, generation: current.generation + 1,
-	})
-
-	return nil
+	return replaced
 }
 
 // Values returns the live settings. The lists are copied, so a reader holding a
@@ -268,53 +280,35 @@ func (c *Current) Snapshot() *Snapshot {
 // Update validates, persists, then publishes; values that fail either never
 // become live. Read-change-write is one critical section.
 func (c *Current) Update(ctx context.Context, change func(Values) Values) error {
-	c.writing.Lock()
-	defer c.writing.Unlock()
-
-	current := c.snapshot.Load()
-	validated, err := change(current.values.clone()).Validate()
-	if err != nil {
-		return err
-	}
-	if err := c.store.SetRuntimeSettings(ctx, validated); err != nil {
-		return fmt.Errorf("%w: %w", ErrStore, err)
-	}
-	c.snapshot.Store(&Snapshot{
-		values: validated, secrets: current.secrets, generation: current.generation + 1,
-	})
-
-	return nil
+	return c.UpdateWithSecrets(ctx, change, nil)
 }
 
 // UpdateWithSecrets applies one settings-section edit and its submitted credentials atomically.
 func (c *Current) UpdateWithSecrets(ctx context.Context, change func(Values) Values, secrets map[SecretName]Secret) error {
 	c.writing.Lock()
 	defer c.writing.Unlock()
+
 	current := c.snapshot.Load()
-	validated, err := change(current.values.clone()).Validate()
-	if err != nil {
+	validated, validateErr := change(current.values.clone()).Validate()
+	if validateErr != nil {
+		return validateErr
+	}
+	if err := validateSecretNames(secrets); err != nil {
 		return err
 	}
-	for name := range secrets {
-		if !slices.Contains(SecretNames(), name) {
-			return fmt.Errorf("unknown secret %q", name)
-		}
+	var writeErr error
+	if len(secrets) == 0 {
+		writeErr = c.store.SetRuntimeSettings(ctx, validated)
+	} else {
+		writeErr = c.store.SetRuntimeSettingsAndSecrets(ctx, validated, secrets)
 	}
-	if err := c.store.SetRuntimeSettingsAndSecrets(ctx, validated, secrets); err != nil {
-		return fmt.Errorf("%w: %w", ErrStore, err)
-	}
-	replaced := make(map[SecretName]Secret, len(current.secrets)+len(secrets))
-	maps.Copy(replaced, current.secrets)
-	for name, secret := range secrets {
-		if secret.IsSet() {
-			replaced[name] = secret
-		} else {
-			delete(replaced, name)
-		}
+	if writeErr != nil {
+		return fmt.Errorf("%w: %w", ErrStore, writeErr)
 	}
 	c.snapshot.Store(&Snapshot{
-		values: validated, secrets: replaced, generation: current.generation + 1,
+		values: validated, secrets: mergeSecrets(current.secrets, secrets), generation: current.generation + 1,
 	})
+
 	return nil
 }
 

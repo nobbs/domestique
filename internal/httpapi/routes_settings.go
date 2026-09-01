@@ -204,10 +204,8 @@ func settingsBody[Body any](h *Handler, writer http.ResponseWriter, request *htt
 	return body, true
 }
 
-// storeSection writes one section and then its credentials, and answers with
-// every setting now in force. The change is applied to the settings as they are
-// at the moment of the write. The section goes first because it is the half that
-// can be refused: a credential written before it would stay written under a 400.
+// storeSection commits one section and its credentials together, applied to the
+// settings as they are at the moment of the write, and answers with every setting now in force.
 func (h *Handler) storeSection(
 	writer http.ResponseWriter,
 	request *http.Request,

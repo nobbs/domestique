@@ -54,19 +54,19 @@ func (s *Store) migrateTo(ctx context.Context, databasePath string, targetVersio
 		if !legacyExists || legacyVersion != trackedVersion {
 			return errors.New("state schema migration history is not current")
 		}
-		if trackedVersion > targetVersion {
+		// The fingerprint is checked when the schema changes hands: on adoption
+		// and after applying migrations. A tracked, current database only needs a health check.
+		if trackedVersion >= targetVersion {
 			return databaseHealthy(ctx, s.database)
 		}
 		if trackedVersion < baselineSchemaVersion {
 			return errors.New("state schema migration history predates the current baseline")
 		}
-		if trackedVersion < targetVersion {
-			if err := applyMigrations(databasePath, targetVersion, files, directory); err != nil {
-				return err
-			}
-			if err := validateMigrationWatermarks(ctx, s.database, targetVersion); err != nil {
-				return err
-			}
+		if err := applyMigrations(databasePath, targetVersion, files, directory); err != nil {
+			return err
+		}
+		if err := validateMigrationWatermarks(ctx, s.database, targetVersion); err != nil {
+			return err
 		}
 		return validateSchema(ctx, s.database, targetVersion, files, directory)
 	}

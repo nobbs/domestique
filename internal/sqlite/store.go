@@ -149,6 +149,22 @@ func rollback(transaction *sql.Tx) {
 	_ = transaction.Rollback()
 }
 
+// withTx runs write inside one transaction, committing only when it succeeds.
+func (s *Store) withTx(ctx context.Context, what string, write func(*sqlcgen.Queries) error) error {
+	transaction, err := s.database.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("starting the %s write: %w", what, err)
+	}
+	defer rollback(transaction)
+	if err := write(s.queries.WithTx(transaction)); err != nil {
+		return err
+	}
+	if err := transaction.Commit(); err != nil {
+		return fmt.Errorf("committing the %s: %w", what, err)
+	}
+	return nil
+}
+
 func boolInteger(value bool) int64 {
 	if value {
 		return 1
