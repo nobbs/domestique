@@ -31,6 +31,7 @@ export const RouteDetail: Story = {
           bands={bands}
           highlight={highlight}
           onHighlightChange={setHighlight}
+          onHighlightClear={() => setHighlight(null)}
           collapsed={collapsed}
           onCollapsedChange={setCollapsed}
           libraryCount={47}

@@ -3,11 +3,12 @@
  *
  * Two things here are load-bearing and neither is visual: that a class is
  * labelled with the ground it covers rather than its share of the route, and
- * that pressing one is a toggle — the whole route back on a second press —
- * because the map fades around whatever it reports.
+ * that a plain click always reports its own class, pressed or not — stepping
+ * is the highlight owner's business, not this bar's — while alt-click reports
+ * the whole route back.
  */
 
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { surfaceEntries } from "../../lib/mix";
@@ -77,7 +78,7 @@ describe("MixColumn", () => {
     expect(screen.getByText("Surface not classified yet.")).toBeInTheDocument();
   });
 
-  it("picks a class out, and gives the whole route back on a second press", async () => {
+  it("picks a class out, and reports it again on a second plain press", async () => {
     const onHighlightChange = vi.fn();
     const { rerender } = render(
       <MixColumn
@@ -106,6 +107,25 @@ describe("MixColumn", () => {
       />,
     );
     await userEvent.click(screen.getByRole("button", { name: /^Gravel,/ }));
+
+    expect(onHighlightChange).toHaveBeenLastCalledWith({ type: "surface", kind: "gravel" });
+  });
+
+  it("gives the whole route back on an alt-click", async () => {
+    const onHighlightChange = vi.fn();
+    render(
+      <MixColumn
+        name="Surface"
+        classesLabel="Surface classes"
+        entries={surfaceEntries(ground())}
+        absence="Surface not classified yet."
+        highlight={{ type: "surface", kind: "gravel" }}
+        onHighlightChange={onHighlightChange}
+        unitSystem="metric"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /^Gravel,/ }), { altKey: true });
 
     expect(onHighlightChange).toHaveBeenLastCalledWith(null);
   });

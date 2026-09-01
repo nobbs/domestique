@@ -17,7 +17,8 @@
 
 import type { Position, SurfaceKind, SurfaceRange } from "../api/types";
 import type { CoordinateRange, DistanceWindow } from "./profile";
-import { GRADIENT_BANDS, gradientRanges } from "./profile";
+import { cumulativeMetres, GRADIENT_BANDS, gradientRanges } from "./profile";
+import type { SurfaceSummary } from "./surface";
 import { SURFACE_STYLES } from "./surface";
 
 /** A gradient band, or a surface class. Never both, and never several. */
@@ -181,4 +182,64 @@ export function litRanges(
   }
 
   return window ? intersectRanges(highlighted, [window]) : highlighted;
+}
+
+/** Where the selected class is, as metre spans in route order. */
+export function highlightSpans(
+  coordinates: Position[],
+  surface: SurfaceSummary | null,
+  highlight: Highlight,
+): DistanceWindow[] {
+  if (highlight.type === "surface") {
+    return (surface?.bands ?? [])
+      .filter((band) => band.kind === highlight.kind)
+      .map((band) => ({ startMetres: band.startMetres, endMetres: band.endMetres }));
+  }
+
+  const lastIndex = coordinates.length - 1;
+  if (lastIndex < 1) {
+    return [];
+  }
+  const distances = cumulativeMetres(coordinates);
+  const lastDistance = distances[distances.length - 1] as number;
+
+  return gradientRanges(coordinates)
+    .filter((range) => range.band === highlight.band)
+    .map((range) => ({
+      startMetres: distances[range.startIndex] as number,
+      endMetres: distances[Math.min(range.endIndex + 1, distances.length - 1)] ?? lastDistance,
+    }));
+}
+
+/**
+ * The span after the one nearest the current window, wrapping past the last.
+ *
+ * "Nearest middle" rather than "next span starting after the window" — the
+ * window on show came out of `widened()`, which can shift or clamp its edges,
+ * so a start-based comparison can land back on the span already selected.
+ */
+export function nextSpan(
+  spans: readonly DistanceWindow[],
+  window: DistanceWindow | null,
+): DistanceWindow | null {
+  if (spans.length === 0) {
+    return null;
+  }
+  if (!window) {
+    return spans[0] as DistanceWindow;
+  }
+
+  const middleOf = (span: DistanceWindow) => (span.startMetres + span.endMetres) / 2;
+  const target = middleOf(window);
+  let nearest = 0;
+  let nearestDistance = Number.POSITIVE_INFINITY;
+  spans.forEach((span, index) => {
+    const distance = Math.abs(middleOf(span) - target);
+    if (distance < nearestDistance) {
+      nearest = index;
+      nearestDistance = distance;
+    }
+  });
+
+  return spans[(nearest + 1) % spans.length] as DistanceWindow;
 }

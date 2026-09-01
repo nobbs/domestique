@@ -10,6 +10,7 @@ import type { Climb } from "../../lib/climbs";
 import { findClimbs } from "../../lib/climbs";
 import { forecastSamples } from "../../lib/forecastSamples";
 import type { Highlight } from "../../lib/highlight";
+import { highlightSpans, nextSpan, sameHighlight } from "../../lib/highlight";
 import type { DistanceWindow } from "../../lib/profile";
 import {
   buildProfile,
@@ -121,6 +122,30 @@ export function useOpenRoute(
     [coordinates, surface],
   );
 
+  // A plain click on a chip sets the highlight and frames its first stretch;
+  // clicking the same chip again steps to the next one, wrapping past the
+  // last. `null` gives the whole route back, both the highlight and the zoom.
+  const scopeHighlight = useCallback(
+    (next: Highlight | null) => {
+      if (!next) {
+        setHighlight(null);
+        onZoomChange(null);
+        return;
+      }
+      const spans = highlightSpans(coordinates, surfaceSummary, next);
+      const span = nextSpan(spans, sameHighlight(highlight, next) ? zoomWindow : null);
+      setHighlight(next);
+      if (span) {
+        // The profile is null on routes without complete elevation, where
+        // surface spans still exist; a total of 0 would collapse the window.
+        const total =
+          routeProfile?.totalDistanceMetres ?? surfaceSummary?.totalMetres ?? span.endMetres;
+        onZoomChange(widened(span, total));
+      }
+    },
+    [coordinates, surfaceSummary, highlight, zoomWindow, onZoomChange, routeProfile],
+  );
+
   return {
     activeMetres,
     setActiveMetres,
@@ -142,5 +167,6 @@ export function useOpenRoute(
     selectClimb,
     surface,
     surfaceSummary,
+    scopeHighlight,
   };
 }

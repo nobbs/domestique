@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it, vi } from "vitest";
 import type { Route } from "../../api/types";
 import { RoutePanel, type RoutePanelProps } from "./RoutePanel";
 
@@ -35,6 +36,7 @@ function renderPanel(overrides: Partial<RoutePanelProps> = {}) {
     bands: [],
     highlight: null,
     onHighlightChange: () => {},
+    onHighlightClear: () => {},
     collapsed: false,
     onCollapsedChange: () => {},
     libraryCount: 0,
@@ -58,6 +60,17 @@ describe("RoutePanel", () => {
     expect(screen.getByText("42.5 km · 620 m")).toBeInTheDocument();
     expect(screen.queryByText("Elevation")).toBeNull();
     expect(screen.queryByText("Moving time")).toBeNull();
+  });
+
+  it("clears the highlight on collapse without touching the zoom", async () => {
+    const onHighlightClear = vi.fn();
+    const onHighlightChange = vi.fn();
+    renderPanel({ onHighlightClear, onHighlightChange });
+
+    await userEvent.click(screen.getByRole("button", { expanded: true }));
+
+    expect(onHighlightClear).toHaveBeenCalledOnce();
+    expect(onHighlightChange).not.toHaveBeenCalled();
   });
 
   it("shows nothing for a route nothing has predicted", () => {
@@ -135,6 +148,7 @@ describe("RoutePanel", () => {
           bands={[]}
           highlight={null}
           onHighlightChange={() => {}}
+          onHighlightClear={() => {}}
           collapsed={false}
           onCollapsedChange={() => {}}
           libraryCount={0}

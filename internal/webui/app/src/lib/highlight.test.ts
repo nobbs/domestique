@@ -4,10 +4,14 @@ import {
   gapsOutside,
   highlightLabel,
   highlightRanges,
+  highlightSpans,
   intersectRanges,
   litRanges,
+  nextSpan,
   sameHighlight,
 } from "./highlight";
+import { cumulativeMetres } from "./profile";
+import type { SurfaceSummary } from "./surface";
 
 /** Points spaced evenly by latitude, so every stretch is the same length. */
 function route(pointCount: number): Position[] {
@@ -208,5 +212,77 @@ describe("litRanges", () => {
       { startIndex: 4, endIndex: 6 },
       { startIndex: 10, endIndex: 12 },
     ]);
+  });
+});
+
+describe("highlightSpans", () => {
+  function surface(): SurfaceSummary {
+    return {
+      bands: [
+        { kind: "asphalt", startMetres: 0, endMetres: 100 },
+        { kind: "gravel", startMetres: 100, endMetres: 200 },
+        { kind: "asphalt", startMetres: 200, endMetres: 300 },
+        { kind: "gravel", startMetres: 300, endMetres: 400 },
+      ],
+      shares: [],
+      totalMetres: 400,
+    };
+  }
+
+  it("picks only the asked-for class's bands, in route order", () => {
+    expect(highlightSpans([], surface(), { type: "surface", kind: "gravel" })).toEqual([
+      { startMetres: 100, endMetres: 200 },
+      { startMetres: 300, endMetres: 400 },
+    ]);
+  });
+
+  it("finds nothing for a route with no surface summary", () => {
+    expect(highlightSpans([], null, { type: "surface", kind: "gravel" })).toEqual([]);
+  });
+
+  it("converts a band's index run to metres, one point past its last segment", () => {
+    const steps = ramp([...Array(40).fill(0), ...Array(40).fill(14)]);
+    const spans = highlightSpans(steps, null, { type: "band", band: 4 });
+    const ranges = highlightRanges(steps, [], { type: "band", band: 4 });
+    const distances = cumulativeMetres(steps);
+
+    expect(spans).toEqual(
+      ranges.map((range) => ({
+        startMetres: distances[range.startIndex],
+        endMetres: distances[range.endIndex],
+      })),
+    );
+  });
+});
+
+describe("nextSpan", () => {
+  const spans = [
+    { startMetres: 0, endMetres: 100 },
+    { startMetres: 200, endMetres: 300 },
+    { startMetres: 400, endMetres: 500 },
+  ];
+
+  it("finds nothing in an empty list", () => {
+    expect(nextSpan([], null)).toBeNull();
+  });
+
+  it("starts at the first span with no window yet", () => {
+    expect(nextSpan(spans, null)).toEqual(spans[0]);
+  });
+
+  it("steps to the span after the one nearest the window's middle", () => {
+    expect(nextSpan(spans, { startMetres: 0, endMetres: 100 })).toEqual(spans[1]);
+  });
+
+  it("wraps from the last span back to the first", () => {
+    expect(nextSpan(spans, { startMetres: 400, endMetres: 500 })).toEqual(spans[0]);
+  });
+
+  // `widened()` can shift or clamp a window's edges past the span it framed;
+  // stepping by nearest middle still advances instead of re-picking it.
+  it("advances rather than re-selecting when a widened window overshoots its span", () => {
+    // Middle sits at 200: nearest by middle is spans[1] (mid 250, over spans[0]
+    // at mid 50), so the next span is spans[2] — not a re-pick of spans[1].
+    expect(nextSpan(spans, { startMetres: 50, endMetres: 350 })).toEqual(spans[2]);
   });
 });

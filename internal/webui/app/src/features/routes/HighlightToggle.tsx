@@ -1,10 +1,10 @@
 /**
  * One class of one mix, pressable.
  *
- * Several things offer the reader a class to pick out — an upright bar's
- * labels, a ribbon's own class names, a chip — and all of them have to agree
- * that pressing the pressed one gives the whole route back. Only the appearance
- * is the caller's business, so this carries none.
+ * A plain click always reports its own class — pressed or not, what a repeat
+ * press means is the highlight's owner's call, not this button's. Alt/cmd-click
+ * is the one gesture this component owns outright: it reports `null`, the
+ * whole route back. Only the appearance is otherwise the caller's business.
  */
 
 import type { ReactNode } from "react";
@@ -39,7 +39,7 @@ export function HighlightToggle({
       aria-pressed={pressed}
       aria-label={label}
       title={title}
-      onClick={() => onChange(pressed ? null : highlight)}
+      onClick={(event) => onChange(event.altKey || event.metaKey ? null : highlight)}
       className={`focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)] ${className ?? ""}`}
       style={style}
     >
