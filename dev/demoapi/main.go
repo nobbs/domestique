@@ -17,6 +17,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -54,10 +55,12 @@ func main() {
 		"write the pre-minted session token here for the UI dev server to read")
 	states := flag.String("states", "current,unauthorized",
 		"comma-separated state per configured target slot: current, failed, or unauthorized")
+	callbackURL := flag.String("callback-url", "",
+		"browser-reachable URL for /auth/callback; defaults to http://<listen address>/auth/callback")
 	flag.Parse()
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	if err := run(ctx, *sessionFile, *states); err != nil {
+	if err := run(ctx, *sessionFile, *states, *callbackURL); err != nil {
 		stop()
 		fmt.Fprintf(os.Stderr, "demoapi: %v\n", err)
 		os.Exit(1)
@@ -65,10 +68,16 @@ func main() {
 	stop()
 }
 
-func run(ctx context.Context, sessionFile, states string) error {
+func run(ctx context.Context, sessionFile, states, callbackURL string) error {
 	settings, err := config.Load()
 	if err != nil {
 		return fmt.Errorf("loading configuration: %w", err)
+	}
+	if callbackURL == "" {
+		callbackURL, err = defaultCallbackURL(settings.HTTP.ListenAddress)
+		if err != nil {
+			return err
+		}
 	}
 
 	store, err := sqlite.Open(ctx, settings.State.DatabasePath, settings.State.EncryptionKey())
@@ -97,7 +106,7 @@ func run(ctx context.Context, sessionFile, states string) error {
 		return seedErr
 	}
 
-	tenant, err := newIssuer(settings.Auth.Auth0.Domain, settings.Auth.Auth0.ClientID)
+	tenant, err := newIssuer(settings.Auth.Auth0.Domain, settings.Auth.Auth0.ClientID, callbackURL)
 	if err != nil {
 		return err
 	}
@@ -163,6 +172,18 @@ func run(ctx context.Context, sessionFile, states string) error {
 	}
 
 	return nil
+}
+
+// defaultCallbackURL is where the demo issuer sends the browser back to when no
+// -callback-url was given: the demo API's own loopback port, since the
+// configured listen address's host is typically empty (every interface).
+func defaultCallbackURL(listenAddress string) (string, error) {
+	_, port, err := net.SplitHostPort(listenAddress)
+	if err != nil {
+		return "", fmt.Errorf("reading the demo listen address: %w", err)
+	}
+
+	return fmt.Sprintf("http://127.0.0.1:%s/auth/callback", port), nil
 }
 
 // newHandler wires the served surface the same way the binary does, minus every

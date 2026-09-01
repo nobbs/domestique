@@ -48,13 +48,15 @@ type issuer struct {
 	private     *rsa.PrivateKey
 	certificate tls.Certificate
 	roots       *x509.CertPool
+	callback    *url.URL
 	address     string
 	clientID    string
 }
 
 // newIssuer prepares a tenant on the given host:port. It listens only once
-// serve is called.
-func newIssuer(address, clientID string) (*issuer, error) {
+// serve is called. callbackURL is where the browser is sent back to after
+// authorize, in place of whatever redirect_uri it was asked to use.
+func newIssuer(address, clientID, callbackURL string) (*issuer, error) {
 	private, err := rsa.GenerateKey(rand.Reader, signingKeyBits)
 	if err != nil {
 		return nil, fmt.Errorf("generating a demo signing key: %w", err)
@@ -67,11 +69,16 @@ func newIssuer(address, clientID string) (*issuer, error) {
 	if err != nil {
 		return nil, err
 	}
+	callback, err := url.Parse(callbackURL)
+	if err != nil || callback.Host == "" {
+		return nil, fmt.Errorf("reading the demo issuer callback url %q: %w", callbackURL, err)
+	}
 
 	return &issuer{
 		private:     private,
 		certificate: certificate,
 		roots:       roots,
+		callback:    callback,
 		address:     address,
 		clientID:    clientID,
 	}, nil
@@ -125,23 +132,22 @@ func (i *issuer) client(clientSecret []byte, redirectURL string) (*auth0.Client,
 
 // authorize admits the caller at once: a demo has nobody to ask. The nonce
 // rides back inside the code, so the token endpoint needs no state of its own.
+// The browser goes to i.callback, not redirect_uri: the service derives that
+// from browser_origin_url, which the demo keeps deliberately unroutable.
 func (i *issuer) authorize(writer http.ResponseWriter, request *http.Request) {
 	query := request.URL.Query()
-	redirect, err := url.Parse(query.Get("redirect_uri"))
-	if err != nil || redirect.Host == "" {
+	if query.Get("redirect_uri") == "" {
 		http.Error(writer, "redirect_uri is required", http.StatusBadRequest)
 
 		return
 	}
-	back := redirect.Query()
-	back.Set("state", query.Get("state"))
-	back.Set("code", base64.RawURLEncoding.EncodeToString([]byte(query.Get("nonce"))))
-	redirect.RawQuery = back.Encode()
+	back := *i.callback
+	values := back.Query()
+	values.Set("state", query.Get("state"))
+	values.Set("code", base64.RawURLEncoding.EncodeToString([]byte(query.Get("nonce"))))
+	back.RawQuery = values.Encode()
 
-	// A development-only issuer, on a loopback port, sending the caller back to
-	// the redirect_uri it supplied.
-	//nolint:gosec // G710: the target is the caller's own redirect_uri.
-	http.Redirect(writer, request, redirect.String(), http.StatusFound)
+	http.Redirect(writer, request, back.String(), http.StatusFound)
 }
 
 func (i *issuer) token(writer http.ResponseWriter, request *http.Request) {

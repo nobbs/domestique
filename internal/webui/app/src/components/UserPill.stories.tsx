@@ -84,6 +84,9 @@ export const SignedIn: Story = {
 
     const menu = await screen.findByRole("dialog", { name: "Session" });
     await expect(menu).toHaveTextContent("alexej.disterhoft@example.test");
+    // Presence, not visibility: the popover is still animating open here. The
+    // sign-out itself is exercised end to end by e2e/contract/sign-in.spec.ts.
+    await expect(screen.getByRole("button", { name: "Sign out" })).toBeEnabled();
   },
 };
 
