@@ -652,7 +652,7 @@ run = "./dev/container-smoke.sh"
 [ci-lint]
 description = "The lint half of the gate, as CI groups it"
 depends = [
-	"sql-check",
+  "sql-check",
   "hygiene",
   "lint",
   "shell-lint",

@@ -48,6 +48,7 @@ func (s *stubStore) SetRuntimeSettings(_ context.Context, values Values) error {
 	return nil
 }
 
+//nolint:gocritic // value param: this double conforms to the Store contract.
 func (s *stubStore) SetRuntimeSettingsAndSecrets(_ context.Context, values Values, secrets map[SecretName]Secret) error {
 	if s.writeErr != nil {
 		return s.writeErr

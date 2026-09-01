@@ -77,7 +77,7 @@ func (s *Store) SetRuntimeSettings(ctx context.Context, values runtimeconfig.Val
 		return fmt.Errorf("starting the runtime settings write: %w", err)
 	}
 	defer rollback(transaction)
-	if err := s.writeRuntimeSettings(ctx, transaction, values); err != nil {
+	if err := s.writeRuntimeSettings(ctx, transaction, &values); err != nil {
 		return err
 	}
 	if err := transaction.Commit(); err != nil {
@@ -86,7 +86,7 @@ func (s *Store) SetRuntimeSettings(ctx context.Context, values runtimeconfig.Val
 	return nil
 }
 
-func (s *Store) writeRuntimeSettings(ctx context.Context, transaction *sql.Tx, values runtimeconfig.Values) error {
+func (s *Store) writeRuntimeSettings(ctx context.Context, transaction *sql.Tx, values *runtimeconfig.Values) error {
 
 	if _, err := transaction.ExecContext(ctx, `
 		UPDATE runtime_settings
@@ -323,6 +323,8 @@ func (s *Store) writeRuntimeSecrets(
 }
 
 // SetRuntimeSettingsAndSecrets commits a settings section and its credentials together.
+//
+//nolint:gocritic // value param: this method conforms to the runtimeconfig.Store contract.
 func (s *Store) SetRuntimeSettingsAndSecrets(
 	ctx context.Context, values runtimeconfig.Values, secrets map[runtimeconfig.SecretName]runtimeconfig.Secret,
 ) error {
@@ -331,7 +333,7 @@ func (s *Store) SetRuntimeSettingsAndSecrets(
 		return fmt.Errorf("starting the runtime settings write: %w", err)
 	}
 	defer rollback(transaction)
-	if err := s.writeRuntimeSettings(ctx, transaction, values); err != nil {
+	if err := s.writeRuntimeSettings(ctx, transaction, &values); err != nil {
 		return err
 	}
 	if err := s.writeRuntimeSecrets(ctx, transaction, secrets); err != nil {

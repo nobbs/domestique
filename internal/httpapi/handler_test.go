@@ -65,7 +65,7 @@ func (s *staticSettings) Update(_ context.Context, change func(runtimeconfig.Val
 func (s *staticSettings) UpdateWithSecrets(_ context.Context, change func(runtimeconfig.Values) runtimeconfig.Values, secrets map[runtimeconfig.SecretName]runtimeconfig.Secret) error {
 	values, err := change(s.values).Validate()
 	if err != nil {
-		return err
+		return fmt.Errorf("validating settings: %w", err)
 	}
 	if s.storeFail != nil {
 		return fmt.Errorf("%w: %w", runtimeconfig.ErrStore, s.storeFail)

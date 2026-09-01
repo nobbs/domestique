@@ -114,7 +114,7 @@ func (s *Store) configure(ctx context.Context) error {
 func openDatabase(databasePath string) (*sql.DB, error) {
 	database, err := sql.Open(driverName, databaseDSN(databasePath))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("opening state database: %w", err)
 	}
 	database.SetMaxOpenConns(1)
 	database.SetMaxIdleConns(1)

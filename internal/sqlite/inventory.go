@@ -22,6 +22,7 @@ func (s *Store) TrustedInventory(ctx context.Context) ([]route.Route, error) {
 	}
 
 	stages := make([]route.Route, 0)
+	//nolint:gocritic // sqlc rows are short-lived; the clearer value range avoids needless indexing.
 	for _, row := range rows {
 		if !row.GeometryHash.Valid || row.GeometryHash.String != row.ContentHash {
 			return nil, fmt.Errorf(

@@ -1,7 +1,9 @@
 package sqlite
 
 import (
+	"context"
 	"database/sql"
+	"fmt"
 	"path/filepath"
 	"testing"
 
@@ -39,15 +41,30 @@ func TestStoreMarksValidatedLegacyState(t *testing.T) {
 }
 
 func TestStoreRefusesInvalidMigrationState(t *testing.T) {
-	for name, mutate := range map[string]func(*sql.DB){
-		"dirty": func(database *sql.DB) { _, _ = database.Exec(`UPDATE domestique_migrations SET dirty = 1`) },
-		"older legacy": func(database *sql.DB) {
-			_, _ = database.Exec(`DROP TABLE domestique_migrations`)
-			_, _ = database.Exec(`DELETE FROM schema_migrations WHERE version = 27`)
+	for name, mutate := range map[string]func(context.Context, *sql.DB) error{
+		"dirty": func(ctx context.Context, database *sql.DB) error {
+			if _, err := database.ExecContext(ctx, `UPDATE domestique_migrations SET dirty = 1`); err != nil {
+				return fmt.Errorf("marking state schema dirty: %w", err)
+			}
+			return nil
 		},
-		"schema drift": func(database *sql.DB) {
-			_, _ = database.Exec(`DROP TABLE domestique_migrations`)
-			_, _ = database.Exec(`ALTER TABLE targets ADD COLUMN unexpected TEXT`)
+		"older legacy": func(ctx context.Context, database *sql.DB) error {
+			if _, err := database.ExecContext(ctx, `DROP TABLE domestique_migrations`); err != nil {
+				return fmt.Errorf("removing state migration tracker: %w", err)
+			}
+			if _, err := database.ExecContext(ctx, `DELETE FROM schema_migrations WHERE version = 27`); err != nil {
+				return fmt.Errorf("rewinding legacy state migration: %w", err)
+			}
+			return nil
+		},
+		"schema drift": func(ctx context.Context, database *sql.DB) error {
+			if _, err := database.ExecContext(ctx, `DROP TABLE domestique_migrations`); err != nil {
+				return fmt.Errorf("removing state migration tracker: %w", err)
+			}
+			if _, err := database.ExecContext(ctx, `ALTER TABLE targets ADD COLUMN unexpected TEXT`); err != nil {
+				return fmt.Errorf("changing state schema: %w", err)
+			}
+			return nil
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -57,12 +74,17 @@ func TestStoreRefusesInvalidMigrationState(t *testing.T) {
 			require.NoError(t, store.Close())
 			database, err := sql.Open(driverName, databaseDSN(databasePath))
 			require.NoError(t, err)
-			mutate(database)
+			require.NoError(t, mutate(t.Context(), database))
 			require.NoError(t, database.Close())
 			_, err = Open(t.Context(), databasePath, testKey(1))
 			require.Error(t, err)
 		})
 	}
+}
+
+func TestCheckConstraintsCapturesNestedParentheses(t *testing.T) {
+	checks := checkConstraints(`CREATE TABLE test (surface TEXT CHECK (surface IN ('asphalt', 'gravel')))`)
+	assert.Equal(t, []string{"surface in ('asphalt', 'gravel')"}, checks)
 }
 
 func TestStorePreservesPreviousReleaseRollbackWindow(t *testing.T) {
@@ -95,10 +117,10 @@ func TestDatabaseDSNConfiguresEveryConnection(t *testing.T) {
 	t.Cleanup(func() { assert.NoError(t, database.Close()) })
 	first, err := database.Conn(t.Context())
 	require.NoError(t, err)
-	defer first.Close()
+	t.Cleanup(func() { require.NoError(t, first.Close()) })
 	second, err := database.Conn(t.Context())
 	require.NoError(t, err)
-	defer second.Close()
+	t.Cleanup(func() { require.NoError(t, second.Close()) })
 	for _, connection := range []*sql.Conn{first, second} {
 		var foreignKeys, busyTimeout int
 		require.NoError(t, connection.QueryRowContext(t.Context(), `PRAGMA foreign_keys`).Scan(&foreignKeys))
