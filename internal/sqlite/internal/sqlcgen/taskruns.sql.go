@@ -179,7 +179,7 @@ const listTaskRunsPage = `-- name: ListTaskRunsPage :many
 SELECT id, task, argument, trigger, started_at_unix, finished_at_unix, outcome, detail, reference
 FROM task_runs
 WHERE (finished_at_unix, id) < (?1, ?2)
-  AND (?3 = '' OR task = ?3)
+  AND (CAST(?3 AS TEXT) = '' OR task = ?3)
 ORDER BY finished_at_unix DESC, id DESC
 LIMIT ?4
 `
@@ -187,7 +187,7 @@ LIMIT ?4
 type ListTaskRunsPageParams struct {
 	FinishedBefore int64
 	IDBefore       int64
-	TaskFilter     interface{}
+	TaskFilter     string
 	RowLimit       int64
 }
 

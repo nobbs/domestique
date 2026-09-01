@@ -25,7 +25,7 @@ FROM task_runs WHERE task = ? ORDER BY finished_at_unix DESC, id DESC;
 SELECT id, task, argument, trigger, started_at_unix, finished_at_unix, outcome, detail, reference
 FROM task_runs
 WHERE (finished_at_unix, id) < (sqlc.arg(finished_before), sqlc.arg(id_before))
-  AND (sqlc.arg(task_filter) = '' OR task = sqlc.arg(task_filter))
+  AND (CAST(sqlc.arg(task_filter) AS TEXT) = '' OR task = sqlc.arg(task_filter))
 ORDER BY finished_at_unix DESC, id DESC
 LIMIT sqlc.arg(row_limit);
 
