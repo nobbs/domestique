@@ -343,20 +343,12 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
    * be a minefield — the card is what says which route was hit before anything
    * is committed to.
    *
-   * With a route already open the step is skipped: there is no column for a card
-   * to be in, so a pick opens the line it landed on. The open route itself is
-   * left alone rather than reopened, which would throw away everything asked of
-   * it since — the stretch the chart is zoomed into most of all, picked by
-   * dragging along that very line. The map makes the same promise by giving that
-   * one line no pointer cursor.
+   * An opened route keeps the map to itself: its hit target is gone once the
+   * overlay is up, and a pick before that is still not a way out of the route.
    */
   const pick = useCallback(
     (key: string) => {
       if (openKey !== null) {
-        if (key !== openKey) {
-          open(key);
-        }
-
         return;
       }
       if (key === pickedKey) {

@@ -496,15 +496,14 @@ describe("AtlasPage", () => {
     expect(lastDrawing().pickedKey).toBe("veloplanner/1/2");
   });
 
-  // With a route open there is no column for a card to be in, so the map's own
-  // pick is the whole gesture.
-  it("swaps the open route for one pointed at on the map", async () => {
+  // The library goes away under an opened route, and the window before its
+  // overlay is up is not a hole in that: a line hit there is not a way out.
+  it("keeps the open route when another line is pointed at", async () => {
     renderPage(LIBRARY, { at: "/?route=veloplanner%2F2%2F1" });
     await userEvent.click(screen.getByRole("button", { name: "point at veloplanner/1/1" }));
 
-    expect(
-      screen.getByRole("region", { name: "Rhine Traverse — Valley floor" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Kaiserstuhl Loop" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Rhine Traverse — Valley floor" })).toBeNull();
   });
 
   /*
