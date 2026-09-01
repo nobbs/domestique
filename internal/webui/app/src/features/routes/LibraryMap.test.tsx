@@ -24,6 +24,7 @@ interface SourceRecord {
 interface LayerRecord {
   id: string;
   paint: Record<string, unknown>;
+  layout?: Record<string, unknown>;
   filter?: unknown;
 }
 
@@ -338,6 +339,25 @@ describe("LibraryMap", () => {
     show({ pickedKey: "2/1", overlay: <div data-testid="overlay" /> });
 
     expect(drawn.layers.find((entry) => entry.id === "library-selected-line")).toBeUndefined();
+  });
+
+  /*
+   * Real libraries share roads, and the faded lines crossing an opened route
+   * were being hit instead of it — a stray click swapped the whole route and
+   * took the stretch it was zoomed into with it. The library goes away with the
+   * pick: nothing left to hit, and nothing left to hit it with.
+   */
+  it("puts the library away while the opened route has the map", async () => {
+    show({ pickedKey: "2/1", overlay: <div data-testid="overlay" />, onPick: () => {} });
+
+    expect(layer("library-line").layout).toMatchObject({ visibility: "none" });
+    expect(drawn.layers.find((entry) => entry.id === "library-hit")).toBeUndefined();
+    expect(drawn.maps.at(-1)).toMatchObject({ interactiveLayerIds: [] });
+
+    await userEvent.click(screen.getByRole("button", { name: "point at a line" }));
+
+    expect(drawn.layers.find((entry) => entry.id === "library-hover-line")).toBeUndefined();
+    expect(drawn.maps.at(-1)).toMatchObject({ cursor: "" });
   });
 
   it("draws nothing in the accent while no route is picked", () => {

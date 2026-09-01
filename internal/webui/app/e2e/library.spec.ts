@@ -290,6 +290,9 @@ test("pointing at a line on the map picks that route out, twice to open it", asy
     await settleMap(page);
     const next = await pointAtALine(page);
     await page.mouse.click(next.x, next.y);
+    // `isVisible` does not wait, and an opened route puts the library away: a
+    // pass that read too early would hunt a line that is no longer there.
+    await settleMap(page);
 
     // Re-read rather than trusting the title from before the click: the camera
     // reframes around the panels as they come and go, so the line under the
