@@ -13,7 +13,7 @@ import (
 const capLoginTransactions = `-- name: CapLoginTransactions :exec
 DELETE FROM login_transactions
 WHERE state_digest NOT IN (
-  SELECT state_digest FROM login_transactions ORDER BY expires_at_unix DESC LIMIT ?
+  SELECT state_digest FROM login_transactions ORDER BY expires_at_unix DESC, rowid DESC LIMIT ?
 )
 `
 

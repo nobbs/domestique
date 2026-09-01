@@ -78,6 +78,27 @@ func TestStoreBeginLoginCapsTransactionCount(t *testing.T) {
 	require.ErrorIs(t, err, ErrLoginNotFound, "ConsumeLogin() the oldest attempt must be evicted")
 }
 
+func TestStoreBeginLoginKeepsNewestWhenExpiriesTie(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	now := time.Unix(1_700_000_000, 0)
+	// Expiry is stored with second precision, so a burst within one second ties
+	// on expires_at_unix and eviction has to fall back on insertion order.
+	expiresAt := now.Add(time.Minute)
+
+	const attempts = 70
+	for index := range attempts {
+		require.NoError(t, store.BeginLogin(t.Context(), loginDigest(byte(index)), "nonce", "verifier", now, expiresAt), "BeginLogin()")
+	}
+
+	for index := attempts - maximumLoginTransactions; index < attempts; index++ {
+		_, _, err := store.ConsumeLogin(t.Context(), loginDigest(byte(index)), now)
+		require.NoErrorf(t, err, "ConsumeLogin() attempt %d must survive eviction", index)
+	}
+
+	_, _, err := store.ConsumeLogin(t.Context(), loginDigest(0), now)
+	require.ErrorIs(t, err, ErrLoginNotFound, "ConsumeLogin() the oldest tied attempt must be evicted")
+}
+
 func TestStoreRoundTripsSession(t *testing.T) {
 	store := openTestStore(t, testKey(1))
 	now := time.Unix(1_700_000_000, 0)
