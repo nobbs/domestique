@@ -55,7 +55,7 @@ func (s *Store) migrateTo(ctx context.Context, databasePath string, targetVersio
 			return errors.New("state schema migration history is not current")
 		}
 		if trackedVersion > targetVersion {
-			return nil
+			return databaseHealthy(ctx, s.database)
 		}
 		if trackedVersion < baselineSchemaVersion {
 			return errors.New("state schema migration history predates the current baseline")

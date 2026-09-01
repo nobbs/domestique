@@ -376,6 +376,24 @@ func TestStorePreservesPreviousReleaseRollbackWindow(t *testing.T) {
 	assert.Contains(t, err.Error(), schemaAheadMessage)
 }
 
+func TestStoreChecksForeignKeysDuringRollbackWindow(t *testing.T) {
+	databasePath := filepath.Join(t.TempDir(), "state.db")
+	store, err := Open(t.Context(), databasePath, testKey(1))
+	require.NoError(t, err)
+	require.NoError(t, store.Close())
+	database, err := sql.Open(driverName, databasePath+"?_foreign_keys=off")
+	require.NoError(t, err)
+	_, err = database.ExecContext(t.Context(), `
+		UPDATE domestique_migrations SET version = ?;
+		INSERT INTO schema_migrations (version, applied_at_unix) VALUES (?, 0);
+		INSERT INTO oauth_transactions (id, target_slot, state_digest, code_verifier, expires_at_unix) VALUES ('broken', 'missing', X'00', X'00', 0);
+	`, currentSchemaVersion+1, currentSchemaVersion+1)
+	require.NoError(t, err)
+	require.NoError(t, database.Close())
+	_, err = Open(t.Context(), databasePath, testKey(1))
+	require.ErrorContains(t, err, "state foreign key check failed")
+}
+
 func TestDatabaseDSNConfiguresEveryConnection(t *testing.T) {
 	database, err := sql.Open(driverName, databaseDSN(filepath.Join(t.TempDir(), "state.db")))
 	require.NoError(t, err)
