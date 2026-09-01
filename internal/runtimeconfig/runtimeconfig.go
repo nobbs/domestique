@@ -138,16 +138,36 @@ type Store interface {
 	SetRuntimeSecrets(ctx context.Context, secrets map[SecretName]Secret) error
 }
 
+// Snapshot is one immutable generation of the settings and credentials in force.
+type Snapshot struct {
+	secrets    map[SecretName]Secret
+	values     Values
+	generation uint64
+}
+
+// Values returns this snapshot's settings with independent list storage.
+func (s *Snapshot) Values() Values {
+	return s.values.clone()
+}
+
+// Secret returns one credential from this snapshot, or an unset one when absent.
+func (s *Snapshot) Secret(name SecretName) Secret {
+	return s.secrets[name]
+}
+
+// Generation identifies the edit that produced this snapshot.
+func (s *Snapshot) Generation() uint64 {
+	return s.generation
+}
+
 // Current holds whichever settings are live and hands them to readers. Every
 // reader takes a copy for one run, request, or notification.
 type Current struct {
-	values  atomic.Pointer[Values]
-	secrets atomic.Pointer[map[SecretName]Secret]
-	store   Store
+	snapshot atomic.Pointer[Snapshot]
+	store    Store
 	// writing serialises the read-modify-write that every section edit performs,
 	// over its settings and its credentials alike.
-	writing    sync.Mutex
-	generation atomic.Uint64
+	writing sync.Mutex
 }
 
 // ErrStore reports that the store refused a write, separating a service that
@@ -173,8 +193,7 @@ func Load(ctx context.Context, store Store) (*Current, error) {
 	}
 
 	current := &Current{store: store}
-	current.values.Store(&validated)
-	current.secrets.Store(&secrets)
+	current.snapshot.Store(&Snapshot{values: validated, secrets: maps.Clone(secrets)})
 
 	return current, nil
 }
@@ -182,12 +201,12 @@ func Load(ctx context.Context, store Store) (*Current, error) {
 // Generation counts the edits that have landed. A caller holding something built
 // from these settings keeps it until this number moves.
 func (c *Current) Generation() uint64 {
-	return c.generation.Load()
+	return c.Snapshot().Generation()
 }
 
 // Secret returns one stored credential, or an unset one when it is absent.
 func (c *Current) Secret(name SecretName) Secret {
-	return (*c.secrets.Load())[name]
+	return c.Snapshot().Secret(name)
 }
 
 // SecretIsSet reports whether a credential is stored, without providing any way
@@ -218,9 +237,9 @@ func (c *Current) SetSecrets(ctx context.Context, secrets map[SecretName]Secret)
 		return fmt.Errorf("%w: %w", ErrStore, err)
 	}
 
-	stored := *c.secrets.Load()
-	replaced := make(map[SecretName]Secret, len(stored)+len(secrets))
-	maps.Copy(replaced, stored)
+	current := c.snapshot.Load()
+	replaced := make(map[SecretName]Secret, len(current.secrets)+len(secrets))
+	maps.Copy(replaced, current.secrets)
 	for name, secret := range secrets {
 		if secret.IsSet() {
 			replaced[name] = secret
@@ -228,8 +247,9 @@ func (c *Current) SetSecrets(ctx context.Context, secrets map[SecretName]Secret)
 			delete(replaced, name)
 		}
 	}
-	c.secrets.Store(&replaced)
-	c.generation.Add(1)
+	c.snapshot.Store(&Snapshot{
+		values: current.values, secrets: replaced, generation: current.generation + 1,
+	})
 
 	return nil
 }
@@ -237,7 +257,12 @@ func (c *Current) SetSecrets(ctx context.Context, secrets map[SecretName]Secret)
 // Values returns the live settings. The lists are copied, so a reader holding a
 // snapshot cannot be changed underneath by the next edit.
 func (c *Current) Values() Values {
-	return c.values.Load().clone()
+	return c.Snapshot().Values()
+}
+
+// Snapshot returns one coherent generation for readers that need settings and credentials.
+func (c *Current) Snapshot() *Snapshot {
+	return c.snapshot.Load()
 }
 
 // Update validates, persists, then publishes; values that fail either never
@@ -246,15 +271,17 @@ func (c *Current) Update(ctx context.Context, change func(Values) Values) error 
 	c.writing.Lock()
 	defer c.writing.Unlock()
 
-	validated, err := change(c.values.Load().clone()).Validate()
+	current := c.snapshot.Load()
+	validated, err := change(current.values.clone()).Validate()
 	if err != nil {
 		return err
 	}
 	if err := c.store.SetRuntimeSettings(ctx, validated); err != nil {
 		return fmt.Errorf("%w: %w", ErrStore, err)
 	}
-	c.values.Store(&validated)
-	c.generation.Add(1)
+	c.snapshot.Store(&Snapshot{
+		values: validated, secrets: current.secrets, generation: current.generation + 1,
+	})
 
 	return nil
 }
@@ -263,7 +290,8 @@ func (c *Current) Update(ctx context.Context, change func(Values) Values) error 
 func (c *Current) UpdateWithSecrets(ctx context.Context, change func(Values) Values, secrets map[SecretName]Secret) error {
 	c.writing.Lock()
 	defer c.writing.Unlock()
-	validated, err := change(c.values.Load().clone()).Validate()
+	current := c.snapshot.Load()
+	validated, err := change(current.values.clone()).Validate()
 	if err != nil {
 		return err
 	}
@@ -275,9 +303,8 @@ func (c *Current) UpdateWithSecrets(ctx context.Context, change func(Values) Val
 	if err := c.store.SetRuntimeSettingsAndSecrets(ctx, validated, secrets); err != nil {
 		return fmt.Errorf("%w: %w", ErrStore, err)
 	}
-	stored := *c.secrets.Load()
-	replaced := make(map[SecretName]Secret, len(stored)+len(secrets))
-	maps.Copy(replaced, stored)
+	replaced := make(map[SecretName]Secret, len(current.secrets)+len(secrets))
+	maps.Copy(replaced, current.secrets)
 	for name, secret := range secrets {
 		if secret.IsSet() {
 			replaced[name] = secret
@@ -285,9 +312,9 @@ func (c *Current) UpdateWithSecrets(ctx context.Context, change func(Values) Val
 			delete(replaced, name)
 		}
 	}
-	c.values.Store(&validated)
-	c.secrets.Store(&replaced)
-	c.generation.Add(1)
+	c.snapshot.Store(&Snapshot{
+		values: validated, secrets: replaced, generation: current.generation + 1,
+	})
 	return nil
 }
 
@@ -307,7 +334,8 @@ func (v Values) clone() Values {
 // Missing names every setting still to be entered, in the order a settings page
 // offers them, including the Pushover credentials while notifications are on.
 func (c *Current) Missing() []string {
-	values := c.Values()
+	snapshot := c.Snapshot()
+	values := snapshot.Values()
 	missing := make([]string, 0)
 	for _, setting := range []struct{ name, value string }{
 		{"wahoo.api_base_url", values.Wahoo.APIBaseURL},
@@ -318,7 +346,7 @@ func (c *Current) Missing() []string {
 			missing = append(missing, setting.name)
 		}
 	}
-	if !c.Secret(SecretWahooClientSecret).IsSet() {
+	if !snapshot.Secret(SecretWahooClientSecret).IsSet() {
 		missing = append(missing, string(SecretWahooClientSecret))
 	}
 	if len(values.Wahoo.Targets) == 0 {
@@ -330,14 +358,14 @@ func (c *Current) Missing() []string {
 	for _, source := range values.Sources {
 		email, password, _ := SourceSecretNames(source.Provider)
 		for _, name := range []SecretName{email, password} {
-			if !c.Secret(name).IsSet() {
+			if !snapshot.Secret(name).IsSet() {
 				missing = append(missing, string(name))
 			}
 		}
 	}
 	if values.Notifications.Enabled {
 		for _, name := range []SecretName{SecretPushoverApplicationToken, SecretPushoverUserKey} {
-			if !c.Secret(name).IsSet() {
+			if !snapshot.Secret(name).IsSet() {
 				missing = append(missing, string(name))
 			}
 		}

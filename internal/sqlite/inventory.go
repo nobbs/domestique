@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/nobbs/domestique/internal/route"
-	generated "github.com/nobbs/domestique/internal/sqlite/sqlc"
+	"github.com/nobbs/domestique/internal/sqlite/internal/sqlcgen"
 )
 
 // TrustedInventory rebuilds the stored source inventory as the stages a target
@@ -16,7 +16,7 @@ import (
 // the source pass derived. A stage whose geometry is missing or cached against a
 // different hash fails the whole read — a smaller library reads as a deletion.
 func (s *Store) TrustedInventory(ctx context.Context) ([]route.Route, error) {
-	rows, err := generated.New(s.database).ListTrustedInventory(ctx)
+	rows, err := s.queries.ListTrustedInventory(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("reading the trusted inventory: %w", err)
 	}
@@ -49,14 +49,11 @@ func (s *Store) TrustedInventory(ctx context.Context) ([]route.Route, error) {
 // validated inventory for one source. Zero means there is no prior trusted
 // stage for that provider.
 func (s *Store) TrustedInventoryCount(ctx context.Context, provider route.Provider) (int, error) {
-	var count int
-	if err := s.database.QueryRowContext(
-		ctx, "SELECT COUNT(*) FROM source_stages WHERE provider = ?", provider,
-	).Scan(&count); err != nil {
+	count, err := s.queries.CountTrustedInventory(ctx, string(provider))
+	if err != nil {
 		return 0, fmt.Errorf("counting trusted source inventory: %w", err)
 	}
-
-	return count, nil
+	return int(count), nil
 }
 
 // StoreTrustedInventory atomically replaces one source's share of the trusted
@@ -82,28 +79,29 @@ func (s *Store) StoreTrustedInventory(ctx context.Context, provider route.Provid
 	}
 	defer rollback(transaction)
 
-	if _, err := transaction.ExecContext(ctx, "DELETE FROM source_stages WHERE provider = ?", provider); err != nil {
+	queries := s.queries.WithTx(transaction)
+	if err := queries.DeleteSourceStagesByProvider(ctx, string(provider)); err != nil {
 		return fmt.Errorf("clearing trusted source inventory: %w", err)
 	}
 	for _, stage := range stages {
 		key := stage.Key()
-		if _, err := transaction.ExecContext(ctx, `
-			INSERT INTO source_stages (provider, route_id, stage_order, source_revision, content_hash)
-			VALUES (?, ?, ?, ?, ?)
-		`, key.Provider(), key.SourceRouteID(), key.StageOrder(), stage.Revision(), stage.ContentHash()); err != nil {
+		if err := queries.InsertSourceStage(ctx, sqlcgen.InsertSourceStageParams{
+			Provider: string(key.Provider()), RouteID: key.SourceRouteID(), StageOrder: int64(key.StageOrder()),
+			SourceRevision: stage.Revision(), ContentHash: stage.ContentHash(),
+		}); err != nil {
 			return fmt.Errorf("storing trusted source stage: %w", err)
 		}
 	}
-	if err := storeStageGeometry(ctx, transaction, provider, stages); err != nil {
+	if err := storeStageGeometry(ctx, queries, provider, stages); err != nil {
 		return err
 	}
-	if err := pruneStageSurface(ctx, transaction); err != nil {
+	if err := pruneStageSurface(ctx, queries); err != nil {
 		return err
 	}
-	if err := pruneStageDuration(ctx, transaction); err != nil {
+	if err := pruneStageDuration(ctx, queries); err != nil {
 		return err
 	}
-	if err := pruneStageEnrichmentFailure(ctx, transaction); err != nil {
+	if err := pruneStageEnrichmentFailure(ctx, queries); err != nil {
 		return err
 	}
 	if err := transaction.Commit(); err != nil {
@@ -124,35 +122,17 @@ func (s *Store) ForEachTargetStage(
 		return errors.New("target ID and target stage visitor are required")
 	}
 
-	rows, err := s.database.QueryContext(ctx, `
-		SELECT provider, route_id, stage_order, source_revision, content_hash, wahoo_route_id
-		FROM target_stages
-		WHERE target_slot = ?
-		ORDER BY provider, route_id, stage_order
-	`, targetID)
+	rows, err := s.queries.ListTargetStages(ctx, targetID)
 	if err != nil {
 		return fmt.Errorf("listing target stages: %w", err)
 	}
-	defer closeRows(rows)
-
-	for rows.Next() {
-		var (
-			provider       route.Provider
-			routeID        int64
-			stageOrder     int
-			sourceRevision string
-			contentHash    string
-			wahooRouteID   int64
-		)
-		if err := rows.Scan(&provider, &routeID, &stageOrder, &sourceRevision, &contentHash, &wahooRouteID); err != nil {
-			return fmt.Errorf("reading target stage: %w", err)
-		}
-		if err := visit(provider, routeID, stageOrder, sourceRevision, contentHash, wahooRouteID); err != nil {
+	for _, row := range rows {
+		if err := visit(
+			route.Provider(row.Provider), row.RouteID, int(row.StageOrder),
+			row.SourceRevision, row.ContentHash, row.WahooRouteID,
+		); err != nil {
 			return fmt.Errorf("visiting target stage: %w", err)
 		}
-	}
-	if err := rows.Err(); err != nil {
-		return fmt.Errorf("iterating target stages: %w", err)
 	}
 
 	return nil
@@ -175,7 +155,7 @@ func (s *Store) UpsertTargetStage(
 		return errors.New("complete target stage metadata is required")
 	}
 
-	if err := generated.New(s.database).UpsertTargetStage(ctx, generated.UpsertTargetStageParams{
+	if err := s.queries.UpsertTargetStage(ctx, sqlcgen.UpsertTargetStageParams{
 		TargetSlot: targetID, Provider: string(provider), RouteID: routeID, StageOrder: int64(stageOrder),
 		WahooRouteID: wahooRouteID, ContentHash: contentHash, SourceRevision: sourceRevision,
 	}); err != nil {
@@ -192,10 +172,9 @@ func (s *Store) DeleteTargetStage(ctx context.Context, targetID string, provider
 		return errors.New("target ID and source stage key are required")
 	}
 
-	result, err := s.database.ExecContext(ctx, `
-		DELETE FROM target_stages
-		WHERE target_slot = ? AND provider = ? AND route_id = ? AND stage_order = ?
-	`, targetID, provider, routeID, stageOrder)
+	result, err := s.queries.DeleteTargetStage(ctx, sqlcgen.DeleteTargetStageParams{
+		TargetSlot: targetID, Provider: string(provider), RouteID: routeID, StageOrder: int64(stageOrder),
+	})
 	if err != nil {
 		return fmt.Errorf("deleting target stage: %w", err)
 	}

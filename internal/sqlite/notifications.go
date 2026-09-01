@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/nobbs/domestique/internal/sqlite/internal/sqlcgen"
 )
 
 // LastFailureNotification returns the previous delivery time for one safe
@@ -15,10 +17,7 @@ func (s *Store) LastFailureNotification(ctx context.Context, category string) (t
 	if category == "" {
 		return time.Time{}, false, errors.New("failure category is required")
 	}
-	var sentAt int64
-	err := s.database.QueryRowContext(ctx, `
-		SELECT last_sent_at_unix FROM notification_state WHERE kind = ?
-	`, "failure:"+category).Scan(&sentAt)
+	sentAt, err := s.queries.GetNotificationSentAt(ctx, "failure:"+category)
 	if errors.Is(err, sql.ErrNoRows) {
 		return time.Time{}, false, nil
 	}
@@ -37,18 +36,15 @@ func (s *Store) RecordFailureNotification(ctx context.Context, category string, 
 		return errors.New("failure category is required")
 	}
 	if sentAt.IsZero() {
-		if _, err := s.database.ExecContext(ctx, `
-			DELETE FROM notification_state WHERE kind = ?
-		`, "failure:"+category); err != nil {
+		if err := s.queries.DeleteNotification(ctx, "failure:"+category); err != nil {
 			return fmt.Errorf("clearing failure notification: %w", err)
 		}
 
 		return nil
 	}
-	if _, err := s.database.ExecContext(ctx, `
-		INSERT INTO notification_state (kind, last_sent_at_unix) VALUES (?, ?)
-		ON CONFLICT(kind) DO UPDATE SET last_sent_at_unix = excluded.last_sent_at_unix
-	`, "failure:"+category, sentAt.Unix()); err != nil {
+	if err := s.queries.UpsertNotification(ctx, sqlcgen.UpsertNotificationParams{
+		Kind: "failure:" + category, LastSentAtUnix: sentAt.Unix(),
+	}); err != nil {
 		return fmt.Errorf("recording failure notification: %w", err)
 	}
 

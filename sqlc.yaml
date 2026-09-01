@@ -5,6 +5,6 @@ sql:
     queries: "internal/sqlite/queries"
     gen:
       go:
-        package: "sqlc"
-        out: "internal/sqlite/sqlc"
+        package: "sqlcgen"
+        out: "internal/sqlite/internal/sqlcgen"
         emit_empty_slices: true

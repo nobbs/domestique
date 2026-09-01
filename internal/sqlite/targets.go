@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/nobbs/domestique/internal/sqlite/internal/sqlcgen"
 )
 
 // Target is durable, non-secret state for one configured Wahoo target slot.
@@ -29,12 +31,11 @@ func (s *Store) EnsureTargets(ctx context.Context, targetIDs []string) error {
 	}
 	defer rollback(transaction)
 
+	queries := s.queries.WithTx(transaction)
 	for _, targetID := range targetIDs {
-		if _, err := transaction.ExecContext(ctx, `
-			INSERT INTO targets (slot, authorization_state, updated_at_unix)
-			VALUES (?, ?, ?)
-			ON CONFLICT(slot) DO NOTHING
-		`, targetID, AuthorizationNotAuthorized, time.Now().Unix()); err != nil {
+		if err := queries.EnsureTarget(ctx, sqlcgen.EnsureTargetParams{
+			Slot: targetID, AuthorizationState: string(AuthorizationNotAuthorized), UpdatedAtUnix: time.Now().Unix(),
+		}); err != nil {
 			return fmt.Errorf("creating target slot: %w", err)
 		}
 	}
@@ -47,26 +48,16 @@ func (s *Store) EnsureTargets(ctx context.Context, targetIDs []string) error {
 
 // Targets returns all target slots without exposing their refresh tokens.
 func (s *Store) Targets(ctx context.Context) ([]Target, error) {
-	rows, err := s.database.QueryContext(ctx, `
-		SELECT slot, COALESCE(wahoo_user_id, ''), authorization_state
-		FROM targets
-		ORDER BY slot
-	`)
+	rows, err := s.queries.ListTargets(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("listing target slots: %w", err)
 	}
-	defer closeRows(rows)
-
-	var targets []Target
-	for rows.Next() {
-		var target Target
-		if err := rows.Scan(&target.ID, &target.WahooUserID, &target.AuthorizationState); err != nil {
-			return nil, fmt.Errorf("reading target slot: %w", err)
-		}
-		targets = append(targets, target)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterating target slots: %w", err)
+	targets := make([]Target, 0, len(rows))
+	for _, row := range rows {
+		targets = append(targets, Target{
+			ID: row.Slot, WahooUserID: row.WahooUserID,
+			AuthorizationState: AuthorizationState(row.AuthorizationState),
+		})
 	}
 
 	return targets, nil
@@ -78,24 +69,14 @@ func (s *Store) ForEachTarget(ctx context.Context, visit func(id, authorizationS
 	if visit == nil {
 		return errors.New("target visitor is required")
 	}
-	rows, err := s.database.QueryContext(ctx, `
-		SELECT slot, authorization_state FROM targets ORDER BY slot
-	`)
+	rows, err := s.queries.ListTargetStates(ctx)
 	if err != nil {
 		return fmt.Errorf("listing targets: %w", err)
 	}
-	defer closeRows(rows)
-	for rows.Next() {
-		var id, authorizationState string
-		if err := rows.Scan(&id, &authorizationState); err != nil {
-			return fmt.Errorf("reading target: %w", err)
-		}
-		if err := visit(id, authorizationState); err != nil {
+	for _, row := range rows {
+		if err := visit(row.Slot, row.AuthorizationState); err != nil {
 			return fmt.Errorf("visiting target: %w", err)
 		}
-	}
-	if err := rows.Err(); err != nil {
-		return fmt.Errorf("iterating targets: %w", err)
 	}
 
 	return nil
@@ -103,12 +84,7 @@ func (s *Store) ForEachTarget(ctx context.Context, visit func(id, authorizationS
 
 // Target returns one target slot without exposing its refresh token.
 func (s *Store) Target(ctx context.Context, targetID string) (Target, error) {
-	var target Target
-	err := s.database.QueryRowContext(ctx, `
-		SELECT slot, COALESCE(wahoo_user_id, ''), authorization_state
-		FROM targets
-		WHERE slot = ?
-	`, targetID).Scan(&target.ID, &target.WahooUserID, &target.AuthorizationState)
+	row, err := s.queries.GetTarget(ctx, targetID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Target{}, ErrTargetNotFound
 	}
@@ -116,7 +92,10 @@ func (s *Store) Target(ctx context.Context, targetID string) (Target, error) {
 		return Target{}, fmt.Errorf("reading target slot: %w", err)
 	}
 
-	return target, nil
+	return Target{
+		ID: row.Slot, WahooUserID: row.WahooUserID,
+		AuthorizationState: AuthorizationState(row.AuthorizationState),
+	}, nil
 }
 
 func validateTargetIDs(targetIDs []string) error {

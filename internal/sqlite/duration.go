@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/nobbs/domestique/internal/route"
+	"github.com/nobbs/domestique/internal/sqlite/internal/sqlcgen"
 )
 
 // StageDurationFingerprint returns what a stored prediction was computed
@@ -20,10 +21,9 @@ func (s *Store) StageDurationFingerprint(
 	routeID int64,
 	stageOrder int,
 ) (contentHash, surfaceGeneration, coefficientFingerprint string, found bool, err error) {
-	err = s.database.QueryRowContext(ctx, `
-		SELECT content_hash, surface_generation, coefficient_fingerprint
-		FROM stage_duration WHERE provider = ? AND route_id = ? AND stage_order = ?
-	`, provider, routeID, stageOrder).Scan(&contentHash, &surfaceGeneration, &coefficientFingerprint)
+	row, err := s.queries.GetStageDurationFingerprint(ctx, sqlcgen.GetStageDurationFingerprintParams{
+		Provider: string(provider), RouteID: routeID, StageOrder: int64(stageOrder),
+	})
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", "", "", false, nil
 	}
@@ -31,7 +31,7 @@ func (s *Store) StageDurationFingerprint(
 		return "", "", "", false, fmt.Errorf("reading stage duration fingerprint: %w", err)
 	}
 
-	return contentHash, surfaceGeneration, coefficientFingerprint, true, nil
+	return row.ContentHash, row.SurfaceGeneration, row.CoefficientFingerprint, true, nil
 }
 
 // StoreStageDuration caches one stage's predicted moving time, or its absence,
@@ -53,27 +53,22 @@ func (s *Store) StoreStageDuration(
 	}
 	defer rollback(transaction)
 
-	if _, err := transaction.ExecContext(ctx, `
-		INSERT INTO stage_duration (
-			provider, route_id, stage_order, content_hash, surface_generation, coefficient_fingerprint,
-			moving_seconds, cumulative_seconds, updated_at_unix
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT (provider, route_id, stage_order) DO UPDATE SET
-			content_hash = excluded.content_hash,
-			surface_generation = excluded.surface_generation,
-			coefficient_fingerprint = excluded.coefficient_fingerprint,
-			moving_seconds = excluded.moving_seconds,
-			cumulative_seconds = excluded.cumulative_seconds,
-			updated_at_unix = excluded.updated_at_unix
-	`,
-		provider, routeID, stageOrder, contentHash, surfaceGeneration, coefficientFingerprint,
-		movingSeconds, cumulativeSeconds, time.Now().UTC().Unix(),
-	); err != nil {
+	queries := s.queries.WithTx(transaction)
+	storedMovingSeconds := sql.NullFloat64{}
+	if movingSeconds != nil {
+		storedMovingSeconds = sql.NullFloat64{Float64: *movingSeconds, Valid: true}
+	}
+	if err := queries.UpsertStageDuration(ctx, sqlcgen.UpsertStageDurationParams{
+		Provider: string(provider), RouteID: routeID, StageOrder: int64(stageOrder),
+		ContentHash: contentHash, SurfaceGeneration: surfaceGeneration,
+		CoefficientFingerprint: coefficientFingerprint, MovingSeconds: storedMovingSeconds,
+		CumulativeSeconds: cumulativeSeconds, UpdatedAtUnix: time.Now().UTC().Unix(),
+	}); err != nil {
 		return fmt.Errorf("storing stage duration: %w", err)
 	}
 	// Stored and still listed as failing cannot both be true, so the two move
 	// together.
-	if err := clearStageEnrichmentFailure(ctx, transaction, provider, routeID, stageOrder, PassDuration); err != nil {
+	if err := clearStageEnrichmentFailure(ctx, queries, provider, routeID, stageOrder, PassDuration); err != nil {
 		return err
 	}
 	if err := transaction.Commit(); err != nil {
@@ -88,9 +83,7 @@ func (s *Store) StoreStageDuration(
 // coefficient file edited between restarts. Called once at startup; an empty
 // fingerprint means no file is configured and clears every row.
 func (s *Store) PruneStageDurationsWithDifferentFingerprint(ctx context.Context, currentFingerprint string) error {
-	if _, err := s.database.ExecContext(ctx, `
-		DELETE FROM stage_duration WHERE coefficient_fingerprint != ?
-	`, currentFingerprint); err != nil {
+	if err := s.queries.DeleteStageDurationsWithDifferentFingerprint(ctx, currentFingerprint); err != nil {
 		return fmt.Errorf("pruning stale ride model predictions: %w", err)
 	}
 
@@ -101,17 +94,8 @@ func (s *Store) PruneStageDurationsWithDifferentFingerprint(ctx context.Context,
 // same terms as pruneStageSurface: a row measured against a geometry that has
 // since been re-planned addresses a stage that, as far as this row knows, no
 // longer exists.
-func pruneStageDuration(ctx context.Context, transaction *sql.Tx) error {
-	if _, err := transaction.ExecContext(ctx, `
-		DELETE FROM stage_duration
-		WHERE NOT EXISTS (
-			SELECT 1 FROM stage_geometry
-			WHERE stage_geometry.provider = stage_duration.provider
-			  AND stage_geometry.route_id = stage_duration.route_id
-			  AND stage_geometry.stage_order = stage_duration.stage_order
-			  AND stage_geometry.content_hash = stage_duration.content_hash
-		)
-	`); err != nil {
+func pruneStageDuration(ctx context.Context, queries *sqlcgen.Queries) error {
+	if err := queries.PruneStageDuration(ctx); err != nil {
 		return fmt.Errorf("pruning stage duration: %w", err)
 	}
 

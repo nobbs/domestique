@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/nobbs/domestique/internal/sqlite/internal/sqlcgen"
 )
 
 // retainedSyncRuns bounds the recorded run history. An hourly deployment writes
@@ -26,19 +28,19 @@ const syncRunReferenceBytes = 6
 //
 //nolint:gocritic // The primitive callback boundary keeps httpapi independent of SQLite record types.
 func (s *Store) LastSyncRun(ctx context.Context) (completedAt time.Time, outcome, detail string, sourceStages, created, updated, deleted int, found bool, err error) {
-	var completedUnix int64
-	err = s.database.QueryRowContext(ctx, `
-		SELECT finished_at_unix, outcome, COALESCE(detail, ''), source_stages, created, updated, deleted
-		FROM sync_runs ORDER BY id DESC LIMIT 1
-	`).Scan(&completedUnix, &outcome, &detail, &sourceStages, &created, &updated, &deleted)
+	row, err := s.queries.GetLastSyncRun(ctx)
 	if errors.Is(err, sql.ErrNoRows) {
 		return time.Time{}, "", "", 0, 0, 0, 0, false, nil
 	}
 	if err != nil {
 		return time.Time{}, "", "", 0, 0, 0, 0, false, fmt.Errorf("reading last sync run: %w", err)
 	}
+	if !row.FinishedAtUnix.Valid {
+		return time.Time{}, "", "", 0, 0, 0, 0, false, errors.New("reading last sync run: finish time is null")
+	}
 
-	return time.Unix(completedUnix, 0).UTC(), outcome, detail, sourceStages, created, updated, deleted, true, nil
+	return time.Unix(row.FinishedAtUnix.Int64, 0).UTC(), row.Outcome, row.Detail,
+		int(row.SourceStages), int(row.Created), int(row.Updated), int(row.Deleted), true, nil
 }
 
 // ForEachPhaseRun visits the most recent recorded run of each phase. The phases
@@ -51,35 +53,20 @@ func (s *Store) ForEachPhaseRun(
 	if visit == nil {
 		return errors.New("phase run visitor is required")
 	}
-	rows, err := s.database.QueryContext(ctx, `
-		SELECT phase, finished_at_unix, outcome, COALESCE(detail, ''),
-			source_stages, created, updated, deleted
-		FROM sync_runs
-		WHERE phase <> '' AND id IN (SELECT MAX(id) FROM sync_runs WHERE phase <> '' GROUP BY phase)
-		ORDER BY phase
-	`)
+	rows, err := s.queries.ListLastPhaseRuns(ctx)
 	if err != nil {
 		return fmt.Errorf("reading the last run of each phase: %w", err)
 	}
-	defer closeRows(rows)
-
-	for rows.Next() {
-		var phase, outcome, detail string
-		var completedUnix int64
-		var sourceStages, created, updated, deleted int
-		if err := rows.Scan(
-			&phase, &completedUnix, &outcome, &detail, &sourceStages, &created, &updated, &deleted,
-		); err != nil {
-			return fmt.Errorf("reading a phase run: %w", err)
+	for _, row := range rows {
+		if !row.FinishedAtUnix.Valid {
+			return errors.New("reading a phase run: finish time is null")
 		}
 		if err := visit(
-			phase, time.Unix(completedUnix, 0).UTC(), outcome, detail, sourceStages, created, updated, deleted,
+			row.Phase, time.Unix(row.FinishedAtUnix.Int64, 0).UTC(), row.Outcome, row.Detail,
+			int(row.SourceStages), int(row.Created), int(row.Updated), int(row.Deleted),
 		); err != nil {
 			return err
 		}
-	}
-	if err := rows.Err(); err != nil {
-		return fmt.Errorf("reading the runs of each phase: %w", err)
 	}
 
 	return nil
@@ -106,6 +93,7 @@ func (s *Store) ForEachSyncRun(
 	if after != "" {
 		cursor, parseErr := strconv.ParseInt(after, 10, 64)
 		if parseErr != nil {
+			//nolint:nilerr // Malformed cursors are deliberately reported as unusable.
 			return "", false, nil
 		}
 		issued, readErr := s.lastSyncRunID(ctx)
@@ -123,44 +111,28 @@ func (s *Store) ForEachSyncRun(
 	// One row past the page, so "is there more" is read rather than guessed.
 	// Rows predating the phase split carry none and are excluded here rather than
 	// in the caller, so the lookahead counts what the page will contain.
-	rows, err := s.database.QueryContext(ctx, `
-		SELECT id, reference, phase, finished_at_unix, outcome, COALESCE(detail, ''),
-			source_stages, created, updated, deleted
-		FROM sync_runs
-		WHERE id < ? AND phase <> ''
-		ORDER BY id DESC
-		LIMIT ?
-	`, position, limit+1)
+	rows, err := s.queries.ListSyncRunsPage(ctx, sqlcgen.ListSyncRunsPageParams{
+		ID: position, Limit: int64(limit + 1),
+	})
 	if err != nil {
 		return "", false, fmt.Errorf("reading sync runs: %w", err)
 	}
-	defer closeRows(rows)
-
 	visited := 0
-	for rows.Next() {
-		var id, completedUnix int64
-		var reference, phase, outcome, detail string
-		var sourceStages, created, updated, deleted int
-		if err := rows.Scan(
-			&id, &reference, &phase, &completedUnix, &outcome, &detail,
-			&sourceStages, &created, &updated, &deleted,
-		); err != nil {
-			return "", false, fmt.Errorf("reading a sync run: %w", err)
-		}
+	for _, row := range rows {
 		if visited == limit {
 			return next, true, nil
 		}
+		if !row.FinishedAtUnix.Valid {
+			return "", false, errors.New("reading a sync run: finish time is null")
+		}
 		visited++
-		next = strconv.FormatInt(id, 10)
+		next = strconv.FormatInt(row.ID, 10)
 		if err := visit(
-			reference, phase, time.Unix(completedUnix, 0).UTC(), outcome, detail,
-			sourceStages, created, updated, deleted,
+			row.Reference, row.Phase, time.Unix(row.FinishedAtUnix.Int64, 0).UTC(), row.Outcome, row.Detail,
+			int(row.SourceStages), int(row.Created), int(row.Updated), int(row.Deleted),
 		); err != nil {
 			return "", false, err
 		}
-	}
-	if err := rows.Err(); err != nil {
-		return "", false, fmt.Errorf("reading sync runs: %w", err)
 	}
 
 	// The page was not filled, so nothing follows it.
@@ -170,10 +142,8 @@ func (s *Store) ForEachSyncRun(
 // lastSyncRunID reports the highest position the store has issued to a recorded
 // run, or zero when it has recorded none.
 func (s *Store) lastSyncRunID(ctx context.Context) (int64, error) {
-	var highest int64
-	if err := s.database.QueryRowContext(
-		ctx, `SELECT COALESCE(MAX(id), 0) FROM sync_runs`,
-	).Scan(&highest); err != nil {
+	highest, err := s.queries.GetLastSyncRunID(ctx)
+	if err != nil {
 		return 0, fmt.Errorf("reading sync runs: %w", err)
 	}
 
@@ -204,16 +174,16 @@ func (s *Store) RecordSyncRun(
 	}
 	defer rollback(transaction)
 
-	if _, err := transaction.ExecContext(ctx, `
-		INSERT INTO sync_runs (
-			reference, phase, started_at_unix, finished_at_unix, outcome, detail,
-			source_stages, created, updated, deleted
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, reference, phase, startedAt.Unix(), finishedAt.Unix(), outcome, detail,
-		sourceStages, created, updated, deleted); err != nil {
+	queries := s.queries.WithTx(transaction)
+	if err := queries.InsertSyncRun(ctx, sqlcgen.InsertSyncRunParams{
+		Reference: reference, Phase: phase, StartedAtUnix: startedAt.Unix(),
+		FinishedAtUnix: sql.NullInt64{Int64: finishedAt.Unix(), Valid: true},
+		Outcome:        outcome, Detail: sql.NullString{String: detail, Valid: true},
+		SourceStages: int64(sourceStages), Created: int64(created), Updated: int64(updated), Deleted: int64(deleted),
+	}); err != nil {
 		return "", fmt.Errorf("recording sync run: %w", err)
 	}
-	if err := pruneSyncRuns(ctx, transaction); err != nil {
+	if err := pruneSyncRuns(ctx, queries); err != nil {
 		return "", err
 	}
 	if err := transaction.Commit(); err != nil {
@@ -238,12 +208,8 @@ func newSyncRunReference() (string, error) {
 // pruneSyncRuns drops everything past the retained window, in the caller's
 // transaction. The most recent run of each phase is kept whatever its age: the
 // status response reads it as what that half last came to.
-func pruneSyncRuns(ctx context.Context, transaction *sql.Tx) error {
-	if _, err := transaction.ExecContext(ctx, `
-		DELETE FROM sync_runs
-		WHERE id NOT IN (SELECT id FROM sync_runs ORDER BY id DESC LIMIT ?)
-		  AND id NOT IN (SELECT MAX(id) FROM sync_runs GROUP BY phase)
-	`, retainedSyncRuns); err != nil {
+func pruneSyncRuns(ctx context.Context, queries *sqlcgen.Queries) error {
+	if err := queries.PruneSyncRuns(ctx, retainedSyncRuns); err != nil {
 		return fmt.Errorf("pruning sync runs: %w", err)
 	}
 
@@ -262,14 +228,9 @@ func (s *Store) RecordTargetRun(
 	if strings.TrimSpace(targetID) == "" || finishedAt.IsZero() || outcome == "" {
 		return errors.New("target ID, finish time, and outcome are required")
 	}
-	if _, err := s.database.ExecContext(ctx, `
-		INSERT INTO target_runs (target_slot, finished_at_unix, outcome, detail)
-		VALUES (?, ?, ?, ?)
-		ON CONFLICT(target_slot) DO UPDATE SET
-			finished_at_unix = excluded.finished_at_unix,
-			outcome = excluded.outcome,
-			detail = excluded.detail
-	`, targetID, finishedAt.Unix(), outcome, detail); err != nil {
+	if err := s.queries.UpsertTargetRun(ctx, sqlcgen.UpsertTargetRunParams{
+		TargetSlot: targetID, FinishedAtUnix: finishedAt.Unix(), Outcome: outcome, Detail: detail,
+	}); err != nil {
 		return fmt.Errorf("recording target run: %w", err)
 	}
 
@@ -286,27 +247,14 @@ func (s *Store) ForEachTargetRun(
 	if visit == nil {
 		return errors.New("target run visitor is required")
 	}
-	rows, err := s.database.QueryContext(ctx, `
-		SELECT target_slot, finished_at_unix, outcome, detail
-		FROM target_runs ORDER BY target_slot
-	`)
+	rows, err := s.queries.ListTargetRuns(ctx)
 	if err != nil {
 		return fmt.Errorf("listing target runs: %w", err)
 	}
-	defer closeRows(rows)
-
-	for rows.Next() {
-		var targetID, outcome, detail string
-		var finishedUnix int64
-		if err := rows.Scan(&targetID, &finishedUnix, &outcome, &detail); err != nil {
-			return fmt.Errorf("reading a target run: %w", err)
-		}
-		if err := visit(targetID, time.Unix(finishedUnix, 0).UTC(), outcome, detail); err != nil {
+	for _, row := range rows {
+		if err := visit(row.TargetSlot, time.Unix(row.FinishedAtUnix, 0).UTC(), row.Outcome, row.Detail); err != nil {
 			return fmt.Errorf("visiting a target run: %w", err)
 		}
-	}
-	if err := rows.Err(); err != nil {
-		return fmt.Errorf("iterating target runs: %w", err)
 	}
 
 	return nil
@@ -319,16 +267,19 @@ func (s *Store) LastSuccessfulPhaseCompletion(ctx context.Context, phase string)
 	if phase == "" {
 		return time.Time{}, false, errors.New("phase is required")
 	}
-	var completedUnix int64
-	if err := s.database.QueryRowContext(ctx, `
-		SELECT finished_at_unix FROM sync_runs WHERE phase = ? AND outcome = ? ORDER BY id DESC LIMIT 1
-	`, phase, "succeeded").Scan(&completedUnix); err != nil {
+	completedUnix, err := s.queries.GetLastSuccessfulPhaseCompletion(ctx, sqlcgen.GetLastSuccessfulPhaseCompletionParams{
+		Phase: phase, Outcome: "succeeded",
+	})
+	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return time.Time{}, false, nil
 		}
 
 		return time.Time{}, false, fmt.Errorf("reading the last successful completion of a phase: %w", err)
 	}
+	if !completedUnix.Valid {
+		return time.Time{}, false, errors.New("reading the last successful completion of a phase: finish time is null")
+	}
 
-	return time.Unix(completedUnix, 0).UTC(), true, nil
+	return time.Unix(completedUnix.Int64, 0).UTC(), true, nil
 }

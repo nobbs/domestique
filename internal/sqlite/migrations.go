@@ -6,6 +6,7 @@ import (
 	"embed"
 	"errors"
 	"fmt"
+	"io/fs"
 	"sort"
 	"strings"
 
@@ -15,8 +16,11 @@ import (
 )
 
 const (
-	currentSchemaVersion = 27
-	migrationsTable      = "domestique_migrations"
+	// baselineSchemaVersion never advances; currentSchemaVersion advances with
+	// each additive migration after the legacy cutover.
+	baselineSchemaVersion = 27
+	currentSchemaVersion  = baselineSchemaVersion
+	migrationsTable       = "domestique_migrations"
 )
 
 type schemaObject struct {
@@ -28,6 +32,10 @@ type schemaObject struct {
 var migrationFiles embed.FS
 
 func (s *Store) migrate(ctx context.Context, databasePath string) error {
+	return s.migrateTo(ctx, databasePath, currentSchemaVersion, migrationFiles, "migrations")
+}
+
+func (s *Store) migrateTo(ctx context.Context, databasePath string, targetVersion int, files fs.FS, directory string) error {
 	legacyVersion, legacyExists, err := legacySchemaVersion(ctx, s.database)
 	if err != nil {
 		return err
@@ -40,35 +48,55 @@ func (s *Store) migrate(ctx context.Context, databasePath string) error {
 		if dirty {
 			return errors.New("state schema migration is dirty")
 		}
-		if trackedVersion > currentSchemaVersion+forwardCompatibleMigrations {
-			return fmt.Errorf("%s: the state file is at version %d and this service knows %d", schemaAheadMessage, trackedVersion, currentSchemaVersion)
+		if trackedVersion > targetVersion+forwardCompatibleMigrations {
+			return fmt.Errorf("%s: the state file is at version %d and this service knows %d", schemaAheadMessage, trackedVersion, targetVersion)
 		}
-		if trackedVersion < currentSchemaVersion || !legacyExists || legacyVersion != trackedVersion {
+		if !legacyExists || legacyVersion != trackedVersion {
 			return errors.New("state schema migration history is not current")
 		}
-		if trackedVersion == currentSchemaVersion {
-			return validateCurrentSchema(ctx, s.database)
+		if trackedVersion > targetVersion {
+			return nil
 		}
-		return nil
+		if trackedVersion < baselineSchemaVersion {
+			return errors.New("state schema migration history predates the current baseline")
+		}
+		if trackedVersion < targetVersion {
+			if err := applyMigrations(databasePath, targetVersion, files, directory); err != nil {
+				return err
+			}
+			if err := validateMigrationWatermarks(ctx, s.database, targetVersion); err != nil {
+				return err
+			}
+		}
+		return validateSchema(ctx, s.database, targetVersion, files, directory)
 	}
 	if legacyExists {
-		if legacyVersion != currentSchemaVersion {
+		if legacyVersion != baselineSchemaVersion {
 			return fmt.Errorf("state schema version %d is not supported", legacyVersion)
 		}
-		schemaErr := validateCurrentSchema(ctx, s.database)
+		schemaErr := validateSchema(ctx, s.database, baselineSchemaVersion, files, directory)
 		if schemaErr != nil {
 			return schemaErr
 		}
-		migration, closeMigration, migrationErr := openMigrator(databasePath)
+		migration, closeMigration, migrationErr := openMigrator(databasePath, files, directory)
 		if migrationErr != nil {
 			return migrationErr
 		}
 		defer closeMigration()
-		forceErr := migration.Force(currentSchemaVersion)
+		forceErr := migration.Force(baselineSchemaVersion)
 		if forceErr != nil {
 			return fmt.Errorf("recording current state baseline: %w", forceErr)
 		}
-		return nil
+		if targetVersion > baselineSchemaVersion {
+			migrationErr = migration.Migrate(uint(targetVersion))
+			if migrationErr != nil && !errors.Is(migrationErr, migrate.ErrNoChange) {
+				return fmt.Errorf("applying state migrations: %w", migrationErr)
+			}
+		}
+		if err := validateMigrationWatermarks(ctx, s.database, targetVersion); err != nil {
+			return err
+		}
+		return validateSchema(ctx, s.database, targetVersion, files, directory)
 	}
 	empty, emptyErr := databaseIsEmpty(ctx, s.database)
 	if emptyErr != nil {
@@ -76,24 +104,39 @@ func (s *Store) migrate(ctx context.Context, databasePath string) error {
 	} else if !empty {
 		return errors.New("state schema is unrecognised")
 	}
-	migration, closeMigration, migrationErr := openMigrator(databasePath)
+	migration, closeMigration, migrationErr := openMigrator(databasePath, files, directory)
 	if migrationErr != nil {
 		return migrationErr
 	}
 	defer closeMigration()
-	upErr := migration.Up()
+	upErr := migration.Migrate(uint(targetVersion))
 	if upErr != nil && !errors.Is(upErr, migrate.ErrNoChange) {
 		return fmt.Errorf("applying state baseline: %w", upErr)
 	}
-	return validateCurrentSchema(ctx, s.database)
+	if err := validateMigrationWatermarks(ctx, s.database, targetVersion); err != nil {
+		return err
+	}
+	return validateSchema(ctx, s.database, targetVersion, files, directory)
 }
 
-func openMigrator(databasePath string) (*migrate.Migrate, func(), error) {
+func applyMigrations(databasePath string, targetVersion int, files fs.FS, directory string) error {
+	migration, closeMigration, err := openMigrator(databasePath, files, directory)
+	if err != nil {
+		return err
+	}
+	defer closeMigration()
+	if err := migration.Migrate(uint(targetVersion)); err != nil && !errors.Is(err, migrate.ErrNoChange) {
+		return fmt.Errorf("applying state migrations: %w", err)
+	}
+	return nil
+}
+
+func openMigrator(databasePath string, files fs.FS, directory string) (*migrate.Migrate, func(), error) {
 	database, err := openDatabase(databasePath)
 	if err != nil {
 		return nil, nil, fmt.Errorf("opening state migration database: %w", err)
 	}
-	source, err := iofs.New(migrationFiles, "migrations")
+	source, err := iofs.New(files, directory)
 	if err != nil {
 		closeDatabase(database)
 		return nil, nil, fmt.Errorf("opening state migrations: %w", err)
@@ -109,6 +152,21 @@ func openMigrator(databasePath string) (*migrate.Migrate, func(), error) {
 		return nil, nil, fmt.Errorf("starting state migrations: %w", err)
 	}
 	return migration, func() { closeMigrator(migration) }, nil
+}
+
+func validateMigrationWatermarks(ctx context.Context, database *sql.DB, targetVersion int) error {
+	legacyVersion, legacyExists, err := legacySchemaVersion(ctx, database)
+	if err != nil {
+		return err
+	}
+	trackedVersion, tracked, dirty, err := migrationVersion(ctx, database)
+	if err != nil {
+		return err
+	}
+	if !legacyExists || !tracked || dirty || legacyVersion != targetVersion || trackedVersion != targetVersion {
+		return errors.New("state schema migration history is not current")
+	}
+	return nil
 }
 
 //nolint:errcheck // A migration cleanup error cannot replace the migration result.
@@ -164,7 +222,7 @@ func databaseIsEmpty(ctx context.Context, database *sql.DB) (bool, error) {
 	return objects == 0, nil
 }
 
-func validateCurrentSchema(ctx context.Context, actual *sql.DB) error {
+func validateSchema(ctx context.Context, actual *sql.DB, targetVersion int, files fs.FS, directory string) error {
 	if err := databaseHealthy(ctx, actual); err != nil {
 		return err
 	}
@@ -173,7 +231,7 @@ func validateCurrentSchema(ctx context.Context, actual *sql.DB) error {
 		return fmt.Errorf("opening state schema reference: %w", err)
 	}
 	defer closeDatabase(reference)
-	source, err := iofs.New(migrationFiles, "migrations")
+	source, err := iofs.New(files, directory)
 	if err != nil {
 		return fmt.Errorf("opening state schema reference migrations: %w", err)
 	}
@@ -186,7 +244,7 @@ func validateCurrentSchema(ctx context.Context, actual *sql.DB) error {
 		return fmt.Errorf("starting state schema reference migrations: %w", err)
 	}
 	defer closeMigrator(migration)
-	upErr := migration.Up()
+	upErr := migration.Migrate(uint(targetVersion))
 	if upErr != nil && !errors.Is(upErr, migrate.ErrNoChange) {
 		return fmt.Errorf("building state schema reference: %w", upErr)
 	}

@@ -19,40 +19,35 @@ const (
 	maximumBodyBytes = 1 << 20
 )
 
-// Options configures a Pushover client with resolved static credentials.
+// Configuration is one coherent set of values used for a notification send.
+type Configuration struct {
+	BaseURL          string
+	ApplicationToken []byte
+	UserKey          []byte
+}
+
+// Options configures a Pushover client.
 type Options struct {
 	Transport http.RoundTripper
-	// BaseURL is read again before each send rather than resolved once, because
-	// an operator edits it while the service runs.
-	BaseURL func() string
-	// ApplicationToken and UserKey are read per send for the same reason as
-	// BaseURL. Either may answer empty, which is a service whose notifications
-	// have not been set up yet rather than a misconfigured one.
-	ApplicationToken func() []byte
-	UserKey          func() []byte
-	Timeout          time.Duration
+	// Configuration is read once per send because an operator edits it at runtime.
+	Configuration func() Configuration
+	Timeout       time.Duration
 }
 
 // Client sends a bounded Pushover notification request.
 type Client struct {
-	client           *http.Client
-	baseURL          func() string
-	applicationToken func() []byte
-	userKey          func() []byte
+	client        *http.Client
+	configuration func() Configuration
 }
 
 // New creates a Pushover client without contacting the upstream service.
 func New(options *Options) (*Client, error) {
-	if options == nil || options.ApplicationToken == nil || options.UserKey == nil {
-		return nil, errors.New("pushover: options and credentials are required")
-	}
-	baseURL := options.BaseURL
-	if baseURL == nil {
-		baseURL = func() string { return defaultBaseURL }
+	if options == nil || options.Configuration == nil {
+		return nil, errors.New("pushover: options and configuration are required")
 	}
 	// Checked once, against what it says now. A later edit is refused where it
 	// is written, which is the only place that can still report the refusal.
-	if _, err := parseOrigin(baseURL()); err != nil {
+	if _, err := parseOrigin(configurationBaseURL(options.Configuration().BaseURL)); err != nil {
 		return nil, fmt.Errorf("pushover: base url: %w", err)
 	}
 	timeout := options.Timeout
@@ -72,9 +67,7 @@ func New(options *Options) (*Client, error) {
 			Timeout:   timeout,
 			Transport: transport,
 		},
-		baseURL:          baseURL,
-		applicationToken: options.ApplicationToken,
-		userKey:          options.UserKey,
+		configuration: options.Configuration,
 	}, nil
 }
 
@@ -84,17 +77,17 @@ func (c *Client) Send(ctx context.Context, title, message string) (err error) {
 	if strings.TrimSpace(title) == "" || strings.TrimSpace(message) == "" {
 		return errors.New("pushover: title and message are required")
 	}
-	applicationToken, userKey := c.applicationToken(), c.userKey()
-	if len(applicationToken) == 0 || len(userKey) == 0 {
+	configuration := c.configuration()
+	if len(configuration.ApplicationToken) == 0 || len(configuration.UserKey) == 0 {
 		return errors.New("pushover: credentials are not set")
 	}
 	values := url.Values{
-		"token":   {string(applicationToken)},
-		"user":    {string(userKey)},
+		"token":   {string(configuration.ApplicationToken)},
+		"user":    {string(configuration.UserKey)},
 		"title":   {title},
 		"message": {message},
 	}
-	parsedBaseURL, err := parseOrigin(c.baseURL())
+	parsedBaseURL, err := parseOrigin(configurationBaseURL(configuration.BaseURL))
 	if err != nil {
 		return fmt.Errorf("pushover: base url: %w", err)
 	}
@@ -132,6 +125,14 @@ func (c *Client) Send(ctx context.Context, title, message string) (err error) {
 	}
 
 	return nil
+}
+
+func configurationBaseURL(baseURL string) string {
+	if baseURL == "" {
+		return defaultBaseURL
+	}
+
+	return baseURL
 }
 
 func parseOrigin(value string) (*url.URL, error) {

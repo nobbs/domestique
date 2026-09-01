@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/nobbs/domestique/internal/sqlite/internal/sqlcgen"
 	_ "modernc.org/sqlite" // Pure Go SQLite driver registration.
 )
 
@@ -49,6 +50,7 @@ var (
 // Store is an SQLite-backed state store whose OAuth tokens use AES-GCM at rest.
 type Store struct {
 	database *sql.DB
+	queries  *sqlcgen.Queries
 	aead     cipher.AEAD
 }
 
@@ -78,7 +80,7 @@ func Open(ctx context.Context, databasePath string, encryptionKey [32]byte) (*St
 	database.SetMaxOpenConns(1)
 	database.SetMaxIdleConns(1)
 
-	store := &Store{database: database, aead: aead}
+	store := &Store{database: database, queries: sqlcgen.New(database), aead: aead}
 	if err := store.configure(ctx); err != nil {
 		closeDatabase(database)
 		return nil, err
@@ -145,4 +147,11 @@ func closeRows(rows *sql.Rows) {
 //nolint:errcheck // Rollback after a committed transaction is expected to return sql.ErrTxDone.
 func rollback(transaction *sql.Tx) {
 	_ = transaction.Rollback()
+}
+
+func boolInteger(value bool) int64 {
+	if value {
+		return 1
+	}
+	return 0
 }

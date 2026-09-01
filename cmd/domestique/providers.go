@@ -66,12 +66,13 @@ func (p *wahooProvider) current() (*wahoo.Client, error) {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
 
-	generation := p.settings.Generation()
+	snapshot := p.settings.Snapshot()
+	generation := snapshot.Generation()
 	if p.client != nil && p.generation == generation {
 		return p.client, nil
 	}
-	values := p.settings.Values().Wahoo
-	secret := p.settings.Secret(runtimeconfig.SecretWahooClientSecret)
+	values := snapshot.Values().Wahoo
+	secret := snapshot.Secret(runtimeconfig.SecretWahooClientSecret)
 	if values.APIBaseURL == "" || values.OAuthBaseURL == "" || values.ClientID == "" ||
 		!secret.IsSet() {
 		return nil, errNotConfigured
@@ -218,15 +219,16 @@ func (p *wahooProvider) RateLimit() (remaining int, resetAt time.Time, ok bool) 
 // credentials are not entered is not skipped: reading part of a library and
 // calling it the whole inventory is what the deletion gate exists to prevent.
 func sources(settings *runtimeconfig.Current) ([]syncservice.Source, error) {
-	configured := settings.Values().Sources
+	snapshot := settings.Snapshot()
+	configured := snapshot.Values().Sources
 	built := make([]syncservice.Source, 0, len(configured))
 	for _, source := range configured {
 		emailName, passwordName, known := runtimeconfig.SourceSecretNames(source.Provider)
 		if !known {
 			return nil, fmt.Errorf("unknown source provider %q", source.Provider)
 		}
-		email := settings.Secret(emailName).Bytes()
-		password := settings.Secret(passwordName).Bytes()
+		email := snapshot.Secret(emailName).Bytes()
+		password := snapshot.Secret(passwordName).Bytes()
 		if len(email) == 0 || len(password) == 0 {
 			return nil, fmt.Errorf("%s credentials are not configured yet", source.Provider)
 		}
@@ -246,7 +248,8 @@ func sources(settings *runtimeconfig.Current) ([]syncservice.Source, error) {
 func sourceFor(
 	settings *runtimeconfig.Current, provider route.Provider,
 ) (source syncservice.Source, configured bool, err error) {
-	for _, entry := range settings.Values().Sources {
+	snapshot := settings.Snapshot()
+	for _, entry := range snapshot.Values().Sources {
 		if entry.Provider != provider {
 			continue
 		}
@@ -254,8 +257,8 @@ func sourceFor(
 		if !known {
 			return nil, false, fmt.Errorf("unknown source provider %q", entry.Provider)
 		}
-		email := settings.Secret(emailName).Bytes()
-		password := settings.Secret(passwordName).Bytes()
+		email := snapshot.Secret(emailName).Bytes()
+		password := snapshot.Secret(passwordName).Bytes()
 		if len(email) == 0 || len(password) == 0 {
 			return nil, false, nil
 		}

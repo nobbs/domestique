@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/nobbs/domestique/internal/route"
-	generated "github.com/nobbs/domestique/internal/sqlite/sqlc"
+	"github.com/nobbs/domestique/internal/sqlite/internal/sqlcgen"
 )
 
 // StageSurface returns one stage's cached surface classification, but only where
@@ -25,12 +25,9 @@ func (s *Store) StageSurface(
 	stageOrder int,
 	contentHash string,
 ) (ranges json.RawMessage, matchedMetres float64, found bool, err error) {
-	var stored []byte
-	err = s.database.QueryRowContext(ctx, `
-		SELECT ranges, matched_metres
-		FROM stage_surface
-		WHERE provider = ? AND route_id = ? AND stage_order = ? AND content_hash = ?
-	`, provider, routeID, stageOrder, contentHash).Scan(&stored, &matchedMetres)
+	row, err := s.queries.GetStageSurface(ctx, sqlcgen.GetStageSurfaceParams{
+		Provider: string(provider), RouteID: routeID, StageOrder: int64(stageOrder), ContentHash: contentHash,
+	})
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, 0, false, nil
 	}
@@ -38,7 +35,7 @@ func (s *Store) StageSurface(
 		return nil, 0, false, fmt.Errorf("reading stage surface: %w", err)
 	}
 
-	return json.RawMessage(stored), matchedMetres, true, nil
+	return json.RawMessage(row.Ranges), row.MatchedMetres, true, nil
 }
 
 // StageSurfaceHash returns what the stored classification was measured against —
@@ -51,10 +48,9 @@ func (s *Store) StageSurfaceHash(
 	routeID int64,
 	stageOrder int,
 ) (contentHash, indexGeneration string, found bool, err error) {
-	err = s.database.QueryRowContext(ctx, `
-		SELECT content_hash, index_generation
-		FROM stage_surface WHERE provider = ? AND route_id = ? AND stage_order = ?
-	`, provider, routeID, stageOrder).Scan(&contentHash, &indexGeneration)
+	row, err := s.queries.GetStageSurfaceHash(ctx, sqlcgen.GetStageSurfaceHashParams{
+		Provider: string(provider), RouteID: routeID, StageOrder: int64(stageOrder),
+	})
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", "", false, nil
 	}
@@ -62,7 +58,7 @@ func (s *Store) StageSurfaceHash(
 		return "", "", false, fmt.Errorf("reading stage surface hash: %w", err)
 	}
 
-	return contentHash, indexGeneration, true, nil
+	return row.ContentHash, row.IndexGeneration, true, nil
 }
 
 // StoreStageSurface caches one stage's classification against the geometry and
@@ -83,7 +79,8 @@ func (s *Store) StoreStageSurface(
 	}
 	defer rollback(transaction)
 
-	if err := generated.New(s.database).WithTx(transaction).UpsertStageSurface(ctx, generated.UpsertStageSurfaceParams{
+	queries := s.queries.WithTx(transaction)
+	if err := queries.UpsertStageSurface(ctx, sqlcgen.UpsertStageSurfaceParams{
 		Provider: string(provider), RouteID: routeID, StageOrder: int64(stageOrder), ContentHash: contentHash,
 		IndexGeneration: indexGeneration, Ranges: ranges, MatchedMetres: matchedMetres, UpdatedAtUnix: time.Now().UTC().Unix(),
 	}); err != nil {
@@ -91,7 +88,7 @@ func (s *Store) StoreStageSurface(
 	}
 	// Stored and still listed as failing cannot both be true, so the two move
 	// together.
-	if err := clearStageEnrichmentFailure(ctx, transaction, provider, routeID, stageOrder, PassSurface); err != nil {
+	if err := clearStageEnrichmentFailure(ctx, queries, provider, routeID, stageOrder, PassSurface); err != nil {
 		return err
 	}
 	if err := transaction.Commit(); err != nil {
@@ -105,17 +102,8 @@ func (s *Store) StoreStageSurface(
 // the caller's transaction. A row goes when its stage leaves the inventory and
 // when the stage is re-planned: the cached ranges address coordinates of a
 // geometry that no longer exists.
-func pruneStageSurface(ctx context.Context, transaction *sql.Tx) error {
-	if _, err := transaction.ExecContext(ctx, `
-		DELETE FROM stage_surface
-		WHERE NOT EXISTS (
-			SELECT 1 FROM stage_geometry
-			WHERE stage_geometry.provider = stage_surface.provider
-			  AND stage_geometry.route_id = stage_surface.route_id
-			  AND stage_geometry.stage_order = stage_surface.stage_order
-			  AND stage_geometry.content_hash = stage_surface.content_hash
-		)
-	`); err != nil {
+func pruneStageSurface(ctx context.Context, queries *sqlcgen.Queries) error {
+	if err := queries.PruneStageSurface(ctx); err != nil {
 		return fmt.Errorf("pruning stage surface: %w", err)
 	}
 
@@ -128,47 +116,34 @@ func pruneStageSurface(ctx context.Context, transaction *sql.Tx) error {
 // is not classified in any sense the map can use. The index generation is no more
 // a condition here than in StageSurface, so the count and the map agree.
 func (s *Store) SurfaceCoverage(ctx context.Context) (classified, total int, err error) {
-	if err := s.database.QueryRowContext(ctx, `
-		SELECT
-			(SELECT COUNT(*) FROM source_stages),
-			(SELECT COUNT(*)
-				FROM stage_surface
-				JOIN source_stages
-					ON source_stages.provider = stage_surface.provider
-					AND source_stages.route_id = stage_surface.route_id
-					AND source_stages.stage_order = stage_surface.stage_order
-				WHERE stage_surface.content_hash = source_stages.content_hash)
-	`).Scan(&total, &classified); err != nil {
+	row, err := s.queries.GetSurfaceCoverage(ctx)
+	if err != nil {
 		return 0, 0, fmt.Errorf("reading surface coverage: %w", err)
 	}
-
-	return classified, total, nil
+	return int(row.Classified), int(row.Total), nil
 }
 
 // SurfaceIndexBuild reports when the surface index was last built and which
 // generation that build produced. A service that has never built one reports the
 // zero time and an empty generation.
 func (s *Store) SurfaceIndexBuild(ctx context.Context) (builtAt time.Time, generation string, err error) {
-	var builtAtUnix int64
-	if err := s.database.QueryRowContext(ctx, `
-		SELECT built_at_unix, generation FROM surface_index WHERE id = 1
-	`).Scan(&builtAtUnix, &generation); err != nil {
+	row, err := s.queries.GetSurfaceIndexBuild(ctx)
+	if err != nil {
 		return time.Time{}, "", fmt.Errorf("reading the surface index build: %w", err)
 	}
-	if builtAtUnix == 0 {
-		return time.Time{}, generation, nil
+	if row.BuiltAtUnix == 0 {
+		return time.Time{}, row.Generation, nil
 	}
-
-	return time.Unix(builtAtUnix, 0).UTC(), generation, nil
+	return time.Unix(row.BuiltAtUnix, 0).UTC(), row.Generation, nil
 }
 
 // RecordSurfaceIndexBuild writes down that a build finished, for one that found
 // nothing to do as well as one that produced a new index: the next start needs
 // to know when the upstream was last looked at.
 func (s *Store) RecordSurfaceIndexBuild(ctx context.Context, builtAt time.Time, generation string) error {
-	if _, err := s.database.ExecContext(ctx, `
-		UPDATE surface_index SET built_at_unix = ?, generation = ? WHERE id = 1
-	`, builtAt.UTC().Unix(), generation); err != nil {
+	if err := s.queries.UpdateSurfaceIndexBuild(ctx, sqlcgen.UpdateSurfaceIndexBuildParams{
+		BuiltAtUnix: builtAt.UTC().Unix(), Generation: generation,
+	}); err != nil {
 		return fmt.Errorf("storing the surface index build: %w", err)
 	}
 

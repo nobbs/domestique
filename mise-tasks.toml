@@ -46,7 +46,7 @@ run = "golangci-lint fmt"
 # hooks having modified the tree, which is the one thing they never do.
 [hygiene]
 description = "Run every prek hook over the whole tree"
-wait_for = ["api-generate"]
+wait_for = ["api-generate", "sql-generate"]
 run = "prek run --all-files"
 
 # Ordered after the generator for the same reason `hygiene` is: the two
@@ -135,7 +135,7 @@ run = "sqlc generate"
 [sql-check]
 description = "Check SQLite schema and query bindings are current"
 depends = ["sql-generate"]
-run = ["atlas migrate validate --dir file://internal/sqlite/migrations", "git diff HEAD --exit-code -- internal/sqlite/sqlc"]
+run = ["atlas migrate validate --dir file://internal/sqlite/migrations", "./dev/check-sql-generated.sh"]
 
 # gotestsum runs `go test` and reformats its JSON stream: `standard-quiet` is
 # what `go test` itself prints, so the only thing that changed here is the JUnit
@@ -715,7 +715,7 @@ depends = [
 [quick]
 description = "The routine local loop"
 depends = [
-	"sql-check",
+  "sql-check",
   "ui-install",
   "api-check",
   "hygiene",

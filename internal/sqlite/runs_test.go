@@ -192,6 +192,33 @@ func TestStoreRefusesAnIncompleteSyncRun(t *testing.T) {
 	require.Error(t, err, "RecordSyncRun() with a negative count")
 }
 
+func TestSyncRunReadersRejectIncompleteRuns(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	_, err := store.database.ExecContext(t.Context(), `
+		INSERT INTO sync_runs (
+			reference, phase, started_at_unix, finished_at_unix, outcome, detail,
+			source_stages, created, updated, deleted
+		) VALUES ('run', 'source', 1, NULL, 'succeeded', '', 0, 0, 0, 0)
+	`)
+	require.NoError(t, err)
+
+	_, _, _, _, _, _, _, _, err = store.LastSyncRun(t.Context())
+	require.ErrorContains(t, err, "finish time is null")
+	require.ErrorContains(t, store.ForEachPhaseRun(t.Context(), func(
+		string, time.Time, string, string, int, int, int, int,
+	) error {
+		return nil
+	}), "finish time is null")
+	_, _, err = store.ForEachSyncRun(t.Context(), "", 1, func(
+		string, string, time.Time, string, string, int, int, int, int,
+	) error {
+		return nil
+	})
+	require.ErrorContains(t, err, "finish time is null")
+	_, _, err = store.LastSuccessfulPhaseCompletion(t.Context(), "source")
+	require.ErrorContains(t, err, "finish time is null")
+}
+
 // Runs are recorded forever on a service that is deployed forever, so the
 // history is bounded. What it must never drop is the newest run of a half: the
 // status response reads that as what the half last came to, and a half switched
