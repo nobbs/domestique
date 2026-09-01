@@ -79,8 +79,10 @@ describe("TaskTable", () => {
     expect(screen.getByText("Every 6 hours")).toBeInTheDocument();
     // sync:clear and surface:annotate are nothing this build schedules.
     expect(screen.getAllByText("On demand")).toHaveLength(2);
-    // sync:target, sync:clear, and surface:annotate report no next run.
-    expect(screen.getAllByText("—")).toHaveLength(3);
+    // Three report no next run, and the two nothing schedules are offered no
+    // switch either, because nothing would read it.
+    expect(screen.getAllByText("—")).toHaveLength(5);
+    expect(screen.getAllByRole("switch")).toHaveLength(2);
   });
 
   it("shows a badge while a task has an attempt in flight", () => {
@@ -168,6 +170,27 @@ describe("TaskTable", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "the task is already running, or something it needs is held by another run",
     );
+  });
+
+  // One mutation serves every row, so an ungated spinner would report each
+  // other task as running too.
+  it("shows progress only in the row whose run was asked for", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          await new Promise<Response>(() => {
+            // Never settles: the button stays mid-flight for the assertion.
+          }),
+      ),
+    );
+    renderTable();
+
+    await userEvent.click(screen.getByRole("button", { name: "Run now: sync:source" }));
+
+    expect(await screen.findByLabelText("Running sync:source")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Running sync:target")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Run now: sync:target" })).toBeEnabled();
   });
 
   // The refusal is recorded as a skipped attempt, and the history beneath this

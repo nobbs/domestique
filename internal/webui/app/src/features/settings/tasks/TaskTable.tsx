@@ -92,14 +92,18 @@ export function TaskTable() {
 
   function runControl(task: Task) {
     if (task.name !== TASKS.syncClear) {
+      // One mutation serves every row, so its pending state belongs to whichever
+      // row was pressed; the others are idle and stay pressable.
+      const starting = run.isPending && run.variables?.name === task.name;
+
       return (
         <Button
           variant="outline"
-          disabled={run.isPending}
+          disabled={starting}
           onClick={() => run.mutate({ name: task.name })}
           aria-label={`Run now: ${task.name}`}
         >
-          {run.isPending ? <Spinner aria-label={`Running ${task.name}`} /> : null}
+          {starting ? <Spinner aria-label={`Running ${task.name}`} /> : null}
           Run now
         </Button>
       );
@@ -201,14 +205,23 @@ export function TaskTable() {
                 <td className="py-2 pr-3">{cadenceLabel(task)}</td>
                 <td className="py-2 pr-3 text-[var(--ink-2)]">{nextDueLabel(task)}</td>
                 <td className="py-2 pr-3">
-                  <Switch
-                    checked={task.enabled}
-                    disabled={schedule.isPending}
-                    onCheckedChange={() =>
-                      schedule.mutate({ name: task.name, data: { enabled: !task.enabled } })
-                    }
-                    aria-label={`Scheduled: ${task.name}`}
-                  />
+                  {/*
+                   * Only where a schedule exists to govern. Nothing reads the
+                   * switch for a task the scheduler never starts, so offering
+                   * one would be a control that quietly does nothing.
+                   */}
+                  {task.scheduled ? (
+                    <Switch
+                      checked={task.enabled}
+                      disabled={schedule.isPending}
+                      onCheckedChange={() =>
+                        schedule.mutate({ name: task.name, data: { enabled: !task.enabled } })
+                      }
+                      aria-label={`Scheduled: ${task.name}`}
+                    />
+                  ) : (
+                    <span className="text-[var(--ink-2)]">—</span>
+                  )}
                 </td>
                 <td className="py-2">{runControl(task)}</td>
               </tr>

@@ -18,16 +18,19 @@ function triggerLabel(trigger: string | undefined): string {
 
 type Tone = "good" | "hold" | "alert";
 
-/** A gate that held or a run still busy is neither a success nor a fault, and gets its own colour. */
+/**
+ * Only what got somewhere is painted as success: a gate that held, a shutdown,
+ * and an outcome this build has never heard of are none of them a fault either.
+ */
 function tone(outcome: string): Tone {
   if (outcome === "failed") {
     return "alert";
   }
-  if (outcome === "blocked" || outcome === "not_ready" || outcome === "skipped") {
-    return "hold";
+  if (outcome === "succeeded" || outcome === "unchanged") {
+    return "good";
   }
 
-  return "good";
+  return "hold";
 }
 
 const TONE_CLASSES: Record<Tone, string> = {

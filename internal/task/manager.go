@@ -86,7 +86,7 @@ type registered struct {
 	// each Resolve and settled before anything runs.
 	successors []string
 	// nextDueAt holds the instant the next scheduled run is due, cleared while
-	// the schedule's own attempt runs — a fixed gap counts from its finish.
+	// the schedule's own attempt runs: one overrunning its gap moves it.
 	nextDueAt  nextDueAt
 	definition Definition
 	inFlight   int
@@ -369,8 +369,8 @@ func (m *Manager) follow(ctx context.Context, entry *registered) {
 			return
 		}
 		due = next
-		// Cleared before the attempt starts: a fixed gap counts from when the run
-		// finishes, not before it starts, so no next instant is correct yet.
+		// Cleared before the attempt starts: an attempt overrunning its own gap is
+		// due again the moment it finishes, so a stored instant would be past.
 		entry.nextDueAt.clear()
 		m.scheduled(ctx, entry)
 	}

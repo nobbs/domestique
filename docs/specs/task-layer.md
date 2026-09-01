@@ -183,9 +183,9 @@ attempt they ask for is also the way out: a success ends the streak.
 registration order, with what is known about each right now: whether it runs
 unasked, how many attempts are in flight, and when the next scheduled run is
 due. A task nothing schedules reports no due time, and neither does one whose
-own scheduled run is under way — a fixed gap counts from the finish, so until
-then there is no next instant to report. Both read as absent rather than as the
-zero instant.
+own scheduled run is under way — an attempt that overruns its gap is due again
+the moment it finishes, so nothing said beforehand would still be true. Both
+read as absent rather than as the zero instant.
 
 A task running because somebody asked for it, or because it follows something
 that finished, still reports its due time. That run did not disturb the
