@@ -553,6 +553,10 @@ version 27. Existing databases are adopted only when their
 `schema_migrations` watermark is the contiguous legacy sequence through version
 27 and their schema matches the baseline; the baseline is then marked applied
 without running its DDL. Older, dirty, or drifted databases are rejected.
+The schema fingerprint is compared whenever the schema changes hands: on
+adoption and after applying migrations. A database already at the current
+version opens after an integrity and foreign-key check alone; a manual edit
+that leaves both watermarks current is outside what startup detects.
 
 `schema_migrations` remains the compatibility watermark for prior application
 releases, while `domestique_migrations` is owned by `golang-migrate`. Each
