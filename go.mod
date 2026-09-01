@@ -6,6 +6,7 @@ require (
 	github.com/coreos/go-oidc/v3 v3.20.0
 	github.com/go-jose/go-jose/v4 v4.1.4
 	github.com/go-viper/mapstructure/v2 v2.5.0
+	github.com/golang-migrate/migrate/v4 v4.19.1
 	github.com/knadh/koanf/parsers/toml/v2 v2.2.2
 	github.com/knadh/koanf/providers/confmap v1.0.1
 	github.com/knadh/koanf/providers/env/v2 v2.0.1

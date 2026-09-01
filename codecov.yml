@@ -105,6 +105,8 @@ ignore:
   # branch coverage. A pattern rather than a list, so a listener added later
   # does not need this file edited to stay out.
   - "internal/*/contract/openapi.gen.go"
+  # sqlc bindings are checked against their source queries by `sql-check`.
+  - "internal/sqlite/internal/sqlcgen/**"
 
 comment:
   layout: "condensed_header, diff, flags, files"

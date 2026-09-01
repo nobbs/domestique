@@ -21,12 +21,14 @@ import (
 // stubStore stands in for the SQLite store: it remembers the last values
 // written and can be made to fail either half.
 type stubStore struct {
-	readErr  error
-	writeErr error
-	secrets  map[SecretName]Secret
-	values   Values
-	writing  sync.Mutex
-	writes   int
+	readErr               error
+	writeErr              error
+	secrets               map[SecretName]Secret
+	combinedWriteStarted  chan struct{}
+	continueCombinedWrite chan struct{}
+	values                Values
+	writes                int
+	writing               sync.Mutex
 }
 
 func (s *stubStore) RuntimeSettings(context.Context) (Values, error) {
@@ -45,6 +47,32 @@ func (s *stubStore) SetRuntimeSettings(_ context.Context, values Values) error {
 	s.writes++
 	s.values = values
 
+	return nil
+}
+
+//nolint:gocritic // value param: this double conforms to the Store contract.
+func (s *stubStore) SetRuntimeSettingsAndSecrets(_ context.Context, values Values, secrets map[SecretName]Secret) error {
+	if s.writeErr != nil {
+		return s.writeErr
+	}
+	s.writing.Lock()
+	defer s.writing.Unlock()
+	s.values = values
+	if s.secrets == nil {
+		s.secrets = make(map[SecretName]Secret, len(secrets))
+	}
+	for name, secret := range secrets {
+		if secret.IsSet() {
+			s.secrets[name] = secret
+		} else {
+			delete(s.secrets, name)
+		}
+	}
+	s.writes++
+	if s.combinedWriteStarted != nil {
+		close(s.combinedWriteStarted)
+		<-s.continueCombinedWrite
+	}
 	return nil
 }
 
@@ -150,6 +178,111 @@ func TestUpdatePersistsThenPublishes(t *testing.T) {
 	assert.True(t, store.values.Sync.AllowEmptySourceDeletion, "the store holds the new value")
 	assert.True(t, current.Values().Sync.AllowEmptySourceDeletion, "readers see the new value")
 	assert.False(t, current.Values().Notifications.Enabled, "readers see the whole edit")
+}
+
+func TestUpdateWithSecretsPublishesOneSnapshot(t *testing.T) {
+	values := validValues()
+	values.Sources = []Source{{Provider: route.ProviderKomoot, BaseURL: "https://old.example.test"}}
+	store := &stubStore{
+		values: values,
+		secrets: map[SecretName]Secret{
+			SecretKomootPassword: NewSecret([]byte("old-secret")),
+		},
+		combinedWriteStarted:  make(chan struct{}),
+		continueCombinedWrite: make(chan struct{}),
+	}
+	current, err := Load(t.Context(), store)
+	require.NoError(t, err)
+
+	held := current.Snapshot()
+	done := make(chan error, 1)
+	go func() {
+		done <- current.UpdateWithSecrets(t.Context(), func(values Values) Values {
+			values.Sources[0].BaseURL = "https://new.example.test"
+
+			return values
+		}, map[SecretName]Secret{
+			SecretKomootPassword: NewSecret([]byte("new-secret")),
+		})
+	}()
+
+	<-store.combinedWriteStarted
+	during := current.Snapshot()
+	assert.Equal(t, "https://old.example.test", during.Values().Sources[0].BaseURL)
+	assert.Equal(t, []byte("old-secret"), during.Secret(SecretKomootPassword).Bytes())
+	close(store.continueCombinedWrite)
+	require.NoError(t, <-done)
+
+	after := current.Snapshot()
+	assert.Equal(t, "https://new.example.test", after.Values().Sources[0].BaseURL)
+	assert.Equal(t, []byte("new-secret"), after.Secret(SecretKomootPassword).Bytes())
+	assert.Equal(t, "https://old.example.test", held.Values().Sources[0].BaseURL)
+	assert.Equal(t, []byte("old-secret"), held.Secret(SecretKomootPassword).Bytes())
+}
+
+func TestUpdateWithSecretsRefusesInvalidWritesAndClearsSecrets(t *testing.T) {
+	tests := []struct {
+		name     string
+		change   func(Values) Values
+		secrets  map[SecretName]Secret
+		writeErr error
+		wantErr  string
+		wantSet  bool
+	}{
+		{
+			name: "invalid values",
+			change: func(values Values) Values {
+				values.Basemaps = nil
+				return values
+			},
+			wantErr: "webui.basemaps",
+			wantSet: true,
+		},
+		{
+			name:    "unknown secret",
+			secrets: map[SecretName]Secret{"unknown": NewSecret([]byte("value"))},
+			wantErr: "unknown secret",
+			wantSet: true,
+		},
+		{
+			name:     "store failure",
+			secrets:  map[SecretName]Secret{SecretWahooClientSecret: NewSecret([]byte("new"))},
+			writeErr: errors.New("disk full"),
+			wantErr:  "settings could not be stored",
+			wantSet:  true,
+		},
+		{
+			name:    "clear secret",
+			secrets: map[SecretName]Secret{SecretWahooClientSecret: {}},
+			wantSet: false,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			store := &stubStore{
+				values: validValues(),
+				secrets: map[SecretName]Secret{
+					SecretWahooClientSecret: NewSecret([]byte("old")),
+				},
+				writeErr: test.writeErr,
+			}
+			current, err := Load(t.Context(), store)
+			require.NoError(t, err)
+			change := test.change
+			if change == nil {
+				change = func(values Values) Values { return values }
+			}
+
+			err = current.UpdateWithSecrets(t.Context(), change, test.secrets)
+			if test.wantErr == "" {
+				require.NoError(t, err)
+			} else {
+				require.ErrorContains(t, err, test.wantErr)
+			}
+			assert.Equal(t, test.wantSet, current.Secret(SecretWahooClientSecret).IsSet())
+		})
+	}
 }
 
 // Validation runs before the write, so a refused edit changes neither half.

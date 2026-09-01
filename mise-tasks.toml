@@ -46,14 +46,14 @@ run = "golangci-lint fmt"
 # hooks having modified the tree, which is the one thing they never do.
 [hygiene]
 description = "Run every prek hook over the whole tree"
-wait_for = ["api-generate"]
+wait_for = ["api-generate", "sql-generate"]
 run = "prek run --all-files"
 
 # Ordered after the generator for the same reason `hygiene` is: the two
 # contract packages it compiles are written by `api-generate`.
 [lint]
 description = "Lint the Go tree"
-wait_for = ["api-generate"]
+wait_for = ["api-generate", "sql-generate"]
 sources = ["**/*.go", "go.mod", "go.sum", ".golangci.yml", "internal/webui/app/dist/**"]
 outputs = { auto = true }
 run = "golangci-lint run ./..."
@@ -126,6 +126,17 @@ description = "Check generated API bindings are current"
 depends = ["api-generate"]
 run = "./dev/check-generated.sh"
 
+[sql-generate]
+description = "Generate the SQLite query bindings"
+sources = ["sqlc.yaml", "internal/sqlite/migrations/*.sql", "internal/sqlite/queries/*.sql"]
+outputs = { auto = true }
+run = "sqlc generate"
+
+[sql-check]
+description = "Check SQLite schema and query bindings are current"
+depends = ["sql-generate"]
+run = ["atlas migrate validate --dir file://internal/sqlite/migrations", "./dev/check-sql-generated.sh"]
+
 # gotestsum runs `go test` and reformats its JSON stream: `standard-quiet` is
 # what `go test` itself prints, so the only thing that changed here is the JUnit
 # report written alongside it. CI uploads that file to Codecov's test analytics,
@@ -144,7 +155,7 @@ run = "./dev/check-generated.sh"
 # contract packages it compiles are written by `api-generate`.
 [test]
 description = "Run the Go tests and write their JUnit report"
-wait_for = ["api-generate"]
+wait_for = ["api-generate", "sql-generate"]
 sources = ["**/*.go", "go.mod", "go.sum", "**/testdata/**", "internal/webui/app/dist/**"]
 outputs = { auto = true }
 run = "CGO_ENABLED=0 gotestsum --format standard-quiet --junitfile .test-results/go.xml -- -shuffle=on -timeout=10m ./..."
@@ -197,7 +208,7 @@ run = "CGO_ENABLED=1 go test -race -shuffle=on -timeout=10m ./..."
 # contract packages it compiles are written by `api-generate`.
 [vet]
 description = "Vet the Go tree"
-wait_for = ["api-generate"]
+wait_for = ["api-generate", "sql-generate"]
 sources = ["**/*.go", "go.mod", "go.sum", "internal/webui/app/dist/**"]
 outputs = { auto = true }
 run = "CGO_ENABLED=0 go vet ./..."
@@ -206,7 +217,7 @@ run = "CGO_ENABLED=0 go vet ./..."
 # reads files `api-generate` rewrites in the worktree.
 [mod-check]
 description = "Check the Go module graph is tidy and verified"
-wait_for = ["api-generate"]
+wait_for = ["api-generate", "sql-generate"]
 sources = ["**/*.go", "go.mod", "go.sum"]
 outputs = { auto = true }
 run = ["go mod tidy -diff", "go mod verify"]
@@ -641,6 +652,7 @@ run = "./dev/container-smoke.sh"
 [ci-lint]
 description = "The lint half of the gate, as CI groups it"
 depends = [
+  "sql-check",
   "hygiene",
   "lint",
   "shell-lint",
@@ -703,6 +715,7 @@ depends = [
 [quick]
 description = "The routine local loop"
 depends = [
+  "sql-check",
   "ui-install",
   "api-check",
   "hygiene",

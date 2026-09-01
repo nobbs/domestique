@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/nobbs/domestique/internal/sqlite/internal/sqlcgen"
 )
 
 // AlertToggle is one operator decision: whether one alert of one task, over one
@@ -20,24 +22,15 @@ type AlertToggle struct {
 // what nobody has decided, which is not the same as switched off: the caller
 // applies its own default to those.
 func (s *Store) AlertToggles(ctx context.Context) ([]AlertToggle, error) {
-	rows, err := s.database.QueryContext(ctx, `
-		SELECT task, scope, alert, enabled FROM alert_toggle ORDER BY task, scope, alert
-	`)
+	rows, err := s.queries.ListAlertToggles(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("reading alert toggles: %w", err)
 	}
-	defer closeRows(rows)
-
-	var toggles []AlertToggle
-	for rows.Next() {
-		var toggle AlertToggle
-		if err := rows.Scan(&toggle.Task, &toggle.Scope, &toggle.Alert, &toggle.Enabled); err != nil {
-			return nil, fmt.Errorf("reading an alert toggle: %w", err)
-		}
-		toggles = append(toggles, toggle)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("reading alert toggles: %w", err)
+	toggles := make([]AlertToggle, 0, len(rows))
+	for _, row := range rows {
+		toggles = append(toggles, AlertToggle{
+			Task: row.Task, Scope: row.Scope, Alert: row.Alert, Enabled: row.Enabled != 0,
+		})
 	}
 
 	return toggles, nil
@@ -59,14 +52,12 @@ func (s *Store) SetAlertToggles(ctx context.Context, toggles []AlertToggle) erro
 	defer rollback(transaction)
 
 	now := time.Now().UTC().Unix()
+	queries := s.queries.WithTx(transaction)
 	for _, toggle := range toggles {
-		if _, err := transaction.ExecContext(ctx, `
-			INSERT INTO alert_toggle (task, scope, alert, enabled, updated_at_unix)
-			VALUES (?, ?, ?, ?, ?)
-			ON CONFLICT (task, scope, alert) DO UPDATE SET
-				enabled = excluded.enabled,
-				updated_at_unix = excluded.updated_at_unix
-		`, toggle.Task, toggle.Scope, toggle.Alert, toggle.Enabled, now); err != nil {
+		if err := queries.UpsertAlertToggle(ctx, sqlcgen.UpsertAlertToggleParams{
+			Task: toggle.Task, Scope: toggle.Scope, Alert: toggle.Alert,
+			Enabled: boolInteger(toggle.Enabled), UpdatedAtUnix: now,
+		}); err != nil {
 			return fmt.Errorf("storing an alert toggle: %w", err)
 		}
 	}

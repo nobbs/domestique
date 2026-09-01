@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/nobbs/domestique/internal/route"
+	"github.com/nobbs/domestique/internal/sqlite/internal/sqlcgen"
 )
 
 // ForEachSourceStage visits trusted source-stage metadata in stable order.
@@ -16,28 +17,16 @@ func (s *Store) ForEachSourceStage(ctx context.Context, visit func(provider rout
 	if visit == nil {
 		return errors.New("source stage visitor is required")
 	}
-	rows, err := s.database.QueryContext(ctx, `
-		SELECT provider, route_id, stage_order, source_revision, content_hash
-		FROM source_stages ORDER BY provider, route_id, stage_order
-	`)
+	rows, err := s.queries.ListSourceStages(ctx)
 	if err != nil {
 		return fmt.Errorf("listing source stages: %w", err)
 	}
-	defer closeRows(rows)
-	for rows.Next() {
-		var provider route.Provider
-		var routeID int64
-		var stageOrder int
-		var sourceRevision, contentHash string
-		if err := rows.Scan(&provider, &routeID, &stageOrder, &sourceRevision, &contentHash); err != nil {
-			return fmt.Errorf("reading source stage: %w", err)
-		}
-		if err := visit(provider, routeID, stageOrder, sourceRevision, contentHash); err != nil {
+	for _, row := range rows {
+		if err := visit(
+			route.Provider(row.Provider), row.RouteID, int(row.StageOrder), row.SourceRevision, row.ContentHash,
+		); err != nil {
 			return fmt.Errorf("visiting source stage: %w", err)
 		}
-	}
-	if err := rows.Err(); err != nil {
-		return fmt.Errorf("iterating source stages: %w", err)
 	}
 
 	return nil
@@ -51,64 +40,30 @@ func (s *Store) ForEachStageSummary(ctx context.Context, visit func(summary rout
 	if visit == nil {
 		return errors.New("stage summary visitor is required")
 	}
-	rows, err := s.database.QueryContext(ctx, `
-		SELECT
-			source_stages.provider,
-			source_stages.route_id,
-			source_stages.stage_order,
-			source_stages.source_revision,
-			source_stages.content_hash,
-			COALESCE(stage_geometry.route_name, ''),
-			COALESCE(stage_geometry.stage_name, ''),
-			COALESCE(stage_geometry.point_count, 0),
-			COALESCE(stage_geometry.distance_metres, 0),
-			COALESCE(stage_geometry.ascent_metres, 0),
-			COALESCE(stage_geometry.descent_metres, 0),
-			COALESCE(stage_geometry.max_gradient_percent, 0),
-			stage_duration.moving_seconds,
-			COALESCE(stage_geometry.min_longitude, 0),
-			COALESCE(stage_geometry.min_latitude, 0),
-			COALESCE(stage_geometry.max_longitude, 0),
-			COALESCE(stage_geometry.max_latitude, 0)
-		FROM source_stages
-		LEFT JOIN stage_geometry
-			ON stage_geometry.provider = source_stages.provider
-			AND stage_geometry.route_id = source_stages.route_id
-			AND stage_geometry.stage_order = source_stages.stage_order
-		LEFT JOIN stage_duration
-			ON stage_duration.provider = source_stages.provider
-			AND stage_duration.route_id = source_stages.route_id
-			AND stage_duration.stage_order = source_stages.stage_order
-			AND stage_duration.content_hash = source_stages.content_hash
-		ORDER BY source_stages.provider, source_stages.route_id, source_stages.stage_order
-	`)
+	rows, err := s.queries.ListStageSummaries(ctx)
 	if err != nil {
 		return fmt.Errorf("listing stage summaries: %w", err)
 	}
-	defer closeRows(rows)
-	for rows.Next() {
-		var summary route.Summary
-		var movingSeconds sql.NullFloat64
-		if err := rows.Scan(
-			&summary.Provider, &summary.SourceRouteID, &summary.StageOrder, &summary.SourceRevision, &summary.ContentHash,
-			&summary.SourceRouteName, &summary.RouteName, &summary.PointCount, &summary.DistanceMetres,
-			&summary.AscentMetres, &summary.DescentMetres, &summary.MaxGradientPercent, &movingSeconds,
-			&summary.Bounds.MinLongitude, &summary.Bounds.MinLatitude,
-			&summary.Bounds.MaxLongitude, &summary.Bounds.MaxLatitude,
-		); err != nil {
-			return fmt.Errorf("reading stage summary: %w", err)
+	for index := range rows {
+		row := &rows[index]
+		summary := route.Summary{
+			Provider: route.Provider(row.Provider), SourceRouteID: row.RouteID, StageOrder: int(row.StageOrder),
+			SourceRevision: row.SourceRevision, ContentHash: row.ContentHash,
+			SourceRouteName: row.SourceRouteName, RouteName: row.RouteName, PointCount: int(row.PointCount),
+			DistanceMetres: row.DistanceMetres, AscentMetres: row.AscentMetres,
+			DescentMetres: row.DescentMetres, MaxGradientPercent: row.MaxGradientPercent,
+			Bounds: route.Bounds{
+				MinLongitude: row.MinLongitude, MinLatitude: row.MinLatitude,
+				MaxLongitude: row.MaxLongitude, MaxLatitude: row.MaxLatitude,
+			},
 		}
-		if movingSeconds.Valid {
-			summary.MovingSeconds = &movingSeconds.Float64
+		if row.MovingSeconds.Valid {
+			summary.MovingSeconds = &row.MovingSeconds.Float64
 		}
 		if err := visit(summary); err != nil {
 			return fmt.Errorf("visiting stage summary: %w", err)
 		}
 	}
-	if err := rows.Err(); err != nil {
-		return fmt.Errorf("iterating stage summaries: %w", err)
-	}
-
 	return nil
 }
 
@@ -122,61 +77,30 @@ func (s *Store) StageGeometry(
 	routeID int64,
 	stageOrder int,
 ) (summary route.Summary, coordinates, cumulativeSeconds json.RawMessage, found bool, err error) {
-	var coordinatesBytes []byte
-	var cumulativeSecondsBytes []byte
-	var movingSeconds sql.NullFloat64
-	err = s.database.QueryRowContext(ctx, `
-		SELECT
-			stage_geometry.provider,
-			stage_geometry.route_id,
-			stage_geometry.stage_order,
-			COALESCE(source_stages.source_revision, ''),
-			stage_geometry.content_hash,
-			stage_geometry.route_name,
-			stage_geometry.stage_name,
-			stage_geometry.point_count,
-			stage_geometry.distance_metres,
-			stage_geometry.ascent_metres,
-			stage_geometry.descent_metres,
-			stage_geometry.max_gradient_percent,
-			stage_duration.moving_seconds,
-			stage_geometry.min_longitude,
-			stage_geometry.min_latitude,
-			stage_geometry.max_longitude,
-			stage_geometry.max_latitude,
-			stage_geometry.coordinates,
-			stage_duration.cumulative_seconds
-		FROM stage_geometry
-		LEFT JOIN source_stages
-			ON source_stages.provider = stage_geometry.provider
-			AND source_stages.route_id = stage_geometry.route_id
-			AND source_stages.stage_order = stage_geometry.stage_order
-		LEFT JOIN stage_duration
-			ON stage_duration.provider = stage_geometry.provider
-			AND stage_duration.route_id = stage_geometry.route_id
-			AND stage_duration.stage_order = stage_geometry.stage_order
-			AND stage_duration.content_hash = stage_geometry.content_hash
-		WHERE stage_geometry.provider = ? AND stage_geometry.route_id = ? AND stage_geometry.stage_order = ?
-	`, provider, routeID, stageOrder).Scan(
-		&summary.Provider, &summary.SourceRouteID, &summary.StageOrder, &summary.SourceRevision, &summary.ContentHash,
-		&summary.SourceRouteName, &summary.RouteName, &summary.PointCount, &summary.DistanceMetres,
-		&summary.AscentMetres, &summary.DescentMetres, &summary.MaxGradientPercent, &movingSeconds,
-		&summary.Bounds.MinLongitude, &summary.Bounds.MinLatitude,
-		&summary.Bounds.MaxLongitude, &summary.Bounds.MaxLatitude,
-		&coordinatesBytes,
-		&cumulativeSecondsBytes,
-	)
+	row, err := s.queries.GetStageGeometry(ctx, sqlcgen.GetStageGeometryParams{
+		Provider: string(provider), RouteID: routeID, StageOrder: int64(stageOrder),
+	})
 	if errors.Is(err, sql.ErrNoRows) {
 		return route.Summary{}, nil, nil, false, nil
 	}
 	if err != nil {
 		return route.Summary{}, nil, nil, false, fmt.Errorf("reading stage geometry: %w", err)
 	}
-	if movingSeconds.Valid {
-		summary.MovingSeconds = &movingSeconds.Float64
+	summary = route.Summary{
+		Provider: route.Provider(row.Provider), SourceRouteID: row.RouteID, StageOrder: int(row.StageOrder),
+		SourceRevision: row.SourceRevision, ContentHash: row.ContentHash,
+		SourceRouteName: row.SourceRouteName, RouteName: row.RouteName, PointCount: int(row.PointCount),
+		DistanceMetres: row.DistanceMetres, AscentMetres: row.AscentMetres,
+		DescentMetres: row.DescentMetres, MaxGradientPercent: row.MaxGradientPercent,
+		Bounds: route.Bounds{
+			MinLongitude: row.MinLongitude, MinLatitude: row.MinLatitude,
+			MaxLongitude: row.MaxLongitude, MaxLatitude: row.MaxLatitude,
+		},
 	}
-
-	return summary, json.RawMessage(coordinatesBytes), json.RawMessage(cumulativeSecondsBytes), true, nil
+	if row.MovingSeconds.Valid {
+		summary.MovingSeconds = &row.MovingSeconds.Float64
+	}
+	return summary, json.RawMessage(row.Coordinates), json.RawMessage(row.CumulativeSeconds), true, nil
 }
 
 // reprocessSentinel is what a target mapping records instead of the revision and
@@ -197,10 +121,10 @@ func (s *Store) RequestStageReprocess(ctx context.Context, provider route.Provid
 	}
 	defer rollback(transaction)
 
-	var exists int
-	err = transaction.QueryRowContext(ctx, `
-		SELECT 1 FROM source_stages WHERE provider = ? AND route_id = ? AND stage_order = ?
-	`, provider, routeID, stageOrder).Scan(&exists)
+	queries := s.queries.WithTx(transaction)
+	_, err = queries.GetSourceStageExists(ctx, sqlcgen.GetSourceStageExistsParams{
+		Provider: string(provider), RouteID: routeID, StageOrder: int64(stageOrder),
+	})
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}
@@ -208,22 +132,21 @@ func (s *Store) RequestStageReprocess(ctx context.Context, provider route.Provid
 		return false, fmt.Errorf("reading the stage to reprocess: %w", err)
 	}
 
-	if _, err := transaction.ExecContext(ctx, `
-		INSERT INTO stage_reprocess (provider, route_id, stage_order, requested_at_unix)
-		VALUES (?, ?, ?, ?)
-		ON CONFLICT (provider, route_id, stage_order) DO UPDATE SET requested_at_unix = excluded.requested_at_unix
-	`, provider, routeID, stageOrder, time.Now().UTC().Unix()); err != nil {
+	if err := queries.UpsertStageReprocess(ctx, sqlcgen.UpsertStageReprocessParams{
+		Provider: string(provider), RouteID: routeID, StageOrder: int64(stageOrder),
+		RequestedAtUnix: time.Now().UTC().Unix(),
+	}); err != nil {
 		return false, fmt.Errorf("recording the reprocess request: %w", err)
 	}
-	if _, err := transaction.ExecContext(ctx, `
-		UPDATE target_stages SET source_revision = ?, content_hash = ?
-		WHERE provider = ? AND route_id = ? AND stage_order = ?
-	`, reprocessSentinel, reprocessSentinel, provider, routeID, stageOrder); err != nil {
+	if err := queries.MarkTargetStagesForReprocess(ctx, sqlcgen.MarkTargetStagesForReprocessParams{
+		SourceRevision: reprocessSentinel, ContentHash: reprocessSentinel,
+		Provider: string(provider), RouteID: routeID, StageOrder: int64(stageOrder),
+	}); err != nil {
 		return false, fmt.Errorf("forgetting the pushed revision: %w", err)
 	}
-	if _, err := transaction.ExecContext(ctx, `
-		DELETE FROM stage_surface WHERE provider = ? AND route_id = ? AND stage_order = ?
-	`, provider, routeID, stageOrder); err != nil {
+	if err := queries.DeleteStageSurface(ctx, sqlcgen.DeleteStageSurfaceParams{
+		Provider: string(provider), RouteID: routeID, StageOrder: int64(stageOrder),
+	}); err != nil {
 		return false, fmt.Errorf("dropping the stage surface: %w", err)
 	}
 	if err := transaction.Commit(); err != nil {
@@ -237,9 +160,9 @@ func (s *Store) RequestStageReprocess(ctx context.Context, provider route.Provid
 // transaction. A stage whose content hash is unchanged is left untouched, so an
 // unchanged library does not rewrite the whole cache on every scheduled run.
 // Rows whose stage has left the inventory are pruned.
-func storeStageGeometry(ctx context.Context, transaction *sql.Tx, provider route.Provider, stages []route.Route) error {
+func storeStageGeometry(ctx context.Context, queries *sqlcgen.Queries, provider route.Provider, stages []route.Route) error {
 	updatedAt := time.Now().UTC().Unix()
-	requested, err := requestedReprocessing(ctx, transaction)
+	requested, err := requestedReprocessing(ctx, queries)
 	if err != nil {
 		return err
 	}
@@ -248,10 +171,9 @@ func storeStageGeometry(ctx context.Context, transaction *sql.Tx, provider route
 		key := stage.Key()
 		_, reprocess := requested[key]
 
-		var storedHash string
-		err := transaction.QueryRowContext(ctx, `
-			SELECT content_hash FROM stage_geometry WHERE provider = ? AND route_id = ? AND stage_order = ?
-		`, key.Provider(), key.SourceRouteID(), key.StageOrder()).Scan(&storedHash)
+		storedHash, err := queries.GetStageGeometryHash(ctx, sqlcgen.GetStageGeometryHashParams{
+			Provider: string(key.Provider()), RouteID: key.SourceRouteID(), StageOrder: int64(key.StageOrder()),
+		})
 		switch {
 		case errors.Is(err, sql.ErrNoRows):
 		case err != nil:
@@ -266,54 +188,28 @@ func storeStageGeometry(ctx context.Context, transaction *sql.Tx, provider route
 			return err
 		}
 		bounds := stage.Bounds()
-		if _, err := transaction.ExecContext(ctx, `
-			INSERT INTO stage_geometry (
-				provider, route_id, stage_order, content_hash, route_name, stage_name,
-				point_count, distance_metres, ascent_metres, descent_metres, max_gradient_percent,
-				min_longitude, min_latitude, max_longitude, max_latitude,
-				coordinates, updated_at_unix
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-			ON CONFLICT (provider, route_id, stage_order) DO UPDATE SET
-				content_hash = excluded.content_hash,
-				route_name = excluded.route_name,
-				stage_name = excluded.stage_name,
-				point_count = excluded.point_count,
-				distance_metres = excluded.distance_metres,
-				ascent_metres = excluded.ascent_metres,
-				descent_metres = excluded.descent_metres,
-				max_gradient_percent = excluded.max_gradient_percent,
-				min_longitude = excluded.min_longitude,
-				min_latitude = excluded.min_latitude,
-				max_longitude = excluded.max_longitude,
-				max_latitude = excluded.max_latitude,
-				coordinates = excluded.coordinates,
-				updated_at_unix = excluded.updated_at_unix
-		`,
-			key.Provider(), key.SourceRouteID(), key.StageOrder(), stage.ContentHash(), stage.SourceRouteName(), stage.RouteName(),
-			len(geometry), stage.DistanceMetres(), stage.ElevationGainMetres(), stage.ElevationLossMetres(), stage.MaxGradientPercent(),
-			bounds.MinLongitude, bounds.MinLatitude, bounds.MaxLongitude, bounds.MaxLatitude,
-			coordinates, updatedAt,
-		); err != nil {
+		if err := queries.UpsertStageGeometry(ctx, sqlcgen.UpsertStageGeometryParams{
+			Provider: string(key.Provider()), RouteID: key.SourceRouteID(), StageOrder: int64(key.StageOrder()),
+			ContentHash: stage.ContentHash(), RouteName: stage.SourceRouteName(), StageName: stage.RouteName(),
+			PointCount: int64(len(geometry)), DistanceMetres: stage.DistanceMetres(),
+			AscentMetres: stage.ElevationGainMetres(), DescentMetres: stage.ElevationLossMetres(),
+			MaxGradientPercent: stage.MaxGradientPercent(),
+			MinLongitude:       bounds.MinLongitude, MinLatitude: bounds.MinLatitude,
+			MaxLongitude: bounds.MaxLongitude, MaxLatitude: bounds.MaxLatitude,
+			Coordinates: coordinates, UpdatedAtUnix: updatedAt,
+		}); err != nil {
 			return fmt.Errorf("storing stage geometry: %w", err)
 		}
 	}
 
-	if _, err := transaction.ExecContext(ctx, `
-		DELETE FROM stage_geometry
-		WHERE NOT EXISTS (
-			SELECT 1 FROM source_stages
-			WHERE source_stages.provider = stage_geometry.provider
-			  AND source_stages.route_id = stage_geometry.route_id
-			  AND source_stages.stage_order = stage_geometry.stage_order
-		)
-	`); err != nil {
+	if err := queries.PruneStageGeometry(ctx); err != nil {
 		return fmt.Errorf("pruning stage geometry: %w", err)
 	}
 	// The marks are consumed here, in the transaction that acted on them, so a
 	// request is honoured exactly once and never outlives the pass that met it.
 	// Scoped to this provider: a request for another source's stage belongs to a
 	// pass that has not stored anything for it yet, and must still be waiting.
-	if _, err := transaction.ExecContext(ctx, "DELETE FROM stage_reprocess WHERE provider = ?", provider); err != nil {
+	if err := queries.DeleteStageReprocessByProvider(ctx, string(provider)); err != nil {
 		return fmt.Errorf("clearing reprocess requests: %w", err)
 	}
 
@@ -321,25 +217,14 @@ func storeStageGeometry(ctx context.Context, transaction *sql.Tx, provider route
 }
 
 // requestedReprocessing reads the stages an operator has asked to have redone.
-func requestedReprocessing(ctx context.Context, transaction *sql.Tx) (map[route.Key]struct{}, error) {
-	rows, err := transaction.QueryContext(ctx, "SELECT provider, route_id, stage_order FROM stage_reprocess")
+func requestedReprocessing(ctx context.Context, queries *sqlcgen.Queries) (map[route.Key]struct{}, error) {
+	rows, err := queries.ListStageReprocess(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("reading reprocess requests: %w", err)
 	}
-	defer closeRows(rows)
-
 	requested := make(map[route.Key]struct{})
-	for rows.Next() {
-		var provider route.Provider
-		var routeID int64
-		var stageOrder int
-		if err := rows.Scan(&provider, &routeID, &stageOrder); err != nil {
-			return nil, fmt.Errorf("reading a reprocess request: %w", err)
-		}
-		requested[route.NewKey(provider, routeID, stageOrder)] = struct{}{}
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("reading reprocess requests: %w", err)
+	for _, row := range rows {
+		requested[route.NewKey(route.Provider(row.Provider), row.RouteID, int(row.StageOrder))] = struct{}{}
 	}
 
 	return requested, nil

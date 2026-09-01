@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/nobbs/domestique/internal/sqlite/internal/sqlcgen"
 )
 
 // RecordTaskRun records no provider text, no route name, and no upstream
@@ -34,13 +36,14 @@ func (s *Store) RecordTaskRun(
 	}
 	defer rollback(transaction)
 
-	if _, err := transaction.ExecContext(ctx, `
-		INSERT INTO task_runs (task, argument, trigger, started_at_unix, finished_at_unix, outcome, detail, reference)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-	`, task, argument, trigger, startedAt.Unix(), finishedAt.Unix(), outcome, detail, reference); err != nil {
+	queries := s.queries.WithTx(transaction)
+	if err := queries.InsertTaskRun(ctx, sqlcgen.InsertTaskRunParams{
+		Task: task, Argument: argument, Trigger: trigger, StartedAtUnix: startedAt.Unix(),
+		FinishedAtUnix: finishedAt.Unix(), Outcome: outcome, Detail: detail, Reference: reference,
+	}); err != nil {
 		return fmt.Errorf("recording task run: %w", err)
 	}
-	if err := pruneTaskRuns(ctx, transaction, task, retain); err != nil {
+	if err := pruneTaskRuns(ctx, queries, task, retain); err != nil {
 		return err
 	}
 	if err := transaction.Commit(); err != nil {
@@ -55,19 +58,10 @@ func (s *Store) RecordTaskRun(
 // regardless of age. Recency is (finished_at_unix, id): a refusal recorded
 // off the caller's goroutine can commit after a later attempt's row, so id
 // alone no longer tracks insertion order against real event time.
-func pruneTaskRuns(ctx context.Context, transaction *sql.Tx, task string, retain int) error {
-	if _, err := transaction.ExecContext(ctx, `
-		DELETE FROM task_runs
-		WHERE task = ?
-		  AND id NOT IN (
-			SELECT id FROM task_runs WHERE task = ? ORDER BY finished_at_unix DESC, id DESC LIMIT ?
-		  )
-		  AND EXISTS (
-			SELECT 1 FROM task_runs newer
-			WHERE newer.task = task_runs.task AND newer.argument = task_runs.argument
-			  AND (newer.finished_at_unix, newer.id) > (task_runs.finished_at_unix, task_runs.id)
-		  )
-	`, task, task, retain); err != nil {
+func pruneTaskRuns(ctx context.Context, queries *sqlcgen.Queries, task string, retain int) error {
+	if err := queries.PruneTaskRuns(ctx, sqlcgen.PruneTaskRunsParams{
+		TaskName: task, Retain: int64(retain),
+	}); err != nil {
 		return fmt.Errorf("pruning task runs: %w", err)
 	}
 
@@ -85,29 +79,17 @@ func (s *Store) ForEachTaskRun(
 		return errors.New("a task name and a run visitor are required")
 	}
 
-	rows, err := s.database.QueryContext(ctx, `
-		SELECT argument, started_at_unix, finished_at_unix, outcome, detail
-		FROM task_runs WHERE task = ? ORDER BY finished_at_unix DESC, id DESC
-	`, task)
+	rows, err := s.queries.ListTaskRuns(ctx, task)
 	if err != nil {
 		return fmt.Errorf("reading task runs: %w", err)
 	}
-	defer closeRows(rows)
-
-	for rows.Next() {
-		var argument, outcome, detail string
-		var startedAt, finishedAt int64
-		if err := rows.Scan(&argument, &startedAt, &finishedAt, &outcome, &detail); err != nil {
-			return fmt.Errorf("reading a task run: %w", err)
-		}
+	for _, row := range rows {
 		if err := visit(
-			argument, time.Unix(startedAt, 0).UTC(), time.Unix(finishedAt, 0).UTC(), outcome, detail,
+			row.Argument, time.Unix(row.StartedAtUnix, 0).UTC(), time.Unix(row.FinishedAtUnix, 0).UTC(),
+			row.Outcome, row.Detail,
 		); err != nil {
 			return err
 		}
-	}
-	if err := rows.Err(); err != nil {
-		return fmt.Errorf("reading task runs: %w", err)
 	}
 
 	return nil
@@ -149,44 +131,27 @@ func (s *Store) ForEachTaskRunPage(
 		finishedBefore, idBefore = finishedAt, id
 	}
 	// One row past the page, so "is there more" is read rather than guessed.
-	rows, err := s.database.QueryContext(ctx, `
-		SELECT id, task, argument, trigger, started_at_unix, finished_at_unix, outcome, detail, reference
-		FROM task_runs
-		WHERE (finished_at_unix, id) < (?, ?) AND (? = '' OR task = ?)
-		ORDER BY finished_at_unix DESC, id DESC
-		LIMIT ?
-	`, finishedBefore, idBefore, task, task, limit+1)
+	rows, err := s.queries.ListTaskRunsPage(ctx, sqlcgen.ListTaskRunsPageParams{
+		FinishedBefore: finishedBefore, IDBefore: idBefore, TaskFilter: task, RowLimit: int64(limit + 1),
+	})
 	if err != nil {
 		return "", false, fmt.Errorf("reading task runs: %w", err)
 	}
-	defer closeRows(rows)
-
 	visited := 0
-	for rows.Next() {
-		var id, startedUnix, finishedUnix int64
-		var name, argument, trigger, outcome, detail, reference string
-		if err := rows.Scan(
-			&id, &name, &argument, &trigger, &startedUnix, &finishedUnix, &outcome, &detail, &reference,
-		); err != nil {
-			return "", false, fmt.Errorf("reading a task run: %w", err)
-		}
+	for _, row := range rows {
 		if visited == limit {
 			return next, true, nil
 		}
 		visited++
-		next = formatTaskRunCursor(finishedUnix, id)
+		next = formatTaskRunCursor(row.FinishedAtUnix, row.ID)
 		if err := visit(
-			name, argument, trigger,
-			time.Unix(startedUnix, 0).UTC(), time.Unix(finishedUnix, 0).UTC(),
-			outcome, detail, reference,
+			row.Task, row.Argument, row.Trigger,
+			time.Unix(row.StartedAtUnix, 0).UTC(), time.Unix(row.FinishedAtUnix, 0).UTC(),
+			row.Outcome, row.Detail, row.Reference,
 		); err != nil {
 			return "", false, err
 		}
 	}
-	if err := rows.Err(); err != nil {
-		return "", false, fmt.Errorf("reading task runs: %w", err)
-	}
-
 	// The page was not filled, so nothing follows it.
 	return "", true, nil
 }
@@ -222,13 +187,11 @@ func parseTaskRunCursor(cursor string) (finishedUnix, id int64, ok bool) {
 // has recorded nothing. Neither half falls, so a position beyond either is one
 // this store never handed out — a pruned row still sits within both.
 func (s *Store) lastTaskRun(ctx context.Context) (finishedUnix, id int64, err error) {
-	if err := s.database.QueryRowContext(ctx, `
-		SELECT COALESCE(MAX(finished_at_unix), 0), COALESCE(MAX(id), 0) FROM task_runs
-	`).Scan(&finishedUnix, &id); err != nil {
+	row, err := s.queries.GetLastTaskRunPosition(ctx)
+	if err != nil {
 		return 0, 0, fmt.Errorf("reading task runs: %w", err)
 	}
-
-	return finishedUnix, id, nil
+	return row.FinishedAtUnix, row.ID, nil
 }
 
 // LastTaskOutcome is what a success is compared against, to tell a routine one
@@ -239,10 +202,10 @@ func (s *Store) LastTaskOutcome(
 	if task == "" {
 		return "", false, errors.New("task is required")
 	}
-	if err := s.database.QueryRowContext(ctx, `
-		SELECT outcome FROM task_runs WHERE task = ? AND argument = ?
-		ORDER BY finished_at_unix DESC, id DESC LIMIT 1
-	`, task, argument).Scan(&outcome); err != nil {
+	outcome, err = s.queries.GetLastTaskOutcome(ctx, sqlcgen.GetLastTaskOutcomeParams{
+		Task: task, Argument: argument,
+	})
+	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return "", false, nil
 		}
@@ -261,12 +224,10 @@ func (s *Store) LastTaskSuccess(
 	if task == "" {
 		return time.Time{}, false, errors.New("task is required")
 	}
-	var finishedUnix int64
-	if err := s.database.QueryRowContext(ctx, `
-		SELECT finished_at_unix FROM task_runs
-		WHERE task = ? AND argument = ? AND outcome = ?
-		ORDER BY finished_at_unix DESC, id DESC LIMIT 1
-	`, task, argument, "succeeded").Scan(&finishedUnix); err != nil {
+	finishedUnix, err := s.queries.GetLastTaskSuccess(ctx, sqlcgen.GetLastTaskSuccessParams{
+		Task: task, Argument: argument, Outcome: "succeeded",
+	})
+	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return time.Time{}, false, nil
 		}
@@ -291,38 +252,23 @@ func (s *Store) TaskFaultStreak(
 	if task == "" {
 		return 0, time.Time{}, errors.New("task is required")
 	}
-	rows, err := s.database.QueryContext(ctx, `
-		SELECT outcome, finished_at_unix FROM task_runs
-		WHERE task = ? AND argument = ?
-		ORDER BY finished_at_unix DESC, id DESC LIMIT ?
-	`, task, argument, backoffScan)
+	rows, err := s.queries.ListTaskOutcomesForFaultStreak(ctx, sqlcgen.ListTaskOutcomesForFaultStreakParams{
+		Task: task, Argument: argument, Limit: backoffScan,
+	})
 	if err != nil {
 		return 0, time.Time{}, fmt.Errorf("reading a task's fault streak: %w", err)
 	}
-	defer closeRows(rows)
-
-	for rows.Next() {
-		var (
-			outcome    string
-			finishedAt int64
-		)
-		if err := rows.Scan(&outcome, &finishedAt); err != nil {
-			return 0, time.Time{}, fmt.Errorf("reading a task's fault streak: %w", err)
-		}
-		if outcome == "succeeded" {
+	for _, row := range rows {
+		if row.Outcome == "succeeded" {
 			break
 		}
-		if outcome != "failed" && outcome != "blocked" {
+		if row.Outcome != "failed" && row.Outcome != "blocked" {
 			continue
 		}
 		if faults == 0 {
-			lastAt = time.Unix(finishedAt, 0).UTC()
+			lastAt = time.Unix(row.FinishedAtUnix, 0).UTC()
 		}
 		faults++
 	}
-	if err := rows.Err(); err != nil {
-		return 0, time.Time{}, fmt.Errorf("reading a task's fault streak: %w", err)
-	}
-
 	return faults, lastAt, nil
 }

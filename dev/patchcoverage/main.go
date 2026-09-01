@@ -196,6 +196,9 @@ func measurableGo(path string) bool {
 	if strings.HasSuffix(path, "/contract/openapi.gen.go") {
 		return false
 	}
+	if strings.HasPrefix(path, "internal/sqlite/internal/sqlcgen/") {
+		return false
+	}
 
 	// The -coverpkg set in mise-tasks.toml, which is also the go flag's paths in
 	// codecov.yml. dev/ is repository tooling and deliberately outside both.

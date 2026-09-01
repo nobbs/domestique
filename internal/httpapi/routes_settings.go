@@ -204,10 +204,8 @@ func settingsBody[Body any](h *Handler, writer http.ResponseWriter, request *htt
 	return body, true
 }
 
-// storeSection writes one section and then its credentials, and answers with
-// every setting now in force. The change is applied to the settings as they are
-// at the moment of the write. The section goes first because it is the half that
-// can be refused: a credential written before it would stay written under a 400.
+// storeSection commits one section and its credentials together, applied to the
+// settings as they are at the moment of the write, and answers with every setting now in force.
 func (h *Handler) storeSection(
 	writer http.ResponseWriter,
 	request *http.Request,
@@ -217,18 +215,13 @@ func (h *Handler) storeSection(
 	// The rules are the runtime settings package's own — the same ones the
 	// stored values were read back through at startup — so the message names
 	// the setting that is wrong rather than the section it was in.
-	if err := h.settings.Update(request.Context(), change); err != nil {
+	if err := h.settings.UpdateWithSecrets(request.Context(), change, secrets); err != nil {
 		if errors.Is(err, runtimeconfig.ErrStore) {
 			h.unavailable(writer)
 
 			return
 		}
 		h.error(writer, http.StatusBadRequest, "invalid_request", err.Error())
-
-		return
-	}
-	if err := h.settings.SetSecrets(request.Context(), secrets); err != nil {
-		h.unavailable(writer)
 
 		return
 	}

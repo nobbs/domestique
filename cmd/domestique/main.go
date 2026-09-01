@@ -85,11 +85,15 @@ func run(ctx context.Context) error {
 		return fmt.Errorf("creating oauth service: %w", err)
 	}
 	notifier, err := pushover.New(&pushover.Options{
-		BaseURL: func() string { return runtimeSettings.Values().Notifications.PushoverBaseURL },
-		ApplicationToken: func() []byte {
-			return runtimeSettings.Secret(runtimeconfig.SecretPushoverApplicationToken).Bytes()
+		Configuration: func() pushover.Configuration {
+			snapshot := runtimeSettings.Snapshot()
+
+			return pushover.Configuration{
+				BaseURL:          snapshot.Values().Notifications.PushoverBaseURL,
+				ApplicationToken: snapshot.Secret(runtimeconfig.SecretPushoverApplicationToken).Bytes(),
+				UserKey:          snapshot.Secret(runtimeconfig.SecretPushoverUserKey).Bytes(),
+			}
 		},
-		UserKey: func() []byte { return runtimeSettings.Secret(runtimeconfig.SecretPushoverUserKey).Bytes() },
 	})
 	if err != nil {
 		return fmt.Errorf("creating Pushover client: %w", err)

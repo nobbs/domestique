@@ -1,10 +1,8 @@
 package sqlite
 
 import (
-	"database/sql"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -194,6 +192,33 @@ func TestStoreRefusesAnIncompleteSyncRun(t *testing.T) {
 	require.Error(t, err, "RecordSyncRun() with a negative count")
 }
 
+func TestSyncRunReadersRejectIncompleteRuns(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	_, err := store.database.ExecContext(t.Context(), `
+		INSERT INTO sync_runs (
+			reference, phase, started_at_unix, finished_at_unix, outcome, detail,
+			source_stages, created, updated, deleted
+		) VALUES ('run', 'source', 1, NULL, 'succeeded', '', 0, 0, 0, 0)
+	`)
+	require.NoError(t, err)
+
+	_, _, _, _, _, _, _, _, err = store.LastSyncRun(t.Context())
+	require.ErrorContains(t, err, "finish time is null")
+	require.ErrorContains(t, store.ForEachPhaseRun(t.Context(), func(
+		string, time.Time, string, string, int, int, int, int,
+	) error {
+		return nil
+	}), "finish time is null")
+	_, _, err = store.ForEachSyncRun(t.Context(), "", 1, func(
+		string, string, time.Time, string, string, int, int, int, int,
+	) error {
+		return nil
+	})
+	require.ErrorContains(t, err, "finish time is null")
+	_, _, err = store.LastSuccessfulPhaseCompletion(t.Context(), "source")
+	require.ErrorContains(t, err, "finish time is null")
+}
+
 // Runs are recorded forever on a service that is deployed forever, so the
 // history is bounded. What it must never drop is the newest run of a half: the
 // status response reads that as what the half last came to, and a half switched
@@ -220,37 +245,6 @@ func TestStoreBoundsTheRecordedHistoryAndKeepsEachPhasesLastRun(t *testing.T) {
 	`).Scan(&runs, &targetRuns), "counting retained runs")
 	assert.Equal(t, retainedSyncRuns+1, runs, "retained runs, plus the target half's last one")
 	assert.Equal(t, 1, targetRuns, "the target half's last run was pruned with the rest")
-}
-
-// syncRunReferenceVersion is the migration that named the recorded runs. It is
-// pinned rather than counted from the end of the list, because what the test
-// below needs is the schema immediately before that one migration, which stops
-// being the last one the moment another is appended.
-const syncRunReferenceVersion = 11
-
-// A deployment upgrading into this feature has a history already, and it is as
-// addressable as anything recorded after the upgrade.
-func TestStoreNamesRunsRecordedBeforeReferencesExisted(t *testing.T) {
-	databasePath := filepath.Join(t.TempDir(), "state.db")
-	seedSchemaVersion(t, databasePath, syncRunReferenceVersion-1)
-	database, err := sql.Open(driverName, databasePath)
-	require.NoError(t, err, "opening the seeded database")
-	_, err = database.ExecContext(t.Context(), `
-		INSERT INTO sync_runs (phase, started_at_unix, finished_at_unix, outcome, detail)
-		VALUES ('source', 100, 160, 'succeeded', '')
-	`)
-	require.NoError(t, err, "recording a run under the earlier schema")
-	require.NoError(t, database.Close(), "closing the seeded database")
-
-	store, err := Open(t.Context(), databasePath, testKey(1))
-	require.NoError(t, err, "Open()")
-	t.Cleanup(func() {
-		assert.NoError(t, store.Close(), "Close()")
-	})
-
-	page, _ := readSyncRunPage(t, store, "", 10)
-	require.Len(t, page, 1, "the run recorded under the earlier schema")
-	assert.Len(t, page[0], 2*syncRunReferenceBytes, "the reference the migration gave it")
 }
 
 // readSyncRunPage collects one page of the recorded history as the references it

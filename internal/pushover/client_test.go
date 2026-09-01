@@ -59,14 +59,27 @@ func TestClientRejectsUnacceptedSuccessResponse(t *testing.T) {
 	assert.EqualError(t, err, "pushover: notification was not accepted")
 }
 
+func TestNewRequiresConfigurationAndDefaultsItsBaseURL(t *testing.T) {
+	_, err := New(nil)
+	require.EqualError(t, err, "pushover: options and configuration are required")
+
+	client, err := New(&Options{Configuration: func() Configuration { return Configuration{} }})
+	require.NoError(t, err)
+	assert.NotNil(t, client)
+}
+
 func newTestClient(t *testing.T, server *httptest.Server) *Client {
 	t.Helper()
 	client, err := New(&Options{
-		BaseURL:          func() string { return server.URL },
-		ApplicationToken: func() []byte { return []byte("application-token") },
-		UserKey:          func() []byte { return []byte("user-key") },
-		Timeout:          time.Second,
-		Transport:        server.Client().Transport,
+		Configuration: func() Configuration {
+			return Configuration{
+				BaseURL:          server.URL,
+				ApplicationToken: []byte("application-token"),
+				UserKey:          []byte("user-key"),
+			}
+		},
+		Timeout:   time.Second,
+		Transport: server.Client().Transport,
 	})
 	require.NoError(t, err)
 
@@ -80,28 +93,45 @@ func writeResponse(t *testing.T, writer http.ResponseWriter, status int, body st
 	assert.NoError(t, err, "writing the response")
 }
 
-// The base URL an operator edits takes effect on the next notification, not on
-// the next restart, so it cannot be resolved once at construction.
-func TestClientReadsItsBaseURLAgainBeforeEachSend(t *testing.T) {
+// One callback supplies the destination and both credentials so a save cannot
+// split one notification across two settings generations.
+func TestClientReadsOneConfigurationBeforeEachSend(t *testing.T) {
 	requests := 0
-	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		requests++
+		if !assert.NoError(t, request.ParseForm()) {
+			return
+		}
+		assert.Equal(t, "new-token", request.Form.Get("token"))
+		assert.Equal(t, "new-user", request.Form.Get("user"))
 		writer.Header().Set("Content-Type", "application/json")
 		writeResponse(t, writer, http.StatusOK, `{"status":1}`)
 	}))
 	defer server.Close()
 
-	baseURL := "https://api.pushover.net"
+	reads := 0
+	configuration := Configuration{
+		BaseURL:          "https://api.pushover.net",
+		ApplicationToken: []byte("old-token"),
+		UserKey:          []byte("old-user"),
+	}
 	client, err := New(&Options{
-		BaseURL:          func() string { return baseURL },
-		ApplicationToken: func() []byte { return []byte("application-token") },
-		UserKey:          func() []byte { return []byte("user-key") },
-		Timeout:          time.Second,
-		Transport:        server.Client().Transport,
+		Configuration: func() Configuration {
+			reads++
+
+			return configuration
+		},
+		Timeout:   time.Second,
+		Transport: server.Client().Transport,
 	})
 	require.NoError(t, err)
 
-	baseURL = server.URL
+	configuration = Configuration{
+		BaseURL:          server.URL,
+		ApplicationToken: []byte("new-token"),
+		UserKey:          []byte("new-user"),
+	}
 	require.NoError(t, client.Send(t.Context(), "Domestique sync", "succeeded"), "Send()")
 	assert.Equal(t, 1, requests, "the send went somewhere other than the edited base url")
+	assert.Equal(t, 2, reads, "a send read more than one settings generation")
 }

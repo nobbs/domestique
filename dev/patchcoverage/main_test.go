@@ -409,6 +409,7 @@ func TestMeasurableGoMatchesCodecovPaths(t *testing.T) {
 	assert.True(t, measurableGo("internal/httpapi/handler.go"))
 	assert.False(t, measurableGo("internal/httpapi/contract/openapi.gen.go"))
 	assert.False(t, measurableGo("internal/readiness/contract/openapi.gen.go"))
+	assert.False(t, measurableGo("internal/sqlite/internal/sqlcgen/state.sql.go"))
 	assert.False(t, measurableGo("internal/httpapi/handler_test.go"))
 	assert.False(t, measurableGo("dev/patchcoverage/main.go"))
 }
