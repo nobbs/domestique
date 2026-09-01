@@ -45,6 +45,14 @@ var (
 	ErrOAuthTransactionUsed = errors.New("oauth transaction was already used")
 	// ErrOAuthTransactionIdentityMismatch reports a callback from another identity.
 	ErrOAuthTransactionIdentityMismatch = errors.New("oauth transaction identity did not match")
+	// ErrLoginNotFound reports an unknown or already-consumed browser sign-in state.
+	ErrLoginNotFound = errors.New("login transaction was not found")
+	// ErrLoginExpired reports a browser sign-in state that exceeded its deadline.
+	ErrLoginExpired = errors.New("login transaction has expired")
+	// ErrSessionNotFound reports an unknown web session token.
+	ErrSessionNotFound = errors.New("web session was not found")
+	// ErrSessionExpired reports a web session token that exceeded its deadline.
+	ErrSessionExpired = errors.New("web session has expired")
 )
 
 // Store is an SQLite-backed state store whose OAuth tokens use AES-GCM at rest.
