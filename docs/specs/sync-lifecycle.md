@@ -203,14 +203,14 @@ synchronisation does.
 
 ## Reprocessing one route
 
-A route carries three derived answers the service reuses while they still look
+A route carries four derived answers the service reuses while they still look
 current: the geometry it derived and stored, the revision it last pushed to each
-target, and its surface classification.
+target, its surface classification, and its predicted moving time.
 
-A reprocess request discards all three for that route and starts a
+A reprocess request discards all four for that route and starts a
 synchronisation of both halves. The route is read again, derived again, encoded
-again, pushed to every target regardless of the revision recorded there, and
-classified again.
+again, pushed to every target regardless of the revision recorded there,
+classified again, and timed again.
 
 It is not a delete and not a create. The Wahoo route identity is kept, so the
 route the service already owns is rewritten in place through the same ownership

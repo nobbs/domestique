@@ -22,6 +22,10 @@ func TestStoreReprocessesOneStageWithoutLosingItsRouteIdentity(t *testing.T) {
 	require.NoError(t, store.StoreStageSurface(
 		t.Context(), route.ProviderVeloPlanner, 7, 2, "content-hash", "index-gen", []byte(`[{"kind":"asphalt","startIndex":0,"endIndex":1}]`), 100,
 	), "StoreStageSurface()")
+	movingSeconds := 3600.0
+	require.NoError(t, store.StoreStageDuration(
+		t.Context(), route.ProviderVeloPlanner, 7, 2, "content-hash", "index-gen", "coefficients", &movingSeconds, nil,
+	), "StoreStageDuration()")
 
 	found, err := store.RequestStageReprocess(t.Context(), route.ProviderVeloPlanner, 7, 2)
 	require.NoError(t, err, "RequestStageReprocess()")
@@ -45,6 +49,9 @@ func TestStoreReprocessesOneStageWithoutLosingItsRouteIdentity(t *testing.T) {
 	_, _, surfaceFound, err := store.StageSurface(t.Context(), route.ProviderVeloPlanner, 7, 2, "content-hash")
 	require.NoError(t, err, "StageSurface()")
 	assert.False(t, surfaceFound, "the surface survived a reprocess instead of being asked for again")
+	_, _, _, durationFound, err := store.StageDurationFingerprint(t.Context(), route.ProviderVeloPlanner, 7, 2)
+	require.NoError(t, err, "StageDurationFingerprint()")
+	assert.False(t, durationFound, "the prediction survived a reprocess instead of being asked for again")
 }
 
 // The geometry cache skips a stage whose content has not changed. A reprocess is
