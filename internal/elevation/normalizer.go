@@ -3,7 +3,6 @@ package elevation
 
 import (
 	"fmt"
-	"math"
 	"sort"
 
 	"github.com/nobbs/domestique/internal/route"
@@ -12,7 +11,6 @@ import (
 const (
 	sampleIntervalMetres = 25.0
 	medianWindowMetres   = 100.0
-	earthRadiusMetres    = 6_371_000.0
 )
 
 // Normalizer resamples fully-elevated routes and removes isolated altitude
@@ -78,7 +76,7 @@ func resampleElevations(points []route.Point) []sample {
 	distanceSoFar := 0.0
 	for index := 1; index < len(points); index++ {
 		previous, current := points[index-1], points[index]
-		segmentDistance := haversine(previous, current)
+		segmentDistance := route.HaversineMetres(previous, current)
 		for segmentDistance > 0 && distanceSoFar+segmentDistance >= nextSample {
 			ratio := (nextSample - distanceSoFar) / segmentDistance
 			result = append(result, sample{
@@ -117,7 +115,7 @@ func applyElevations(points []route.Point, samples []sample) {
 	sampleIndex := 0
 	for index := range points {
 		if index > 0 {
-			distanceSoFar += haversine(points[index-1], points[index])
+			distanceSoFar += route.HaversineMetres(points[index-1], points[index])
 		}
 		for sampleIndex+1 < len(samples) && samples[sampleIndex+1].distance <= distanceSoFar {
 			sampleIndex++
@@ -133,14 +131,4 @@ func applyElevations(points []route.Point, samples []sample) {
 		elevation := left.elevation + ratio*(right.elevation-left.elevation)
 		points[index].Elevation = &elevation
 	}
-}
-
-func haversine(left, right route.Point) float64 {
-	latitudeDelta := (right.Latitude - left.Latitude) * math.Pi / 180
-	longitudeDelta := (right.Longitude - left.Longitude) * math.Pi / 180
-	leftLatitude := left.Latitude * math.Pi / 180
-	rightLatitude := right.Latitude * math.Pi / 180
-	a := math.Sin(latitudeDelta/2)*math.Sin(latitudeDelta/2) +
-		math.Cos(leftLatitude)*math.Cos(rightLatitude)*math.Sin(longitudeDelta/2)*math.Sin(longitudeDelta/2)
-	return earthRadiusMetres * 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
 }

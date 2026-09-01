@@ -7,10 +7,6 @@ import (
 	"github.com/nobbs/domestique/internal/surface"
 )
 
-// earthRadiusMetres is the spherical model shared with the route and surface
-// packages. Its own copy: route's is unexported.
-const earthRadiusMetres = 6_371_000.0
-
 // gradientWindowMetres is the shortest span a gradient is measured over,
 // matching internal/route and lib/profile.ts. Per-segment gradients produce
 // absurd speeds and make two recordings differ by point density alone.
@@ -76,7 +72,7 @@ func Predict(points []route.Point, kinds []surface.Kind, coefficients Coefficien
 
 	distances := make([]float64, len(points))
 	for index := 1; index < len(points); index++ {
-		distances[index] = distances[index-1] + haversineMetres(points[index-1], points[index])
+		distances[index] = distances[index-1] + route.HaversineMetres(points[index-1], points[index])
 	}
 	gradients := windowedGradientPercent(distances, points)
 
@@ -208,19 +204,4 @@ func poweredSpeedMetresPerSecond(crr, sinTheta, cosTheta float64, coefficients C
 	}
 
 	return (low + high) / 2
-}
-
-// haversineMetres returns the great-circle distance between two points. It
-// matches the spherical model internal/route and internal/surface use, each
-// keeping its own copy for the reason earthRadiusMetres above states.
-func haversineMetres(left, right route.Point) float64 {
-	latitudeDelta := (right.Latitude - left.Latitude) * math.Pi / 180
-	longitudeDelta := (right.Longitude - left.Longitude) * math.Pi / 180
-	leftLatitude := left.Latitude * math.Pi / 180
-	rightLatitude := right.Latitude * math.Pi / 180
-	chord := math.Sin(latitudeDelta/2)*math.Sin(latitudeDelta/2) +
-		math.Cos(leftLatitude)*math.Cos(rightLatitude)*
-			math.Sin(longitudeDelta/2)*math.Sin(longitudeDelta/2)
-
-	return earthRadiusMetres * 2 * math.Atan2(math.Sqrt(chord), math.Sqrt(1-chord))
 }

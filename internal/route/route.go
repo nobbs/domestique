@@ -10,9 +10,9 @@ import (
 	"strings"
 )
 
-// earthRadiusMetres is the spherical Earth model shared with the elevation
-// resampler so route lengths agree wherever they are computed.
-const earthRadiusMetres = 6_371_000.0
+// EarthRadiusMetres is the one spherical Earth model distances are computed
+// on, exported so every package's lengths agree with the ones shown beside them.
+const EarthRadiusMetres = 6_371_000.0
 
 // gradientWindowMetres is the shortest span a gradient is measured over. It
 // matches the elevation normalizer's median window.
@@ -236,7 +236,7 @@ func (s *Route) Geometry() []Point {
 func (s *Route) DistanceMetres() float64 {
 	total := 0.0
 	for index := 1; index < len(s.geometry); index++ {
-		total += haversineMetres(s.geometry[index-1], s.geometry[index])
+		total += HaversineMetres(s.geometry[index-1], s.geometry[index])
 	}
 
 	return total
@@ -319,7 +319,7 @@ func (s *Route) MaxGradientPercent() float64 {
 	// scanning forward rather than re-measuring.
 	distances := make([]float64, len(s.geometry))
 	for index := 1; index < len(s.geometry); index++ {
-		distances[index] = distances[index-1] + haversineMetres(s.geometry[index-1], s.geometry[index])
+		distances[index] = distances[index-1] + HaversineMetres(s.geometry[index-1], s.geometry[index])
 	}
 
 	steepest := 0.0
@@ -355,9 +355,9 @@ func (s *Route) hasCompleteElevation() bool {
 	return true
 }
 
-// haversineMetres returns the great-circle distance between two points, on the
-// same spherical model the elevation resampler uses.
-func haversineMetres(left, right Point) float64 {
+// HaversineMetres returns the great-circle distance between two points on the
+// EarthRadiusMetres sphere.
+func HaversineMetres(left, right Point) float64 {
 	latitudeDelta := (right.Latitude - left.Latitude) * math.Pi / 180
 	longitudeDelta := (right.Longitude - left.Longitude) * math.Pi / 180
 	leftLatitude := left.Latitude * math.Pi / 180
@@ -366,7 +366,7 @@ func haversineMetres(left, right Point) float64 {
 		math.Cos(leftLatitude)*math.Cos(rightLatitude)*
 			math.Sin(longitudeDelta/2)*math.Sin(longitudeDelta/2)
 
-	return earthRadiusMetres * 2 * math.Atan2(math.Sqrt(chord), math.Sqrt(1-chord))
+	return EarthRadiusMetres * 2 * math.Atan2(math.Sqrt(chord), math.Sqrt(1-chord))
 }
 
 func validatePoint(point Point) error {

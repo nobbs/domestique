@@ -15,7 +15,6 @@ import (
 const (
 	defaultTimeout   = 30 * time.Second
 	maximumBodyBytes = 1 << 20
-	earthRadiusMetre = 6_371_000.0
 
 	// maximumRoutes bounds a route listing. Wahoo returns the account's routes in
 	// one response — `page` is accepted and ignored — so there is no paging to walk.

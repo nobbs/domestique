@@ -6,10 +6,6 @@ import (
 	"github.com/nobbs/domestique/internal/route"
 )
 
-// earthRadiusMetres is the spherical model shared with the route and elevation
-// packages, so a length here agrees with the distance shown beside it.
-const earthRadiusMetres = 6_371_000.0
-
 const (
 	// snapRadiusMetres is the furthest a stage point may sit from a way before the
 	// two are unrelated. The query is sized from it, so widening it widens the ask.
@@ -144,7 +140,7 @@ func MatchedMetres(points []route.Point, kinds []Kind) float64 {
 		if kinds[index-1] == KindUnknown && kinds[index] == KindUnknown {
 			continue
 		}
-		total += haversineMetres(points[index-1], points[index])
+		total += route.HaversineMetres(points[index-1], points[index])
 	}
 
 	return total
@@ -216,7 +212,7 @@ func newProjection(longitude, latitude float64) projection {
 }
 
 func (p projection) project(longitude, latitude float64) (east, north float64) {
-	metresPerDegree := earthRadiusMetres * math.Pi / 180
+	metresPerDegree := route.EarthRadiusMetres * math.Pi / 180
 
 	return (longitude - p.referenceLongitude) * metresPerDegree * p.longitudeScale,
 		(latitude - p.referenceLatitude) * metresPerDegree
@@ -291,18 +287,4 @@ func heading(projection projection, points []route.Point, index int) (east, nort
 	afterEast, afterNorth := projection.project(points[after].Longitude, points[after].Latitude)
 
 	return afterEast - beforeEast, afterNorth - beforeNorth
-}
-
-// haversineMetres returns the great-circle distance between two stage points, on
-// the same spherical model the route and elevation packages use.
-func haversineMetres(left, right route.Point) float64 {
-	latitudeDelta := (right.Latitude - left.Latitude) * math.Pi / 180
-	longitudeDelta := (right.Longitude - left.Longitude) * math.Pi / 180
-	leftLatitude := left.Latitude * math.Pi / 180
-	rightLatitude := right.Latitude * math.Pi / 180
-	chord := math.Sin(latitudeDelta/2)*math.Sin(latitudeDelta/2) +
-		math.Cos(leftLatitude)*math.Cos(rightLatitude)*
-			math.Sin(longitudeDelta/2)*math.Sin(longitudeDelta/2)
-
-	return earthRadiusMetres * 2 * math.Atan2(math.Sqrt(chord), math.Sqrt(1-chord))
 }

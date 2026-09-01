@@ -34,11 +34,11 @@ func testCoefficients() Coefficients {
 }
 
 // metresToLongitudeDegrees places a point at the given distance east of the
-// origin, along the equator, where haversineMetres reduces to an exact great-
+// origin, along the equator, where HaversineMetres reduces to an exact great-
 // circle arc — an exact, deterministic way to build geometry of a known length
 // without depending on the distance function under test.
 func metresToLongitudeDegrees(metres float64) float64 {
-	return metres / earthRadiusMetres * 180 / math.Pi
+	return metres / route.EarthRadiusMetres * 180 / math.Pi
 }
 
 // sampledStage builds n points evenly spaced over totalDistanceMetres along the
@@ -103,7 +103,7 @@ func TestPredictBlendsPhysicsAndLinearHalvesPerSegment(t *testing.T) {
 
 	distances := make([]float64, len(points))
 	for index := 1; index < len(points); index++ {
-		distances[index] = distances[index-1] + haversineMetres(points[index-1], points[index])
+		distances[index] = distances[index-1] + route.HaversineMetres(points[index-1], points[index])
 	}
 	gradients := windowedGradientPercent(distances, points)
 	crr := coefficients.crr(surface.KindAsphalt)

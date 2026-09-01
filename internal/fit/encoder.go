@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"time"
 
 	fitencoder "github.com/muktihari/fit/encoder"
@@ -17,9 +16,8 @@ import (
 )
 
 const (
-	minimumAltitude  = -500.0
-	maximumAltitude  = 12_606.8
-	earthRadiusMetre = 6_371_000.0
+	minimumAltitude = -500.0
+	maximumAltitude = 12_606.8
 )
 
 // Encoder creates device-ready FIT course files.
@@ -54,7 +52,7 @@ func (e *Encoder) Encode(ctx context.Context, stage route.Route) ([]byte, error)
 			return nil, fmt.Errorf("fit: encoding cancelled: %w", err)
 		}
 		if index > 0 {
-			distance += haversine(geometry[index-1], point)
+			distance += route.HaversineMetres(geometry[index-1], point)
 		}
 
 		record := mesgdef.NewRecord(nil).
@@ -82,15 +80,4 @@ func (e *Encoder) Encode(ctx context.Context, stage route.Route) ([]byte, error)
 
 func courseTimestamp() time.Time {
 	return time.Date(2020, time.January, 1, 0, 0, 0, 0, time.UTC)
-}
-
-func haversine(left, right route.Point) float64 {
-	latitudeDelta := (right.Latitude - left.Latitude) * math.Pi / 180
-	longitudeDelta := (right.Longitude - left.Longitude) * math.Pi / 180
-	leftLatitude := left.Latitude * math.Pi / 180
-	rightLatitude := right.Latitude * math.Pi / 180
-	a := math.Sin(latitudeDelta/2)*math.Sin(latitudeDelta/2) +
-		math.Cos(leftLatitude)*math.Cos(rightLatitude)*math.Sin(longitudeDelta/2)*math.Sin(longitudeDelta/2)
-
-	return earthRadiusMetre * 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
 }
