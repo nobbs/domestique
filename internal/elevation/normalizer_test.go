@@ -46,7 +46,7 @@ func elevatedStage(t *testing.T, elevations []float64) route.Route {
 	t.Helper()
 	points := make([]route.Point, 0, len(elevations))
 	for index, elevation := range elevations {
-		points = append(points, route.Point{Latitude: 49 + float64(index)*25/earthRadiusMetres*180/math.Pi, Longitude: 8, Elevation: &elevation})
+		points = append(points, route.Point{Latitude: 49 + float64(index)*25/route.EarthRadiusMetres*180/math.Pi, Longitude: 8, Elevation: &elevation})
 	}
 	stage, err := route.NewRoute(route.ProviderVeloPlanner, 1, 1, "revision", "Route", "", points, "hash")
 	require.NoError(t, err)

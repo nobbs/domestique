@@ -283,7 +283,7 @@ func assertEveryPointIs(t *testing.T, points []route.Point, kinds []Kind, want K
 // offset returns the coordinate the given number of metres east and north of the
 // test origin.
 func offset(eastMetres, northMetres float64) Coordinate {
-	metresPerDegree := earthRadiusMetres * math.Pi / 180
+	metresPerDegree := route.EarthRadiusMetres * math.Pi / 180
 
 	return Coordinate{
 		Longitude: originLongitude + eastMetres/(metresPerDegree*math.Cos(originLatitude*math.Pi/180)),
