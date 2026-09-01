@@ -413,3 +413,32 @@ func TestDatabaseDSNConfiguresEveryConnection(t *testing.T) {
 		assert.Equal(t, 5000, busyTimeout)
 	}
 }
+
+func TestActivityTablesBelongToATargetAndCascade(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	ctx := t.Context()
+	_, err := store.database.ExecContext(ctx, `INSERT INTO targets (slot, authorization_state, updated_at_unix) VALUES ('rider-a', 'authorized', 1)`)
+	require.NoError(t, err)
+	insertSummary := `
+		INSERT INTO activities (
+			target_slot, workout_id, workout_type_id, workout_type_location_id, started_at_unix,
+			distance_metres, moving_seconds, elapsed_seconds, ascent_metres, raw_summary_json, updated_at_unix
+		) VALUES (?, 1, 15, 1, 1, 1000, 60, 65, 10, '{}', 1)`
+	_, err = store.database.ExecContext(ctx, insertSummary, "rider-a")
+	require.NoError(t, err)
+	_, err = store.database.ExecContext(ctx, insertSummary, "rider-a")
+	require.Error(t, err, "the summary key is unique per target")
+	_, err = store.database.ExecContext(ctx, insertSummary, "nobody")
+	require.Error(t, err, "a summary needs a configured target")
+
+	_, err = store.database.ExecContext(ctx, `INSERT INTO activity_records (target_slot, workout_id, record_index, recorded_at_unix) VALUES ('rider-a', 1, 0, 1)`)
+	require.NoError(t, err)
+	_, err = store.database.ExecContext(ctx, `INSERT INTO activity_records (target_slot, workout_id, record_index, recorded_at_unix) VALUES ('rider-a', 2, 0, 1)`)
+	require.Error(t, err, "records need their summary first")
+
+	_, err = store.database.ExecContext(ctx, `DELETE FROM activities WHERE workout_id = 1`)
+	require.NoError(t, err)
+	var records int
+	require.NoError(t, store.database.QueryRowContext(ctx, `SELECT COUNT(*) FROM activity_records`).Scan(&records))
+	assert.Zero(t, records, "records follow their summary out")
+}
