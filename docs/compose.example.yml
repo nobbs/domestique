@@ -23,7 +23,7 @@ services:
       - no-new-privileges:true
     ports:
       - "127.0.0.1:8080:8080"
-      # The readiness probe. Loopback only, and never given to `tailscale serve`:
+      # The readiness probe. Loopback only, and never routed by the reverse proxy:
       # host-local health checking is the only caller it has.
       - "127.0.0.1:8081:8081"
     tmpfs:
@@ -31,15 +31,18 @@ services:
     volumes:
       - domestique-state:/var/lib/domestique
       - ./config.toml:/etc/domestique/config.toml:ro
-    # The only secret the host hands the process. Every other credential the
+    # The two secrets the host hands the process. Every other credential the
     # service holds is entered on its settings page and stored encrypted under
-    # this key.
+    # the state key.
     secrets:
       - state_encryption_key
+      - auth0_client_secret
 
 secrets:
   state_encryption_key:
     file: ./secrets/state_encryption_key
+  auth0_client_secret:
+    file: ./secrets/auth0_client_secret
 
 volumes:
   domestique-state:

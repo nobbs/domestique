@@ -139,7 +139,7 @@ func TestOpenAPIContractResponses(t *testing.T) {
 			).Replace(target)
 			request := httptest.NewRequestWithContext(context.Background(), test.method, target, http.NoBody)
 			if test.authenticated {
-				request.Header.Set(assertionHeader, testAssertion)
+				withSession(request)
 				withBrowserOrigin(request)
 			}
 
@@ -189,7 +189,7 @@ func TestEveryStateChangingOperationRequiresTheBrowserOrigin(t *testing.T) {
 					request := httptest.NewRequestWithContext(
 						t.Context(), strings.ToUpper(method), replacer.Replace(path), http.NoBody,
 					)
-					request.Header.Set(assertionHeader, testAssertion)
+					withSession(request)
 
 					response := httptest.NewRecorder()
 					handler.ServeHTTP(response, request)

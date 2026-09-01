@@ -2,10 +2,13 @@
 package httpapi
 
 import (
+	"context"
+	"embed"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"html/template"
 	"net/http"
-	"net/mail"
 	"net/url"
 	"slices"
 	"strings"
@@ -14,11 +17,25 @@ import (
 	openapi "github.com/nobbs/domestique/internal/httpapi/contract"
 	"github.com/nobbs/domestique/internal/route"
 	"github.com/nobbs/domestique/internal/runtimeconfig"
+	"github.com/nobbs/domestique/internal/session"
 )
 
-// assertionHeader carries the signed Cloudflare Access token, the only identity
-// this service accepts. Tailscale-User-Login is deliberately never read.
-const assertionHeader = "Cf-Access-Jwt-Assertion"
+// pageFiles holds the two sign-in documents. They are served before any
+// identity exists, so they cannot come from the browser UI bundle behind the gate.
+//
+//go:embed pages/*.html
+var pageFiles embed.FS
+
+// The two cookies this service sets. The `__Host-` prefix is enforced by the
+// browser only, so Secure, Path=/ and the absent Domain are set by hand too.
+const (
+	sessionCookie = "__Host-domestique_session"
+	loginCookie   = "__Host-domestique_login"
+)
+
+// loginCookieSeconds bounds a sign-in that was started and never finished. It
+// matches internal/session's own login lifetime.
+const loginCookieSeconds = 600
 
 // maximumRequestBytes bounds the only request bodies this service reads. They
 // carry two booleans, so anything larger is a mistake or an attempt.
@@ -44,9 +61,9 @@ const (
 
 // Options carries the non-secret settings the HTTP surface needs.
 type Options struct {
-	// AccessVerifier checks the Cloudflare Access assertion on every request.
-	// It is required: without it the service has no gate at all.
-	AccessVerifier AccessVerifier
+	// Sessions is who is signed in, and the sign-in flow that creates a
+	// session. Required: without it the service has no gate at all.
+	Sessions Sessions
 
 	// SurfaceIndexFunc reports the map build classifications are read from, false
 	// when off or still building. It asks the live index, not the state file.
@@ -76,14 +93,6 @@ type Options struct {
 	// host pulls it from is deployment topology and stays on the host.
 	BuildImageDigest string
 
-	// AccessEmail is the one address an Access assertion may name, and the
-	// principal every authenticated request resolves to.
-	AccessEmail string
-
-	// AccessSignOutURL ends the session and is served by whatever fronts this
-	// service. Empty where nothing would answer it.
-	AccessSignOutURL string
-
 	// BrowserOriginURL is an absolute HTTPS URL on the hostname a browser reaches
 	// this service at. Only scheme and host are read; it is the one allowed origin.
 	BrowserOriginURL string
@@ -98,7 +107,7 @@ type RideModelValidation struct {
 	EvaluatedRides int
 }
 
-// Handler enforces Cloudflare Access identity and exposes the v1 HTTP surface.
+// Handler enforces browser-session identity and exposes the v1 HTTP surface.
 type Handler struct {
 	oauth    OAuth
 	syncRuns Sync
@@ -108,7 +117,8 @@ type Handler struct {
 	// validate holds every request to the document before it reaches a
 	// handler: parameter bounds, request bodies, and provenance.
 	validate            func(http.Handler) http.Handler
-	accessVerifier      AccessVerifier
+	sessions            Sessions
+	pages               *template.Template
 	surfaceIndex        func() (string, time.Time, bool)
 	now                 func() time.Time
 	mux                 *http.ServeMux
@@ -119,8 +129,6 @@ type Handler struct {
 	buildRevision       string
 	buildImageDigest    string
 	browserOrigin       string
-	allowedEmail        string
-	signOutURL          string
 }
 
 // New creates a handler. Health checks are intentionally unauthenticated;
@@ -136,8 +144,8 @@ func New(
 	if options == nil || oauthService == nil || state == nil || syncRuns == nil || assets == nil || weather == nil {
 		return nil, errors.New("http options, oauth service, state, sync process, assets, and weather are required")
 	}
-	if options.AccessVerifier == nil {
-		return nil, errors.New("an access verifier is required")
+	if options.Sessions == nil {
+		return nil, errors.New("a session service is required")
 	}
 	if options.Alerts == nil {
 		return nil, errors.New("the alert matrix is required")
@@ -145,13 +153,9 @@ func New(
 	if options.Tasks == nil {
 		return nil, errors.New("the task list is required")
 	}
-	accessEmail, err := accessEmailOf(options.AccessEmail)
+	pages, err := template.ParseFS(pageFiles, "pages/*.html")
 	if err != nil {
-		return nil, err
-	}
-	signOutURL, err := signOutPathOf(options.AccessSignOutURL)
-	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parsing the sign-in pages: %w", err)
 	}
 	browserOrigin, err := browserOriginOf(options.BrowserOriginURL)
 	if err != nil {
@@ -180,9 +184,8 @@ func New(
 		rideModelValidation: options.RideModelValidationFunc,
 		now:                 time.Now,
 
-		accessVerifier: options.AccessVerifier,
-		allowedEmail:   accessEmail,
-		signOutURL:     signOutURL,
+		sessions: options.Sessions,
+		pages:    pages,
 	}
 	if err := handler.useContractValidation(); err != nil {
 		return nil, err
@@ -232,6 +235,10 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("PUT /v1/settings/sync", h.SetSync)
 	h.mux.HandleFunc("GET /v1/webui/config", h.GetWebUIConfig)
 	h.mux.HandleFunc("GET /v1/weather", h.GetWeather)
+	h.mux.HandleFunc("GET /auth/login", h.GetLoginPage)
+	h.mux.HandleFunc("POST /auth/start", h.StartLogin)
+	h.mux.HandleFunc("GET /auth/callback", h.CompleteLogin)
+	h.mux.HandleFunc("POST /auth/logout", h.Logout)
 	h.mux.HandleFunc("GET /oauth/wahoo/start/{target}", h.StartOAuth)
 	h.mux.HandleFunc("GET /oauth/wahoo/callback", h.CompleteOAuth)
 	h.mux.HandleFunc("GET /assets/{asset}", h.GetAsset)
@@ -256,15 +263,25 @@ func (h *Handler) routes() {
 // ServeHTTP applies the shared response headers and dispatches.
 func (h *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	header := writer.Header()
-	header.Set("Content-Security-Policy", h.contentSecurityPolicy())
+	header.Set("Content-Security-Policy", h.contentSecurityPolicy(request.URL.Path))
 	header.Set("Referrer-Policy", "no-referrer")
 	header.Set("X-Content-Type-Options", "nosniff")
 	header.Set("Cache-Control", cacheAPI)
+	// Every answer below this line depends on the session cookie, including the
+	// ones a shared cache would otherwise be free to reuse for anyone.
+	header.Set("Vary", "Cookie")
 	// HEAD as well as GET: Go's "GET /healthz" pattern answers both, and a
 	// liveness probe that sends HEAD must not be told it needs an identity.
 	if (request.Method == http.MethodGet || request.Method == http.MethodHead) &&
 		request.URL.Path == "/healthz" {
 		h.mux.ServeHTTP(writer, request)
+
+		return
+	}
+	// The sign-in routes are how a caller becomes an identity, so gating them
+	// would leave no way in. Their own guards are the login state and Origin.
+	if strings.HasPrefix(request.URL.Path, "/auth/") {
+		h.bounded(h.mux).ServeHTTP(writer, request)
 
 		return
 	}
@@ -296,34 +313,102 @@ func requestLimit(path string) int64 {
 	return maximumRequestBytes
 }
 
-// gated rejects any caller that is not the single configured identity, verifying
-// the signed Access assertion on every request. No Tailscale-User-Login branch.
+// identityKey addresses the signed-in caller in a request context.
+type identityKey struct{}
+
+// identityOf is who the gate admitted. Its zero value never reaches a handler:
+// everything behind gated() runs only after a session was verified.
+func identityOf(ctx context.Context) session.Identity {
+	identity, ok := ctx.Value(identityKey{}).(session.Identity)
+	if !ok {
+		return session.Identity{}
+	}
+
+	return identity
+}
+
+// gated admits a caller holding a valid session cookie, renewing it where the
+// sliding expiry moved, and puts the identity in the request context.
 func (h *Handler) gated(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		assertion := request.Header.Get(assertionHeader)
-		if assertion == "" {
-			h.error(writer, http.StatusUnauthorized, "unauthorized", "an authenticated identity is required")
+		cookie, err := request.Cookie(sessionCookie)
+		if err != nil {
+			h.unauthenticated(writer, request)
 
 			return
 		}
-
-		email, err := h.accessVerifier.Verify(request.Context(), assertion)
+		identity, renewedUntil, err := h.sessions.Verify(request.Context(), cookie.Value)
 		if err != nil {
 			// The reason stays here. Telling an unauthenticated caller why its
-			// assertion failed describes the check it has to defeat.
-			h.error(writer, http.StatusUnauthorized, "unauthorized", "an authenticated identity is required")
+			// session failed describes the check it has to defeat.
+			h.clearCookie(writer, sessionCookie)
+			h.unauthenticated(writer, request)
 
 			return
 		}
-		if !strings.EqualFold(email, h.allowedEmail) {
-			h.error(writer, http.StatusForbidden, "forbidden", "identity is not permitted")
-
-			return
+		if !renewedUntil.IsZero() {
+			h.setSessionCookie(writer, cookie.Value, renewedUntil)
 		}
 
-		// The asserted address is proven and then dropped: OAuth state is bound to the
-		// configured spelling, which differs from it only in case.
-		next.ServeHTTP(writer, request)
+		next.ServeHTTP(writer, request.WithContext(
+			context.WithValue(request.Context(), identityKey{}, identity)))
+	})
+}
+
+// unauthenticated answers a caller with no usable session: a browser asking for
+// a page is sent to sign in, everything else is told in this service's own
+// error shape.
+func (h *Handler) unauthenticated(writer http.ResponseWriter, request *http.Request) {
+	if (request.Method == http.MethodGet || request.Method == http.MethodHead) &&
+		strings.Contains(request.Header.Get("Accept"), "text/html") {
+		http.Redirect(writer, request, "/auth/login", http.StatusFound)
+
+		return
+	}
+	h.error(writer, http.StatusUnauthorized, "unauthorized", "an authenticated identity is required")
+}
+
+// setSessionCookie issues the session cookie. Every attribute the `__Host-`
+// prefix requires is set by hand: the prefix is a browser-side check, not a
+// browser-side default.
+func (h *Handler) setSessionCookie(writer http.ResponseWriter, token string, expiresAt time.Time) {
+	http.SetCookie(writer, &http.Cookie{
+		Name:     sessionCookie,
+		Value:    token,
+		Path:     "/",
+		Expires:  expiresAt,
+		Secure:   true,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+	})
+}
+
+// setLoginCookie carries the pending sign-in state. Lax rather than Strict: the
+// callback is a top-level cross-site navigation, and Strict would withhold this
+// cookie exactly there.
+func (h *Handler) setLoginCookie(writer http.ResponseWriter, state string) {
+	http.SetCookie(writer, &http.Cookie{
+		Name:     loginCookie,
+		Value:    state,
+		Path:     "/",
+		MaxAge:   loginCookieSeconds,
+		Secure:   true,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+	})
+}
+
+// clearCookie expires one of this service's cookies, spelled with the same
+// attributes it was set with so the browser replaces rather than adds.
+func (h *Handler) clearCookie(writer http.ResponseWriter, name string) {
+	http.SetCookie(writer, &http.Cookie{
+		Name:     name,
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		Secure:   true,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
 	})
 }
 
@@ -332,7 +417,17 @@ func (h *Handler) gated(next http.Handler) http.Handler {
 //   - worker-src 'self' and blob: it loads a bundled worker and spawns blob ones;
 //   - style-src 'unsafe-inline': it styles its own controls inline;
 //   - img-src and connect-src tile origins: sprites, glyphs, and tiles.
-func (h *Handler) contentSecurityPolicy() string {
+//
+// authPolicy confines the sign-in pages, which are two static documents with no
+// script, no map and one form posting back here.
+const authPolicy = "default-src 'none'; base-uri 'none'; frame-ancestors 'none'; " +
+	"form-action 'self'; style-src 'unsafe-inline'; img-src 'self'"
+
+func (h *Handler) contentSecurityPolicy(path string) string {
+	if strings.HasPrefix(path, "/auth/") {
+		return authPolicy
+	}
+
 	// A list that cannot be reduced to origins was never allowed to be stored, so
 	// this is a bug. The header then names no tile origin, blanking the map.
 	tileOrigins, err := tileOriginsOf(h.settings.Values().Basemaps)
@@ -387,42 +482,6 @@ func browserOriginOf(value string) (string, error) {
 	}
 
 	return "https://" + strings.TrimSuffix(strings.ToLower(parsed.Host), ":443"), nil
-}
-
-// accessEmailOf returns the one address an assertion may name. Checked for shape
-// because the contract publishes it as an email and the gate compares literally.
-func accessEmailOf(value string) (string, error) {
-	trimmed := strings.TrimSpace(value)
-	if trimmed == "" {
-		return "", errors.New("an access email is required")
-	}
-	parsed, err := mail.ParseAddress(trimmed)
-	if err != nil || parsed.Address != trimmed {
-		return "", errors.New("the access email must be a bare address")
-	}
-
-	return trimmed, nil
-}
-
-// signOutPathOf returns the path a page may offer as the way out, or empty. It
-// must be a path on this origin: absolute, //host and javascript: are refused.
-func signOutPathOf(value string) (string, error) {
-	trimmed := strings.TrimSpace(value)
-	if trimmed == "" {
-		return "", nil
-	}
-	if trimmed != value || strings.ContainsAny(trimmed, " \t\r\n") {
-		return "", errors.New("the sign-out URL must not contain whitespace")
-	}
-	if !strings.HasPrefix(trimmed, "/") || strings.HasPrefix(trimmed, "//") {
-		return "", errors.New("the sign-out URL must be a path on this service's own origin")
-	}
-	parsed, err := url.Parse(trimmed)
-	if err != nil || parsed.Scheme != "" || parsed.Host != "" {
-		return "", errors.New("the sign-out URL must be a path on this service's own origin")
-	}
-
-	return trimmed, nil
 }
 
 // publishableRevision returns the commit object name this build may claim, or

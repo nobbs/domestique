@@ -30,17 +30,16 @@
 #
 # Safety model — this reaches no provider and uses no production secret:
 #
-#   * The only secret is an encryption key written here, by this script, for a
-#     database this run creates. Nothing in .local is read and no deployed
-#     secret is mounted.
+#   * The only secrets are an encryption key and a placeholder client secret
+#     written here, by this script, for a database this run creates. Nothing in
+#     .local is read and no deployed secret is mounted.
 #   * Every provider is a runtime setting now, and this container starts on an
 #     empty state database, so it holds no credential and no upstream address at
 #     all: a run has nowhere to send anything, and the scheduler no-ops rather
 #     than starting one.
-#   * Cloudflare's signing keys are fetched lazily, on the first request that
-#     presents an assertion. No request here presents one, so the identity gate
-#     is exercised by the answer it gives an anonymous caller and Cloudflare is
-#     never contacted.
+#   * The Auth0 tenant is only ever contacted to complete a sign-in. No request
+#     here starts one, so the identity gate is exercised by the answer it gives
+#     an anonymous caller and the unroutable tenant is never contacted.
 #   * The state directory and the published ports are this script's own. The
 #     deployed container's volume and ports are never touched, which is why the
 #     host ports default off 8080 and 8081.
@@ -145,11 +144,16 @@ running() {
 
 # One request, and the status, headers and body all come out of it, so a header
 # assertion cannot pass against a different response than the status did.
+# Any argument after the URL is passed to curl, which is how a probe states the
+# request headers a browser would have sent. Redirects are never followed: what
+# a refusal redirects to is part of what is being checked.
 request() {
+  local url="$1"
+  shift
   STATUS="$(curl --silent --show-error --max-time 5 \
     --dump-header "${HEADERS_FILE}" --output "${BODY_FILE}" \
-    --write-out '%{http_code}' "$1")"
-  LAST_URL="$1"
+    --write-out '%{http_code}' "$@" "${url}")"
+  LAST_URL="${url}"
 }
 
 expect_status() {
@@ -193,6 +197,7 @@ mkdir -p "${SECRETS_DIR}" "${STATE_DIR}"
 chmod 0777 "${STATE_DIR}"
 
 printf '%s' "${ENCRYPTION_KEY}" > "${SECRETS_DIR}/state_encryption_key"
+printf 'smoke-placeholder' > "${SECRETS_DIR}/auth0_client_secret"
 chmod 0644 "${SECRETS_DIR}"/*
 
 cat > "${CONFIG_FILE}" <<EOF
@@ -204,10 +209,12 @@ listen_address = ":8080"
 readiness_address = ":8081"
 browser_origin_url = "${UNROUTABLE}"
 
-[access.cloudflare]
-team_domain = "smoke"
-application_aud = "smoke-application"
-allowed_email = "rider@example.test"
+[auth.auth0]
+# Unroutable on purpose: no request in this check ever reaches the provider.
+domain = "127.0.0.1:9"
+client_id = "smoke-client"
+client_secret_file = "${SECRETS_PATH}/auth0_client_secret"
+allowed_subjects = ["smoke|rider"]
 
 [state]
 database_path = "${STATE_PATH}/state.db"
@@ -275,14 +282,25 @@ expect_body '"status":"not_found"'
 
 log "checking that the gated surface refuses an anonymous caller"
 
-# No assertion header, so this is refused before any verification is attempted
-# and Cloudflare is never asked for a key. The refusal still carries the
-# response headers, and still says nothing about whether the path exists.
+# No session cookie, so this is refused before anything reads state. The refusal
+# still carries the response headers, and still says nothing about whether the
+# path exists.
 request "${SERVED_URL}/v1/routes"
 expect_status 401
 expect_body '"code":"unauthorized"'
 expect_header 'X-Content-Type-Options: nosniff'
 expect_header 'Referrer-Policy: no-referrer'
+
+# A browser asking for a page is sent to sign in rather than handed JSON.
+request "${SERVED_URL}/" --header 'Accept: text/html'
+expect_status 302
+expect_header 'Location: /auth/login'
+
+# And the page it is sent to is served without any identity at all, or there
+# would be no way in.
+request "${SERVED_URL}/auth/login"
+expect_status 200
+expect_header 'Content-Type: text/html'
 
 log "checking how the process runs"
 

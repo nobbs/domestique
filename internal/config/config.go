@@ -46,9 +46,9 @@ type Settings struct {
 	// here because this package refuses unknown DOMESTIQUE_ keys. Empty when unset.
 	ImageReference string
 
-	HTTP   HTTP
-	Access Access
-	State  State
+	HTTP  HTTP
+	Auth  Auth
+	State State
 }
 
 // HTTP configures the service listeners and the origin a browser reaches the
@@ -68,26 +68,33 @@ type HTTP struct {
 	BrowserOriginURL string
 }
 
-// Access identifies the sole user allowed to reach the service.
-type Access struct {
-	// Cloudflare configures the only gate the service has, and is required.
-	Cloudflare CloudflareAccess
+// Auth identifies who is allowed to sign in to the service.
+type Auth struct {
+	// Auth0 configures the only gate the service has, and is required.
+	Auth0 Auth0
 }
 
-// CloudflareAccess configures verification of Cloudflare Access assertions. None
-// of its values is a secret: the team domain and audience tag are public, and
-// verification rests on Cloudflare's published signing keys.
-type CloudflareAccess struct {
-	// TeamDomain is the Zero Trust team domain that signs assertions.
-	TeamDomain string
+// Auth0 configures the tenant that authenticates browser sign-in.
+type Auth0 struct {
+	// Domain is the tenant's host, optionally with a port. No scheme: the SDK
+	// forces HTTPS.
+	Domain string
 
-	// ApplicationAUD is the audience tag of the one Access application fronting
-	// this service. Without it, an assertion for any other application of the
-	// same team would verify.
-	ApplicationAUD string
+	// ClientID names the application registered for this service.
+	ClientID string
 
-	// AllowedEmail is the single address an assertion may name.
-	AllowedEmail string
+	// AllowedSubjects are the `sub` claims that may hold a session. An
+	// authenticated subject outside this list is refused.
+	AllowedSubjects []string
+
+	// clientSecret authenticates this confidential client. Held as a Secret so
+	// no formatting verb reaching this struct can print it.
+	clientSecret runtimeconfig.Secret
+}
+
+// ClientSecret returns the confidential client's secret.
+func (a *Auth0) ClientSecret() string {
+	return string(a.clientSecret.Bytes())
 }
 
 // State configures durable service state.
@@ -102,9 +109,9 @@ func (s State) EncryptionKey() [32]byte {
 }
 
 type rawSettings struct {
-	HTTP   rawHTTP   `koanf:"http"`
-	Access rawAccess `koanf:"access"`
-	State  rawState  `koanf:"state"`
+	HTTP  rawHTTP  `koanf:"http"`
+	State rawState `koanf:"state"`
+	Auth  rawAuth  `koanf:"auth"`
 }
 
 type rawHTTP struct {
@@ -113,14 +120,16 @@ type rawHTTP struct {
 	BrowserOriginURL string `koanf:"browser_origin_url"`
 }
 
-type rawAccess struct {
-	Cloudflare rawCloudflareAccess `koanf:"cloudflare"`
+type rawAuth struct {
+	Auth0 rawAuth0 `koanf:"auth0"`
 }
 
-type rawCloudflareAccess struct {
-	TeamDomain     string `koanf:"team_domain"`
-	ApplicationAUD string `koanf:"application_aud"`
-	AllowedEmail   string `koanf:"allowed_email"`
+type rawAuth0 struct {
+	Domain           string   `koanf:"domain"`
+	ClientID         string   `koanf:"client_id"`
+	ClientSecret     string   `koanf:"client_secret"`
+	ClientSecretFile string   `koanf:"client_secret_file"`
+	AllowedSubjects  []string `koanf:"allowed_subjects"`
 }
 
 type rawState struct {
@@ -275,28 +284,72 @@ func hasPath(values map[string]any, path []string) bool {
 	return false
 }
 
-// validateCloudflareAccess accepts the section wholly absent or wholly present.
-// A half-configured section would produce a public endpoint whose assertions
-// are never checked.
-func validateCloudflareAccess(raw *rawCloudflareAccess) error {
-	values := map[string]string{
-		"access.cloudflare.team_domain":     strings.TrimSpace(raw.TeamDomain),
-		"access.cloudflare.application_aud": strings.TrimSpace(raw.ApplicationAUD),
-		"access.cloudflare.allowed_email":   strings.TrimSpace(raw.AllowedEmail),
+// validateAuth0 accepts the section wholly absent or wholly present, and
+// returns the deduplicated subject allowlist. A half-configured section would
+// leave the service with no way to authenticate anyone.
+func validateAuth0(raw *rawAuth0) ([]string, error) {
+	subjects := trimmedSubjects(raw.AllowedSubjects)
+	values := map[string]bool{
+		"auth.auth0.domain":           strings.TrimSpace(raw.Domain) == "",
+		"auth.auth0.client_id":        strings.TrimSpace(raw.ClientID) == "",
+		"auth.auth0.allowed_subjects": len(subjects) == 0,
 	}
 
 	missing := make([]string, 0, len(values))
-	for key, value := range values {
-		if value == "" {
+	for key, absent := range values {
+		if absent {
 			missing = append(missing, key)
 		}
 	}
-	if len(missing) == 0 {
-		return nil
-	}
-	slices.Sort(missing)
+	if len(missing) > 0 {
+		slices.Sort(missing)
 
-	return fmt.Errorf("access.cloudflare is required; missing %s", strings.Join(missing, ", "))
+		return nil, fmt.Errorf("auth.auth0 is required; missing %s", strings.Join(missing, ", "))
+	}
+	if err := validateAuth0Domain(strings.TrimSpace(raw.Domain)); err != nil {
+		return nil, err
+	}
+
+	return subjects, nil
+}
+
+// validateAuth0Domain accepts a bare host, optionally with a port: the SDK
+// builds `https://<domain>` from it, so anything carrying a scheme, userinfo,
+// path, query or fragment would silently produce a different issuer.
+func validateAuth0Domain(domain string) error {
+	invalid := errors.New("auth.auth0.domain must be a bare host such as tenant.eu.auth0.com, optionally with a port")
+	if strings.ContainsAny(domain, "/?#@\\ \t") {
+		return invalid
+	}
+	host := domain
+	if strings.Contains(domain, ":") {
+		split, port, err := net.SplitHostPort(domain)
+		if err != nil {
+			return invalid
+		}
+		if number, parseErr := strconv.ParseUint(port, 10, 16); parseErr != nil || number == 0 {
+			return invalid
+		}
+		host = split
+	}
+	if host == "" {
+		return invalid
+	}
+
+	return nil
+}
+
+// trimmedSubjects is the allowlist as it is compared: trimmed, blanks dropped,
+// duplicates removed.
+func trimmedSubjects(values []string) []string {
+	subjects := make([]string, 0, len(values))
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" && !slices.Contains(subjects, trimmed) {
+			subjects = append(subjects, trimmed)
+		}
+	}
+
+	return subjects
 }
 
 func build(raw *rawSettings) (*Settings, error) {
@@ -310,7 +363,17 @@ func build(raw *rawSettings) (*Settings, error) {
 	if err := runtimeconfig.ValidateHTTPSOrigin("http.browser_origin_url", browserOrigin); err != nil {
 		return nil, fmt.Errorf("configuration file: %w", err)
 	}
-	if err := validateCloudflareAccess(&raw.Access.Cloudflare); err != nil {
+	subjects, err := validateAuth0(&raw.Auth.Auth0)
+	if err != nil {
+		return nil, err
+	}
+	clientSecret, err := resolveSecret(secretInput{
+		name:      "auth0 client secret",
+		directEnv: envPrefix + "AUTH__AUTH0__CLIENT_SECRET",
+		fileEnv:   envPrefix + "AUTH__AUTH0__CLIENT_SECRET_FILE",
+		filePath:  raw.Auth.Auth0.ClientSecretFile,
+	})
+	if err != nil {
 		return nil, err
 	}
 	if !filepath.IsAbs(raw.State.DatabasePath) {
@@ -337,11 +400,12 @@ func build(raw *rawSettings) (*Settings, error) {
 			ReadinessAddress: strings.TrimSpace(raw.HTTP.ReadinessAddress),
 			BrowserOriginURL: strings.TrimSuffix(browserOrigin, "/"),
 		},
-		Access: Access{
-			Cloudflare: CloudflareAccess{
-				TeamDomain:     strings.TrimSpace(raw.Access.Cloudflare.TeamDomain),
-				ApplicationAUD: strings.TrimSpace(raw.Access.Cloudflare.ApplicationAUD),
-				AllowedEmail:   strings.TrimSpace(raw.Access.Cloudflare.AllowedEmail),
+		Auth: Auth{
+			Auth0: Auth0{
+				Domain:          strings.TrimSpace(raw.Auth.Auth0.Domain),
+				ClientID:        strings.TrimSpace(raw.Auth.Auth0.ClientID),
+				AllowedSubjects: subjects,
+				clientSecret:    clientSecret,
 			},
 		},
 		State: State{
@@ -455,6 +519,7 @@ func configurationDefaults() map[string]any {
 func secretLiteralPaths() [][]string {
 	return [][]string{
 		{"state", "encryption_key"},
+		{"auth", "auth0", "client_secret"},
 	}
 }
 
@@ -471,6 +536,7 @@ func clearDirectSecretEnvironments() error {
 func directSecretEnvironmentNames() []string {
 	return []string{
 		envPrefix + "STATE__ENCRYPTION_KEY",
+		envPrefix + "AUTH__AUTH0__CLIENT_SECRET",
 	}
 }
 

@@ -41,40 +41,15 @@ if ! command -v sqlite3 >/dev/null 2>&1; then
   exit 1
 fi
 
-# The Cloudflare Access identifiers are public identifiers rather than secrets,
-# but they belong to the deployment rather than to this repository, so they are
-# read out of the running container instead of being written down here.
-DEPLOYED_CONFIG="$(mktemp)"
-trap 'rm -f "${DEPLOYED_CONFIG}"' EXIT
-
-if ! docker cp "${CONTAINER}:/etc/domestique/config.toml" "${DEPLOYED_CONFIG}" >/dev/null 2>&1; then
-  echo "error: cannot read /etc/domestique/config.toml from ${CONTAINER}; the deployment must mount its configuration there" >&2
-  exit 1
+# The development service never reaches the sign-in provider: it mints a session
+# row directly, below. The subject that session belongs to is the operator's own
+# `sub` claim, so the allowlist here is the one the deployment uses.
+DEV_SUBJECT="${DOMESTIQUE_DEV_SUBJECT:-}"
+if [[ -z "${DEV_SUBJECT}" ]]; then
+  read -r -p "Auth0 subject (sub claim) to sign in as: " DEV_SUBJECT
 fi
-
-cloudflare_identifier() {
-  awk -v key="$1" '
-    /^\[/ { section = $0; next }
-    section == "[access.cloudflare]" && $0 ~ "^[[:space:]]*" key "[[:space:]]*=" {
-      sub(/^[^=]*=[[:space:]]*/, "")
-      gsub(/^["'"'"']|["'"'"']$/, "")
-      print
-      exit
-    }
-  ' "${DEPLOYED_CONFIG}"
-}
-
-CF_TEAM_DOMAIN="$(cloudflare_identifier team_domain)"
-CF_APPLICATION_AUD="$(cloudflare_identifier application_aud)"
-CF_ALLOWED_EMAIL="$(cloudflare_identifier allowed_email)"
-
-missing=()
-[[ -n "${CF_TEAM_DOMAIN}" ]] || missing+=("team_domain")
-[[ -n "${CF_APPLICATION_AUD}" ]] || missing+=("application_aud")
-[[ -n "${CF_ALLOWED_EMAIL}" ]] || missing+=("allowed_email")
-
-if ((${#missing[@]} > 0)); then
-  echo "error: the deployed configuration has no access.cloudflare ${missing[*]}; the deployment must be gated by Cloudflare Access before development can mirror it" >&2
+if [[ -z "${DEV_SUBJECT}" ]]; then
+  echo "error: a subject is required; set DOMESTIQUE_DEV_SUBJECT or answer the prompt" >&2
   exit 1
 fi
 
@@ -103,6 +78,9 @@ SQL
 # A placeholder key: 32 zero bytes. It is deliberately not the deployed key, so
 # the stored Wahoo refresh tokens stay undecryptable in development.
 printf 'A%.0s' $(seq 43) > "${DEV_SECRETS}/state_encryption_key"
+# A placeholder too: the development service never exchanges a code, because the
+# session it serves is minted straight into the snapshot below.
+printf 'development-placeholder' > "${DEV_SECRETS}/auth0_client_secret"
 chmod 600 "${DEV_SECRETS}"/*
 
 cat > "${DEV_DIR}/config.toml" <<EOF
@@ -118,20 +96,33 @@ readiness_address = ":8083"
 # at below: this is the origin an authorization comes back to.
 browser_origin_url = "https://127.0.0.1:9"
 
-[access.cloudflare]
-# The deployed Access application, so the identity gate behaves exactly as it
-# does in production.
-team_domain = "${CF_TEAM_DOMAIN}"
-application_aud = "${CF_APPLICATION_AUD}"
-allowed_email = "${CF_ALLOWED_EMAIL}"
+[auth.auth0]
+# Unroutable on purpose: development never signs in through the provider, it
+# reads the session minted into the snapshot below.
+domain = "127.0.0.1:9"
+client_id = "development-placeholder"
+client_secret_file = "${DEV_SECRETS}/auth0_client_secret"
+allowed_subjects = ["${DEV_SUBJECT}"]
 
 [state]
 database_path = "${DEV_DIR}/state.db"
 encryption_key_file = "${DEV_SECRETS}/state_encryption_key"
 EOF
 
+# The gate admits a browser session and nothing else, so development needs one
+# before the UI can load. Minted straight into the snapshot; the raw token is
+# printed once, here, and stored nowhere.
+DEV_SESSION="$(
+  CGO_ENABLED=0 "${GO:-go}" run "${ROOT}/dev/session" \
+    -database "${DEV_DIR}/state.db" -subject "${DEV_SUBJECT}"
+)"
+
 stages=$(sqlite3 "${DEV_DIR}/state.db" "SELECT COUNT(*) FROM stage_geometry;" 2>/dev/null || echo "?")
 echo "Snapshot ready: ${DEV_DIR}/state.db (${stages} cached stage geometries)"
-echo "Start the API with 'mise run dev-api', then the UI with 'mise run ui-dev'."
+echo "Start the API with 'mise run dev-api', then the UI with:"
+echo
+echo "  export DOMESTIQUE_DEV_SESSION=${DEV_SESSION}"
+echo "  mise run ui-dev"
+echo
 echo "To synchronise from a library, enter its credentials on the settings page;"
 echo "the deployed ones are in ${DEPLOYED_SECRETS}."

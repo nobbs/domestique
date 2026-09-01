@@ -170,7 +170,7 @@ func TestHandlerGatesStateAndKeepsHealthLocal(t *testing.T) {
 	handler.ServeHTTP(statusResponse, status)
 	assert.Equal(t, http.StatusUnauthorized, statusResponse.Code, "unauthenticated status")
 
-	status.Header.Set(assertionHeader, testAssertion)
+	withSession(status)
 	statusResponse = httptest.NewRecorder()
 	handler.ServeHTTP(statusResponse, status)
 	assert.Equal(t, http.StatusOK, statusResponse.Code, "authenticated status")
@@ -182,7 +182,9 @@ func TestHandlerGatesStateAndKeepsHealthLocal(t *testing.T) {
 // Every route added for the browser UI must sit behind the same identity gate.
 func TestHandlerGatesEveryNonHealthRoute(t *testing.T) {
 	handler := newTestHandler(t)
-	foreign := newHandlerWithVerifier(t, &recordingVerifier{email: "someone-else@example.com"})
+	// A session the service no longer admits — revoked, expired, or for a
+	// subject taken off the allowlist — must be refused everywhere too.
+	refusing := newHandlerWithSessions(t, &fakeSessions{verifyErr: errors.New("no longer allowed")})
 	paths := []string{
 		"/v1/status",
 		"/v1/sync/runs",
@@ -214,9 +216,9 @@ func TestHandlerGatesEveryNonHealthRoute(t *testing.T) {
 				t.Context(), http.MethodGet, path, http.NoBody))
 			assert.Equalf(t, http.StatusUnauthorized, response.Code, "unauthenticated %s", path)
 
-			forbiddenResponse := httptest.NewRecorder()
-			foreign.ServeHTTP(forbiddenResponse, authenticatedRequest(http.MethodGet, path))
-			assert.Equalf(t, http.StatusForbidden, forbiddenResponse.Code, "wrong identity %s", path)
+			refusedResponse := httptest.NewRecorder()
+			refusing.ServeHTTP(refusedResponse, authenticatedRequest(http.MethodGet, path))
+			assert.Equalf(t, http.StatusUnauthorized, refusedResponse.Code, "refused session %s", path)
 		})
 	}
 }
@@ -584,109 +586,17 @@ func TestHandlerNamesTheIdentityTheGateLetThrough(t *testing.T) {
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/webui/config"))
 	require.Equal(t, http.StatusOK, response.Code, "config status")
 
-	// A pointer, because the claim below is that the field is absent and a
-	// plain string cannot tell that apart from one sent empty. It leads the
-	// struct rather than following the address it reads worse than, because
-	// `fieldalignment` wants the pointer first.
 	var body struct {
 		Identity struct {
-			SignOutURL *string `json:"signOutUrl"`
-			Email      string  `json:"email"`
+			Display string `json:"display"`
 		} `json:"identity"`
 	}
 	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body), "decoding the config")
 
-	assert.Equal(t, testAccessEmail, body.Identity.Email, "the config must name the one authorised address")
-	// Nothing stands in front of this handler, so there is nowhere to sign out to.
-	// The field is absent rather than empty, and absence is checked in the bytes:
-	// a `null` would decode to a nil pointer just as readily as a missing key.
-	assert.Nil(t, body.Identity.SignOutURL, "a handler with no configured way out must not name one")
-	assert.NotContains(t, response.Body.String(), "signOutUrl",
-		"the way out must be omitted from the response rather than sent empty")
-}
-
-func TestHandlerPublishesTheWayOutWhenOneIsConfigured(t *testing.T) {
-	handler, err := New(
-		&Options{
-			Alerts:           &fakeAlerts{},
-			Tasks:            &fakeTasks{},
-			Settings:         settingsWith(twoProviderBasemaps()),
-			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
-			AccessEmail:      testAccessEmail,
-			AccessSignOutURL: "/cdn-cgi/access/logout",
-			BrowserOriginURL: testBrowserOriginURL,
-		},
-		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{},
-	)
-	require.NoError(t, err, "New()")
-
-	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/webui/config"))
-	require.Equal(t, http.StatusOK, response.Code, "config status")
-	assert.Contains(t, response.Body.String(), `"signOutUrl":"/cdn-cgi/access/logout"`,
-		"a configured way out must reach the page")
-}
-
-func TestNewRefusesAnAccessEmailThatIsNotOne(t *testing.T) {
-	// The contract publishes this to the page as an email, and the gate compares
-	// what an assertion says against it literally, so a display-name form would
-	// be both a response the schema does not describe and an address no
-	// assertion can match.
-	for name, value := range map[string]string{
-		"empty":        "",
-		"blank":        "   ",
-		"no domain":    "rider",
-		"display name": "Rider <rider@example.test>",
-		"two at signs": "rider@@example.test",
-		"with a space": "rider @example.test",
-	} {
-		t.Run(name, func(t *testing.T) {
-			_, err := New(
-				&Options{
-					Alerts:           &fakeAlerts{},
-					Tasks:            &fakeTasks{},
-					Settings:         settingsWith(twoProviderBasemaps()),
-					AccessVerifier:   &recordingVerifier{email: testAccessEmail},
-					AccessEmail:      value,
-					BrowserOriginURL: testBrowserOriginURL,
-				},
-				&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{},
-			)
-
-			require.Error(t, err, "New() accepted an access email that is not an address")
-		})
-	}
-}
-
-func TestNewRefusesASignOutURLThatLeavesThisOrigin(t *testing.T) {
-	// Each of these reaches a browser as the href of a link a reader clicks.
-	// None of them is a way out of this session: two are other sites, one is
-	// another site spelled to look like a path, and one is script that runs on
-	// press.
-	for name, value := range map[string]string{
-		"absolute":          "https://evil.example.test/logout",
-		"protocol relative": "//evil.example.test/logout",
-		"script":            "javascript:alert(1)",
-		"bare word":         "logout",
-		"leading space":     " /cdn-cgi/access/logout",
-	} {
-		t.Run(name, func(t *testing.T) {
-			_, err := New(
-				&Options{
-					Alerts:           &fakeAlerts{},
-					Tasks:            &fakeTasks{},
-					Settings:         settingsWith(twoProviderBasemaps()),
-					AccessVerifier:   &recordingVerifier{email: testAccessEmail},
-					AccessEmail:      testAccessEmail,
-					AccessSignOutURL: value,
-					BrowserOriginURL: testBrowserOriginURL,
-				},
-				&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{},
-			)
-
-			require.Error(t, err, "New() accepted a sign-out URL that leaves this origin")
-		})
-	}
+	assert.Equal(t, testDisplay, body.Identity.Display, "the config must name the signed-in caller")
+	// The subject is the allowlist's own spelling and is never a display name;
+	// it stays behind the gate rather than reaching the page.
+	assert.NotContains(t, response.Body.String(), testSubject, "the config exposed the subject claim")
 }
 
 func TestHandlerServesEveryConfiguredBasemapInOrder(t *testing.T) {
@@ -695,8 +605,7 @@ func TestHandlerServesEveryConfiguredBasemapInOrder(t *testing.T) {
 			Alerts:           &fakeAlerts{},
 			Tasks:            &fakeTasks{},
 			Settings:         settingsWith(twoProviderBasemaps()),
-			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
-			AccessEmail:      testAccessEmail,
+			Sessions:         newFakeSessions(),
 			BrowserOriginURL: testBrowserOriginURL,
 		},
 		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{},
@@ -732,8 +641,7 @@ func TestHandlerOmitsAnUnconfiguredDarkTileStyle(t *testing.T) {
 			Alerts:           &fakeAlerts{},
 			Tasks:            &fakeTasks{},
 			Settings:         settingsWith(testBasemaps()),
-			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
-			AccessEmail:      testAccessEmail,
+			Sessions:         newFakeSessions(),
 			BrowserOriginURL: testBrowserOriginURL,
 		},
 		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{},
@@ -753,8 +661,7 @@ func TestHandlerOmitsAnUnconfiguredSourceBaseURL(t *testing.T) {
 			Alerts:           &fakeAlerts{},
 			Tasks:            &fakeTasks{},
 			Settings:         settingsWith(testBasemaps()),
-			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
-			AccessEmail:      testAccessEmail,
+			Sessions:         newFakeSessions(),
 			BrowserOriginURL: testBrowserOriginURL,
 		},
 		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{},
@@ -777,8 +684,7 @@ func TestHandlerServesEveryConfiguredSourceKeyedByProvider(t *testing.T) {
 				runtimeconfig.Source{Provider: route.ProviderVeloPlanner, BaseURL: testSourceBaseURL},
 				runtimeconfig.Source{Provider: route.ProviderKomoot, BaseURL: testKomootBaseURL},
 			),
-			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
-			AccessEmail:      testAccessEmail,
+			Sessions:         newFakeSessions(),
 			BrowserOriginURL: testBrowserOriginURL,
 		},
 		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{},
@@ -870,8 +776,7 @@ func newHandlerWithBuild(t *testing.T, revision, imageDigest string) *Handler {
 			Settings:         settingsWith(testBasemaps()),
 			BuildRevision:    revision,
 			BuildImageDigest: imageDigest,
-			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
-			AccessEmail:      testAccessEmail,
+			Sessions:         newFakeSessions(),
 			BrowserOriginURL: testBrowserOriginURL,
 		},
 		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{},
@@ -890,8 +795,7 @@ func TestHandlerNamesEveryBasemapOriginInThePolicy(t *testing.T) {
 			Alerts:           &fakeAlerts{},
 			Tasks:            &fakeTasks{},
 			Settings:         settingsWith(twoProviderBasemaps()),
-			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
-			AccessEmail:      testAccessEmail,
+			Sessions:         newFakeSessions(),
 			BrowserOriginURL: testBrowserOriginURL,
 		},
 		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{},
@@ -926,8 +830,7 @@ func TestHandlerNamesOneOriginOnceForTwoBasemapsSharingIt(t *testing.T) {
 				{Name: "Streets", StyleURL: testTileStyleURL},
 				{Name: "Outdoors", StyleURL: "https://tiles.example.test/styles/outdoors"},
 			}),
-			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
-			AccessEmail:      testAccessEmail,
+			Sessions:         newFakeSessions(),
 			BrowserOriginURL: testBrowserOriginURL,
 		},
 		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{},
@@ -954,8 +857,7 @@ func TestHandlerAcceptsADarkStyleOnItsOriginRegardlessOfHostCase(t *testing.T) {
 				StyleURL:     testTileStyleURL,
 				StyleURLDark: "https://TILES.example.test/styles/dark",
 			}}),
-			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
-			AccessEmail:      testAccessEmail,
+			Sessions:         newFakeSessions(),
 			BrowserOriginURL: testBrowserOriginURL,
 		},
 		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{},
@@ -1786,8 +1688,7 @@ func TestNewRejectsIncompleteOptions(t *testing.T) {
 		{name: "no settings", options: &Options{
 			Alerts:           &fakeAlerts{},
 			Tasks:            &fakeTasks{},
-			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
-			AccessEmail:      testAccessEmail,
+			Sessions:         newFakeSessions(),
 			BrowserOriginURL: testBrowserOriginURL,
 		}},
 	}
@@ -1802,17 +1703,16 @@ func TestNewRejectsIncompleteOptions(t *testing.T) {
 
 func newTestHandler(t *testing.T) *Handler { return newHandler(t, &fakeOAuth{}, &fakeState{}) }
 
-// newHandlerWithVerifier builds a handler whose assertions resolve to whatever
-// the given verifier reports, for exercising a refused identity.
-func newHandlerWithVerifier(t *testing.T, verifier AccessVerifier) *Handler {
+// newHandlerWithSessions builds a handler over a given session service, for
+// exercising a refused or renewed session.
+func newHandlerWithSessions(t *testing.T, sessions Sessions) *Handler {
 	t.Helper()
 	handler, err := New(
 		&Options{
 			Alerts:           &fakeAlerts{},
 			Tasks:            &fakeTasks{},
 			Settings:         settingsWith(testBasemaps()),
-			AccessVerifier:   verifier,
-			AccessEmail:      testAccessEmail,
+			Sessions:         sessions,
 			BrowserOriginURL: testBrowserOriginURL,
 		},
 		&fakeOAuth{}, &fakeState{}, &fakeSync{accepted: true}, &fakeAssets{}, &fakeWeather{},
@@ -1831,8 +1731,7 @@ func newHandlerWithSurfaceIndex(t *testing.T, index func() (string, time.Time, b
 			Alerts:           &fakeAlerts{},
 			Tasks:            &fakeTasks{},
 			Settings:         settingsWith(testBasemaps()),
-			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
-			AccessEmail:      testAccessEmail,
+			Sessions:         newFakeSessions(),
 			BrowserOriginURL: testBrowserOriginURL,
 			SurfaceIndexFunc: index,
 		},
@@ -1853,8 +1752,7 @@ func newHandlerWithWeather(t *testing.T, weather Weather) *Handler {
 			Alerts:           &fakeAlerts{},
 			Tasks:            &fakeTasks{},
 			Settings:         settingsWith(testBasemaps()),
-			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
-			AccessEmail:      testAccessEmail,
+			Sessions:         newFakeSessions(),
 			BrowserOriginURL: testBrowserOriginURL,
 		},
 		&fakeOAuth{}, &fakeState{}, &fakeSync{accepted: true}, &fakeAssets{}, weather,
@@ -1880,8 +1778,7 @@ func newHandlerWithStaleAfter(t *testing.T, state State, staleAfter time.Duratio
 			Alerts:           &fakeAlerts{},
 			Tasks:            &fakeTasks{},
 			Settings:         settings,
-			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
-			AccessEmail:      testAccessEmail,
+			Sessions:         newFakeSessions(),
 			BrowserOriginURL: testBrowserOriginURL,
 		},
 		&fakeOAuth{}, state, &fakeSync{accepted: true}, &fakeAssets{}, &fakeWeather{},
@@ -1901,8 +1798,7 @@ func newHandlerWithTargets(t *testing.T, state State, targetIDs ...string) *Hand
 			Alerts:           &fakeAlerts{},
 			Tasks:            &fakeTasks{},
 			Settings:         withTargets(settingsWith(testBasemaps()), targetIDs...),
-			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
-			AccessEmail:      testAccessEmail,
+			Sessions:         newFakeSessions(),
 			BrowserOriginURL: testBrowserOriginURL,
 		},
 		&fakeOAuth{}, state, &fakeSync{accepted: true}, &fakeAssets{}, &fakeWeather{},
@@ -1921,8 +1817,7 @@ func newHandlerWithLiveSync(t *testing.T, state State, activity SyncActivityStat
 			Alerts:           &fakeAlerts{},
 			Tasks:            &fakeTasks{},
 			Settings:         withTargets(settingsWith(testBasemaps()), "rider-a", "rider-b"),
-			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
-			AccessEmail:      testAccessEmail,
+			Sessions:         newFakeSessions(),
 			BrowserOriginURL: testBrowserOriginURL,
 		},
 		&fakeOAuth{}, state, &fakeSync{accepted: true, activity: activity}, &fakeAssets{}, &fakeWeather{},
@@ -1942,8 +1837,7 @@ func newHandlerWithRideModelValidation(t *testing.T, state State, validation *Ri
 			Alerts:                  &fakeAlerts{},
 			Tasks:                   &fakeTasks{},
 			Settings:                settingsWith(testBasemaps()),
-			AccessVerifier:          &recordingVerifier{email: testAccessEmail},
-			AccessEmail:             testAccessEmail,
+			Sessions:                newFakeSessions(),
 			BrowserOriginURL:        testBrowserOriginURL,
 			RideModelValidationFunc: func() *RideModelValidation { return validation },
 		},
@@ -1965,8 +1859,7 @@ func newHandlerWithSync(t *testing.T, oauthService OAuth, state State, syncRuns 
 			}},
 			Settings: withSources(settingsWith(testBasemapsWithDark()),
 				runtimeconfig.Source{Provider: route.ProviderVeloPlanner, BaseURL: testSourceBaseURL}),
-			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
-			AccessEmail:      testAccessEmail,
+			Sessions:         newFakeSessions(),
 			BrowserOriginURL: testBrowserOriginURL,
 		},
 		oauthService, state, syncRuns, &fakeAssets{}, &fakeWeather{},
@@ -1977,16 +1870,12 @@ func newHandlerWithSync(t *testing.T, oauthService OAuth, state State, syncRuns 
 }
 
 func authenticatedRequest(method, target string) *http.Request {
-	request := httptest.NewRequestWithContext(context.Background(), method, target, http.NoBody)
-	request.Header.Set(assertionHeader, testAssertion)
-	withBrowserOrigin(request)
-
-	return request
+	return signedInRequest(method, target)
 }
 
 func authenticatedRequestWithBody(method, target, body string) *http.Request {
 	request := httptest.NewRequestWithContext(context.Background(), method, target, strings.NewReader(body))
-	request.Header.Set(assertionHeader, testAssertion)
+	withSession(request)
 	// Exactly what the browser client sends with a body: see request.ts, which
 	// sets this on every request that carries one.
 	request.Header.Set("Content-Type", "application/json")

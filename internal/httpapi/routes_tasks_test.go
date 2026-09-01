@@ -33,8 +33,7 @@ func handlerOverTasks(t *testing.T, state State, tasks Tasks) *Handler {
 			Settings:         settingsWith(testBasemaps()),
 			Alerts:           &fakeAlerts{},
 			Tasks:            tasks,
-			AccessVerifier:   &recordingVerifier{email: testAccessEmail},
-			AccessEmail:      testAccessEmail,
+			Sessions:         newFakeSessions(),
 			BrowserOriginURL: testBrowserOriginURL,
 		},
 		&fakeOAuth{}, state, &fakeSync{accepted: true}, &fakeAssets{}, &fakeWeather{},
@@ -171,7 +170,7 @@ func TestListTasksNeedsNoOrigin(t *testing.T) {
 	handler, _ := tasksHandler(t, RegisteredTask{Name: "sync:source"})
 
 	request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, tasksPath, http.NoBody)
-	request.Header.Set(assertionHeader, testAssertion)
+	withSession(request)
 
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)

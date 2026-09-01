@@ -144,7 +144,7 @@ function renderPage(
       { name: "Streets", styleUrl: "https://tiles.example/style.json", darkCartography: false },
     ],
     sourceBaseUrls: {},
-    identity: { email: "rider@example.test" },
+    identity: { display: "rider@example.test" },
   });
   client.setQueryData(statusQuery().queryKey, {
     ready: true,

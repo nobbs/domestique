@@ -137,6 +137,22 @@ the Go package and the settings section. Not "synchronisation" in one place and
 library: `current`, `lagging`, `failed` or `unauthorized`. See
 [sync-lifecycle.md](specs/sync-lifecycle.md).
 
+## Sign-in
+
+**subject** — the OIDC `sub` claim Auth0 asserts for a signed-in identity, such
+as `github|123456`. It is the wire word (`allowed_subjects`) and the code word
+alike; it is never called a *principal*, a *user*, or an *account* — those
+name other things this project already uses those words for.
+
+**allowed subject** — a subject named in `allowed_subjects`, and therefore
+authorised. The allowlist is re-checked on every request, so being an allowed
+subject is a live fact about the current configuration, not a stored role.
+
+**session** — the browser's proof of a subject's sign-in: the
+`__Host-domestique_session` cookie and the `web_sessions` row its hash
+identifies. See [configuration.md](specs/configuration.md#runtime-state) for
+what a session shares the state database's fate with.
+
 ## People
 
 **reader** — the person using the browser UI.

@@ -7,7 +7,11 @@ import { basemapAttributionQuery } from "../../lib/attribution";
 import { DataSources } from "./DataSources";
 
 function config(basemaps: WebUIConfig["basemaps"]): WebUIConfig {
-  return { basemaps, sourceBaseUrls: {}, identity: { email: "rider@example.test" } } as WebUIConfig;
+  return {
+    basemaps,
+    sourceBaseUrls: {},
+    identity: { display: "rider@example.test" },
+  } as WebUIConfig;
 }
 
 function show(basemaps: WebUIConfig["basemaps"], credits: Record<string, string[]> = {}) {

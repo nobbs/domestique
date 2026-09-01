@@ -10,12 +10,12 @@ import { defineConfig } from "vitest/config";
 const dirname = fileURLToPath(new URL(".", import.meta.url));
 
 // The development API from `mise run dev-api` listens here. The dev server proxies
-// to it and forwards a Cloudflare Access assertion, the only identity the service
-// accepts; put a real one in DOMESTIQUE_DEV_ASSERTION, copied from a request the
-// browser makes against the deployed hostname. DOMESTIQUE_DEV_API can point at
-// the deployed container instead, which unlike the development API reaches Wahoo.
+// to it and forwards a browser session cookie, the only identity the service
+// accepts; put a raw token in DOMESTIQUE_DEV_SESSION, which `dev/setup.sh` prints
+// and `dev/demo.sh` exports. DOMESTIQUE_DEV_API can point at the deployed
+// container instead, which unlike the development API reaches Wahoo.
 const apiTarget = process.env.DOMESTIQUE_DEV_API ?? "http://127.0.0.1:8081";
-const devAssertion = process.env.DOMESTIQUE_DEV_ASSERTION;
+const devSession = process.env.DOMESTIQUE_DEV_SESSION;
 
 // State-changing requests must come from the origin the API serves its UI at. The
 // dev server runs on another, so it names the API's for the requests it proxies.
@@ -34,7 +34,7 @@ const proxy = {
   target: apiTarget,
   changeOrigin: false,
   headers: {
-    ...(devAssertion ? { "Cf-Access-Jwt-Assertion": devAssertion } : {}),
+    ...(devSession ? { Cookie: `__Host-domestique_session=${devSession}` } : {}),
     Origin: devOrigin,
   },
 };
@@ -65,6 +65,7 @@ export default defineConfig({
     ...(tailnet ? { host: "127.0.0.1", allowedHosts: [".ts.net"] } : {}),
     proxy: {
       "/v1": proxy,
+      "/auth": proxy,
       "/oauth": proxy,
       "/healthz": proxy,
     },

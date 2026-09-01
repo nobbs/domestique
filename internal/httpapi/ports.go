@@ -8,6 +8,7 @@ import (
 
 	"github.com/nobbs/domestique/internal/route"
 	"github.com/nobbs/domestique/internal/runtimeconfig"
+	"github.com/nobbs/domestique/internal/session"
 )
 
 // OAuth performs the protected Wahoo onboarding flow.
@@ -234,19 +235,15 @@ type SettingsState interface {
 	Missing() []string
 }
 
-// AccessVerifier proves the identity behind a Cloudflare Access assertion. It
-// is satisfied by internal/cfaccess and is nil when no public path is deployed.
-type AccessVerifier interface {
-	// Verify returns the email address a valid assertion names.
-	Verify(ctx context.Context, assertion string) (string, error)
-}
-
-// AccessVerifierFunc adapts a function to AccessVerifier.
-type AccessVerifierFunc func(ctx context.Context, assertion string) (string, error)
-
-// Verify calls f.
-func (f AccessVerifierFunc) Verify(ctx context.Context, assertion string) (string, error) {
-	return f(ctx, assertion)
+// Sessions is who is signed in, as this surface needs it; *session.Service
+// satisfies it.
+type Sessions interface {
+	// Verify admits a caller. The returned time is non-zero exactly when the
+	// sliding expiry moved and the cookie must be re-issued carrying it.
+	Verify(ctx context.Context, token string) (session.Identity, time.Time, error)
+	Begin(ctx context.Context) (session.Login, error)
+	Complete(ctx context.Context, state, cookieState, code string) (session.Completion, error)
+	Revoke(ctx context.Context, token string) error
 }
 
 // WeatherSeries is one coordinate's hourly forecast, column-oriented: index i

@@ -91,7 +91,7 @@ func TestMutableRoutesRejectForeignProvenance(t *testing.T) {
 				request := httptest.NewRequestWithContext(
 					t.Context(), route.method, route.target, strings.NewReader(route.body),
 				)
-				request.Header.Set(assertionHeader, testAssertion)
+				withSession(request)
 				if origin != "" {
 					request.Header.Set("Origin", origin)
 				}
@@ -120,7 +120,7 @@ func TestMutableRoutesAcceptTheBrowserOrigin(t *testing.T) {
 		request := httptest.NewRequestWithContext(
 			t.Context(), route.method, route.target, strings.NewReader(route.body),
 		)
-		request.Header.Set(assertionHeader, testAssertion)
+		withSession(request)
 		request.Header.Set("Origin", testBrowserOrigin)
 
 		response := httptest.NewRecorder()
@@ -153,7 +153,7 @@ func TestOAuthRoutesStayOutsideTheProvenanceCheck(t *testing.T) {
 	for _, target := range []string{"/oauth/wahoo/start/rider-a", "/oauth/wahoo/callback?state=s&code=c"} {
 		handler := newTestHandler(t)
 		request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, target, http.NoBody)
-		request.Header.Set(assertionHeader, testAssertion)
+		withSession(request)
 		request.Header.Set("Origin", "https://api.wahooligan.example.test")
 
 		response := httptest.NewRecorder()
@@ -175,7 +175,7 @@ func TestReadOnlyRoutesDoNotRequireAnOrigin(t *testing.T) {
 	} {
 		handler := newHandler(t, &fakeOAuth{}, surfaceState())
 		request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, target, http.NoBody)
-		request.Header.Set(assertionHeader, testAssertion)
+		withSession(request)
 
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, request)
@@ -232,11 +232,10 @@ func TestBrowserOriginNormalisation(t *testing.T) {
 func TestNewRequiresABrowserOrigin(t *testing.T) {
 	_, err := New(
 		&Options{
-			Alerts:         &fakeAlerts{},
-			Tasks:          &fakeTasks{},
-			Settings:       settingsWith(testBasemaps()),
-			AccessVerifier: &recordingVerifier{email: testAccessEmail},
-			AccessEmail:    testAccessEmail,
+			Alerts:   &fakeAlerts{},
+			Tasks:    &fakeTasks{},
+			Settings: settingsWith(testBasemaps()),
+			Sessions: newFakeSessions(),
 		},
 		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{},
 	)

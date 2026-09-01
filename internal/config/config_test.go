@@ -250,7 +250,11 @@ func TestLoadClearsDirectSecretsWhenValidationFails(t *testing.T) {
 	assert.False(t, found, "the direct secret environment value remains after a failed Load()")
 }
 
-const testBrowserOriginURL = "https://domestique.example.ts.net"
+const (
+	testBrowserOriginURL = "https://domestique.example.ts.net"
+	testAuth0Domain      = "tenant.eu.auth0.com"
+	testClientSecret     = "auth0-client-secret-value" //nolint:gosec // G101: a fixture value, not a credential
+)
 
 func writeValidConfiguration(t *testing.T, directory string) (configPath string, key [32]byte) {
 	t.Helper()
@@ -259,21 +263,23 @@ func writeValidConfiguration(t *testing.T, directory string) (configPath string,
 		key[index] = byte(index + 1)
 	}
 	keyPath := writeSecretFile(t, directory, "state-key", base64.RawURLEncoding.EncodeToString(key[:]))
+	clientSecretPath := writeSecretFile(t, directory, "auth0-client-secret", testClientSecret)
 
 	contents := fmt.Sprintf(`
 [http]
 listen_address = ":8080"
 browser_origin_url = %q
 
-[access.cloudflare]
-team_domain = "example.cloudflareaccess.com"
-application_aud = "aud-tag"
-allowed_email = "rider@example.test"
+[auth.auth0]
+domain = %q
+client_id = "client-id"
+client_secret_file = %q
+allowed_subjects = ["github|123456"]
 
 [state]
 database_path = %q
 encryption_key_file = %q
-`, testBrowserOriginURL, filepath.Join(directory, "state.db"), keyPath)
+`, testBrowserOriginURL, testAuth0Domain, clientSecretPath, filepath.Join(directory, "state.db"), keyPath)
 	configPath = filepath.Join(directory, "config.toml")
 	require.NoErrorf(t, os.WriteFile(configPath, []byte(contents), 0o600), "WriteFile(%q)", configPath)
 
@@ -339,34 +345,27 @@ func removeConfigurationLine(t *testing.T, path, prefix string) {
 	require.Failf(t, "nothing to remove", "the configuration has no line beginning with %q", prefix)
 }
 
-// Cloudflare Access is the only gate this service has. A configuration that
-// cannot verify an assertion cannot authenticate anyone, so it is refused at
-// startup rather than left to answer every request with a 401.
-func TestLoadRequiresCloudflareAccess(t *testing.T) {
-	configPath, _ := writeValidConfiguration(t, t.TempDir())
-	replaceInFile(t, configPath, "\n[access.cloudflare]\n", "\n[access.cloudflare]\n# ")
-	t.Setenv(configFileEnv, configPath)
-
-	_, err := Load()
-	require.ErrorContains(t, err, "access.cloudflare.team_domain")
-}
-
-func TestLoadReadsCloudflareAccess(t *testing.T) {
+func TestLoadReadsAuth0(t *testing.T) {
 	configPath, _ := writeValidConfiguration(t, t.TempDir())
 	t.Setenv(configFileEnv, configPath)
 
 	settings, err := Load()
 	require.NoError(t, err)
-	assert.Equal(t, "example.cloudflareaccess.com", settings.Access.Cloudflare.TeamDomain, "TeamDomain")
-	assert.Equal(t, "aud-tag", settings.Access.Cloudflare.ApplicationAUD, "ApplicationAUD")
-	assert.Equal(t, "rider@example.test", settings.Access.Cloudflare.AllowedEmail, "AllowedEmail")
+	assert.Equal(t, testAuth0Domain, settings.Auth.Auth0.Domain, "Domain")
+	assert.Equal(t, "client-id", settings.Auth.Auth0.ClientID, "ClientID")
+	assert.Equal(t, testClientSecret, settings.Auth.Auth0.ClientSecret(), "ClientSecret()")
+	assert.Equal(t, []string{"github|123456"}, settings.Auth.Auth0.AllowedSubjects, "AllowedSubjects")
 }
 
-func TestLoadRejectsPartialCloudflareAccess(t *testing.T) {
+// The sign-in provider is the only gate this service has, so a half-configured
+// section is refused at startup rather than left to fail on the first sign-in.
+func TestLoadRejectsPartialAuth0(t *testing.T) {
+	//nolint:gosec // G101: configuration keys and error text, not credentials
 	for prefix, want := range map[string]string{
-		"team_domain = ":     "access.cloudflare.team_domain",
-		"application_aud = ": "access.cloudflare.application_aud",
-		"allowed_email = ":   "access.cloudflare.allowed_email",
+		"domain = ":             "auth.auth0.domain",
+		"client_id = ":          "auth.auth0.client_id",
+		"allowed_subjects = ":   "auth.auth0.allowed_subjects",
+		"client_secret_file = ": "auth0 client secret is not configured",
 	} {
 		t.Run(prefix, func(t *testing.T) {
 			configPath, _ := writeValidConfiguration(t, t.TempDir())
@@ -377,6 +376,104 @@ func TestLoadRejectsPartialCloudflareAccess(t *testing.T) {
 			require.ErrorContains(t, err, want)
 		})
 	}
+}
+
+// The allowlist is what stands between an authenticated stranger and a
+// session, so a list that names nobody is not a list.
+func TestLoadRejectsAnEmptyAllowedSubjectList(t *testing.T) {
+	for name, value := range map[string]string{
+		"empty":       `[]`,
+		"blank entry": `["   "]`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			configPath, _ := writeValidConfiguration(t, t.TempDir())
+			replaceInFile(t, configPath, `["github|123456"]`, value)
+			t.Setenv(configFileEnv, configPath)
+
+			_, err := Load()
+			require.ErrorContains(t, err, "auth.auth0.allowed_subjects")
+		})
+	}
+}
+
+func TestLoadDeduplicatesAllowedSubjects(t *testing.T) {
+	configPath, _ := writeValidConfiguration(t, t.TempDir())
+	replaceInFile(t, configPath, `["github|123456"]`, `["github|123456", " github|123456 ", "github|7"]`)
+	t.Setenv(configFileEnv, configPath)
+
+	settings, err := Load()
+	require.NoError(t, err)
+	assert.Equal(t, []string{"github|123456", "github|7"}, settings.Auth.Auth0.AllowedSubjects, "AllowedSubjects")
+}
+
+// The SDK builds `https://<domain>`, so anything but a bare host would name a
+// different issuer than the one the ID token has to claim.
+func TestLoadHoldsTheAuth0DomainToABareHost(t *testing.T) {
+	refused := map[string]string{
+		"scheme":            "https://tenant.eu.auth0.com",
+		"path":              "tenant.eu.auth0.com/authorize",
+		"query":             "tenant.eu.auth0.com?a=b",
+		"fragment":          "tenant.eu.auth0.com#a",
+		"userinfo":          "user@tenant.eu.auth0.com",
+		"no port":           "127.0.0.1:",
+		"too many colons":   "127.0.0.1:8443:9000",
+		"port without host": ":8443",
+	}
+	for name, value := range refused {
+		t.Run(name, func(t *testing.T) {
+			configPath, _ := writeValidConfiguration(t, t.TempDir())
+			replaceInFile(t, configPath, testAuth0Domain, value)
+			t.Setenv(configFileEnv, configPath)
+
+			_, err := Load()
+			require.ErrorContains(t, err, "auth.auth0.domain")
+		})
+	}
+
+	// A port is allowed: the development issuer runs on loopback.
+	t.Run("host and port", func(t *testing.T) {
+		configPath, _ := writeValidConfiguration(t, t.TempDir())
+		replaceInFile(t, configPath, testAuth0Domain, "127.0.0.1:8443")
+		t.Setenv(configFileEnv, configPath)
+
+		settings, err := Load()
+		require.NoError(t, err)
+		assert.Equal(t, "127.0.0.1:8443", settings.Auth.Auth0.Domain, "Domain")
+	})
+}
+
+func TestLoadRejectsALiteralAuth0ClientSecret(t *testing.T) {
+	configPath, _ := writeValidConfiguration(t, t.TempDir())
+	replaceInFile(t, configPath, "client_secret_file = ", "client_secret = \"not-allowed\"\n# client_secret_file = ")
+	t.Setenv(configFileEnv, configPath)
+
+	_, err := Load()
+	require.ErrorContains(t, err, "literal secret")
+	assert.NotContains(t, err.Error(), "not-allowed", "Load() exposed the literal secret")
+}
+
+func TestLoadRejectsAmbiguousAuth0ClientSecretInputs(t *testing.T) {
+	configPath, _ := writeValidConfiguration(t, t.TempDir())
+	t.Setenv(configFileEnv, configPath)
+	t.Setenv(envPrefix+"AUTH__AUTH0__CLIENT_SECRET", "direct-client-secret")
+
+	_, err := Load()
+	require.ErrorContains(t, err, "both direct and file inputs")
+	assert.NotContains(t, err.Error(), "direct-client-secret", "Load() exposed the direct secret")
+}
+
+func TestLoadClearsTheDirectAuth0ClientSecret(t *testing.T) {
+	directory := t.TempDir()
+	configPath, _ := writeValidConfiguration(t, directory)
+	removeConfigurationLine(t, configPath, "client_secret_file = ")
+	t.Setenv(configFileEnv, configPath)
+	t.Setenv(envPrefix+"AUTH__AUTH0__CLIENT_SECRET", "direct-client-secret")
+
+	settings, err := Load()
+	require.NoError(t, err)
+	assert.Equal(t, "direct-client-secret", settings.Auth.Auth0.ClientSecret(), "ClientSecret()")
+	_, found := os.LookupEnv(envPrefix + "AUTH__AUTH0__CLIENT_SECRET")
+	assert.False(t, found, "the direct secret environment value remains after Load()")
 }
 
 func TestLoadDefaultsTheReadinessListenerToItsOwnPort(t *testing.T) {

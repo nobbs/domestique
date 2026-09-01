@@ -1,37 +1,34 @@
 /**
  * Who the gate let through, at the end of the bar.
  *
- * There is one authorised address, so this is not here to tell a reader who
- * they are — they know. It is here because the identity is the whole of the
- * authentication: a page that draws itself is a page whose assertion was
- * accepted, and naming the address that was accepted is what turns that into
- * something a reader can check. Two Access sessions in two browsers, or a
- * development proxy holding an assertion minted for somebody else, are
- * indistinguishable until something says which one answered.
+ * It is here because the identity is the whole of the authentication: a page
+ * that draws itself is a page whose session was accepted, and naming the
+ * account that was accepted is what turns that into something a reader can
+ * check. Two sessions in two browsers are indistinguishable until something
+ * says which one answered.
  *
- * A mark rather than the address, because the bar's job is navigation and an
- * email is the longest thing that could stand in it. The address is the mark's
- * name, so a pointer and a screen reader both get it without opening anything,
- * and the menu spells it out for everyone else.
+ * A mark rather than the name, because the bar's job is navigation and an
+ * address is the longest thing that could stand in it. The name is the mark's
+ * accessible name, so a pointer and a screen reader both get it without
+ * opening anything, and the menu spells it out for everyone else.
  */
 
-import { IconLogout } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { webUIConfigQuery } from "../api/queries";
-import { Button, ExternalButtonLink } from "./Button";
+import { Button } from "./Button";
 
 /**
- * One or two letters standing in for an address.
+ * One or two letters standing in for a display name.
  *
- * The local part only: every address a deployment ever shows shares its domain
- * with itself, so the half that could tell two of them apart is the half in
- * front of the `@`. A separator inside it usually parts a given name from a
- * family one, and where it does the two initials are worth more than the first
- * two letters of the first name.
+ * The local part only, where the name is an address: every address a
+ * deployment ever shows shares its domain with itself, so the half that could
+ * tell two of them apart is the half in front of the `@`. A separator inside
+ * it usually parts a given name from a family one, and where it does the two
+ * initials are worth more than the first two letters of the first name.
  */
-export function initialsOf(email: string): string {
-  const local = email.trim().split("@")[0] ?? "";
+export function initialsOf(display: string): string {
+  const local = display.trim().split("@")[0] ?? "";
   const parts = local.split(/[.\-_+]+/).filter(Boolean);
   const letters = parts.length > 1 ? [parts[0], parts[1]] : [parts[0]];
 
@@ -58,18 +55,18 @@ export function UserPill() {
     <Popover>
       <PopoverTrigger
         // The circle holds initials, which are an abbreviation and not a name.
-        // What it is is the session, and whose it is is the address, so both
+        // What it is is the session, and whose it is is the account, so both
         // are said here rather than left to the two letters to imply.
-        aria-label={`Signed in as ${identity.email}`}
+        aria-label={`Signed in as ${identity.display}`}
         render={
           <Button
             className="size-8 shrink-0 rounded-full bg-[var(--base)] p-0 text-xs font-semibold tracking-tight text-[var(--ink-2)] hover:text-[var(--ink)]"
             variant="ghost"
           >
-            {initialsOf(identity.email)}
+            {initialsOf(identity.display)}
           </Button>
         }
-        title={identity.email}
+        title={identity.display}
       />
       <PopoverContent
         align="end"
@@ -79,23 +76,7 @@ export function UserPill() {
       >
         {/* Breaks anywhere: an address is one word to a browser, and a long one
             would otherwise decide how wide this popover is. */}
-        <p className="wrap-anywhere px-1.5 text-sm text-[var(--ink)]">{identity.email}</p>
-        {/*
-         * Absent, not disabled, where the service named no way out. A disabled
-         * control says "you cannot do this now"; there is nothing here that
-         * could ever serve it, and offering it greyed out would describe a
-         * deployment this is not.
-         */}
-        {identity.signOutUrl ? (
-          <ExternalButtonLink
-            className="w-full justify-start"
-            href={identity.signOutUrl}
-            icon={<IconLogout stroke={1.6} />}
-            variant="ghost"
-          >
-            Sign out
-          </ExternalButtonLink>
-        ) : null}
+        <p className="wrap-anywhere px-1.5 text-sm text-[var(--ink)]">{identity.display}</p>
       </PopoverContent>
     </Popover>
   );

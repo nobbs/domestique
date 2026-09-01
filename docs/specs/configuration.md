@@ -53,12 +53,13 @@ The file is the whole of what the host hands the process, and this is all of it:
 [http]
 listen_address = ":8080"
 readiness_address = ":8081"
-browser_origin_url = "https://pi.example.ts.net"
+browser_origin_url = "https://domestique.example.com"
 
-[access.cloudflare]
-team_domain = "yourteam.cloudflareaccess.com"
-application_aud = "the AUD tag of the Access application"
-allowed_email = "you@example.com"
+[auth.auth0]
+domain = "yourtenant.eu.auth0.com"
+client_id = "the application's client ID"
+client_secret_file = "/run/secrets/auth0_client_secret"
+allowed_subjects = ["github|123456"]
 
 [state]
 database_path = "/var/lib/domestique/state.db"
@@ -87,31 +88,38 @@ the runtime image carries.
 
 ## Secret input
 
-The file names exactly one secret, and it is the one every other secret is kept
-under. It has one active input: a TOML file path, an overriding `*_FILE`
-environment value, or a direct environment value. The file input is preferred
-for Docker deployments; the direct environment value supports a simple local
-setup.
+The file names exactly two secrets. Each has one active input: a TOML
+file path, an overriding `*_FILE` environment value, or — for the state key
+alone — a direct environment value. The file input is preferred for Docker
+deployments; the direct environment value supports a simple local setup.
 
 | Canonical secret | TOML file-path field | Direct environment value | Environment file path |
 | --- | --- | --- | --- |
 | state encryption key | `state.encryption_key_file` | `DOMESTIQUE_STATE__ENCRYPTION_KEY` | `DOMESTIQUE_STATE__ENCRYPTION_KEY_FILE` |
+| Auth0 client secret | `auth.auth0.client_secret_file` | `DOMESTIQUE_AUTH__AUTH0__CLIENT_SECRET` | `DOMESTIQUE_AUTH__AUTH0__CLIENT_SECRET_FILE` |
 
-A literal `state.encryption_key` is invalid in the TOML file. It is accepted
-only from the documented direct environment variable. The `*_FILE` environment
-variable overrides the TOML file path, but it must not accompany the direct
-value.
+A literal `state.encryption_key` or `auth.auth0.client_secret` is invalid in
+the TOML file. Each is accepted only from its documented direct environment
+variable, and only the state key's has one: the Auth0 client secret has no
+direct environment form, so it is always a file. A `*_FILE` environment
+variable overrides the matching TOML file path, but it must not accompany the
+direct value.
 
-A file secret must be an absolute path to a regular readable file. It must be
-non-empty after one terminal line break is trimmed, and it decodes as a
-base64url encoding of exactly 32 random bytes. The service reads it once at
-startup, does not log the value or the path, and clears the direct secret
-environment value from its own process environment after loading.
+A file secret must be an absolute path to a regular readable file, non-empty
+after one terminal line break is trimmed. The state encryption key is
+additionally validated as a base64url encoding of exactly 32 random bytes;
+the Auth0 client secret carries no such shape requirement, being opaque to
+this service and checked only by Auth0 on exchange. The service reads each
+once at startup, does not log the value or the path, and clears the direct
+secret environment value from its own process environment after loading.
 
 Every other credential the service holds — the Wahoo client secret, each
 source's account, and the Pushover pair — is entered on the settings page and
-kept encrypted under this key.
+kept encrypted under the state key.
 [Credentials](#credentials) below states what that means for a deployment.
+The Auth0 client secret is not among them: it gates the settings page itself,
+the same reason `http.browser_origin_url` is a file setting rather than a
+runtime one, so it cannot be a settings-page credential.
 
 The application does not know which system created a file. Docker Secrets,
 read-only bind mounts, and manually managed local files are equally valid.
@@ -126,39 +134,45 @@ application dependency.
 - `http.readiness_address` is optional and defaults to `:8081`. It is the second
   listener, and it serves the readiness probe alone. It is validated on the same
   terms as `http.listen_address`, and its port must differ from that listener's.
-  One port serving both would put readiness behind Tailscale Serve and the
-  tunnel.
+  One port serving both would put readiness behind the reverse proxy along with
+  everything else.
 - `http.browser_origin_url` is required, and must be an absolute HTTPS origin
-  with no path. It is the address a browser reaches this service at: the public
-  hostname when the Cloudflare path is deployed, and the Tailnet URL otherwise.
+  with no path. It is the address a browser reaches this service at, behind the
+  reverse proxy.
 
   It is the one origin a state-changing request may come from. A request to a
-  sync trigger, the schedule switch, or a route reprocess that names any other
-  origin, or none, is refused.
+  sync trigger, the schedule switch, a route reprocess, sign-in start, or
+  sign-out that names any other origin, or none, is refused.
 
-  The Wahoo callback is derived from it rather than configured beside it: the
-  redirect URL is this service's own `/oauth/wahoo/callback` on this origin, and
-  it must match the callback registered with Wahoo. The path is not an
-  operator's choice; this binary serves exactly that one.
+  The Wahoo callback and the Auth0 callback are both derived from it rather than
+  configured beside it: the redirect URLs are this service's own
+  `/oauth/wahoo/callback` and `/auth/callback` on this origin, and each must
+  match the callback registered with its own provider. Neither path is an
+  operator's choice; this binary serves exactly those two.
 
   It is a file setting rather than a runtime one. It is deployment topology,
   fixed by where the container is published, it gates the write path the
   settings page itself uses, and a wrong value edited through that page would
   lock the operator out of the page that could correct it.
-- `access.cloudflare` is required in full: `team_domain`, `application_aud`, and
-  `allowed_email` must all be present. It is the only gate the service has, and
-  a missing or partly filled section is a startup error. None of the three is a
-  secret: the team domain and the audience tag are public identifiers, and
-  verification uses Cloudflare's published signing keys, so they are ordinary
-  configuration values rather than secret files.
-- `access.cloudflare.allowed_email` is the sole identity allowed to use normal or
-  OAuth endpoints, and is the principal every authenticated request resolves to.
-  The configured spelling is what reaches the OAuth service, so a flow begun by
-  one request stays consumable by the next even if Access varies the case of the
-  asserted address.
-  `application_aud` confines an assertion to this one application. Without it, a
-  token minted for any other application of the same Cloudflare team would
-  verify against the same key.
+- `auth.auth0` is required in full: `domain`, `client_id`,
+  `client_secret_file`, and `allowed_subjects` must all be present. It is the
+  only gate the service has, and a missing or partly filled section is a
+  startup error, because a service that cannot verify a session cannot
+  authenticate anyone.
+  - `domain` is the tenant host, `host[:port]` with no scheme and no path.
+  - `client_id` and `domain` are not secrets: the tenant host and the client
+    ID are public identifiers, and verification uses Auth0's published signing
+    keys, so they are ordinary configuration values rather than secret files.
+  - `allowed_subjects` is a non-empty list of OIDC `sub` values — the exact
+    identity Auth0 asserts, such as `github|123456`. It is **file-only**: it
+    has no environment form at all, because the environment layer can carry a
+    single value per key and not a list.
+- `auth.auth0.allowed_subjects` is the list of identities allowed to use normal
+  or OAuth endpoints; each carries the same full operator rights, and the
+  service stays single-tenant in the sense that this is one short,
+  deliberately configured list rather than open registration. The `sub` claim
+  is matched exactly, with no normalisation, because it is an opaque
+  provider-issued identifier rather than a human-typed address.
 - `state.database_path` is required and must reside on the persistent Docker
   volume.
 - The interval between scheduled runs and the per-target deletion limit are not
@@ -504,6 +518,12 @@ under the same key as a refresh token; the rest are stored in the clear, none of
 them being a secret. The state database is intentionally not backed up. Changing
 the state key makes the existing encrypted state unreadable, and key rotation is
 not a feature.
+
+Browser sessions are the same kind of runtime state: `web_sessions` lives in
+the same database and shares its fate. A lost database signs every subject
+out, the same way it returns every runtime setting to its seed — a sign-in
+problem rather than a recovery one, and nothing this specification treats as
+data loss.
 
 ## Diagnostics and exclusions
 

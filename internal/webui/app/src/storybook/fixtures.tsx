@@ -251,7 +251,7 @@ const config: WebUIConfig = {
   // A session with a way out of it, which is what a deployment behind
   // Cloudflare Access has. Stories that need the other deployment — the one
   // with nothing in front of it to sign out to — override this.
-  identity: { email: "rider@example.test", signOutUrl: "/cdn-cgi/access/logout" },
+  identity: { display: "rider@example.test" },
 };
 
 /** What this build registers, as the sync and tasks pages read it. */

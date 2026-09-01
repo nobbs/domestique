@@ -8,7 +8,10 @@ import (
 
 // StartOAuth redirects the operator's browser to Wahoo for one configured slot.
 func (h *Handler) StartOAuth(writer http.ResponseWriter, request *http.Request) {
-	login := h.allowedEmail
+	// The state is bound to the caller's own subject: with more than one allowed
+	// subject, a shared constant would let one operator complete another's
+	// authorization.
+	login := identityOf(request.Context()).Subject
 	targetID := request.PathValue("target")
 	if targetID == "" || !slices.Contains(h.targetIDs(), targetID) {
 		h.notFound(writer)
@@ -41,7 +44,7 @@ func (h *Handler) StartOAuth(writer http.ResponseWriter, request *http.Request) 
 // the operator was sent to Wahoo by a link on that page. The 303 drops the
 // authorization code and state from the browser URL.
 func (h *Handler) CompleteOAuth(writer http.ResponseWriter, request *http.Request) {
-	login := h.allowedEmail
+	login := identityOf(request.Context()).Subject
 	query := request.URL.Query()
 	if err := h.oauth.Complete(request.Context(), login, query.Get("state"), query.Get("code")); err != nil {
 		h.error(writer, http.StatusBadRequest, "authorization_failed", "wahoo authorization could not be completed")

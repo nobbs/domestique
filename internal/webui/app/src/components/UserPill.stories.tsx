@@ -60,17 +60,17 @@ function withConfig(value?: WebUIConfig): NonNullable<Meta<typeof UserPill>["dec
   ];
 }
 
-function config(signOutUrl?: string): WebUIConfig {
+function config(): WebUIConfig {
   return {
     basemaps: [],
     sourceBaseUrls: {},
-    identity: { email: "alexej.disterhoft@example.test", ...(signOutUrl ? { signOutUrl } : {}) },
+    identity: { display: "alexej.disterhoft@example.test" },
   };
 }
 
-/** A deployment behind Cloudflare Access, which is one with a way out. */
+/** A signed-in reader, named so the session can be seen to be theirs. */
 export const SignedIn: Story = {
-  decorators: withConfig(config("/cdn-cgi/access/logout")),
+  decorators: withConfig(config()),
   play: async ({ canvas }) => {
     const pill = canvas.getByRole("button", {
       name: "Signed in as alexej.disterhoft@example.test",
@@ -84,28 +84,6 @@ export const SignedIn: Story = {
 
     const menu = await screen.findByRole("dialog", { name: "Session" });
     await expect(menu).toHaveTextContent("alexej.disterhoft@example.test");
-    await expect(screen.getByRole("link", { name: /Sign out/ })).toHaveAttribute(
-      "href",
-      "/cdn-cgi/access/logout",
-    );
-  },
-};
-
-/**
- * A deployment with nothing in front of it — the demo, and any run where the
- * gate is satisfied by something that serves no logout of its own. The address
- * is still worth saying; the way out is absent rather than dead.
- */
-export const NoWayOut: Story = {
-  decorators: withConfig(config()),
-  play: async ({ canvas }) => {
-    await userEvent.click(
-      canvas.getByRole("button", { name: "Signed in as alexej.disterhoft@example.test" }),
-    );
-
-    const menu = await screen.findByRole("dialog", { name: "Session" });
-    await expect(menu).toHaveTextContent("alexej.disterhoft@example.test");
-    await expect(screen.queryByRole("link", { name: /Sign out/ })).toBeNull();
   },
 };
 

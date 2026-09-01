@@ -2,13 +2,14 @@
 
 `domestique` mirrors one private VeloPlanner route library to one or two Wahoo
 accounts. It is a single-tenant service intended to run as a Docker container on
-an amd64 Tailnet host.
+an amd64 host, reachable behind a TLS-terminating reverse proxy and gated by
+sign-in against an Auth0 tenant.
 
-It also serves a read-only browser UI on the same private listener, which draws
+It also serves a read-only browser UI on the same listener, which draws
 the whole stored library on one map and gives each route a page of its own.
-Basemap tiles come from a configurable keyless provider — the only request this
-service's page makes outside the Tailnet — and the map follows your system's
-light or dark colour scheme.
+Basemap tiles come from a configurable keyless provider — the only outbound
+request this service's page makes on its own — and the map follows your
+system's light or dark colour scheme.
 
 The accepted contract is in [the service specification](docs/specs/service.md).
 The supporting specifications define configuration, sync safety, architecture,
@@ -33,10 +34,10 @@ Install the optional Git hook with `mise exec -- prek install`. Work on the
 browser UI with `mise run ui-dev`, which serves it with hot reload and proxies
 the API to a locally running service. See [CONTRIBUTING.md](CONTRIBUTING.md) for
 the contributor workflow. Copy [`config.example.toml`](config.example.toml)
-outside the repository when preparing a local deployment; it names one secret
-file, the state encryption key, and never embeds a secret value. Everything
-else the service is configured with is entered on its own settings page once it
-is running.
+outside the repository when preparing a local deployment; it names two secret
+files, the state encryption key and the Auth0 client secret, and never embeds a
+secret value. Everything else the service is configured with is entered on its
+own settings page once it is running.
 
 ## Deployment
 
@@ -52,14 +53,15 @@ states why and what stands in its place. Its base images are Docker Hardened
 Images, so *building* it requires `docker login dhi.io`; deploying it does not,
 because a host pulls rather than builds.
 The host owns the private boundary: Docker publishes only `127.0.0.1:8080` and
-the readiness probe's own `127.0.0.1:8081`, while host-level Tailscale Serve
-provides HTTPS for the first of those and is the origin a Cloudflare Tunnel dials
-by Tailscale Service name. Readiness is never served through it, so it stays a
-host-local health check rather than an endpoint on the public surface. Tailscale does not run in the image.
+the readiness probe's own `127.0.0.1:8081`, while a host-level TLS-terminating
+reverse proxy — Caddy is the documented example — forwards the served listener
+alone. Readiness is never given to it, so it stays a host-local health check
+rather than an endpoint on the public surface. No reverse proxy runs in the
+image.
 
 The [Linux VM guide](docs/hetzner.md) covers the long-running host. The
-[Cloudflare Access guide](docs/cloudflare-access.md) covers how the single
-operator reaches it — the only way in, and without publishing a listener. The
+[Auth0 guide](docs/auth0.md) covers how an operator reaches it — sign-in
+against the configured tenant, and the reverse proxy in front of it. The
 [operator recovery runbook](docs/runbook.md) covers the uncommon moments a
 running deployment asks for a person. The optional sandbox encoder check is
 documented in [the FIT acceptance guide](docs/fit-sandbox-acceptance.md).

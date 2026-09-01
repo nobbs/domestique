@@ -1,28 +1,22 @@
 // Command demoapi seeds a demo database and serves the browser UI's API from it.
 //
-// The shipped binary verifies a Cloudflare Access assertion and a demo cannot
-// obtain one, so this stands up an Access team of its own: a signing key
-// generated in memory, published to the production verifier through an
-// in-process key-set endpoint, and one assertion minted for the UI dev server.
-// The real gate runs; only the team signing it is local, and nothing leaves
-// this machine.
+// The shipped binary admits a browser session and a demo has no tenant to sign
+// in against, so this stands up an Auth0-shaped issuer of its own on a loopback
+// port, and pre-mints one session so the UI dev server can load without a
+// round trip through it. The real gate runs; only the tenant behind it is
+// local, and nothing leaves this machine.
 //
 // Development tooling, not part of the shipped binary. See dev/demo.sh.
 package main
 
 import (
 	"context"
-	"crypto"
 	"crypto/rand"
-	"crypto/rsa"
 	"crypto/sha256"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
-	"io"
-	"math/big"
 	"net/http"
 	"os"
 	"os/signal"
@@ -31,26 +25,22 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/nobbs/domestique/internal/cfaccess"
 	"github.com/nobbs/domestique/internal/config"
 	"github.com/nobbs/domestique/internal/demo"
 	"github.com/nobbs/domestique/internal/httpapi"
 	"github.com/nobbs/domestique/internal/oauth"
 	"github.com/nobbs/domestique/internal/route"
 	"github.com/nobbs/domestique/internal/runtimeconfig"
+	"github.com/nobbs/domestique/internal/session"
 	"github.com/nobbs/domestique/internal/sqlite"
 	"github.com/nobbs/domestique/internal/wahoo"
 	"github.com/nobbs/domestique/internal/webui"
 )
 
 const (
-	// assertionLifetime is how long the minted identity stays usable. It is a
-	// working session rather than a day, because an expired assertion is the
-	// thing the UI has to keep handling correctly.
-	assertionLifetime = 8 * time.Hour
-
-	// signingKeyBits matches the key size Access signs with.
-	signingKeyBits = 2048
+	// sessionLifetime matches internal/session's own, so the pre-minted row
+	// expires the way one created by a real sign-in does.
+	sessionLifetime = 30 * 24 * time.Hour
 
 	httpIdleTimeout       = 60 * time.Second
 	httpReadHeaderTimeout = 10 * time.Second
@@ -60,14 +50,14 @@ const (
 )
 
 func main() {
-	assertionFile := flag.String("assertion-file", "",
-		"write the minted Access assertion here for the UI dev server to read")
+	sessionFile := flag.String("session-file", "",
+		"write the pre-minted session token here for the UI dev server to read")
 	states := flag.String("states", "current,unauthorized",
 		"comma-separated state per configured target slot: current, failed, or unauthorized")
 	flag.Parse()
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	if err := run(ctx, *assertionFile, *states); err != nil {
+	if err := run(ctx, *sessionFile, *states); err != nil {
 		stop()
 		fmt.Fprintf(os.Stderr, "demoapi: %v\n", err)
 		os.Exit(1)
@@ -75,7 +65,7 @@ func main() {
 	stop()
 }
 
-func run(ctx context.Context, assertionFile, states string) error {
+func run(ctx context.Context, sessionFile, states string) error {
 	settings, err := config.Load()
 	if err != nil {
 		return fmt.Errorf("loading configuration: %w", err)
@@ -107,21 +97,33 @@ func run(ctx context.Context, assertionFile, states string) error {
 		return seedErr
 	}
 
-	team, err := newTeam(&settings.Access.Cloudflare)
+	tenant, err := newIssuer(settings.Auth.Auth0.Domain, settings.Auth.Auth0.ClientID)
 	if err != nil {
 		return err
 	}
-	assertion, err := team.mint()
+	stopIssuer, err := tenant.serve()
 	if err != nil {
 		return err
 	}
-	if assertionFile != "" {
-		if writeErr := os.WriteFile(assertionFile, []byte(assertion), 0o600); writeErr != nil {
-			return fmt.Errorf("writing assertion: %w", writeErr)
-		}
+	defer stopIssuer()
+
+	provider, err := tenant.client(settings.Auth.Auth0.ClientSecret(),
+		settings.HTTP.BrowserOriginURL+"/auth/callback")
+	if err != nil {
+		return err
+	}
+	sessions, err := session.New(store, signInProvider{client: provider},
+		settings.Auth.Auth0.AllowedSubjects, nil)
+	if err != nil {
+		return fmt.Errorf("creating the session service: %w", err)
+	}
+	// Pre-minted so the dev server and the browser suite can load a gated page
+	// without walking the flow through a self-signed issuer first.
+	if mintErr := mintSession(ctx, store, sessionFile); mintErr != nil {
+		return mintErr
 	}
 
-	handler, err := newHandler(settings, runtimeSettings, store, team, slots)
+	handler, err := newHandler(settings, runtimeSettings, store, sessions, slots)
 	if err != nil {
 		return err
 	}
@@ -135,8 +137,7 @@ func run(ctx context.Context, assertionFile, states string) error {
 		WriteTimeout:      httpWriteTimeout,
 	}
 
-	fmt.Printf("Demo API listening on %s as %s\n",
-		settings.HTTP.ListenAddress, settings.Access.Cloudflare.AllowedEmail)
+	fmt.Printf("Demo API listening on %s as %s\n", settings.HTTP.ListenAddress, demoSubject)
 
 	errs := make(chan error, 1)
 	go func() {
@@ -171,7 +172,7 @@ func newHandler(
 	settings *config.Settings,
 	runtimeSettings *runtimeconfig.Current,
 	store *sqlite.Store,
-	team *team,
+	sessions httpapi.Sessions,
 	slots []demo.Slot,
 ) (http.Handler, error) {
 	// Built once from the seeded settings rather than per request: a demo has
@@ -208,8 +209,7 @@ func newHandler(
 			Alerts:           newDemoAlerts(),
 			Tasks:            newDemoTasks(demoReseeder.trigger),
 			BuildRevision:    "demo",
-			AccessVerifier:   team,
-			AccessEmail:      settings.Access.Cloudflare.AllowedEmail,
+			Sessions:         sessions,
 			BrowserOriginURL: settings.HTTP.BrowserOriginURL,
 		},
 		oauthService,
@@ -326,135 +326,27 @@ func slotState(name string) (demo.SlotState, error) {
 	}
 }
 
-// team is a local Cloudflare Access team: a signing key, the key-set document
-// that publishes it, and the production verifier reading that document.
-type team struct {
-	verifier *cfaccess.Verifier
-	private  *rsa.PrivateKey
-	issuer   string
-	audience string
-	email    string
-	keyID    string
-}
-
-func newTeam(access *config.CloudflareAccess) (*team, error) {
-	private, err := rsa.GenerateKey(rand.Reader, signingKeyBits)
-	if err != nil {
-		return nil, fmt.Errorf("generating a demo signing key: %w", err)
+// mintSession writes one browser session straight into the state database and
+// leaves the raw token where the dev server can read it.
+func mintSession(ctx context.Context, store *sqlite.Store, path string) error {
+	raw := make([]byte, 32)
+	if _, err := rand.Read(raw); err != nil {
+		return fmt.Errorf("reading randomness: %w", err)
+	}
+	digest := sha256.Sum256(raw)
+	now := time.Now().UTC()
+	if err := store.CreateSession(ctx, digest[:], demoSubject, demoDisplay, now, now.Add(sessionLifetime)); err != nil {
+		return fmt.Errorf("storing the demo session: %w", err)
+	}
+	if path == "" {
+		return nil
+	}
+	token := base64.RawURLEncoding.EncodeToString(raw)
+	if err := os.WriteFile(path, []byte(token), 0o600); err != nil {
+		return fmt.Errorf("writing the demo session: %w", err)
 	}
 
-	local := &team{
-		private:  private,
-		issuer:   issuerFor(access.TeamDomain),
-		audience: access.ApplicationAUD,
-		email:    access.AllowedEmail,
-		keyID:    "demo",
-	}
-	// The verifier fetches its key set over HTTPS from the team domain. This
-	// transport answers that one request from memory, so the demo publishes its
-	// key without a listener, a certificate, or a name to resolve — and cannot
-	// reach a real team even by accident.
-	verifier, err := cfaccess.New(&cfaccess.Options{
-		TeamDomain: access.TeamDomain,
-		Audience:   access.ApplicationAUD,
-		HTTPClient: &http.Client{Transport: local},
-	})
-	if err != nil {
-		return nil, fmt.Errorf("configuring the demo access team: %w", err)
-	}
-	local.verifier = verifier
-
-	return local, nil
-}
-
-// issuerFor restates how the verifier derives the issuer from a team domain, so
-// a minted assertion claims the issuer the verifier expects.
-func issuerFor(teamDomain string) string {
-	team := strings.TrimSuffix(strings.TrimPrefix(strings.TrimSpace(teamDomain), "https://"), "/")
-	if !strings.Contains(team, ".") {
-		team += ".cloudflareaccess.com"
-	}
-
-	return "https://" + team
-}
-
-// RoundTrip answers the verifier's key-set request and refuses everything else.
-func (t *team) RoundTrip(request *http.Request) (*http.Response, error) {
-	if !strings.HasPrefix(request.URL.String(), t.issuer+"/") {
-		return nil, fmt.Errorf("demo access team was asked for %s", request.URL.Host)
-	}
-
-	document, err := json.Marshal(map[string]any{
-		"keys": []map[string]string{{
-			"kid": t.keyID,
-			"kty": "RSA",
-			"alg": "RS256",
-			"use": "sig",
-			"n":   base64.RawURLEncoding.EncodeToString(t.private.N.Bytes()),
-			"e":   base64.RawURLEncoding.EncodeToString(big.NewInt(int64(t.private.E)).Bytes()),
-		}},
-	})
-	if err != nil {
-		return nil, fmt.Errorf("rendering the demo key set: %w", err)
-	}
-
-	return &http.Response{
-		StatusCode: http.StatusOK,
-		Header:     http.Header{"Content-Type": []string{"application/json"}},
-		Body:       io.NopCloser(strings.NewReader(string(document))),
-		Request:    request,
-	}, nil
-}
-
-// Verify is the production gate, reading the local team's key set.
-func (t *team) Verify(ctx context.Context, assertion string) (string, error) {
-	identity, err := t.verifier.Verify(ctx, assertion)
-	if err != nil {
-		return "", fmt.Errorf("verifying demo assertion: %w", err)
-	}
-
-	return identity.Email, nil
-}
-
-// mint signs one assertion for the configured identity.
-func (t *team) mint() (string, error) {
-	now := time.Now()
-	header := map[string]any{"alg": "RS256", "kid": t.keyID, "typ": "JWT"}
-	claims := map[string]any{
-		"iss":   t.issuer,
-		"aud":   []string{t.audience},
-		"email": t.email,
-		"sub":   "demo-subject",
-		"iat":   now.Unix(),
-		"nbf":   now.Unix(),
-		"exp":   now.Add(assertionLifetime).Unix(),
-	}
-
-	segment := func(value map[string]any) (string, error) {
-		encoded, err := json.Marshal(value)
-		if err != nil {
-			return "", fmt.Errorf("encoding assertion: %w", err)
-		}
-
-		return base64.RawURLEncoding.EncodeToString(encoded), nil
-	}
-	encodedHeader, err := segment(header)
-	if err != nil {
-		return "", err
-	}
-	encodedClaims, err := segment(claims)
-	if err != nil {
-		return "", err
-	}
-
-	signingInput := encodedHeader + "." + encodedClaims
-	digest := sha256.Sum256([]byte(signingInput))
-	signature, err := rsa.SignPKCS1v15(rand.Reader, t.private, crypto.SHA256, digest[:])
-	if err != nil {
-		return "", fmt.Errorf("signing assertion: %w", err)
-	}
-
-	return signingInput + "." + base64.RawURLEncoding.EncodeToString(signature), nil
+	return nil
 }
 
 // demoYear is how far out the demo pushes its first run: far enough that the
