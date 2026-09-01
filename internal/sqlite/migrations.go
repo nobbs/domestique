@@ -180,7 +180,7 @@ func migrationVersion(ctx context.Context, database *sql.DB) (version int, exist
 		return 0, exists, false, err
 	}
 	var storedDirty bool
-	err = database.QueryRowContext(ctx, `SELECT version, dirty FROM domestique_migrations LIMIT 1`).Scan(&version, &storedDirty)
+	err = database.QueryRowContext(ctx, `SELECT version, dirty FROM `+migrationsTable+` LIMIT 1`).Scan(&version, &storedDirty)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, true, false, errors.New("state schema migration history is empty")
 	}
