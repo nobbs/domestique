@@ -115,9 +115,10 @@ func (s *Store) ForEachTaskRun(
 
 // ForEachTaskRunPage visits one page of recorded attempts, newest first, and
 // returns the cursor for the page after it — empty when the history ends here.
-// An empty task is every task. A cursor outside the positions this store has
-// issued is reported as unusable rather than as a failure; one inside them
-// resolves as a position, which is what lets it outlive its own row's pruning.
+// An empty task is every task. A cursor outside the range of positions this
+// store has issued is reported as unusable rather than as a failure; one inside
+// that range resolves as a position, which lets it outlive its own row's
+// pruning — a position no attempt ever held reads as a history that ends there.
 func (s *Store) ForEachTaskRunPage(
 	ctx context.Context,
 	task, after string,
@@ -140,9 +141,8 @@ func (s *Store) ForEachTaskRunPage(
 		if readErr != nil {
 			return "", false, readErr
 		}
-		// Both halves are bounded at both ends. An instant ahead of the history
-		// would walk from in front of it and hand back its newest page; one behind
-		// every row would read as a history that ends here. Neither was issued.
+		// Bounded against the impossible at both ends: an instant ahead of
+		// everything recorded, or at or before the epoch, was never a finish.
 		if id <= 0 || id > issued || finishedAt <= 0 || finishedAt > latestFinished {
 			return "", false, nil
 		}
