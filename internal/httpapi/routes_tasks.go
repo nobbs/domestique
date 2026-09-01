@@ -141,7 +141,7 @@ func (h *Handler) GetTaskRuns(writer http.ResponseWriter, request *http.Request)
 	}
 	if !usable {
 		h.error(writer, http.StatusBadRequest, "invalid_request",
-			"the history cursor is not one this service issued")
+			"the history cursor is not one this service could have issued")
 
 		return
 	}

@@ -84,22 +84,15 @@ describe("TaskRunFeed", () => {
   });
 
   it("follows the service's cursor for the runs before the page", async () => {
+    // Built through the same helper as the seeded page, so the fetched body
+    // carries the contract's own field names rather than a second guess at them.
+    const earlier = run({
+      reference: "cccccccccccc",
+      startedAt: "2026-08-31T04:00:00Z",
+      finishedAt: "2026-08-31T04:00:03Z",
+    });
     const fetchMock = vi.fn(
-      async () =>
-        new Response(
-          JSON.stringify({
-            runs: [
-              {
-                task: "sync:source",
-                started_at: "2026-08-31T04:00:00Z",
-                finished_at: "2026-08-31T04:00:03Z",
-                outcome: "succeeded",
-                reference: "cccccccccccc",
-              },
-            ],
-          }),
-          { status: 200 },
-        ),
+      async () => new Response(JSON.stringify({ runs: [earlier] }), { status: 200 }),
     );
     vi.stubGlobal("fetch", fetchMock);
     renderFeed({ runs: [run({ reference: "aaaaaaaaaaaa" })], next: "412" });
@@ -108,6 +101,9 @@ describe("TaskRunFeed", () => {
 
     await waitFor(() => expect(screen.getByText("cccccccccccc")).toBeInTheDocument());
     expect(fetchMock).toHaveBeenCalledWith("/v1/tasks/runs?limit=10&after=412", expect.anything());
+    // A run whose timestamp did not survive the wire reads as "never", so this
+    // fails if a field is renamed out from under the page.
+    expect(screen.queryByText("never")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Earlier runs" })).not.toBeInTheDocument();
   });
 

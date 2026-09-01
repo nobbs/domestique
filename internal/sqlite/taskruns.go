@@ -115,8 +115,9 @@ func (s *Store) ForEachTaskRun(
 
 // ForEachTaskRunPage visits one page of recorded attempts, newest first, and
 // returns the cursor for the page after it — empty when the history ends here.
-// An empty task is every task. A cursor this store did not issue is reported as
-// unusable rather than as a failure.
+// An empty task is every task. A cursor outside the positions this store has
+// issued is reported as unusable rather than as a failure; one inside them
+// resolves as a position, which is what lets it outlive its own row's pruning.
 func (s *Store) ForEachTaskRunPage(
 	ctx context.Context,
 	task, after string,
